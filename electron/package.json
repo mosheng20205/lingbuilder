@@ -1,0 +1,44 @@
+{
+  "name": "lingbuilder-electron",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "node scripts/dev.cjs",
+    "dev:renderer": "tsx server.ts",
+    "dev:desktop": "node scripts/start-electron.cjs",
+    "build": "vite build && npm run build:server && npm run build:electron",
+    "build:server": "esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build:electron": "tsc -p electron/tsconfig.json && node scripts/rename-electron-output.cjs",
+    "start": "node dist/server.cjs",
+    "lint": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
+    "clean": "rimraf dist dist-electron"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "dotenv": "^17.2.3",
+    "electron": "^33.4.11",
+    "express": "^4.21.2",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^6.2.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "autoprefixer": "^10.4.21",
+    "concurrently": "^9.1.2",
+    "esbuild": "^0.25.0",
+    "rimraf": "^6.0.1",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "wait-on": "^8.0.1"
+  },
+  "allowScripts": {}
+}
