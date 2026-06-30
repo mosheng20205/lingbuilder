@@ -243,35 +243,31 @@ LoadingText = "Teleporting to outer space... Please wait."`,
 .支持库 wpf_support
 .支持库 spec
 
-.程序集 窗口程序集_主窗口
+.程序集 窗口程序集_窗口1
 .程序集变量 关联设计文件, 文本型, , "MainWindow.xml"
 
-.子程序 _主窗口_创建完毕
+.子程序 _窗口1_创建完毕
     ' 易语言 WPF 设计器自动绑定 MainWindow.xml 可视化中文化布局
     载入可视化设计 (关联设计文件)
-    调试输出 (“太空冒险主窗口初始化完毕，WPF 渲染正常。”)
+    调试输出 (“太空冒险窗口1初始化完毕，WPF 渲染正常。”)
 
 .子程序 _游戏主窗口_核心初始化
     .局部变量 系统配置, 文本型
     系统配置 ＝ 读取配置项 (取运行目录 () ＋ “/config/config.ini”, “Engine”, “EngineMode”)
     调试输出 (“加载系统配置，模式为：” ＋ 系统配置)
 
-.子程序 _开始按钮_被单击
+.子程序 _按钮1_被单击
     信息框 (“开始运行太空冒险游戏客户端！”, 64, “运行成功”)
-    调试输出 (“玩家已点击：开始按钮”)
+    调试输出 (“玩家已点击：按钮1”)
 
-.子程序 _重置配置按钮_被单击
-    ' 调试与日志回调，符合易语言开发直觉
-    调试输出 (“触发重置配置。重新加载 MainWindow.xml 布局状态...”)
-    
-.子程序 _退出按钮_被单击
+.子程序 _按钮2_被单击
     .如果 (信息框 (“您确定要退出游戏吗？”, 36, “退出确认”) ＝ 6)
         结束 ()
     .如果结束`,
     translatedContent: '',
     strings: [
       { id: 'e1', original: 'wpf_support', translated: 'WPF中文化支持库', line: 2, type: 'resource', status: 'translated', context: '.支持库 wpf_support' },
-      { id: 'e2', original: 'MainWindow.xml', translated: '主窗口布局.xml', line: 6, type: 'string', status: 'translated', context: '.程序集变量 关联设计文件, 文本型, , "MainWindow.xml"' },
+      { id: 'e2', original: 'MainWindow.xml', translated: '窗口1布局.xml', line: 6, type: 'string', status: 'translated', context: '.程序集变量 关联设计文件, 文本型, , "MainWindow.xml"' },
       { id: 'e3', original: 'EngineMode', translated: '引擎模式', line: 15, type: 'string', status: 'translated', context: '读取配置项 (..., "Engine", "EngineMode")' }
     ],
     isModified: false

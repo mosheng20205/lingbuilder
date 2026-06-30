@@ -36,10 +36,20 @@ import {
   ShieldCheck,
   Minus,
   Maximize2,
-  Minimize2
+  Minimize2,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 
-import { CppFile, ExtractedString, GlossaryTerm, ProblemItem, DiffResult } from './types';
+import {
+  BottomPanelTabType,
+  CppFile,
+  DesignerGeneratedPanelData,
+  ExtractedString,
+  GlossaryTerm,
+  ProblemItem,
+  DiffResult
+} from './types';
 import { initialFiles, defaultGlossary, mockProblems, localTranslations } from './data/templates';
 import { computeDiff } from './utils/diff';
 
@@ -49,10 +59,93 @@ import DiffViewer from './components/DiffViewer';
 import GlossaryPanel from './components/GlossaryPanel';
 import AiAssistant from './components/AiAssistant';
 import BottomPanel from './components/BottomPanel';
+import {
+  requestWindowDesignerBuildRun,
+  WINDOW_DESIGNER_EPL_SOURCE_REQUEST,
+  WINDOW_DESIGNER_BUILD_RUN_STATE,
+  WindowDesignerEplSourceRequestDetail,
+  WindowDesignerBuildRunStateDetail
+} from './services/windowDesigner/windowDesignerCommands';
+import { getEplEventSuffix } from './services/windowDesigner/windowDesignerService';
+
+type LingBuilderWindowControls = {
+  minimize: () => Promise<void>;
+  toggleMaximize: () => Promise<boolean>;
+  isMaximized: () => Promise<boolean>;
+  close: () => Promise<void>;
+};
+
+const getNativeWindowControls = () => {
+  return (window as Window & {
+    lingBuilder?: {
+      windowControls?: LingBuilderWindowControls;
+    };
+  }).lingBuilder?.windowControls;
+};
+
+type OpenControlEventCodeDetail = {
+  controlId?: string;
+  controlName?: string;
+  controlContent?: string;
+  controlType?: string;
+  eventName?: string;
+  handlerName?: string;
+  windowFileName?: string;
+  windowTitle?: string;
+};
+
+const DEFAULT_DESIGNER_GENERATED_PANELS: DesignerGeneratedPanelData = {
+  xmlLabel: 'MainWindow.xml',
+  cppLabel: '登录窗体.h',
+  manifestLabel: '窗口程序集',
+  xmlCode: '',
+  cppCode: '',
+  manifestCode: '',
+  logs: ['> [编译日志] 等待 F5 触发真实 Win32 构建。'],
+  isBuilding: false
+};
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const sanitizeEplText = (value: string | undefined, fallback: string) => {
+  return (value || fallback)
+    .replace(/[\r\n]+/g, ' ')
+    .replace(/[“”"]/g, '')
+    .trim() || fallback;
+};
+
+const createEplControlEventBlock = (detail: Required<Pick<OpenControlEventCodeDetail, 'controlName' | 'eventName' | 'handlerName'>> & OpenControlEventCodeDetail) => {
+  const controlName = sanitizeEplText(detail.controlName, '控件');
+  const controlContent = sanitizeEplText(detail.controlContent, controlName);
+  const eventSuffix = getEplEventSuffix(detail.eventName);
+  const lines = [`.子程序 ${detail.handlerName}`];
+
+  if (detail.eventName === 'Click') {
+    lines.push(`    信息框 (“${controlContent}”, 64, “事件触发”)`);
+  }
+
+  lines.push(`    调试输出 (“${controlName}${eventSuffix}”)`);
+  return lines.join('\n');
+};
+
+const ensureEplControlEventHandler = (content: string, detail: OpenControlEventCodeDetail) => {
+  const controlName = detail.controlName?.trim();
+  const eventName = detail.eventName?.trim();
+  const handlerName = detail.handlerName?.trim();
+
+  if (!controlName || !eventName || !handlerName) return content;
+
+  const handlerPattern = new RegExp(`(^|\\n)\\.子程序\\s+${escapeRegExp(handlerName)}(?:\\s|,|，|$)`);
+  if (handlerPattern.test(content)) return content;
+
+  const nextBlock = createEplControlEventBlock({ ...detail, controlName, eventName, handlerName });
+  return `${content.replace(/\s*$/g, '')}\n\n${nextBlock}`;
+};
 
 export default function App() {
   const [files, setFiles] = useState<CppFile[]>(initialFiles);
   const [activeFile, setActiveFile] = useState<CppFile>(initialFiles[0]);
+  const filesRef = useRef<CppFile[]>(initialFiles);
   const [glossary, setGlossary] = useState<GlossaryTerm[]>(defaultGlossary);
   const [problems, setProblems] = useState<ProblemItem[]>(mockProblems);
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -62,6 +155,53 @@ export default function App() {
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [isAppClosed, setIsAppClosed] = useState(false);
+
+  const handleWindowMinimize = async () => {
+    const windowControls = getNativeWindowControls();
+    if (!windowControls) {
+      setIsMinimizedApp(true);
+      return;
+    }
+
+    try {
+      await windowControls.minimize();
+    } catch (error) {
+      console.error('Failed to minimize native LingBuilder window:', error);
+      setIsMinimizedApp(true);
+    }
+  };
+
+  const handleWindowToggleMaximize = async () => {
+    const windowControls = getNativeWindowControls();
+    if (!windowControls) {
+      setIsMaximizedApp(prev => !prev);
+      return;
+    }
+
+    try {
+      const isMaximized = await windowControls.toggleMaximize();
+      setIsMaximizedApp(isMaximized);
+    } catch (error) {
+      console.error('Failed to toggle native LingBuilder window maximized state:', error);
+      setIsMaximizedApp(prev => !prev);
+    }
+  };
+
+  const handleWindowCloseConfirmed = async () => {
+    setShowCloseConfirmModal(false);
+    const windowControls = getNativeWindowControls();
+    if (!windowControls) {
+      setIsAppClosed(true);
+      return;
+    }
+
+    try {
+      await windowControls.close();
+    } catch (error) {
+      console.error('Failed to close native LingBuilder window:', error);
+      setIsAppClosed(true);
+    }
+  };
 
   const handleAddTerm = (term: GlossaryTerm) => {
     setGlossary(prev => [...prev, term]);
@@ -92,6 +232,7 @@ export default function App() {
   // Resizable sidebars state
   const [leftWidth, setLeftWidth] = useState(264);
   const [rightWidth, setRightWidth] = useState(320);
+  const [bottomHeight, setBottomHeight] = useState(260);
 
   const startResizeLeft = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -126,6 +267,23 @@ export default function App() {
     document.addEventListener('mouseup', handleMouseUp);
   };
 
+  const startResizeBottom = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const maxHeight = Math.max(220, Math.min(560, window.innerHeight - 220));
+      const newHeight = Math.max(140, Math.min(maxHeight, window.innerHeight - moveEvent.clientY - 24));
+      setBottomHeight(newHeight);
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
   // Compilation Logs
   const [buildLogs, setBuildLogs] = useState<string[]>([
     '欢迎使用 LingBuilder C++ 中文集成开发环境 (IDE)。',
@@ -134,6 +292,7 @@ export default function App() {
   const [isBuilding, setIsBuilding] = useState(false);
   const buildIntervalRef = useRef<any>(null);
   const [isAutoTranslating, setIsAutoTranslating] = useState(false);
+  const [designerGeneratedPanels, setDesignerGeneratedPanels] = useState<DesignerGeneratedPanelData>(DEFAULT_DESIGNER_GENERATED_PANELS);
 
   // Custom File Modal
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -261,6 +420,45 @@ void DisplayStatus() {
   }, []);
 
   useEffect(() => {
+    const handleDesignerGeneratedPanels = (event: Event) => {
+      const customEvent = event as CustomEvent<DesignerGeneratedPanelData>;
+      if (customEvent.detail) {
+        setDesignerGeneratedPanels(customEvent.detail);
+      }
+    };
+
+    window.addEventListener('window-designer-generated-panels', handleDesignerGeneratedPanels);
+    return () => {
+      window.removeEventListener('window-designer-generated-panels', handleDesignerGeneratedPanels);
+    };
+  }, []);
+
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
+
+  useEffect(() => {
+    const handleWindowDesignerBuildRunState = (e: Event) => {
+      const customEvent = e as CustomEvent<WindowDesignerBuildRunStateDetail>;
+      const detail = customEvent.detail;
+      if (!detail) return;
+
+      if (detail.status === 'started') {
+        setIsBuilding(true);
+        setShowBottomPanel(true);
+        setActiveTabInBottom('designer_logs');
+      } else {
+        setIsBuilding(false);
+      }
+    };
+
+    window.addEventListener(WINDOW_DESIGNER_BUILD_RUN_STATE, handleWindowDesignerBuildRunState);
+    return () => {
+      window.removeEventListener(WINDOW_DESIGNER_BUILD_RUN_STATE, handleWindowDesignerBuildRunState);
+    };
+  }, []);
+
+  useEffect(() => {
     const handleOutsideClick = () => {
       setActiveDropdown(null);
     };
@@ -317,6 +515,90 @@ void DisplayStatus() {
     });
     triggerReconstruction(activeFile, updatedStrings);
   };
+
+  const handleUpdateSourceContent = (content: string) => {
+    const updatedFile: CppFile = {
+      ...activeFile,
+      translatedContent: content,
+      isModified: content !== activeFile.originalContent
+    };
+
+    setActiveFile(updatedFile);
+    setFiles(prevFiles => {
+      const nextFiles = prevFiles.map(file => (
+        file.path === updatedFile.path ? updatedFile : file
+      ));
+      filesRef.current = nextFiles;
+      return nextFiles;
+    });
+  };
+
+  useEffect(() => {
+    const handleEplSourceRequest = (event: Event) => {
+      const customEvent = event as CustomEvent<WindowDesignerEplSourceRequestDetail>;
+      const eplFile = filesRef.current.find(file => file.language === 'epl')
+        || filesRef.current.find(file => file.path.endsWith('.e'));
+
+      customEvent.detail?.respond(eplFile ? (eplFile.translatedContent || eplFile.originalContent) : '');
+    };
+
+    window.addEventListener(WINDOW_DESIGNER_EPL_SOURCE_REQUEST, handleEplSourceRequest);
+    return () => {
+      window.removeEventListener(WINDOW_DESIGNER_EPL_SOURCE_REQUEST, handleEplSourceRequest);
+    };
+  }, []);
+
+  useEffect(() => {
+    const focusEplHandler = (handlerName: string) => {
+      [80, 220, 480].forEach(delay => {
+        window.setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('focus-epl-handler', { detail: { handlerName } }));
+        }, delay);
+      });
+    };
+
+    const handleOpenControlEventCode = (event: Event) => {
+      const customEvent = event as CustomEvent<OpenControlEventCodeDetail>;
+      const detail = customEvent.detail || {};
+      const handlerName = detail.handlerName?.trim();
+
+      if (!handlerName) return;
+
+      const currentFiles = filesRef.current;
+      const targetFile = currentFiles.find(file => file.language === 'epl') || currentFiles.find(file => file.path.endsWith('.e'));
+
+      if (!targetFile) {
+        setBuildLogs(prev => [
+          ...prev,
+          `> [${new Date().toLocaleTimeString()}] 【事件代码】未找到中文源码文件，无法定位 ${handlerName}。`
+        ]);
+        return;
+      }
+
+      const currentContent = targetFile.translatedContent || targetFile.originalContent;
+      const nextContent = ensureEplControlEventHandler(currentContent, detail);
+      const updatedFile: CppFile = {
+        ...targetFile,
+        translatedContent: nextContent,
+        isModified: nextContent !== targetFile.originalContent
+      };
+      const nextFiles = currentFiles.map(file => (file.path === updatedFile.path ? updatedFile : file));
+
+      filesRef.current = nextFiles;
+      setFiles(nextFiles);
+      setActiveFile(updatedFile);
+      setBuildLogs(prev => [
+        ...prev,
+        `> [${new Date().toLocaleTimeString()}] 【事件代码】已打开 ${targetFile.path} 并定位到 ${handlerName}。`
+      ]);
+      focusEplHandler(handlerName);
+    };
+
+    window.addEventListener('open-control-event-code', handleOpenControlEventCode);
+    return () => {
+      window.removeEventListener('open-control-event-code', handleOpenControlEventCode);
+    };
+  }, []);
 
   // Update status (translated, skipped, pending)
   const handleSetStatus = (id: string, status: 'translated' | 'skipped' | 'pending') => {
@@ -479,14 +761,22 @@ void DisplayStatus() {
   };
 
   const handleGenerateCpp = () => {
+    window.dispatchEvent(new CustomEvent('show-window-designer'));
     setShowBottomPanel(true);
     setActiveTabInBottom('output');
     setBuildLogs(prev => [
       ...prev,
-      `> [${new Date().toLocaleTimeString()}] 【生成】正在根据 MainWindow.xml 解析中文可视化 DSL 结构...`,
-      `> [${new Date().toLocaleTimeString()}] 【生成】成功提取类、控件变量和事件注册...`,
-      `> [${new Date().toLocaleTimeString()}] 【生成】已重新生成并输出 C++ 逻辑类定义：'MainWindow.h'。代码生成完毕。`
+      `> [${new Date().toLocaleTimeString()}] 【生成】正在根据当前窗口程序集解析中文可视化 DSL 结构...`,
+      `> [${new Date().toLocaleTimeString()}] 【生成】成功提取多个窗体、控件变量和中文事件注册...`,
+      `> [${new Date().toLocaleTimeString()}] 【生成】已重新生成每个窗口对应的 C++ 逻辑类定义。代码生成完毕。`
     ]);
+  };
+
+  const handleAddDesignerControl = (type: string) => {
+    window.dispatchEvent(new CustomEvent('show-window-designer'));
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('add-designer-control', { detail: { type } }));
+    }, 50);
   };
 
   const handleEnvCheck = () => {
@@ -504,56 +794,25 @@ void DisplayStatus() {
     ]);
   };
 
-  // Simulated Compiler & Build Task (F5)
+  // Real window designer build task (F5)
   const handleRunBuild = useCallback(() => {
     if (buildIntervalRef.current) {
       clearInterval(buildIntervalRef.current);
+      buildIntervalRef.current = null;
     }
-    setIsBuilding(true);
+
+    window.dispatchEvent(new CustomEvent('show-window-designer'));
     setShowBottomPanel(true);
     setActiveTabInBottom('output');
-    setBuildLogs([]);
+    setBuildLogs(prev => [
+      ...prev,
+      `> [${new Date().toLocaleTimeString()}] 【F5】正在调用窗口设计器“生成并运行”命令...`
+    ]);
 
-    const logSteps = [
-      `> [${new Date().toLocaleTimeString()}] CMake 配置游戏客户端中文代码编译目标...`,
-      '-- Found MSVC cl.exe compiler version 19.42.34435 (x64 Target)',
-      '-- Encoding strategy: /utf-8 compiler flag forced',
-      '-- Checking source encoding compliance...',
-      '-- Configured 4 active localization tables successfully.',
-      `> [cl.exe] 开始编译主程序：${activeFile.name}...`,
-      `   [cl] cl.exe /c /utf-8 /std:c++20 /O2 /W4 /DUNICODE /D_UNICODE ${activeFile.path}`,
-      `   [cl] ${activeFile.name} 编译正常。生成对应的 ${activeFile.name.replace(/\.(cpp|rc|ini|h)/, '.obj')}`,
-      '> [rc.exe] 正在编译二进制 Windows 资源脚本 (Resources)...',
-      '   [rc] rc.exe /fo src/game_client.res src/game_client.rc',
-      '   [rc] 资源编译成功。字符串表 (STRINGTABLE) 与对话框定义成功中文化映射封装。',
-      '> [link.exe] 开始链接目标二进制程序...',
-      '   [link] link.exe /OUT:bin/game_client.exe main.obj game_client.res user32.lib gdi32.lib',
-      '   [link] game_client.exe 符号解析完毕。生成原生 Win64(x64) 最终打包程序。',
-      '-- ----------------------------------------------------',
-      '-- [Audit] CppIDE 中文映射与分析报告：',
-      `--  [Success] 共提取字符串与注释：${activeFile.strings.length} 项`,
-      `--  [Success] 已配置并映射中文代码块数：${activeFile.strings.filter(s => s.status === 'translated').length} 项`,
-      `--  [Warning] 待配置原生英文警告：${activeFile.strings.filter(s => s.status === 'pending').length} 项`,
-      '-- ----------------------------------------------------',
-      `> SUCCESS: game_client.exe 中文代码映射与项目编译成功！错误 0, 警告 ${activeFile.strings.filter(s => s.status === 'pending').length}`,
-      '> [Debug] 正在加载并执行 game_client.exe...',
-      '> [Debug] DirectWrite 渲染器检测到全套中文字符集，已开启 ClearType 平滑抗锯齿。',
-      `> [GameClient] 客户端进程加载成功。主对话框标题："${activeFile.strings.find(s => s.id === 'm1')?.translated || 'Space Adventure Client'}" 已成功映射为中文！`
-    ];
-
-    let currentStep = 0;
-    const interval = setInterval(() => {
-      if (currentStep < logSteps.length) {
-        setBuildLogs(prev => [...prev, logSteps[currentStep]]);
-        currentStep++;
-      } else {
-        clearInterval(interval);
-        buildIntervalRef.current = null;
-        setIsBuilding(false);
-      }
-    }, 180);
-    buildIntervalRef.current = interval;
-  }, [activeFile]);
+    window.setTimeout(() => {
+      requestWindowDesignerBuildRun();
+    }, 50);
+  }, []);
 
   // Stop Simulation Build / Debugging (Shift+F5)
   const handleStopBuild = useCallback(() => {
@@ -599,7 +858,7 @@ void DisplayStatus() {
   };
 
   // Helper to force Bottom panel selection
-  const [activeTabInBottom, setActiveTabInBottom] = useState<string>('extracted');
+  const [activeTabInBottom, setActiveTabInBottom] = useState<BottomPanelTabType>('extracted');
 
   // Custom User Code Extraction API Call
   const handleExtractCustomCode = async () => {
@@ -992,7 +1251,7 @@ void DisplayStatus() {
           </div>
 
           <button 
-            onClick={() => setIsMinimizedApp(true)}
+            onClick={handleWindowMinimize}
             className={`w-10 h-8 flex items-center justify-center transition-colors ${
               isDarkMode 
                 ? 'hover:bg-[#434345] text-slate-300' 
@@ -1004,7 +1263,7 @@ void DisplayStatus() {
           </button>
           
           <button 
-            onClick={() => setIsMaximizedApp(!isMaximizedApp)}
+            onClick={handleWindowToggleMaximize}
             className={`w-10 h-8 flex items-center justify-center transition-colors ${
               isDarkMode 
                 ? 'hover:bg-[#434345] text-slate-300' 
@@ -1122,7 +1381,7 @@ void DisplayStatus() {
               isDarkMode ? 'text-slate-500 border-[#2d2d30]' : 'text-slate-400 border-slate-200'
             }`}>添加控件</span>
             <button
-              onClick={() => window.dispatchEvent(new CustomEvent('add-designer-control', { detail: { type: 'Button' } }))}
+              onClick={() => handleAddDesignerControl('Button')}
               className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
                 isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
@@ -1131,7 +1390,7 @@ void DisplayStatus() {
               <SquareDot className="w-4 h-4 text-blue-400" />
             </button>
             <button
-              onClick={() => window.dispatchEvent(new CustomEvent('add-designer-control', { detail: { type: 'Label' } }))}
+              onClick={() => handleAddDesignerControl('Label')}
               className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
                 isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
@@ -1140,7 +1399,7 @@ void DisplayStatus() {
               <Type className="w-4 h-4 text-cyan-400" />
             </button>
             <button
-              onClick={() => window.dispatchEvent(new CustomEvent('add-designer-control', { detail: { type: 'TextBox' } }))}
+              onClick={() => handleAddDesignerControl('TextBox')}
               className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
                 isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
@@ -1149,7 +1408,7 @@ void DisplayStatus() {
               <Keyboard className="w-4 h-4 text-teal-400" />
             </button>
             <button
-              onClick={() => window.dispatchEvent(new CustomEvent('add-designer-control', { detail: { type: 'CheckBox' } }))}
+              onClick={() => handleAddDesignerControl('CheckBox')}
               className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
                 isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
@@ -1158,7 +1417,7 @@ void DisplayStatus() {
               <CheckSquare className="w-4 h-4 text-indigo-400" />
             </button>
             <button
-              onClick={() => window.dispatchEvent(new CustomEvent('add-designer-control', { detail: { type: 'RadioButton' } }))}
+              onClick={() => handleAddDesignerControl('RadioButton')}
               className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
                 isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
@@ -1167,7 +1426,7 @@ void DisplayStatus() {
               <CircleDot className="w-4 h-4 text-purple-400" />
             </button>
             <button
-              onClick={() => window.dispatchEvent(new CustomEvent('add-designer-control', { detail: { type: 'ComboBox' } }))}
+              onClick={() => handleAddDesignerControl('ComboBox')}
               className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
                 isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
@@ -1358,15 +1617,59 @@ void DisplayStatus() {
         {/* Central Comparative Editor Area */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           <div className="flex-1 flex flex-col min-h-0 bg-[#141418]">
-            {/* Split panel comparison window */}
             <DiffViewer
               diffResult={diffResult}
               strings={activeFile.strings}
               onUpdateStringTranslation={handleUpdateStringTranslation}
               onResetTranslation={handleResetTranslation}
+              onUpdateSourceContent={handleUpdateSourceContent}
               isDarkMode={isDarkMode}
               activeFile={activeFile}
             />
+          </div>
+
+          {/* BOTTOM DRAG RESIZER & COLLAPSE TOGGLE */}
+          <div
+            className={`h-[7px] relative flex items-center justify-center select-none transition-all duration-150 z-20 shrink-0 border-t group ${
+              showBottomPanel
+                ? isDarkMode
+                  ? 'bg-[#1c1c22] border-[#2d2d34] cursor-row-resize hover:bg-blue-500/20'
+                  : 'bg-slate-100 border-slate-200 cursor-row-resize hover:bg-blue-500/10'
+                : isDarkMode
+                  ? 'bg-[#16161c] border-[#2d2d34] cursor-pointer hover:bg-amber-500/10'
+                  : 'bg-slate-50 border-slate-200 cursor-pointer hover:bg-amber-500/10'
+            }`}
+            onMouseDown={showBottomPanel ? startResizeBottom : undefined}
+            title={showBottomPanel ? "拖拽调整底部面板高度 / 双击重置 / 点击按钮折叠" : "点击展开底部面板"}
+            onDoubleClick={showBottomPanel ? () => setBottomHeight(260) : undefined}
+            onClick={showBottomPanel ? undefined : () => setShowBottomPanel(true)}
+          >
+            <div className={`h-[1px] rounded-full transition-all ${
+              showBottomPanel
+                ? 'w-12 bg-slate-700/50 group-hover:bg-blue-400 group-hover:w-20'
+                : 'w-20 bg-amber-500/20 group-hover:bg-amber-500/50'
+            }`}></div>
+
+            <button
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowBottomPanel(!showBottomPanel);
+              }}
+              className={`absolute top-1/2 -translate-y-1/2 w-12 h-[16px] border rounded shadow-lg flex items-center justify-center cursor-pointer transition-all hover:scale-105 z-30 group-hover:opacity-100 opacity-60 ${
+                isDarkMode
+                  ? 'bg-[#2d2d36] hover:bg-[#3a3a45] active:bg-[#4a4a58] border-[#444] hover:border-blue-500/60'
+                  : 'bg-white hover:bg-slate-50 active:bg-slate-100 border-slate-300 hover:border-blue-500/60'
+              }`}
+              title={showBottomPanel ? "折叠底部面板" : "展开底部面板"}
+              aria-label={showBottomPanel ? "折叠底部面板" : "展开底部面板"}
+            >
+              {showBottomPanel ? (
+                <ChevronDown className="w-3 h-3 text-slate-400 group-hover:text-blue-400 transition-transform" />
+              ) : (
+                <ChevronUp className="w-3 h-3 text-amber-500 group-hover:text-amber-400 transition-transform group-hover:scale-110" />
+              )}
+            </button>
           </div>
 
           {/* Bottom Table and Terminal Panel */}
@@ -1379,6 +1682,10 @@ void DisplayStatus() {
               onUpdateStringTranslation={handleUpdateStringTranslation}
               onSetStatus={handleSetStatus}
               isDarkMode={isDarkMode}
+              activeTab={activeTabInBottom}
+              onActiveTabChange={setActiveTabInBottom}
+              generatedPanels={designerGeneratedPanels}
+              height={bottomHeight}
             />
           )}
         </div>
@@ -1656,10 +1963,7 @@ void DisplayStatus() {
                 取消
               </button>
               <button
-                onClick={() => {
-                  setShowCloseConfirmModal(false);
-                  setIsAppClosed(true);
-                }}
+                onClick={handleWindowCloseConfirmed}
                 className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[11px] font-semibold transition-colors cursor-pointer"
               >
                 直接退出
@@ -1667,8 +1971,7 @@ void DisplayStatus() {
               <button
                 onClick={() => {
                   handleToolbarAction('save');
-                  setShowCloseConfirmModal(false);
-                  setIsAppClosed(true);
+                  void handleWindowCloseConfirmed();
                 }}
                 className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-semibold transition-colors cursor-pointer"
               >

@@ -53,3 +53,24 @@ export interface ProblemItem {
   codeSnippet: string;
   suggestion: string;
 }
+
+export type BottomPanelTabType =
+  | 'extracted'
+  | 'designer_xml'
+  | 'designer_cpp'
+  | 'designer_manifest'
+  | 'designer_logs'
+  | 'problems'
+  | 'output'
+  | 'debug_locals';
+
+export interface DesignerGeneratedPanelData {
+  xmlLabel: string;
+  cppLabel: string;
+  manifestLabel: string;
+  xmlCode: string;
+  cppCode: string;
+  manifestCode: string;
+  logs: string[];
+  isBuilding: boolean;
+}

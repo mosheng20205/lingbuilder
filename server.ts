@@ -1,9 +1,14 @@
 import express from "express";
 import path from "path";
+import fs from "fs/promises";
+import { execFile, spawn } from "child_process";
+import { promisify } from "util";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedString } from "./src/types";
+import { generateNativeWin32Project } from "./src/services/windowDesigner/nativeWin32Project";
+import { LingWindowProject } from "./src/services/windowDesigner/types";
 
 dotenv.config();
 
@@ -25,9 +30,10 @@ function getGeminiClient(): GoogleGenAI {
 }
 
 const app = express();
-const PORT = 3000;
+const PORT = Number.parseInt(process.env.PORT || "3000", 10);
+const execFileAsync = promisify(execFile);
 
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
 
 // API: Health Check
 app.get("/api/health", (req, res) => {
@@ -229,11 +235,294 @@ app.post("/api/reconstruct", (req, res) => {
   res.json({ code: lines.join("\n") });
 });
 
+app.post("/api/window-designer/build-run", async (req, res) => {
+  const { project, activeWindowId, eplSourceCode, run = true } = req.body as {
+    project?: LingWindowProject;
+    activeWindowId?: string;
+    eplSourceCode?: string;
+    run?: boolean;
+  };
+
+  if (!project || !Array.isArray(project.windows) || project.windows.length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: "缺少有效的窗口设计器项目模型"
+    });
+  }
+
+  try {
+    const generatedProject = generateNativeWin32Project(project, {
+      activeWindowId,
+      eplSourceCode: typeof eplSourceCode === "string" ? eplSourceCode : ""
+    });
+    const buildRoot = path.join(process.cwd(), ".lingbuilder-build");
+    const buildDir = path.join(buildRoot, sanitizeFilename(project.id || "window-preview"));
+
+    await fs.mkdir(buildDir, { recursive: true });
+    await Promise.all(generatedProject.files.map(file => {
+      const targetPath = path.join(buildDir, file.relativePath);
+      return fs.writeFile(targetPath, file.content, "utf8");
+    }));
+
+    const compiler = await detectCompiler();
+    if (!compiler) {
+      return res.status(200).json({
+        ok: false,
+        stage: "compiler",
+        buildDir,
+        files: generatedProject.files.map(file => path.join(buildDir, file.relativePath)),
+        logs: [
+          "已生成 Win32 C++ 工程文件。",
+          "未检测到可用 C++ 编译器。请安装 Visual Studio Build Tools、MinGW g++ 或 LLVM clang++ 后重试。",
+          "需要的编译器命令之一：cl、g++、clang++。"
+        ]
+      });
+    }
+
+    const sourcePath = path.join(buildDir, "main.cpp");
+    const exePath = path.join(buildDir, "LingBuilderPreview.exe");
+    const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, buildDir);
+    const logs = [
+      `已生成 Win32 C++ 工程：${buildDir}`,
+      `当前窗口：${generatedProject.selectedWindow.title}`,
+      `编译器：${compiler.kind} (${compiler.command})`,
+      ...compileResult.logs
+    ];
+
+    if (!compileResult.ok) {
+      return res.status(200).json({
+        ok: false,
+        stage: "compile",
+        buildDir,
+        exePath,
+        compiler,
+        logs
+      });
+    }
+
+    if (run) {
+      try {
+        const child = spawn(exePath, [], {
+          cwd: buildDir,
+          detached: true,
+          stdio: "ignore",
+          windowsHide: false
+        });
+        child.unref();
+        logs.push(`已启动运行窗口：${exePath}`);
+      } catch (error: any) {
+        logs.push(`运行启动失败：${error?.message || "无法启动生成的 exe"}`);
+      }
+    }
+
+    return res.json({
+      ok: true,
+      stage: "run",
+      buildDir,
+      exePath,
+      compiler,
+      logs
+    });
+  } catch (error: any) {
+    return res.status(500).json({
+      ok: false,
+      stage: "server",
+      error: error?.message || "窗口设计器构建运行失败"
+    });
+  }
+});
+
+type CompilerInfo = {
+  kind: "msvc" | "g++" | "clang++";
+  command: string;
+  setupBatch?: string;
+};
+
+async function detectCompiler(): Promise<CompilerInfo | null> {
+  try {
+    await execFileAsync("where.exe", ["cl"], { timeout: 4000, windowsHide: true });
+    return { kind: "msvc", command: "cl" };
+  } catch {
+    // MSVC is often installed but not loaded into the current shell.
+  }
+
+  const msvcSetupBatch = await findMsvcSetupBatch();
+  if (msvcSetupBatch && await canUseMsvcSetupBatch(msvcSetupBatch)) {
+    return { kind: "msvc", command: "cl", setupBatch: msvcSetupBatch };
+  }
+
+  const candidates: CompilerInfo[] = [
+    { kind: "g++", command: "g++" },
+    { kind: "clang++", command: "clang++" }
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      await execFileAsync(candidate.command, ["--version"], { timeout: 4000, windowsHide: true });
+      return candidate;
+    } catch {
+      // Try next compiler.
+    }
+  }
+
+  return null;
+}
+
+async function findMsvcSetupBatch(): Promise<string | null> {
+  const installPaths = new Set<string>();
+  const vswherePath = process.env["ProgramFiles(x86)"]
+    ? path.join(process.env["ProgramFiles(x86)"] as string, "Microsoft Visual Studio", "Installer", "vswhere.exe")
+    : "";
+
+  if (vswherePath && await pathExists(vswherePath)) {
+    try {
+      const result = await execFileAsync(vswherePath, ["-latest", "-products", "*", "-property", "installationPath"], {
+        timeout: 5000,
+        windowsHide: true
+      });
+      result.stdout
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(Boolean)
+        .forEach(line => installPaths.add(line));
+    } catch {
+      // Fall back to common Visual Studio installation folders below.
+    }
+  }
+
+  const programFiles = process.env.ProgramFiles || "C:\\Program Files";
+  const editions = ["BuildTools", "Community", "Professional", "Enterprise"];
+  for (const edition of editions) {
+    installPaths.add(path.join(programFiles, "Microsoft Visual Studio", "2022", edition));
+    installPaths.add(path.join(programFiles, "Microsoft Visual Studio", "2019", edition));
+  }
+
+  for (const installPath of installPaths) {
+    const candidates = [
+      path.join(installPath, "VC", "Auxiliary", "Build", "vcvars64.bat"),
+      path.join(installPath, "Common7", "Tools", "VsDevCmd.bat")
+    ];
+
+    for (const candidate of candidates) {
+      if (await pathExists(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+async function canUseMsvcSetupBatch(setupBatch: string): Promise<boolean> {
+  try {
+    await execFileAsync("cmd.exe", ["/d", "/c", `call ${quoteCmdArg(setupBatch)} >nul && where cl >nul`], {
+      timeout: 15000,
+      windowsHide: true,
+      windowsVerbatimArguments: true
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function compileWin32Preview(
+  compiler: CompilerInfo,
+  sourcePath: string,
+  exePath: string,
+  cwd: string
+): Promise<{ ok: boolean; logs: string[] }> {
+  const commandArgs = compiler.kind === "msvc"
+    ? [
+        "/nologo",
+        "/EHsc",
+        "/std:c++17",
+        "/utf-8",
+        "/DUNICODE",
+        "/D_UNICODE",
+        sourcePath,
+        "/Fe:" + exePath,
+        "user32.lib",
+        "gdi32.lib",
+        "comctl32.lib"
+      ]
+    : [
+        "-municode",
+        "-std=c++17",
+        "-finput-charset=UTF-8",
+        "-fexec-charset=UTF-8",
+        "-DUNICODE",
+        "-D_UNICODE",
+        sourcePath,
+        "-o",
+        exePath,
+        "-luser32",
+        "-lgdi32",
+        "-lcomctl32"
+      ];
+
+  try {
+    const command = compiler.kind === "msvc" && compiler.setupBatch ? "cmd.exe" : compiler.command;
+    const args = compiler.kind === "msvc" && compiler.setupBatch
+      ? ["/d", "/c", `call ${quoteCmdArg(compiler.setupBatch)} >nul && ${compiler.command} ${commandArgs.map(quoteCmdArg).join(" ")}`]
+      : commandArgs;
+
+    const result = await execFileAsync(command, args, {
+      cwd,
+      timeout: 60000,
+      windowsHide: true,
+      windowsVerbatimArguments: command === "cmd.exe",
+      maxBuffer: 1024 * 1024 * 4
+    });
+
+    return {
+      ok: true,
+      logs: [
+        "编译成功。",
+        result.stdout?.trim() ? `stdout:\n${result.stdout.trim()}` : "",
+        result.stderr?.trim() ? `stderr:\n${result.stderr.trim()}` : ""
+      ].filter(Boolean)
+    };
+  } catch (error: any) {
+    return {
+      ok: false,
+      logs: [
+        "编译失败。",
+        error.stdout?.trim() ? `stdout:\n${error.stdout.trim()}` : "",
+        error.stderr?.trim() ? `stderr:\n${error.stderr.trim()}` : "",
+        error.message ? `错误：${error.message}` : ""
+      ].filter(Boolean)
+    };
+  }
+}
+
+function quoteCmdArg(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+async function pathExists(value: string): Promise<boolean> {
+  try {
+    await fs.stat(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function sanitizeFilename(value: string): string {
+  return value.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").slice(0, 80) || "window-preview";
+}
+
 async function startServer() {
   // Vite integration
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        watch: {
+          ignored: ["**/.lingbuilder-build/**"]
+        }
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);

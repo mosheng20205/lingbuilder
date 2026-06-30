@@ -13,9 +13,12 @@ import {
   Bug,
   Sliders,
   Cpu,
-  Eye
+  Eye,
+  FileCode,
+  FileText,
+  Layers
 } from 'lucide-react';
-import { ExtractedString, ProblemItem } from '../types';
+import { BottomPanelTabType, DesignerGeneratedPanelData, ExtractedString, ProblemItem } from '../types';
 
 interface BottomPanelProps {
   strings: ExtractedString[];
@@ -25,9 +28,11 @@ interface BottomPanelProps {
   onUpdateStringTranslation: (id: string, value: string) => void;
   onSetStatus: (id: string, status: 'translated' | 'skipped' | 'pending') => void;
   isDarkMode?: boolean;
+  activeTab: BottomPanelTabType;
+  onActiveTabChange: (tab: BottomPanelTabType) => void;
+  generatedPanels: DesignerGeneratedPanelData;
+  height: number;
 }
-
-type TabType = 'extracted' | 'problems' | 'output' | 'debug_locals';
 
 export default function BottomPanel({
   strings,
@@ -36,9 +41,12 @@ export default function BottomPanel({
   onSelectLine,
   onUpdateStringTranslation,
   onSetStatus,
-  isDarkMode = true
+  isDarkMode = true,
+  activeTab,
+  onActiveTabChange,
+  generatedPanels,
+  height
 }: BottomPanelProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('extracted');
   const [filterType, setFilterType] = useState<'all' | 'string' | 'comment'>('all');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
@@ -46,7 +54,7 @@ export default function BottomPanel({
   // Simulating WPF Live Controls watch states inside C# IDE
   const [wpfLocals, setWpfLocals] = useState([
     { id: 'txt_account', name: '账号输入框', type: 'System.Windows.Controls.TextBox', value: 'admin@space_adventure.com', binding: '关联设计文件 / .局部变量 系统配置', status: '正在监视' },
-    { id: 'btn_launch', name: '开始按钮', type: 'System.Windows.Controls.Button', value: '已被单击 / 触发 _开始按钮_被单击', binding: '信息框 ("开始运行太空冒险...", 64, "运行成功")', status: '就绪' },
+    { id: 'btn_launch', name: '按钮1', type: 'System.Windows.Controls.Button', value: '已被单击 / 触发 _按钮1_被单击', binding: '信息框 ("开始运行太空冒险...", 64, "运行成功")', status: '就绪' },
     { id: 'progress_sync', name: '资源同步进度条', type: 'System.Windows.Controls.ProgressBar', value: '35%', binding: '载入可视化设计 (关联设计文件)', status: '正在更新' },
     { id: 'chk_remember', name: '记住配置复选框', type: 'System.Windows.Controls.CheckBox', value: '已勾选 (True)', binding: '记住配置_Checked 事件绑定', status: '就绪' },
     { id: 'lbl_login_title', name: '登录窗体标题标签', type: 'System.Windows.Controls.Label', value: '太空冒险安全账户登录', binding: '静态属性', status: '只读' }
@@ -56,6 +64,42 @@ export default function BottomPanel({
     if (filterType === 'all') return true;
     return s.type === filterType;
   });
+
+  const designerCodePanel = (() => {
+    if (activeTab === 'designer_xml') {
+      return {
+        code: generatedPanels.xmlCode,
+        colorClass: 'text-cyan-400/90',
+        emptyText: '等待窗口设计器生成 XML 预览。'
+      };
+    }
+
+    if (activeTab === 'designer_cpp') {
+      return {
+        code: generatedPanels.cppCode,
+        colorClass: 'text-emerald-400/95',
+        emptyText: '等待窗口设计器生成头文件预览。'
+      };
+    }
+
+    if (activeTab === 'designer_manifest') {
+      return {
+        code: generatedPanels.manifestCode,
+        colorClass: 'text-amber-300/90',
+        emptyText: '等待窗口设计器生成窗口程序集。'
+      };
+    }
+
+    if (activeTab === 'designer_logs') {
+      return {
+        code: generatedPanels.logs.length > 0 ? generatedPanels.logs.join('\n') : '> [编译日志] 等待 F5 触发真实 Win32 构建。',
+        colorClass: 'text-slate-300',
+        emptyText: '等待编译日志。'
+      };
+    }
+
+    return null;
+  })();
 
   const handleStartEdit = (s: ExtractedString) => {
     setEditingId(s.id);
@@ -70,12 +114,12 @@ export default function BottomPanel({
   // Dispatch global keystrokes to control active App compilation and debug simulator
   const triggerDebugStart = () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F5' }));
-    setActiveTab('output');
+    onActiveTabChange('output');
   };
 
   const triggerDebugStop = () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F5', shiftKey: true }));
-    setActiveTab('output');
+    onActiveTabChange('output');
   };
 
   const triggerRebuild = () => {
@@ -84,7 +128,7 @@ export default function BottomPanel({
     setTimeout(() => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F5' }));
     }, 400);
-    setActiveTab('output');
+    onActiveTabChange('output');
   };
 
   const handleLocalValChange = (id: string, newVal: string) => {
@@ -99,11 +143,12 @@ export default function BottomPanel({
   return (
     <div 
       id="vs-bottom-tabs" 
-      className={`h-64 flex flex-col font-sans overflow-hidden shrink-0 select-none border-t ${
+      className={`flex flex-col font-sans overflow-hidden shrink-0 select-none border-t ${
         isDarkMode 
           ? 'bg-[#1E1E1E] border-[#181818]' 
           : 'bg-white border-slate-300'
       }`}
+      style={{ height }}
     >
       {/* Visual Studio Classic Tab Headers with Complete Debugging and Building controllers */}
       <div 
@@ -115,7 +160,7 @@ export default function BottomPanel({
         {/* Left Side: Standard VS Panels Tabs */}
         <div className="flex gap-1 h-full items-end overflow-x-auto scrollbar-none flex-nowrap shrink-0">
           <button
-            onClick={() => setActiveTab('extracted')}
+            onClick={() => onActiveTabChange('extracted')}
             className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
               activeTab === 'extracted' 
                 ? isDarkMode
@@ -129,9 +174,73 @@ export default function BottomPanel({
             <ListCollapse className="w-3.5 h-3.5 text-blue-500" />
             <span>中文代码映射表 ({strings.length})</span>
           </button>
+
+          <button
+            onClick={() => onActiveTabChange('designer_xml')}
+            className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
+              activeTab === 'designer_xml'
+                ? isDarkMode
+                  ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10'
+                  : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
+                : isDarkMode
+                  ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
+                  : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
+            }`}
+          >
+            <FileCode className="w-3.5 h-3.5 text-cyan-500" />
+            <span>{generatedPanels.xmlLabel}</span>
+          </button>
+
+          <button
+            onClick={() => onActiveTabChange('designer_cpp')}
+            className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
+              activeTab === 'designer_cpp'
+                ? isDarkMode
+                  ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10'
+                  : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
+                : isDarkMode
+                  ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
+                  : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5 text-emerald-500" />
+            <span>{generatedPanels.cppLabel}</span>
+          </button>
+
+          <button
+            onClick={() => onActiveTabChange('designer_manifest')}
+            className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
+              activeTab === 'designer_manifest'
+                ? isDarkMode
+                  ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10'
+                  : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
+                : isDarkMode
+                  ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
+                  : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5 text-amber-500" />
+            <span>{generatedPanels.manifestLabel}</span>
+          </button>
+
+          <button
+            onClick={() => onActiveTabChange('designer_logs')}
+            className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
+              activeTab === 'designer_logs'
+                ? isDarkMode
+                  ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10'
+                  : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
+                : isDarkMode
+                  ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
+                  : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
+            }`}
+          >
+            <Terminal className={`w-3.5 h-3.5 ${generatedPanels.isBuilding ? 'text-amber-400 animate-pulse' : 'text-emerald-500'}`} />
+            <span>编译日志</span>
+          </button>
           
           <button
-            onClick={() => setActiveTab('problems')}
+            onClick={() => onActiveTabChange('problems')}
             className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
               activeTab === 'problems' 
                 ? isDarkMode
@@ -147,7 +256,7 @@ export default function BottomPanel({
           </button>
 
           <button
-            onClick={() => setActiveTab('output')}
+            onClick={() => onActiveTabChange('output')}
             className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
               activeTab === 'output' 
                 ? isDarkMode
@@ -163,7 +272,7 @@ export default function BottomPanel({
           </button>
 
           <button
-            onClick={() => setActiveTab('debug_locals')}
+            onClick={() => onActiveTabChange('debug_locals')}
             className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
               activeTab === 'debug_locals' 
                 ? isDarkMode
@@ -367,6 +476,18 @@ export default function BottomPanel({
               )}
             </tbody>
           </table>
+        )}
+
+        {designerCodePanel && (
+          <div className="h-full overflow-auto p-3 bg-[#0d0d10] font-mono text-[11.5px] leading-relaxed select-text">
+            {designerCodePanel.code.trim() ? (
+              <pre className="whitespace-pre min-w-max">
+                <span className={designerCodePanel.colorClass}>{designerCodePanel.code}</span>
+              </pre>
+            ) : (
+              <div className="text-slate-500 py-10 text-center font-sans">{designerCodePanel.emptyText}</div>
+            )}
+          </div>
         )}
 
         {activeTab === 'problems' && (
