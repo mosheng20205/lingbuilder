@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Folder,
   FileCode,
@@ -10,6 +10,7 @@ import {
   Wrench,
   Sparkles,
   RefreshCw,
+  FolderMinus,
   Layers,
   BookOpen,
   Search,
@@ -28,6 +29,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { CppFile, ExtractedString, GlossaryTerm } from '../types';
+import ModuleInspector from './ModuleInspector';
 
 interface SidebarProps {
   files: CppFile[];
@@ -42,6 +44,8 @@ interface SidebarProps {
   onSetStatus?: (id: string, status: 'translated' | 'skipped' | 'pending') => void;
   glossary?: GlossaryTerm[];
   drawerWidth?: number;
+  onDeleteFile?: (file: CppFile) => void;
+  onRenameFile?: (file: CppFile, newName: string) => void;
 }
 
 export default function Sidebar({
@@ -56,11 +60,20 @@ export default function Sidebar({
   onBatchTranslate,
   onSetStatus,
   glossary = [],
-  drawerWidth = 264
+  drawerWidth = 264,
+  onDeleteFile,
+  onRenameFile
 }: SidebarProps) {
   // Tabs: 'explorer' (解决方案), 'actions' (快捷工具), 'outline' (大纲视图)
   const [activeTab, setActiveTab] = useState<'explorer' | 'actions' | 'outline'>('explorer');
   const [isSolutionOpen, setIsSolutionOpen] = useState(true);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: CppFile } | null>(null);
+
+  useEffect(() => {
+    const handleCloseMenu = () => setContextMenu(null);
+    window.addEventListener('click', handleCloseMenu);
+    return () => window.removeEventListener('click', handleCloseMenu);
+  }, []);
   const [isSrcOpen, setIsSrcOpen] = useState(true);
   const [isConfigOpen, setIsConfigOpen] = useState(true);
   
@@ -276,6 +289,10 @@ export default function Sidebar({
         key={file.path}
         id={`file-row-${file.name.replace('.', '-')}`}
         onClick={() => onSelectFile(file)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setContextMenu({ x: e.clientX, y: e.clientY, file });
+        }}
         className={`group flex items-center justify-between py-1 px-3 pl-8 text-xs cursor-pointer border-l-2 transition-all ${
           isActive
             ? isDarkMode 
@@ -287,7 +304,21 @@ export default function Sidebar({
         }`}
       >
         <div className="flex items-center gap-2 overflow-hidden">
-          <FileCode className={`w-3.5 h-3.5 shrink-0 ${isActive ? (isDarkMode ? 'text-[#007ACC]' : 'text-blue-600') : 'text-slate-400'}`} />
+          {file.name.endsWith('.cpp') ? (
+            <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-sky-500/15 text-sky-400 border border-sky-500/20 select-none shrink-0 font-sans">C++</span>
+          ) : file.name.endsWith('.h') ? (
+            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-400 border border-purple-500/20 select-none shrink-0 font-sans">H</span>
+          ) : file.name.endsWith('.e') ? (
+            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 select-none shrink-0 font-sans">易</span>
+          ) : (
+            <FileCode className={`w-3.5 h-3.5 shrink-0 ${
+              file.name.endsWith('.rc')
+                ? 'text-rose-400'
+                : file.name.endsWith('.ini')
+                  ? 'text-amber-400'
+                  : isActive ? (isDarkMode ? 'text-[#007ACC]' : 'text-blue-600') : 'text-slate-400'
+            }`} />
+          )}
           <span className="truncate">{file.name}</span>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -307,6 +338,58 @@ export default function Sidebar({
                 : 'bg-slate-100 border-slate-200 text-slate-500'
             }`}>原生</span>
           )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderContextMenu = () => {
+    if (!contextMenu) return null;
+    return (
+      <div
+        style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
+        className={`fixed z-[9999] min-w-[140px] py-1 rounded shadow-lg border text-xs select-none ${
+          isDarkMode 
+            ? 'bg-[#252526] border-[#454545] text-slate-200' 
+            : 'bg-white border-slate-250 text-slate-800'
+        }`}
+        onClick={() => setContextMenu(null)}
+      >
+        <div
+          className={`px-3 py-1.5 hover:bg-blue-500 hover:text-white cursor-pointer transition-colors flex items-center gap-1.5`}
+          onClick={() => onSelectFile(contextMenu.file)}
+        >
+          <span>打开文件 (O)</span>
+        </div>
+        <div
+          className={`px-3 py-1.5 hover:bg-blue-500 hover:text-white cursor-pointer transition-colors`}
+          onClick={() => {
+            navigator.clipboard.writeText(contextMenu.file.path);
+            triggerSuccess('已复制文件绝对路径');
+          }}
+        >
+          <span>复制路径 (C)</span>
+        </div>
+        <div
+          className={`px-3 py-1.5 hover:bg-blue-500 hover:text-white cursor-pointer transition-colors`}
+          onClick={() => {
+            const newName = window.prompt(`重命名文件 ${contextMenu.file.name}`, contextMenu.file.name);
+            if (newName && newName.trim() && newName !== contextMenu.file.name) {
+              onRenameFile?.(contextMenu.file, newName.trim());
+              triggerSuccess(`重命名文件为 ${newName.trim()}`);
+            }
+          }}
+        >
+          <span>重命名 (R)</span>
+        </div>
+        <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
+        <div
+          className={`px-3 py-1.5 text-rose-500 hover:bg-rose-500 hover:text-white cursor-pointer transition-colors`}
+          onClick={() => {
+            onDeleteFile?.(contextMenu.file);
+          }}
+        >
+          <span>删除文件 (D)</span>
         </div>
       </div>
     );
@@ -417,6 +500,24 @@ export default function Sidebar({
                 isDarkMode ? 'border-[#181818] bg-[#2D2D2D]/20' : 'border-slate-200 bg-slate-100/60'
               }`}>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 font-sans">解决方案资源管理器</span>
+                <div className="flex items-center gap-2 text-slate-400">
+                  <RefreshCw 
+                    className="w-3.5 h-3.5 hover:text-slate-200 cursor-pointer transition-colors" 
+                    title="刷新" 
+                    onClick={() => {
+                      if (onSelectFile && activeFile) {
+                        onSelectFile(activeFile);
+                      }
+                    }} 
+                  />
+                  <FolderMinus 
+                    className="w-3.5 h-3.5 hover:text-slate-200 cursor-pointer transition-colors" 
+                    title="折叠全部" 
+                    onClick={() => {
+                      setIsSolutionOpen(false);
+                    }} 
+                  />
+                </div>
               </div>
 
               {/* File Search Input */}
@@ -457,7 +558,7 @@ export default function Sidebar({
                   </div>
 
                   {isSolutionOpen && (
-                    <div className="pl-1">
+                    <div className="pl-1.5 border-l border-slate-750/30 dark:border-slate-800 ml-4">
                       {/* Project Subnode */}
                       <div className={`flex items-center gap-1.5 px-4 py-1 text-xs font-bold font-sans ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
                         <div className="w-2.5 h-2.5 rounded-sm bg-purple-600"></div>
@@ -477,7 +578,7 @@ export default function Sidebar({
                           <span>游戏源码与头文件 (src)</span>
                         </div>
                         {isSrcOpen && (
-                          <div className="mt-0.5">
+                          <div className="mt-0.5 border-l border-slate-750/30 dark:border-slate-800 ml-3.5 pl-0.5">
                             {srcFiles.length === 0 ? (
                               <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">未找到匹配文件</div>
                             ) : (
@@ -500,7 +601,7 @@ export default function Sidebar({
                           <span>本地配置文件 (config)</span>
                         </div>
                         {isConfigOpen && (
-                          <div className="mt-0.5">
+                          <div className="mt-0.5 border-l border-slate-750/30 dark:border-slate-800 ml-3.5 pl-0.5">
                             {configFiles.length === 0 ? (
                               <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">未找到匹配文件</div>
                             ) : (
@@ -767,135 +868,21 @@ export default function Sidebar({
             </div>
           )}
 
-          {/* ================= TAB 3: DOCUMENT OUTLINE ================= */}
+                    {/* ================= TAB 3: DOCUMENT OUTLINE ================= */}
           {activeTab === 'outline' && (
             <div className="flex-1 flex flex-col h-full overflow-hidden font-sans">
-              <div className={`p-2.5 border-b flex items-center justify-between shrink-0 ${
-                isDarkMode ? 'border-[#181818] bg-[#2D2D2D]/20' : 'border-slate-200 bg-slate-100/60'
-              }`}>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 font-sans">文本与函数模块</span>
-                <span className={`text-[10px] px-1.5 py-0.5 border rounded ${
-                  isDarkMode 
-                    ? 'bg-[#1E1E1E] text-slate-400 border-slate-700/40' 
-                    : 'bg-slate-100 text-slate-600 border-slate-200'
-                }`}>
-                  {activeFile.strings.length} 个模块
-                </span>
-              </div>
-
-              <div className={`p-2 text-[10.5px] border-b shrink-0 leading-relaxed ${
-                isDarkMode ? 'text-slate-400 bg-[#1E1E1E]/10 border-slate-800' : 'text-slate-600 bg-slate-50 border-slate-200'
-              }`}>
-                双击或单击模块项可直接在 comparative editor (对比编辑器) 中<strong className={isDarkMode ? 'text-[#007ACC]' : 'text-blue-600'}>精确滚动并闪烁定位</strong>到该代码位置。
-              </div>
-
-              {/* Interactive Symbols Outline list */}
-              <div className="flex-1 overflow-y-auto p-3 font-mono text-[11px] space-y-2">
-                <div className="text-slate-500 uppercase text-[9px] tracking-widest font-bold font-sans">代码节点与符号类型</div>
-                
-                <div className="space-y-1 font-sans">
-                  {/* Scope specific nodes */}
-                  {activeFile.language === 'cpp' ? (
-                    <div className={`border rounded p-2 space-y-1.5 ${
-                      isDarkMode ? 'border-slate-800/50 bg-[#1E1E1E]/30' : 'border-slate-200 bg-slate-100/40'
-                    }`}>
-                      <div className={`font-mono text-[10px] uppercase border-b pb-1 mb-1 font-sans ${isDarkMode ? 'text-slate-500 border-slate-800' : 'text-slate-500 border-slate-200'}`}>C++ Subroutines</div>
-                      <div className={`flex items-center gap-1.5 cursor-pointer text-xs ${isDarkMode ? 'text-indigo-400 hover:text-indigo-300' : 'text-indigo-600 hover:text-indigo-800'}`} onClick={() => onRunBuild()}>
-                        <span className={`font-bold text-[9px] px-1 rounded font-mono ${isDarkMode ? 'bg-indigo-950/50 text-indigo-300' : 'bg-indigo-55 text-indigo-700 border border-indigo-100'}`}>FUNC</span>
-                        <span>wWinMain(...)</span>
-                      </div>
-                      <div className={`flex items-center gap-1.5 cursor-pointer text-xs ${isDarkMode ? 'text-indigo-400 hover:text-indigo-300' : 'text-indigo-600 hover:text-indigo-800'}`} onClick={() => onRunBuild()}>
-                        <span className={`font-bold text-[9px] px-1 rounded font-mono ${isDarkMode ? 'bg-indigo-950/50 text-indigo-300' : 'bg-indigo-55 text-indigo-700 border border-indigo-100'}`}>FUNC</span>
-                        <span>InitInstance(...)</span>
-                      </div>
-                      <div className={`flex items-center gap-1.5 cursor-pointer text-xs ${isDarkMode ? 'text-indigo-400 hover:text-indigo-300' : 'text-indigo-600 hover:text-indigo-800'}`} onClick={() => onRunBuild()}>
-                        <span className={`font-bold text-[9px] px-1 rounded font-mono ${isDarkMode ? 'bg-indigo-950/50 text-indigo-300' : 'bg-indigo-55 text-indigo-700 border border-indigo-100'}`}>FUNC</span>
-                        <span>WndProc(...)</span>
-                      </div>
-                    </div>
-                  ) : activeFile.language === 'resource' ? (
-                    <div className={`border rounded p-2 space-y-1.5 ${
-                      isDarkMode ? 'border-slate-800/50 bg-[#1E1E1E]/30' : 'border-slate-200 bg-slate-100/40'
-                    }`}>
-                      <div className={`font-mono text-[10px] uppercase border-b pb-1 mb-1 font-sans ${isDarkMode ? 'text-slate-500 border-slate-800' : 'text-slate-500 border-slate-200'}`}>Win32 Resource Elements</div>
-                      <div className={`flex items-center gap-1.5 text-xs ${isDarkMode ? 'text-amber-400' : 'text-amber-700'}`}>
-                        <span className={`font-bold text-[9px] px-1 rounded font-mono ${isDarkMode ? 'bg-amber-950/50' : 'bg-amber-50 text-amber-800 border border-amber-100'}`}>TABL</span>
-                        <span>STRINGTABLE (资源字符串表)</span>
-                      </div>
-                      <div className={`flex items-center gap-1.5 text-xs ${isDarkMode ? 'text-emerald-400' : 'text-emerald-700'}`}>
-                        <span className={`font-bold text-[9px] px-1 rounded font-mono ${isDarkMode ? 'bg-emerald-950/50' : 'bg-emerald-50 text-emerald-800 border border-emerald-100'}`}>DLG</span>
-                        <span>IDD_ABOUTBOX (关于对话框窗体)</span>
-                      </div>
-                    </div>
-                  ) : activeFile.language === 'header' ? (
-                    <div className={`border rounded p-2 space-y-1.5 ${
-                      isDarkMode ? 'border-slate-800/50 bg-[#1E1E1E]/30' : 'border-slate-200 bg-slate-100/40'
-                    }`}>
-                      <div className={`font-mono text-[10px] uppercase border-b pb-1 mb-1 font-sans ${isDarkMode ? 'text-slate-500 border-slate-800' : 'text-slate-500 border-slate-200'}`}>Macros Definitions</div>
-                      <div className={`flex items-center gap-1.5 text-xs ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                        <span className={`font-bold text-[9px] px-1 rounded font-mono ${isDarkMode ? 'bg-slate-900' : 'bg-slate-200 text-slate-800'}`}>DEF</span>
-                        <span>IDS_APP_TITLE</span>
-                      </div>
-                      <div className={`flex items-center gap-1.5 text-xs ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                        <span className={`font-bold text-[9px] px-1 rounded font-mono ${isDarkMode ? 'bg-slate-900' : 'bg-slate-200 text-slate-800'}`}>DEF</span>
-                        <span>IDM_ABOUT</span>
-                      </div>
-                      <div className={`flex items-center gap-1.5 text-xs ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                        <span className={`font-bold text-[9px] px-1 rounded font-mono ${isDarkMode ? 'bg-slate-900' : 'bg-slate-200 text-slate-800'}`}>DEF</span>
-                        <span>IDM_EXIT</span>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-
-                {/* Extracted string lines */}
-                <div className="text-slate-500 uppercase text-[9px] tracking-widest font-bold font-sans pt-3">中文代码局部映射符号</div>
-                <div className="space-y-1.5">
-                  {activeFile.strings.map(s => (
-                    <div
-                      key={s.id}
-                      onClick={() => {
-                        const el = document.getElementById(`diff-line-${s.line - 1}`);
-                        if (el) {
-                          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                          el.classList.add('animate-pulse', 'bg-blue-500/20');
-                          setTimeout(() => el.classList.remove('animate-pulse', 'bg-blue-500/20'), 1500);
-                        }
-                      }}
-                      className={`p-2 rounded border transition-colors cursor-pointer group flex flex-col gap-1 text-[11px] ${
-                        isDarkMode 
-                          ? 'bg-[#1E1E1E]/40 hover:bg-[#2A2D2E]/60 border-slate-800/60 text-slate-300' 
-                          : 'bg-white hover:bg-slate-100 border-slate-200 text-slate-700 shadow-sm'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center text-[9px] text-[#888] font-sans">
-                        <span className={`font-mono px-1 py-0.2 rounded font-semibold ${
-                          isDarkMode ? 'bg-slate-900 text-[#007ACC]' : 'bg-slate-100 text-blue-600'
-                        }`}>第 {s.line} 行</span>
-                        <span className="font-sans font-bold capitalize text-slate-400">
-                          {s.type === 'string' ? '字符串' : s.type === 'comment' ? '注释' : s.type}
-                        </span>
-                      </div>
-                      <div className={`truncate text-[11px] font-mono select-text font-medium ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>
-                        {s.original}
-                      </div>
-                      {s.translated && (
-                        <div className={`truncate font-sans text-[10.5px] border-t pt-1 flex items-center gap-1 ${
-                          isDarkMode ? 'text-[#73C991] border-slate-800/40' : 'text-emerald-600 border-slate-100'
-                        }`}>
-                          <Check className="w-3 h-3 text-emerald-500" />
-                          <span className="truncate">{s.translated}</span>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <ModuleInspector
+                isDarkMode={isDarkMode}
+                onAddLog={(msg) => {
+                  window.dispatchEvent(new CustomEvent('add-app-log', { detail: { message: msg } }));
+                }}
+              />
             </div>
           )}
 
         </div>
       )}
+      {renderContextMenu()}
     </div>
   );
 }

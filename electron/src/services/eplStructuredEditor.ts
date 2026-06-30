@@ -59,6 +59,7 @@ export interface EplSubprogramBlock {
   isPublic: boolean;
   isEasyPackage: boolean;
   remark: string;
+  returnRemark: string;
   body: EplSubprogramEntry[];
 }
 
@@ -262,7 +263,7 @@ export function serializeEplStructuredDocument(documentModel: EplStructuredDocum
     });
   });
 
-  return lines.join('\n').replace(/\s+$/g, '');
+  return lines.join('\n');
 }
 
 export function cloneEplStructuredDocument(documentModel: EplStructuredDocument): EplStructuredDocument {
@@ -379,6 +380,7 @@ function parseSubprogramLine(body: string, index: number, sourceLine: number): E
     isEasyPackage: parseEplBoolean(args[3]),
     remark: stripEplRemark(args[4]) || ''
       || stripEplRemark(args.slice(2).find(part => /^[“"']/.test(part.trim()))),
+    returnRemark: stripEplRemark(args[5]) || '',
     body: []
   };
 }
@@ -392,13 +394,8 @@ function countStatements(body: EplSubprogramEntry[]): number {
 }
 
 function trimTrailingBlankStatements(body: EplSubprogramEntry[]): void {
-  while (body.length > 0) {
-    const lastEntry = body[body.length - 1];
-    if (lastEntry?.kind !== 'statement' || lastEntry.text.trim()) {
-      return;
-    }
-    body.pop();
-  }
+  // Disable trimming to allow inserting and keeping blank lines at the end of subprograms
+  return;
 }
 
 function parseVariableLine(
@@ -424,19 +421,25 @@ function parseVariableLine(
 function serializeSubprogramLine(subprogram: EplSubprogramBlock): string {
   const name = subprogram.name.trim() || '未命名子程序';
   const returnType = normalizeEmptyType(subprogram.returnType);
-  const hasMetadata = returnType || subprogram.isPublic || subprogram.isEasyPackage || subprogram.remark.trim();
+  const hasMetadata = returnType || subprogram.isPublic || subprogram.isEasyPackage || subprogram.remark.trim() || subprogram.returnRemark?.trim();
 
   if (!hasMetadata) {
     return `.子程序 ${name}`;
   }
 
-  return `.子程序 ${[
+  const fields = [
     name,
     returnType,
     subprogram.isPublic ? '真' : '',
     subprogram.isEasyPackage ? '真' : '',
     quoteEplText(subprogram.remark)
-  ].join(', ')}`;
+  ];
+
+  if (subprogram.returnRemark?.trim()) {
+    fields.push(quoteEplText(subprogram.returnRemark));
+  }
+
+  return `.子程序 ${fields.join(', ')}`;
 }
 
 function serializeVariableLine(variable: EplVariableRow): string {

@@ -12,6 +12,8 @@ interface DiffViewerProps {
   onUpdateSourceContent?: (value: string) => void;
   isDarkMode: boolean;
   activeFile?: any;
+  editorFontSize?: number;
+  onFontSizeChange?: (value: number | ((currentValue: number) => number)) => void;
 }
 
 // Diff Contrast Presets for customized developer visibility
@@ -189,7 +191,9 @@ export default function DiffViewer({
   onResetTranslation,
   onUpdateSourceContent,
   isDarkMode,
-  activeFile
+  activeFile,
+  editorFontSize = 13,
+  onFontSizeChange
 }: DiffViewerProps) {
   const [activeView, setActiveView] = useState<'code' | 'designer'>('code');
   const [viewMode, setViewMode] = useState<'chinese' | 'split' | 'unified'>('chinese');
@@ -224,8 +228,15 @@ export default function DiffViewer({
   const quickChineseSnippets = [
     { label: '.子程序', text: '\n.子程序 _按钮1_被单击\n    信息框 (“请输入提示内容”, 64, “提示”)\n' },
     { label: '如果', text: '如果 (条件)\n    \n如果结束' },
-    { label: '循环', text: '循环判断首 (条件)\n    \n循环判断尾 ()' },
-    { label: '信息框', text: '信息框 (“请输入提示内容”, 64, “提示”)' },
+    { label: '如果真', text: '如果真 (条件)\n    \n如果真结束' },
+    { label: '判断', text: '判断 (条件)\n    \n判断结束' },
+    { label: '计次循环', text: '计次循环首 (次数, 计次变量)\n    \n计次循环尾 ()' },
+    { label: '判断循环', text: '判断循环首 (条件)\n    \n判断循环尾 ()' },
+    { label: '循环判断', text: '循环判断首 ()\n    \n循环判断尾 (条件)' },
+    { label: '变量循环', text: '变量循环首 (起始值, 目标值, 递增值, 循环变量)\n    \n变量循环尾 ()' },
+    { label: '返回', text: '返回 (返回值)' },
+    { label: '结束', text: '结束 ()' },
+    { label: '信息框', text: '信息框 (“提示内容”, 64, “提示”)' },
     { label: '调试输出', text: '调试输出 (“调试信息”)' }
   ];
 
@@ -411,6 +422,11 @@ export default function DiffViewer({
 
   const insertSourceSnippet = (snippet: string) => {
     if (!onUpdateSourceContent) return;
+
+    if (activeFile?.language === 'epl') {
+      window.dispatchEvent(new CustomEvent('insert-epl-snippet', { detail: { text: snippet } }));
+      return;
+    }
 
     const editor = sourceEditorRef.current;
     if (!editor) {
@@ -900,7 +916,7 @@ export default function DiffViewer({
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5 overflow-x-auto shrink-0 max-w-[52%]">
+              <div className="flex items-center gap-1.5 overflow-x-auto shrink-0 max-w-[70%]">
                 {quickChineseSnippets.map(snippet => (
                   <button
                     key={snippet.label}
@@ -928,6 +944,8 @@ export default function DiffViewer({
                 onChange={updateSourceCode}
                 focusHandlerName={pendingHandlerFocus}
                 onFocusHandled={() => setPendingHandlerFocus(null)}
+                editorFontSize={editorFontSize}
+                onFontSizeChange={onFontSizeChange}
               />
             ) : (
               <div className={`flex-1 flex overflow-hidden ${
@@ -957,6 +975,8 @@ export default function DiffViewer({
                     className="absolute inset-0 pointer-events-none overflow-hidden m-0 px-4 py-3 text-[13px] leading-6 font-mono tabular-nums"
                     style={{
                       fontFamily: '"Microsoft YaHei UI", "Cascadia Code", Consolas, monospace',
+                      fontSize: `${editorFontSize}px`,
+                      lineHeight: `${Math.max(18, Math.round(editorFontSize * 1.55))}px`,
                       transform: `translate(${-sourceScroll.left}px, ${-sourceScroll.top}px)`
                     }}
                   >
@@ -986,7 +1006,9 @@ export default function DiffViewer({
                       isDarkMode ? 'caret-[#0bbdff]' : 'caret-blue-700'
                     }`}
                     style={{
-                      fontFamily: '"Microsoft YaHei UI", "Cascadia Code", Consolas, monospace'
+                      fontFamily: '"Microsoft YaHei UI", "Cascadia Code", Consolas, monospace',
+                      fontSize: `${editorFontSize}px`,
+                      lineHeight: `${Math.max(18, Math.round(editorFontSize * 1.55))}px`
                     }}
                   />
                 </div>

@@ -66,7 +66,25 @@ import {
   WindowDesignerEplSourceRequestDetail,
   WindowDesignerBuildRunStateDetail
 } from './services/windowDesigner/windowDesignerCommands';
-import { getEplEventSuffix } from './services/windowDesigner/windowDesignerService';
+import { getEplEventSuffix, createDefaultWindowProject } from './services/windowDesigner/windowDesignerService';
+
+const generateDefaultEplContentForWindow = (win: any) => {
+  const className = win.className || '自定义窗体';
+  const fileName = win.fileName;
+  
+  return `.版本 2
+.支持库 wpf_support
+.支持库 spec
+
+.程序集 窗口程序集_${className}
+.程序集变量 关联设计文件, 文本型, , "${fileName}"
+
+.子程序 _${className}_创建完毕
+    ' 易语言 WPF 设计器自动绑定 ${fileName} 可视化中文化布局
+    载入可视化设计 (关联设计文件)
+    调试输出 (“${win.title || className}初始化完毕，WPF 渲染正常。”)
+`;
+};
 
 type LingBuilderWindowControls = {
   minimize: () => Promise<void>;
@@ -103,6 +121,26 @@ const DEFAULT_DESIGNER_GENERATED_PANELS: DesignerGeneratedPanelData = {
   manifestCode: '',
   logs: ['> [编译日志] 等待 F5 触发真实 Win32 构建。'],
   isBuilding: false
+};
+
+const EDITOR_FONT_SIZE_STORAGE_KEY = 'lingbuilder.editor.fontSize';
+const DEFAULT_EDITOR_FONT_SIZE = 13;
+const MIN_EDITOR_FONT_SIZE = 10;
+const MAX_EDITOR_FONT_SIZE = 24;
+
+const clampEditorFontSize = (value: number) => {
+  return Math.max(MIN_EDITOR_FONT_SIZE, Math.min(MAX_EDITOR_FONT_SIZE, Math.round(value)));
+};
+
+const getInitialEditorFontSize = () => {
+  try {
+    const savedValue = window.localStorage.getItem(EDITOR_FONT_SIZE_STORAGE_KEY);
+    if (!savedValue) return DEFAULT_EDITOR_FONT_SIZE;
+    const parsedValue = Number.parseInt(savedValue, 10);
+    return Number.isFinite(parsedValue) ? clampEditorFontSize(parsedValue) : DEFAULT_EDITOR_FONT_SIZE;
+  } catch {
+    return DEFAULT_EDITOR_FONT_SIZE;
+  }
 };
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -143,9 +181,48 @@ const ensureEplControlEventHandler = (content: string, detail: OpenControlEventC
 };
 
 export default function App() {
-  const [files, setFiles] = useState<CppFile[]>(initialFiles);
-  const [activeFile, setActiveFile] = useState<CppFile>(initialFiles[0]);
-  const filesRef = useRef<CppFile[]>(initialFiles);
+  const [files, setFiles] = useState<CppFile[]>(() => {
+    let proj = null;
+    try {
+      const raw = window.localStorage.getItem('lingbuilder.windowDesigner.autosave.v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.project && Array.isArray(parsed.project.windows)) {
+          proj = parsed.project;
+        }
+      }
+    } catch (e) {}
+
+    if (!proj) {
+      proj = createDefaultWindowProject();
+    }
+
+    const currentFiles = [...initialFiles];
+    proj.windows.forEach(win => {
+      const eName = win.fileName.replace(/\.xml$/i, '.e');
+      const ePath = `src/${eName}`;
+      if (!currentFiles.some(f => f.path === ePath)) {
+        currentFiles.push({
+          path: ePath,
+          name: eName,
+          language: 'epl',
+          originalContent: generateDefaultEplContentForWindow(win),
+          translatedContent: '',
+          strings: [],
+          isModified: false
+        });
+      }
+    });
+    return currentFiles;
+  });
+  const [activeFile, setActiveFile] = useState<CppFile>(() => {
+    // If MainWindow.e is in files, make it active, otherwise default to first
+    return files ? (files.find(f => f.name === 'MainWindow.e') || files[0]) : initialFiles[0];
+  });
+  const filesRef = useRef<CppFile[]>([]);
+  useEffect(() => {
+    filesRef.current = files;
+  }, [files]);
   const [glossary, setGlossary] = useState<GlossaryTerm[]>(defaultGlossary);
   const [problems, setProblems] = useState<ProblemItem[]>(mockProblems);
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -155,6 +232,36 @@ export default function App() {
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [isAppClosed, setIsAppClosed] = useState(false);
+  const [editorFontSize, setEditorFontSizeState] = useState(getInitialEditorFontSize);
+
+  const setEditorFontSize = useCallback((nextValue: number | ((value: number) => number)) => {
+    setEditorFontSizeState(previousValue => {
+      const rawValue = typeof nextValue === 'function' ? nextValue(previousValue) : nextValue;
+      const clampedValue = clampEditorFontSize(rawValue);
+      try {
+        window.localStorage.setItem(EDITOR_FONT_SIZE_STORAGE_KEY, String(clampedValue));
+      } catch {
+        // Font size persistence is a convenience; editing should not depend on localStorage.
+      }
+      return clampedValue;
+    });
+  }, []);
+
+  const promptEditorFontSize = () => {
+    const inputValue = window.prompt(
+      `设置编辑器字号（${MIN_EDITOR_FONT_SIZE}-${MAX_EDITOR_FONT_SIZE}px）`,
+      String(editorFontSize)
+    );
+    if (inputValue === null) return;
+
+    const parsedValue = Number.parseInt(inputValue, 10);
+    if (!Number.isFinite(parsedValue)) {
+      window.alert('请输入有效的字号数字。');
+      return;
+    }
+
+    setEditorFontSize(parsedValue);
+  };
 
   const handleWindowMinimize = async () => {
     const windowControls = getNativeWindowControls();
@@ -516,6 +623,22 @@ void DisplayStatus() {
     triggerReconstruction(activeFile, updatedStrings);
   };
 
+  const handleDeleteFile = (file: CppFile) => {
+    const confirmed = window.confirm(`确认删除文件 ${file.name} 吗？`);
+    if (!confirmed) return;
+    setFiles(prev => prev.filter(f => f.path !== file.path));
+    if (activeFile?.path === file.path) {
+      const remaining = filesRef.current.filter(f => f.path !== file.path);
+      if (remaining.length > 0) {
+        setActiveFile(remaining[0]);
+      }
+    }
+  };
+
+  const handleRenameFile = (file: CppFile, newName: string) => {
+    setFiles(prev => prev.map(f => f.path === file.path ? { ...f, name: newName, path: f.path.replace(f.name, newName) } : f));
+  };
+
   const handleUpdateSourceContent = (content: string) => {
     const updatedFile: CppFile = {
       ...activeFile,
@@ -565,7 +688,10 @@ void DisplayStatus() {
       if (!handlerName) return;
 
       const currentFiles = filesRef.current;
-      const targetFile = currentFiles.find(file => file.language === 'epl') || currentFiles.find(file => file.path.endsWith('.e'));
+      const targetEplName = detail.windowFileName ? detail.windowFileName.replace(/\.xml$/i, '.e') : '';
+      const targetFile = currentFiles.find(file => file.name === targetEplName)
+        || currentFiles.find(file => file.language === 'epl')
+        || currentFiles.find(file => file.path.endsWith('.e'));
 
       if (!targetFile) {
         setBuildLogs(prev => [
@@ -594,9 +720,68 @@ void DisplayStatus() {
       focusEplHandler(handlerName);
     };
 
+    const handleWindowAdded = (event: Event) => {
+      const nextWindow = (event as CustomEvent).detail;
+      const eName = nextWindow.fileName.replace(/\.xml$/i, '.e');
+      const ePath = `src/${eName}`;
+      
+      setFiles(prev => {
+        if (prev.some(f => f.path === ePath)) return prev;
+        const newFile = {
+          path: ePath,
+          name: eName,
+          language: 'epl',
+          originalContent: generateDefaultEplContentForWindow(nextWindow),
+          translatedContent: '',
+          strings: [],
+          isModified: false
+        };
+        const next = [...prev, newFile];
+        return next;
+      });
+    };
+
+    const handleWindowDeleted = (event: Event) => {
+      const deletedWindow = (event as CustomEvent).detail;
+      const eName = deletedWindow.fileName.replace(/\.xml$/i, '.e');
+      const ePath = `src/${eName}`;
+      
+      setFiles(prev => {
+        const next = prev.filter(f => f.path !== ePath);
+        return next;
+      });
+    };
+
+    const handleWindowDuplicated = (event: Event) => {
+      const clonedWindow = (event as CustomEvent).detail;
+      const eName = clonedWindow.fileName.replace(/\.xml$/i, '.e');
+      const ePath = `src/${eName}`;
+      
+      setFiles(prev => {
+        if (prev.some(f => f.path === ePath)) return prev;
+        const newFile = {
+          path: ePath,
+          name: eName,
+          language: 'epl',
+          originalContent: generateDefaultEplContentForWindow(clonedWindow),
+          translatedContent: '',
+          strings: [],
+          isModified: false
+        };
+        const next = [...prev, newFile];
+        return next;
+      });
+    };
+
     window.addEventListener('open-control-event-code', handleOpenControlEventCode);
+    window.addEventListener('window-added', handleWindowAdded);
+    window.addEventListener('window-deleted', handleWindowDeleted);
+    window.addEventListener('window-duplicated', handleWindowDuplicated);
     return () => {
       window.removeEventListener('open-control-event-code', handleOpenControlEventCode);
+      window.removeEventListener('window-added', handleWindowAdded);
+      window.removeEventListener('window-deleted', handleWindowDeleted);
+      window.removeEventListener('window-duplicated', handleWindowDuplicated);
     };
   }, []);
 
@@ -1022,14 +1207,20 @@ void DisplayStatus() {
   return (
     <div className={`h-screen flex flex-col overflow-hidden font-sans select-none ${isDarkMode ? 'bg-[#1E1E1E] text-[#D4D4D4]' : 'bg-slate-50 text-slate-800'}`}>
       {/* Title Bar */}
-      <div className={`h-8 flex items-center justify-between pl-3 pr-0 border-b text-[11px] shrink-0 select-none ${
-        isDarkMode 
-          ? 'bg-[#323233] text-slate-200 border-[#2B2B2B]' 
-          : 'bg-[#F3F3F3] text-slate-800 border-slate-200'
-      }`}>
+      <div
+        onDoubleClick={handleWindowToggleMaximize}
+        className={`h-8 flex items-center justify-between pl-3 pr-0 border-b text-[11px] shrink-0 select-none cursor-default ${
+          isDarkMode 
+            ? 'bg-[#323233] text-slate-200 border-[#2B2B2B]' 
+            : 'bg-[#F3F3F3] text-slate-800 border-slate-200'
+        }`}
+      >
         <div className="flex items-center gap-4">
           <div className="text-[#007ACC] font-bold tracking-wide">C++ LocMaster (LingBuilder)</div>
-          <div className={`hidden md:flex gap-4 ${isDarkMode ? 'text-[#CCCCCC]' : 'text-slate-600'} z-50`}>
+          <div
+            onDoubleClick={e => e.stopPropagation()}
+            className={`hidden md:flex gap-4 ${isDarkMode ? 'text-[#CCCCCC]' : 'text-slate-600'} z-50`}
+          >
             {/* 文件(F) */}
             <div className="relative">
               <span 
@@ -1053,6 +1244,10 @@ void DisplayStatus() {
                     <span className="opacity-50 text-[10px]">Ctrl+S</span>
                   </button>
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+                  <button onClick={() => { promptEditorFontSize(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>设置编辑器字号...</span>
+                    <span className="opacity-50 text-[10px]">{editorFontSize}px</span>
+                  </button>
                   <button onClick={() => { setShowCustomModal(true); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>添加自定义文件</span>
                     <span className="opacity-50 text-[10px]">Ctrl+Shift+N</span>
@@ -1245,7 +1440,7 @@ void DisplayStatus() {
         </div>
 
         {/* Right window controls */}
-        <div className="flex items-center gap-0">
+        <div className="flex items-center gap-0" onDoubleClick={e => e.stopPropagation()}>
           <div className={`text-[10px] opacity-50 px-2 italic hidden lg:block ${isDarkMode ? 'text-[#CCCCCC]' : 'text-slate-600'}`}>
             LingBuilder_v2.0 - 汉化方案
           </div>
@@ -1576,6 +1771,8 @@ void DisplayStatus() {
           onSetStatus={handleSetStatus}
           glossary={glossary}
           drawerWidth={leftWidth}
+          onDeleteFile={handleDeleteFile}
+          onRenameFile={handleRenameFile}
         />
 
         {/* LEFT DRAG RESIZER & COLLAPSE TOGGLE */}
@@ -1625,6 +1822,8 @@ void DisplayStatus() {
               onUpdateSourceContent={handleUpdateSourceContent}
               isDarkMode={isDarkMode}
               activeFile={activeFile}
+              editorFontSize={editorFontSize}
+              onFontSizeChange={setEditorFontSize}
             />
           </div>
 

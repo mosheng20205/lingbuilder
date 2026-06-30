@@ -3,6 +3,7 @@ build/
 dist/
 dist-electron/
 .lingbuilder-build/
+electron/scratch/
 coverage/
 .DS_Store
 *.log

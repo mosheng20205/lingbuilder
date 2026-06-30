@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent, MouseEvent, ReactNode } from 'react';
+import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react';
 import { Check, Plus, Trash2 } from 'lucide-react';
 import {
   EPL_FLOW_GUIDE_COLORS,
@@ -30,10 +30,12 @@ interface EplStructuredEditorProps {
   onChange: (value: string) => void;
   focusHandlerName?: string | null;
   onFocusHandled?: () => void;
+  editorFontSize?: number;
+  onFontSizeChange?: (size: number) => void;
 }
 
 type VariableField = 'name' | 'type' | 'isStatic' | 'isArray' | 'remark';
-type SubprogramField = 'name' | 'returnType' | 'isPublic' | 'isEasyPackage' | 'remark';
+type SubprogramField = 'name' | 'returnType' | 'isPublic' | 'isEasyPackage' | 'remark' | 'returnRemark';
 
 interface EplContextMenuState {
   x: number;
@@ -54,9 +56,97 @@ export default function EplStructuredEditor({
   readOnly,
   onChange,
   focusHandlerName,
-  onFocusHandled
+  onFocusHandled,
+  editorFontSize,
+  onFontSizeChange
 }: EplStructuredEditorProps) {
   const documentModel = useMemo(() => parseEplStructuredDocument(sourceCode), [sourceCode]);
+  useEffect(() => {
+    const el = editorRootRef.current;
+    if (!el) return;
+
+    const handleWheel = (event: WheelEvent) => {
+      if (event.ctrlKey) {
+        event.preventDefault();
+        if (event.deltaY < 0) {
+          onFontSizeChange?.(Math.min(40, (editorFontSize || 14) + 1));
+        } else {
+          onFontSizeChange?.(Math.max(10, (editorFontSize || 14) - 1));
+        }
+      }
+    };
+
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', handleWheel);
+    };
+  }, [editorFontSize, onFontSizeChange]);
+
+  useEffect(() => {
+    const handleInsertSnippet = (event: Event) => {
+      const customEvent = event as CustomEvent<{ text: string }>;
+      const text = customEvent.detail.text;
+      
+      const focusedEl = document.activeElement as HTMLInputElement;
+      if (focusedEl && focusedEl.getAttribute('data-epl-focus')?.startsWith('stmt-')) {
+        const start = focusedEl.selectionStart ?? focusedEl.value.length;
+        const end = focusedEl.selectionEnd ?? focusedEl.value.length;
+        const val = focusedEl.value;
+        const newVal = val.slice(0, start) + text + val.slice(end);
+        
+        const match = focusedEl.getAttribute('data-epl-focus')?.match(/^stmt-(\d+)-(\d+)$/);
+        if (match) {
+          const subIdx = parseInt(match[1], 10);
+          const bodyIdx = parseInt(match[2], 10);
+          
+          if (text.includes('\n')) {
+            const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+            commitDocument(draft => {
+              const body = draft.subprograms[subIdx].body;
+              const isCurrentEmpty = body[bodyIdx].kind === 'statement' && !(body[bodyIdx] as any).text.trim();
+              
+              const insertLines: EplStatementEntry[] = lines.map((l, i) => {
+                let indent = (body[bodyIdx] as any).indent || '';
+                if (i > 0 && !l.startsWith('.')) {
+                  indent = indent + '    ';
+                }
+                return {
+                  id: `stmt-insert-${Date.now()}-${i}`,
+                  kind: 'statement',
+                  text: l,
+                  indent,
+                  sourceLine: 0
+                };
+              });
+              
+              if (isCurrentEmpty) {
+                body.splice(bodyIdx, 1, ...insertLines);
+              } else {
+                body.splice(bodyIdx + 1, 0, ...insertLines);
+              }
+            });
+          } else {
+            commitDocument(draft => {
+              const statement = draft.subprograms[subIdx].body[bodyIdx];
+              if (statement.kind === 'statement') {
+                statement.text = newVal;
+              }
+            });
+            window.requestAnimationFrame(() => {
+              focusedEl.focus();
+              const newPos = start + text.length;
+              focusedEl.setSelectionRange(newPos, newPos);
+            });
+          }
+        }
+      }
+    };
+    
+    window.addEventListener('insert-epl-snippet', handleInsertSnippet);
+    return () => {
+      window.removeEventListener('insert-epl-snippet', handleInsertSnippet);
+    };
+  }, [documentModel]);
   const editorRootRef = useRef<HTMLDivElement | null>(null);
   const subprogramRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [pendingFocusTarget, setPendingFocusTarget] = useState<string | null>(null);
@@ -404,6 +494,7 @@ export default function EplStructuredEditor({
         isPublic: false,
         isEasyPackage: false,
         remark: '',
+        returnRemark: '',
         body: [createBlankEplStatement(`subprogram-${insertIndex}-stmt-0`)]
       });
     });
@@ -446,7 +537,11 @@ export default function EplStructuredEditor({
       tabIndex={0}
       onKeyDown={handleEditorKeyDown}
       onContextMenu={event => openContextMenu(event)}
-      className={`h-full overflow-auto px-4 py-3 text-[13px] font-mono tabular-nums outline-none ${
+      style={{
+        fontSize: `${editorFontSize || 14}px`,
+        '--editor-font-size': `${editorFontSize || 14}px`
+      } as CSSProperties}
+      className={`h-full overflow-auto px-4 py-3 text-[0.8em] font-mono tabular-nums outline-none ${
       isDarkMode ? 'bg-[#1e1e1e] text-[#d4d4d4]' : 'bg-white text-slate-850'
     }`}
     >
@@ -530,6 +625,13 @@ export default function EplStructuredEditor({
                       isDarkMode={isDarkMode}
                       readOnly={readOnly}
                       collapsedVariableBlockIds={collapsedVariableBlockIds}
+                      programVariables={documentModel.header
+                        .filter(entry => entry.kind === 'programVariable')
+                        .map(entry => entry.variable.name)
+                        .filter(Boolean)}
+                      subprogramNames={documentModel.subprograms
+                        .map(sub => sub.name)
+                        .filter(Boolean)}
                       onRememberPosition={rememberPosition}
                       onOpenContextMenu={openContextMenu}
                       onToggleVariableBlock={toggleVariableBlockCollapse}
@@ -622,12 +724,14 @@ function VolcanoHeaderTable({
   header,
   isDarkMode,
   readOnly,
-  updateHeaderLine
+  updateHeaderLine,
+  editorFontSize
 }: {
   header: EplHeaderEntry[];
   isDarkMode: boolean;
   readOnly: boolean;
   updateHeaderLine: (entryIndex: number, value: string) => void;
+  editorFontSize?: number;
 }) {
   const rows = buildVolcanoHeaderRows(header);
   const packageRow = rows.find(row => row.kind === 'package');
@@ -640,6 +744,31 @@ function VolcanoHeaderTable({
   const suggestedPackageName = inferPackageName(programRow?.value);
   const rowsWithPreview = rows.length > 0 ? rows : [];
   const [isCollapsed, setIsCollapsed] = useState(false);
+
+  const getTextWidth = (text: string) => {
+    let width = 0;
+    for (let i = 0; i < text.length; i++) {
+      width += text.charCodeAt(i) > 127 ? 15 : 9;
+    }
+    return width;
+  };
+  const maxHeaderValWidth = useMemo(() => {
+    let maxWidth = 180;
+    rowsWithPreview.forEach(row => {
+      const w = getTextWidth(row.value) + 24;
+      if (w > maxWidth) maxWidth = w;
+    });
+    return maxWidth;
+  }, [rowsWithPreview]);
+
+  const maxPropertyValWidth = useMemo(() => {
+    let maxWidth = 230;
+    rowsWithPreview.forEach(row => {
+      const w = getTextWidth(row.propertyValue) + 24;
+      if (w > maxWidth) maxWidth = w;
+    });
+    return maxWidth;
+  }, [rowsWithPreview]);
 
   if (rowsWithPreview.length === 0) return null;
 
@@ -654,23 +783,23 @@ function VolcanoHeaderTable({
       />
       <div
         className={`inline-grid overflow-visible rounded-[2px] border border-b-0 border-r-0 ${borderClass}`}
-        style={{ gridTemplateColumns: '178px 180px 116px 150px 230px 260px' }}
+        style={{ gridTemplateColumns: `178px ${maxHeaderValWidth}px 116px 150px ${maxPropertyValWidth}px 260px` }}
       >
-        <MethodTableLabel className={`${labelClass} text-[20px]`} marker="variable">声明名</MethodTableLabel>
-        <MethodTableLabel className={`${headerClass} text-[18px]`}>名称 / 值</MethodTableLabel>
-        <MethodTableLabel className={`${headerClass} text-[18px]`}>类型</MethodTableLabel>
-        <MethodTableLabel className={`${headerClass} text-[18px]`}>属性名</MethodTableLabel>
-        <MethodTableLabel className={`${headerClass} text-[18px]`}>属性值</MethodTableLabel>
-        <MethodTableLabel className={`${headerClass} text-[18px]`}>备注</MethodTableLabel>
+        <MethodTableLabel className={`${labelClass} text-[1.15em]`} marker="variable">声明名</MethodTableLabel>
+        <MethodTableLabel className={`${headerClass} text-[1.0em]`}>名称 / 值</MethodTableLabel>
+        <MethodTableLabel className={`${headerClass} text-[1.0em]`}>类型</MethodTableLabel>
+        <MethodTableLabel className={`${headerClass} text-[1.0em]`}>属性名</MethodTableLabel>
+        <MethodTableLabel className={`${headerClass} text-[1.0em]`}>属性值</MethodTableLabel>
+        <MethodTableLabel className={`${headerClass} text-[1.0em]`}>备注</MethodTableLabel>
 
         {isCollapsed ? (
           <>
-            <ReadOnlyTableCell className={`${labelClass} text-[18px]`}>源码声明</ReadOnlyTableCell>
-            <ReadOnlyTableCell className={`${mutedClass} text-[16px]`}>{rowsWithPreview.length} 项已收缩</ReadOnlyTableCell>
-            <ReadOnlyTableCell className={`${mutedClass} text-[16px]`}>文档/库/类</ReadOnlyTableCell>
-            <ReadOnlyTableCell className={`${mutedClass} text-[16px]`}>C++ 对应</ReadOnlyTableCell>
-            <ReadOnlyTableCell className={`${mutedClass} text-[16px]`}>{programRow ? `class ${toCppIdentifier(programRow.value)}` : '待声明'}</ReadOnlyTableCell>
-            <ReadOnlyTableCell className={`${mutedClass} text-[13px]`}>点击左侧 + 展开声明表</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${labelClass} text-[1.0em]`}>源码声明</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${mutedClass} text-[0.9em]`}>{rowsWithPreview.length} 项已收缩</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${mutedClass} text-[0.9em]`}>文档/库/类</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${mutedClass} text-[0.9em]`}>C++ 对应</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${mutedClass} text-[0.9em]`}>{programRow ? `class ${toCppIdentifier(programRow.value)}` : '待声明'}</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${mutedClass} text-[0.8em]`}>点击左侧 + 展开声明表</ReadOnlyTableCell>
           </>
         ) : (
           <>
@@ -689,12 +818,12 @@ function VolcanoHeaderTable({
 
             {!packageRow && (
               <>
-                <ReadOnlyTableCell className={`${labelClass} text-[20px]`}>包名预览</ReadOnlyTableCell>
-                <ReadOnlyTableCell className={`${mutedClass} text-[18px]`}>未声明 .包</ReadOnlyTableCell>
-                <ReadOnlyTableCell className={`${mutedClass} text-[16px]`}>命名空间</ReadOnlyTableCell>
-                <ReadOnlyTableCell className={`${mutedClass} text-[16px]`}>建议声明</ReadOnlyTableCell>
-                <ReadOnlyTableCell className={`${mutedClass} text-[16px]`}>.包 {suggestedPackageName}</ReadOnlyTableCell>
-                <ReadOnlyTableCell className={`${mutedClass} text-[13px]`}>仅提示源码缺少包名，不参与 C++ 生成</ReadOnlyTableCell>
+                <ReadOnlyTableCell className={`${labelClass} text-[1.15em]`}>包名预览</ReadOnlyTableCell>
+                <ReadOnlyTableCell className={`${mutedClass} text-[1.0em]`}>未声明 .包</ReadOnlyTableCell>
+                <ReadOnlyTableCell className={`${mutedClass} text-[0.9em]`}>命名空间</ReadOnlyTableCell>
+                <ReadOnlyTableCell className={`${mutedClass} text-[0.9em]`}>建议声明</ReadOnlyTableCell>
+                <ReadOnlyTableCell className={`${mutedClass} text-[0.9em]`}>.包 {suggestedPackageName}</ReadOnlyTableCell>
+                <ReadOnlyTableCell className={`${mutedClass} text-[0.8em]`}>仅提示源码缺少包名，不参与 C++ 生成</ReadOnlyTableCell>
               </>
             )}
           </>
@@ -723,17 +852,17 @@ function VolcanoHeaderEditableRow({
 
   return (
     <>
-      <ReadOnlyTableCell className={`${labelClass} text-[20px]`}>{row.label}</ReadOnlyTableCell>
+      <ReadOnlyTableCell className={`${labelClass} text-[1.15em]`}>{row.label}</ReadOnlyTableCell>
       <TextCellInput
         value={row.value}
         onChange={value => updateHeaderLine(row.entryIndex, serializeVolcanoHeaderLine(row.kind, value))}
         readOnly={readOnly}
-        className={`${valueClass} min-h-10 text-[18px] ${row.valueTone}`}
+        className={`${valueClass} min-h-10 text-[1.0em] ${row.valueTone}`}
       />
-      <ReadOnlyTableCell className={`${mutedClass} text-[16px]`}>{row.typeLabel}</ReadOnlyTableCell>
-      <ReadOnlyTableCell className={`${valueClass} text-[16px]`}>{row.propertyName}</ReadOnlyTableCell>
-      <ReadOnlyTableCell className={`${valueClass} text-[16px]`}>{row.propertyValue}</ReadOnlyTableCell>
-      <ReadOnlyTableCell className={`${valueClass} text-[13px]`}>{row.remark}</ReadOnlyTableCell>
+      <ReadOnlyTableCell className={`${mutedClass} text-[0.9em]`}>{row.typeLabel}</ReadOnlyTableCell>
+      <ReadOnlyTableCell className={`${valueClass} text-[0.9em]`}>{row.propertyName}</ReadOnlyTableCell>
+      <ReadOnlyTableCell className={`${valueClass} text-[0.9em]`}>{row.propertyValue}</ReadOnlyTableCell>
+      <ReadOnlyTableCell className={`${valueClass} text-[0.8em]`}>{row.remark}</ReadOnlyTableCell>
     </>
   );
 }
@@ -1033,25 +1162,25 @@ function ProgramVariableTable({
         className={`inline-grid border border-b-0 border-r-0 ${borderClass}`}
         style={{ gridTemplateColumns: '180px 128px 66px 66px 180px 150px 260px 340px' }}
       >
-        <MethodTableLabel className={`${nameHeaderClass} text-[18px]`} marker="variable">程序集变量名</MethodTableLabel>
-        <MethodTableLabel className={`${headerClass} text-[18px]`}>类型</MethodTableLabel>
-        <MethodTableLabel className={`${headerClass} text-[18px]`}>静态</MethodTableLabel>
-        <MethodTableLabel className={`${headerClass} text-[18px]`}>参考</MethodTableLabel>
-        <MethodTableLabel className={`${headerClass} text-[18px]`}>初始值</MethodTableLabel>
-        <MethodTableLabel className={`${headerClass} text-[18px]`}>C++ 类型</MethodTableLabel>
-        <MethodTableLabel className={`${headerClass} text-[18px]`}>C++ 成员</MethodTableLabel>
-        <MethodTableLabel className={`${headerClass} text-[18px]`}>说明</MethodTableLabel>
+        <MethodTableLabel className={`${nameHeaderClass} text-[1.0em]`} marker="variable">程序集变量名</MethodTableLabel>
+        <MethodTableLabel className={`${headerClass} text-[1.0em]`}>类型</MethodTableLabel>
+        <MethodTableLabel className={`${headerClass} text-[1.0em]`}>静态</MethodTableLabel>
+        <MethodTableLabel className={`${headerClass} text-[1.0em]`}>参考</MethodTableLabel>
+        <MethodTableLabel className={`${headerClass} text-[1.0em]`}>初始值</MethodTableLabel>
+        <MethodTableLabel className={`${headerClass} text-[1.0em]`}>C++ 类型</MethodTableLabel>
+        <MethodTableLabel className={`${headerClass} text-[1.0em]`}>C++ 成员</MethodTableLabel>
+        <MethodTableLabel className={`${headerClass} text-[1.0em]`}>说明</MethodTableLabel>
 
         {isCollapsed ? (
           <>
-            <ReadOnlyTableCell className={`${nameHeaderClass} text-[18px]`}>{variable.name || '未命名变量'}</ReadOnlyTableCell>
-            <ReadOnlyTableCell className={`${valueClass} text-[16px]`}>{variable.type || '未指定'}</ReadOnlyTableCell>
-            <ReadOnlyTableCell className={`${mutedClass} text-[16px]`}>{variable.isStatic ? '真' : ''}</ReadOnlyTableCell>
-            <ReadOnlyTableCell className={`${mutedClass} text-[16px]`}>{variable.isArray ? '真' : ''}</ReadOnlyTableCell>
-            <ReadOnlyTableCell className={`${mutedClass} text-[16px]`}>已收缩</ReadOnlyTableCell>
-            <ReadOnlyTableCell className={`${valueClass} text-[16px]`}>{cppType}</ReadOnlyTableCell>
-            <ReadOnlyTableCell className={`${valueClass} text-[15px]`}>{cppMember};</ReadOnlyTableCell>
-            <ReadOnlyTableCell className={`${mutedClass} text-[13px]`}>点击左侧 + 展开变量表</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${nameHeaderClass} text-[1.0em]`}>{variable.name || '未命名变量'}</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${valueClass} text-[0.9em]`}>{variable.type || '未指定'}</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${mutedClass} text-[0.9em]`}>{variable.isStatic ? '真' : ''}</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${mutedClass} text-[0.9em]`}>{variable.isArray ? '真' : ''}</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${mutedClass} text-[0.9em]`}>已收缩</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${valueClass} text-[0.9em]`}>{cppType}</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${valueClass} text-[0.85em]`}>{cppMember};</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${mutedClass} text-[0.8em]`}>点击左侧 + 展开变量表</ReadOnlyTableCell>
           </>
         ) : (
           <>
@@ -1065,7 +1194,7 @@ function ProgramVariableTable({
                 }
               }}
               readOnly={readOnly}
-              className={`${valueClass} min-h-10 text-[20px] text-[#aeb8ff]`}
+              className={`${valueClass} min-h-10 text-[1.15em] text-[#aeb8ff]`}
               focusName={focusName}
             />
             <EplTypeInput
@@ -1073,7 +1202,7 @@ function ProgramVariableTable({
               onChange={value => onUpdate('type', value)}
               isDarkMode={isDarkMode}
               readOnly={readOnly}
-              className={`${valueClass} min-h-10 text-[18px]`}
+              className={`${valueClass} min-h-10 text-[1.0em]`}
               focusName={`${focusName}-type`}
             />
             <CheckCell
@@ -1096,12 +1225,12 @@ function ProgramVariableTable({
               value={variable.remark}
               onChange={value => onUpdate('remark', value)}
               readOnly={readOnly}
-              className={`${valueClass} min-h-10 text-[18px] text-[#6fbf73]`}
+              className={`${valueClass} min-h-10 text-[1.0em] text-[#6fbf73]`}
               focusName={`${focusName}-initial`}
             />
-            <ReadOnlyTableCell className={`${valueClass} text-[16px]`}>{cppType}</ReadOnlyTableCell>
-            <ReadOnlyTableCell className={`${valueClass} text-[15px]`}>{cppMember};</ReadOnlyTableCell>
-            <ReadOnlyTableCell className={`${mutedClass} text-[13px]`}>
+            <ReadOnlyTableCell className={`${valueClass} text-[0.9em]`}>{cppType}</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${valueClass} text-[0.85em]`}>{cppMember};</ReadOnlyTableCell>
+            <ReadOnlyTableCell className={`${mutedClass} text-[0.8em]`}>
               C++ 上可作为窗口程序集类成员；当前生成器只保证事件代码优先解析，通用成员变量生成仍需规则扩展
             </ReadOnlyTableCell>
           </>
@@ -1133,12 +1262,21 @@ function SubprogramHeader({
   const remarkValueClass = isDarkMode ? 'bg-[#242424]' : 'bg-white';
   const mutedValueClass = isDarkMode ? 'bg-[#242424] text-[#35d8d0]' : 'bg-white text-teal-700';
 
+  const getTextWidth = (text: string) => {
+    let width = 0;
+    for (let i = 0; i < text.length; i++) {
+      width += text.charCodeAt(i) > 127 ? 15 : 9;
+    }
+    return width;
+  };
+  const col1Width = Math.max(180, getTextWidth(subprogram.name) + 24);
+
   return (
     <div
       className={`inline-grid overflow-visible rounded-[2px] border border-b-0 border-r-0 ${borderClass}`}
-      style={{ gridTemplateColumns: '180px 64px 136px 120px 136px 136px 240px' }}
+      style={{ gridTemplateColumns: `${col1Width}px 64px 136px 120px 136px 136px 240px` }}
     >
-      <MethodTableLabel className={`${methodLabelClass} text-[20px]`} marker="method">方法名</MethodTableLabel>
+      <MethodTableLabel className={`${methodLabelClass} text-[1.15em]`} marker="method">方法名</MethodTableLabel>
       <MethodTableLabel className={headerLabelClass}>公开</MethodTableLabel>
       <MethodTableLabel className={headerLabelClass}>类别</MethodTableLabel>
       <MethodTableLabel className={headerLabelClass}>静态</MethodTableLabel>
@@ -1146,11 +1284,11 @@ function SubprogramHeader({
       <MethodTableLabel className={headerLabelClass}>属性值</MethodTableLabel>
       <MethodTableLabel className={headerLabelClass}>备注</MethodTableLabel>
 
-      <TextCellInput
+      <MethodNameCellInput
         value={subprogram.name}
         onChange={value => onUpdate(subprogramIndex, 'name', value)}
         readOnly={readOnly}
-        className={`${valueClass} min-h-10 text-[18px] text-[#aeb8ff]`}
+        className={`${valueClass} min-h-10 text-[1.0em] text-[#aeb8ff]`}
         focusName={`sub-name-${subprogram.id}`}
       />
       <CheckCell
@@ -1161,7 +1299,7 @@ function SubprogramHeader({
         focusName={`sub-public-${subprogram.id}`}
         onToggle={() => onUpdate(subprogramIndex, 'isPublic', !subprogram.isPublic)}
       />
-      <ReadOnlyTableCell className={`${mutedValueClass} text-[18px]`}>通常</ReadOnlyTableCell>
+      <ReadOnlyTableCell className={`${mutedValueClass} text-[1.0em]`}>通常</ReadOnlyTableCell>
       <CheckCell
         checked={subprogram.isEasyPackage}
         isDarkMode={isDarkMode}
@@ -1181,20 +1319,24 @@ function SubprogramHeader({
 
       {!compact && (
         <>
-          <ReadOnlyTableCell className={`${methodLabelClass} text-[18px]`}>返回值类型：</ReadOnlyTableCell>
+          <ReadOnlyTableCell className={`${methodLabelClass} text-[1.05em]`}>返回值类型：</ReadOnlyTableCell>
           <EplTypeInput
             value={subprogram.returnType}
             onChange={value => onUpdate(subprogramIndex, 'returnType', value || '无')}
             isDarkMode={isDarkMode}
             readOnly={readOnly}
-            className={`${mutedValueClass} h-9 text-[18px]`}
+            className={`${mutedValueClass} h-9 text-[1.05em] col-span-2`}
             focusName={`sub-return-${subprogram.id}`}
           />
           <ReadOnlyTableCell className={valueClass} />
-          <ReadOnlyTableCell className={`${methodLabelClass} whitespace-nowrap text-[18px]`}>返回值备注：</ReadOnlyTableCell>
-          <ReadOnlyTableCell className={valueClass} />
-          <ReadOnlyTableCell className={valueClass} />
-          <ReadOnlyTableCell className={valueClass} />
+          <ReadOnlyTableCell className={`${methodLabelClass} whitespace-nowrap text-[1.05em] col-span-2`}>返回值备注：</ReadOnlyTableCell>
+          <TextCellInput
+            value={subprogram.returnRemark || ''}
+            onChange={value => onUpdate(subprogramIndex, 'returnRemark', value)}
+            readOnly={readOnly}
+            className={`${valueClass} h-9 text-[1.05em] text-[#6fbf73]`}
+            focusName={`sub-return-remark-${subprogram.id}`}
+          />
         </>
       )}
     </div>
@@ -1207,6 +1349,8 @@ function SubprogramBody({
   isDarkMode,
   readOnly,
   collapsedVariableBlockIds,
+  programVariables,
+  subprogramNames,
   onRememberPosition,
   onOpenContextMenu,
   onToggleVariableBlock,
@@ -1223,6 +1367,8 @@ function SubprogramBody({
   isDarkMode: boolean;
   readOnly: boolean;
   collapsedVariableBlockIds: Set<string>;
+  programVariables: string[];
+  subprogramNames: string[];
   onRememberPosition: (position: ActiveEditorPosition) => void;
   onOpenContextMenu: (event: MouseEvent, subprogramIndex?: number, bodyIndex?: number) => void;
   onToggleVariableBlock: (variableBlockId: string) => void;
@@ -1236,12 +1382,24 @@ function SubprogramBody({
 }) {
   const guideLookup = useMemo(() => buildStatementGuideLookup(subprogram.body), [subprogram.body]);
 
+  const localVars = useMemo(() => {
+    return subprogram.body
+      .filter((entry) => entry.kind === 'variables')
+      .flatMap(entry => entry.variables.map(v => v.name))
+      .filter(Boolean);
+  }, [subprogram.body]);
+
   return (
-    <div className="mt-2 space-y-2">
+    <div className={`mt-2 rounded-[2px] border p-1 space-y-0.5 ${
+      isDarkMode ? 'border-[#2e2e36] bg-[#16161a]' : 'border-slate-300 bg-[#fbfbfb]'
+    }`}>
       {subprogram.body.map((entry, bodyIndex) => {
         if (entry.kind === 'variables') {
           return (
-            <div key={`${entry.id}-${bodyIndex}`}>
+            <div
+              key={`${entry.id}-${bodyIndex}`}
+              className="py-1"
+            >
               <VariableTable
                 variableBlock={entry}
                 subprogramIndex={subprogramIndex}
@@ -1250,10 +1408,7 @@ function SubprogramBody({
                 readOnly={readOnly}
                 isCollapsed={collapsedVariableBlockIds.has(entry.id)}
                 onFocusBlock={() => onRememberPosition({ subprogramIndex, bodyIndex, kind: 'variableBlock' })}
-                onOpenContextMenu={event => {
-                  event.stopPropagation();
-                  onOpenContextMenu(event, subprogramIndex, bodyIndex);
-                }}
+                onOpenContextMenu={event => onOpenContextMenu(event, subprogramIndex, bodyIndex)}
                 onToggle={() => onToggleVariableBlock(entry.id)}
                 onUpdate={onUpdateLocalVariable}
                 onEnterName={onInsertLocalVariable}
@@ -1270,9 +1425,7 @@ function SubprogramBody({
               event.stopPropagation();
               onOpenContextMenu(event, subprogramIndex, bodyIndex);
             }}
-            className={`rounded-[2px] border py-1 ${
-              isDarkMode ? 'border-[#2e2e36] bg-[#1b1b1f]' : 'border-slate-300 bg-white'
-            }`}
+            className="group py-0.5 hover:bg-blue-500/5 transition-colors"
           >
             <StatementRow
               statement={entry}
@@ -1281,6 +1434,9 @@ function SubprogramBody({
               guides={guideLookup.get(entry.id) || []}
               isDarkMode={isDarkMode}
               readOnly={readOnly}
+              localVariables={localVars}
+              programVariables={programVariables}
+              subprogramNames={subprogramNames}
               onFocus={() => onRememberPosition({ subprogramIndex, bodyIndex, kind: 'statement' })}
               onUpdate={onUpdateStatement}
               onInsert={onInsertStatement}
@@ -1348,7 +1504,7 @@ function VariableTable({
             className={`inline-grid border border-b-0 border-r-0 ${borderClass} ${headerClass}`}
             style={{ gridTemplateColumns: '162px 118px 66px 66px 92px 92px 92px 150px' }}
           >
-            <MethodTableLabel className={`${nameHeaderClass} text-[18px]`} marker="variable">局部变量名</MethodTableLabel>
+            <MethodTableLabel className={`${nameHeaderClass} text-[1.0em]`} marker="variable">局部变量名</MethodTableLabel>
             <ReadOnlyTableCell className={`${headerClass} text-[11px]`}>{variableBlock.variables.length} 个变量已收缩</ReadOnlyTableCell>
             <ReadOnlyTableCell className={headerClass} />
             <ReadOnlyTableCell className={headerClass} />
@@ -1363,14 +1519,14 @@ function VariableTable({
             className={`inline-grid border border-b-0 border-r-0 ${borderClass} ${headerClass}`}
             style={{ gridTemplateColumns: '162px 118px 66px 66px 92px 92px 92px 150px' }}
           >
-            <MethodTableLabel className={`${nameHeaderClass} text-[18px]`} marker="variable">局部变量名</MethodTableLabel>
-            <MethodTableLabel className={`${headerClass} text-[18px]`}>类型</MethodTableLabel>
-            <MethodTableLabel className={`${headerClass} text-[18px]`}>静态</MethodTableLabel>
-            <MethodTableLabel className={`${headerClass} text-[18px]`}>参考</MethodTableLabel>
-            <MethodTableLabel className={`${headerClass} text-[18px]`}>初始值</MethodTableLabel>
-            <MethodTableLabel className={`${headerClass} text-[18px]`}>属性名</MethodTableLabel>
-            <MethodTableLabel className={`${headerClass} text-[18px]`}>属性值</MethodTableLabel>
-            <MethodTableLabel className={`${headerClass} text-[18px]`}>备注</MethodTableLabel>
+            <MethodTableLabel className={`${nameHeaderClass} text-[1.0em]`} marker="variable">局部变量名</MethodTableLabel>
+            <MethodTableLabel className={`${headerClass} text-[1.0em]`}>类型</MethodTableLabel>
+            <MethodTableLabel className={`${headerClass} text-[1.0em]`}>静态</MethodTableLabel>
+            <MethodTableLabel className={`${headerClass} text-[1.0em]`}>参考</MethodTableLabel>
+            <MethodTableLabel className={`${headerClass} text-[1.0em]`}>初始值</MethodTableLabel>
+            <MethodTableLabel className={`${headerClass} text-[1.0em]`}>属性名</MethodTableLabel>
+            <MethodTableLabel className={`${headerClass} text-[1.0em]`}>属性值</MethodTableLabel>
+            <MethodTableLabel className={`${headerClass} text-[1.0em]`}>备注</MethodTableLabel>
           </div>
           <div className="space-y-0">
             {variableBlock.variables.map((variable, variableIndex) => (
@@ -1431,7 +1587,7 @@ function VariableRow({
           }
         }}
         readOnly={readOnly}
-        className={`${valueClass} min-h-10 text-[20px] text-[#aeb8ff]`}
+        className={`${valueClass} min-h-10 text-[1.15em] text-[#aeb8ff]`}
         focusName={rowFocusName}
       />
       <EplTypeInput
@@ -1439,7 +1595,7 @@ function VariableRow({
         onChange={value => onUpdate('type', value)}
         isDarkMode={isDarkMode}
         readOnly={readOnly}
-        className={`${valueClass} min-h-10 text-[18px]`}
+        className={`${valueClass} min-h-10 text-[1.0em]`}
         focusName={`${rowFocusName}-type`}
       />
       <CheckCell
@@ -1478,6 +1634,9 @@ function StatementRow({
   guides,
   isDarkMode,
   readOnly,
+  localVariables,
+  programVariables,
+  subprogramNames,
   onFocus,
   onUpdate,
   onInsert,
@@ -1490,6 +1649,9 @@ function StatementRow({
   guides: number[];
   isDarkMode: boolean;
   readOnly: boolean;
+  localVariables: string[];
+  programVariables: string[];
+  subprogramNames: string[];
   onFocus: () => void;
   onUpdate: (subprogramIndex: number, bodyIndex: number, value: string) => void;
   onInsert: (subprogramIndex: number, bodyIndex: number, indent: string) => void;
@@ -1502,29 +1664,77 @@ function StatementRow({
   return (
     <div className="relative flex h-7 items-center">
       <div className="relative h-full w-16 shrink-0">
-        {guides.map((colorIndex, depth) => {
-          const color = EPL_FLOW_GUIDE_COLORS[colorIndex % EPL_FLOW_GUIDE_COLORS.length];
-          return (
-            <span
-              key={`${statement.id}-${depth}`}
-              className="absolute top-[2px] bottom-[2px] w-[2px] rounded-full"
-              style={{
-                left: `${22 + depth * 12}px`,
-                backgroundColor: color,
-                boxShadow: `0 0 7px ${color}66`
-              }}
-            />
-          );
-        })}
         <span className={`absolute right-2 top-1/2 -translate-y-1/2 text-[11px] ${
           isDarkMode ? 'text-slate-600' : 'text-slate-400'
         }`}>{statement.sourceLine || ''}</span>
       </div>
-      <div style={{ width: indentWidth }} className="shrink-0" />
-      <input
+      <div style={{ width: indentWidth }} className="relative h-full shrink-0">
+        {guides.map((colorIndex, depth) => {
+          const color = EPL_FLOW_GUIDE_COLORS[colorIndex % EPL_FLOW_GUIDE_COLORS.length];
+          const maxDepth = Math.floor(indentWidth / 22);
+          const isParent = depth === maxDepth - 1;
+          const kind = getFlowControlKind(statement.text);
+
+          if (isParent) {
+            return (
+              <Fragment key={`${statement.id}-${depth}`}>
+                <span
+                  className="absolute"
+                  style={{
+                    left: `${depth * 22 + 10}px`,
+                    top: 0,
+                    bottom: kind === 'end' ? '50%' : 0,
+                    width: '2px',
+                    backgroundColor: color,
+                    boxShadow: `0 0 5px ${color}44`
+                  }}
+                />
+                <span
+                  className="absolute"
+                  style={{
+                    left: `${depth * 22 + 10}px`,
+                    right: 0,
+                    top: '50%',
+                    height: '2px',
+                    backgroundColor: color,
+                    transform: 'translateY(-50%)',
+                    boxShadow: `0 0 5px ${color}44`
+                  }}
+                />
+                <span
+                  className="absolute rounded-full"
+                  style={{
+                    left: `${depth * 22 + 8}px`,
+                    top: '50%',
+                    width: '6px',
+                    height: '6px',
+                    transform: 'translateY(-50%)',
+                    backgroundColor: color,
+                    boxShadow: `0 0 7px ${color}`
+                  }}
+                />
+              </Fragment>
+            );
+          } else if (depth < maxDepth) {
+            return (
+              <span
+                key={`${statement.id}-${depth}`}
+                className="absolute top-0 bottom-0"
+                style={{
+                  left: `${depth * 22 + 10}px`,
+                  width: '2px',
+                  backgroundColor: color,
+                  boxShadow: `0 0 5px ${color}44`
+                }}
+              />
+            );
+          }
+          return null;
+        })}
+      </div>
+      <StatementAutocompleteInput
         value={statement.text}
-        onFocus={onFocus}
-        onChange={event => onUpdate(subprogramIndex, bodyIndex, event.target.value)}
+        onChange={value => onUpdate(subprogramIndex, bodyIndex, value)}
         onKeyDown={event => {
           if (event.key === 'Enter') {
             event.preventDefault();
@@ -1540,8 +1750,307 @@ function StatementRow({
           }
         }}
         readOnly={readOnly}
-        data-epl-focus={`stmt-${subprogramIndex}-${bodyIndex}`}
+        focusName={`stmt-${subprogramIndex}-${bodyIndex}`}
         className={`h-7 min-w-[640px] flex-1 border-0 bg-transparent px-1 outline-none ${tone}`}
+        localVariables={localVariables}
+        programVariables={programVariables}
+        subprogramNames={subprogramNames}
+        isDarkMode={isDarkMode}
+      />
+    </div>
+  );
+}
+
+const EPL_AUTOCOMPLETE_KEYWORDS = [
+  { label: '如果', category: '流程控制', desc: '如果 (条件) ... 否则 ... 如果结束', aliases: ['rg', 'ruguo', 'if'] },
+  { label: '如果真', category: '流程控制', desc: '如果真 (条件) ... 如果真结束', aliases: ['rgz', 'ruguozhen', 'iftrue'] },
+  { label: '否则', category: '流程控制', desc: '如果/判断结构中的否则分支', aliases: ['fz', 'fouze', 'else'] },
+  { label: '否则如果', category: '流程控制', desc: '否则如果 (条件)', aliases: ['fzrg', 'fouzeruguo', 'elseif'] },
+  { label: '如果结束', category: '流程控制', desc: '结束如果/如果真块', aliases: ['rgjs', 'ruguojieshu', 'endif'] },
+  { label: '判断', category: '流程控制', desc: '多路分支判断结构', aliases: ['pd', 'panduan', 'switch'] },
+  { label: '判断结束', category: '流程控制', desc: '结束判断块', aliases: ['pdjs', 'panduanjieshu', 'endswitch'] },
+  { label: '判断循环首', category: '流程控制', desc: '判断循环首 (条件) ... 判断循环尾 ()', aliases: ['pdxhs', 'panduanxunhuanshou', 'while'] },
+  { label: '判断循环尾', category: '流程控制', desc: '判断循环的尾部', aliases: ['pdxhw', 'panduanxunhuanwei', 'endwhile'] },
+  { label: '循环判断首', category: '流程控制', desc: '循环判断首 () ... 循环判断尾 (条件)', aliases: ['xhpds', 'xunhuanpanduanshou', 'do'] },
+  { label: '循环判断尾', category: '流程控制', desc: '循环判断的尾部', aliases: ['xhpdw', 'xunhuanpanduanwei', 'loop'] },
+  { label: '计次循环首', category: '流程控制', desc: '计次循环首 (循环次数, [已循环次数变量])', aliases: ['jcxhs', 'jicixunhuanshou', 'for'] },
+  { label: '计次循环尾', category: '流程控制', desc: '计次循环的尾部', aliases: ['jcxhw', 'jicixunhuanwei', 'endfor'] },
+  { label: '变量循环首', category: '流程控制', desc: '变量循环首 (起始值, 目标值, 递增值, 循环变量)', aliases: ['blxhs', 'bianliangxunhuanshou'] },
+  { label: '变量循环尾', category: '流程控制', desc: '变量循环的尾部', aliases: ['blxhw', 'bianliangxunhuanwei'] },
+  { label: '返回', category: '基本命令', desc: '从子程序返回一个值', aliases: ['fh', 'fanhui', 'return'] },
+  { label: '结束', category: '基本命令', desc: '结束程序运行', aliases: ['js', 'jieshu', 'exit', 'end'] },
+  { label: '跳出循环', category: '流程控制', desc: '跳出当前循环体 (break)', aliases: ['tc', 'tiaochu', 'break'] },
+  { label: '到循环尾', category: '流程控制', desc: '跳转到当前循环的尾部 (continue)', aliases: ['dxhw', 'daoxunhuanwei', 'continue'] },
+  { label: '尝试', category: '流程控制', desc: '尝试捕获错误 (try)', aliases: ['cs', 'changshi', 'try'] },
+  { label: '捕获', category: '流程控制', desc: '捕获并处理错误 (catch)', aliases: ['bh', 'buhuo', 'catch'] },
+  { label: '信息框', category: '系统命令', desc: '信息框 (提示信息, 按钮及图标类型, [窗口标题])', aliases: ['xxk', 'xinxikuang', 'msgbox', 'messagebox'] },
+  { label: '调试输出', category: '系统命令', desc: '在调试窗口输出一行为文本', aliases: ['tssc', 'tiaoshishuchu', 'trace', 'print'] },
+  { label: '输出调试文本', category: '系统命令', desc: '输出调试文本 (内容)', aliases: ['sctswb', 'shuchutiaoshiwenben', 'log'] },
+  { label: '载入可视化设计', category: '系统命令', desc: '载入可视化设计 (关联设计文件)', aliases: ['zrkshsj', 'zairukeshihuasheji', 'loadlayout'] },
+  { label: '读取配置项', category: '文件命令', desc: '读取配置项 (配置文件名, 节点名, 项名)', aliases: ['dqpzx', 'duqupeizhixiang', 'getconfig'] },
+  { label: '取运行目录', category: '系统命令', desc: '获取当前程序运行的目录路径', aliases: ['qyxml', 'quyunxingmulu', 'getapppath'] }
+];
+
+function getAutocompleteQuery(text: string, cursorPosition: number): string {
+  const sub = text.slice(0, cursorPosition);
+  const match = sub.match(/[\u4e00-\u9fa5\w\d_.]+$/);
+  return match ? match[0] : '';
+}
+
+function getFlowControlKind(text: string): 'start' | 'end' | 'middle' | 'none' {
+  const body = text.trim();
+  if (/^\.?(如果真|如果|判断循环首|循环判断首|计次循环首|变量循环首|判断)(?:\s|$|[（(])/.test(body)) {
+    return 'start';
+  }
+  if (/^\.?(如果结束|判断结束|判断循环尾|循环判断尾|计次循环尾|变量循环尾)(?:\s|$|[（(])/.test(body)) {
+    return 'end';
+  }
+  if (/^\.?(否则如果|否则)(?:\s|$|[（(])/.test(body)) {
+    return 'middle';
+  }
+  return 'none';
+}
+
+function StatementAutocompleteInput({
+  value,
+  onChange,
+  onKeyDown,
+  readOnly,
+  focusName,
+  className,
+  localVariables,
+  programVariables,
+  subprogramNames,
+  isDarkMode
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
+  readOnly: boolean;
+  focusName?: string;
+  className?: string;
+  localVariables: string[];
+  programVariables: string[];
+  subprogramNames: string[];
+  isDarkMode: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [cursorPos, setCursorPos] = useState(0);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const query = useMemo(() => {
+    return getAutocompleteQuery(value, cursorPos);
+  }, [value, cursorPos]);
+
+  const suggestions = useMemo(() => {
+    if (!open || !query) return [];
+
+    const list = [];
+
+    localVariables.forEach(name => {
+      list.push({ label: name, category: '局部变量' });
+    });
+
+    programVariables.forEach(name => {
+      list.push({ label: name, category: '程序集变量' });
+    });
+
+    subprogramNames.forEach(name => {
+      list.push({ label: name, category: '子程序' });
+    });
+
+    EPL_AUTOCOMPLETE_KEYWORDS.forEach(kw => {
+      list.push(kw);
+    });
+
+    const normQuery = query.toLowerCase();
+    return list
+      .filter(item => {
+        const label = item.label.toLowerCase();
+        const aliases = item.aliases || [];
+        return label.includes(normQuery) || aliases.some(alias => alias.toLowerCase().includes(normQuery));
+      })
+      .slice(0, 10);
+  }, [open, query, localVariables, programVariables, subprogramNames]);
+
+  const handleSelectSuggestion = (suggestion) => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    const cursor = input.selectionStart ?? value.length;
+    const sub = value.slice(0, cursor);
+    const match = sub.match(/[\u4e00-\u9fa5\w\d_.]+$/);
+    
+    const needsParens = ['信息框', '调试输出', '输出调试文本', '如果', '如果真', '判断', '判断循环首', '循环判断首', '计次循环首', '变量循环首', '读取配置项'].includes(suggestion);
+    const insertText = needsParens ? suggestion + ' ()' : suggestion;
+
+    let newValue = value;
+    let newCursor = cursor;
+
+    if (match) {
+      const startPos = cursor - match[0].length;
+      newValue = value.slice(0, startPos) + insertText + value.slice(cursor);
+      newCursor = startPos + suggestion.length + (needsParens ? 2 : 0);
+    } else {
+      newValue = value.slice(0, cursor) + insertText + value.slice(cursor);
+      newCursor = cursor + suggestion.length + (needsParens ? 2 : 0);
+    }
+
+    onChange(newValue);
+    setOpen(false);
+
+    window.requestAnimationFrame(() => {
+      input.focus();
+      input.setSelectionRange(newCursor, newCursor);
+    });
+  };
+
+  const handleInputKeyDown = (event) => {
+    if (open && suggestions.length > 0) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setActiveIndex(index => Math.min(index + 1, suggestions.length - 1));
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setActiveIndex(index => Math.max(index - 1, 0));
+        return;
+      }
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        handleSelectSuggestion(suggestions[activeIndex].label);
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setOpen(false);
+        return;
+      }
+    }
+
+    onKeyDown(event);
+  };
+
+  const updateCursor = () => {
+    if (inputRef.current) {
+      setCursorPos(inputRef.current.selectionStart ?? 0);
+    }
+  };
+
+  return (
+    <div className="relative flex min-w-0 flex-1 items-stretch">
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={event => {
+          onChange(event.target.value);
+          setOpen(true);
+          setActiveIndex(0);
+          window.requestAnimationFrame(updateCursor);
+        }}
+        onFocus={() => {
+          setOpen(true);
+          window.requestAnimationFrame(updateCursor);
+        }}
+        onBlur={() => {
+          window.setTimeout(() => setOpen(false), 150);
+        }}
+        onClick={updateCursor}
+        onKeyUp={updateCursor}
+        onKeyDown={(event) => {
+          if (event.ctrlKey && event.key === '/') {
+            event.preventDefault();
+            const currentText = value.trim();
+            let nextValue = value;
+            if (currentText.startsWith('//')) {
+              nextValue = value.replace(/^\s*\/\/\s*/, '');
+            } else if (currentText.startsWith("'")) {
+              nextValue = value.replace(/^\s*'\s*/, '');
+            } else {
+              const match = value.match(/^\s*/);
+              const indent = match ? match[0] : '';
+              nextValue = `${indent}// ${value.trim()}`;
+            }
+            onChange(nextValue);
+            return;
+          }
+          handleInputKeyDown(event);
+        }}
+        readOnly={readOnly}
+        data-epl-focus={focusName}
+        style={{ fontSize: 'var(--editor-font-size)' }}
+        className={className}
+      />
+      {open && suggestions.length > 0 && (
+        <div className={`absolute left-2 top-full z-50 w-80 rounded-[2px] border py-1 shadow-xl max-h-60 overflow-y-auto ${
+          isDarkMode ? 'border-[#3a3a43] bg-[#24242b] text-slate-200' : 'border-slate-300 bg-white text-slate-800'
+        }`}>
+          {suggestions.map((suggestion, index) => (
+            <button
+              key={`${suggestion.category}-${suggestion.label}`}
+              type="button"
+              onMouseDown={event => {
+                event.preventDefault();
+                handleSelectSuggestion(suggestion.label);
+              }}
+              className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[12px] border-b border-dashed border-slate-700/10 last:border-b-0 ${
+                index === activeIndex 
+                  ? (isDarkMode ? 'bg-[#3b3b4a] text-blue-400' : 'bg-blue-50 text-blue-700') 
+                  : (isDarkMode ? 'hover:bg-[#2b2b33]' : 'hover:bg-slate-550')
+              }`}
+            >
+              <span className={`px-1 rounded-[2px] text-[10px] font-semibold tracking-wide shrink-0 ${
+                suggestion.category === '流程控制'
+                  ? 'bg-blue-500/20 text-blue-400'
+                  : suggestion.category === '系统命令' || suggestion.category === '基本命令'
+                    ? 'bg-emerald-500/20 text-emerald-400'
+                    : suggestion.category === '局部变量'
+                      ? 'bg-purple-500/20 text-purple-400'
+                      : 'bg-amber-500/20 text-amber-400'
+              }`}>
+                {suggestion.category}
+              </span>
+              <span className="font-semibold">{suggestion.label}</span>
+              {suggestion.desc && (
+                <span className="ml-auto text-[10px] text-slate-500 truncate max-w-[140px]">
+                  {suggestion.desc}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MethodNameCellInput({
+  value,
+  onChange,
+  readOnly,
+  className,
+  focusName,
+  onKeyDown
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  readOnly: boolean;
+  className: string;
+  focusName?: string;
+  onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void;
+}) {
+  return (
+    <div className={`flex min-w-0 items-stretch border-b border-r border-inherit ${className}`}>
+      <input
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        onKeyDown={onKeyDown}
+        readOnly={readOnly}
+        data-epl-focus={focusName}
+        style={{ fontSize: 'var(--editor-font-size)' }}
+        className="h-full w-full border-0 bg-transparent px-2 text-inherit outline-none focus:bg-blue-500/10"
       />
     </div>
   );
@@ -1570,6 +2079,7 @@ function TextCellInput({
         readOnly={readOnly}
         onKeyDown={onKeyDown}
         data-epl-focus={focusName}
+        style={{ fontSize: 'var(--editor-font-size)' }}
         className="min-h-7 w-full border-0 bg-transparent px-2 text-inherit outline-none focus:bg-blue-500/10"
       />
     </div>
@@ -1608,6 +2118,7 @@ function TextAreaCellInput({
         readOnly={readOnly}
         data-epl-focus={focusName}
         rows={2}
+        style={{ fontSize: 'var(--editor-font-size)' }}
         className="min-h-12 w-full resize-none overflow-hidden border-0 bg-transparent px-2 py-1 text-inherit leading-5 outline-none focus:bg-blue-500/10"
       />
     </div>
@@ -1631,9 +2142,19 @@ function EplTypeInput({
 }) {
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
-  const suggestions = useMemo(() => getEplTypeSuggestions(value), [value]);
+  const [localValue, setLocalValue] = useState(value);
+  const isFocused = useRef(false);
+
+  useEffect(() => {
+    if (!isFocused.current) {
+      setLocalValue(value);
+    }
+  }, [value]);
+
+  const suggestions = useMemo(() => getEplTypeSuggestions(localValue), [localValue]);
 
   const choose = (nextValue: string) => {
+    setLocalValue(nextValue);
     onChange(nextValue);
     setOpen(false);
   };
@@ -1641,14 +2162,25 @@ function EplTypeInput({
   return (
     <div className={`relative flex min-w-0 items-stretch border-b border-r border-inherit ${className}`}>
       <input
-        value={value}
+        value={localValue}
         onChange={event => {
-          onChange(event.target.value);
+          const val = event.target.value;
+          setLocalValue(val);
+          onChange(val);
           setOpen(true);
           setActiveIndex(0);
         }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+        onFocus={() => {
+          isFocused.current = true;
+          setOpen(true);
+        }}
+        onBlur={() => {
+          isFocused.current = false;
+          window.setTimeout(() => {
+            setOpen(false);
+            setLocalValue(value);
+          }, 120);
+        }}
         onKeyDown={event => {
           if (!open || suggestions.length === 0) return;
           if (event.key === 'ArrowDown') {
@@ -1659,13 +2191,14 @@ function EplTypeInput({
             setActiveIndex(index => Math.max(index - 1, 0));
           } else if (event.key === 'Enter') {
             event.preventDefault();
-            choose(suggestions[activeIndex]?.label || value);
+            choose(suggestions[activeIndex]?.label || localValue);
           } else if (event.key === 'Escape') {
             setOpen(false);
           }
         }}
         readOnly={readOnly}
         data-epl-focus={focusName}
+        style={{ fontSize: 'var(--editor-font-size)' }}
         className="min-h-7 w-full border-0 bg-transparent px-2 font-semibold text-inherit outline-none focus:bg-blue-500/10"
       />
       {open && !readOnly && suggestions.length > 0 && (
@@ -1680,7 +2213,7 @@ function EplTypeInput({
                 event.preventDefault();
                 choose(suggestion.label);
               }}
-              className={`flex h-7 w-full items-center gap-2 px-2 text-left text-[13px] ${
+              className={`flex h-7 w-full items-center gap-2 px-2 text-left text-[0.8em] ${
                 index === activeIndex ? 'bg-blue-100 text-blue-800' : 'hover:bg-slate-100'
               }`}
             >
@@ -1732,7 +2265,7 @@ function FoldMarker({
         event.stopPropagation();
         onToggle();
       }}
-      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[2px] text-[18px] leading-none transition-colors ${
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[2px] text-[1.0em] leading-none transition-colors ${
         isDarkMode
           ? 'text-slate-300 hover:bg-[#30303a] hover:text-white'
           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
@@ -1796,20 +2329,22 @@ function CheckCell({
   onToggle: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      disabled={readOnly}
-      title={title}
-      aria-label={title}
-      aria-pressed={checked}
-      data-epl-focus={focusName}
-      className={`flex h-full min-h-7 items-center justify-center border-b border-r border-inherit transition-colors disabled:cursor-not-allowed ${
-        isDarkMode ? 'bg-[#1e1e22] hover:bg-[#292933]' : 'bg-white hover:bg-slate-100'
-      }`}
-    >
-      {checked && <Check className="h-4 w-4 text-[#d7d7d7]" />}
-    </button>
+    <div className="flex items-stretch border-b border-r border-inherit">
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={readOnly}
+        title={title}
+        aria-label={title}
+        aria-pressed={checked}
+        data-epl-focus={focusName}
+        className={`flex h-full min-h-7 w-full items-center justify-center transition-colors disabled:cursor-not-allowed ${
+          isDarkMode ? 'bg-[#1e1e22] hover:bg-[#292933]' : 'bg-white hover:bg-slate-100'
+        }`}
+      >
+        {checked && <Check className="h-4 w-4 text-[#d7d7d7]" />}
+      </button>
+    </div>
   );
 }
 

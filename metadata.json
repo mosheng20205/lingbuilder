@@ -1,6 +1,0 @@
-{
-  "name": "C++ 汉化集成开发环境 (LingBuilder)",
-  "description": "专为 C++ 开发者与游戏汉化团队设计的 Visual Studio 式高对照文本对比与智能 AI 汉化集成开发工具。",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

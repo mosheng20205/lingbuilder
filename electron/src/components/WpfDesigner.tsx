@@ -49,6 +49,7 @@ import {
 import { LingControl, LingControlType, LingWindowModel, LingWindowProject } from '../services/windowDesigner/types';
 
 type InspectorTab = 'properties' | 'events' | 'modules';
+type ResizeDirection = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
 interface OpenControlEventCodeDetail {
   controlId: string;
@@ -168,9 +169,12 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
   const [isNativeBuilding, setIsNativeBuilding] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [resizeDirection, setResizeDirection] = useState<ResizeDirection>('se');
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [initialSize, setInitialSize] = useState({ width: 0, height: 0 });
   const [initialPos, setInitialPos] = useState({ x: 0, y: 0 });
+  const [initialControlPos, setInitialControlPos] = useState({ x: 0, y: 0 });
+  const [inspectorWidth, setInspectorWidth] = useState(300);
 
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -236,6 +240,63 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
     }));
   };
 
+  const startResizeInspector = (mouseDownEvent: React.MouseEvent) => {
+    mouseDownEvent.preventDefault();
+    const startX = mouseDownEvent.clientX;
+    const startWidth = inspectorWidth;
+
+    const doDrag = (mouseMoveEvent: MouseEvent) => {
+      const deltaX = mouseMoveEvent.clientX - startX;
+      setInspectorWidth(Math.max(240, Math.min(600, startWidth - deltaX)));
+    };
+
+    const stopDrag = () => {
+      document.removeEventListener('mousemove', doDrag);
+      document.removeEventListener('mouseup', stopDrag);
+    };
+
+    document.addEventListener('mousemove', doDrag);
+    document.addEventListener('mouseup', stopDrag);
+  };
+
+  const startResizeWindow = (mouseDownEvent: React.MouseEvent, direction: 'r' | 'b' | 'se') => {
+    mouseDownEvent.preventDefault();
+    mouseDownEvent.stopPropagation();
+    const startX = mouseDownEvent.clientX;
+    const startY = mouseDownEvent.clientY;
+    const startWidth = activeWindow.width;
+    const startHeight = activeWindow.height;
+
+    const doDrag = (mouseMoveEvent: MouseEvent) => {
+      const deltaX = mouseMoveEvent.clientX - startX;
+      const deltaY = mouseMoveEvent.clientY - startY;
+
+      let nextWidth = startWidth;
+      let nextHeight = startHeight;
+
+      if (direction === 'r' || direction === 'se') {
+        nextWidth = Math.max(300, Math.min(1920, startWidth + deltaX));
+      }
+      if (direction === 'b' || direction === 'se') {
+        nextHeight = Math.max(200, Math.min(1080, startHeight + deltaY));
+      }
+
+      updateActiveWindow(window => ({
+        ...window,
+        width: nextWidth,
+        height: nextHeight
+      }));
+    };
+
+    const stopDrag = () => {
+      document.removeEventListener('mousemove', doDrag);
+      document.removeEventListener('mouseup', stopDrag);
+    };
+
+    document.addEventListener('mousemove', doDrag);
+    document.addEventListener('mouseup', stopDrag);
+  };
+
   const updateSelectedControl = (updatedFields: Partial<LingControl>) => {
     if (!selectedControlId) return;
     updateActiveWindow(window => ({
@@ -254,6 +315,28 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
     setSelectedControlId(nextWindow.controls[0]?.id || null);
   };
 
+  const handleCanvasDoubleClick = (event: React.MouseEvent) => {
+    const target = event.target as HTMLElement;
+    const isBackground = target === canvasRef.current;
+    const isTitleBar = target.closest('.canvas-title-bar');
+    
+    if (isBackground || isTitleBar) {
+      const handlerName = `_${activeWindow.className}_创建完毕`;
+      const detail = {
+        controlId: activeWindow.id,
+        controlName: activeWindow.className,
+        controlContent: activeWindow.title,
+        controlType: 'Grid',
+        eventName: 'Loaded',
+        handlerName,
+        windowFileName: activeWindow.fileName,
+        windowTitle: activeWindow.title
+      };
+      window.dispatchEvent(new CustomEvent('open-control-event-code', { detail }));
+      addLog(`> [${new Date().toLocaleTimeString()}] 【事件代码】已定位窗体自身创建完毕事件：${handlerName}`);
+    }
+  };
+
   const handleAddWindow = () => {
     const nextWindow = createBlankWindow(project.windows.length + 1);
     setProject(prev => ({
@@ -263,6 +346,7 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
     setActiveWindowId(nextWindow.id);
     setSelectedControlId(nextWindow.controls[0]?.id || null);
     addLog(`> [${new Date().toLocaleTimeString()}] 【窗体设计】已创建新窗口：${nextWindow.fileName}，可继续拖拽控件并绑定中文事件。`);
+    window.dispatchEvent(new CustomEvent('window-added', { detail: nextWindow }));
   };
 
   const handleDeleteWindow = () => {
@@ -272,6 +356,7 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
     }
 
     const currentIndex = project.windows.findIndex(window => window.id === activeWindowId);
+    const deletedWindow = project.windows[currentIndex];
     const nextWindows = project.windows.filter(window => window.id !== activeWindowId);
     const nextWindow = nextWindows[Math.max(0, currentIndex - 1)] || nextWindows[0];
 
@@ -282,6 +367,7 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
     setActiveWindowId(nextWindow.id);
     setSelectedControlId(nextWindow.controls[0]?.id || null);
     addLog(`> [${new Date().toLocaleTimeString()}] 【窗体设计】已从窗口程序集中移除当前窗口。`);
+    window.dispatchEvent(new CustomEvent('window-deleted', { detail: deletedWindow }));
   };
 
   const handleDuplicateWindow = () => {
@@ -307,6 +393,7 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
     setActiveWindowId(clonedWindow.id);
     setSelectedControlId(clonedWindow.controls[0]?.id || null);
     addLog(`> [${new Date().toLocaleTimeString()}] 【窗体设计】已复制窗口：${clonedWindow.fileName}。`);
+    window.dispatchEvent(new CustomEvent('window-duplicated', { detail: clonedWindow }));
   };
 
   const handleAddControl = (type: LingControlType) => {
@@ -331,8 +418,9 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
     setSelectedControlId(null);
   };
 
-  const handleMouseDown = (event: React.MouseEvent, control: LingControl, action: 'drag' | 'resize') => {
+  const handleMouseDown = (event: React.MouseEvent, control: LingControl, action: 'drag' | ResizeDirection) => {
     event.stopPropagation();
+    event.preventDefault();
     setSelectedControlId(control.id);
 
     if (action === 'drag') {
@@ -345,8 +433,10 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
     }
 
     setIsResizing(true);
+    setResizeDirection(action);
     setInitialSize({ width: control.width, height: control.height });
     setInitialPos({ x: event.clientX, y: event.clientY });
+    setInitialControlPos({ x: control.x, y: control.y });
   };
 
   const handleControlDoubleClick = (event: React.MouseEvent, control: LingControl) => {
@@ -422,10 +512,42 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
       if (isResizing) {
         const deltaX = event.clientX - initialPos.x;
         const deltaY = event.clientY - initialPos.y;
-        const nextWidth = Math.max(20, Math.min(activeWindow.width - selectedControl.x, initialSize.width + deltaX));
-        const nextHeight = Math.max(15, Math.min(activeWindow.height - TITLE_BAR_HEIGHT - selectedControl.y, initialSize.height + deltaY));
+        const minWidth = 20;
+        const minHeight = 15;
+        const maxCanvasX = activeWindow.width;
+        const maxCanvasY = activeWindow.height - TITLE_BAR_HEIGHT;
+        const originalRight = initialControlPos.x + initialSize.width;
+        const originalBottom = initialControlPos.y + initialSize.height;
+        const hasWest = resizeDirection.includes('w');
+        const hasEast = resizeDirection.includes('e');
+        const hasNorth = resizeDirection.includes('n');
+        const hasSouth = resizeDirection.includes('s');
+        let nextX = initialControlPos.x;
+        let nextY = initialControlPos.y;
+        let nextWidth = initialSize.width;
+        let nextHeight = initialSize.height;
+
+        if (hasEast) {
+          nextWidth = Math.max(minWidth, Math.min(maxCanvasX - initialControlPos.x, initialSize.width + deltaX));
+        }
+
+        if (hasWest) {
+          nextX = Math.max(0, Math.min(originalRight - minWidth, initialControlPos.x + deltaX));
+          nextWidth = Math.max(minWidth, originalRight - nextX);
+        }
+
+        if (hasSouth) {
+          nextHeight = Math.max(minHeight, Math.min(maxCanvasY - initialControlPos.y, initialSize.height + deltaY));
+        }
+
+        if (hasNorth) {
+          nextY = Math.max(0, Math.min(originalBottom - minHeight, initialControlPos.y + deltaY));
+          nextHeight = Math.max(minHeight, originalBottom - nextY);
+        }
 
         updateSelectedControl({
+          x: Math.round(nextX / 5) * 5,
+          y: Math.round(nextY / 5) * 5,
           width: Math.round(nextWidth / 5) * 5,
           height: Math.round(nextHeight / 5) * 5
         });
@@ -435,6 +557,7 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
     const handleMouseUp = () => {
       setIsDragging(false);
       setIsResizing(false);
+      setResizeDirection('se');
     };
 
     if (isDragging || isResizing) {
@@ -450,9 +573,11 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
     activeWindow,
     dragOffset,
     initialPos,
+    initialControlPos,
     initialSize,
     isDragging,
     isResizing,
+    resizeDirection,
     selectedControl,
     selectedControlId
   ]);
@@ -702,28 +827,41 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
           <div className="text-[10px] text-slate-500 font-mono mb-2 uppercase select-none w-full flex justify-center">
             <div className="flex justify-between w-full" style={{ maxWidth: `${Math.max(560, activeWindow.width)}px` }}>
               <span>[{activeWindow.fileName} / {activeWindow.width} x {activeWindow.height}]</span>
-              <span>拖拽控件移动，拖动右下角调整尺寸</span>
+              <span>拖拽控件移动，拖动八向控制点调整尺寸</span>
             </div>
           </div>
 
           <div
             ref={canvasRef}
             id="wpf-design-canvas"
+            onDoubleClick={handleCanvasDoubleClick}
             className="relative rounded-lg shadow-2xl border-2 border-slate-700/60 overflow-hidden shrink-0 select-none"
             style={{
               width: `${activeWindow.width}px`,
               height: `${activeWindow.height}px`,
               backgroundColor: activeWindow.background,
-              backgroundImage: `
-                radial-gradient(circle, #33333e 1px, transparent 1px),
-                radial-gradient(circle, #33333e 1px, transparent 1px)
-              `,
-              backgroundSize: '20px 20px',
-              backgroundPosition: '0 0, 10px 10px'
+              backgroundImage: isDarkMode
+                ? 'radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.34) 0.85px, transparent 0.95px)'
+                : 'radial-gradient(circle at 1px 1px, rgba(71, 85, 105, 0.24) 0.85px, transparent 0.95px)',
+              backgroundSize: '12px 12px',
+              backgroundPosition: '0 0'
             }}
             onClick={() => setSelectedControlId(null)}
           >
-            <div className="h-7 bg-[#2D2D30] flex items-center justify-between px-3 text-slate-400 border-b border-slate-800 select-none">
+            {/* Window Resize Handles */}
+            <div
+              onMouseDown={e => startResizeWindow(e, 'r')}
+              className="absolute right-[-4px] top-0 w-[8px] h-full cursor-col-resize z-50 hover:bg-blue-500/20"
+            />
+            <div
+              onMouseDown={e => startResizeWindow(e, 'b')}
+              className="absolute left-0 bottom-[-4px] w-full h-[8px] cursor-row-resize z-50 hover:bg-blue-500/20"
+            />
+            <div
+              onMouseDown={e => startResizeWindow(e, 'se')}
+              className="absolute right-[-6px] bottom-[-6px] w-[12px] h-[12px] cursor-se-resize z-51 rounded-full bg-blue-500 border border-white hover:scale-125 transition-transform"
+            />
+            <div className="h-7 bg-[#2D2D30] flex items-center justify-between px-3 text-slate-400 border-b border-slate-800 select-none canvas-title-bar">
               <div className="flex items-center gap-1.5 text-[11px] font-sans font-medium text-slate-300 min-w-0">
                 <Monitor className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span className="truncate">{activeWindow.title}</span>
@@ -746,7 +884,15 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
         </div>
 
         <div
-          className={`w-72 flex flex-col shrink-0 select-none border-l ${
+          onMouseDown={startResizeInspector}
+          className={`w-[4px] cursor-col-resize hover:bg-blue-500/50 transition-colors shrink-0 z-10 ${
+            isDarkMode ? 'bg-[#2d2d34]' : 'bg-slate-200'
+          }`}
+          style={{ cursor: 'col-resize' }}
+        />
+        <div
+          style={{ width: `${inspectorWidth}px` }}
+          className={`flex flex-col shrink-0 select-none border-l ${
             isDarkMode ? 'bg-[#1a1a20] border-[#2d2d34]' : 'bg-slate-50 border-slate-200'
           }`}
         >
@@ -764,37 +910,30 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
               <IconTabButton active={activeInspectorTab === 'events'} isDarkMode={isDarkMode} onClick={() => setActiveInspectorTab('events')} title="事件">
                 <Zap className="w-3.5 h-3.5" />
               </IconTabButton>
-              <IconTabButton active={activeInspectorTab === 'modules'} isDarkMode={isDarkMode} onClick={() => setActiveInspectorTab('modules')} title="模块">
-                <Layers className="w-3.5 h-3.5" />
-              </IconTabButton>
             </div>
           </div>
 
-          {activeInspectorTab === 'modules' ? (
-            <ModuleInspector isDarkMode={isDarkMode} onAddLog={addLog} />
-          ) : (
-            <div className="flex-1 overflow-y-auto p-3 space-y-4">
-              {activeInspectorTab === 'properties' && (
-                <>
-                  <WindowProperties
-                    window={activeWindow}
-                    isDarkMode={isDarkMode}
-                    onChange={fields => updateActiveWindow(window => ({ ...window, ...fields }))}
-                  />
-                  <ControlProperties
-                    control={selectedControl}
-                    isDarkMode={isDarkMode}
-                    onChange={updateSelectedControl}
-                    onDelete={handleDeleteControl}
-                  />
-                </>
-              )}
+          <div className="flex-1 overflow-y-auto p-3 space-y-4">
+            {activeInspectorTab === 'properties' && (
+              <>
+                <WindowProperties
+                  window={activeWindow}
+                  isDarkMode={isDarkMode}
+                  onChange={fields => updateActiveWindow(window => ({ ...window, ...fields }))}
+                />
+                <ControlProperties
+                  control={selectedControl}
+                  isDarkMode={isDarkMode}
+                  onChange={updateSelectedControl}
+                  onDelete={handleDeleteControl}
+                />
+              </>
+            )}
 
-              {activeInspectorTab === 'events' && (
-                <ControlEvents control={selectedControl} isDarkMode={isDarkMode} onChange={updateSelectedControl} />
-              )}
-            </div>
-          )}
+            {activeInspectorTab === 'events' && (
+              <ControlEvents control={selectedControl} isDarkMode={isDarkMode} onChange={updateSelectedControl} />
+            )}
+          </div>
         </div>
       </div>
 
@@ -805,11 +944,26 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
 function renderControl(
   control: LingControl,
   isSelected: boolean,
-  handleMouseDown: (event: React.MouseEvent, control: LingControl, action: 'drag' | 'resize') => void,
+  handleMouseDown: (event: React.MouseEvent, control: LingControl, action: 'drag' | ResizeDirection) => void,
   setSelectedControlId: (id: string) => void,
   onOpenEventCode: (event: React.MouseEvent, control: LingControl) => void
 ) {
   const isCollapsed = control.visibility === 'Collapsed';
+  const resizeHandles: Array<{
+    direction: ResizeDirection;
+    className: string;
+    cursor: string;
+    title: string;
+  }> = [
+    { direction: 'nw', className: '-left-1.5 -top-1.5', cursor: 'cursor-nw-resize', title: '左上拉伸' },
+    { direction: 'n', className: 'left-1/2 -translate-x-1/2 -top-1.5', cursor: 'cursor-n-resize', title: '向上拉伸' },
+    { direction: 'ne', className: '-right-1.5 -top-1.5', cursor: 'cursor-ne-resize', title: '右上拉伸' },
+    { direction: 'e', className: '-right-1.5 top-1/2 -translate-y-1/2', cursor: 'cursor-e-resize', title: '向右拉伸' },
+    { direction: 'se', className: '-right-1.5 -bottom-1.5', cursor: 'cursor-se-resize', title: '右下拉伸' },
+    { direction: 's', className: 'left-1/2 -translate-x-1/2 -bottom-1.5', cursor: 'cursor-s-resize', title: '向下拉伸' },
+    { direction: 'sw', className: '-left-1.5 -bottom-1.5', cursor: 'cursor-sw-resize', title: '左下拉伸' },
+    { direction: 'w', className: '-left-1.5 top-1/2 -translate-y-1/2', cursor: 'cursor-w-resize', title: '向左拉伸' }
+  ];
 
   return (
     <div
@@ -939,12 +1093,72 @@ function renderControl(
       </div>
 
       {isSelected && (
-        <div
-          onMouseDown={event => handleMouseDown(event, control, 'resize')}
-          className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-amber-500 border border-slate-900 rounded-sm cursor-se-resize z-50 shadow"
-          title="拖动调整大小"
-        />
+        <>
+          {resizeHandles.map(handle => (
+            <div
+              key={handle.direction}
+              onMouseDown={event => handleMouseDown(event, control, handle.direction)}
+              className={`absolute h-3 w-3 rounded-[2px] border border-slate-950 bg-amber-400 shadow-[0_0_0_1px_rgba(255,255,255,0.3),0_0_10px_rgba(245,158,11,0.45)] z-50 ${handle.cursor} ${handle.className}`}
+              title={handle.title}
+            />
+          ))}
+        </>
       )}
+    </div>
+  );
+}
+
+function PropertyGroup({
+  title,
+  isDarkMode,
+  defaultOpen = true,
+  children
+}: {
+  title: string;
+  isDarkMode: boolean;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details
+      open={defaultOpen}
+      className={`overflow-hidden rounded border ${
+        isDarkMode ? 'border-[#30303a] bg-[#18181e]' : 'border-slate-200 bg-white'
+      }`}
+    >
+      <summary className={`flex h-7 cursor-pointer select-none items-center px-2 text-[10px] font-bold uppercase tracking-wide ${
+        isDarkMode ? 'bg-[#22222a] text-slate-300 hover:bg-[#292934]' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+      }`}>
+        {title}
+      </summary>
+      <div className={`divide-y ${isDarkMode ? 'divide-[#2b2b34]' : 'divide-slate-200'}`}>
+        {children}
+      </div>
+    </details>
+  );
+}
+
+function PropertyRow({
+  label,
+  isDarkMode,
+  children
+}: {
+  label: string;
+  isDarkMode: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`grid min-h-8 grid-cols-[40%_60%] items-stretch text-[11px] ${
+      isDarkMode ? 'text-slate-300' : 'text-slate-700'
+    }`}>
+      <span className={`flex items-center border-r px-2 font-medium ${
+        isDarkMode ? 'border-[#2b2b34] bg-[#202026] text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'
+      }`}>
+        {label}
+      </span>
+      <span className="flex min-w-0 items-center px-2 py-1">
+        {children}
+      </span>
     </div>
   );
 }
@@ -959,15 +1173,26 @@ function WindowProperties({
   onChange: (fields: Partial<LingWindowModel>) => void;
 }) {
   return (
-    <div className={`space-y-2 p-2 rounded border ${isDarkMode ? 'bg-slate-900/50 border-slate-800' : 'bg-white border-slate-200'}`}>
-      <div className="text-[10px] text-slate-500 font-bold uppercase">当前窗口</div>
-      <TextField label="窗口标题" value={window.title} isDarkMode={isDarkMode} onChange={value => onChange({ title: value })} />
-      <TextField label="类名" value={window.className} isDarkMode={isDarkMode} onChange={value => onChange({ className: value })} />
-      <TextField label="文件名" value={window.fileName} isDarkMode={isDarkMode} onChange={value => onChange({ fileName: value })} />
-      <div className="grid grid-cols-2 gap-2">
+    <div className="space-y-2">
+      <PropertyGroup title="当前窗口 / 布局" isDarkMode={isDarkMode}>
         <NumberField label="宽度" value={window.width} min={360} isDarkMode={isDarkMode} onChange={value => onChange({ width: value })} />
         <NumberField label="高度" value={window.height} min={240} isDarkMode={isDarkMode} onChange={value => onChange({ height: value })} />
-      </div>
+      </PropertyGroup>
+      <PropertyGroup title="当前窗口 / 外观" isDarkMode={isDarkMode}>
+        <TextField label="窗口标题" value={window.title} isDarkMode={isDarkMode} onChange={value => onChange({ title: value })} />
+        <TextField label="说明" value={window.description} isDarkMode={isDarkMode} onChange={value => onChange({ description: value })} />
+        <ColorField
+          label="背景颜色"
+          value={window.background}
+          isDarkMode={isDarkMode}
+          swatches={['#FFFFFF', '#F8FAFC', '#1E1E24', '#252526', '#0F172A', '#111827', '#1D4ED8', '#0F766E']}
+          onChange={value => onChange({ background: value })}
+        />
+      </PropertyGroup>
+      <PropertyGroup title="当前窗口 / 状态" isDarkMode={isDarkMode} defaultOpen={false}>
+        <TextField label="类名" value={window.className} isDarkMode={isDarkMode} onChange={value => onChange({ className: value })} />
+        <TextField label="文件名" value={window.fileName} isDarkMode={isDarkMode} onChange={value => onChange({ fileName: value })} />
+      </PropertyGroup>
     </div>
   );
 }
@@ -1008,94 +1233,86 @@ function ControlProperties({
   };
 
   return (
-    <div className="space-y-3">
-      <div className={`flex items-center justify-between p-2 rounded border ${isDarkMode ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'}`}>
-        <span className="text-[10px] text-slate-500 font-mono font-semibold uppercase">控件类型</span>
-        <span className="text-xs font-bold text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/10">
-          {CONTROL_LABELS[control.type]}
-        </span>
-      </div>
-
-      <TextField label="中文映射名称" value={control.name} isDarkMode={isDarkMode} onChange={handleNameChange} />
-      {control.type !== 'Grid' && (
-        <TextField label={control.type === 'ProgressBar' ? '当前进度值' : '显示内容'} value={control.content} isDarkMode={isDarkMode} onChange={value => onChange({ content: value })} />
-      )}
-
-      <div className={`grid grid-cols-2 gap-2 p-2 rounded border ${isDarkMode ? 'bg-[#22222a]/30 border-[#2d2d34]/40' : 'bg-white border-slate-200'}`}>
-        <NumberField label="宽度" value={control.width} min={20} isDarkMode={isDarkMode} onChange={value => onChange({ width: value })} />
-        <NumberField label="高度" value={control.height} min={15} isDarkMode={isDarkMode} onChange={value => onChange({ height: value })} />
+    <div className="space-y-2">
+      <PropertyGroup title="控件 / 布局" isDarkMode={isDarkMode}>
         <NumberField label="左距" value={control.x} min={0} isDarkMode={isDarkMode} onChange={value => onChange({ x: value })} />
         <NumberField label="顶距" value={control.y} min={0} isDarkMode={isDarkMode} onChange={value => onChange({ y: value })} />
-      </div>
+        <NumberField label="宽度" value={control.width} min={20} isDarkMode={isDarkMode} onChange={value => onChange({ width: value })} />
+        <NumberField label="高度" value={control.height} min={15} isDarkMode={isDarkMode} onChange={value => onChange({ height: value })} />
+      </PropertyGroup>
 
-      <div className={`space-y-2 p-2 rounded border ${isDarkMode ? 'bg-[#22222a]/30 border-[#2d2d34]/40' : 'bg-white border-slate-200'}`}>
-        <label className="text-[10px] text-slate-500 font-semibold block uppercase">字体大小</label>
-        <input
-          type="range"
-          min="9"
-          max="32"
-          value={control.fontSize}
-          onChange={event => onChange({ fontSize: parseInt(event.target.value) })}
-          className="w-full accent-amber-500 cursor-pointer h-1.5 bg-[#24242b] rounded-lg appearance-none"
+      <PropertyGroup title="控件 / 外观" isDarkMode={isDarkMode}>
+        <PropertyRow label="控件类型" isDarkMode={isDarkMode}>
+          <span className="rounded border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[11px] font-bold text-amber-500">
+            {CONTROL_LABELS[control.type]}
+          </span>
+        </PropertyRow>
+        <TextField label="中文名称" value={control.name} isDarkMode={isDarkMode} onChange={handleNameChange} />
+        {control.type !== 'Grid' && (
+          <TextField label={control.type === 'ProgressBar' ? '进度值' : '显示内容'} value={control.content} isDarkMode={isDarkMode} onChange={value => onChange({ content: value })} />
+        )}
+        <PropertyRow label="字体大小" isDarkMode={isDarkMode}>
+          <div className="flex w-full items-center gap-2">
+            <input
+              type="range"
+              min="9"
+              max="32"
+              value={control.fontSize}
+              onChange={event => onChange({ fontSize: parseInt(event.target.value, 10) })}
+              className="h-1.5 min-w-0 flex-1 cursor-pointer appearance-none rounded-lg bg-[#24242b] accent-amber-500"
+              aria-label="字体大小"
+            />
+            <span className="w-10 text-right font-mono text-[10px] text-slate-500">{control.fontSize}px</span>
+          </div>
+        </PropertyRow>
+        <ColorField
+          label="文字颜色"
+          value={control.foreground}
+          isDarkMode={isDarkMode}
+          swatches={['#FFFFFF', '#CCCCCC', '#AAAAAA', '#73C991', '#4FC1FF', '#FFD166', '#FF6B6B', '#111827']}
+          onChange={value => onChange({ foreground: value })}
         />
-        <div className="flex justify-between text-[9px] text-slate-500 font-mono">
-          <span>9px</span>
-          <span>当前: {control.fontSize}px</span>
-          <span>32px</span>
-        </div>
-      </div>
+        <ColorField
+          label="背景颜色"
+          value={control.background}
+          isDarkMode={isDarkMode}
+          swatches={['transparent', '#1E1E24', '#2D2D30', '#007ACC', '#2e7d32', '#3E3E40', '#4a148c', '#111111']}
+          onChange={value => onChange({ background: value })}
+        />
+      </PropertyGroup>
 
-      <div className={`space-y-2 p-2 rounded border ${isDarkMode ? 'bg-[#22222a]/30 border-[#2d2d34]/40' : 'bg-white border-slate-200'}`}>
-        <div className="space-y-2">
-          <label className="text-[10px] text-slate-500 font-semibold flex items-center gap-1">
-            <Palette className="w-3 h-3 text-cyan-400" />
-            <span>颜色</span>
-          </label>
-          <ColorField
-            label="文字颜色"
-            value={control.foreground}
-            isDarkMode={isDarkMode}
-            swatches={['#FFFFFF', '#CCCCCC', '#AAAAAA', '#73C991', '#4FC1FF', '#FFD166', '#FF6B6B', '#111827']}
-            onChange={value => onChange({ foreground: value })}
+      <PropertyGroup title="控件 / 状态" isDarkMode={isDarkMode}>
+        <PropertyRow label="启用" isDarkMode={isDarkMode}>
+          <input
+            type="checkbox"
+            checked={control.isEnabled}
+            onChange={event => onChange({ isEnabled: event.target.checked })}
+            className="h-4 w-4 cursor-pointer accent-emerald-500"
+            aria-label="启用控件"
           />
-          <ColorField
-            label="背景颜色"
-            value={control.background}
-            isDarkMode={isDarkMode}
-            swatches={['transparent', '#1E1E24', '#2D2D30', '#007ACC', '#2e7d32', '#3E3E40', '#4a148c', '#111111']}
-            onChange={value => onChange({ background: value })}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2.5">
-        <label className="text-[10px] text-slate-500 font-semibold block uppercase">状态</label>
-        <label className={`flex items-center justify-between text-xs ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-          <span>启用控件</span>
-          <input type="checkbox" checked={control.isEnabled} onChange={event => onChange({ isEnabled: event.target.checked })} className="accent-emerald-500 w-4 h-4 cursor-pointer" />
-        </label>
-        <div className={`flex items-center justify-between text-xs gap-2 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-          <span>可见性</span>
+        </PropertyRow>
+        <PropertyRow label="可见性" isDarkMode={isDarkMode}>
           <select
             value={control.visibility}
             onChange={event => onChange({ visibility: event.target.value as LingControl['visibility'] })}
-            className={`border rounded text-xs px-2 py-0.5 focus:outline-none ${
-              isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300' : 'bg-white border-slate-300 text-slate-800'
+            className={`w-full rounded border px-2 py-0.5 text-xs focus:outline-none focus:border-amber-500 ${
+              isDarkMode ? 'bg-[#24242b] border-[#3c3c44] text-slate-300' : 'bg-white border-slate-300 text-slate-800'
             }`}
           >
             <option value="Visible">显示</option>
             <option value="Collapsed">隐藏</option>
           </select>
+        </PropertyRow>
+        <div className="p-2">
+          <button
+            onClick={onDelete}
+            className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded border border-red-900/30 bg-red-950/30 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-900/35 hover:text-red-300"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>删除此控件</span>
+          </button>
         </div>
-      </div>
-
-      <button
-        onClick={onDelete}
-        className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-red-950/30 hover:bg-red-900/35 text-red-400 hover:text-red-300 rounded border border-red-900/30 text-xs transition-colors cursor-pointer"
-      >
-        <Trash2 className="w-3.5 h-3.5" />
-        <span>删除此控件</span>
-      </button>
+      </PropertyGroup>
     </div>
   );
 }
@@ -1173,17 +1390,16 @@ function TextField({
   onChange: (value: string) => void;
 }) {
   return (
-    <label className="space-y-1 block">
-      <span className="text-[10px] text-slate-500 font-semibold block uppercase">{label}</span>
+    <PropertyRow label={label} isDarkMode={isDarkMode}>
       <input
         type="text"
         value={value}
         onChange={event => onChange(event.target.value)}
-        className={`w-full border rounded px-2.5 py-1 text-xs focus:outline-none focus:border-amber-500 ${
-          isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-200' : 'bg-white border-slate-300 text-slate-800'
+        className={`w-full rounded border px-2 py-0.5 text-xs focus:outline-none focus:border-amber-500 ${
+          isDarkMode ? 'bg-[#24242b] border-[#3c3c44] text-slate-200' : 'bg-white border-slate-300 text-slate-800'
         }`}
       />
-    </label>
+    </PropertyRow>
   );
 }
 
@@ -1201,17 +1417,16 @@ function NumberField({
   onChange: (value: number) => void;
 }) {
   return (
-    <label className="space-y-1 block">
-      <span className="text-[9px] text-slate-500 block uppercase font-semibold">{label}</span>
+    <PropertyRow label={label} isDarkMode={isDarkMode}>
       <input
         type="number"
         value={value}
-        onChange={event => onChange(Math.max(min, parseInt(event.target.value) || min))}
-        className={`w-full border rounded px-2 py-0.5 text-xs focus:outline-none ${
+        onChange={event => onChange(Math.max(min, parseInt(event.target.value, 10) || min))}
+        className={`w-full rounded border px-2 py-0.5 text-xs focus:outline-none focus:border-amber-500 ${
           isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44] text-slate-200' : 'bg-white border-slate-300 text-slate-800'
         }`}
       />
-    </label>
+    </PropertyRow>
   );
 }
 
@@ -1231,51 +1446,48 @@ function ColorField({
   const normalizedValue = /^#[0-9a-fA-F]{6}$/.test(value) ? value : '#1E1E24';
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[9px] text-slate-500 block uppercase font-semibold">{label}</span>
+    <PropertyRow label={label} isDarkMode={isDarkMode}>
+      <div className="flex min-w-0 flex-col gap-1.5">
         <div className="flex items-center gap-1.5">
-          {value === 'transparent' && (
-            <span className="text-[9px] text-slate-500 font-mono">transparent</span>
-          )}
           <input
             type="color"
             value={normalizedValue}
             onChange={event => onChange(event.target.value)}
-            className="w-6 h-5 p-0 border border-slate-600/50 rounded bg-transparent cursor-pointer"
+            className="h-5 w-6 cursor-pointer rounded border border-slate-600/50 bg-transparent p-0"
             aria-label={`设置${label}`}
           />
+          <span className="truncate font-mono text-[9px] text-slate-500">{value}</span>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {swatches.map(color => (
+            <button
+              key={color}
+              type="button"
+              onClick={() => onChange(color)}
+              className={`relative h-5 w-5 shrink-0 cursor-pointer rounded-full border transition-transform hover:scale-110 ${
+                value === color
+                  ? 'border-amber-400 ring-1 ring-amber-400/70'
+                  : isDarkMode ? 'border-slate-600/50' : 'border-slate-300'
+              }`}
+              style={{
+                backgroundColor: color === 'transparent' ? 'transparent' : color,
+                backgroundImage: color === 'transparent'
+                  ? 'linear-gradient(45deg, #64748b 25%, transparent 25%), linear-gradient(-45deg, #64748b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #64748b 75%), linear-gradient(-45deg, transparent 75%, #64748b 75%)'
+                  : undefined,
+                backgroundSize: color === 'transparent' ? '8px 8px' : undefined,
+                backgroundPosition: color === 'transparent' ? '0 0, 0 4px, 4px -4px, -4px 0px' : undefined
+              }}
+              title={color}
+              aria-label={`设置${label} ${color}`}
+            >
+              {value === color && (
+                <span className="absolute inset-0 flex items-center justify-center text-[8px] text-white drop-shadow">✓</span>
+              )}
+            </button>
+          ))}
         </div>
       </div>
-      <div className="flex flex-wrap gap-1">
-        {swatches.map(color => (
-          <button
-            key={color}
-            type="button"
-            onClick={() => onChange(color)}
-            className={`w-5 h-5 rounded-full border cursor-pointer hover:scale-110 transition-transform relative shrink-0 ${
-              value === color
-                ? 'border-amber-400 ring-1 ring-amber-400/70'
-                : isDarkMode ? 'border-slate-600/50' : 'border-slate-300'
-            }`}
-            style={{
-              backgroundColor: color === 'transparent' ? 'transparent' : color,
-              backgroundImage: color === 'transparent'
-                ? 'linear-gradient(45deg, #64748b 25%, transparent 25%), linear-gradient(-45deg, #64748b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #64748b 75%), linear-gradient(-45deg, transparent 75%, #64748b 75%)'
-                : undefined,
-              backgroundSize: color === 'transparent' ? '8px 8px' : undefined,
-              backgroundPosition: color === 'transparent' ? '0 0, 0 4px, 4px -4px, -4px 0px' : undefined
-            }}
-            title={color}
-            aria-label={`设置${label} ${color}`}
-          >
-            {value === color && (
-              <span className="absolute inset-0 flex items-center justify-center text-[8px] text-white drop-shadow">✓</span>
-            )}
-          </button>
-        ))}
-      </div>
-    </div>
+    </PropertyRow>
   );
 }
 
