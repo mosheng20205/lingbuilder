@@ -257,10 +257,17 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     });
     const buildRoot = path.join(process.cwd(), ".lingbuilder-build");
     const buildDir = path.join(buildRoot, sanitizeFilename(project.id || "window-preview"));
+    const sourceDir = path.join(buildDir, "src");
+    const binDir = path.join(buildDir, "bin");
+    const objDir = path.join(buildDir, "obj");
 
-    await fs.mkdir(buildDir, { recursive: true });
+    await Promise.all([
+      fs.mkdir(sourceDir, { recursive: true }),
+      fs.mkdir(binDir, { recursive: true }),
+      fs.mkdir(objDir, { recursive: true })
+    ]);
     await Promise.all(generatedProject.files.map(file => {
-      const targetPath = path.join(buildDir, file.relativePath);
+      const targetPath = path.join(sourceDir, file.relativePath);
       return fs.writeFile(targetPath, file.content, "utf8");
     }));
 
@@ -270,7 +277,10 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         ok: false,
         stage: "compiler",
         buildDir,
-        files: generatedProject.files.map(file => path.join(buildDir, file.relativePath)),
+        sourceDir,
+        binDir,
+        objDir,
+        files: generatedProject.files.map(file => path.join(sourceDir, file.relativePath)),
         logs: [
           "已生成 Win32 C++ 工程文件。",
           "未检测到可用 C++ 编译器。请安装 Visual Studio Build Tools、MinGW g++ 或 LLVM clang++ 后重试。",
@@ -279,11 +289,14 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       });
     }
 
-    const sourcePath = path.join(buildDir, "main.cpp");
-    const exePath = path.join(buildDir, "LingBuilderPreview.exe");
-    const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, buildDir);
+    const sourcePath = path.join(sourceDir, "main.cpp");
+    const exePath = path.join(binDir, "LingBuilderPreview.exe");
+    const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir);
     const logs = [
       `已生成 Win32 C++ 工程：${buildDir}`,
+      `C++ 源码目录：${sourceDir}`,
+      `exe 输出目录：${binDir}`,
+      `中间文件目录：${objDir}`,
       `当前窗口：${generatedProject.selectedWindow.title}`,
       `编译器：${compiler.kind} (${compiler.command})`,
       ...compileResult.logs
@@ -294,6 +307,9 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         ok: false,
         stage: "compile",
         buildDir,
+        sourceDir,
+        binDir,
+        objDir,
         exePath,
         compiler,
         logs
@@ -303,7 +319,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     if (run) {
       try {
         const child = spawn(exePath, [], {
-          cwd: buildDir,
+          cwd: binDir,
           detached: true,
           stdio: "ignore",
           windowsHide: false
@@ -319,6 +335,9 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       ok: true,
       stage: "run",
       buildDir,
+      sourceDir,
+      binDir,
+      objDir,
       exePath,
       compiler,
       logs
@@ -430,8 +449,10 @@ async function compileWin32Preview(
   compiler: CompilerInfo,
   sourcePath: string,
   exePath: string,
+  objDir: string,
   cwd: string
 ): Promise<{ ok: boolean; logs: string[] }> {
+  const objectPath = path.join(objDir, "main.obj");
   const commandArgs = compiler.kind === "msvc"
     ? [
         "/nologo",
@@ -441,6 +462,7 @@ async function compileWin32Preview(
         "/DUNICODE",
         "/D_UNICODE",
         sourcePath,
+        "/Fo:" + objectPath,
         "/Fe:" + exePath,
         "user32.lib",
         "gdi32.lib",
@@ -450,16 +472,25 @@ async function compileWin32Preview(
         "-municode",
         "-std=c++17",
         "-finput-charset=UTF-8",
-        "-fexec-charset=UTF-8",
-        "-DUNICODE",
-        "-D_UNICODE",
-        sourcePath,
-        "-o",
-        exePath,
-        "-luser32",
-        "-lgdi32",
-        "-lcomctl32"
-      ];
+      "-fexec-charset=UTF-8",
+      "-DUNICODE",
+      "-D_UNICODE",
+      "-c",
+      sourcePath,
+      "-o",
+      objectPath
+    ];
+  const linkArgs = compiler.kind === "msvc"
+    ? []
+    : [
+      "-municode",
+      objectPath,
+      "-o",
+      exePath,
+      "-luser32",
+      "-lgdi32",
+      "-lcomctl32"
+    ];
 
   try {
     const command = compiler.kind === "msvc" && compiler.setupBatch ? "cmd.exe" : compiler.command;
@@ -467,20 +498,30 @@ async function compileWin32Preview(
       ? ["/d", "/c", `call ${quoteCmdArg(compiler.setupBatch)} >nul && ${compiler.command} ${commandArgs.map(quoteCmdArg).join(" ")}`]
       : commandArgs;
 
-    const result = await execFileAsync(command, args, {
+    const compileResult = await execFileAsync(command, args, {
       cwd,
       timeout: 60000,
       windowsHide: true,
       windowsVerbatimArguments: command === "cmd.exe",
       maxBuffer: 1024 * 1024 * 4
     });
+    const linkResult = linkArgs.length > 0
+      ? await execFileAsync(compiler.command, linkArgs, {
+          cwd,
+          timeout: 60000,
+          windowsHide: true,
+          maxBuffer: 1024 * 1024 * 4
+        })
+      : undefined;
 
     return {
       ok: true,
       logs: [
         "编译成功。",
-        result.stdout?.trim() ? `stdout:\n${result.stdout.trim()}` : "",
-        result.stderr?.trim() ? `stderr:\n${result.stderr.trim()}` : ""
+        compileResult.stdout?.trim() ? `stdout:\n${compileResult.stdout.trim()}` : "",
+        compileResult.stderr?.trim() ? `stderr:\n${compileResult.stderr.trim()}` : "",
+        linkResult?.stdout?.trim() ? `link stdout:\n${linkResult.stdout.trim()}` : "",
+        linkResult?.stderr?.trim() ? `link stderr:\n${linkResult.stderr.trim()}` : ""
       ].filter(Boolean)
     };
   } catch (error: any) {
