@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Brain, Sparkles, Send, RefreshCw, Cpu, Check, AlertTriangle, ShieldCheck } from 'lucide-react';
-import { ExtractedString, GlossaryTerm } from '../types';
+import { AppliedWorkspaceFile, ExtractedString, GlossaryTerm, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
 
 interface AiAssistantProps {
   strings: ExtractedString[];
@@ -8,6 +8,10 @@ interface AiAssistantProps {
   onBatchTranslate: (translations: { id: string; translated: string }[]) => void;
   onSetStatus: (id: string, status: 'translated' | 'skipped' | 'pending') => void;
   filePath: string;
+  sourceCode: string;
+  activeLanguage: string;
+  workspaceFiles: WorkspaceFileSnapshot[];
+  onApplyWorkspaceEdit?: (proposal: WorkspaceEditProposal, appliedFiles: AppliedWorkspaceFile[]) => void;
   isDarkMode?: boolean;
 }
 
@@ -25,6 +29,10 @@ export default function AiAssistant({
   onBatchTranslate,
   onSetStatus,
   filePath,
+  sourceCode,
+  activeLanguage,
+  workspaceFiles,
+  onApplyWorkspaceEdit,
   isDarkMode = true
 }: AiAssistantProps) {
   const [model, setModel] = useState('gemini-3.5-flash');
@@ -41,12 +49,18 @@ export default function AiAssistant({
     }
   ]);
   const [isAiResponding, setIsAiResponding] = useState(false);
+  const [editProposal, setEditProposal] = useState<WorkspaceEditProposal | null>(null);
+  const isLingCppFile = activeLanguage === 'lingcpp' || filePath.endsWith('.lcpp');
 
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatHistory, isAiResponding]);
+
+  useEffect(() => {
+    setEditProposal(null);
+  }, [filePath]);
 
   // Handle one-click AI translation
   const handleBatchAiTranslate = async () => {
@@ -142,6 +156,37 @@ export default function AiAssistant({
     setIsAiResponding(true);
 
     try {
+      if (isLingCppFile) {
+        const response = await fetch('/api/lingcpp/edit/propose', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            filePath,
+            sourceCode,
+            instruction: userMsg.text,
+            workspaceFiles
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('中文 C++ 编辑提案生成失败');
+        }
+
+        const data = await response.json();
+        const proposal = data.proposal as WorkspaceEditProposal;
+        setEditProposal(proposal);
+        setChatHistory(prev => [
+          ...prev,
+          {
+            id: Math.random().toString(),
+            sender: 'ai',
+            text: `已生成一份可预览的工作区编辑提案：${proposal.summary}\n\n本次涉及 ${proposal.changes.length} 个文件，请在下方预览差异后选择“应用提案”或“拒绝提案”。`,
+            timestamp: new Date().toLocaleTimeString()
+          }
+        ]);
+        return;
+      }
+
       // Build a contextual prompt about the current file's strings
       const fileContext = strings.slice(0, 10).map(s => `- ID: ${s.id}, 原文: "${s.original}"`).join('\n');
       const prompt = `您是 C++ 编程与代码映射专家。以下是当前文件 ${filePath} 中提取的部分字符串（仅供参考）：\n${fileContext}\n\n用户提问：${userMsg.text}\n\n请针对用户的中文代码映射或 C++ 语法问题，进行专业解答。如果涉及代码，请用 Markdown 代码块返回，以便用户拷贝。`;
@@ -183,6 +228,53 @@ export default function AiAssistant({
     } finally {
       setIsAiResponding(false);
     }
+  };
+
+  const handleApplyProposal = async () => {
+    if (!editProposal || !onApplyWorkspaceEdit) return;
+    const response = await fetch('/api/lingcpp/edit/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        proposalId: editProposal.id,
+        sourceCode,
+        workspaceFiles
+      })
+    });
+    if (!response.ok) return;
+    const data = await response.json();
+    const appliedFiles = (data.appliedFiles || []) as AppliedWorkspaceFile[];
+    onApplyWorkspaceEdit(editProposal, appliedFiles);
+    const changedFileList = editProposal.changes.map(change => change.filePath).join('、');
+    setChatHistory(prev => [
+      ...prev,
+      {
+        id: Math.random().toString(),
+        sender: 'ai',
+        text: `已应用该工作区编辑提案，改动已写回：${changedFileList}。`,
+        timestamp: new Date().toLocaleTimeString()
+      }
+    ]);
+    setEditProposal(null);
+  };
+
+  const handleRejectProposal = async () => {
+    if (!editProposal) return;
+    await fetch('/api/lingcpp/edit/reject', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ proposalId: editProposal.id })
+    });
+    setChatHistory(prev => [
+      ...prev,
+      {
+        id: Math.random().toString(),
+        sender: 'ai',
+        text: '已拒绝当前中文 C++ 编辑提案，源文件未发生变化。',
+        timestamp: new Date().toLocaleTimeString()
+      }
+    ]);
+    setEditProposal(null);
   };
 
   const getPendingCount = () => strings.filter(s => s.status === 'pending').length;
@@ -248,7 +340,7 @@ export default function AiAssistant({
 
         <button
           onClick={handleBatchAiTranslate}
-          disabled={isTranslating || strings.length === 0}
+          disabled={isTranslating || strings.length === 0 || isLingCppFile}
           className="w-full flex items-center justify-center gap-2 bg-[#2563eb] hover:bg-blue-600 text-white font-bold py-2 rounded text-xs transition-all cursor-pointer disabled:opacity-50 select-none shadow-md"
         >
           {isTranslating ? (
@@ -269,6 +361,13 @@ export default function AiAssistant({
             <div className="h-full bg-blue-500 transition-all duration-300" style={{ width: `${translationProgress}%` }}></div>
           </div>
         )}
+        {isLingCppFile && (
+          <div className={`mt-2 rounded border px-2.5 py-2 text-[10px] leading-relaxed ${
+            isDarkMode ? 'border-[#343442] bg-[#202028] text-slate-400' : 'border-slate-200 bg-white text-slate-600'
+          }`}>
+            当前为 `.lcpp` 中文 C++ 源码，AI 在本面板中默认生成“可预览工作区提案”，不会直接静默改写文件。
+          </div>
+        )}
       </div>
 
       {/* Security Credentials info indicator (In compliance with standard instructions) */}
@@ -281,6 +380,56 @@ export default function AiAssistant({
         <span>已通过 Google AI Studio Secrets 安全连接 to Gemini AI</span>
       </div>
 
+      {editProposal && (
+        <div className={`border-b p-3 shrink-0 ${
+          isDarkMode ? 'border-[#2d2d34] bg-[#181a22]' : 'border-slate-200 bg-slate-50'
+        }`}>
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div>
+              <div className={`text-[11px] font-semibold ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>{editProposal.title}</div>
+              <div className="text-[10px] text-slate-500">{editProposal.summary}</div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleApplyProposal}
+                className="px-2 py-1 rounded bg-emerald-600 text-white text-[10px] font-semibold hover:bg-emerald-500"
+              >
+                应用提案
+              </button>
+              <button
+                onClick={handleRejectProposal}
+                className={`px-2 py-1 rounded text-[10px] font-semibold ${
+                  isDarkMode ? 'bg-[#2a2a34] text-slate-300 hover:bg-[#353542]' : 'bg-white text-slate-700 border border-slate-300'
+                }`}
+              >
+                拒绝提案
+              </button>
+            </div>
+          </div>
+          <div className={`rounded border p-2 text-[10px] font-mono whitespace-pre-wrap ${
+            isDarkMode ? 'border-[#343442] bg-[#11131a] text-slate-300' : 'border-slate-200 bg-white text-slate-700'
+          }`}>
+            <div className="text-slate-400 mb-2">{editProposal.explanation}</div>
+            <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
+              {editProposal.changes.map((change, index) => (
+                <div
+                  key={`${change.filePath}-${index}`}
+                  className={`rounded border p-2 ${
+                    isDarkMode ? 'border-[#2a3240] bg-[#151821]' : 'border-slate-200 bg-slate-50/80'
+                  }`}
+                >
+                  <div className="text-[10px] text-blue-400 mb-2">{change.filePath}</div>
+                  <div className="text-amber-500 mb-1">原文</div>
+                  <div>{change.originalText || '(空)'}</div>
+                  <div className="text-emerald-500 mt-3 mb-1">新文</div>
+                  <div>{change.newText || '(空)'}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Conversation Area */}
       <div className="flex-1 flex flex-col min-h-0">
         <div 
@@ -288,7 +437,7 @@ export default function AiAssistant({
             isDarkMode ? 'border-[#2d2d34] bg-[#1a1a20]/15' : 'border-slate-200 bg-slate-50/50'
           }`}
         >
-          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">AI 编程与代码生成助手</span>
+             <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider block">{isLingCppFile ? 'AI 中文 C++ 编辑助手' : 'AI 编程与代码生成助手'}</span>
         </div>
 
         {/* Chat History scroll panel */}
@@ -336,7 +485,7 @@ export default function AiAssistant({
         >
           <input
             type="text"
-            placeholder="问AI关于C++中文编程的问题..."
+            placeholder={isLingCppFile ? '描述你想让 AI 如何修改当前 .lcpp 文件或相关工作区文件...' : '问AI关于C++中文编程的问题...'}
             value={chatInput}
             onChange={e => setChatInput(e.target.value)}
             disabled={isAiResponding}

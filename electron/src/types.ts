@@ -17,7 +17,7 @@ export interface GlossaryTerm {
 export interface CppFile {
   path: string;
   name: string;
-  language: 'cpp' | 'header' | 'resource' | 'ini' | 'epl';
+  language: 'cpp' | 'header' | 'resource' | 'ini' | 'epl' | 'lingcpp';
   originalContent: string;
   translatedContent: string;
   strings: ExtractedString[];
@@ -74,4 +74,51 @@ export interface DesignerGeneratedPanelData {
   manifestCode: string;
   logs: string[];
   isBuilding: boolean;
+}
+
+export interface WorkspaceEditRange {
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+}
+
+export interface WorkspaceEditChange {
+  filePath: string;
+  range: WorkspaceEditRange;
+  originalText: string;
+  newText: string;
+}
+
+export interface WorkspaceEditProposal {
+  id: string;
+  title: string;
+  summary: string;
+  createdAt: string;
+  explanation: string;
+  changes: WorkspaceEditChange[];
+}
+
+export interface WorkspaceFileSnapshot {
+  filePath: string;
+  sourceCode: string;
+  language?: CppFile['language'];
+}
+
+export interface AppliedWorkspaceFile {
+  filePath: string;
+  sourceCode: string;
+}
+
+export interface SourceControlFileStatus {
+  path: string;
+  indexStatus: string;
+  workingTreeStatus: string;
+}
+
+export interface SourceControlStatus {
+  isRepository: boolean;
+  branch: string;
+  files: SourceControlFileStatus[];
+  error?: string;
 }

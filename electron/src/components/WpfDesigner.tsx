@@ -33,18 +33,20 @@ import { DesignerGeneratedPanelData } from '../types';
 import {
   createBlankWindow,
   createControl,
-  createDefaultWindowProject,
   getEplEventHandlerName,
   generateProjectManifest,
   generateWindowCpp,
   generateWindowXml,
   getEventsForType,
-  getPrimaryEventNameForType
+  getPrimaryEventNameForType,
+  readWindowDesignerState,
+  saveWindowDesignerState,
+  PersistedWindowDesignerState
 } from '../services/windowDesigner/windowDesignerService';
 import {
   notifyWindowDesignerBuildRunState,
   requestWindowDesignerBuildRun,
-  requestWindowDesignerEplSource,
+  requestWindowDesignerLingCppSource,
   WINDOW_DESIGNER_BUILD_RUN_REQUEST
 } from '../services/windowDesigner/windowDesignerCommands';
 import { LingControl, LingControlType, LingWindowModel, LingWindowProject } from '../services/windowDesigner/types';
@@ -60,6 +62,7 @@ interface OpenControlEventCodeDetail {
   eventName: string;
   handlerName: string;
   windowFileName: string;
+  windowClassName: string;
   windowTitle: string;
 }
 
@@ -107,59 +110,16 @@ const TYPE_ICONS: Record<LingControlType | 'MenuBar', React.ReactNode> = {
 } as any;
 
 const TITLE_BAR_HEIGHT = 52;
-const DESIGNER_AUTOSAVE_KEY = 'lingbuilder.windowDesigner.autosave.v1';
 
-interface PersistedDesignerState {
-  project: LingWindowProject;
-  activeWindowId: string;
-  selectedControlId: string | null;
-}
+let cachedInitialDesignerState: PersistedWindowDesignerState | null = null;
 
-let cachedInitialDesignerState: PersistedDesignerState | null = null;
-
-function getInitialDesignerState(): PersistedDesignerState {
+function getInitialDesignerState(): PersistedWindowDesignerState {
   if (cachedInitialDesignerState) {
     return cachedInitialDesignerState;
   }
 
-  const fallbackProject = createDefaultWindowProject();
-  const fallbackState: PersistedDesignerState = {
-    project: fallbackProject,
-    activeWindowId: 'main-window',
-    selectedControlId: 'btn_launch'
-  };
-
-  try {
-    const rawState = window.localStorage.getItem(DESIGNER_AUTOSAVE_KEY);
-    if (!rawState) {
-      cachedInitialDesignerState = fallbackState;
-      return fallbackState;
-    }
-
-    const parsedState = JSON.parse(rawState) as Partial<PersistedDesignerState>;
-    if (!parsedState.project || !Array.isArray(parsedState.project.windows) || parsedState.project.windows.length === 0) {
-      cachedInitialDesignerState = fallbackState;
-      return fallbackState;
-    }
-
-    const activeWindowId = parsedState.project.windows.some(window => window.id === parsedState.activeWindowId)
-      ? parsedState.activeWindowId!
-      : parsedState.project.windows[0].id;
-    const activeWindow = parsedState.project.windows.find(window => window.id === activeWindowId) || parsedState.project.windows[0];
-    const selectedControlId = activeWindow.controls.some(control => control.id === parsedState.selectedControlId)
-      ? parsedState.selectedControlId!
-      : activeWindow.controls[0]?.id || null;
-
-    cachedInitialDesignerState = {
-      project: parsedState.project,
-      activeWindowId,
-      selectedControlId
-    };
-    return cachedInitialDesignerState;
-  } catch {
-    cachedInitialDesignerState = fallbackState;
-    return fallbackState;
-  }
+  cachedInitialDesignerState = readWindowDesignerState();
+  return cachedInitialDesignerState;
 }
 
 export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps) {
@@ -169,8 +129,12 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
 
   useEffect(() => {
     if (activeFile && activeFile.name) {
-      const xmlName = activeFile.name.replace(/\.e$/i, '.xml');
-      const foundWindow = project.windows.find(w => w.fileName.toLowerCase() === xmlName.toLowerCase());
+      const className = activeFile.name.replace(/\.lcpp$/i, '');
+      const xmlName = activeFile.name.replace(/\.lcpp$/i, '.xml');
+      const foundWindow = project.windows.find(w =>
+        w.fileName.toLowerCase() === xmlName.toLowerCase()
+        || w.className.toLowerCase() === className.toLowerCase()
+      );
       if (foundWindow && foundWindow.id !== activeWindowId) {
         setActiveWindowId(foundWindow.id);
       }
@@ -182,7 +146,7 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
       const currentWin = project.windows.find(w => w.id === activeWindowId);
       if (currentWin) {
         window.dispatchEvent(new CustomEvent('designer-switch-window', {
-          detail: { fileName: currentWin.fileName }
+          detail: { fileName: currentWin.fileName, className: currentWin.className }
         }));
       }
     }
@@ -297,17 +261,11 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
   }, []);
 
   useEffect(() => {
-    try {
-      const nextState: PersistedDesignerState = {
-        project,
-        activeWindowId,
-        selectedControlId
-      };
-      cachedInitialDesignerState = nextState;
-      window.localStorage.setItem(DESIGNER_AUTOSAVE_KEY, JSON.stringify(nextState));
-    } catch {
-      // Autosave is best-effort in the prototype; editing should keep working if storage is unavailable.
-    }
+    cachedInitialDesignerState = saveWindowDesignerState({
+      project,
+      activeWindowId,
+      selectedControlId
+    });
   }, [activeWindowId, project, selectedControlId]);
 
   const updateActiveWindow = (updater: (window: LingWindowModel) => LingWindowModel) => {
@@ -443,6 +401,7 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
         eventName: 'Loaded',
         handlerName,
         windowFileName: activeWindow.fileName,
+        windowClassName: activeWindow.className,
         windowTitle: activeWindow.title
       };
       window.dispatchEvent(new CustomEvent('open-control-event-code', { detail }));
@@ -623,6 +582,7 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
       eventName,
       handlerName,
       windowFileName: activeWindow.fileName,
+      windowClassName: activeWindow.className,
       windowTitle: activeWindow.title
     };
 
@@ -758,14 +718,18 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     addLog(`> [${new Date().toLocaleTimeString()}] 【窗口运行】开始导出当前窗口程序集并生成 Win32 C++ 工程...`);
 
     try {
-      const eplSourceCode = requestWindowDesignerEplSource(activeWindowId, activeWindow?.fileName);
+      const lingCppSourceCode = requestWindowDesignerLingCppSource(
+        activeWindowId,
+        activeWindow?.fileName,
+        activeWindow?.className
+      );
       const response = await fetch('/api/window-designer/build-run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           project,
           activeWindowId,
-          eplSourceCode,
+          lingCppSourceCode,
           run: true
         })
       });

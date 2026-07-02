@@ -6,6 +6,15 @@ import {
   LingWindowProject
 } from './types';
 
+export const WINDOW_DESIGNER_AUTOSAVE_KEY = 'lingbuilder.windowDesigner.autosave.v1';
+export const WINDOW_DESIGNER_PROJECT_UPDATED = 'window-designer:project-updated';
+
+export interface PersistedWindowDesignerState {
+  project: LingWindowProject;
+  activeWindowId: string;
+  selectedControlId: string | null;
+}
+
 const EVENT_NAME_MAP: Record<string, string> = {
   Click: '单击',
   TextChanged: '文本改变',
@@ -510,6 +519,74 @@ export const createDefaultWindowProject = (): LingWindowProject => ({
     }
   ]
 });
+
+export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesignerState> | null): PersistedWindowDesignerState {
+  const fallbackProject = createDefaultWindowProject();
+  const project = state?.project && Array.isArray(state.project.windows) && state.project.windows.length > 0
+    ? state.project
+    : fallbackProject;
+  const activeWindowId = project.windows.some(window => window.id === state?.activeWindowId)
+    ? state!.activeWindowId!
+    : project.windows[0].id;
+  const activeWindow = project.windows.find(window => window.id === activeWindowId) || project.windows[0];
+  const selectedControlId = activeWindow.controls.some(control => control.id === state?.selectedControlId)
+    ? state!.selectedControlId!
+    : activeWindow.controls[0]?.id || null;
+
+  return {
+    project,
+    activeWindowId,
+    selectedControlId
+  };
+}
+
+export function readWindowDesignerState(): PersistedWindowDesignerState {
+  if (typeof window === 'undefined') {
+    return normalizeWindowDesignerState();
+  }
+
+  try {
+    const rawState = window.localStorage.getItem(WINDOW_DESIGNER_AUTOSAVE_KEY);
+    if (!rawState) {
+      return normalizeWindowDesignerState();
+    }
+    return normalizeWindowDesignerState(JSON.parse(rawState) as Partial<PersistedWindowDesignerState>);
+  } catch {
+    return normalizeWindowDesignerState();
+  }
+}
+
+export function notifyWindowDesignerProjectUpdated(state: PersistedWindowDesignerState): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent<PersistedWindowDesignerState>(WINDOW_DESIGNER_PROJECT_UPDATED, {
+    detail: normalizeWindowDesignerState(state)
+  }));
+}
+
+export function saveWindowDesignerState(
+  state: PersistedWindowDesignerState,
+  options: { notify?: boolean } = {}
+): PersistedWindowDesignerState {
+  const nextState = normalizeWindowDesignerState(state);
+  if (typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(WINDOW_DESIGNER_AUTOSAVE_KEY, JSON.stringify(nextState));
+    } catch {
+      // Autosave is best-effort in the prototype; editing should keep working if storage is unavailable.
+    }
+
+    if (options.notify !== false) {
+      notifyWindowDesignerProjectUpdated(nextState);
+    }
+  }
+  return nextState;
+}
+
+export function getLingWindowSourceFileName(windowFileName?: string, windowClassName?: string): string {
+  if (windowClassName?.trim()) return `${windowClassName.trim()}.lcpp`;
+  const normalized = (windowFileName || '窗口').replace(/\.xml$/i, '');
+  return `${normalized}.lcpp`;
+}
 
 export function generateWindowXml(window: LingWindowModel): string {
   let xml = `<!-- 可视化中文界面布局结构定义 (${window.fileName}) -->\n`;

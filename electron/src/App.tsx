@@ -42,13 +42,16 @@ import {
 } from 'lucide-react';
 
 import {
+  AppliedWorkspaceFile,
   BottomPanelTabType,
   CppFile,
   DesignerGeneratedPanelData,
   ExtractedString,
   GlossaryTerm,
   ProblemItem,
-  DiffResult
+  DiffResult,
+  SourceControlStatus,
+  WorkspaceEditProposal
 } from './types';
 import { initialFiles, defaultGlossary, mockProblems, localTranslations } from './data/templates';
 import { computeDiff } from './utils/diff';
@@ -61,28 +64,37 @@ import AiAssistant from './components/AiAssistant';
 import BottomPanel from './components/BottomPanel';
 import {
   requestWindowDesignerBuildRun,
-  WINDOW_DESIGNER_EPL_SOURCE_REQUEST,
+  WINDOW_DESIGNER_LINGCPP_SOURCE_REQUEST,
   WINDOW_DESIGNER_BUILD_RUN_STATE,
-  WindowDesignerEplSourceRequestDetail,
+  WindowDesignerLingCppSourceRequestDetail,
   WindowDesignerBuildRunStateDetail
 } from './services/windowDesigner/windowDesignerCommands';
-import { getEplEventSuffix, createDefaultWindowProject } from './services/windowDesigner/windowDesignerService';
+import {
+  getEplEventSuffix,
+  getLingWindowSourceFileName,
+  readWindowDesignerState,
+  saveWindowDesignerState
+} from './services/windowDesigner/windowDesignerService';
+import { sourceControlService } from './services/lingCpp/sourceControlService';
 
-const generateDefaultEplContentForWindow = (win: any) => {
+const generateDefaultLingCppContentForWindow = (win: any) => {
   const className = win.className || '自定义窗体';
   const fileName = win.fileName;
   
-  return `.版本 2
-.支持库 wpf_support
-.支持库 spec
+  return `包 LingBuilder
+使用 Win32窗口
+使用 标准控件
 
-.程序集 窗口程序集_${className}
-.程序集变量 关联设计文件, 文本型, , "${fileName}"
+类 ${className} : 公开 窗体
+公开:
+    文本型 关联设计文件 = "${fileName}"
 
-.子程序 _${className}_创建完毕
-    ' 易语言 WPF 设计器自动绑定 ${fileName} 可视化中文化布局
-    载入可视化设计 (关联设计文件)
-    调试输出 (“${win.title || className}初始化完毕，WPF 渲染正常。”)
+    构造()
+        调试输出("${win.title || className}初始化完毕，Win32 渲染正常。")
+
+    事件 _${className}_创建完毕()
+        调试输出("已载入 ${fileName} 关联布局。")
+结束类
 `;
 };
 
@@ -109,6 +121,7 @@ type OpenControlEventCodeDetail = {
   eventName?: string;
   handlerName?: string;
   windowFileName?: string;
+  windowClassName?: string;
   windowTitle?: string;
 };
 
@@ -145,68 +158,67 @@ const getInitialEditorFontSize = () => {
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const sanitizeEplText = (value: string | undefined, fallback: string) => {
+const sanitizeLingCppText = (value: string | undefined, fallback: string) => {
   return (value || fallback)
     .replace(/[\r\n]+/g, ' ')
     .replace(/[“”"]/g, '')
     .trim() || fallback;
 };
 
-const createEplControlEventBlock = (detail: Required<Pick<OpenControlEventCodeDetail, 'controlName' | 'eventName' | 'handlerName'>> & OpenControlEventCodeDetail) => {
-  const controlName = sanitizeEplText(detail.controlName, '控件');
-  const controlContent = sanitizeEplText(detail.controlContent, controlName);
+const createLingCppControlEventBlock = (detail: Required<Pick<OpenControlEventCodeDetail, 'controlName' | 'eventName' | 'handlerName'>> & OpenControlEventCodeDetail) => {
+  const controlName = sanitizeLingCppText(detail.controlName, '控件');
+  const controlContent = sanitizeLingCppText(detail.controlContent, controlName);
   const eventSuffix = getEplEventSuffix(detail.eventName);
-  const lines = [`.子程序 ${detail.handlerName}`];
+  const lines = [`    事件 ${detail.handlerName}()`];
 
   if (detail.eventName === 'Click') {
-    lines.push(`    信息框 (“${controlContent}”, 64, “事件触发”)`);
+    lines.push(`        信息框("${controlContent}", 64, "事件触发")`);
   }
 
-  lines.push(`    调试输出 (“${controlName}${eventSuffix}”)`);
+  lines.push(`        调试输出("${controlName}${eventSuffix}")`);
   return lines.join('\n');
 };
 
-const ensureEplControlEventHandler = (content: string, detail: OpenControlEventCodeDetail) => {
+const ensureLingCppControlEventHandler = (content: string, detail: OpenControlEventCodeDetail) => {
   const controlName = detail.controlName?.trim();
   const eventName = detail.eventName?.trim();
   const handlerName = detail.handlerName?.trim();
 
   if (!controlName || !eventName || !handlerName) return content;
 
-  const handlerPattern = new RegExp(`(^|\\n)\\.子程序\\s+${escapeRegExp(handlerName)}(?:\\s|,|，|$)`);
+  const handlerPattern = new RegExp(`(^|\\n)\\s*事件\\s+${escapeRegExp(handlerName)}\\s*[（(]`);
   if (handlerPattern.test(content)) return content;
 
-  const nextBlock = createEplControlEventBlock({ ...detail, controlName, eventName, handlerName });
-  return `${content.replace(/\s*$/g, '')}\n\n${nextBlock}`;
+  const nextBlock = createLingCppControlEventBlock({ ...detail, controlName, eventName, handlerName });
+  return `${content.replace(/\s*结束类\s*$/g, '').trimEnd()}\n\n${nextBlock}\n结束类`;
+};
+
+const getCurrentWindowDesignerProject = () => readWindowDesignerState().project;
+const getCurrentWindowDesignerProjectId = () => getCurrentWindowDesignerProject().id || 'lingbuilder-ui-project';
+
+const inferFileLanguage = (filePath: string): CppFile['language'] => {
+  if (filePath.endsWith('.lcpp')) return 'lingcpp';
+  if (filePath.endsWith('.cpp')) return 'cpp';
+  if (filePath.endsWith('.h')) return 'header';
+  if (filePath.endsWith('.rc')) return 'resource';
+  if (filePath.endsWith('.ini')) return 'ini';
+  return 'cpp';
 };
 
 export default function App() {
   const [files, setFiles] = useState<CppFile[]>(() => {
-    let proj = null;
-    try {
-      const raw = window.localStorage.getItem('lingbuilder.windowDesigner.autosave.v1');
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed.project && Array.isArray(parsed.project.windows)) {
-          proj = parsed.project;
-        }
-      }
-    } catch (e) {}
-
-    if (!proj) {
-      proj = createDefaultWindowProject();
-    }
+    const proj = readWindowDesignerState().project;
 
     const currentFiles = [...initialFiles];
     proj.windows.forEach(win => {
-      const eName = win.fileName.replace(/\.xml$/i, '.e');
-      const ePath = `src/${eName}`;
-      if (!currentFiles.some(f => f.path === ePath)) {
+      const sourceName = `${win.className || win.fileName.replace(/\.xml$/i, '')}.lcpp`;
+      const sourcePath = `src/${sourceName}`;
+      if (!currentFiles.some(f => f.path === sourcePath)) {
         currentFiles.push({
-          path: ePath,
-          name: eName,
-          language: 'epl',
-          originalContent: generateDefaultEplContentForWindow(win),
+          path: sourcePath,
+          name: sourceName,
+          language: 'lingcpp',
+          originalContent: generateDefaultLingCppContentForWindow(win),
           translatedContent: '',
           strings: [],
           isModified: false
@@ -223,7 +235,7 @@ export default function App() {
         if (found) return found;
       }
     } catch (e) {}
-    return files ? (files.find(f => f.name === 'MainWindow.e') || files[0]) : initialFiles[0];
+    return files ? (files.find(f => f.name === '游戏主窗体.lcpp') || files[0]) : initialFiles[0];
   });
   const filesRef = useRef<CppFile[]>([]);
   const activeFileRef = useRef<CppFile | null>(null);
@@ -242,7 +254,7 @@ export default function App() {
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (e) {}
-    return ['src/MainWindow.e'];
+    return ['src/游戏主窗体.lcpp'];
   });
 
   useEffect(() => {
@@ -289,7 +301,7 @@ export default function App() {
         }
       }
       
-      return nextTabs.length > 0 ? nextTabs : ['src/MainWindow.e'];
+      return nextTabs.length > 0 ? nextTabs : ['src/游戏主窗体.lcpp'];
     });
   }, []);
   const [glossary, setGlossary] = useState<GlossaryTerm[]>(defaultGlossary);
@@ -302,6 +314,7 @@ export default function App() {
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [isAppClosed, setIsAppClosed] = useState(false);
   const [editorFontSize, setEditorFontSizeState] = useState(getInitialEditorFontSize);
+  const [sourceControlStatus, setSourceControlStatus] = useState<SourceControlStatus | null>(null);
 
   const setEditorFontSize = useCallback((nextValue: number | ((value: number) => number)) => {
     setEditorFontSizeState(previousValue => {
@@ -331,6 +344,11 @@ export default function App() {
 
     setEditorFontSize(parsedValue);
   };
+
+  const refreshSourceControlStatus = useCallback(async () => {
+    const status = await sourceControlService.getStatus();
+    setSourceControlStatus(status);
+  }, []);
 
   const handleWindowMinimize = async () => {
     const windowControls = getNativeWindowControls();
@@ -646,6 +664,10 @@ void DisplayStatus() {
   }, []);
 
   useEffect(() => {
+    void refreshSourceControlStatus();
+  }, [refreshSourceControlStatus]);
+
+  useEffect(() => {
     // Populate translated contents with fallbacks or mock dictionary translations
     files.forEach(f => {
       const initialTranslations = f.strings.map(s => {
@@ -726,30 +748,71 @@ void DisplayStatus() {
     });
   };
 
+  const handleApplyWorkspaceEdit = useCallback((proposal: WorkspaceEditProposal, appliedFiles: AppliedWorkspaceFile[]) => {
+    if (!appliedFiles.length) return;
+
+    const appliedMap = new Map(appliedFiles.map(file => [file.filePath, file.sourceCode]));
+    const knownPaths = new Set(filesRef.current.map(file => file.path));
+    const nextFiles = filesRef.current.map(file => {
+      const nextContent = appliedMap.get(file.path);
+      if (typeof nextContent !== 'string') return file;
+      return {
+        ...file,
+        translatedContent: nextContent,
+        isModified: nextContent !== file.originalContent
+      };
+    });
+
+    appliedFiles.forEach(appliedFile => {
+      if (knownPaths.has(appliedFile.filePath)) return;
+      nextFiles.push({
+        path: appliedFile.filePath,
+        name: appliedFile.filePath.split('/').pop() || appliedFile.filePath,
+        language: inferFileLanguage(appliedFile.filePath),
+        originalContent: '',
+        translatedContent: appliedFile.sourceCode,
+        strings: [],
+        isModified: true
+      });
+    });
+
+    filesRef.current = nextFiles;
+    setFiles(nextFiles);
+    setOpenTabs(prev => Array.from(new Set([...prev, ...appliedFiles.map(file => file.filePath)])));
+
+    const currentActivePath = activeFileRef.current?.path;
+    const nextActiveFile = (currentActivePath && nextFiles.find(file => file.path === currentActivePath))
+      || nextFiles.find(file => appliedMap.has(file.path))
+      || nextFiles[0];
+    if (nextActiveFile) {
+      setActiveFile(nextActiveFile);
+    }
+  }, []);
+
   useEffect(() => {
-    const handleEplSourceRequest = (event: Event) => {
-      const customEvent = event as CustomEvent<WindowDesignerEplSourceRequestDetail>;
-      const activeWindowId = customEvent.detail?.activeWindowId;
+    const handleLingCppSourceRequest = (event: Event) => {
+      const customEvent = event as CustomEvent<WindowDesignerLingCppSourceRequestDetail>;
       const windowFileName = customEvent.detail?.windowFileName;
+      const windowClassName = customEvent.detail?.windowClassName;
+      const currentFiles = filesRef.current;
+      let lingCppFile: CppFile | undefined;
 
-      let eplFile: CppFile | undefined;
-      
-      if (windowFileName) {
-        const expectedEName = windowFileName.replace(/\.xml$/i, '.e');
-        eplFile = filesRef.current.find(file => file.name === expectedEName);
-      }
-      
-      if (!eplFile) {
-        eplFile = filesRef.current.find(file => file.language === 'epl')
-          || filesRef.current.find(file => file.path.endsWith('.e'));
+      if (windowFileName || windowClassName) {
+        const expectedFileName = getLingWindowSourceFileName(windowFileName, windowClassName);
+        lingCppFile = currentFiles.find(file => file.name === expectedFileName);
       }
 
-      customEvent.detail?.respond(eplFile ? (eplFile.translatedContent || eplFile.originalContent) : '');
+      if (!lingCppFile) {
+        lingCppFile = currentFiles.find(file => file.language === 'lingcpp')
+          || currentFiles.find(file => file.path.endsWith('.lcpp'));
+      }
+
+      customEvent.detail?.respond(lingCppFile ? (lingCppFile.translatedContent || lingCppFile.originalContent) : '');
     };
 
-    window.addEventListener(WINDOW_DESIGNER_EPL_SOURCE_REQUEST, handleEplSourceRequest);
+    window.addEventListener(WINDOW_DESIGNER_LINGCPP_SOURCE_REQUEST, handleLingCppSourceRequest);
     return () => {
-      window.removeEventListener(WINDOW_DESIGNER_EPL_SOURCE_REQUEST, handleEplSourceRequest);
+      window.removeEventListener(WINDOW_DESIGNER_LINGCPP_SOURCE_REQUEST, handleLingCppSourceRequest);
     };
   }, []);
 
@@ -770,10 +833,10 @@ void DisplayStatus() {
       if (!handlerName) return;
 
       const currentFiles = filesRef.current;
-      const targetEplName = detail.windowFileName ? detail.windowFileName.replace(/\.xml$/i, '.e') : '';
-      const targetFile = currentFiles.find(file => file.name === targetEplName)
-        || currentFiles.find(file => file.language === 'epl')
-        || currentFiles.find(file => file.path.endsWith('.e'));
+      const targetSourceName = getLingWindowSourceFileName(detail.windowFileName, detail.windowClassName);
+      const targetFile = currentFiles.find(file => file.name === targetSourceName)
+        || currentFiles.find(file => file.language === 'lingcpp')
+        || currentFiles.find(file => file.path.endsWith('.lcpp'));
 
       if (!targetFile) {
         setBuildLogs(prev => [
@@ -784,7 +847,7 @@ void DisplayStatus() {
       }
 
       const currentContent = targetFile.translatedContent || targetFile.originalContent;
-      const nextContent = ensureEplControlEventHandler(currentContent, detail);
+      const nextContent = ensureLingCppControlEventHandler(currentContent, detail);
       const updatedFile: CppFile = {
         ...targetFile,
         translatedContent: nextContent,
@@ -794,6 +857,9 @@ void DisplayStatus() {
 
       filesRef.current = nextFiles;
       setFiles(nextFiles);
+      setOpenTabs(prev => (
+        prev.includes(updatedFile.path) ? prev : [...prev, updatedFile.path]
+      ));
       setActiveFile(updatedFile);
       setBuildLogs(prev => [
         ...prev,
@@ -804,16 +870,16 @@ void DisplayStatus() {
 
     const handleWindowAdded = (event: Event) => {
       const nextWindow = (event as CustomEvent).detail;
-      const eName = nextWindow.fileName.replace(/\.xml$/i, '.e');
-      const ePath = `src/${eName}`;
+      const fileName = getLingWindowSourceFileName(nextWindow.fileName, nextWindow.className);
+      const filePath = `src/${fileName}`;
       
       setFiles(prev => {
-        if (prev.some(f => f.path === ePath)) return prev;
+        if (prev.some(f => f.path === filePath)) return prev;
         const newFile = {
-          path: ePath,
-          name: eName,
-          language: 'epl',
-          originalContent: generateDefaultEplContentForWindow(nextWindow),
+          path: filePath,
+          name: fileName,
+          language: 'lingcpp' as const,
+          originalContent: generateDefaultLingCppContentForWindow(nextWindow),
           translatedContent: '',
           strings: [],
           isModified: false
@@ -825,27 +891,27 @@ void DisplayStatus() {
 
     const handleWindowDeleted = (event: Event) => {
       const deletedWindow = (event as CustomEvent).detail;
-      const eName = deletedWindow.fileName.replace(/\.xml$/i, '.e');
-      const ePath = `src/${eName}`;
+      const fileName = getLingWindowSourceFileName(deletedWindow.fileName, deletedWindow.className);
+      const filePath = `src/${fileName}`;
       
       setFiles(prev => {
-        const next = prev.filter(f => f.path !== ePath);
+        const next = prev.filter(f => f.path !== filePath);
         return next;
       });
     };
 
     const handleWindowDuplicated = (event: Event) => {
       const clonedWindow = (event as CustomEvent).detail;
-      const eName = clonedWindow.fileName.replace(/\.xml$/i, '.e');
-      const ePath = `src/${eName}`;
+      const fileName = getLingWindowSourceFileName(clonedWindow.fileName, clonedWindow.className);
+      const filePath = `src/${fileName}`;
       
       setFiles(prev => {
-        if (prev.some(f => f.path === ePath)) return prev;
+        if (prev.some(f => f.path === filePath)) return prev;
         const newFile = {
-          path: ePath,
-          name: eName,
-          language: 'epl',
-          originalContent: generateDefaultEplContentForWindow(clonedWindow),
+          path: filePath,
+          name: fileName,
+          language: 'lingcpp' as const,
+          originalContent: generateDefaultLingCppContentForWindow(clonedWindow),
           translatedContent: '',
           strings: [],
           isModified: false
@@ -860,7 +926,7 @@ void DisplayStatus() {
       const xmlFileName = detail.fileName;
       if (!xmlFileName) return;
 
-      const codeFileName = xmlFileName.replace(/\.xml$/i, '.e');
+      const codeFileName = getLingWindowSourceFileName(xmlFileName, detail.className);
       if (activeFileRef.current && activeFileRef.current.name === codeFileName) {
         return;
       }
@@ -888,43 +954,53 @@ void DisplayStatus() {
   useEffect(() => {
     const loadSavedFiles = async () => {
       try {
-        const projectId = (() => {
-          try {
-            const raw = window.localStorage.getItem('lingbuilder.windowDesigner.autosave.v1');
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              if (parsed.project && parsed.project.id) {
-                return parsed.project.id;
-              }
-            }
-          } catch (e) {}
-          return 'lingbuilder-ui-project';
-        })();
+        const projectId = getCurrentWindowDesignerProjectId();
         const res = await fetch(`/api/window-designer/files?projectId=${projectId}`);
         if (!res.ok) return;
         const data = await res.json();
+        if (data?.designerProject) {
+          saveWindowDesignerState({
+            project: data.designerProject,
+            activeWindowId: data.designerProject.windows?.[0]?.id || 'main-window',
+            selectedControlId: data.designerProject.windows?.[0]?.controls?.[0]?.id || null
+          });
+        }
         if (data && data.files) {
           setFiles(prevFiles => {
+            const knownPaths = new Set(prevFiles.map(file => file.path));
             const nextFiles = prevFiles.map(file => {
-              if (data.files[file.name] !== undefined) {
+              if (data.files[file.path] !== undefined) {
                 return {
                   ...file,
-                  translatedContent: data.files[file.name],
+                  translatedContent: data.files[file.path],
                   isModified: false
                 };
               }
               return file;
             });
+            Object.entries(data.files).forEach(([filePath, content]) => {
+              if (knownPaths.has(filePath)) return;
+              nextFiles.push({
+                path: filePath,
+                name: filePath.split('/').pop() || filePath,
+                language: inferFileLanguage(filePath),
+                originalContent: content,
+                translatedContent: content,
+                strings: [],
+                isModified: false
+              });
+            });
             filesRef.current = nextFiles;
             
-            // Sync activeFile if it is MainWindow.e or currently loaded
-            const activeName = activeFileRef.current ? activeFileRef.current.name : 'MainWindow.e';
+            // Sync activeFile if it is the main .lcpp file or currently loaded
+            const activeName = activeFileRef.current ? activeFileRef.current.name : '游戏主窗体.lcpp';
             const matchedActive = nextFiles.find(f => f.name === activeName);
             if (matchedActive) {
               setActiveFile(matchedActive);
             }
             return nextFiles;
           });
+          void refreshSourceControlStatus();
         }
       } catch (e) {
         console.error('Failed to load files from disk:', e);
@@ -937,18 +1013,7 @@ void DisplayStatus() {
     let intervalId: any;
     const pollLogs = async () => {
       try {
-        const projectId = (() => {
-          try {
-            const raw = window.localStorage.getItem('lingbuilder.windowDesigner.autosave.v1');
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              if (parsed.project && parsed.project.id) {
-                return parsed.project.id;
-              }
-            }
-          } catch (e) {}
-          return 'lingbuilder-ui-project';
-        })();
+        const projectId = getCurrentWindowDesignerProjectId();
         const res = await fetch(`/api/window-designer/debug-logs?projectId=${projectId}`);
         if (!res.ok) return;
         const data = await res.json();
@@ -976,18 +1041,7 @@ void DisplayStatus() {
       setBuildLogs([]);
     } else if (tab === 'debug_logs') {
       setDebugLogs([]);
-      const projectId = (() => {
-        try {
-          const raw = window.localStorage.getItem('lingbuilder.windowDesigner.autosave.v1');
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed.project && parsed.project.id) {
-              return parsed.project.id;
-            }
-          }
-        } catch (e) {}
-        return 'lingbuilder-ui-project';
-      })();
+      const projectId = getCurrentWindowDesignerProjectId();
       fetch(`/api/window-designer/debug-logs?projectId=${projectId}&clear=true`).catch(() => {});
     }
   }, []);
@@ -1126,30 +1180,21 @@ void DisplayStatus() {
         `> [${new Date().toLocaleTimeString()}] 【打开】成功打开已有的项目设计文件：'MainWindow.xml' 及对应类映射源文件。`
       ]);
     } else if (actionName === 'save') {
-      const projectId = (() => {
-        try {
-          const raw = window.localStorage.getItem('lingbuilder.windowDesigner.autosave.v1');
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed.project && parsed.project.id) {
-              return parsed.project.id;
-            }
-          }
-        } catch (e) {}
-        return 'lingbuilder-ui-project';
-      })();
+      const designerProject = getCurrentWindowDesignerProject();
+      const projectId = designerProject.id || 'lingbuilder-ui-project';
 
       const projectFiles: Record<string, string> = {};
       filesRef.current.forEach(file => {
-        projectFiles[file.name] = file.translatedContent || file.originalContent || '';
+        projectFiles[file.path] = file.translatedContent || file.originalContent || '';
       });
 
       fetch('/api/window-designer/files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, files: projectFiles })
+        body: JSON.stringify({ projectId, files: projectFiles, project: designerProject })
       }).then(res => {
         if (res.ok) {
+          void refreshSourceControlStatus();
           setBuildLogs(prev => [
             ...prev,
             `> [${new Date().toLocaleTimeString()}] 【保存】正在序列化并将当前中文代码及 UI 界面结构写入项目磁盘... 成功写入并同步完成！`
@@ -2022,6 +2067,7 @@ void DisplayStatus() {
           drawerWidth={leftWidth}
           onDeleteFile={handleDeleteFile}
           onRenameFile={handleRenameFile}
+          sourceControlStatus={sourceControlStatus}
         />
 
         {/* LEFT DRAG RESIZER & COLLAPSE TOGGLE */}
@@ -2240,6 +2286,14 @@ void DisplayStatus() {
                   onBatchTranslate={handleBatchTranslate}
                   onSetStatus={handleSetStatus}
                   filePath={activeFile.path}
+                  sourceCode={activeFile.translatedContent || activeFile.originalContent}
+                  activeLanguage={activeFile.language}
+                  workspaceFiles={files.map(file => ({
+                    filePath: file.path,
+                    sourceCode: file.translatedContent || file.originalContent,
+                    language: file.language
+                  }))}
+                  onApplyWorkspaceEdit={handleApplyWorkspaceEdit}
                   isDarkMode={isDarkMode}
                 />
               ) : (

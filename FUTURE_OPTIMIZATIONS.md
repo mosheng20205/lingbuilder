@@ -1,5 +1,18 @@
 # LingBuilder 后期优化事项
 
+## 2026-07 状态记录
+
+- 已完成：`.lcpp` 成为默认中文源码格式，Electron 原型默认主文件为 `src/游戏主窗体.lcpp`。
+- 已完成：Monaco 识别 `lingcpp`，窗口设计器与构建链路默认读取 `.lcpp` 作为主源码输入。
+- 已完成：设计器项目持久化落到 `.lingbuilder/window-designer.json`，可复制生成结果输出到 `generated/cpp/`，`.lingbuilder-build/` 继续只作为临时构建目录。
+- 已完成：新增本地 Git 状态读取接口 `/api/source-control/status`，并新增预览优先的 AI 编辑提案接口 `/api/lingcpp/edit/*`。
+- 已完成：`.lcpp` AI 编辑提案改为模型驱动的完整文件重写 + 本地最小 WorkspaceEdit diff 计算；Gemini 不可用时自动降级到本地安全提案。
+- 已完成：补充 `electron/tests/lingcpp.test.ts`，覆盖 parser、generator 和 WorkspaceEdit diff 回归验证，并提供 `npm run test:lingcpp`。
+- 已完成：AI 编辑提案扩展为多文件工作区提案，支持同时预览/应用 `.lcpp`、配置文件等多个真实工作区文件。
+- 已完成：生成器回归测试扩展到复选框、单选框、进度条、下拉框、窗体创建事件、暂不支持语法安全注释和多文件 WorkspaceEdit。
+- 后续建议：继续把 AI 编辑扩展到语义级 range 规划、跨模块依赖分析和更细粒度的审查提示。
+- 后续建议：继续扩展 LingCpp Parser/IR 覆盖面，把变量赋值、控件属性读写、字符串拼接、窗口打开/关闭等中文语法纳入生成器。
+
 本文档记录当前原型阶段为了快速闭环而采用的临时方案，以及后续必须工程化完善的方向。后续 Agent 开始大改动前应先阅读本文件，避免把原型实现误判为最终架构。
 
 ## 1. 窗口设计器持久化

@@ -236,39 +236,40 @@ LoadingText = "Teleporting to outer space... Please wait."`,
     isModified: false
   },
   {
-    path: 'src/MainWindow.e',
-    name: 'MainWindow.e',
-    language: 'epl',
-    originalContent: `.版本 2
-.支持库 wpf_support
-.支持库 spec
+    path: 'src/游戏主窗体.lcpp',
+    name: '游戏主窗体.lcpp',
+    language: 'lingcpp',
+    originalContent: `包 太空冒险
+使用 Win32窗口
+使用 标准控件
 
-.程序集 窗口程序集_窗口1
-.程序集变量 关联设计文件, 文本型, , "MainWindow.xml"
+类 游戏主窗体 : 公开 窗体
+公开:
+    文本型 关联设计文件 = "MainWindow.xml"
+    按钮 按钮1
+    按钮 按钮2
+    文本型 系统配置
 
-.子程序 _窗口1_创建完毕
-    ' 易语言 WPF 设计器自动绑定 MainWindow.xml 可视化中文化布局
-    载入可视化设计 (关联设计文件)
-    调试输出 (“太空冒险窗口1初始化完毕，WPF 渲染正常。”)
+    构造()
+        调试输出("太空冒险游戏主窗体初始化完毕。")
 
-.子程序 _游戏主窗口_核心初始化
-    .局部变量 系统配置, 文本型
-    系统配置 ＝ 读取配置项 (取运行目录 () ＋ “/config/config.ini”, “Engine”, “EngineMode”)
-    调试输出 (“加载系统配置，模式为：” ＋ 系统配置)
+    事件 _游戏主窗体_创建完毕()
+        调试输出("正在载入窗口设计文件。")
 
-.子程序 _按钮1_被单击
-    信息框 (“开始运行太空冒险游戏客户端！”, 64, “运行成功”)
-    调试输出 (“玩家已点击：按钮1”)
+    事件 _按钮1_被单击()
+        信息框("开始运行太空冒险游戏客户端！", 64, "运行成功")
+        调试输出("玩家已点击：按钮1")
 
-.子程序 _按钮2_被单击
-    .如果 (信息框 (“您确定要退出游戏吗？”, 36, “退出确认”) ＝ 6)
-        结束 ()
-    .如果结束`,
+    事件 _按钮2_被单击()
+        如果 (信息框("您确定要退出游戏吗？", 36, "退出确认") == 6)
+            结束()
+        如果结束
+结束类`,
     translatedContent: '',
     strings: [
-      { id: 'e1', original: 'wpf_support', translated: 'WPF中文化支持库', line: 2, type: 'resource', status: 'translated', context: '.支持库 wpf_support' },
-      { id: 'e2', original: 'MainWindow.xml', translated: '窗口1布局.xml', line: 6, type: 'string', status: 'translated', context: '.程序集变量 关联设计文件, 文本型, , "MainWindow.xml"' },
-      { id: 'e3', original: 'EngineMode', translated: '引擎模式', line: 15, type: 'string', status: 'translated', context: '读取配置项 (..., "Engine", "EngineMode")' }
+      { id: 'lc1', original: 'MainWindow.xml', translated: '', line: 6, type: 'string', status: 'pending', context: '文本型 关联设计文件 = "MainWindow.xml"' },
+      { id: 'lc2', original: '开始运行太空冒险游戏客户端！', translated: '', line: 14, type: 'string', status: 'pending', context: '信息框("开始运行太空冒险游戏客户端！", 64, "运行成功")' },
+      { id: 'lc3', original: '您确定要退出游戏吗？', translated: '', line: 18, type: 'string', status: 'pending', context: '如果 (信息框("您确定要退出游戏吗？", 36, "退出确认") == 6)' }
     ],
     isModified: false
   }

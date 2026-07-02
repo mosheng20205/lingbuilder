@@ -2,6 +2,9 @@ import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X } from 'lucide-react';
 
 function FileIcon({ fileName, isDarkMode }: { fileName: string; isDarkMode: boolean }) {
+  if (fileName.endsWith('.lcpp')) {
+    return <FileCode className="w-3.5 h-3.5 text-emerald-500" />;
+  }
   if (fileName.endsWith('.e')) {
     return <FileCode className="w-3.5 h-3.5 text-emerald-500" />;
   }
@@ -272,7 +275,14 @@ export default function DiffViewer({
     return activeFile?.language === 'epl' ? buildEplVisualLines(sourceHighlightLines) : [];
   }, [activeFile?.language, sourceHighlightLines]);
 
-  const quickChineseSnippets = [
+  const quickChineseSnippets = activeFile?.language === 'lingcpp' ? [
+    { label: '类', text: '\n类 新窗口 : 公开 窗体\n公开:\n    构造()\n        调试输出("初始化完成")\n结束类\n' },
+    { label: '事件', text: '    事件 按钮1_被单击()\n        信息框("提示内容", 64, "提示")\n' },
+    { label: '如果', text: '如果 (条件)\n    \n如果结束' },
+    { label: '返回', text: '返回' },
+    { label: '信息框', text: '信息框("提示内容", 64, "提示")' },
+    { label: '调试输出', text: '调试输出("调试信息")' }
+  ] : [
     { label: '.子程序', text: '\n.子程序 _按钮1_被单击\n    信息框 (“请输入提示内容”, 64, “提示”)\n' },
     { label: '如果', text: '如果 (条件)\n    \n如果结束' },
     { label: '如果真', text: '如果真 (条件)\n    \n如果真结束' },
@@ -425,7 +435,7 @@ export default function DiffViewer({
       if (!handlerName) return;
 
       if (activeFile?.name?.endsWith('.xml')) {
-        const codeFileName = activeFile.name.replace(/\.xml$/i, '.e');
+        const codeFileName = activeFile.name.replace(/\.xml$/i, '.lcpp');
         const codeFile = allFiles.find(f => f.name === codeFileName);
         if (codeFile) onSelectTab(codeFile);
       }
@@ -878,7 +888,7 @@ export default function DiffViewer({
         
         {/* Top-Right Quick Toggle Button between Code/Designer */}
         <div className="flex items-center gap-2 pr-2">
-          {activeFile?.name?.endsWith('.e') && (
+          {activeFile?.name?.endsWith('.lcpp') && (
             viewType === 'designer' ? (
               <button
                 onClick={() => setViewType('code')}
@@ -923,7 +933,7 @@ export default function DiffViewer({
       </div>
 
       {/* Main Comparative Frame */}
-      {activeFile?.name?.endsWith('.e') && viewType === 'designer' ? (
+      {activeFile?.name?.endsWith('.lcpp') && viewType === 'designer' ? (
         <WpfDesigner isDarkMode={isDarkMode} activeFile={activeFile} />
       ) : (
         <div className={`flex-1 flex overflow-hidden ${style.bg} ${style.text}`}>

@@ -26,15 +26,23 @@ import {
   HelpCircle,
   FolderOpen,
   SlidersHorizontal,
-  CheckCircle
+  CheckCircle,
+  Monitor
 } from 'lucide-react';
-import { CppFile, ExtractedString, GlossaryTerm } from '../types';
+import { CppFile, ExtractedString, GlossaryTerm, SourceControlStatus } from '../types';
 import ModuleInspector from './ModuleInspector';
+import {
+  getLingWindowSourceFileName,
+  readWindowDesignerState,
+  WINDOW_DESIGNER_PROJECT_UPDATED,
+  PersistedWindowDesignerState
+} from '../services/windowDesigner/windowDesignerService';
+import type { LingWindowModel } from '../services/windowDesigner/types';
 
 interface SidebarProps {
   files: CppFile[];
   activeFile: CppFile;
-  onSelectFile: (file: CppFile) => void;
+  onSelectFile: (file: CppFile, forceCodeView?: boolean) => void;
   onRunBuild: () => void;
   isBuilding: boolean;
   isDarkMode?: boolean;
@@ -46,6 +54,7 @@ interface SidebarProps {
   drawerWidth?: number;
   onDeleteFile?: (file: CppFile) => void;
   onRenameFile?: (file: CppFile, newName: string) => void;
+  sourceControlStatus?: SourceControlStatus | null;
 }
 
 export default function Sidebar({
@@ -62,12 +71,14 @@ export default function Sidebar({
   glossary = [],
   drawerWidth = 264,
   onDeleteFile,
-  onRenameFile
+  onRenameFile,
+  sourceControlStatus = null
 }: SidebarProps) {
   // Tabs: 'explorer' (解决方案), 'actions' (快捷工具), 'outline' (大纲视图)
   const [activeTab, setActiveTab] = useState<'explorer' | 'actions' | 'outline'>('explorer');
   const [isSolutionOpen, setIsSolutionOpen] = useState(true);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: CppFile } | null>(null);
+  const [designerState, setDesignerState] = useState(() => readWindowDesignerState());
 
   useEffect(() => {
     const handleCloseMenu = () => setContextMenu(null);
@@ -75,6 +86,7 @@ export default function Sidebar({
     return () => window.removeEventListener('click', handleCloseMenu);
   }, []);
   const [isSrcOpen, setIsSrcOpen] = useState(true);
+  const [isWindowsOpen, setIsWindowsOpen] = useState(true);
   const [isConfigOpen, setIsConfigOpen] = useState(true);
   
   // Search query for files
@@ -88,13 +100,54 @@ export default function Sidebar({
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Group files by directories
-  const srcFiles = files.filter(f => f.path.startsWith('src/') && f.name.toLowerCase().includes(fileSearch.toLowerCase()));
-  const configFiles = files.filter(f => f.path.startsWith('config/') && f.name.toLowerCase().includes(fileSearch.toLowerCase()));
+  const normalizedFileSearch = fileSearch.trim().toLowerCase();
+  const includesSearch = (...values: Array<string | undefined>) => (
+    !normalizedFileSearch || values.some(value => value?.toLowerCase().includes(normalizedFileSearch))
+  );
+  const srcFiles = files.filter(f => f.path.startsWith('src/') && includesSearch(f.name, f.path));
+  const configFiles = files.filter(f => f.path.startsWith('config/') && includesSearch(f.name, f.path));
+  const designerWindows = designerState.project.windows.filter(windowModel => includesSearch(
+    windowModel.title,
+    windowModel.fileName,
+    windowModel.className,
+    getLingWindowSourceFileName(windowModel.fileName, windowModel.className)
+  ));
+
+  useEffect(() => {
+    const handleDesignerProjectUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<PersistedWindowDesignerState>).detail;
+      setDesignerState(detail || readWindowDesignerState());
+    };
+
+    window.addEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
+    return () => {
+      window.removeEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
+    };
+  }, []);
 
   const getProgress = (file: CppFile) => {
     const total = file.strings.length;
     const translated = file.strings.filter(s => s.status === 'translated').length;
     return total === 0 ? 100 : Math.round((translated / total) * 100);
+  };
+
+  const handleOpenDesignerWindow = (windowModel: LingWindowModel) => {
+    const sourceName = getLingWindowSourceFileName(windowModel.fileName, windowModel.className);
+    const sourcePath = `src/${sourceName}`;
+    const sourceFile = files.find(file => file.path === sourcePath || file.name === sourceName);
+
+    if (!sourceFile) {
+      triggerSuccess(`未找到 ${sourceName}，请先在设计器中保存或重新生成窗口代码文件。`);
+      return;
+    }
+
+    setDesignerState(prev => ({
+      ...prev,
+      activeWindowId: windowModel.id,
+      selectedControlId: windowModel.controls[0]?.id || null
+    }));
+    onSelectFile(sourceFile, false);
+    window.dispatchEvent(new CustomEvent('show-window-designer'));
   };
 
   // Switch tab, and handle collapse/expand in VS style
@@ -308,6 +361,8 @@ export default function Sidebar({
             <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-sky-500/15 text-sky-400 border border-sky-500/20 select-none shrink-0 font-sans">C++</span>
           ) : file.name.endsWith('.h') ? (
             <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-500/15 text-purple-400 border border-purple-500/20 select-none shrink-0 font-sans">H</span>
+          ) : file.name.endsWith('.lcpp') ? (
+            <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 select-none shrink-0 font-sans">中C</span>
           ) : file.name.endsWith('.e') ? (
             <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 select-none shrink-0 font-sans">易</span>
           ) : (
@@ -340,6 +395,47 @@ export default function Sidebar({
           )}
         </div>
       </div>
+    );
+  };
+
+  const renderWindowRow = (windowModel: LingWindowModel) => {
+    const sourceName = getLingWindowSourceFileName(windowModel.fileName, windowModel.className);
+    const isActive = activeFile.name === sourceName;
+
+    return (
+      <button
+        type="button"
+        key={windowModel.id}
+        onClick={() => handleOpenDesignerWindow(windowModel)}
+        title={`打开窗口设计器：${windowModel.title} (${windowModel.fileName})`}
+        aria-label={`打开窗口设计器：${windowModel.title}`}
+        className={`group w-full flex items-center justify-between gap-2 py-1 px-3 pl-8 text-xs cursor-pointer border-l-2 transition-all text-left ${
+          isActive
+            ? isDarkMode
+              ? 'bg-[#37373D] border-amber-500 text-amber-300 font-medium'
+              : 'bg-amber-50 border-amber-500 text-amber-700 font-semibold'
+            : isDarkMode
+              ? 'border-transparent text-[#CCCCCC] hover:bg-[#2A2D2E] hover:text-white'
+              : 'border-transparent text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+        }`}
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <Monitor className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-amber-400' : 'text-amber-500'}`} />
+          <span className="min-w-0 flex flex-col leading-tight">
+            <span className="truncate">{windowModel.title}</span>
+            <span className={`truncate text-[9px] ${isDarkMode ? 'text-slate-500 group-hover:text-slate-400' : 'text-slate-400 group-hover:text-slate-500'}`}>
+              {windowModel.fileName}
+            </span>
+          </span>
+        </span>
+        <span className={`shrink-0 text-[9px] px-1 rounded border ${
+          isDarkMode
+            ? 'bg-[#1E1E1E] border-amber-500/20 text-amber-300'
+            : 'bg-white border-amber-200 text-amber-700'
+        }`}>
+          {windowModel.controls.length}
+        </span>
+      </button>
     );
   };
 
@@ -515,6 +611,9 @@ export default function Sidebar({
                     title="折叠全部" 
                     onClick={() => {
                       setIsSolutionOpen(false);
+                      setIsWindowsOpen(false);
+                      setIsSrcOpen(false);
+                      setIsConfigOpen(false);
                     }} 
                   />
                 </div>
@@ -527,7 +626,7 @@ export default function Sidebar({
                     type="text"
                     value={fileSearch}
                     onChange={e => setFileSearch(e.target.value)}
-                    placeholder="搜索 C++ 文件..."
+                    placeholder="搜索文件或窗口..."
                     className={`w-full text-xs py-1 pl-7 pr-2 rounded focus:outline-none focus:ring-1 focus:ring-[#007ACC] font-sans ${
                       isDarkMode
                         ? 'bg-[#1E1E1E] border-[#2d2d34] text-slate-200 placeholder-slate-600 border'
@@ -540,6 +639,18 @@ export default function Sidebar({
                       className={`w-3 h-3 absolute right-2 cursor-pointer ${isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-400 hover:text-slate-700'}`}
                       onClick={() => setFileSearch('')}
                     />
+                  )}
+                </div>
+                <div className={`mt-2 rounded border px-2 py-1.5 text-[10px] font-sans ${
+                  isDarkMode ? 'border-[#2d2d34] bg-[#1E1E1E] text-slate-400' : 'border-slate-200 bg-white text-slate-600'
+                }`}>
+                  {sourceControlStatus?.isRepository ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate">Git: {sourceControlStatus.branch || 'detached'}</span>
+                      <span className="text-amber-500 font-semibold">{sourceControlStatus.files.length} 个改动</span>
+                    </div>
+                  ) : (
+                    <span>Git: 当前目录未检测到可用仓库状态</span>
                   )}
                 </div>
               </div>
@@ -565,8 +676,37 @@ export default function Sidebar({
                         <span className="text-purple-600 font-bold">GameClient (Visual C++)</span>
                       </div>
 
-                      {/* includes / src Folder */}
+                      {/* Window designer group */}
                       <div className="pl-2">
+                        <div
+                          onClick={() => setIsWindowsOpen(!isWindowsOpen)}
+                          className={`flex items-center gap-1 px-2 py-1 cursor-pointer text-xs font-sans transition-colors ${
+                            isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
+                          }`}
+                          title="展开查看所有窗口，点击窗口可直接进入窗口设计器"
+                        >
+                          {isWindowsOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
+                          <Folder className="w-3.5 h-3.5 text-amber-500 fill-amber-500/10" />
+                          <span className="truncate">窗口</span>
+                          <span className={`ml-auto text-[9px] px-1 rounded border ${
+                            isDarkMode ? 'border-amber-500/20 text-amber-300 bg-amber-500/5' : 'border-amber-200 text-amber-700 bg-amber-50'
+                          }`}>
+                            {designerState.project.windows.length}
+                          </span>
+                        </div>
+                        {isWindowsOpen && (
+                          <div className="mt-0.5 border-l border-slate-750/30 dark:border-slate-800 ml-3.5 pl-0.5">
+                            {designerWindows.length === 0 ? (
+                              <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">未找到匹配窗口</div>
+                            ) : (
+                              designerWindows.map(renderWindowRow)
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* includes / src Folder */}
+                      <div className="pl-2 mt-1.5">
                         <div
                           onClick={() => setIsSrcOpen(!isSrcOpen)}
                           className={`flex items-center gap-1 px-2 py-1 cursor-pointer text-xs font-sans transition-colors ${

@@ -8,8 +8,23 @@ import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedString } from "./src/types";
-import { generateNativeWin32Project } from "./src/services/windowDesigner/nativeWin32Project";
+import { parseLingCpp } from "./src/services/lingCpp/parser";
+import {
+  AppliedWorkspaceFile,
+  LingCppEditContext,
+  LingCppEditDraft,
+  LingCppWorkspaceFile,
+  WorkspaceEditRange
+} from "./src/services/lingCpp/types";
+import { generateLingCppNativeWin32Project } from "./src/services/windowDesigner/lingCppWin32Project";
 import { LingWindowProject } from "./src/services/windowDesigner/types";
+import {
+  applyWorkspaceEdit,
+  applyWorkspaceEditToFiles,
+  getWorkspaceEditProposal,
+  proposeLingCppEdit,
+  rejectWorkspaceEdit
+} from "./src/services/lingCpp/aiEditService";
 
 dotenv.config();
 
@@ -33,8 +48,15 @@ function getGeminiClient(): GoogleGenAI {
 const app = express();
 const PORT = Number.parseInt(process.env.PORT || "3000", 10);
 const execFileAsync = promisify(execFile);
+const ALLOWED_PROJECT_EXTS = [".lcpp", ".cpp", ".h", ".rc", ".xml", ".json", ".ini"];
 
 app.use(express.json({ limit: "2mb" }));
+
+function getRepoWorkspaceRoot() {
+  return path.basename(process.cwd()).toLowerCase() === "electron"
+    ? path.resolve(process.cwd(), "..")
+    : process.cwd();
+}
 
 // API: Health Check
 app.get("/api/health", (req, res) => {
@@ -237,9 +259,10 @@ app.post("/api/reconstruct", (req, res) => {
 });
 
 app.post("/api/window-designer/build-run", async (req, res) => {
-  const { project, activeWindowId, eplSourceCode, run = true } = req.body as {
+  const { project, activeWindowId, lingCppSourceCode, eplSourceCode, run = true } = req.body as {
     project?: LingWindowProject;
     activeWindowId?: string;
+    lingCppSourceCode?: string;
     eplSourceCode?: string;
     run?: boolean;
   };
@@ -252,31 +275,42 @@ app.post("/api/window-designer/build-run", async (req, res) => {
   }
 
   try {
-    const generatedProject = generateNativeWin32Project(project, {
+    const sourceCode = typeof lingCppSourceCode === "string"
+      ? lingCppSourceCode
+      : typeof eplSourceCode === "string"
+        ? eplSourceCode
+        : "";
+    const generatedProject = generateLingCppNativeWin32Project(project, {
       activeWindowId,
-      eplSourceCode: typeof eplSourceCode === "string" ? eplSourceCode : ""
+      lingCppSourceCode: sourceCode
     });
-    const buildRoot = path.join(process.cwd(), ".lingbuilder-build");
+    const repoRoot = getRepoWorkspaceRoot();
+    const buildRoot = path.join(repoRoot, ".lingbuilder-build");
     const buildDir = path.join(buildRoot, sanitizeFilename(project.id || "window-preview"));
     const sourceDir = path.join(buildDir, "src");
     const binDir = path.join(buildDir, "bin");
     const objDir = path.join(buildDir, "obj");
+    const exportDir = path.join(repoRoot, "generated", "cpp", sanitizeFilename(project.id || "window-preview"));
 
     await Promise.all([
       fs.mkdir(sourceDir, { recursive: true }),
       fs.mkdir(binDir, { recursive: true }),
-      fs.mkdir(objDir, { recursive: true })
+      fs.mkdir(objDir, { recursive: true }),
+      fs.mkdir(exportDir, { recursive: true })
     ]);
 
-    // Write active window's .e file
     const activeWindow = project.windows.find(w => w.id === activeWindowId) || project.windows[0];
-    if (activeWindow && typeof eplSourceCode === "string" && eplSourceCode.trim()) {
-      const eName = activeWindow.fileName.replace(/\.xml$/i, '.e');
-      await fs.writeFile(path.join(sourceDir, eName), eplSourceCode, "utf8");
+    if (activeWindow && sourceCode.trim()) {
+      const fileName = `${activeWindow.className || activeWindow.fileName.replace(/\.xml$/i, "")}.lcpp`;
+      await fs.writeFile(path.join(sourceDir, fileName), sourceCode, "utf8");
     }
     await Promise.all(generatedProject.files.map(file => {
       const targetPath = path.join(sourceDir, file.relativePath);
-      return fs.writeFile(targetPath, file.content, "utf8");
+      const exportPath = path.join(exportDir, file.relativePath);
+      return Promise.all([
+        fs.writeFile(targetPath, file.content, "utf8"),
+        fs.writeFile(exportPath, file.content, "utf8")
+      ]);
     }));
 
     const compiler = await detectCompiler();
@@ -291,6 +325,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         files: generatedProject.files.map(file => path.join(sourceDir, file.relativePath)),
         logs: [
           "已生成 Win32 C++ 工程文件。",
+          ...generatedProject.diagnostics,
           "未检测到可用 C++ 编译器。请安装 Visual Studio Build Tools、MinGW g++ 或 LLVM clang++ 后重试。",
           "需要的编译器命令之一：cl、g++、clang++。"
         ]
@@ -303,10 +338,12 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     const logs = [
       `已生成 Win32 C++ 工程：${buildDir}`,
       `C++ 源码目录：${sourceDir}`,
+      `可复制生成目录：${exportDir}`,
       `exe 输出目录：${binDir}`,
       `中间文件目录：${objDir}`,
       `当前窗口：${generatedProject.selectedWindow.title}`,
       `编译器：${compiler.kind} (${compiler.command})`,
+      ...generatedProject.diagnostics,
       ...compileResult.logs
     ];
 
@@ -377,49 +414,51 @@ app.get("/api/window-designer/files", async (req, res) => {
   }
 
   try {
-    const buildRoot = path.join(process.cwd(), ".lingbuilder-build");
-    const buildDir = path.join(buildRoot, sanitizeFilename(projectId));
-    const sourceDir = path.join(buildDir, "src");
-
     const files: Record<string, string> = {};
-    try {
-      const dirFiles = await fs.readdir(sourceDir);
-      for (const file of dirFiles) {
-        const allowedExts = [".e", ".cpp", ".h", ".rc", ".xml", ".json"];
-        if (allowedExts.some(ext => file.endsWith(ext))) {
-          const content = await fs.readFile(path.join(sourceDir, file), "utf8");
-          files[file] = content;
-        }
-      }
-    } catch (e) {
-      // directory might not exist yet, ignore
+    const repoRoot = getRepoWorkspaceRoot();
+    const directories = [
+      path.join(repoRoot, "src"),
+      path.join(repoRoot, "config")
+    ];
+
+    for (const directory of directories) {
+      await collectFilesRecursively(repoRoot, directory, files);
     }
 
-    res.json({ ok: true, files });
+    const designerProjectPath = path.join(repoRoot, ".lingbuilder", "window-designer.json");
+    let designerProject = null;
+    if (await pathExists(designerProjectPath)) {
+      designerProject = JSON.parse(await fs.readFile(designerProjectPath, "utf8"));
+    }
+
+    res.json({ ok: true, files, designerProject });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
 app.post("/api/window-designer/files", async (req, res) => {
-  const { projectId, files } = req.body as { projectId?: string; files?: Record<string, string> };
+  const { projectId, files, project } = req.body as { projectId?: string; files?: Record<string, string>; project?: LingWindowProject };
   if (!projectId || !files) {
     return res.status(400).json({ ok: false, error: "缺少 projectId 或 files" });
   }
 
   try {
-    const buildRoot = path.join(process.cwd(), ".lingbuilder-build");
-    const buildDir = path.join(buildRoot, sanitizeFilename(projectId));
-    const sourceDir = path.join(buildDir, "src");
+    const repoRoot = getRepoWorkspaceRoot();
+    const designerDir = path.join(repoRoot, ".lingbuilder");
+    await fs.mkdir(designerDir, { recursive: true });
 
-    await fs.mkdir(sourceDir, { recursive: true });
+    for (const [relativePath, content] of Object.entries(files)) {
+      if (!ALLOWED_PROJECT_EXTS.some(ext => relativePath.endsWith(ext))) continue;
+      if (relativePath.includes("..")) continue;
+      const normalizedPath = relativePath.replace(/\\/g, "/");
+      const targetPath = path.join(repoRoot, normalizedPath);
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      await fs.writeFile(targetPath, content, "utf8");
+    }
 
-    for (const [filename, content] of Object.entries(files)) {
-      const allowedExts = [".e", ".cpp", ".h", ".rc", ".xml", ".json"];
-      if (allowedExts.some(ext => filename.endsWith(ext))) {
-        const targetPath = path.join(sourceDir, filename);
-        await fs.writeFile(targetPath, content, "utf8");
-      }
+    if (project) {
+      await fs.writeFile(path.join(designerDir, "window-designer.json"), JSON.stringify(project, null, 2), "utf8");
     }
 
     res.json({ ok: true });
@@ -428,10 +467,116 @@ app.post("/api/window-designer/files", async (req, res) => {
   }
 });
 
+app.get("/api/source-control/status", async (_req, res) => {
+  const repoRoot = getRepoWorkspaceRoot();
+  try {
+    const result = await execFileAsync("git", ["status", "--short", "--branch"], {
+      cwd: repoRoot,
+      timeout: 10000,
+      windowsHide: true
+    });
+    const lines = result.stdout.split(/\r?\n/).filter(Boolean);
+    const branchLine = lines[0] || "";
+    const branch = branchLine.startsWith("## ") ? branchLine.slice(3).trim() : "";
+    const files = lines.slice(1).map(line => ({
+      indexStatus: line.slice(0, 1).trim(),
+      workingTreeStatus: line.slice(1, 2).trim(),
+      path: line.slice(3).trim()
+    }));
+    res.json({
+      isRepository: true,
+      branch,
+      files
+    });
+  } catch (error: any) {
+    res.json({
+      isRepository: false,
+      branch: "",
+      files: [],
+      error: error?.message || "无法读取 Git 状态"
+    });
+  }
+});
+
+app.post("/api/lingcpp/edit/propose", async (req, res) => {
+  const { filePath, sourceCode, instruction, selection, workspaceFiles } = req.body as {
+    filePath?: string;
+    sourceCode?: string;
+    instruction?: string;
+    selection?: { startLine: number; startColumn: number; endLine: number; endColumn: number };
+    workspaceFiles?: Array<{ filePath: string; sourceCode: string; language?: string }>;
+  };
+
+  if (!filePath || typeof sourceCode !== "string") {
+    return res.status(400).json({ ok: false, error: "缺少 filePath 或 sourceCode" });
+  }
+
+  const context: LingCppEditContext = {
+    filePath,
+    sourceCode,
+    instruction: instruction || "",
+    selection,
+    workspaceFiles: sanitizeWorkspaceFiles(workspaceFiles)
+  };
+
+  let draft: LingCppEditDraft | undefined;
+  try {
+    draft = await planLingCppEditWithGemini(context);
+  } catch (error: any) {
+    draft = {
+      summary: context.instruction.trim() || "根据当前上下文生成中文 C++ 编辑建议",
+      explanation: `Gemini 编辑提案生成失败，已降级为本地安全提案：${error?.message || "未知错误"}`
+    };
+  }
+
+  const proposal = proposeLingCppEdit(context, draft);
+  res.json({ ok: true, proposal });
+});
+
+app.post("/api/lingcpp/edit/apply", async (req, res) => {
+  const { proposalId, sourceCode, workspaceFiles } = req.body as {
+    proposalId?: string;
+    sourceCode?: string;
+    workspaceFiles?: Array<{ filePath: string; sourceCode: string; language?: string }>;
+  };
+  if (!proposalId) {
+    return res.status(400).json({ ok: false, error: "缺少 proposalId" });
+  }
+  const proposal = getWorkspaceEditProposal(proposalId);
+  if (!proposal) {
+    return res.status(404).json({ ok: false, error: "未找到编辑提案" });
+  }
+  const sanitizedWorkspaceFiles = sanitizeWorkspaceFiles(workspaceFiles);
+  const effectiveWorkspaceFiles = sanitizedWorkspaceFiles.length > 0
+    ? sanitizedWorkspaceFiles
+    : (
+      typeof sourceCode === "string" && proposal.changes[0]
+        ? [{ filePath: proposal.changes[0].filePath, sourceCode }]
+        : []
+    );
+  if (effectiveWorkspaceFiles.length === 0) {
+    return res.status(400).json({ ok: false, error: "缺少可应用的 workspaceFiles 或 sourceCode" });
+  }
+  const appliedFiles = applyWorkspaceEditToFiles(effectiveWorkspaceFiles, proposal);
+  const nextSourceCode = proposal.changes[0]
+    ? (appliedFiles.find(file => normalizeFilePath(file.filePath) === normalizeFilePath(proposal.changes[0].filePath))?.sourceCode || sourceCode || "")
+    : (sourceCode || "");
+  rejectWorkspaceEdit(proposalId);
+  res.json({ ok: true, proposal, nextSourceCode, appliedFiles });
+});
+
+app.post("/api/lingcpp/edit/reject", async (req, res) => {
+  const { proposalId } = req.body as { proposalId?: string };
+  if (!proposalId) {
+    return res.status(400).json({ ok: false, error: "缺少 proposalId" });
+  }
+  res.json({ ok: rejectWorkspaceEdit(proposalId) });
+});
+
 app.get("/api/window-designer/debug-logs", async (req, res) => {
   const projectId = req.query.projectId as string || "window-preview";
   const clear = req.query.clear === "true";
-  const buildDir = path.join(process.cwd(), ".lingbuilder-build", projectId);
+  const buildDir = path.join(getRepoWorkspaceRoot(), ".lingbuilder-build", projectId);
   const logFile = path.join(buildDir, "run.log");
 
   if (clear) {
@@ -644,6 +789,226 @@ async function pathExists(value: string): Promise<boolean> {
 
 function sanitizeFilename(value: string): string {
   return value.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").slice(0, 80) || "window-preview";
+}
+
+async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<LingCppEditDraft> {
+  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
+  if (!apiKey) {
+    return {
+      summary: context.instruction.trim() || "根据当前上下文生成中文 C++ 编辑建议",
+      explanation: "未检测到 GEMINI_API_KEY，已回退到本地安全提案。"
+    };
+  }
+
+  const sourceCode = normalizeLineEndings(context.sourceCode);
+  const workspaceFiles = resolveEditWorkspaceFiles(context);
+  const promptWorkspaceFiles = selectWorkspaceFilesForPrompt(workspaceFiles, context.filePath);
+  const parseResult = parseLingCpp(sourceCode);
+  const diagnostics = parseResult.diagnostics
+    .slice(0, 12)
+    .map(diagnostic => `- [${diagnostic.level}] 第 ${diagnostic.line} 行：${diagnostic.message}`)
+    .join("\n") || "无";
+  const selectedText = context.selection ? getTextForRange(sourceCode, context.selection) : "";
+
+  const systemPrompt = `你是 LingBuilder 的中文 C++（.lcpp）重写代理。
+你的任务是根据用户要求修改一个或多个已提供的工作区文件，并返回“仅包含发生变化文件”的完整重写结果。
+
+严格规则：
+1. 只能编辑“本次提供给你的工作区文件”，不能创建、引用或假装修改其他文件。
+2. 每个 changed file 的 updatedSource 都必须是该文件的完整内容，不能只返回片段，不能使用 Markdown 代码块。
+3. 若修改 .lcpp 文件，必须保持 LingCpp 语法风格：包、使用、类、公开、私有、保护、构造、析构、事件、返回、如果、否则、如果结束、循环、循环结束、结束类。
+4. 除非用户明确要求，不要重命名现有事件处理器、类名、控件名、设计器绑定名或配置键名。
+5. 优先做最小必要改动，保留无关代码、缩进和注释。
+6. 只返回确实发生变化的文件；如果无需修改某个文件，就不要把它放进 files 数组。
+7. explanation 用中文简要说明哪些文件被改了、为什么。`;
+
+  const prompt = [
+    `当前活动文件：${context.filePath}`,
+    `用户需求：${context.instruction || "请根据上下文改进当前中文 C++ 文件。"}`,
+    context.selection
+      ? `重点选区：第 ${context.selection.startLine} 行第 ${context.selection.startColumn} 列 到 第 ${context.selection.endLine} 行第 ${context.selection.endColumn} 列`
+      : "重点选区：无，允许围绕整份文件进行必要修改。",
+    context.selection && selectedText
+      ? `选区源码：\n<<<SELECTION\n${selectedText}\nSELECTION`
+      : "",
+    `当前本地解析诊断：\n${diagnostics}`,
+    `本次允许编辑的工作区文件如下（只可改这些文件）：
+${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCode}`).join("\n\n")}`
+  ].filter(Boolean).join("\n\n");
+
+  const ai = getGeminiClient();
+  const response = await ai.models.generateContent({
+    model: "gemini-3.5-flash",
+    contents: prompt,
+    config: {
+      systemInstruction: systemPrompt,
+      temperature: 0.2,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          summary: { type: Type.STRING, description: "一句话概括本次修改内容" },
+          explanation: { type: Type.STRING, description: "简要说明改动原因与影响" },
+          files: {
+            type: Type.ARRAY,
+            description: "仅包含发生变化的文件，每项都必须给出完整文件内容",
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                filePath: { type: Type.STRING, description: "被修改的文件路径，必须来自允许编辑的工作区文件列表" },
+                updatedSource: { type: Type.STRING, description: "修改后的完整文件内容" }
+              },
+              required: ["filePath", "updatedSource"]
+            }
+          }
+        },
+        required: ["summary", "explanation", "files"]
+      }
+    }
+  });
+
+  const draft = JSON.parse((response.text || "{}").trim()) as LingCppEditDraft;
+  const promptFileMap = new Map(promptWorkspaceFiles.map(file => [normalizeFilePath(file.filePath), file]));
+  const validDraftFiles = (draft.files || [])
+    .filter(file => file?.filePath && typeof file.updatedSource === "string")
+    .map(file => ({
+      filePath: file.filePath,
+      updatedSource: normalizeLineEndings(file.updatedSource)
+    }))
+    .filter(file => promptFileMap.has(normalizeFilePath(file.filePath)) && file.updatedSource.trim());
+
+  if (validDraftFiles.length === 0) {
+    throw new Error("Gemini 未返回有效的多文件编辑结果");
+  }
+
+  const diagnosticsNotes: string[] = [];
+  validDraftFiles.forEach(file => {
+    if (!file.filePath.endsWith(".lcpp")) return;
+    const originalFile = workspaceFiles.find(item => normalizeFilePath(item.filePath) === normalizeFilePath(file.filePath));
+    if (!originalFile) return;
+    const originalParse = parseLingCpp(normalizeLineEndings(originalFile.sourceCode));
+    const updatedParse = parseLingCpp(file.updatedSource);
+    if (originalParse.program.classes.length > 0 && updatedParse.program.classes.length === 0) {
+      throw new Error(`Gemini 返回的 ${file.filePath} 无法通过基本的 LingCpp 类结构校验`);
+    }
+    const nextErrorCount = updatedParse.diagnostics.filter(diagnostic => diagnostic.level === "error").length;
+    const originalErrorCount = originalParse.diagnostics.filter(diagnostic => diagnostic.level === "error").length;
+    if (nextErrorCount > originalErrorCount) {
+      diagnosticsNotes.push(`${file.filePath} 仍有 ${nextErrorCount} 条错误级诊断，请在应用前复核。`);
+    }
+  });
+
+  const diagnosticsNote = diagnosticsNotes.length > 0
+    ? `\n\n注意：${diagnosticsNotes.join("；")}`
+    : "";
+
+  return {
+    summary: draft.summary?.trim() || context.instruction.trim() || "根据当前上下文生成中文 C++ 编辑建议",
+    explanation: `${draft.explanation?.trim() || "Gemini 已生成完整文件级编辑提案。"}${diagnosticsNote}`,
+    files: validDraftFiles
+  };
+}
+
+async function collectFilesRecursively(repoRoot: string, directory: string, files: Record<string, string>): Promise<void> {
+  if (!await pathExists(directory)) return;
+  const entries = await fs.readdir(directory, { withFileTypes: true });
+  for (const entry of entries) {
+    const targetPath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      await collectFilesRecursively(repoRoot, targetPath, files);
+      continue;
+    }
+    if (!ALLOWED_PROJECT_EXTS.some(ext => entry.name.endsWith(ext))) continue;
+    const relativePath = path.relative(repoRoot, targetPath).replace(/\\/g, "/");
+    files[relativePath] = await fs.readFile(targetPath, "utf8");
+  }
+}
+
+function getTextForRange(sourceCode: string, range: WorkspaceEditRange): string {
+  const lines = normalizeLineEndings(sourceCode).split("\n");
+  const startLine = Math.max(1, range.startLine);
+  const endLine = Math.max(startLine, range.endLine);
+  const selected = lines.slice(startLine - 1, endLine);
+  if (selected.length === 0) return "";
+
+  selected[0] = selected[0].slice(Math.max(0, range.startColumn - 1));
+  if (range.endColumn !== Number.MAX_SAFE_INTEGER) {
+    selected[selected.length - 1] = selected[selected.length - 1].slice(0, Math.max(0, range.endColumn - 1));
+  }
+  return selected.join("\n");
+}
+
+function normalizeLineEndings(value: string): string {
+  return value.replace(/\r\n?/g, "\n");
+}
+
+function sanitizeWorkspaceFiles(
+  workspaceFiles?: Array<{ filePath: string; sourceCode: string; language?: string }>
+): LingCppWorkspaceFile[] {
+  if (!Array.isArray(workspaceFiles)) return [];
+  const deduped = new Map<string, LingCppWorkspaceFile>();
+
+  workspaceFiles.forEach(file => {
+    if (!file?.filePath || typeof file.sourceCode !== "string") return;
+    const normalizedPath = normalizeFilePath(file.filePath);
+    if (!normalizedPath || normalizedPath.includes("..")) return;
+    deduped.set(normalizedPath, {
+      filePath: normalizedPath,
+      sourceCode: normalizeLineEndings(file.sourceCode),
+      language: file.language
+    });
+  });
+
+  return [...deduped.values()];
+}
+
+function resolveEditWorkspaceFiles(context: LingCppEditContext): LingCppWorkspaceFile[] {
+  const files = sanitizeWorkspaceFiles(context.workspaceFiles);
+  if (!files.some(file => normalizeFilePath(file.filePath) === normalizeFilePath(context.filePath))) {
+    files.unshift({
+      filePath: normalizeFilePath(context.filePath),
+      sourceCode: normalizeLineEndings(context.sourceCode),
+      language: context.filePath.endsWith(".lcpp") ? "lingcpp" : undefined
+    });
+  }
+  return files;
+}
+
+function selectWorkspaceFilesForPrompt(
+  workspaceFiles: LingCppWorkspaceFile[],
+  activeFilePath: string
+): LingCppWorkspaceFile[] {
+  const activeNormalizedPath = normalizeFilePath(activeFilePath);
+  const activeDirectory = activeNormalizedPath.split("/").slice(0, -1).join("/");
+  const ranked = [...workspaceFiles].sort((left, right) => rankWorkspaceFile(right, activeNormalizedPath, activeDirectory) - rankWorkspaceFile(left, activeNormalizedPath, activeDirectory));
+  const selected: LingCppWorkspaceFile[] = [];
+  let totalChars = 0;
+
+  for (const file of ranked) {
+    const nextSize = file.sourceCode.length;
+    if (selected.length >= 5) break;
+    if (selected.length > 0 && totalChars + nextSize > 24000) continue;
+    selected.push(file);
+    totalChars += nextSize;
+  }
+
+  return selected.length > 0 ? selected : workspaceFiles.slice(0, 1);
+}
+
+function rankWorkspaceFile(file: LingCppWorkspaceFile, activeFilePath: string, activeDirectory: string): number {
+  const normalizedPath = normalizeFilePath(file.filePath);
+  let score = 0;
+  if (normalizedPath === activeFilePath) score += 1000;
+  if (activeDirectory && normalizedPath.startsWith(`${activeDirectory}/`)) score += 180;
+  if (normalizedPath.endsWith(".lcpp")) score += 120;
+  if (normalizedPath.endsWith(".ini")) score += 90;
+  if (normalizedPath.endsWith(".json")) score += 70;
+  if (normalizedPath.includes("/config/") || normalizedPath.startsWith("config/")) score += 40;
+  return score;
+}
+
+function normalizeFilePath(value: string): string {
+  return value.replace(/\\/g, "/").trim();
 }
 
 async function startServer() {

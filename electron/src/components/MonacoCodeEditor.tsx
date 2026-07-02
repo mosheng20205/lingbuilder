@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import Editor, { loader } from '@monaco-editor/react';
+import { LING_CPP_COMMANDS, LING_CPP_KEYWORDS, LING_CPP_TYPES } from '../services/lingCpp/parser';
 
 // Configure monaco loader path if needed (default CDN is fine)
 loader.config({
@@ -57,26 +58,29 @@ const EPL_TYPES = [
 
 const EPL_BOOLEANS = ['真', '假'];
 
-const eplMonarchLanguage = {
+const LINGCPP_BOOLEANS = ['真', '假'];
+
+const createMonarchLanguage = (
+  keywords: string[],
+  commands: string[],
+  types: string[],
+  booleans: string[],
+  tagPattern: RegExp
+) => ({
   defaultToken: '',
-  tokenPostfix: '.e',
-
-  keywords: EPL_KEYWORDS,
-  commands: EPL_COMMANDS,
-  types: EPL_TYPES,
-  booleans: EPL_BOOLEANS,
-
+  tokenPostfix: '.ling',
+  keywords,
+  commands,
+  types,
+  booleans,
   operators: [
     '=', '>', '<', '!', '~', '?', ':',
     '==', '<=', '>=', '!=', '&&', '||',
     '+', '-', '*', '/', '%', '^'
   ],
-
   symbols: /[=><!~?:&|+\-*\/\^%]+/,
-
   tokenizer: {
     root: [
-      // Identifiers & Keywords
       [/[a-zA-Z\u4e00-\u9fa5_][a-zA-Z0-9\u4e00-\u9fa5_]*/, {
         cases: {
           '@keywords': 'keyword',
@@ -86,15 +90,8 @@ const eplMonarchLanguage = {
           '@default': 'identifier'
         }
       }],
-
-      // Headers (e.g. .子程序, .局部变量, .变量)
-      [/^\s*\.[子程序|局部变量|变量]+/, 'tag'],
-      [/^\s*\.\s*[a-zA-Z\u4e00-\u9fa5_]*/, 'tag'],
-
-      // Whitespace
+      [tagPattern, 'tag'],
       { include: '@whitespace' },
-
-      // Delimiters and operators
       [/[{}()\[\]]/, '@brackets'],
       [/@symbols/, {
         cases: {
@@ -102,35 +99,44 @@ const eplMonarchLanguage = {
           '@default': ''
         }
       }],
-
-      // Numbers
       [/\d*\.\d+([eE][\-+]?\d+)?/, 'number.float'],
       [/\d+/, 'number'],
-
-      // Strings
       [/"([^"\\]|\\.)*$/, 'string.invalid'],
       [/"/, 'string', '@string'],
       [/“/, 'string', '@stringChinese'],
     ],
-
     whitespace: [
       [/[ \t\r\n]+/, 'white'],
       [/(?:\/\/|').*/, 'comment'],
     ],
-
     string: [
       [/[^\\"]+/, 'string'],
       [/\\./, 'string.escape'],
       [/"/, 'string', '@pop']
     ],
-
     stringChinese: [
       [/[^\\”]+/, 'string'],
       [/\\./, 'string.escape'],
       [/”/, 'string', '@pop']
     ]
   }
-};
+});
+
+const eplMonarchLanguage = createMonarchLanguage(
+  EPL_KEYWORDS,
+  EPL_COMMANDS,
+  EPL_TYPES,
+  EPL_BOOLEANS,
+  /^\s*\.(子程序|局部变量|变量|程序集|程序集变量|版本|支持库)\b/
+);
+
+const lingCppMonarchLanguage = createMonarchLanguage(
+  LING_CPP_KEYWORDS,
+  LING_CPP_COMMANDS,
+  LING_CPP_TYPES,
+  LINGCPP_BOOLEANS,
+  /^\s*(包|使用|类|公开|私有|保护|构造|析构|事件|结束类)\b/
+);
 
 export default function MonacoCodeEditor({
   sourceCode,
@@ -154,8 +160,7 @@ export default function MonacoCodeEditor({
     if (!model) return;
 
     const lines = model.getLinesContent();
-    // Look for a line containing ".子程序" and the handler name
-    const regex = new RegExp(`\\.子程序\\s+${focusHandlerName}(?:\\s|,|，|$)`);
+    const regex = new RegExp(`(?:\\.子程序\\s+|事件\\s+)${focusHandlerName}(?:\\s|,|，|[（(]|$)`);
     let targetLine = -1;
 
     for (let i = 0; i < lines.length; i++) {
@@ -212,6 +217,44 @@ export default function MonacoCodeEditor({
               kind: monaco.languages.CompletionItemKind.Class,
               insertText: t,
               detail: '数据类型'
+            });
+          });
+
+          return { suggestions };
+        }
+      });
+    }
+    if (!monaco.languages.getLanguages().some((lang: any) => lang.id === 'lingcpp')) {
+      monaco.languages.register({ id: 'lingcpp' });
+      monaco.languages.setMonarchTokensProvider('lingcpp', lingCppMonarchLanguage);
+      monaco.languages.registerCompletionItemProvider('lingcpp', {
+        provideCompletionItems: () => {
+          const suggestions: any[] = [];
+
+          LING_CPP_KEYWORDS.forEach(kw => {
+            suggestions.push({
+              label: kw,
+              kind: monaco.languages.CompletionItemKind.Keyword,
+              insertText: kw,
+              detail: '中文 C++ 关键字'
+            });
+          });
+
+          LING_CPP_COMMANDS.forEach(cmd => {
+            suggestions.push({
+              label: cmd,
+              kind: monaco.languages.CompletionItemKind.Function,
+              insertText: cmd,
+              detail: '中文 C++ 运行时命令'
+            });
+          });
+
+          LING_CPP_TYPES.forEach(t => {
+            suggestions.push({
+              label: t,
+              kind: monaco.languages.CompletionItemKind.Class,
+              insertText: t,
+              detail: '中文 C++ 类型'
             });
           });
 
@@ -276,6 +319,7 @@ export default function MonacoCodeEditor({
   const mapLanguage = (lang: string) => {
     const l = lang.toLowerCase();
     if (l === 'epl') return 'epl';
+    if (l === 'lingcpp' || l === 'lcpp') return 'lingcpp';
     if (l === 'cpp' || l === 'h') return 'cpp';
     if (l === 'rc' || l === 'ini') return 'ini';
     return 'plaintext';
