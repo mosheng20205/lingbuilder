@@ -62,7 +62,8 @@ export type BottomPanelTabType =
   | 'designer_logs'
   | 'problems'
   | 'output'
-  | 'debug_locals';
+  | 'debug_locals'
+  | 'debug_logs';
 
 export interface DesignerGeneratedPanelData {
   xmlLabel: string;

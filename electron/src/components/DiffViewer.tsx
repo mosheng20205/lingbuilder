@@ -1,8 +1,24 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
-import { Sparkles, Undo2, Check, Code, LayoutGrid } from 'lucide-react';
+import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X } from 'lucide-react';
+
+function FileIcon({ fileName, isDarkMode }: { fileName: string; isDarkMode: boolean }) {
+  if (fileName.endsWith('.e')) {
+    return <FileCode className="w-3.5 h-3.5 text-emerald-500" />;
+  }
+  if (fileName.endsWith('.cpp')) {
+    return <FileCode className="w-3.5 h-3.5 text-blue-400" />;
+  }
+  if (fileName.endsWith('.h')) {
+    return <FileCode className="w-3.5 h-3.5 text-orange-400" />;
+  }
+  if (fileName.endsWith('.xml') || fileName.endsWith('.rc')) {
+    return <FileCode className="w-3.5 h-3.5 text-amber-500" />;
+  }
+  return <FileText className="w-3.5 h-3.5 text-slate-400" />;
+}
 import { DiffLine, DiffResult, ExtractedString } from '../types';
 import WpfDesigner from './WpfDesigner';
-import EplStructuredEditor from './EplStructuredEditor';
+import MonacoCodeEditor from './MonacoCodeEditor';
 
 interface DiffViewerProps {
   diffResult: DiffResult;
@@ -14,6 +30,11 @@ interface DiffViewerProps {
   activeFile?: any;
   editorFontSize?: number;
   onFontSizeChange?: (value: number | ((currentValue: number) => number)) => void;
+  openTabs: string[];
+  activeTabPath: string;
+  onSelectTab: (file: any) => void;
+  onCloseTab: (tabPath: string, event: React.MouseEvent) => void;
+  allFiles: any[];
 }
 
 // Diff Contrast Presets for customized developer visibility
@@ -193,9 +214,29 @@ export default function DiffViewer({
   isDarkMode,
   activeFile,
   editorFontSize = 13,
-  onFontSizeChange
+  onFontSizeChange,
+  openTabs,
+  activeTabPath,
+  onSelectTab,
+  onCloseTab,
+  allFiles
 }: DiffViewerProps) {
-  const [activeView, setActiveView] = useState<'code' | 'designer'>('code');
+  const [viewType, setViewType] = useState<'code' | 'designer'>('code');
+
+  useEffect(() => {
+    const handleForceCodeView = () => {
+      setViewType('code');
+    };
+    window.addEventListener('force-code-view', handleForceCodeView);
+    return () => {
+      window.removeEventListener('force-code-view', handleForceCodeView);
+    };
+  }, []);
+
+
+
+
+
   const [viewMode, setViewMode] = useState<'chinese' | 'split' | 'unified'>('chinese');
   const [preset, setPreset] = useState<DiffPreset>(isDarkMode ? 'vs-dark' : 'classic-light');
   const searchQuery: string = '';
@@ -205,6 +246,12 @@ export default function DiffViewer({
   const [showFolds, setShowFolds] = useState(true);
   const [sourceScroll, setSourceScroll] = useState({ top: 0, left: 0 });
   const [pendingHandlerFocus, setPendingHandlerFocus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (pendingHandlerFocus) {
+      setViewType('code');
+    }
+  }, [pendingHandlerFocus]);
 
   const leftScrollRef = useRef<HTMLDivElement>(null);
   const rightScrollRef = useRef<HTMLDivElement>(null);
@@ -377,7 +424,11 @@ export default function DiffViewer({
       const handlerName = customEvent.detail?.handlerName?.trim();
       if (!handlerName) return;
 
-      setActiveView('code');
+      if (activeFile?.name?.endsWith('.xml')) {
+        const codeFileName = activeFile.name.replace(/\.xml$/i, '.e');
+        const codeFile = allFiles.find(f => f.name === codeFileName);
+        if (codeFile) onSelectTab(codeFile);
+      }
       setViewMode('chinese');
       setPendingHandlerFocus(handlerName);
     };
@@ -390,7 +441,7 @@ export default function DiffViewer({
 
   useEffect(() => {
     const handleShowWindowDesigner = () => {
-      setActiveView('designer');
+      setViewType('designer');
     };
 
     window.addEventListener('show-window-designer', handleShowWindowDesigner);
@@ -781,98 +832,84 @@ export default function DiffViewer({
     foldingHeaderMap.set(fold.start, { count: fold.end - fold.start, end: fold.end });
   });
 
-  if (activeView === 'designer') {
-    return (
-      <div id="diff-window-host" className={`flex-1 flex flex-col overflow-hidden ${
-        isDarkMode ? 'bg-[#141418]' : 'bg-white'
-      }`}>
-        {/* Document Tab Bar */}
-        <div className={`flex px-1.5 shrink-0 select-none items-center justify-between border-b ${
-          isDarkMode ? 'bg-[#16161c] border-[#2d2d34]' : 'bg-slate-100 border-slate-200'
-        }`}>
-          <div className="flex">
-            <button
-              onClick={() => setActiveView('code')}
-              className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold border-t-2 border-transparent cursor-pointer transition-all ${
-                isDarkMode 
-                  ? 'text-slate-400 hover:bg-[#25252b] hover:text-slate-200' 
-                  : 'text-slate-600 hover:bg-slate-200 hover:text-slate-900'
-              }`}
-            >
-              <Code className="w-3.5 h-3.5 text-blue-500" />
-              <span>中文代码编辑器</span>
-            </button>
-            <button
-              onClick={() => setActiveView('designer')}
-              className={`flex items-center gap-1.5 px-4 py-2 text-[11px] border-t-2 font-bold cursor-pointer transition-all ${
-                isDarkMode 
-                  ? 'bg-[#141418] border-amber-500 text-white' 
-                  : 'bg-white border-amber-500 text-slate-900'
-              }`}
-            >
-              <LayoutGrid className="w-3.5 h-3.5 text-amber-500" />
-              <span>可视化 UI 界面设计器</span>
-              <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-normal border ${
-                isDarkMode 
-                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' 
-                  : 'bg-amber-50 border-amber-200 text-amber-700'
-              }`}>
-                内置核心
-              </span>
-            </button>
-          </div>
-          <div className="text-[10px] text-slate-500 font-mono pr-3 hidden md:block">
-            自主高精度可视化渲染引擎 • 全部支持中文化变量
-          </div>
-        </div>
-        <WpfDesigner isDarkMode={isDarkMode} />
-      </div>
-    );
-  }
+
 
   return (
     <div id="diff-window-host" className={`flex-1 flex flex-col overflow-hidden ${
       isDarkMode ? 'bg-[#141418]' : 'bg-white'
     }`}>
-      {/* Document Tab Bar */}
-      <div className={`flex px-1.5 shrink-0 select-none items-center justify-between border-b ${
-        isDarkMode ? 'bg-[#16161c] border-[#2d2d34]' : 'bg-slate-100 border-slate-200'
+      {/* File Tabs Bar */}
+      <div className={`flex px-2 pt-1 select-none items-center justify-between border-b ${
+        isDarkMode ? 'bg-[#181820] border-[#2d2d34]' : 'bg-slate-100 border-slate-200'
       }`}>
-        <div className="flex">
-          <button
-            onClick={() => setActiveView('code')}
-            className={`flex items-center gap-1.5 px-4 py-2 text-[11px] border-t-2 font-bold cursor-pointer transition-all ${
-              isDarkMode 
-                ? 'bg-[#141418] border-blue-500 text-white' 
-                : 'bg-white border-blue-600 text-slate-900'
-            }`}
-          >
-            <Code className="w-3.5 h-3.5 text-blue-500" />
-            <span>中文代码编辑器</span>
-          </button>
-          <button
-            onClick={() => setActiveView('designer')}
-            className={`flex items-center gap-1.5 px-4 py-2 text-[11px] font-semibold border-t-2 border-transparent cursor-pointer transition-all ${
-              isDarkMode 
-                ? 'text-slate-400 hover:bg-[#25252b] hover:text-slate-200' 
-                : 'text-slate-600 hover:bg-slate-200 hover:text-slate-900'
-            }`}
-          >
-            <LayoutGrid className="w-3.5 h-3.5 text-amber-500" />
-            <span>可视化 UI 界面设计器</span>
-            <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-normal border ${
-              isDarkMode 
-                ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' 
-                : 'bg-amber-50 border-amber-200 text-amber-700'
-            }`}>
-              内置核心
-            </span>
-          </button>
+        <div className="flex gap-1 overflow-x-auto scrollbar-none">
+          {openTabs.map(tabPath => {
+            const fileName = tabPath.split('/').pop() || tabPath;
+            const isActive = tabPath === activeTabPath;
+            const file = allFiles.find(f => f.path === tabPath);
+            if (!file) return null;
+            
+            return (
+              <div
+                key={tabPath}
+                onClick={() => onSelectTab(file)}
+                className={`group flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold rounded-t cursor-pointer transition-all border-t border-x ${
+                  isActive
+                    ? isDarkMode
+                      ? 'bg-[#1e1e24] border-[#2d2d34] text-white border-b-transparent'
+                      : 'bg-white border-slate-300 text-slate-900 border-b-transparent'
+                    : isDarkMode
+                      ? 'bg-[#141418] border-transparent text-slate-400 hover:text-slate-200'
+                      : 'bg-slate-200/50 border-transparent text-slate-600 hover:text-slate-800'
+                }`}
+              >
+                <FileIcon fileName={fileName} isDarkMode={isDarkMode} />
+                <span>{fileName}</span>
+                <button
+                  onClick={(e) => onCloseTab(tabPath, e)}
+                  className="w-3.5 h-3.5 rounded-full hover:bg-slate-400/20 flex items-center justify-center text-slate-500 hover:text-red-500 opacity-60 group-hover:opacity-100"
+                >
+                  <X className="w-2 h-2" />
+                </button>
+              </div>
+            );
+          })}
         </div>
-        <div className="text-[10px] text-slate-500 font-mono pr-3 hidden md:block">
-          自主高精度可视化渲染引擎 • 全部支持中文化变量
+        
+        {/* Top-Right Quick Toggle Button between Code/Designer */}
+        <div className="flex items-center gap-2 pr-2">
+          {activeFile?.name?.endsWith('.e') && (
+            viewType === 'designer' ? (
+              <button
+                onClick={() => setViewType('code')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
+                  isDarkMode 
+                    ? 'bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/30' 
+                    : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200'
+                }`}
+                title="查看中文事件代码 (F7)"
+              >
+                <Code className="w-3 h-3 text-blue-500" />
+                <span>查看代码 (Code)</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setViewType('designer')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
+                  isDarkMode 
+                    ? 'bg-amber-600/10 hover:bg-amber-600/20 text-amber-400 border border-amber-500/30' 
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200'
+                }`}
+                title="查看可视化设计器 (Shift+F7)"
+              >
+                <LayoutGrid className="w-3 h-3 text-amber-500" />
+                <span>查看设计器 (Designer)</span>
+              </button>
+            )
+          )}
         </div>
       </div>
+
 
       {/* Statistics Banner */}
       <div className={`px-4 py-1.5 border-b flex gap-4 text-xs font-mono shrink-0 select-none ${
@@ -886,8 +923,11 @@ export default function DiffViewer({
       </div>
 
       {/* Main Comparative Frame */}
-      <div className={`flex-1 flex overflow-hidden ${style.bg} ${style.text}`}>
-        {viewMode === 'chinese' ? (
+      {activeFile?.name?.endsWith('.e') && viewType === 'designer' ? (
+        <WpfDesigner isDarkMode={isDarkMode} activeFile={activeFile} />
+      ) : (
+        <div className={`flex-1 flex overflow-hidden ${style.bg} ${style.text}`}>
+          {viewMode === 'chinese' ? (
           // ================= CHINESE SOURCE EDITOR =================
           <div className="flex-1 flex flex-col min-w-0">
             <div className={`h-9 px-3 flex items-center justify-between gap-3 border-b shrink-0 ${
@@ -936,84 +976,17 @@ export default function DiffViewer({
               </div>
             </div>
 
-            {activeFile?.language === 'epl' ? (
-              <EplStructuredEditor
-                sourceCode={normalizedSourceCode}
-                isDarkMode={isDarkMode}
-                readOnly={!onUpdateSourceContent}
-                onChange={updateSourceCode}
-                focusHandlerName={pendingHandlerFocus}
-                onFocusHandled={() => setPendingHandlerFocus(null)}
-                editorFontSize={editorFontSize}
-                onFontSizeChange={onFontSizeChange}
-              />
-            ) : (
-              <div className={`flex-1 flex overflow-hidden ${
-                isDarkMode ? 'bg-[#1e1e1e]' : 'bg-white'
-              }`}>
-                <div
-                  ref={sourceLineNumberRef}
-                  aria-hidden="true"
-                  className={`w-14 shrink-0 overflow-hidden border-r text-right select-none ${
-                    isDarkMode ? 'bg-[#19191f] border-[#2d2d34] text-slate-600' : 'bg-slate-50 border-slate-200 text-slate-400'
-                  }`}
-                >
-                  <div
-                    className="py-3"
-                    style={{ transform: `translateY(${-sourceScroll.top}px)` }}
-                  >
-                    {sourceLineNumbers.map(lineNumber => (
-                      <div key={lineNumber} className="h-6 leading-6 pr-3 text-[12px] font-mono tabular-nums">
-                        {lineNumber}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="relative flex-1 min-w-0 h-full overflow-hidden">
-                  <pre
-                    aria-hidden="true"
-                    className="absolute inset-0 pointer-events-none overflow-hidden m-0 px-4 py-3 text-[13px] leading-6 font-mono tabular-nums"
-                    style={{
-                      fontFamily: '"Microsoft YaHei UI", "Cascadia Code", Consolas, monospace',
-                      fontSize: `${editorFontSize}px`,
-                      lineHeight: `${Math.max(18, Math.round(editorFontSize * 1.55))}px`,
-                      transform: `translate(${-sourceScroll.left}px, ${-sourceScroll.top}px)`
-                    }}
-                  >
-                    {sourceHighlightLines.map((line, lineIndex) => {
-                      const visualLine = eplVisualLines[lineIndex];
-                      return (
-                        <div key={`${lineIndex}-${line}`} className="relative h-6 leading-6 whitespace-pre">
-                          {visualLine ? renderEplFlowGuides(visualLine.guides) : null}
-                          <span className="relative z-10">
-                            {renderHighlightedSourceLine(line, lineIndex, visualLine)}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </pre>
-                  <textarea
-                    ref={sourceEditorRef}
-                    value={normalizedSourceCode}
-                    onChange={event => updateSourceCode(event.target.value)}
-                    onKeyDown={handleSourceKeyDown}
-                    onScroll={handleSourceScroll}
-                    readOnly={!onUpdateSourceContent}
-                    spellCheck={false}
-                    wrap="off"
-                    aria-label="中文代码编辑器"
-                    className={`absolute inset-0 w-full h-full resize-none overflow-auto border-0 outline-none px-4 py-3 text-[13px] leading-6 font-mono tabular-nums bg-transparent text-transparent selection:bg-blue-500/35 ${
-                      isDarkMode ? 'caret-[#0bbdff]' : 'caret-blue-700'
-                    }`}
-                    style={{
-                      fontFamily: '"Microsoft YaHei UI", "Cascadia Code", Consolas, monospace',
-                      fontSize: `${editorFontSize}px`,
-                      lineHeight: `${Math.max(18, Math.round(editorFontSize * 1.55))}px`
-                    }}
-                  />
-                </div>
-              </div>
-            )}
+            <MonacoCodeEditor
+              sourceCode={normalizedSourceCode}
+              language={activeFile?.language || 'plaintext'}
+              isDarkMode={isDarkMode}
+              readOnly={!onUpdateSourceContent}
+              onChange={updateSourceCode}
+              focusHandlerName={pendingHandlerFocus}
+              onFocusHandled={() => setPendingHandlerFocus(null)}
+              editorFontSize={editorFontSize}
+              onFontSizeChange={onFontSizeChange}
+            />
           </div>
         ) : viewMode === 'split' ? (
           // ================= SPLIT VIEW (Side-by-side) =================
@@ -1267,6 +1240,7 @@ export default function DiffViewer({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

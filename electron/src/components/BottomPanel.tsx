@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Terminal, 
   AlertTriangle, 
@@ -16,7 +16,9 @@ import {
   Eye,
   FileCode,
   FileText,
-  Layers
+  Layers,
+  Copy,
+  Trash
 } from 'lucide-react';
 import { BottomPanelTabType, DesignerGeneratedPanelData, ExtractedString, ProblemItem } from '../types';
 
@@ -24,6 +26,7 @@ interface BottomPanelProps {
   strings: ExtractedString[];
   problems: ProblemItem[];
   buildLogs: string[];
+  debugLogs: string[];
   onSelectLine: (lineNum: number) => void;
   onUpdateStringTranslation: (id: string, value: string) => void;
   onSetStatus: (id: string, status: 'translated' | 'skipped' | 'pending') => void;
@@ -32,12 +35,14 @@ interface BottomPanelProps {
   onActiveTabChange: (tab: BottomPanelTabType) => void;
   generatedPanels: DesignerGeneratedPanelData;
   height: number;
+  onClearLogs?: (tab: string) => void;
 }
 
 export default function BottomPanel({
   strings,
   problems,
   buildLogs,
+  debugLogs,
   onSelectLine,
   onUpdateStringTranslation,
   onSetStatus,
@@ -45,9 +50,37 @@ export default function BottomPanel({
   activeTab,
   onActiveTabChange,
   generatedPanels,
-  height
+  height,
+  onClearLogs
 }: BottomPanelProps) {
   const [filterType, setFilterType] = useState<'all' | 'string' | 'comment'>('all');
+  const [contextMenu, setContextMenu] = useState<{
+    show: boolean;
+    x: number;
+    y: number;
+    tabType: 'designer_logs' | 'output' | 'debug_logs' | null;
+  }>({ show: false, x: 0, y: 0, tabType: null });
+
+  useEffect(() => {
+    const handleClose = () => {
+      setContextMenu(prev => prev.show ? { ...prev, show: false } : prev);
+    };
+    window.addEventListener('click', handleClose);
+    return () => window.removeEventListener('click', handleClose);
+  }, []);
+
+  const handleContextMenu = (e: React.MouseEvent, tabType: 'designer_logs' | 'output' | 'debug_logs') => {
+    e.preventDefault();
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setContextMenu({
+      show: true,
+      x: Math.min(x, rect.width - 150),
+      y: Math.min(y, rect.height - 80),
+      tabType
+    });
+  };
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
 
@@ -143,7 +176,7 @@ export default function BottomPanel({
   return (
     <div 
       id="vs-bottom-tabs" 
-      className={`flex flex-col font-sans overflow-hidden shrink-0 select-none border-t ${
+      className={`flex flex-col font-sans overflow-hidden shrink-0 select-none border-t relative ${
         isDarkMode 
           ? 'bg-[#1E1E1E] border-[#181818]' 
           : 'bg-white border-slate-300'
@@ -272,6 +305,22 @@ export default function BottomPanel({
           </button>
 
           <button
+            onClick={() => onActiveTabChange('debug_logs')}
+            className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
+              activeTab === 'debug_logs' 
+                ? isDarkMode
+                  ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10' 
+                  : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
+                : isDarkMode
+                  ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
+                  : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
+            }`}
+          >
+            <Bug className="w-3.5 h-3.5 text-amber-500" />
+            <span>调试日志</span>
+          </button>
+
+          <button
             onClick={() => onActiveTabChange('debug_locals')}
             className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
               activeTab === 'debug_locals' 
@@ -287,6 +336,29 @@ export default function BottomPanel({
             <span>局部变量 & WPF 监视器 (Locals)</span>
           </button>
         </div>
+
+        {/* Copy Logs button when logs or output or debug logs is selected */}
+        {(activeTab === 'designer_logs' || activeTab === 'output' || activeTab === 'debug_logs') && (
+          <button
+            onClick={() => {
+              const logsText = activeTab === 'designer_logs' 
+                ? (generatedPanels.logs.length > 0 ? generatedPanels.logs.join('\n') : '> [编译日志] 空')
+                : activeTab === 'output'
+                ? (buildLogs.length > 0 ? buildLogs.join('\n') : '> [输出] 空')
+                : (debugLogs.length > 0 ? debugLogs.join('\n') : '> [调试输出] 空');
+              navigator.clipboard.writeText(logsText);
+              alert('已复制全部日志到剪贴板！');
+            }}
+            className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded border cursor-pointer transition-all ${
+              isDarkMode 
+                ? 'bg-emerald-950/25 border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/30' 
+                : 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
+            }`}
+          >
+            <Copy className="w-3 h-3" />
+            <span>复制全部日志</span>
+          </button>
+        )}
 
         {/* Right Side: Visual Studio 2022 Debugging Toolbar Buttons */}
         <div className="flex items-center gap-3">
@@ -479,7 +551,10 @@ export default function BottomPanel({
         )}
 
         {designerCodePanel && (
-          <div className="h-full overflow-auto p-3 bg-[#0d0d10] font-mono text-[11.5px] leading-relaxed select-text">
+          <div 
+            onContextMenu={(e) => handleContextMenu(e, 'designer_logs')}
+            title="右键打开日志菜单"
+            className="h-full overflow-auto p-3 bg-[#0d0d10] font-mono text-[11.5px] leading-relaxed select-text cursor-context-menu">
             {designerCodePanel.code.trim() ? (
               <pre className="whitespace-pre min-w-max">
                 <span className={designerCodePanel.colorClass}>{designerCodePanel.code}</span>
@@ -552,7 +627,10 @@ export default function BottomPanel({
 
         {activeTab === 'output' && (
           // ================= COMPILE OUTPUT TERMINAL =================
-          <div className={`p-4 font-mono text-xs space-y-1.5 select-text ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+          <div 
+            onContextMenu={(e) => handleContextMenu(e, 'output')}
+            title="右键打开日志菜单"
+            className={`p-4 font-mono text-xs space-y-1.5 select-text cursor-context-menu ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
             {buildLogs.length === 0 ? (
               <div className="text-slate-400 py-10 text-center font-sans">
                 💡 暂无编译与生成输出记录。请点击右上角 【调试 (F5)】 或 【重新生成】 按钮进行编译。
@@ -576,6 +654,27 @@ export default function BottomPanel({
                   </div>
                 );
               })
+            )}
+          </div>
+        )}
+
+        {activeTab === 'debug_logs' && (
+          // ================= RUNTIME DEBUG LOGS PANEL =================
+          <div 
+            onContextMenu={(e) => handleContextMenu(e, 'debug_logs')}
+            title="右键打开日志菜单"
+            className="p-4 font-mono text-xs space-y-1.5 select-text cursor-context-menu"
+          >
+            {debugLogs.length === 0 ? (
+              <div className="text-slate-400 py-10 text-center font-sans">
+                💡 暂无运行时调试日志。当您在运行的程序中触发中文事件（如单击按钮或选择菜单）时，这里将实时输出“调试输出”数据。
+              </div>
+            ) : (
+              debugLogs.map((log, idx) => (
+                <div key={idx} className="text-amber-500 whitespace-pre-wrap break-all leading-normal">
+                  {log}
+                </div>
+              ))
             )}
           </div>
         )}
@@ -649,6 +748,54 @@ export default function BottomPanel({
           </div>
         )}
       </div>
+
+      {/* Visual Studio Style Context Menu */}
+      {contextMenu.show && (
+        <div
+          style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
+          className={`absolute z-[999] w-36 py-1 border rounded shadow-xl font-sans text-xs select-none ${
+            isDarkMode 
+              ? 'bg-[#252526] border-[#3c3c3c] text-slate-200 shadow-black/50' 
+              : 'bg-white border-slate-200 text-slate-800 shadow-slate-300'
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div
+            onClick={() => {
+              const logsText = contextMenu.tabType === 'designer_logs' 
+                ? (generatedPanels.logs.length > 0 ? generatedPanels.logs.join('\n') : '> [编译日志] 空')
+                : contextMenu.tabType === 'output'
+                ? (buildLogs.length > 0 ? buildLogs.join('\n') : '> [输出] 空')
+                : (debugLogs.length > 0 ? debugLogs.join('\n') : '> [调试输出] 空');
+              navigator.clipboard.writeText(logsText);
+              alert('已复制全部日志到剪贴板！');
+              setContextMenu(prev => ({ ...prev, show: false }));
+            }}
+            className={`px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors ${
+              isDarkMode ? 'hover:bg-[#007ACC] hover:text-white' : 'hover:bg-[#007ACC] hover:text-white'
+            }`}
+          >
+            <Copy className="w-3.5 h-3.5 text-slate-400" />
+            <span>复制全部</span>
+          </div>
+          <div
+            onClick={() => {
+              if (contextMenu.tabType && onClearLogs) {
+                onClearLogs(contextMenu.tabType);
+              }
+              setContextMenu(prev => ({ ...prev, show: false }));
+            }}
+            className={`px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors border-t ${
+              isDarkMode 
+                ? 'border-slate-800/80 hover:bg-[#007ACC] hover:text-white' 
+                : 'border-slate-100 hover:bg-[#007ACC] hover:text-white'
+            }`}
+          >
+            <Trash className="w-3.5 h-3.5 text-rose-500" />
+            <span>清空日志</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

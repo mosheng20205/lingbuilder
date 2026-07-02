@@ -63,7 +63,47 @@ export function parseEplRuntimeEventRule(handlerName: string, rawBody: string): 
 
 export function getEplRuntimeEventRule(rules: EplRuntimeEventRuleMap, handlerName: string): EplRuntimeEventRule | undefined {
   const normalizedName = handlerName.trim();
-  return rules[normalizedName] || rules[`_${normalizedName}`];
+  if (rules[normalizedName]) return rules[normalizedName];
+  if (rules[`_${normalizedName}`]) return rules[`_${normalizedName}`];
+
+  // Fuzzy matching:
+  // 1. Strip all leading underscores
+  const cleanName = normalizedName.replace(/^_+/, '');
+  for (const key of Object.keys(rules)) {
+    if (key.replace(/^_+/, '') === cleanName) {
+      return rules[key];
+    }
+  }
+
+  // 2. Strip window class prefix (e.g. "_登录窗体_太空冒险安全账户登录_被选择" -> "太空冒险安全账户登录_被选择")
+  const parts = cleanName.split('_');
+  if (parts.length > 1) {
+    const withoutWindow = parts.slice(1).join('_');
+    for (const key of Object.keys(rules)) {
+      const keyClean = key.replace(/^_+/, '');
+      if (keyClean === withoutWindow) {
+        return rules[key];
+      }
+    }
+
+    // 3. Match control name prefix with any suffix (e.g. expect "太空冒险安全账户登录_被选择" -> matches "太空冒险安全账户登录_鼠标被按下")
+    const controlName = parts.slice(0, parts.length - 1).join('_');
+    const controlNameWithoutWindow = parts.length > 2 ? parts.slice(1, parts.length - 1).join('_') : '';
+    
+    for (const key of Object.keys(rules)) {
+      const keyClean = key.replace(/^_+/, '');
+      if (
+        (controlName && keyClean.startsWith(controlName + '_')) ||
+        (controlNameWithoutWindow && keyClean.startsWith(controlNameWithoutWindow + '_')) ||
+        keyClean === controlName ||
+        keyClean === controlNameWithoutWindow
+      ) {
+        return rules[key];
+      }
+    }
+  }
+
+  return undefined;
 }
 
 export function toMessageBoxFlagsExpression(flagCode: number): string {

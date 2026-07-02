@@ -130,6 +130,7 @@ struct WindowSpec {
     COLORREF background;
     const ControlSpec* controls;
     int controlCount;
+    const wchar_t* menuItems;
 };
 
 struct RuntimeControl {
@@ -233,13 +234,37 @@ static RECT GetWindowRectForSpec(const WindowSpec& spec, UINT dpi) {
 static HMENU CreateGeneratedMenu(int activeWindowIndex) {
     HMENU rootMenu = CreateMenu();
     HMENU windowsMenu = CreatePopupMenu();
-    for (int i = 0; i < g_windowCount; ++i) {
-        UINT flags = MF_STRING;
-        if (i == activeWindowIndex) {
-            flags |= MF_CHECKED;
+    const WindowSpec& spec = g_windows[activeWindowIndex];
+    
+    if (spec.menuItems != nullptr && spec.menuItems[0] != 0) {
+        std::wstring itemsStr = spec.menuItems;
+        size_t pos = 0;
+        int idx = 0;
+        while (true) {
+            size_t nextPos = itemsStr.find(L',', pos);
+            std::wstring item = (nextPos == std::wstring::npos) ? itemsStr.substr(pos) : itemsStr.substr(pos, nextPos - pos);
+            size_t first = item.find_first_not_of(L" \\t\\r\\n");
+            size_t last = item.find_last_not_of(L" \\t\\r\\n");
+            if (first != std::wstring::npos && last != std::wstring::npos) {
+                item = item.substr(first, last - first + 1);
+            }
+            if (!item.empty()) {
+                AppendMenuW(windowsMenu, MF_STRING, 50000 + idx, item.c_str());
+                idx++;
+            }
+            if (nextPos == std::wstring::npos) break;
+            pos = nextPos + 1;
         }
-        AppendMenuW(windowsMenu, flags, MENU_WINDOW_BASE + i, g_windows[i].title);
+    } else {
+        for (int i = 0; i < g_windowCount; ++i) {
+            UINT flags = MF_STRING;
+            if (i == activeWindowIndex) {
+                flags |= MF_CHECKED;
+            }
+            AppendMenuW(windowsMenu, flags, MENU_WINDOW_BASE + i, g_windows[i].title);
+        }
     }
+    
     AppendMenuW(rootMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(windowsMenu), L"窗口");
     return rootMenu;
 }
@@ -289,20 +314,63 @@ static HFONT CreateControlFont(int cssPx, UINT dpi) {
 }
 
 static void ShowGeneratedEvent(HWND hwnd, const ControlSpec& control) {
-    if (control.handler == nullptr || control.handler[0] == L'\\0') {
+    if (control.handler == nullptr || control.handler[0] == 0) {
         return;
     }
 
-    if (control.handlerDebug != nullptr && control.handlerDebug[0] != L'\\0') {
+    bool hasDebug = (control.handlerDebug != nullptr && control.handlerDebug[0] != 0);
+    if (hasDebug) {
+        OutputDebugStringW(control.handlerDebug);
+        OutputDebugStringW(L"\\n");
+        
+        int size_needed = WideCharToMultiByte(CP_UTF8, 0, control.handlerDebug, -1, NULL, 0, NULL, NULL);
+        if (size_needed > 0) {
+            std::vector<char> utf8_str(size_needed);
+            WideCharToMultiByte(CP_UTF8, 0, control.handlerDebug, -1, &utf8_str[0], size_needed, NULL, NULL);
+            std::printf("[调试输出] %s\\n", &utf8_str[0]);
+            std::fflush(stdout);
+        }
+    }
+
+    if (control.handlerMessage != nullptr && control.handlerMessage[0] != 0) {
+        int result = MessageBoxW(
+            hwnd,
+            control.handlerMessage,
+            (control.handlerTitle != nullptr && control.handlerTitle[0] != 0) ? control.handlerTitle : L"LingBuilder 运行时事件",
+            control.handlerFlags
+        );
+        if (control.closeWindowOnConfirm && result == IDYES) {
+            DestroyWindow(hwnd);
+        }
+        return;
+    }
+
+    if (hasDebug) {
+        return;
+    }
+
+    std::wstring message = L"已触发中文事件处理器：";
+    message += control.handler;
+    message += L"\\n\\n控件：";
+    message += control.text;
+    MessageBoxW(hwnd, message.c_str(), L"LingBuilder 运行时事件", MB_OK | MB_ICONINFORMATION);
+}
+
+static void ShowGeneratedEvent_OLD_UNUSED(HWND hwnd, const ControlSpec& control) {
+    if (control.handler == nullptr || control.handler[0] == 0) {
+        return;
+    }
+
+    if (control.handlerDebug != nullptr && control.handlerDebug[0] != 0) {
         OutputDebugStringW(control.handlerDebug);
         OutputDebugStringW(L"\\n");
     }
 
-    if (control.handlerMessage != nullptr && control.handlerMessage[0] != L'\\0') {
+    if (control.handlerMessage != nullptr && control.handlerMessage[0] != 0) {
         int result = MessageBoxW(
             hwnd,
             control.handlerMessage,
-            (control.handlerTitle != nullptr && control.handlerTitle[0] != L'\\0') ? control.handlerTitle : L"LingBuilder 运行时事件",
+            (control.handlerTitle != nullptr && control.handlerTitle[0] != 0) ? control.handlerTitle : L"LingBuilder 运行时事件",
             control.handlerFlags
         );
         if (control.closeWindowOnConfirm && result == IDYES) {
@@ -337,7 +405,7 @@ static HWND CreateGeneratedControl(HWND hwnd, WindowState& state, const ControlS
         exStyle = WS_EX_CLIENTEDGE;
     } else if (IsType(control, L"Label")) {
         className = L"STATIC";
-        style |= SS_LEFT | SS_NOPREFIX;
+        style |= SS_LEFT | SS_NOPREFIX | SS_NOTIFY;
     } else if (IsType(control, L"CheckBox")) {
         className = L"BUTTON";
         style |= BS_OWNERDRAW;
@@ -352,7 +420,7 @@ static HWND CreateGeneratedControl(HWND hwnd, WindowState& state, const ControlS
         style |= CBS_DROPDOWNLIST | WS_VSCROLL;
     } else if (IsType(control, L"Image")) {
         className = L"STATIC";
-        style |= SS_CENTER | SS_SUNKEN;
+        style |= SS_CENTER | SS_SUNKEN | SS_NOTIFY;
     }
 
     HWND child = CreateWindowExW(
@@ -526,7 +594,22 @@ static LRESULT CALLBACK GeneratedWindowProc(HWND hwnd, UINT message, WPARAM wPar
 
     case WM_COMMAND: {
         int controlId = LOWORD(wParam);
+        if (controlId >= 50000 && controlId < 50100) {
+            if (state && state->spec) {
+                const ControlSpec* control = FindControl(*state->spec, controlId);
+                if (control) {
+                    ShowGeneratedEvent(hwnd, *control);
+                }
+            }
+            return 0;
+        }
         if (controlId >= static_cast<int>(MENU_WINDOW_BASE) && controlId < static_cast<int>(MENU_WINDOW_BASE) + g_windowCount) {
+            if (state && state->spec) {
+                const ControlSpec* control = FindControl(*state->spec, controlId);
+                if (control) {
+                    ShowGeneratedEvent(hwnd, *control);
+                }
+            }
             OpenGeneratedWindow(controlId - static_cast<int>(MENU_WINDOW_BASE), SW_SHOWNORMAL);
             return 0;
         }
@@ -543,7 +626,9 @@ static LRESULT CALLBACK GeneratedWindowProc(HWND hwnd, UINT message, WPARAM wPar
         if ((IsType(*control, L"Button") && notification == BN_CLICKED) ||
             (IsType(*control, L"CheckBox") && notification == BN_CLICKED) ||
             (IsType(*control, L"RadioButton") && notification == BN_CLICKED) ||
-            (IsType(*control, L"ComboBox") && notification == CBN_SELCHANGE)) {
+            (IsType(*control, L"ComboBox") && notification == CBN_SELCHANGE) ||
+            (IsType(*control, L"Label") && notification == STN_CLICKED) ||
+            (IsType(*control, L"Image") && notification == STN_CLICKED)) {
             ShowGeneratedEvent(hwnd, *control);
         }
         return 0;
@@ -722,8 +807,64 @@ function generateControlArray(
   windowIndex: number,
   eventRules: EplRuntimeEventRuleMap
 ): string {
-  const controls = getVisibleControls(window)
-    .map((control, index) => generateControlSpec(control, index + 1001, eventRules))
+  const visibleControls = [...getVisibleControls(window)];
+  
+  if ((window as any).menuEvents && (window as any).menuEvents['Select']?.trim()) {
+    visibleControls.push({
+      id: `__virtual_menu_bar_${windowIndex}`,
+      type: 'MenuBar' as any,
+      name: (window as any).menuName || '窗口菜单栏',
+      content: '窗口菜单',
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      fontSize: 12,
+      background: '#ffffff',
+      foreground: '#000000',
+      isEnabled: true,
+      visibility: 'Visible',
+      events: { 'Select': (window as any).menuEvents['Select'] }
+    });
+  }
+
+  const items = ((window as any).menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  items.forEach((item, idx) => {
+    const handler = (window as any).menuEvents?.[`Item_${idx}`] || `_${window.className}_${item}_被选择`;
+    visibleControls.push({
+      id: `__virtual_menu_item_${windowIndex}_${idx}`,
+      type: 'MenuItem' as any,
+      name: item,
+      content: item,
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      fontSize: 12,
+      background: '#ffffff',
+      foreground: '#000000',
+      isEnabled: true,
+      visibility: 'Visible',
+      events: { 'Select': handler }
+    });
+  });
+
+  const controls = visibleControls
+    .map((control, index) => {
+      let id = index + 1001;
+      if (control.id.startsWith('__virtual_menu_bar_')) {
+        id = 40000 + windowIndex;
+      } else if (control.id.startsWith('__virtual_menu_item_')) {
+        const parts = control.id.split('_');
+        const idx = parseInt(parts[parts.length - 1], 10);
+        id = 50000 + idx;
+      }
+      return generateControlSpec(control, id, eventRules);
+    })
     .join(',\n') || '    { 0, L"", L"", 0, 0, 0, 0, 12, RGB(0, 0, 0), RGB(0, 0, 0), true, 0, L"", L"", L"", MB_OK, L"", false }';
 
   return `static ControlSpec g_controls_${windowIndex}[] = {
@@ -732,7 +873,17 @@ ${controls}
 }
 
 function generateWindowSpec(window: LingWindowModel, windowIndex: number): string {
-  return `    { ${windowIndex}, L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - TITLE_BAR_HEIGHT)}, ${toColorRef(window.background)}, g_controls_${windowIndex}, ${getVisibleControls(window).length} }`;
+  const items = ((window as any).menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  const visibleCount = getVisibleControls(window).length + 
+    (((window as any).menuEvents && (window as any).menuEvents['Select']?.trim()) ? 1 : 0) +
+    items.length;
+
+  const menuItemsStr = (window as any).menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件';
+  return `    { ${windowIndex}, L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - TITLE_BAR_HEIGHT)}, ${toColorRef(window.background)}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}" }`;
 }
 
 function generateControlSpec(control: LingControl, id: number, eventRules: EplRuntimeEventRuleMap): string {

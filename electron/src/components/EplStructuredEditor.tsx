@@ -1,6 +1,13 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from 'react';
 import { Check, Plus, Trash2 } from 'lucide-react';
+import {
+  tokenizeEplStatement,
+  EPL_TOKEN_COLORS_DARK,
+  EPL_TOKEN_COLORS_LIGHT,
+  type EplToken,
+  type EplTokenColorTheme
+} from '../services/eplTokenizer';
 import {
   EPL_FLOW_GUIDE_COLORS,
   EplHeaderEntry,
@@ -155,8 +162,23 @@ export default function EplStructuredEditor({
   const [contextMenu, setContextMenu] = useState<EplContextMenuState | null>(null);
   const [activePosition, setActivePosition] = useState<ActiveEditorPosition | null>(null);
 
+  // Undo/Redo stack
+  const undoStackRef = useRef<string[]>([]);
+  const redoStackRef = useRef<string[]>([]);
+  const MAX_UNDO_STEPS = 100;
+
+  // Focused statement tracking for current-line highlight
+  const [focusedStatement, setFocusedStatement] = useState<{ subprogramIndex: number; bodyIndex: number } | null>(null);
+
   const commitDocument = (mutator: (draft: EplStructuredDocument) => void) => {
     if (readOnly) return;
+    // Push current state to undo stack before mutation
+    undoStackRef.current.push(sourceCode);
+    if (undoStackRef.current.length > MAX_UNDO_STEPS) {
+      undoStackRef.current.shift();
+    }
+    // Clear redo stack on new edit
+    redoStackRef.current = [];
     const draft = cloneEplStructuredDocument(documentModel);
     mutator(draft);
     onChange(serializeEplStructuredDocument(draft));
@@ -513,10 +535,128 @@ export default function EplStructuredEditor({
     closeContextMenu();
   };
 
+  const handleUndo = () => {
+    if (readOnly || undoStackRef.current.length === 0) return;
+    const previous = undoStackRef.current.pop()!;
+    redoStackRef.current.push(sourceCode);
+    onChange(previous);
+  };
+
+  const handleRedo = () => {
+    if (readOnly || redoStackRef.current.length === 0) return;
+    const next = redoStackRef.current.pop()!;
+    undoStackRef.current.push(sourceCode);
+    onChange(next);
+  };
+
+  const handleCopyLine = () => {
+    if (readOnly || !focusedStatement) return;
+    const { subprogramIndex, bodyIndex } = focusedStatement;
+    commitDocument(draft => {
+      const subprogram = draft.subprograms[subprogramIndex];
+      if (!subprogram) return;
+      const entry = subprogram.body[bodyIndex];
+      if (entry?.kind === 'statement') {
+        const clone: EplStatementEntry = {
+          id: `${entry.id}-dup-${Date.now()}`,
+          kind: 'statement',
+          text: entry.text,
+          indent: entry.indent,
+          sourceLine: 0
+        };
+        subprogram.body.splice(bodyIndex + 1, 0, clone);
+      }
+    });
+  };
+
+  const handleMoveLineUp = () => {
+    if (readOnly || !focusedStatement) return;
+    const { subprogramIndex, bodyIndex } = focusedStatement;
+    if (bodyIndex <= 0) return;
+    commitDocument(draft => {
+      const body = draft.subprograms[subprogramIndex]?.body;
+      if (!body || bodyIndex >= body.length) return;
+      const [moved] = body.splice(bodyIndex, 1);
+      body.splice(bodyIndex - 1, 0, moved);
+    });
+    setFocusedStatement({ subprogramIndex, bodyIndex: bodyIndex - 1 });
+  };
+
+  const handleMoveLineDown = () => {
+    if (readOnly || !focusedStatement) return;
+    const { subprogramIndex, bodyIndex } = focusedStatement;
+    const subprogram = documentModel.subprograms[subprogramIndex];
+    if (!subprogram || bodyIndex >= subprogram.body.length - 1) return;
+    commitDocument(draft => {
+      const body = draft.subprograms[subprogramIndex]?.body;
+      if (!body || bodyIndex >= body.length - 1) return;
+      const [moved] = body.splice(bodyIndex, 1);
+      body.splice(bodyIndex + 1, 0, moved);
+    });
+    setFocusedStatement({ subprogramIndex, bodyIndex: bodyIndex + 1 });
+  };
+
+  const handleDeleteLine = () => {
+    if (readOnly || !focusedStatement) return;
+    const { subprogramIndex, bodyIndex } = focusedStatement;
+    commitDocument(draft => {
+      const subprogram = draft.subprograms[subprogramIndex];
+      if (!subprogram) return;
+      if (subprogram.body.length > 1) {
+        subprogram.body.splice(bodyIndex, 1);
+      } else if (subprogram.body[bodyIndex]?.kind === 'statement') {
+        (subprogram.body[bodyIndex] as EplStatementEntry).text = '';
+      }
+    });
+  };
+
   const handleEditorKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // Alt+Arrow: move line
+    if (event.altKey && !event.ctrlKey && !event.metaKey) {
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        handleMoveLineUp();
+        return;
+      }
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        handleMoveLineDown();
+        return;
+      }
+    }
+
     if (!event.ctrlKey || event.altKey || event.metaKey) return;
 
     const key = event.key.toLowerCase();
+
+    // Ctrl+Z: Undo
+    if (key === 'z' && !event.shiftKey) {
+      event.preventDefault();
+      handleUndo();
+      return;
+    }
+
+    // Ctrl+Y or Ctrl+Shift+Z: Redo
+    if (key === 'y' || (key === 'z' && event.shiftKey)) {
+      event.preventDefault();
+      handleRedo();
+      return;
+    }
+
+    // Ctrl+D: Duplicate line
+    if (key === 'd') {
+      event.preventDefault();
+      handleCopyLine();
+      return;
+    }
+
+    // Ctrl+Shift+K: Delete line
+    if (key === 'k' && event.shiftKey) {
+      event.preventDefault();
+      handleDeleteLine();
+      return;
+    }
+
     if (key === 'n') {
       event.preventDefault();
       insertSubprogramAfter();
@@ -1288,7 +1428,7 @@ function SubprogramHeader({
         value={subprogram.name}
         onChange={value => onUpdate(subprogramIndex, 'name', value)}
         readOnly={readOnly}
-        className={`${valueClass} min-h-10 text-[1.0em] text-[#aeb8ff]`}
+        className={`${valueClass} min-h-7 text-[1.0em] text-[#aeb8ff]`}
         focusName={`sub-name-${subprogram.id}`}
       />
       <CheckCell
@@ -1314,7 +1454,8 @@ function SubprogramHeader({
         value={subprogram.remark}
         onChange={value => onUpdate(subprogramIndex, 'remark', value)}
         readOnly={readOnly}
-        className={`${remarkValueClass} min-h-16 text-[#6fbf73]`}
+        className={`${remarkValueClass} min-h-11 text-[#6fbf73]`}
+        rows={1}
       />
 
       {!compact && (
@@ -2091,13 +2232,15 @@ function TextAreaCellInput({
   onChange,
   readOnly,
   className,
-  focusName
+  focusName,
+  rows = 2
 }: {
   value: string;
   onChange: (value: string) => void;
   readOnly: boolean;
   className: string;
   focusName?: string;
+  rows?: number;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -2117,7 +2260,7 @@ function TextAreaCellInput({
         onChange={event => onChange(event.target.value)}
         readOnly={readOnly}
         data-epl-focus={focusName}
-        rows={2}
+        rows={rows}
         style={{ fontSize: 'var(--editor-font-size)' }}
         className="min-h-12 w-full resize-none overflow-hidden border-0 bg-transparent px-2 py-1 text-inherit leading-5 outline-none focus:bg-blue-500/10"
       />

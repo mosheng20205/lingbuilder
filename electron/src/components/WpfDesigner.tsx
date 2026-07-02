@@ -25,7 +25,8 @@ import {
   Type,
   Wrench,
   X,
-  Zap
+  Zap,
+  Menu
 } from 'lucide-react';
 import ModuleInspector from './ModuleInspector';
 import { DesignerGeneratedPanelData } from '../types';
@@ -64,9 +65,10 @@ interface OpenControlEventCodeDetail {
 
 interface WpfDesignerProps {
   isDarkMode: boolean;
+  activeFile?: any;
 }
 
-const CONTROL_TYPES: LingControlType[] = [
+const CONTROL_TYPES: (LingControlType | 'MenuBar')[] = [
   'Button',
   'TextBox',
   'Label',
@@ -74,10 +76,11 @@ const CONTROL_TYPES: LingControlType[] = [
   'RadioButton',
   'ProgressBar',
   'ComboBox',
-  'Image'
-];
+  'Image',
+  'MenuBar'
+] as any;
 
-const CONTROL_LABELS: Record<LingControlType, string> = {
+const CONTROL_LABELS: Record<LingControlType | 'MenuBar', string> = {
   Button: '按钮',
   TextBox: '文本框',
   Label: '标签',
@@ -86,10 +89,11 @@ const CONTROL_LABELS: Record<LingControlType, string> = {
   Image: '图片',
   ProgressBar: '进度条',
   ComboBox: '下拉框',
-  Grid: '网格'
-};
+  Grid: '网格',
+  MenuBar: '窗口菜单栏'
+} as any;
 
-const TYPE_ICONS: Record<LingControlType, React.ReactNode> = {
+const TYPE_ICONS: Record<LingControlType | 'MenuBar', React.ReactNode> = {
   Button: <SquareDot className="w-3.5 h-3.5 text-blue-400" />,
   TextBox: <Keyboard className="w-3.5 h-3.5 text-teal-400" />,
   Label: <Type className="w-3.5 h-3.5 text-cyan-400" />,
@@ -98,10 +102,11 @@ const TYPE_ICONS: Record<LingControlType, React.ReactNode> = {
   Image: <Palette className="w-3.5 h-3.5 text-pink-400" />,
   ProgressBar: <Minus className="w-3.5 h-3.5 text-emerald-400" />,
   ComboBox: <List className="w-3.5 h-3.5 text-violet-400" />,
-  Grid: <LayoutGrid className="w-3.5 h-3.5 text-slate-400" />
-};
+  Grid: <LayoutGrid className="w-3.5 h-3.5 text-slate-400" />,
+  MenuBar: <Menu className="w-3.5 h-3.5 text-amber-400" />
+} as any;
 
-const TITLE_BAR_HEIGHT = 28;
+const TITLE_BAR_HEIGHT = 52;
 const DESIGNER_AUTOSAVE_KEY = 'lingbuilder.windowDesigner.autosave.v1';
 
 interface PersistedDesignerState {
@@ -157,12 +162,34 @@ function getInitialDesignerState(): PersistedDesignerState {
   }
 }
 
-export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
+export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps) {
   const initialDesignerState = getInitialDesignerState();
   const [project, setProject] = useState<LingWindowProject>(() => initialDesignerState.project);
   const [activeWindowId, setActiveWindowId] = useState(initialDesignerState.activeWindowId);
+
+  useEffect(() => {
+    if (activeFile && activeFile.name) {
+      const xmlName = activeFile.name.replace(/\.e$/i, '.xml');
+      const foundWindow = project.windows.find(w => w.fileName.toLowerCase() === xmlName.toLowerCase());
+      if (foundWindow && foundWindow.id !== activeWindowId) {
+        setActiveWindowId(foundWindow.id);
+      }
+    }
+  }, [activeFile, project.windows, activeWindowId]);
+
+  useEffect(() => {
+    if (activeWindowId && project.windows) {
+      const currentWin = project.windows.find(w => w.id === activeWindowId);
+      if (currentWin) {
+        window.dispatchEvent(new CustomEvent('designer-switch-window', {
+          detail: { fileName: currentWin.fileName }
+        }));
+      }
+    }
+  }, [activeWindowId]);
   const [selectedControlId, setSelectedControlId] = useState<string | null>(initialDesignerState.selectedControlId);
   const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>('properties');
+  const [isMenuDropdownOpen, setIsMenuDropdownOpen] = useState(false);
   const [nativeBuildLogs, setNativeBuildLogs] = useState<string[]>([
     '> [编译日志] 等待 F5 或“生成并运行”触发真实 Win32 构建。'
   ]);
@@ -183,6 +210,56 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
   }, [activeWindowId, project.windows]);
 
   const selectedControl = useMemo(() => {
+    if (selectedControlId === '__window_menu_bar__') {
+      return {
+        id: '__window_menu_bar__',
+        type: 'MenuBar' as any,
+        name: activeWindow.menuName || '窗口菜单栏',
+        x: 0,
+        y: 0,
+        width: activeWindow.width,
+        height: 24,
+        content: activeWindow.menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件',
+        fontSize: 11,
+        background: '#ffffff',
+        foreground: '#000000',
+        isEnabled: true,
+        visibility: 'Visible',
+        events: activeWindow.menuEvents || {
+          'Select': activeWindow.menuEvents?.['Select'] || `_${activeWindow.className}_窗口菜单被选择`
+        }
+      };
+    }
+    
+    if (selectedControlId && selectedControlId.startsWith('__window_menu_item_')) {
+      const idxStr = selectedControlId.replace('__window_menu_item_', '').replace('__', '');
+      const idx = parseInt(idxStr, 10);
+      const items = (activeWindow.menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+      const itemName = items[idx] || `菜单项_${idx}`;
+      
+      return {
+        id: selectedControlId,
+        type: 'MenuItem' as any,
+        name: itemName,
+        x: 0,
+        y: 0,
+        width: 120,
+        height: 20,
+        content: itemName,
+        fontSize: 11,
+        background: '#ffffff',
+        foreground: '#000000',
+        isEnabled: true,
+        visibility: 'Visible',
+        events: {
+          'Select': activeWindow.menuEvents?.[`Item_${idx}`] || `_${activeWindow.className}_${itemName}_被选择`
+        }
+      };
+    }
+
     return activeWindow?.controls.find(control => control.id === selectedControlId) || null;
   }, [activeWindow, selectedControlId]);
 
@@ -299,6 +376,42 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
 
   const updateSelectedControl = (updatedFields: Partial<LingControl>) => {
     if (!selectedControlId) return;
+    if (selectedControlId === '__window_menu_bar__') {
+      updateActiveWindow(window => ({
+        ...window,
+        menuName: updatedFields.name !== undefined ? updatedFields.name : window.menuName,
+        menuItems: updatedFields.content !== undefined ? updatedFields.content : window.menuItems,
+        menuEvents: updatedFields.events !== undefined ? { ...(window.menuEvents || {}), ...updatedFields.events } : window.menuEvents
+      }));
+      return;
+    }
+    if (selectedControlId.startsWith('__window_menu_item_')) {
+      const idxStr = selectedControlId.replace('__window_menu_item_', '').replace('__', '');
+      const idx = parseInt(idxStr, 10);
+      const items = (activeWindow.menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件')
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean);
+        
+      if (updatedFields.content !== undefined) {
+        items[idx] = updatedFields.content;
+      } else if (updatedFields.name !== undefined) {
+        items[idx] = updatedFields.name;
+      }
+      
+      const newMenuItems = items.join(', ');
+      const newMenuEvents = { ...(activeWindow.menuEvents || {}) };
+      if (updatedFields.events !== undefined) {
+        Object.assign(newMenuEvents, updatedFields.events);
+      }
+      
+      updateActiveWindow(window => ({
+        ...window,
+        menuItems: newMenuItems,
+        menuEvents: newMenuEvents
+      }));
+      return;
+    }
     updateActiveWindow(window => ({
       ...window,
       controls: window.controls.map(control => {
@@ -396,8 +509,22 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
     window.dispatchEvent(new CustomEvent('window-duplicated', { detail: clonedWindow }));
   };
 
-  const handleAddControl = (type: LingControlType) => {
+  const handleAddControl = (type: LingControlType | 'MenuBar') => {
     if (!activeWindow) return;
+    if (type === 'MenuBar') {
+      updateActiveWindow(window => ({
+        ...window,
+        menuName: window.menuName || '窗口菜单栏',
+        menuItems: window.menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关于太空冒险客户端',
+        menuEvents: window.menuEvents || {
+          'Select': `_${window.className}_窗口菜单被选择`
+        }
+      }));
+      setSelectedControlId('__window_menu_bar__');
+      setActiveInspectorTab('properties');
+      addLog(`> [${new Date().toLocaleTimeString()}] 【可视化设计】已在 ${activeWindow.fileName} 启用并选中窗口菜单栏。`);
+      return;
+    }
     const typeIndex = activeWindow.controls.filter(control => control.type === type).length + 1;
     const newControl = createControl(type, typeIndex);
     updateActiveWindow(window => ({
@@ -446,23 +573,47 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
     if (!activeWindow) return;
 
     const eventName = getPrimaryEventNameForType(control.type);
-    const handlerName = getEplEventHandlerName(control.name, eventName);
+    const handlerName = control.id === '__window_menu_bar__'
+      ? (activeWindow.menuEvents?.['Select'] || `_${activeWindow.className}_窗口菜单被选择`)
+      : getEplEventHandlerName(control.name, eventName);
 
     setSelectedControlId(control.id);
     setActiveInspectorTab('events');
-    updateActiveWindow(window => ({
-      ...window,
-      controls: window.controls.map(item => {
-        if (item.id !== control.id) return item;
-        return {
-          ...item,
-          events: {
-            ...(item.events || {}),
-            [eventName]: handlerName
-          }
-        };
-      })
-    }));
+    
+    if (control.id === '__window_menu_bar__') {
+      updateActiveWindow(window => ({
+        ...window,
+        menuEvents: {
+          ...(window.menuEvents || {}),
+          [eventName]: handlerName
+        }
+      }));
+    } else if (control.id.startsWith('__window_menu_item_')) {
+      const idxStr = control.id.replace('__window_menu_item_', '').replace('__', '');
+      const idx = parseInt(idxStr, 10);
+      const eventKey = `Item_${idx}`;
+      updateActiveWindow(window => ({
+        ...window,
+        menuEvents: {
+          ...(window.menuEvents || {}),
+          [eventKey]: handlerName
+        }
+      }));
+    } else {
+      updateActiveWindow(window => ({
+        ...window,
+        controls: window.controls.map(item => {
+          if (item.id !== control.id) return item;
+          return {
+            ...item,
+            events: {
+              ...(item.events || {}),
+              [eventName]: handlerName
+            }
+          };
+        })
+      }));
+    }
 
     const detail: OpenControlEventCodeDetail = {
       controlId: control.id,
@@ -492,6 +643,16 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
       window.removeEventListener('add-designer-control', handleAddFromToolbar);
     };
   }, [activeWindow, activeWindowId, project.windows.length]);
+
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      setIsMenuDropdownOpen(false);
+    };
+    window.addEventListener('click', handleGlobalClick);
+    return () => {
+      window.removeEventListener('click', handleGlobalClick);
+    };
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
@@ -597,7 +758,7 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
     addLog(`> [${new Date().toLocaleTimeString()}] 【窗口运行】开始导出当前窗口程序集并生成 Win32 C++ 工程...`);
 
     try {
-      const eplSourceCode = requestWindowDesignerEplSource();
+      const eplSourceCode = requestWindowDesignerEplSource(activeWindowId, activeWindow?.fileName);
       const response = await fetch('/api/window-designer/build-run', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -870,6 +1031,72 @@ export default function WpfDesigner({ isDarkMode }: WpfDesignerProps) {
                 <Minus className="w-3 h-3" />
                 <Maximize2 className="w-3 h-3" />
                 <X className="w-3 h-3" />
+              </div>
+            </div>
+            {/* Menu Bar (Simulating native Win32 window menu bar) */}
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedControlId('__window_menu_bar__');
+                setIsMenuDropdownOpen(prev => !prev);
+              }}
+              className={`h-6 px-3 flex items-center border-b select-none text-[10.5px] font-sans cursor-pointer transition-colors ${
+                isDarkMode 
+                  ? 'bg-[#1E1E1E] text-slate-300 border-slate-800/80 hover:bg-slate-800/60' 
+                  : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-100'
+              } ${selectedControlId === '__window_menu_bar__' ? 'ring-1 ring-amber-500 z-50 relative' : ''}`}
+            >
+              <div className="relative">
+                <span className={`px-2 py-0.5 rounded transition-colors ${
+                  isDarkMode ? 'hover:bg-slate-700/50 text-slate-300' : 'hover:bg-slate-200 text-slate-850'
+                }`}>
+                  窗口(W)
+                </span>
+                {/* Dropdown Menu listing all window menu items */}
+                {isMenuDropdownOpen && (
+                  <div className={`absolute left-0 top-5 w-48 flex flex-col py-1 border rounded shadow-lg z-[99] ${
+                    isDarkMode 
+                      ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' 
+                      : 'bg-white border-slate-200 text-slate-800'
+                  }`}>
+                    {(activeWindow.menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件')
+                      .split(',')
+                      .map(s => s.trim())
+                      .filter(Boolean)
+                      .map((item, idx) => {
+                        const isItemSelected = selectedControlId === `__window_menu_item_${idx}__`;
+                        return (
+                          <div
+                            key={idx}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedControlId(`__window_menu_item_${idx}__`);
+                            }}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              const handlerName = activeWindow.menuEvents?.[`Item_${idx}`] || `_${activeWindow.className}_${item}_被选择`;
+                              handleControlDoubleClick(e, {
+                                id: `__window_menu_item_${idx}__`,
+                                type: 'MenuItem' as any,
+                                name: item,
+                                events: { 'Select': handlerName }
+                              } as any);
+                              setIsMenuDropdownOpen(false);
+                            }}
+                            className={`px-3 py-1.5 flex items-center justify-between cursor-pointer text-[10.5px] transition-colors ${
+                              isItemSelected
+                                ? 'bg-amber-600/90 text-white font-bold'
+                                : isDarkMode 
+                                  ? 'hover:bg-[#007ACC] hover:text-white' 
+                                  : 'hover:bg-[#007ACC] hover:text-white'
+                            }`}
+                          >
+                            <span className="truncate">{item}</span>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -1303,15 +1530,17 @@ function ControlProperties({
             <option value="Collapsed">隐藏</option>
           </select>
         </PropertyRow>
-        <div className="p-2">
-          <button
-            onClick={onDelete}
-            className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded border border-red-900/30 bg-red-950/30 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-900/35 hover:text-red-300"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>删除此控件</span>
-          </button>
-        </div>
+        {control.type !== 'MenuBar' as any && control.type !== 'MenuItem' as any && (
+          <div className="p-2">
+            <button
+              onClick={onDelete}
+              className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded border border-red-900/30 bg-red-950/30 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-900/35 hover:text-red-300"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>删除此控件</span>
+            </button>
+          </div>
+        )}
       </PropertyGroup>
     </div>
   );

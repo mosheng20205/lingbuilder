@@ -216,13 +216,82 @@ export default function App() {
     return currentFiles;
   });
   const [activeFile, setActiveFile] = useState<CppFile>(() => {
-    // If MainWindow.e is in files, make it active, otherwise default to first
+    try {
+      const rawActive = window.localStorage.getItem('lingbuilder.activeTabPath.v1');
+      if (rawActive) {
+        const found = files?.find(f => f.path === rawActive);
+        if (found) return found;
+      }
+    } catch (e) {}
     return files ? (files.find(f => f.name === 'MainWindow.e') || files[0]) : initialFiles[0];
   });
   const filesRef = useRef<CppFile[]>([]);
+  const activeFileRef = useRef<CppFile | null>(null);
   useEffect(() => {
     filesRef.current = files;
   }, [files]);
+  useEffect(() => {
+    activeFileRef.current = activeFile;
+  }, [activeFile]);
+
+  const [openTabs, setOpenTabs] = useState<string[]>(() => {
+    try {
+      const raw = window.localStorage.getItem('lingbuilder.openTabs.v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {}
+    return ['src/MainWindow.e'];
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem('lingbuilder.openTabs.v1', JSON.stringify(openTabs));
+  }, [openTabs]);
+
+  useEffect(() => {
+    if (activeFile) {
+      window.localStorage.setItem('lingbuilder.activeTabPath.v1', activeFile.path);
+    }
+  }, [activeFile]);
+
+  const handleSelectFile = useCallback((file: CppFile, forceCodeView: boolean = true) => {
+    setOpenTabs(prev => {
+      if (!prev.includes(file.path)) {
+        return [...prev, file.path];
+      }
+      return prev;
+    });
+    setActiveFile(file);
+    if (forceCodeView) {
+      window.dispatchEvent(new CustomEvent('force-code-view'));
+    }
+  }, []);
+
+  const handleCloseTab = useCallback((tabPath: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    event.preventDefault();
+
+    setOpenTabs(prev => {
+      const index = prev.indexOf(tabPath);
+      if (index === -1) return prev;
+
+      const nextTabs = prev.filter(p => p !== tabPath);
+      
+      // If the closed tab was the active one, switch focus to another open tab
+      if (activeFileRef.current && activeFileRef.current.path === tabPath) {
+        if (nextTabs.length > 0) {
+          const nextActivePath = nextTabs[Math.min(index, nextTabs.length - 1)];
+          const nextActive = filesRef.current.find(f => f.path === nextActivePath);
+          if (nextActive) {
+            setActiveFile(nextActive);
+          }
+        }
+      }
+      
+      return nextTabs.length > 0 ? nextTabs : ['src/MainWindow.e'];
+    });
+  }, []);
   const [glossary, setGlossary] = useState<GlossaryTerm[]>(defaultGlossary);
   const [problems, setProblems] = useState<ProblemItem[]>(mockProblems);
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -396,6 +465,7 @@ export default function App() {
     '欢迎使用 LingBuilder C++ 中文集成开发环境 (IDE)。',
     '已就绪。点击上方“编译 F5”或左侧“运行”开始模拟目标构建。',
   ]);
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
   const [isBuilding, setIsBuilding] = useState(false);
   const buildIntervalRef = useRef<any>(null);
   const [isAutoTranslating, setIsAutoTranslating] = useState(false);
@@ -659,8 +729,20 @@ void DisplayStatus() {
   useEffect(() => {
     const handleEplSourceRequest = (event: Event) => {
       const customEvent = event as CustomEvent<WindowDesignerEplSourceRequestDetail>;
-      const eplFile = filesRef.current.find(file => file.language === 'epl')
-        || filesRef.current.find(file => file.path.endsWith('.e'));
+      const activeWindowId = customEvent.detail?.activeWindowId;
+      const windowFileName = customEvent.detail?.windowFileName;
+
+      let eplFile: CppFile | undefined;
+      
+      if (windowFileName) {
+        const expectedEName = windowFileName.replace(/\.xml$/i, '.e');
+        eplFile = filesRef.current.find(file => file.name === expectedEName);
+      }
+      
+      if (!eplFile) {
+        eplFile = filesRef.current.find(file => file.language === 'epl')
+          || filesRef.current.find(file => file.path.endsWith('.e'));
+      }
 
       customEvent.detail?.respond(eplFile ? (eplFile.translatedContent || eplFile.originalContent) : '');
     };
@@ -773,16 +855,141 @@ void DisplayStatus() {
       });
     };
 
+    const handleDesignerSwitchWindow = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      const xmlFileName = detail.fileName;
+      if (!xmlFileName) return;
+
+      const codeFileName = xmlFileName.replace(/\.xml$/i, '.e');
+      if (activeFileRef.current && activeFileRef.current.name === codeFileName) {
+        return;
+      }
+      const codeFile = filesRef.current.find(f => f.name === codeFileName);
+      if (codeFile) {
+        handleSelectFile(codeFile, false);
+      }
+    };
+
+    window.addEventListener('designer-switch-window', handleDesignerSwitchWindow);
     window.addEventListener('open-control-event-code', handleOpenControlEventCode);
     window.addEventListener('window-added', handleWindowAdded);
     window.addEventListener('window-deleted', handleWindowDeleted);
     window.addEventListener('window-duplicated', handleWindowDuplicated);
     return () => {
+      window.removeEventListener('designer-switch-window', handleDesignerSwitchWindow);
       window.removeEventListener('open-control-event-code', handleOpenControlEventCode);
       window.removeEventListener('window-added', handleWindowAdded);
       window.removeEventListener('window-deleted', handleWindowDeleted);
       window.removeEventListener('window-duplicated', handleWindowDuplicated);
     };
+  }, []);
+
+
+  useEffect(() => {
+    const loadSavedFiles = async () => {
+      try {
+        const projectId = (() => {
+          try {
+            const raw = window.localStorage.getItem('lingbuilder.windowDesigner.autosave.v1');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed.project && parsed.project.id) {
+                return parsed.project.id;
+              }
+            }
+          } catch (e) {}
+          return 'lingbuilder-ui-project';
+        })();
+        const res = await fetch(`/api/window-designer/files?projectId=${projectId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.files) {
+          setFiles(prevFiles => {
+            const nextFiles = prevFiles.map(file => {
+              if (data.files[file.name] !== undefined) {
+                return {
+                  ...file,
+                  translatedContent: data.files[file.name],
+                  isModified: false
+                };
+              }
+              return file;
+            });
+            filesRef.current = nextFiles;
+            
+            // Sync activeFile if it is MainWindow.e or currently loaded
+            const activeName = activeFileRef.current ? activeFileRef.current.name : 'MainWindow.e';
+            const matchedActive = nextFiles.find(f => f.name === activeName);
+            if (matchedActive) {
+              setActiveFile(matchedActive);
+            }
+            return nextFiles;
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load files from disk:', e);
+      }
+    };
+    loadSavedFiles();
+  }, []);
+
+  useEffect(() => {
+    let intervalId: any;
+    const pollLogs = async () => {
+      try {
+        const projectId = (() => {
+          try {
+            const raw = window.localStorage.getItem('lingbuilder.windowDesigner.autosave.v1');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed.project && parsed.project.id) {
+                return parsed.project.id;
+              }
+            }
+          } catch (e) {}
+          return 'lingbuilder-ui-project';
+        })();
+        const res = await fetch(`/api/window-designer/debug-logs?projectId=${projectId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && Array.isArray(data.logs)) {
+          const formatted = data.logs
+            .map(line => line.trim())
+            .filter(Boolean);
+          setDebugLogs(formatted);
+        }
+      } catch (e) {
+        // Polling errors can be ignored
+      }
+    };
+    intervalId = setInterval(pollLogs, 1000);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  const handleClearLogs = useCallback((tab: string) => {
+    if (tab === 'designer_logs') {
+      setDesignerGeneratedPanels(prev => ({
+        ...prev,
+        logs: []
+      }));
+    } else if (tab === 'output') {
+      setBuildLogs([]);
+    } else if (tab === 'debug_logs') {
+      setDebugLogs([]);
+      const projectId = (() => {
+        try {
+          const raw = window.localStorage.getItem('lingbuilder.windowDesigner.autosave.v1');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed.project && parsed.project.id) {
+              return parsed.project.id;
+            }
+          }
+        } catch (e) {}
+        return 'lingbuilder-ui-project';
+      })();
+      fetch(`/api/window-designer/debug-logs?projectId=${projectId}&clear=true`).catch(() => {});
+    }
   }, []);
 
   // Update status (translated, skipped, pending)
@@ -822,6 +1029,7 @@ void DisplayStatus() {
     if (pendingStrings.length === 0) {
       setShowBottomPanel(true);
       setActiveTabInBottom('output');
+    setDebugLogs([]);
       setBuildLogs(prev => [
         ...prev,
         `> [${new Date().toLocaleTimeString()}] 【一键智能汉化】当前文件没有任何待处理的翻译字段。`
@@ -918,10 +1126,46 @@ void DisplayStatus() {
         `> [${new Date().toLocaleTimeString()}] 【打开】成功打开已有的项目设计文件：'MainWindow.xml' 及对应类映射源文件。`
       ]);
     } else if (actionName === 'save') {
-      setBuildLogs(prev => [
-        ...prev,
-        `> [${new Date().toLocaleTimeString()}] 【保存】正在序列化并将当前中文代码及 UI 界面结构写入项目磁盘... 成功写入并同步完成！`
-      ]);
+      const projectId = (() => {
+        try {
+          const raw = window.localStorage.getItem('lingbuilder.windowDesigner.autosave.v1');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed.project && parsed.project.id) {
+              return parsed.project.id;
+            }
+          }
+        } catch (e) {}
+        return 'lingbuilder-ui-project';
+      })();
+
+      const projectFiles: Record<string, string> = {};
+      filesRef.current.forEach(file => {
+        projectFiles[file.name] = file.translatedContent || file.originalContent || '';
+      });
+
+      fetch('/api/window-designer/files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, files: projectFiles })
+      }).then(res => {
+        if (res.ok) {
+          setBuildLogs(prev => [
+            ...prev,
+            `> [${new Date().toLocaleTimeString()}] 【保存】正在序列化并将当前中文代码及 UI 界面结构写入项目磁盘... 成功写入并同步完成！`
+          ]);
+        } else {
+          setBuildLogs(prev => [
+            ...prev,
+            `> [${new Date().toLocaleTimeString()}] 【保存错误】无法写入文件到项目磁盘。`
+          ]);
+        }
+      }).catch(err => {
+        setBuildLogs(prev => [
+          ...prev,
+          `> [${new Date().toLocaleTimeString()}] 【保存错误】网络连接失败: ${err.message}`
+        ]);
+      });
     } else if (actionName === 'undo') {
       setBuildLogs(prev => [
         ...prev,
@@ -1017,16 +1261,21 @@ void DisplayStatus() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'F5') {
         e.preventDefault();
+        e.stopPropagation();
         if (e.shiftKey) {
           handleStopBuild();
         } else {
           handleRunBuild();
         }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleToolbarAction('save');
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true); // Use capturing phase to guarantee interception in all inputs/editors
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [handleRunBuild, handleStopBuild]);
 
@@ -1761,7 +2010,7 @@ void DisplayStatus() {
         <Sidebar
           files={files}
           activeFile={activeFile}
-          onSelectFile={setActiveFile}
+          onSelectFile={handleSelectFile}
           onRunBuild={handleRunBuild}
           isBuilding={isBuilding}
           isDarkMode={isDarkMode}
@@ -1824,6 +2073,11 @@ void DisplayStatus() {
               activeFile={activeFile}
               editorFontSize={editorFontSize}
               onFontSizeChange={setEditorFontSize}
+              openTabs={openTabs}
+              activeTabPath={activeFile.path}
+              onSelectTab={handleSelectFile}
+              onCloseTab={handleCloseTab}
+              allFiles={files}
             />
           </div>
 
@@ -1877,6 +2131,8 @@ void DisplayStatus() {
               strings={activeFile.strings}
               problems={problems}
               buildLogs={buildLogs}
+              debugLogs={debugLogs}
+              onClearLogs={handleClearLogs}
               onSelectLine={handleSelectLine}
               onUpdateStringTranslation={handleUpdateStringTranslation}
               onSetStatus={handleSetStatus}

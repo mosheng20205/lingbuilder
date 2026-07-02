@@ -12,6 +12,8 @@ export interface WindowDesignerBuildRunStateDetail {
 }
 
 export interface WindowDesignerEplSourceRequestDetail {
+  activeWindowId?: string;
+  windowFileName?: string;
   respond: (sourceCode: string) => void;
 }
 
@@ -23,10 +25,12 @@ export function notifyWindowDesignerBuildRunState(detail: WindowDesignerBuildRun
   window.dispatchEvent(new CustomEvent(WINDOW_DESIGNER_BUILD_RUN_STATE, { detail }));
 }
 
-export function requestWindowDesignerEplSource(): string {
+export function requestWindowDesignerEplSource(activeWindowId?: string, windowFileName?: string): string {
   let sourceCode = '';
   window.dispatchEvent(new CustomEvent<WindowDesignerEplSourceRequestDetail>(WINDOW_DESIGNER_EPL_SOURCE_REQUEST, {
     detail: {
+      activeWindowId,
+      windowFileName,
       respond: nextSourceCode => {
         sourceCode = nextSourceCode;
       }

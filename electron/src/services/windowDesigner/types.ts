@@ -40,6 +40,9 @@ export interface LingWindowModel {
   background: string;
   description: string;
   controls: LingControl[];
+  menuName?: string;
+  menuItems?: string;
+  menuEvents?: Record<string, string>;
 }
 
 export interface LingWindowProject {

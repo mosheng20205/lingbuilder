@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs/promises";
 import { execFile, spawn } from "child_process";
+import { createWriteStream } from "fs";
 import { promisify } from "util";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
@@ -266,6 +267,13 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       fs.mkdir(binDir, { recursive: true }),
       fs.mkdir(objDir, { recursive: true })
     ]);
+
+    // Write active window's .e file
+    const activeWindow = project.windows.find(w => w.id === activeWindowId) || project.windows[0];
+    if (activeWindow && typeof eplSourceCode === "string" && eplSourceCode.trim()) {
+      const eName = activeWindow.fileName.replace(/\.xml$/i, '.e');
+      await fs.writeFile(path.join(sourceDir, eName), eplSourceCode, "utf8");
+    }
     await Promise.all(generatedProject.files.map(file => {
       const targetPath = path.join(sourceDir, file.relativePath);
       return fs.writeFile(targetPath, file.content, "utf8");
@@ -318,12 +326,16 @@ app.post("/api/window-designer/build-run", async (req, res) => {
 
     if (run) {
       try {
+        const logFile = path.join(buildDir, "run.log");
+        const logStream = createWriteStream(logFile, { flags: 'w' });
         const child = spawn(exePath, [], {
           cwd: binDir,
           detached: true,
-          stdio: "ignore",
+          stdio: ["ignore", "pipe", "pipe"],
           windowsHide: false
         });
+        child.stdout.pipe(logStream);
+        child.stderr.pipe(logStream);
         child.unref();
         logs.push(`已启动运行窗口：${exePath}`);
       } catch (error: any) {
@@ -356,6 +368,86 @@ type CompilerInfo = {
   command: string;
   setupBatch?: string;
 };
+
+
+app.get("/api/window-designer/files", async (req, res) => {
+  const { projectId } = req.query as { projectId?: string };
+  if (!projectId) {
+    return res.status(400).json({ ok: false, error: "缺少 projectId" });
+  }
+
+  try {
+    const buildRoot = path.join(process.cwd(), ".lingbuilder-build");
+    const buildDir = path.join(buildRoot, sanitizeFilename(projectId));
+    const sourceDir = path.join(buildDir, "src");
+
+    const files: Record<string, string> = {};
+    try {
+      const dirFiles = await fs.readdir(sourceDir);
+      for (const file of dirFiles) {
+        const allowedExts = [".e", ".cpp", ".h", ".rc", ".xml", ".json"];
+        if (allowedExts.some(ext => file.endsWith(ext))) {
+          const content = await fs.readFile(path.join(sourceDir, file), "utf8");
+          files[file] = content;
+        }
+      }
+    } catch (e) {
+      // directory might not exist yet, ignore
+    }
+
+    res.json({ ok: true, files });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/api/window-designer/files", async (req, res) => {
+  const { projectId, files } = req.body as { projectId?: string; files?: Record<string, string> };
+  if (!projectId || !files) {
+    return res.status(400).json({ ok: false, error: "缺少 projectId 或 files" });
+  }
+
+  try {
+    const buildRoot = path.join(process.cwd(), ".lingbuilder-build");
+    const buildDir = path.join(buildRoot, sanitizeFilename(projectId));
+    const sourceDir = path.join(buildDir, "src");
+
+    await fs.mkdir(sourceDir, { recursive: true });
+
+    for (const [filename, content] of Object.entries(files)) {
+      const allowedExts = [".e", ".cpp", ".h", ".rc", ".xml", ".json"];
+      if (allowedExts.some(ext => filename.endsWith(ext))) {
+        const targetPath = path.join(sourceDir, filename);
+        await fs.writeFile(targetPath, content, "utf8");
+      }
+    }
+
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get("/api/window-designer/debug-logs", async (req, res) => {
+  const projectId = req.query.projectId as string || "window-preview";
+  const clear = req.query.clear === "true";
+  const buildDir = path.join(process.cwd(), ".lingbuilder-build", projectId);
+  const logFile = path.join(buildDir, "run.log");
+
+  if (clear) {
+    try {
+      await fs.writeFile(logFile, "", "utf8");
+    } catch {}
+    return res.json({ logs: [] });
+  }
+
+  try {
+    const data = await fs.readFile(logFile, "utf8");
+    res.json({ logs: data.split("\n") });
+  } catch {
+    res.json({ logs: [] });
+  }
+});
 
 async function detectCompiler(): Promise<CompilerInfo | null> {
   try {

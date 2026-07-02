@@ -77,7 +77,11 @@ export function getEplEventHandlerName(controlName: string, eventName: string): 
 }
 
 export function getEventsForType(type: LingControlType): LingDesignerEventInfo[] {
-  switch (type) {
+  switch (type as any) {
+    case 'MenuBar':
+      return [
+        { name: 'Select', label: '菜单项被选择 (Select)', desc: '点击或选择该菜单的任意子菜单项时触发' }
+      ];
     case 'Button':
       return [
         { name: 'Click', label: '单击事件 (Click)', desc: '鼠标左键点击按钮时触发' },
