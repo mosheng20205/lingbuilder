@@ -424,7 +424,7 @@ export default function App() {
 
   const promptEditorFontSize = () => {
     const inputValue = window.prompt(
-      `设置编辑器字号（${MIN_EDITOR_FONT_SIZE}-${MAX_EDITOR_FONT_SIZE}px）`,
+      `设置编辑器字体大小（${MIN_EDITOR_FONT_SIZE}-${MAX_EDITOR_FONT_SIZE}px）`,
       String(editorFontSize)
     );
     if (inputValue === null) return;
@@ -1689,8 +1689,16 @@ void DisplayStatus() {
                   </button>
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
                   <button onClick={() => { promptEditorFontSize(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
-                    <span>设置编辑器字号...</span>
+                    <span>设置编辑器字体...</span>
                     <span className="opacity-50 text-[10px]">{editorFontSize}px</span>
+                  </button>
+                  <button onClick={() => { setEditorFontSize(value => value + 1); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>放大编辑器字体</span>
+                    <span className="opacity-50 text-[10px]">Ctrl+滚轮↑</span>
+                  </button>
+                  <button onClick={() => { setEditorFontSize(value => value - 1); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>缩小编辑器字体</span>
+                    <span className="opacity-50 text-[10px]">Ctrl+滚轮↓</span>
                   </button>
                   <button onClick={() => { setShowCustomModal(true); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>添加自定义文件</span>

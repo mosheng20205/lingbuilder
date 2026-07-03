@@ -175,6 +175,7 @@ export default function MonacoCodeEditor({
   focusHandlerName,
   onFocusHandled,
   editorFontSize = 14,
+  onFontSizeChange,
   filePath,
   designerProject,
   onRevealDesignerBinding,
@@ -187,6 +188,10 @@ export default function MonacoCodeEditor({
   const monacoRef = useRef<any>(null);
   const decorationIdsRef = useRef<string[]>([]);
   const [moduleContext, setModuleContext] = useState<LingCppModuleContext | undefined>();
+
+  useEffect(() => {
+    editorRef.current?.updateOptions?.({ fontSize: editorFontSize });
+  }, [editorFontSize]);
 
   // Sync focusHandlerName to scroll to correct subprogram
   useEffect(() => {
@@ -273,6 +278,17 @@ export default function MonacoCodeEditor({
     if (initialPosition) {
       onCursorPositionChange?.({ line: initialPosition.lineNumber, column: initialPosition.column });
     }
+    const editorDomNode = editor.getDomNode?.();
+    const handleFontWheel = (event: WheelEvent) => {
+      if (!onFontSizeChange || !(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onFontSizeChange(currentValue => currentValue + (event.deltaY < 0 ? 1 : -1));
+    };
+    editorDomNode?.addEventListener('wheel', handleFontWheel, { passive: false });
+    editor.onDidDispose?.(() => {
+      editorDomNode?.removeEventListener('wheel', handleFontWheel);
+    });
     editor.onDidChangeCursorPosition?.((event: any) => {
       onCursorPositionChange?.({ line: event.position.lineNumber, column: event.position.column });
     });

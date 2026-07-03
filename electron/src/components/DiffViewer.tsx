@@ -140,6 +140,91 @@ interface NativeMappedDiagnostic {
   sourceSymbol?: string;
 }
 
+type BeginnerCodeTarget = { className: string; method: LingCppMethod };
+
+interface BeginnerCodeCompletion {
+  label: string;
+  detail: string;
+  insertText: string;
+  aliases: string[];
+  kind: '命令' | '流程' | '代码';
+  cursorOffset?: number;
+  selectLength?: number;
+}
+
+interface BeginnerCompletionState {
+  targetKey: string;
+  token: string;
+  items: BeginnerCodeCompletion[];
+  selectedIndex: number;
+}
+
+const BEGINNER_CODE_COMPLETIONS: BeginnerCodeCompletion[] = [
+  {
+    label: '调试输出',
+    detail: '输出一行调试文本',
+    insertText: '调试输出("")',
+    aliases: ['tssc', 'tiaoshishuchu', 'ts', 'debug', '调试', '输出'],
+    kind: '命令',
+    cursorOffset: '调试输出("'.length
+  },
+  {
+    label: '如果',
+    detail: '条件判断结构',
+    insertText: '如果 (条件)\n    \n如果结束',
+    aliases: ['rg', 'ruguo', 'ru', '如', '如果'],
+    kind: '流程',
+    cursorOffset: '如果 ('.length,
+    selectLength: '条件'.length
+  },
+  {
+    label: '信息框',
+    detail: '显示提示窗口',
+    insertText: '信息框("提示内容", 64, "提示")',
+    aliases: ['xxk', 'xinxikuang', 'message', 'msg', '提示'],
+    kind: '命令',
+    cursorOffset: '信息框("'.length,
+    selectLength: '提示内容'.length
+  },
+  {
+    label: '返回',
+    detail: '结束当前功能并返回',
+    insertText: '返回',
+    aliases: ['fh', 'fanhui', 'return'],
+    kind: '流程'
+  },
+  {
+    label: '@ 原生C++',
+    detail: '插入一行内嵌 C++ 代码',
+    insertText: '@ ',
+    aliases: ['cpp', 'c++', 'ys', 'yuansheng', '@'],
+    kind: '代码',
+    cursorOffset: 2
+  }
+];
+
+const getBeginnerCompletionToken = (value: string, cursor: number) => {
+  const prefix = value.slice(0, cursor);
+  return prefix.match(/[a-zA-Z0-9_@\u4e00-\u9fa5]+$/u)?.[0] || '';
+};
+
+const filterBeginnerCodeCompletions = (token: string, includeAll = false) => {
+  const normalizedToken = token.trim().toLowerCase();
+  if (!normalizedToken && !includeAll) return [];
+  if (!normalizedToken) return BEGINNER_CODE_COMPLETIONS;
+
+  return BEGINNER_CODE_COMPLETIONS
+    .map(item => {
+      const values = [item.label, ...item.aliases].map(value => value.toLowerCase());
+      const startsWithMatch = values.some(value => value.startsWith(normalizedToken));
+      const includesMatch = values.some(value => value.includes(normalizedToken));
+      return { item, rank: startsWithMatch ? 0 : includesMatch ? 1 : 9 };
+    })
+    .filter(result => result.rank < 9)
+    .sort((left, right) => left.rank - right.rank || left.item.label.localeCompare(right.item.label, 'zh-Hans-CN'))
+    .map(result => result.item);
+};
+
 const CONTROL_MEMBER_TYPE_PATTERN = /按钮|标签|编辑框|复选框|单选框|下拉框|控件|窗体/u;
 
 const isControlMemberRow = (row: LingCppStructuredReadingRow) =>
@@ -389,6 +474,7 @@ export default function DiffViewer({
   const [nativeImportError, setNativeImportError] = useState<string | null>(null);
   const [showNativeImportPanel, setShowNativeImportPanel] = useState(false);
   const [structuredRevealLine, setStructuredRevealLine] = useState<number | null>(null);
+  const [beginnerCompletionState, setBeginnerCompletionState] = useState<BeginnerCompletionState | null>(null);
 
   useEffect(() => {
     if (pendingHandlerFocus) {
@@ -407,6 +493,7 @@ export default function DiffViewer({
     setExpandedBeginnerFunctionTargetKey(null);
     setSelectedFunctionTemplateKey(null);
     setFunctionCallDrafts({});
+    setBeginnerCompletionState(null);
   }, [activeFile?.path]);
 
   useEffect(() => {
@@ -945,6 +1032,13 @@ export default function DiffViewer({
     window.requestAnimationFrame(() => {
       editor.setSelectionRange(start + indent.length, start + indent.length);
     });
+  };
+
+  const handleEditorFontWheel = (event: React.WheelEvent) => {
+    if (!onFontSizeChange || !(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onFontSizeChange(currentValue => currentValue + (event.deltaY < 0 ? 1 : -1));
   };
 
   const renderEplSourceToken = (token: string, index: number) => {
@@ -2362,9 +2456,162 @@ export default function DiffViewer({
       || codeTargets.find(target => target.method.kind === 'event' && target.method.name === activeBeginnerHandler)
       || codeTargets.find(target => target.method.kind === 'event')
       || codeTargets[0];
-    type BeginnerCodeTarget = { className: string; method: LingCppMethod };
     const codeTargetKey = (target: BeginnerCodeTarget) =>
       `${target.className}:${target.method.kind}:${target.method.name}`;
+    const updateBeginnerCompletion = (
+      target: BeginnerCodeTarget,
+      input: HTMLTextAreaElement,
+      includeAll = false
+    ) => {
+      const token = getBeginnerCompletionToken(input.value, input.selectionStart);
+      const items = filterBeginnerCodeCompletions(token, includeAll);
+      const targetKey = codeTargetKey(target);
+      if (items.length === 0) {
+        setBeginnerCompletionState(current => current?.targetKey === targetKey ? null : current);
+        return;
+      }
+      setBeginnerCompletionState({
+        targetKey,
+        token,
+        items,
+        selectedIndex: 0
+      });
+    };
+    const closeBeginnerCompletion = (target?: BeginnerCodeTarget) => {
+      if (!target) {
+        setBeginnerCompletionState(null);
+        return;
+      }
+      const targetKey = codeTargetKey(target);
+      setBeginnerCompletionState(current => current?.targetKey === targetKey ? null : current);
+    };
+    const moveBeginnerCompletionSelection = (target: BeginnerCodeTarget, delta: number) => {
+      const targetKey = codeTargetKey(target);
+      setBeginnerCompletionState(current => {
+        if (!current || current.targetKey !== targetKey || current.items.length === 0) return current;
+        const nextIndex = (current.selectedIndex + delta + current.items.length) % current.items.length;
+        return { ...current, selectedIndex: nextIndex };
+      });
+    };
+    const applyBeginnerCompletion = (
+      target: BeginnerCodeTarget,
+      input: HTMLTextAreaElement,
+      completion: BeginnerCodeCompletion
+    ) => {
+      const cursor = input.selectionStart;
+      const token = getBeginnerCompletionToken(input.value, cursor);
+      const tokenStart = cursor - token.length;
+      const nextValue = `${input.value.slice(0, tokenStart)}${completion.insertText}${input.value.slice(input.selectionEnd)}`;
+      const cursorOffset = completion.cursorOffset ?? completion.insertText.length;
+      const nextCursor = tokenStart + cursorOffset;
+      const selectLength = completion.selectLength ?? 0;
+
+      input.value = nextValue;
+      input.focus();
+      input.setSelectionRange(nextCursor, nextCursor + selectLength);
+      closeBeginnerCompletion(target);
+    };
+    const handleBeginnerCodeChange = (
+      target: BeginnerCodeTarget,
+      event: React.ChangeEvent<HTMLTextAreaElement>
+    ) => {
+      updateBeginnerCompletion(target, event.currentTarget);
+    };
+    const handleBeginnerCodeKeyDown = (
+      target: BeginnerCodeTarget,
+      event: React.KeyboardEvent<HTMLTextAreaElement>
+    ) => {
+      const input = event.currentTarget;
+      const targetKey = codeTargetKey(target);
+      const activeCompletion = beginnerCompletionState?.targetKey === targetKey ? beginnerCompletionState : null;
+
+      if ((event.ctrlKey || event.metaKey) && event.key === ' ') {
+        event.preventDefault();
+        updateBeginnerCompletion(target, input, true);
+        return;
+      }
+
+      if (activeCompletion) {
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          moveBeginnerCompletionSelection(target, 1);
+          return;
+        }
+        if (event.key === 'ArrowUp') {
+          event.preventDefault();
+          moveBeginnerCompletionSelection(target, -1);
+          return;
+        }
+        if (event.key === 'Enter' || event.key === 'Tab') {
+          event.preventDefault();
+          const completion = activeCompletion.items[activeCompletion.selectedIndex] || activeCompletion.items[0];
+          if (completion) applyBeginnerCompletion(target, input, completion);
+          return;
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeBeginnerCompletion(target);
+          return;
+        }
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        input.blur();
+        return;
+      }
+      if (event.key === 'Tab') {
+        event.preventDefault();
+        const start = input.selectionStart;
+        const end = input.selectionEnd;
+        const nextValue = `${input.value.slice(0, start)}    ${input.value.slice(end)}`;
+        input.value = nextValue;
+        input.selectionStart = input.selectionEnd = start + 4;
+      }
+    };
+    const renderBeginnerCompletionPanel = (target: BeginnerCodeTarget) => {
+      const targetKey = codeTargetKey(target);
+      const state = beginnerCompletionState?.targetKey === targetKey ? beginnerCompletionState : null;
+      if (!state || state.items.length === 0) return null;
+
+      return (
+        <div className={`absolute left-[60px] top-[34px] z-30 w-[280px] overflow-hidden rounded border shadow-xl ${
+          isDarkMode ? 'border-[#343746] bg-[#191b22] text-slate-100 shadow-black/35' : 'border-slate-200 bg-white text-slate-900 shadow-slate-300/50'
+        }`}>
+          <div className={`flex items-center justify-between border-b px-2 py-1 text-[10px] ${
+            isDarkMode ? 'border-[#2b2d34] text-slate-500' : 'border-slate-100 text-slate-500'
+          }`}>
+            <span>{state.token ? `补全 ${state.token}` : '代码补全'}</span>
+            <span>Tab/Enter</span>
+          </div>
+          <div className="max-h-[190px] overflow-auto py-1">
+            {state.items.map((item, index) => (
+              <button
+                key={`${item.label}:${item.insertText}`}
+                type="button"
+                onMouseDown={event => {
+                  event.preventDefault();
+                  const editor = event.currentTarget.closest('[data-beginner-editor-root]')?.querySelector('textarea');
+                  if (editor instanceof HTMLTextAreaElement) applyBeginnerCompletion(target, editor, item);
+                }}
+                className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[11px] ${
+                  index === state.selectedIndex
+                    ? isDarkMode ? 'bg-cyan-500/15 text-cyan-100' : 'bg-cyan-50 text-cyan-900'
+                    : isDarkMode ? 'text-slate-300 hover:bg-[#232631]' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold">{item.label}</span>
+                  <span className={`block truncate text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>{item.detail}</span>
+                </span>
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] ${
+                  isDarkMode ? 'bg-[#2b2d34] text-slate-400' : 'bg-slate-100 text-slate-500'
+                }`}>{item.kind}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    };
     const findStructuredRowForCodeTarget = (target: BeginnerCodeTarget) => {
       const rows = target.method.kind === 'event'
         ? eventRows
@@ -2969,9 +3216,14 @@ export default function DiffViewer({
       const bodyText = methodBodyText(target.method);
       const bodyLines = bodyText.split('\n').length ? bodyText.split('\n') : [''];
       const editorHeightClass = compact ? 'min-h-[170px]' : 'min-h-[230px]';
+      const lineHeight = Math.max(18, Math.round(editorFontSize * 1.65));
+      const editorTextStyle = {
+        fontSize: `${editorFontSize}px`,
+        lineHeight: `${lineHeight}px`
+      };
 
       return (
-        <>
+        <div className="relative" data-beginner-editor-root onWheel={handleEditorFontWheel}>
           <div className={`grid grid-cols-[54px_minmax(0,1fr)] border-b text-[10px] font-semibold ${
             isDarkMode ? 'border-[#2b2d34] bg-[#111217] text-slate-500' : 'border-slate-200 bg-slate-50 text-slate-500'
           }`}>
@@ -2981,7 +3233,7 @@ export default function DiffViewer({
           <div className={`grid ${editorHeightClass} grid-cols-[54px_minmax(0,1fr)]`}>
             <div className={`select-none border-r px-2 py-2 text-right text-[11px] leading-6 tabular-nums ${
               isDarkMode ? 'border-[#2b2d34] bg-[#111217] text-slate-600' : 'border-slate-200 bg-slate-50 text-slate-400'
-            }`}>
+            }`} style={editorTextStyle}>
               {bodyLines.map((_, index) => (
                 <div key={index}>{index + 1}</div>
               ))}
@@ -2992,32 +3244,26 @@ export default function DiffViewer({
               spellCheck={false}
               readOnly={!onUpdateSourceContent}
               placeholder="输入中文代码，@ 后面写原生 C++"
+              onChange={event => handleBeginnerCodeChange(target, event)}
               onBlur={event => commitBeginnerCodeBody(
                 target.className,
                 target.method.name,
                 methodBodyText(target.method),
                 event.currentTarget.value
               )}
-              onKeyDown={event => {
-                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') event.currentTarget.blur();
-                if (event.key === 'Tab') {
-                  event.preventDefault();
-                  const input = event.currentTarget;
-                  const start = input.selectionStart;
-                  const end = input.selectionEnd;
-                  const nextValue = `${input.value.slice(0, start)}    ${input.value.slice(end)}`;
-                  input.value = nextValue;
-                  input.selectionStart = input.selectionEnd = start + 4;
-                }
-              }}
-              className={`${editorHeightClass} w-full resize-y border-0 bg-transparent px-3 py-2 font-mono text-[12px] leading-6 outline-none ${
+              onFocus={event => updateBeginnerCompletion(target, event.currentTarget)}
+              onKeyDown={event => handleBeginnerCodeKeyDown(target, event)}
+              onWheel={handleEditorFontWheel}
+              style={editorTextStyle}
+              className={`${editorHeightClass} w-full resize-y border-0 bg-transparent px-3 py-2 font-mono outline-none ${
                 isDarkMode
                   ? 'text-slate-100 placeholder:text-slate-600 focus:bg-[#111118]'
                   : 'text-slate-900 placeholder:text-slate-400 focus:bg-white'
               }`}
             />
           </div>
-        </>
+          {renderBeginnerCompletionPanel(target)}
+        </div>
       );
     };
 
@@ -3182,14 +3428,13 @@ export default function DiffViewer({
       </table>
     );
 
-    const generateMissingDesignerEvent = (row: LingCppStructuredReadingRow) => {
+    const getMissingDesignerEventEdit = (row: LingCppStructuredReadingRow): LingCppAstEdit | null => {
       const handlerName = row.targetName || row.name;
       const className = row.className || primaryLingCppClass?.name;
       if (!handlerName || !className) {
-        setStructureEditError('当前源码里还没有可绑定事件的类。');
-        return;
+        return null;
       }
-      const applied = applyStructureAstEdits([{
+      return {
         kind: 'add-event',
         className,
         event: {
@@ -3197,11 +3442,47 @@ export default function DiffViewer({
           parameters: row.parameters || [],
           note: row.note || '由设计器事件自动生成'
         }
-      }], row.line);
+      };
+    };
+
+    const generateMissingDesignerEvent = (row: LingCppStructuredReadingRow) => {
+      const edit = getMissingDesignerEventEdit(row);
+      if (!edit || edit.kind !== 'add-event') {
+        setStructureEditError('当前源码里还没有可绑定事件的类。');
+        return;
+      }
+      const applied = applyStructureAstEdits([edit], row.line);
       if (applied) {
-        setSelectedBeginnerHandler(handlerName);
-        setSelectedBeginnerCodeTarget({ className, methodName: handlerName });
-        setExpandedBeginnerEventTargetKey(`${className}:event:${handlerName}`);
+        setSelectedBeginnerHandler(edit.event.handlerName);
+        setSelectedBeginnerCodeTarget({ className: edit.className, methodName: edit.event.handlerName });
+        setExpandedBeginnerEventTargetKey(`${edit.className}:event:${edit.event.handlerName}`);
+        window.requestAnimationFrame(() => scrollToStructureSection('event'));
+      }
+    };
+
+    const generateAllMissingDesignerEvents = () => {
+      const seen = new Set<string>();
+      const generated = pendingEventRows
+        .map(row => ({ row, edit: getMissingDesignerEventEdit(row) }))
+        .filter((item): item is { row: LingCppStructuredReadingRow; edit: LingCppAstEdit & { kind: 'add-event' } } => {
+          if (!item.edit || item.edit.kind !== 'add-event') return false;
+          const key = `${item.edit.className}:${item.edit.event.handlerName}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+      if (generated.length === 0) {
+        setStructureEditError('当前源码里还没有可绑定事件的类。');
+        return;
+      }
+
+      const applied = applyStructureAstEdits(generated.map(item => item.edit), generated[0]?.row.line);
+      if (applied) {
+        const firstEdit = generated[0].edit;
+        setSelectedBeginnerHandler(firstEdit.event.handlerName);
+        setSelectedBeginnerCodeTarget({ className: firstEdit.className, methodName: firstEdit.event.handlerName });
+        setExpandedBeginnerEventTargetKey(`${firstEdit.className}:event:${firstEdit.event.handlerName}`);
         window.requestAnimationFrame(() => scrollToStructureSection('event'));
       }
     };
@@ -3213,96 +3494,116 @@ export default function DiffViewer({
         '事件处理器',
         allRows.length + (primaryLingCppClass ? 1 : 0),
         '控件事件、窗口事件和绑定状态',
-        <table className={`w-full min-w-[820px] border-b text-left ${tableChrome}`}>
-          <thead>
-            <tr>
-              <th className={`${headCellClass} w-[150px]`}>事件</th>
-              <th className={`${headCellClass} w-[240px]`}>处理器</th>
-              <th className={`${headCellClass} w-[120px]`}>绑定</th>
-              <th className={`${headCellClass} w-[220px]`}>参数</th>
-              <th className={`${headCellClass} w-[64px] text-right`}>行</th>
-              <th className={headCellClass}>备注</th>
-            </tr>
-          </thead>
-          <tbody>
-            {allRows.map(row => {
-              const target = row.editKind === 'event'
-                ? codeTargets.find(item =>
-                    item.className === row.className &&
-                    item.method.kind === 'event' &&
-                    item.method.name === (row.targetName || row.name)
-                  )
-                : undefined;
-              const selected = Boolean(target && expandedBeginnerEventTargetKey === codeTargetKey(target));
+        <>
+          {pendingEventRows.length > 0 && (
+            <div className={`flex items-center justify-between gap-2 border-b px-2 py-1.5 text-[11px] ${
+              isDarkMode ? 'border-[#2b2d34] bg-amber-500/[0.06] text-amber-200' : 'border-amber-100 bg-amber-50 text-amber-800'
+            }`}>
+              <span>有 {pendingEventRows.length} 个设计器事件缺少源码处理器。</span>
+              <button
+                type="button"
+                onClick={generateAllMissingDesignerEvents}
+                disabled={!onUpdateSourceContent}
+                className={`h-6 shrink-0 rounded px-2 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  isDarkMode ? 'bg-amber-400/15 text-amber-200 hover:bg-amber-400/25' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                }`}
+                title="一次生成所有缺失的事件处理器"
+              >
+                一键补齐
+              </button>
+            </div>
+          )}
+          <table className={`w-full min-w-[820px] border-b text-left ${tableChrome}`}>
+            <thead>
+              <tr>
+                <th className={`${headCellClass} w-[150px]`}>事件</th>
+                <th className={`${headCellClass} w-[240px]`}>处理器</th>
+                <th className={`${headCellClass} w-[120px]`}>绑定</th>
+                <th className={`${headCellClass} w-[220px]`}>参数</th>
+                <th className={`${headCellClass} w-[64px] text-right`}>行</th>
+                <th className={headCellClass}>备注</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allRows.map(row => {
+                const target = row.editKind === 'event'
+                  ? codeTargets.find(item =>
+                      item.className === row.className &&
+                      item.method.kind === 'event' &&
+                      item.method.name === (row.targetName || row.name)
+                    )
+                  : undefined;
+                const selected = Boolean(target && expandedBeginnerEventTargetKey === codeTargetKey(target));
 
-              return (
-                <React.Fragment key={row.id}>
-                  <tr
-                    data-structured-line={row.line}
-                    onClick={() => {
-                      if (target) {
-                        toggleInlineCodeTarget(target);
-                        return;
-                      }
-                      if (row.editKind === 'missing-event' || row.status === 'missing-source') {
-                        generateMissingDesignerEvent(row);
-                      }
-                    }}
-                    onDoubleClick={() => revealStructuredRow(row)}
-                    className={`${selected ? isDarkMode ? 'bg-cyan-500/10' : 'bg-cyan-50' : rowChrome(row)} cursor-pointer`}
-                    title={row.editKind === 'event' ? '单击后直接编写事件代码' : undefined}
-                  >
-                    <td className={cellClass}>
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        {target ? (
-                          selected
-                            ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
-                            : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-                        ) : null}
-                        {renderTextCell(row.type || row.name, 'type')}
-                      </div>
-                    </td>
-                    <td className={cellClass}>{renderDirectStructureInput(row, 'event-handler', row.targetName || row.name, '处理器', 'name')}</td>
-                    <td className={cellClass}>{renderStatusCell(row)}</td>
-                    <td className={cellClass}>
-                      {row.editKind === 'event'
-                        ? renderParameterSummary(row.parameters)
-                        : renderTextCell(formatParameterDraft(row.parameters) || '生成后逐行添加', 'muted')}
-                    </td>
-                    <td className={`${cellClass} text-right tabular-nums`}>{renderTextCell(row.line, 'muted')}</td>
-                    <td className={cellClass}>{renderTextCell(row.note || (row.editKind === 'event' ? '单击编写' : ''), 'muted')}</td>
-                  </tr>
-                  {target && selected && (
-                    <tr className={isDarkMode ? 'bg-[#111217]' : 'bg-slate-50'}>
-                      <td colSpan={6} className={`p-0 ${isDarkMode ? 'border-b border-[#2b2d34]' : 'border-b border-slate-200'}`}>
-                        <div className="min-w-[820px]">
-                          <div className={`border-b px-2 py-1.5 text-[10px] font-semibold ${
-                            isDarkMode ? 'border-[#2b2d34] text-cyan-300' : 'border-slate-200 text-cyan-700'
-                          }`}>
-                            事件实现
-                          </div>
-                          {renderProcessPropertyTable(target)}
-                          {renderEventFunctionCallBar(target)}
-                          {renderCodeBodyEditor(target, true)}
+                return (
+                  <React.Fragment key={row.id}>
+                    <tr
+                      data-structured-line={row.line}
+                      onClick={() => {
+                        if (target) {
+                          toggleInlineCodeTarget(target);
+                          return;
+                        }
+                        if (row.editKind === 'missing-event' || row.status === 'missing-source') {
+                          generateMissingDesignerEvent(row);
+                        }
+                      }}
+                      onDoubleClick={() => revealStructuredRow(row)}
+                      className={`${selected ? isDarkMode ? 'bg-cyan-500/10' : 'bg-cyan-50' : rowChrome(row)} cursor-pointer`}
+                      title={row.editKind === 'event' ? '单击后直接编写事件代码' : undefined}
+                    >
+                      <td className={cellClass}>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          {target ? (
+                            selected
+                              ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+                              : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                          ) : null}
+                          {renderTextCell(row.type || row.name, 'type')}
                         </div>
                       </td>
+                      <td className={cellClass}>{renderDirectStructureInput(row, 'event-handler', row.targetName || row.name, '处理器', 'name')}</td>
+                      <td className={cellClass}>{renderStatusCell(row)}</td>
+                      <td className={cellClass}>
+                        {row.editKind === 'event'
+                          ? renderParameterSummary(row.parameters)
+                          : renderTextCell(formatParameterDraft(row.parameters) || '生成后逐行添加', 'muted')}
+                      </td>
+                      <td className={`${cellClass} text-right tabular-nums`}>{renderTextCell(row.line, 'muted')}</td>
+                      <td className={cellClass}>{renderTextCell(row.note || (row.editKind === 'event' ? '单击编写' : ''), 'muted')}</td>
                     </tr>
-                  )}
-                </React.Fragment>
-              );
-            })}
-            {primaryLingCppClass && (
-              <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
-                <td className={cellClass}>{renderTextCell('自定义事件', 'type')}</td>
-                <td className={cellClass}>{renderNewEventInput('handlerName', '输入处理器名', 'name')}</td>
-                <td className={cellClass}>{renderTextCell('新事件', 'muted')}</td>
-                <td className={cellClass}>{renderTextCell('生成后逐行添加', 'muted')}</td>
-                <td className={`${cellClass} text-right`}>{renderTextCell('新', 'muted')}</td>
-                <td className={cellClass}>{renderTextCell('输入处理器名后自动生成并展开', 'muted')}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                    {target && selected && (
+                      <tr className={isDarkMode ? 'bg-[#111217]' : 'bg-slate-50'}>
+                        <td colSpan={6} className={`p-0 ${isDarkMode ? 'border-b border-[#2b2d34]' : 'border-b border-slate-200'}`}>
+                          <div className="min-w-[820px]">
+                            <div className={`border-b px-2 py-1.5 text-[10px] font-semibold ${
+                              isDarkMode ? 'border-[#2b2d34] text-cyan-300' : 'border-slate-200 text-cyan-700'
+                            }`}>
+                              事件实现
+                            </div>
+                            {renderProcessPropertyTable(target)}
+                            {renderEventFunctionCallBar(target)}
+                            {renderCodeBodyEditor(target, true)}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+              {primaryLingCppClass && (
+                <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
+                  <td className={cellClass}>{renderTextCell('自定义事件', 'type')}</td>
+                  <td className={cellClass}>{renderNewEventInput('handlerName', '输入处理器名', 'name')}</td>
+                  <td className={cellClass}>{renderTextCell('新事件', 'muted')}</td>
+                  <td className={cellClass}>{renderTextCell('生成后逐行添加', 'muted')}</td>
+                  <td className={`${cellClass} text-right`}>{renderTextCell('新', 'muted')}</td>
+                  <td className={cellClass}>{renderTextCell('输入处理器名后自动生成并展开', 'muted')}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </>
       );
     };
 
@@ -3491,51 +3792,7 @@ export default function DiffViewer({
             <div className="min-w-0">
               {renderProcessPropertyTable(activeCodeTarget)}
               {renderEventFunctionCallBar(activeCodeTarget)}
-              <div className={`grid grid-cols-[54px_minmax(0,1fr)] border-b text-[10px] font-semibold ${
-                isDarkMode ? 'border-[#2b2d34] bg-[#111217] text-slate-500' : 'border-slate-200 bg-slate-50 text-slate-500'
-              }`}>
-                <div className="border-r px-2 py-1.5 text-right">行</div>
-                <div className="px-2 py-1.5">中文 / C++ 代码</div>
-              </div>
-              <div className="grid min-h-[230px] grid-cols-[54px_minmax(0,1fr)]">
-                <div className={`select-none border-r px-2 py-2 text-right text-[11px] leading-6 tabular-nums ${
-                  isDarkMode ? 'border-[#2b2d34] bg-[#111217] text-slate-600' : 'border-slate-200 bg-slate-50 text-slate-400'
-                }`}>
-                  {(methodBodyText(activeCodeTarget.method).split('\n').length ? methodBodyText(activeCodeTarget.method).split('\n') : ['']).map((_, index) => (
-                    <div key={index}>{index + 1}</div>
-                  ))}
-                </div>
-                <textarea
-                  key={`${activeCodeTarget.className}:${activeCodeTarget.method.name}:${activeCodeTarget.method.line}:${methodBodyText(activeCodeTarget.method)}`}
-                  defaultValue={methodBodyText(activeCodeTarget.method)}
-                  spellCheck={false}
-                  readOnly={!onUpdateSourceContent}
-                  placeholder="输入中文代码，@ 后面写原生 C++"
-                  onBlur={event => commitBeginnerCodeBody(
-                    activeCodeTarget.className,
-                    activeCodeTarget.method.name,
-                    methodBodyText(activeCodeTarget.method),
-                    event.currentTarget.value
-                  )}
-                  onKeyDown={event => {
-                    if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') event.currentTarget.blur();
-                    if (event.key === 'Tab') {
-                      event.preventDefault();
-                      const target = event.currentTarget;
-                      const start = target.selectionStart;
-                      const end = target.selectionEnd;
-                      const nextValue = `${target.value.slice(0, start)}    ${target.value.slice(end)}`;
-                      target.value = nextValue;
-                      target.selectionStart = target.selectionEnd = start + 4;
-                    }
-                  }}
-                  className={`min-h-[230px] w-full resize-none border-0 bg-transparent px-3 py-2 font-mono text-[12px] leading-6 outline-none ${
-                    isDarkMode
-                      ? 'text-slate-100 placeholder:text-slate-600 focus:bg-[#111118]'
-                      : 'text-slate-900 placeholder:text-slate-400 focus:bg-white'
-                  }`}
-                />
-              </div>
+              {renderCodeBodyEditor(activeCodeTarget)}
             </div>
           </div>
         ) : (
