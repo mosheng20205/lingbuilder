@@ -41,6 +41,7 @@ import {
   getPrimaryEventNameForType,
   readWindowDesignerState,
   saveWindowDesignerState,
+  WINDOW_DESIGNER_PROJECT_UPDATED,
   PersistedWindowDesignerState
 } from '../services/windowDesigner/windowDesignerService';
 import {
@@ -158,6 +159,24 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     '> [编译日志] 等待 F5 或“生成并运行”触发真实 Win32 构建。'
   ]);
   const [isNativeBuilding, setIsNativeBuilding] = useState(false);
+
+  useEffect(() => {
+    const handleDesignerProjectUpdated = (event: Event) => {
+      const nextState = (event as CustomEvent<PersistedWindowDesignerState>).detail;
+      if (!nextState) return;
+
+      cachedInitialDesignerState = nextState;
+      setProject(nextState.project);
+      setActiveWindowId(nextState.activeWindowId);
+      setSelectedControlId(nextState.selectedControlId);
+    };
+
+    window.addEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
+    return () => {
+      window.removeEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
+    };
+  }, []);
+
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [resizeDirection, setResizeDirection] = useState<ResizeDirection>('se');
@@ -439,7 +458,9 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     setActiveWindowId(nextWindow.id);
     setSelectedControlId(nextWindow.controls[0]?.id || null);
     addLog(`> [${new Date().toLocaleTimeString()}] 【窗体设计】已从窗口程序集中移除当前窗口。`);
-    window.dispatchEvent(new CustomEvent('window-deleted', { detail: deletedWindow }));
+    window.dispatchEvent(new CustomEvent('window-deleted', {
+      detail: { deletedWindow, nextWindow }
+    }));
   };
 
   const handleDuplicateWindow = () => {

@@ -25,6 +25,7 @@ import {
   proposeLingCppEdit,
   rejectWorkspaceEdit
 } from "./src/services/lingCpp/aiEditService";
+import { createModuleService } from "./src/services/modules/moduleService";
 
 dotenv.config();
 
@@ -58,9 +59,116 @@ function getRepoWorkspaceRoot() {
     : process.cwd();
 }
 
+function getModuleService() {
+  return createModuleService(getRepoWorkspaceRoot());
+}
+
 // API: Health Check
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
+});
+
+app.get("/api/modules/installed", async (req, res) => {
+  try {
+    const { projectId } = req.query as { projectId?: string };
+    res.json({ ok: true, modules: await getModuleService().scanInstalledModules(projectId) });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "模块扫描失败" });
+  }
+});
+
+app.get("/api/modules/project", async (req, res) => {
+  try {
+    const { projectId } = req.query as { projectId?: string };
+    res.json({ ok: true, modules: await getModuleService().getEnabledProjectModules(projectId || "lingbuilder-ui-project") });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "项目模块读取失败" });
+  }
+});
+
+app.post("/api/modules/project/enable", async (req, res) => {
+  try {
+    const { projectId = "lingbuilder-ui-project", moduleId } = req.body as { projectId?: string; moduleId?: string };
+    if (!moduleId) return res.status(400).json({ ok: false, error: "缺少 moduleId" });
+    await getModuleService().enableModuleForProject(projectId, moduleId);
+    res.json({ ok: true });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "启用模块失败" });
+  }
+});
+
+app.post("/api/modules/project/disable", async (req, res) => {
+  try {
+    const { projectId = "lingbuilder-ui-project", moduleId } = req.body as { projectId?: string; moduleId?: string };
+    if (!moduleId) return res.status(400).json({ ok: false, error: "缺少 moduleId" });
+    await getModuleService().disableModuleForProject(projectId, moduleId);
+    res.json({ ok: true });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "禁用模块失败" });
+  }
+});
+
+app.post("/api/modules/package/preview", async (req, res) => {
+  try {
+    const { packagePath } = req.body as { packagePath?: string };
+    if (!packagePath) return res.status(400).json({ ok: false, error: "缺少 packagePath" });
+    res.json({ ok: true, preview: await getModuleService().previewPackageInstall(packagePath) });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "模块包预览失败" });
+  }
+});
+
+app.post("/api/modules/package/install", async (req, res) => {
+  try {
+    const { previewId, projectId, enableForProject = true } = req.body as { previewId?: string; projectId?: string; enableForProject?: boolean };
+    if (!previewId) return res.status(400).json({ ok: false, error: "缺少 previewId" });
+    const result = await getModuleService().installPackage(previewId);
+    if (enableForProject) {
+      await getModuleService().enableModuleForProject(projectId || "lingbuilder-ui-project", result.moduleId);
+    }
+    res.json({ ok: true, result });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "模块安装失败" });
+  }
+});
+
+app.post("/api/modules/package/export", async (req, res) => {
+  try {
+    const { moduleDir, targetPath } = req.body as { moduleDir?: string; targetPath?: string };
+    if (!moduleDir || !targetPath) return res.status(400).json({ ok: false, error: "缺少 moduleDir 或 targetPath" });
+    await getModuleService().exportModulePackage(moduleDir, targetPath);
+    res.json({ ok: true });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "模块包导出失败" });
+  }
+});
+
+app.post("/api/modules/uninstall", async (req, res) => {
+  try {
+    const { moduleId } = req.body as { moduleId?: string };
+    if (!moduleId) return res.status(400).json({ ok: false, error: "缺少 moduleId" });
+    await getModuleService().uninstallModule(moduleId);
+    res.json({ ok: true });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "卸载模块失败" });
+  }
+});
+
+app.get("/api/modules/market", async (req, res) => {
+  try {
+    const { sourceId } = req.query as { sourceId?: string };
+    res.json({ ok: true, modules: await getModuleService().listMarketModules(sourceId) });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "模块市场读取失败" });
+  }
+});
+
+app.get("/api/modules/history", async (_req, res) => {
+  try {
+    res.json({ ok: true, history: await getModuleService().getHistory() });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "模块历史读取失败" });
+  }
 });
 
 // API: Extract strings and comments from C++ code
@@ -280,9 +388,11 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       : typeof eplSourceCode === "string"
         ? eplSourceCode
         : "";
+    const enabledModules = await getModuleService().getEnabledProjectModules(project.id || "lingbuilder-ui-project");
     const generatedProject = generateLingCppNativeWin32Project(project, {
       activeWindowId,
-      lingCppSourceCode: sourceCode
+      lingCppSourceCode: sourceCode,
+      enabledModules
     });
     const repoRoot = getRepoWorkspaceRoot();
     const buildRoot = path.join(repoRoot, ".lingbuilder-build");

@@ -6,6 +6,7 @@ dist-electron/
 electron/scratch/
 coverage/
 .DS_Store
+.vs/
 *.log
 .env*
 !.env.example

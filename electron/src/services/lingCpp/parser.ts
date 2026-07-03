@@ -1,5 +1,8 @@
 import {
   LingCppAccessModifier,
+  LingCppAst,
+  LingCppAstNode,
+  LingCppAstNodeKind,
   LingCppClass,
   LingCppDiagnostic,
   LingCppMember,
@@ -7,7 +10,9 @@ import {
   LingCppParameter,
   LingCppParseResult,
   LingCppProgram,
-  LingCppStatement
+  LingCppSourceRange,
+  LingCppStatement,
+  LingCppSymbolIndex
 } from './types';
 
 export const LING_CPP_KEYWORDS = [
@@ -79,31 +84,82 @@ export function parseLingCpp(source: string): LingCppParseResult {
 
   const lines = source.split(/\r?\n/);
   let currentClass: LingCppClass | null = null;
+  let currentClassNode: LingCppAstNode | null = null;
   let currentAccess: LingCppAccessModifier = '私有';
   let currentMethod: LingCppMethod | null = null;
+  let currentMethodNode: LingCppAstNode | null = null;
+  const astNodes: LingCppAstNode[] = [];
+  const rootNode = createAstNode('program', '源文件', 1, lines[0] || '', undefined, {
+    range: createDocumentRange(lines)
+  });
+  astNodes.push(rootNode);
+
+  const pushNode = (node: LingCppAstNode, parent: LingCppAstNode | null = rootNode) => {
+    if (parent) {
+      node.parentId = parent.id;
+      parent.children.push(node);
+    }
+    astNodes.push(node);
+    return node;
+  };
+
+  const closeCurrentMethod = (endLine: number) => {
+    if (!currentMethod || !currentMethodNode) return;
+    const safeEndLine = Math.max(currentMethod.line, Math.min(Math.max(1, lines.length), endLine));
+    currentMethod.endLine = safeEndLine;
+    setNodeEndRange(currentMethodNode, lines, safeEndLine);
+    currentMethod = null;
+    currentMethodNode = null;
+  };
+
+  const closeCurrentClass = (endLine: number) => {
+    if (!currentClass || !currentClassNode) return;
+    closeCurrentMethod(Math.max(currentClass.line, endLine - 1));
+    const safeEndLine = Math.max(currentClass.line, Math.min(Math.max(1, lines.length), endLine));
+    currentClass.endLine = safeEndLine;
+    setNodeEndRange(currentClassNode, lines, safeEndLine);
+    currentClass = null;
+    currentClassNode = null;
+    currentAccess = '私有';
+  };
 
   lines.forEach((line, index) => {
     const lineNumber = index + 1;
     const trimmed = line.trim();
 
-    if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('注释 ')) {
+    if (!trimmed) {
       appendStatement(currentMethod, line, lineNumber);
+      return;
+    }
+
+    if (trimmed.startsWith('//') || trimmed.startsWith('注释 ')) {
+      appendStatement(currentMethod, line, lineNumber);
+      pushNode(createAstNode('comment', trimmed, lineNumber, line, currentMethodNode?.id || currentClassNode?.id || rootNode.id, {
+        value: trimmed
+      }), currentMethodNode || currentClassNode || rootNode);
       return;
     }
 
     if (trimmed.startsWith('包 ')) {
       program.packageName = trimmed.slice('包'.length).trim();
+      pushNode(createAstNode('package', program.packageName, lineNumber, line, rootNode.id, {
+        value: program.packageName
+      }));
       return;
     }
 
     if (trimmed.startsWith('使用 ')) {
-      program.uses.push(trimmed.slice('使用'.length).trim());
+      const useName = trimmed.slice('使用'.length).trim();
+      program.uses.push(useName);
+      pushNode(createAstNode('use', useName, lineNumber, line, rootNode.id, {
+        value: useName
+      }));
       return;
     }
 
     const classMatch = trimmed.match(CLASS_RE);
     if (classMatch) {
-      currentMethod = null;
+      if (currentClass) closeCurrentClass(lineNumber - 1);
       currentClass = {
         name: classMatch[1],
         baseClass: classMatch[2] || undefined,
@@ -111,32 +167,44 @@ export function parseLingCpp(source: string): LingCppParseResult {
         members: [],
         methods: []
       };
+      currentClassNode = pushNode(createAstNode('class', currentClass.name, lineNumber, line, rootNode.id, {
+        access: currentAccess,
+        type: currentClass.baseClass,
+        detail: currentClass.baseClass ? `继承 ${currentClass.baseClass}` : '类'
+      }));
       currentAccess = '私有';
       program.classes.push(currentClass);
       return;
     }
 
     if (trimmed === '结束类') {
-      currentMethod = null;
-      currentClass = null;
-      currentAccess = '私有';
+      closeCurrentClass(lineNumber);
       return;
     }
 
     const accessMatch = trimmed.match(ACCESS_RE);
     if (accessMatch) {
-      currentMethod = null;
+      closeCurrentMethod(lineNumber - 1);
       currentAccess = accessMatch[1] as LingCppAccessModifier;
+      pushNode(createAstNode('access', currentAccess, lineNumber, line, currentClassNode?.id || rootNode.id, {
+        access: currentAccess,
+        detail: '访问修饰符'
+      }), currentClassNode || rootNode);
       return;
     }
 
     if (!currentClass) {
       diagnostics.push(createDiagnostic('warning', lineNumber, line, '类外语句不会参与中文 C++ 生成。', '请把语句放入 `类 ... 结束类` 内。'));
+      pushNode(createAstNode('statement', trimmed, lineNumber, line, rootNode.id, {
+        value: trimmed,
+        detail: '类外语句'
+      }));
       return;
     }
 
     const methodMatch = trimmed.match(METHOD_RE);
     if (methodMatch) {
+      closeCurrentMethod(lineNumber - 1);
       const prefix = methodMatch[1];
       const declaredName = methodMatch[2]?.trim();
       const method: LingCppMethod = {
@@ -150,6 +218,18 @@ export function parseLingCpp(source: string): LingCppParseResult {
       };
       currentClass.methods.push(method);
       currentMethod = method;
+      const methodNodeKind = method.kind;
+      currentMethodNode = pushNode(createAstNode(methodNodeKind, method.name, lineNumber, line, currentClassNode?.id, {
+        access: currentAccess,
+        returnType: method.returnType,
+        detail: method.kind === 'event' ? '事件处理器' : method.returnType
+      }), currentClassNode);
+      method.parameters.forEach(parameter => {
+        pushNode(createAstNode('parameter', parameter.name, lineNumber, line, currentMethodNode?.id, {
+          type: parameter.type,
+          detail: '参数'
+        }), currentMethodNode);
+      });
       return;
     }
 
@@ -163,11 +243,28 @@ export function parseLingCpp(source: string): LingCppParseResult {
         initialValue: memberMatch[3]?.trim()
       };
       currentClass.members.push(member);
+      pushNode(createAstNode('member', member.name, lineNumber, line, currentClassNode?.id, {
+        access: member.access,
+        type: member.type,
+        value: member.initialValue,
+        detail: member.initialValue ? `${member.type} = ${member.initialValue}` : member.type
+      }), currentClassNode);
       return;
     }
 
-    appendStatement(currentMethod, line, lineNumber);
+    const statement = appendStatement(currentMethod, line, lineNumber);
+    pushNode(createAstNode('statement', trimmed, lineNumber, line, currentMethodNode?.id || currentClassNode?.id, {
+      value: statement?.text || trimmed,
+      detail: currentMethod ? '方法语句' : '未识别类成员'
+    }), currentMethodNode || currentClassNode);
   });
+
+  if (currentMethod) closeCurrentMethod(lines.length);
+  if (currentClass && currentClassNode) {
+    currentClass.endLine = lines.length;
+    setNodeEndRange(currentClassNode, lines, lines.length);
+    diagnostics.push(createDiagnostic('error', currentClass.line, lines[currentClass.line - 1] || `类 ${currentClass.name}`, '类声明缺少结束语句。', '请在类末尾添加 `结束类`。'));
+  }
 
   if (program.classes.length === 0) {
     diagnostics.push(createDiagnostic('error', 1, lines[0] || '', '未找到中文 C++ 类。', '请添加 `类 游戏主窗体 : 公开 窗体`。'));
@@ -179,7 +276,19 @@ export function parseLingCpp(source: string): LingCppParseResult {
     }
   });
 
-  return { program, diagnostics };
+  const symbolIndex = buildLingCppSymbolIndex(astNodes);
+  const ast: LingCppAst = {
+    version: 1,
+    source,
+    range: createDocumentRange(lines),
+    root: rootNode,
+    nodes: astNodes,
+    symbolIndex,
+    diagnostics,
+    program
+  };
+
+  return { program, ast, symbolIndex, diagnostics };
 }
 
 export function getLingCppDiagnostics(source: string): LingCppDiagnostic[] {
@@ -201,12 +310,40 @@ export function normalizeIdentifier(value: string): string {
   return value.trim().replace(/^_+/, '').replace(/\s+/g, '');
 }
 
-function appendStatement(method: LingCppMethod | null, line: string, lineNumber: number): void {
-  if (!method) return;
+export function buildLingCppSymbolIndex(nodes: LingCppAstNode[]): LingCppSymbolIndex {
+  const index: LingCppSymbolIndex = {
+    declarations: [],
+    classes: [],
+    members: [],
+    methods: [],
+    events: [],
+    byName: {},
+    byLine: {}
+  };
+
+  nodes.forEach(node => {
+    if (node.kind === 'package' || node.kind === 'use' || node.kind === 'designer') index.declarations.push(node);
+    if (node.kind === 'class') index.classes.push(node);
+    if (node.kind === 'member') index.members.push(node);
+    if (node.kind === 'constructor' || node.kind === 'destructor' || node.kind === 'method') index.methods.push(node);
+    if (node.kind === 'event') index.events.push(node);
+    const normalizedName = normalizeIdentifier(node.name);
+    if (normalizedName) {
+      index.byName[normalizedName] = [...(index.byName[normalizedName] || []), node];
+    }
+    index.byLine[node.range.startLine] = [...(index.byLine[node.range.startLine] || []), node];
+  });
+
+  return index;
+}
+
+function appendStatement(method: LingCppMethod | null, line: string, lineNumber: number): LingCppStatement | undefined {
+  if (!method) return undefined;
   const indent = line.match(/^\s*/)?.[0] || '';
   const text = line.slice(indent.length);
   const statement: LingCppStatement = { line: lineNumber, indent, text };
   method.statements.push(statement);
+  return statement;
 }
 
 function parseParameters(raw: string): LingCppParameter[] {
@@ -256,6 +393,57 @@ function createDiagnostic(
     codeSnippet,
     suggestion
   };
+}
+
+function createAstNode(
+  kind: LingCppAstNodeKind,
+  name: string,
+  lineNumber: number,
+  lineText: string,
+  parentId?: string,
+  overrides: Partial<Omit<LingCppAstNode, 'id' | 'kind' | 'name' | 'children'>> = {}
+): LingCppAstNode {
+  const normalizedName = normalizeIdentifier(name) || kind;
+  return {
+    id: `lingcpp-ast-${kind}-${lineNumber}-${normalizedName}`,
+    kind,
+    name,
+    range: overrides.range || createLineRange(lineNumber, lineText),
+    parentId,
+    detail: overrides.detail,
+    value: overrides.value,
+    access: overrides.access,
+    type: overrides.type,
+    returnType: overrides.returnType,
+    children: []
+  };
+}
+
+function createLineRange(lineNumber: number, lineText: string): LingCppSourceRange {
+  const trimmed = lineText.trim();
+  const startColumn = trimmed ? lineText.indexOf(trimmed) + 1 : 1;
+  return {
+    startLine: lineNumber,
+    startColumn,
+    endLine: lineNumber,
+    endColumn: lineText.length + 1
+  };
+}
+
+function createDocumentRange(lines: string[]): LingCppSourceRange {
+  const safeLineCount = Math.max(1, lines.length);
+  return {
+    startLine: 1,
+    startColumn: 1,
+    endLine: safeLineCount,
+    endColumn: (lines[safeLineCount - 1] || '').length + 1
+  };
+}
+
+function setNodeEndRange(node: LingCppAstNode, lines: string[], endLine: number): void {
+  const safeLine = Math.max(node.range.startLine, Math.min(Math.max(1, lines.length), endLine));
+  node.range.endLine = safeLine;
+  node.range.endColumn = (lines[safeLine - 1] || '').length + 1;
 }
 
 function escapeRegexLiteral(value: string): string {

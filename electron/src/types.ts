@@ -52,6 +52,12 @@ export interface ProblemItem {
   message: string;
   codeSnippet: string;
   suggestion: string;
+  actionLabel?: string;
+  actionKind?: string;
+  audienceText?: string;
+  beginnerActionLabel?: string;
+  severityForBeginner?: 'must-fix' | 'suggestion' | 'learning';
+  canIgnore?: boolean;
 }
 
 export type BottomPanelTabType =

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Folder,
   FileCode,
@@ -11,6 +11,8 @@ import {
   Sparkles,
   RefreshCw,
   FolderMinus,
+  Plus,
+  Trash2,
   Layers,
   BookOpen,
   Search,
@@ -32,12 +34,20 @@ import {
 import { CppFile, ExtractedString, GlossaryTerm, SourceControlStatus } from '../types';
 import ModuleInspector from './ModuleInspector';
 import {
+  createBlankWindow,
   getLingWindowSourceFileName,
   readWindowDesignerState,
+  saveWindowDesignerState,
   WINDOW_DESIGNER_PROJECT_UPDATED,
   PersistedWindowDesignerState
 } from '../services/windowDesigner/windowDesignerService';
 import type { LingWindowModel } from '../services/windowDesigner/types';
+import type { InstalledModule } from '../services/modules/types';
+import { BUILTIN_MODULES } from '../services/modules/builtinModules';
+
+type WindowContextMenu =
+  | { x: number; y: number; target: 'group' }
+  | { x: number; y: number; target: 'window'; windowModel: LingWindowModel };
 
 interface SidebarProps {
   files: CppFile[];
@@ -78,16 +88,23 @@ export default function Sidebar({
   const [activeTab, setActiveTab] = useState<'explorer' | 'actions' | 'outline'>('explorer');
   const [isSolutionOpen, setIsSolutionOpen] = useState(true);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: CppFile } | null>(null);
+  const [windowContextMenu, setWindowContextMenu] = useState<WindowContextMenu | null>(null);
   const [designerState, setDesignerState] = useState(() => readWindowDesignerState());
 
   useEffect(() => {
-    const handleCloseMenu = () => setContextMenu(null);
+    const handleCloseMenu = () => {
+      setContextMenu(null);
+      setWindowContextMenu(null);
+    };
     window.addEventListener('click', handleCloseMenu);
     return () => window.removeEventListener('click', handleCloseMenu);
   }, []);
   const [isSrcOpen, setIsSrcOpen] = useState(true);
   const [isWindowsOpen, setIsWindowsOpen] = useState(true);
   const [isConfigOpen, setIsConfigOpen] = useState(true);
+  const [isProjectModulesOpen, setIsProjectModulesOpen] = useState(true);
+  const [projectModules, setProjectModules] = useState<InstalledModule[]>([]);
+  const [projectModulesStatus, setProjectModulesStatus] = useState('正在读取项目模块...');
   
   // Search query for files
   const [fileSearch, setFileSearch] = useState('');
@@ -112,6 +129,26 @@ export default function Sidebar({
     windowModel.className,
     getLingWindowSourceFileName(windowModel.fileName, windowModel.className)
   ));
+  const filteredProjectModules = projectModules.filter(module => includesSearch(
+    module.manifest.name,
+    module.manifest.id,
+    module.manifest.description,
+    module.manifest.category
+  ));
+
+  const refreshProjectModules = useCallback(async () => {
+    const projectId = designerState.project.id || 'lingbuilder-ui-project';
+    try {
+      const result = await fetchJson(`/api/modules/project?projectId=${encodeURIComponent(projectId)}`);
+      if (!result.ok) throw new Error(result.error || '项目模块读取失败');
+      const modules = Array.isArray(result.modules) ? result.modules as InstalledModule[] : [];
+      setProjectModules(modules.length > 0 ? modules : getFallbackProjectModules());
+      setProjectModulesStatus(modules.length > 0 ? '项目模块已载入' : '当前项目未启用模块');
+    } catch (error) {
+      setProjectModules(getFallbackProjectModules());
+      setProjectModulesStatus('模块服务等待重启，已显示内置基础模块');
+    }
+  }, [designerState.project.id]);
 
   useEffect(() => {
     const handleDesignerProjectUpdated = (event: Event) => {
@@ -125,16 +162,31 @@ export default function Sidebar({
     };
   }, []);
 
+  useEffect(() => {
+    refreshProjectModules();
+  }, [refreshProjectModules]);
+
+  useEffect(() => {
+    const handleModulesChanged = () => refreshProjectModules();
+    window.addEventListener('lingbuilder-modules-changed', handleModulesChanged);
+    return () => window.removeEventListener('lingbuilder-modules-changed', handleModulesChanged);
+  }, [refreshProjectModules]);
+
   const getProgress = (file: CppFile) => {
     const total = file.strings.length;
     const translated = file.strings.filter(s => s.status === 'translated').length;
     return total === 0 ? 100 : Math.round((translated / total) * 100);
   };
 
-  const handleOpenDesignerWindow = (windowModel: LingWindowModel) => {
+  const getSourceFileForWindow = (windowModel: LingWindowModel) => {
     const sourceName = getLingWindowSourceFileName(windowModel.fileName, windowModel.className);
     const sourcePath = `src/${sourceName}`;
-    const sourceFile = files.find(file => file.path === sourcePath || file.name === sourceName);
+    return files.find(file => file.path === sourcePath || file.name === sourceName);
+  };
+
+  const handleOpenDesignerWindow = (windowModel: LingWindowModel) => {
+    const sourceName = getLingWindowSourceFileName(windowModel.fileName, windowModel.className);
+    const sourceFile = getSourceFileForWindow(windowModel);
 
     if (!sourceFile) {
       triggerSuccess(`未找到 ${sourceName}，请先在设计器中保存或重新生成窗口代码文件。`);
@@ -148,6 +200,81 @@ export default function Sidebar({
     }));
     onSelectFile(sourceFile, false);
     window.dispatchEvent(new CustomEvent('show-window-designer'));
+  };
+
+  const commitDesignerState = (nextState: PersistedWindowDesignerState) => {
+    const savedState = saveWindowDesignerState(nextState);
+    setDesignerState(savedState);
+    return savedState;
+  };
+
+  const handleCreateWindowFromExplorer = () => {
+    const nextWindow = createBlankWindow(designerState.project.windows.length + 1);
+    commitDesignerState({
+      project: {
+        ...designerState.project,
+        windows: [...designerState.project.windows, nextWindow]
+      },
+      activeWindowId: nextWindow.id,
+      selectedControlId: nextWindow.controls[0]?.id || null
+    });
+    setIsWindowsOpen(true);
+    window.dispatchEvent(new CustomEvent('window-added', { detail: nextWindow }));
+    window.dispatchEvent(new CustomEvent('show-window-designer'));
+    triggerSuccess(`已新建窗口：${nextWindow.fileName}`);
+  };
+
+  const handleDuplicateWindowFromExplorer = (windowModel: LingWindowModel) => {
+    const cloneIndex = designerState.project.windows.length + 1;
+    const clonedWindow: LingWindowModel = {
+      ...windowModel,
+      id: `window_clone_${Date.now()}`,
+      fileName: `CopyOf${windowModel.fileName}`,
+      className: `${windowModel.className}副本`,
+      title: `${windowModel.title} 副本`,
+      controls: windowModel.controls.map(control => ({
+        ...control,
+        id: `${control.id}_copy_${cloneIndex}`,
+        name: `${control.name}_副本`
+      }))
+    };
+
+    commitDesignerState({
+      project: {
+        ...designerState.project,
+        windows: [...designerState.project.windows, clonedWindow]
+      },
+      activeWindowId: clonedWindow.id,
+      selectedControlId: clonedWindow.controls[0]?.id || null
+    });
+    setIsWindowsOpen(true);
+    window.dispatchEvent(new CustomEvent('window-duplicated', { detail: clonedWindow }));
+    window.dispatchEvent(new CustomEvent('show-window-designer'));
+    triggerSuccess(`已复制窗口：${clonedWindow.fileName}`);
+  };
+
+  const handleDeleteWindowFromExplorer = (windowModel: LingWindowModel) => {
+    if (designerState.project.windows.length <= 1) {
+      triggerSuccess('至少需要保留一个窗口，未执行删除。');
+      return;
+    }
+
+    const currentIndex = designerState.project.windows.findIndex(window => window.id === windowModel.id);
+    const nextWindows = designerState.project.windows.filter(window => window.id !== windowModel.id);
+    const nextWindow = nextWindows[Math.max(0, currentIndex - 1)] || nextWindows[0];
+
+    commitDesignerState({
+      project: {
+        ...designerState.project,
+        windows: nextWindows
+      },
+      activeWindowId: nextWindow.id,
+      selectedControlId: nextWindow.controls[0]?.id || null
+    });
+    window.dispatchEvent(new CustomEvent('window-deleted', {
+      detail: { deletedWindow: windowModel, nextWindow }
+    }));
+    triggerSuccess(`已删除窗口：${windowModel.fileName}`);
   };
 
   // Switch tab, and handle collapse/expand in VS style
@@ -344,6 +471,7 @@ export default function Sidebar({
         onClick={() => onSelectFile(file)}
         onContextMenu={(e) => {
           e.preventDefault();
+          setWindowContextMenu(null);
           setContextMenu({ x: e.clientX, y: e.clientY, file });
         }}
         className={`group flex items-center justify-between py-1 px-3 pl-8 text-xs cursor-pointer border-l-2 transition-all ${
@@ -407,6 +535,17 @@ export default function Sidebar({
         type="button"
         key={windowModel.id}
         onClick={() => handleOpenDesignerWindow(windowModel)}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setContextMenu(null);
+          setWindowContextMenu({
+            x: event.clientX,
+            y: event.clientY,
+            target: 'window',
+            windowModel
+          });
+        }}
         title={`打开窗口设计器：${windowModel.title} (${windowModel.fileName})`}
         aria-label={`打开窗口设计器：${windowModel.title}`}
         className={`group w-full flex items-center justify-between gap-2 py-1 px-3 pl-8 text-xs cursor-pointer border-l-2 transition-all text-left ${
@@ -487,6 +626,90 @@ export default function Sidebar({
         >
           <span>删除文件 (D)</span>
         </div>
+      </div>
+    );
+  };
+
+  const renderWindowContextMenu = () => {
+    if (!windowContextMenu) return null;
+
+    const canDeleteWindow = designerState.project.windows.length > 1;
+    const menuItemClass = `px-3 py-1.5 cursor-pointer transition-colors flex items-center gap-2 ${
+      isDarkMode ? 'hover:bg-blue-500 hover:text-white' : 'hover:bg-blue-500 hover:text-white'
+    }`;
+    const disabledMenuItemClass = `px-3 py-1.5 flex items-center gap-2 cursor-not-allowed ${
+      isDarkMode ? 'text-slate-600' : 'text-slate-400'
+    }`;
+
+    return (
+      <div
+        style={{ top: `${windowContextMenu.y}px`, left: `${windowContextMenu.x}px` }}
+        className={`fixed z-[9999] min-w-[168px] py-1 rounded shadow-lg border text-xs select-none font-sans ${
+          isDarkMode
+            ? 'bg-[#252526] border-[#454545] text-slate-200'
+            : 'bg-white border-slate-250 text-slate-800'
+        }`}
+        onClick={() => setWindowContextMenu(null)}
+      >
+        {windowContextMenu.target === 'window' && (
+          <>
+            <div
+              className={menuItemClass}
+              onClick={() => handleOpenDesignerWindow(windowContextMenu.windowModel)}
+            >
+              <Monitor className="w-3.5 h-3.5 text-amber-500" />
+              <span>打开设计器 (O)</span>
+            </div>
+            <div
+              className={menuItemClass}
+              onClick={() => handleDuplicateWindowFromExplorer(windowContextMenu.windowModel)}
+            >
+              <Copy className="w-3.5 h-3.5 text-sky-500" />
+              <span>复制窗口 (C)</span>
+            </div>
+            <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
+            <div
+              className={canDeleteWindow ? `${menuItemClass} text-rose-500 hover:bg-rose-500` : disabledMenuItemClass}
+              title={canDeleteWindow ? '删除当前窗口及对应中文代码文件' : '至少需要保留一个窗口'}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!canDeleteWindow) {
+                  triggerSuccess('至少需要保留一个窗口，未执行删除。');
+                  setWindowContextMenu(null);
+                  return;
+                }
+                handleDeleteWindowFromExplorer(windowContextMenu.windowModel);
+                setWindowContextMenu(null);
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>删除窗口 (D)</span>
+            </div>
+          </>
+        )}
+
+        {windowContextMenu.target === 'group' && (
+          <>
+            <div
+              className={menuItemClass}
+              onClick={() => handleCreateWindowFromExplorer()}
+            >
+              <Plus className="w-3.5 h-3.5 text-emerald-500" />
+              <span>新建窗口 (N)</span>
+            </div>
+            <div
+              className={menuItemClass}
+              onClick={() => setIsWindowsOpen(prev => !prev)}
+            >
+              {isWindowsOpen ? (
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              )}
+              <span>{isWindowsOpen ? '折叠窗口组' : '展开窗口组'}</span>
+            </div>
+          </>
+        )}
       </div>
     );
   };
@@ -676,10 +899,80 @@ export default function Sidebar({
                         <span className="text-purple-600 font-bold">GameClient (Visual C++)</span>
                       </div>
 
+                      {/* Project modules group */}
+                      <div className="pl-2 mt-1">
+                        <div
+                          onClick={() => setIsProjectModulesOpen(!isProjectModulesOpen)}
+                          className={`flex items-center gap-1 px-2 py-1 cursor-pointer text-xs font-sans transition-colors ${
+                            isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
+                          }`}
+                          title="查看和配置当前项目所使用的模块"
+                        >
+                          {isProjectModulesOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
+                          <Layers className="w-3.5 h-3.5 text-violet-500" />
+                          <span className="truncate">模块</span>
+                          <span className={`ml-auto text-[9px] px-1 rounded border ${
+                            isDarkMode ? 'border-violet-500/20 text-violet-300 bg-violet-500/5' : 'border-violet-200 text-violet-700 bg-violet-50'
+                          }`}>
+                            {projectModules.length}
+                          </span>
+                        </div>
+                        {isProjectModulesOpen && (
+                          <div className="mt-0.5 border-l border-slate-750/30 dark:border-slate-800 ml-3.5 pl-0.5">
+                            <button
+                              onClick={() => {
+                                setActiveTab('outline');
+                                if (setShowLeftSidebar) setShowLeftSidebar(true);
+                              }}
+                              className={`w-[calc(100%-4px)] ml-1 mb-1 flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-sans text-left transition-colors ${
+                                isDarkMode
+                                  ? 'text-violet-300 hover:bg-violet-500/10 border border-violet-500/20'
+                                  : 'text-violet-700 hover:bg-violet-50 border border-violet-200'
+                              }`}
+                              title="打开模块管理器，安装、卸载、启用或禁用项目模块"
+                            >
+                              <SlidersHorizontal className="w-3.5 h-3.5" />
+                              <span className="truncate">配置项目所使用模块</span>
+                            </button>
+                            {filteredProjectModules.length === 0 ? (
+                              <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">{projectModulesStatus}</div>
+                            ) : (
+                              filteredProjectModules.map(module => (
+                                <div
+                                  key={module.manifest.id}
+                                  className={`group flex items-center gap-1.5 px-2 py-1 ml-1 rounded text-[11px] font-sans ${
+                                    isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/40' : 'text-slate-700 hover:bg-slate-100'
+                                  }`}
+                                  title={`${module.manifest.name} ${module.manifest.version}\n${module.manifest.description}`}
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                  <span className="truncate">{module.manifest.name}</span>
+                                  <span className={`ml-auto text-[9px] px-1 rounded ${
+                                    isDarkMode ? 'bg-slate-700/50 text-slate-300' : 'bg-slate-200 text-slate-600'
+                                  }`}>
+                                    {module.manifest.category}
+                                  </span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+
                       {/* Window designer group */}
                       <div className="pl-2">
                         <div
                           onClick={() => setIsWindowsOpen(!isWindowsOpen)}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setContextMenu(null);
+                            setWindowContextMenu({
+                              x: event.clientX,
+                              y: event.clientY,
+                              target: 'group'
+                            });
+                          }}
                           className={`flex items-center gap-1 px-2 py-1 cursor-pointer text-xs font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                           }`}
@@ -1023,6 +1316,27 @@ export default function Sidebar({
         </div>
       )}
       {renderContextMenu()}
+      {renderWindowContextMenu()}
     </div>
   );
+}
+
+async function fetchJson(url: string): Promise<any> {
+  const response = await fetch(url);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error('模块服务暂未返回 JSON');
+  }
+  return response.json();
+}
+
+function getFallbackProjectModules(): InstalledModule[] {
+  return BUILTIN_MODULES.map(manifest => ({
+    manifest,
+    installPath: `builtin://${manifest.id}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }));
 }

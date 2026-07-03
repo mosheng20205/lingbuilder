@@ -14,7 +14,7 @@
     "start": "node dist/server.cjs",
     "lint": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
     "test": "npm run test:lingcpp",
-    "test:lingcpp": "node --import tsx --test tests/lingcpp.test.ts",
+    "test:lingcpp": "node --import tsx --test tests/lingcpp.test.ts tests/modules.test.ts",
     "clean": "rimraf dist dist-electron"
   },
   "dependencies": {

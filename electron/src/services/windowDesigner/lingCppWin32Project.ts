@@ -1,6 +1,7 @@
 import { LingControl, LingWindowModel, LingWindowProject } from './types';
 import { findLingCppMethod, parseLingCpp } from '../lingCpp/parser';
-import { LingCppMethod, LingCppProgram } from '../lingCpp/types';
+import { LingCppAst, LingCppClass, LingCppMethod, LingCppParameter, LingCppProgram } from '../lingCpp/types';
+import { InstalledModule } from '../modules/types';
 
 export interface LingCppNativeProjectFile {
   relativePath: string;
@@ -16,6 +17,7 @@ export interface GeneratedLingCppNativeProject {
 export interface GenerateLingCppNativeWin32ProjectOptions {
   activeWindowId?: string;
   lingCppSourceCode?: string;
+  enabledModules?: InstalledModule[];
 }
 
 const TITLE_BAR_HEIGHT = 28;
@@ -27,6 +29,7 @@ export function generateLingCppNativeWin32Project(
   const selectedWindow = project.windows.find(window => window.id === options.activeWindowId) || project.windows[0];
   const sourceCode = options.lingCppSourceCode || '';
   const parseResult = parseLingCpp(sourceCode);
+  const enabledModules = options.enabledModules || [];
 
   return {
     selectedWindow,
@@ -34,11 +37,15 @@ export function generateLingCppNativeWin32Project(
     files: [
       {
         relativePath: 'main.cpp',
-        content: generateMainCpp(project, selectedWindow, parseResult.program)
+        content: generateMainCpp(project, selectedWindow, parseResult.ast, enabledModules)
       },
       {
         relativePath: 'layout.json',
         content: JSON.stringify(project, null, 2)
+      },
+      {
+        relativePath: 'module-dependencies.txt',
+        content: generateModuleDependencyReport(enabledModules)
       },
       {
         relativePath: 'README.txt',
@@ -60,8 +67,10 @@ export function generateLingCppNativeWin32Project(
 function generateMainCpp(
   project: LingWindowProject,
   selectedWindow: LingWindowModel,
-  program: LingCppProgram
+  ast: LingCppAst,
+  enabledModules: InstalledModule[] = []
 ): string {
+  const program = ast.program;
   const selectedWindowIndex = Math.max(0, project.windows.findIndex(window => window.id === selectedWindow.id));
   const controlArrays = project.windows
     .map((window, index) => generateControlArray(window, index, program))
@@ -75,6 +84,7 @@ function generateMainCpp(
   const factoryCases = project.windows
     .map((window, index) => `    case ${index}: return new ${toCppIdentifier(window.className)}(g_windows[${index}]);`)
     .join('\n');
+  const moduleCppPreamble = generateModuleCppPreamble(enabledModules);
 
   return `#ifndef UNICODE
 #define UNICODE
@@ -99,6 +109,7 @@ function generateMainCpp(
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(linker, "/manifestdependency:\\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\\"")
+${moduleCppPreamble}
 
 struct ControlSpec {
     int id;
@@ -505,8 +516,45 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
 `;
 }
 
+function generateModuleCppPreamble(enabledModules: InstalledModule[]): string {
+  const lines: string[] = [];
+  enabledModules
+    .filter(module => !module.isBuiltin)
+    .forEach(module => {
+      const cpp = module.manifest.contributes?.cpp;
+      lines.push(`// LingBuilder 模块: ${module.manifest.name} (${module.manifest.id}@${module.manifest.version})`);
+      (cpp?.headers || []).forEach(header => lines.push(`// 模块头文件: ${header}`));
+      (cpp?.sources || []).forEach(source => lines.push(`// 模块源码: ${source}`));
+      (cpp?.libs || []).forEach(lib => lines.push(`#pragma comment(lib, "${escapeWideString(lib)}")`));
+      (cpp?.defines || []).forEach(define => {
+        const safeDefine = toCppDefineIdentifier(define);
+        lines.push(`#ifndef ${safeDefine}\n#define ${safeDefine}\n#endif`);
+      });
+    });
+  return lines.join('\n');
+}
+
+function generateModuleDependencyReport(enabledModules: InstalledModule[]): string {
+  if (enabledModules.length === 0) return '当前项目未启用模块。';
+  return enabledModules.map(module => {
+    const cpp = module.manifest.contributes?.cpp;
+    return [
+      `模块: ${module.manifest.name}`,
+      `ID: ${module.manifest.id}`,
+      `版本: ${module.manifest.version}`,
+      `内置: ${module.isBuiltin ? '是' : '否'}`,
+      `命令数: ${module.manifest.contributes?.commands?.length || 0}`,
+      `控件数: ${module.manifest.contributes?.designerControls?.length || 0}`,
+      `头文件: ${(cpp?.headers || []).join(', ') || '无'}`,
+      `源码: ${(cpp?.sources || []).join(', ') || '无'}`,
+      `库: ${(cpp?.libs || []).join(', ') || '无'}`
+    ].join('\n');
+  }).join('\n\n');
+}
+
 function generateWindowClass(window: LingWindowModel, windowIndex: number, program: LingCppProgram): string {
   const className = toCppIdentifier(window.className);
+  const sourceClass = findLingCppClassForWindow(program, window);
   const handlers = getWindowHandlers(window);
   const windowCreatedHandler = findWindowCreatedHandler(window, program);
   const methodHandlers = windowCreatedHandler
@@ -515,9 +563,12 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
   const dispatchCases = handlers
     .map(handler => `        if (std::wcscmp(control.handler, L"${escapeWideString(handler)}") == 0) { ${toCppIdentifier(handler)}(); return; }`)
     .join('\n') || '        (void)control;';
-  const methods = methodHandlers
-    .map(handler => generateHandlerMethod(handler, findLingCppMethod(program, handler)))
-    .join('\n\n') || '    // 当前窗口暂无绑定事件。';
+  const eventMethods = methodHandlers
+    .map(handler => generateHandlerMethod(handler, findLingCppMethod(program, handler)));
+  const userMethods = (sourceClass?.methods || [])
+    .filter(method => method.kind === 'method')
+    .map(generateUserMethod);
+  const methods = [...eventMethods, ...userMethods].join('\n\n') || '    // 当前窗口暂无绑定事件。';
   const windowCreatedOverride = windowCreatedHandler
     ? `    void OnWindowCreated() override {\n        ${toCppIdentifier(windowCreatedHandler)}();\n    }\n\n`
     : '';
@@ -538,6 +589,12 @@ ${methods}
 };`;
 }
 
+function findLingCppClassForWindow(program: LingCppProgram, window: LingWindowModel): LingCppClass | undefined {
+  const direct = program.classes.find(cls => cls.name === window.className);
+  if (direct) return direct;
+  return program.classes.find(cls => toCppIdentifier(cls.name) === toCppIdentifier(window.className));
+}
+
 function generateHandlerMethod(handler: string, method?: LingCppMethod): string {
   const body = method
     ? translateMethodStatements(method)
@@ -545,6 +602,49 @@ function generateHandlerMethod(handler: string, method?: LingCppMethod): string 
   return `    void ${toCppIdentifier(handler)}() {
 ${body || '        // 空事件处理器。'}
     }`;
+}
+
+function generateUserMethod(method: LingCppMethod): string {
+  const returnType = toCppType(method.returnType, 'return');
+  const parameters = formatCppParameters(method.parameters);
+  const body = translateMethodStatements(method);
+  const fallbackReturn = defaultReturnStatement(returnType);
+  const bodyWithFallback = [
+    body,
+    fallbackReturn ? `        ${fallbackReturn}` : ''
+  ].filter(Boolean).join('\n') || '        // 空功能代码。';
+
+  return `    ${returnType} ${toCppIdentifier(method.name)}(${parameters}) {
+${bodyWithFallback}
+    }`;
+}
+
+function formatCppParameters(parameters: LingCppParameter[]): string {
+  return parameters
+    .map(parameter => `${toCppType(parameter.type, 'parameter')} ${toCppIdentifier(parameter.name)}`)
+    .join(', ');
+}
+
+function toCppType(type: string, position: 'parameter' | 'return'): string {
+  const normalized = type.trim();
+  if (!normalized || normalized === '空') return position === 'return' ? 'void' : 'void*';
+  if (/^(文本型|文本|字符串|字符串型)$/u.test(normalized)) return 'std::wstring';
+  if (/^(整数型|整数)$/u.test(normalized)) return 'int';
+  if (/^(长整数型|长整数)$/u.test(normalized)) return 'long long';
+  if (/^(小数型|小数|双精度|双精度型)$/u.test(normalized)) return 'double';
+  if (/^(逻辑型|逻辑|布尔型|布尔)$/u.test(normalized)) return 'bool';
+  if (/^(字节型|字节)$/u.test(normalized)) return 'unsigned char';
+  if (/按钮|标签|编辑框|复选框|单选框|下拉框|控件|窗体/u.test(normalized)) return 'HWND';
+  return 'void*';
+}
+
+function defaultReturnStatement(returnType: string): string {
+  if (returnType === 'void') return '';
+  if (returnType === 'bool') return 'return false;';
+  if (returnType === 'std::wstring') return 'return L"";';
+  if (returnType.endsWith('*')) return 'return nullptr;';
+  if (returnType === 'double' || returnType === 'float') return 'return 0.0;';
+  return 'return 0;';
 }
 
 function translateMethodStatements(method: LingCppMethod): string {
@@ -578,6 +678,9 @@ function translateMethodStatements(method: LingCppMethod): string {
 }
 
 function translateStatement(statement: string): string {
+  const nativeCpp = parseNativeCppStatement(statement);
+  if (nativeCpp !== undefined) return nativeCpp;
+
   const messageBox = parseMessageBox(statement);
   if (/^如果(?:\s|[（(])/.test(statement) && messageBox && /[=＝]{1,2}\s*6/.test(statement)) {
     return `if (信息框(L"${escapeWideString(messageBox.text)}", ${messageBox.flags}, L"${escapeWideString(messageBox.title)}") == IDYES) { 结束(); return; }`;
@@ -595,11 +698,99 @@ function translateStatement(statement: string): string {
     return '结束();';
   }
 
+  const returnValue = parseReturnValue(statement);
+  if (returnValue !== undefined) {
+    return `return ${translateLingCppExpression(returnValue)};`;
+  }
+
   if (/^返回\b/.test(statement)) {
     return 'return;';
   }
 
+  const callStatement = parseCallStatement(statement);
+  if (callStatement) {
+    return `${toCppIdentifier(callStatement.name)}(${translateCallArguments(callStatement.argumentsText)});`;
+  }
+
   return `// 暂不支持的中文 C++ 语句：${escapeCppComment(statement)}`;
+}
+
+function parseNativeCppStatement(statement: string): string | undefined {
+  if (!statement.startsWith('@')) return undefined;
+  const raw = statement.slice(1);
+  return raw.startsWith(' ') ? raw.slice(1) : raw;
+}
+
+function parseReturnValue(statement: string): string | undefined {
+  const parenthesized = statement.match(/^返回\s*[（(]\s*(.*?)\s*[）)]\s*;?$/u);
+  if (parenthesized) return parenthesized[1]?.trim() || undefined;
+  const plain = statement.match(/^返回\s+(.+?)\s*;?$/u);
+  return plain?.[1]?.trim() || undefined;
+}
+
+function parseCallStatement(statement: string): { name: string; argumentsText: string } | undefined {
+  const match = statement.match(/^([\w\u4e00-\u9fa5]+)\s*[（(](.*)[）)]\s*;?$/u);
+  if (!match) return undefined;
+  return {
+    name: match[1] || '',
+    argumentsText: match[2] || ''
+  };
+}
+
+function translateCallArguments(raw: string): string {
+  return splitCallArguments(raw)
+    .map(translateLingCppExpression)
+    .join(', ');
+}
+
+function splitCallArguments(raw: string): string[] {
+  const args: string[] = [];
+  let current = '';
+  let depth = 0;
+  let quote: '"' | '“' | null = null;
+
+  for (const char of raw) {
+    if (quote) {
+      current += char;
+      if ((quote === '"' && char === '"') || (quote === '“' && char === '”')) quote = null;
+      continue;
+    }
+    if (char === '"' || char === '“') {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (char === '(' || char === '（') {
+      depth += 1;
+      current += char;
+      continue;
+    }
+    if (char === ')' || char === '）') {
+      depth = Math.max(0, depth - 1);
+      current += char;
+      continue;
+    }
+    if ((char === ',' || char === '，') && depth === 0) {
+      if (current.trim()) args.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+
+  if (current.trim()) args.push(current.trim());
+  return args;
+}
+
+function translateLingCppExpression(expression: string): string {
+  const trimmed = expression.trim();
+  if (!trimmed) return '';
+  if (/^L"/u.test(trimmed)) return trimmed;
+  const quoted = trimmed.match(/^["“]([^"”]*)["”]$/u);
+  if (quoted) return `L"${escapeWideString(quoted[1] || '')}"`;
+  if (trimmed === '真') return 'true';
+  if (trimmed === '假') return 'false';
+  return trimmed;
 }
 
 function parseMessageBox(statement: string): { text: string; flags: string; title: string } | undefined {
@@ -741,6 +932,12 @@ function toColorRef(hex: string): string {
 function toCppIdentifier(value: string): string {
   const normalized = value.trim().replace(/[^\w\u4e00-\u9fa5]/g, '_').replace(/^_+/, '');
   const safe = normalized || '未命名';
+  return /^\d/.test(safe) ? `_${safe}` : safe;
+}
+
+function toCppDefineIdentifier(value: string): string {
+  const normalized = value.trim().replace(/[^\w]/g, '_').replace(/^_+/, '');
+  const safe = normalized || 'LINGBUILDER_MODULE_DEFINE';
   return /^\d/.test(safe) ? `_${safe}` : safe;
 }
 

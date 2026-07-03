@@ -618,6 +618,23 @@ export default function BottomPanel({
                   <div className={`shrink-0 font-sans text-xs border-t md:border-t-0 md:border-l md:pl-4 pt-2 md:pt-0 max-w-xs ${isDarkMode ? 'border-slate-700/50 text-slate-400' : 'border-slate-200 text-slate-600'}`}>
                     <span className="font-semibold block text-[10px] uppercase mb-0.5 text-blue-500">易语言一键修复建议：</span>
                     <span className={`text-[11px] leading-relaxed block ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{prob.suggestion}</span>
+                    {prob.actionLabel && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSelectLine(prob.line);
+                        }}
+                        className={`mt-2 inline-flex items-center gap-1 rounded border px-2 py-1 text-[10px] font-semibold transition-colors ${
+                          isDarkMode
+                            ? 'border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20'
+                            : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                        }`}
+                      >
+                        <CornerDownRight className="w-3 h-3" />
+                        <span>{prob.actionLabel}</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               ))

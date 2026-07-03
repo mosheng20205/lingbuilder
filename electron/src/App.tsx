@@ -53,7 +53,7 @@ import {
   SourceControlStatus,
   WorkspaceEditProposal
 } from './types';
-import { initialFiles, defaultGlossary, mockProblems, localTranslations } from './data/templates';
+import { initialFiles, defaultGlossary, localTranslations } from './data/templates';
 import { computeDiff } from './utils/diff';
 
 // Components
@@ -76,6 +76,12 @@ import {
   saveWindowDesignerState
 } from './services/windowDesigner/windowDesignerService';
 import { sourceControlService } from './services/lingCpp/sourceControlService';
+import { getLingCppProblems } from './services/lingCpp/languageService';
+import { EditorExperienceMode, adaptProblemForBeginner } from './services/lingCpp/beginnerService';
+import { createWorkspaceEditChangeFromRewrite } from './services/lingCpp/aiEditService';
+
+const EDITOR_EXPERIENCE_MODE_STORAGE_KEY = 'lingbuilder.editorExperienceMode';
+const BEGINNER_IGNORED_TASKS_STORAGE_KEY = 'lingbuilder.beginnerIgnoredTasks';
 
 const generateDefaultLingCppContentForWindow = (win: any) => {
   const className = win.className || '自定义窗体';
@@ -153,6 +159,25 @@ const getInitialEditorFontSize = () => {
     return Number.isFinite(parsedValue) ? clampEditorFontSize(parsedValue) : DEFAULT_EDITOR_FONT_SIZE;
   } catch {
     return DEFAULT_EDITOR_FONT_SIZE;
+  }
+};
+
+const getInitialEditorExperienceMode = (): EditorExperienceMode => {
+  try {
+    const savedValue = window.localStorage.getItem(EDITOR_EXPERIENCE_MODE_STORAGE_KEY);
+    return savedValue === 'professional' ? 'professional' : 'beginner';
+  } catch {
+    return 'beginner';
+  }
+};
+
+const getInitialIgnoredBeginnerTasks = (): string[] => {
+  try {
+    const savedValue = window.localStorage.getItem(BEGINNER_IGNORED_TASKS_STORAGE_KEY);
+    const parsed = savedValue ? JSON.parse(savedValue) : [];
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
+  } catch {
+    return [];
   }
 };
 
@@ -305,7 +330,7 @@ export default function App() {
     });
   }, []);
   const [glossary, setGlossary] = useState<GlossaryTerm[]>(defaultGlossary);
-  const [problems, setProblems] = useState<ProblemItem[]>(mockProblems);
+  const [problems, setProblems] = useState<ProblemItem[]>([]);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [activeDropdown, setActiveDropdown] = useState<'file' | 'edit' | 'view' | 'project' | 'tools' | 'help' | null>(null);
   const [isMinimizedApp, setIsMinimizedApp] = useState(false);
@@ -314,7 +339,58 @@ export default function App() {
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [isAppClosed, setIsAppClosed] = useState(false);
   const [editorFontSize, setEditorFontSizeState] = useState(getInitialEditorFontSize);
+  const [editorExperienceMode, setEditorExperienceModeState] = useState<EditorExperienceMode>(getInitialEditorExperienceMode);
+  const [ignoredBeginnerTaskIds, setIgnoredBeginnerTaskIds] = useState<string[]>(getInitialIgnoredBeginnerTasks);
   const [sourceControlStatus, setSourceControlStatus] = useState<SourceControlStatus | null>(null);
+
+  useEffect(() => {
+    if (activeFile.language !== 'lingcpp') {
+      setProblems([]);
+      return;
+    }
+
+    const sourceCode = activeFile.translatedContent || activeFile.originalContent || '';
+    const nextProblems = getLingCppProblems(sourceCode, getCurrentWindowDesignerProject(), activeFile.path).map(problem => {
+      const beginner = adaptProblemForBeginner(problem);
+      return {
+        id: problem.id,
+        filePath: problem.filePath,
+        line: problem.line,
+        level: problem.level,
+        message: editorExperienceMode === 'beginner' ? beginner.audienceText : problem.message,
+        codeSnippet: problem.codeSnippet,
+        suggestion: editorExperienceMode === 'beginner' ? beginner.beginnerActionLabel : problem.suggestion,
+        actionLabel: editorExperienceMode === 'beginner' ? beginner.beginnerActionLabel : problem.actionLabel,
+        actionKind: problem.actionKind,
+        audienceText: beginner.audienceText,
+        beginnerActionLabel: beginner.beginnerActionLabel,
+        severityForBeginner: beginner.severityForBeginner,
+        canIgnore: beginner.canIgnore
+      };
+    });
+    setProblems(nextProblems);
+  }, [activeFile.language, activeFile.originalContent, activeFile.path, activeFile.translatedContent, editorExperienceMode]);
+
+  const setEditorExperienceMode = useCallback((mode: EditorExperienceMode) => {
+    setEditorExperienceModeState(mode);
+    try {
+      window.localStorage.setItem(EDITOR_EXPERIENCE_MODE_STORAGE_KEY, mode);
+    } catch {
+      // Experience mode is UI state; editing should keep working without storage.
+    }
+  }, []);
+
+  const ignoreBeginnerTask = useCallback((taskId: string) => {
+    setIgnoredBeginnerTaskIds(previousIds => {
+      const nextIds = Array.from(new Set([...previousIds, taskId]));
+      try {
+        window.localStorage.setItem(BEGINNER_IGNORED_TASKS_STORAGE_KEY, JSON.stringify(nextIds));
+      } catch {
+        // Ignore state is a convenience only.
+      }
+      return nextIds;
+    });
+  }, []);
 
   const setEditorFontSize = useCallback((nextValue: number | ((value: number) => number)) => {
     setEditorFontSizeState(previousValue => {
@@ -848,6 +924,37 @@ void DisplayStatus() {
 
       const currentContent = targetFile.translatedContent || targetFile.originalContent;
       const nextContent = ensureLingCppControlEventHandler(currentContent, detail);
+      if (editorExperienceMode === 'beginner' && nextContent !== currentContent) {
+        const proposal: WorkspaceEditProposal = {
+          id: `designer-event-${Date.now()}`,
+          title: '生成事件函数预览',
+          summary: `为 ${handlerName} 生成事件函数`,
+          createdAt: new Date().toISOString(),
+          explanation: '设计器双击控件触发的本地 WorkspaceEdit。确认后才会写入 .lcpp。',
+          changes: [
+            createWorkspaceEditChangeFromRewrite(targetFile.path, currentContent, nextContent) as any
+          ]
+        };
+        const change = proposal.changes[0];
+        const confirmed = window.confirm([
+          proposal.summary,
+          '',
+          '将新增/替换：',
+          change?.newText || '(无变化)',
+          '',
+          '确认后应用，取消则只定位到当前事件。'
+        ].join('\n'));
+
+        if (confirmed) {
+          handleApplyWorkspaceEdit(proposal, [{ filePath: targetFile.path, sourceCode: nextContent }]);
+        } else {
+          setOpenTabs(prev => (prev.includes(targetFile.path) ? prev : [...prev, targetFile.path]));
+          setActiveFile(targetFile);
+        }
+        setEditorExperienceMode('beginner');
+        focusEplHandler(handlerName);
+        return;
+      }
       const updatedFile: CppFile = {
         ...targetFile,
         translatedContent: nextContent,
@@ -872,42 +979,61 @@ void DisplayStatus() {
       const nextWindow = (event as CustomEvent).detail;
       const fileName = getLingWindowSourceFileName(nextWindow.fileName, nextWindow.className);
       const filePath = `src/${fileName}`;
-      
-      setFiles(prev => {
-        if (prev.some(f => f.path === filePath)) return prev;
-        const newFile = {
-          path: filePath,
-          name: fileName,
-          language: 'lingcpp' as const,
-          originalContent: generateDefaultLingCppContentForWindow(nextWindow),
-          translatedContent: '',
-          strings: [],
-          isModified: false
-        };
-        const next = [...prev, newFile];
-        return next;
-      });
+
+      const currentFiles = filesRef.current;
+      const existingFile = currentFiles.find(f => f.path === filePath);
+      const targetFile = existingFile || {
+        path: filePath,
+        name: fileName,
+        language: 'lingcpp' as const,
+        originalContent: generateDefaultLingCppContentForWindow(nextWindow),
+        translatedContent: '',
+        strings: [],
+        isModified: false
+      };
+      const nextFiles = existingFile ? currentFiles : [...currentFiles, targetFile];
+
+      filesRef.current = nextFiles;
+      setFiles(nextFiles);
+      setOpenTabs(prev => (prev.includes(targetFile.path) ? prev : [...prev, targetFile.path]));
+      setActiveFile(targetFile);
     };
 
     const handleWindowDeleted = (event: Event) => {
-      const deletedWindow = (event as CustomEvent).detail;
+      const detail = (event as CustomEvent).detail || {};
+      const deletedWindow = detail.deletedWindow || detail;
+      const nextWindow = detail.nextWindow;
       const fileName = getLingWindowSourceFileName(deletedWindow.fileName, deletedWindow.className);
       const filePath = `src/${fileName}`;
-      
-      setFiles(prev => {
-        const next = prev.filter(f => f.path !== filePath);
-        return next;
+      const nextFiles = filesRef.current.filter(f => f.path !== filePath);
+
+      filesRef.current = nextFiles;
+      setFiles(nextFiles);
+      setOpenTabs(prev => {
+        const filteredTabs = prev.filter(path => path !== filePath);
+        if (filteredTabs.length > 0) return filteredTabs;
+        const nextSourceName = nextWindow ? getLingWindowSourceFileName(nextWindow.fileName, nextWindow.className) : '';
+        const nextSourceFile = nextFiles.find(file => file.name === nextSourceName) || nextFiles[0];
+        return nextSourceFile ? [nextSourceFile.path] : prev;
       });
+
+      if (activeFileRef.current?.path === filePath) {
+        const nextSourceName = nextWindow ? getLingWindowSourceFileName(nextWindow.fileName, nextWindow.className) : '';
+        const nextSourceFile = nextFiles.find(file => file.name === nextSourceName) || nextFiles[0];
+        if (nextSourceFile) {
+          setActiveFile(nextSourceFile);
+        }
+      }
     };
 
     const handleWindowDuplicated = (event: Event) => {
       const clonedWindow = (event as CustomEvent).detail;
       const fileName = getLingWindowSourceFileName(clonedWindow.fileName, clonedWindow.className);
       const filePath = `src/${fileName}`;
-      
-      setFiles(prev => {
-        if (prev.some(f => f.path === filePath)) return prev;
-        const newFile = {
+
+      const currentFiles = filesRef.current;
+      const existingFile = currentFiles.find(f => f.path === filePath);
+      const targetFile = existingFile || {
           path: filePath,
           name: fileName,
           language: 'lingcpp' as const,
@@ -915,10 +1041,13 @@ void DisplayStatus() {
           translatedContent: '',
           strings: [],
           isModified: false
-        };
-        const next = [...prev, newFile];
-        return next;
-      });
+      };
+      const nextFiles = existingFile ? currentFiles : [...currentFiles, targetFile];
+
+      filesRef.current = nextFiles;
+      setFiles(nextFiles);
+      setOpenTabs(prev => (prev.includes(targetFile.path) ? prev : [...prev, targetFile.path]));
+      setActiveFile(targetFile);
     };
 
     const handleDesignerSwitchWindow = (event: Event) => {
@@ -1326,6 +1455,10 @@ void DisplayStatus() {
 
   // Handle selection of a row inside extracted strings list
   const handleSelectLine = (lineNum: number) => {
+    window.dispatchEvent(new CustomEvent('lingcpp-reveal-line', {
+      detail: { filePath: activeFileRef.current?.path, line: lineNum }
+    }));
+
     const elId = `diff-line-${lineNum - 1}`;
     const el = document.getElementById(elId);
     if (el) {
@@ -2124,6 +2257,17 @@ void DisplayStatus() {
               onSelectTab={handleSelectFile}
               onCloseTab={handleCloseTab}
               allFiles={files}
+              designerProject={getCurrentWindowDesignerProject()}
+              editorExperienceMode={editorExperienceMode}
+              onExperienceModeChange={setEditorExperienceMode}
+              problems={problems}
+              ignoredBeginnerTaskIds={ignoredBeginnerTaskIds}
+              onIgnoreBeginnerTask={ignoreBeginnerTask}
+              onApplyWorkspaceEdit={handleApplyWorkspaceEdit}
+              onOpenProblemsPanel={() => {
+                setActiveTabInBottom('problems');
+                setShowBottomPanel(true);
+              }}
             />
           </div>
 
