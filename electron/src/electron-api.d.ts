@@ -11,6 +11,9 @@ declare global {
         isMaximized: () => Promise<boolean>;
         close: () => Promise<void>;
       };
+      shell?: {
+        openPath: (targetPath: string) => Promise<string>;
+      };
     };
   }
 }

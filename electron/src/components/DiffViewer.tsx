@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useMemo, useState } from 'react';
-import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X, ListTree, PanelRightClose, GraduationCap, Lightbulb, ClipboardList, Wand2, PlayCircle, Pencil, Save, Trash2, Plus, ChevronDown, ChevronRight } from 'lucide-react';
+import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X, ListTree, PanelRightClose, GraduationCap, Lightbulb, ClipboardList, Wand2, PlayCircle, Pencil, Save, Trash2, Plus, ChevronDown, ChevronRight, RefreshCw, FolderOpen, Copy, FileInput, ExternalLink } from 'lucide-react';
 
 function FileIcon({ fileName, isDarkMode }: { fileName: string; isDarkMode: boolean }) {
   if (fileName.endsWith('.lcpp')) {
@@ -23,9 +23,9 @@ import { AppliedWorkspaceFile, DiffLine, DiffResult, ExtractedString, ProblemIte
 import WpfDesigner from './WpfDesigner';
 import MonacoCodeEditor from './MonacoCodeEditor';
 import { buildLingCppLanguageContext, getLingCppReadableBlocks, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
-import { LingCppAstEdit, LingCppMethod, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
+import { LingCppAstEdit, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
 import { applyLingCppAstEdit } from '../services/lingCpp/astEditService';
-import { LingWindowProject } from '../services/windowDesigner/types';
+import { LingCppNativePreviewFile, LingWindowProject, NativeCppImportResult } from '../services/windowDesigner/types';
 import {
   BeginnerTask,
   EditorExperienceMode,
@@ -38,6 +38,8 @@ import {
   summarizeEventPreview
 } from '../services/lingCpp/beginnerService';
 import { applyWorkspaceEdit } from '../services/lingCpp/aiEditService';
+import { importNativeCppToLingBuilder } from '../services/windowDesigner/nativeCppImportService';
+import { saveWindowDesignerState } from '../services/windowDesigner/windowDesignerService';
 
 interface DiffViewerProps {
   diffResult: DiffResult;
@@ -55,6 +57,7 @@ interface DiffViewerProps {
   onCloseTab: (tabPath: string, event: React.MouseEvent) => void;
   allFiles: any[];
   designerProject?: LingWindowProject;
+  activeWindowId?: string;
   editorExperienceMode?: EditorExperienceMode;
   onExperienceModeChange?: (mode: EditorExperienceMode) => void;
   problems?: ProblemItem[];
@@ -62,6 +65,36 @@ interface DiffViewerProps {
   onIgnoreBeginnerTask?: (taskId: string) => void;
   onApplyWorkspaceEdit?: (proposal: WorkspaceEditProposal, appliedFiles: AppliedWorkspaceFile[]) => void;
   onOpenProblemsPanel?: () => void;
+}
+
+function mapNativeBuildDiagnostics(
+  logs: string[],
+  sourceMap: LingCppNativeSourceMapEntry[]
+): NativeMappedDiagnostic[] {
+  const diagnostics: NativeMappedDiagnostic[] = [];
+  const linePattern = /main\.cpp(?:\((\d+)\)|:(\d+)(?::\d+)?)/i;
+
+  logs.forEach((log, index) => {
+    const match = log.match(linePattern);
+    if (!match) return;
+    const generatedLine = Number.parseInt(match[1] || match[2] || '0', 10);
+    if (!Number.isFinite(generatedLine) || generatedLine <= 0) return;
+
+    const entry = sourceMap
+      .filter(item => generatedLine >= item.generatedStartLine && generatedLine <= item.generatedEndLine)
+      .sort((left, right) => (left.generatedEndLine - left.generatedStartLine) - (right.generatedEndLine - right.generatedStartLine))[0];
+
+    diagnostics.push({
+      id: `native-diagnostic-${index}-${generatedLine}`,
+      message: log,
+      generatedLine,
+      sourceLine: entry?.sourceStartLine,
+      sourceKind: entry?.kind,
+      sourceSymbol: entry?.symbolName
+    });
+  });
+
+  return diagnostics;
 }
 
 type StructureEditMode = 'package' | 'class' | 'member' | 'method' | 'event' | 'add-member' | 'add-event';
@@ -79,6 +112,32 @@ interface StructureEditDraft {
   parameters: string;
   returnType: string;
   note: string;
+}
+
+type ParameterDraft = {
+  type: string;
+  name: string;
+  defaultValue: string;
+};
+
+interface NativePreviewState {
+  files: LingCppNativePreviewFile[];
+  diagnostics: string[];
+  enabledModules: string[];
+  sourceMap: LingCppNativeSourceMapEntry[];
+  selectedFilePath: string;
+  selectedWindowTitle: string;
+  lastExportDir?: string;
+  lastBuildLogs: string[];
+}
+
+interface NativeMappedDiagnostic {
+  id: string;
+  message: string;
+  generatedLine: number;
+  sourceLine?: number;
+  sourceKind?: LingCppNativeSourceMapEntry['kind'];
+  sourceSymbol?: string;
 }
 
 const CONTROL_MEMBER_TYPE_PATTERN = /按钮|标签|编辑框|复选框|单选框|下拉框|控件|窗体/u;
@@ -270,6 +329,7 @@ export default function DiffViewer({
   onCloseTab,
   allFiles,
   designerProject,
+  activeWindowId,
   editorExperienceMode = 'beginner',
   onExperienceModeChange,
   problems = [],
@@ -313,9 +373,22 @@ export default function DiffViewer({
   const [newMemberDraft, setNewMemberDraft] = useState({ type: '文本型', name: '', initialValue: '' });
   const [newEventDraft, setNewEventDraft] = useState({ handlerName: '', parameters: '' });
   const [newFunctionDraft, setNewFunctionDraft] = useState({ returnType: '空', name: '', parameters: '' });
-  const [newParameterDrafts, setNewParameterDrafts] = useState<Record<string, { type: string; name: string }>>({});
+  const [newParameterDrafts, setNewParameterDrafts] = useState<Record<string, ParameterDraft>>({});
+  const [functionCallDrafts, setFunctionCallDrafts] = useState<Record<string, Record<string, string>>>({});
   const [sourceScroll, setSourceScroll] = useState({ top: 0, left: 0 });
   const [pendingHandlerFocus, setPendingHandlerFocus] = useState<string | null>(null);
+  const [expandedBeginnerEventTargetKey, setExpandedBeginnerEventTargetKey] = useState<string | null>(null);
+  const [expandedBeginnerFunctionTargetKey, setExpandedBeginnerFunctionTargetKey] = useState<string | null>(null);
+  const [selectedFunctionTemplateKey, setSelectedFunctionTemplateKey] = useState<string | null>(null);
+  const [nativePreviewState, setNativePreviewState] = useState<NativePreviewState | null>(null);
+  const [isNativePreviewLoading, setIsNativePreviewLoading] = useState(false);
+  const [nativePreviewError, setNativePreviewError] = useState<string | null>(null);
+  const [nativeImportSource, setNativeImportSource] = useState('');
+  const [nativeImportManifest, setNativeImportManifest] = useState('');
+  const [nativeImportResult, setNativeImportResult] = useState<NativeCppImportResult | null>(null);
+  const [nativeImportError, setNativeImportError] = useState<string | null>(null);
+  const [showNativeImportPanel, setShowNativeImportPanel] = useState(false);
+  const [structuredRevealLine, setStructuredRevealLine] = useState<number | null>(null);
 
   useEffect(() => {
     if (pendingHandlerFocus) {
@@ -330,6 +403,16 @@ export default function DiffViewer({
 
   useEffect(() => {
     setSelectedBeginnerCodeTarget(null);
+    setExpandedBeginnerEventTargetKey(null);
+    setExpandedBeginnerFunctionTargetKey(null);
+    setSelectedFunctionTemplateKey(null);
+    setFunctionCallDrafts({});
+  }, [activeFile?.path]);
+
+  useEffect(() => {
+    setNativeImportResult(null);
+    setNativeImportError(null);
+    setShowNativeImportPanel(false);
   }, [activeFile?.path]);
 
   const leftScrollRef = useRef<HTMLDivElement>(null);
@@ -424,6 +507,7 @@ export default function DiffViewer({
     [designerProject, normalizedSourceCode]
   );
   const isLingCppBeginnerStructureMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner';
+  const isLingCppNativeMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'native';
   const sourceLineNumbers = useMemo(() => {
     const lineCount = Math.max(1, normalizedSourceCode.split('\n').length);
     return Array.from({ length: lineCount }, (_, index) => index + 1);
@@ -432,6 +516,14 @@ export default function DiffViewer({
   const eplVisualLines = useMemo(() => {
     return activeFile?.language === 'epl' ? buildEplVisualLines(sourceHighlightLines) : [];
   }, [activeFile?.language, sourceHighlightLines]);
+  const selectedNativePreviewFile = useMemo(
+    () => nativePreviewState?.files.find(file => file.relativePath === nativePreviewState.selectedFilePath) || nativePreviewState?.files[0],
+    [nativePreviewState]
+  );
+  const nativeMappedDiagnostics = useMemo(
+    () => mapNativeBuildDiagnostics(nativePreviewState?.lastBuildLogs || [], nativePreviewState?.sourceMap || []),
+    [nativePreviewState]
+  );
 
   const quickChineseSnippets = activeFile?.language === 'lingcpp' ? [
     { label: '类', text: '\n类 新窗口 : 公开 窗体\n公开:\n    构造()\n        调试输出("初始化完成")\n结束类\n' },
@@ -586,6 +678,162 @@ export default function DiffViewer({
     onUpdateSourceContent?.(activeFile?.language === 'epl' ? optimizeEplName(nextCode) : nextCode);
   };
 
+  const refreshNativePreview = async () => {
+    if (!designerProject || activeFile?.language !== 'lingcpp') return;
+
+    setIsNativePreviewLoading(true);
+    setNativePreviewError(null);
+    try {
+      const response = await fetch('/api/window-designer/native-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project: designerProject,
+          activeWindowId,
+          lingCppSourceCode: normalizedSourceCode,
+          lingCppSourceFilePath: activeFile?.path
+        })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || '原生 C++ 预览生成失败');
+      }
+      setNativePreviewState(previous => ({
+        files: result.files || [],
+        diagnostics: result.diagnostics || [],
+        enabledModules: result.enabledModules || [],
+        sourceMap: result.sourceMap || [],
+        selectedFilePath: previous?.selectedFilePath && (result.files || []).some((file: LingCppNativePreviewFile) => file.relativePath === previous.selectedFilePath)
+          ? previous.selectedFilePath
+          : ((result.files || [])[0]?.relativePath || 'main.cpp'),
+        selectedWindowTitle: result.selectedWindow?.title || '',
+        lastExportDir: previous?.lastExportDir,
+        lastBuildLogs: previous?.lastBuildLogs || []
+      }));
+    } catch (error: any) {
+      setNativePreviewError(error?.message || '原生 C++ 预览生成失败');
+    } finally {
+      setIsNativePreviewLoading(false);
+    }
+  };
+
+  const exportNativePreview = async () => {
+    if (!designerProject || activeFile?.language !== 'lingcpp') return;
+    setNativePreviewError(null);
+    try {
+      const response = await fetch('/api/window-designer/native-export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project: designerProject,
+          activeWindowId,
+          lingCppSourceCode: normalizedSourceCode,
+          lingCppSourceFilePath: activeFile?.path
+        })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || '导出原生 C++ 工程失败');
+      }
+      setNativePreviewState(previous => previous ? {
+        ...previous,
+        lastExportDir: result.exportDir,
+        lastBuildLogs: result.logs || previous.lastBuildLogs
+      } : previous);
+      if (window.lingBuilder?.shell && result.exportDir) {
+        await window.lingBuilder.shell.openPath(result.exportDir);
+      }
+    } catch (error: any) {
+      setNativePreviewError(error?.message || '导出原生 C++ 工程失败');
+    }
+  };
+
+  const buildAndRunNativePreview = async () => {
+    if (!designerProject || activeFile?.language !== 'lingcpp') return;
+    setNativePreviewError(null);
+    try {
+      const response = await fetch('/api/window-designer/build-run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project: designerProject,
+          activeWindowId,
+          lingCppSourceCode: normalizedSourceCode,
+          lingCppSourceFilePath: activeFile?.path,
+          run: true
+        })
+      });
+      const result = await response.json();
+      const logs = Array.isArray(result.logs) ? result.logs : [];
+      setNativePreviewState(previous => previous ? {
+        ...previous,
+        lastBuildLogs: logs,
+        lastExportDir: result.exportDir || previous.lastExportDir,
+        sourceMap: result.sourceMap || previous.sourceMap
+      } : previous);
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || result.stage || '原生 C++ 编译运行失败');
+      }
+    } catch (error: any) {
+      setNativePreviewError(error?.message || '原生 C++ 编译运行失败');
+    }
+  };
+
+  const openNativeExportDirectory = async () => {
+    const targetPath = nativePreviewState?.lastExportDir;
+    if (!targetPath || !window.lingBuilder?.shell) {
+      await exportNativePreview();
+      return;
+    }
+    await window.lingBuilder.shell.openPath(targetPath);
+  };
+
+  const applyNativeImportResult = (result: NativeCppImportResult) => {
+    onUpdateSourceContent?.(result.lcppSource);
+    if (designerProject) {
+      const nextWindows = Array.isArray(result.designerProjectPatch.windows) && result.designerProjectPatch.windows.length > 0
+        ? result.designerProjectPatch.windows
+        : designerProject.windows;
+      saveWindowDesignerState({
+        project: {
+          ...designerProject,
+          ...result.designerProjectPatch,
+          windows: nextWindows
+        },
+        activeWindowId: activeWindowId || nextWindows[0]?.id || designerProject.windows[0]?.id || 'main-window',
+        selectedControlId: null
+      });
+    }
+    setShowNativeImportPanel(false);
+    onExperienceModeChange?.('professional');
+  };
+
+  const handleRunNativeImport = () => {
+    try {
+      const result = importNativeCppToLingBuilder(nativeImportSource, {
+        project: designerProject,
+        activeWindowId,
+        manifestText: nativeImportManifest
+      });
+      setNativeImportResult(result);
+      setNativeImportError(null);
+    } catch (error: any) {
+      setNativeImportResult(null);
+      setNativeImportError(error?.message || '原生 C++ 适配失败');
+    }
+  };
+
+  const revealNativeSourceLine = (line: number, preferStructure: boolean) => {
+    if (preferStructure) {
+      setCursorPosition({ line, column: 1 });
+      setStructuredRevealLine(line);
+      onExperienceModeChange?.('beginner');
+      return;
+    }
+    onExperienceModeChange?.('professional');
+    window.dispatchEvent(new CustomEvent('lingcpp-reveal-line', { detail: { line } }));
+  };
+
   useEffect(() => {
     const handleFocusEplHandler = (event: Event) => {
       const customEvent = event as CustomEvent<{ handlerName?: string }>;
@@ -617,6 +865,24 @@ export default function DiffViewer({
       window.removeEventListener('show-window-designer', handleShowWindowDesigner);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isLingCppNativeMode) return;
+    const timer = window.setTimeout(() => {
+      void refreshNativePreview();
+    }, 220);
+    return () => window.clearTimeout(timer);
+  }, [activeFile?.path, activeWindowId, designerProject, isLingCppNativeMode, normalizedSourceCode]);
+
+  useEffect(() => {
+    if (!structuredRevealLine) return;
+    const timer = window.setTimeout(() => {
+      const row = document.querySelector<HTMLElement>(`[data-structured-line="${structuredRevealLine}"]`);
+      row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      setStructuredRevealLine(null);
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [structuredRevealLine, editorExperienceMode]);
 
   useEffect(() => {
     if (!pendingHandlerFocus || activeFile?.language !== 'epl') return;
@@ -1081,21 +1347,101 @@ export default function DiffViewer({
     revealLingCppLine(row.line);
   };
 
+  const splitParameterDraftParts = (value: string) => {
+    const parts: string[] = [];
+    let current = '';
+    let quote: string | null = null;
+    let depth = 0;
+
+    for (const char of value) {
+      if (quote) {
+        current += char;
+        if (char === quote) quote = null;
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        current += char;
+        continue;
+      }
+      if (char === '(' || char === '（') {
+        depth += 1;
+        current += char;
+        continue;
+      }
+      if (char === ')' || char === '）') {
+        depth = Math.max(0, depth - 1);
+        current += char;
+        continue;
+      }
+      if ((char === ',' || char === '，') && depth === 0) {
+        parts.push(current);
+        current = '';
+        continue;
+      }
+      current += char;
+    }
+
+    parts.push(current);
+    return parts;
+  };
+
+  const splitParameterDefaultDraft = (value: string) => {
+    let quote: string | null = null;
+    let depth = 0;
+
+    for (let index = 0; index < value.length; index += 1) {
+      const char = value[index];
+      if (quote) {
+        if (char === quote) quote = null;
+        continue;
+      }
+      if (char === '"' || char === "'") {
+        quote = char;
+        continue;
+      }
+      if (char === '(' || char === '（') {
+        depth += 1;
+        continue;
+      }
+      if (char === ')' || char === '）') {
+        depth = Math.max(0, depth - 1);
+        continue;
+      }
+      if (char === '=' && depth === 0) {
+        return {
+          definition: value.slice(0, index).trim(),
+          defaultValue: value.slice(index + 1).trim()
+        };
+      }
+    }
+
+    return { definition: value.trim(), defaultValue: '' };
+  };
+
+  const formatSingleParameterDraft = (parameter: LingCppParameter) => {
+    const declaration = `${parameter.type} ${parameter.name}`.trim();
+    const defaultValue = parameter.defaultValue?.trim();
+    return defaultValue ? `${declaration} = ${defaultValue}` : declaration;
+  };
+
   const formatParameterDraft = (parameters?: LingCppParameter[]) =>
-    (parameters || []).map(parameter => `${parameter.type} ${parameter.name}`.trim()).join(', ');
+    (parameters || []).map(formatSingleParameterDraft).join(', ');
 
   const parseParameterDraft = (value: string): LingCppParameter[] =>
-    value
-      .split(/[,，]/u)
+    splitParameterDraftParts(value)
       .map(part => part.trim())
       .filter(Boolean)
       .map(part => {
-        const [type, ...nameParts] = part.split(/\s+/u).filter(Boolean);
+        const { definition, defaultValue } = splitParameterDefaultDraft(part);
+        const [type, ...nameParts] = definition.split(/\s+/u).filter(Boolean);
         const name = nameParts.join('');
-        return {
+        const parameter: LingCppParameter = {
           type: name ? type : '对象',
           name: name || type
         };
+        if (defaultValue) parameter.defaultValue = defaultValue;
+        return parameter;
       });
 
   const applyStructureAstEdits = (edits: LingCppAstEdit[], revealLine?: number) => {
@@ -1500,7 +1846,15 @@ export default function DiffViewer({
         parameters: parseParameterDraft(draft.parameters)
       }
     }]);
-    if (applied) setNewEventDraft({ handlerName: '', parameters: '' });
+    if (applied) {
+      setNewEventDraft({ handlerName: '', parameters: '' });
+      setSelectedBeginnerHandler(handlerName);
+      setSelectedBeginnerCodeTarget({ className: primaryLingCppClass.name, methodName: handlerName });
+      setExpandedBeginnerEventTargetKey(`${primaryLingCppClass.name}:event:${handlerName}`);
+      window.requestAnimationFrame(() => {
+        document.getElementById('lingcpp-structure-section-event')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      });
+    }
   };
 
   const renderNewEventInput = (
@@ -1549,6 +1903,10 @@ export default function DiffViewer({
     if (applied) {
       setNewFunctionDraft({ returnType: '空', name: '', parameters: '' });
       setSelectedBeginnerCodeTarget({ className: primaryLingCppClass.name, methodName: name });
+      setExpandedBeginnerFunctionTargetKey(`${primaryLingCppClass.name}:method:${name}`);
+      window.requestAnimationFrame(() => {
+        document.getElementById('lingcpp-structure-section-function')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      });
     }
   };
 
@@ -1773,6 +2131,7 @@ export default function DiffViewer({
       return (
         <div
           key={row.id}
+          data-structured-line={row.line}
           onMouseEnter={() => row.blockId && setFocusedReadableBlockId(row.blockId)}
           onMouseLeave={() => row.blockId && setFocusedReadableBlockId(undefined)}
           className={`w-full border-b px-2 py-2 text-left text-[11px] transition-colors ${
@@ -2005,7 +2364,7 @@ export default function DiffViewer({
       || codeTargets[0];
     type BeginnerCodeTarget = { className: string; method: LingCppMethod };
     const codeTargetKey = (target: BeginnerCodeTarget) =>
-      `${target.className}:${target.method.name}:${target.method.line}`;
+      `${target.className}:${target.method.kind}:${target.method.name}`;
     const findStructuredRowForCodeTarget = (target: BeginnerCodeTarget) => {
       const rows = target.method.kind === 'event'
         ? eventRows
@@ -2029,6 +2388,8 @@ export default function DiffViewer({
       const nextName = patch.name?.trim();
       const nextReturnType = patch.returnType?.trim();
       const nextParameters = patch.parameters ?? target.method.parameters;
+      const previousKey = codeTargetKey(target);
+      const nextKey = `${target.className}:${target.method.kind}:${nextName || target.method.name}`;
       const edit: LingCppAstEdit = target.method.kind === 'event'
         ? {
             kind: 'update-event',
@@ -2048,6 +2409,11 @@ export default function DiffViewer({
             note: patch.note?.trim() || undefined
           };
       const applied = applyStructureAstEdits([edit], target.method.line);
+      if (applied) {
+        setExpandedBeginnerEventTargetKey(current => current === previousKey ? nextKey : current);
+        setExpandedBeginnerFunctionTargetKey(current => current === previousKey ? nextKey : current);
+        setSelectedFunctionTemplateKey(current => current === previousKey ? nextKey : current);
+      }
       if (applied && nextName && nextName !== target.method.name) {
         setSelectedBeginnerCodeTarget({ className: target.className, methodName: nextName });
         if (target.method.kind === 'event') setSelectedBeginnerHandler(nextName);
@@ -2061,14 +2427,16 @@ export default function DiffViewer({
       rawValue: string
     ) => {
       const nextValue = rawValue.trim();
-      if (!nextValue) {
+      if (field !== 'defaultValue' && !nextValue) {
         setStructureEditError('参数名和参数类型不能为空。');
         return;
       }
       const currentParameter = target.method.parameters[index];
-      if (!currentParameter || currentParameter[field] === nextValue) return;
+      if (!currentParameter || (currentParameter[field] || '') === nextValue) return;
       const nextParameters = target.method.parameters.map((parameter, parameterIndex) =>
-        parameterIndex === index ? { ...parameter, [field]: nextValue } : parameter
+        parameterIndex === index
+          ? { ...parameter, [field]: nextValue || undefined }
+          : parameter
       );
       applyCodeTargetSignature(target, { parameters: nextParameters });
     };
@@ -2077,13 +2445,14 @@ export default function DiffViewer({
       patch: Partial<LingCppParameter> = {}
     ) => {
       const key = codeTargetKey(target);
-      const draft = { type: '文本型', name: '', ...(newParameterDrafts[key] || {}), ...patch };
+      const draft: ParameterDraft = { type: '文本型', name: '', defaultValue: '', ...(newParameterDrafts[key] || {}), ...patch };
       setNewParameterDrafts(current => ({ ...current, [key]: draft }));
       const name = draft.name.trim();
       if (!name) return;
       const type = draft.type.trim() || '对象';
+      const defaultValue = draft.defaultValue.trim();
       const applied = applyCodeTargetSignature(target, {
-        parameters: [...target.method.parameters, { type, name }]
+        parameters: [...target.method.parameters, { type, name, defaultValue: defaultValue || undefined }]
       });
       if (applied) {
         setNewParameterDrafts(current => {
@@ -2093,6 +2462,24 @@ export default function DiffViewer({
         });
       }
     };
+    const removeCodeTargetParameter = (target: BeginnerCodeTarget, index: number) => {
+      const currentParameter = target.method.parameters[index];
+      if (!currentParameter) return;
+      const nextParameters = target.method.parameters.filter((_, parameterIndex) => parameterIndex !== index);
+      applyCodeTargetSignature(target, { parameters: nextParameters });
+    };
+    const toggleInlineCodeTarget = (target: BeginnerCodeTarget) => {
+      const targetKey = codeTargetKey(target);
+      if (target.method.kind === 'event') {
+        setExpandedBeginnerEventTargetKey(current => current === targetKey ? null : targetKey);
+        setSelectedBeginnerHandler(target.method.name);
+      } else if (target.method.kind === 'method') {
+        setExpandedBeginnerFunctionTargetKey(current => current === targetKey ? null : targetKey);
+      }
+      setSelectedBeginnerCodeTarget({ className: target.className, methodName: target.method.name });
+    };
+    const parameterExampleText = (parameter: LingCppParameter) =>
+      `${parameter.name || parameter.type || '参数'} = ${defaultFunctionArgument(parameter)}`;
 
     const sectionDomId = (id: string) => `lingcpp-structure-section-${id}`;
     const isSectionCollapsed = (id: string) => collapsedVolcanoSections.includes(id);
@@ -2142,6 +2529,8 @@ export default function DiffViewer({
     );
 
     const defaultFunctionArgument = (parameter: LingCppParameter) => {
+      const defaultValue = parameter.defaultValue?.trim();
+      if (defaultValue) return defaultValue;
       if (/文本/u.test(parameter.type)) return '"文本"';
       if (/逻辑/u.test(parameter.type)) return '真';
       if (/小数|双精度/u.test(parameter.type)) return '0.0';
@@ -2151,6 +2540,25 @@ export default function DiffViewer({
 
     const formatFunctionCall = (name: string, parameters?: LingCppParameter[]) =>
       `${name}(${(parameters || []).map(defaultFunctionArgument).join(', ')})`;
+    const formatFunctionSignature = (name: string, parameters?: LingCppParameter[]) =>
+      `${name}(${(parameters || []).map(formatSingleParameterDraft).join(', ')})`;
+    const functionCallDraftKey = (eventTarget: BeginnerCodeTarget, functionTarget: BeginnerCodeTarget) =>
+      `${codeTargetKey(eventTarget)}=>${codeTargetKey(functionTarget)}`;
+    const parameterCallArgumentKey = (parameter: LingCppParameter, index: number) =>
+      `${index}:${parameter.name || parameter.type || 'parameter'}`;
+    const getFunctionCallArgument = (
+      parameter: LingCppParameter,
+      index: number,
+      draft: Record<string, string>
+    ) => {
+      const value = draft[parameterCallArgumentKey(parameter, index)]?.trim();
+      return value || defaultFunctionArgument(parameter);
+    };
+    const formatFunctionCallWithDraft = (
+      name: string,
+      parameters: LingCppParameter[],
+      draft: Record<string, string>
+    ) => `${name}(${parameters.map((parameter, index) => getFunctionCallArgument(parameter, index, draft)).join(', ')})`;
 
     const renderParameterSummary = (parameters?: LingCppParameter[]) => {
       if (!parameters || parameters.length === 0) return renderTextCell('无参数', 'muted');
@@ -2159,14 +2567,59 @@ export default function DiffViewer({
           {parameters.map((parameter, index) => (
             <div
               key={`${parameter.name}:${parameter.type}:${index}`}
-              className={`grid min-w-0 grid-cols-[minmax(72px,1fr)_minmax(72px,1fr)] gap-2 rounded px-1.5 py-0.5 ${
-                isDarkMode ? 'bg-[#111217]' : 'bg-slate-50'
-              }`}
-            >
-              <span className={`truncate font-semibold ${textTone('name')}`}>{parameter.name}</span>
-              <span className={`truncate ${textTone('type')}`}>{parameter.type}</span>
+                className={`grid min-w-0 grid-cols-[minmax(72px,1fr)_minmax(72px,1fr)_minmax(82px,1fr)] gap-2 rounded px-1.5 py-0.5 ${
+                  isDarkMode ? 'bg-[#111217]' : 'bg-slate-50'
+                }`}
+              >
+                <span className={`truncate font-semibold ${textTone('name')}`}>{parameter.name}</span>
+                <span className={`truncate ${textTone('type')}`}>{parameter.type}</span>
+                <span className={`truncate ${parameter.defaultValue?.trim() ? textTone('value') : textTone('muted')}`}>
+                  {parameter.defaultValue?.trim() || '默认空'}
+                </span>
+              </div>
+            ))}
+        </div>
+      );
+    };
+    const renderFunctionCallTemplatePreview = (
+      name: string,
+      parameters?: LingCppParameter[],
+      compact = false
+    ) => {
+      const effectiveParameters = parameters || [];
+      const callExample = formatFunctionCall(name, effectiveParameters);
+      return (
+        <div className={`rounded border px-2 py-1.5 ${
+          isDarkMode ? 'border-[#343442] bg-[#111217]' : 'border-slate-200 bg-slate-50'
+        }`}>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`text-[10px] font-semibold ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>{name}</span>
+            <span className={`text-[9px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
+              {effectiveParameters.length ? formatFunctionSignature(name, effectiveParameters) : '无参数功能'}
+            </span>
+          </div>
+          {effectiveParameters.length > 0 ? (
+            <div className={`mt-1.5 grid gap-1 ${compact ? 'text-[9px]' : 'text-[10px]'}`}>
+              {effectiveParameters.map((parameter, index) => (
+                <div
+                  key={`${name}:${parameter.name}:${index}`}
+                  className={`grid min-w-0 grid-cols-[minmax(86px,1fr)_minmax(90px,1fr)] gap-2 rounded px-1.5 py-1 ${
+                    isDarkMode ? 'bg-[#181a20] text-slate-300' : 'bg-white text-slate-700'
+                  }`}
+                >
+                  <span className={`truncate font-semibold ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>{parameter.name}</span>
+                  <span className="truncate">{parameterExampleText(parameter)}</span>
+                </div>
+              ))}
             </div>
-          ))}
+          ) : (
+            <div className={`mt-1 text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>无参数，点击后会直接写入调用。</div>
+          )}
+          <div className={`mt-1.5 rounded px-1.5 py-1 font-mono ${compact ? 'text-[9px]' : 'text-[10px]'} ${
+            isDarkMode ? 'bg-[#0d0f14] text-emerald-300' : 'bg-white text-emerald-700'
+          }`}>
+            {callExample}
+          </div>
         </div>
       );
     };
@@ -2237,10 +2690,10 @@ export default function DiffViewer({
       tone: 'plain' | 'type' | 'name' | 'value' = 'plain'
     ) => {
       const key = codeTargetKey(target);
-      const draft = { type: '文本型', name: '', ...(newParameterDrafts[key] || {}) };
+      const draft: ParameterDraft = { type: '文本型', name: '', defaultValue: '', ...(newParameterDrafts[key] || {}) };
       return (
         <input
-          value={draft[field]}
+          value={draft[field] || ''}
           placeholder={placeholder}
           disabled={!onUpdateSourceContent}
           onChange={event => {
@@ -2279,7 +2732,7 @@ export default function DiffViewer({
 
       return (
         <div className={`border-b ${isDarkMode ? 'border-[#2b2d34]' : 'border-slate-200'}`}>
-          <table className={`w-full min-w-[560px] border-b text-left ${tableChrome}`}>
+          <table className={`w-full min-w-[640px] border-b text-left ${tableChrome}`}>
             <thead>
               <tr>
                 <th className={`${headCellClass} w-[220px]`}>方法名</th>
@@ -2309,15 +2762,14 @@ export default function DiffViewer({
               </tr>
             </tbody>
           </table>
-          <table className={`w-full min-w-[560px] border-b text-left ${tableChrome}`}>
+          <table className={`w-full min-w-[680px] border-b text-left ${tableChrome}`}>
             <thead>
               <tr>
-                <th className={`${headCellClass} w-[180px]`}>参数名</th>
-                <th className={`${headCellClass} w-[140px]`}>类型</th>
-                <th className={`${headCellClass} w-[70px]`}>参考</th>
-                <th className={`${headCellClass} w-[70px]`}>可空</th>
-                <th className={`${headCellClass} w-[70px]`}>数组</th>
-                <th className={headCellClass}>备注</th>
+                <th className={`${headCellClass} w-[160px]`}>参数名</th>
+                <th className={`${headCellClass} w-[130px]`}>类型</th>
+                <th className={`${headCellClass} w-[180px]`}>默认值</th>
+                <th className={`${headCellClass} w-[140px]`}>参考</th>
+                <th className={headCellClass}>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -2325,22 +2777,190 @@ export default function DiffViewer({
                 <tr key={`${codeTargetKey(target)}:parameter:${index}`} className={rowChrome(row)}>
                   <td className={cellClass}>{renderParameterInput(target, index, 'name', parameter.name, '参数名', 'name')}</td>
                   <td className={cellClass}>{renderParameterInput(target, index, 'type', parameter.type, '类型', 'type')}</td>
-                  <td className={cellClass}>{renderTextCell('否', 'muted')}</td>
-                  <td className={cellClass}>{renderTextCell('否', 'muted')}</td>
-                  <td className={cellClass}>{renderTextCell('否', 'muted')}</td>
-                  <td className={cellClass}>{renderTextCell('', 'muted')}</td>
+                  <td className={cellClass}>{renderParameterInput(target, index, 'defaultValue', parameter.defaultValue || '', '默认值', 'value')}</td>
+                  <td className={cellClass}>{renderTextCell(parameterExampleText(parameter), 'muted')}</td>
+                  <td className={cellClass}>
+                    <button
+                      type="button"
+                      onClick={() => removeCodeTargetParameter(target, index)}
+                      className={`rounded border px-1.5 py-0.5 text-[9px] font-semibold transition-colors ${
+                        isDarkMode
+                          ? 'border-rose-500/30 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20'
+                          : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                      }`}
+                    >
+                      删除
+                    </button>
+                  </td>
                 </tr>
               ))}
               <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
                 <td className={cellClass}>{renderNewParameterInput(target, 'name', '输入参数名', 'name')}</td>
                 <td className={cellClass}>{renderNewParameterInput(target, 'type', '文本型', 'type')}</td>
-                <td className={cellClass}>{renderTextCell('否', 'muted')}</td>
-                <td className={cellClass}>{renderTextCell('否', 'muted')}</td>
-                <td className={cellClass}>{renderTextCell('否', 'muted')}</td>
+                <td className={cellClass}>{renderNewParameterInput(target, 'defaultValue', '"文本"', 'value')}</td>
+                <td className={cellClass}>{renderTextCell('输入名称后自动添加', 'muted')}</td>
                 <td className={cellClass}>{renderTextCell('新参数', 'muted')}</td>
               </tr>
             </tbody>
           </table>
+        </div>
+      );
+    };
+
+    const renderEventFunctionCallBar = (target: BeginnerCodeTarget) => {
+      if (target.method.kind !== 'event' || functionTargets.length === 0) return null;
+      const selectedTemplateTarget =
+        functionTargets.find(functionTarget => codeTargetKey(functionTarget) === selectedFunctionTemplateKey)
+        || functionTargets[0];
+      const assistantDraftKey = selectedTemplateTarget ? functionCallDraftKey(target, selectedTemplateTarget) : '';
+      const argumentDraft = assistantDraftKey ? functionCallDrafts[assistantDraftKey] || {} : {};
+      const callPreview = selectedTemplateTarget
+        ? formatFunctionCallWithDraft(selectedTemplateTarget.method.name, selectedTemplateTarget.method.parameters, argumentDraft)
+        : '';
+      const insertSelectedFunctionCall = () => {
+        if (!selectedTemplateTarget) return;
+        const currentBody = methodBodyText(target.method);
+        const nextBody = currentBody.trim()
+          ? `${currentBody}\n${callPreview}`
+          : callPreview;
+        commitBeginnerCodeBody(
+          target.className,
+          target.method.name,
+          currentBody,
+          nextBody
+        );
+        if (assistantDraftKey) {
+          setFunctionCallDrafts(current => {
+            const next = { ...current };
+            delete next[assistantDraftKey];
+            return next;
+          });
+        }
+      };
+      return (
+        <div className={`border-b ${
+          isDarkMode ? 'border-[#2b2d34] bg-[#121318]' : 'border-slate-200 bg-slate-50'
+        }`}>
+          <div className="flex min-h-[34px] items-center gap-2 px-2">
+            <span className={`shrink-0 text-[10px] font-semibold ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>调用功能</span>
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1">
+              {functionTargets.map(functionTarget => {
+                const functionKey = codeTargetKey(functionTarget);
+                const parameterCount = functionTarget.method.parameters.length;
+                return (
+                  <button
+                    key={`${functionTarget.className}:${functionTarget.method.name}:call`}
+                    type="button"
+                    onMouseEnter={() => setSelectedFunctionTemplateKey(functionKey)}
+                    onFocus={() => setSelectedFunctionTemplateKey(functionKey)}
+                    onClick={() => setSelectedFunctionTemplateKey(functionKey)}
+                    className={`max-w-[240px] shrink-0 rounded border px-2 py-1 text-[10px] font-semibold transition-colors ${
+                      selectedTemplateTarget && codeTargetKey(selectedTemplateTarget) === functionKey
+                        ? isDarkMode
+                          ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-200'
+                          : 'border-emerald-300 bg-emerald-100 text-emerald-800'
+                        : isDarkMode
+                          ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                          : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    }`}
+                    title={`选择后填写参数：${formatFunctionCall(functionTarget.method.name, functionTarget.method.parameters)}`}
+                  >
+                    <span className="truncate">{functionTarget.method.name}</span>
+                    <span className={`ml-1 text-[9px] ${isDarkMode ? 'text-emerald-200/80' : 'text-emerald-800/80'}`}>
+                      {parameterCount > 0 ? `${parameterCount} 参数` : '无参数'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {selectedTemplateTarget && (
+            <div className={`border-t px-2 py-2 ${isDarkMode ? 'border-[#2b2d34]' : 'border-slate-200'}`}>
+              <div className={`rounded border px-2 py-2 ${
+                isDarkMode ? 'border-[#343442] bg-[#111217]' : 'border-slate-200 bg-white'
+              }`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className={`truncate text-[10px] font-semibold ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>
+                      {selectedTemplateTarget.method.name}
+                    </div>
+                    <div className={`truncate text-[9px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
+                      {formatFunctionSignature(selectedTemplateTarget.method.name, selectedTemplateTarget.method.parameters)}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!onUpdateSourceContent}
+                    onClick={insertSelectedFunctionCall}
+                    className={`rounded border px-2 py-1 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                      isDarkMode
+                        ? 'border-cyan-500/40 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25'
+                        : 'border-cyan-200 bg-cyan-50 text-cyan-700 hover:bg-cyan-100'
+                    }`}
+                  >
+                    插入调用
+                  </button>
+                </div>
+                {selectedTemplateTarget.method.parameters.length > 0 ? (
+                  <div className="mt-2 grid gap-1.5">
+                    {selectedTemplateTarget.method.parameters.map((parameter, index) => {
+                      const argumentKey = parameterCallArgumentKey(parameter, index);
+                      const defaultValue = defaultFunctionArgument(parameter);
+                      return (
+                        <label
+                          key={`${assistantDraftKey}:${argumentKey}`}
+                          className={`grid min-w-0 grid-cols-[minmax(92px,1fr)_minmax(72px,.7fr)_minmax(120px,1.4fr)] items-center gap-2 rounded px-1.5 py-1 text-[10px] ${
+                            isDarkMode ? 'bg-[#181a20] text-slate-300' : 'bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          <span className={`truncate font-semibold ${textTone('name')}`}>{parameter.name}</span>
+                          <span className={`truncate ${textTone('type')}`}>{parameter.type}</span>
+                          <input
+                            value={argumentDraft[argumentKey] || ''}
+                            placeholder={parameter.defaultValue?.trim() ? `默认 ${parameter.defaultValue.trim()}` : defaultValue}
+                            disabled={!onUpdateSourceContent}
+                            onChange={event => {
+                              const nextValue = event.currentTarget.value;
+                              setFunctionCallDrafts(current => ({
+                                ...current,
+                                [assistantDraftKey]: {
+                                  ...(current[assistantDraftKey] || {}),
+                                  [argumentKey]: nextValue
+                                }
+                              }));
+                            }}
+                            onKeyDown={event => {
+                              if (event.key === 'Enter') insertSelectedFunctionCall();
+                              if (event.key === 'Escape') {
+                                setFunctionCallDrafts(current => ({
+                                  ...current,
+                                  [assistantDraftKey]: {
+                                    ...(current[assistantDraftKey] || {}),
+                                    [argumentKey]: ''
+                                  }
+                                }));
+                                event.currentTarget.blur();
+                              }
+                            }}
+                            className={`${directInputClasses('value')} disabled:cursor-not-allowed disabled:opacity-40`}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className={`mt-2 rounded px-1.5 py-1 text-[10px] ${isDarkMode ? 'bg-[#181a20] text-slate-500' : 'bg-slate-50 text-slate-500'}`}>
+                    无参数，点击“插入调用”会直接写入事件代码。
+                  </div>
+                )}
+                <div className={`mt-2 rounded px-1.5 py-1 font-mono text-[10px] ${
+                  isDarkMode ? 'bg-[#0d0f14] text-emerald-300' : 'bg-slate-50 text-emerald-700'
+                }`}>
+                  {callPreview}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       );
     };
@@ -2469,7 +3089,7 @@ export default function DiffViewer({
         </thead>
         <tbody>
           {rows.map(row => (
-            <tr key={row.id} onDoubleClick={() => revealStructuredRow(row)} className={rowChrome(row)}>
+            <tr key={row.id} data-structured-line={row.line} onDoubleClick={() => revealStructuredRow(row)} className={rowChrome(row)}>
               <td className={cellClass}>{renderTextCell(row.type, 'type')}</td>
               <td className={cellClass}>
                 {row.editKind === 'package'
@@ -2503,7 +3123,7 @@ export default function DiffViewer({
         </thead>
         <tbody>
           {rows.map(row => (
-            <tr key={row.id} onDoubleClick={() => revealStructuredRow(row)} className={rowChrome(row)}>
+            <tr key={row.id} data-structured-line={row.line} onDoubleClick={() => revealStructuredRow(row)} className={rowChrome(row)}>
               <td className={cellClass}>{renderTextCell(row.type || groupTitle[row.group], 'type')}</td>
               <td className={cellClass}>{renderDirectStructureInput(row, 'class-name', row.targetName || row.name, '类名', 'name')}</td>
               <td className={cellClass}>{renderDirectStructureInput(row, 'class-base', row.value || '', '基础类', 'type')}</td>
@@ -2538,7 +3158,7 @@ export default function DiffViewer({
             const isDesignerLink = /关联设计文件/u.test(row.name);
             const kindLabel = isDesignerLink ? '设计关联' : controlMember ? '控件成员' : '类成员';
             return (
-              <tr key={row.id} onDoubleClick={() => revealStructuredRow(row)} className={rowChrome(row)}>
+              <tr key={row.id} data-structured-line={row.line} onDoubleClick={() => revealStructuredRow(row)} className={rowChrome(row)}>
                 <td className={cellClass}>{renderDirectStructureInput(row, 'member-type', row.type || '', '类型', 'type')}</td>
                 <td className={cellClass}>{renderDirectStructureInput(row, 'member-name', row.targetName || row.name, '名称', 'name')}</td>
                 <td className={cellClass}>{renderTextCell(kindLabel, controlMember ? 'type' : 'muted')}</td>
@@ -2581,7 +3201,8 @@ export default function DiffViewer({
       if (applied) {
         setSelectedBeginnerHandler(handlerName);
         setSelectedBeginnerCodeTarget({ className, methodName: handlerName });
-        scrollToStructureSection('code');
+        setExpandedBeginnerEventTargetKey(`${className}:event:${handlerName}`);
+        window.requestAnimationFrame(() => scrollToStructureSection('event'));
       }
     };
 
@@ -2604,39 +3225,80 @@ export default function DiffViewer({
             </tr>
           </thead>
           <tbody>
-            {allRows.map(row => (
-              <tr
-                key={row.id}
-                onClick={() => {
-                  if (row.editKind === 'event' && row.targetName) {
-                    setSelectedBeginnerCodeTarget({ className: row.className, methodName: row.targetName });
-                    setSelectedBeginnerHandler(row.targetName);
-                    scrollToStructureSection('code');
-                    return;
-                  }
-                  if (row.editKind === 'missing-event' || row.status === 'missing-source') {
-                    generateMissingDesignerEvent(row);
-                  }
-                }}
-                onDoubleClick={() => revealStructuredRow(row)}
-                className={`${rowChrome(row)} cursor-pointer`}
-              >
-                <td className={cellClass}>{renderTextCell(row.type || row.name, 'type')}</td>
-                <td className={cellClass}>{renderDirectStructureInput(row, 'event-handler', row.targetName || row.name, '处理器', 'name')}</td>
-                <td className={cellClass}>{renderStatusCell(row)}</td>
-                <td className={cellClass}>{renderDirectStructureInput(row, 'event-parameters', formatParameterDraft(row.parameters), '参数', 'plain')}</td>
-                <td className={`${cellClass} text-right tabular-nums`}>{renderTextCell(row.line, 'muted')}</td>
-                <td className={cellClass}>{renderTextCell(row.note, 'muted')}</td>
-              </tr>
-            ))}
+            {allRows.map(row => {
+              const target = row.editKind === 'event'
+                ? codeTargets.find(item =>
+                    item.className === row.className &&
+                    item.method.kind === 'event' &&
+                    item.method.name === (row.targetName || row.name)
+                  )
+                : undefined;
+              const selected = Boolean(target && expandedBeginnerEventTargetKey === codeTargetKey(target));
+
+              return (
+                <React.Fragment key={row.id}>
+                  <tr
+                    data-structured-line={row.line}
+                    onClick={() => {
+                      if (target) {
+                        toggleInlineCodeTarget(target);
+                        return;
+                      }
+                      if (row.editKind === 'missing-event' || row.status === 'missing-source') {
+                        generateMissingDesignerEvent(row);
+                      }
+                    }}
+                    onDoubleClick={() => revealStructuredRow(row)}
+                    className={`${selected ? isDarkMode ? 'bg-cyan-500/10' : 'bg-cyan-50' : rowChrome(row)} cursor-pointer`}
+                    title={row.editKind === 'event' ? '单击后直接编写事件代码' : undefined}
+                  >
+                    <td className={cellClass}>
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        {target ? (
+                          selected
+                            ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+                            : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                        ) : null}
+                        {renderTextCell(row.type || row.name, 'type')}
+                      </div>
+                    </td>
+                    <td className={cellClass}>{renderDirectStructureInput(row, 'event-handler', row.targetName || row.name, '处理器', 'name')}</td>
+                    <td className={cellClass}>{renderStatusCell(row)}</td>
+                    <td className={cellClass}>
+                      {row.editKind === 'event'
+                        ? renderParameterSummary(row.parameters)
+                        : renderTextCell(formatParameterDraft(row.parameters) || '生成后逐行添加', 'muted')}
+                    </td>
+                    <td className={`${cellClass} text-right tabular-nums`}>{renderTextCell(row.line, 'muted')}</td>
+                    <td className={cellClass}>{renderTextCell(row.note || (row.editKind === 'event' ? '单击编写' : ''), 'muted')}</td>
+                  </tr>
+                  {target && selected && (
+                    <tr className={isDarkMode ? 'bg-[#111217]' : 'bg-slate-50'}>
+                      <td colSpan={6} className={`p-0 ${isDarkMode ? 'border-b border-[#2b2d34]' : 'border-b border-slate-200'}`}>
+                        <div className="min-w-[820px]">
+                          <div className={`border-b px-2 py-1.5 text-[10px] font-semibold ${
+                            isDarkMode ? 'border-[#2b2d34] text-cyan-300' : 'border-slate-200 text-cyan-700'
+                          }`}>
+                            事件实现
+                          </div>
+                          {renderProcessPropertyTable(target)}
+                          {renderEventFunctionCallBar(target)}
+                          {renderCodeBodyEditor(target, true)}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
             {primaryLingCppClass && (
               <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
                 <td className={cellClass}>{renderTextCell('自定义事件', 'type')}</td>
                 <td className={cellClass}>{renderNewEventInput('handlerName', '输入处理器名', 'name')}</td>
                 <td className={cellClass}>{renderTextCell('新事件', 'muted')}</td>
-                <td className={cellClass}>{renderNewEventInput('parameters', '参数', 'plain')}</td>
+                <td className={cellClass}>{renderTextCell('生成后逐行添加', 'muted')}</td>
                 <td className={`${cellClass} text-right`}>{renderTextCell('新', 'muted')}</td>
-                <td className={cellClass}>{renderTextCell('输入处理器名后自动写回源码', 'muted')}</td>
+                <td className={cellClass}>{renderTextCell('输入处理器名后自动生成并展开', 'muted')}</td>
               </tr>
             )}
           </tbody>
@@ -2666,6 +3328,7 @@ export default function DiffViewer({
             return (
               <tr
                 key={row.id}
+                data-structured-line={row.line}
                 onClick={() => {
                   if (row.targetName) {
                     setSelectedBeginnerCodeTarget({ className: row.className, methodName: row.targetName });
@@ -2717,34 +3380,39 @@ export default function DiffViewer({
           </tr>
         </thead>
         <tbody>
-          {rows.map(row => {
-            const target = functionTargets.find(item =>
-              item.className === row.className &&
-              item.method.name === (row.targetName || row.name)
-            );
-            const selected = Boolean(
-              target &&
-              activeCodeTarget?.method.kind === 'method' &&
-              activeCodeTarget.className === target.className &&
-              activeCodeTarget.method.name === target.method.name
-            );
+            {rows.map(row => {
+              const target = functionTargets.find(item =>
+                item.className === row.className &&
+                item.method.name === (row.targetName || row.name)
+              );
+            const selected = Boolean(target && expandedBeginnerFunctionTargetKey === codeTargetKey(target));
 
             return (
               <React.Fragment key={row.id}>
                 <tr
+                  data-structured-line={row.line}
                   onClick={() => {
-                    if (row.targetName) {
-                      setSelectedBeginnerCodeTarget({ className: row.className, methodName: row.targetName });
-                    }
+                    if (target) toggleInlineCodeTarget(target);
                   }}
                   onDoubleClick={() => revealStructuredRow(row)}
                   className={`${selected ? isDarkMode ? 'bg-cyan-500/10' : 'bg-cyan-50' : rowChrome(row)} cursor-pointer`}
                   title="单击后在下方直接编写功能代码"
                 >
                   <td className={cellClass}>{renderDirectStructureInput(row, 'method-return', row.returnType || row.type || '空', '返回值', 'type')}</td>
-                  <td className={cellClass}>{renderDirectStructureInput(row, 'method-name', row.targetName || row.name, '功能名', 'name')}</td>
+                  <td className={cellClass}>
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      {target ? (
+                        selected
+                          ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+                          : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                      ) : null}
+                      <div className="min-w-0 flex-1">
+                        {renderDirectStructureInput(row, 'method-name', row.targetName || row.name, '功能名', 'name')}
+                      </div>
+                    </div>
+                  </td>
                   <td className={cellClass}>{renderParameterSummary(row.parameters)}</td>
-                  <td className={cellClass}>{renderTextCell(formatFunctionCall(row.targetName || row.name, row.parameters), 'value')}</td>
+                  <td className={cellClass}>{renderFunctionCallTemplatePreview(row.targetName || row.name, row.parameters, true)}</td>
                   <td className={`${cellClass} text-right tabular-nums`}>{renderTextCell(row.line, 'muted')}</td>
                   <td className={cellClass}>{renderTextCell(row.note || '单击编写', 'muted')}</td>
                 </tr>
@@ -2770,10 +3438,10 @@ export default function DiffViewer({
             <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
               <td className={cellClass}>{renderNewFunctionInput('returnType', '空', 'type')}</td>
               <td className={cellClass}>{renderNewFunctionInput('name', '输入功能名', 'name')}</td>
-              <td className={cellClass}>{renderNewFunctionInput('parameters', '文本型 文本, 整数型 次数', 'plain')}</td>
+              <td className={cellClass}>{renderTextCell('生成后逐行添加', 'muted')}</td>
               <td className={cellClass}>{renderTextCell('功能名("文本", 0)', 'muted')}</td>
               <td className={`${cellClass} text-right`}>{renderTextCell('新', 'muted')}</td>
-              <td className={cellClass}>{renderTextCell('输入功能名后自动新增', 'muted')}</td>
+              <td className={cellClass}>{renderTextCell('输入功能名后自动新增并展开', 'muted')}</td>
             </tr>
           )}
         </tbody>
@@ -2822,42 +3490,7 @@ export default function DiffViewer({
             </div>
             <div className="min-w-0">
               {renderProcessPropertyTable(activeCodeTarget)}
-              {activeCodeTarget.method.kind === 'event' && functionTargets.length > 0 && (
-                <div className={`flex min-h-[34px] items-center gap-2 border-b px-2 ${
-                  isDarkMode ? 'border-[#2b2d34] bg-[#121318]' : 'border-slate-200 bg-slate-50'
-                }`}>
-                  <span className={`shrink-0 text-[10px] font-semibold ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>调用功能</span>
-                  <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-                    {functionTargets.map(target => (
-                      <button
-                        key={`${target.className}:${target.method.name}:call`}
-                        type="button"
-                        onClick={() => {
-                          const currentBody = methodBodyText(activeCodeTarget.method);
-                          const callText = formatFunctionCall(target.method.name, target.method.parameters);
-                          const nextBody = currentBody.trim()
-                            ? `${currentBody}\n${callText}`
-                            : callText;
-                          commitBeginnerCodeBody(
-                            activeCodeTarget.className,
-                            activeCodeTarget.method.name,
-                            currentBody,
-                            nextBody
-                          );
-                        }}
-                        className={`max-w-[220px] shrink-0 truncate rounded border px-2 py-1 text-[10px] font-semibold transition-colors ${
-                          isDarkMode
-                            ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
-                            : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                        }`}
-                        title={`向当前事件追加：${formatFunctionCall(target.method.name, target.method.parameters)}`}
-                      >
-                        {formatFunctionCall(target.method.name, target.method.parameters)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {renderEventFunctionCallBar(activeCodeTarget)}
               <div className={`grid grid-cols-[54px_minmax(0,1fr)] border-b text-[10px] font-semibold ${
                 isDarkMode ? 'border-[#2b2d34] bg-[#111217] text-slate-500' : 'border-slate-200 bg-slate-50 text-slate-500'
               }`}>
@@ -3094,6 +3727,293 @@ export default function DiffViewer({
         )}
       </div>
     </aside>
+  );
+
+  const renderNativePreviewEditor = () => (
+    <div className={`flex-1 min-h-0 flex flex-col overflow-hidden ${
+      isDarkMode ? 'bg-[#18181f]' : 'bg-white'
+    }`}>
+      <div className={`border-b px-3 py-2 ${
+        isDarkMode ? 'border-[#2d2d34] bg-[#18181f]' : 'border-slate-200 bg-white'
+      }`}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Code className="w-3.5 h-3.5 text-blue-400" />
+            <span className={`text-[11px] font-semibold ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>原生 C++ 预览</span>
+            <span className="text-[10px] text-slate-500">只读生成结果</span>
+            {nativePreviewState?.selectedWindowTitle && (
+              <span className="text-[10px] text-slate-500 truncate max-w-[240px]">{nativePreviewState.selectedWindowTitle}</span>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => void refreshNativePreview()}
+              className={`inline-flex h-7 items-center gap-1 rounded border px-2 text-[10px] font-semibold transition-colors ${
+                isDarkMode
+                  ? 'border-[#343442] bg-[#25252b] text-slate-300 hover:bg-[#30303a] hover:text-white'
+                  : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+              }`}
+            >
+              <RefreshCw className={`w-3 h-3 ${isNativePreviewLoading ? 'animate-spin' : ''}`} />
+              刷新
+            </button>
+            <button
+              type="button"
+              onClick={() => selectedNativePreviewFile && navigator.clipboard.writeText(selectedNativePreviewFile.content)}
+              disabled={!selectedNativePreviewFile}
+              className={`inline-flex h-7 items-center gap-1 rounded border px-2 text-[10px] font-semibold transition-colors disabled:opacity-40 ${
+                isDarkMode
+                  ? 'border-[#343442] bg-[#25252b] text-slate-300 hover:bg-[#30303a] hover:text-white'
+                  : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+              }`}
+            >
+              <Copy className="w-3 h-3" />
+              复制
+            </button>
+            <button
+              type="button"
+              onClick={() => void openNativeExportDirectory()}
+              className={`inline-flex h-7 items-center gap-1 rounded border px-2 text-[10px] font-semibold transition-colors ${
+                isDarkMode
+                  ? 'border-[#343442] bg-[#25252b] text-slate-300 hover:bg-[#30303a] hover:text-white'
+                  : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+              }`}
+            >
+              <FolderOpen className="w-3 h-3" />
+              打开目录
+            </button>
+            <button
+              type="button"
+              onClick={() => void exportNativePreview()}
+              className={`inline-flex h-7 items-center gap-1 rounded border px-2 text-[10px] font-semibold transition-colors ${
+                isDarkMode
+                  ? 'border-[#343442] bg-[#25252b] text-slate-300 hover:bg-[#30303a] hover:text-white'
+                  : 'border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 hover:text-slate-950'
+              }`}
+            >
+              <ExternalLink className="w-3 h-3" />
+              导出工程
+            </button>
+            <button
+              type="button"
+              onClick={() => void buildAndRunNativePreview()}
+              className={`inline-flex h-7 items-center gap-1 rounded border px-2 text-[10px] font-semibold transition-colors ${
+                isDarkMode
+                  ? 'border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20'
+                  : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+              }`}
+            >
+              <PlayCircle className="w-3 h-3" />
+              编译运行
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowNativeImportPanel(current => !current)}
+              className={`inline-flex h-7 items-center gap-1 rounded border px-2 text-[10px] font-semibold transition-colors ${
+                isDarkMode
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+              }`}
+            >
+              <FileInput className="w-3 h-3" />
+              导入 C++
+            </button>
+          </div>
+        </div>
+        {nativePreviewState?.enabledModules?.length ? (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {nativePreviewState.enabledModules.map(moduleName => (
+              <span
+                key={moduleName}
+                className={`rounded border px-1.5 py-0.5 text-[9px] ${
+                  isDarkMode ? 'border-[#343442] bg-[#121218] text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'
+                }`}
+              >
+                {moduleName}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <div className={`flex min-h-0 flex-1 ${showNativeImportPanel ? 'divide-x' : ''} ${isDarkMode ? 'divide-[#2d2d34]' : 'divide-slate-200'}`}>
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div className={`flex items-center gap-1 overflow-x-auto border-b px-2 py-1 ${
+            isDarkMode ? 'border-[#2d2d34] bg-[#111118]' : 'border-slate-200 bg-slate-50'
+          }`}>
+            {(nativePreviewState?.files || []).map(file => {
+              const selected = file.relativePath === selectedNativePreviewFile?.relativePath;
+              return (
+                <button
+                  key={file.relativePath}
+                  type="button"
+                  onClick={() => setNativePreviewState(current => current ? { ...current, selectedFilePath: file.relativePath } : current)}
+                  className={`shrink-0 rounded px-2 py-1 text-[10px] font-semibold transition-colors ${
+                    selected
+                      ? isDarkMode ? 'bg-blue-500/20 text-blue-300' : 'bg-blue-100 text-blue-700'
+                      : isDarkMode ? 'text-slate-400 hover:bg-[#1c1c24] hover:text-slate-200' : 'text-slate-500 hover:bg-white hover:text-slate-800'
+                  }`}
+                >
+                  {file.relativePath}
+                </button>
+              );
+            })}
+          </div>
+          <div className="min-h-0 flex-1">
+            {selectedNativePreviewFile ? (
+              <MonacoCodeEditor
+                sourceCode={selectedNativePreviewFile.content}
+                language={selectedNativePreviewFile.language === 'text' ? 'plaintext' : selectedNativePreviewFile.language}
+                isDarkMode={isDarkMode}
+                readOnly
+                onChange={() => {}}
+                editorFontSize={editorFontSize}
+                onFontSizeChange={onFontSizeChange}
+                filePath={selectedNativePreviewFile.relativePath}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-xs text-slate-500">暂无原生预览文件</div>
+            )}
+          </div>
+        </div>
+
+        {showNativeImportPanel && (
+          <aside className={`flex w-[420px] max-w-[42%] flex-col overflow-hidden ${
+            isDarkMode ? 'bg-[#15151b]' : 'bg-white'
+          }`}>
+            <div className={`border-b px-3 py-2 ${isDarkMode ? 'border-[#2d2d34] bg-[#18181f]' : 'border-slate-200 bg-slate-50'}`}>
+              <div className={`text-[11px] font-semibold ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>原生 C++ 适配</div>
+              <div className="mt-0.5 text-[10px] text-slate-500">识别窗口、控件、事件和功能代码，未识别行保留为 @</div>
+            </div>
+            <div className="flex-1 overflow-auto p-3">
+              <label className="block">
+                <span className={`mb-1 block text-[10px] font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>原生 C++</span>
+                <textarea
+                  value={nativeImportSource}
+                  onChange={event => setNativeImportSource(event.target.value)}
+                  placeholder="粘贴 main.cpp 或窗口类代码"
+                  className={`min-h-[180px] w-full rounded border px-2 py-2 font-mono text-[11px] outline-none ${
+                    isDarkMode ? 'border-[#343442] bg-[#0f1015] text-slate-100 placeholder:text-slate-600' : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400'
+                  }`}
+                />
+              </label>
+              <label className="mt-3 block">
+                <span className={`mb-1 block text-[10px] font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>导出 manifest（可选）</span>
+                <textarea
+                  value={nativeImportManifest}
+                  onChange={event => setNativeImportManifest(event.target.value)}
+                  placeholder="可粘贴 lingbuilder-native-manifest.json 提高识别准确度"
+                  className={`min-h-[92px] w-full rounded border px-2 py-2 font-mono text-[11px] outline-none ${
+                    isDarkMode ? 'border-[#343442] bg-[#0f1015] text-slate-100 placeholder:text-slate-600' : 'border-slate-200 bg-white text-slate-900 placeholder:text-slate-400'
+                  }`}
+                />
+              </label>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleRunNativeImport}
+                  className={`rounded border px-2 py-1 text-[10px] font-semibold ${
+                    isDarkMode ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20' : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  }`}
+                >
+                  转换预览
+                </button>
+                {nativeImportResult && (
+                  <button
+                    type="button"
+                    onClick={() => applyNativeImportResult(nativeImportResult)}
+                    className={`rounded border px-2 py-1 text-[10px] font-semibold ${
+                      isDarkMode ? 'border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                    }`}
+                  >
+                    应用到 .lcpp
+                  </button>
+                )}
+              </div>
+              {nativeImportError && <div className="mt-2 text-[10px] text-rose-400">{nativeImportError}</div>}
+              {nativeImportResult && (
+                <div className="mt-3 space-y-3">
+                  <div>
+                    <div className={`mb-1 text-[10px] font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>识别报告</div>
+                    <div className={`rounded border p-2 text-[10px] ${
+                      isDarkMode ? 'border-[#343442] bg-[#0f1015] text-slate-300' : 'border-slate-200 bg-slate-50 text-slate-700'
+                    }`}>
+                      {nativeImportResult.report.map(item => <div key={item}>{item}</div>)}
+                      {nativeImportResult.diagnostics.map(item => <div key={item} className="text-amber-500">{item}</div>)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className={`mb-1 text-[10px] font-semibold ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>生成的 .lcpp 预览</div>
+                    <textarea
+                      readOnly
+                      value={nativeImportResult.lcppSource}
+                      className={`min-h-[180px] w-full rounded border px-2 py-2 font-mono text-[11px] outline-none ${
+                        isDarkMode ? 'border-[#343442] bg-[#0f1015] text-slate-100' : 'border-slate-200 bg-white text-slate-900'
+                      }`}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          </aside>
+        )}
+      </div>
+
+      <div className={`border-t ${isDarkMode ? 'border-[#2d2d34] bg-[#111118]' : 'border-slate-200 bg-slate-50'}`}>
+        {nativePreviewError && (
+          <div className="border-b border-rose-500/20 px-3 py-2 text-[10px] text-rose-400">{nativePreviewError}</div>
+        )}
+        {nativePreviewState?.diagnostics?.length ? (
+          <div className="border-b border-amber-500/20 px-3 py-2">
+            <div className="mb-1 text-[10px] font-semibold text-amber-400">生成诊断</div>
+            <div className="space-y-1 text-[10px] text-slate-300">
+              {nativePreviewState.diagnostics.map(item => <div key={item}>{item}</div>)}
+            </div>
+          </div>
+        ) : null}
+        {nativeMappedDiagnostics.length ? (
+          <div className="px-3 py-2">
+            <div className="mb-1 text-[10px] font-semibold text-rose-400">编译定位</div>
+            <div className="space-y-1">
+              {nativeMappedDiagnostics.map(item => (
+                <div
+                  key={item.id}
+                  className={`flex flex-wrap items-center gap-2 rounded border px-2 py-1 text-[10px] ${
+                    isDarkMode ? 'border-[#343442] bg-[#18181f] text-slate-300' : 'border-slate-200 bg-white text-slate-700'
+                  }`}
+                >
+                  <span className="font-mono text-rose-400">C++ 第 {item.generatedLine} 行</span>
+                  <span className="min-w-0 flex-1">{item.message}</span>
+                  {item.sourceLine ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => revealNativeSourceLine(item.sourceLine!, false)}
+                        className="rounded border border-cyan-500/30 px-1.5 py-0.5 text-[9px] font-semibold text-cyan-300"
+                      >
+                        源码第 {item.sourceLine} 行
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => revealNativeSourceLine(item.sourceLine!, true)}
+                        className="rounded border border-emerald-500/30 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-300"
+                      >
+                        结构定位
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : nativePreviewState?.lastBuildLogs?.length ? (
+          <div className="px-3 py-2 text-[10px] text-slate-400">
+            {nativePreviewState.lastBuildLogs.slice(-6).map((item, index) => <div key={`${index}-${item}`}>{item}</div>)}
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 
   const renderLingCppStructureTableEditor = () => (
@@ -3719,7 +4639,7 @@ export default function DiffViewer({
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5 overflow-x-auto shrink-0 max-w-[70%]">
+              <div className="flex items-center gap-1.5 shrink-0">
                 {activeFile?.language === 'lingcpp' && (
                   <div className={`flex rounded border p-0.5 ${
                     isDarkMode ? 'bg-[#25252b] border-[#343442]' : 'bg-slate-50 border-slate-200'
@@ -3746,14 +4666,42 @@ export default function DiffViewer({
                     >
                       专业
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => onExperienceModeChange?.('native')}
+                      className={`px-2 py-0.5 text-[10px] rounded font-semibold ${
+                        editorExperienceMode === 'native'
+                          ? isDarkMode ? 'bg-blue-500/20 text-blue-300' : 'bg-blue-100 text-blue-700'
+                          : isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      原生
+                    </button>
                   </div>
                 )}
-                {activeFile?.language === 'lingcpp' && !isLingCppBeginnerStructureMode && (
+              </div>
+            </div>
+
+            {!isLingCppBeginnerStructureMode && !isLingCppNativeMode && (
+              <div className={`min-h-9 px-3 py-1.5 border-b shrink-0 flex items-center justify-between gap-3 ${
+                isDarkMode ? 'bg-[#15151b] border-[#2d2d34]' : 'bg-slate-50 border-slate-200'
+              }`}>
+                <div className="flex min-w-0 items-center gap-2">
+                  <ListTree className={`w-3.5 h-3.5 shrink-0 ${isDarkMode ? 'text-cyan-300' : 'text-cyan-700'}`} />
+                  <span className={`text-[10px] font-semibold whitespace-nowrap ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    {activeFile?.language === 'lingcpp' ? '专业源码工具' : '源码工具'}
+                  </span>
+                  <span className={`hidden min-w-0 truncate text-[10px] md:block ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
+                    {activeFile?.language === 'lingcpp' ? '整理格式、插入中文结构和常用语句' : '快速插入常用代码片段'}
+                  </span>
+                </div>
+                <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5 overflow-x-auto">
+                {activeFile?.language === 'lingcpp' && !isLingCppBeginnerStructureMode && !isLingCppNativeMode && (
                   <button
                     type="button"
                     onClick={() => window.dispatchEvent(new CustomEvent('lingcpp-format-document', { detail: { filePath: activeFile?.path } }))}
                     title="整理成易读格式"
-                    className={`px-2 py-1 text-[10.5px] rounded border font-semibold cursor-pointer transition-colors whitespace-nowrap inline-flex items-center gap-1 ${
+                    className={`inline-flex h-7 items-center gap-1 rounded border px-2 text-[10px] font-semibold cursor-pointer transition-colors whitespace-nowrap ${
                       isDarkMode
                         ? 'bg-[#25252b] border-[#343442] text-slate-300 hover:text-white hover:bg-[#30303a]'
                         : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-950'
@@ -3763,14 +4711,14 @@ export default function DiffViewer({
                     <span>整理</span>
                   </button>
                 )}
-                {!isLingCppBeginnerStructureMode && quickChineseSnippets.map(snippet => (
+                {!isLingCppBeginnerStructureMode && !isLingCppNativeMode && quickChineseSnippets.map(snippet => (
                   <button
                     key={snippet.label}
                     type="button"
                     onClick={() => insertSourceSnippet(snippet.text)}
                     disabled={!onUpdateSourceContent}
                     title={`插入 ${snippet.label}`}
-                    className={`px-2 py-1 text-[10.5px] rounded border font-semibold cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 transition-colors whitespace-nowrap ${
+                    className={`h-7 rounded border px-2 text-[10px] font-semibold cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 transition-colors whitespace-nowrap ${
                       isDarkMode
                         ? 'bg-[#25252b] border-[#343442] text-slate-300 hover:text-white hover:bg-[#30303a]'
                         : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-950'
@@ -3779,12 +4727,15 @@ export default function DiffViewer({
                     {snippet.label}
                   </button>
                 ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="flex-1 min-h-0 flex overflow-hidden">
               {isLingCppBeginnerStructureMode ? (
                 renderLingCppStructureTableEditor()
+              ) : isLingCppNativeMode ? (
+                renderNativePreviewEditor()
               ) : (
                 <MonacoCodeEditor
                   sourceCode={normalizedSourceCode}

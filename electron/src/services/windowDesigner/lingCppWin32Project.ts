@@ -1,6 +1,15 @@
 import { LingControl, LingWindowModel, LingWindowProject } from './types';
+import { getLingWindowSourceFileName } from './windowDesignerService';
 import { findLingCppMethod, parseLingCpp } from '../lingCpp/parser';
-import { LingCppAst, LingCppClass, LingCppMethod, LingCppParameter, LingCppProgram } from '../lingCpp/types';
+import {
+  LingCppAst,
+  LingCppClass,
+  LingCppMethod,
+  LingCppNativeSourceMapEntry,
+  LingCppParameter,
+  LingCppProgram,
+  LingCppStatement
+} from '../lingCpp/types';
 import { InstalledModule } from '../modules/types';
 
 export interface LingCppNativeProjectFile {
@@ -12,12 +21,26 @@ export interface GeneratedLingCppNativeProject {
   files: LingCppNativeProjectFile[];
   selectedWindow: LingWindowModel;
   diagnostics: string[];
+  sourceMap: LingCppNativeSourceMapEntry[];
 }
 
 export interface GenerateLingCppNativeWin32ProjectOptions {
   activeWindowId?: string;
   lingCppSourceCode?: string;
+  lingCppSourceFilePath?: string;
   enabledModules?: InstalledModule[];
+}
+
+interface GeneratedWindowClassBlock {
+  code: string;
+  sourceMap: LingCppNativeSourceMapEntry[];
+}
+
+interface TranslatedStatementLine {
+  code: string;
+  sourceStartLine: number;
+  sourceEndLine: number;
+  kind: 'statement' | 'native-cpp';
 }
 
 const TITLE_BAR_HEIGHT = 28;
@@ -30,14 +53,19 @@ export function generateLingCppNativeWin32Project(
   const sourceCode = options.lingCppSourceCode || '';
   const parseResult = parseLingCpp(sourceCode);
   const enabledModules = options.enabledModules || [];
+  const sourceFilePath = options.lingCppSourceFilePath || getLingWindowSourceFileName(selectedWindow.fileName, selectedWindow.className);
+  const mainCppContent = generateMainCpp(project, selectedWindow, parseResult.ast, enabledModules);
+  const sourceMap = generateLingCppNativeSourceMap(mainCppContent, project, parseResult.program, sourceFilePath);
+  const manifestContent = generateNativeManifest(project, selectedWindow, enabledModules, sourceFilePath, sourceMap);
 
   return {
     selectedWindow,
     diagnostics: parseResult.diagnostics.map(diagnostic => `第 ${diagnostic.line} 行：${diagnostic.message}`),
+    sourceMap,
     files: [
       {
         relativePath: 'main.cpp',
-        content: generateMainCpp(project, selectedWindow, parseResult.ast, enabledModules)
+        content: mainCppContent
       },
       {
         relativePath: 'layout.json',
@@ -59,6 +87,10 @@ export function generateLingCppNativeWin32Project(
           'This folder is generated from .lcpp source and the visual designer model.',
           'The generated main.cpp uses C++ classes for windows and dispatches UI events to class methods.'
         ].join('\n')
+      },
+      {
+        relativePath: 'lingbuilder-native-manifest.json',
+        content: manifestContent
       }
     ]
   };
@@ -516,6 +548,345 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
 `;
 }
 
+function generateNativeManifest(
+  project: LingWindowProject,
+  selectedWindow: LingWindowModel,
+  enabledModules: InstalledModule[],
+  sourceFilePath: string,
+  sourceMap: LingCppNativeSourceMapEntry[]
+): string {
+  return JSON.stringify({
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    project: {
+      id: project.id,
+      name: project.name
+    },
+    selectedWindow: {
+      id: selectedWindow.id,
+      fileName: selectedWindow.fileName,
+      className: selectedWindow.className,
+      title: selectedWindow.title
+    },
+    sourceFilePath,
+    modules: enabledModules.map(module => ({
+      id: module.manifest.id,
+      name: module.manifest.name,
+      version: module.manifest.version,
+      builtin: Boolean(module.isBuiltin)
+    })),
+    files: ['main.cpp', 'layout.json', 'module-dependencies.txt', 'README.txt', 'lingbuilder-native-manifest.json'],
+    sourceMap
+  }, null, 2);
+}
+
+function generateLingCppNativeSourceMap(
+  mainCppContent: string,
+  project: LingWindowProject,
+  program: LingCppProgram,
+  sourceFilePath: string
+): LingCppNativeSourceMapEntry[] {
+  const lines = mainCppContent.split('\n');
+  const entries: LingCppNativeSourceMapEntry[] = [];
+  project.windows.forEach(window => {
+    const sourceClass = findLingCppClassForWindow(program, window);
+    const className = sourceClass?.name || window.className;
+    const classBoundary = findGeneratedClassBoundary(lines, toCppIdentifier(window.className));
+
+    if (sourceClass && classBoundary) {
+      entries.push({
+        generatedFile: 'main.cpp',
+        generatedStartLine: classBoundary.startLine,
+        generatedEndLine: classBoundary.endLine,
+        sourceFile: sourceFilePath,
+        sourceStartLine: sourceClass.line,
+        sourceEndLine: sourceClass.endLine || sourceClass.line,
+        kind: 'class',
+        symbolName: sourceClass.name,
+        className: sourceClass.name
+      });
+    }
+
+    const handlers = getWindowHandlers(window);
+    const windowCreatedHandler = findWindowCreatedHandler(window, program);
+    const methodHandlers = windowCreatedHandler
+      ? [windowCreatedHandler, ...handlers.filter(handler => handler !== windowCreatedHandler)]
+      : handlers;
+
+    methodHandlers.forEach(handler => {
+      const method = findLingCppMethod(program, handler);
+      if (!method) return;
+      const boundary = findGeneratedMethodBoundary(lines, toCppIdentifier(handler), classBoundary);
+      if (!boundary) return;
+      entries.push({
+        generatedFile: 'main.cpp',
+        generatedStartLine: boundary.startLine,
+        generatedEndLine: boundary.endLine,
+        sourceFile: sourceFilePath,
+        sourceStartLine: method.line,
+        sourceEndLine: method.endLine || method.line,
+        kind: 'event',
+        symbolName: method.name,
+        className
+      });
+
+      const statementEntries = translateMethodStatementsWithMetadata(method);
+      let searchLine = boundary.startLine + 1;
+      statementEntries.forEach(statement => {
+        const targetLine = findGeneratedStatementLine(lines, statement.code, searchLine, boundary.endLine);
+        if (targetLine === -1) return;
+        entries.push({
+          generatedFile: 'main.cpp',
+          generatedStartLine: targetLine,
+          generatedEndLine: targetLine,
+          sourceFile: sourceFilePath,
+          sourceStartLine: statement.sourceStartLine,
+          sourceEndLine: statement.sourceEndLine,
+          kind: statement.kind,
+          symbolName: method.name,
+          className
+        });
+        searchLine = targetLine + 1;
+      });
+    });
+
+    (sourceClass?.methods || [])
+      .filter(method => method.kind === 'method')
+      .forEach(method => {
+        const boundary = findGeneratedMethodBoundary(lines, toCppIdentifier(method.name), classBoundary);
+        if (!boundary) return;
+        entries.push({
+          generatedFile: 'main.cpp',
+          generatedStartLine: boundary.startLine,
+          generatedEndLine: boundary.endLine,
+          sourceFile: sourceFilePath,
+          sourceStartLine: method.line,
+          sourceEndLine: method.endLine || method.line,
+          kind: 'method',
+          symbolName: method.name,
+          className
+        });
+
+        const statementEntries = translateMethodStatementsWithMetadata(method);
+        let searchLine = boundary.startLine + 1;
+        statementEntries.forEach(statement => {
+          const targetLine = findGeneratedStatementLine(lines, statement.code, searchLine, boundary.endLine);
+          if (targetLine === -1) return;
+          entries.push({
+            generatedFile: 'main.cpp',
+            generatedStartLine: targetLine,
+            generatedEndLine: targetLine,
+            sourceFile: sourceFilePath,
+            sourceStartLine: statement.sourceStartLine,
+            sourceEndLine: statement.sourceEndLine,
+            kind: statement.kind,
+            symbolName: method.name,
+            className
+          });
+          searchLine = targetLine + 1;
+        });
+      });
+  });
+
+  return entries;
+}
+
+function buildWindowClassSourceMap(
+  classCode: string,
+  window: LingWindowModel,
+  program: LingCppProgram,
+  sourceFilePath: string
+): LingCppNativeSourceMapEntry[] {
+  const lines = classCode.split('\n');
+  const sourceClass = findLingCppClassForWindow(program, window);
+  const entries: LingCppNativeSourceMapEntry[] = [];
+  const className = sourceClass?.name || window.className;
+
+  if (sourceClass) {
+    entries.push({
+      generatedFile: 'main.cpp',
+      generatedStartLine: 1,
+      generatedEndLine: lines.length,
+      sourceFile: sourceFilePath,
+      sourceStartLine: sourceClass.line,
+      sourceEndLine: sourceClass.endLine || sourceClass.line,
+      kind: 'class',
+      symbolName: sourceClass.name,
+      className: sourceClass.name
+    });
+  }
+
+  const handlers = getWindowHandlers(window);
+  const windowCreatedHandler = findWindowCreatedHandler(window, program);
+  const methodHandlers = windowCreatedHandler
+    ? [windowCreatedHandler, ...handlers.filter(handler => handler !== windowCreatedHandler)]
+    : handlers;
+
+  methodHandlers.forEach(handler => {
+    const method = findLingCppMethod(program, handler);
+    if (!method) return;
+    const boundary = findGeneratedMethodBoundary(lines, toCppIdentifier(handler));
+    if (!boundary) return;
+    entries.push({
+      generatedFile: 'main.cpp',
+      generatedStartLine: boundary.startLine,
+      generatedEndLine: boundary.endLine,
+      sourceFile: sourceFilePath,
+      sourceStartLine: method.line,
+      sourceEndLine: method.endLine || method.line,
+      kind: 'event',
+      symbolName: method.name,
+      className
+    });
+
+    const statementEntries = translateMethodStatementsWithMetadata(method);
+    let searchLine = boundary.startLine + 1;
+    statementEntries.forEach(statement => {
+      const targetLine = findGeneratedStatementLine(lines, statement.code, searchLine, boundary.endLine);
+      if (targetLine === -1) return;
+      entries.push({
+        generatedFile: 'main.cpp',
+        generatedStartLine: targetLine,
+        generatedEndLine: targetLine,
+        sourceFile: sourceFilePath,
+        sourceStartLine: statement.sourceStartLine,
+        sourceEndLine: statement.sourceEndLine,
+        kind: statement.kind,
+        symbolName: method.name,
+        className
+      });
+      searchLine = targetLine + 1;
+    });
+  });
+
+  (sourceClass?.methods || [])
+    .filter(method => method.kind === 'method')
+    .forEach(method => {
+      const boundary = findGeneratedMethodBoundary(lines, toCppIdentifier(method.name));
+      if (!boundary) return;
+      entries.push({
+        generatedFile: 'main.cpp',
+        generatedStartLine: boundary.startLine,
+        generatedEndLine: boundary.endLine,
+        sourceFile: sourceFilePath,
+        sourceStartLine: method.line,
+        sourceEndLine: method.endLine || method.line,
+        kind: 'method',
+        symbolName: method.name,
+        className
+      });
+
+      const statementEntries = translateMethodStatementsWithMetadata(method);
+      let searchLine = boundary.startLine + 1;
+      statementEntries.forEach(statement => {
+        const targetLine = findGeneratedStatementLine(lines, statement.code, searchLine, boundary.endLine);
+        if (targetLine === -1) return;
+        entries.push({
+          generatedFile: 'main.cpp',
+          generatedStartLine: targetLine,
+          generatedEndLine: targetLine,
+          sourceFile: sourceFilePath,
+          sourceStartLine: statement.sourceStartLine,
+          sourceEndLine: statement.sourceEndLine,
+          kind: statement.kind,
+          symbolName: method.name,
+          className
+        });
+        searchLine = targetLine + 1;
+      });
+    });
+
+  return entries;
+}
+
+function findBlockStartLine(lines: string[], block: string, fromLine: number): number {
+  const blockLines = block.split('\n');
+  if (blockLines.length === 0) return -1;
+
+  for (let line = Math.max(1, fromLine); line <= lines.length - blockLines.length + 1; line += 1) {
+    let matched = true;
+    for (let offset = 0; offset < blockLines.length; offset += 1) {
+      if (lines[line + offset - 1] !== blockLines[offset]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return line;
+  }
+
+  return -1;
+}
+
+function findGeneratedClassBoundary(
+  lines: string[],
+  cppIdentifier: string
+): { startLine: number; endLine: number } | undefined {
+  const classPattern = new RegExp(`^class\\s+${escapeRegexLiteral(cppIdentifier)}\\s*:\\s*public\\s+LingWindowBase`);
+  for (let line = 1; line <= lines.length; line += 1) {
+    if (!classPattern.test((lines[line - 1] || '').trim())) continue;
+    for (let scan = line; scan <= lines.length; scan += 1) {
+      if ((lines[scan - 1] || '').trim() === '};') {
+        return { startLine: line, endLine: scan };
+      }
+    }
+  }
+  return undefined;
+}
+
+function findGeneratedMethodBoundary(
+  lines: string[],
+  cppIdentifier: string,
+  range?: { startLine: number; endLine: number }
+): { startLine: number; endLine: number } | undefined {
+  const startLine = range?.startLine || 1;
+  const endLine = range?.endLine || lines.length;
+  const declarationPatterns = [
+    new RegExp(`^\\s*void\\s+${escapeRegexLiteral(cppIdentifier)}\\s*\\(`),
+    new RegExp(`^\\s*int\\s+${escapeRegexLiteral(cppIdentifier)}\\s*\\(`),
+    new RegExp(`^\\s*long\\s+long\\s+${escapeRegexLiteral(cppIdentifier)}\\s*\\(`),
+    new RegExp(`^\\s*double\\s+${escapeRegexLiteral(cppIdentifier)}\\s*\\(`),
+    new RegExp(`^\\s*bool\\s+${escapeRegexLiteral(cppIdentifier)}\\s*\\(`),
+    new RegExp(`^\\s*unsigned\\s+char\\s+${escapeRegexLiteral(cppIdentifier)}\\s*\\(`),
+    new RegExp(`^\\s*std::wstring\\s+${escapeRegexLiteral(cppIdentifier)}\\s*\\(`),
+    new RegExp(`^\\s*HWND\\s+${escapeRegexLiteral(cppIdentifier)}\\s*\\(`),
+    new RegExp(`^\\s*void\\*\\s+${escapeRegexLiteral(cppIdentifier)}\\s*\\(`)
+  ];
+  const fallbackPattern = new RegExp(`\\b${escapeRegexLiteral(cppIdentifier)}\\s*\\(`);
+
+  for (let line = startLine; line <= endLine; line += 1) {
+    const text = lines[line - 1] || '';
+    const isDeclaration = declarationPatterns.some(pattern => pattern.test(text));
+    if (!isDeclaration && !fallbackPattern.test(text)) continue;
+    let braceDepth = 0;
+    let seenOpeningBrace = false;
+    for (let scan = line; scan <= endLine; scan += 1) {
+      const scanText = lines[scan - 1] || '';
+      for (const char of scanText) {
+        if (char === '{') {
+          braceDepth += 1;
+          seenOpeningBrace = true;
+        } else if (char === '}') {
+          braceDepth = Math.max(0, braceDepth - 1);
+        }
+      }
+      if (seenOpeningBrace && braceDepth === 0) {
+        return { startLine: line, endLine: scan };
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function findGeneratedStatementLine(lines: string[], code: string, fromLine: number, endLine: number): number {
+  for (let line = Math.max(1, fromLine); line <= Math.min(lines.length, endLine); line += 1) {
+    if ((lines[line - 1] || '').trim() === code.trim()) {
+      return line;
+    }
+  }
+  return -1;
+}
+
 function generateModuleCppPreamble(enabledModules: InstalledModule[]): string {
   const lines: string[] = [];
   enabledModules
@@ -647,7 +1018,58 @@ function defaultReturnStatement(returnType: string): string {
   return 'return 0;';
 }
 
+function translateMethodStatementsWithMetadata(method: LingCppMethod): TranslatedStatementLine[] {
+  const lines: TranslatedStatementLine[] = [];
+
+  for (let index = 0; index < method.statements.length; index += 1) {
+    const currentStatement = method.statements[index];
+    const nextStatement = method.statements[index + 1];
+    const thirdStatement = method.statements[index + 2];
+    const current = currentStatement?.text.trim() || '';
+    const next = nextStatement?.text.trim() || '';
+    const third = thirdStatement?.text.trim() || '';
+
+    if (!current || !currentStatement) continue;
+
+    const messageBox = parseMessageBox(current);
+    if (
+      messageBox &&
+      /[=＝]{1,2}\s*6/.test(current) &&
+      /^(\u7ed3\u675f)\s*[\uFF08(]?\s*[\uFF09)]?$/.test(next)
+    ) {
+      const consumesThird = third.startsWith('\u5982\u679c\u7ed3\u675f');
+      lines.push({
+        code: `if (\u4fe1\u606f\u6846(L"${escapeWideString(messageBox.text)}", ${messageBox.flags}, L"${escapeWideString(messageBox.title)}") == IDYES) { \u7ed3\u675f(); return; }`,
+        sourceStartLine: currentStatement.line,
+        sourceEndLine: consumesThird ? (thirdStatement?.line || nextStatement?.line || currentStatement.line) : (nextStatement?.line || currentStatement.line),
+        kind: 'statement'
+      });
+      index += consumesThird ? 2 : 1;
+      continue;
+    }
+
+    lines.push(translateStatementToMetadata(currentStatement));
+  }
+
+  return lines;
+}
+
+function translateStatementToMetadata(statement: LingCppStatement): TranslatedStatementLine {
+  const text = statement.text.trim();
+  const nativeCpp = parseNativeCppStatement(text);
+
+  return {
+    code: nativeCpp !== undefined ? nativeCpp : translateStatement(text),
+    sourceStartLine: statement.line,
+    sourceEndLine: statement.line,
+    kind: nativeCpp !== undefined ? 'native-cpp' : 'statement'
+  };
+}
+
 function translateMethodStatements(method: LingCppMethod): string {
+  return translateMethodStatementsWithMetadata(method)
+    .map(item => `        ${item.code}`)
+    .join('\n');
   const lines: string[] = [];
 
   for (let index = 0; index < method.statements.length; index += 1) {
@@ -939,6 +1361,10 @@ function toCppDefineIdentifier(value: string): string {
   const normalized = value.trim().replace(/[^\w]/g, '_').replace(/^_+/, '');
   const safe = normalized || 'LINGBUILDER_MODULE_DEFINE';
   return /^\d/.test(safe) ? `_${safe}` : safe;
+}
+
+function escapeRegexLiteral(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function escapeWideString(value: string): string {

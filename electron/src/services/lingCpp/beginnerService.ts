@@ -8,7 +8,7 @@ import {
 } from './types';
 import { LingControl, LingWindowProject } from '../windowDesigner/types';
 
-export type EditorExperienceMode = 'beginner' | 'professional';
+export type EditorExperienceMode = 'beginner' | 'professional' | 'native';
 
 export type BeginnerTaskKind =
   | 'create-window'

@@ -56,3 +56,28 @@ export interface LingDesignerEventInfo {
   label: string;
   desc: string;
 }
+
+export interface LingCppNativePreviewFile {
+  relativePath: string;
+  language: 'cpp' | 'json' | 'text';
+  content: string;
+  readonly: true;
+}
+
+export interface LingCppNativePreviewResult {
+  ok: boolean;
+  files: LingCppNativePreviewFile[];
+  diagnostics: string[];
+  selectedWindow: LingWindowModel;
+  enabledModules: string[];
+  sourceMap?: import('../lingCpp/types').LingCppNativeSourceMapEntry[];
+  stale?: boolean;
+}
+
+export interface NativeCppImportResult {
+  lcppSource: string;
+  designerProjectPatch: Partial<LingWindowProject>;
+  preservedNativeBlocks: string[];
+  diagnostics: string[];
+  report: string[];
+}

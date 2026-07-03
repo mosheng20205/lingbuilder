@@ -36,6 +36,7 @@ import {
   getCodeExplanation
 } from '../src/services/lingCpp/beginnerService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
+import { importNativeCppToLingBuilder } from '../src/services/windowDesigner/nativeCppImportService';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
 import { InstalledModule } from '../src/services/modules/types';
 
@@ -849,6 +850,30 @@ test('LingCpp AST edit service rewrites structural intents minimally and preserv
   assert.ok(eventCallsFunction.sourceCode.includes('        显示状态("启动", 3)'));
   assert.equal(parseLingCpp(eventCallsFunction.sourceCode).diagnostics.some(diagnostic => diagnostic.level === 'error'), false);
 
+  const addedFunctionWithDefaults = applyLingCppAstEdit(sampleSource, {
+    kind: 'add-method',
+    className: '游戏主窗体',
+    method: {
+      name: '提示玩家',
+      returnType: '空',
+      parameters: [
+        { type: '文本型', name: '标题', defaultValue: '"提示"' },
+        { type: '整数型', name: '次数', defaultValue: '1' }
+      ],
+      bodyLines: ['调试输出(标题)']
+    }
+  });
+  assert.equal(addedFunctionWithDefaults.success, true);
+  assert.ok(addedFunctionWithDefaults.sourceCode.includes('空 提示玩家(文本型 标题 = "提示", 整数型 次数 = 1)'));
+  const parsedFunctionWithDefaults = parseLingCpp(addedFunctionWithDefaults.sourceCode)
+    .program.classes[0]
+    .methods.find(method => method.name === '提示玩家');
+  assert.equal(parsedFunctionWithDefaults?.parameters[0]?.defaultValue, '"提示"');
+  assert.equal(parsedFunctionWithDefaults?.parameters[1]?.defaultValue, '1');
+  const structuredFunctionWithDefaults = getLingCppStructuredRows(buildLingCppLanguageContext(addedFunctionWithDefaults.sourceCode))
+    .find(row => row.targetName === '提示玩家');
+  assert.ok(structuredFunctionWithDefaults?.value?.includes('文本型 标题 = "提示"'));
+
   const failed = applyLingCppAstEdit(sampleSource, {
     kind: 'delete-member',
     className: '游戏主窗体',
@@ -981,6 +1006,39 @@ test('generateLingCppNativeWin32Project keeps richer control types and unsupport
   assert.ok(mainCpp.includes('// 暂不支持的中文 C++ 语句：循环'));
   assert.ok(mainCpp.includes('// 暂不支持的中文 C++ 语句：循环结束'));
   assert.ok(mainCpp.includes('return;'));
+});
+
+test('generateLingCppNativeWin32Project emits source map and native manifest', () => {
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: sampleSource,
+    lingCppSourceFilePath: 'src/MainWindow.lcpp',
+    enabledModules: [completionModule]
+  });
+
+  const manifest = generated.files.find(file => file.relativePath === 'lingbuilder-native-manifest.json');
+  assert.ok(manifest);
+  assert.ok(generated.sourceMap.some(entry => entry.symbolName.includes('\u6309\u94ae1')));
+  assert.ok(manifest?.content.includes('"sourceFilePath": "src/MainWindow.lcpp"'));
+});
+
+test('importNativeCppToLingBuilder converts generated native cpp back to lcpp structures', () => {
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: sampleSource
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const manifest = generated.files.find(file => file.relativePath === 'lingbuilder-native-manifest.json')?.content || '';
+
+  const imported = importNativeCppToLingBuilder(mainCpp, {
+    project: sampleProject,
+    activeWindowId: 'window-1',
+    manifestText: manifest
+  });
+
+  assert.ok(imported.lcppSource.includes('类'));
+  assert.ok(imported.lcppSource.includes('事件'));
+  assert.ok(imported.report.some(item => item.includes('识别控件')));
 });
 
 test('proposeLingCppEdit creates a minimal replace range from rewritten source', () => {

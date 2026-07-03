@@ -171,6 +171,100 @@ app.get("/api/modules/history", async (_req, res) => {
   }
 });
 
+app.post("/api/window-designer/native-preview", async (req, res) => {
+  const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath } = req.body as {
+    project?: LingWindowProject;
+    activeWindowId?: string;
+    lingCppSourceCode?: string;
+    lingCppSourceFilePath?: string;
+  };
+
+  if (!project || !Array.isArray(project.windows) || project.windows.length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: "缂哄皯鏈夋晥鐨勭獥鍙ｈ璁″櫒椤圭洰妯″瀷"
+    });
+  }
+
+  try {
+    const enabledModules = await getModuleService().getEnabledProjectModules(project.id || "lingbuilder-ui-project");
+    const generatedProject = generateLingCppNativeWin32Project(project, {
+      activeWindowId,
+      lingCppSourceCode: typeof lingCppSourceCode === "string" ? lingCppSourceCode : "",
+      lingCppSourceFilePath,
+      enabledModules
+    });
+
+    res.json({
+      ok: true,
+      files: generatedProject.files.map(file => ({
+        relativePath: file.relativePath,
+        language: getGeneratedFileLanguage(file.relativePath),
+        content: file.content,
+        readonly: true
+      })),
+      diagnostics: generatedProject.diagnostics,
+      selectedWindow: generatedProject.selectedWindow,
+      enabledModules: enabledModules.map(module => `${module.manifest.name} (${module.manifest.id}@${module.manifest.version})`),
+      sourceMap: generatedProject.sourceMap
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      ok: false,
+      error: error?.message || "鍘熺敓 C++ 棰勮鐢熸垚澶辫触"
+    });
+  }
+});
+
+app.post("/api/window-designer/native-export", async (req, res) => {
+  const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath } = req.body as {
+    project?: LingWindowProject;
+    activeWindowId?: string;
+    lingCppSourceCode?: string;
+    lingCppSourceFilePath?: string;
+  };
+
+  if (!project || !Array.isArray(project.windows) || project.windows.length === 0) {
+    return res.status(400).json({
+      ok: false,
+      error: "缂哄皯鏈夋晥鐨勭獥鍙ｈ璁″櫒椤圭洰妯″瀷"
+    });
+  }
+
+  try {
+    const enabledModules = await getModuleService().getEnabledProjectModules(project.id || "lingbuilder-ui-project");
+    const generatedProject = generateLingCppNativeWin32Project(project, {
+      activeWindowId,
+      lingCppSourceCode: typeof lingCppSourceCode === "string" ? lingCppSourceCode : "",
+      lingCppSourceFilePath,
+      enabledModules
+    });
+    const exportDir = path.join(getRepoWorkspaceRoot(), "generated", "cpp", sanitizeFilename(project.id || "window-preview"));
+    await fs.mkdir(exportDir, { recursive: true });
+    await writeGeneratedProjectFiles(exportDir, generatedProject.files);
+
+    res.json({
+      ok: true,
+      exportDir,
+      files: generatedProject.files.map(file => path.join(exportDir, file.relativePath)),
+      diagnostics: generatedProject.diagnostics,
+      selectedWindow: generatedProject.selectedWindow,
+      enabledModules: enabledModules.map(module => `${module.manifest.name} (${module.manifest.id}@${module.manifest.version})`),
+      sourceMap: generatedProject.sourceMap,
+      logs: [
+        `原生 C++ 工程目录：${exportDir}`,
+        `当前窗口：${generatedProject.selectedWindow.title}`,
+        ...generatedProject.diagnostics
+      ]
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      ok: false,
+      error: error?.message || "鍘熺敓 C++ 宸ョ▼瀵煎嚭澶辫触"
+    });
+  }
+});
+
 // API: Extract strings and comments from C++ code
 app.post("/api/extract", (req, res) => {
   const { code, filename } = req.body;
@@ -367,10 +461,11 @@ app.post("/api/reconstruct", (req, res) => {
 });
 
 app.post("/api/window-designer/build-run", async (req, res) => {
-  const { project, activeWindowId, lingCppSourceCode, eplSourceCode, run = true } = req.body as {
+  const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath, eplSourceCode, run = true } = req.body as {
     project?: LingWindowProject;
     activeWindowId?: string;
     lingCppSourceCode?: string;
+    lingCppSourceFilePath?: string;
     eplSourceCode?: string;
     run?: boolean;
   };
@@ -392,6 +487,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     const generatedProject = generateLingCppNativeWin32Project(project, {
       activeWindowId,
       lingCppSourceCode: sourceCode,
+      lingCppSourceFilePath,
       enabledModules
     });
     const repoRoot = getRepoWorkspaceRoot();
@@ -432,7 +528,9 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         sourceDir,
         binDir,
         objDir,
+        exportDir,
         files: generatedProject.files.map(file => path.join(sourceDir, file.relativePath)),
+        sourceMap: generatedProject.sourceMap,
         logs: [
           "已生成 Win32 C++ 工程文件。",
           ...generatedProject.diagnostics,
@@ -467,6 +565,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         objDir,
         exePath,
         compiler,
+        exportDir,
+        sourceMap: generatedProject.sourceMap,
         logs
       });
     }
@@ -499,6 +599,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       objDir,
       exePath,
       compiler,
+      exportDir,
+      sourceMap: generatedProject.sourceMap,
       logs
     });
   } catch (error: any) {
@@ -886,6 +988,23 @@ async function compileWin32Preview(
 
 function quoteCmdArg(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
+}
+
+async function writeGeneratedProjectFiles(
+  targetDirectory: string,
+  files: Array<{ relativePath: string; content: string }>
+): Promise<void> {
+  await Promise.all(files.map(async file => {
+    const targetPath = path.join(targetDirectory, file.relativePath);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.writeFile(targetPath, file.content, "utf8");
+  }));
+}
+
+function getGeneratedFileLanguage(relativePath: string): "cpp" | "json" | "text" {
+  if (relativePath.endsWith(".cpp")) return "cpp";
+  if (relativePath.endsWith(".json")) return "json";
+  return "text";
 }
 
 async function pathExists(value: string): Promise<boolean> {

@@ -9,4 +9,7 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     isMaximized: () => ipcRenderer.invoke('window:is-maximized'),
     close: () => ipcRenderer.invoke('window:close'),
   },
+  shell: {
+    openPath: (targetPath: string) => ipcRenderer.invoke('shell:open-path', targetPath),
+  },
 });

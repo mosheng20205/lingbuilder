@@ -347,17 +347,91 @@ function appendStatement(method: LingCppMethod | null, line: string, lineNumber:
 }
 
 function parseParameters(raw: string): LingCppParameter[] {
-  return raw
-    .split(/[,，]/)
+  return splitParameterParts(raw)
     .map(part => part.trim())
     .filter(Boolean)
     .map(part => {
-      const [type, name] = part.split(/\s+/);
-      return {
+      const { definition, defaultValue } = splitParameterDefault(part);
+      const [type, ...nameParts] = definition.split(/\s+/u).filter(Boolean);
+      const name = nameParts.join('');
+      const parameter: LingCppParameter = {
         type: name ? type : '对象',
         name: name || type
       };
+      if (defaultValue) parameter.defaultValue = defaultValue;
+      return parameter;
     });
+}
+
+function splitParameterParts(raw: string): string[] {
+  const parts: string[] = [];
+  let current = '';
+  let quote: string | null = null;
+  let depth = 0;
+
+  for (const char of raw) {
+    if (quote) {
+      current += char;
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (char === '(' || char === '（') {
+      depth += 1;
+      current += char;
+      continue;
+    }
+    if (char === ')' || char === '）') {
+      depth = Math.max(0, depth - 1);
+      current += char;
+      continue;
+    }
+    if ((char === ',' || char === '，') && depth === 0) {
+      parts.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+
+  parts.push(current);
+  return parts;
+}
+
+function splitParameterDefault(part: string): { definition: string; defaultValue?: string } {
+  let quote: string | null = null;
+  let depth = 0;
+
+  for (let index = 0; index < part.length; index += 1) {
+    const char = part[index];
+    if (quote) {
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '(' || char === '（') {
+      depth += 1;
+      continue;
+    }
+    if (char === ')' || char === '）') {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (char === '=' && depth === 0) {
+      const definition = part.slice(0, index).trim();
+      const defaultValue = part.slice(index + 1).trim();
+      return { definition, defaultValue: defaultValue || undefined };
+    }
+  }
+
+  return { definition: part.trim() };
 }
 
 function normalizeMethodName(prefix: string, declaredName: string | undefined, className: string): string {

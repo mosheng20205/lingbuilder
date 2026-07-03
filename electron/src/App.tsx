@@ -73,7 +73,9 @@ import {
   getEplEventSuffix,
   getLingWindowSourceFileName,
   readWindowDesignerState,
-  saveWindowDesignerState
+  saveWindowDesignerState,
+  PersistedWindowDesignerState,
+  WINDOW_DESIGNER_PROJECT_UPDATED
 } from './services/windowDesigner/windowDesignerService';
 import { sourceControlService } from './services/lingCpp/sourceControlService';
 import { getLingCppProblems } from './services/lingCpp/languageService';
@@ -165,7 +167,8 @@ const getInitialEditorFontSize = () => {
 const getInitialEditorExperienceMode = (): EditorExperienceMode => {
   try {
     const savedValue = window.localStorage.getItem(EDITOR_EXPERIENCE_MODE_STORAGE_KEY);
-    return savedValue === 'professional' ? 'professional' : 'beginner';
+    if (savedValue === 'professional' || savedValue === 'native') return savedValue;
+    return 'beginner';
   } catch {
     return 'beginner';
   }
@@ -231,6 +234,7 @@ const inferFileLanguage = (filePath: string): CppFile['language'] => {
 };
 
 export default function App() {
+  const [windowDesignerState, setWindowDesignerState] = useState<PersistedWindowDesignerState>(() => readWindowDesignerState());
   const [files, setFiles] = useState<CppFile[]>(() => {
     const proj = readWindowDesignerState().project;
 
@@ -344,13 +348,26 @@ export default function App() {
   const [sourceControlStatus, setSourceControlStatus] = useState<SourceControlStatus | null>(null);
 
   useEffect(() => {
+    const handleDesignerProjectUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<PersistedWindowDesignerState>;
+      const nextState = customEvent.detail || readWindowDesignerState();
+      setWindowDesignerState(nextState);
+    };
+
+    window.addEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
+    return () => {
+      window.removeEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
     if (activeFile.language !== 'lingcpp') {
       setProblems([]);
       return;
     }
 
     const sourceCode = activeFile.translatedContent || activeFile.originalContent || '';
-    const nextProblems = getLingCppProblems(sourceCode, getCurrentWindowDesignerProject(), activeFile.path).map(problem => {
+    const nextProblems = getLingCppProblems(sourceCode, windowDesignerState.project, activeFile.path).map(problem => {
       const beginner = adaptProblemForBeginner(problem);
       return {
         id: problem.id,
@@ -369,7 +386,7 @@ export default function App() {
       };
     });
     setProblems(nextProblems);
-  }, [activeFile.language, activeFile.originalContent, activeFile.path, activeFile.translatedContent, editorExperienceMode]);
+  }, [activeFile.language, activeFile.originalContent, activeFile.path, activeFile.translatedContent, editorExperienceMode, windowDesignerState.project]);
 
   const setEditorExperienceMode = useCallback((mode: EditorExperienceMode) => {
     setEditorExperienceModeState(mode);
@@ -2257,7 +2274,8 @@ void DisplayStatus() {
               onSelectTab={handleSelectFile}
               onCloseTab={handleCloseTab}
               allFiles={files}
-              designerProject={getCurrentWindowDesignerProject()}
+              designerProject={windowDesignerState.project}
+              activeWindowId={windowDesignerState.activeWindowId}
               editorExperienceMode={editorExperienceMode}
               onExperienceModeChange={setEditorExperienceMode}
               problems={problems}

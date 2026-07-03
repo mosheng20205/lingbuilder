@@ -288,7 +288,13 @@ function formatMethodDeclaration(
 }
 
 function formatParameters(parameters: LingCppParameter[]): string {
-  return parameters.map(parameter => `${parameter.type.trim()} ${parameter.name.trim()}`.trim()).join(', ');
+  return parameters
+    .map(parameter => {
+      const declaration = `${parameter.type.trim()} ${parameter.name.trim()}`.trim();
+      const defaultValue = parameter.defaultValue?.trim();
+      return defaultValue ? `${declaration} = ${defaultValue}` : declaration;
+    })
+    .join(', ');
 }
 
 function inferClassBodyIndent(lines: string[], cls: LingCppClass): string {

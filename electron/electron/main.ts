@@ -73,6 +73,11 @@ app.whenReady().then(() => {
     getFocusedWindow()?.close();
   });
 
+  ipcMain.handle('shell:open-path', async (_event, targetPath: string) => {
+    if (!targetPath) return 'missing-path';
+    return shell.openPath(targetPath);
+  });
+
   createMainWindow();
 
   app.on('activate', () => {

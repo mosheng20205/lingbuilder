@@ -1263,7 +1263,12 @@ function memberNote(type: string, name: string): string {
 }
 
 function formatParameterList(parameters: LingCppMethod['parameters']): string {
-  return parameters.map(parameter => `${parameter.type} ${parameter.name}`.trim()).join('，');
+  return parameters
+    .map(parameter => {
+      const declaration = `${parameter.type} ${parameter.name}`.trim();
+      return parameter.defaultValue?.trim() ? `${declaration} = ${parameter.defaultValue.trim()}` : declaration;
+    })
+    .join('，');
 }
 
 function bindingStatusText(status?: LingCppDesignerBindingHint['status']): string {

@@ -48,6 +48,7 @@ export interface LingCppMethod {
 export interface LingCppParameter {
   name: string;
   type: string;
+  defaultValue?: string;
 }
 
 export interface LingCppStatement {
@@ -456,4 +457,16 @@ export interface LingCppAstEditResult {
   diagnostics: LingCppDiagnostic[];
   change?: WorkspaceEditChange;
   error?: string;
+}
+
+export interface LingCppNativeSourceMapEntry {
+  generatedFile: string;
+  generatedStartLine: number;
+  generatedEndLine: number;
+  sourceFile?: string;
+  sourceStartLine: number;
+  sourceEndLine: number;
+  kind: 'class' | 'event' | 'method' | 'statement' | 'native-cpp';
+  symbolName: string;
+  className?: string;
 }
