@@ -19,6 +19,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Hammer,
+  Code,
   Sparkles,
   FolderPlus,
   FolderOpen,
@@ -81,6 +82,7 @@ import { sourceControlService } from './services/lingCpp/sourceControlService';
 import { getLingCppProblems } from './services/lingCpp/languageService';
 import { EditorExperienceMode, adaptProblemForBeginner } from './services/lingCpp/beginnerService';
 import { createWorkspaceEditChangeFromRewrite } from './services/lingCpp/aiEditService';
+import { findLingCppMethod, parseLingCpp } from './services/lingCpp/parser';
 
 const EDITOR_EXPERIENCE_MODE_STORAGE_KEY = 'lingbuilder.editorExperienceMode';
 const BEGINNER_IGNORED_TASKS_STORAGE_KEY = 'lingbuilder.beginnerIgnoredTasks';
@@ -131,6 +133,17 @@ type OpenControlEventCodeDetail = {
   windowFileName?: string;
   windowClassName?: string;
   windowTitle?: string;
+};
+
+type PendingDesignerEventEdit = {
+  proposal: WorkspaceEditProposal;
+  appliedFiles: AppliedWorkspaceFile[];
+  targetFilePath: string;
+  handlerName: string;
+  controlName?: string;
+  eventName?: string;
+  windowTitle?: string;
+  newText: string;
 };
 
 const DEFAULT_DESIGNER_GENERATED_PANELS: DesignerGeneratedPanelData = {
@@ -221,6 +234,22 @@ const ensureLingCppControlEventHandler = (content: string, detail: OpenControlEv
   return `${content.replace(/\s*结束类\s*$/g, '').trimEnd()}\n\n${nextBlock}\n结束类`;
 };
 
+const hasLingCppEventHandler = (content: string, handlerName: string) => {
+  const trimmedHandlerName = handlerName.trim();
+  if (!trimmedHandlerName) return false;
+
+  const handlerPattern = new RegExp(`(^|\\n)\\s*事件\\s+${escapeRegExp(trimmedHandlerName)}\\s*[（(]`);
+  if (handlerPattern.test(content)) return true;
+
+  try {
+    const parsed = parseLingCpp(content);
+    const method = findLingCppMethod(parsed.program, trimmedHandlerName);
+    return method?.kind === 'event';
+  } catch {
+    return false;
+  }
+};
+
 const getCurrentWindowDesignerProject = () => readWindowDesignerState().project;
 const getCurrentWindowDesignerProjectId = () => getCurrentWindowDesignerProject().id || 'lingbuilder-ui-project';
 
@@ -274,6 +303,14 @@ export default function App() {
   useEffect(() => {
     activeFileRef.current = activeFile;
   }, [activeFile]);
+
+  const focusLingCppHandler = useCallback((handlerName: string, filePath?: string) => {
+    [80, 220, 480].forEach(delay => {
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('focus-epl-handler', { detail: { handlerName, filePath } }));
+      }, delay);
+    });
+  }, []);
 
   const [openTabs, setOpenTabs] = useState<string[]>(() => {
     try {
@@ -346,6 +383,7 @@ export default function App() {
   const [editorExperienceMode, setEditorExperienceModeState] = useState<EditorExperienceMode>(getInitialEditorExperienceMode);
   const [ignoredBeginnerTaskIds, setIgnoredBeginnerTaskIds] = useState<string[]>(getInitialIgnoredBeginnerTasks);
   const [sourceControlStatus, setSourceControlStatus] = useState<SourceControlStatus | null>(null);
+  const [pendingDesignerEventEdit, setPendingDesignerEventEdit] = useState<PendingDesignerEventEdit | null>(null);
 
   useEffect(() => {
     const handleDesignerProjectUpdated = (event: Event) => {
@@ -882,6 +920,28 @@ void DisplayStatus() {
     }
   }, []);
 
+  const handleConfirmDesignerEventEdit = useCallback(() => {
+    if (!pendingDesignerEventEdit) return;
+
+    handleApplyWorkspaceEdit(pendingDesignerEventEdit.proposal, pendingDesignerEventEdit.appliedFiles);
+    setPendingDesignerEventEdit(null);
+    setEditorExperienceMode('beginner');
+    focusLingCppHandler(pendingDesignerEventEdit.handlerName, pendingDesignerEventEdit.targetFilePath);
+  }, [focusLingCppHandler, handleApplyWorkspaceEdit, pendingDesignerEventEdit, setEditorExperienceMode]);
+
+  const handleCancelDesignerEventEdit = useCallback(() => {
+    if (!pendingDesignerEventEdit) return;
+
+    const targetFile = filesRef.current.find(file => file.path === pendingDesignerEventEdit.targetFilePath);
+    if (targetFile) {
+      setOpenTabs(prev => (prev.includes(targetFile.path) ? prev : [...prev, targetFile.path]));
+      setActiveFile(targetFile);
+    }
+    setPendingDesignerEventEdit(null);
+    setEditorExperienceMode('beginner');
+    focusLingCppHandler(pendingDesignerEventEdit.handlerName, pendingDesignerEventEdit.targetFilePath);
+  }, [focusLingCppHandler, pendingDesignerEventEdit, setEditorExperienceMode]);
+
   useEffect(() => {
     const handleLingCppSourceRequest = (event: Event) => {
       const customEvent = event as CustomEvent<WindowDesignerLingCppSourceRequestDetail>;
@@ -910,14 +970,6 @@ void DisplayStatus() {
   }, []);
 
   useEffect(() => {
-    const focusEplHandler = (handlerName: string) => {
-      [80, 220, 480].forEach(delay => {
-        window.setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('focus-epl-handler', { detail: { handlerName } }));
-        }, delay);
-      });
-    };
-
     const handleOpenControlEventCode = (event: Event) => {
       const customEvent = event as CustomEvent<OpenControlEventCodeDetail>;
       const detail = customEvent.detail || {};
@@ -940,6 +992,21 @@ void DisplayStatus() {
       }
 
       const currentContent = targetFile.translatedContent || targetFile.originalContent;
+      if (hasLingCppEventHandler(currentContent, handlerName)) {
+        setPendingDesignerEventEdit(null);
+        setOpenTabs(prev => (
+          prev.includes(targetFile.path) ? prev : [...prev, targetFile.path]
+        ));
+        setActiveFile(targetFile);
+        setEditorExperienceMode('beginner');
+        setBuildLogs(prev => [
+          ...prev,
+          `> [${new Date().toLocaleTimeString()}] 【事件代码】${handlerName} 已存在，已直接定位。`
+        ]);
+        focusLingCppHandler(handlerName, targetFile.path);
+        return;
+      }
+
       const nextContent = ensureLingCppControlEventHandler(currentContent, detail);
       if (editorExperienceMode === 'beginner' && nextContent !== currentContent) {
         const proposal: WorkspaceEditProposal = {
@@ -953,23 +1020,16 @@ void DisplayStatus() {
           ]
         };
         const change = proposal.changes[0];
-        const confirmed = window.confirm([
-          proposal.summary,
-          '',
-          '将新增/替换：',
-          change?.newText || '(无变化)',
-          '',
-          '确认后应用，取消则只定位到当前事件。'
-        ].join('\n'));
-
-        if (confirmed) {
-          handleApplyWorkspaceEdit(proposal, [{ filePath: targetFile.path, sourceCode: nextContent }]);
-        } else {
-          setOpenTabs(prev => (prev.includes(targetFile.path) ? prev : [...prev, targetFile.path]));
-          setActiveFile(targetFile);
-        }
-        setEditorExperienceMode('beginner');
-        focusEplHandler(handlerName);
+        setPendingDesignerEventEdit({
+          proposal,
+          appliedFiles: [{ filePath: targetFile.path, sourceCode: nextContent }],
+          targetFilePath: targetFile.path,
+          handlerName,
+          controlName: detail.controlName,
+          eventName: detail.eventName,
+          windowTitle: detail.windowTitle,
+          newText: change?.newText || ''
+        });
         return;
       }
       const updatedFile: CppFile = {
@@ -989,7 +1049,7 @@ void DisplayStatus() {
         ...prev,
         `> [${new Date().toLocaleTimeString()}] 【事件代码】已打开 ${targetFile.path} 并定位到 ${handlerName}。`
       ]);
-      focusEplHandler(handlerName);
+      focusLingCppHandler(handlerName, updatedFile.path);
     };
 
     const handleWindowAdded = (event: Event) => {
@@ -1094,7 +1154,7 @@ void DisplayStatus() {
       window.removeEventListener('window-deleted', handleWindowDeleted);
       window.removeEventListener('window-duplicated', handleWindowDuplicated);
     };
-  }, []);
+  }, [editorExperienceMode, focusLingCppHandler, handleApplyWorkspaceEdit, handleSelectFile]);
 
 
   useEffect(() => {
@@ -2546,6 +2606,90 @@ void DisplayStatus() {
                     <span>智能分析并一键导入</span>
                   </>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingDesignerEventEdit && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in p-4 select-none">
+          <div className="w-full max-w-xl bg-[#1e1e24] border border-[#2d2d34] rounded-lg shadow-2xl flex flex-col text-slate-200 overflow-hidden">
+            <div className="px-4 py-3 bg-[#18181c] border-b border-[#2d2d34] flex items-center justify-between">
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="h-7 w-7 rounded bg-cyan-500/10 border border-cyan-500/25 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-4 h-4 text-cyan-300" />
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-bold text-slate-100">应用设计器事件函数</div>
+                  <div className="truncate text-[10px] text-slate-500">{pendingDesignerEventEdit.targetFilePath}</div>
+                </div>
+              </div>
+              <button
+                onClick={handleCancelDesignerEventEdit}
+                className="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                title="取消并只定位到事件"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-full bg-amber-500/10 flex items-center justify-center shrink-0 border border-amber-500/20">
+                  <Code className="w-4 h-4 text-amber-400" />
+                </div>
+                <div className="min-w-0 space-y-1">
+                  <h4 className="text-xs font-bold text-slate-100">{pendingDesignerEventEdit.proposal.summary}</h4>
+                  <p className="text-[10.5px] text-slate-400 leading-relaxed">
+                    设计器检测到当前菜单项还没有对应事件函数。确认后会写入中文源码；取消则只打开并定位到当前事件。
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 text-[10.5px]">
+                <div className="rounded border border-[#2d2d34] bg-[#141418] px-2 py-1.5">
+                  <div className="text-slate-500">触发对象</div>
+                  <div className="mt-0.5 truncate font-semibold text-cyan-200">{pendingDesignerEventEdit.controlName || '设计器控件'}</div>
+                </div>
+                <div className="rounded border border-[#2d2d34] bg-[#141418] px-2 py-1.5">
+                  <div className="text-slate-500">事件处理器</div>
+                  <div className="mt-0.5 truncate font-mono font-semibold text-emerald-300">{pendingDesignerEventEdit.handlerName}</div>
+                </div>
+                <div className="rounded border border-[#2d2d34] bg-[#141418] px-2 py-1.5">
+                  <div className="text-slate-500">事件类型</div>
+                  <div className="mt-0.5 truncate text-slate-200">{pendingDesignerEventEdit.eventName || 'Select'}</div>
+                </div>
+                <div className="rounded border border-[#2d2d34] bg-[#141418] px-2 py-1.5">
+                  <div className="text-slate-500">所在窗口</div>
+                  <div className="mt-0.5 truncate text-slate-200">{pendingDesignerEventEdit.windowTitle || '当前设计器窗口'}</div>
+                </div>
+              </div>
+
+              <div className="rounded border border-[#2d2d34] bg-[#101116] overflow-hidden">
+                <div className="flex items-center justify-between border-b border-[#2d2d34] bg-[#18181c] px-3 py-1.5">
+                  <span className="text-[10px] font-semibold text-slate-400">将写入的中文代码</span>
+                  <span className="text-[9px] text-slate-600">WorkspaceEdit 预览</span>
+                </div>
+                <pre className="max-h-44 overflow-auto p-3 text-[11px] leading-5 text-slate-200 font-mono whitespace-pre-wrap">
+                  {pendingDesignerEventEdit.newText || '(没有可显示的新增代码)'}
+                </pre>
+              </div>
+            </div>
+
+            <div className="px-4 py-2.5 bg-[#18181c] border-t border-[#2d2d34] flex justify-end gap-2.5">
+              <button
+                onClick={handleCancelDesignerEventEdit}
+                className="px-3 py-1.5 bg-[#2d2d36] hover:bg-[#383844] text-slate-300 rounded text-[11px] font-semibold transition-colors cursor-pointer border border-[#2d2d34]"
+              >
+                只定位事件
+              </button>
+              <button
+                onClick={handleConfirmDesignerEventEdit}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-semibold transition-colors cursor-pointer shadow"
+              >
+                <CheckCircle className="w-3.5 h-3.5" />
+                <span>应用生成</span>
               </button>
             </div>
           </div>

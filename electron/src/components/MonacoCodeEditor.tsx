@@ -360,7 +360,7 @@ export default function MonacoCodeEditor({
       });
 
       monaco.languages.registerCompletionItemProvider('lingcpp', {
-        triggerCharacters: ['_', ' ', '('],
+        triggerCharacters: ['_', ' ', '(', '"', '“'],
         provideCompletionItems: (model: any, position: any) => {
           const word = model.getWordUntilPosition(position);
           const range = {

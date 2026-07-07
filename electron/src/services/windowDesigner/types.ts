@@ -13,6 +13,15 @@ export interface LingEventBinding {
   [eventName: string]: string;
 }
 
+export type LingWindowOpenPlacement =
+  | 'default'
+  | 'center'
+  | 'top-left'
+  | 'top-right'
+  | 'bottom-left'
+  | 'bottom-right'
+  | 'custom';
+
 export interface LingControl {
   id: string;
   type: LingControlType;
@@ -39,6 +48,9 @@ export interface LingWindowModel {
   height: number;
   background: string;
   description: string;
+  openPlacement?: LingWindowOpenPlacement;
+  openX?: number;
+  openY?: number;
   controls: LingControl[];
   menuName?: string;
   menuItems?: string;

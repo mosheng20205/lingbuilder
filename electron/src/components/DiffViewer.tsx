@@ -41,6 +41,7 @@ import {
 import { applyWorkspaceEdit } from '../services/lingCpp/aiEditService';
 import { importNativeCppToLingBuilder } from '../services/windowDesigner/nativeCppImportService';
 import { saveWindowDesignerState } from '../services/windowDesigner/windowDesignerService';
+import { normalizeIdentifier } from '../services/lingCpp/parser';
 
 interface DiffViewerProps {
   diffResult: DiffResult;
@@ -151,7 +152,7 @@ interface BeginnerCodeCompletion {
   detail: string;
   insertText: string;
   aliases: string[];
-  kind: '命令' | '流程' | '代码' | '变量' | '子程序' | '类型';
+  kind: '命令' | '流程' | '代码' | '变量' | '子程序' | '类型' | '窗口' | '位置';
   cursorOffset?: number;
   selectLength?: number;
 }
@@ -178,6 +179,8 @@ interface BeginnerCompletionContext {
   isInsideString: boolean;
   isInsideComment: boolean;
   parenDepth: number;
+  isWindowTargetContext: boolean;
+  isWindowPlacementContext: boolean;
 }
 
 interface BeginnerContextMenuState {
@@ -285,6 +288,51 @@ const BEGINNER_COMMAND_HINTS: Record<string, BeginnerCommandHintInfo> = {
       { name: '文本', type: '文本型', note: '要输出的调试内容。' }
     ],
     example: '输出调试文本("进入流程")'
+  },
+  打开窗口: {
+    command: '打开窗口',
+    signature: '打开窗口(窗口标题或类名, [打开位置], [屏幕左距], [屏幕顶距])',
+    returnType: '窗口句柄',
+    summary: '打开设计器里已经存在的另一个窗口，适合菜单项或按钮跳转到登录、关于、设置等窗口。',
+    parameters: [
+      { name: '窗口标题或类名', type: '文本型', note: '填写目标窗口的标题或窗口类名，例如 "关于太空冒险客户端" 或 "关于窗体"。' },
+      { name: '打开位置', type: '文本型', note: '可选。支持 "居中"、"左上角"、"右上角"、"左下角"、"右下角"、"自定义坐标"。' },
+      { name: '屏幕左距/顶距', type: '整数型', note: '可选。写成 打开窗口("关于窗体", 120, 80) 或 打开窗口("关于窗体", "自定义坐标", 120, 80)。' }
+    ],
+    example: '打开窗口("关于太空冒险客户端", "居中")'
+  },
+  窗口_打开: {
+    command: '窗口_打开',
+    signature: '窗口_打开(窗口标题或类名, [打开位置], [屏幕左距], [屏幕顶距])',
+    returnType: '窗口句柄',
+    summary: '打开设计器里已经存在的另一个窗口，作用等同于“打开窗口”。',
+    parameters: [
+      { name: '窗口标题或类名', type: '文本型', note: '填写目标窗口的标题或窗口类名。' },
+      { name: '打开位置', type: '文本型', note: '可选。支持 "居中"、"左上角"、"右下角" 等。' }
+    ],
+    example: '窗口_打开("关于太空冒险客户端", "右下角")'
+  },
+  载入窗口: {
+    command: '载入窗口',
+    signature: '载入窗口(窗口标题或类名, [打开位置])',
+    returnType: '窗口句柄',
+    summary: '打开设计器里已经存在的另一个窗口，兼容“载入”这种中文说法。',
+    parameters: [
+      { name: '窗口标题或类名', type: '文本型', note: '填写目标窗口的标题或窗口类名。' },
+      { name: '打开位置', type: '文本型', note: '可选。支持 "居中"、"左上角"、"右下角" 等。' }
+    ],
+    example: '载入窗口("登录窗口", "居中")'
+  },
+  载入新窗口: {
+    command: '载入新窗口',
+    signature: '载入新窗口(窗口标题或类名, [打开位置])',
+    returnType: '窗口句柄',
+    summary: '打开设计器里已经存在的另一个窗口，兼容“载入新窗口”的表达。',
+    parameters: [
+      { name: '窗口标题或类名', type: '文本型', note: '填写目标窗口的标题或窗口类名。' },
+      { name: '打开位置', type: '文本型', note: '可选。支持 "居中"、"左上角"、"右下角" 等。' }
+    ],
+    example: '载入新窗口("登录窗口", "左上角")'
   },
   如果: {
     command: '如果',
@@ -455,6 +503,24 @@ const BEGINNER_CODE_COMPLETIONS: BeginnerCodeCompletion[] = [
     selectLength: '提示内容'.length
   },
   {
+    label: '打开窗口',
+    detail: '打开另一个设计器窗口',
+    insertText: '打开窗口("窗口标题")',
+    aliases: ['dkck', 'ck', 'openwindow', 'showwindow', '窗口_打开', '载入窗口', '载入新窗口', 'zairu', 'zrck', '打开窗口'],
+    kind: '命令',
+    cursorOffset: '打开窗口("'.length,
+    selectLength: '窗口标题'.length
+  },
+  {
+    label: '打开窗口居中',
+    detail: '居中打开另一个设计器窗口',
+    insertText: '打开窗口("窗口标题", "居中")',
+    aliases: ['dkckjz', 'jzdk', 'centerwindow', '居中打开', '打开窗口居中'],
+    kind: '命令',
+    cursorOffset: '打开窗口("'.length,
+    selectLength: '窗口标题'.length
+  },
+  {
     label: '否则',
     detail: '如果条件不成立时执行',
     insertText: '否则',
@@ -485,6 +551,15 @@ const BEGINNER_CODE_COMPLETIONS: BeginnerCodeCompletion[] = [
     kind: '代码',
     cursorOffset: 2
   }
+];
+
+const BEGINNER_WINDOW_PLACEMENT_COMPLETIONS: BeginnerCodeCompletion[] = [
+  { label: '居中', detail: '在屏幕工作区居中显示', insertText: '居中', aliases: ['jz', 'center', 'middle', '居中显示'], kind: '位置' },
+  { label: '左上角', detail: '贴近屏幕工作区左上角显示', insertText: '左上角', aliases: ['zsj', 'lefttop', 'top-left', '左上'], kind: '位置' },
+  { label: '右上角', detail: '贴近屏幕工作区右上角显示', insertText: '右上角', aliases: ['ysj', 'righttop', 'top-right', '右上'], kind: '位置' },
+  { label: '左下角', detail: '贴近屏幕工作区左下角显示', insertText: '左下角', aliases: ['zxj', 'leftbottom', 'bottom-left', '左下'], kind: '位置' },
+  { label: '右下角', detail: '贴近屏幕工作区右下角显示', insertText: '右下角', aliases: ['yxj', 'rightbottom', 'bottom-right', '右下'], kind: '位置' },
+  { label: '自定义坐标', detail: '继续填写屏幕左距和顶距，例如 120, 80', insertText: '自定义坐标', aliases: ['zdy', 'custom', 'xy', '坐标'], kind: '位置' }
 ];
 
 const scanBeginnerCodePrefix = (text: string) => {
@@ -552,16 +627,21 @@ const getBeginnerCompletionContext = (value: string, cursor: number): BeginnerCo
   const token = linePrefix.match(/[a-zA-Z0-9_@\u4e00-\u9fa5]+$/u)?.[0] || '';
   const beforeToken = linePrefix.slice(0, linePrefix.length - token.length);
   const syntax = scanBeginnerCodePrefix(linePrefix);
+  const isWindowTargetContext = /(?:^|\s)(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*["“][^"”\n]*$/u.test(linePrefix);
+  const isWindowPlacementContext = /(?:^|\s)(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*(?:L)?["“][^"”\n]*["”]\s*[,，]\s*(?:(?:L)?["“][^"”\n]*|[\w\u4e00-\u9fa5-]*)$/u.test(linePrefix);
 
   return {
     token,
     isBlankLine: linePrefix.trim().length === 0,
     isCommandStart: beforeToken.trim().length === 0,
+    isWindowTargetContext,
+    isWindowPlacementContext,
     ...syntax
   };
 };
 
 const shouldShowBeginnerCompletion = (context: BeginnerCompletionContext, includeAll: boolean) => {
+  if (context.isWindowTargetContext || context.isWindowPlacementContext) return true;
   if (context.isInsideString || context.isInsideComment || context.parenDepth > 0) return false;
   if (includeAll) return context.isBlankLine || context.isCommandStart;
   return context.isCommandStart && context.token.length > 0;
@@ -573,6 +653,32 @@ const getBeginnerCompletionToken = (value: string, cursor: number) => {
 
 const clampNumber = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
+
+const scrollElementInsideBeginnerEditor = (
+  element: HTMLElement | null | undefined,
+  align: 'start' | 'center' = 'center'
+) => {
+  if (!element) return;
+
+  const scrollRoot = element.closest('[data-beginner-structure-scroll]');
+  if (!(scrollRoot instanceof HTMLElement)) return;
+
+  const rootRect = scrollRoot.getBoundingClientRect();
+  const elementRect = element.getBoundingClientRect();
+  const elementTop = scrollRoot.scrollTop + elementRect.top - rootRect.top;
+  const targetTop = align === 'start'
+    ? elementTop - 8
+    : elementTop - Math.max(0, (scrollRoot.clientHeight - elementRect.height) / 2);
+
+  scrollRoot.scrollTo({
+    top: Math.max(0, targetTop),
+    behavior: 'smooth'
+  });
+
+  if (window.scrollX !== 0 || window.scrollY !== 0) {
+    window.scrollTo({ left: 0, top: 0, behavior: 'auto' });
+  }
+};
 
 const getBeginnerCompletionPanelPosition = (
   input: HTMLTextAreaElement,
@@ -736,6 +842,41 @@ const filterBeginnerCodeCompletions = (
     .filter(result => result.rank < 9)
     .sort((left, right) => left.rank - right.rank || left.item.label.localeCompare(right.item.label, 'zh-Hans-CN'))
     .map(result => result.item);
+};
+
+const buildBeginnerWindowTargetCompletions = (designerProject?: LingWindowProject): BeginnerCodeCompletion[] => {
+  if (!designerProject) return [];
+  const items = designerProject.windows.flatMap(window => {
+    const title = (window.title || '').trim();
+    const className = (window.className || '').trim();
+    const fileName = (window.fileName || '').trim();
+    const aliases = [title, className, fileName, '窗口', '窗体', '打开窗口'].filter(Boolean);
+    const completions: BeginnerCodeCompletion[] = [];
+
+    if (title) {
+      completions.push({
+        label: title,
+        detail: className ? `窗口标题 · 类名 ${className}` : '窗口标题',
+        insertText: title,
+        aliases,
+        kind: '窗口'
+      });
+    }
+
+    if (className && className !== title) {
+      completions.push({
+        label: className,
+        detail: title ? `窗口类名 · 标题 ${title}` : '窗口类名',
+        insertText: className,
+        aliases,
+        kind: '窗口'
+      });
+    }
+
+    return completions;
+  });
+
+  return Array.from(new Map(items.map(item => [`${item.label}:${item.insertText}`, item])).values());
 };
 
 const getBeginnerLineAtOffset = (value: string, offset: number) =>
@@ -1058,7 +1199,7 @@ export default function DiffViewer({
   const [newParameterDrafts, setNewParameterDrafts] = useState<Record<string, ParameterDraft>>({});
   const [functionCallDrafts, setFunctionCallDrafts] = useState<Record<string, Record<string, string>>>({});
   const [sourceScroll, setSourceScroll] = useState({ top: 0, left: 0 });
-  const [pendingHandlerFocus, setPendingHandlerFocus] = useState<string | null>(null);
+  const [pendingHandlerFocus, setPendingHandlerFocus] = useState<{ handlerName: string; filePath?: string } | null>(null);
   const [expandedBeginnerEventTargetKey, setExpandedBeginnerEventTargetKey] = useState<string | null>(null);
   const [expandedBeginnerFunctionTargetKey, setExpandedBeginnerFunctionTargetKey] = useState<string | null>(null);
   const [selectedFunctionTemplateKey, setSelectedFunctionTemplateKey] = useState<string | null>(null);
@@ -1249,7 +1390,8 @@ export default function DiffViewer({
     { label: '如果', text: BEGINNER_IF_SNIPPET },
     { label: '返回', text: '返回' },
     { label: '信息框', text: '信息框("提示内容", 64, "提示")' },
-    { label: '调试输出', text: '调试输出("调试信息")' }
+    { label: '调试输出', text: '调试输出("调试信息")' },
+    { label: '打开窗口', text: '打开窗口("窗口标题")' }
   ] : [
     { label: '.子程序', text: '\n.子程序 _按钮1_被单击\n    信息框 (“请输入提示内容”, 64, “提示”)\n' },
     { label: '如果', text: BEGINNER_IF_SNIPPET },
@@ -1554,24 +1696,33 @@ export default function DiffViewer({
 
   useEffect(() => {
     const handleFocusEplHandler = (event: Event) => {
-      const customEvent = event as CustomEvent<{ handlerName?: string }>;
+      const customEvent = event as CustomEvent<{ handlerName?: string; filePath?: string; fileName?: string }>;
       const handlerName = customEvent.detail?.handlerName?.trim();
       if (!handlerName) return;
 
-      if (activeFile?.name?.endsWith('.xml')) {
+      const targetFile = customEvent.detail?.filePath
+        ? allFiles.find(f => f.path === customEvent.detail?.filePath)
+        : customEvent.detail?.fileName
+          ? allFiles.find(f => f.name === customEvent.detail?.fileName)
+          : undefined;
+
+      if (targetFile && targetFile.path !== activeFile?.path) {
+        onSelectTab(targetFile);
+      } else if (activeFile?.name?.endsWith('.xml')) {
         const codeFileName = activeFile.name.replace(/\.xml$/i, '.lcpp');
         const codeFile = allFiles.find(f => f.name === codeFileName);
         if (codeFile) onSelectTab(codeFile);
       }
       setViewMode('chinese');
-      setPendingHandlerFocus(handlerName);
+      onExperienceModeChange?.('beginner');
+      setPendingHandlerFocus({ handlerName, filePath: targetFile?.path || customEvent.detail?.filePath });
     };
 
     window.addEventListener('focus-epl-handler', handleFocusEplHandler);
     return () => {
       window.removeEventListener('focus-epl-handler', handleFocusEplHandler);
     };
-  }, []);
+  }, [activeFile?.name, activeFile?.path, allFiles, onExperienceModeChange, onSelectTab]);
 
   useEffect(() => {
     const handleShowWindowDesigner = () => {
@@ -1596,16 +1747,60 @@ export default function DiffViewer({
     if (!structuredRevealLine) return;
     const timer = window.setTimeout(() => {
       const row = document.querySelector<HTMLElement>(`[data-structured-line="${structuredRevealLine}"]`);
-      row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      scrollElementInsideBeginnerEditor(row, 'center');
       setStructuredRevealLine(null);
     }, 120);
     return () => window.clearTimeout(timer);
   }, [structuredRevealLine, editorExperienceMode]);
 
   useEffect(() => {
-    if (!pendingHandlerFocus || activeFile?.language !== 'epl') return;
+    if (!pendingHandlerFocus) return;
+    const focusHandlerName = pendingHandlerFocus.handlerName.trim();
+    if (!focusHandlerName) {
+      setPendingHandlerFocus(null);
+      return;
+    }
 
-    const handlerIndex = normalizedSourceCode.indexOf(pendingHandlerFocus);
+    if (pendingHandlerFocus.filePath && activeFile?.path !== pendingHandlerFocus.filePath) {
+      return;
+    }
+
+    if (activeFile?.language === 'lingcpp') {
+      const normalizedHandlerName = normalizeIdentifier(focusHandlerName);
+      const target = lingCppLanguageContext?.program.classes.flatMap(cls =>
+        cls.methods.map(method => ({ className: cls.name, method }))
+      ).find(item => {
+        const methodName = normalizeIdentifier(item.method.name);
+        const classPrefixedName = normalizeIdentifier(`${item.className}_${item.method.name}`);
+        return methodName === normalizedHandlerName || classPrefixedName === normalizedHandlerName;
+      });
+
+      if (target) {
+        onExperienceModeChange?.('beginner');
+        setSelectedBeginnerHandler(target.method.name);
+        setSelectedBeginnerCodeTarget({ className: target.className, methodName: target.method.name });
+        setExpandedBeginnerEventTargetKey(`${target.className}:${target.method.kind}:${target.method.name}`);
+        setCursorPosition({ line: target.method.line, column: 1 });
+        setStructuredRevealLine(target.method.line);
+        setPendingHandlerFocus(null);
+        return;
+      }
+
+      const pendingRow = structuredReadingRows.find(row => {
+        const rowName = normalizeIdentifier(row.targetName || row.name);
+        return rowName === normalizedHandlerName;
+      });
+      if (pendingRow) {
+        setCursorPosition({ line: pendingRow.line, column: 1 });
+        setStructuredRevealLine(pendingRow.line);
+        setPendingHandlerFocus(null);
+      }
+      return;
+    }
+
+    if (activeFile?.language !== 'epl') return;
+
+    const handlerIndex = normalizedSourceCode.indexOf(focusHandlerName);
     if (handlerIndex < 0) return;
 
     window.requestAnimationFrame(() => {
@@ -1616,12 +1811,20 @@ export default function DiffViewer({
       const nextScrollTop = Math.max(0, lineIndex * 24 - 72);
 
       editor.focus();
-      editor.setSelectionRange(handlerIndex, handlerIndex + pendingHandlerFocus.length);
+      editor.setSelectionRange(handlerIndex, handlerIndex + focusHandlerName.length);
       editor.scrollTop = nextScrollTop;
       setSourceScroll({ top: editor.scrollTop, left: editor.scrollLeft });
       setPendingHandlerFocus(null);
     });
-  }, [activeFile?.language, normalizedSourceCode, pendingHandlerFocus]);
+  }, [
+    activeFile?.language,
+    activeFile?.path,
+    lingCppLanguageContext,
+    normalizedSourceCode,
+    onExperienceModeChange,
+    pendingHandlerFocus,
+    structuredReadingRows
+  ]);
 
   const insertSourceSnippet = (snippet: string) => {
     if (!onUpdateSourceContent) return;
@@ -1722,7 +1925,7 @@ export default function DiffViewer({
     if (/^(如果|如果真|否则如果|否则|如果结束|判断|判断结束|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|循环尾)$/.test(token)) {
       return <span key={index} className="text-[#4ea5ff] font-semibold">{token}</span>;
     }
-    if (/^(信息框|调试输出|输出调试文本|载入可视化设计|读取配置项|取运行目录|结束|返回)$/.test(token)) {
+    if (/^(信息框|调试输出|输出调试文本|打开窗口|窗口_打开|载入窗口|载入新窗口|载入可视化设计|读取配置项|取运行目录|结束|返回)$/.test(token)) {
       return <span key={index} className="text-[#e9dfaa]">{token}</span>;
     }
     if (/^\d+$/.test(token)) {
@@ -1850,7 +2053,7 @@ export default function DiffViewer({
       );
     }
 
-    const tokenPattern = /('.*$|“[^”]*”|"[^"]*"|\.(?:版本|支持库|程序集变量|程序集|子程序|局部变量)|如果真|否则如果|否则|如果结束|如果|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|判断结束|判断|循环尾|信息框|调试输出|输出调试文本|载入可视化设计|读取配置项|取运行目录|结束|返回|文本型|整数型|逻辑型|小数型|双精度小数型|字节集|日期时间型|窗口程序集_[\w\u4e00-\u9fa5]+|_[\w\u4e00-\u9fa5]+_[\w\u4e00-\u9fa5_]+|\d+|[＝=＋+\-*/（）(),，])/g;
+    const tokenPattern = /('.*$|“[^”]*”|"[^"]*"|\.(?:版本|支持库|程序集变量|程序集|子程序|局部变量)|如果真|否则如果|否则|如果结束|如果|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|判断结束|判断|循环尾|信息框|调试输出|输出调试文本|打开窗口|窗口_打开|载入窗口|载入新窗口|载入可视化设计|读取配置项|取运行目录|结束|返回|文本型|整数型|逻辑型|小数型|双精度小数型|字节集|日期时间型|窗口程序集_[\w\u4e00-\u9fa5]+|_[\w\u4e00-\u9fa5]+_[\w\u4e00-\u9fa5_]+|\d+|[＝=＋+\-*/（）(),，])/g;
     return (
       <>
         <span>{leadingSpace}</span>
@@ -1865,7 +2068,7 @@ export default function DiffViewer({
 
     if (activeFile?.language === 'epl') {
       // EPL syntax coloring
-      const regex = /('.*)|(".*?")|(\.(?:版本|支持库|程序集|程序集变量|子程序|局部变量)|如果真|否则如果|否则|如果结束|如果|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|判断结束|判断|循环尾|结束|返回|信息框|调试输出|载入可视化设计|读取配置项|取运行目录)/g;
+      const regex = /('.*)|(".*?")|(\.(?:版本|支持库|程序集|程序集变量|子程序|局部变量)|如果真|否则如果|否则|如果结束|如果|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|判断结束|判断|循环尾|结束|返回|信息框|调试输出|输出调试文本|打开窗口|窗口_打开|载入窗口|载入新窗口|载入可视化设计|读取配置项|取运行目录)/g;
       const parts = text.split(regex);
       if (parts.length <= 1) {
         return <span>{text}</span>;
@@ -1880,7 +2083,7 @@ export default function DiffViewer({
             if (part.startsWith('"')) {
               return <span key={index} className="text-[#CE9178] font-mono font-semibold">{part}</span>;
             }
-            if (/^(\.(?:版本|支持库|程序集|程序集变量|子程序|局部变量)|如果真|否则如果|否则|如果结束|如果|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|判断结束|判断|循环尾|结束|返回|信息框|调试输出|载入可视化设计|读取配置项|取运行目录)$/.test(part)) {
+            if (/^(\.(?:版本|支持库|程序集|程序集变量|子程序|局部变量)|如果真|否则如果|否则|如果结束|如果|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|判断结束|判断|循环尾|结束|返回|信息框|调试输出|输出调试文本|打开窗口|窗口_打开|载入窗口|载入新窗口|载入可视化设计|读取配置项|取运行目录)$/.test(part)) {
               return <span key={index} className="text-[#569CD6] font-semibold font-mono">{part}</span>;
             }
             return <span key={index}>{part}</span>;
@@ -2715,7 +2918,7 @@ export default function DiffViewer({
       setSelectedBeginnerCodeTarget({ className: primaryLingCppClass.name, methodName: handlerName });
       setExpandedBeginnerEventTargetKey(`${primaryLingCppClass.name}:event:${handlerName}`);
       window.requestAnimationFrame(() => {
-        document.getElementById('lingcpp-structure-section-event')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        scrollElementInsideBeginnerEditor(document.getElementById('lingcpp-structure-section-event'), 'start');
       });
     }
   };
@@ -2768,7 +2971,7 @@ export default function DiffViewer({
       setSelectedBeginnerCodeTarget({ className: primaryLingCppClass.name, methodName: name });
       setExpandedBeginnerFunctionTargetKey(`${primaryLingCppClass.name}:method:${name}`);
       window.requestAnimationFrame(() => {
-        document.getElementById('lingcpp-structure-section-function')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        scrollElementInsideBeginnerEditor(document.getElementById('lingcpp-structure-section-function'), 'start');
       });
     }
   };
@@ -3257,6 +3460,7 @@ export default function DiffViewer({
       ...codeTargets.flatMap(target => [target.method.returnType, ...target.method.parameters.map(parameter => parameter.type)])
     ].filter(Boolean)));
     const typeCompletionCatalog = buildBeginnerTypeCompletionCatalog(typeSuggestions);
+    const windowTargetCompletionItems = buildBeginnerWindowTargetCompletions(designerProject);
     const defaultCodeArgument = (parameter: LingCppParameter) => {
       const defaultValue = parameter.defaultValue?.trim();
       if (defaultValue) return defaultValue;
@@ -3320,7 +3524,12 @@ export default function DiffViewer({
         return;
       }
       const token = context.token;
-      const items = filterBeginnerCodeCompletions(token, includeAll, beginnerCodeCompletionItems);
+      const sourceItems = context.isWindowTargetContext
+        ? windowTargetCompletionItems
+        : context.isWindowPlacementContext
+          ? BEGINNER_WINDOW_PLACEMENT_COMPLETIONS
+          : beginnerCodeCompletionItems;
+      const items = filterBeginnerCodeCompletions(token, includeAll || context.isWindowTargetContext || context.isWindowPlacementContext, sourceItems);
       if (items.length === 0) {
         setBeginnerCompletionState(current => current?.targetKey === targetKey ? null : current);
         return;
@@ -3909,7 +4118,7 @@ export default function DiffViewer({
     const scrollToStructureSection = (id: string) => {
       expandVolcanoSection(id);
       window.requestAnimationFrame(() => {
-        document.getElementById(sectionDomId(id))?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        scrollElementInsideBeginnerEditor(document.getElementById(sectionDomId(id)), 'start');
       });
     };
 
@@ -5279,7 +5488,7 @@ export default function DiffViewer({
     type CompactColumn = { label: string; className?: string };
     const beginnerKnownMembers = new Set(memberRows.map(row => row.targetName || row.name).filter(Boolean));
     const beginnerKnownProcedures = new Set(codeTargets.map(target => target.method.name).filter(Boolean));
-    const beginnerCodeTokenPattern = /("(?:(?:\\.)|[^"\\])*"|“[^”]*”|否则如果|如果结束|调试输出|输出调试文本|信息框|载入可视化设计|读取配置项|取运行目录|如果真|如果|否则|结束|返回|文本型|整数型|逻辑型|小数型|长整数型|双精度小数型|字节集|日期时间型|真|假|\d+(?:\.\d+)?|[\w\u4e00-\u9fa5]+|[＝=＋+\-*/（）(),，])/gu;
+    const beginnerCodeTokenPattern = /("(?:(?:\\.)|[^"\\])*"|“[^”]*”|否则如果|如果结束|调试输出|输出调试文本|信息框|打开窗口|窗口_打开|载入窗口|载入新窗口|载入可视化设计|读取配置项|取运行目录|如果真|如果|否则|结束|返回|文本型|整数型|逻辑型|小数型|长整数型|双精度小数型|字节集|日期时间型|真|假|\d+(?:\.\d+)?|[\w\u4e00-\u9fa5]+|[＝=＋+\-*/（）(),，])/gu;
 
     const findBeginnerLineCommentStart = (line: string) => {
       let inDoubleQuote = false;
@@ -5313,7 +5522,7 @@ export default function DiffViewer({
       if (token.startsWith('"') || token.startsWith('“')) {
         return <span key={index} className={isDarkMode ? 'text-[#d7c5a1]' : 'text-amber-700'}>{token}</span>;
       }
-      if (/^(调试输出|输出调试文本|信息框|载入可视化设计|读取配置项|取运行目录)$/.test(token)) {
+      if (/^(调试输出|输出调试文本|信息框|打开窗口|窗口_打开|载入窗口|载入新窗口|载入可视化设计|读取配置项|取运行目录)$/.test(token)) {
         return <span key={index} className={isDarkMode ? 'text-[#dcdcaa]' : 'text-amber-700'}>{token}</span>;
       }
       if (/^(如果真|否则如果|否则|如果结束|如果|结束|返回)$/.test(token)) {
@@ -5435,11 +5644,7 @@ export default function DiffViewer({
           [
             <tr key={row.id} className={rowChrome(row)}>
               <td className={compactCellClass}>
-                {row.editKind === 'class'
-                  ? renderDirectStructureInput(row, 'class-name', row.targetName || row.name, '窗口程序集名', 'name')
-                  : row.editKind === 'package'
-                    ? renderDirectStructureInput(row, 'package-name', row.targetName || row.name, '窗口程序集名', 'name')
-                    : renderTextCell(row.targetName || row.name, 'name')}
+                {renderTextCell(row.targetName || row.name, 'name')}
               </td>
               <td className={compactEmptyCellClass}>{renderTextCell('', 'muted')}</td>
               <td className={compactEmptyCellClass}>{renderTextCell('', 'muted')}</td>
@@ -5804,6 +6009,7 @@ export default function DiffViewer({
           <div className={`my-1 border-t ${canvasBorder}`} />
           {renderContextMenuButton('插入调试输出', () => appendBeginnerSnippet(contextTarget, '调试输出("")'), <Code className="h-3.5 w-3.5" />, false, !contextTarget)}
           {renderContextMenuButton('插入信息框', () => appendBeginnerSnippet(contextTarget, '信息框("提示内容", 64, "提示")'), <Lightbulb className="h-3.5 w-3.5" />, false, !contextTarget)}
+          {renderContextMenuButton('插入打开窗口', () => appendBeginnerSnippet(contextTarget, '打开窗口("窗口标题")'), <ExternalLink className="h-3.5 w-3.5" />, false, !contextTarget)}
           {renderContextMenuButton('插入如果结构', () => appendBeginnerSnippet(contextTarget, BEGINNER_IF_SNIPPET), <ListTree className="h-3.5 w-3.5" />, false, !contextTarget)}
           <div className={`my-1 border-t ${canvasBorder}`} />
           {renderContextMenuButton(
@@ -6980,7 +7186,7 @@ export default function DiffViewer({
                   isDarkMode={isDarkMode}
                   readOnly={!onUpdateSourceContent}
                   onChange={updateSourceCode}
-                  focusHandlerName={pendingHandlerFocus}
+                  focusHandlerName={pendingHandlerFocus?.handlerName}
                   onFocusHandled={() => setPendingHandlerFocus(null)}
                   editorFontSize={editorFontSize}
                   onFontSizeChange={onFontSizeChange}

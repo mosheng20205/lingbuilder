@@ -54,6 +54,7 @@ export default function BottomPanel({
   onClearLogs
 }: BottomPanelProps) {
   const [filterType, setFilterType] = useState<'all' | 'string' | 'comment'>('all');
+  const [copyNotice, setCopyNotice] = useState<{ message: string; tone: 'success' | 'error' } | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     show: boolean;
     x: number;
@@ -68,6 +69,29 @@ export default function BottomPanel({
     window.addEventListener('click', handleClose);
     return () => window.removeEventListener('click', handleClose);
   }, []);
+
+  useEffect(() => {
+    if (!copyNotice) return undefined;
+    const timer = window.setTimeout(() => setCopyNotice(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [copyNotice]);
+
+  const getLogsText = (tabType: 'designer_logs' | 'output' | 'debug_logs') => {
+    if (tabType === 'designer_logs') {
+      return generatedPanels.logs.length > 0 ? generatedPanels.logs.join('\n') : '> [编译日志] 空';
+    }
+    if (tabType === 'output') {
+      return buildLogs.length > 0 ? buildLogs.join('\n') : '> [输出] 空';
+    }
+    return debugLogs.length > 0 ? debugLogs.join('\n') : '> [调试输出] 空';
+  };
+
+  const copyLogsToClipboard = (tabType: 'designer_logs' | 'output' | 'debug_logs') => {
+    const logsText = getLogsText(tabType);
+    navigator.clipboard.writeText(logsText)
+      .then(() => setCopyNotice({ message: '已复制全部日志到剪贴板', tone: 'success' }))
+      .catch(() => setCopyNotice({ message: '复制失败，请重试', tone: 'error' }));
+  };
 
   const handleContextMenu = (e: React.MouseEvent, tabType: 'designer_logs' | 'output' | 'debug_logs') => {
     e.preventDefault();
@@ -183,6 +207,26 @@ export default function BottomPanel({
       }`}
       style={{ height }}
     >
+      {copyNotice && (
+        <div
+          role="status"
+          className={`pointer-events-none absolute right-4 top-11 z-[1000] flex items-center gap-2 rounded border px-3 py-2 text-[11px] font-semibold shadow-xl ${
+            copyNotice.tone === 'success'
+              ? isDarkMode
+                ? 'border-emerald-500/30 bg-emerald-950/90 text-emerald-200 shadow-black/40'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-700 shadow-slate-300/50'
+              : isDarkMode
+                ? 'border-rose-500/30 bg-rose-950/90 text-rose-200 shadow-black/40'
+                : 'border-rose-200 bg-rose-50 text-rose-700 shadow-slate-300/50'
+          }`}
+        >
+          {copyNotice.tone === 'success'
+            ? <CheckCircle2 className="h-3.5 w-3.5" />
+            : <AlertTriangle className="h-3.5 w-3.5" />}
+          <span>{copyNotice.message}</span>
+        </div>
+      )}
+
       {/* Visual Studio Classic Tab Headers with Complete Debugging and Building controllers */}
       <div 
         className={`flex items-center justify-between px-4 shrink-0 h-9 border-b ${
@@ -341,13 +385,7 @@ export default function BottomPanel({
         {(activeTab === 'designer_logs' || activeTab === 'output' || activeTab === 'debug_logs') && (
           <button
             onClick={() => {
-              const logsText = activeTab === 'designer_logs' 
-                ? (generatedPanels.logs.length > 0 ? generatedPanels.logs.join('\n') : '> [编译日志] 空')
-                : activeTab === 'output'
-                ? (buildLogs.length > 0 ? buildLogs.join('\n') : '> [输出] 空')
-                : (debugLogs.length > 0 ? debugLogs.join('\n') : '> [调试输出] 空');
-              navigator.clipboard.writeText(logsText);
-              alert('已复制全部日志到剪贴板！');
+              copyLogsToClipboard(activeTab);
             }}
             className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded border cursor-pointer transition-all ${
               isDarkMode 
@@ -779,13 +817,9 @@ export default function BottomPanel({
         >
           <div
             onClick={() => {
-              const logsText = contextMenu.tabType === 'designer_logs' 
-                ? (generatedPanels.logs.length > 0 ? generatedPanels.logs.join('\n') : '> [编译日志] 空')
-                : contextMenu.tabType === 'output'
-                ? (buildLogs.length > 0 ? buildLogs.join('\n') : '> [输出] 空')
-                : (debugLogs.length > 0 ? debugLogs.join('\n') : '> [调试输出] 空');
-              navigator.clipboard.writeText(logsText);
-              alert('已复制全部日志到剪贴板！');
+              if (contextMenu.tabType) {
+                copyLogsToClipboard(contextMenu.tabType);
+              }
               setContextMenu(prev => ({ ...prev, show: false }));
             }}
             className={`px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors ${

@@ -248,7 +248,16 @@ export function getLingCppCompletionItems(
 ): LingCppCompletionItem[] {
   const contextKind = getLingCppCompletionContextKind(context.source, context.line, context.column);
   const symbolItems = getCurrentSymbolCompletionItems(languageContext);
-  const designerItems = getDesignerCompletionItems(context.source, languageContext.designerProject as LingWindowProject | undefined);
+  const designerProject = languageContext.designerProject as LingWindowProject | undefined;
+  const windowPlacementItems = getOpenWindowPlacementCompletionItems(context);
+  if (windowPlacementItems) {
+    return dedupeLingCppCompletionItems(windowPlacementItems, context.triggerText);
+  }
+  const windowTargetItems = getOpenWindowTargetCompletionItems(context, designerProject);
+  if (windowTargetItems) {
+    return dedupeLingCppCompletionItems(windowTargetItems, context.triggerText);
+  }
+  const designerItems = getDesignerCompletionItems(context.source, designerProject);
   const moduleItems = languageContext.moduleContributions;
   const catalogItems = getCatalogCompletionItems(contextKind);
   return dedupeLingCppCompletionItems(
@@ -1277,6 +1286,88 @@ function getDesignerCompletionItems(source: string, designerProject?: LingWindow
 
     return [...windowItems, ...controlItems];
   });
+}
+
+function getOpenWindowTargetCompletionItems(
+  context: LingCppCompletionContext,
+  designerProject?: LingWindowProject
+): LingCppCompletionItem[] | undefined {
+  const linePrefix = getLinePrefixBeforeColumn(context.source, context.line, context.column);
+  if (!/(?:^|\s)(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*["“][^"”\n]*$/u.test(linePrefix)) {
+    return undefined;
+  }
+  if (!designerProject) return [];
+
+  const items = designerProject.windows.flatMap(window => {
+    const title = (window.title || '').trim();
+    const className = (window.className || '').trim();
+    const fileName = (window.fileName || '').trim();
+    const aliases = [title, className, fileName, '窗口', '窗体', '打开窗口'].filter(Boolean);
+    const completions: LingCppCompletionItem[] = [];
+
+    if (title) {
+      completions.push({
+        label: title,
+        kind: 'type',
+        insertText: title,
+        detail: className ? `窗口标题 · 类名 ${className}` : '窗口标题',
+        documentation: `窗口标题：${title}${className ? `\n类名：${className}` : ''}${fileName ? `\n设计文件：${fileName}` : ''}`,
+        aliases,
+        category: 'designer',
+        audienceText: '可传给 打开窗口(...) 的目标窗口标题'
+      });
+    }
+
+    if (className && className !== title) {
+      completions.push({
+        label: className,
+        kind: 'type',
+        insertText: className,
+        detail: title ? `窗口类名 · 标题 ${title}` : '窗口类名',
+        documentation: `窗口类名：${className}${title ? `\n标题：${title}` : ''}${fileName ? `\n设计文件：${fileName}` : ''}`,
+        aliases,
+        category: 'designer',
+        audienceText: '可传给 打开窗口(...) 的目标窗口类名'
+      });
+    }
+
+    return completions;
+  });
+
+  return Array.from(new Map(items.map(item => [`${item.kind}:${item.label}:${item.insertText}`, item])).values());
+}
+
+function getOpenWindowPlacementCompletionItems(
+  context: LingCppCompletionContext
+): LingCppCompletionItem[] | undefined {
+  const linePrefix = getLinePrefixBeforeColumn(context.source, context.line, context.column);
+  if (!/(?:^|\s)(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*(?:L)?["“][^"”\n]*["”]\s*[,，]\s*(?:(?:L)?["“][^"”\n]*|[\w\u4e00-\u9fa5-]*)$/u.test(linePrefix)) {
+    return undefined;
+  }
+
+  return [
+    ['居中', '屏幕工作区居中显示'],
+    ['左上角', '贴近屏幕工作区左上角显示'],
+    ['右上角', '贴近屏幕工作区右上角显示'],
+    ['左下角', '贴近屏幕工作区左下角显示'],
+    ['右下角', '贴近屏幕工作区右下角显示'],
+    ['自定义坐标', '配合第三、第四参数指定屏幕坐标，例如 打开窗口("关于窗体", "自定义坐标", 120, 80)']
+  ].map(([label, detail]) => ({
+    label,
+    kind: 'keyword' as const,
+    insertText: label,
+    detail,
+    documentation: detail,
+    aliases: [label, '打开位置', '窗口位置', 'position', 'placement'],
+    category: 'keyword' as const,
+    audienceText: '可作为 打开窗口(...) 的第二个打开位置参数'
+  }));
+}
+
+function getLinePrefixBeforeColumn(source: string, line: number, column: number): string {
+  const lines = splitLines(source);
+  const lineText = lines[Math.max(0, line - 1)] || '';
+  return lineText.slice(0, Math.max(0, column - 1));
 }
 
 function memberNote(type: string, name: string): string {

@@ -51,7 +51,8 @@ export function getLingCppCompletionCatalog(contextKind: LingCppCompletionContex
     catalogItem('调试输出', 'function', '调试输出("$1")', '向输出面板写入调试文本', ['DebugOutput', 'debug', 'trace', 'log'], ['ts', 'sc', 'tssc'], '调试输出("按钮被单击")', 'command', 30),
     catalogItem('结束', 'function', '结束()', '结束当前程序', ['Exit', 'Quit', 'CloseApp'], ['js', 'tc'], '结束()', 'command', 30),
     catalogItem('修改控件文字', 'snippet', '$1.文字 = "$2"', '修改按钮、标签或输入框显示文字', ['SetText', 'Text'], ['xgwz', 'wz'], '按钮1.文字 = "确定"', 'snippet', 50, true),
-    catalogItem('打开窗口', 'function', '窗口_打开($1)', '打开另一个窗口', ['OpenWindow', 'ShowWindow'], ['dkck', 'ck'], '窗口_打开(设置窗体)', 'command', 30)
+    catalogItem('打开窗口', 'function', '打开窗口("$1")', '打开另一个窗口', ['OpenWindow', 'ShowWindow', '窗口_打开', '载入窗口', '载入新窗口'], ['dkck', 'ck', 'zrck'], '打开窗口("设置窗体")', 'command', 30),
+    catalogItem('打开窗口居中', 'snippet', '打开窗口("$1", "居中")', '居中打开另一个窗口', ['OpenWindowCenter', 'ShowWindowCenter'], ['dkckjz', 'jzdk'], '打开窗口("设置窗体", "居中")', 'command', 30, true)
   ];
 
   const classBody: LingCppCompletionCatalogItem[] = [

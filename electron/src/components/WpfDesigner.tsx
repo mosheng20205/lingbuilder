@@ -50,7 +50,13 @@ import {
   requestWindowDesignerLingCppSource,
   WINDOW_DESIGNER_BUILD_RUN_REQUEST
 } from '../services/windowDesigner/windowDesignerCommands';
-import { LingControl, LingControlType, LingWindowModel, LingWindowProject } from '../services/windowDesigner/types';
+import {
+  LingControl,
+  LingControlType,
+  LingWindowModel,
+  LingWindowOpenPlacement,
+  LingWindowProject
+} from '../services/windowDesigner/types';
 
 type InspectorTab = 'properties' | 'events' | 'modules';
 type ResizeDirection = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
@@ -111,6 +117,16 @@ const TYPE_ICONS: Record<LingControlType | 'MenuBar', React.ReactNode> = {
 } as any;
 
 const TITLE_BAR_HEIGHT = 52;
+
+const WINDOW_OPEN_PLACEMENT_OPTIONS: { value: LingWindowOpenPlacement; label: string }[] = [
+  { value: 'default', label: '系统默认' },
+  { value: 'center', label: '居中显示' },
+  { value: 'top-left', label: '左上角' },
+  { value: 'top-right', label: '右上角' },
+  { value: 'bottom-left', label: '左下角' },
+  { value: 'bottom-right', label: '右下角' },
+  { value: 'custom', label: '自定义坐标' }
+];
 
 let cachedInitialDesignerState: PersistedWindowDesignerState | null = null;
 
@@ -191,6 +207,12 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
   const activeWindow = useMemo(() => {
     return project.windows.find(window => window.id === activeWindowId) || project.windows[0];
   }, [activeWindowId, project.windows]);
+
+  const isWindowMenuInteractionActive = Boolean(
+    isMenuDropdownOpen
+    || selectedControlId === '__window_menu_bar__'
+    || selectedControlId?.startsWith('__window_menu_item_')
+  );
 
   const selectedControl = useMemo(() => {
     if (selectedControlId === '__window_menu_bar__') {
@@ -1020,6 +1042,10 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
             </div>
             {/* Menu Bar (Simulating native Win32 window menu bar) */}
             <div
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 setSelectedControlId('__window_menu_bar__');
@@ -1029,7 +1055,7 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
                 isDarkMode 
                   ? 'bg-[#1E1E1E] text-slate-300 border-slate-800/80 hover:bg-slate-800/60' 
                   : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-100'
-              } ${selectedControlId === '__window_menu_bar__' ? 'ring-1 ring-amber-500 z-50 relative' : ''}`}
+              } ${isWindowMenuInteractionActive ? 'ring-1 ring-amber-500 z-50 relative' : ''}`}
             >
               <div className="relative">
                 <span className={`px-2 py-0.5 rounded transition-colors ${
@@ -1039,11 +1065,29 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
                 </span>
                 {/* Dropdown Menu listing all window menu items */}
                 {isMenuDropdownOpen && (
-                  <div className={`absolute left-0 top-5 w-48 flex flex-col py-1 border rounded shadow-lg z-[99] ${
+                  <div
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onMouseUp={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onDoubleClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    className={`absolute left-0 top-5 w-48 flex flex-col py-1 border rounded shadow-lg z-[99] pointer-events-auto ${
                     isDarkMode 
                       ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' 
                       : 'bg-white border-slate-200 text-slate-800'
-                  }`}>
+                  }`}
+                  >
                     {(activeWindow.menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件')
                       .split(',')
                       .map(s => s.trim())
@@ -1053,11 +1097,21 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
                         return (
                           <div
                             key={idx}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            onMouseUp={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
                             onClick={(e) => {
+                              e.preventDefault();
                               e.stopPropagation();
                               setSelectedControlId(`__window_menu_item_${idx}__`);
                             }}
                             onDoubleClick={(e) => {
+                              e.preventDefault();
                               e.stopPropagation();
                               const handlerName = activeWindow.menuEvents?.[`Item_${idx}`] || `_${activeWindow.className}_${item}_被选择`;
                               handleControlDoubleClick(e, {
@@ -1384,11 +1438,41 @@ function WindowProperties({
   isDarkMode: boolean;
   onChange: (fields: Partial<LingWindowModel>) => void;
 }) {
+  const openPlacement = window.openPlacement || 'default';
+  const handleOpenPlacementChange = (value: LingWindowOpenPlacement) => {
+    onChange({
+      openPlacement: value,
+      ...(value === 'custom' ? { openX: window.openX ?? 120, openY: window.openY ?? 80 } : {})
+    });
+  };
+
   return (
     <div className="space-y-2">
       <PropertyGroup title="当前窗口 / 布局" isDarkMode={isDarkMode}>
         <NumberField label="宽度" value={window.width} min={360} isDarkMode={isDarkMode} onChange={value => onChange({ width: value })} />
         <NumberField label="高度" value={window.height} min={240} isDarkMode={isDarkMode} onChange={value => onChange({ height: value })} />
+      </PropertyGroup>
+      <PropertyGroup title="当前窗口 / 打开位置" isDarkMode={isDarkMode}>
+        <PropertyRow label="打开位置" isDarkMode={isDarkMode}>
+          <select
+            value={openPlacement}
+            onChange={event => handleOpenPlacementChange(event.target.value as LingWindowOpenPlacement)}
+            className={`w-full rounded border px-2 py-0.5 text-xs focus:outline-none focus:border-amber-500 ${
+              isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44] text-slate-200' : 'bg-white border-slate-300 text-slate-800'
+            }`}
+            aria-label="窗口打开位置"
+          >
+            {WINDOW_OPEN_PLACEMENT_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </PropertyRow>
+        {openPlacement === 'custom' && (
+          <>
+            <NumberField label="屏幕左距" value={window.openX ?? 120} min={0} isDarkMode={isDarkMode} onChange={value => onChange({ openPlacement: 'custom', openX: value })} />
+            <NumberField label="屏幕顶距" value={window.openY ?? 80} min={0} isDarkMode={isDarkMode} onChange={value => onChange({ openPlacement: 'custom', openY: value })} />
+          </>
+        )}
       </PropertyGroup>
       <PropertyGroup title="当前窗口 / 外观" isDarkMode={isDarkMode}>
         <TextField label="窗口标题" value={window.title} isDarkMode={isDarkMode} onChange={value => onChange({ title: value })} />

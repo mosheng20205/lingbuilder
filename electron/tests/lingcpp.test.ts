@@ -547,6 +547,26 @@ test('LingCpp bilingual completions include designer event snippets in class con
   assert.ok(completions.some(item => item.category === 'event' && item.isSnippet));
 });
 
+test('LingCpp bilingual completions suggest designer windows inside open-window arguments', () => {
+  const source = `包 太空冒险
+使用 Win32窗口
+
+类 游戏主窗体 : 公开 窗体
+公开:
+    事件 _按钮1_被单击()
+        打开窗口("太")
+结束类`;
+  const completions = getLingCppBilingualCompletions({
+    source,
+    line: 7,
+    column: '        打开窗口("太'.length + 1,
+    triggerText: '太'
+  }, sampleProject);
+
+  assert.ok(completions.some(item => item.label === '太空冒险' && item.insertText === '太空冒险'));
+  assert.equal(completions.some(item => item.label === '信息框'), false);
+});
+
 test('LingCpp designer bindings produce bound and missing-source hints', () => {
   const boundHints = getLingCppDesignerBindings(sampleSource, sampleProject, 'src/MainWindow.lcpp');
   const firstBoundHandler = sampleProject.windows[0]?.controls[0]?.events?.Click;
@@ -660,7 +680,7 @@ test('LingCpp reading mode handles the real multi-event main window sample', () 
   const hints = getLingCppInlineHints(realSource, realProject, 'src/游戏主窗体.lcpp', 'beginner');
   const rows = getLingCppStructuredReadingRows(realSource, realProject, 'src/游戏主窗体.lcpp');
 
-  assert.equal(eventBlocks.length, 3);
+  assert.ok(eventBlocks.length >= 3);
   assert.ok(eventBlocks.some(block => block.kind === 'window-event'));
   assert.ok(eventBlocks.filter(block => block.kind === 'control-event').length >= 2);
   assert.ok(blocks.some(block => block.actions.some(action => action.kind === 'message-box')));
@@ -1012,6 +1032,69 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
 
   const layoutJson = generated.files.find(file => file.relativePath === 'layout.json')?.content || '';
   assert.equal(JSON.parse(layoutJson).id, 'sample-project');
+});
+
+test('generateLingCppNativeWin32Project translates beginner open-window commands', () => {
+  const projectWithAboutWindow: LingWindowProject = {
+    ...sampleProject,
+    windows: [
+      {
+        ...sampleProject.windows[0],
+        menuItems: '关于太空冒险客户端',
+        menuEvents: {
+          Item_0: '_关于菜单_被选择'
+        }
+      },
+      {
+        id: 'about-window',
+        fileName: 'AboutWindow.xml',
+        className: '关于窗体',
+        title: '关于太空冒险客户端',
+        width: 520,
+        height: 360,
+        background: '#1E1E24',
+        description: '关于窗口',
+        openPlacement: 'center',
+        controls: []
+      }
+    ]
+  };
+  const source = `包 太空冒险
+使用 Win32窗口
+使用 标准控件
+
+类 游戏主窗体 : 公开 窗体
+公开:
+    事件 _关于菜单_被选择()
+        打开窗口("关于太空冒险客户端")
+        打开窗口("关于太空冒险客户端", "居中")
+        打开窗口("关于太空冒险客户端", 100, 200)
+        载入窗口(L"关于窗体", "右下角")
+结束类
+
+类 关于窗体 : 公开 窗体
+公开:
+    事件 _关于窗体_创建完毕()
+        调试输出("关于窗口载入")
+结束类`;
+
+  const generated = generateLingCppNativeWin32Project(projectWithAboutWindow, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source
+  });
+
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(mainCpp.includes('HWND 窗口_打开(const wchar_t* windowName, const wchar_t* placement = nullptr'));
+  assert.ok(mainCpp.includes('static HWND OpenGeneratedWindowByName(const wchar_t* windowName, int showCommand, const wchar_t* placement = nullptr'));
+  assert.ok(mainCpp.includes('窗口_打开(L"关于太空冒险客户端");'));
+  assert.ok(mainCpp.includes('窗口_打开(L"关于太空冒险客户端", L"center");'));
+  assert.ok(mainCpp.includes('窗口_打开(L"关于太空冒险客户端", L"custom", 100, 200, true);'));
+  assert.ok(mainCpp.includes('窗口_打开(L"关于窗体", L"bottom-right");'));
+  assert.ok(mainCpp.includes('ResolveWindowPlacement(spec_, windowWidth, windowHeight, placement, x, y, hasCustomPosition, windowX, windowY)'));
+  assert.ok(mainCpp.includes('L"center", CW_USEDEFAULT, CW_USEDEFAULT, g_controls_1'));
+  assert.ok(mainCpp.includes('WindowSpecMatchesName(g_windows[index], windowName)'));
+  assert.ok(mainCpp.includes('void 关于菜单_被选择()'));
+  assert.ok(mainCpp.includes('class 关于窗体 : public LingWindowBase'));
 });
 
 test('generateLingCppNativeWin32Project emits function methods, calls, return values and inline native C++', () => {

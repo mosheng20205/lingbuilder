@@ -43,6 +43,14 @@ interface TranslatedStatementLine {
   kind: 'statement' | 'native-cpp';
 }
 
+interface OpenWindowCommand {
+  target: string;
+  placement?: string;
+  x?: number;
+  y?: number;
+  hasCustomPosition?: boolean;
+}
+
 const TITLE_BAR_HEIGHT = 28;
 
 export function generateLingCppNativeWin32Project(
@@ -166,6 +174,9 @@ struct WindowSpec {
     int width;
     int height;
     COLORREF background;
+    const wchar_t* openPlacement;
+    int openX;
+    int openY;
     const ControlSpec* controls;
     int controlCount;
     const wchar_t* menuItems;
@@ -189,6 +200,9 @@ ${windowSpecs}
 
 static const int g_windowCount = static_cast<int>(sizeof(g_windows) / sizeof(g_windows[0]));
 static const int g_startWindowIndex = ${selectedWindowIndex};
+
+static HWND OpenGeneratedWindow(int windowIndex, int showCommand, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false);
+static HWND OpenGeneratedWindowByName(const wchar_t* windowName, int showCommand, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false);
 
 static void EnableDpiAwareness() {
     HMODULE user32 = GetModuleHandleW(L"user32.dll");
@@ -227,25 +241,88 @@ static bool IsType(const ControlSpec& control, const wchar_t* type) {
     return std::wcscmp(control.type, type) == 0;
 }
 
+static bool TextEquals(const wchar_t* value, const wchar_t* expected) {
+    return value && expected && std::wcscmp(value, expected) == 0;
+}
+
+static bool IsPlacement(const wchar_t* placement, const wchar_t* first, const wchar_t* second = nullptr, const wchar_t* third = nullptr) {
+    return TextEquals(placement, first) || TextEquals(placement, second) || TextEquals(placement, third);
+}
+
+static void ResolveWindowPlacement(
+    const WindowSpec& spec,
+    int windowWidth,
+    int windowHeight,
+    const wchar_t* placementOverride,
+    int xOverride,
+    int yOverride,
+    bool hasCustomPosition,
+    int& x,
+    int& y
+) {
+    const wchar_t* placement = placementOverride && placementOverride[0] ? placementOverride : spec.openPlacement;
+    if (!placement || placement[0] == 0 || IsPlacement(placement, L"default", L"默认", L"系统默认")) return;
+
+    const bool customPlacement = hasCustomPosition || IsPlacement(placement, L"custom", L"自定义", L"自定义坐标");
+    if (customPlacement) {
+        x = hasCustomPosition ? xOverride : spec.openX;
+        y = hasCustomPosition ? yOverride : spec.openY;
+        return;
+    }
+
+    RECT workArea = {};
+    if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &workArea, 0)) return;
+
+    if (IsPlacement(placement, L"center", L"居中", L"居中显示")) {
+        x = workArea.left + ((workArea.right - workArea.left) - windowWidth) / 2;
+        y = workArea.top + ((workArea.bottom - workArea.top) - windowHeight) / 2;
+        return;
+    }
+    if (IsPlacement(placement, L"top-left", L"left-top", L"左上角")) {
+        x = workArea.left;
+        y = workArea.top;
+        return;
+    }
+    if (IsPlacement(placement, L"top-right", L"right-top", L"右上角")) {
+        x = workArea.right - windowWidth;
+        y = workArea.top;
+        return;
+    }
+    if (IsPlacement(placement, L"bottom-left", L"left-bottom", L"左下角")) {
+        x = workArea.left;
+        y = workArea.bottom - windowHeight;
+        return;
+    }
+    if (IsPlacement(placement, L"bottom-right", L"right-bottom", L"右下角")) {
+        x = workArea.right - windowWidth;
+        y = workArea.bottom - windowHeight;
+    }
+}
+
 class LingWindowBase {
 public:
     explicit LingWindowBase(const WindowSpec& spec) : spec_(spec), hwnd_(nullptr), windowBrush_(nullptr), dpi_(96) {}
     virtual ~LingWindowBase() = default;
 
-    HWND Open(int showCommand) {
+    HWND Open(int showCommand, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false) {
         dpi_ = GetSystemDpiValue();
         RECT rect = { 0, 0, ScaleForDpi(spec_.width, dpi_), ScaleForDpi(spec_.height, dpi_) };
         AdjustWindowRectEx(&rect, WS_OVERLAPPEDWINDOW, TRUE, 0);
+        int windowWidth = rect.right - rect.left;
+        int windowHeight = rect.bottom - rect.top;
+        int windowX = CW_USEDEFAULT;
+        int windowY = CW_USEDEFAULT;
+        ResolveWindowPlacement(spec_, windowWidth, windowHeight, placement, x, y, hasCustomPosition, windowX, windowY);
 
         hwnd_ = CreateWindowExW(
             0,
             GENERATED_WINDOW_CLASS,
             spec_.title,
             WS_OVERLAPPEDWINDOW,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            rect.right - rect.left,
-            rect.bottom - rect.top,
+            windowX,
+            windowY,
+            windowWidth,
+            windowHeight,
             nullptr,
             CreateMenuForWindow(),
             g_instance,
@@ -292,6 +369,28 @@ protected:
 
     void 结束() {
         if (hwnd_) DestroyWindow(hwnd_);
+    }
+
+    HWND 窗口_打开(const wchar_t* windowName, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false) {
+        HWND opened = OpenGeneratedWindowByName(windowName, SW_SHOWNORMAL, placement, x, y, hasCustomPosition);
+        if (!opened) {
+            std::wstring message = L"未找到要打开的窗口：";
+            message += (windowName && windowName[0]) ? windowName : L"(空)";
+            调试输出(message.c_str());
+        }
+        return opened;
+    }
+
+    HWND 打开窗口(const wchar_t* windowName, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false) {
+        return 窗口_打开(windowName, placement, x, y, hasCustomPosition);
+    }
+
+    HWND 载入窗口(const wchar_t* windowName, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false) {
+        return 窗口_打开(windowName, placement, x, y, hasCustomPosition);
+    }
+
+    HWND 载入新窗口(const wchar_t* windowName, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false) {
+        return 窗口_打开(windowName, placement, x, y, hasCustomPosition);
     }
 
 private:
@@ -507,15 +606,30 @@ ${factoryCases}
     }
 }
 
-static HWND OpenGeneratedWindow(int windowIndex, int showCommand) {
+static HWND OpenGeneratedWindow(int windowIndex, int showCommand, const wchar_t* placement, int x, int y, bool hasCustomPosition) {
     LingWindowBase* window = CreateWindowObject(windowIndex);
     if (!window) return nullptr;
-    HWND hwnd = window->Open(showCommand);
+    HWND hwnd = window->Open(showCommand, placement, x, y, hasCustomPosition);
     if (!hwnd) {
         delete window;
         return nullptr;
     }
     return hwnd;
+}
+
+static bool WindowSpecMatchesName(const WindowSpec& spec, const wchar_t* windowName) {
+    if (!windowName || windowName[0] == 0) return false;
+    return (spec.title && std::wcscmp(spec.title, windowName) == 0) ||
+        (spec.className && std::wcscmp(spec.className, windowName) == 0);
+}
+
+static HWND OpenGeneratedWindowByName(const wchar_t* windowName, int showCommand, const wchar_t* placement, int x, int y, bool hasCustomPosition) {
+    for (int index = 0; index < g_windowCount; ++index) {
+        if (WindowSpecMatchesName(g_windows[index], windowName)) {
+            return OpenGeneratedWindow(index, showCommand, placement, x, y, hasCustomPosition);
+        }
+    }
+    return nullptr;
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
@@ -1122,6 +1236,11 @@ function translateStatement(statement: string): string {
     return `调试输出(L"${escapeWideString(debugMatch[1] || '')}");`;
   }
 
+  const openWindowCommand = parseOpenWindowCommand(statement);
+  if (openWindowCommand !== undefined) {
+    return formatOpenWindowCall(openWindowCommand);
+  }
+
   if (/^结束\s*[（(]?\s*[）)]?/.test(statement)) {
     return '结束();';
   }
@@ -1154,6 +1273,78 @@ function parseReturnValue(statement: string): string | undefined {
   if (parenthesized) return parenthesized[1]?.trim() || undefined;
   const plain = statement.match(/^返回\s+(.+?)\s*;?$/u);
   return plain?.[1]?.trim() || undefined;
+}
+
+function parseOpenWindowCommand(statement: string): OpenWindowCommand | undefined {
+  const call = statement.match(/^(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*(.*?)\s*[）)]\s*;?$/u);
+  const rawArguments = call?.[1]?.trim();
+  if (rawArguments) {
+    const args = splitCallArguments(rawArguments);
+    const rawTarget = args[0]?.trim();
+    if (!rawTarget) return undefined;
+    const command: OpenWindowCommand = {
+      target: stripLingCppStringLiteral(rawTarget)
+    };
+
+    const directX = parseIntegerArgument(args[1]);
+    const directY = parseIntegerArgument(args[2]);
+    if (directX !== undefined && directY !== undefined) {
+      return { ...command, placement: 'custom', x: directX, y: directY, hasCustomPosition: true };
+    }
+
+    const rawPlacement = args[1]?.trim();
+    if (rawPlacement) {
+      command.placement = normalizeOpenWindowPlacement(stripLingCppStringLiteral(rawPlacement));
+      const x = parseIntegerArgument(args[2]);
+      const y = parseIntegerArgument(args[3]);
+      if (x !== undefined && y !== undefined) {
+        command.x = x;
+        command.y = y;
+        command.hasCustomPosition = true;
+        command.placement = 'custom';
+      }
+    }
+
+    return command;
+  }
+
+  const plain = statement.match(/^(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s+(.+?)\s*;?$/u);
+  return plain?.[1] ? { target: stripLingCppStringLiteral(plain[1].trim()) } : undefined;
+}
+
+function formatOpenWindowCall(command: OpenWindowCommand): string {
+  const target = `L"${escapeWideString(command.target)}"`;
+  if (command.hasCustomPosition && command.x !== undefined && command.y !== undefined) {
+    return `窗口_打开(${target}, L"custom", ${int(command.x)}, ${int(command.y)}, true);`;
+  }
+  if (command.placement) {
+    return `窗口_打开(${target}, L"${escapeWideString(command.placement)}");`;
+  }
+  return `窗口_打开(${target});`;
+}
+
+function parseIntegerArgument(value: string | undefined): number | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || !/^-?\d+$/u.test(trimmed)) return undefined;
+  return Number.parseInt(trimmed, 10);
+}
+
+function normalizeOpenWindowPlacement(value: string | undefined): string {
+  const normalized = (value || '').trim().toLowerCase();
+  if (!normalized) return 'default';
+  if (['center', 'middle', '居中', '居中显示', '屏幕居中'].includes(normalized)) return 'center';
+  if (['top-left', 'left-top', '左上角', '左上', '左上方'].includes(normalized)) return 'top-left';
+  if (['top-right', 'right-top', '右上角', '右上', '右上方'].includes(normalized)) return 'top-right';
+  if (['bottom-left', 'left-bottom', '左下角', '左下', '左下方'].includes(normalized)) return 'bottom-left';
+  if (['bottom-right', 'right-bottom', '右下角', '右下', '右下方'].includes(normalized)) return 'bottom-right';
+  if (['custom', '自定义', '自定义坐标', '坐标'].includes(normalized)) return 'custom';
+  if (['default', '默认', '系统默认'].includes(normalized)) return 'default';
+  return value?.trim() || 'default';
+}
+
+function stripLingCppStringLiteral(value: string): string {
+  const quoted = value.match(/^(?:L)?["“](.*)["”]$/u);
+  return quoted ? (quoted[1] || '').trim() : value.trim();
 }
 
 function parseCallStatement(statement: string): { name: string; argumentsText: string } | undefined {
@@ -1307,7 +1498,10 @@ ${controls}
 function generateWindowSpec(window: LingWindowModel, windowIndex: number): string {
   const menuItemsStr = (window as any).menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件';
   const visibleCount = getVisibleControls(window).length + menuItemsStr.split(',').map((item: string) => item.trim()).filter(Boolean).length;
-  return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - TITLE_BAR_HEIGHT)}, ${toColorRef(window.background)}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}" }`;
+  const openPlacement = normalizeOpenWindowPlacement(window.openPlacement || 'default');
+  const openX = openPlacement === 'custom' ? int(window.openX ?? 120) : 'CW_USEDEFAULT';
+  const openY = openPlacement === 'custom' ? int(window.openY ?? 80) : 'CW_USEDEFAULT';
+  return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - TITLE_BAR_HEIGHT)}, ${toColorRef(window.background)}, L"${escapeWideString(openPlacement)}", ${openX}, ${openY}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}" }`;
 }
 
 function generateControlSpec(control: LingControl, id: number): string {

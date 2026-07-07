@@ -220,7 +220,7 @@ export function getCodeExplanation(source: string, line: number, _column = 1): C
   if (startsAny(current, ['构造', '鏋勯'])) {
     return explain(line, '构造', '窗口创建时会先执行这里，适合放初始化文字、默认状态和启动日志。', '构造()\n    调试输出("窗口初始化完成")');
   }
-  if (startsAny(current, ['事件', '浜嬩欢']) || method?.kind === 'event') {
+  if (startsAny(current, ['事件', '浜嬩欢'])) {
     const handlerName = method?.name || current.replace(/^事件\s*/u, '').replace(/\(.*/u, '');
     return explain(line, '事件', `用户做了某个动作后会执行这里。当前事件处理器是：${handlerName || '未命名事件'}。`, '事件 _按钮1_被单击()\n    信息框("你点击了按钮", 64, "提示")');
   }
@@ -233,8 +233,14 @@ export function getCodeExplanation(source: string, line: number, _column = 1): C
   if (/调试输出|璋冭瘯杈撳嚭/u.test(current)) {
     return explain(line, '调试输出', '调试输出会把文字写到运行日志里，适合检查事件有没有执行。', '调试输出("按钮被点击")');
   }
+  if (/打开窗口|窗口_打开|载入窗口|载入新窗口/u.test(current)) {
+    return explain(line, '打开窗口', '打开窗口会载入并显示设计器里已有的另一个窗口，第二个参数可以指定打开位置，例如居中、左上角或右下角。', '打开窗口("关于太空冒险客户端", "居中")', '常见错误：第一个参数填写目标窗口标题或类名，不是 .xml 文件名。');
+  }
   if (/结束|缁撴潫/u.test(current)) {
     return explain(line, '结束', '结束会关闭当前程序。新手建议只在“退出”按钮事件里使用。');
+  }
+  if (method?.kind === 'event') {
+    return explain(line, '事件', `这行代码属于事件处理器：${method.name || '未命名事件'}。`, '事件 _按钮1_被单击()\n    信息框("你点击了按钮", 64, "提示")');
   }
   return explain(line, '普通代码', current ? '这是一行普通代码。可以结合上下文理解它属于哪个事件或方法。' : '空行用于分隔代码块，让结构更清楚。');
 }
@@ -397,7 +403,7 @@ function parseActionStatement(text: string, line: number): LingCppActionBlock {
   if (/置文字|设置文字|文本/u.test(text)) {
     return { id: `action-${line}`, kind: 'set-control-text', label: '修改控件文字', description: '把控件显示文字改成新内容', line, params: { text: quoted }, sourceText: text };
   }
-  if (/打开窗口|绐楀彛_鎵撳紑/u.test(text)) {
+  if (/打开窗口|窗口_打开|载入窗口|载入新窗口/u.test(text)) {
     return { id: `action-${line}`, kind: 'open-window', label: '打开窗口', description: '打开另一个窗口', line, params: { window: quoted }, sourceText: text };
   }
   return { id: `action-${line}`, kind: 'advanced-code', label: '高级代码块', description: '暂不能用动作表单编辑，但会原样保留', line, params: {}, readonly: true, sourceText: text };
@@ -409,7 +415,7 @@ function actionToSource(action: LingCppActionBlock): string {
   if (action.kind === 'debug-output') return `        调试输出("${text}")`;
   if (action.kind === 'exit-program') return '        结束()';
   if (action.kind === 'set-control-text') return `        ${action.params.control || '按钮1'}.文字 = "${text}"`;
-  if (action.kind === 'open-window') return `        窗口_打开("${action.params.window || '新窗口'}")`;
+  if (action.kind === 'open-window') return `        打开窗口("${action.params.window || '新窗口'}")`;
   return action.sourceText || '        调试输出("高级代码")';
 }
 

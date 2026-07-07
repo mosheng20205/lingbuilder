@@ -179,6 +179,7 @@ export function createBlankWindow(index: number): LingWindowModel {
     height: 420,
     background: '#1E1E24',
     description: '可通过拖拽控件、绑定中文事件并实时生成 C++ 类定义。',
+    openPlacement: 'default',
     controls: [
       {
         id: `lbl_custom_${index}`,
