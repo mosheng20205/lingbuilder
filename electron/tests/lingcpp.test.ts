@@ -796,6 +796,23 @@ test('LingCpp AST edit service rewrites structural intents minimally and preserv
   assert.ok(renamedMember.sourceCode.includes('复选框 是否记住'));
   assert.ok(renamedMember.change?.newText.includes('是否记住'));
 
+  const updatedMemberFlags = applyLingCppAstEdit(renamedMember.sourceCode, {
+    kind: 'update-member',
+    className: '游戏主窗体',
+    memberName: '是否记住',
+    isStatic: true,
+    isArray: true,
+    note: '保存多个记住状态'
+  });
+  assert.equal(updatedMemberFlags.success, true);
+  assert.ok(updatedMemberFlags.sourceCode.includes('// 保存多个记住状态'));
+  assert.ok(updatedMemberFlags.sourceCode.includes('静态 复选框 是否记住[]'));
+  const parsedUpdatedMember = parseLingCpp(updatedMemberFlags.sourceCode)
+    .program.classes[0]
+    .members.find(member => member.name === '是否记住');
+  assert.equal(parsedUpdatedMember?.isStatic, true);
+  assert.equal(parsedUpdatedMember?.isArray, true);
+
   const renamedEvent = applyLingCppAstEdit(sampleSource, {
     kind: 'update-event',
     className: '游戏主窗体',

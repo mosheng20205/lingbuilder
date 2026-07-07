@@ -541,13 +541,18 @@ export function getLingCppStructuredReadingRows(
     }
 
     cls.members.forEach(member => {
+      const sourceNote = noteBeforeLine(lines, member.line);
       rows.push({
         id: `reading-member-${member.name}-${member.line}`,
         group: 'member',
         name: member.name,
         type: member.type,
-        value: member.initialValue || '',
-        note: memberNote(member.type, member.name),
+        value: [
+          member.isStatic ? '静态' : '',
+          member.isArray ? '数组' : '',
+          member.initialValue || ''
+        ].filter(Boolean).join(' · '),
+        note: sourceNote || memberNote(member.type, member.name),
         line: member.line
       });
     });
@@ -673,20 +678,28 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
     });
 
     cls.members.forEach(member => {
+      const sourceNote = noteBeforeLine(lines, member.line);
       rows.push({
         id: `structured-member-${member.name}-${member.line}`,
         group: 'member',
         name: member.name,
         type: member.type,
-        value: [member.access, member.initialValue ? `初始值 ${member.initialValue}` : ''].filter(Boolean).join(' · '),
-        note: memberNote(member.type, member.name),
+        value: [
+          member.access,
+          member.isStatic ? '静态' : '',
+          member.isArray ? '数组' : '',
+          member.initialValue ? `初始值 ${member.initialValue}` : ''
+        ].filter(Boolean).join(' · '),
+        note: sourceNote,
         line: member.line,
         editable: true,
         editKind: 'member',
         className: cls.name,
         targetName: member.name,
         access: member.access,
-        initialValue: member.initialValue
+        initialValue: member.initialValue,
+        isStatic: member.isStatic,
+        isArray: member.isArray
       });
     });
 

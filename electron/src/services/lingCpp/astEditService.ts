@@ -76,7 +76,9 @@ function applyEditToLines(lines: string[], classes: LingCppClass[], edit: LingCp
     next[index] = formatMemberDeclaration(next[index] || '', {
       name: edit.newName || member.name,
       type: edit.type || member.type,
-      initialValue: edit.initialValue ?? member.initialValue
+      initialValue: edit.initialValue ?? member.initialValue,
+      isStatic: edit.isStatic ?? member.isStatic ?? false,
+      isArray: edit.isArray ?? member.isArray ?? false
     });
     if (edit.note !== undefined) replaceOrInsertNote(next, member.line, edit.note);
     if (edit.access && edit.access !== member.access) next.splice(index, 0, `${indentOf(next[index])}${edit.access}:`);
@@ -154,7 +156,7 @@ function applyEditToLines(lines: string[], classes: LingCppClass[], edit: LingCp
 function insertMember(
   lines: string[],
   cls: LingCppClass,
-  member: { name: string; type: string; access?: string; initialValue?: string; note?: string }
+  member: { name: string; type: string; access?: string; initialValue?: string; isStatic?: boolean; isArray?: boolean; note?: string }
 ): void {
   const insertAt = findMemberInsertIndex(cls);
   const indent = inferClassBodyIndent(lines, cls);
@@ -297,13 +299,15 @@ function formatClassDeclaration(originalLine: string, className: string, baseCla
 
 function formatMemberDeclaration(
   originalLine: string,
-  member: { name: string; type: string; initialValue?: string }
+  member: { name: string; type: string; initialValue?: string; isStatic?: boolean; isArray?: boolean }
 ): string {
   const indent = indentOf(originalLine);
   const initialValue = typeof member.initialValue === 'string' && member.initialValue.trim()
     ? ` = ${member.initialValue.trim()}`
     : '';
-  return `${indent}${member.type.trim()} ${member.name.trim()}${initialValue}`;
+  const staticPrefix = member.isStatic ? '静态 ' : '';
+  const arraySuffix = member.isArray ? '[]' : '';
+  return `${indent}${staticPrefix}${member.type.trim()} ${member.name.trim()}${arraySuffix}${initialValue}`;
 }
 
 function formatEventDeclaration(originalLine: string, handlerName: string, parameters: LingCppParameter[]): string {

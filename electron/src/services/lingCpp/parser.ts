@@ -70,7 +70,7 @@ const METHOD_RE = new RegExp(
   `^(静态\\s+)?(${['事件', '构造', '析构', '空', ...LING_CPP_TYPES].map(escapeRegexLiteral).join('|')})\\s*([\\w\\u4e00-\\u9fa5]*)\\s*[（(]([^）)]*)[）)]`
 );
 const MEMBER_RE = new RegExp(
-  `^(${LING_CPP_TYPES.map(escapeRegexLiteral).join('|')})\\s+([\\w\\u4e00-\\u9fa5]+)(?:\\s*[=＝]\\s*(.+))?$`
+  `^(静态\\s+)?(${LING_CPP_TYPES.map(escapeRegexLiteral).join('|')})\\s+([\\w\\u4e00-\\u9fa5]+)(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.+))?$`
 );
 
 export function parseLingCpp(source: string): LingCppParseResult {
@@ -240,18 +240,27 @@ export function parseLingCpp(source: string): LingCppParseResult {
     const memberMatch = trimmed.match(MEMBER_RE);
     if (memberMatch && !currentMethod) {
       const member: LingCppMember = {
-        type: memberMatch[1],
-        name: memberMatch[2],
+        type: memberMatch[2],
+        name: memberMatch[3],
         access: currentAccess,
         line: lineNumber,
-        initialValue: memberMatch[3]?.trim()
+        initialValue: memberMatch[5]?.trim(),
+        isStatic: Boolean(memberMatch[1]),
+        isArray: Boolean(memberMatch[4])
       };
       currentClass.members.push(member);
       pushNode(createAstNode('member', member.name, lineNumber, line, currentClassNode?.id, {
         access: member.access,
         type: member.type,
         value: member.initialValue,
-        detail: member.initialValue ? `${member.type} = ${member.initialValue}` : member.type
+        isStatic: member.isStatic,
+        isArray: member.isArray,
+        detail: [
+          member.isStatic ? '静态' : '',
+          member.type,
+          member.isArray ? '数组' : '',
+          member.initialValue ? `= ${member.initialValue}` : ''
+        ].filter(Boolean).join(' ')
       }), currentClassNode);
       return;
     }
@@ -494,6 +503,7 @@ function createAstNode(
     type: overrides.type,
     returnType: overrides.returnType,
     isStatic: overrides.isStatic,
+    isArray: overrides.isArray,
     children: []
   };
 }

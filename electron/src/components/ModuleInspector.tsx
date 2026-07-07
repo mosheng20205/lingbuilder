@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   Check,
@@ -41,6 +41,12 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
   const [exportTargetPath, setExportTargetPath] = useState('');
   const [installPreview, setInstallPreview] = useState<ModuleInstallPreview | null>(null);
   const [enableAfterInstall, setEnableAfterInstall] = useState(true);
+  const onAddLogRef = useRef(onAddLog);
+  const refreshInFlightRef = useRef(false);
+
+  useEffect(() => {
+    onAddLogRef.current = onAddLog;
+  }, [onAddLog]);
 
   const cardClass = isDarkMode
     ? 'bg-[#252526] border-white/10 text-slate-200'
@@ -51,6 +57,8 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
     : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400';
 
   const refresh = useCallback(async () => {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
     setIsLoading(true);
     setStatusText('正在读取本地模块、项目引用和市场索引...');
     try {
@@ -63,13 +71,14 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
       setMarketModules(Array.isArray(marketRes.modules) ? marketRes.modules : []);
       setHistory(Array.isArray(historyRes.history) ? historyRes.history : []);
       setStatusText('模块索引已刷新。');
-      onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块】已刷新模块索引。`);
+      onAddLogRef.current(`> [${new Date().toLocaleTimeString()}] 【模块】已刷新模块索引。`);
     } catch (error) {
       setStatusText(`模块刷新失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsLoading(false);
+      refreshInFlightRef.current = false;
     }
-  }, [onAddLog]);
+  }, []);
 
   useEffect(() => {
     refresh();
@@ -230,12 +239,12 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
 
   return (
     <div
-      className={`h-full flex flex-col overflow-hidden ${isDarkMode ? 'bg-[#1e1e1e] text-slate-200' : 'bg-slate-50 text-slate-900'}`}
+      className={`h-full min-w-0 flex flex-col overflow-hidden ${isDarkMode ? 'bg-[#1e1e1e] text-slate-200' : 'bg-slate-50 text-slate-900'}`}
       onDragOver={event => event.preventDefault()}
       onDrop={onDropPackage}
     >
-      <div className={`border-b px-4 py-3 ${isDarkMode ? 'border-white/10 bg-[#252526]' : 'border-slate-200 bg-white'}`}>
-        <div className="flex items-center justify-between gap-3">
+      <div className={`min-w-0 border-b px-3 py-3 ${isDarkMode ? 'border-white/10 bg-[#252526]' : 'border-slate-200 bg-white'}`}>
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <Layers size={18} className="text-sky-400 shrink-0" />
             <div className="min-w-0">
@@ -246,20 +255,20 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
           <button
             onClick={refresh}
             disabled={isLoading}
-            className="h-8 px-3 inline-flex items-center gap-2 rounded border border-sky-500/40 text-sky-300 hover:bg-sky-500/10 disabled:opacity-50"
+            className="h-8 shrink-0 whitespace-nowrap px-2.5 inline-flex items-center gap-1.5 rounded border border-sky-500/40 text-sky-300 hover:bg-sky-500/10 disabled:opacity-50"
           >
             <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
             刷新
           </button>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          <div className={`h-8 px-2 flex items-center gap-2 rounded border ${inputClass}`}>
+        <div className="mt-3 grid min-w-0 grid-cols-1 gap-2">
+          <div className={`h-8 min-w-0 px-2 flex items-center gap-2 rounded border ${inputClass}`}>
             <Search size={14} />
             <input
               value={searchText}
               onChange={event => setSearchText(event.target.value)}
-              className="bg-transparent outline-none text-xs w-56"
+              className="min-w-0 flex-1 bg-transparent outline-none text-xs"
               placeholder="搜索模块、说明、标签..."
             />
           </div>
@@ -275,8 +284,8 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-4 space-y-4">
-        <section className={`rounded-md border ${cardClass}`}>
+      <div className="min-w-0 flex-1 overflow-auto p-3 space-y-3">
+        <section className={`min-w-0 rounded-md border ${cardClass}`}>
           <Header icon={<Package size={16} />} title="本地模块" desc={`${installedModules.length} 个模块已索引，勾选状态代表当前项目引用。`} />
           <div className="divide-y divide-white/10">
             {filteredInstalledModules.length === 0 ? (
@@ -293,50 +302,50 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
           </div>
         </section>
 
-        <section className={`rounded-md border ${cardClass}`}>
+        <section className={`min-w-0 rounded-md border ${cardClass}`}>
           <Header icon={<FileArchive size={16} />} title="拖入安装 .lbmod" desc="支持拖入模块包，或手动填写本机路径后预览安装。" />
-          <div className="p-3 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-2">
+          <div className="p-3 grid min-w-0 grid-cols-1 gap-2">
             <input
               value={packagePath}
               onChange={event => setPackagePath(event.target.value)}
-              className={`h-9 rounded border px-3 text-xs outline-none ${inputClass}`}
+              className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`}
               placeholder="C:\\path\\module.lbmod"
             />
-            <button onClick={() => previewPackage(packagePath)} className="h-9 px-3 rounded bg-sky-600 text-white text-xs inline-flex items-center justify-center gap-2">
+            <button onClick={() => previewPackage(packagePath)} className="h-9 w-full px-3 rounded bg-sky-600 text-white text-xs inline-flex items-center justify-center gap-2">
               <ShieldCheck size={14} />
               预览安装
             </button>
           </div>
         </section>
 
-        <section className={`rounded-md border ${cardClass}`}>
+        <section className={`min-w-0 rounded-md border ${cardClass}`}>
           <Header icon={<Archive size={16} />} title="模块包制作" desc="把包含 lingbuilder.module.json 的模块目录导出为标准 .lbmod 包。" />
-          <div className="p-3 grid grid-cols-1 xl:grid-cols-[1fr_1fr_auto] gap-2">
-            <input value={exportModuleDir} onChange={event => setExportModuleDir(event.target.value)} className={`h-9 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="模块目录" />
-            <input value={exportTargetPath} onChange={event => setExportTargetPath(event.target.value)} className={`h-9 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="导出路径，例如 D:\\demo.lbmod" />
-            <button onClick={exportModulePackage} className="h-9 px-3 rounded bg-emerald-600 text-white text-xs inline-flex items-center justify-center gap-2">
+          <div className="p-3 grid min-w-0 grid-cols-1 gap-2">
+            <input value={exportModuleDir} onChange={event => setExportModuleDir(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="模块目录" />
+            <input value={exportTargetPath} onChange={event => setExportTargetPath(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="导出路径，例如 D:\\demo.lbmod" />
+            <button onClick={exportModulePackage} className="h-9 w-full px-3 rounded bg-emerald-600 text-white text-xs inline-flex items-center justify-center gap-2">
               <Upload size={14} />
               导出
             </button>
           </div>
         </section>
 
-        <section className={`rounded-md border ${cardClass}`}>
+        <section className={`min-w-0 rounded-md border ${cardClass}`}>
           <Header icon={<Store size={16} />} title="模块市场" desc="从本地、官方或企业市场源读取模块索引；安装仍走同一套预览确认流程。" />
           <div className="divide-y divide-white/10">
             {filteredMarketModules.length === 0 ? (
               <Empty text="未发现市场模块。可在 .lingbuilder/module-market.json 中添加本地索引。" />
             ) : filteredMarketModules.map(module => (
-              <div key={`${module.sourceId}-${module.id}`} className="p-3 flex items-start justify-between gap-3">
+              <div key={`${module.sourceId}-${module.id}`} className="min-w-0 p-3 flex flex-col gap-3">
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold truncate">{module.name}</div>
-                  <div className={`text-[11px] ${subtleClass}`}>{module.id} · {module.version} · {module.category}</div>
-                  <div className={`mt-1 text-xs ${subtleClass}`}>{module.description}</div>
+                  <div className="break-words text-sm font-semibold leading-5">{module.name}</div>
+                  <div className={`break-all text-[11px] leading-4 ${subtleClass}`}>{module.id} · {module.version} · {module.category}</div>
+                  <div className={`mt-1 break-words text-xs leading-5 ${subtleClass}`}>{module.description}</div>
                 </div>
                 <button
                   disabled={!module.packagePath}
                   onClick={() => module.packagePath && previewPackage(module.packagePath)}
-                  className="h-8 px-3 rounded border border-emerald-500/40 text-emerald-300 text-xs inline-flex items-center gap-2 disabled:opacity-50"
+                  className="h-8 w-full px-3 rounded border border-emerald-500/40 text-emerald-300 text-xs inline-flex items-center justify-center gap-2 disabled:opacity-50"
                 >
                   <Download size={14} />
                   {module.installedVersion ? '重新安装' : '安装'}
@@ -346,15 +355,15 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
           </div>
         </section>
 
-        <section className={`rounded-md border ${cardClass}`}>
+        <section className={`min-w-0 rounded-md border ${cardClass}`}>
           <Header icon={<Check size={16} />} title="操作历史" desc="记录安装、卸载、启用、禁用和导出动作。" />
           <div className="divide-y divide-white/10">
             {history.length === 0 ? (
               <Empty text="暂无模块操作历史。" />
             ) : history.slice(0, 12).map(item => (
               <div key={item.id} className="p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-semibold">{item.summary}</span>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <span className="break-words text-xs font-semibold">{item.summary}</span>
                   <span className={`text-[10px] ${subtleClass}`}>{new Date(item.time).toLocaleString()}</span>
                 </div>
                 <div className={`mt-1 text-[11px] whitespace-pre-wrap ${subtleClass}`}>{item.details}</div>
@@ -410,11 +419,11 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
 
 function Header({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
   return (
-    <div className="p-3 border-b border-white/10 flex items-center gap-2">
-      <span className="text-sky-400">{icon}</span>
-      <div>
+    <div className="min-w-0 p-3 border-b border-white/10 flex items-start gap-2">
+      <span className="mt-0.5 shrink-0 text-sky-400">{icon}</span>
+      <div className="min-w-0">
         <div className="text-sm font-semibold">{title}</div>
-        <div className="text-[11px] text-slate-500">{desc}</div>
+        <div className="text-[11px] leading-4 text-slate-500">{desc}</div>
       </div>
     </div>
   );
@@ -434,26 +443,26 @@ function ModuleRow({ module, isDarkMode, onToggle, onUninstall }: {
     + (manifest.contributes?.designerControls?.length || 0);
 
   return (
-    <div className="p-3 flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+    <div className="min-w-0 p-3 flex flex-col gap-3">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold">{manifest.name}</span>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300">{manifest.category}</span>
-          {module.isBuiltin && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">内置</span>}
-          {module.isEnabledForProject && <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300">项目已引用</span>}
+          <span className="min-w-0 break-words text-sm font-semibold leading-5">{manifest.name}</span>
+          <span className="shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300">{manifest.category}</span>
+          {module.isBuiltin && <span className="shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">内置</span>}
+          {module.isEnabledForProject && <span className="shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300">项目已引用</span>}
         </div>
-        <div className={`mt-1 text-[11px] ${subtleClass}`}>{manifest.id} · {manifest.version} · 能力 {capabilityCount} 项</div>
-        <div className={`mt-1 text-xs ${subtleClass}`}>{manifest.description}</div>
+        <div className={`mt-1 break-all text-[11px] leading-4 ${subtleClass}`}>{manifest.id} · {manifest.version} · 能力 {capabilityCount} 项</div>
+        <div className={`mt-1 break-words text-xs leading-5 ${subtleClass}`}>{manifest.description}</div>
         {module.diagnostics.length > 0 && (
           <div className="mt-2 text-[11px] text-red-300 whitespace-pre-wrap">{module.diagnostics.join('\n')}</div>
         )}
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <button onClick={onToggle} className="h-8 px-3 rounded border border-sky-500/40 text-sky-300 text-xs inline-flex items-center gap-2">
+      <div className="grid grid-cols-2 gap-2">
+        <button onClick={onToggle} className="h-8 min-w-0 px-2 rounded border border-sky-500/40 text-sky-300 text-xs inline-flex items-center justify-center gap-1.5">
           {module.isEnabledForProject ? <X size={14} /> : <Check size={14} />}
           {module.isEnabledForProject ? '禁用' : '启用'}
         </button>
-        <button onClick={onUninstall} disabled={module.isBuiltin} className="h-8 px-3 rounded border border-red-500/40 text-red-300 text-xs inline-flex items-center gap-2 disabled:opacity-40">
+        <button onClick={onUninstall} disabled={module.isBuiltin} className="h-8 min-w-0 px-2 rounded border border-red-500/40 text-red-300 text-xs inline-flex items-center justify-center gap-1.5 disabled:opacity-40">
           <Trash2 size={14} />
           卸载
         </button>

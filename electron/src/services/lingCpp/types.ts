@@ -32,6 +32,8 @@ export interface LingCppMember {
   access: LingCppAccessModifier;
   line: number;
   initialValue?: string;
+  isStatic?: boolean;
+  isArray?: boolean;
 }
 
 export interface LingCppMethod {
@@ -93,6 +95,7 @@ export interface LingCppAstNode {
   type?: string;
   returnType?: string;
   isStatic?: boolean;
+  isArray?: boolean;
   children: LingCppAstNode[];
 }
 
@@ -424,6 +427,7 @@ export interface LingCppStructuredReadingRow {
   initialValue?: string;
   returnType?: string;
   isStatic?: boolean;
+  isArray?: boolean;
   parameters?: LingCppParameter[];
 }
 
@@ -443,8 +447,8 @@ export interface LingCppLanguageContext {
 export type LingCppAstEdit =
   | { kind: 'update-package'; packageName: string }
   | { kind: 'update-class'; className?: string; line?: number; newName?: string; baseClass?: string; note?: string }
-  | { kind: 'add-member'; className?: string; member: { name: string; type: string; access?: LingCppAccessModifier; initialValue?: string; note?: string } }
-  | { kind: 'update-member'; className?: string; memberName: string; newName?: string; type?: string; access?: LingCppAccessModifier; initialValue?: string; note?: string }
+  | { kind: 'add-member'; className?: string; member: { name: string; type: string; access?: LingCppAccessModifier; initialValue?: string; isStatic?: boolean; isArray?: boolean; note?: string } }
+  | { kind: 'update-member'; className?: string; memberName: string; newName?: string; type?: string; access?: LingCppAccessModifier; initialValue?: string; isStatic?: boolean; isArray?: boolean; note?: string }
   | { kind: 'delete-member'; className?: string; memberName: string }
   | { kind: 'add-event'; className?: string; event: { handlerName: string; access?: LingCppAccessModifier; parameters?: LingCppParameter[]; note?: string } }
   | { kind: 'update-event'; className?: string; handlerName: string; newHandlerName?: string; access?: LingCppAccessModifier; parameters?: LingCppParameter[]; note?: string }
