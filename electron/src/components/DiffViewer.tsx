@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo, useState } from 'react';
+import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X, ListTree, PanelRightClose, GraduationCap, Lightbulb, ClipboardList, Wand2, PlayCircle, Pencil, Save, Trash2, Plus, ChevronDown, ChevronRight, RefreshCw, FolderOpen, Copy, FileInput, ExternalLink } from 'lucide-react';
 
 function FileIcon({ fileName, isDarkMode }: { fileName: string; isDarkMode: boolean }) {
@@ -1114,6 +1114,7 @@ export default function DiffViewer({
   const unifiedScrollRef = useRef<HTMLDivElement>(null);
   const sourceEditorRef = useRef<HTMLTextAreaElement>(null);
   const sourceLineNumberRef = useRef<HTMLDivElement>(null);
+  const beginnerStructureScrollRef = useRef<HTMLDivElement>(null);
   const beginnerJumpHighlightTimerRef = useRef<number | null>(null);
 
   useEffect(() => () => {
@@ -1664,12 +1665,38 @@ export default function DiffViewer({
     });
   };
 
+  const adjustEditorFontByWheel = useCallback((deltaY: number) => {
+    if (!onFontSizeChange) return;
+    onFontSizeChange(currentValue => currentValue + (deltaY < 0 ? 1 : -1));
+  }, [onFontSizeChange]);
+
   const handleEditorFontWheel = (event: React.WheelEvent) => {
-    if (!onFontSizeChange || !(event.ctrlKey || event.metaKey)) return;
+    if (!(event.ctrlKey || event.metaKey)) return;
     event.preventDefault();
     event.stopPropagation();
-    onFontSizeChange(currentValue => currentValue + (event.deltaY < 0 ? 1 : -1));
+    adjustEditorFontByWheel(event.deltaY);
   };
+
+  useEffect(() => {
+    if (!isLingCppBeginnerStructureMode) return undefined;
+
+    const scrollRoot = beginnerStructureScrollRef.current;
+    if (!scrollRoot) return undefined;
+
+    const handleNativeFontWheel = (event: WheelEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      adjustEditorFontByWheel(event.deltaY);
+    };
+    const wheelOptions: AddEventListenerOptions = { passive: false, capture: true };
+
+    scrollRoot.addEventListener('wheel', handleNativeFontWheel, wheelOptions);
+    return () => {
+      scrollRoot.removeEventListener('wheel', handleNativeFontWheel, wheelOptions);
+    };
+  }, [activeFile?.path, adjustEditorFontByWheel, isLingCppBeginnerStructureMode]);
 
   const renderEplSourceToken = (token: string, index: number) => {
     if (token === '') return null;
@@ -2483,7 +2510,9 @@ export default function DiffViewer({
   };
 
   const directInputClasses = (tone: StructureInputTone = 'plain') => {
-    const sizeClass = tone === 'procedure' ? 'h-7 text-[12px]' : 'h-6 text-[11px]';
+    const sizeClass = tone === 'procedure'
+      ? 'h-[var(--beginner-procedure-input-height)] text-[length:var(--beginner-procedure-font-size)] leading-[var(--beginner-table-line-height)]'
+      : 'h-[var(--beginner-input-height)] text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)]';
     const toneClass =
       tone === 'procedure'
         ? isDarkMode ? 'font-bold text-cyan-200' : 'font-bold text-cyan-800'
@@ -2604,7 +2633,7 @@ export default function DiffViewer({
     const disabled = !onUpdateSourceContent || !row.editable;
     return (
       <label
-        className={`inline-flex h-6 w-full items-center justify-center ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
+        className={`inline-flex h-[var(--beginner-input-height)] w-full items-center justify-center ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
         title={title}
       >
         <input
@@ -2614,13 +2643,13 @@ export default function DiffViewer({
           disabled={disabled}
           onChange={event => commitDirectStructureValue(row, field, booleanCellValue(event.currentTarget.checked))}
         />
-        <span className={`relative h-4 w-7 rounded-full transition-colors ${
+        <span className={`relative h-[var(--beginner-switch-height)] w-[var(--beginner-switch-width)] rounded-full transition-colors ${
           checked
             ? isDarkMode ? 'bg-cyan-500/80' : 'bg-cyan-600'
             : isDarkMode ? 'bg-[#2b2d34]' : 'bg-slate-300'
         }`}>
-          <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
-            checked ? 'translate-x-3.5' : 'translate-x-0.5'
+          <span className={`absolute top-[var(--beginner-switch-knob-offset)] h-[var(--beginner-switch-knob-size)] w-[var(--beginner-switch-knob-size)] rounded-full bg-white transition-transform ${
+            checked ? 'translate-x-[var(--beginner-switch-knob-translate)]' : 'translate-x-[var(--beginner-switch-knob-offset)]'
           }`} />
         </span>
       </label>
@@ -2635,7 +2664,7 @@ export default function DiffViewer({
     const disabled = !onUpdateSourceContent || !primaryLingCppClass;
     return (
       <label
-        className={`inline-flex h-6 w-full items-center justify-center ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
+        className={`inline-flex h-[var(--beginner-input-height)] w-full items-center justify-center ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
         title={title}
       >
         <input
@@ -2649,13 +2678,13 @@ export default function DiffViewer({
             commitNewMemberDraft({ [field]: nextChecked });
           }}
         />
-        <span className={`relative h-4 w-7 rounded-full transition-colors ${
+        <span className={`relative h-[var(--beginner-switch-height)] w-[var(--beginner-switch-width)] rounded-full transition-colors ${
           checked
             ? isDarkMode ? 'bg-cyan-500/80' : 'bg-cyan-600'
             : isDarkMode ? 'bg-[#2b2d34]' : 'bg-slate-300'
         }`}>
-          <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
-            checked ? 'translate-x-3.5' : 'translate-x-0.5'
+          <span className={`absolute top-[var(--beginner-switch-knob-offset)] h-[var(--beginner-switch-knob-size)] w-[var(--beginner-switch-knob-size)] rounded-full bg-white transition-transform ${
+            checked ? 'translate-x-[var(--beginner-switch-knob-translate)]' : 'translate-x-[var(--beginner-switch-knob-offset)]'
           }`} />
         </span>
       </label>
@@ -3899,7 +3928,7 @@ export default function DiffViewer({
     const headCellClass = `sticky top-8 z-10 border-b px-2 py-1.5 text-left text-[10px] font-semibold ${tableHeadChrome}`;
 
     const textTone = (tone: StructureTextTone = 'plain') => {
-      if (tone === 'procedure') return isDarkMode ? 'text-[12px] font-bold text-cyan-200' : 'text-[12px] font-bold text-cyan-800';
+      if (tone === 'procedure') return isDarkMode ? 'text-[length:var(--beginner-procedure-font-size)] font-bold text-cyan-200' : 'text-[length:var(--beginner-procedure-font-size)] font-bold text-cyan-800';
       if (tone === 'variable') return isDarkMode ? 'font-semibold text-amber-200' : 'font-semibold text-amber-800';
       if (tone === 'parameter') return isDarkMode ? 'font-semibold text-violet-200' : 'font-semibold text-violet-700';
       if (tone === 'type') return isDarkMode ? 'font-semibold text-blue-300' : 'font-semibold text-blue-700';
@@ -4215,7 +4244,7 @@ export default function DiffViewer({
       const disabled = !onUpdateSourceContent || !editable;
       return (
         <label
-          className={`inline-flex h-6 w-full items-center justify-center ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
+          className={`inline-flex h-[var(--beginner-input-height)] w-full items-center justify-center ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
           title={editable ? '切换后写回为 静态 子程序声明' : '只有普通子程序支持静态'}
         >
           <input
@@ -4225,13 +4254,13 @@ export default function DiffViewer({
             disabled={disabled}
             onChange={event => applyCodeTargetSignature(target, { isStatic: event.currentTarget.checked })}
           />
-          <span className={`relative h-4 w-7 rounded-full transition-colors ${
+          <span className={`relative h-[var(--beginner-switch-height)] w-[var(--beginner-switch-width)] rounded-full transition-colors ${
             checked
               ? isDarkMode ? 'bg-cyan-500/80' : 'bg-cyan-600'
               : isDarkMode ? 'bg-[#2b2d34]' : 'bg-slate-300'
           }`}>
-            <span className={`absolute top-0.5 h-3 w-3 rounded-full transition-transform ${
-              checked ? 'translate-x-3.5' : 'translate-x-0.5'
+            <span className={`absolute top-[var(--beginner-switch-knob-offset)] h-[var(--beginner-switch-knob-size)] w-[var(--beginner-switch-knob-size)] rounded-full transition-transform ${
+              checked ? 'translate-x-[var(--beginner-switch-knob-translate)]' : 'translate-x-[var(--beginner-switch-knob-offset)]'
             } ${isDarkMode ? 'bg-white' : 'bg-white'}`} />
           </span>
         </label>
@@ -4577,7 +4606,7 @@ export default function DiffViewer({
 
       return (
         <div className="relative" data-beginner-editor-root onWheel={handleEditorFontWheel}>
-          <div className={`grid grid-cols-[54px_22px_minmax(0,1fr)] border-b text-[10px] font-semibold ${
+          <div className={`grid grid-cols-[var(--beginner-gutter-width)_var(--beginner-flow-width)_minmax(0,1fr)] border-b text-[10px] font-semibold ${
             isDarkMode ? 'border-[#2b2d34] bg-[#111217] text-slate-500' : 'border-slate-200 bg-slate-50 text-slate-500'
           }`}>
             <div className="border-r px-2 py-1.5 text-right">行</div>
@@ -4587,7 +4616,7 @@ export default function DiffViewer({
               <span className="truncate font-normal">Alt+↑/↓ 跳分支 · Ctrl+Shift+\ 循环</span>
             </div>
           </div>
-          <div className={`grid ${editorHeightClass} grid-cols-[54px_22px_minmax(0,1fr)]`}>
+          <div className={`grid ${editorHeightClass} grid-cols-[var(--beginner-gutter-width)_var(--beginner-flow-width)_minmax(0,1fr)]`}>
             <div data-beginner-line-numbers className={`select-none overflow-hidden border-r px-2 py-2 text-right text-[11px] leading-6 tabular-nums ${
               isDarkMode ? 'border-[#2b2d34] bg-[#111217] text-slate-600' : 'border-slate-200 bg-slate-50 text-slate-400'
             }`} style={editorTextStyle}>
@@ -5238,13 +5267,13 @@ export default function DiffViewer({
     const allProcessTargets = [...codeTargets].sort((left, right) => left.method.line - right.method.line);
     const activeCanvasTarget = activeCodeTarget || allProcessTargets[0];
     const compactTableBorder = isDarkMode ? 'border-[#33343b]' : 'border-slate-300';
-    const compactHeadCellClass = `h-6 border px-2 text-[10px] font-semibold ${compactTableBorder} ${
+    const compactHeadCellClass = `h-[var(--beginner-table-row-height)] border px-[var(--beginner-table-cell-x)] text-[length:var(--beginner-table-head-font-size)] font-semibold leading-[var(--beginner-table-line-height)] ${compactTableBorder} ${
       isDarkMode ? 'bg-[#202127] text-slate-300' : 'bg-slate-100 text-slate-700'
     }`;
-    const compactCellClass = `h-6 border px-2 align-middle text-[11px] ${compactTableBorder} ${
+    const compactCellClass = `h-[var(--beginner-table-row-height)] border px-[var(--beginner-table-cell-x)] align-middle text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] ${compactTableBorder} ${
       isDarkMode ? 'bg-[#18191f] text-slate-200' : 'bg-white text-slate-800'
     }`;
-    const compactEmptyCellClass = `h-6 border px-2 align-middle text-[11px] ${compactTableBorder} ${
+    const compactEmptyCellClass = `h-[var(--beginner-table-row-height)] border px-[var(--beginner-table-cell-x)] align-middle text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] ${compactTableBorder} ${
       isDarkMode ? 'bg-[#15161b] text-slate-600' : 'bg-white text-slate-400'
     }`;
     type CompactColumn = { label: string; className?: string };
@@ -5336,7 +5365,7 @@ export default function DiffViewer({
       <section
         id={sectionDomId(id)}
         data-structured-line={sourceLine}
-        className={`grid grid-cols-[54px_minmax(0,1fr)] border-b ${canvasBorder} ${
+        className={`grid grid-cols-[var(--beginner-gutter-width)_minmax(0,1fr)] border-b ${canvasBorder} ${
           tone === 'active'
             ? isDarkMode ? 'bg-cyan-500/[0.06]' : 'bg-cyan-50'
             : tone === 'warning'
@@ -5347,7 +5376,7 @@ export default function DiffViewer({
         <button
           type="button"
           onClick={() => revealLingCppLine(sourceLine)}
-          className={`border-r px-2 py-2 text-right font-mono text-[11px] tabular-nums ${canvasBorder} ${gutterBg}`}
+          className={`border-r px-2 py-2 text-right font-mono text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] tabular-nums ${canvasBorder} ${gutterBg}`}
           title={`定位到源码第 ${sourceLine} 行`}
         >
           {visualLine}
@@ -5357,9 +5386,9 @@ export default function DiffViewer({
     );
 
     const renderBlankSourceLine = (visualLine: number) => (
-      <section key={`blank-${visualLine}`} className={`grid grid-cols-[54px_minmax(0,1fr)] ${canvasBg}`}>
-        <div className={`border-r px-2 py-1 text-right font-mono text-[11px] tabular-nums ${canvasBorder} ${gutterBg}`}>{visualLine}</div>
-        <div className="h-7" />
+      <section key={`blank-${visualLine}`} className={`grid grid-cols-[var(--beginner-gutter-width)_minmax(0,1fr)] ${canvasBg}`}>
+        <div className={`border-r px-2 py-1 text-right font-mono text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] tabular-nums ${canvasBorder} ${gutterBg}`}>{visualLine}</div>
+        <div className="h-[var(--beginner-blank-row-height)]" />
       </section>
     );
 
@@ -5368,8 +5397,8 @@ export default function DiffViewer({
       rows: React.ReactNode[],
       maxWidth: number
     ) => (
-      <div className="inline-block w-full max-w-full align-top" style={{ maxWidth }}>
-        <table className={`w-full table-fixed border-collapse text-left font-sans text-[11px] ${compactTableBorder}`}>
+      <div className="inline-block w-full max-w-full align-top" style={{ maxWidth: `calc(${maxWidth}px * var(--beginner-table-scale))` }}>
+        <table className={`w-full table-fixed border-collapse text-left font-sans text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] ${compactTableBorder}`}>
           <thead>
             <tr>
               {columns.map(column => (
@@ -5496,23 +5525,23 @@ export default function DiffViewer({
         <section
           id={sectionDomId('member')}
           data-structured-line={sourceLine}
-          className={`grid grid-cols-[54px_minmax(0,1fr)] border-b ${canvasBorder} ${canvasBg}`}
+          className={`grid grid-cols-[var(--beginner-gutter-width)_minmax(0,1fr)] border-b ${canvasBorder} ${canvasBg}`}
         >
-          <div className={`select-none border-r px-2 py-2 text-right font-mono text-[11px] tabular-nums ${canvasBorder} ${gutterBg}`}>
-            <div className={`h-6 border-b ${canvasBorder}`} />
+          <div className={`select-none border-r px-2 py-2 text-right font-mono text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] tabular-nums ${canvasBorder} ${gutterBg}`}>
+            <div className={`h-[var(--beginner-table-row-height)] border-b ${canvasBorder}`} />
             {countedRows.map(item => (
               <button
                 key={`${item.visualLine}:${item.sourceLine}`}
                 type="button"
                 onClick={() => revealLingCppLine(item.sourceLine)}
-                className="block h-6 w-full text-right"
+                className="block h-[var(--beginner-table-row-height)] w-full text-right"
                 title={`定位到源码第 ${item.sourceLine} 行`}
               >
                 {item.visualLine}
               </button>
             ))}
             {showNewMemberRow && rows.length > 0 && (
-              <div className="h-6 text-right text-slate-600">+</div>
+              <div className="h-[var(--beginner-table-row-height)] text-right text-slate-600">+</div>
             )}
           </div>
           <div className="min-w-0 px-3 py-2">
@@ -5594,7 +5623,7 @@ export default function DiffViewer({
         <section
           key={`${target.className}:${target.method.name}:code`}
           data-structured-line={target.method.statements[0]?.line || target.method.line}
-          className={`relative grid grid-cols-[54px_22px_minmax(0,1fr)] ${canvasBg}`}
+          className={`relative grid grid-cols-[var(--beginner-gutter-width)_var(--beginner-flow-width)_minmax(0,1fr)] ${canvasBg}`}
           data-beginner-editor-root
           onContextMenu={event => openBeginnerContextMenu(event, target)}
           onWheel={handleEditorFontWheel}
@@ -5795,6 +5824,7 @@ export default function DiffViewer({
 
     return (
       <div
+        ref={beginnerStructureScrollRef}
         data-beginner-structure-scroll
         className={`h-full min-h-0 overflow-auto ${isDarkMode ? 'bg-[#101116]' : 'bg-slate-50'}`}
         onContextMenu={event => openBeginnerContextMenu(event, activeCanvasTarget)}
@@ -6691,10 +6721,41 @@ export default function DiffViewer({
     );
   };
 
-
+  const beginnerTableScale = Math.max(0.85, editorFontSize / 13);
+  const beginnerTableFontSize = Math.max(11, Math.round(editorFontSize * 0.88));
+  const beginnerTableHeadFontSize = Math.max(10, Math.round(beginnerTableFontSize * 0.9));
+  const beginnerProcedureFontSize = Math.max(beginnerTableFontSize + 1, Math.round(editorFontSize * 0.96));
+  const beginnerTableLineHeight = Math.max(16, Math.round(beginnerTableFontSize * 1.45));
+  const beginnerTableRowHeight = Math.max(24, beginnerTableLineHeight + 9);
+  const beginnerInputHeight = Math.max(24, beginnerTableRowHeight - 2);
+  const beginnerProcedureInputHeight = Math.max(28, beginnerTableRowHeight);
+  const beginnerBlankRowHeight = Math.max(28, Math.round(editorFontSize * 2.15));
+  const beginnerSwitchHeight = Math.max(16, Math.round(beginnerInputHeight * 0.62));
+  const beginnerSwitchWidth = Math.round(beginnerSwitchHeight * 1.75);
+  const beginnerSwitchKnobSize = Math.max(12, beginnerSwitchHeight - 4);
+  const beginnerSwitchKnobOffset = Math.max(2, Math.round((beginnerSwitchHeight - beginnerSwitchKnobSize) / 2));
+  const beginnerScaleStyle = {
+    '--beginner-table-scale': beginnerTableScale.toFixed(3),
+    '--beginner-table-font-size': `${beginnerTableFontSize}px`,
+    '--beginner-table-head-font-size': `${beginnerTableHeadFontSize}px`,
+    '--beginner-procedure-font-size': `${beginnerProcedureFontSize}px`,
+    '--beginner-table-line-height': `${beginnerTableLineHeight}px`,
+    '--beginner-table-row-height': `${beginnerTableRowHeight}px`,
+    '--beginner-input-height': `${beginnerInputHeight}px`,
+    '--beginner-procedure-input-height': `${beginnerProcedureInputHeight}px`,
+    '--beginner-blank-row-height': `${beginnerBlankRowHeight}px`,
+    '--beginner-gutter-width': `${Math.max(54, Math.round(editorFontSize * 4.3))}px`,
+    '--beginner-flow-width': `${Math.max(22, Math.round(editorFontSize * 1.75))}px`,
+    '--beginner-table-cell-x': `${Math.max(8, Math.round(beginnerTableFontSize * 0.75))}px`,
+    '--beginner-switch-height': `${beginnerSwitchHeight}px`,
+    '--beginner-switch-width': `${beginnerSwitchWidth}px`,
+    '--beginner-switch-knob-size': `${beginnerSwitchKnobSize}px`,
+    '--beginner-switch-knob-offset': `${beginnerSwitchKnobOffset}px`,
+    '--beginner-switch-knob-translate': `${beginnerSwitchWidth - beginnerSwitchKnobSize - beginnerSwitchKnobOffset}px`
+  } as React.CSSProperties;
 
   return (
-    <div id="diff-window-host" className={`flex-1 flex flex-col overflow-hidden ${
+    <div id="diff-window-host" style={beginnerScaleStyle} className={`flex-1 flex flex-col overflow-hidden ${
       isDarkMode ? 'bg-[#141418]' : 'bg-white'
     }`}>
       {/* File Tabs Bar */}
