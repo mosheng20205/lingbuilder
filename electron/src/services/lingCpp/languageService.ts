@@ -554,6 +554,7 @@ export function getLingCppStructuredReadingRows(
 
     cls.methods.forEach(method => {
       const block = blockByLine.get(method.line);
+      const sourceNote = noteBeforeLine(lines, method.line);
       if (method.kind === 'event') {
         rows.push({
           id: `reading-event-${method.name}-${method.line}`,
@@ -561,10 +562,13 @@ export function getLingCppStructuredReadingRows(
           name: block?.readableName?.displayName || method.name,
           type: eventKindLabel(block?.kind || 'custom-event'),
           value: block?.summary || '',
-          note: eventNote(block?.kind || 'custom-event', block?.readableName?.subject || method.name),
+          note: sourceNote || eventNote(block?.kind || 'custom-event', block?.readableName?.subject || method.name),
           line: method.line,
           blockId: block?.id,
-          status: block?.bindingStatus
+          status: block?.bindingStatus,
+          access: method.access,
+          returnType: method.returnType,
+          parameters: method.parameters
         });
         method.parameters.forEach(parameter => {
           rows.push({
@@ -588,9 +592,13 @@ export function getLingCppStructuredReadingRows(
         name: method.kind === 'constructor' ? '构造()' : method.name,
         type: method.kind === 'constructor' ? '初始化' : method.returnType,
         value: block?.summary || '',
-        note: method.kind === 'constructor' ? '窗口初始化时执行' : '普通代码逻辑',
+        note: sourceNote || (method.kind === 'constructor' ? '窗口初始化时执行' : '普通代码逻辑'),
         line: method.line,
-        blockId: block?.id
+        blockId: block?.id,
+        access: method.access,
+        returnType: method.returnType,
+        isStatic: method.isStatic,
+        parameters: method.parameters
       });
     });
   });
@@ -686,6 +694,7 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
       const block = blockByLine.get(method.line);
       const binding = bindingByHandler.get(normalizeIdentifier(method.name));
       const parameterText = formatParameterList(method.parameters);
+      const sourceNote = noteBeforeLine(lines, method.line);
       if (method.kind === 'event') {
         rows.push({
           id: `structured-event-${method.name}-${method.line}`,
@@ -693,7 +702,7 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
           name: block?.readableName?.displayName || method.name,
           type: binding?.eventName || eventKindLabel(block?.kind || 'custom-event'),
           value: bindingStatusText(binding?.status),
-          note: binding?.detailText || eventNote(block?.kind || 'custom-event', block?.readableName?.subject || method.name),
+          note: sourceNote || binding?.detailText || eventNote(block?.kind || 'custom-event', block?.readableName?.subject || method.name),
           line: method.line,
           blockId: block?.id,
           status: binding?.status || block?.bindingStatus,
@@ -703,6 +712,7 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
           targetName: method.name,
           access: method.access,
           returnType: method.returnType,
+          isStatic: method.isStatic,
           parameters: method.parameters
         });
         if (parameterText) {
@@ -727,7 +737,7 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
         name: method.kind === 'constructor' ? '构造()' : method.kind === 'destructor' ? '析构()' : method.name,
         type: method.kind === 'constructor' ? '构造' : method.kind === 'destructor' ? '析构' : method.returnType,
         value: parameterText,
-        note: block?.summary || (method.kind === 'constructor' ? '窗口初始化时执行' : '普通代码逻辑'),
+        note: sourceNote || block?.summary || (method.kind === 'constructor' ? '窗口初始化时执行' : '普通代码逻辑'),
         line: method.line,
         blockId: block?.id,
         editable: method.kind === 'method',
@@ -736,6 +746,7 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
         targetName: method.name,
         access: method.access,
         returnType: method.returnType,
+        isStatic: method.isStatic,
         parameters: method.parameters
       });
     });
@@ -1260,6 +1271,14 @@ function memberNote(type: string, name: string): string {
   if (/标签|鏍囩|Label/u.test(type)) return `${name} 用来显示说明文字`;
   if (/文本|鏂囨湰|Text/u.test(type)) return `${name} 保存一段文本`;
   return '类里面保存的数据或控件';
+}
+
+function noteBeforeLine(lines: string[], lineNumber: number): string | undefined {
+  const previousLine = lines[Math.max(0, lineNumber - 2)] || '';
+  const trimmed = previousLine.trim();
+  if (trimmed.startsWith('//')) return trimmed.replace(/^\/\/\s?/u, '').trim() || undefined;
+  if (trimmed.startsWith('注释 ')) return trimmed.slice('注释'.length).trim() || undefined;
+  return undefined;
 }
 
 function formatParameterList(parameters: LingCppMethod['parameters']): string {

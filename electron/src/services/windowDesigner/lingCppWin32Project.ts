@@ -936,10 +936,13 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
     .join('\n') || '        (void)control;';
   const eventMethods = methodHandlers
     .map(handler => generateHandlerMethod(handler, findLingCppMethod(program, handler)));
-  const userMethods = (sourceClass?.methods || [])
-    .filter(method => method.kind === 'method')
-    .map(generateUserMethod);
-  const methods = [...eventMethods, ...userMethods].join('\n\n') || '    // 当前窗口暂无绑定事件。';
+  const userMethods = (sourceClass?.methods || []).filter(method => method.kind === 'method');
+  const publicUserMethods = userMethods.filter(method => method.access === '公开').map(generateUserMethod);
+  const protectedUserMethods = userMethods.filter(method => method.access === '保护').map(generateUserMethod);
+  const privateUserMethods = userMethods.filter(method => method.access !== '公开' && method.access !== '保护').map(generateUserMethod);
+  const publicUserMethodBlock = publicUserMethods.length ? `\n${publicUserMethods.join('\n\n')}\n` : '';
+  const protectedUserMethodBlock = protectedUserMethods.length ? `\n${protectedUserMethods.join('\n\n')}\n` : '';
+  const privateMethods = [...eventMethods, ...privateUserMethods].join('\n\n') || '    // 当前窗口暂无绑定事件。';
   const windowCreatedOverride = windowCreatedHandler
     ? `    void OnWindowCreated() override {\n        ${toCppIdentifier(windowCreatedHandler)}();\n    }\n\n`
     : '';
@@ -947,6 +950,7 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
   return `class ${className} : public LingWindowBase {
 public:
     explicit ${className}(const WindowSpec& spec) : LingWindowBase(spec) {}
+${publicUserMethodBlock}
 
 protected:
 ${windowCreatedOverride}
@@ -954,9 +958,10 @@ ${windowCreatedOverride}
 ${dispatchCases}
         LingWindowBase::DispatchLingEvent(control);
     }
+${protectedUserMethodBlock}
 
 private:
-${methods}
+${privateMethods}
 };`;
 }
 
@@ -980,12 +985,13 @@ function generateUserMethod(method: LingCppMethod): string {
   const parameters = formatCppParameters(method.parameters);
   const body = translateMethodStatements(method);
   const fallbackReturn = defaultReturnStatement(returnType);
+  const staticPrefix = method.isStatic ? 'static ' : '';
   const bodyWithFallback = [
     body,
     fallbackReturn ? `        ${fallbackReturn}` : ''
   ].filter(Boolean).join('\n') || '        // 空功能代码。';
 
-  return `    ${returnType} ${toCppIdentifier(method.name)}(${parameters}) {
+  return `    ${staticPrefix}${returnType} ${toCppIdentifier(method.name)}(${parameters}) {
 ${bodyWithFallback}
     }`;
 }

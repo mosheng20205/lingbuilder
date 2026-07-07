@@ -32,7 +32,8 @@ export const LING_CPP_KEYWORDS = [
   '如果结束',
   '循环',
   '循环结束',
-  '结束类'
+  '结束类',
+  '静态'
 ];
 
 export const LING_CPP_COMMANDS = [
@@ -66,7 +67,7 @@ export const LING_CPP_TYPES = [
 const CLASS_RE = /^类\s+([\w\u4e00-\u9fa5]+)(?:\s*[:：]\s*(?:公开|私有|保护)?\s*([\w\u4e00-\u9fa5]+))?/;
 const ACCESS_RE = /^(公开|私有|保护)\s*[:：]?$/;
 const METHOD_RE = new RegExp(
-  `^(${['事件', '构造', '析构', '空', ...LING_CPP_TYPES].map(escapeRegexLiteral).join('|')})\\s*([\\w\\u4e00-\\u9fa5]*)\\s*[（(]([^）)]*)[）)]`
+  `^(静态\\s+)?(${['事件', '构造', '析构', '空', ...LING_CPP_TYPES].map(escapeRegexLiteral).join('|')})\\s*([\\w\\u4e00-\\u9fa5]*)\\s*[（(]([^）)]*)[）)]`
 );
 const MEMBER_RE = new RegExp(
   `^(${LING_CPP_TYPES.map(escapeRegexLiteral).join('|')})\\s+([\\w\\u4e00-\\u9fa5]+)(?:\\s*[=＝]\\s*(.+))?$`
@@ -205,15 +206,17 @@ export function parseLingCpp(source: string): LingCppParseResult {
     const methodMatch = trimmed.match(METHOD_RE);
     if (methodMatch) {
       closeCurrentMethod(lineNumber - 1);
-      const prefix = methodMatch[1];
-      const declaredName = methodMatch[2]?.trim();
+      const isStatic = Boolean(methodMatch[1]);
+      const prefix = methodMatch[2];
+      const declaredName = methodMatch[3]?.trim();
       const method: LingCppMethod = {
         name: normalizeMethodName(prefix, declaredName, currentClass.name),
         returnType: methodReturnType(prefix),
         access: currentAccess,
+        isStatic: isStatic && methodKind(prefix) === 'method',
         kind: methodKind(prefix),
         line: lineNumber,
-        parameters: parseParameters(methodMatch[3] || ''),
+        parameters: parseParameters(methodMatch[4] || ''),
         statements: []
       };
       currentClass.methods.push(method);
@@ -222,6 +225,7 @@ export function parseLingCpp(source: string): LingCppParseResult {
       currentMethodNode = pushNode(createAstNode(methodNodeKind, method.name, lineNumber, line, currentClassNode?.id, {
         access: currentAccess,
         returnType: method.returnType,
+        isStatic: method.isStatic,
         detail: method.kind === 'event' ? '事件处理器' : method.returnType
       }), currentClassNode);
       method.parameters.forEach(parameter => {
@@ -489,6 +493,7 @@ function createAstNode(
     access: overrides.access,
     type: overrides.type,
     returnType: overrides.returnType,
+    isStatic: overrides.isStatic,
     children: []
   };
 }

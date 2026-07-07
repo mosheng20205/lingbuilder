@@ -3,6 +3,7 @@ import { normalizeIdentifier, parseLingCpp } from './parser';
 import {
   LingCppAstEdit,
   LingCppAstEditResult,
+  LingCppAccessModifier,
   LingCppClass,
   LingCppDiagnostic,
   LingCppMember,
@@ -59,7 +60,7 @@ function applyEditToLines(lines: string[], classes: LingCppClass[], edit: LingCp
   if (edit.kind === 'update-class') {
     const index = lineIndex(cls.line);
     next[index] = formatClassDeclaration(next[index] || '', edit.newName || cls.name, edit.baseClass ?? cls.baseClass);
-    if (edit.note) replaceOrInsertNote(next, cls.line, edit.note);
+    if (edit.note !== undefined) replaceOrInsertNote(next, cls.line, edit.note);
     return next;
   }
 
@@ -77,7 +78,7 @@ function applyEditToLines(lines: string[], classes: LingCppClass[], edit: LingCp
       type: edit.type || member.type,
       initialValue: edit.initialValue ?? member.initialValue
     });
-    if (edit.note) replaceOrInsertNote(next, member.line, edit.note);
+    if (edit.note !== undefined) replaceOrInsertNote(next, member.line, edit.note);
     if (edit.access && edit.access !== member.access) next.splice(index, 0, `${indentOf(next[index])}${edit.access}:`);
     return next;
   }
@@ -99,7 +100,8 @@ function applyEditToLines(lines: string[], classes: LingCppClass[], edit: LingCp
     if (!method) throw new Error(`未找到事件处理器：${edit.handlerName}`);
     const index = lineIndex(method.line);
     next[index] = formatEventDeclaration(next[index] || '', edit.newHandlerName || method.name, edit.parameters ?? method.parameters);
-    if (edit.note) replaceOrInsertNote(next, method.line, edit.note);
+    if (edit.note !== undefined) replaceOrInsertNote(next, method.line, edit.note);
+    if (edit.access && edit.access !== method.access) insertAccessModifier(next, method.line, edit.access);
     return next;
   }
 
@@ -124,9 +126,18 @@ function applyEditToLines(lines: string[], classes: LingCppClass[], edit: LingCp
       method,
       edit.newName || method.name,
       edit.returnType || method.returnType,
-      edit.parameters ?? method.parameters
+      edit.parameters ?? method.parameters,
+      edit.isStatic ?? method.isStatic ?? false
     );
-    if (edit.note) replaceOrInsertNote(next, method.line, edit.note);
+    if (edit.note !== undefined) replaceOrInsertNote(next, method.line, edit.note);
+    if (edit.access && edit.access !== method.access) insertAccessModifier(next, method.line, edit.access);
+    return next;
+  }
+
+  if (edit.kind === 'delete-method') {
+    const method = resolveMethod(cls, edit.methodName, 'method');
+    if (!method) throw new Error(`未找到方法：${edit.methodName}`);
+    removeMethodBlock(next, method);
     return next;
   }
 
@@ -157,13 +168,14 @@ function insertMember(
 function insertEvent(
   lines: string[],
   cls: LingCppClass,
-  event: { handlerName: string; access?: string; parameters?: LingCppParameter[]; note?: string }
+  event: { handlerName: string; access?: LingCppAccessModifier; parameters?: LingCppParameter[]; note?: string }
 ): void {
   const insertAt = Math.max(lineIndex(cls.line + 1), lineIndex(cls.endLine || lines.length));
   const indent = inferClassBodyIndent(lines, cls);
   const bodyIndent = `${indent}    `;
   const nextLines = [
     '',
+    event.access ? `${indent}${event.access}:` : '',
     event.note ? `${indent}// ${event.note.trim()}` : '',
     `${indent}事件 ${event.handlerName.trim()}(${formatParameters(event.parameters || [])})`,
     `${bodyIndent}调试输出("${event.handlerName.trim()} 已触发")`
@@ -174,7 +186,7 @@ function insertEvent(
 function insertMethod(
   lines: string[],
   cls: LingCppClass,
-  method: { name: string; returnType?: string; parameters?: LingCppParameter[]; bodyLines?: string[]; note?: string }
+  method: { name: string; returnType?: string; access?: LingCppAccessModifier; isStatic?: boolean; parameters?: LingCppParameter[]; bodyLines?: string[]; note?: string }
 ): void {
   const insertAt = Math.max(lineIndex(cls.line + 1), lineIndex(cls.endLine || lines.length));
   const indent = inferClassBodyIndent(lines, cls);
@@ -183,8 +195,9 @@ function insertMethod(
     .map(line => line.trim() ? `${bodyIndent}${line}` : '');
   const nextLines = [
     '',
+    method.access ? `${indent}${method.access}:` : '',
     method.note ? `${indent}// ${method.note.trim()}` : '',
-    `${indent}${method.returnType?.trim() || '空'} ${method.name.trim()}(${formatParameters(method.parameters || [])})`,
+    `${indent}${method.isStatic ? '静态 ' : ''}${method.returnType?.trim() || '空'} ${method.name.trim()}(${formatParameters(method.parameters || [])})`,
     ...bodyLines
   ].filter(line => line !== '');
   lines.splice(insertAt, 0, ...nextLines);
@@ -194,16 +207,39 @@ function replaceOrInsertNote(lines: string[], lineNumber: number, note: string):
   const index = lineIndex(lineNumber);
   const targetLine = lines[index] || '';
   const previousLine = lines[index - 1] || '';
-  const noteLine = `${indentOf(targetLine)}// ${note.trim()}`;
-  if (targetLine.trim().startsWith('//') || targetLine.trim().startsWith('注释 ')) {
+  const trimmedNote = note.trim();
+  if (!trimmedNote) {
+    if (isNoteLine(targetLine)) {
+      lines.splice(index, 1);
+      return;
+    }
+    if (isNoteLine(previousLine)) {
+      lines.splice(index - 1, 1);
+    }
+    return;
+  }
+  const noteLine = `${indentOf(targetLine)}// ${trimmedNote}`;
+  if (isNoteLine(targetLine)) {
     lines[index] = noteLine;
     return;
   }
-  if (previousLine.trim().startsWith('//') || previousLine.trim().startsWith('注释 ')) {
-    lines[index - 1] = `${indentOf(previousLine)}// ${note.trim()}`;
+  if (isNoteLine(previousLine)) {
+    lines[index - 1] = `${indentOf(previousLine)}// ${trimmedNote}`;
     return;
   }
   lines.splice(index, 0, noteLine);
+}
+
+function insertAccessModifier(lines: string[], lineNumber: number, access: LingCppAccessModifier): void {
+  const index = lineIndex(lineNumber);
+  const referenceLine = lines[index] || '';
+  const insertAt = isNoteLine(lines[index - 1] || '') ? index - 1 : index;
+  lines.splice(insertAt, 0, `${indentOf(referenceLine)}${access}:`);
+}
+
+function isNoteLine(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith('//') || trimmed.startsWith('注释 ');
 }
 
 function removeMethodBlock(lines: string[], method: LingCppMethod): void {
@@ -279,12 +315,13 @@ function formatMethodDeclaration(
   method: LingCppMethod,
   methodName: string,
   returnType: string,
-  parameters: LingCppParameter[]
+  parameters: LingCppParameter[],
+  isStatic = false
 ): string {
   if (method.kind === 'event') return formatEventDeclaration(originalLine, methodName, parameters);
   if (method.kind === 'constructor') return `${indentOf(originalLine)}构造(${formatParameters(parameters)})`;
   if (method.kind === 'destructor') return `${indentOf(originalLine)}析构(${formatParameters(parameters)})`;
-  return `${indentOf(originalLine)}${returnType.trim()} ${methodName.trim()}(${formatParameters(parameters)})`;
+  return `${indentOf(originalLine)}${isStatic ? '静态 ' : ''}${returnType.trim()} ${methodName.trim()}(${formatParameters(parameters)})`;
 }
 
 function formatParameters(parameters: LingCppParameter[]): string {

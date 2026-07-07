@@ -840,6 +840,35 @@ test('LingCpp AST edit service rewrites structural intents minimally and preserv
   assert.ok(addedFunction.sourceCode.includes('空 显示状态(文本型 标题, 整数型 次数)'));
   assert.ok(addedFunction.sourceCode.includes('        调试输出("显示状态")'));
 
+  const updatedFunctionSignature = applyLingCppAstEdit(addedFunction.sourceCode, {
+    kind: 'update-method-signature',
+    className: '游戏主窗体',
+    methodName: '显示状态',
+    returnType: '整数型',
+    access: '公开',
+    isStatic: true,
+    note: '可被类直接调用的状态功能'
+  });
+  assert.equal(updatedFunctionSignature.success, true);
+  assert.ok(updatedFunctionSignature.sourceCode.includes('公开:'));
+  assert.ok(updatedFunctionSignature.sourceCode.includes('// 可被类直接调用的状态功能'));
+  assert.ok(updatedFunctionSignature.sourceCode.includes('静态 整数型 显示状态(文本型 标题, 整数型 次数)'));
+  const parsedUpdatedFunction = parseLingCpp(updatedFunctionSignature.sourceCode)
+    .program.classes[0]
+    .methods.find(method => method.name === '显示状态');
+  assert.equal(parsedUpdatedFunction?.access, '公开');
+  assert.equal(parsedUpdatedFunction?.isStatic, true);
+  assert.equal(parsedUpdatedFunction?.returnType, '整数型');
+
+  const clearedFunctionNote = applyLingCppAstEdit(updatedFunctionSignature.sourceCode, {
+    kind: 'update-method-signature',
+    className: '游戏主窗体',
+    methodName: '显示状态',
+    note: ''
+  });
+  assert.equal(clearedFunctionNote.success, true);
+  assert.equal(clearedFunctionNote.sourceCode.includes('// 可被类直接调用的状态功能'), false);
+
   const eventCallsFunction = applyLingCppAstEdit(addedFunction.sourceCode, {
     kind: 'update-method-body',
     className: '游戏主窗体',
@@ -927,6 +956,26 @@ test('LingCpp AST edit service adds and deletes members and events for structure
   });
   assert.equal(removedEvent.success, true);
   assert.equal(removedEvent.sourceCode.includes('_按钮3_被单击'), false);
+
+  const addedMethod = applyLingCppAstEdit(sampleSource, {
+    kind: 'add-method',
+    className: '游戏主窗体',
+    method: {
+      name: '临时子程序',
+      returnType: '空',
+      bodyLines: ['调试输出("临时子程序")']
+    }
+  });
+  assert.equal(addedMethod.success, true);
+  assert.ok(addedMethod.sourceCode.includes('空 临时子程序()'));
+
+  const removedMethod = applyLingCppAstEdit(addedMethod.sourceCode, {
+    kind: 'delete-method',
+    className: '游戏主窗体',
+    methodName: '临时子程序'
+  });
+  assert.equal(removedMethod.success, true);
+  assert.equal(removedMethod.sourceCode.includes('临时子程序'), false);
 });
 
 test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wiring', () => {
@@ -961,7 +1010,7 @@ test('generateLingCppNativeWin32Project emits function methods, calls, return va
     事件 _按钮1_被单击()
         显示状态("启动", 3)
 
-    整数型 显示状态(文本型 标题, 整数型 次数)
+    静态 整数型 显示状态(文本型 标题, 整数型 次数)
         @ int pageIndex = 次数;
         @ if (pageIndex < 0)
         @     return -1;
@@ -974,7 +1023,8 @@ test('generateLingCppNativeWin32Project emits function methods, calls, return va
   });
 
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
-  assert.ok(mainCpp.includes('int 显示状态(std::wstring 标题, int 次数)'));
+  assert.equal(parseLingCpp(source).program.classes[0].methods.find(method => method.name === '显示状态')?.isStatic, true);
+  assert.ok(mainCpp.includes('static int 显示状态(std::wstring 标题, int 次数)'));
   assert.ok(mainCpp.includes('显示状态(L"启动", 3);'));
   assert.ok(mainCpp.includes('int pageIndex = 次数;'));
   assert.ok(mainCpp.includes('if (pageIndex < 0)'));

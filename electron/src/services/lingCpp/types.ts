@@ -38,6 +38,7 @@ export interface LingCppMethod {
   name: string;
   returnType: string;
   access: LingCppAccessModifier;
+  isStatic?: boolean;
   kind: 'constructor' | 'destructor' | 'method' | 'event';
   line: number;
   endLine?: number;
@@ -91,6 +92,7 @@ export interface LingCppAstNode {
   access?: LingCppAccessModifier;
   type?: string;
   returnType?: string;
+  isStatic?: boolean;
   children: LingCppAstNode[];
 }
 
@@ -421,6 +423,7 @@ export interface LingCppStructuredReadingRow {
   access?: LingCppAccessModifier;
   initialValue?: string;
   returnType?: string;
+  isStatic?: boolean;
   parameters?: LingCppParameter[];
 }
 
@@ -444,10 +447,11 @@ export type LingCppAstEdit =
   | { kind: 'update-member'; className?: string; memberName: string; newName?: string; type?: string; access?: LingCppAccessModifier; initialValue?: string; note?: string }
   | { kind: 'delete-member'; className?: string; memberName: string }
   | { kind: 'add-event'; className?: string; event: { handlerName: string; access?: LingCppAccessModifier; parameters?: LingCppParameter[]; note?: string } }
-  | { kind: 'update-event'; className?: string; handlerName: string; newHandlerName?: string; parameters?: LingCppParameter[]; note?: string }
+  | { kind: 'update-event'; className?: string; handlerName: string; newHandlerName?: string; access?: LingCppAccessModifier; parameters?: LingCppParameter[]; note?: string }
   | { kind: 'delete-event'; className?: string; handlerName: string }
-  | { kind: 'add-method'; className?: string; method: { name: string; returnType?: string; parameters?: LingCppParameter[]; bodyLines?: string[]; note?: string } }
-  | { kind: 'update-method-signature'; className?: string; methodName: string; newName?: string; returnType?: string; parameters?: LingCppParameter[]; note?: string }
+  | { kind: 'add-method'; className?: string; method: { name: string; returnType?: string; access?: LingCppAccessModifier; isStatic?: boolean; parameters?: LingCppParameter[]; bodyLines?: string[]; note?: string } }
+  | { kind: 'update-method-signature'; className?: string; methodName: string; newName?: string; returnType?: string; access?: LingCppAccessModifier; isStatic?: boolean; parameters?: LingCppParameter[]; note?: string }
+  | { kind: 'delete-method'; className?: string; methodName: string }
   | { kind: 'update-method-body'; className?: string; methodName: string; bodyLines: string[] }
   | { kind: 'update-note'; line: number; note: string };
 

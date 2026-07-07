@@ -22,8 +22,9 @@ function FileIcon({ fileName, isDarkMode }: { fileName: string; isDarkMode: bool
 import { AppliedWorkspaceFile, DiffLine, DiffResult, ExtractedString, ProblemItem, WorkspaceEditProposal } from '../types';
 import WpfDesigner from './WpfDesigner';
 import MonacoCodeEditor from './MonacoCodeEditor';
+import LingCppStructureEditor from './LingCppStructureEditor';
 import { buildLingCppLanguageContext, getLingCppReadableBlocks, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
-import { LingCppAstEdit, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
+import { LingCppAccessModifier, LingCppAstEdit, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
 import { applyLingCppAstEdit } from '../services/lingCpp/astEditService';
 import { LingCppNativePreviewFile, LingWindowProject, NativeCppImportResult } from '../services/windowDesigner/types';
 import {
@@ -142,12 +143,15 @@ interface NativeMappedDiagnostic {
 
 type BeginnerCodeTarget = { className: string; method: LingCppMethod };
 
+type StructureInputTone = 'plain' | 'type' | 'name' | 'value' | 'procedure' | 'variable' | 'parameter';
+type StructureTextTone = StructureInputTone | 'muted';
+
 interface BeginnerCodeCompletion {
   label: string;
   detail: string;
   insertText: string;
   aliases: string[];
-  kind: '命令' | '流程' | '代码';
+  kind: '命令' | '流程' | '代码' | '变量' | '子程序' | '类型';
   cursorOffset?: number;
   selectLength?: number;
 }
@@ -157,7 +161,154 @@ interface BeginnerCompletionState {
   token: string;
   items: BeginnerCodeCompletion[];
   selectedIndex: number;
+  position: BeginnerCompletionPosition;
 }
+
+interface BeginnerCompletionPosition {
+  top: number;
+  left: number;
+  maxListHeight: number;
+  placement: 'above' | 'below';
+}
+
+interface BeginnerCompletionContext {
+  token: string;
+  isBlankLine: boolean;
+  isCommandStart: boolean;
+  isInsideString: boolean;
+  isInsideComment: boolean;
+  parenDepth: number;
+}
+
+interface BeginnerContextMenuState {
+  x: number;
+  y: number;
+  className?: string;
+  methodName?: string;
+}
+
+interface BeginnerJumpHighlightState {
+  targetKey: string;
+  line: number;
+  label: string;
+}
+
+interface BeginnerTypeCompletionItem {
+  label: string;
+  detail: string;
+  aliases: string[];
+}
+
+interface BeginnerTypeCompletionState {
+  inputKey: string;
+  value: string;
+  items: BeginnerTypeCompletionItem[];
+  selectedIndex: number;
+  placement: 'above' | 'below';
+  maxListHeight: number;
+}
+
+type BeginnerIfBranchKind = 'if' | 'elseif' | 'else';
+
+interface BeginnerIfBranch {
+  kind: BeginnerIfBranchKind;
+  line: number;
+  text: string;
+}
+
+interface BeginnerIfBlock {
+  startLine: number;
+  endLine: number;
+  branches: BeginnerIfBranch[];
+  parent?: BeginnerIfBlock;
+}
+
+const BEGINNER_IF_SNIPPET = '如果 (条件)\n    \n否则\n    \n如果结束';
+
+const BEGINNER_TYPE_ALIASES: Record<string, string[]> = {
+  空: ['void', 'none', 'null', 'kong', 'wu', '无返回值', '无'],
+  文本型: ['string', 'text', 'str', 'wstring', 'wenben', 'wb', '字符', '字符串'],
+  整数型: ['int', 'integer', 'number', 'zhengshu', 'zs', '数字'],
+  长整数型: ['long', 'long long', 'int64', 'longint', 'changzhengshu', 'czs'],
+  逻辑型: ['bool', 'boolean', 'logic', 'luoji', 'lj', '布尔'],
+  小数型: ['float', 'decimal', 'number', 'xiaoshu', 'xs'],
+  双精度小数型: ['double', 'shuangjingdu', 'sjd'],
+  字节型: ['byte', 'uint8', 'zijie', 'zj'],
+  对象: ['object', 'obj', 'any', 'duixiang', 'dx'],
+  窗体: ['window', 'form', 'wnd', 'chuangti', 'ct'],
+  按钮: ['button', 'btn', 'anniu', 'an'],
+  标签: ['label', 'biaoqian', 'bq'],
+  编辑框: ['edit', 'textbox', 'input', 'bianjikuang', 'bjk'],
+  复选框: ['checkbox', 'check', 'fuxuankuang', 'fxk'],
+  单选框: ['radio', 'danxuankuang', 'dxk'],
+  下拉框: ['combo', 'select', 'dropdown', 'xialakuang', 'xlk'],
+  进度条: ['progress', 'progressbar', 'jindutiao', 'jdt']
+};
+
+const buildBeginnerTypeCompletionCatalog = (types: string[]): BeginnerTypeCompletionItem[] => {
+  const normalizedTypes = Array.from(new Set(['空', ...types].map(type => type.trim()).filter(Boolean)));
+  return normalizedTypes.map(label => {
+    const aliases = Array.from(new Set([label, ...(BEGINNER_TYPE_ALIASES[label] || [])].filter(Boolean)));
+    const aliasPreview = aliases.filter(alias => alias !== label).slice(0, 3).join(' / ');
+    return {
+      label,
+      aliases,
+      detail: aliasPreview ? `类型 · ${aliasPreview}` : '类型'
+    };
+  });
+};
+
+const filterBeginnerTypeCompletions = (
+  items: BeginnerTypeCompletionItem[],
+  token: string,
+  includeAll = false
+) => {
+  const normalizedToken = token.trim().toLowerCase();
+  if (!normalizedToken && !includeAll) return [];
+  if (!normalizedToken) return items;
+
+  return items
+    .map(item => {
+      const values = item.aliases.map(alias => alias.toLowerCase());
+      const label = item.label.toLowerCase();
+      const exactMatch = values.some(value => value === normalizedToken);
+      const labelStartsWith = label.startsWith(normalizedToken);
+      const aliasStartsWith = values.some(value => value.startsWith(normalizedToken));
+      const includesMatch = values.some(value => value.includes(normalizedToken));
+      return {
+        item,
+        rank: exactMatch ? 0 : labelStartsWith ? 1 : aliasStartsWith ? 2 : includesMatch ? 3 : 9
+      };
+    })
+    .filter(result => result.rank < 9)
+    .sort((left, right) => left.rank - right.rank || left.item.label.localeCompare(right.item.label, 'zh-Hans-CN'))
+    .map(result => result.item);
+};
+
+const getBeginnerTypeCompletionLayout = (
+  input: HTMLInputElement,
+  itemCount: number
+): Pick<BeginnerTypeCompletionState, 'placement' | 'maxListHeight'> => {
+  const scrollRoot = input.closest('[data-beginner-structure-scroll]');
+  const inputRect = input.getBoundingClientRect();
+  const boundaryRect = scrollRoot instanceof HTMLElement
+    ? scrollRoot.getBoundingClientRect()
+    : { top: 0, bottom: window.innerHeight };
+  const panelGap = 6;
+  const panelHeaderHeight = 25;
+  const desiredListHeight = Math.min(224, Math.max(1, Math.min(itemCount, 5)) * 42);
+  const desiredPanelHeight = panelHeaderHeight + desiredListHeight;
+  const spaceBelow = boundaryRect.bottom - inputRect.bottom - panelGap;
+  const spaceAbove = inputRect.top - boundaryRect.top - panelGap;
+  const placement = spaceBelow < Math.min(132, desiredPanelHeight) && spaceAbove > spaceBelow
+    ? 'above'
+    : 'below';
+  const availableSpace = placement === 'above' ? spaceAbove : spaceBelow;
+  return {
+    placement,
+    maxListHeight: clampNumber(availableSpace - panelHeaderHeight - panelGap, 60, 224)
+  };
+};
 
 const BEGINNER_CODE_COMPLETIONS: BeginnerCodeCompletion[] = [
   {
@@ -171,7 +322,7 @@ const BEGINNER_CODE_COMPLETIONS: BeginnerCodeCompletion[] = [
   {
     label: '如果',
     detail: '条件判断结构',
-    insertText: '如果 (条件)\n    \n如果结束',
+    insertText: BEGINNER_IF_SNIPPET,
     aliases: ['rg', 'ruguo', 'ru', '如', '如果'],
     kind: '流程',
     cursorOffset: '如果 ('.length,
@@ -187,10 +338,26 @@ const BEGINNER_CODE_COMPLETIONS: BeginnerCodeCompletion[] = [
     selectLength: '提示内容'.length
   },
   {
+    label: '否则',
+    detail: '如果条件不成立时执行',
+    insertText: '否则',
+    aliases: ['f', 'fz', 'fouze', 'else', '否', '否则'],
+    kind: '流程'
+  },
+  {
+    label: '否则如果',
+    detail: '继续判断另一个条件',
+    insertText: '否则如果 (条件)',
+    aliases: ['fzr', 'fzrg', 'fouzeruguo', 'elseif', 'else if', '否则如果'],
+    kind: '流程',
+    cursorOffset: '否则如果 ('.length,
+    selectLength: '条件'.length
+  },
+  {
     label: '返回',
     detail: '结束当前功能并返回',
     insertText: '返回',
-    aliases: ['fh', 'fanhui', 'return'],
+    aliases: ['fh', 'FH', 'fg', 'FG', 'fanhui', 'fan hui', 'return', 'ret', '返回值', '返回'],
     kind: '流程'
   },
   {
@@ -203,26 +370,256 @@ const BEGINNER_CODE_COMPLETIONS: BeginnerCodeCompletion[] = [
   }
 ];
 
-const getBeginnerCompletionToken = (value: string, cursor: number) => {
-  const prefix = value.slice(0, cursor);
-  return prefix.match(/[a-zA-Z0-9_@\u4e00-\u9fa5]+$/u)?.[0] || '';
+const scanBeginnerCodePrefix = (text: string) => {
+  let isInsideDoubleString = false;
+  let isInsideChineseString = false;
+  let isEscaped = false;
+  let isInsideComment = false;
+  let parenDepth = 0;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+
+    if (!isInsideDoubleString && !isInsideChineseString && char === '/' && next === '/') {
+      isInsideComment = true;
+      break;
+    }
+
+    if (isInsideDoubleString) {
+      if (isEscaped) {
+        isEscaped = false;
+        continue;
+      }
+      if (char === '\\') {
+        isEscaped = true;
+        continue;
+      }
+      if (char === '"') isInsideDoubleString = false;
+      continue;
+    }
+
+    if (isInsideChineseString) {
+      if (char === '”') isInsideChineseString = false;
+      continue;
+    }
+
+    if (char === '"') {
+      isInsideDoubleString = true;
+      continue;
+    }
+    if (char === '“') {
+      isInsideChineseString = true;
+      continue;
+    }
+    if (char === '(' || char === '（') {
+      parenDepth += 1;
+      continue;
+    }
+    if ((char === ')' || char === '）') && parenDepth > 0) {
+      parenDepth -= 1;
+    }
+  }
+
+  return {
+    isInsideString: isInsideDoubleString || isInsideChineseString,
+    isInsideComment,
+    parenDepth
+  };
 };
 
-const filterBeginnerCodeCompletions = (token: string, includeAll = false) => {
+const getBeginnerCompletionContext = (value: string, cursor: number): BeginnerCompletionContext => {
+  const safeCursor = Math.max(0, Math.min(cursor, value.length));
+  const lineStart = value.lastIndexOf('\n', Math.max(0, safeCursor - 1)) + 1;
+  const linePrefix = value.slice(lineStart, safeCursor);
+  const token = linePrefix.match(/[a-zA-Z0-9_@\u4e00-\u9fa5]+$/u)?.[0] || '';
+  const beforeToken = linePrefix.slice(0, linePrefix.length - token.length);
+  const syntax = scanBeginnerCodePrefix(linePrefix);
+
+  return {
+    token,
+    isBlankLine: linePrefix.trim().length === 0,
+    isCommandStart: beforeToken.trim().length === 0,
+    ...syntax
+  };
+};
+
+const shouldShowBeginnerCompletion = (context: BeginnerCompletionContext, includeAll: boolean) => {
+  if (context.isInsideString || context.isInsideComment || context.parenDepth > 0) return false;
+  if (includeAll) return context.isBlankLine || context.isCommandStart;
+  return context.isCommandStart && context.token.length > 0;
+};
+
+const getBeginnerCompletionToken = (value: string, cursor: number) => {
+  return getBeginnerCompletionContext(value, cursor).token;
+};
+
+const clampNumber = (value: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, value));
+
+const getBeginnerCompletionPanelPosition = (
+  input: HTMLTextAreaElement,
+  token: string,
+  itemCount: number
+): BeginnerCompletionPosition => {
+  const root = input.closest('[data-beginner-editor-root]');
+  if (!(root instanceof HTMLElement)) {
+    return { top: 34, left: 60, maxListHeight: 190, placement: 'below' };
+  }
+
+  const rootRect = root.getBoundingClientRect();
+  const inputRect = input.getBoundingClientRect();
+  const scrollRoot = input.closest('[data-beginner-structure-scroll]');
+  const boundaryRect = scrollRoot instanceof HTMLElement
+    ? scrollRoot.getBoundingClientRect()
+    : { top: 0, bottom: window.innerHeight };
+  const inputStyle = window.getComputedStyle(input);
+  const lineHeight = Number.parseFloat(inputStyle.lineHeight) || 20;
+  const paddingTop = Number.parseFloat(inputStyle.paddingTop) || 0;
+  const paddingLeft = Number.parseFloat(inputStyle.paddingLeft) || 0;
+  const fontSize = Number.parseFloat(inputStyle.fontSize) || 12;
+  const panelWidth = 280;
+  const panelGap = 6;
+  const panelHeaderHeight = 26;
+  const valueBeforeCursor = input.value.slice(0, input.selectionStart);
+  const lineStart = valueBeforeCursor.lastIndexOf('\n') + 1;
+  const linePrefix = valueBeforeCursor.slice(lineStart);
+  const lineIndex = valueBeforeCursor.split('\n').length - 1;
+  const tokenColumn = Math.max(0, linePrefix.length - token.length);
+  const estimatedCharWidth = fontSize * 0.62;
+  const lineTopInRoot = inputRect.top - rootRect.top + paddingTop + lineIndex * lineHeight - input.scrollTop;
+  const lineTopInViewport = inputRect.top + paddingTop + lineIndex * lineHeight - input.scrollTop;
+  const lineBottomInRoot = lineTopInRoot + lineHeight;
+  const lineBottomInViewport = lineTopInViewport + lineHeight;
+  const spaceBelow = boundaryRect.bottom - lineBottomInViewport - panelGap;
+  const spaceAbove = lineTopInViewport - boundaryRect.top - panelGap;
+  const estimatedRowsHeight = Math.min(190, Math.max(1, Math.min(itemCount, 5)) * 42);
+  const estimatedPanelHeight = panelHeaderHeight + estimatedRowsHeight;
+  const placement = spaceBelow < Math.min(120, estimatedPanelHeight) && spaceAbove > spaceBelow
+    ? 'above'
+    : 'below';
+  const availableSpace = placement === 'below' ? spaceBelow : spaceAbove;
+  const maxListHeight = clampNumber(availableSpace - panelHeaderHeight - panelGap, 64, 190);
+  const panelHeight = panelHeaderHeight + maxListHeight;
+  const top = placement === 'above'
+    ? lineTopInRoot - panelHeight - panelGap
+    : lineBottomInRoot + panelGap;
+  const tokenLeft = inputRect.left - rootRect.left + paddingLeft + tokenColumn * estimatedCharWidth - input.scrollLeft;
+  const minLeft = inputRect.left - rootRect.left + paddingLeft;
+  const maxLeft = Math.max(minLeft, root.clientWidth - panelWidth - 8);
+
+  return {
+    top: Math.round(top),
+    left: Math.round(clampNumber(tokenLeft, minLeft, maxLeft)),
+    maxListHeight: Math.round(maxListHeight),
+    placement
+  };
+};
+
+const filterBeginnerCodeCompletions = (
+  token: string,
+  includeAll = false,
+  items: BeginnerCodeCompletion[] = BEGINNER_CODE_COMPLETIONS
+) => {
   const normalizedToken = token.trim().toLowerCase();
   if (!normalizedToken && !includeAll) return [];
-  if (!normalizedToken) return BEGINNER_CODE_COMPLETIONS;
+  if (!normalizedToken) return items;
 
-  return BEGINNER_CODE_COMPLETIONS
+  return items
     .map(item => {
       const values = [item.label, ...item.aliases].map(value => value.toLowerCase());
+      const exactMatch = values.some(value => value === normalizedToken);
       const startsWithMatch = values.some(value => value.startsWith(normalizedToken));
       const includesMatch = values.some(value => value.includes(normalizedToken));
-      return { item, rank: startsWithMatch ? 0 : includesMatch ? 1 : 9 };
+      return { item, rank: exactMatch ? 0 : startsWithMatch ? 1 : includesMatch ? 2 : 9 };
     })
     .filter(result => result.rank < 9)
     .sort((left, right) => left.rank - right.rank || left.item.label.localeCompare(right.item.label, 'zh-Hans-CN'))
     .map(result => result.item);
+};
+
+const getBeginnerLineAtOffset = (value: string, offset: number) =>
+  value.slice(0, Math.max(0, offset)).split('\n').length;
+
+const getBeginnerLineOffset = (lines: string[], line: number) => {
+  const targetLine = Math.max(1, Math.min(line, Math.max(1, lines.length)));
+  let offset = 0;
+  for (let index = 0; index < targetLine - 1; index += 1) {
+    offset += lines[index].length + 1;
+  }
+  return offset;
+};
+
+const beginnerIfLineKind = (line: string): BeginnerIfBranchKind | 'end' | undefined => {
+  const trimmed = line.trim();
+  if (/^如果结束(?:\s|$|[）)])?/u.test(trimmed)) return 'end';
+  if (/^否则如果(?:\s|$|[（(])/u.test(trimmed)) return 'elseif';
+  if (/^否则(?:\s|$|[（(])/u.test(trimmed)) return 'else';
+  if (/^如果(?:\s|$|[（(])/u.test(trimmed)) return 'if';
+  return undefined;
+};
+
+const parseBeginnerIfBlocks = (lines: string[]): BeginnerIfBlock[] => {
+  const blocks: BeginnerIfBlock[] = [];
+  const stack: BeginnerIfBlock[] = [];
+
+  lines.forEach((line, index) => {
+    const lineNumber = index + 1;
+    const kind = beginnerIfLineKind(line);
+    if (!kind) return;
+
+    if (kind === 'end') {
+      const current = stack.pop();
+      if (current) current.endLine = lineNumber;
+      return;
+    }
+
+    if (kind === 'elseif' || kind === 'else') {
+      const current = stack.at(-1);
+      if (current) {
+        current.branches.push({ kind, line: lineNumber, text: line.trim() });
+      }
+      return;
+    }
+
+    const parent = stack.at(-1);
+    const block: BeginnerIfBlock = {
+      startLine: lineNumber,
+      endLine: lines.length,
+      parent,
+      branches: [{ kind: 'if', line: lineNumber, text: line.trim() }]
+    };
+    blocks.push(block);
+    stack.push(block);
+  });
+
+  return blocks;
+};
+
+const findBeginnerIfBlocksAtLine = (blocks: BeginnerIfBlock[], line: number) =>
+  blocks
+    .filter(block => line >= block.startLine && line <= block.endLine)
+    .sort((left, right) => {
+      const leftSpan = left.endLine - left.startLine;
+      const rightSpan = right.endLine - right.startLine;
+      return leftSpan - rightSpan || right.startLine - left.startLine;
+    });
+
+const currentBeginnerBranch = (block: BeginnerIfBlock, line: number) =>
+  [...block.branches]
+    .sort((left, right) => left.line - right.line)
+    .filter(branch => branch.line <= line)
+    .at(-1) || block.branches[0];
+
+const beginnerStructureAnchors = (block: BeginnerIfBlock) => {
+  const anchors = [...block.branches]
+    .sort((left, right) => left.line - right.line)
+    .map(branch => ({
+      line: branch.line,
+      label: branch.kind === 'if' ? branch.text || '如果' : branch.kind === 'elseif' ? branch.text || '否则如果' : '否则'
+    }));
+  if (block.endLine >= block.startLine) anchors.push({ line: block.endLine, label: '如果结束' });
+  return anchors.filter((anchor, index, all) => all.findIndex(item => item.line === anchor.line) === index);
 };
 
 const CONTROL_MEMBER_TYPE_PATTERN = /按钮|标签|编辑框|复选框|单选框|下拉框|控件|窗体/u;
@@ -475,6 +872,10 @@ export default function DiffViewer({
   const [showNativeImportPanel, setShowNativeImportPanel] = useState(false);
   const [structuredRevealLine, setStructuredRevealLine] = useState<number | null>(null);
   const [beginnerCompletionState, setBeginnerCompletionState] = useState<BeginnerCompletionState | null>(null);
+  const [beginnerJumpHighlight, setBeginnerJumpHighlight] = useState<BeginnerJumpHighlightState | null>(null);
+  const [beginnerCodeDrafts, setBeginnerCodeDrafts] = useState<Record<string, string>>({});
+  const [beginnerContextMenu, setBeginnerContextMenu] = useState<BeginnerContextMenuState | null>(null);
+  const [beginnerTypeCompletionState, setBeginnerTypeCompletionState] = useState<BeginnerTypeCompletionState | null>(null);
 
   useEffect(() => {
     if (pendingHandlerFocus) {
@@ -494,6 +895,10 @@ export default function DiffViewer({
     setSelectedFunctionTemplateKey(null);
     setFunctionCallDrafts({});
     setBeginnerCompletionState(null);
+    setBeginnerJumpHighlight(null);
+    setBeginnerCodeDrafts({});
+    setBeginnerContextMenu(null);
+    setBeginnerTypeCompletionState(null);
   }, [activeFile?.path]);
 
   useEffect(() => {
@@ -507,6 +912,29 @@ export default function DiffViewer({
   const unifiedScrollRef = useRef<HTMLDivElement>(null);
   const sourceEditorRef = useRef<HTMLTextAreaElement>(null);
   const sourceLineNumberRef = useRef<HTMLDivElement>(null);
+  const beginnerJumpHighlightTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (beginnerJumpHighlightTimerRef.current !== null) {
+      window.clearTimeout(beginnerJumpHighlightTimerRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!beginnerContextMenu) return undefined;
+    const closeContextMenu = () => setBeginnerContextMenu(null);
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeContextMenu();
+    };
+    window.addEventListener('click', closeContextMenu);
+    window.addEventListener('blur', closeContextMenu);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      window.removeEventListener('click', closeContextMenu);
+      window.removeEventListener('blur', closeContextMenu);
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [beginnerContextMenu]);
 
   const sourceCode = activeFile?.isModified || activeFile?.translatedContent
     ? activeFile?.translatedContent ?? ''
@@ -615,13 +1043,13 @@ export default function DiffViewer({
   const quickChineseSnippets = activeFile?.language === 'lingcpp' ? [
     { label: '类', text: '\n类 新窗口 : 公开 窗体\n公开:\n    构造()\n        调试输出("初始化完成")\n结束类\n' },
     { label: '事件', text: '    事件 按钮1_被单击()\n        信息框("提示内容", 64, "提示")\n' },
-    { label: '如果', text: '如果 (条件)\n    \n如果结束' },
+    { label: '如果', text: BEGINNER_IF_SNIPPET },
     { label: '返回', text: '返回' },
     { label: '信息框', text: '信息框("提示内容", 64, "提示")' },
     { label: '调试输出', text: '调试输出("调试信息")' }
   ] : [
     { label: '.子程序', text: '\n.子程序 _按钮1_被单击\n    信息框 (“请输入提示内容”, 64, “提示”)\n' },
-    { label: '如果', text: '如果 (条件)\n    \n如果结束' },
+    { label: '如果', text: BEGINNER_IF_SNIPPET },
     { label: '如果真', text: '如果真 (条件)\n    \n如果真结束' },
     { label: '判断', text: '判断 (条件)\n    \n判断结束' },
     { label: '计次循环', text: '计次循环首 (次数, 计次变量)\n    \n计次循环尾 ()' },
@@ -1062,7 +1490,7 @@ export default function DiffViewer({
     if (/^(文本型|整数型|逻辑型|小数型|双精度小数型|字节集|日期时间型)$/.test(token)) {
       return <span key={index} className="text-[#2bd4c6] font-semibold">{token}</span>;
     }
-    if (/^(如果|如果真|如果结束|判断|判断结束|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|循环尾)$/.test(token)) {
+    if (/^(如果|如果真|否则如果|否则|如果结束|判断|判断结束|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|循环尾)$/.test(token)) {
       return <span key={index} className="text-[#4ea5ff] font-semibold">{token}</span>;
     }
     if (/^(信息框|调试输出|输出调试文本|载入可视化设计|读取配置项|取运行目录|结束|返回)$/.test(token)) {
@@ -1193,7 +1621,7 @@ export default function DiffViewer({
       );
     }
 
-    const tokenPattern = /('.*$|“[^”]*”|"[^"]*"|\.(?:版本|支持库|程序集变量|程序集|子程序|局部变量)|如果真|如果结束|如果|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|判断结束|判断|循环尾|信息框|调试输出|输出调试文本|载入可视化设计|读取配置项|取运行目录|结束|返回|文本型|整数型|逻辑型|小数型|双精度小数型|字节集|日期时间型|窗口程序集_[\w\u4e00-\u9fa5]+|_[\w\u4e00-\u9fa5]+_[\w\u4e00-\u9fa5_]+|\d+|[＝=＋+\-*/（）(),，])/g;
+    const tokenPattern = /('.*$|“[^”]*”|"[^"]*"|\.(?:版本|支持库|程序集变量|程序集|子程序|局部变量)|如果真|否则如果|否则|如果结束|如果|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|判断结束|判断|循环尾|信息框|调试输出|输出调试文本|载入可视化设计|读取配置项|取运行目录|结束|返回|文本型|整数型|逻辑型|小数型|双精度小数型|字节集|日期时间型|窗口程序集_[\w\u4e00-\u9fa5]+|_[\w\u4e00-\u9fa5]+_[\w\u4e00-\u9fa5_]+|\d+|[＝=＋+\-*/（）(),，])/g;
     return (
       <>
         <span>{leadingSpace}</span>
@@ -1208,7 +1636,7 @@ export default function DiffViewer({
 
     if (activeFile?.language === 'epl') {
       // EPL syntax coloring
-      const regex = /('.*)|(".*?")|(\.(?:版本|支持库|程序集|程序集变量|子程序|局部变量)|如果真|如果结束|如果|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|判断结束|判断|循环尾|结束|返回|信息框|调试输出|载入可视化设计|读取配置项|取运行目录)/g;
+      const regex = /('.*)|(".*?")|(\.(?:版本|支持库|程序集|程序集变量|子程序|局部变量)|如果真|否则如果|否则|如果结束|如果|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|判断结束|判断|循环尾|结束|返回|信息框|调试输出|载入可视化设计|读取配置项|取运行目录)/g;
       const parts = text.split(regex);
       if (parts.length <= 1) {
         return <span>{text}</span>;
@@ -1223,7 +1651,7 @@ export default function DiffViewer({
             if (part.startsWith('"')) {
               return <span key={index} className="text-[#CE9178] font-mono font-semibold">{part}</span>;
             }
-            if (/^(\.(?:版本|支持库|程序集|程序集变量|子程序|局部变量)|如果真|如果结束|如果|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|判断结束|判断|循环尾|结束|返回|信息框|调试输出|载入可视化设计|读取配置项|取运行目录)$/.test(part)) {
+            if (/^(\.(?:版本|支持库|程序集|程序集变量|子程序|局部变量)|如果真|否则如果|否则|如果结束|如果|判断循环首|判断循环尾|循环判断首|循环判断尾|计次循环首|计次循环尾|变量循环首|变量循环尾|枚举循环首|判断结束|判断|循环尾|结束|返回|信息框|调试输出|载入可视化设计|读取配置项|取运行目录)$/.test(part)) {
               return <span key={index} className="text-[#569CD6] font-semibold font-mono">{part}</span>;
             }
             return <span key={index}>{part}</span>;
@@ -1727,9 +2155,11 @@ export default function DiffViewer({
       ? { kind: 'delete-member', className: row.className, memberName: row.targetName }
       : row.editKind === 'event'
         ? { kind: 'delete-event', className: row.className, handlerName: row.targetName }
+        : row.editKind === 'method'
+          ? { kind: 'delete-method', className: row.className, methodName: row.targetName }
         : undefined;
     if (!edit) return;
-    const label = row.editKind === 'member' ? '成员变量' : '事件处理器';
+    const label = row.editKind === 'member' ? '成员变量' : row.editKind === 'event' ? '事件处理器' : '子程序';
     if (!window.confirm(`确定删除${label}「${row.targetName}」吗？`)) return;
     applyStructureAstEdits([edit], row.line);
   };
@@ -1830,16 +2260,23 @@ export default function DiffViewer({
     applyStructureAstEdits([edit], row.line);
   };
 
-  const directInputClasses = (tone: 'plain' | 'type' | 'name' | 'value' = 'plain') => {
+  const directInputClasses = (tone: StructureInputTone = 'plain') => {
+    const sizeClass = tone === 'procedure' ? 'h-7 text-[12px]' : 'h-6 text-[11px]';
     const toneClass =
-      tone === 'type'
-        ? isDarkMode ? 'font-semibold text-blue-300' : 'font-semibold text-blue-700'
-        : tone === 'name'
-          ? isDarkMode ? 'font-semibold text-slate-100' : 'font-semibold text-slate-900'
-          : tone === 'value'
-            ? isDarkMode ? 'text-emerald-300' : 'text-emerald-700'
-            : isDarkMode ? 'text-slate-300' : 'text-slate-700';
-    return `h-6 min-w-0 rounded border px-1.5 text-[11px] outline-none transition-colors ${
+      tone === 'procedure'
+        ? isDarkMode ? 'font-bold text-cyan-200' : 'font-bold text-cyan-800'
+        : tone === 'variable'
+          ? isDarkMode ? 'font-semibold text-amber-200' : 'font-semibold text-amber-800'
+          : tone === 'parameter'
+            ? isDarkMode ? 'font-semibold text-violet-200' : 'font-semibold text-violet-700'
+            : tone === 'type'
+              ? isDarkMode ? 'font-semibold text-blue-300' : 'font-semibold text-blue-700'
+              : tone === 'name'
+                ? isDarkMode ? 'font-semibold text-slate-100' : 'font-semibold text-slate-900'
+                : tone === 'value'
+                  ? isDarkMode ? 'text-emerald-300' : 'text-emerald-700'
+                  : isDarkMode ? 'text-slate-300' : 'text-slate-700';
+    return `${sizeClass} min-w-0 rounded border px-1.5 leading-5 outline-none transition-colors placeholder:text-slate-500 ${
       isDarkMode
         ? 'border-transparent bg-transparent hover:border-[#343442] hover:bg-[#111118] focus:border-cyan-500/70 focus:bg-[#111118]'
         : 'border-transparent bg-transparent hover:border-slate-200 hover:bg-white focus:border-cyan-500 focus:bg-white'
@@ -1851,12 +2288,18 @@ export default function DiffViewer({
     field: DirectStructureField,
     value: string,
     placeholder: string,
-    tone: 'plain' | 'type' | 'name' | 'value' = 'plain'
+    tone: StructureInputTone = 'plain'
   ) => (
     <input
       key={`${row.id}:${field}:${value}`}
       defaultValue={value}
       placeholder={placeholder}
+      list={
+        field === 'member-name' ? 'beginner-member-name-suggestions'
+        : field === 'member-type' || field === 'method-return' ? 'beginner-type-suggestions'
+        : field === 'method-name' || field === 'event-handler' ? 'beginner-method-name-suggestions'
+        : undefined
+      }
       readOnly={!onUpdateSourceContent || !row.editable}
       onBlur={event => commitDirectStructureValue(row, field, event.currentTarget.value)}
       onKeyDown={event => {
@@ -1902,11 +2345,16 @@ export default function DiffViewer({
   const renderNewMemberInput = (
     field: keyof typeof newMemberDraft,
     placeholder: string,
-    tone: 'plain' | 'type' | 'name' | 'value' = 'plain'
+    tone: StructureInputTone = 'plain'
   ) => (
     <input
       value={newMemberDraft[field]}
       placeholder={placeholder}
+      list={
+        field === 'name' ? 'beginner-member-name-suggestions'
+        : field === 'type' ? 'beginner-type-suggestions'
+        : undefined
+      }
       disabled={!onUpdateSourceContent || !primaryLingCppClass}
       onChange={event => setNewMemberDraft(current => ({ ...current, [field]: event.target.value }))}
       onBlur={event => commitNewMemberDraft({ [field]: event.currentTarget.value })}
@@ -1954,7 +2402,7 @@ export default function DiffViewer({
   const renderNewEventInput = (
     field: keyof typeof newEventDraft,
     placeholder: string,
-    tone: 'plain' | 'type' | 'name' | 'value' = 'plain'
+    tone: StructureInputTone = 'plain'
   ) => (
     <input
       value={newEventDraft[field]}
@@ -2007,11 +2455,16 @@ export default function DiffViewer({
   const renderNewFunctionInput = (
     field: keyof typeof newFunctionDraft,
     placeholder: string,
-    tone: 'plain' | 'type' | 'name' | 'value' = 'plain'
+    tone: StructureInputTone = 'plain'
   ) => (
     <input
       value={newFunctionDraft[field]}
       placeholder={placeholder}
+      list={
+        field === 'name' ? 'beginner-method-name-suggestions'
+        : field === 'returnType' ? 'beginner-type-suggestions'
+        : undefined
+      }
       disabled={!onUpdateSourceContent || !primaryLingCppClass}
       onChange={event => setNewFunctionDraft(current => ({ ...current, [field]: event.target.value }))}
       onBlur={event => commitNewFunctionDraft({ [field]: event.currentTarget.value })}
@@ -2037,8 +2490,8 @@ export default function DiffViewer({
     nextBody: string
   ) => {
     const normalizedNext = nextBody.replace(/\s+$/u, '');
-    if (normalizedNext === currentBody.replace(/\s+$/u, '')) return;
-    applyStructureAstEdits([{
+    if (normalizedNext === currentBody.replace(/\s+$/u, '')) return true;
+    return applyStructureAstEdits([{
       kind: 'update-method-body',
       className,
       methodName,
@@ -2274,12 +2727,12 @@ export default function DiffViewer({
                       </div>
                     ) : row.editKind === 'event' ? (
                       <div className="grid min-w-0 flex-1 grid-cols-[minmax(96px,1fr)_minmax(70px,0.8fr)] gap-1.5">
-                        {renderDirectStructureInput(row, 'event-handler', row.targetName || row.name, '处理器', 'name')}
+                        {renderDirectStructureInput(row, 'event-handler', row.targetName || row.name, '处理器', 'procedure')}
                         {renderDirectStructureInput(row, 'event-parameters', formatParameterDraft(row.parameters), '参数', 'plain')}
                       </div>
                     ) : row.editKind === 'method' ? (
                       <div className="grid min-w-0 flex-1 grid-cols-[minmax(76px,1fr)_52px_minmax(70px,0.8fr)] gap-1.5">
-                        {renderDirectStructureInput(row, 'method-name', row.targetName || row.name, '方法名', 'name')}
+                        {renderDirectStructureInput(row, 'method-name', row.targetName || row.name, '方法名', 'procedure')}
                         {renderDirectStructureInput(row, 'method-return', row.returnType || row.type || '空', '返回值', 'type')}
                         {renderDirectStructureInput(row, 'method-parameters', formatParameterDraft(row.parameters), '参数', 'plain')}
                       </div>
@@ -2355,7 +2808,7 @@ export default function DiffViewer({
                   title={`${row.name} - 第 ${row.line} 行`}
                 >
                   {renderDirectStructureInput(row, 'member-type', row.type || '', '类型', 'type')}
-                  {renderDirectStructureInput(row, 'member-name', row.targetName || row.name, '名称', 'name')}
+                  {renderDirectStructureInput(row, 'member-name', row.targetName || row.name, '名称', 'variable')}
                   <span className={`truncate text-[10px] ${controlMember ? 'text-blue-400' : isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{kindLabel}</span>
                   {renderDirectStructureInput(row, 'member-initial', row.initialValue || '', '未设置', 'value')}
                   <span className={`text-right tabular-nums ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>{row.line}</span>
@@ -2368,7 +2821,7 @@ export default function DiffViewer({
           }`}>
             <div className="grid min-w-0 grid-cols-[72px_minmax(86px,1fr)_64px_minmax(72px,1fr)_44px] items-center gap-2 text-left">
               {renderNewMemberInput('type', '类型', 'type')}
-              {renderNewMemberInput('name', '输入新成员', 'name')}
+              {renderNewMemberInput('name', '输入新成员', 'variable')}
               <span className={`truncate text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>新成员</span>
               {renderNewMemberInput('initialValue', '初始值', 'value')}
               <span className={`text-right text-[10px] ${isDarkMode ? 'text-slate-600' : 'text-slate-400'}`}>新</span>
@@ -2458,14 +2911,92 @@ export default function DiffViewer({
       || codeTargets[0];
     const codeTargetKey = (target: BeginnerCodeTarget) =>
       `${target.className}:${target.method.kind}:${target.method.name}`;
+    const commonLingCppTypes = ['文本型', '整数型', '逻辑型', '小数型', '长整数型', '按钮', '标签', '编辑框', '复选框', '窗体', '对象'];
+    const memberNameSuggestions = Array.from(new Set([
+      ...memberRows.map(row => row.targetName || row.name),
+      '标题',
+      '内容',
+      '计数',
+      '当前状态',
+      '是否成功'
+    ].filter(Boolean)));
+    const methodNameSuggestions = Array.from(new Set([
+      ...codeTargets.map(target => target.method.name),
+      '新子程序',
+      '初始化数据',
+      '刷新界面',
+      '保存配置'
+    ].filter(Boolean)));
+    const typeSuggestions = Array.from(new Set([
+      ...commonLingCppTypes,
+      ...memberRows.map(row => row.type || ''),
+      ...codeTargets.flatMap(target => [target.method.returnType, ...target.method.parameters.map(parameter => parameter.type)])
+    ].filter(Boolean)));
+    const typeCompletionCatalog = buildBeginnerTypeCompletionCatalog(typeSuggestions);
+    const defaultCodeArgument = (parameter: LingCppParameter) => {
+      const defaultValue = parameter.defaultValue?.trim();
+      if (defaultValue) return defaultValue;
+      if (/文本/u.test(parameter.type)) return '"文本"';
+      if (/逻辑/u.test(parameter.type)) return '真';
+      if (/小数|双精度/u.test(parameter.type)) return '0.0';
+      if (/整数|长整数/u.test(parameter.type)) return '0';
+      return parameter.name || parameter.type || '参数';
+    };
+    const beginnerCodeCompletionItems = Array.from(
+      new Map([
+        ...BEGINNER_CODE_COMPLETIONS,
+        ...memberRows.map(row => ({
+          label: row.targetName || row.name,
+          detail: `${row.type || '对象'} 变量`,
+          insertText: row.targetName || row.name,
+          aliases: [row.targetName || row.name, row.name, row.type || '变量'].filter(Boolean),
+          kind: '变量' as BeginnerCodeCompletion['kind']
+        })),
+        ...codeTargets
+          .filter(target => target.method.kind === 'method')
+          .map(target => ({
+            label: target.method.name,
+            detail: `${target.method.returnType || '空'} 子程序调用`,
+            insertText: `${target.method.name}(${target.method.parameters.map(defaultCodeArgument).join(', ')})`,
+            aliases: [target.method.name, '子程序', '功能', '调用'],
+            kind: '子程序' as BeginnerCodeCompletion['kind']
+          })),
+        ...typeSuggestions.map(type => ({
+          label: type,
+          detail: '类型名称',
+          insertText: type,
+          aliases: [type, '类型'],
+          kind: '类型' as BeginnerCodeCompletion['kind']
+        }))
+      ].map(item => [`${item.label}:${item.insertText}`, item]))
+        .values()
+    );
+    const updateBeginnerCodeDraft = (target: BeginnerCodeTarget, nextValue: string) => {
+      const targetKey = codeTargetKey(target);
+      setBeginnerCodeDrafts(current => ({ ...current, [targetKey]: nextValue }));
+    };
+    const clearBeginnerCodeDraft = (target: BeginnerCodeTarget) => {
+      const targetKey = codeTargetKey(target);
+      setBeginnerCodeDrafts(current => {
+        if (!(targetKey in current)) return current;
+        const next = { ...current };
+        delete next[targetKey];
+        return next;
+      });
+    };
     const updateBeginnerCompletion = (
       target: BeginnerCodeTarget,
       input: HTMLTextAreaElement,
       includeAll = false
     ) => {
-      const token = getBeginnerCompletionToken(input.value, input.selectionStart);
-      const items = filterBeginnerCodeCompletions(token, includeAll);
+      const context = getBeginnerCompletionContext(input.value, input.selectionStart);
       const targetKey = codeTargetKey(target);
+      if (!shouldShowBeginnerCompletion(context, includeAll)) {
+        setBeginnerCompletionState(current => current?.targetKey === targetKey ? null : current);
+        return;
+      }
+      const token = context.token;
+      const items = filterBeginnerCodeCompletions(token, includeAll, beginnerCodeCompletionItems);
       if (items.length === 0) {
         setBeginnerCompletionState(current => current?.targetKey === targetKey ? null : current);
         return;
@@ -2474,7 +3005,8 @@ export default function DiffViewer({
         targetKey,
         token,
         items,
-        selectedIndex: 0
+        selectedIndex: 0,
+        position: getBeginnerCompletionPanelPosition(input, token, items.length)
       });
     };
     const closeBeginnerCompletion = (target?: BeginnerCodeTarget) => {
@@ -2507,15 +3039,109 @@ export default function DiffViewer({
       const selectLength = completion.selectLength ?? 0;
 
       input.value = nextValue;
+      updateBeginnerCodeDraft(target, nextValue);
       input.focus();
-      input.setSelectionRange(nextCursor, nextCursor + selectLength);
+      window.requestAnimationFrame(() => {
+        input.setSelectionRange(nextCursor, nextCursor + selectLength);
+      });
       closeBeginnerCompletion(target);
+    };
+    const flashBeginnerJumpLine = (targetKey: string, line: number, label: string) => {
+      if (beginnerJumpHighlightTimerRef.current !== null) {
+        window.clearTimeout(beginnerJumpHighlightTimerRef.current);
+      }
+      setBeginnerJumpHighlight({ targetKey, line, label });
+      beginnerJumpHighlightTimerRef.current = window.setTimeout(() => {
+        setBeginnerJumpHighlight(current =>
+          current?.targetKey === targetKey && current.line === line ? null : current
+        );
+        beginnerJumpHighlightTimerRef.current = null;
+      }, 1200);
+    };
+    const selectBeginnerEditorLine = (
+      target: BeginnerCodeTarget,
+      input: HTMLTextAreaElement,
+      line: number,
+      label: string
+    ) => {
+      const lines = input.value.split('\n');
+      const targetLine = Math.max(1, Math.min(line, Math.max(1, lines.length)));
+      const start = getBeginnerLineOffset(lines, targetLine);
+      const end = start + (lines[targetLine - 1]?.length || 0);
+      const computedLineHeight = Number.parseFloat(window.getComputedStyle(input).lineHeight);
+      const lineHeight = Number.isFinite(computedLineHeight) ? computedLineHeight : Math.max(18, editorFontSize * 1.65);
+      const nextScrollTop = Math.max(0, (targetLine - 1) * lineHeight - input.clientHeight / 2 + lineHeight);
+      const lineNumberColumn = input.closest('[data-beginner-editor-root]')?.querySelector('[data-beginner-line-numbers]');
+
+      input.focus();
+      input.scrollTop = nextScrollTop;
+      if (lineNumberColumn instanceof HTMLElement) lineNumberColumn.scrollTop = nextScrollTop;
+      input.setSelectionRange(start, end);
+      closeBeginnerCompletion(target);
+      flashBeginnerJumpLine(codeTargetKey(target), targetLine, label);
+    };
+    const navigateBeginnerStructure = (
+      target: BeginnerCodeTarget,
+      input: HTMLTextAreaElement,
+      direction: 'previous' | 'next' | 'cycle' | 'outer-start' | 'end'
+    ) => {
+      const lines = input.value.split('\n');
+      const currentLine = getBeginnerLineAtOffset(input.value, input.selectionStart);
+      const blocks = findBeginnerIfBlocksAtLine(parseBeginnerIfBlocks(lines), currentLine);
+      const currentBlock = blocks[0];
+      if (!currentBlock) return false;
+
+      if (direction === 'outer-start') {
+        const outerBlock = blocks.at(-1) || currentBlock;
+        selectBeginnerEditorLine(target, input, outerBlock.startLine, outerBlock.branches[0]?.text || '如果');
+        return true;
+      }
+
+      if (direction === 'end') {
+        selectBeginnerEditorLine(target, input, currentBlock.endLine, '如果结束');
+        return true;
+      }
+
+      const anchors = beginnerStructureAnchors(currentBlock);
+      if (anchors.length === 0) return false;
+
+      if (direction === 'previous') {
+        const branch = currentBeginnerBranch(currentBlock, currentLine);
+        selectBeginnerEditorLine(target, input, branch.line, branch.text || '如果');
+        return true;
+      }
+
+      if (direction === 'next') {
+        const nextAnchor = anchors.find(anchor => anchor.line > currentLine)
+          || anchors.find(anchor => anchor.line === currentBlock.endLine)
+          || anchors[0];
+        selectBeginnerEditorLine(target, input, nextAnchor.line, nextAnchor.label);
+        return true;
+      }
+
+      const nextAnchor = anchors.find(anchor => anchor.line > currentLine) || anchors[0];
+      selectBeginnerEditorLine(target, input, nextAnchor.line, nextAnchor.label);
+      return true;
     };
     const handleBeginnerCodeChange = (
       target: BeginnerCodeTarget,
       event: React.ChangeEvent<HTMLTextAreaElement>
     ) => {
+      updateBeginnerCodeDraft(target, event.currentTarget.value);
       updateBeginnerCompletion(target, event.currentTarget);
+    };
+    const handleBeginnerCodeBlur = (
+      target: BeginnerCodeTarget,
+      currentBody: string,
+      event: React.FocusEvent<HTMLTextAreaElement>
+    ) => {
+      const applied = commitBeginnerCodeBody(
+        target.className,
+        target.method.name,
+        currentBody,
+        event.currentTarget.value
+      );
+      if (applied) clearBeginnerCodeDraft(target);
     };
     const handleBeginnerCodeKeyDown = (
       target: BeginnerCodeTarget,
@@ -2524,6 +3150,27 @@ export default function DiffViewer({
       const input = event.currentTarget;
       const targetKey = codeTargetKey(target);
       const activeCompletion = beginnerCompletionState?.targetKey === targetKey ? beginnerCompletionState : null;
+
+      if (event.altKey && !event.ctrlKey && !event.metaKey && event.key === 'ArrowUp') {
+        if (navigateBeginnerStructure(target, input, 'previous')) event.preventDefault();
+        return;
+      }
+      if (event.altKey && !event.ctrlKey && !event.metaKey && event.key === 'ArrowDown') {
+        if (navigateBeginnerStructure(target, input, 'next')) event.preventDefault();
+        return;
+      }
+      if (event.altKey && !event.ctrlKey && !event.metaKey && event.key === 'Home') {
+        if (navigateBeginnerStructure(target, input, 'outer-start')) event.preventDefault();
+        return;
+      }
+      if (event.altKey && !event.ctrlKey && !event.metaKey && event.key === 'End') {
+        if (navigateBeginnerStructure(target, input, 'end')) event.preventDefault();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === '\\' || event.code === 'Backslash')) {
+        if (navigateBeginnerStructure(target, input, 'cycle')) event.preventDefault();
+        return;
+      }
 
       if ((event.ctrlKey || event.metaKey) && event.key === ' ') {
         event.preventDefault();
@@ -2565,7 +3212,10 @@ export default function DiffViewer({
         const end = input.selectionEnd;
         const nextValue = `${input.value.slice(0, start)}    ${input.value.slice(end)}`;
         input.value = nextValue;
-        input.selectionStart = input.selectionEnd = start + 4;
+        updateBeginnerCodeDraft(target, nextValue);
+        window.requestAnimationFrame(() => {
+          input.selectionStart = input.selectionEnd = start + 4;
+        });
       }
     };
     const renderBeginnerCompletionPanel = (target: BeginnerCodeTarget) => {
@@ -2574,16 +3224,19 @@ export default function DiffViewer({
       if (!state || state.items.length === 0) return null;
 
       return (
-        <div className={`absolute left-[60px] top-[34px] z-30 w-[280px] overflow-hidden rounded border shadow-xl ${
+        <div
+          className={`absolute z-30 w-[280px] overflow-hidden rounded border shadow-xl ${
           isDarkMode ? 'border-[#343746] bg-[#191b22] text-slate-100 shadow-black/35' : 'border-slate-200 bg-white text-slate-900 shadow-slate-300/50'
-        }`}>
+        } ${state.position.placement === 'above' ? 'origin-bottom-left' : 'origin-top-left'}`}
+          style={{ left: state.position.left, top: state.position.top }}
+        >
           <div className={`flex items-center justify-between border-b px-2 py-1 text-[10px] ${
             isDarkMode ? 'border-[#2b2d34] text-slate-500' : 'border-slate-100 text-slate-500'
           }`}>
             <span>{state.token ? `补全 ${state.token}` : '代码补全'}</span>
             <span>Tab/Enter</span>
           </div>
-          <div className="max-h-[190px] overflow-auto py-1">
+          <div className="overflow-auto py-1" style={{ maxHeight: state.position.maxListHeight }}>
             {state.items.map((item, index) => (
               <button
                 key={`${item.label}:${item.insertText}`}
@@ -2628,6 +3281,8 @@ export default function DiffViewer({
       patch: {
         name?: string;
         returnType?: string;
+        access?: LingCppAccessModifier;
+        isStatic?: boolean;
         parameters?: LingCppParameter[];
         note?: string;
       }
@@ -2635,6 +3290,7 @@ export default function DiffViewer({
       const nextName = patch.name?.trim();
       const nextReturnType = patch.returnType?.trim();
       const nextParameters = patch.parameters ?? target.method.parameters;
+      const hasNotePatch = Object.prototype.hasOwnProperty.call(patch, 'note');
       const previousKey = codeTargetKey(target);
       const nextKey = `${target.className}:${target.method.kind}:${nextName || target.method.name}`;
       const edit: LingCppAstEdit = target.method.kind === 'event'
@@ -2643,8 +3299,9 @@ export default function DiffViewer({
             className: target.className,
             handlerName: target.method.name,
             newHandlerName: nextName || target.method.name,
+            access: patch.access,
             parameters: nextParameters,
-            note: patch.note?.trim() || undefined
+            note: hasNotePatch ? patch.note?.trim() || '' : undefined
           }
         : {
             kind: 'update-method-signature',
@@ -2652,8 +3309,10 @@ export default function DiffViewer({
             methodName: target.method.name,
             newName: nextName || target.method.name,
             returnType: nextReturnType || target.method.returnType || '空',
+            access: patch.access,
+            isStatic: patch.isStatic ?? target.method.isStatic,
             parameters: nextParameters,
-            note: patch.note?.trim() || undefined
+            note: hasNotePatch ? patch.note?.trim() || '' : undefined
           };
       const applied = applyStructureAstEdits([edit], target.method.line);
       if (applied) {
@@ -2725,6 +3384,98 @@ export default function DiffViewer({
       }
       setSelectedBeginnerCodeTarget({ className: target.className, methodName: target.method.name });
     };
+    const uniqueBeginnerName = (baseName: string, existingNames: string[]) => {
+      const usedNames = new Set(existingNames);
+      let candidate = baseName;
+      let index = 2;
+      while (usedNames.has(candidate)) {
+        candidate = `${baseName}${index}`;
+        index += 1;
+      }
+      return candidate;
+    };
+    const createBeginnerFunction = () => {
+      if (!primaryLingCppClass) {
+        setStructureEditError('当前源码里还没有类，无法新增子程序。');
+        return;
+      }
+      const name = uniqueBeginnerName('新子程序', codeTargets.map(target => target.method.name));
+      const applied = applyStructureAstEdits([{
+        kind: 'add-method',
+        className: primaryLingCppClass.name,
+        method: {
+          name,
+          returnType: '空',
+          bodyLines: [`调试输出("${name} 已执行")`],
+          note: '新手模式右键新增的子程序'
+        }
+      }]);
+      if (applied) {
+        setSelectedBeginnerCodeTarget({ className: primaryLingCppClass.name, methodName: name });
+        setExpandedBeginnerFunctionTargetKey(`${primaryLingCppClass.name}:method:${name}`);
+      }
+    };
+    const createBeginnerMember = () => {
+      if (!primaryLingCppClass) {
+        setStructureEditError('当前源码里还没有类，无法新增变量。');
+        return;
+      }
+      const name = uniqueBeginnerName('新变量', memberRows.map(row => row.targetName || row.name));
+      applyStructureAstEdits([{
+        kind: 'add-member',
+        className: primaryLingCppClass.name,
+        member: {
+          name,
+          type: '文本型',
+          initialValue: '""',
+          note: '新手模式右键新增的变量'
+        }
+      }]);
+    };
+    const deleteBeginnerCodeTarget = (target?: BeginnerCodeTarget) => {
+      if (!target) return;
+      if (target.method.kind === 'constructor') {
+        setStructureEditError('构造子程序不能从新手模式删除。');
+        return;
+      }
+      const isEvent = target.method.kind === 'event';
+      const label = isEvent ? '事件处理器' : '子程序';
+      if (!window.confirm(`确定删除${label}「${target.method.name}」吗？`)) return;
+      const edit: LingCppAstEdit = isEvent
+        ? { kind: 'delete-event', className: target.className, handlerName: target.method.name }
+        : { kind: 'delete-method', className: target.className, methodName: target.method.name };
+      const applied = applyStructureAstEdits([edit], target.method.line);
+      if (applied) {
+        setSelectedBeginnerCodeTarget(null);
+        setSelectedBeginnerHandler(null);
+        setExpandedBeginnerEventTargetKey(null);
+        setExpandedBeginnerFunctionTargetKey(null);
+      }
+    };
+    const appendBeginnerSnippet = (target: BeginnerCodeTarget | undefined, snippet: string) => {
+      if (!target) return;
+      const targetKey = codeTargetKey(target);
+      const currentBody = beginnerCodeDrafts[targetKey] ?? methodBodyText(target.method);
+      const nextBody = currentBody.trim() ? `${currentBody}\n${snippet}` : snippet;
+      updateBeginnerCodeDraft(target, nextBody);
+      const applied = commitBeginnerCodeBody(target.className, target.method.name, currentBody, nextBody);
+      if (applied) clearBeginnerCodeDraft(target);
+    };
+    const openBeginnerContextMenu = (event: React.MouseEvent, target?: BeginnerCodeTarget) => {
+      event.preventDefault();
+      setBeginnerCompletionState(null);
+      const effectiveTarget = target || activeCanvasTarget;
+      if (effectiveTarget) {
+        setSelectedBeginnerCodeTarget({ className: effectiveTarget.className, methodName: effectiveTarget.method.name });
+        if (effectiveTarget.method.kind === 'event') setSelectedBeginnerHandler(effectiveTarget.method.name);
+      }
+      setBeginnerContextMenu({
+        x: event.clientX,
+        y: event.clientY,
+        className: effectiveTarget?.className,
+        methodName: effectiveTarget?.method.name
+      });
+    };
     const parameterExampleText = (parameter: LingCppParameter) =>
       `${parameter.name || parameter.type || '参数'} = ${defaultFunctionArgument(parameter)}`;
 
@@ -2761,7 +3512,10 @@ export default function DiffViewer({
     const cellClass = `border-b px-2 py-1.5 align-middle text-[11px] ${isDarkMode ? 'border-[#2b2d34]' : 'border-slate-200'}`;
     const headCellClass = `sticky top-8 z-10 border-b px-2 py-1.5 text-left text-[10px] font-semibold ${tableHeadChrome}`;
 
-    const textTone = (tone: 'plain' | 'type' | 'name' | 'value' | 'muted' = 'plain') => {
+    const textTone = (tone: StructureTextTone = 'plain') => {
+      if (tone === 'procedure') return isDarkMode ? 'text-[12px] font-bold text-cyan-200' : 'text-[12px] font-bold text-cyan-800';
+      if (tone === 'variable') return isDarkMode ? 'font-semibold text-amber-200' : 'font-semibold text-amber-800';
+      if (tone === 'parameter') return isDarkMode ? 'font-semibold text-violet-200' : 'font-semibold text-violet-700';
       if (tone === 'type') return isDarkMode ? 'font-semibold text-blue-300' : 'font-semibold text-blue-700';
       if (tone === 'name') return isDarkMode ? 'font-semibold text-slate-100' : 'font-semibold text-slate-900';
       if (tone === 'value') return isDarkMode ? 'text-emerald-300' : 'text-emerald-700';
@@ -2769,7 +3523,7 @@ export default function DiffViewer({
       return isDarkMode ? 'text-slate-300' : 'text-slate-700';
     };
 
-    const renderTextCell = (value?: string | number, tone: 'plain' | 'type' | 'name' | 'value' | 'muted' = 'plain') => (
+    const renderTextCell = (value?: string | number, tone: StructureTextTone = 'plain') => (
       <span className={`block min-w-0 truncate ${textTone(tone)}`} title={value ? String(value) : undefined}>
         {value || <span className={textTone('muted')}>-</span>}
       </span>
@@ -2818,7 +3572,7 @@ export default function DiffViewer({
                   isDarkMode ? 'bg-[#111217]' : 'bg-slate-50'
                 }`}
               >
-                <span className={`truncate font-semibold ${textTone('name')}`}>{parameter.name}</span>
+                <span className={`truncate ${textTone('parameter')}`}>{parameter.name}</span>
                 <span className={`truncate ${textTone('type')}`}>{parameter.type}</span>
                 <span className={`truncate ${parameter.defaultValue?.trim() ? textTone('value') : textTone('muted')}`}>
                   {parameter.defaultValue?.trim() || '默认空'}
@@ -2840,7 +3594,7 @@ export default function DiffViewer({
           isDarkMode ? 'border-[#343442] bg-[#111217]' : 'border-slate-200 bg-slate-50'
         }`}>
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`text-[10px] font-semibold ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>{name}</span>
+            <span className={textTone('procedure')}>{name}</span>
             <span className={`text-[9px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
               {effectiveParameters.length ? formatFunctionSignature(name, effectiveParameters) : '无参数功能'}
             </span>
@@ -2854,7 +3608,7 @@ export default function DiffViewer({
                     isDarkMode ? 'bg-[#181a20] text-slate-300' : 'bg-white text-slate-700'
                   }`}
                 >
-                  <span className={`truncate font-semibold ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>{parameter.name}</span>
+                  <span className={`truncate ${textTone('parameter')}`}>{parameter.name}</span>
                   <span className="truncate">{parameterExampleText(parameter)}</span>
                 </div>
               ))}
@@ -2876,23 +3630,184 @@ export default function DiffViewer({
       field: 'name' | 'returnType',
       value: string,
       placeholder: string,
-      tone: 'plain' | 'type' | 'name' | 'value' = 'plain',
+      tone: StructureInputTone = 'plain',
       editable = true
+    ) => {
+      const inputKey = `${codeTargetKey(target)}:${field}`;
+      const typeCompletion = field === 'returnType' && beginnerTypeCompletionState?.inputKey === inputKey
+        ? beginnerTypeCompletionState
+        : null;
+      const updateTypeCompletion = (input: HTMLInputElement, includeAll = false) => {
+        if (field !== 'returnType' || !editable || !onUpdateSourceContent) return;
+        const rawValue = input.value;
+        const items = filterBeginnerTypeCompletions(typeCompletionCatalog, rawValue, includeAll).slice(0, 8);
+        const layout = getBeginnerTypeCompletionLayout(input, items.length);
+        setBeginnerTypeCompletionState(items.length > 0
+          ? { inputKey, value: rawValue, items, selectedIndex: 0, ...layout }
+          : null
+        );
+      };
+      const resolveReturnTypeInput = (rawValue: string) => {
+        if (field !== 'returnType') return rawValue;
+        const normalizedValue = rawValue.trim().toLowerCase();
+        const exactAlias = typeCompletionCatalog.find(item =>
+          item.aliases.some(alias => alias.toLowerCase() === normalizedValue)
+        );
+        return exactAlias?.label || rawValue;
+      };
+      const commitFieldValue = (input: HTMLInputElement) => {
+        if (input.dataset.beginnerTypeApplied === 'true') {
+          delete input.dataset.beginnerTypeApplied;
+          return;
+        }
+        const nextValue = resolveReturnTypeInput(input.value.trim());
+        if (nextValue === value) return;
+        if (!nextValue) {
+          setStructureEditError(field === 'name' ? '功能名不能为空。' : '返回值类型不能为空。');
+          input.value = value;
+          return;
+        }
+        input.value = nextValue;
+        applyCodeTargetSignature(target, field === 'name' ? { name: nextValue } : { returnType: nextValue });
+      };
+      const applyTypeCompletion = (item: BeginnerTypeCompletionItem, input?: HTMLInputElement | null) => {
+        if (input) {
+          input.value = item.label;
+          input.dataset.beginnerTypeApplied = 'true';
+        }
+        setBeginnerTypeCompletionState(null);
+        applyCodeTargetSignature(target, { returnType: item.label });
+      };
+
+      return (
+        <div className="relative min-w-0" data-beginner-type-wrap={inputKey}>
+          <input
+            key={`${codeTargetKey(target)}:${field}:${value}`}
+            defaultValue={value}
+            placeholder={placeholder}
+            list={field === 'name' ? 'beginner-method-name-suggestions' : undefined}
+            readOnly={!onUpdateSourceContent || !editable}
+            onChange={event => updateTypeCompletion(event.currentTarget)}
+            onBlur={event => {
+              window.setTimeout(() => {
+                setBeginnerTypeCompletionState(current => current?.inputKey === inputKey ? null : current);
+              }, 120);
+              commitFieldValue(event.currentTarget);
+            }}
+            onKeyDown={event => {
+              if (field === 'returnType' && typeCompletion) {
+                if (event.key === 'ArrowDown') {
+                  event.preventDefault();
+                  setBeginnerTypeCompletionState(current => current?.inputKey === inputKey
+                    ? { ...current, selectedIndex: (current.selectedIndex + 1) % current.items.length }
+                    : current
+                  );
+                  return;
+                }
+                if (event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  setBeginnerTypeCompletionState(current => current?.inputKey === inputKey
+                    ? { ...current, selectedIndex: (current.selectedIndex - 1 + current.items.length) % current.items.length }
+                    : current
+                  );
+                  return;
+                }
+                if (event.key === 'Enter' || event.key === 'Tab') {
+                  const item = typeCompletion.items[typeCompletion.selectedIndex];
+                  if (item) {
+                    event.preventDefault();
+                    applyTypeCompletion(item, event.currentTarget);
+                    event.currentTarget.blur();
+                    return;
+                  }
+                }
+              }
+              if (event.key === 'Enter') event.currentTarget.blur();
+              if (event.key === 'Escape') {
+                setBeginnerTypeCompletionState(null);
+                event.currentTarget.value = value;
+                event.currentTarget.blur();
+              }
+            }}
+            className={`${directInputClasses(tone)} w-full`}
+            title={field === 'returnType' ? '支持中文、英文、拼音输入，例如 int、string、void' : undefined}
+          />
+          {typeCompletion && (
+            <div className={`absolute left-0 z-[90] w-64 overflow-hidden rounded border text-[11px] shadow-xl ${
+              typeCompletion.placement === 'above' ? 'bottom-full mb-1' : 'top-full mt-1'
+            } ${
+              isDarkMode ? 'border-[#343442] bg-[#17181f] text-slate-200 shadow-black/30' : 'border-slate-200 bg-white text-slate-800 shadow-slate-200/80'
+            }`}>
+              <div className={`flex items-center justify-between border-b px-2 py-1 text-[10px] ${
+                isDarkMode ? 'border-[#2b2d34] text-slate-500' : 'border-slate-100 text-slate-500'
+              }`}>
+                <span>类型补全</span>
+                <span>Tab/Enter</span>
+              </div>
+              <div className="overflow-auto py-1" style={{ maxHeight: typeCompletion.maxListHeight }}>
+                {typeCompletion.items.map((item, index) => (
+                  <button
+                    key={`${inputKey}:${item.label}`}
+                    type="button"
+                    onMouseDown={event => {
+                      event.preventDefault();
+                      const input = event.currentTarget.closest('[data-beginner-type-wrap]')?.querySelector('input');
+                      applyTypeCompletion(item, input instanceof HTMLInputElement ? input : null);
+                    }}
+                    className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left ${
+                      index === typeCompletion.selectedIndex
+                        ? isDarkMode ? 'bg-cyan-500/15 text-cyan-100' : 'bg-cyan-50 text-cyan-900'
+                        : isDarkMode ? 'text-slate-300 hover:bg-[#20222a]' : 'text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span className="min-w-0">
+                      <span className={`block truncate ${textTone('type')}`}>{item.label}</span>
+                      <span className={`block truncate text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>{item.detail}</span>
+                    </span>
+                    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] ${
+                      isDarkMode ? 'bg-[#252733] text-slate-400' : 'bg-slate-100 text-slate-500'
+                    }`}>类型</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    const renderCodeTargetAccessSelect = (
+      target: BeginnerCodeTarget,
+      value: LingCppAccessModifier
+    ) => {
+      const options: LingCppAccessModifier[] = ['公开', '私有', '保护'];
+      return (
+        <select
+          key={`${codeTargetKey(target)}:access:${value}`}
+          value={value}
+          disabled={!onUpdateSourceContent}
+          onChange={event => applyCodeTargetSignature(target, { access: event.currentTarget.value as LingCppAccessModifier })}
+          className={`${directInputClasses('plain')} w-full appearance-none disabled:cursor-not-allowed disabled:opacity-40`}
+          title="选择访问级别后立即写回源码"
+        >
+          {options.map(option => <option key={option} value={option}>{option}</option>)}
+        </select>
+      );
+    };
+
+    const renderCodeTargetNoteInput = (
+      target: BeginnerCodeTarget,
+      value: string
     ) => (
       <input
-        key={`${codeTargetKey(target)}:${field}:${value}`}
+        key={`${codeTargetKey(target)}:note:${value}`}
         defaultValue={value}
-        placeholder={placeholder}
-        readOnly={!onUpdateSourceContent || !editable}
+        placeholder="备注"
+        readOnly={!onUpdateSourceContent}
         onBlur={event => {
           const nextValue = event.currentTarget.value.trim();
           if (nextValue === value) return;
-          if (!nextValue) {
-            setStructureEditError(field === 'name' ? '功能名不能为空。' : '返回值类型不能为空。');
-            event.currentTarget.value = value;
-            return;
-          }
-          applyCodeTargetSignature(target, field === 'name' ? { name: nextValue } : { returnType: nextValue });
+          applyCodeTargetSignature(target, { note: nextValue });
         }}
         onKeyDown={event => {
           if (event.key === 'Enter') event.currentTarget.blur();
@@ -2901,9 +3816,41 @@ export default function DiffViewer({
             event.currentTarget.blur();
           }
         }}
-        className={directInputClasses(tone)}
+        className={directInputClasses('plain')}
+        title="备注会写入为声明上一行注释；留空会删除紧邻声明的备注注释"
       />
     );
+
+    const renderCodeTargetStaticSwitch = (
+      target: BeginnerCodeTarget,
+      editable = target.method.kind === 'method'
+    ) => {
+      const checked = Boolean(target.method.isStatic);
+      const disabled = !onUpdateSourceContent || !editable;
+      return (
+        <label
+          className={`inline-flex h-6 w-full items-center justify-center ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
+          title={editable ? '切换后写回为 静态 子程序声明' : '只有普通子程序支持静态'}
+        >
+          <input
+            type="checkbox"
+            className="sr-only"
+            checked={checked}
+            disabled={disabled}
+            onChange={event => applyCodeTargetSignature(target, { isStatic: event.currentTarget.checked })}
+          />
+          <span className={`relative h-4 w-7 rounded-full transition-colors ${
+            checked
+              ? isDarkMode ? 'bg-cyan-500/80' : 'bg-cyan-600'
+              : isDarkMode ? 'bg-[#2b2d34]' : 'bg-slate-300'
+          }`}>
+            <span className={`absolute top-0.5 h-3 w-3 rounded-full transition-transform ${
+              checked ? 'translate-x-3.5' : 'translate-x-0.5'
+            } ${isDarkMode ? 'bg-white' : 'bg-white'}`} />
+          </span>
+        </label>
+      );
+    };
 
     const renderParameterInput = (
       target: BeginnerCodeTarget,
@@ -2911,12 +3858,17 @@ export default function DiffViewer({
       field: keyof LingCppParameter,
       value: string,
       placeholder: string,
-      tone: 'plain' | 'type' | 'name' | 'value' = 'plain'
+      tone: StructureInputTone = 'plain'
     ) => (
       <input
         key={`${codeTargetKey(target)}:parameter:${index}:${field}:${value}`}
         defaultValue={value}
         placeholder={placeholder}
+        list={
+          field === 'name' ? 'beginner-member-name-suggestions'
+          : field === 'type' ? 'beginner-type-suggestions'
+          : undefined
+        }
         readOnly={!onUpdateSourceContent}
         onBlur={event => commitCodeTargetParameter(target, index, field, event.currentTarget.value)}
         onKeyDown={event => {
@@ -2934,7 +3886,7 @@ export default function DiffViewer({
       target: BeginnerCodeTarget,
       field: keyof LingCppParameter,
       placeholder: string,
-      tone: 'plain' | 'type' | 'name' | 'value' = 'plain'
+      tone: StructureInputTone = 'plain'
     ) => {
       const key = codeTargetKey(target);
       const draft: ParameterDraft = { type: '文本型', name: '', defaultValue: '', ...(newParameterDrafts[key] || {}) };
@@ -2942,6 +3894,11 @@ export default function DiffViewer({
         <input
           value={draft[field] || ''}
           placeholder={placeholder}
+          list={
+            field === 'name' ? 'beginner-member-name-suggestions'
+            : field === 'type' ? 'beginner-type-suggestions'
+            : undefined
+          }
           disabled={!onUpdateSourceContent}
           onChange={event => {
             const nextValue = event.currentTarget.value;
@@ -2976,6 +3933,9 @@ export default function DiffViewer({
           : '功能';
       const canEditName = target.method.kind === 'method' || target.method.kind === 'event';
       const canEditReturnType = target.method.kind === 'method';
+      const canEditStatic = target.method.kind === 'method';
+      const accessValue = row?.access || target.method.access || '公开';
+      const noteValue = row?.note || '';
 
       return (
         <div className={`border-b ${isDarkMode ? 'border-[#2b2d34]' : 'border-slate-200'}`}>
@@ -2984,6 +3944,7 @@ export default function DiffViewer({
               <tr>
                 <th className={`${headCellClass} w-[220px]`}>方法名</th>
                 <th className={`${headCellClass} w-[120px]`}>返回值类型</th>
+                <th className={`${headCellClass} w-[68px]`}>静态</th>
                 <th className={`${headCellClass} w-[82px]`}>公开</th>
                 <th className={`${headCellClass} w-[82px]`}>类别</th>
                 <th className={`${headCellClass} w-[64px] text-right`}>行</th>
@@ -2994,18 +3955,19 @@ export default function DiffViewer({
               <tr className={rowChrome(row)}>
                 <td className={cellClass}>
                   {canEditName
-                    ? renderCodeTargetFieldInput(target, 'name', target.method.name, '方法名', 'name')
-                    : renderTextCell(target.method.name, 'name')}
+                    ? renderCodeTargetFieldInput(target, 'name', target.method.name, '方法名', 'procedure')
+                    : renderTextCell(target.method.name, 'procedure')}
                 </td>
                 <td className={cellClass}>
                   {canEditReturnType
                     ? renderCodeTargetFieldInput(target, 'returnType', target.method.returnType || '空', '返回值', 'type')
                     : renderTextCell(target.method.returnType || '空', 'type')}
                 </td>
-                <td className={cellClass}>{renderTextCell(row?.access || target.method.access, 'plain')}</td>
+                <td className={cellClass}>{renderCodeTargetStaticSwitch(target, canEditStatic)}</td>
+                <td className={cellClass}>{renderCodeTargetAccessSelect(target, accessValue)}</td>
                 <td className={cellClass}>{renderTextCell(kindLabel, 'type')}</td>
                 <td className={`${cellClass} text-right tabular-nums`}>{renderTextCell(target.method.line, 'muted')}</td>
-                <td className={cellClass}>{renderTextCell(row?.note, 'muted')}</td>
+                <td className={cellClass}>{renderCodeTargetNoteInput(target, noteValue)}</td>
               </tr>
             </tbody>
           </table>
@@ -3022,7 +3984,7 @@ export default function DiffViewer({
             <tbody>
               {target.method.parameters.map((parameter, index) => (
                 <tr key={`${codeTargetKey(target)}:parameter:${index}`} className={rowChrome(row)}>
-                  <td className={cellClass}>{renderParameterInput(target, index, 'name', parameter.name, '参数名', 'name')}</td>
+                  <td className={cellClass}>{renderParameterInput(target, index, 'name', parameter.name, '参数名', 'parameter')}</td>
                   <td className={cellClass}>{renderParameterInput(target, index, 'type', parameter.type, '类型', 'type')}</td>
                   <td className={cellClass}>{renderParameterInput(target, index, 'defaultValue', parameter.defaultValue || '', '默认值', 'value')}</td>
                   <td className={cellClass}>{renderTextCell(parameterExampleText(parameter), 'muted')}</td>
@@ -3042,7 +4004,7 @@ export default function DiffViewer({
                 </tr>
               ))}
               <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
-                <td className={cellClass}>{renderNewParameterInput(target, 'name', '输入参数名', 'name')}</td>
+                <td className={cellClass}>{renderNewParameterInput(target, 'name', '输入参数名', 'parameter')}</td>
                 <td className={cellClass}>{renderNewParameterInput(target, 'type', '文本型', 'type')}</td>
                 <td className={cellClass}>{renderNewParameterInput(target, 'defaultValue', '"文本"', 'value')}</td>
                 <td className={cellClass}>{renderTextCell('输入名称后自动添加', 'muted')}</td>
@@ -3160,7 +4122,7 @@ export default function DiffViewer({
                             isDarkMode ? 'bg-[#181a20] text-slate-300' : 'bg-slate-50 text-slate-700'
                           }`}
                         >
-                          <span className={`truncate font-semibold ${textTone('name')}`}>{parameter.name}</span>
+                          <span className={`truncate ${textTone('parameter')}`}>{parameter.name}</span>
                           <span className={`truncate ${textTone('type')}`}>{parameter.type}</span>
                           <input
                             value={argumentDraft[argumentKey] || ''}
@@ -3214,45 +4176,94 @@ export default function DiffViewer({
 
     const renderCodeBodyEditor = (target: BeginnerCodeTarget, compact = false) => {
       const bodyText = methodBodyText(target.method);
-      const bodyLines = bodyText.split('\n').length ? bodyText.split('\n') : [''];
+      const targetKey = codeTargetKey(target);
+      const draftBodyText = beginnerCodeDrafts[targetKey] ?? bodyText;
+      const bodyLines = draftBodyText.split('\n').length ? draftBodyText.split('\n') : [''];
+      const ifBlocks = parseBeginnerIfBlocks(bodyLines);
       const editorHeightClass = compact ? 'min-h-[170px]' : 'min-h-[230px]';
       const lineHeight = Math.max(18, Math.round(editorFontSize * 1.65));
       const editorTextStyle = {
         fontSize: `${editorFontSize}px`,
         lineHeight: `${lineHeight}px`
       };
+      const lineInFlowBlock = (lineNumber: number) =>
+        ifBlocks.some(block => lineNumber >= block.startLine && lineNumber <= block.endLine);
 
       return (
         <div className="relative" data-beginner-editor-root onWheel={handleEditorFontWheel}>
-          <div className={`grid grid-cols-[54px_minmax(0,1fr)] border-b text-[10px] font-semibold ${
+          <div className={`grid grid-cols-[54px_22px_minmax(0,1fr)] border-b text-[10px] font-semibold ${
             isDarkMode ? 'border-[#2b2d34] bg-[#111217] text-slate-500' : 'border-slate-200 bg-slate-50 text-slate-500'
           }`}>
             <div className="border-r px-2 py-1.5 text-right">行</div>
-            <div className="px-2 py-1.5">中文 / C++ 代码</div>
+            <div className="border-r px-1 py-1.5 text-center">流</div>
+            <div className="flex min-w-0 items-center justify-between gap-2 px-2 py-1.5">
+              <span>中文 / C++ 代码</span>
+              <span className="truncate font-normal">Alt+↑/↓ 跳分支 · Ctrl+Shift+\ 循环</span>
+            </div>
           </div>
-          <div className={`grid ${editorHeightClass} grid-cols-[54px_minmax(0,1fr)]`}>
-            <div className={`select-none border-r px-2 py-2 text-right text-[11px] leading-6 tabular-nums ${
+          <div className={`grid ${editorHeightClass} grid-cols-[54px_22px_minmax(0,1fr)]`}>
+            <div data-beginner-line-numbers className={`select-none overflow-hidden border-r px-2 py-2 text-right text-[11px] leading-6 tabular-nums ${
               isDarkMode ? 'border-[#2b2d34] bg-[#111217] text-slate-600' : 'border-slate-200 bg-slate-50 text-slate-400'
             }`} style={editorTextStyle}>
-              {bodyLines.map((_, index) => (
-                <div key={index}>{index + 1}</div>
-              ))}
+              {bodyLines.map((_, index) => {
+                const lineNumber = index + 1;
+                const isJumpTarget = beginnerJumpHighlight?.targetKey === targetKey && beginnerJumpHighlight.line === lineNumber;
+                return (
+                  <div
+                    key={index}
+                    className={`rounded px-1 transition-colors duration-150 ${
+                      isJumpTarget
+                        ? isDarkMode ? 'bg-cyan-500/25 text-cyan-100 ring-1 ring-cyan-400/40' : 'bg-cyan-100 text-cyan-800 ring-1 ring-cyan-300'
+                        : ''
+                    }`}
+                    title={isJumpTarget ? `已跳转到：${beginnerJumpHighlight.label}` : undefined}
+                  >
+                    {lineNumber}
+                  </div>
+                );
+              })}
+            </div>
+            <div data-beginner-flow-guide className={`select-none overflow-hidden px-1 py-2 text-center text-[11px] tabular-nums ${
+              isDarkMode ? 'bg-[#101116] text-cyan-500/70' : 'bg-slate-50 text-cyan-600/80'
+            }`} style={editorTextStyle}>
+              {bodyLines.map((line, index) => {
+                const lineNumber = index + 1;
+                const kind = beginnerIfLineKind(line);
+                const inBlock = lineInFlowBlock(lineNumber);
+                const mark =
+                  kind === 'if' ? '┌' :
+                  kind === 'elseif' || kind === 'else' ? '├' :
+                  kind === 'end' ? '└' :
+                  inBlock ? '│' : '';
+                return (
+                  <div
+                    key={`${index}:${mark}`}
+                    className={`relative ${kind ? 'font-semibold' : ''} ${
+                      inBlock && !kind ? isDarkMode ? 'text-cyan-500/35' : 'text-cyan-600/45' : ''
+                    }`}
+                    title={kind ? line.trim() : undefined}
+                  >
+                    {mark}
+                  </div>
+                );
+              })}
             </div>
             <textarea
               key={`${target.className}:${target.method.name}:${target.method.line}:${bodyText}:${compact ? 'inline' : 'section'}`}
-              defaultValue={bodyText}
+              value={draftBodyText}
               spellCheck={false}
               readOnly={!onUpdateSourceContent}
               placeholder="输入中文代码，@ 后面写原生 C++"
               onChange={event => handleBeginnerCodeChange(target, event)}
-              onBlur={event => commitBeginnerCodeBody(
-                target.className,
-                target.method.name,
-                methodBodyText(target.method),
-                event.currentTarget.value
-              )}
+              onBlur={event => handleBeginnerCodeBlur(target, bodyText, event)}
               onFocus={event => updateBeginnerCompletion(target, event.currentTarget)}
               onKeyDown={event => handleBeginnerCodeKeyDown(target, event)}
+              onScroll={event => {
+                const lineNumberColumn = event.currentTarget.closest('[data-beginner-editor-root]')?.querySelector('[data-beginner-line-numbers]');
+                const flowGuideColumn = event.currentTarget.closest('[data-beginner-editor-root]')?.querySelector('[data-beginner-flow-guide]');
+                if (lineNumberColumn instanceof HTMLElement) lineNumberColumn.scrollTop = event.currentTarget.scrollTop;
+                if (flowGuideColumn instanceof HTMLElement) flowGuideColumn.scrollTop = event.currentTarget.scrollTop;
+              }}
               onWheel={handleEditorFontWheel}
               style={editorTextStyle}
               className={`${editorHeightClass} w-full resize-y border-0 bg-transparent px-3 py-2 font-mono outline-none ${
@@ -3406,7 +4417,7 @@ export default function DiffViewer({
             return (
               <tr key={row.id} data-structured-line={row.line} onDoubleClick={() => revealStructuredRow(row)} className={rowChrome(row)}>
                 <td className={cellClass}>{renderDirectStructureInput(row, 'member-type', row.type || '', '类型', 'type')}</td>
-                <td className={cellClass}>{renderDirectStructureInput(row, 'member-name', row.targetName || row.name, '名称', 'name')}</td>
+                <td className={cellClass}>{renderDirectStructureInput(row, 'member-name', row.targetName || row.name, '名称', 'variable')}</td>
                 <td className={cellClass}>{renderTextCell(kindLabel, controlMember ? 'type' : 'muted')}</td>
                 <td className={cellClass}>{renderDirectStructureInput(row, 'member-initial', row.initialValue || '', '未设置', 'value')}</td>
                 <td className={`${cellClass} text-right tabular-nums`}>{renderTextCell(row.line, 'muted')}</td>
@@ -3417,7 +4428,7 @@ export default function DiffViewer({
           {primaryLingCppClass && (
             <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
               <td className={cellClass}>{renderNewMemberInput('type', '类型', 'type')}</td>
-              <td className={cellClass}>{renderNewMemberInput('name', '输入新成员', 'name')}</td>
+              <td className={cellClass}>{renderNewMemberInput('name', '输入新成员', 'variable')}</td>
               <td className={cellClass}>{renderTextCell('新成员', 'muted')}</td>
               <td className={cellClass}>{renderNewMemberInput('initialValue', '初始值', 'value')}</td>
               <td className={`${cellClass} text-right`}>{renderTextCell('新', 'muted')}</td>
@@ -3562,7 +4573,7 @@ export default function DiffViewer({
                           {renderTextCell(row.type || row.name, 'type')}
                         </div>
                       </td>
-                      <td className={cellClass}>{renderDirectStructureInput(row, 'event-handler', row.targetName || row.name, '处理器', 'name')}</td>
+                      <td className={cellClass}>{renderDirectStructureInput(row, 'event-handler', row.targetName || row.name, '处理器', 'procedure')}</td>
                       <td className={cellClass}>{renderStatusCell(row)}</td>
                       <td className={cellClass}>
                         {row.editKind === 'event'
@@ -3594,7 +4605,7 @@ export default function DiffViewer({
               {primaryLingCppClass && (
                 <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
                   <td className={cellClass}>{renderTextCell('自定义事件', 'type')}</td>
-                  <td className={cellClass}>{renderNewEventInput('handlerName', '输入处理器名', 'name')}</td>
+                  <td className={cellClass}>{renderNewEventInput('handlerName', '输入处理器名', 'procedure')}</td>
                   <td className={cellClass}>{renderTextCell('新事件', 'muted')}</td>
                   <td className={cellClass}>{renderTextCell('生成后逐行添加', 'muted')}</td>
                   <td className={`${cellClass} text-right`}>{renderTextCell('新', 'muted')}</td>
@@ -3642,8 +4653,8 @@ export default function DiffViewer({
                 <td className={cellClass}>{renderTextCell(row.type || groupTitle[row.group], 'type')}</td>
                 <td className={cellClass}>
                   {editableMethod
-                    ? renderDirectStructureInput(row, 'method-name', row.targetName || row.name, '方法名', 'name')
-                    : renderTextCell(row.targetName || row.name, 'name')}
+                    ? renderDirectStructureInput(row, 'method-name', row.targetName || row.name, '方法名', 'procedure')
+                    : renderTextCell(row.targetName || row.name, 'procedure')}
                 </td>
                 <td className={cellClass}>
                   {editableMethod
@@ -3708,7 +4719,7 @@ export default function DiffViewer({
                           : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-500" />
                       ) : null}
                       <div className="min-w-0 flex-1">
-                        {renderDirectStructureInput(row, 'method-name', row.targetName || row.name, '功能名', 'name')}
+                        {renderDirectStructureInput(row, 'method-name', row.targetName || row.name, '功能名', 'procedure')}
                       </div>
                     </div>
                   </td>
@@ -3738,7 +4749,7 @@ export default function DiffViewer({
           {primaryLingCppClass && (
             <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
               <td className={cellClass}>{renderNewFunctionInput('returnType', '空', 'type')}</td>
-              <td className={cellClass}>{renderNewFunctionInput('name', '输入功能名', 'name')}</td>
+              <td className={cellClass}>{renderNewFunctionInput('name', '输入功能名', 'procedure')}</td>
               <td className={cellClass}>{renderTextCell('生成后逐行添加', 'muted')}</td>
               <td className={cellClass}>{renderTextCell('功能名("文本", 0)', 'muted')}</td>
               <td className={`${cellClass} text-right`}>{renderTextCell('新', 'muted')}</td>
@@ -3828,51 +4839,583 @@ export default function DiffViewer({
       </table>
     );
 
-    const sections = [
-      { id: 'class', label: '类', count: classRows.length, render: () => renderClassTable(classRows), visible: classRows.length > 0 },
-      { id: 'code', label: '代码', count: codeTargets.length, render: renderCodeEditorSection, visible: codeTargets.length > 0 },
-      { id: 'function', label: '功能', count: functionRows.length + (primaryLingCppClass ? 1 : 0), render: () => renderFunctionTable(functionRows), visible: functionRows.length > 0 || Boolean(primaryLingCppClass) },
-      { id: 'member', label: '成员', count: memberRows.length + (primaryLingCppClass ? 1 : 0), render: () => renderMemberTable(memberRows), visible: memberRows.length > 0 || Boolean(primaryLingCppClass) },
-      { id: 'event', label: '事件', count: eventRows.length + pendingEventRows.length + (primaryLingCppClass ? 1 : 0), render: () => renderEventTable(eventRows), visible: eventRows.length > 0 || pendingEventRows.length > 0 || Boolean(primaryLingCppClass) },
-      { id: 'method', label: '初始化', count: lifecycleRows.length, render: () => renderMethodTable(lifecycleRows), visible: lifecycleRows.length > 0 },
-      { id: 'declaration', label: '声明', count: declarationRows.length, render: () => renderDeclarationTable(declarationRows), visible: declarationRows.length > 0 },
-      { id: 'other', label: '备注', count: otherRows.length, render: () => renderOtherTable(otherRows), visible: otherRows.length > 0 }
-    ].filter(section => section.visible);
+    const canvasBorder = isDarkMode ? 'border-[#2b2d34]' : 'border-slate-200';
+    const canvasBg = isDarkMode ? 'bg-[#15161b]' : 'bg-white';
+    const gutterBg = isDarkMode ? 'bg-[#111217] text-slate-500' : 'bg-slate-50 text-slate-400';
+    const allProcessTargets = [...codeTargets].sort((left, right) => left.method.line - right.method.line);
+    const activeCanvasTarget = activeCodeTarget || allProcessTargets[0];
+    const compactTableBorder = isDarkMode ? 'border-[#33343b]' : 'border-slate-300';
+    const compactHeadCellClass = `h-6 border px-2 text-[10px] font-semibold ${compactTableBorder} ${
+      isDarkMode ? 'bg-[#202127] text-slate-300' : 'bg-slate-100 text-slate-700'
+    }`;
+    const compactCellClass = `h-6 border px-2 align-middle text-[11px] ${compactTableBorder} ${
+      isDarkMode ? 'bg-[#18191f] text-slate-200' : 'bg-white text-slate-800'
+    }`;
+    const compactEmptyCellClass = `h-6 border px-2 align-middle text-[11px] ${compactTableBorder} ${
+      isDarkMode ? 'bg-[#15161b] text-slate-600' : 'bg-white text-slate-400'
+    }`;
+    type CompactColumn = { label: string; className?: string };
+    const beginnerKnownMembers = new Set(memberRows.map(row => row.targetName || row.name).filter(Boolean));
+    const beginnerKnownProcedures = new Set(codeTargets.map(target => target.method.name).filter(Boolean));
+    const beginnerCodeTokenPattern = /("(?:(?:\\.)|[^"\\])*"|“[^”]*”|否则如果|如果结束|调试输出|输出调试文本|信息框|载入可视化设计|读取配置项|取运行目录|如果真|如果|否则|结束|返回|文本型|整数型|逻辑型|小数型|长整数型|双精度小数型|字节集|日期时间型|真|假|\d+(?:\.\d+)?|[\w\u4e00-\u9fa5]+|[＝=＋+\-*/（）(),，])/gu;
 
-    return (
-      <div className="flex h-full min-h-0">
-        <aside className={`hidden w-[118px] shrink-0 flex-col border-r md:flex ${
-          isDarkMode ? 'border-[#2b2d34] bg-[#121318]' : 'border-slate-200 bg-slate-50'
-        }`}>
-          <div className={`border-b px-3 py-2 text-[10px] font-semibold ${
-            isDarkMode ? 'border-[#2b2d34] text-slate-500' : 'border-slate-200 text-slate-500'
-          }`}>结构</div>
-          <div className="min-h-0 flex-1 overflow-auto py-1">
-            {sections.map(section => (
+    const findBeginnerLineCommentStart = (line: string) => {
+      let inDoubleQuote = false;
+      let inChineseQuote = false;
+      for (let index = 0; index < line.length - 1; index += 1) {
+        const char = line[index];
+        const next = line[index + 1];
+        if (char === '\\') {
+          index += 1;
+          continue;
+        }
+        if (!inChineseQuote && char === '"') {
+          inDoubleQuote = !inDoubleQuote;
+          continue;
+        }
+        if (!inDoubleQuote && char === '“') {
+          inChineseQuote = true;
+          continue;
+        }
+        if (inChineseQuote && char === '”') {
+          inChineseQuote = false;
+          continue;
+        }
+        if (!inDoubleQuote && !inChineseQuote && char === '/' && next === '/') return index;
+      }
+      return -1;
+    };
+
+    const renderBeginnerCodeToken = (token: string, index: number) => {
+      if (!token) return null;
+      if (token.startsWith('"') || token.startsWith('“')) {
+        return <span key={index} className={isDarkMode ? 'text-[#d7c5a1]' : 'text-amber-700'}>{token}</span>;
+      }
+      if (/^(调试输出|输出调试文本|信息框|载入可视化设计|读取配置项|取运行目录)$/.test(token)) {
+        return <span key={index} className={isDarkMode ? 'text-[#dcdcaa]' : 'text-amber-700'}>{token}</span>;
+      }
+      if (/^(如果真|否则如果|否则|如果结束|如果|结束|返回)$/.test(token)) {
+        return <span key={index} className={isDarkMode ? 'text-[#4ea5ff]' : 'text-blue-700'}>{token}</span>;
+      }
+      if (/^(文本型|整数型|逻辑型|小数型|长整数型|双精度小数型|字节集|日期时间型)$/.test(token)) {
+        return <span key={index} className={isDarkMode ? 'text-[#2bd4c6]' : 'text-teal-700'}>{token}</span>;
+      }
+      if (/^(真|假)$/.test(token) || /^\d+(?:\.\d+)?$/.test(token)) {
+        return <span key={index} className={isDarkMode ? 'text-[#b5cea8]' : 'text-emerald-700'}>{token}</span>;
+      }
+      if (beginnerKnownMembers.has(token)) {
+        return <span key={index} className={isDarkMode ? 'text-amber-200' : 'text-amber-800'}>{token}</span>;
+      }
+      if (beginnerKnownProcedures.has(token)) {
+        return <span key={index} className={isDarkMode ? 'text-cyan-200' : 'text-cyan-800'}>{token}</span>;
+      }
+      if (/^[＝=＋+\-*/（）(),，]$/.test(token)) {
+        return <span key={index} className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>{token}</span>;
+      }
+      return <span key={index} className={isDarkMode ? 'text-slate-100' : 'text-slate-900'}>{token}</span>;
+    };
+
+    const renderBeginnerCodeLine = (line: string) => {
+      if (!line) return <span>&nbsp;</span>;
+      const leadingSpace = line.match(/^\s*/u)?.[0] || '';
+      const body = line.slice(leadingSpace.length);
+      const commentStart = findBeginnerLineCommentStart(body);
+      const codePart = commentStart >= 0 ? body.slice(0, commentStart) : body;
+      const commentPart = commentStart >= 0 ? body.slice(commentStart) : '';
+      return (
+        <>
+          <span>{leadingSpace}</span>
+          {codePart.split(beginnerCodeTokenPattern).map(renderBeginnerCodeToken)}
+          {commentPart && (
+            <span className={isDarkMode ? 'text-[#6A9955]' : 'text-green-700'}>{commentPart}</span>
+          )}
+        </>
+      );
+    };
+
+    const renderSourceShell = (
+      id: string,
+      visualLine: number,
+      sourceLine: number,
+      tone: 'plain' | 'active' | 'warning',
+      children: React.ReactNode
+    ) => (
+      <section
+        id={sectionDomId(id)}
+        data-structured-line={sourceLine}
+        className={`grid grid-cols-[54px_minmax(0,1fr)] border-b ${canvasBorder} ${
+          tone === 'active'
+            ? isDarkMode ? 'bg-cyan-500/[0.06]' : 'bg-cyan-50'
+            : tone === 'warning'
+              ? isDarkMode ? 'bg-amber-500/[0.06]' : 'bg-amber-50'
+              : canvasBg
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => revealLingCppLine(sourceLine)}
+          className={`border-r px-2 py-2 text-right font-mono text-[11px] tabular-nums ${canvasBorder} ${gutterBg}`}
+          title={`定位到源码第 ${sourceLine} 行`}
+        >
+          {visualLine}
+        </button>
+        <div className="min-w-0 px-3 py-2">{children}</div>
+      </section>
+    );
+
+    const renderBlankSourceLine = (visualLine: number) => (
+      <section key={`blank-${visualLine}`} className={`grid grid-cols-[54px_minmax(0,1fr)] ${canvasBg}`}>
+        <div className={`border-r px-2 py-1 text-right font-mono text-[11px] tabular-nums ${canvasBorder} ${gutterBg}`}>{visualLine}</div>
+        <div className="h-7" />
+      </section>
+    );
+
+    const renderInlineTable = (
+      columns: CompactColumn[],
+      rows: React.ReactNode[],
+      maxWidth: number
+    ) => (
+      <div className="inline-block w-full max-w-full align-top" style={{ maxWidth }}>
+        <table className={`w-full table-fixed border-collapse text-left font-sans text-[11px] ${compactTableBorder}`}>
+          <thead>
+            <tr>
+              {columns.map(column => (
+                <th key={column.label} className={`${compactHeadCellClass} ${column.className || ''}`}>
+                  {column.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>{rows}</tbody>
+        </table>
+      </div>
+    );
+
+    const classDeclarationRow = classRows[0] || normalRows.find(row => row.editKind === 'class');
+    const packageDeclarationRow = declarationRows.find(row => row.editKind === 'package') || declarationRows[0];
+
+    const renderDeclarationCanvas = () => {
+      const row = classDeclarationRow || packageDeclarationRow;
+      if (!row) return null;
+
+      return renderSourceShell(
+        'declaration',
+        1,
+        row.line,
+        'plain',
+        renderInlineTable(
+          [
+            { label: '窗口程序集名', className: 'w-[160px]' },
+            { label: '保 留', className: 'w-[58px]' },
+            { label: '保 留', className: 'w-[58px]' },
+            { label: '备 注', className: 'w-[120px]' }
+          ],
+          [
+            <tr key={row.id} className={rowChrome(row)}>
+              <td className={compactCellClass}>
+                {row.editKind === 'class'
+                  ? renderDirectStructureInput(row, 'class-name', row.targetName || row.name, '窗口程序集名', 'name')
+                  : row.editKind === 'package'
+                    ? renderDirectStructureInput(row, 'package-name', row.targetName || row.name, '窗口程序集名', 'name')
+                    : renderTextCell(row.targetName || row.name, 'name')}
+              </td>
+              <td className={compactEmptyCellClass}>{renderTextCell('', 'muted')}</td>
+              <td className={compactEmptyCellClass}>{renderTextCell('', 'muted')}</td>
+              <td className={compactCellClass}>{renderTextCell(row.note, 'muted')}</td>
+            </tr>
+          ],
+          420
+        )
+      );
+    };
+
+    const isActiveProcessTarget = (target: BeginnerCodeTarget) =>
+      Boolean(activeCanvasTarget && codeTargetKey(activeCanvasTarget) === codeTargetKey(target));
+
+    const getProcessBodyLineCount = (target: BeginnerCodeTarget) =>
+      Math.max(1, (beginnerCodeDrafts[codeTargetKey(target)] ?? methodBodyText(target.method)).split('\n').length);
+
+    const renderProcessHeader = (target: BeginnerCodeTarget, visualLine: number) => {
+      const row = findStructuredRowForCodeTarget(target);
+      const canEditName = target.method.kind === 'method' || target.method.kind === 'event';
+      const canEditReturnType = target.method.kind === 'method';
+      const canEditStatic = target.method.kind === 'method';
+      const accessValue = row?.access || target.method.access || '公开';
+      const noteValue = row?.note || '';
+      const selected = isActiveProcessTarget(target);
+
+      return renderSourceShell(
+        `${target.method.kind}-${target.method.name}-${target.method.line}`,
+        visualLine,
+        target.method.line,
+        selected ? 'active' : 'plain',
+        renderInlineTable(
+          [
+            { label: '子程序名', className: 'w-[220px]' },
+            { label: '返回值类型', className: 'w-[90px]' },
+            { label: '静态', className: 'w-[54px]' },
+            { label: '公开', className: 'w-[74px]' },
+            { label: '备 注', className: 'w-[140px]' }
+          ],
+          [
+            <tr
+              key={`${target.className}:${target.method.name}`}
+              className={selected
+                ? isDarkMode ? 'bg-cyan-500/10' : 'bg-cyan-50'
+                : rowChrome(row)}
+              onClick={() => {
+                setSelectedBeginnerCodeTarget({ className: target.className, methodName: target.method.name });
+                if (target.method.kind === 'event') setSelectedBeginnerHandler(target.method.name);
+              }}
+            >
+              <td className={compactCellClass}>
+                {canEditName
+                  ? renderCodeTargetFieldInput(target, 'name', target.method.name, '子程序名', 'procedure')
+                  : renderTextCell(target.method.name, 'procedure')}
+              </td>
+              <td className={compactCellClass}>
+                {canEditReturnType
+                  ? renderCodeTargetFieldInput(target, 'returnType', target.method.returnType || '空', '返回值类型', 'type')
+                  : renderTextCell(target.method.returnType || '空', 'type')}
+              </td>
+              <td className={compactCellClass}>{renderCodeTargetStaticSwitch(target, canEditStatic)}</td>
+              <td className={compactCellClass}>{renderCodeTargetAccessSelect(target, accessValue)}</td>
+              <td className={compactCellClass}>{renderCodeTargetNoteInput(target, noteValue)}</td>
+            </tr>
+          ],
+          600
+        )
+      );
+    };
+
+    const renderMemberCanvas = (visualLineStart: number) => {
+      const rows = memberRows;
+      if (rows.length === 0 && !primaryLingCppClass) return null;
+      const sourceLine = rows[0]?.line || primaryLingCppClass?.line || 1;
+      const showNewMemberRow = Boolean(primaryLingCppClass);
+      const countedRows = rows.length > 0
+        ? rows.map((row, index) => ({ visualLine: visualLineStart + index, sourceLine: row.line }))
+        : showNewMemberRow
+          ? [{ visualLine: visualLineStart, sourceLine }]
+          : [];
+
+      return (
+        <section
+          id={sectionDomId('member')}
+          data-structured-line={sourceLine}
+          className={`grid grid-cols-[54px_minmax(0,1fr)] border-b ${canvasBorder} ${canvasBg}`}
+        >
+          <div className={`select-none border-r px-2 py-2 text-right font-mono text-[11px] tabular-nums ${canvasBorder} ${gutterBg}`}>
+            <div className={`h-6 border-b ${canvasBorder}`} />
+            {countedRows.map(item => (
               <button
-                key={section.id}
+                key={`${item.visualLine}:${item.sourceLine}`}
                 type="button"
-                onClick={() => scrollToStructureSection(section.id)}
-                className={`flex w-full items-center justify-between gap-2 border-l-2 px-3 py-2 text-left text-[11px] transition-colors ${
-                  isDarkMode
-                    ? 'border-transparent text-slate-400 hover:border-cyan-500/60 hover:bg-[#1b1c22] hover:text-slate-100'
-                    : 'border-transparent text-slate-600 hover:border-cyan-500 hover:bg-white hover:text-slate-950'
-                }`}
+                onClick={() => revealLingCppLine(item.sourceLine)}
+                className="block h-6 w-full text-right"
+                title={`定位到源码第 ${item.sourceLine} 行`}
               >
-                <span className="truncate font-semibold">{section.label}</span>
-                <span className={`rounded px-1.5 py-0.5 text-[10px] ${
-                  isDarkMode ? 'bg-[#23252d] text-slate-400' : 'bg-white text-slate-500'
-                }`}>{section.count}</span>
+                {item.visualLine}
               </button>
             ))}
+            {showNewMemberRow && rows.length > 0 && (
+              <div className="h-6 text-right text-slate-600">+</div>
+            )}
           </div>
-        </aside>
-        <div className="min-w-0 flex-1 overflow-auto">
-          <div className="min-w-[760px]">
-            {sections.map(section => (
-              <React.Fragment key={section.id}>{section.render()}</React.Fragment>
-            ))}
+          <div className="min-w-0 px-3 py-2">
+          {renderInlineTable(
+            [
+              { label: '变量名', className: 'w-[140px]' },
+              { label: '类 型', className: 'w-[96px]' },
+              { label: '静 态', className: 'w-[56px]' },
+              { label: '数 组', className: 'w-[56px]' },
+              { label: '备 注', className: 'w-[140px]' }
+            ],
+            [
+              ...rows.map(row => (
+                <tr key={`${row.id}:${row.line}`} className={rowChrome(row)}>
+                  <td className={compactCellClass}>{renderDirectStructureInput(row, 'member-name', row.targetName || row.name, '变量名', 'variable')}</td>
+                  <td className={compactCellClass}>{renderDirectStructureInput(row, 'member-type', row.type || '', '类型', 'type')}</td>
+                  <td className={compactCellClass}>{renderTextCell(row.access === '静态' ? '是' : '', 'muted')}</td>
+                  <td className={compactCellClass}>{renderTextCell('', 'muted')}</td>
+                  <td className={compactCellClass}>{renderTextCell(row.note || row.initialValue, 'muted')}</td>
+                </tr>
+              )),
+              primaryLingCppClass ? (
+                <tr key="new-member" className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
+                  <td className={compactCellClass}>{renderNewMemberInput('name', '输入变量名', 'variable')}</td>
+                  <td className={compactCellClass}>{renderNewMemberInput('type', '类型', 'type')}</td>
+                  <td className={compactEmptyCellClass}>{renderTextCell('', 'muted')}</td>
+                  <td className={compactEmptyCellClass}>{renderTextCell('', 'muted')}</td>
+                  <td className={compactCellClass}>{renderNewMemberInput('initialValue', '初始值', 'value')}</td>
+                </tr>
+              ) : null
+            ].filter(Boolean) as React.ReactNode[],
+            520
+          )}
           </div>
+        </section>
+      );
+    };
+
+    const renderParameterCanvas = (target: BeginnerCodeTarget, visualLine: number) => {
+      if (target.method.parameters.length === 0) return null;
+      return renderSourceShell(
+        `${target.method.kind}-${target.method.name}-params`,
+        visualLine,
+        target.method.line,
+        'plain',
+        renderInlineTable(
+          [
+            { label: '参数名', className: 'w-[140px]' },
+            { label: '类 型', className: 'w-[96px]' },
+            { label: '默认值', className: 'w-[96px]' },
+            { label: '备 注', className: 'w-[140px]' }
+          ],
+          target.method.parameters.map((parameter, index) => (
+            <tr key={`${codeTargetKey(target)}:param:${index}`} className={isDarkMode ? 'bg-[#18191f]' : 'bg-white'}>
+              <td className={compactCellClass}>{renderParameterInput(target, index, 'name', parameter.name, '参数名', 'parameter')}</td>
+              <td className={compactCellClass}>{renderParameterInput(target, index, 'type', parameter.type, '类型', 'type')}</td>
+              <td className={compactCellClass}>{renderParameterInput(target, index, 'defaultValue', parameter.defaultValue || '', '默认值', 'value')}</td>
+              <td className={compactCellClass}>{renderTextCell(parameterExampleText(parameter), 'muted')}</td>
+            </tr>
+          )),
+          520
+        )
+      );
+    };
+
+    const renderContinuousCodeBody = (target: BeginnerCodeTarget, firstVisualLine: number) => {
+      const bodyText = methodBodyText(target.method);
+      const targetKey = codeTargetKey(target);
+      const draftBodyText = beginnerCodeDrafts[targetKey] ?? bodyText;
+      const bodyLines = draftBodyText.split('\n').length ? draftBodyText.split('\n') : [''];
+      const ifBlocks = parseBeginnerIfBlocks(bodyLines);
+      const lineHeight = Math.max(18, Math.round(editorFontSize * 1.65));
+      const editorHeight = Math.max(lineHeight * Math.max(bodyLines.length, 1) + 16, lineHeight + 16);
+      const editorTextStyle = { fontSize: `${editorFontSize}px`, lineHeight: `${lineHeight}px`, height: `${editorHeight}px` };
+      const lineInFlowBlock = (lineNumber: number) =>
+        ifBlocks.some(block => lineNumber >= block.startLine && lineNumber <= block.endLine);
+
+      return (
+        <section
+          key={`${target.className}:${target.method.name}:code`}
+          data-structured-line={target.method.statements[0]?.line || target.method.line}
+          className={`relative grid grid-cols-[54px_22px_minmax(0,1fr)] ${canvasBg}`}
+          data-beginner-editor-root
+          onContextMenu={event => openBeginnerContextMenu(event, target)}
+          onWheel={handleEditorFontWheel}
+        >
+          <div data-beginner-line-numbers className={`select-none overflow-hidden border-r px-2 py-2 text-right text-[11px] tabular-nums ${canvasBorder} ${gutterBg}`} style={editorTextStyle}>
+            {bodyLines.map((_, index) => {
+              const displayLine = firstVisualLine + index;
+              const localLine = index + 1;
+              const isJumpTarget = beginnerJumpHighlight?.targetKey === targetKey && beginnerJumpHighlight.line === localLine;
+              return (
+                <div
+                  key={displayLine}
+                  className={`rounded px-1 transition-colors duration-150 ${
+                    isJumpTarget
+                      ? isDarkMode ? 'bg-cyan-500/25 text-cyan-100 ring-1 ring-cyan-400/40' : 'bg-cyan-100 text-cyan-800 ring-1 ring-cyan-300'
+                      : ''
+                  }`}
+                  title={isJumpTarget ? `已跳转到：${beginnerJumpHighlight.label}` : undefined}
+                >
+                  {displayLine}
+                </div>
+              );
+            })}
+          </div>
+          <div data-beginner-flow-guide className={`select-none overflow-hidden px-1 py-2 text-center text-[11px] tabular-nums ${
+            isDarkMode ? 'bg-[#101116] text-cyan-500/70' : 'bg-slate-50 text-cyan-600/80'
+          }`} style={editorTextStyle}>
+            {bodyLines.map((line, index) => {
+              const localLine = index + 1;
+              const kind = beginnerIfLineKind(line);
+              const inBlock = lineInFlowBlock(localLine);
+              const mark =
+                kind === 'if' ? '┌' :
+                kind === 'elseif' || kind === 'else' ? '├' :
+                kind === 'end' ? '└' :
+                inBlock ? '│' : '';
+              return (
+                <div
+                  key={`${index}:${mark}`}
+                  className={`${kind ? 'font-semibold' : ''} ${
+                    inBlock && !kind ? isDarkMode ? 'text-cyan-500/35' : 'text-cyan-600/45' : ''
+                  }`}
+                  title={kind ? line.trim() : undefined}
+                >
+                  {mark}
+                </div>
+              );
+            })}
+          </div>
+          <div className={`relative min-w-0 ${isDarkMode ? 'focus-within:bg-[#111118]' : 'focus-within:bg-white'}`} style={editorTextStyle}>
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-2 font-mono font-normal not-italic tracking-normal"
+              style={{ fontSize: `${editorFontSize}px`, lineHeight: `${lineHeight}px`, tabSize: 4 }}
+            >
+              {bodyLines.map((line, index) => (
+                <div
+                  key={`${targetKey}:highlight:${index}`}
+                  className="whitespace-pre-wrap"
+                  style={{ height: `${lineHeight}px`, lineHeight: `${lineHeight}px` }}
+                >
+                  {renderBeginnerCodeLine(line)}
+                </div>
+              ))}
+            </div>
+            <textarea
+              key={`${target.className}:${target.method.name}:${target.method.line}:${bodyText}:yc-source`}
+              value={draftBodyText}
+              spellCheck={false}
+              readOnly={!onUpdateSourceContent}
+              placeholder="输入中文代码；@ 后面写原生 C++"
+              onChange={event => handleBeginnerCodeChange(target, event)}
+              onBlur={event => handleBeginnerCodeBlur(target, bodyText, event)}
+              onFocus={event => updateBeginnerCompletion(target, event.currentTarget)}
+              onKeyDown={event => handleBeginnerCodeKeyDown(target, event)}
+              onScroll={event => {
+                const root = event.currentTarget.closest('[data-beginner-editor-root]');
+                const lineNumberColumn = root?.querySelector('[data-beginner-line-numbers]');
+                const flowGuideColumn = root?.querySelector('[data-beginner-flow-guide]');
+                if (lineNumberColumn instanceof HTMLElement) lineNumberColumn.scrollTop = event.currentTarget.scrollTop;
+                if (flowGuideColumn instanceof HTMLElement) flowGuideColumn.scrollTop = event.currentTarget.scrollTop;
+              }}
+              onWheel={handleEditorFontWheel}
+              style={editorTextStyle}
+              className={`relative z-10 w-full resize-none overflow-hidden border-0 bg-transparent px-3 py-2 font-mono font-normal not-italic tracking-normal text-transparent outline-none selection:bg-cyan-500/30 ${
+                isDarkMode ? 'caret-cyan-200 placeholder:text-slate-600' : 'caret-cyan-700 placeholder:text-slate-400'
+              }`}
+            />
+          </div>
+          {renderBeginnerCompletionPanel(target)}
+        </section>
+      );
+    };
+
+    const declarationCanvas = renderDeclarationCanvas();
+    const memberVisualLineStart = 2;
+    const memberCanvas = renderMemberCanvas(memberVisualLineStart);
+    const memberVisualLineCount = memberCanvas
+      ? Math.max(1, memberRows.length)
+      : 0;
+    let nextVisualLine = memberVisualLineStart + memberVisualLineCount;
+    const processCanvases: React.ReactNode[] = [];
+
+    if (memberCanvas && allProcessTargets.length > 0) {
+      processCanvases.push(renderBlankSourceLine(nextVisualLine));
+      nextVisualLine += 1;
+    }
+
+    allProcessTargets.forEach((target, index) => {
+      processCanvases.push(renderProcessHeader(target, nextVisualLine));
+      nextVisualLine += 1;
+
+      const parameterCanvas = renderParameterCanvas(target, nextVisualLine);
+      if (parameterCanvas) {
+        processCanvases.push(parameterCanvas);
+        nextVisualLine += Math.max(1, target.method.parameters.length);
+      }
+
+      processCanvases.push(renderContinuousCodeBody(target, nextVisualLine));
+      nextVisualLine += getProcessBodyLineCount(target);
+
+      if (index < allProcessTargets.length - 1) {
+        processCanvases.push(renderBlankSourceLine(nextVisualLine));
+        nextVisualLine += 1;
+      }
+    });
+
+    const contextTarget = beginnerContextMenu
+      ? codeTargets.find(target =>
+          target.className === beginnerContextMenu.className &&
+          target.method.name === beginnerContextMenu.methodName
+        ) || activeCanvasTarget
+      : undefined;
+    const renderContextMenuButton = (
+      label: string,
+      onClick: () => void,
+      icon: React.ReactNode,
+      danger = false,
+      disabled = false
+    ) => (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={event => {
+          event.stopPropagation();
+          if (disabled) return;
+          onClick();
+          setBeginnerContextMenu(null);
+        }}
+        className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+          danger
+            ? isDarkMode ? 'text-rose-300 hover:bg-rose-500/12' : 'text-rose-700 hover:bg-rose-50'
+            : isDarkMode ? 'text-slate-200 hover:bg-[#2a2d36]' : 'text-slate-700 hover:bg-slate-50'
+        }`}
+      >
+        <span className="flex h-4 w-4 shrink-0 items-center justify-center">{icon}</span>
+        <span className="truncate">{label}</span>
+      </button>
+    );
+    const renderBeginnerContextMenu = () => {
+      if (!beginnerContextMenu) return null;
+      const canDeleteTarget = Boolean(contextTarget && contextTarget.method.kind !== 'constructor');
+      return (
+        <div
+          className={`fixed z-50 w-[190px] overflow-hidden rounded border py-1 shadow-2xl ${
+            isDarkMode ? 'border-[#343746] bg-[#191b22] shadow-black/40' : 'border-slate-200 bg-white shadow-slate-300/60'
+          }`}
+          style={{ left: beginnerContextMenu.x, top: beginnerContextMenu.y }}
+          onClick={event => event.stopPropagation()}
+          onContextMenu={event => event.preventDefault()}
+        >
+          {renderContextMenuButton('新建子程序', createBeginnerFunction, <Plus className="h-3.5 w-3.5" />)}
+          {renderContextMenuButton('新建变量', createBeginnerMember, <Plus className="h-3.5 w-3.5" />)}
+          <div className={`my-1 border-t ${canvasBorder}`} />
+          {renderContextMenuButton('插入调试输出', () => appendBeginnerSnippet(contextTarget, '调试输出("")'), <Code className="h-3.5 w-3.5" />, false, !contextTarget)}
+          {renderContextMenuButton('插入信息框', () => appendBeginnerSnippet(contextTarget, '信息框("提示内容", 64, "提示")'), <Lightbulb className="h-3.5 w-3.5" />, false, !contextTarget)}
+          {renderContextMenuButton('插入如果结构', () => appendBeginnerSnippet(contextTarget, BEGINNER_IF_SNIPPET), <ListTree className="h-3.5 w-3.5" />, false, !contextTarget)}
+          <div className={`my-1 border-t ${canvasBorder}`} />
+          {renderContextMenuButton(
+            contextTarget?.method.kind === 'event' ? '删除事件处理器' : '删除当前子程序',
+            () => deleteBeginnerCodeTarget(contextTarget),
+            <Trash2 className="h-3.5 w-3.5" />,
+            true,
+            !canDeleteTarget
+          )}
+        </div>
+      );
+    };
+    const canvasItems = [
+      declarationCanvas,
+      memberCanvas,
+      ...processCanvases
+    ].filter(Boolean);
+
+    return (
+      <div
+        data-beginner-structure-scroll
+        className={`h-full min-h-0 overflow-auto ${isDarkMode ? 'bg-[#101116]' : 'bg-slate-50'}`}
+        onContextMenu={event => openBeginnerContextMenu(event, activeCanvasTarget)}
+      >
+        <datalist id="beginner-member-name-suggestions">
+          {memberNameSuggestions.map(item => <option key={item} value={item} />)}
+        </datalist>
+        <datalist id="beginner-type-suggestions">
+          {typeSuggestions.map(item => <option key={item} value={item} />)}
+        </datalist>
+        <datalist id="beginner-method-name-suggestions">
+          {methodNameSuggestions.map(item => <option key={item} value={item} />)}
+        </datalist>
+        {renderBeginnerContextMenu()}
+        <div className="min-w-0">
+          {canvasItems.length > 0 ? canvasItems.map((item, index) => <React.Fragment key={index}>{item}</React.Fragment>) : (
+            <div className="p-4 text-center text-xs text-slate-500">暂无结构信息</div>
+          )}
         </div>
       </div>
     );
@@ -4274,39 +5817,21 @@ export default function DiffViewer({
   );
 
   const renderLingCppStructureTableEditor = () => (
-    <div className={`flex-1 min-h-0 flex flex-col overflow-hidden ${
-      isDarkMode ? 'bg-[#18181f]' : 'bg-white'
-    }`}>
-      <div className={`h-9 px-3 flex items-center justify-between gap-2 border-b shrink-0 ${
-        isDarkMode ? 'border-[#2d2d34] bg-[#18181f]' : 'border-slate-200 bg-white'
-      }`}>
-        <div className="flex min-w-0 items-center gap-2">
-          <ListTree className="w-3.5 h-3.5 text-cyan-400" />
-          <span className={`text-[11px] font-semibold ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>结构编辑器</span>
-          <span className="text-[10px] text-slate-500">{structuredReadingRows.length}</span>
-          {pendingStructureEventCount > 0 && (
-            <span className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${
-              isDarkMode ? 'bg-amber-500/15 text-amber-300' : 'bg-amber-50 text-amber-700'
-            }`}>待生成 {pendingStructureEventCount}</span>
-          )}
-        </div>
-        <div className={`truncate text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
-          {activeFile?.path || activeFile?.name || '当前中文源码'}
-        </div>
-      </div>
-      {structureEditError && (
-        <div className={`border-b px-3 py-2 text-[11px] ${
-          isDarkMode ? 'border-[#2d2d34] bg-rose-950/20 text-rose-200' : 'border-rose-100 bg-rose-50 text-rose-700'
-        }`}>
-          {structureEditError}
-        </div>
+    <LingCppStructureEditor
+      rows={structuredReadingRows}
+      structureNodes={lingCppStructure}
+      pendingEventCount={pendingStructureEventCount}
+      fileLabel={activeFile?.path || activeFile?.name || '当前中文源码'}
+      sourceLineCount={Math.max(1, normalizedSourceCode.split(/\r?\n/u).length)}
+      activeLine={cursorPosition.line}
+      error={structureEditError}
+      isDarkMode={isDarkMode}
+      onRevealLine={revealLingCppLine}
+    >
+      {structuredReadingRows.length > 0 ? renderVolcanoStructuredRows() : (
+        <div className="p-4 text-center text-xs text-slate-500">暂无结构信息</div>
       )}
-      <div className="min-h-0 flex-1 overflow-hidden">
-        {structuredReadingRows.length > 0 ? renderVolcanoStructuredRows() : (
-          <div className="p-4 text-center text-xs text-slate-500">暂无结构信息</div>
-        )}
-      </div>
-    </div>
+    </LingCppStructureEditor>
   );
 
   const revealBeginnerTask = (task: BeginnerTask) => {
