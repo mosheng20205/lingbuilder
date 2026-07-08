@@ -30,6 +30,14 @@ import { getLingCppSemanticDiagnostics } from "./src/services/lingCpp/languageSe
 import { createModuleService } from "./src/services/modules/moduleService";
 import { LingCppModuleContext } from "./src/services/modules/types";
 import { describeLingCppModuleContextForAi } from "./src/services/modules/moduleContextAdapters";
+import {
+  exportModuleNativeDependencies,
+  materializeModuleNativeDependencies,
+  ModuleNativeDependencyPlan
+} from "./src/services/modules/nativeDependencyService";
+import { AiBridgeService } from "./src/services/aiBridge/aiBridgeService";
+import { createAiBridgeRouter } from "./src/services/aiBridge/httpRoutes";
+import { AiBridgePermissionMode, AiBridgeServerOptions } from "./src/services/aiBridge/types";
 
 dotenv.config();
 
@@ -262,6 +270,11 @@ const ALLOWED_PROJECT_EXTS = [".lcpp", ".cpp", ".h", ".rc", ".xml", ".json", ".i
 
 app.use(express.json({ limit: "2mb" }));
 
+function getAiBridgePermissionMode(): AiBridgePermissionMode {
+  const value = process.env.LINGBUILDER_AI_BRIDGE_PERMISSION;
+  return value === "readonly" || value === "preview" || value === "yolo" ? value : "preview";
+}
+
 function getRepoWorkspaceRoot() {
   return path.basename(process.cwd()).toLowerCase() === "electron"
     ? path.resolve(process.cwd(), "..")
@@ -271,6 +284,19 @@ function getRepoWorkspaceRoot() {
 function getModuleService() {
   return createModuleService(getRepoWorkspaceRoot());
 }
+
+const aiBridgeToken = process.env.LINGBUILDER_AI_BRIDGE_TOKEN || "";
+const aiBridgeOptions: AiBridgeServerOptions = {
+  workspaceRoot: getRepoWorkspaceRoot(),
+  host: process.env.HOST || "0.0.0.0",
+  port: PORT,
+  token: aiBridgeToken,
+  permission: getAiBridgePermissionMode(),
+  allowRemote: process.env.LINGBUILDER_AI_BRIDGE_ALLOW_REMOTE === "true",
+  enableMcp: false
+};
+const aiBridgeService = new AiBridgeService(aiBridgeOptions);
+app.use("/api/ai-bridge", createAiBridgeRouter(aiBridgeService, aiBridgeToken, planLingCppEditWithGemini));
 
 async function resolveLingCppEditModuleContext(
   projectId?: string,
@@ -496,19 +522,21 @@ app.post("/api/window-designer/native-export", async (req, res) => {
     const exportDir = path.join(getRepoWorkspaceRoot(), "generated", "cpp", sanitizeFilename(project.id || "window-preview"));
     await fs.mkdir(exportDir, { recursive: true });
     await writeGeneratedProjectFiles(exportDir, generatedProject.files);
+    const moduleExportDiagnostics = await exportModuleNativeDependencies(enabledModules, exportDir);
 
     res.json({
       ok: true,
       exportDir,
       files: generatedProject.files.map(file => path.join(exportDir, file.relativePath)),
-      diagnostics: generatedProject.diagnostics,
+      diagnostics: [...generatedProject.diagnostics, ...moduleExportDiagnostics],
       selectedWindow: generatedProject.selectedWindow,
       enabledModules: enabledModules.map(module => `${module.manifest.name} (${module.manifest.id}@${module.manifest.version})`),
       sourceMap: generatedProject.sourceMap,
       logs: [
         `原生 C++ 工程目录：${exportDir}`,
         `当前窗口：${generatedProject.selectedWindow.title}`,
-        ...generatedProject.diagnostics
+        ...generatedProject.diagnostics,
+        ...moduleExportDiagnostics
       ]
     });
   } catch (error: any) {
@@ -774,6 +802,12 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         fs.writeFile(exportPath, file.content, "utf8")
       ]);
     }));
+    const moduleNativePlan = await materializeModuleNativeDependencies(enabledModules, {
+      buildDir,
+      sourceDir,
+      binDir,
+      exportDir
+    });
 
     const compiler = await detectCompiler();
     if (!compiler) {
@@ -790,6 +824,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         logs: [
           "已生成 Win32 C++ 工程文件。",
           ...generatedProject.diagnostics,
+          ...moduleNativePlan.diagnostics,
           "未检测到可用 C++ 编译器。请安装 Visual Studio Build Tools、MinGW g++ 或 LLVM clang++ 后重试。",
           "需要的编译器命令之一：cl、g++、clang++。"
         ]
@@ -798,7 +833,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
 
     const sourcePath = path.join(sourceDir, "main.cpp");
     const exePath = path.join(binDir, "LingBuilderPreview.exe");
-    const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir);
+    const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan);
     const logs = [
       `已生成 Win32 C++ 工程：${buildDir}`,
       `C++ 源码目录：${sourceDir}`,
@@ -808,8 +843,10 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       `当前窗口：${generatedProject.selectedWindow.title}`,
       `编译器：${compiler.kind} (${compiler.command})`,
       ...generatedProject.diagnostics,
+      ...moduleNativePlan.diagnostics,
+      moduleNativePlan.runtimeFiles.length ? `已复制模块运行时文件：${moduleNativePlan.runtimeFiles.map(file => path.basename(file)).join(", ")}` : "",
       ...compileResult.logs
-    ];
+    ].filter(Boolean);
 
     if (!compileResult.ok) {
       return res.status(200).json({
@@ -1128,6 +1165,7 @@ async function findMsvcSetupBatch(): Promise<string | null> {
 
   for (const installPath of installPaths) {
     const candidates = [
+      path.join(installPath, "VC", "Auxiliary", "Build", "vcvars32.bat"),
       path.join(installPath, "VC", "Auxiliary", "Build", "vcvars64.bat"),
       path.join(installPath, "Common7", "Tools", "VsDevCmd.bat")
     ];
@@ -1160,9 +1198,27 @@ async function compileWin32Preview(
   sourcePath: string,
   exePath: string,
   objDir: string,
-  cwd: string
+  cwd: string,
+  modulePlan?: ModuleNativeDependencyPlan
 ): Promise<{ ok: boolean; logs: string[] }> {
+  const includeArgs = (modulePlan?.includeDirs || []).flatMap(includeDir => ["/I", includeDir]);
+  const moduleSources = modulePlan?.sourceFiles || [];
+  const moduleLibs = modulePlan?.libFiles || [];
+  if (compiler.kind !== "msvc" && modulePlan?.requiresMsvc) {
+    return {
+      ok: false,
+      logs: [
+        "编译失败。",
+        "new_emoji 模块需要 MSVC/Visual Studio Build Tools：当前检测到的编译器不能直接链接 .lib 导入库。"
+      ]
+    };
+  }
+
   const objectPath = path.join(objDir, "main.obj");
+  if (compiler.kind === "msvc" && moduleSources.length > 0) {
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs);
+  }
+
   const commandArgs = compiler.kind === "msvc"
     ? [
         "/nologo",
@@ -1171,12 +1227,14 @@ async function compileWin32Preview(
         "/utf-8",
         "/DUNICODE",
         "/D_UNICODE",
+        ...includeArgs,
         sourcePath,
         "/Fo:" + objectPath,
         "/Fe:" + exePath,
         "user32.lib",
         "gdi32.lib",
-        "comctl32.lib"
+        "comctl32.lib",
+        ...moduleLibs
       ]
     : [
         "-municode",
@@ -1245,6 +1303,78 @@ async function compileWin32Preview(
       ].filter(Boolean)
     };
   }
+}
+
+async function compileMsvcPreviewWithModules(
+  compiler: CompilerInfo,
+  sourcePath: string,
+  exePath: string,
+  objDir: string,
+  cwd: string,
+  includeArgs: string[],
+  moduleSources: string[],
+  moduleLibs: string[]
+): Promise<{ ok: boolean; logs: string[] }> {
+  const sources = [sourcePath, ...moduleSources];
+  const objectFiles = sources.map((source, index) => path.join(objDir, `${index === 0 ? "main" : `module_${index}`}.obj`));
+  const compileCommands = sources.map((source, index) => [
+    "/nologo",
+    "/EHsc",
+    "/std:c++17",
+    "/utf-8",
+    "/DUNICODE",
+    "/D_UNICODE",
+    ...includeArgs,
+    "/c",
+    source,
+    "/Fo:" + objectFiles[index]
+  ]);
+  const linkArgs = [
+    "/nologo",
+    ...objectFiles,
+    "/Fe:" + exePath,
+    "user32.lib",
+    "gdi32.lib",
+    "comctl32.lib",
+    ...moduleLibs
+  ];
+
+  try {
+    const outputs: string[] = [];
+    for (const args of compileCommands) {
+      const result = await runMsvcCommand(compiler, args, cwd);
+      if (result.stdout?.trim()) outputs.push(`stdout:\n${result.stdout.trim()}`);
+      if (result.stderr?.trim()) outputs.push(`stderr:\n${result.stderr.trim()}`);
+    }
+    const linkResult = await runMsvcCommand(compiler, linkArgs, cwd);
+    if (linkResult.stdout?.trim()) outputs.push(`link stdout:\n${linkResult.stdout.trim()}`);
+    if (linkResult.stderr?.trim()) outputs.push(`link stderr:\n${linkResult.stderr.trim()}`);
+    return { ok: true, logs: ["编译成功。", ...outputs] };
+  } catch (error: any) {
+    return {
+      ok: false,
+      logs: [
+        "编译失败。",
+        error.stdout?.trim() ? `stdout:\n${error.stdout.trim()}` : "",
+        error.stderr?.trim() ? `stderr:\n${error.stderr.trim()}` : "",
+        error.message ? `错误：${error.message}` : ""
+      ].filter(Boolean)
+    };
+  }
+}
+
+async function runMsvcCommand(compiler: CompilerInfo, commandArgs: string[], cwd: string) {
+  const command = compiler.setupBatch ? "cmd.exe" : compiler.command;
+  const args = compiler.setupBatch
+    ? ["/d", "/c", `call ${quoteCmdArg(compiler.setupBatch)} >nul && ${compiler.command} ${commandArgs.map(quoteCmdArg).join(" ")}`]
+    : commandArgs;
+  return await execFileAsync(command, args, {
+    cwd,
+    timeout: 60000,
+    windowsHide: true,
+    windowsVerbatimArguments: command === "cmd.exe",
+    maxBuffer: 1024 * 1024 * 4
+  });
 }
 
 function quoteCmdArg(value: string): string {
@@ -1545,4 +1675,10 @@ async function startServer() {
   });
 }
 
-startServer();
+export function createLingBuilderServer() {
+  return app;
+}
+
+if (process.env.LINGBUILDER_SERVER_AUTOSTART !== "false") {
+  startServer();
+}

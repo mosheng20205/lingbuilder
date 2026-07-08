@@ -8,13 +8,16 @@
     "dev": "node scripts/dev.cjs",
     "dev:renderer": "tsx server.ts",
     "dev:desktop": "node scripts/start-electron.cjs",
-    "build": "vite build && npm run build:server && npm run build:electron",
+    "build": "vite build && npm run build:server && npm run build:cli && npm run build:electron",
     "build:server": "esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build:cli": "esbuild src/cli.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/cli.cjs",
     "build:electron": "tsc -p electron/tsconfig.json && node scripts/rename-electron-output.cjs",
     "start": "node dist/server.cjs",
+    "ai-server": "tsx src/cli.ts ai-server",
     "lint": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
     "test": "npm run test:lingcpp",
-    "test:lingcpp": "node --import tsx --test tests/lingcpp.test.ts tests/modules.test.ts",
+    "test:lingcpp": "node --import tsx --test tests/lingcpp.test.ts tests/modules.test.ts tests/aiBridge.test.ts",
+    "module:new-emoji": "node scripts/generate-new-emoji-module.cjs",
     "clean": "rimraf dist dist-electron"
   },
   "dependencies": {
@@ -42,6 +45,9 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "wait-on": "^8.0.1"
+  },
+  "bin": {
+    "lingbuilder": "./dist/cli.cjs"
   },
   "allowScripts": {}
 }

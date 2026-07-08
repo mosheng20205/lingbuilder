@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 import { getLingCppCompletions, getLingCppSemanticDiagnostics } from '../src/services/lingCpp/languageService';
 import { validateModuleManifest } from '../src/services/modules/manifest';
@@ -9,6 +12,7 @@ import {
   getBeginnerModuleCommandHints
 } from '../src/services/modules/moduleContextAdapters';
 import { InstalledModule } from '../src/services/modules/types';
+import { materializeModuleNativeDependencies } from '../src/services/modules/nativeDependencyService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
 
@@ -144,9 +148,90 @@ test('generateLingCppNativeWin32Project emits module dependency report', () => {
   const moduleReport = generated.files.find(file => file.relativePath === 'module-dependencies.txt')?.content || '';
 
   assert.ok(mainCpp.includes('LingBuilder 模块: 原生扩展模块'));
-  assert.ok(mainCpp.includes('#pragma comment(lib, "native_bridge.lib")'));
+  assert.ok(mainCpp.includes('#pragma comment(lib, "modules/com.example.native/native_bridge.lib")'));
   assert.ok(moduleReport.includes('原生扩展模块'));
   assert.ok(moduleReport.includes('include/native_bridge.h'));
+});
+
+test('new_emoji style module manifest supports full command and runtime contributions', () => {
+  const validation = validateModuleManifest({
+    schemaVersion: 1,
+    id: 'lingbuilder.new_emoji.ui',
+    name: 'new_emoji 原生界面库',
+    version: '1.0.0',
+    category: '界面',
+    description: '集成 new_emoji Windows 原生 Direct2D/DirectWrite UI DLL。',
+    contributes: {
+      commands: [
+        { name: 'NE_创建窗口', signature: 'NE_创建窗口(标题, X, Y, 宽度, 高度)', description: '创建 new_emoji 原生窗口。' },
+        { name: '创建按钮', signature: '创建按钮(hwnd, parent_id, emoji_bytes, emoji_len, text_bytes, text_len, x, y, w, h)', description: 'new_emoji 创建按钮底层导出。' }
+      ],
+      cpp: {
+        includeDirs: ['include'],
+        headers: ['include/new_emoji_bridge.h'],
+        sources: ['src/new_emoji_bridge.cpp'],
+        libs: ['lib/Win32/new_emoji.lib'],
+        runtimeFiles: ['bin/Win32/new_emoji.dll'],
+        defines: ['LINGBUILDER_NEW_EMOJI_MODULE']
+      }
+    }
+  });
+
+  assert.equal(validation.diagnostics.length, 0);
+  assert.equal(validation.manifest?.id, 'lingbuilder.new_emoji.ui');
+});
+
+test('new_emoji module commands feed completion and disabled-module diagnostics', () => {
+  const module = createNewEmojiTestModule('C:/modules/lingbuilder.new_emoji.ui');
+  const completions = getLingCppCompletions(
+    { source: '', line: 1, column: 1 },
+    { enabledModules: [module], availableModules: [module] }
+  );
+
+  assert.ok(completions.some(item => item.label === 'NE_创建窗口'));
+  assert.ok(completions.some(item => item.label === '创建按钮'));
+
+  const diagnostics = getLingCppSemanticDiagnostics(
+    'NE_创建窗口("示例", 120, 120, 860, 560)',
+    undefined,
+    undefined,
+    { enabledModules: [], availableModules: [module] }
+  );
+
+  assert.ok(diagnostics.some(item => item.id.includes('lingcpp-module-disabled-lingbuilder.new_emoji.ui')));
+});
+
+test('materializeModuleNativeDependencies copies module source, libs and runtime files', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-new-emoji-module-'));
+  const installPath = path.join(root, 'installed');
+  const buildDir = path.join(root, 'build');
+  const sourceDir = path.join(buildDir, 'src');
+  const binDir = path.join(buildDir, 'bin');
+  const exportDir = path.join(root, 'export');
+
+  await Promise.all([
+    writeFixture(path.join(installPath, 'include', 'new_emoji_bridge.h'), '#pragma once\n'),
+    writeFixture(path.join(installPath, 'src', 'new_emoji_bridge.cpp'), '#include "new_emoji_bridge.h"\n'),
+    writeFixture(path.join(installPath, 'lib', 'Win32', 'new_emoji.lib'), 'fake lib\n'),
+    writeFixture(path.join(installPath, 'bin', 'Win32', 'new_emoji.dll'), 'fake dll\n')
+  ]);
+
+  const plan = await materializeModuleNativeDependencies([createNewEmojiTestModule(installPath)], {
+    buildDir,
+    sourceDir,
+    binDir,
+    exportDir
+  });
+
+  assert.equal(plan.diagnostics.length, 0);
+  assert.equal(plan.requiresMsvc, true);
+  assert.ok(plan.includeDirs.some(item => item.endsWith(path.join('modules', 'lingbuilder.new_emoji.ui', 'include'))));
+  assert.ok(plan.sourceFiles.some(item => item.endsWith(path.join('src', 'new_emoji_bridge.cpp'))));
+  assert.ok(plan.libFiles.some(item => item.endsWith(path.join('lib', 'Win32', 'new_emoji.lib'))));
+  assert.ok(await exists(path.join(sourceDir, 'modules', 'lingbuilder.new_emoji.ui', 'include', 'new_emoji_bridge.h')));
+  assert.ok(await exists(path.join(buildDir, 'modules', 'lingbuilder.new_emoji.ui', 'lib', 'Win32', 'new_emoji.lib')));
+  assert.ok(await exists(path.join(exportDir, 'modules', 'lingbuilder.new_emoji.ui', 'bin', 'Win32', 'new_emoji.dll')));
+  assert.ok(await exists(path.join(binDir, 'new_emoji.dll')));
 });
 
 function createTestModule(): InstalledModule {
@@ -168,4 +253,48 @@ function createTestModule(): InstalledModule {
       }
     }
   };
+}
+
+function createNewEmojiTestModule(installPath: string): InstalledModule {
+  return {
+    isInstalled: true,
+    installPath,
+    diagnostics: [],
+    manifest: {
+      schemaVersion: 1,
+      id: 'lingbuilder.new_emoji.ui',
+      name: 'new_emoji 原生界面库',
+      version: '1.0.0',
+      category: '界面',
+      description: '集成 new_emoji Windows 原生 Direct2D/DirectWrite UI DLL。',
+      contributes: {
+        commands: [
+          { name: 'NE_创建窗口', signature: 'NE_创建窗口(标题, X, Y, 宽度, 高度)', description: '创建 new_emoji 原生窗口。', insertText: 'NE_创建窗口("$1", 120, 120, 860, 560)' },
+          { name: '创建按钮', signature: '创建按钮(hwnd, parent_id, emoji_bytes, emoji_len, text_bytes, text_len, x, y, w, h)', description: 'new_emoji 创建按钮底层导出。' }
+        ],
+        cpp: {
+          includeDirs: ['include'],
+          headers: ['include/new_emoji_bridge.h'],
+          sources: ['src/new_emoji_bridge.cpp'],
+          libs: ['lib/Win32/new_emoji.lib'],
+          runtimeFiles: ['bin/Win32/new_emoji.dll'],
+          defines: ['LINGBUILDER_NEW_EMOJI_MODULE']
+        }
+      }
+    }
+  };
+}
+
+async function writeFixture(filePath: string, content: string): Promise<void> {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, content, 'utf8');
+}
+
+async function exists(filePath: string): Promise<boolean> {
+  try {
+    await fs.stat(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }

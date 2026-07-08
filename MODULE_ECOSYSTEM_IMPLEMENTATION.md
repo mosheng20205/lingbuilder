@@ -9,6 +9,7 @@
 - 解决方案资源管理器已经在项目节点 `GameClient (Visual C++)` 下显示“模块”组，并提供“配置项目所使用模块”入口。
 - Monaco 中文代码编辑器通过 `LingCppModuleContext` 消费模块贡献，支持模块命令/类型/片段补全，以及“使用了未启用模块命令”的中文诊断。
 - Win32 C++ 生成器支持读取启用模块，输出 `module-dependencies.txt`，并在 `main.cpp` 中写入外部模块依赖注释、`#pragma comment(lib, ...)` 和 define。
+- Win32 F5 构建链路支持把外部模块的 `headers`、`sources`、`libs` 和 `runtimeFiles` 复制到临时构建目录与 `generated/cpp/` 导出目录，并把运行时 DLL 复制到 exe 同目录。
 - `.lbmod` 模块包采用“zip 包 + 根目录 `lingbuilder.module.json`”格式；安装前必须预览确认。
 - 模块市场第一阶段支持本地/远程索引读取，安装仍走同一套 preview/install 流程。
 
@@ -22,6 +23,8 @@
   - 校验模块清单、模块 ID、贡献项和 C++ 相对路径安全。
 - `electron/src/services/modules/moduleService.ts`
   - 负责扫描、项目启用/禁用、`.lbmod` 预览、安装、卸载、市场索引、导出模块包和操作历史。
+- `electron/src/services/modules/nativeDependencyService.ts`
+  - 负责把已启用模块的 C++ 头文件、源码、库文件和运行时 DLL 安全复制到构建/导出目录，并向编译器提供 include/source/lib 路径。
 - `electron/server.ts`
   - 暴露 `/api/modules/*` 路由，并在窗口设计器构建时把启用模块传给 C++ 生成器。
 - `electron/src/services/lingCpp/languageService.ts`
@@ -155,6 +158,17 @@ lingbuilder.module.json
 ```
 
 生成器也必须消费同一份启用模块上下文。不要在 Monaco 里支持一个模块命令，却让 C++ 生成器完全不知道它；也不要在生成器里硬编码新中文命令而不让语言服务知道。
+
+## new_emoji 原生界面库模块
+
+- `electron/scripts/generate-new-emoji-module.cjs` 可从 `T:\github\new_emoji` 或 `NEW_EMOJI_ROOT` 指向的源码目录生成 `lingbuilder.new_emoji.ui` 模块。
+- 生成命令：`cd electron && npm run module:new-emoji -- --install`。该命令会生成 `.lingbuilder/module-packages/new_emoji.lbmod`，并安装到 `.lingbuilder/modules/lingbuilder.new_emoji.ui`。
+- 模块包复制 Win32/x64 的 `new_emoji.dll` 和 `new_emoji.lib`，但当前 F5 预览默认使用 Win32 产物。
+- `new_emoji.lib` 是 MSVC 导入库；如果只检测到 g++/clang++，F5 会返回“new_emoji 模块需要 MSVC/Visual Studio Build Tools”的中文诊断。
+- `.lcpp` 用户优先使用 `NE_创建窗口`、`NE_创建按钮`、`NE_创建文本` 等桥接命令；自动生成的 `NE_EU_*` 命令属于底层高级入口，参数仍按 new_emoji 的 UTF-8 字节指针和长度规则处理。
+- new_emoji 独立演示或 AI 自动生成示例不能在窗口创建完毕事件中调用 `结束` / `结束()`；该命令会销毁 LingBuilder 默认窗口，消息循环收到退出后表现为 exe 闪退。
+- 纯 new_emoji 示例应由 new_emoji 自己负责生命周期：创建窗口和控件后调用 `NE_运行消息循环` 或底层 `EU_RunMessageLoop()`。如果继续复用 LingBuilder 默认 Win32 生成窗口，必须保证默认窗口不会立即销毁，也不能让空设计器窗口关闭后触发 `PostQuitMessage(0)`。
+- 报告 new_emoji exe 可运行前，必须确认 `new_emoji.dll` 已复制到 exe 同目录，并实际启动验证至少 3 秒仍在运行。
 
 ## 后续扩展规则
 

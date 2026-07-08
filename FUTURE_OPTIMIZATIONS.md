@@ -10,8 +10,13 @@
 - 已完成：补充 `electron/tests/lingcpp.test.ts`，覆盖 parser、generator 和 WorkspaceEdit diff 回归验证，并提供 `npm run test:lingcpp`。
 - 已完成：AI 编辑提案扩展为多文件工作区提案，支持同时预览/应用 `.lcpp`、配置文件等多个真实工作区文件。
 - 已完成：生成器回归测试扩展到复选框、单选框、进度条、下拉框、窗体创建事件、暂不支持语法安全注释和多文件 WorkspaceEdit。
+- 已完成：模块构建链路开始支持外部 C++ 模块依赖复制，`new_emoji` 可通过 `.lbmod` 安装并在 F5 Win32 预览中复制 DLL/lib/header/source。
+- 已完成：新增 AI Bridge CLI 与本地 `/api/ai-bridge/*` 接口，支持 token 鉴权、`readonly` / `preview` / `yolo` 权限模式、受控文件读取搜索、LingCpp 诊断、编辑提案应用、模块上下文、C++ 预览/导出和 MCP stdio 工具映射。
 - 后续建议：继续把 AI 编辑扩展到语义级 range 规划、跨模块依赖分析和更细粒度的审查提示。
+- 后续建议：AI Bridge 的 `build.run` 已复用受控生成、编译和运行链路，但仍未开放任意 shell；后续应接入正式 `TaskService`，提供结构化构建、问题面板跳转和运行日志流。
 - 后续建议：继续扩展 LingCpp Parser/IR 覆盖面，把变量赋值、控件属性读写、字符串拼接、窗口打开/关闭等中文语法纳入生成器。
+- 后续建议：为 `new_emoji` 增加 x64 构建目标选择、设计器控件深度映射、全量 EU_ API 参数类型增强和可视化示例模板。
+- 后续建议：把“纯 new_emoji 独立演示入口”沉淀成正式模板或生成器选项。该模板必须避免在创建完毕事件中调用 `结束`，并在创建 new_emoji 窗口后进入 `NE_运行消息循环` / `EU_RunMessageLoop()`；构建验收需启动 exe 并确认 3 秒后仍在运行，防止再次生成闪退示例。
 
 本文档记录当前原型阶段为了快速闭环而采用的临时方案，以及后续必须工程化完善的方向。后续 Agent 开始大改动前应先阅读本文件，避免把原型实现误判为最终架构。
 

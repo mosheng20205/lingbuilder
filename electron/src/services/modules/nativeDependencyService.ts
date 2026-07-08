@@ -1,0 +1,166 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { InstalledModule } from './types';
+import { validateModuleRelativePath } from './manifest';
+
+export interface ModuleNativeDependencyLayout {
+  buildDir: string;
+  sourceDir: string;
+  binDir: string;
+  exportDir: string;
+}
+
+export interface ModuleNativeDependencyPlan {
+  includeDirs: string[];
+  sourceFiles: string[];
+  libFiles: string[];
+  runtimeFiles: string[];
+  diagnostics: string[];
+  requiresMsvc: boolean;
+}
+
+export async function materializeModuleNativeDependencies(
+  enabledModules: InstalledModule[],
+  layout: ModuleNativeDependencyLayout
+): Promise<ModuleNativeDependencyPlan> {
+  const plan: ModuleNativeDependencyPlan = {
+    includeDirs: [],
+    sourceFiles: [],
+    libFiles: [],
+    runtimeFiles: [],
+    diagnostics: [],
+    requiresMsvc: false
+  };
+
+  for (const module of enabledModules.filter(item => !item.isBuiltin)) {
+    const cpp = module.manifest.contributes?.cpp;
+    if (!cpp || !module.installPath || module.installPath.startsWith('builtin://')) continue;
+
+    const moduleId = module.manifest.id;
+    const buildModuleRoot = path.join(layout.buildDir, 'modules', moduleId);
+    const sourceModuleRoot = path.join(layout.sourceDir, 'modules', moduleId);
+    const exportModuleRoot = path.join(layout.exportDir, 'modules', moduleId);
+
+    for (const relativePath of unique([
+      ...(cpp.headers || []),
+      ...(cpp.sources || []),
+      ...(cpp.libs || []),
+      ...(cpp.runtimeFiles || [])
+    ])) {
+      await copyModuleFile(module, relativePath, buildModuleRoot, plan.diagnostics);
+      await copyModuleFile(module, relativePath, exportModuleRoot, plan.diagnostics);
+    }
+
+    for (const relativePath of unique([...(cpp.headers || []), ...(cpp.sources || [])])) {
+      await copyModuleFile(module, relativePath, sourceModuleRoot, plan.diagnostics);
+    }
+
+    for (const includeDir of cpp.includeDirs || []) {
+      if (!validateModuleRelativePath(includeDir)) {
+        plan.diagnostics.push(`模块 ${module.manifest.name} 的 includeDirs 包含不安全路径：${includeDir}`);
+        continue;
+      }
+      plan.includeDirs.push(path.join(sourceModuleRoot, includeDir));
+    }
+
+    for (const header of cpp.headers || []) {
+      const firstSegment = normalizeRelativePath(header).split('/')[0];
+      if (firstSegment && !plan.includeDirs.includes(path.join(sourceModuleRoot, firstSegment))) {
+        plan.includeDirs.push(path.join(sourceModuleRoot, firstSegment));
+      }
+    }
+
+    for (const source of cpp.sources || []) {
+      if (!validateModuleRelativePath(source)) {
+        plan.diagnostics.push(`模块 ${module.manifest.name} 的源码包含不安全路径：${source}`);
+        continue;
+      }
+      plan.sourceFiles.push(path.join(sourceModuleRoot, source));
+    }
+
+    for (const lib of cpp.libs || []) {
+      if (!validateModuleRelativePath(lib)) {
+        plan.diagnostics.push(`模块 ${module.manifest.name} 的库文件包含不安全路径：${lib}`);
+        continue;
+      }
+      if (lib.toLowerCase().endsWith('.lib')) plan.requiresMsvc = true;
+      plan.libFiles.push(path.join(buildModuleRoot, lib));
+    }
+
+    for (const runtimeFile of cpp.runtimeFiles || []) {
+      if (!validateModuleRelativePath(runtimeFile)) {
+        plan.diagnostics.push(`模块 ${module.manifest.name} 的运行时文件包含不安全路径：${runtimeFile}`);
+        continue;
+      }
+      const sourcePath = path.join(module.installPath, runtimeFile);
+      const targetPath = path.join(layout.binDir, path.basename(runtimeFile));
+      try {
+        await fs.mkdir(path.dirname(targetPath), { recursive: true });
+        await fs.copyFile(sourcePath, targetPath);
+        plan.runtimeFiles.push(targetPath);
+      } catch (error) {
+        plan.diagnostics.push(`复制模块运行时文件失败：${module.manifest.name} / ${runtimeFile} / ${errorMessage(error)}`);
+      }
+    }
+  }
+
+  plan.includeDirs = unique(plan.includeDirs);
+  plan.sourceFiles = unique(plan.sourceFiles);
+  plan.libFiles = unique(plan.libFiles);
+  plan.runtimeFiles = unique(plan.runtimeFiles);
+  return plan;
+}
+
+export async function exportModuleNativeDependencies(
+  enabledModules: InstalledModule[],
+  exportDir: string
+): Promise<string[]> {
+  const diagnostics: string[] = [];
+  for (const module of enabledModules.filter(item => !item.isBuiltin)) {
+    const cpp = module.manifest.contributes?.cpp;
+    if (!cpp || !module.installPath || module.installPath.startsWith('builtin://')) continue;
+    const exportModuleRoot = path.join(exportDir, 'modules', module.manifest.id);
+    for (const relativePath of unique([
+      ...(cpp.headers || []),
+      ...(cpp.sources || []),
+      ...(cpp.libs || []),
+      ...(cpp.runtimeFiles || [])
+    ])) {
+      await copyModuleFile(module, relativePath, exportModuleRoot, diagnostics);
+    }
+  }
+  return diagnostics;
+}
+
+function normalizeRelativePath(value: string): string {
+  return value.replace(/\\/g, '/');
+}
+
+async function copyModuleFile(
+  module: InstalledModule,
+  relativePath: string,
+  targetRoot: string,
+  diagnostics: string[]
+): Promise<void> {
+  if (!validateModuleRelativePath(relativePath)) {
+    diagnostics.push(`模块 ${module.manifest.name} 包含不安全路径：${relativePath}`);
+    return;
+  }
+
+  const sourcePath = path.join(module.installPath, relativePath);
+  const targetPath = path.join(targetRoot, relativePath);
+  try {
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.copyFile(sourcePath, targetPath);
+  } catch (error) {
+    diagnostics.push(`复制模块文件失败：${module.manifest.name} / ${relativePath} / ${errorMessage(error)}`);
+  }
+}
+
+function unique<T>(values: T[]): T[] {
+  return [...new Set(values)];
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

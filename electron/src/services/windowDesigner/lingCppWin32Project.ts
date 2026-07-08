@@ -1007,10 +1007,14 @@ function generateModuleCppPreamble(enabledModules: InstalledModule[]): string {
     .filter(module => !module.isBuiltin)
     .forEach(module => {
       const cpp = module.manifest.contributes?.cpp;
+      const modulePath = `modules/${module.manifest.id}`;
       lines.push(`// LingBuilder 模块: ${module.manifest.name} (${module.manifest.id}@${module.manifest.version})`);
-      (cpp?.headers || []).forEach(header => lines.push(`// 模块头文件: ${header}`));
+      (cpp?.headers || []).forEach(header => {
+        lines.push(`#include "${escapeIncludePath(`${modulePath}/${header}`)}"`);
+      });
       (cpp?.sources || []).forEach(source => lines.push(`// 模块源码: ${source}`));
-      (cpp?.libs || []).forEach(lib => lines.push(`#pragma comment(lib, "${escapeWideString(lib)}")`));
+      (cpp?.libs || []).forEach(lib => lines.push(`#pragma comment(lib, "${escapeWideString(`${modulePath}/${lib}`)}")`));
+      (cpp?.runtimeFiles || []).forEach(runtimeFile => lines.push(`// 模块运行时文件: ${runtimeFile}`));
       (cpp?.defines || []).forEach(define => {
         const safeDefine = toCppDefineIdentifier(define);
         lines.push(`#ifndef ${safeDefine}\n#define ${safeDefine}\n#endif`);
@@ -1032,7 +1036,8 @@ function generateModuleDependencyReport(enabledModules: InstalledModule[]): stri
       `控件数: ${module.manifest.contributes?.designerControls?.length || 0}`,
       `头文件: ${(cpp?.headers || []).join(', ') || '无'}`,
       `源码: ${(cpp?.sources || []).join(', ') || '无'}`,
-      `库: ${(cpp?.libs || []).join(', ') || '无'}`
+      `库: ${(cpp?.libs || []).join(', ') || '无'}`,
+      `运行时文件: ${(cpp?.runtimeFiles || []).join(', ') || '无'}`
     ].join('\n');
   }).join('\n\n');
 }
@@ -1574,6 +1579,10 @@ function escapeWideString(value: string): string {
     .replace(/\r/g, '\\r')
     .replace(/\n/g, '\\n')
     .replace(/\t/g, '\\t');
+}
+
+function escapeIncludePath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/"/g, '\\"');
 }
 
 function escapeCppComment(value: string): string {
