@@ -19,6 +19,18 @@ function FileIcon({ fileName, isDarkMode }: { fileName: string; isDarkMode: bool
   }
   return <FileText className="w-3.5 h-3.5 text-slate-400" />;
 }
+
+function getEditorTabClassName(isActive: boolean, isDarkMode: boolean) {
+  return `group flex h-8 shrink-0 items-center gap-2 px-3 py-1.5 text-[11px] font-semibold rounded-t cursor-pointer transition-all border-t border-x ${
+    isActive
+      ? isDarkMode
+        ? 'bg-[#1e1e24] border-[#2d2d34] text-white border-b-transparent'
+        : 'bg-white border-slate-300 text-slate-900 border-b-transparent'
+      : isDarkMode
+        ? 'bg-[#141418] border-transparent text-slate-400 hover:text-slate-200'
+        : 'bg-slate-200/50 border-transparent text-slate-600 hover:text-slate-800'
+  }`;
+}
 import { AppliedWorkspaceFile, DiffLine, DiffResult, ExtractedString, ProblemItem, WorkspaceEditProposal } from '../types';
 import WpfDesigner from './WpfDesigner';
 import MonacoCodeEditor from './MonacoCodeEditor';
@@ -6968,10 +6980,19 @@ export default function DiffViewer({
       <div className={`flex px-2 pt-1 select-none items-center justify-between border-b ${
         isDarkMode ? 'bg-[#181820] border-[#2d2d34]' : 'bg-slate-100 border-slate-200'
       }`}>
-        <div className="flex gap-1 overflow-x-auto scrollbar-none">
+        <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto scrollbar-none">
+          <div
+            onClick={() => setViewType('designer')}
+            className={getEditorTabClassName(viewType === 'designer', isDarkMode)}
+            title="打开界面可视化设计器"
+          >
+            <LayoutGrid className="w-3.5 h-3.5 text-amber-500" />
+            <span className="whitespace-nowrap">界面可视化</span>
+          </div>
+
           {openTabs.map(tabPath => {
             const fileName = tabPath.split('/').pop() || tabPath;
-            const isActive = tabPath === activeTabPath;
+            const isActive = viewType === 'code' && tabPath === activeTabPath;
             const file = allFiles.find(f => f.path === tabPath);
             if (!file) return null;
 
@@ -6979,21 +7000,13 @@ export default function DiffViewer({
               <div
                 key={tabPath}
                 onClick={() => onSelectTab(file)}
-                className={`group flex items-center gap-2 px-3 py-1.5 text-[11px] font-semibold rounded-t cursor-pointer transition-all border-t border-x ${
-                  isActive
-                    ? isDarkMode
-                      ? 'bg-[#1e1e24] border-[#2d2d34] text-white border-b-transparent'
-                      : 'bg-white border-slate-300 text-slate-900 border-b-transparent'
-                    : isDarkMode
-                      ? 'bg-[#141418] border-transparent text-slate-400 hover:text-slate-200'
-                      : 'bg-slate-200/50 border-transparent text-slate-600 hover:text-slate-800'
-                }`}
+                className={getEditorTabClassName(isActive, isDarkMode)}
               >
                 <FileIcon fileName={fileName} isDarkMode={isDarkMode} />
-                <span>{fileName}</span>
+                <span className="max-w-32 truncate whitespace-nowrap" title={fileName}>{fileName}</span>
                 <button
                   onClick={(e) => onCloseTab(tabPath, e)}
-                  className="w-3.5 h-3.5 rounded-full hover:bg-slate-400/20 flex items-center justify-center text-slate-500 hover:text-red-500 opacity-60 group-hover:opacity-100"
+                  className="w-3.5 h-3.5 shrink-0 rounded-full hover:bg-slate-400/20 flex items-center justify-center text-slate-500 hover:text-red-500 opacity-60 group-hover:opacity-100"
                 >
                   <X className="w-2 h-2" />
                 </button>
@@ -7003,7 +7016,7 @@ export default function DiffViewer({
         </div>
 
         {/* Top-Right Quick Toggle Button between Code/Designer */}
-        <div className="flex items-center gap-2 pr-2">
+        <div className="flex shrink-0 items-center gap-2 pr-2">
           {activeFile?.name?.endsWith('.lcpp') && (
             viewType === 'designer' ? (
               <button
@@ -7049,7 +7062,7 @@ export default function DiffViewer({
       </div>
 
       {/* Main Comparative Frame */}
-      {activeFile?.name?.endsWith('.lcpp') && viewType === 'designer' ? (
+      {viewType === 'designer' ? (
         <WpfDesigner isDarkMode={isDarkMode} activeFile={activeFile} />
       ) : (
         <div className={`flex-1 flex overflow-hidden ${style.bg} ${style.text}`}>
