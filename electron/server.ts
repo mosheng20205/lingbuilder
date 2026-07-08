@@ -33,6 +33,40 @@ import { describeLingCppModuleContextForAi } from "./src/services/modules/module
 
 dotenv.config();
 
+let lingBuilderAiRulebookCache: string | null | undefined;
+
+function getLingBuilderAiRulebookCandidates(): string[] {
+  return [
+    path.resolve(process.cwd(), "LingBuilder AI 规则手册.md"),
+    path.resolve(process.cwd(), "..", "LingBuilder AI 规则手册.md")
+  ];
+}
+
+async function getLingBuilderAiRulebook(): Promise<string> {
+  if (lingBuilderAiRulebookCache !== undefined) return lingBuilderAiRulebookCache || "";
+  for (const candidate of getLingBuilderAiRulebookCandidates()) {
+    try {
+      lingBuilderAiRulebookCache = await fs.readFile(candidate, "utf8");
+      return lingBuilderAiRulebookCache;
+    } catch {
+      // Try the next likely workspace location.
+    }
+  }
+  lingBuilderAiRulebookCache = null;
+  return "";
+}
+
+function attachLingBuilderAiRulebook(systemPrompt: string, rulebook: string): string {
+  const trimmedRulebook = rulebook.trim();
+  if (!trimmedRulebook) return systemPrompt;
+  return `${systemPrompt}
+
+以下是 LingBuilder AI 固定规则手册，必须优先遵守：
+<<<LINGBUILDER_AI_RULEBOOK
+${trimmedRulebook}
+LINGBUILDER_AI_RULEBOOK`;
+}
+
 function resolveAiConnectionConfig(config?: AiConnectionConfig): Required<AiConnectionConfig> {
   return {
     baseUrl: (config?.baseUrl || process.env.GEMINI_BASE_URL || "").trim(),
@@ -44,6 +78,97 @@ function resolveAiConnectionConfig(config?: AiConnectionConfig): Required<AiConn
 
 function joinBaseUrl(baseUrl: string, pathName: string): string {
   return `${baseUrl.replace(/\/+$/u, "")}/${pathName.replace(/^\/+/u, "")}`;
+}
+
+function extractJsonPayload(text: string, fallback: string): string {
+  const cleaned = text
+    .trim()
+    .replace(/^```(?:json)?\s*/iu, "")
+    .replace(/\s*```$/u, "")
+    .trim();
+  if (!cleaned) return fallback;
+
+  const firstObject = cleaned.indexOf("{");
+  const firstArray = cleaned.indexOf("[");
+  const startCandidates = [firstObject, firstArray].filter(index => index >= 0);
+  if (startCandidates.length === 0) return cleaned;
+
+  const start = Math.min(...startCandidates);
+  const endObject = cleaned.lastIndexOf("}");
+  const endArray = cleaned.lastIndexOf("]");
+  const end = Math.max(endObject, endArray);
+  return end >= start ? cleaned.slice(start, end + 1) : cleaned;
+}
+
+async function generateAiText(options: {
+  config: Required<AiConnectionConfig>;
+  systemPrompt: string;
+  prompt: string;
+  temperature?: number;
+  maxTokens?: number;
+  geminiResponseSchema?: any;
+  geminiResponseMimeType?: string;
+}): Promise<string> {
+  const { config, systemPrompt, prompt, temperature = 0.2, maxTokens = 4096 } = options;
+
+  if (config.provider === "anthropic") {
+    const response = await fetch(joinBaseUrl(config.baseUrl || "https://api.anthropic.com/v1", "/messages"), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": config.apiKey,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: config.modelName,
+        system: systemPrompt,
+        max_tokens: maxTokens,
+        temperature,
+        messages: [{ role: "user", content: prompt }]
+      })
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json() as { content?: Array<{ type?: string; text?: string }> };
+    return data.content?.map(item => item.text || "").join("") || "";
+  }
+
+  if (config.provider === "deepseek" || config.provider === "openai") {
+    const defaultBaseUrl = config.provider === "deepseek" ? "https://api.deepseek.com" : "https://api.openai.com/v1";
+    const response = await fetch(joinBaseUrl(config.baseUrl || defaultBaseUrl, "/chat/completions"), {
+      method: "POST",
+      headers: {
+        "authorization": `Bearer ${config.apiKey}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: config.modelName,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: prompt }
+        ],
+        max_tokens: maxTokens,
+        temperature,
+        ...(config.provider === "deepseek" ? { thinking: { type: "disabled" } } : {})
+      })
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    return data.choices?.[0]?.message?.content || "";
+  }
+
+  const ai = getGeminiClient(config);
+  const response = await ai.models.generateContent({
+    model: config.modelName,
+    contents: prompt,
+    config: {
+      systemInstruction: systemPrompt,
+      temperature,
+      maxOutputTokens: maxTokens,
+      ...(options.geminiResponseMimeType ? { responseMimeType: options.geminiResponseMimeType } : {}),
+      ...(options.geminiResponseSchema ? { responseSchema: options.geminiResponseSchema } : {})
+    }
+  });
+  return response.text || "";
 }
 
 async function testAiConnection(config: Required<AiConnectionConfig>): Promise<string> {
@@ -476,8 +601,6 @@ app.post("/api/translate", async (req, res) => {
 
   try {
     const resolvedAiConfig = resolveAiConnectionConfig(aiConfig);
-    const ai = getGeminiClient(resolvedAiConfig);
-
     // Construct glossary context string
     let glossaryContext = "";
     if (glossary && Array.isArray(glossary) && glossary.length > 0) {
@@ -513,32 +636,31 @@ ${JSON.stringify(itemsToTranslate, null, 2)}
   { "id": "条目ID", "translated": "翻译后的中文内容" }
 ]`;
 
-    const response = await ai.models.generateContent({
-      model: resolvedAiConfig.modelName,
-      contents: prompt,
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING, description: "对应的输入条目 id" },
-              translated: { type: Type.STRING, description: "翻译后的专业中文内容" }
-            },
-            required: ["id", "translated"]
-          }
+    const resultText = await generateAiText({
+      config: resolvedAiConfig,
+      systemPrompt: attachLingBuilderAiRulebook(systemPrompt, await getLingBuilderAiRulebook()),
+      prompt,
+      temperature: 0.2,
+      maxTokens: 4096,
+      geminiResponseMimeType: "application/json",
+      geminiResponseSchema: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            id: { type: Type.STRING, description: "对应的输入条目 id" },
+            translated: { type: Type.STRING, description: "翻译后的专业中文内容" }
+          },
+          required: ["id", "translated"]
         }
       }
     });
 
-    const resultText = response.text || "[]";
-    const translations = JSON.parse(resultText.trim());
+    const translations = JSON.parse(extractJsonPayload(resultText, "[]"));
     res.json({ translations });
 
   } catch (error: any) {
-    console.error("Gemini batch translation failure:", error);
+    console.error("AI batch translation failure:", error);
     res.status(500).json({
       error: "AI 汉化接口调用失败",
       details: error.message || error
@@ -1178,7 +1300,7 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
   const selectedText = context.selection ? getTextForRange(sourceCode, context.selection) : "";
   const moduleContextPrompt = describeLingCppModuleContextForAi(context.moduleContext);
 
-  const systemPrompt = `你是 LingBuilder 的中文 C++（.lcpp）重写代理。
+  const baseSystemPrompt = `你是 LingBuilder 的中文 C++（.lcpp）重写代理。
 你的任务是根据用户要求修改一个或多个已提供的工作区文件，并返回“仅包含发生变化文件”的完整重写结果。
 
 严格规则：
@@ -1191,6 +1313,7 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
 7. 可以直接使用当前项目“已启用模块”提供的命令、类型和片段；不要静默调用未启用模块的命令。
 8. 如果用户要求使用未启用模块，先在 explanation 中说明需要启用该模块，再给出不破坏当前代码的最小修改。
 9. explanation 用中文简要说明哪些文件被改了、为什么。`;
+  const systemPrompt = attachLingBuilderAiRulebook(baseSystemPrompt, await getLingBuilderAiRulebook());
 
   const prompt = [
     `当前活动文件：${context.filePath}`,
@@ -1207,38 +1330,52 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
 ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCode}`).join("\n\n")}`
   ].filter(Boolean).join("\n\n");
 
-  const ai = getGeminiClient(resolvedAiConfig);
-  const response = await ai.models.generateContent({
-    model: resolvedAiConfig.modelName,
-    contents: prompt,
-    config: {
-      systemInstruction: systemPrompt,
-      temperature: 0.2,
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          summary: { type: Type.STRING, description: "一句话概括本次修改内容" },
-          explanation: { type: Type.STRING, description: "简要说明改动原因与影响" },
-          files: {
-            type: Type.ARRAY,
-            description: "仅包含发生变化的文件，每项都必须给出完整文件内容",
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                filePath: { type: Type.STRING, description: "被修改的文件路径，必须来自允许编辑的工作区文件列表" },
-                updatedSource: { type: Type.STRING, description: "修改后的完整文件内容" }
-              },
-              required: ["filePath", "updatedSource"]
-            }
-          }
-        },
-        required: ["summary", "explanation", "files"]
+  const schema = {
+    type: Type.OBJECT,
+    properties: {
+      summary: { type: Type.STRING, description: "一句话概括本次修改内容" },
+      explanation: { type: Type.STRING, description: "简要说明改动原因与影响" },
+      files: {
+        type: Type.ARRAY,
+        description: "仅包含发生变化的文件，每项都必须给出完整文件内容",
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            filePath: { type: Type.STRING, description: "被修改的文件路径，必须来自允许编辑的工作区文件列表" },
+            updatedSource: { type: Type.STRING, description: "修改后的完整文件内容" }
+          },
+          required: ["filePath", "updatedSource"]
+        }
       }
+    },
+    required: ["summary", "explanation", "files"]
+  };
+
+  const jsonPrompt = `${prompt}
+
+请只返回 JSON，不要使用 Markdown，不要添加解释文字。JSON 格式如下：
+{
+  "summary": "一句话概括本次修改内容",
+  "explanation": "简要说明改动原因与影响",
+  "files": [
+    {
+      "filePath": "必须来自允许编辑的工作区文件列表",
+      "updatedSource": "修改后的完整文件内容"
     }
+  ]
+}`;
+
+  const responseText = await generateAiText({
+    config: resolvedAiConfig,
+    systemPrompt,
+    prompt: jsonPrompt,
+    temperature: 0.2,
+    maxTokens: 12000,
+    geminiResponseMimeType: "application/json",
+    geminiResponseSchema: schema
   });
 
-  const draft = JSON.parse((response.text || "{}").trim()) as LingCppEditDraft;
+  const draft = JSON.parse(extractJsonPayload(responseText, "{}")) as LingCppEditDraft;
   const promptFileMap = new Map(promptWorkspaceFiles.map(file => [normalizeFilePath(file.filePath), file]));
   const validDraftFiles = (draft.files || [])
     .filter(file => file?.filePath && typeof file.updatedSource === "string")
@@ -1249,7 +1386,7 @@ ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCod
     .filter(file => promptFileMap.has(normalizeFilePath(file.filePath)) && file.updatedSource.trim());
 
   if (validDraftFiles.length === 0) {
-    throw new Error("Gemini 未返回有效的多文件编辑结果");
+    throw new Error("AI 未返回有效的多文件编辑结果");
   }
 
   const diagnosticsNotes: string[] = [];
@@ -1260,7 +1397,7 @@ ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCod
     const originalParse = parseLingCpp(normalizeLineEndings(originalFile.sourceCode));
     const updatedParse = parseLingCpp(file.updatedSource);
     if (originalParse.program.classes.length > 0 && updatedParse.program.classes.length === 0) {
-      throw new Error(`Gemini 返回的 ${file.filePath} 无法通过基本的 LingCpp 类结构校验`);
+      throw new Error(`AI 返回的 ${file.filePath} 无法通过基本的 LingCpp 类结构校验`);
     }
     const nextErrorCount = updatedParse.diagnostics.filter(diagnostic => diagnostic.level === "error").length;
     const originalErrorCount = originalParse.diagnostics.filter(diagnostic => diagnostic.level === "error").length;
@@ -1275,7 +1412,7 @@ ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCod
 
   return {
     summary: draft.summary?.trim() || context.instruction.trim() || "根据当前上下文生成中文 C++ 编辑建议",
-    explanation: `${draft.explanation?.trim() || "Gemini 已生成完整文件级编辑提案。"}${diagnosticsNote}`,
+    explanation: `${draft.explanation?.trim() || "AI 已生成完整文件级编辑提案。"}${diagnosticsNote}`,
     files: validDraftFiles
   };
 }
