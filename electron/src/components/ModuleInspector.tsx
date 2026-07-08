@@ -55,6 +55,7 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
   const inputClass = isDarkMode
     ? 'bg-[#1e1e1e] border-white/10 text-slate-100 placeholder:text-slate-500'
     : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400';
+  const actionButtonClass = 'cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50';
 
   const refresh = useCallback(async () => {
     if (refreshInFlightRef.current) return;
@@ -255,7 +256,7 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
           <button
             onClick={refresh}
             disabled={isLoading}
-            className="h-8 shrink-0 whitespace-nowrap px-2.5 inline-flex items-center gap-1.5 rounded border border-sky-500/40 text-sky-300 hover:bg-sky-500/10 disabled:opacity-50"
+            className={`h-8 shrink-0 whitespace-nowrap px-2.5 inline-flex items-center gap-1.5 rounded border border-sky-500/40 text-sky-300 hover:bg-sky-500/10 hover:text-white ${actionButtonClass}`}
           >
             <RefreshCw size={14} className={isLoading ? 'animate-spin' : ''} />
             刷新
@@ -311,7 +312,7 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
               className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`}
               placeholder="C:\\path\\module.lbmod"
             />
-            <button onClick={() => previewPackage(packagePath)} className="h-9 w-full px-3 rounded bg-sky-600 text-white text-xs inline-flex items-center justify-center gap-2">
+            <button onClick={() => previewPackage(packagePath)} className={`h-9 w-full px-3 rounded bg-sky-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-sky-500 ${actionButtonClass}`}>
               <ShieldCheck size={14} />
               预览安装
             </button>
@@ -323,7 +324,7 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
           <div className="p-3 grid min-w-0 grid-cols-1 gap-2">
             <input value={exportModuleDir} onChange={event => setExportModuleDir(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="模块目录" />
             <input value={exportTargetPath} onChange={event => setExportTargetPath(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="导出路径，例如 D:\\demo.lbmod" />
-            <button onClick={exportModulePackage} className="h-9 w-full px-3 rounded bg-emerald-600 text-white text-xs inline-flex items-center justify-center gap-2">
+            <button onClick={exportModulePackage} className={`h-9 w-full px-3 rounded bg-emerald-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-emerald-500 ${actionButtonClass}`}>
               <Upload size={14} />
               导出
             </button>
@@ -345,7 +346,7 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
                 <button
                   disabled={!module.packagePath}
                   onClick={() => module.packagePath && previewPackage(module.packagePath)}
-                  className="h-8 w-full px-3 rounded border border-emerald-500/40 text-emerald-300 text-xs inline-flex items-center justify-center gap-2 disabled:opacity-50"
+                  className={`h-8 w-full px-3 rounded border border-emerald-500/40 text-emerald-300 text-xs inline-flex items-center justify-center gap-2 hover:bg-emerald-500/10 hover:text-emerald-100 ${actionButtonClass}`}
                 >
                   <Download size={14} />
                   {module.installedVersion ? '重新安装' : '安装'}
@@ -381,7 +382,7 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
                 <div className="text-sm font-semibold">模块安装预览</div>
                 <div className={`text-xs ${subtleClass}`}>{installPreview.packagePath}</div>
               </div>
-              <button onClick={() => setInstallPreview(null)} className="p-1 rounded hover:bg-white/10"><X size={16} /></button>
+              <button onClick={() => setInstallPreview(null)} className={`p-1 rounded hover:bg-white/10 hover:text-white ${actionButtonClass}`}><X size={16} /></button>
             </div>
             <div className="p-4 space-y-3 text-xs">
               <PreviewLine label="模块" value={installPreview.manifest ? `${installPreview.manifest.name} (${installPreview.manifest.id})` : '未识别'} />
@@ -401,11 +402,11 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true }: ModuleI
               </label>
             </div>
             <div className="p-4 border-t border-white/10 flex justify-end gap-2">
-              <button onClick={() => setInstallPreview(null)} className="h-8 px-3 rounded border border-white/15 text-xs">取消</button>
+              <button onClick={() => setInstallPreview(null)} className={`h-8 px-3 rounded border border-white/15 text-xs hover:bg-white/10 hover:text-white ${actionButtonClass}`}>取消</button>
               <button
                 disabled={!installPreview.canInstall || isLoading}
                 onClick={installPreviewPackage}
-                className="h-8 px-3 rounded bg-sky-600 text-white text-xs disabled:opacity-50"
+                className={`h-8 px-3 rounded bg-sky-600 text-white text-xs hover:bg-sky-500 ${actionButtonClass}`}
               >
                 确认安装
               </button>
@@ -458,11 +459,11 @@ function ModuleRow({ module, isDarkMode, onToggle, onUninstall }: {
         )}
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <button onClick={onToggle} className="h-8 min-w-0 px-2 rounded border border-sky-500/40 text-sky-300 text-xs inline-flex items-center justify-center gap-1.5">
+        <button onClick={onToggle} className="h-8 min-w-0 px-2 rounded border border-sky-500/40 text-sky-300 text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors hover:bg-sky-500/10 hover:text-white">
           {module.isEnabledForProject ? <X size={14} /> : <Check size={14} />}
           {module.isEnabledForProject ? '禁用' : '启用'}
         </button>
-        <button onClick={onUninstall} disabled={module.isBuiltin} className="h-8 min-w-0 px-2 rounded border border-red-500/40 text-red-300 text-xs inline-flex items-center justify-center gap-1.5 disabled:opacity-40">
+        <button onClick={onUninstall} disabled={module.isBuiltin} className="h-8 min-w-0 px-2 rounded border border-red-500/40 text-red-300 text-xs inline-flex items-center justify-center gap-1.5 cursor-pointer transition-colors hover:bg-red-500/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-40">
           <Trash2 size={14} />
           卸载
         </button>

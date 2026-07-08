@@ -924,10 +924,10 @@ export default function Sidebar({
                                 setActiveTab('outline');
                                 if (setShowLeftSidebar) setShowLeftSidebar(true);
                               }}
-                              className={`w-[calc(100%-4px)] ml-1 mb-1 flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-sans text-left transition-colors ${
+                              className={`w-[calc(100%-4px)] ml-1 mb-1 flex items-center gap-1.5 px-2 py-1 rounded text-[10px] font-sans text-left cursor-pointer transition-colors ${
                                 isDarkMode
-                                  ? 'text-violet-300 hover:bg-violet-500/10 border border-violet-500/20'
-                                  : 'text-violet-700 hover:bg-violet-50 border border-violet-200'
+                                  ? 'text-violet-300 hover:text-violet-100 hover:bg-violet-500/10 border border-violet-500/20'
+                                  : 'text-violet-700 hover:text-violet-900 hover:bg-violet-50 border border-violet-200'
                               }`}
                               title="打开模块管理器，安装、卸载、启用或禁用项目模块"
                             >
