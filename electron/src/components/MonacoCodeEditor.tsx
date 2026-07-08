@@ -40,6 +40,7 @@ interface MonacoCodeEditorProps {
   readingMode?: LingCppReadingMode;
   focusedBlockId?: string;
   onRevealReadableBlock?: (blockId: string) => void;
+  moduleContext?: LingCppModuleContext;
 }
 
 let lingCppProvidersRegistered = false;
@@ -182,12 +183,14 @@ export default function MonacoCodeEditor({
   onCursorPositionChange,
   readingMode = 'off',
   focusedBlockId,
-  onRevealReadableBlock
+  onRevealReadableBlock,
+  moduleContext: providedModuleContext
 }: MonacoCodeEditorProps) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const decorationIdsRef = useRef<string[]>([]);
-  const [moduleContext, setModuleContext] = useState<LingCppModuleContext | undefined>();
+  const [fetchedModuleContext, setFetchedModuleContext] = useState<LingCppModuleContext | undefined>();
+  const moduleContext = providedModuleContext || fetchedModuleContext;
 
   useEffect(() => {
     editorRef.current?.updateOptions?.({ fontSize: editorFontSize });
@@ -482,6 +485,7 @@ export default function MonacoCodeEditor({
   }, [isDarkMode]);
 
   useEffect(() => {
+    if (providedModuleContext) return;
     const projectId = designerProject?.id || 'lingbuilder-ui-project';
     let cancelled = false;
 
@@ -492,13 +496,13 @@ export default function MonacoCodeEditor({
       if (cancelled) return;
       const availableModules = Array.isArray(installedResult.modules) ? installedResult.modules as InstalledModule[] : [];
       const enabledModules = Array.isArray(enabledResult.modules) ? enabledResult.modules as InstalledModule[] : [];
-      setModuleContext({ availableModules, enabledModules });
+      setFetchedModuleContext({ availableModules, enabledModules });
     });
 
     return () => {
       cancelled = true;
     };
-  }, [designerProject?.id]);
+  }, [designerProject?.id, providedModuleContext]);
 
   useEffect(() => {
     lingCppDesignerProjectSnapshot = designerProject;

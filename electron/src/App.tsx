@@ -60,7 +60,6 @@ import { computeDiff } from './utils/diff';
 // Components
 import Sidebar from './components/Sidebar';
 import DiffViewer from './components/DiffViewer';
-import GlossaryPanel from './components/GlossaryPanel';
 import AiAssistant from './components/AiAssistant';
 import BottomPanel from './components/BottomPanel';
 import {
@@ -83,6 +82,7 @@ import { getLingCppProblems } from './services/lingCpp/languageService';
 import { EditorExperienceMode, adaptProblemForBeginner } from './services/lingCpp/beginnerService';
 import { createWorkspaceEditChangeFromRewrite } from './services/lingCpp/aiEditService';
 import { findLingCppMethod, parseLingCpp } from './services/lingCpp/parser';
+import { InstalledModule, LingCppModuleContext } from './services/modules/types';
 
 const EDITOR_EXPERIENCE_MODE_STORAGE_KEY = 'lingbuilder.editorExperienceMode';
 const BEGINNER_IGNORED_TASKS_STORAGE_KEY = 'lingbuilder.beginnerIgnoredTasks';
@@ -384,19 +384,39 @@ export default function App() {
   const [ignoredBeginnerTaskIds, setIgnoredBeginnerTaskIds] = useState<string[]>(getInitialIgnoredBeginnerTasks);
   const [sourceControlStatus, setSourceControlStatus] = useState<SourceControlStatus | null>(null);
   const [pendingDesignerEventEdit, setPendingDesignerEventEdit] = useState<PendingDesignerEventEdit | null>(null);
+  const [moduleContext, setModuleContext] = useState<LingCppModuleContext>({ enabledModules: [], availableModules: [] });
+
+  const refreshModuleContext = useCallback(async () => {
+    const projectId = getCurrentWindowDesignerProjectId();
+    const [installedResult, enabledResult] = await Promise.all([
+      fetch(`/api/modules/installed?projectId=${encodeURIComponent(projectId)}`).then(res => res.json()).catch(() => ({ ok: false, modules: [] })),
+      fetch(`/api/modules/project?projectId=${encodeURIComponent(projectId)}`).then(res => res.json()).catch(() => ({ ok: false, modules: [] }))
+    ]);
+    const availableModules = Array.isArray(installedResult.modules) ? installedResult.modules as InstalledModule[] : [];
+    const enabledModules = Array.isArray(enabledResult.modules) ? enabledResult.modules as InstalledModule[] : [];
+    setModuleContext({ availableModules, enabledModules });
+  }, []);
 
   useEffect(() => {
     const handleDesignerProjectUpdated = (event: Event) => {
       const customEvent = event as CustomEvent<PersistedWindowDesignerState>;
       const nextState = customEvent.detail || readWindowDesignerState();
       setWindowDesignerState(nextState);
+      refreshModuleContext();
+    };
+
+    const handleModulesChanged = () => {
+      refreshModuleContext();
     };
 
     window.addEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
+    window.addEventListener('lingbuilder-modules-changed', handleModulesChanged);
+    refreshModuleContext();
     return () => {
       window.removeEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
+      window.removeEventListener('lingbuilder-modules-changed', handleModulesChanged);
     };
-  }, []);
+  }, [refreshModuleContext]);
 
   useEffect(() => {
     if (activeFile.language !== 'lingcpp') {
@@ -405,7 +425,7 @@ export default function App() {
     }
 
     const sourceCode = activeFile.translatedContent || activeFile.originalContent || '';
-    const nextProblems = getLingCppProblems(sourceCode, windowDesignerState.project, activeFile.path).map(problem => {
+    const nextProblems = getLingCppProblems(sourceCode, windowDesignerState.project, activeFile.path, moduleContext).map(problem => {
       const beginner = adaptProblemForBeginner(problem);
       return {
         id: problem.id,
@@ -424,7 +444,7 @@ export default function App() {
       };
     });
     setProblems(nextProblems);
-  }, [activeFile.language, activeFile.originalContent, activeFile.path, activeFile.translatedContent, editorExperienceMode, windowDesignerState.project]);
+  }, [activeFile.language, activeFile.originalContent, activeFile.path, activeFile.translatedContent, editorExperienceMode, moduleContext, windowDesignerState.project]);
 
   const setEditorExperienceMode = useCallback((mode: EditorExperienceMode) => {
     setEditorExperienceModeState(mode);
@@ -528,14 +548,6 @@ export default function App() {
     }
   };
 
-  const handleAddTerm = (term: GlossaryTerm) => {
-    setGlossary(prev => [...prev, term]);
-  };
-
-  const handleDeleteTerm = (english: string) => {
-    setGlossary(prev => prev.filter(g => g.english !== english));
-  };
-
   const handleImportDictionary = (name: string, terms: GlossaryTerm[]) => {
     setGlossary(prev => {
       const existingEngs = new Set(prev.map(g => g.english));
@@ -552,7 +564,6 @@ export default function App() {
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [showBottomPanel, setShowBottomPanel] = useState(true);
-  const [rightPanelTab, setRightPanelTab] = useState<'ai' | 'glossary'>('ai');
 
   // Resizable sidebars state
   const [leftWidth, setLeftWidth] = useState(264);
@@ -2343,6 +2354,7 @@ void DisplayStatus() {
               onCloseTab={handleCloseTab}
               allFiles={files}
               designerProject={windowDesignerState.project}
+              moduleContext={moduleContext}
               activeWindowId={windowDesignerState.activeWindowId}
               editorExperienceMode={editorExperienceMode}
               onExperienceModeChange={setEditorExperienceMode}
@@ -2473,68 +2485,39 @@ void DisplayStatus() {
               isDarkMode ? 'bg-[#1e1e24] border-[#2d2d34]' : 'bg-white border-slate-200'
             }`}
           >
-            {/* Visual Studio style Panel selector tab headers */}
+            {/* Right AI assistant header */}
             <div className={`flex px-2 pt-1 shrink-0 select-none border-b ${
               isDarkMode ? 'bg-[#18181c] border-[#2d2d34]' : 'bg-slate-100 border-slate-200'
             }`}>
-              <button
-                onClick={() => setRightPanelTab('ai')}
-                className={`flex-1 py-2 text-[11px] font-semibold text-center border-b-2 cursor-pointer transition-colors ${
-                  rightPanelTab === 'ai' 
-                    ? isDarkMode 
-                      ? 'text-white border-blue-500 bg-[#1e1e24]' 
-                      : 'text-blue-600 border-blue-500 bg-white'
-                    : isDarkMode
-                      ? 'text-slate-400 border-transparent hover:text-slate-200'
-                      : 'text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-50'
-                }`}
-              >
+              <div className={`flex-1 py-2 text-[11px] font-semibold text-center border-b-2 ${
+                isDarkMode
+                  ? 'text-white border-blue-500 bg-[#1e1e24]'
+                  : 'text-blue-600 border-blue-500 bg-white'
+              }`}>
                 AI 智能编程助手
-              </button>
-              <button
-                onClick={() => setRightPanelTab('glossary')}
-                className={`flex-1 py-2 text-[11px] font-semibold text-center border-b-2 cursor-pointer transition-colors ${
-                  rightPanelTab === 'glossary' 
-                    ? isDarkMode 
-                      ? 'text-white border-blue-500 bg-[#1e1e24]' 
-                      : 'text-blue-600 border-blue-500 bg-white'
-                    : isDarkMode
-                      ? 'text-slate-400 border-transparent hover:text-slate-200'
-                      : 'text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-50'
-                }`}
-              >
-                中文编程术语映射
-              </button>
+              </div>
             </div>
 
-            {/* Display relevant Panel based on tab */}
+            {/* AI assistant */}
             <div className="flex-1 overflow-hidden">
-              {rightPanelTab === 'ai' ? (
-                <AiAssistant
-                  strings={activeFile.strings}
-                  glossary={glossary}
-                  onBatchTranslate={handleBatchTranslate}
-                  onSetStatus={handleSetStatus}
-                  filePath={activeFile.path}
-                  sourceCode={activeFile.translatedContent || activeFile.originalContent}
-                  activeLanguage={activeFile.language}
-                  workspaceFiles={files.map(file => ({
-                    filePath: file.path,
-                    sourceCode: file.translatedContent || file.originalContent,
-                    language: file.language
-                  }))}
-                  onApplyWorkspaceEdit={handleApplyWorkspaceEdit}
-                  isDarkMode={isDarkMode}
-                />
-              ) : (
-                <GlossaryPanel
-                  glossary={glossary}
-                  onAddTerm={handleAddTerm}
-                  onDeleteTerm={handleDeleteTerm}
-                  onImportDictionary={handleImportDictionary}
-                  isDarkMode={isDarkMode}
-                />
-              )}
+              <AiAssistant
+                strings={activeFile.strings}
+                glossary={glossary}
+                onBatchTranslate={handleBatchTranslate}
+                onSetStatus={handleSetStatus}
+                filePath={activeFile.path}
+                sourceCode={activeFile.translatedContent || activeFile.originalContent}
+                activeLanguage={activeFile.language}
+                projectId={getCurrentWindowDesignerProjectId()}
+                moduleContext={moduleContext}
+                workspaceFiles={files.map(file => ({
+                  filePath: file.path,
+                  sourceCode: file.translatedContent || file.originalContent,
+                  language: file.language
+                }))}
+                onApplyWorkspaceEdit={handleApplyWorkspaceEdit}
+                isDarkMode={isDarkMode}
+              />
             </div>
           </div>
         )}

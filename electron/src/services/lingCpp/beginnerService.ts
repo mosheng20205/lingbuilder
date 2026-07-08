@@ -6,6 +6,7 @@ import {
   LingCppProblem,
   WorkspaceEditProposal
 } from './types';
+import { LingCppModuleContext } from '../modules/types';
 import { LingControl, LingWindowProject } from '../windowDesigner/types';
 
 export type EditorExperienceMode = 'beginner' | 'professional' | 'native';
@@ -99,7 +100,8 @@ export function getBeginnerTasks(
   source: string,
   designerProject?: LingWindowProject,
   filePath = 'src/未命名.lcpp',
-  ignoredTaskIds: string[] = []
+  ignoredTaskIds: string[] = [],
+  moduleContext?: LingCppModuleContext
 ): BeginnerTask[] {
   const ignored = new Set(ignoredTaskIds);
   const tasks: BeginnerTask[] = [];
@@ -136,7 +138,7 @@ export function getBeginnerTasks(
     });
 
   if (designerProject) {
-    getLingCppProblems(source, designerProject, filePath)
+    getLingCppProblems(source, designerProject, filePath, moduleContext)
       .filter(problem => problem.source === 'designer')
       .forEach(problem => tasks.push(taskFromProblem(problem, ignored)));
   }

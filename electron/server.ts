@@ -11,6 +11,7 @@ import { ExtractedString } from "./src/types";
 import { parseLingCpp } from "./src/services/lingCpp/parser";
 import {
   AppliedWorkspaceFile,
+  AiConnectionConfig,
   LingCppEditContext,
   LingCppEditDraft,
   LingCppWorkspaceFile,
@@ -25,25 +26,108 @@ import {
   proposeLingCppEdit,
   rejectWorkspaceEdit
 } from "./src/services/lingCpp/aiEditService";
+import { getLingCppSemanticDiagnostics } from "./src/services/lingCpp/languageService";
 import { createModuleService } from "./src/services/modules/moduleService";
+import { LingCppModuleContext } from "./src/services/modules/types";
+import { describeLingCppModuleContextForAi } from "./src/services/modules/moduleContextAdapters";
 
 dotenv.config();
 
-// Initialize Gemini API client lazily to avoid crashing if API Key is missing.
-let aiClient: GoogleGenAI | null = null;
-function getGeminiClient(): GoogleGenAI {
-  if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY || "";
-    aiClient = new GoogleGenAI({
-      apiKey: apiKey,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
+function resolveAiConnectionConfig(config?: AiConnectionConfig): Required<AiConnectionConfig> {
+  return {
+    baseUrl: (config?.baseUrl || process.env.GEMINI_BASE_URL || "").trim(),
+    apiKey: (config?.apiKey || process.env.GEMINI_API_KEY || "").trim(),
+    modelName: (config?.modelName || process.env.GEMINI_MODEL_NAME || "gemini-2.5-flash").trim(),
+    provider: config?.provider || "gemini"
+  };
+}
+
+function joinBaseUrl(baseUrl: string, pathName: string): string {
+  return `${baseUrl.replace(/\/+$/u, "")}/${pathName.replace(/^\/+/u, "")}`;
+}
+
+async function testAiConnection(config: Required<AiConnectionConfig>): Promise<string> {
+  if (config.provider === "anthropic") {
+    const response = await fetch(joinBaseUrl(config.baseUrl || "https://api.anthropic.com/v1", "/messages"), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": config.apiKey,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: config.modelName,
+        max_tokens: 8,
+        messages: [{ role: "user", content: "ping" }]
+      })
     });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json() as { content?: Array<{ text?: string }> };
+    return data.content?.map(item => item.text || "").join("") || "";
   }
-  return aiClient;
+
+  if (config.provider === "deepseek") {
+    const response = await fetch(joinBaseUrl(config.baseUrl || "https://api.deepseek.com", "/chat/completions"), {
+      method: "POST",
+      headers: {
+        "authorization": `Bearer ${config.apiKey}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: config.modelName,
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 16,
+        temperature: 0,
+        thinking: { type: "disabled" }
+      })
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    return data.choices?.[0]?.message?.content || "";
+  }
+
+  if (config.provider === "openai") {
+    const response = await fetch(joinBaseUrl(config.baseUrl || "https://api.openai.com/v1", "/chat/completions"), {
+      method: "POST",
+      headers: {
+        "authorization": `Bearer ${config.apiKey}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        model: config.modelName,
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 8,
+        temperature: 0
+      })
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const data = await response.json() as { choices?: Array<{ message?: { content?: string } }> };
+    return data.choices?.[0]?.message?.content || "";
+  }
+
+  const ai = getGeminiClient(config);
+  const response = await ai.models.generateContent({
+    model: config.modelName,
+    contents: "ping",
+    config: {
+      temperature: 0,
+      maxOutputTokens: 8
+    }
+  });
+  return response.text || "";
+}
+
+function getGeminiClient(config?: AiConnectionConfig): GoogleGenAI {
+  const resolved = resolveAiConnectionConfig(config);
+  return new GoogleGenAI({
+    apiKey: resolved.apiKey,
+    httpOptions: {
+      ...(resolved.baseUrl ? { baseUrl: resolved.baseUrl } : {}),
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
 }
 
 const app = express();
@@ -63,9 +147,54 @@ function getModuleService() {
   return createModuleService(getRepoWorkspaceRoot());
 }
 
+async function resolveLingCppEditModuleContext(
+  projectId?: string,
+  fallbackContext?: LingCppModuleContext
+): Promise<LingCppModuleContext | undefined> {
+  const effectiveProjectId = projectId || "lingbuilder-ui-project";
+  try {
+    const service = getModuleService();
+    const [availableModules, enabledModules] = await Promise.all([
+      service.scanInstalledModules(effectiveProjectId),
+      service.getEnabledProjectModules(effectiveProjectId)
+    ]);
+    return { availableModules, enabledModules };
+  } catch {
+    return fallbackContext;
+  }
+}
+
 // API: Health Check
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
+});
+
+app.post("/api/ai/connect", async (req, res) => {
+  const { aiConfig } = req.body as { aiConfig?: AiConnectionConfig };
+  const resolvedAiConfig = resolveAiConnectionConfig(aiConfig);
+  if (!resolvedAiConfig.apiKey) {
+    return res.status(400).json({ ok: false, error: "缺少 API Key" });
+  }
+  if (!resolvedAiConfig.modelName) {
+    return res.status(400).json({ ok: false, error: "缺少 Model Name" });
+  }
+
+  try {
+    const reply = await testAiConnection(resolvedAiConfig);
+    res.json({
+      ok: true,
+      modelName: resolvedAiConfig.modelName,
+      baseUrl: resolvedAiConfig.baseUrl,
+      provider: resolvedAiConfig.provider,
+      reply
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      ok: false,
+      error: "AI 连接失败",
+      details: error?.message || String(error)
+    });
+  }
 });
 
 app.get("/api/modules/installed", async (req, res) => {
@@ -336,13 +465,18 @@ app.post("/api/extract", (req, res) => {
 
 // API: Batch translate C++ strings using Gemini
 app.post("/api/translate", async (req, res) => {
-  const { strings, glossary } = req.body;
+  const { strings, glossary, aiConfig } = req.body as {
+    strings?: any[];
+    glossary?: any[];
+    aiConfig?: AiConnectionConfig;
+  };
   if (!strings || !Array.isArray(strings) || strings.length === 0) {
     return res.status(400).json({ error: "Missing or invalid strings list" });
   }
 
   try {
-    const ai = getGeminiClient();
+    const resolvedAiConfig = resolveAiConnectionConfig(aiConfig);
+    const ai = getGeminiClient(resolvedAiConfig);
 
     // Construct glossary context string
     let glossaryContext = "";
@@ -380,7 +514,7 @@ ${JSON.stringify(itemsToTranslate, null, 2)}
 ]`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
+      model: resolvedAiConfig.modelName,
       contents: prompt,
       config: {
         systemInstruction: systemPrompt,
@@ -711,10 +845,13 @@ app.get("/api/source-control/status", async (_req, res) => {
 });
 
 app.post("/api/lingcpp/edit/propose", async (req, res) => {
-  const { filePath, sourceCode, instruction, selection, workspaceFiles } = req.body as {
+  const { filePath, sourceCode, instruction, selection, workspaceFiles, projectId, moduleContext, aiConfig } = req.body as {
     filePath?: string;
     sourceCode?: string;
     instruction?: string;
+    projectId?: string;
+    moduleContext?: LingCppModuleContext;
+    aiConfig?: AiConnectionConfig;
     selection?: { startLine: number; startColumn: number; endLine: number; endColumn: number };
     workspaceFiles?: Array<{ filePath: string; sourceCode: string; language?: string }>;
   };
@@ -728,7 +865,9 @@ app.post("/api/lingcpp/edit/propose", async (req, res) => {
     sourceCode,
     instruction: instruction || "",
     selection,
-    workspaceFiles: sanitizeWorkspaceFiles(workspaceFiles)
+    workspaceFiles: sanitizeWorkspaceFiles(workspaceFiles),
+    moduleContext: await resolveLingCppEditModuleContext(projectId, moduleContext),
+    aiConfig
   };
 
   let draft: LingCppEditDraft | undefined;
@@ -1021,23 +1160,23 @@ function sanitizeFilename(value: string): string {
 }
 
 async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<LingCppEditDraft> {
-  const apiKey = (process.env.GEMINI_API_KEY || "").trim();
-  if (!apiKey) {
+  const resolvedAiConfig = resolveAiConnectionConfig(context.aiConfig);
+  if (!resolvedAiConfig.apiKey) {
     return {
       summary: context.instruction.trim() || "根据当前上下文生成中文 C++ 编辑建议",
-      explanation: "未检测到 GEMINI_API_KEY，已回退到本地安全提案。"
+      explanation: "未检测到 AI API Key，已回退到本地安全提案。"
     };
   }
 
   const sourceCode = normalizeLineEndings(context.sourceCode);
   const workspaceFiles = resolveEditWorkspaceFiles(context);
   const promptWorkspaceFiles = selectWorkspaceFilesForPrompt(workspaceFiles, context.filePath);
-  const parseResult = parseLingCpp(sourceCode);
-  const diagnostics = parseResult.diagnostics
+  const diagnostics = getLingCppSemanticDiagnostics(sourceCode, undefined, context.filePath, context.moduleContext)
     .slice(0, 12)
     .map(diagnostic => `- [${diagnostic.level}] 第 ${diagnostic.line} 行：${diagnostic.message}`)
     .join("\n") || "无";
   const selectedText = context.selection ? getTextForRange(sourceCode, context.selection) : "";
+  const moduleContextPrompt = describeLingCppModuleContextForAi(context.moduleContext);
 
   const systemPrompt = `你是 LingBuilder 的中文 C++（.lcpp）重写代理。
 你的任务是根据用户要求修改一个或多个已提供的工作区文件，并返回“仅包含发生变化文件”的完整重写结果。
@@ -1049,7 +1188,9 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
 4. 除非用户明确要求，不要重命名现有事件处理器、类名、控件名、设计器绑定名或配置键名。
 5. 优先做最小必要改动，保留无关代码、缩进和注释。
 6. 只返回确实发生变化的文件；如果无需修改某个文件，就不要把它放进 files 数组。
-7. explanation 用中文简要说明哪些文件被改了、为什么。`;
+7. 可以直接使用当前项目“已启用模块”提供的命令、类型和片段；不要静默调用未启用模块的命令。
+8. 如果用户要求使用未启用模块，先在 explanation 中说明需要启用该模块，再给出不破坏当前代码的最小修改。
+9. explanation 用中文简要说明哪些文件被改了、为什么。`;
 
   const prompt = [
     `当前活动文件：${context.filePath}`,
@@ -1060,14 +1201,15 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
     context.selection && selectedText
       ? `选区源码：\n<<<SELECTION\n${selectedText}\nSELECTION`
       : "",
+    `当前项目模块上下文：\n${moduleContextPrompt}`,
     `当前本地解析诊断：\n${diagnostics}`,
     `本次允许编辑的工作区文件如下（只可改这些文件）：
 ${promptWorkspaceFiles.map(file => `--- FILE: ${file.filePath}\n${file.sourceCode}`).join("\n\n")}`
   ].filter(Boolean).join("\n\n");
 
-  const ai = getGeminiClient();
+  const ai = getGeminiClient(resolvedAiConfig);
   const response = await ai.models.generateContent({
-    model: "gemini-3.5-flash",
+    model: resolvedAiConfig.modelName,
     contents: prompt,
     config: {
       systemInstruction: systemPrompt,

@@ -3,6 +3,11 @@ import assert from 'node:assert/strict';
 
 import { getLingCppCompletions, getLingCppSemanticDiagnostics } from '../src/services/lingCpp/languageService';
 import { validateModuleManifest } from '../src/services/modules/manifest';
+import {
+  describeLingCppModuleContextForAi,
+  getBeginnerModuleCodeCompletions,
+  getBeginnerModuleCommandHints
+} from '../src/services/modules/moduleContextAdapters';
 import { InstalledModule } from '../src/services/modules/types';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
@@ -77,6 +82,36 @@ test('LingCpp language service consumes module completions and disabled-module d
   );
 
   assert.ok(diagnostics.some(item => item.id.includes('lingcpp-module-disabled-com.example.sqlite')));
+});
+
+test('module context adapters feed beginner IDE and AI assistant context', () => {
+  const sqliteModule = createTestModule();
+  const disabledModule: InstalledModule = {
+    ...createTestModule(),
+    manifest: {
+      ...createTestModule().manifest,
+      id: 'com.example.disabled',
+      name: 'DisabledNetwork',
+      description: 'Disabled test module'
+    },
+    isEnabledForProject: false
+  };
+  const moduleContext = {
+    enabledModules: [sqliteModule],
+    availableModules: [sqliteModule, disabledModule]
+  };
+
+  const beginnerCompletions = getBeginnerModuleCodeCompletions(moduleContext);
+  assert.ok(beginnerCompletions.some(item => item.kind === 'command' && item.insertText.includes('SQL')));
+  assert.ok(beginnerCompletions.some(item => item.kind === 'type'));
+
+  const hints = getBeginnerModuleCommandHints(moduleContext);
+  assert.ok(Object.values(hints).some(hint => hint.signature.includes('SQL')));
+
+  const aiSummary = describeLingCppModuleContextForAi(moduleContext);
+  assert.ok(aiSummary.includes('com.example.sqlite'));
+  assert.ok(aiSummary.includes('com.example.disabled'));
+  assert.ok(aiSummary.includes('SQL'));
 });
 
 test('generateLingCppNativeWin32Project emits module dependency report', () => {

@@ -367,9 +367,10 @@ export function getLingCppCompletionContextKind(source: string, line: number, _c
 export function getLingCppProblems(
   source: string,
   designerProject?: LingWindowProject,
-  filePath = 'src/未命名.lcpp'
+  filePath = 'src/未命名.lcpp',
+  moduleContext?: LingCppModuleContext
 ): LingCppProblem[] {
-  const parseDiagnostics = [...parseLingCpp(source).diagnostics, ...getBlockDiagnostics(source)];
+  const parseDiagnostics = [...getLingCppSemanticDiagnostics(source, designerProject, filePath, moduleContext), ...getBlockDiagnostics(source)];
   const parserProblems = parseDiagnostics.map(diagnostic => ({
     id: diagnostic.id,
     filePath,

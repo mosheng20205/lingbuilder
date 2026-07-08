@@ -54,6 +54,11 @@ import { applyWorkspaceEdit } from '../services/lingCpp/aiEditService';
 import { importNativeCppToLingBuilder } from '../services/windowDesigner/nativeCppImportService';
 import { saveWindowDesignerState } from '../services/windowDesigner/windowDesignerService';
 import { normalizeIdentifier } from '../services/lingCpp/parser';
+import { LingCppModuleContext } from '../services/modules/types';
+import {
+  getBeginnerModuleCodeCompletions,
+  getBeginnerModuleCommandHints
+} from '../services/modules/moduleContextAdapters';
 
 interface DiffViewerProps {
   diffResult: DiffResult;
@@ -71,6 +76,7 @@ interface DiffViewerProps {
   onCloseTab: (tabPath: string, event: React.MouseEvent) => void;
   allFiles: any[];
   designerProject?: LingWindowProject;
+  moduleContext?: LingCppModuleContext;
   activeWindowId?: string;
   editorExperienceMode?: EditorExperienceMode;
   onExperienceModeChange?: (mode: EditorExperienceMode) => void;
@@ -1164,6 +1170,7 @@ export default function DiffViewer({
   onCloseTab,
   allFiles,
   designerProject,
+  moduleContext,
   activeWindowId,
   editorExperienceMode = 'beginner',
   onExperienceModeChange,
@@ -1310,9 +1317,39 @@ export default function DiffViewer({
   );
   const lingCppLanguageContext = useMemo(
     () => activeFile?.language === 'lingcpp'
-      ? buildLingCppLanguageContext(normalizedSourceCode, designerProject, undefined, activeFile?.path)
+      ? buildLingCppLanguageContext(normalizedSourceCode, designerProject, moduleContext, activeFile?.path)
       : null,
-    [activeFile?.language, activeFile?.path, designerProject, normalizedSourceCode]
+    [activeFile?.language, activeFile?.path, designerProject, moduleContext, normalizedSourceCode]
+  );
+  const beginnerModuleCodeCompletions = useMemo(
+    () => getBeginnerModuleCodeCompletions(moduleContext).map(item => ({
+      label: item.label,
+      detail: item.detail,
+      insertText: item.insertText,
+      aliases: item.aliases,
+      kind: (item.kind === 'type' ? '类型' : item.kind === 'snippet' ? '代码' : '命令') as BeginnerCodeCompletion['kind'],
+      cursorOffset: item.cursorOffset,
+      selectLength: item.selectLength
+    })),
+    [moduleContext]
+  );
+  const beginnerModuleCommandHints = useMemo(
+    () => {
+      const hints = getBeginnerModuleCommandHints(moduleContext);
+      return Object.fromEntries(Object.entries(hints).map(([key, value]) => [key, {
+        command: value.command,
+        signature: value.signature,
+        returnType: value.returnType,
+        summary: value.summary,
+        parameters: value.parameters,
+        example: value.example
+      }])) as Record<string, BeginnerCommandHintInfo>;
+    },
+    [moduleContext]
+  );
+  const beginnerCommandHints = useMemo(
+    () => ({ ...BEGINNER_COMMAND_HINTS, ...beginnerModuleCommandHints }),
+    [beginnerModuleCommandHints]
   );
   const structuredReadingRows = useMemo(
     () => lingCppLanguageContext
@@ -1349,9 +1386,9 @@ export default function DiffViewer({
   const primaryLingCppClass = lingCppLanguageContext?.program.classes[0];
   const beginnerTasks = useMemo(
     () => activeFile?.language === 'lingcpp'
-      ? getBeginnerTasks(normalizedSourceCode, designerProject, activeFile?.path, ignoredBeginnerTaskIds)
+      ? getBeginnerTasks(normalizedSourceCode, designerProject, activeFile?.path, ignoredBeginnerTaskIds, moduleContext)
       : [],
-    [activeFile?.language, activeFile?.path, designerProject, ignoredBeginnerTaskIds, normalizedSourceCode]
+    [activeFile?.language, activeFile?.path, designerProject, ignoredBeginnerTaskIds, moduleContext, normalizedSourceCode]
   );
   const visibleBeginnerTasks = useMemo(
     () => beginnerTasks.filter(task => task.status !== 'ignored'),
@@ -1396,6 +1433,11 @@ export default function DiffViewer({
     [nativePreviewState]
   );
 
+  const moduleQuickSnippets = beginnerModuleCodeCompletions
+    .filter(item => item.kind !== '类型')
+    .slice(0, 4)
+    .map(item => ({ label: item.label, text: item.insertText }));
+
   const quickChineseSnippets = activeFile?.language === 'lingcpp' ? [
     { label: '类', text: '\n类 新窗口 : 公开 窗体\n公开:\n    构造()\n        调试输出("初始化完成")\n结束类\n' },
     { label: '事件', text: '    事件 按钮1_被单击()\n        信息框("提示内容", 64, "提示")\n' },
@@ -1403,7 +1445,8 @@ export default function DiffViewer({
     { label: '返回', text: '返回' },
     { label: '信息框', text: '信息框("提示内容", 64, "提示")' },
     { label: '调试输出', text: '调试输出("调试信息")' },
-    { label: '打开窗口', text: '打开窗口("窗口标题")' }
+    { label: '打开窗口', text: '打开窗口("窗口标题")' },
+    ...moduleQuickSnippets
   ] : [
     { label: '.子程序', text: '\n.子程序 _按钮1_被单击\n    信息框 (“请输入提示内容”, 64, “提示”)\n' },
     { label: '如果', text: BEGINNER_IF_SNIPPET },
@@ -3468,6 +3511,7 @@ export default function DiffViewer({
     ].filter(Boolean)));
     const typeSuggestions = Array.from(new Set([
       ...commonLingCppTypes,
+      ...beginnerModuleCodeCompletions.filter(item => item.kind === '类型').map(item => item.label),
       ...memberRows.map(row => row.type || ''),
       ...codeTargets.flatMap(target => [target.method.returnType, ...target.method.parameters.map(parameter => parameter.type)])
     ].filter(Boolean)));
@@ -3485,6 +3529,7 @@ export default function DiffViewer({
     const beginnerCodeCompletionItems = Array.from(
       new Map([
         ...BEGINNER_CODE_COMPLETIONS,
+        ...beginnerModuleCodeCompletions,
         ...memberRows.map(row => ({
           label: row.targetName || row.name,
           detail: `${row.type || '对象'} 变量`,
@@ -3581,7 +3626,11 @@ export default function DiffViewer({
         return;
       }
 
-      const info = BEGINNER_COMMAND_HINTS[token.token];
+      const info = beginnerCommandHints[token.token];
+      if (!info) {
+        closeBeginnerCommandHint(target);
+        return;
+      }
       const estimatedPanelHeight = 102 + Math.max(1, info.parameters.length) * 28 + (info.example ? 28 : 0);
       setBeginnerCommandHintState({
         targetKey,
@@ -5622,8 +5671,8 @@ export default function DiffViewer({
         <table className={`w-full table-fixed border-collapse text-left font-sans text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] ${compactTableBorder}`}>
           <thead>
             <tr>
-              {columns.map(column => (
-                <th key={column.label} className={`${compactHeadCellClass} ${column.className || ''}`}>
+              {columns.map((column, columnIndex) => (
+                <th key={`${column.label}:${columnIndex}`} className={`${compactHeadCellClass} ${column.className || ''}`}>
                   {column.label}
                 </th>
               ))}
@@ -6023,6 +6072,11 @@ export default function DiffViewer({
           {renderContextMenuButton('插入信息框', () => appendBeginnerSnippet(contextTarget, '信息框("提示内容", 64, "提示")'), <Lightbulb className="h-3.5 w-3.5" />, false, !contextTarget)}
           {renderContextMenuButton('插入打开窗口', () => appendBeginnerSnippet(contextTarget, '打开窗口("窗口标题")'), <ExternalLink className="h-3.5 w-3.5" />, false, !contextTarget)}
           {renderContextMenuButton('插入如果结构', () => appendBeginnerSnippet(contextTarget, BEGINNER_IF_SNIPPET), <ListTree className="h-3.5 w-3.5" />, false, !contextTarget)}
+          {beginnerModuleCodeCompletions.filter(item => item.kind !== '类型').slice(0, 4).map(item => (
+            <React.Fragment key={`module-context-menu-${item.label}`}>
+              {renderContextMenuButton(`插入模块命令：${item.label}`, () => appendBeginnerSnippet(contextTarget, item.insertText), <Code className="h-3.5 w-3.5" />, false, !contextTarget)}
+            </React.Fragment>
+          ))}
           <div className={`my-1 border-t ${canvasBorder}`} />
           {renderContextMenuButton(
             contextTarget?.method.kind === 'event' ? '删除事件处理器' : '删除当前子程序',
@@ -7205,6 +7259,7 @@ export default function DiffViewer({
                   onFontSizeChange={onFontSizeChange}
                   filePath={activeFile?.path}
                   designerProject={designerProject}
+                  moduleContext={moduleContext}
                   onRevealDesignerBinding={() => setViewType('designer')}
                   onCursorPositionChange={setCursorPosition}
                   readingMode={activeFile?.language === 'lingcpp' ? readingMode : 'off'}

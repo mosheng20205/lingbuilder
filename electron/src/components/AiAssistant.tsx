@@ -1,6 +1,65 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Brain, Sparkles, Send, RefreshCw, Cpu, Check, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { AppliedWorkspaceFile, ExtractedString, GlossaryTerm, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
+import { LingCppModuleContext } from '../services/modules/types';
+
+const AI_CONFIG_STORAGE_KEY = 'lingbuilder.aiConnectionConfig.v1';
+
+interface AiConnectionConfig {
+  baseUrl: string;
+  apiKey: string;
+  modelName: string;
+  presetId?: string;
+  provider?: 'gemini' | 'openai' | 'anthropic' | 'deepseek';
+}
+
+const DEFAULT_AI_CONFIG: AiConnectionConfig = {
+  baseUrl: '',
+  apiKey: '',
+  modelName: 'gemini-2.5-flash',
+  presetId: 'gemini-2.5-flash',
+  provider: 'gemini'
+};
+
+const AI_MODEL_PRESETS = [
+  { id: 'custom', label: '自定义模型', baseUrl: '', modelName: '', provider: 'openai' },
+  { id: 'claude-sonnet', label: 'Claude - Sonnet', baseUrl: 'https://api.anthropic.com/v1', modelName: 'claude-sonnet-4-5', provider: 'anthropic' },
+  { id: 'claude-haiku', label: 'Claude - Haiku', baseUrl: 'https://api.anthropic.com/v1', modelName: 'claude-haiku-4-5', provider: 'anthropic' },
+  { id: 'chatgpt-gpt41', label: 'ChatGPT - GPT-4.1', baseUrl: 'https://api.openai.com/v1', modelName: 'gpt-4.1', provider: 'openai' },
+  { id: 'chatgpt-gpt4o', label: 'ChatGPT - GPT-4o', baseUrl: 'https://api.openai.com/v1', modelName: 'gpt-4o', provider: 'openai' },
+  { id: 'gemini-2.5-flash', label: 'Gemini - 2.5 Flash', baseUrl: 'https://generativelanguage.googleapis.com', modelName: 'gemini-2.5-flash', provider: 'gemini' },
+  { id: 'gemini-2.5-pro', label: 'Gemini - 2.5 Pro', baseUrl: 'https://generativelanguage.googleapis.com', modelName: 'gemini-2.5-pro', provider: 'gemini' },
+  { id: 'deepseek-v4-flash', label: 'DeepSeek - V4 Flash', baseUrl: 'https://api.deepseek.com', modelName: 'deepseek-v4-flash', provider: 'deepseek' },
+  { id: 'deepseek-v4-pro', label: 'DeepSeek - V4 Pro', baseUrl: 'https://api.deepseek.com', modelName: 'deepseek-v4-pro', provider: 'deepseek' },
+  { id: 'qwen-plus', label: '阿里通义 - Qwen Plus', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', modelName: 'qwen-plus', provider: 'openai' },
+  { id: 'qwen-max', label: '阿里通义 - Qwen Max', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', modelName: 'qwen-max', provider: 'openai' },
+  { id: 'doubao-seed', label: '豆包 - Seed', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', modelName: 'doubao-seed-1-6', provider: 'openai' },
+  { id: 'minimax-m1', label: 'MiniMax - M1', baseUrl: 'https://api.minimax.io/v1', modelName: 'MiniMax-M1', provider: 'openai' },
+  { id: 'kimi-k2', label: 'Kimi - K2', baseUrl: 'https://api.moonshot.cn/v1', modelName: 'kimi-k2-0711-preview', provider: 'openai' },
+  { id: 'kimi-latest', label: 'Kimi - Latest', baseUrl: 'https://api.moonshot.cn/v1', modelName: 'moonshot-v1-auto', provider: 'openai' }
+] as const;
+
+function loadAiConfig(): AiConnectionConfig {
+  try {
+    const raw = window.localStorage.getItem(AI_CONFIG_STORAGE_KEY);
+    if (!raw) return DEFAULT_AI_CONFIG;
+    const parsed = JSON.parse(raw);
+    const preset = AI_MODEL_PRESETS.find(item => item.id === parsed.presetId);
+    return {
+      baseUrl: typeof parsed.baseUrl === 'string' ? parsed.baseUrl : '',
+      apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
+      modelName: typeof parsed.modelName === 'string' && parsed.modelName.trim() ? parsed.modelName : DEFAULT_AI_CONFIG.modelName,
+      presetId: typeof parsed.presetId === 'string' ? parsed.presetId : DEFAULT_AI_CONFIG.presetId,
+      provider: preset && preset.id !== 'custom'
+        ? preset.provider
+        : ['gemini', 'openai', 'anthropic', 'deepseek'].includes(parsed.provider)
+          ? parsed.provider
+          : DEFAULT_AI_CONFIG.provider
+    };
+  } catch {
+    return DEFAULT_AI_CONFIG;
+  }
+}
 
 interface AiAssistantProps {
   strings: ExtractedString[];
@@ -10,6 +69,8 @@ interface AiAssistantProps {
   filePath: string;
   sourceCode: string;
   activeLanguage: string;
+  projectId?: string;
+  moduleContext?: LingCppModuleContext;
   workspaceFiles: WorkspaceFileSnapshot[];
   onApplyWorkspaceEdit?: (proposal: WorkspaceEditProposal, appliedFiles: AppliedWorkspaceFile[]) => void;
   isDarkMode?: boolean;
@@ -31,20 +92,24 @@ export default function AiAssistant({
   filePath,
   sourceCode,
   activeLanguage,
+  projectId,
+  moduleContext,
   workspaceFiles,
   onApplyWorkspaceEdit,
   isDarkMode = true
 }: AiAssistantProps) {
-  const [model, setModel] = useState('gemini-3.5-flash');
-  const [translationStyle, setTranslationStyle] = useState<'standard' | 'formal' | 'xianxia' | 'cyberpunk'>('standard');
+  const [aiConfig, setAiConfig] = useState<AiConnectionConfig>(loadAiConfig);
   const [isTranslating, setIsTranslating] = useState(false);
-  const [translationProgress, setTranslationStyleProgress] = useState(0);
+  const [translationProgress, setTranslationProgress] = useState(0);
+  const [isAiConfigExpanded, setIsAiConfigExpanded] = useState(true);
+  const [isConnectingAi, setIsConnectingAi] = useState(false);
+  const [aiConnectedSignature, setAiConnectedSignature] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [chatHistory, setChatHistory] = useState<Message[]>([
     {
       id: 'welcome',
       sender: 'ai',
-      text: '你好！我是您的 C++ 中文编程 AI 助手。已自动挂载 Google AI Studio 的 Gemini 3.5 核心引擎。\n\n我可以帮您做这些：\n1. 一键批量上下文智能生成中文映射代码。\n2. 解析与保护 C++ 占位符（如 `%s`, `%d`）。\n3. 提供中文命名、代码润色或编码格式排错建议。\n\n请在下方输入您的问题，或者直接点击上面的“一键智能映射”！',
+      text: '你好！我是 LingBuilder 的 AI 智能编程助手。\n\n我会结合当前文件、工作区文件和已启用模块上下文，帮你生成可预览、可确认的代码修改方案。\n\n我可以帮你做这些：\n1. 根据需求编写或调整中文 C++ / .lcpp 代码。\n2. 解释报错、定位问题，并给出修复建议。\n3. 补全事件处理、窗口逻辑、模块调用和命名结构。\n\n请在下方直接描述你想改什么；需要切换模型时，可在上方 AI 对接设置里选择。',
       timestamp: new Date().toLocaleTimeString()
     }
   ]);
@@ -52,11 +117,94 @@ export default function AiAssistant({
   const [editProposal, setEditProposal] = useState<WorkspaceEditProposal | null>(null);
   const isLingCppFile = activeLanguage === 'lingcpp' || filePath.endsWith('.lcpp');
 
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+  const effectiveModelName = aiConfig.modelName.trim() || DEFAULT_AI_CONFIG.modelName;
+  const aiConnectionSignature = [
+    aiConfig.provider || DEFAULT_AI_CONFIG.provider,
+    aiConfig.baseUrl.trim(),
+    aiConfig.apiKey.trim(),
+    effectiveModelName
+  ].join('|');
+  const isAiConnected = aiConnectedSignature === aiConnectionSignature;
+
+  const updateAiConfig = (patch: Partial<AiConnectionConfig>) => {
+    setAiConnectedSignature(null);
+    setAiConfig(current => ({
+      ...current,
+      ...patch
+    }));
+  };
+
+  const handlePresetChange = (presetId: string) => {
+    const preset = AI_MODEL_PRESETS.find(item => item.id === presetId);
+    if (!preset || preset.id === 'custom') {
+      updateAiConfig({ presetId, provider: 'openai' });
+      return;
+    }
+    updateAiConfig({
+      presetId,
+      baseUrl: preset.baseUrl,
+      modelName: preset.modelName,
+      provider: preset.provider
+    });
+  };
+
+  const handleConnectAi = async () => {
+    setIsConnectingAi(true);
+    try {
+      const response = await fetch('/api/ai/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          aiConfig: { ...aiConfig, modelName: effectiveModelName }
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.ok === false) {
+        throw new Error(data.details || data.error || 'AI 连接失败');
+      }
+      setAiConnectedSignature(aiConnectionSignature);
+      setChatHistory(prev => [
+        ...prev,
+        {
+          id: Math.random().toString(),
+          sender: 'ai',
+          text: `AI 已连接：${effectiveModelName}`,
+          timestamp: new Date().toLocaleTimeString()
+        }
+      ]);
+    } catch (error: any) {
+      setAiConnectedSignature(null);
+      setChatHistory(prev => [
+        ...prev,
+        {
+          id: Math.random().toString(),
+          sender: 'ai',
+          text: `AI 连接失败：${error?.message || '请检查 Base URL、API Key 和 Model Name。'}`,
+          timestamp: new Date().toLocaleTimeString()
+        }
+      ]);
+    } finally {
+      setIsConnectingAi(false);
+    }
+  };
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const scrollPanel = chatScrollRef.current;
+    if (!scrollPanel) return;
+    scrollPanel.scrollTo({
+      top: scrollPanel.scrollHeight,
+      behavior: 'smooth'
+    });
   }, [chatHistory, isAiResponding]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify({ ...aiConfig, modelName: effectiveModelName }));
+    } catch {
+      // AI settings remain usable for the current session even if storage fails.
+    }
+  }, [aiConfig, effectiveModelName]);
 
   useEffect(() => {
     setEditProposal(null);
@@ -66,21 +214,21 @@ export default function AiAssistant({
   const handleBatchAiTranslate = async () => {
     if (strings.length === 0) return;
     setIsTranslating(true);
-    setTranslationStyleProgress(10);
+    setTranslationProgress(10);
 
     try {
       // 1. Get strings that are pending
       const pendingStrings = strings.filter(s => s.status === 'pending');
       if (pendingStrings.length === 0) {
-        setTranslationStyleProgress(100);
+        setTranslationProgress(100);
         setTimeout(() => {
           setIsTranslating(false);
-          setTranslationStyleProgress(0);
+          setTranslationProgress(0);
         }, 1000);
         return;
       }
 
-      setTranslationStyleProgress(30);
+      setTranslationProgress(30);
 
       // Call Express server-side translate endpoint
       const response = await fetch('/api/translate', {
@@ -89,14 +237,14 @@ export default function AiAssistant({
         body: JSON.stringify({
           strings: pendingStrings,
           glossary,
-          style: translationStyle // Passes style preference for contextual tweaks
+          aiConfig: { ...aiConfig, modelName: effectiveModelName }
         })
       });
 
-      setTranslationStyleProgress(70);
+      setTranslationProgress(70);
 
       if (!response.ok) {
-        throw new Error('网络请求错误，请确认已在 AI Studio 中配置了 GEMINI_API_KEY');
+        throw new Error('网络请求错误，请确认已配置 API Key、Base URL 和模型名称');
       }
 
       const data = await response.json();
@@ -106,7 +254,7 @@ export default function AiAssistant({
 
       if (data.translations && Array.isArray(data.translations)) {
         onBatchTranslate(data.translations);
-        setTranslationStyleProgress(100);
+        setTranslationProgress(100);
       } else {
         throw new Error('未返回有效的代码生成数据结构');
       }
@@ -127,14 +275,14 @@ export default function AiAssistant({
         {
           id: Math.random().toString(),
           sender: 'ai',
-          text: `⚠️ 批量代码生成失败：${error.message || '请确认您的 GEMINI_API_KEY 已挂载且可以正常连接。'}\n\n已自动切换到本地词典匹配机制进行处理。`,
+          text: `⚠️ 批量代码生成失败：${error.message || '请确认 API Key、Base URL 和模型名称可以正常连接。'}\n\n已自动切换到本地词典匹配机制进行处理。`,
           timestamp: new Date().toLocaleTimeString()
         }
       ]);
     } finally {
       setTimeout(() => {
         setIsTranslating(false);
-        setTranslationStyleProgress(0);
+        setTranslationProgress(0);
       }, 1000);
     }
   };
@@ -164,6 +312,9 @@ export default function AiAssistant({
             filePath,
             sourceCode,
             instruction: userMsg.text,
+            projectId,
+            moduleContext,
+            aiConfig: { ...aiConfig, modelName: effectiveModelName },
             workspaceFiles
           })
         });
@@ -196,6 +347,8 @@ export default function AiAssistant({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           strings: [{ id: 'chat_query', original: prompt, type: 'string', context: 'User Chat Interaction' }]
+          ,
+          aiConfig: { ...aiConfig, modelName: effectiveModelName }
         })
       });
 
@@ -301,7 +454,7 @@ export default function AiAssistant({
         </div>
         <div className="flex items-center gap-1 bg-purple-500/10 text-purple-600 px-2 py-0.5 rounded border border-purple-500/20 text-[10px] font-mono">
           <Cpu className="w-3 h-3" />
-          <span>{model}</span>
+          <span>{effectiveModelName}</span>
         </div>
       </div>
 
@@ -321,40 +474,90 @@ export default function AiAssistant({
           </div>
         </div>
 
-        {/* Translation Style Config */}
-        <div className="mb-3">
-          <label className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block mb-1">中文代码生成风格</label>
-          <select
-            value={translationStyle}
-            onChange={e => setTranslationStyle(e.target.value as any)}
-            className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 cursor-pointer ${
-              isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300' : 'bg-white border-slate-300 text-slate-800'
-            }`}
-          >
-            <option value="standard" className={isDarkMode ? 'bg-[#24242b] text-slate-300' : 'bg-white text-slate-800'}>专业标准 (微软/Visual Studio 风格)</option>
-            <option value="formal" className={isDarkMode ? 'bg-[#24242b] text-slate-300' : 'bg-white text-slate-800'}>信达雅学术风格 (适合传统桌面系统)</option>
-            <option value="xianxia" className={isDarkMode ? 'bg-[#24242b] text-slate-300' : 'bg-white text-slate-800'}>武侠/仙侠游戏本地化 (适合中国武侠RPG)</option>
-            <option value="cyberpunk" className={isDarkMode ? 'bg-[#24242b] text-slate-300' : 'bg-white text-slate-800'}>科幻/赛博朋克风格 (适合现代科幻游戏)</option>
-          </select>
-        </div>
-
-        <button
-          onClick={handleBatchAiTranslate}
-          disabled={isTranslating || strings.length === 0 || isLingCppFile}
-          className="w-full flex items-center justify-center gap-2 bg-[#2563eb] hover:bg-blue-600 text-white font-bold py-2 rounded text-xs transition-all cursor-pointer disabled:opacity-50 select-none shadow-md"
-        >
-          {isTranslating ? (
+        {/* AI connection config */}
+        <div className="mb-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider block">AI 对接设置</label>
+            <button
+              type="button"
+              onClick={() => setIsAiConfigExpanded(value => !value)}
+              className={`h-6 px-2 rounded border text-[10px] font-semibold cursor-pointer transition-colors ${
+                isDarkMode ? 'border-[#343442] text-slate-300 hover:bg-[#2a2a34]' : 'border-slate-300 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {isAiConfigExpanded ? '收起' : '展开'}
+            </button>
+          </div>
+          {isAiConfigExpanded && (
             <>
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              <span>AI 代码生成中 ({translationProgress}%)</span>
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-3.5 h-3.5 text-yellow-300 fill-yellow-300/20" />
-              <span>智能一键代码映射 (LBDsl + C++)</span>
+              <select
+                value={aiConfig.presetId || 'custom'}
+                onChange={event => handlePresetChange(event.target.value)}
+                className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 cursor-pointer ${
+                  isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300' : 'bg-white border-slate-300 text-slate-800'
+                }`}
+              >
+                {AI_MODEL_PRESETS.map(preset => (
+                  <option key={preset.id} value={preset.id} className={isDarkMode ? 'bg-[#24242b] text-slate-300' : 'bg-white text-slate-800'}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={aiConfig.baseUrl}
+                onChange={event => updateAiConfig({ baseUrl: event.target.value, presetId: 'custom' })}
+                placeholder="Base URL，选择常用模型后自动填充"
+                className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 ${
+                  isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'
+                }`}
+              />
+              <input
+                value={aiConfig.apiKey}
+                onChange={event => updateAiConfig({ apiKey: event.target.value })}
+                placeholder="API Key，留空使用服务端环境变量"
+                type="password"
+                className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 ${
+                  isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'
+                }`}
+              />
+              <input
+                value={aiConfig.modelName}
+                onChange={event => updateAiConfig({ modelName: event.target.value, presetId: 'custom' })}
+                placeholder="Model Name，选择常用模型后自动填充"
+                className={`w-full border rounded px-2.5 py-1.5 text-xs focus:outline-none focus:border-purple-500 ${
+                  isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-300 placeholder:text-slate-600' : 'bg-white border-slate-300 text-slate-800 placeholder:text-slate-400'
+                }`}
+              />
+              <button
+                type="button"
+                onClick={handleConnectAi}
+                disabled={isConnectingAi || !effectiveModelName || isAiConnected}
+                className={`w-full flex items-center justify-center gap-2 text-white font-bold py-2 rounded text-xs transition-all select-none shadow-md ${
+                  isAiConnected
+                    ? 'bg-emerald-600/80 cursor-default'
+                    : 'bg-[#2563eb] hover:bg-blue-600 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'
+                }`}
+              >
+                {isConnectingAi ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>正在连接 AI...</span>
+                  </>
+                ) : isAiConnected ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>已连接 AI</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 text-yellow-300 fill-yellow-300/20" />
+                    <span>连接到 AI</span>
+                  </>
+                )}
+              </button>
             </>
           )}
-        </button>
+        </div>
 
         {isTranslating && (
           <div className={`w-full h-1 rounded-full overflow-hidden mt-2 ${isDarkMode ? 'bg-slate-850' : 'bg-slate-200'}`}>
@@ -377,7 +580,7 @@ export default function AiAssistant({
         }`}
       >
         <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-        <span>已通过 Google AI Studio Secrets 安全连接 to Gemini AI</span>
+        <span>AI 连接配置已本地保存，请确认 API Key 与模型服务可用</span>
       </div>
 
       {editProposal && (
@@ -441,7 +644,7 @@ export default function AiAssistant({
         </div>
 
         {/* Chat History scroll panel */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin select-text">
+        <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin select-text">
           {chatHistory.map((msg, idx) => (
             <div
               key={msg.id || idx}
@@ -454,7 +657,7 @@ export default function AiAssistant({
               }`}
             >
               <div className="flex items-center gap-1.5 mb-1.5 opacity-60 text-[9px] font-mono select-none">
-                {msg.sender === 'user' ? <span>开发者</span> : <span className="text-purple-500 font-bold">Gemini AI</span>}
+                {msg.sender === 'user' ? <span>开发者</span> : <span className="text-purple-500 font-bold">AI 助手</span>}
                 <span>•</span>
                 <span>{msg.timestamp}</span>
               </div>
@@ -473,7 +676,6 @@ export default function AiAssistant({
               </div>
             </div>
           )}
-          <div ref={chatEndRef}></div>
         </div>
 
         {/* Chat Send Form */}

@@ -1,3 +1,5 @@
+import { LingCppModuleContext } from '../modules/types';
+
 export type LingCppAccessModifier = '公开' | '私有' | '保护';
 
 export interface LingCppDiagnostic {
@@ -162,12 +164,21 @@ export interface LingCppWorkspaceFile {
   language?: string;
 }
 
+export interface AiConnectionConfig {
+  baseUrl?: string;
+  apiKey?: string;
+  modelName?: string;
+  provider?: 'gemini' | 'openai' | 'anthropic' | 'deepseek';
+}
+
 export interface LingCppEditContext {
   filePath: string;
   sourceCode: string;
   instruction: string;
   selection?: WorkspaceEditRange;
   workspaceFiles?: LingCppWorkspaceFile[];
+  moduleContext?: LingCppModuleContext;
+  aiConfig?: AiConnectionConfig;
 }
 
 export interface LingCppEditDraftFile {
@@ -440,7 +451,7 @@ export interface LingCppLanguageContext {
   diagnostics: LingCppDiagnostic[];
   designerBindings: LingCppDesignerBindingHint[];
   designerProject?: unknown;
-  moduleContext?: unknown;
+  moduleContext?: LingCppModuleContext;
   moduleContributions: LingCppCompletionCatalogItem[];
 }
 
