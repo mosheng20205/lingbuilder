@@ -9,7 +9,7 @@
 - 解决方案资源管理器已经在项目节点 `GameClient (Visual C++)` 下显示“模块”组，并提供“配置项目所使用模块”入口。
 - Monaco 中文代码编辑器通过 `LingCppModuleContext` 消费模块贡献，支持模块命令/类型/片段补全，以及“使用了未启用模块命令”的中文诊断。
 - Win32 C++ 生成器支持读取启用模块，输出 `module-dependencies.txt`，并在 `main.cpp` 中写入外部模块依赖注释、`#pragma comment(lib, ...)` 和 define。
-- Win32 F5 构建链路支持把外部模块的 `headers`、`sources`、`libs` 和 `runtimeFiles` 复制到临时构建目录与 `generated/cpp/` 导出目录，并把运行时 DLL 复制到 exe 同目录。
+- Win32 F5 构建链路支持把外部模块的 `headers`、`sources`、`libs` 和 `runtimeFiles` 复制到临时构建目录与 `generated/cpp/` 导出目录，并把运行时 DLL 复制到 exe 同目录；同步生成的 Visual Studio 工程会引用模块源码、include 路径、`.lib` 和 DLL post-build 复制命令。
 - `.lbmod` 模块包采用“zip 包 + 根目录 `lingbuilder.module.json`”格式；安装前必须预览确认。
 - 模块市场第一阶段支持本地/远程索引读取，安装仍走同一套 preview/install 流程。
 
@@ -117,7 +117,7 @@
 - 模块操作历史：`.lingbuilder/module-history.json`
 - 卸载/升级快照：`.lingbuilder/module-snapshots/`
 - 安装预览临时目录：系统临时目录 `lingbuilder-module-previews`
-- 生成输出：`generated/cpp/<projectId>/module-dependencies.txt`
+- 生成输出：`generated/cpp/<projectId>/module-dependencies.txt`、`generated/cpp/<projectId>/<projectId>.sln`、`generated/cpp/<projectId>/<projectId>.vcxproj`
 
 所有模块 JSON 必须使用 UTF-8 读写。遇到旧文件乱码时，只报告诊断，不要凭终端乱码重写中文文案。
 
@@ -166,6 +166,7 @@ lingbuilder.module.json
 - 模块包复制 Win32/x64 的 `new_emoji.dll` 和 `new_emoji.lib`，但当前 F5 预览默认使用 Win32 产物。
 - `new_emoji.lib` 是 MSVC 导入库；如果只检测到 g++/clang++，F5 会返回“new_emoji 模块需要 MSVC/Visual Studio Build Tools”的中文诊断。
 - `.lcpp` 用户优先使用 `NE_创建窗口`、`NE_创建按钮`、`NE_创建文本` 等桥接命令；自动生成的 `NE_EU_*` 命令属于底层高级入口，参数仍按 new_emoji 的 UTF-8 字节指针和长度规则处理。
+- `NE_` 桥接层把 `wchar_t*` 转 UTF-8 时必须为 `WideCharToMultiByte` 的结尾 `\0` 预留空间，再传递不含结尾 `\0` 的字节长度；传给 new_emoji 控件的 UTF-8 字符串还必须存入桥接层持久池，不能把函数内临时缓冲区指针交给 DLL，否则 VS Debug CRT 可能读到 `0xDDDDDDDD` 已释放内存并触发访问冲突。
 - new_emoji 独立演示或 AI 自动生成示例不能在窗口创建完毕事件中调用 `结束` / `结束()`；该命令会销毁 LingBuilder 默认窗口，消息循环收到退出后表现为 exe 闪退。
 - 纯 new_emoji 示例应由 new_emoji 自己负责生命周期：创建窗口和控件后调用 `NE_运行消息循环` 或底层 `EU_RunMessageLoop()`。如果继续复用 LingBuilder 默认 Win32 生成窗口，必须保证默认窗口不会立即销毁，也不能让空设计器窗口关闭后触发 `PostQuitMessage(0)`。
 - 报告 new_emoji exe 可运行前，必须确认 `new_emoji.dll` 已复制到 exe 同目录，并实际启动验证至少 3 秒仍在运行。

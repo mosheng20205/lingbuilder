@@ -7221,9 +7221,9 @@ export default function DiffViewer({
                     <span>整理</span>
                   </button>
                 )}
-                {!isLingCppBeginnerStructureMode && !isLingCppNativeMode && quickChineseSnippets.map(snippet => (
+                {!isLingCppBeginnerStructureMode && !isLingCppNativeMode && quickChineseSnippets.map((snippet, index) => (
                   <button
-                    key={snippet.label}
+                    key={`${snippet.label}:${snippet.text}:${index}`}
                     type="button"
                     onClick={() => insertSourceSnippet(snippet.text)}
                     disabled={!onUpdateSourceContent}

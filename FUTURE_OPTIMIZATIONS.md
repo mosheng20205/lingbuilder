@@ -12,6 +12,9 @@
 - 已完成：生成器回归测试扩展到复选框、单选框、进度条、下拉框、窗体创建事件、暂不支持语法安全注释和多文件 WorkspaceEdit。
 - 已完成：模块构建链路开始支持外部 C++ 模块依赖复制，`new_emoji` 可通过 `.lbmod` 安装并在 F5 Win32 预览中复制 DLL/lib/header/source。
 - 已完成：新增 AI Bridge CLI 与本地 `/api/ai-bridge/*` 接口，支持 token 鉴权、`readonly` / `preview` / `yolo` 权限模式、受控文件读取搜索、LingCpp 诊断、编辑提案应用、模块上下文、C++ 预览/导出和 MCP stdio 工具映射。
+- 已完成：原生导出和 F5/AI Bridge 构建运行会同步生成 Visual Studio Win32 工程文件（`.sln`、`.vcxproj`、`.vcxproj.filters`），并把模块 include/lib/source/runtime 依赖写入 VS 工程。
+- 已完成：修复 `new_emoji` 桥接层 UTF-8 转换缓冲区少分配 1 字节，以及临时 UTF-8 指针被 DLL 后续读取的问题，避免 Visual Studio Debug 运行时报 `HEAP CORRUPTION DETECTED` 或读取 `0xDDDDDDDD` 访问冲突。
+- 已完成：修复 `.lcpp` 解析器把事件/方法块结尾 `结束` 误翻译为运行时 `结束();` 的问题；显式退出命令应写作 `结束()`。
 - 后续建议：继续把 AI 编辑扩展到语义级 range 规划、跨模块依赖分析和更细粒度的审查提示。
 - 后续建议：AI Bridge 的 `build.run` 已复用受控生成、编译和运行链路，但仍未开放任意 shell；后续应接入正式 `TaskService`，提供结构化构建、问题面板跳转和运行日志流。
 - 后续建议：继续扩展 LingCpp Parser/IR 覆盖面，把变量赋值、控件属性读写、字符串拼接、窗口打开/关闭等中文语法纳入生成器。

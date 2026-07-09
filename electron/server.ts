@@ -18,6 +18,7 @@ import {
   WorkspaceEditRange
 } from "./src/services/lingCpp/types";
 import { generateLingCppNativeWin32Project } from "./src/services/windowDesigner/lingCppWin32Project";
+import { exportVisualStudioProject } from "./src/services/windowDesigner/visualStudioProjectExporter";
 import { LingWindowProject } from "./src/services/windowDesigner/types";
 import {
   applyWorkspaceEdit,
@@ -523,17 +524,28 @@ app.post("/api/window-designer/native-export", async (req, res) => {
     await fs.mkdir(exportDir, { recursive: true });
     await writeGeneratedProjectFiles(exportDir, generatedProject.files);
     const moduleExportDiagnostics = await exportModuleNativeDependencies(enabledModules, exportDir);
+    const visualStudioProject = await exportVisualStudioProject({
+      projectDir: exportDir,
+      projectId: project.id || "window-preview",
+      generatedFiles: generatedProject.files,
+      enabledModules
+    });
 
     res.json({
       ok: true,
       exportDir,
-      files: generatedProject.files.map(file => path.join(exportDir, file.relativePath)),
+      files: [
+        ...generatedProject.files.map(file => path.join(exportDir, file.relativePath)),
+        ...visualStudioProject.files
+      ],
+      visualStudioProject,
       diagnostics: [...generatedProject.diagnostics, ...moduleExportDiagnostics],
       selectedWindow: generatedProject.selectedWindow,
       enabledModules: enabledModules.map(module => `${module.manifest.name} (${module.manifest.id}@${module.manifest.version})`),
       sourceMap: generatedProject.sourceMap,
       logs: [
         `原生 C++ 工程目录：${exportDir}`,
+        `Visual Studio 解决方案：${visualStudioProject.solutionPath}`,
         `当前窗口：${generatedProject.selectedWindow.title}`,
         ...generatedProject.diagnostics,
         ...moduleExportDiagnostics
@@ -808,6 +820,21 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       binDir,
       exportDir
     });
+    const buildVisualStudioProject = await exportVisualStudioProject({
+      projectDir: buildDir,
+      projectId: project.id || "window-preview",
+      generatedFiles: generatedProject.files.map(file => ({
+        ...file,
+        relativePath: normalizeFilePath(path.join("src", file.relativePath))
+      })),
+      enabledModules
+    });
+    const exportVisualStudioProjectResult = await exportVisualStudioProject({
+      projectDir: exportDir,
+      projectId: project.id || "window-preview",
+      generatedFiles: generatedProject.files,
+      enabledModules
+    });
 
     const compiler = await detectCompiler();
     if (!compiler) {
@@ -820,9 +847,13 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         objDir,
         exportDir,
         files: generatedProject.files.map(file => path.join(sourceDir, file.relativePath)),
+        visualStudioProject: buildVisualStudioProject,
+        exportVisualStudioProject: exportVisualStudioProjectResult,
         sourceMap: generatedProject.sourceMap,
         logs: [
           "已生成 Win32 C++ 工程文件。",
+          `Visual Studio 解决方案：${buildVisualStudioProject.solutionPath}`,
+          `可复制 Visual Studio 解决方案：${exportVisualStudioProjectResult.solutionPath}`,
           ...generatedProject.diagnostics,
           ...moduleNativePlan.diagnostics,
           "未检测到可用 C++ 编译器。请安装 Visual Studio Build Tools、MinGW g++ 或 LLVM clang++ 后重试。",
@@ -838,6 +869,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       `已生成 Win32 C++ 工程：${buildDir}`,
       `C++ 源码目录：${sourceDir}`,
       `可复制生成目录：${exportDir}`,
+      `Visual Studio 解决方案：${buildVisualStudioProject.solutionPath}`,
+      `可复制 Visual Studio 解决方案：${exportVisualStudioProjectResult.solutionPath}`,
       `exe 输出目录：${binDir}`,
       `中间文件目录：${objDir}`,
       `当前窗口：${generatedProject.selectedWindow.title}`,
@@ -859,6 +892,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         exePath,
         compiler,
         exportDir,
+        visualStudioProject: buildVisualStudioProject,
+        exportVisualStudioProject: exportVisualStudioProjectResult,
         sourceMap: generatedProject.sourceMap,
         logs
       });
@@ -893,6 +928,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       exePath,
       compiler,
       exportDir,
+      visualStudioProject: buildVisualStudioProject,
+      exportVisualStudioProject: exportVisualStudioProjectResult,
       sourceMap: generatedProject.sourceMap,
       logs
     });

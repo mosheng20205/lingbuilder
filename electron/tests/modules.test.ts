@@ -15,6 +15,7 @@ import { InstalledModule } from '../src/services/modules/types';
 import { materializeModuleNativeDependencies } from '../src/services/modules/nativeDependencyService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
+import { exportVisualStudioProject } from '../src/services/windowDesigner/visualStudioProjectExporter';
 
 const sampleProject: LingWindowProject = {
   id: 'module-test-project',
@@ -232,6 +233,45 @@ test('materializeModuleNativeDependencies copies module source, libs and runtime
   assert.ok(await exists(path.join(buildDir, 'modules', 'lingbuilder.new_emoji.ui', 'lib', 'Win32', 'new_emoji.lib')));
   assert.ok(await exists(path.join(exportDir, 'modules', 'lingbuilder.new_emoji.ui', 'bin', 'Win32', 'new_emoji.dll')));
   assert.ok(await exists(path.join(binDir, 'new_emoji.dll')));
+});
+
+test('exportVisualStudioProject writes sln and vcxproj with module dependencies', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-vs-export-'));
+  const module = createNewEmojiTestModule(path.join(root, 'installed'));
+  const result = await exportVisualStudioProject({
+    projectDir: root,
+    projectId: 'new-emoji-yolo-demo',
+    generatedFiles: [
+      { relativePath: 'main.cpp', content: '' },
+      { relativePath: 'layout.json', content: '{}' }
+    ],
+    enabledModules: [module]
+  });
+
+  assert.ok(result.solutionPath.endsWith('new-emoji-yolo-demo.sln'));
+  assert.ok(await exists(result.solutionPath));
+  assert.ok(await exists(result.projectPath));
+  assert.ok(await exists(result.filtersPath));
+
+  const vcxproj = await fs.readFile(result.projectPath, 'utf8');
+  assert.match(vcxproj, /<Platform>Win32<\/Platform>/);
+  assert.match(vcxproj, /<ClCompile Include="main\.cpp" \/>/);
+  assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\src\\new_emoji_bridge\.cpp/);
+  assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\include/);
+  assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\lib\\Win32\\new_emoji\.lib/);
+  assert.match(vcxproj, /new_emoji\.dll/);
+});
+
+test('new_emoji bridge template keeps UTF-8 buffers alive for native controls', async () => {
+  const script = await fs.readFile(path.join(process.cwd(), 'scripts', 'generate-new-emoji-module.cjs'), 'utf8');
+  assert.match(script, /static std::vector<std::unique_ptr<std::string>>& NE_Utf8Pool/);
+  assert.match(script, /static auto\* pool = new std::vector<std::unique_ptr<std::string>>\(\)/);
+  assert.match(script, /static const std::string& NE_KeepUtf8/);
+  assert.match(script, /std::string bytes\(static_cast<size_t>\(needed\), '\\\\0'\)/);
+  assert.match(script, /bytes\.pop_back\(\)/);
+  assert.match(script, /reinterpret_cast<const unsigned char\*>\(textBytes\.c_str\(\)\)/);
+  assert.doesNotMatch(script, /static std::vector<unsigned char> NE_ToUtf8/);
+  assert.doesNotMatch(script, /std::vector<unsigned char> bytes\(static_cast<size_t>\(needed - 1\)\)/);
 });
 
 function createTestModule(): InstalledModule {

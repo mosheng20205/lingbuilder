@@ -2,7 +2,7 @@
 
 本文档说明如何启动 LingBuilder 内置的 AI Bridge CLI，并让其它 AI 客户端通过 HTTP 或 MCP 连接 LingBuilder 工作区。
 
-AI Bridge 的目标是让外部 AI 客户端安全地使用 LingBuilder 的本地能力：读取项目、搜索文件、获取 `.lcpp` 诊断、生成可预览的代码修改、应用修改、查看模块上下文、生成/导出 C++ 工程，以及执行受控构建运行。
+AI Bridge 的目标是让外部 AI 客户端安全地使用 LingBuilder 的本地能力：读取项目、搜索文件、获取 `.lcpp` 诊断、生成可预览的代码修改、应用修改、查看模块上下文、生成/导出 C++ 与 Visual Studio 工程，以及执行受控构建运行。
 
 ## 1. 启动方式
 
@@ -270,6 +270,8 @@ POST /api/ai-bridge/native/export
 generated/cpp/<projectId>/
 ```
 
+导出目录会包含可复制的 C++ 源码、模块原生依赖、`<projectId>.sln`、`<projectId>.vcxproj` 和 `<projectId>.vcxproj.filters`。当前 Visual Studio 工程默认生成 Win32 / MSVC 配置；启用 `new_emoji` 等 `.lib` 模块时，应使用 Visual Studio 2022 或 Visual Studio Build Tools 打开和编译。
+
 ### 4.11 构建运行
 
 ```http
@@ -279,6 +281,7 @@ POST /api/ai-bridge/build/run
 `preview` 模式必须传入 `approved=true`。
 
 该接口复用 LingBuilder 受控 Win32 生成、编译、可选运行链路，并复制模块原生依赖。它不会开放任意终端 shell。
+同时会在 `.lingbuilder-build/<projectId>/` 和 `generated/cpp/<projectId>/` 写入 Visual Studio 解决方案文件，便于直接用 Visual Studio 打开当前构建产物或可复制导出产物。
 
 请求：
 

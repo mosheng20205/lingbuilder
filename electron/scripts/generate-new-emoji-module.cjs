@@ -268,6 +268,7 @@ void NE_设置窗口标题(HWND hwnd, const wchar_t* title);
 
 function bridgeSource() {
   return `#include "new_emoji_bridge.h"
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -283,25 +284,39 @@ __declspec(dllimport) int __stdcall EU_CreateText(HWND hwnd, int parent_id, cons
 __declspec(dllimport) int __stdcall EU_CreateButton(HWND hwnd, int parent_id, const unsigned char* emoji_bytes, int emoji_len, const unsigned char* text_bytes, int text_len, int x, int y, int w, int h);
 __declspec(dllimport) void __stdcall EU_SetWindowTitle(HWND hwnd, const unsigned char* bytes, int len);
 
-static std::vector<unsigned char> NE_ToUtf8(const wchar_t* text) {
-    if (!text) return {};
+static std::vector<std::unique_ptr<std::string>>& NE_Utf8Pool() {
+    static auto* pool = new std::vector<std::unique_ptr<std::string>>();
+    return *pool;
+}
+
+static const std::string& NE_KeepUtf8(const wchar_t* text) {
+    auto& pool = NE_Utf8Pool();
+    if (!text) {
+        pool.push_back(std::make_unique<std::string>());
+        return *pool.back();
+    }
     int needed = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
-    if (needed <= 1) return {};
-    std::vector<unsigned char> bytes(static_cast<size_t>(needed - 1));
-    WideCharToMultiByte(CP_UTF8, 0, text, -1, reinterpret_cast<char*>(bytes.data()), needed, nullptr, nullptr);
-    return bytes;
+    if (needed <= 1) {
+        pool.push_back(std::make_unique<std::string>());
+        return *pool.back();
+    }
+    std::string bytes(static_cast<size_t>(needed), '\\0');
+    WideCharToMultiByte(CP_UTF8, 0, text, -1, bytes.data(), needed, nullptr, nullptr);
+    bytes.pop_back();
+    pool.push_back(std::make_unique<std::string>(std::move(bytes)));
+    return *pool.back();
 }
 
 HWND NE_创建窗口(const wchar_t* title, int x, int y, int width, int height) {
-    auto titleBytes = NE_ToUtf8(title);
-    HWND hwnd = EU_CreateWindow(titleBytes.data(), static_cast<int>(titleBytes.size()), x, y, width, height, 0xFF202020);
+    const std::string& titleBytes = NE_KeepUtf8(title);
+    HWND hwnd = EU_CreateWindow(reinterpret_cast<const unsigned char*>(titleBytes.c_str()), static_cast<int>(titleBytes.size()), x, y, width, height, 0xFF202020);
     if (hwnd) EU_ShowWindow(hwnd, 1);
     return hwnd;
 }
 
 HWND NE_创建深色窗口(const wchar_t* title, int x, int y, int width, int height) {
-    auto titleBytes = NE_ToUtf8(title);
-    HWND hwnd = EU_CreateWindowDark(titleBytes.data(), static_cast<int>(titleBytes.size()), x, y, width, height, 0xFF202020);
+    const std::string& titleBytes = NE_KeepUtf8(title);
+    HWND hwnd = EU_CreateWindowDark(reinterpret_cast<const unsigned char*>(titleBytes.c_str()), static_cast<int>(titleBytes.size()), x, y, width, height, 0xFF202020);
     if (hwnd) EU_ShowWindow(hwnd, 1);
     return hwnd;
 }
@@ -323,19 +338,19 @@ int NE_创建容器(HWND hwnd, int parentId, int x, int y, int width, int height
 }
 
 int NE_创建文本(HWND hwnd, int parentId, const wchar_t* text, int x, int y, int width, int height) {
-    auto textBytes = NE_ToUtf8(text);
-    return EU_CreateText(hwnd, parentId, textBytes.data(), static_cast<int>(textBytes.size()), x, y, width, height);
+    const std::string& textBytes = NE_KeepUtf8(text);
+    return EU_CreateText(hwnd, parentId, reinterpret_cast<const unsigned char*>(textBytes.c_str()), static_cast<int>(textBytes.size()), x, y, width, height);
 }
 
 int NE_创建按钮(HWND hwnd, int parentId, const wchar_t* emoji, const wchar_t* text, int x, int y, int width, int height) {
-    auto emojiBytes = NE_ToUtf8(emoji);
-    auto textBytes = NE_ToUtf8(text);
-    return EU_CreateButton(hwnd, parentId, emojiBytes.data(), static_cast<int>(emojiBytes.size()), textBytes.data(), static_cast<int>(textBytes.size()), x, y, width, height);
+    const std::string& emojiBytes = NE_KeepUtf8(emoji);
+    const std::string& textBytes = NE_KeepUtf8(text);
+    return EU_CreateButton(hwnd, parentId, reinterpret_cast<const unsigned char*>(emojiBytes.c_str()), static_cast<int>(emojiBytes.size()), reinterpret_cast<const unsigned char*>(textBytes.c_str()), static_cast<int>(textBytes.size()), x, y, width, height);
 }
 
 void NE_设置窗口标题(HWND hwnd, const wchar_t* title) {
-    auto titleBytes = NE_ToUtf8(title);
-    EU_SetWindowTitle(hwnd, titleBytes.data(), static_cast<int>(titleBytes.size()));
+    const std::string& titleBytes = NE_KeepUtf8(title);
+    EU_SetWindowTitle(hwnd, reinterpret_cast<const unsigned char*>(titleBytes.c_str()), static_cast<int>(titleBytes.size()));
 }
 `;
 }

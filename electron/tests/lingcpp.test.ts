@@ -1134,6 +1134,23 @@ test('generateLingCppNativeWin32Project emits function methods, calls, return va
   assert.equal(mainCpp.includes('// 暂不支持的中文 C++ 语句：@'), false);
 });
 
+test('generateLingCppNativeWin32Project does not translate block end into exit command', () => {
+  const source = `包 示例
+类 游戏主窗体 : 窗口
+公开
+  事件 _游戏主窗体_创建完毕()
+    调试输出("只初始化，不退出")
+  结束
+结束类`;
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(mainCpp.includes('调试输出(L"只初始化，不退出");'));
+  assert.equal(mainCpp.includes('        结束();'), false);
+});
+
 test('generateLingCppNativeWin32Project keeps richer control types and unsupported syntax deterministic', () => {
   const parsed = parseLingCpp(advancedSource);
   assert.equal(parsed.program.classes[0]?.members.length, 4);

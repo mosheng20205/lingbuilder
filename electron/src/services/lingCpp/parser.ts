@@ -197,6 +197,11 @@ export function parseLingCpp(source: string): LingCppParseResult {
       return;
     }
 
+    if (trimmed === '结束' && currentMethod) {
+      closeCurrentMethod(lineNumber);
+      return;
+    }
+
     if (!currentClass) {
       diagnostics.push(createDiagnostic('warning', lineNumber, line, '类外语句不会参与中文 C++ 生成。', '请把语句放入 `类 ... 结束类` 内。'));
       pushNode(createAstNode('statement', trimmed, lineNumber, line, rootNode.id, {

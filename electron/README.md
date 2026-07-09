@@ -91,6 +91,8 @@ MCP 模式使用 stdio JSON-RPC，暴露工具包括：
 - `lingbuilder.native.preview`
 - `lingbuilder.native.export`
 
+原生导出与 `lingbuilder.build.run` 会生成可复制 C++ 源码和 Visual Studio Win32 工程文件：`<projectId>.sln`、`<projectId>.vcxproj`、`<projectId>.vcxproj.filters`。启用外部 C++ 模块时，工程文件会写入模块源码、include 路径、`.lib` 依赖和运行时 DLL 的 post-build 复制命令。
+
 new_emoji YOLO 示例约束：
 
 - 生成 `lingbuilder.new_emoji.ui` 演示时，不要在窗口“创建完毕”事件末尾写 `结束` / `结束()`，否则 exe 会创建后立即退出。

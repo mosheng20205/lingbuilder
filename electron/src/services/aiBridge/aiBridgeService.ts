@@ -10,6 +10,7 @@ import { createModuleService } from '../modules/moduleService';
 import { describeLingCppModuleContextForAi } from '../modules/moduleContextAdapters';
 import { exportModuleNativeDependencies, materializeModuleNativeDependencies, ModuleNativeDependencyPlan } from '../modules/nativeDependencyService';
 import { generateLingCppNativeWin32Project } from '../windowDesigner/lingCppWin32Project';
+import { exportVisualStudioProject } from '../windowDesigner/visualStudioProjectExporter';
 import { LingWindowProject } from '../windowDesigner/types';
 import { AiBridgePermissionService } from './permissionService';
 import {
@@ -228,10 +229,17 @@ export class AiBridgeService {
       await fs.writeFile(targetPath, file.content, 'utf8');
     }));
     const moduleDiagnostics = await exportModuleNativeDependencies(preview.enabledModules, exportDir);
+    const visualStudioProject = await exportVisualStudioProject({
+      projectDir: exportDir,
+      projectId: request.project.id || 'window-preview',
+      generatedFiles: preview.files,
+      enabledModules: preview.enabledModules
+    });
     await this.permissions.audit({ operation: 'write', action: 'native.export', ok: true, target: exportDir });
     return {
       ...preview,
       exportDir,
+      visualStudioProject,
       diagnostics: [...preview.diagnostics, ...moduleDiagnostics]
     };
   }
@@ -283,11 +291,28 @@ export class AiBridgeService {
       binDir,
       exportDir
     });
+    const buildVisualStudioProject = await exportVisualStudioProject({
+      projectDir: buildDir,
+      projectId,
+      generatedFiles: generatedProject.files.map(file => ({
+        ...file,
+        relativePath: normalizeFilePath(path.join('src', file.relativePath))
+      })),
+      enabledModules
+    });
+    const exportVisualStudioProjectResult = await exportVisualStudioProject({
+      projectDir: exportDir,
+      projectId,
+      generatedFiles: generatedProject.files,
+      enabledModules
+    });
     const compiler = await detectCompiler();
     const baseLogs = [
       `AI Bridge 已生成 Win32 C++ 工程：${buildDir}`,
       `C++ 源码目录：${sourceDir}`,
       `可复制生成目录：${exportDir}`,
+      `Visual Studio 解决方案：${buildVisualStudioProject.solutionPath}`,
+      `可复制 Visual Studio 解决方案：${exportVisualStudioProjectResult.solutionPath}`,
       ...generatedProject.diagnostics,
       ...moduleNativePlan.diagnostics
     ];
@@ -302,6 +327,8 @@ export class AiBridgeService {
         objDir,
         exportDir,
         files: generatedProject.files.map(file => path.join(sourceDir, file.relativePath)),
+        visualStudioProject: buildVisualStudioProject,
+        exportVisualStudioProject: exportVisualStudioProjectResult,
         sourceMap: generatedProject.sourceMap,
         logs: [
           ...baseLogs,
@@ -335,6 +362,8 @@ export class AiBridgeService {
         exePath,
         compiler,
         exportDir,
+        visualStudioProject: buildVisualStudioProject,
+        exportVisualStudioProject: exportVisualStudioProjectResult,
         sourceMap: generatedProject.sourceMap,
         logs
       };
@@ -378,6 +407,8 @@ export class AiBridgeService {
       exePath,
       compiler,
       exportDir,
+      visualStudioProject: buildVisualStudioProject,
+      exportVisualStudioProject: exportVisualStudioProjectResult,
       sourceMap: generatedProject.sourceMap,
       logs
     };

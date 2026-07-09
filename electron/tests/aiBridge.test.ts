@@ -96,8 +96,51 @@ test('AI Bridge diagnostics and modules use LingCpp module context', async () =>
   assert.equal(typeof modules.summary, 'string');
 });
 
+test('AI Bridge native export writes Visual Studio project files', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const result = await service.nativeExport({
+    approved: true,
+    project: {
+      id: 'vs-export-demo',
+      name: 'VS 导出演示',
+      windows: [
+        {
+          id: 'main-window',
+          fileName: 'MainWindow.xml',
+          className: 'MainWindow',
+          title: '主窗口',
+          width: 640,
+          height: 480,
+          background: '#202020',
+          description: '主窗口',
+          controls: []
+        }
+      ]
+    },
+    activeWindowId: 'main-window',
+    lingCppSourceCode: '类 MainWindow\n结束类\n',
+    lingCppSourceFilePath: 'src/MainWindow.lcpp'
+  });
+
+  assert.equal(result.ok, true);
+  assert.ok(result.visualStudioProject.solutionPath.endsWith('vs-export-demo.sln'));
+  assert.ok(await exists(result.visualStudioProject.solutionPath));
+  assert.ok(await exists(result.visualStudioProject.projectPath));
+  assert.ok(await exists(result.visualStudioProject.filtersPath));
+});
+
 async function createTempWorkspace(): Promise<string> {
   return await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-ai-bridge-'));
+}
+
+async function exists(filePath: string): Promise<boolean> {
+  try {
+    await fs.stat(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function createOptions(
