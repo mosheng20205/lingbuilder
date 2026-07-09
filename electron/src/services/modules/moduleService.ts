@@ -24,6 +24,7 @@ const MODULE_MANIFEST_FILE = 'lingbuilder.module.json';
 const MODULE_SOURCES_FILE = 'module-sources.json';
 const MODULE_HISTORY_FILE = 'module-history.json';
 const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
+const BASIC_MODULE_ID = 'lingbuilder.win32.basic';
 const MAX_PACKAGE_BYTES = 100 * 1024 * 1024;
 
 const previewCache = new Map<string, ModuleInstallPreview>();
@@ -110,6 +111,7 @@ export class ModuleService {
   }
 
   async disableModuleForProject(projectId: string, moduleId: string): Promise<void> {
+    if (moduleId === BASIC_MODULE_ID) throw new Error('Win32窗口基础模块是普通 Win32 项目的默认基础能力，不能禁用。');
     const refs = await this.readProjectModules(projectId);
     refs.enabledModuleIds = refs.enabledModuleIds.filter(id => id !== moduleId);
     delete refs.pinnedVersions[moduleId];
@@ -276,19 +278,22 @@ export class ModuleService {
   }
 
   private async readProjectModules(_projectId: string): Promise<LingBuilderProjectModules> {
-    const refs = await readJsonFile<LingBuilderProjectModules>(this.projectModulesPath(), {
+    const refs = await readJsonFile<LingBuilderProjectModules>(this.projectModulesPath(_projectId), {
       schemaVersion: 1,
-      enabledModuleIds: ['lingbuilder.win32.basic'],
-      pinnedVersions: { 'lingbuilder.win32.basic': '1.0.0' }
+      enabledModuleIds: [BASIC_MODULE_ID],
+      pinnedVersions: { [BASIC_MODULE_ID]: '1.0.0' }
     });
-    if (!refs.enabledModuleIds.includes('lingbuilder.win32.basic')) refs.enabledModuleIds.unshift('lingbuilder.win32.basic');
-    refs.pinnedVersions['lingbuilder.win32.basic'] ||= '1.0.0';
+    if (!Array.isArray(refs.enabledModuleIds)) refs.enabledModuleIds = [];
+    if (!refs.enabledModuleIds.includes(BASIC_MODULE_ID)) refs.enabledModuleIds.unshift(BASIC_MODULE_ID);
+    refs.pinnedVersions ||= {};
+    refs.pinnedVersions[BASIC_MODULE_ID] ||= '1.0.0';
     return refs;
   }
 
   private async writeProjectModules(_projectId: string, refs: LingBuilderProjectModules): Promise<void> {
-    await fs.mkdir(path.dirname(this.projectModulesPath()), { recursive: true });
-    await fs.writeFile(this.projectModulesPath(), JSON.stringify(refs, null, 2), 'utf8');
+    const targetPath = this.projectModulesPath(_projectId);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+    await fs.writeFile(targetPath, JSON.stringify(refs, null, 2), 'utf8');
   }
 
   private async readMarketSources(): Promise<MarketSource[]> {
@@ -369,8 +374,9 @@ export class ModuleService {
     return path.join(this.lingBuilderDir(), 'module-snapshots');
   }
 
-  private projectModulesPath(): string {
-    return path.join(this.lingBuilderDir(), PROJECT_MODULES_FILE);
+  private projectModulesPath(projectId = DEFAULT_PROJECT_ID): string {
+    if (!projectId || projectId === DEFAULT_PROJECT_ID) return path.join(this.lingBuilderDir(), PROJECT_MODULES_FILE);
+    return path.join(this.lingBuilderDir(), 'projects', safeProjectId(projectId), PROJECT_MODULES_FILE);
   }
 
   private historyPath(): string {
@@ -508,4 +514,8 @@ function createInvalidManifest(id: string): LingBuilderModuleManifest {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function safeProjectId(projectId: string): string {
+  return projectId.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || DEFAULT_PROJECT_ID;
 }

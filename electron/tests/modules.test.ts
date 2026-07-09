@@ -7,6 +7,7 @@ import path from 'node:path';
 import { getLingCppCompletions, getLingCppSemanticDiagnostics } from '../src/services/lingCpp/languageService';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import { validateModuleManifest } from '../src/services/modules/manifest';
+import { createModuleService } from '../src/services/modules/moduleService';
 import {
   describeLingCppModuleContextForAi,
   getBeginnerModuleCodeCompletions,
@@ -35,6 +36,19 @@ const sampleProject: LingWindowProject = {
     }
   ]
 };
+
+test('module service defaults ordinary projects to Win32 basic module only', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-defaults-'));
+  const service = createModuleService(root);
+
+  const enabledModules = await service.getEnabledProjectModules('fresh-win32-project');
+  assert.deepEqual(enabledModules.map(module => module.manifest.id), ['lingbuilder.win32.basic']);
+
+  await assert.rejects(
+    () => service.disableModuleForProject('fresh-win32-project', 'lingbuilder.win32.basic'),
+    /不能禁用/
+  );
+});
 
 test('module manifest validation accepts valid modules and rejects unsafe cpp paths', () => {
   const valid = validateModuleManifest({

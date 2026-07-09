@@ -45,10 +45,12 @@ import {
 import { AiBridgeService } from "./src/services/aiBridge/aiBridgeService";
 import { createAiBridgeRouter } from "./src/services/aiBridge/httpRoutes";
 import { AiBridgePermissionMode, AiBridgeServerOptions } from "./src/services/aiBridge/types";
+import { createSolutionService, LingBuilderSolutionProject } from "./src/services/solution/solutionService";
 
 dotenv.config();
 
 let lingBuilderAiRulebookCache: string | null | undefined;
+let solutionServiceCache: ReturnType<typeof createSolutionService> | null = null;
 
 function getLingBuilderAiRulebookCandidates(): string[] {
   return [
@@ -80,6 +82,13 @@ function attachLingBuilderAiRulebook(systemPrompt: string, rulebook: string): st
 <<<LINGBUILDER_AI_RULEBOOK
 ${trimmedRulebook}
 LINGBUILDER_AI_RULEBOOK`;
+}
+
+function getSolutionService() {
+  if (!solutionServiceCache) {
+    solutionServiceCache = createSolutionService(getRepoWorkspaceRoot());
+  }
+  return solutionServiceCache;
 }
 
 function resolveAiConnectionConfig(config?: AiConnectionConfig): Required<AiConnectionConfig> {
@@ -416,6 +425,89 @@ app.post("/api/modules/package/install", async (req, res) => {
     res.json({ ok: true, result });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "模块安装失败" });
+  }
+});
+
+app.get("/api/solution", async (_req, res) => {
+  try {
+    const solution = await getSolutionService().getSolution();
+    res.json({ ok: true, solution });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "解决方案读取失败" });
+  }
+});
+
+app.post("/api/solution/projects", async (req, res) => {
+  try {
+    const result = await getSolutionService().createProject(req.body || {});
+    res.json({ ok: true, ...result, logs: [`已新建项目：${result.project.name} (${result.project.id})`] });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "新建项目失败" });
+  }
+});
+
+app.patch("/api/solution/projects/:projectId", async (req, res) => {
+  try {
+    const solution = await getSolutionService().updateProject(req.params.projectId, req.body || {});
+    res.json({ ok: true, solution });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "更新项目失败" });
+  }
+});
+
+app.delete("/api/solution/projects/:projectId", async (req, res) => {
+  try {
+    const deleteFiles = String(req.query.deleteFiles || "false") === "true";
+    const result = await getSolutionService().deleteProject(req.params.projectId, { deleteFiles });
+    res.json({
+      ok: true,
+      ...result,
+      logs: [
+        deleteFiles
+          ? `已删除项目文件并从解决方案移除：${req.params.projectId}`
+          : `已从解决方案移除项目引用：${req.params.projectId}`
+      ]
+    });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "删除项目失败" });
+  }
+});
+
+app.post("/api/solution/clean", async (req, res) => {
+  try {
+    const { projectId } = req.body as { projectId?: string };
+    const result = await getSolutionService().cleanProjects(projectId ? [projectId] : undefined);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "清理解决方案失败" });
+  }
+});
+
+app.post("/api/solution/build", async (req, res) => {
+  try {
+    const { projectId, run = false } = req.body as { projectId?: string; run?: boolean };
+    const result = await buildSolutionProjects({ projectId, run });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ ok: false, stage: "server", error: error?.message || "生成解决方案失败" });
+  }
+});
+
+app.post("/api/solution/rebuild", async (req, res) => {
+  try {
+    const { projectId, run = false } = req.body as { projectId?: string; run?: boolean };
+    const clean = await getSolutionService().cleanProjects(projectId ? [projectId] : undefined);
+    const build = await buildSolutionProjects({ projectId, run });
+    res.json({
+      ...build,
+      logs: [
+        ...clean.logs,
+        ...build.logs
+      ],
+      clean
+    });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, stage: "server", error: error?.message || "重新生成解决方案失败" });
   }
 });
 
@@ -992,6 +1084,236 @@ app.post("/api/window-designer/build-run", async (req, res) => {
   }
 });
 
+async function buildSolutionProjects(options: { projectId?: string; run?: boolean }) {
+  const solutionService = getSolutionService();
+  const solution = await solutionService.getSolution();
+  const projects = options.projectId
+    ? [solutionService.getProject(solution, options.projectId)]
+    : solution.projects;
+  const logs: string[] = [
+    options.projectId
+      ? `开始生成项目：${projects[0]?.name || options.projectId}`
+      : `开始生成解决方案：${solution.name}（${projects.length} 个项目）`
+  ];
+  const results = [];
+  let ok = true;
+  let stage = "build";
+
+  for (const projectRef of projects) {
+    const project = await solutionService.readDesignerProject(projectRef);
+    const files = await solutionService.readProjectFiles(projectRef);
+    const source = resolveProjectLingCppSource(projectRef, project, files);
+    logs.push(`正在生成项目 ${projectRef.name} (${projectRef.id})...`);
+    const result = await runControlledWindowDesignerBuild({
+      project,
+      activeWindowId: project.windows[0]?.id,
+      lingCppSourceCode: source.sourceCode,
+      lingCppSourceFilePath: source.filePath,
+      run: Boolean(options.run && projects.length === 1)
+    });
+    results.push({ projectId: projectRef.id, projectName: projectRef.name, ...result });
+    logs.push(...result.logs.map(line => `[${projectRef.name}] ${line}`));
+    if (!result.ok) {
+      ok = false;
+      stage = result.stage || "build";
+      logs.push(`项目 ${projectRef.name} 生成失败：${result.stage || "未知错误"}`);
+      break;
+    }
+    logs.push(`项目 ${projectRef.name} 生成完成。`);
+  }
+
+  logs.push(ok ? "解决方案生成完成。" : "解决方案生成已停止。");
+  return {
+    ok,
+    stage,
+    solution,
+    results,
+    logs
+  };
+}
+
+async function runControlledWindowDesignerBuild(options: {
+  project: LingWindowProject;
+  activeWindowId?: string;
+  lingCppSourceCode?: string;
+  lingCppSourceFilePath?: string;
+  run?: boolean;
+}) {
+  const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath, run = false } = options;
+  const sourceCode = typeof lingCppSourceCode === "string" ? lingCppSourceCode : "";
+  const enabledModules = await getModuleService().getEnabledProjectModules(project.id || "lingbuilder-ui-project");
+  const generatedProject = generateLingCppNativeWin32Project(project, {
+    activeWindowId,
+    lingCppSourceCode: sourceCode,
+    lingCppSourceFilePath,
+    enabledModules
+  });
+  const repoRoot = getRepoWorkspaceRoot();
+  const buildRoot = path.join(repoRoot, ".lingbuilder-build");
+  const buildDir = path.join(buildRoot, sanitizeFilename(project.id || "window-preview"));
+  const sourceDir = path.join(buildDir, "src");
+  const binDir = path.join(buildDir, "bin");
+  const objDir = path.join(buildDir, "obj");
+  const exportDir = path.join(repoRoot, "generated", "cpp", sanitizeFilename(project.id || "window-preview"));
+
+  await Promise.all([
+    fs.mkdir(sourceDir, { recursive: true }),
+    fs.mkdir(binDir, { recursive: true }),
+    fs.mkdir(objDir, { recursive: true }),
+    fs.mkdir(exportDir, { recursive: true })
+  ]);
+
+  const activeWindow = project.windows.find(w => w.id === activeWindowId) || project.windows[0];
+  if (activeWindow && sourceCode.trim()) {
+    const fileName = `${activeWindow.className || activeWindow.fileName.replace(/\.xml$/i, "")}.lcpp`;
+    await fs.writeFile(path.join(sourceDir, fileName), sourceCode, "utf8");
+  }
+  await Promise.all(generatedProject.files.map(file => {
+    const targetPath = path.join(sourceDir, file.relativePath);
+    const exportPath = path.join(exportDir, file.relativePath);
+    return Promise.all([
+      fs.writeFile(targetPath, file.content, "utf8"),
+      fs.writeFile(exportPath, file.content, "utf8")
+    ]);
+  }));
+  const moduleNativePlan = await materializeModuleNativeDependencies(enabledModules, {
+    buildDir,
+    sourceDir,
+    binDir,
+    exportDir
+  });
+  const buildVisualStudioProject = await exportVisualStudioProject({
+    projectDir: buildDir,
+    projectId: project.id || "window-preview",
+    generatedFiles: generatedProject.files.map(file => ({
+      ...file,
+      relativePath: normalizeFilePath(path.join("src", file.relativePath))
+    })),
+    enabledModules
+  });
+  const exportVisualStudioProjectResult = await exportVisualStudioProject({
+    projectDir: exportDir,
+    projectId: project.id || "window-preview",
+    generatedFiles: generatedProject.files,
+    enabledModules
+  });
+
+  const compiler = await detectCompiler();
+  if (!compiler) {
+    return {
+      ok: false,
+      stage: "compiler",
+      buildDir,
+      sourceDir,
+      binDir,
+      objDir,
+      exportDir,
+      files: generatedProject.files.map(file => path.join(sourceDir, file.relativePath)),
+      visualStudioProject: buildVisualStudioProject,
+      exportVisualStudioProject: exportVisualStudioProjectResult,
+      sourceMap: generatedProject.sourceMap,
+      logs: [
+        "已生成 Win32 C++ 工程文件。",
+        `Visual Studio 解决方案：${buildVisualStudioProject.solutionPath}`,
+        `可复制 Visual Studio 解决方案：${exportVisualStudioProjectResult.solutionPath}`,
+        ...generatedProject.diagnostics,
+        ...moduleNativePlan.diagnostics,
+        "未检测到可用 C++ 编译器。请安装 Visual Studio Build Tools、MinGW g++ 或 LLVM clang++ 后重试。",
+        "需要的编译器命令之一：cl、g++、clang++。"
+      ]
+    };
+  }
+
+  const sourcePath = path.join(sourceDir, "main.cpp");
+  const exePath = path.join(binDir, "LingBuilderPreview.exe");
+  const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan);
+  const logs = [
+    `已生成 Win32 C++ 工程：${buildDir}`,
+    `C++ 源码目录：${sourceDir}`,
+    `可复制生成目录：${exportDir}`,
+    `Visual Studio 解决方案：${buildVisualStudioProject.solutionPath}`,
+    `可复制 Visual Studio 解决方案：${exportVisualStudioProjectResult.solutionPath}`,
+    `exe 输出目录：${binDir}`,
+    `中间文件目录：${objDir}`,
+    `当前窗口：${generatedProject.selectedWindow.title}`,
+    `编译器：${compiler.kind} (${compiler.command})`,
+    ...generatedProject.diagnostics,
+    ...moduleNativePlan.diagnostics,
+    moduleNativePlan.runtimeFiles.length ? `已复制模块运行时文件：${moduleNativePlan.runtimeFiles.map(file => path.basename(file)).join(", ")}` : "",
+    ...compileResult.logs
+  ].filter(Boolean);
+
+  if (!compileResult.ok) {
+    return {
+      ok: false,
+      stage: "compile",
+      buildDir,
+      sourceDir,
+      binDir,
+      objDir,
+      exePath,
+      compiler,
+      exportDir,
+      visualStudioProject: buildVisualStudioProject,
+      exportVisualStudioProject: exportVisualStudioProjectResult,
+      sourceMap: generatedProject.sourceMap,
+      logs
+    };
+  }
+
+  if (run) {
+    try {
+      const logFile = path.join(buildDir, "run.log");
+      const logStream = createWriteStream(logFile, { flags: "w" });
+      const child = spawn(exePath, [], {
+        cwd: binDir,
+        detached: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: false
+      });
+      child.stdout.pipe(logStream);
+      child.stderr.pipe(logStream);
+      child.unref();
+      logs.push(`已启动运行窗口：${exePath}`);
+    } catch (error: any) {
+      logs.push(`运行启动失败：${error?.message || "无法启动生成的 exe"}`);
+    }
+  }
+
+  return {
+    ok: true,
+    stage: run ? "run" : "build",
+    buildDir,
+    sourceDir,
+    binDir,
+    objDir,
+    exePath,
+    compiler,
+    exportDir,
+    visualStudioProject: buildVisualStudioProject,
+    exportVisualStudioProject: exportVisualStudioProjectResult,
+    sourceMap: generatedProject.sourceMap,
+    logs
+  };
+}
+
+function resolveProjectLingCppSource(
+  projectRef: LingBuilderSolutionProject,
+  project: LingWindowProject,
+  files: Record<string, string>
+): { filePath: string; sourceCode: string } {
+  const activeWindow = project.windows[0];
+  const preferredName = activeWindow
+    ? `${activeWindow.className || activeWindow.fileName.replace(/\.xml$/i, "")}.lcpp`
+    : "";
+  const preferredPath = preferredName ? `${projectRef.sourceRoot}/${preferredName}` : "";
+  if (preferredPath && typeof files[preferredPath] === "string") {
+    return { filePath: preferredPath, sourceCode: files[preferredPath] };
+  }
+  const fallbackPath = Object.keys(files).find(filePath => filePath.endsWith(".lcpp")) || preferredPath || `${projectRef.sourceRoot}/MainWindow.lcpp`;
+  return { filePath: fallbackPath, sourceCode: files[fallbackPath] || "" };
+}
+
 type CompilerInfo = {
   kind: "msvc" | "g++" | "clang++";
   command: string;
@@ -1006,23 +1328,11 @@ app.get("/api/window-designer/files", async (req, res) => {
   }
 
   try {
-    const files: Record<string, string> = {};
-    const repoRoot = getRepoWorkspaceRoot();
-    const directories = [
-      path.join(repoRoot, "src"),
-      path.join(repoRoot, "config")
-    ];
-
-    for (const directory of directories) {
-      await collectFilesRecursively(repoRoot, directory, files);
-    }
-
-    const designerProjectPath = path.join(repoRoot, ".lingbuilder", "window-designer.json");
-    let designerProject = null;
-    if (await pathExists(designerProjectPath)) {
-      designerProject = JSON.parse(await fs.readFile(designerProjectPath, "utf8"));
-    }
-
+    const solutionService = getSolutionService();
+    const solution = await solutionService.getSolution();
+    const projectRef = solutionService.getProject(solution, projectId);
+    const files = await solutionService.readProjectFiles(projectRef);
+    const designerProject = await solutionService.readDesignerProject(projectRef);
     res.json({ ok: true, files, designerProject });
   } catch (err: any) {
     res.status(500).json({ ok: false, error: err.message });
@@ -1037,20 +1347,31 @@ app.post("/api/window-designer/files", async (req, res) => {
 
   try {
     const repoRoot = getRepoWorkspaceRoot();
-    const designerDir = path.join(repoRoot, ".lingbuilder");
+    const solutionService = getSolutionService();
+    const solution = await solutionService.getSolution();
+    const projectRef = solutionService.getProject(solution, projectId);
+    const designerPath = path.join(repoRoot, projectRef.designerPath);
+    const designerDir = path.dirname(designerPath);
     await fs.mkdir(designerDir, { recursive: true });
 
     for (const [relativePath, content] of Object.entries(files)) {
       if (!ALLOWED_PROJECT_EXTS.some(ext => relativePath.endsWith(ext))) continue;
       if (relativePath.includes("..")) continue;
       const normalizedPath = relativePath.replace(/\\/g, "/");
+      if (
+        !normalizedPath.startsWith(`${projectRef.sourceRoot}/`)
+        && !normalizedPath.startsWith(`${projectRef.configRoot}/`)
+        && !(projectRef.isDefault && (normalizedPath.startsWith("src/") || normalizedPath.startsWith("config/")))
+      ) {
+        continue;
+      }
       const targetPath = path.join(repoRoot, normalizedPath);
       await fs.mkdir(path.dirname(targetPath), { recursive: true });
       await fs.writeFile(targetPath, content, "utf8");
     }
 
     if (project) {
-      await fs.writeFile(path.join(designerDir, "window-designer.json"), JSON.stringify(project, null, 2), "utf8");
+      await fs.writeFile(designerPath, JSON.stringify(project, null, 2), "utf8");
     }
 
     res.json({ ok: true });

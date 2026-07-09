@@ -11,6 +11,7 @@
 - 模块页新增“模块开发者中心”，支持创建模板、校验模块、C++ 迁移和本地市场索引生成；这些入口复用服务层，不把模块逻辑写入 React 组件。
 - 根目录 `模块开发手册.md` 是对外模块作者手册；修改 v2 manifest、binding、target、迁移流程或发布流程时必须同步更新。
 - `new_emoji` 模块需要用 `electron/scripts/generate-new-emoji-module.cjs` 重新生成 v2 包，输出仍为 `.lingbuilder/module-packages/new_emoji.lbmod`，安装目录仍为 `.lingbuilder/modules/lingbuilder.new_emoji.ui`。
+- 新建普通 Win32 项目默认只引用 `lingbuilder.win32.basic`。`new_emoji`、网页访问、HTTP 服务端、WebSocket 客户端/服务端等模块即使已安装或属于内置网络模块，也必须由模板、用户或明确的一键启用动作加入项目引用。
 
 ## 当前实现范围
 
@@ -122,7 +123,8 @@
 ## 文件与持久化约定
 
 - 已安装模块：`.lingbuilder/modules/<moduleId>/`
-- 项目启用模块：`.lingbuilder/project-modules.json`
+- 默认项目启用模块：`.lingbuilder/project-modules.json`
+- 非默认项目启用模块：`.lingbuilder/projects/<projectId>/project-modules.json`
 - 模块市场源：`.lingbuilder/module-sources.json`
 - 模块操作历史：`.lingbuilder/module-history.json`
 - 卸载/升级快照：`.lingbuilder/module-snapshots/`

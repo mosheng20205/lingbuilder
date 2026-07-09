@@ -46,12 +46,16 @@ import {
 import type { LingWindowModel } from '../services/windowDesigner/types';
 import type { InstalledModule, ModuleTargetContribution } from '../services/modules/types';
 import { BUILTIN_MODULES } from '../services/modules/builtinModules';
+import type { SolutionModel, SolutionProject } from '../services/solution/solutionClient';
 
 type WindowContextMenu =
   | { x: number; y: number; target: 'group' }
   | { x: number; y: number; target: 'window'; windowModel: LingWindowModel };
 
 type ModuleContextMenu = { x: number; y: number; module: InstalledModule };
+type SolutionContextMenu =
+  | { x: number; y: number; target: 'solution' }
+  | { x: number; y: number; target: 'project'; project: SolutionProject };
 
 interface ModuleParameterDoc {
   name: string;
@@ -123,6 +127,13 @@ interface SidebarProps {
   onDeleteFile?: (file: CppFile) => void;
   onRenameFile?: (file: CppFile, newName: string) => void;
   sourceControlStatus?: SourceControlStatus | null;
+  solution?: SolutionModel;
+  activeProjectId?: string;
+  onRefreshSolution?: () => void | Promise<unknown>;
+  onCreateProject?: () => void | Promise<void>;
+  onSetStartupProject?: (projectId: string) => void | Promise<void>;
+  onDeleteProject?: (projectId: string, deleteFiles: boolean) => void | Promise<void>;
+  onSolutionCommand?: (command: 'build' | 'clean' | 'rebuild', projectId?: string) => void | Promise<void>;
 }
 
 export default function Sidebar({
@@ -140,14 +151,23 @@ export default function Sidebar({
   drawerWidth = 264,
   onDeleteFile,
   onRenameFile,
-  sourceControlStatus = null
+  sourceControlStatus = null,
+  solution,
+  activeProjectId,
+  onRefreshSolution,
+  onCreateProject,
+  onSetStartupProject,
+  onDeleteProject,
+  onSolutionCommand
 }: SidebarProps) {
   // Tabs: 'explorer' (解决方案), 'actions' (快捷工具), 'outline' (大纲视图)
   const [activeTab, setActiveTab] = useState<'explorer' | 'actions' | 'outline'>('explorer');
   const [isSolutionOpen, setIsSolutionOpen] = useState(true);
+  const [expandedProjectIds, setExpandedProjectIds] = useState<Record<string, boolean>>({});
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: CppFile } | null>(null);
   const [windowContextMenu, setWindowContextMenu] = useState<WindowContextMenu | null>(null);
   const [moduleContextMenu, setModuleContextMenu] = useState<ModuleContextMenu | null>(null);
+  const [solutionContextMenu, setSolutionContextMenu] = useState<SolutionContextMenu | null>(null);
   const [moduleInfoDialog, setModuleInfoDialog] = useState<InstalledModule | null>(null);
   const [designerState, setDesignerState] = useState(() => readWindowDesignerState());
 
@@ -156,6 +176,7 @@ export default function Sidebar({
       setContextMenu(null);
       setWindowContextMenu(null);
       setModuleContextMenu(null);
+      setSolutionContextMenu(null);
     };
     window.addEventListener('click', handleCloseMenu);
     return () => window.removeEventListener('click', handleCloseMenu);
@@ -179,6 +200,9 @@ export default function Sidebar({
   const [placeholderErrors, setPlaceholderErrors] = useState<{ line: number; msg: string; text: string }[]>([]);
   const [hasCheckedPlaceholders, setHasCheckedPlaceholders] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const solutionProjects = solution?.projects || [];
+  const activeSolutionProjectId = activeProjectId || solution?.startupProjectId || solutionProjects[0]?.id;
+  const isActiveProjectTreeOpen = activeSolutionProjectId ? expandedProjectIds[activeSolutionProjectId] !== false : true;
 
   // Group files by directories
   const normalizedFileSearch = fileSearch.trim().toLowerCase();
@@ -578,7 +602,7 @@ export default function Sidebar({
           setWindowContextMenu(null);
           setContextMenu({ x: e.clientX, y: e.clientY, file });
         }}
-        className={`group flex items-center justify-between py-1 px-3 pl-8 text-xs cursor-pointer border-l-2 transition-all ${
+        className={`group flex items-center justify-between gap-2 py-1.5 px-3 pl-8 text-[13px] cursor-pointer border-l-2 transition-all ${
           isActive
             ? isDarkMode 
               ? 'bg-[#37373D] border-[#007ACC] text-[#007ACC] font-medium'
@@ -598,7 +622,7 @@ export default function Sidebar({
           ) : file.name.endsWith('.e') ? (
             <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 select-none shrink-0 font-sans">易</span>
           ) : (
-            <FileCode className={`w-3.5 h-3.5 shrink-0 ${
+            <FileCode className={`w-4 h-4 shrink-0 ${
               file.name.endsWith('.rc')
                 ? 'text-rose-400'
                 : file.name.endsWith('.ini')
@@ -610,7 +634,7 @@ export default function Sidebar({
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           {progress === 100 ? (
-            <CheckCircle2 className="w-3.5 h-3.5 text-[#73C991]" />
+            <CheckCircle2 className="w-4 h-4 text-[#73C991]" />
           ) : progress > 0 ? (
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-amber-500 font-bold">{progress}%</span>
@@ -652,7 +676,7 @@ export default function Sidebar({
         }}
         title={`打开窗口设计器：${windowModel.title} (${windowModel.fileName})`}
         aria-label={`打开窗口设计器：${windowModel.title}`}
-        className={`group w-full flex items-center justify-between gap-2 py-1 px-3 pl-8 text-xs cursor-pointer border-l-2 transition-all text-left ${
+        className={`group w-full flex items-center justify-between gap-2 py-1.5 px-3 pl-8 text-[13px] cursor-pointer border-l-2 transition-all text-left ${
           isActive
             ? isDarkMode
               ? 'bg-[#37373D] border-amber-500 text-amber-300 font-medium'
@@ -663,7 +687,7 @@ export default function Sidebar({
         }`}
       >
         <span className="flex items-center gap-2 min-w-0">
-          <Monitor className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-amber-400' : 'text-amber-500'}`} />
+          <Monitor className={`w-4 h-4 shrink-0 ${isActive ? 'text-amber-400' : 'text-amber-500'}`} />
           <span className="min-w-0 flex flex-col leading-tight">
             <span className="truncate">{windowModel.title}</span>
             <span className={`truncate text-[9px] ${isDarkMode ? 'text-slate-500 group-hover:text-slate-400' : 'text-slate-400 group-hover:text-slate-500'}`}>
@@ -811,6 +835,101 @@ export default function Sidebar({
                 <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
               )}
               <span>{isWindowsOpen ? '折叠窗口组' : '展开窗口组'}</span>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderSolutionContextMenu = () => {
+    if (!solutionContextMenu) return null;
+    const menuItemClass = `px-3 py-1.5 cursor-pointer transition-colors flex items-center gap-2 ${
+      isDarkMode ? 'hover:bg-blue-500 hover:text-white' : 'hover:bg-blue-500 hover:text-white'
+    }`;
+    const dangerItemClass = `px-3 py-1.5 cursor-pointer transition-colors flex items-center gap-2 text-rose-500 hover:bg-rose-500 hover:text-white`;
+    const project = solutionContextMenu.target === 'project' ? solutionContextMenu.project : null;
+    const isLastProject = (solution?.projects.length || 0) <= 1;
+    const isStartup = project?.id === (activeProjectId || solution?.startupProjectId);
+
+    return (
+      <div
+        style={{ top: `${solutionContextMenu.y}px`, left: `${solutionContextMenu.x}px` }}
+        className={`fixed z-[9999] min-w-[210px] py-1 rounded shadow-lg border text-xs select-none font-sans ${
+          isDarkMode
+            ? 'bg-[#252526] border-[#454545] text-slate-200'
+            : 'bg-white border-slate-250 text-slate-800'
+        }`}
+        onClick={() => setSolutionContextMenu(null)}
+      >
+        {solutionContextMenu.target === 'solution' ? (
+          <>
+            <div className={menuItemClass} onClick={() => void onCreateProject?.()}>
+              <Plus className="w-3.5 h-3.5 text-emerald-500" />
+              <span>新建项目 (N)</span>
+            </div>
+            <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
+            <div className={menuItemClass} onClick={() => void onSolutionCommand?.('build')}>
+              <Play className="w-3.5 h-3.5 text-emerald-500" />
+              <span>生成解决方案</span>
+            </div>
+            <div className={menuItemClass} onClick={() => void onSolutionCommand?.('rebuild')}>
+              <RefreshCw className="w-3.5 h-3.5 text-sky-500" />
+              <span>重新生成解决方案</span>
+            </div>
+            <div className={menuItemClass} onClick={() => void onSolutionCommand?.('clean')}>
+              <Trash2 className="w-3.5 h-3.5 text-amber-500" />
+              <span>清理解决方案</span>
+            </div>
+            <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
+            <div className={menuItemClass} onClick={() => void onRefreshSolution?.()}>
+              <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+              <span>刷新</span>
+            </div>
+          </>
+        ) : project && (
+          <>
+            <div className={menuItemClass} onClick={() => void onSetStartupProject?.(project.id)}>
+              <CheckCircle2 className={`w-3.5 h-3.5 ${isStartup ? 'text-emerald-500' : 'text-slate-400'}`} />
+              <span>{isStartup ? '当前启动项目' : '设为启动项目'}</span>
+            </div>
+            <div className={menuItemClass} onClick={() => void onCreateProject?.()}>
+              <Plus className="w-3.5 h-3.5 text-emerald-500" />
+              <span>新建项目</span>
+            </div>
+            <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
+            <div className={menuItemClass} onClick={() => void onSolutionCommand?.('build', project.id)}>
+              <Play className="w-3.5 h-3.5 text-emerald-500" />
+              <span>生成项目</span>
+            </div>
+            <div className={menuItemClass} onClick={() => void onSolutionCommand?.('rebuild', project.id)}>
+              <RefreshCw className="w-3.5 h-3.5 text-sky-500" />
+              <span>重新生成项目</span>
+            </div>
+            <div className={menuItemClass} onClick={() => void onSolutionCommand?.('clean', project.id)}>
+              <Trash2 className="w-3.5 h-3.5 text-amber-500" />
+              <span>清理项目</span>
+            </div>
+            <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
+            <div
+              className={isLastProject ? `${menuItemClass} cursor-not-allowed opacity-40` : dangerItemClass}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!isLastProject) void onDeleteProject?.(project.id, false);
+              }}
+            >
+              <FolderMinus className="w-3.5 h-3.5" />
+              <span>从解决方案移除</span>
+            </div>
+            <div
+              className={(isLastProject || project.isDefault) ? `${menuItemClass} cursor-not-allowed opacity-40` : dangerItemClass}
+              onClick={(event) => {
+                event.stopPropagation();
+                if (!isLastProject && !project.isDefault) void onDeleteProject?.(project.id, true);
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>删除项目文件...</span>
             </div>
           </>
         )}
@@ -1002,6 +1121,7 @@ export default function Sidebar({
                     title="折叠全部" 
                     onClick={() => {
                       setIsSolutionOpen(false);
+                      setExpandedProjectIds(Object.fromEntries(solutionProjects.map(project => [project.id, false])));
                       setIsWindowsOpen(false);
                       setIsSrcOpen(false);
                       setIsConfigOpen(false);
@@ -1047,37 +1167,82 @@ export default function Sidebar({
               </div>
 
               {/* Solution Tree */}
-              <div className="flex-1 overflow-y-auto py-2 font-mono text-[11px]">
+              <div className="flex-1 overflow-y-auto py-2 font-mono text-[13px]">
                 <div>
                   <div
                     onClick={() => setIsSolutionOpen(!isSolutionOpen)}
-                    className={`flex items-center gap-1 px-2.5 py-1 cursor-pointer text-xs font-semibold font-sans transition-colors ${
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setContextMenu(null);
+                      setWindowContextMenu(null);
+                      setModuleContextMenu(null);
+                      setSolutionContextMenu({ x: event.clientX, y: event.clientY, target: 'solution' });
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer text-[13px] font-semibold font-sans transition-colors ${
                       isDarkMode ? 'hover:bg-[#2A2D2E]/40 text-slate-200' : 'hover:bg-slate-100 text-slate-700'
                     }`}
                   >
-                    {isSolutionOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
-                    <span className="truncate text-slate-400 text-[10px] tracking-wider uppercase font-sans">解决方案 'UI_CppLocProj'</span>
+                    {isSolutionOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                    <span className="truncate text-slate-300 text-[13px] font-semibold font-sans">解决方案 '{solution?.name || 'UI_CppLocProj'}'</span>
                   </div>
 
                   {isSolutionOpen && (
                     <div className="pl-1.5 border-l border-slate-750/30 dark:border-slate-800 ml-4">
                       {/* Project Subnode */}
-                      <div className={`flex items-center gap-1.5 px-4 py-1 text-xs font-bold font-sans ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
-                        <div className="w-2.5 h-2.5 rounded-sm bg-purple-600"></div>
-                        <span className="text-purple-600 font-bold">GameClient (Visual C++)</span>
-                      </div>
+                      {solutionProjects.map(project => {
+                        const isProjectOpen = expandedProjectIds[project.id] !== false;
+                        const isStartupProject = project.id === (activeProjectId || solution?.startupProjectId);
+                        return (
+                        <div
+                          key={project.id}
+                          onClick={() => void onSetStartupProject?.(project.id)}
+                          onContextMenu={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            setContextMenu(null);
+                            setWindowContextMenu(null);
+                            setModuleContextMenu(null);
+                            setSolutionContextMenu({ x: event.clientX, y: event.clientY, target: 'project', project });
+                          }}
+                          className={`flex items-center gap-1.5 px-2 py-1.5 text-[13px] font-semibold font-sans cursor-pointer border-l-2 transition-colors ${
+                            isStartupProject
+                              ? 'bg-violet-500/10 text-violet-300'
+                              : isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/40' : 'text-slate-700 hover:bg-slate-100'
+                          } ${isStartupProject ? 'border-violet-500/70' : 'border-transparent'}`}
+                          title={`${project.name} (${project.id})`}
+                        >
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setExpandedProjectIds(previous => ({ ...previous, [project.id]: !isProjectOpen }));
+                            }}
+                            className={`shrink-0 rounded p-0.5 ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-slate-200'}`}
+                            title={isProjectOpen ? '折叠项目' : '展开项目'}
+                          >
+                            {isProjectOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                          </button>
+                          <Package className={`w-4 h-4 shrink-0 ${isStartupProject ? 'text-violet-300' : 'text-violet-400'}`} />
+                          <span className="text-violet-300 font-semibold truncate">{project.name} (Visual C++)</span>
+                          {isStartupProject && (
+                            <span className="ml-auto text-[9px] text-emerald-400">启动</span>
+                          )}
+                        </div>
+                      );})}
 
                       {/* Project modules group */}
-                      <div className="pl-2 mt-1">
+                      {isActiveProjectTreeOpen && <div className="pl-2 mt-1">
                         <div
                           onClick={() => setIsProjectModulesOpen(!isProjectModulesOpen)}
-                          className={`flex items-center gap-1 px-2 py-1 cursor-pointer text-xs font-sans transition-colors ${
+                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                           }`}
                           title="查看和配置当前项目所使用的模块"
                         >
-                          {isProjectModulesOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
-                          <Layers className="w-3.5 h-3.5 text-violet-500" />
+                          {isProjectModulesOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                          <Layers className="w-4 h-4 text-violet-500" />
                           <span className="truncate">模块</span>
                           <span className={`ml-auto text-[9px] px-1 rounded border ${
                             isDarkMode ? 'border-violet-500/20 text-violet-300 bg-violet-500/5' : 'border-violet-200 text-violet-700 bg-violet-50'
@@ -1119,7 +1284,7 @@ export default function Sidebar({
                                         setWindowContextMenu(null);
                                         setModuleContextMenu({ x: event.clientX, y: event.clientY, module });
                                       }}
-                                      className={`group w-[calc(100%-4px)] flex items-center gap-1 px-1.5 py-1 ml-1 rounded text-[11px] font-sans text-left transition-colors ${
+                                      className={`group w-[calc(100%-4px)] flex items-center gap-1.5 px-1.5 py-1.5 ml-1 rounded text-[13px] font-sans text-left transition-colors ${
                                         isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/40' : 'text-slate-700 hover:bg-slate-100'
                                       }`}
                                       title={`${module.manifest.name} ${module.manifest.version}\n展开查看模块接口树，点击名称打开完整能力面板。\n${module.manifest.description}`}
@@ -1132,7 +1297,7 @@ export default function Sidebar({
                                       >
                                         {isModuleExpanded ? <ChevronDown className="w-3 h-3 text-slate-400" /> : <ChevronRight className="w-3 h-3 text-slate-400" />}
                                       </button>
-                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                                       <button
                                         type="button"
                                         onClick={() => openModuleInspector(moduleId)}
@@ -1161,10 +1326,10 @@ export default function Sidebar({
                             )}
                           </div>
                         )}
-                      </div>
+                      </div>}
 
                       {/* Window designer group */}
-                      <div className="pl-2">
+                      {isActiveProjectTreeOpen && <div className="pl-2">
                         <div
                           onClick={() => setIsWindowsOpen(!isWindowsOpen)}
                           onContextMenu={(event) => {
@@ -1177,13 +1342,13 @@ export default function Sidebar({
                               target: 'group'
                             });
                           }}
-                          className={`flex items-center gap-1 px-2 py-1 cursor-pointer text-xs font-sans transition-colors ${
+                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                           }`}
                           title="展开查看所有窗口，点击窗口可直接进入窗口设计器"
                         >
-                          {isWindowsOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
-                          <Folder className="w-3.5 h-3.5 text-amber-500 fill-amber-500/10" />
+                          {isWindowsOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                          <Folder className="w-4 h-4 text-amber-500 fill-amber-500/10" />
                           <span className="truncate">窗口</span>
                           <span className={`ml-auto text-[9px] px-1 rounded border ${
                             isDarkMode ? 'border-amber-500/20 text-amber-300 bg-amber-500/5' : 'border-amber-200 text-amber-700 bg-amber-50'
@@ -1200,18 +1365,18 @@ export default function Sidebar({
                             )}
                           </div>
                         )}
-                      </div>
+                      </div>}
 
                       {/* includes / src Folder */}
-                      <div className="pl-2 mt-1.5">
+                      {isActiveProjectTreeOpen && <div className="pl-2 mt-1.5">
                         <div
                           onClick={() => setIsSrcOpen(!isSrcOpen)}
-                          className={`flex items-center gap-1 px-2 py-1 cursor-pointer text-xs font-sans transition-colors ${
+                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                           }`}
                         >
-                          {isSrcOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
-                          <Folder className="w-3.5 h-3.5 text-blue-500 fill-blue-500/10" />
+                          {isSrcOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                          <Folder className="w-4 h-4 text-blue-500 fill-blue-500/10" />
                           <span>游戏源码与头文件 (src)</span>
                         </div>
                         {isSrcOpen && (
@@ -1223,18 +1388,18 @@ export default function Sidebar({
                             )}
                           </div>
                         )}
-                      </div>
+                      </div>}
 
                       {/* Config Folder */}
-                      <div className="pl-2 mt-1.5">
+                      {isActiveProjectTreeOpen && <div className="pl-2 mt-1.5">
                         <div
                           onClick={() => setIsConfigOpen(!isConfigOpen)}
-                          className={`flex items-center gap-1 px-2 py-1 cursor-pointer text-xs font-sans transition-colors ${
+                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                           }`}
                         >
-                          {isConfigOpen ? <ChevronDown className="w-3.5 h-3.5 text-slate-400" /> : <ChevronRight className="w-3.5 h-3.5 text-slate-400" />}
-                          <Folder className="w-3.5 h-3.5 text-amber-500 fill-amber-500/10" />
+                          {isConfigOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                          <Folder className="w-4 h-4 text-amber-500 fill-amber-500/10" />
                           <span>本地配置文件 (config)</span>
                         </div>
                         {isConfigOpen && (
@@ -1246,7 +1411,7 @@ export default function Sidebar({
                             )}
                           </div>
                         )}
-                      </div>
+                      </div>}
                     </div>
                   )}
                 </div>
@@ -1522,6 +1687,7 @@ export default function Sidebar({
       )}
       {renderContextMenu()}
       {renderWindowContextMenu()}
+      {renderSolutionContextMenu()}
       {renderModuleContextMenu()}
       {moduleInfoDialog && (
         <ModuleInfoDialog
@@ -2660,7 +2826,7 @@ async function fetchJson(url: string): Promise<any> {
 }
 
 function getFallbackProjectModules(): InstalledModule[] {
-  return BUILTIN_MODULES.map(manifest => ({
+  return BUILTIN_MODULES.filter(manifest => manifest.id === 'lingbuilder.win32.basic').map(manifest => ({
     manifest,
     installPath: `builtin://${manifest.id}`,
     isBuiltin: true,

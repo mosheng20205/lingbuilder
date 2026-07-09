@@ -16,7 +16,7 @@
     "ai-server": "tsx src/cli.ts ai-server",
     "lint": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
     "test": "npm run test:lingcpp",
-    "test:lingcpp": "node --import tsx --test tests/lingcpp.test.ts tests/modules.test.ts tests/aiBridge.test.ts",
+    "test:lingcpp": "node --import tsx --test tests/lingcpp.test.ts tests/modules.test.ts tests/aiBridge.test.ts tests/solution.test.ts",
     "module:new-emoji": "node scripts/generate-new-emoji-module.cjs",
     "clean": "rimraf dist dist-electron"
   },

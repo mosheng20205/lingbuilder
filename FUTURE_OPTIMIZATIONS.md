@@ -84,3 +84,8 @@
 - 抽象为 `TaskService`，区分构建、运行、调试和环境检查。
 - 输出结构化日志，包括阶段、耗时、生成目录、编译器、错误位置和中文解释。
 - 编译错误应进入问题面板，并能跳转到中文源码或生成文件。
+## 2026-07 解决方案与构建任务更新
+- 已完成：Electron 原型新增 `.lingbuilder/solution.json` 解决方案层，支持多个 Visual C++ 项目、启动项目、项目级资源根目录和兼容旧默认项目路径。
+- 已完成：解决方案资源管理器支持解决方案/项目节点右键入口，可新建项目、设为启动项目、生成/清理/重新生成项目或解决方案，并支持从解决方案移除项目或删除非默认项目文件。
+- 已完成：新增受控 `/api/solution/*` 接口；清理默认只删除 `.lingbuilder-build/<projectId>` 临时构建目录，保留 `generated/cpp/<projectId>` 可复制 Visual Studio 工程。
+- 后续建议：把 `/api/solution/build`、`/api/solution/rebuild` 与现有 F5 构建进一步沉淀为正式 `TaskService`，统一结构化任务、问题面板跳转和日志流。

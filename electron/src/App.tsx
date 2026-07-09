@@ -83,6 +83,17 @@ import { EditorExperienceMode, adaptProblemForBeginner } from './services/lingCp
 import { createWorkspaceEditChangeFromRewrite } from './services/lingCpp/aiEditService';
 import { findLingCppMethod, parseLingCpp } from './services/lingCpp/parser';
 import { InstalledModule, LingCppModuleContext } from './services/modules/types';
+import {
+  DEFAULT_SOLUTION,
+  SolutionModel,
+  buildSolution,
+  cleanSolution,
+  createSolutionProject,
+  deleteSolutionProject,
+  fetchSolution,
+  rebuildSolution,
+  setStartupProject
+} from './services/solution/solutionClient';
 
 const EDITOR_EXPERIENCE_MODE_STORAGE_KEY = 'lingbuilder.editorExperienceMode';
 const BEGINNER_IGNORED_TASKS_STORAGE_KEY = 'lingbuilder.beginnerIgnoredTasks';
@@ -263,7 +274,10 @@ const inferFileLanguage = (filePath: string): CppFile['language'] => {
 };
 
 export default function App() {
+  const [solution, setSolution] = useState<SolutionModel>(DEFAULT_SOLUTION);
   const [windowDesignerState, setWindowDesignerState] = useState<PersistedWindowDesignerState>(() => readWindowDesignerState());
+  const activeSolutionProject = solution.projects.find(project => project.id === solution.startupProjectId) || solution.projects[0] || DEFAULT_SOLUTION.projects[0];
+  const activeProjectId = activeSolutionProject.id;
   const [files, setFiles] = useState<CppFile[]>(() => {
     const proj = readWindowDesignerState().project;
 
@@ -387,7 +401,7 @@ export default function App() {
   const [moduleContext, setModuleContext] = useState<LingCppModuleContext>({ enabledModules: [], availableModules: [] });
 
   const refreshModuleContext = useCallback(async () => {
-    const projectId = getCurrentWindowDesignerProjectId();
+    const projectId = activeProjectId;
     const [installedResult, enabledResult] = await Promise.all([
       fetch(`/api/modules/installed?projectId=${encodeURIComponent(projectId)}`).then(res => res.json()).catch(() => ({ ok: false, modules: [] })),
       fetch(`/api/modules/project?projectId=${encodeURIComponent(projectId)}`).then(res => res.json()).catch(() => ({ ok: false, modules: [] }))
@@ -395,6 +409,21 @@ export default function App() {
     const availableModules = Array.isArray(installedResult.modules) ? installedResult.modules as InstalledModule[] : [];
     const enabledModules = Array.isArray(enabledResult.modules) ? enabledResult.modules as InstalledModule[] : [];
     setModuleContext({ availableModules, enabledModules });
+  }, [activeProjectId]);
+
+  const refreshSolution = useCallback(async () => {
+    try {
+      const nextSolution = await fetchSolution();
+      setSolution(nextSolution);
+      return nextSolution;
+    } catch (error) {
+      console.error('Failed to load solution:', error);
+      return solution;
+    }
+  }, [solution]);
+
+  useEffect(() => {
+    void refreshSolution();
   }, []);
 
   useEffect(() => {
@@ -1171,7 +1200,7 @@ void DisplayStatus() {
   useEffect(() => {
     const loadSavedFiles = async () => {
       try {
-        const projectId = getCurrentWindowDesignerProjectId();
+        const projectId = activeProjectId;
         const res = await fetch(`/api/window-designer/files?projectId=${projectId}`);
         if (!res.ok) return;
         const data = await res.json();
@@ -1224,13 +1253,13 @@ void DisplayStatus() {
       }
     };
     loadSavedFiles();
-  }, []);
+  }, [activeProjectId]);
 
   useEffect(() => {
     let intervalId: any;
     const pollLogs = async () => {
       try {
-        const projectId = getCurrentWindowDesignerProjectId();
+        const projectId = activeProjectId;
         const res = await fetch(`/api/window-designer/debug-logs?projectId=${projectId}`);
         if (!res.ok) return;
         const data = await res.json();
@@ -1246,7 +1275,7 @@ void DisplayStatus() {
     };
     intervalId = setInterval(pollLogs, 1000);
     return () => clearInterval(intervalId);
-  }, []);
+  }, [activeProjectId]);
 
   const handleClearLogs = useCallback((tab: string) => {
     if (tab === 'designer_logs') {
@@ -1258,10 +1287,10 @@ void DisplayStatus() {
       setBuildLogs([]);
     } else if (tab === 'debug_logs') {
       setDebugLogs([]);
-      const projectId = getCurrentWindowDesignerProjectId();
+      const projectId = activeProjectId;
       fetch(`/api/window-designer/debug-logs?projectId=${projectId}&clear=true`).catch(() => {});
     }
-  }, []);
+  }, [activeProjectId]);
 
   // Update status (translated, skipped, pending)
   const handleSetStatus = (id: string, status: 'translated' | 'skipped' | 'pending') => {
@@ -1398,7 +1427,7 @@ void DisplayStatus() {
       ]);
     } else if (actionName === 'save') {
       const designerProject = getCurrentWindowDesignerProject();
-      const projectId = designerProject.id || 'lingbuilder-ui-project';
+      const projectId = activeProjectId || designerProject.id || 'lingbuilder-ui-project';
 
       const projectFiles: Record<string, string> = {};
       filesRef.current.forEach(file => {
@@ -1484,6 +1513,72 @@ void DisplayStatus() {
       `>>> [${new Date().toLocaleTimeString()}] 【自检成功】本地开发及编译环境状态：已就绪 (READY)。您可以安全地点击 "编译 F5" 进行代码热编译运行。`
     ]);
   };
+
+  const appendSolutionLogs = useCallback((title: string, result: { ok: boolean; logs?: string[]; error?: string; stage?: string }) => {
+    setShowBottomPanel(true);
+    setActiveTabInBottom('output');
+    setBuildLogs(prev => [
+      ...prev,
+      `> [${new Date().toLocaleTimeString()}] 【${title}】${result.ok ? '完成' : '失败'}`,
+      ...(result.logs || []).map(line => `> [${new Date().toLocaleTimeString()}] ${line}`),
+      ...(!result.ok ? [`> [${new Date().toLocaleTimeString()}] 错误：${result.error || result.stage || '未知错误'}`] : [])
+    ]);
+  }, []);
+
+  const handleCreateSolutionProject = useCallback(async () => {
+    const name = window.prompt('新建项目名称', `LingBuilder项目${solution.projects.length + 1}`);
+    if (!name?.trim()) return;
+    const result = await createSolutionProject(name.trim());
+    appendSolutionLogs('新建项目', result);
+    if (result.solution) setSolution(result.solution);
+    if (result.project) {
+      await setStartupProject(result.project.id);
+      const nextSolution = await refreshSolution();
+      setSolution(nextSolution);
+    }
+  }, [appendSolutionLogs, refreshSolution, solution.projects.length]);
+
+  const handleSetStartupProject = useCallback(async (projectId: string) => {
+    const result = await setStartupProject(projectId);
+    appendSolutionLogs('设为启动项目', {
+      ok: result.ok,
+      logs: result.ok ? [`启动项目已切换为：${projectId}`] : result.logs,
+      error: result.error
+    });
+    if (result.solution) setSolution(result.solution);
+    await refreshSolution();
+  }, [appendSolutionLogs, refreshSolution]);
+
+  const handleDeleteSolutionProject = useCallback(async (projectId: string, deleteFiles: boolean) => {
+    const project = solution.projects.find(item => item.id === projectId);
+    if (!project) return;
+    const message = deleteFiles
+      ? `确定删除项目 ${project.name} 及其项目文件吗？此操作不会删除 generated/cpp 导出结果。`
+      : `确定从解决方案中移除项目 ${project.name} 吗？磁盘文件会保留。`;
+    if (!window.confirm(message)) return;
+    const result = await deleteSolutionProject(projectId, deleteFiles);
+    appendSolutionLogs(deleteFiles ? '删除项目文件' : '移除项目', result);
+    if (result.solution) setSolution(result.solution);
+    await refreshSolution();
+  }, [appendSolutionLogs, refreshSolution, solution.projects]);
+
+  const handleSolutionBuildCommand = useCallback(async (
+    command: 'build' | 'clean' | 'rebuild',
+    projectId?: string
+  ) => {
+    const titleMap = {
+      build: projectId ? '生成项目' : '生成解决方案',
+      clean: projectId ? '清理项目' : '清理解决方案',
+      rebuild: projectId ? '重新生成项目' : '重新生成解决方案'
+    };
+    const result = command === 'build'
+      ? await buildSolution(projectId)
+      : command === 'clean'
+        ? await cleanSolution(projectId)
+        : await rebuildSolution(projectId);
+    appendSolutionLogs(titleMap[command], result);
+    if (result.solution) setSolution(result.solution);
+  }, [appendSolutionLogs]);
 
   // Real window designer build task (F5)
   const handleRunBuild = useCallback(() => {
@@ -1746,7 +1841,7 @@ void DisplayStatus() {
               </span>
               {activeDropdown === 'file' && (
                 <div className={`absolute left-0 top-6 w-48 shadow-2xl border rounded-md py-1 flex flex-col z-50 ${isDarkMode ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
-                  <button onClick={() => { handleToolbarAction('new'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <button onClick={() => { void handleCreateSolutionProject(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>新建项目</span>
                     <span className="opacity-50 text-[10px]">Ctrl+N</span>
                   </button>
@@ -1878,6 +1973,22 @@ void DisplayStatus() {
                   <button onClick={() => { handleStopBuild(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>强制停止游戏调试</span>
                     <span className="opacity-50 text-[10px]">Shift+F5</span>
+                  </button>
+                  <button onClick={() => { void handleSolutionBuildCommand('build'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>生成解决方案</span>
+                    <span className="opacity-50 text-[10px]">Build</span>
+                  </button>
+                  <button onClick={() => { void handleSolutionBuildCommand('rebuild'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>重新生成解决方案</span>
+                    <span className="opacity-50 text-[10px]">Rebuild</span>
+                  </button>
+                  <button onClick={() => { void handleSolutionBuildCommand('clean'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>清理解决方案</span>
+                    <span className="opacity-50 text-[10px]">Clean</span>
+                  </button>
+                  <button onClick={() => { void handleSetStartupProject(activeProjectId); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>设为启动项目</span>
+                    <span className="opacity-50 text-[10px]">{activeSolutionProject.name}</span>
                   </button>
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
                   <button onClick={() => { handleGenerateCpp(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
@@ -2297,6 +2408,13 @@ void DisplayStatus() {
           onDeleteFile={handleDeleteFile}
           onRenameFile={handleRenameFile}
           sourceControlStatus={sourceControlStatus}
+          solution={solution}
+          activeProjectId={activeProjectId}
+          onRefreshSolution={refreshSolution}
+          onCreateProject={handleCreateSolutionProject}
+          onSetStartupProject={handleSetStartupProject}
+          onDeleteProject={handleDeleteSolutionProject}
+          onSolutionCommand={handleSolutionBuildCommand}
         />
 
         {/* LEFT DRAG RESIZER & COLLAPSE TOGGLE */}
@@ -2508,7 +2626,7 @@ void DisplayStatus() {
                 filePath={activeFile.path}
                 sourceCode={activeFile.translatedContent || activeFile.originalContent}
                 activeLanguage={activeFile.language}
-                projectId={getCurrentWindowDesignerProjectId()}
+                projectId={activeProjectId}
                 moduleContext={moduleContext}
                 workspaceFiles={files.map(file => ({
                   filePath: file.path,

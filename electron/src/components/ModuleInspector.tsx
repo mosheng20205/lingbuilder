@@ -714,6 +714,7 @@ function ModuleRow({ module, isDarkMode, onToggle, onUninstall, onInspect }: {
 }) {
   const manifest = module.manifest;
   const subtleClass = isDarkMode ? 'text-slate-400' : 'text-slate-500';
+  const isBasicModule = manifest.id === 'lingbuilder.win32.basic';
   const capabilityCount = (manifest.contributes?.commands?.length || 0)
     + (manifest.contributes?.types?.length || 0)
     + (manifest.contributes?.designerControls?.length || 0);
@@ -738,9 +739,14 @@ function ModuleRow({ module, isDarkMode, onToggle, onUninstall, onInspect }: {
           <Search size={14} />
           接口
         </button>
-        <button onClick={onToggle} className="h-8 min-w-0 flex-1 px-1.5 rounded border border-sky-500/40 text-sky-300 text-xs inline-flex items-center justify-center gap-1 cursor-pointer transition-colors hover:bg-sky-500/10 hover:text-white whitespace-nowrap">
-          {module.isEnabledForProject ? <X size={14} /> : <Check size={14} />}
-          {module.isEnabledForProject ? '禁用' : '启用'}
+        <button
+          onClick={onToggle}
+          disabled={isBasicModule}
+          title={isBasicModule ? 'Win32窗口基础模块是普通项目的默认基础能力，不能禁用。' : undefined}
+          className="h-8 min-w-0 flex-1 px-1.5 rounded border border-sky-500/40 text-sky-300 text-xs inline-flex items-center justify-center gap-1 cursor-pointer transition-colors hover:bg-sky-500/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap"
+        >
+          {isBasicModule || !module.isEnabledForProject ? <Check size={14} /> : <X size={14} />}
+          {isBasicModule ? '基础' : module.isEnabledForProject ? '禁用' : '启用'}
         </button>
         <button onClick={onUninstall} disabled={module.isBuiltin} className="h-8 min-w-0 flex-1 px-1.5 rounded border border-red-500/40 text-red-300 text-xs inline-flex items-center justify-center gap-1 cursor-pointer transition-colors hover:bg-red-500/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap">
           <Trash2 size={14} />
