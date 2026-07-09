@@ -137,10 +137,18 @@ function generateMainCpp(
 #define WIN32_LEAN_AND_MEAN
 #endif
 
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #include <commctrl.h>
+#include <winhttp.h>
+#include <wincrypt.h>
+#include <algorithm>
+#include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cwchar>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -149,6 +157,9 @@ function generateMainCpp(
 #endif
 
 #pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "winhttp.lib")
+#pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "advapi32.lib")
 #pragma comment(linker, "/manifestdependency:\\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\\"")
 ${moduleCppPreamble}
 
@@ -302,8 +313,30 @@ static void ResolveWindowPlacement(
 
 class LingWindowBase {
 public:
-    explicit LingWindowBase(const WindowSpec& spec) : spec_(spec), hwnd_(nullptr), windowBrush_(nullptr), dpi_(96) {}
-    virtual ~LingWindowBase() = default;
+    explicit LingWindowBase(const WindowSpec& spec)
+        : spec_(spec),
+          hwnd_(nullptr),
+          windowBrush_(nullptr),
+          dpi_(96),
+          wsSession_(nullptr),
+          wsConnect_(nullptr),
+          wsRequest_(nullptr),
+          wsSocket_(nullptr),
+          socketsStarted_(false),
+          httpListenSocket_(INVALID_SOCKET),
+          httpClientSocket_(INVALID_SOCKET),
+          wsServerListenSocket_(INVALID_SOCKET),
+          wsServerClientSocket_(INVALID_SOCKET) {}
+
+    virtual ~LingWindowBase() {
+        WS_关闭();
+        HTTP_关闭服务();
+        WSS_关闭服务();
+        if (socketsStarted_) {
+            WSACleanup();
+            socketsStarted_ = false;
+        }
+    }
 
     HWND Open(int showCommand, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false) {
         dpi_ = GetSystemDpiValue();
@@ -342,6 +375,18 @@ protected:
     std::vector<RuntimeControl> runtimeControls_;
     HBRUSH windowBrush_;
     UINT dpi_;
+    HINTERNET wsSession_;
+    HINTERNET wsConnect_;
+    HINTERNET wsRequest_;
+    HINTERNET wsSocket_;
+    std::wstring wsLastMessage_;
+    bool socketsStarted_;
+    SOCKET httpListenSocket_;
+    SOCKET httpClientSocket_;
+    SOCKET wsServerListenSocket_;
+    SOCKET wsServerClientSocket_;
+    std::wstring httpLastRequest_;
+    std::wstring wssLastMessage_;
 
     virtual void OnWindowCreated() {}
 
@@ -369,7 +414,340 @@ protected:
     }
 
     void 结束() {
-        if (hwnd_) DestroyWindow(hwnd_);
+        if (hwnd_) PostMessageW(hwnd_, WM_CLOSE, 0, 0);
+    }
+
+    int WS_连接(const wchar_t* url) {
+        WS_关闭();
+        if (!url || !url[0]) {
+            调试输出(L"WebSocket 连接失败：地址为空。");
+            return 0;
+        }
+
+        std::wstring normalizedUrl = url;
+        if (normalizedUrl.rfind(L"ws://", 0) == 0) {
+            normalizedUrl.replace(0, 5, L"http://");
+        } else if (normalizedUrl.rfind(L"wss://", 0) == 0) {
+            normalizedUrl.replace(0, 6, L"https://");
+        }
+
+        URL_COMPONENTSW parts = {};
+        wchar_t host[256] = {};
+        wchar_t path[2048] = {};
+        parts.dwStructSize = sizeof(parts);
+        parts.lpszHostName = host;
+        parts.dwHostNameLength = static_cast<DWORD>(_countof(host));
+        parts.lpszUrlPath = path;
+        parts.dwUrlPathLength = static_cast<DWORD>(_countof(path));
+
+        if (!WinHttpCrackUrl(normalizedUrl.c_str(), 0, 0, &parts)) {
+            调试输出(L"WebSocket 连接失败：无法解析地址。");
+            return 0;
+        }
+
+        bool secure = parts.nScheme == INTERNET_SCHEME_HTTPS;
+        if (!(parts.nScheme == INTERNET_SCHEME_HTTP || parts.nScheme == INTERNET_SCHEME_HTTPS)) {
+            调试输出(L"WebSocket 连接失败：地址必须使用 ws:// 或 wss://。");
+            return 0;
+        }
+
+        wsSession_ = WinHttpOpen(L"LingBuilder WebSocket/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        if (!wsSession_) return WS_报告网络错误(L"WebSocket 连接失败：无法创建 WinHTTP 会话。");
+
+        wsConnect_ = WinHttpConnect(wsSession_, host, parts.nPort, 0);
+        if (!wsConnect_) return WS_报告网络错误(L"WebSocket 连接失败：无法连接主机。");
+
+        const wchar_t* requestPath = path[0] ? path : L"/";
+        DWORD flags = secure ? WINHTTP_FLAG_SECURE : 0;
+        wsRequest_ = WinHttpOpenRequest(wsConnect_, L"GET", requestPath, nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
+        if (!wsRequest_) return WS_报告网络错误(L"WebSocket 连接失败：无法创建握手请求。");
+
+        if (!WinHttpSetOption(wsRequest_, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0)) {
+            return WS_报告网络错误(L"WebSocket 连接失败：无法启用升级握手。");
+        }
+        if (!WinHttpSendRequest(wsRequest_, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
+            return WS_报告网络错误(L"WebSocket 连接失败：发送握手请求失败。");
+        }
+        if (!WinHttpReceiveResponse(wsRequest_, nullptr)) {
+            return WS_报告网络错误(L"WebSocket 连接失败：服务端握手响应失败。");
+        }
+
+        wsSocket_ = WinHttpWebSocketCompleteUpgrade(wsRequest_, 0);
+        WinHttpCloseHandle(wsRequest_);
+        wsRequest_ = nullptr;
+        if (!wsSocket_) return WS_报告网络错误(L"WebSocket 连接失败：协议升级失败。");
+
+        调试输出(L"WebSocket 已连接。");
+        return 1;
+    }
+
+    int WS_发送文本(const wchar_t* text) {
+        if (!wsSocket_) {
+            调试输出(L"WebSocket 发送失败：尚未连接。");
+            return 0;
+        }
+        std::string utf8 = WideToUtf8(text ? text : L"");
+        DWORD result = WinHttpWebSocketSend(wsSocket_, WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE, utf8.empty() ? nullptr : utf8.data(), static_cast<DWORD>(utf8.size()));
+        if (result != ERROR_SUCCESS) {
+            SetLastError(result);
+            return WS_报告网络错误(L"WebSocket 发送失败。");
+        }
+        return 1;
+    }
+
+    const wchar_t* WS_接收文本() {
+        wsLastMessage_.clear();
+        if (!wsSocket_) {
+            调试输出(L"WebSocket 接收失败：尚未连接。");
+            return wsLastMessage_.c_str();
+        }
+
+        std::string bytes;
+        BYTE buffer[4096];
+        WINHTTP_WEB_SOCKET_BUFFER_TYPE bufferType = WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE;
+        DWORD bytesRead = 0;
+
+        while (true) {
+            DWORD result = WinHttpWebSocketReceive(wsSocket_, buffer, static_cast<DWORD>(sizeof(buffer)), &bytesRead, &bufferType);
+            if (result != ERROR_SUCCESS) {
+                SetLastError(result);
+                WS_报告网络错误(L"WebSocket 接收失败。");
+                return wsLastMessage_.c_str();
+            }
+
+            if (bufferType == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) {
+                调试输出(L"WebSocket 已收到关闭帧。");
+                WS_关闭();
+                return wsLastMessage_.c_str();
+            }
+
+            if (bytesRead > 0) bytes.append(reinterpret_cast<const char*>(buffer), bytesRead);
+            if (bufferType == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE || bufferType == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE) break;
+        }
+
+        wsLastMessage_ = Utf8ToWide(bytes);
+        return wsLastMessage_.c_str();
+    }
+
+    int WS_接收到调试输出() {
+        const wchar_t* text = WS_接收文本();
+        if (!text || !text[0]) return 0;
+        调试输出(text);
+        return 1;
+    }
+
+    void WS_关闭() {
+        if (wsSocket_) {
+            WinHttpWebSocketClose(wsSocket_, WINHTTP_WEB_SOCKET_SUCCESS_CLOSE_STATUS, nullptr, 0);
+            WinHttpCloseHandle(wsSocket_);
+            wsSocket_ = nullptr;
+        }
+        if (wsRequest_) {
+            WinHttpCloseHandle(wsRequest_);
+            wsRequest_ = nullptr;
+        }
+        if (wsConnect_) {
+            WinHttpCloseHandle(wsConnect_);
+            wsConnect_ = nullptr;
+        }
+        if (wsSession_) {
+            WinHttpCloseHandle(wsSession_);
+            wsSession_ = nullptr;
+        }
+        wsLastMessage_.clear();
+    }
+
+    int HTTP_启动服务(int port) {
+        HTTP_关闭服务();
+        if (!EnsureSocketsStarted()) return 0;
+        httpListenSocket_ = CreateListenSocket(port, L"HTTP 服务端启动失败");
+        if (httpListenSocket_ == INVALID_SOCKET) return 0;
+        std::wstring message = L"HTTP 服务端已启动，端口：";
+        message += std::to_wstring(port);
+        调试输出(message.c_str());
+        return 1;
+    }
+
+    const wchar_t* HTTP_等待请求() {
+        httpLastRequest_.clear();
+        if (httpListenSocket_ == INVALID_SOCKET) {
+            调试输出(L"HTTP 等待请求失败：服务尚未启动。");
+            return httpLastRequest_.c_str();
+        }
+        CloseSocket(httpClientSocket_);
+        httpClientSocket_ = accept(httpListenSocket_, nullptr, nullptr);
+        if (httpClientSocket_ == INVALID_SOCKET) {
+            ReportSocketError(L"HTTP 等待请求失败。");
+            return httpLastRequest_.c_str();
+        }
+        httpLastRequest_ = Utf8ToWide(ReceiveHttpHeaders(httpClientSocket_));
+        return httpLastRequest_.c_str();
+    }
+
+    int HTTP_等待请求到调试输出() {
+        const wchar_t* request = HTTP_等待请求();
+        if (!request || !request[0]) return 0;
+        调试输出(request);
+        return 1;
+    }
+
+    int HTTP_回复文本(const wchar_t* text) {
+        if (httpClientSocket_ == INVALID_SOCKET) {
+            调试输出(L"HTTP 回复失败：当前没有已接入的请求。");
+            return 0;
+        }
+        std::string body = WideToUtf8(text ? text : L"");
+        std::ostringstream response;
+        response << "HTTP/1.1 200 OK\\r\\n"
+                 << "Content-Type: text/plain; charset=utf-8\\r\\n"
+                 << "Content-Length: " << body.size() << "\\r\\n"
+                 << "Connection: close\\r\\n\\r\\n"
+                 << body;
+        const std::string payload = response.str();
+        int ok = SendAll(httpClientSocket_, payload.data(), payload.size());
+        CloseSocket(httpClientSocket_);
+        return ok;
+    }
+
+    void HTTP_关闭服务() {
+        CloseSocket(httpClientSocket_);
+        CloseSocket(httpListenSocket_);
+        httpLastRequest_.clear();
+    }
+
+    int WSS_启动服务(int port) {
+        WSS_关闭服务();
+        if (!EnsureSocketsStarted()) return 0;
+        wsServerListenSocket_ = CreateListenSocket(port, L"WebSocket 服务端启动失败");
+        if (wsServerListenSocket_ == INVALID_SOCKET) return 0;
+        std::wstring message = L"WebSocket 服务端已启动，端口：";
+        message += std::to_wstring(port);
+        调试输出(message.c_str());
+        return 1;
+    }
+
+    int WSS_等待连接() {
+        if (wsServerListenSocket_ == INVALID_SOCKET) {
+            调试输出(L"WebSocket 服务端等待连接失败：服务尚未启动。");
+            return 0;
+        }
+        CloseSocket(wsServerClientSocket_);
+        wsServerClientSocket_ = accept(wsServerListenSocket_, nullptr, nullptr);
+        if (wsServerClientSocket_ == INVALID_SOCKET) {
+            ReportSocketError(L"WebSocket 服务端接入失败。");
+            return 0;
+        }
+
+        std::string request = ReceiveHttpHeaders(wsServerClientSocket_);
+        std::string key = ExtractHttpHeader(request, "sec-websocket-key");
+        if (key.empty()) {
+            调试输出(L"WebSocket 服务端握手失败：缺少 Sec-WebSocket-Key。");
+            CloseSocket(wsServerClientSocket_);
+            return 0;
+        }
+
+        std::string acceptKey = MakeWebSocketAcceptKey(key);
+        if (acceptKey.empty()) {
+            调试输出(L"WebSocket 服务端握手失败：无法生成握手密钥。");
+            CloseSocket(wsServerClientSocket_);
+            return 0;
+        }
+
+        std::string response =
+            "HTTP/1.1 101 Switching Protocols\\r\\n"
+            "Upgrade: websocket\\r\\n"
+            "Connection: Upgrade\\r\\n"
+            "Sec-WebSocket-Accept: " + acceptKey + "\\r\\n\\r\\n";
+        if (!SendAll(wsServerClientSocket_, response.data(), response.size())) {
+            CloseSocket(wsServerClientSocket_);
+            return 0;
+        }
+        调试输出(L"WebSocket 服务端已完成握手。");
+        return 1;
+    }
+
+    const wchar_t* WSS_接收文本() {
+        wssLastMessage_.clear();
+        if (wsServerClientSocket_ == INVALID_SOCKET) {
+            调试输出(L"WebSocket 服务端接收失败：当前没有客户端连接。");
+            return wssLastMessage_.c_str();
+        }
+
+        unsigned char header[2] = {};
+        if (!RecvExact(wsServerClientSocket_, reinterpret_cast<char*>(header), 2)) {
+            ReportSocketError(L"WebSocket 服务端读取帧失败。");
+            return wssLastMessage_.c_str();
+        }
+
+        const bool masked = (header[1] & 0x80) != 0;
+        uint64_t payloadLength = header[1] & 0x7f;
+        if (payloadLength == 126) {
+            unsigned char ext[2] = {};
+            if (!RecvExact(wsServerClientSocket_, reinterpret_cast<char*>(ext), 2)) return wssLastMessage_.c_str();
+            payloadLength = (static_cast<uint64_t>(ext[0]) << 8) | ext[1];
+        } else if (payloadLength == 127) {
+            unsigned char ext[8] = {};
+            if (!RecvExact(wsServerClientSocket_, reinterpret_cast<char*>(ext), 8)) return wssLastMessage_.c_str();
+            payloadLength = 0;
+            for (int i = 0; i < 8; ++i) payloadLength = (payloadLength << 8) | ext[i];
+        }
+        if (payloadLength > 1024 * 1024) {
+            调试输出(L"WebSocket 服务端接收失败：消息超过 1MB 限制。");
+            return wssLastMessage_.c_str();
+        }
+
+        unsigned char mask[4] = {};
+        if (masked && !RecvExact(wsServerClientSocket_, reinterpret_cast<char*>(mask), 4)) return wssLastMessage_.c_str();
+        std::string payload(static_cast<size_t>(payloadLength), '\\0');
+        if (payloadLength > 0 && !RecvExact(wsServerClientSocket_, payload.data(), static_cast<int>(payload.size()))) return wssLastMessage_.c_str();
+        if (masked) {
+            for (size_t i = 0; i < payload.size(); ++i) payload[i] = static_cast<char>(payload[i] ^ mask[i % 4]);
+        }
+
+        const unsigned char opcode = header[0] & 0x0f;
+        if (opcode == 0x8) {
+            调试输出(L"WebSocket 服务端已收到关闭帧。");
+            CloseSocket(wsServerClientSocket_);
+            return wssLastMessage_.c_str();
+        }
+        wssLastMessage_ = Utf8ToWide(payload);
+        return wssLastMessage_.c_str();
+    }
+
+    int WSS_接收到调试输出() {
+        const wchar_t* text = WSS_接收文本();
+        if (!text || !text[0]) return 0;
+        调试输出(text);
+        return 1;
+    }
+
+    int WSS_发送文本(const wchar_t* text) {
+        if (wsServerClientSocket_ == INVALID_SOCKET) {
+            调试输出(L"WebSocket 服务端发送失败：当前没有客户端连接。");
+            return 0;
+        }
+        std::string payload = WideToUtf8(text ? text : L"");
+        std::string frame;
+        frame.push_back(static_cast<char>(0x81));
+        if (payload.size() <= 125) {
+            frame.push_back(static_cast<char>(payload.size()));
+        } else if (payload.size() <= 65535) {
+            frame.push_back(static_cast<char>(126));
+            frame.push_back(static_cast<char>((payload.size() >> 8) & 0xff));
+            frame.push_back(static_cast<char>(payload.size() & 0xff));
+        } else {
+            frame.push_back(static_cast<char>(127));
+            uint64_t length = static_cast<uint64_t>(payload.size());
+            for (int i = 7; i >= 0; --i) frame.push_back(static_cast<char>((length >> (i * 8)) & 0xff));
+        }
+        frame += payload;
+        return SendAll(wsServerClientSocket_, frame.data(), frame.size());
+    }
+
+    void WSS_关闭服务() {
+        CloseSocket(wsServerClientSocket_);
+        CloseSocket(wsServerListenSocket_);
+        wssLastMessage_.clear();
     }
 
     HWND 窗口_打开(const wchar_t* windowName, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false) {
@@ -395,6 +773,197 @@ protected:
     }
 
 private:
+    bool EnsureSocketsStarted() {
+        if (socketsStarted_) return true;
+        WSADATA data = {};
+        int result = WSAStartup(MAKEWORD(2, 2), &data);
+        if (result != 0) {
+            std::wstring message = L"网络服务初始化失败，错误码：";
+            message += std::to_wstring(result);
+            调试输出(message.c_str());
+            return false;
+        }
+        socketsStarted_ = true;
+        return true;
+    }
+
+    SOCKET CreateListenSocket(int port, const wchar_t* errorPrefix) {
+        if (port <= 0 || port > 65535) {
+            调试输出(L"服务端启动失败：端口必须在 1 到 65535 之间。");
+            return INVALID_SOCKET;
+        }
+
+        SOCKET server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        if (server == INVALID_SOCKET) {
+            ReportSocketError(errorPrefix);
+            return INVALID_SOCKET;
+        }
+
+        u_long reuse = 1;
+        setsockopt(server, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&reuse), sizeof(reuse));
+
+        sockaddr_in address = {};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        address.sin_port = htons(static_cast<u_short>(port));
+        if (bind(server, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR) {
+            ReportSocketError(errorPrefix);
+            closesocket(server);
+            return INVALID_SOCKET;
+        }
+        if (listen(server, SOMAXCONN) == SOCKET_ERROR) {
+            ReportSocketError(errorPrefix);
+            closesocket(server);
+            return INVALID_SOCKET;
+        }
+        return server;
+    }
+
+    void CloseSocket(SOCKET& value) {
+        if (value != INVALID_SOCKET) {
+            shutdown(value, SD_BOTH);
+            closesocket(value);
+            value = INVALID_SOCKET;
+        }
+    }
+
+    int ReportSocketError(const wchar_t* prefix) {
+        int error = WSAGetLastError();
+        std::wstring message = prefix ? prefix : L"网络服务操作失败。";
+        message += L" 错误码：";
+        message += std::to_wstring(error);
+        调试输出(message.c_str());
+        return 0;
+    }
+
+    int SendAll(SOCKET socketValue, const char* data, size_t length) {
+        size_t sentTotal = 0;
+        while (sentTotal < length) {
+            int sent = send(socketValue, data + sentTotal, static_cast<int>(length - sentTotal), 0);
+            if (sent == SOCKET_ERROR || sent == 0) return ReportSocketError(L"网络服务发送失败。");
+            sentTotal += static_cast<size_t>(sent);
+        }
+        return 1;
+    }
+
+    bool RecvExact(SOCKET socketValue, char* data, int length) {
+        int receivedTotal = 0;
+        while (receivedTotal < length) {
+            int received = recv(socketValue, data + receivedTotal, length - receivedTotal, 0);
+            if (received <= 0) {
+                ReportSocketError(L"网络服务接收失败。");
+                return false;
+            }
+            receivedTotal += received;
+        }
+        return true;
+    }
+
+    std::string ReceiveHttpHeaders(SOCKET socketValue) {
+        std::string request;
+        char buffer[1024];
+        while (request.find("\\r\\n\\r\\n") == std::string::npos && request.size() < 64 * 1024) {
+            int received = recv(socketValue, buffer, static_cast<int>(sizeof(buffer)), 0);
+            if (received <= 0) break;
+            request.append(buffer, static_cast<size_t>(received));
+        }
+        return request;
+    }
+
+    static std::string ToLowerAscii(std::string value) {
+        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        return value;
+    }
+
+    static void TrimAscii(std::string& value) {
+        const char* whitespace = " \\t\\r\\n";
+        size_t first = value.find_first_not_of(whitespace);
+        size_t last = value.find_last_not_of(whitespace);
+        value = first == std::string::npos ? std::string() : value.substr(first, last - first + 1);
+    }
+
+    std::string ExtractHttpHeader(const std::string& request, const std::string& headerName) {
+        std::istringstream stream(request);
+        std::string line;
+        std::string wanted = ToLowerAscii(headerName);
+        while (std::getline(stream, line)) {
+            size_t colon = line.find(':');
+            if (colon == std::string::npos) continue;
+            std::string name = ToLowerAscii(line.substr(0, colon));
+            TrimAscii(name);
+            if (name != wanted) continue;
+            std::string value = line.substr(colon + 1);
+            TrimAscii(value);
+            return value;
+        }
+        return std::string();
+    }
+
+    std::string MakeWebSocketAcceptKey(const std::string& clientKey) {
+        const std::string seed = clientKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+        HCRYPTPROV provider = 0;
+        HCRYPTHASH hash = 0;
+        BYTE digest[20] = {};
+        DWORD digestSize = sizeof(digest);
+        if (!CryptAcquireContextW(&provider, nullptr, nullptr, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) return std::string();
+        if (!CryptCreateHash(provider, CALG_SHA1, 0, 0, &hash)) {
+            CryptReleaseContext(provider, 0);
+            return std::string();
+        }
+        BOOL ok = CryptHashData(hash, reinterpret_cast<const BYTE*>(seed.data()), static_cast<DWORD>(seed.size()), 0)
+            && CryptGetHashParam(hash, HP_HASHVAL, digest, &digestSize, 0);
+        CryptDestroyHash(hash);
+        CryptReleaseContext(provider, 0);
+        return ok ? Base64Encode(digest, digestSize) : std::string();
+    }
+
+    static std::string Base64Encode(const BYTE* data, DWORD length) {
+        static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        std::string out;
+        for (DWORD i = 0; i < length; i += 3) {
+            DWORD remaining = length - i;
+            BYTE a = data[i];
+            BYTE b = remaining > 1 ? data[i + 1] : 0;
+            BYTE c = remaining > 2 ? data[i + 2] : 0;
+            out.push_back(table[(a >> 2) & 0x3f]);
+            out.push_back(table[((a & 0x03) << 4) | ((b >> 4) & 0x0f)]);
+            out.push_back(remaining > 1 ? table[((b & 0x0f) << 2) | ((c >> 6) & 0x03)] : '=');
+            out.push_back(remaining > 2 ? table[c & 0x3f] : '=');
+        }
+        return out;
+    }
+
+    int WS_报告网络错误(const wchar_t* prefix) {
+        DWORD error = GetLastError();
+        std::wstring message = prefix ? prefix : L"WebSocket 操作失败。";
+        message += L" 错误码：";
+        message += std::to_wstring(error);
+        调试输出(message.c_str());
+        WS_关闭();
+        return 0;
+    }
+
+    std::string WideToUtf8(const wchar_t* text) {
+        if (!text || !text[0]) return std::string();
+        int needed = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
+        if (needed <= 1) return std::string();
+        std::string bytes(static_cast<size_t>(needed), '\\0');
+        WideCharToMultiByte(CP_UTF8, 0, text, -1, bytes.data(), needed, nullptr, nullptr);
+        bytes.pop_back();
+        return bytes;
+    }
+
+    std::wstring Utf8ToWide(const std::string& bytes) {
+        if (bytes.empty()) return std::wstring();
+        int needed = MultiByteToWideChar(CP_UTF8, 0, bytes.data(), static_cast<int>(bytes.size()), nullptr, 0);
+        if (needed <= 0) return std::wstring();
+        std::wstring text(static_cast<size_t>(needed), L'\\0');
+        MultiByteToWideChar(CP_UTF8, 0, bytes.data(), static_cast<int>(bytes.size()), text.data(), needed);
+        return text;
+    }
+
     HMENU CreateMenuForWindow() {
         HMENU root = CreateMenu();
         HMENU windowMenu = CreatePopupMenu();
@@ -612,7 +1181,8 @@ static HWND OpenGeneratedWindow(int windowIndex, int showCommand, const wchar_t*
     if (!window) return nullptr;
     HWND hwnd = window->Open(showCommand, placement, x, y, hasCustomPosition);
     if (!hwnd) {
-        delete window;
+        // If CreateWindowEx reached WM_NCCREATE, WM_NCDESTROY owns deletion.
+        // Avoid double-free when user code closes the window during creation.
         return nullptr;
     }
     return hwnd;

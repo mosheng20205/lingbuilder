@@ -96,5 +96,350 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         }
       ]
     }
+  },
+  {
+    schemaVersion: 2,
+    id: 'lingbuilder.websocket.client',
+    name: 'WebSocket 客户端模块',
+    version: '1.0.0',
+    category: '网络',
+    description: '提供基于 Windows WinHTTP 的 WebSocket 客户端连接、发送、接收和关闭能力。',
+    author: 'LingBuilder',
+    tags: ['内置', '网络', 'WebSocket', '客户端'],
+    contributes: {
+      commands: [
+        {
+          name: 'WS_连接',
+          signature: 'WS_连接(地址)',
+          description: '连接到 ws:// 或 wss:// WebSocket 服务端，成功返回 1，失败返回 0 并输出中文调试信息。',
+          insertText: 'WS_连接("wss://echo.websocket.events")',
+          returnType: '整数型'
+        },
+        {
+          name: 'WS_发送文本',
+          signature: 'WS_发送文本(内容)',
+          description: '向当前 WebSocket 连接发送一条文本消息，成功返回 1。',
+          insertText: 'WS_发送文本("$1")',
+          returnType: '整数型'
+        },
+        {
+          name: 'WS_接收到调试输出',
+          signature: 'WS_接收到调试输出()',
+          description: '从当前 WebSocket 连接接收一条文本消息，并写入调试输出。',
+          insertText: 'WS_接收到调试输出()',
+          returnType: '整数型'
+        },
+        {
+          name: 'WS_接收文本',
+          signature: 'WS_接收文本()',
+          description: '接收一条文本消息并返回最近接收内容；可在原生 C++ 语句中读取返回值。',
+          insertText: 'WS_接收文本()',
+          returnType: '文本型'
+        },
+        {
+          name: 'WS_关闭',
+          signature: 'WS_关闭()',
+          description: '关闭当前 WebSocket 连接并释放网络句柄。',
+          insertText: 'WS_关闭()',
+          returnType: '空'
+        }
+      ],
+      types: [
+        { name: 'WebSocket连接', description: '当前窗口持有的一条 WebSocket 客户端连接。', cppType: 'HINTERNET' }
+      ],
+      snippets: [
+        {
+          label: 'WebSocket 回显测试',
+          insertText: 'WS_连接("wss://echo.websocket.events")\nWS_发送文本("来自 LingBuilder 的消息")\nWS_接收到调试输出()\nWS_关闭()',
+          description: '连接回显服务、发送文本、接收一条回复并关闭连接。'
+        }
+      ]
+    },
+    targets: [
+      {
+        id: 'windows-msvc-win32',
+        platform: 'windows',
+        arch: 'win32',
+        toolchain: 'msvc',
+        libs: ['winhttp.lib'],
+        defines: ['LINGBUILDER_WEBSOCKET_CLIENT_MODULE']
+      }
+    ],
+    bindings: {
+      commands: [
+        {
+          command: 'WS_连接',
+          runtimeName: 'WS_连接',
+          parameters: [{ name: '地址', type: 'wideString' }],
+          returnType: 'int',
+          encoding: 'wide',
+          example: 'WS_连接("wss://echo.websocket.events")'
+        },
+        {
+          command: 'WS_发送文本',
+          runtimeName: 'WS_发送文本',
+          parameters: [{ name: '内容', type: 'wideString' }],
+          returnType: 'int',
+          encoding: 'wide',
+          example: 'WS_发送文本("你好")'
+        },
+        {
+          command: 'WS_接收到调试输出',
+          runtimeName: 'WS_接收到调试输出',
+          parameters: [],
+          returnType: 'int',
+          example: 'WS_接收到调试输出()'
+        },
+        {
+          command: 'WS_接收文本',
+          runtimeName: 'WS_接收文本',
+          parameters: [],
+          returnType: 'wideString',
+          encoding: 'wide',
+          example: 'WS_接收文本()'
+        },
+        {
+          command: 'WS_关闭',
+          runtimeName: 'WS_关闭',
+          parameters: [],
+          returnType: 'void',
+          example: 'WS_关闭()'
+        }
+      ]
+    }
+  },
+  {
+    schemaVersion: 2,
+    id: 'lingbuilder.http.server',
+    name: 'HTTP 服务端模块',
+    version: '1.0.0',
+    category: '网络',
+    description: '提供基于 Windows Winsock 的本地 HTTP 服务端启动、等待请求、返回文本和关闭能力。',
+    author: 'LingBuilder',
+    tags: ['内置', '网络', 'HTTP', '服务端'],
+    contributes: {
+      commands: [
+        {
+          name: 'HTTP_启动服务',
+          signature: 'HTTP_启动服务(端口)',
+          description: '在 127.0.0.1 指定端口启动单连接 HTTP 服务端，成功返回 1。',
+          insertText: 'HTTP_启动服务(8080)',
+          returnType: '整数型'
+        },
+        {
+          name: 'HTTP_等待请求',
+          signature: 'HTTP_等待请求()',
+          description: '等待并读取一个 HTTP 请求头，返回最近请求文本。',
+          insertText: 'HTTP_等待请求()',
+          returnType: '文本型'
+        },
+        {
+          name: 'HTTP_等待请求到调试输出',
+          signature: 'HTTP_等待请求到调试输出()',
+          description: '等待一个 HTTP 请求并把请求头写入调试输出。',
+          insertText: 'HTTP_等待请求到调试输出()',
+          returnType: '整数型'
+        },
+        {
+          name: 'HTTP_回复文本',
+          signature: 'HTTP_回复文本(内容)',
+          description: '向当前 HTTP 请求返回 UTF-8 文本响应，并关闭该请求连接。',
+          insertText: 'HTTP_回复文本("$1")',
+          returnType: '整数型'
+        },
+        {
+          name: 'HTTP_关闭服务',
+          signature: 'HTTP_关闭服务()',
+          description: '关闭当前 HTTP 服务端监听和请求连接。',
+          insertText: 'HTTP_关闭服务()',
+          returnType: '空'
+        }
+      ],
+      types: [
+        { name: 'HTTP服务端', description: '当前窗口持有的本地 HTTP 服务端监听。', cppType: 'SOCKET' }
+      ],
+      snippets: [
+        {
+          label: 'HTTP 本地文本服务',
+          insertText: 'HTTP_启动服务(8080)\nHTTP_等待请求到调试输出()\nHTTP_回复文本("来自 LingBuilder 的 HTTP 响应")\nHTTP_关闭服务()',
+          description: '启动本地 HTTP 服务，等待一次请求并返回中文文本。'
+        }
+      ]
+    },
+    targets: [
+      {
+        id: 'windows-msvc-win32',
+        platform: 'windows',
+        arch: 'win32',
+        toolchain: 'msvc',
+        libs: ['ws2_32.lib'],
+        defines: ['LINGBUILDER_HTTP_SERVER_MODULE']
+      }
+    ],
+    bindings: {
+      commands: [
+        {
+          command: 'HTTP_启动服务',
+          runtimeName: 'HTTP_启动服务',
+          parameters: [{ name: '端口', type: 'int' }],
+          returnType: 'int',
+          example: 'HTTP_启动服务(8080)'
+        },
+        {
+          command: 'HTTP_等待请求',
+          runtimeName: 'HTTP_等待请求',
+          parameters: [],
+          returnType: 'wideString',
+          encoding: 'wide',
+          example: 'HTTP_等待请求()'
+        },
+        {
+          command: 'HTTP_等待请求到调试输出',
+          runtimeName: 'HTTP_等待请求到调试输出',
+          parameters: [],
+          returnType: 'int',
+          example: 'HTTP_等待请求到调试输出()'
+        },
+        {
+          command: 'HTTP_回复文本',
+          runtimeName: 'HTTP_回复文本',
+          parameters: [{ name: '内容', type: 'wideString' }],
+          returnType: 'int',
+          encoding: 'wide',
+          example: 'HTTP_回复文本("你好")'
+        },
+        {
+          command: 'HTTP_关闭服务',
+          runtimeName: 'HTTP_关闭服务',
+          parameters: [],
+          returnType: 'void',
+          example: 'HTTP_关闭服务()'
+        }
+      ]
+    }
+  },
+  {
+    schemaVersion: 2,
+    id: 'lingbuilder.websocket.server',
+    name: 'WebSocket 服务端模块',
+    version: '1.0.0',
+    category: '网络',
+    description: '提供基于 Windows Winsock 的本地 WebSocket 服务端监听、握手、收发文本和关闭能力。',
+    author: 'LingBuilder',
+    tags: ['内置', '网络', 'WebSocket', '服务端'],
+    contributes: {
+      commands: [
+        {
+          name: 'WSS_启动服务',
+          signature: 'WSS_启动服务(端口)',
+          description: '在 127.0.0.1 指定端口启动单连接 WebSocket 服务端，成功返回 1。',
+          insertText: 'WSS_启动服务(18080)',
+          returnType: '整数型'
+        },
+        {
+          name: 'WSS_等待连接',
+          signature: 'WSS_等待连接()',
+          description: '等待一个 WebSocket 客户端连接并完成标准握手。',
+          insertText: 'WSS_等待连接()',
+          returnType: '整数型'
+        },
+        {
+          name: 'WSS_接收文本',
+          signature: 'WSS_接收文本()',
+          description: '从当前 WebSocket 客户端接收一条 UTF-8 文本消息。',
+          insertText: 'WSS_接收文本()',
+          returnType: '文本型'
+        },
+        {
+          name: 'WSS_接收到调试输出',
+          signature: 'WSS_接收到调试输出()',
+          description: '接收一条 WebSocket 文本消息并写入调试输出。',
+          insertText: 'WSS_接收到调试输出()',
+          returnType: '整数型'
+        },
+        {
+          name: 'WSS_发送文本',
+          signature: 'WSS_发送文本(内容)',
+          description: '向当前 WebSocket 客户端发送一条文本消息。',
+          insertText: 'WSS_发送文本("$1")',
+          returnType: '整数型'
+        },
+        {
+          name: 'WSS_关闭服务',
+          signature: 'WSS_关闭服务()',
+          description: '关闭当前 WebSocket 服务端监听和客户端连接。',
+          insertText: 'WSS_关闭服务()',
+          returnType: '空'
+        }
+      ],
+      types: [
+        { name: 'WebSocket服务端', description: '当前窗口持有的本地 WebSocket 服务端监听。', cppType: 'SOCKET' }
+      ],
+      snippets: [
+        {
+          label: 'WebSocket 本地回显服务',
+          insertText: 'WSS_启动服务(18080)\nWSS_等待连接()\nWSS_接收到调试输出()\nWSS_发送文本("来自 LingBuilder 的 WebSocket 响应")\nWSS_关闭服务()',
+          description: '启动本地 WebSocket 服务，等待一个客户端连接并回复文本。'
+        }
+      ]
+    },
+    targets: [
+      {
+        id: 'windows-msvc-win32',
+        platform: 'windows',
+        arch: 'win32',
+        toolchain: 'msvc',
+        libs: ['ws2_32.lib', 'advapi32.lib'],
+        defines: ['LINGBUILDER_WEBSOCKET_SERVER_MODULE']
+      }
+    ],
+    bindings: {
+      commands: [
+        {
+          command: 'WSS_启动服务',
+          runtimeName: 'WSS_启动服务',
+          parameters: [{ name: '端口', type: 'int' }],
+          returnType: 'int',
+          example: 'WSS_启动服务(18080)'
+        },
+        {
+          command: 'WSS_等待连接',
+          runtimeName: 'WSS_等待连接',
+          parameters: [],
+          returnType: 'int',
+          example: 'WSS_等待连接()'
+        },
+        {
+          command: 'WSS_接收文本',
+          runtimeName: 'WSS_接收文本',
+          parameters: [],
+          returnType: 'wideString',
+          encoding: 'wide',
+          example: 'WSS_接收文本()'
+        },
+        {
+          command: 'WSS_接收到调试输出',
+          runtimeName: 'WSS_接收到调试输出',
+          parameters: [],
+          returnType: 'int',
+          example: 'WSS_接收到调试输出()'
+        },
+        {
+          command: 'WSS_发送文本',
+          runtimeName: 'WSS_发送文本',
+          parameters: [{ name: '内容', type: 'wideString' }],
+          returnType: 'int',
+          encoding: 'wide',
+          example: 'WSS_发送文本("你好")'
+        },
+        {
+          command: 'WSS_关闭服务',
+          runtimeName: 'WSS_关闭服务',
+          parameters: [],
+          returnType: 'void',
+          example: 'WSS_关闭服务()'
+        }
+      ]
+    }
   }
 ];

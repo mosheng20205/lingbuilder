@@ -1152,6 +1152,25 @@ test('generateLingCppNativeWin32Project does not translate block end into exit c
   assert.equal(mainCpp.includes('        结束();'), false);
 });
 
+test('generateLingCppNativeWin32Project closes windows asynchronously to avoid creation-time double free', () => {
+  const source = `包 示例
+类 游戏主窗体 : 窗口
+公开
+  事件 _游戏主窗体_创建完毕()
+    结束()
+  结束
+结束类`;
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(mainCpp.includes('void 结束() {\n        if (hwnd_) PostMessageW(hwnd_, WM_CLOSE, 0, 0);\n    }'));
+  assert.equal(mainCpp.includes('void 结束() {\n        if (hwnd_) DestroyWindow(hwnd_);\n    }'), false);
+  assert.ok(mainCpp.includes('Avoid double-free when user code closes the window during creation.'));
+  assert.equal(mainCpp.includes('if (!hwnd) {\n        delete window;'), false);
+});
+
 test('generateLingCppNativeWin32Project keeps richer control types and unsupported syntax deterministic', () => {
   const parsed = parseLingCpp(advancedSource);
   assert.equal(parsed.program.classes[0]?.members.length, 4);

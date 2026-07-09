@@ -17,6 +17,8 @@
 - 已完成：修复 `.lcpp` 解析器把事件/方法块结尾 `结束` 误翻译为运行时 `结束();` 的问题；显式退出命令应写作 `结束()`。
 - 已完成：模块生态升级到 schemaVersion 2，C++ 依赖改为 `targets[]`，中文命令到 C++ 的生成改为 `bindings.commands[]`，并新增模块 SDK/CLI、模块开发者中心 API、根目录 `模块开发手册.md`。
 - 已完成：`new_emoji` 模块生成脚本升级为 v2 manifest，包含 Win32/x64 targets、`NE_` 桥接命令 binding、底层 API 文档和重新打包安装入口。
+- 已完成：新增内置 `WebSocket 客户端模块`（`lingbuilder.websocket.client`），提供 `WS_连接`、`WS_发送文本`、`WS_接收到调试输出`、`WS_接收文本`、`WS_关闭`，Win32 生成器内置 WinHTTP WebSocket 运行时和 `winhttp.lib` 链接。
+- 已完成：新增内置 `HTTP 服务端模块`（`lingbuilder.http.server`）和 `WebSocket 服务端模块`（`lingbuilder.websocket.server`），提供本地 `127.0.0.1` 单连接同步服务端命令；Win32 生成器内置 Winsock HTTP/WebSocket 服务端运行时，并链接 `ws2_32.lib` / `advapi32.lib`。
 - 后续建议：继续增强模块 v2 跨平台 target 的真实构建能力，包括 CMake、Linux/macOS、x64 F5 选择、签名校验和远程市场上传审核服务。
 - 后续建议：继续把 AI 编辑扩展到语义级 range 规划、跨模块依赖分析和更细粒度的审查提示。
 - 后续建议：AI Bridge 的 `build.run` 已复用受控生成、编译和运行链路，但仍未开放任意 shell；后续应接入正式 `TaskService`，提供结构化构建、问题面板跳转和运行日志流。

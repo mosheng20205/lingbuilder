@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { getLingCppCompletions, getLingCppSemanticDiagnostics } from '../src/services/lingCpp/languageService';
+import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import { validateModuleManifest } from '../src/services/modules/manifest';
 import {
   describeLingCppModuleContextForAi,
@@ -232,6 +233,128 @@ test('new_emoji module commands feed completion and disabled-module diagnostics'
   assert.ok(diagnostics.some(item => item.id.includes('lingcpp-module-disabled-lingbuilder.new_emoji.ui')));
 });
 
+test('built-in WebSocket client module contributes commands and deterministic C++ bindings', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.websocket.client');
+  assert.ok(manifest);
+  assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
+
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.websocket.client',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+
+  const completions = getLingCppCompletions(
+    { source: '', line: 1, column: 1 },
+    { enabledModules: [module], availableModules: [module] }
+  );
+
+  assert.ok(completions.some(item => item.label === 'WS_连接'));
+  assert.ok(completions.some(item => item.label === 'WebSocket 回显测试'));
+
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'main-window',
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        WS_连接("wss://echo.websocket.events")',
+      '        WS_发送文本("你好")',
+      '        WS_接收到调试输出()',
+      '        WS_关闭()',
+      '结束类'
+    ].join('\n'),
+    enabledModules: [module]
+  });
+
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const moduleReport = generated.files.find(file => file.relativePath === 'module-dependencies.txt')?.content || '';
+  assert.ok(mainCpp.includes('#include <winhttp.h>'));
+  assert.ok(mainCpp.includes('#pragma comment(lib, "winhttp.lib")'));
+  assert.ok(mainCpp.includes('int WS_连接(const wchar_t* url)'));
+  assert.ok(mainCpp.includes('WinHttpSetOption(wsRequest_, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0)'));
+  assert.ok(mainCpp.includes('WS_连接(L"wss://echo.websocket.events");'));
+  assert.ok(mainCpp.includes('WS_发送文本(L"你好");'));
+  assert.ok(mainCpp.includes('WS_接收到调试输出();'));
+  assert.ok(moduleReport.includes('WebSocket 客户端模块'));
+  assert.ok(moduleReport.includes('winhttp.lib'));
+});
+
+test('built-in HTTP and WebSocket server modules contribute commands and deterministic C++ bindings', () => {
+  const httpManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.http.server');
+  const websocketManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.websocket.server');
+  assert.ok(httpManifest);
+  assert.ok(websocketManifest);
+  assert.equal(validateModuleManifest(httpManifest).diagnostics.length, 0);
+  assert.equal(validateModuleManifest(websocketManifest).diagnostics.length, 0);
+
+  const modules: InstalledModule[] = [
+    {
+      manifest: httpManifest,
+      installPath: 'builtin://lingbuilder.http.server',
+      isBuiltin: true,
+      isInstalled: true,
+      isEnabledForProject: true,
+      diagnostics: []
+    },
+    {
+      manifest: websocketManifest,
+      installPath: 'builtin://lingbuilder.websocket.server',
+      isBuiltin: true,
+      isInstalled: true,
+      isEnabledForProject: true,
+      diagnostics: []
+    }
+  ];
+
+  const completions = getLingCppCompletions(
+    { source: '', line: 1, column: 1 },
+    { enabledModules: modules, availableModules: modules }
+  );
+
+  assert.ok(completions.some(item => item.label === 'HTTP_启动服务'));
+  assert.ok(completions.some(item => item.label === 'HTTP 本地文本服务'));
+  assert.ok(completions.some(item => item.label === 'WSS_启动服务'));
+  assert.ok(completions.some(item => item.label === 'WebSocket 本地回显服务'));
+
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'main-window',
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        HTTP_启动服务(8080)',
+      '        HTTP_等待请求到调试输出()',
+      '        HTTP_回复文本("你好 HTTP")',
+      '        HTTP_关闭服务()',
+      '        WSS_启动服务(18080)',
+      '        WSS_等待连接()',
+      '        WSS_发送文本("你好 WebSocket")',
+      '        WSS_关闭服务()',
+      '结束类'
+    ].join('\n'),
+    enabledModules: modules
+  });
+
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const moduleReport = generated.files.find(file => file.relativePath === 'module-dependencies.txt')?.content || '';
+  assert.ok(mainCpp.includes('#include <winsock2.h>'));
+  assert.ok(mainCpp.includes('#include <wincrypt.h>'));
+  assert.ok(mainCpp.includes('#pragma comment(lib, "ws2_32.lib")'));
+  assert.ok(mainCpp.includes('#pragma comment(lib, "advapi32.lib")'));
+  assert.ok(mainCpp.includes('int HTTP_启动服务(int port)'));
+  assert.ok(mainCpp.includes('int WSS_启动服务(int port)'));
+  assert.ok(mainCpp.includes('std::string MakeWebSocketAcceptKey'));
+  assert.ok(mainCpp.includes('HTTP_启动服务(8080);'));
+  assert.ok(mainCpp.includes('HTTP_回复文本(L"你好 HTTP");'));
+  assert.ok(mainCpp.includes('WSS_发送文本(L"你好 WebSocket");'));
+  assert.ok(moduleReport.includes('HTTP 服务端模块'));
+  assert.ok(moduleReport.includes('WebSocket 服务端模块'));
+  assert.ok(moduleReport.includes('ws2_32.lib'));
+  assert.ok(moduleReport.includes('advapi32.lib'));
+});
+
 test('materializeModuleNativeDependencies copies module source, libs and runtime files', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-new-emoji-module-'));
   const installPath = path.join(root, 'installed');
@@ -290,6 +413,38 @@ test('exportVisualStudioProject writes sln and vcxproj with module dependencies'
   assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\include/);
   assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\lib\\Win32\\new_emoji\.lib/);
   assert.match(vcxproj, /new_emoji\.dll/);
+});
+
+test('exportVisualStudioProject links built-in module system libraries without module-relative paths', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-vs-builtin-libs-'));
+  const modules: InstalledModule[] = ['lingbuilder.http.server', 'lingbuilder.websocket.server', 'lingbuilder.websocket.client']
+    .map(id => {
+      const manifest = BUILTIN_MODULES.find(item => item.id === id);
+      assert.ok(manifest);
+      return {
+        manifest,
+        installPath: `builtin://${id}`,
+        isBuiltin: true,
+        isInstalled: true,
+        isEnabledForProject: true,
+        diagnostics: []
+      };
+    });
+
+  const result = await exportVisualStudioProject({
+    projectDir: root,
+    projectId: 'builtin-network-libs',
+    generatedFiles: [{ relativePath: 'main.cpp', content: '' }],
+    enabledModules: modules
+  });
+
+  const vcxproj = await fs.readFile(result.projectPath, 'utf8');
+  assert.match(vcxproj, /ws2_32\.lib/);
+  assert.match(vcxproj, /advapi32\.lib/);
+  assert.match(vcxproj, /winhttp\.lib/);
+  assert.doesNotMatch(vcxproj, /modules\\lingbuilder\.http\.server\\ws2_32\.lib/);
+  assert.doesNotMatch(vcxproj, /modules\\lingbuilder\.websocket\.server\\advapi32\.lib/);
+  assert.doesNotMatch(vcxproj, /modules\\lingbuilder\.websocket\.client\\winhttp\.lib/);
 });
 
 test('new_emoji bridge template keeps UTF-8 buffers alive for native controls', async () => {

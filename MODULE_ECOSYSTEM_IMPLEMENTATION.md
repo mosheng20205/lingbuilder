@@ -181,6 +181,21 @@ lingbuilder.module.json
 - 纯 new_emoji 示例应由 new_emoji 自己负责生命周期：创建窗口和控件后调用 `NE_运行消息循环` 或底层 `EU_RunMessageLoop()`。如果继续复用 LingBuilder 默认 Win32 生成窗口，必须保证默认窗口不会立即销毁，也不能让空设计器窗口关闭后触发 `PostQuitMessage(0)`。
 - 报告 new_emoji exe 可运行前，必须确认 `new_emoji.dll` 已复制到 exe 同目录，并实际启动验证至少 3 秒仍在运行。
 
+## WebSocket 客户端内置网络模块
+
+- `lingbuilder.websocket.client` 是内置 v2 网络模块，项目启用后提供 `WS_连接`、`WS_发送文本`、`WS_接收到调试输出`、`WS_接收文本` 和 `WS_关闭`。
+- 该模块的补全、诊断和生成器 binding 均来自 `electron/src/services/modules/builtinModules.ts`，不要在 Monaco 或 React 组件里另写一份命令清单。
+- Win32 C++ 生成器在 `LingWindowBase` 内置基于 WinHTTP 的单连接 WebSocket 运行时，并链接 `winhttp.lib`；当前稳定目标仍是 Windows/MSVC。
+- AI 或示例代码使用该模块时，应先确认项目已启用模块；地址使用 `ws://` 或 `wss://`，运行时会规范化为 WinHTTP 握手使用的 HTTP/HTTPS URL。
+
+## HTTP / WebSocket 服务端内置网络模块
+
+- `lingbuilder.http.server` 和 `lingbuilder.websocket.server` 是内置 v2 网络服务端模块，项目启用后分别提供本地 HTTP 服务端和 WebSocket 服务端能力。
+- HTTP 服务端命令包括 `HTTP_启动服务`、`HTTP_等待请求`、`HTTP_等待请求到调试输出`、`HTTP_回复文本` 和 `HTTP_关闭服务`。
+- WebSocket 服务端命令包括 `WSS_启动服务`、`WSS_等待连接`、`WSS_接收文本`、`WSS_接收到调试输出`、`WSS_发送文本` 和 `WSS_关闭服务`。
+- 两个服务端模块当前都是 Windows/MSVC 原型闭环，Win32 C++ 生成器在 `LingWindowBase` 内置基于 Winsock 的单连接同步服务端运行时；HTTP 链接 `ws2_32.lib`，WebSocket 服务端链接 `ws2_32.lib` 和 `advapi32.lib`。
+- 服务端监听默认绑定 `127.0.0.1`，适合作为本地调试、AI 示例和模块能力验证入口；后续如开放局域网监听、路由、多客户端或异步事件循环，必须先抽象受控服务层和清晰的权限提示。
+
 ## 后续扩展规则
 
 - 新增模块能力时，先扩展 `electron/src/services/modules/types.ts` 和校验器，再接 UI。

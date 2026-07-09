@@ -403,11 +403,23 @@ function normalizeMarketModules(raw: any, source: MarketSource, installedById: M
 }
 
 async function expandArchive(source: string, destination: string): Promise<void> {
-  await execFileAsync('powershell.exe', [
-    '-NoProfile',
-    '-Command',
-    `Expand-Archive -LiteralPath ${quotePs(source)} -DestinationPath ${quotePs(destination)} -Force`
-  ], { windowsHide: true, maxBuffer: 1024 * 1024 * 10 });
+  const zipSource = await ensureZipArchiveExtension(source);
+  try {
+    await execFileAsync('powershell.exe', [
+      '-NoProfile',
+      '-Command',
+      `Expand-Archive -LiteralPath ${quotePs(zipSource)} -DestinationPath ${quotePs(destination)} -Force`
+    ], { windowsHide: true, maxBuffer: 1024 * 1024 * 10 });
+  } finally {
+    if (zipSource !== source) await fs.rm(zipSource, { force: true });
+  }
+}
+
+async function ensureZipArchiveExtension(source: string): Promise<string> {
+  if (source.toLowerCase().endsWith('.zip')) return source;
+  const tempZip = path.join(os.tmpdir(), `lingbuilder-${crypto.randomBytes(8).toString('hex')}.zip`);
+  await fs.copyFile(source, tempZip);
+  return tempZip;
 }
 
 async function compressArchive(sourceDir: string, targetPath: string): Promise<void> {

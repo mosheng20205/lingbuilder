@@ -96,7 +96,9 @@ function getModuleLibFiles(enabledModules: InstalledModule[]): string[] {
   return unique(enabledModules.flatMap(module => {
     const moduleId = module.manifest.id;
     return (getPreferredModuleTarget(module)?.libs || [])
-      .map(file => normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
+      .map(file => isBuiltinModule(module)
+        ? normalizeSlash(file)
+        : normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
   }));
 }
 
@@ -320,4 +322,8 @@ function xmlEscape(value: string): string {
 
 function unique<T>(values: T[]): T[] {
   return [...new Set(values.filter(Boolean))];
+}
+
+function isBuiltinModule(module: InstalledModule): boolean {
+  return Boolean(module.isBuiltin || module.installPath?.startsWith('builtin://'));
 }
