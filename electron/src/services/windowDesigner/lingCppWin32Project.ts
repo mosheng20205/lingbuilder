@@ -11,6 +11,7 @@ import {
   LingCppStatement
 } from '../lingCpp/types';
 import { InstalledModule } from '../modules/types';
+import { getPreferredModuleTarget } from '../modules/targetResolver';
 
 export interface LingCppNativeProjectFile {
   relativePath: string;
@@ -119,7 +120,7 @@ function generateMainCpp(
     .map((window, index) => generateWindowSpec(window, index))
     .join(',\n');
   const classDefinitions = project.windows
-    .map((window, index) => generateWindowClass(window, index, program))
+    .map((window, index) => generateWindowClass(window, index, program, enabledModules))
     .join('\n\n');
   const factoryCases = project.windows
     .map((window, index) => `    case ${index}: return new ${toCppIdentifier(window.className)}(g_windows[${index}]);`)
@@ -1006,16 +1007,17 @@ function generateModuleCppPreamble(enabledModules: InstalledModule[]): string {
   enabledModules
     .filter(module => !module.isBuiltin)
     .forEach(module => {
-      const cpp = module.manifest.contributes?.cpp;
+      const target = getPreferredModuleTarget(module);
       const modulePath = `modules/${module.manifest.id}`;
       lines.push(`// LingBuilder 模块: ${module.manifest.name} (${module.manifest.id}@${module.manifest.version})`);
-      (cpp?.headers || []).forEach(header => {
+      if (target) lines.push(`// 模块目标: ${target.id} / ${target.platform}-${target.toolchain}-${target.arch}`);
+      (target?.headers || []).forEach(header => {
         lines.push(`#include "${escapeIncludePath(`${modulePath}/${header}`)}"`);
       });
-      (cpp?.sources || []).forEach(source => lines.push(`// 模块源码: ${source}`));
-      (cpp?.libs || []).forEach(lib => lines.push(`#pragma comment(lib, "${escapeWideString(`${modulePath}/${lib}`)}")`));
-      (cpp?.runtimeFiles || []).forEach(runtimeFile => lines.push(`// 模块运行时文件: ${runtimeFile}`));
-      (cpp?.defines || []).forEach(define => {
+      (target?.sources || []).forEach(source => lines.push(`// 模块源码: ${source}`));
+      (target?.libs || []).forEach(lib => lines.push(`#pragma comment(lib, "${escapeWideString(`${modulePath}/${lib}`)}")`));
+      (target?.runtimeFiles || []).forEach(runtimeFile => lines.push(`// 模块运行时文件: ${runtimeFile}`));
+      (target?.defines || []).forEach(define => {
         const safeDefine = toCppDefineIdentifier(define);
         lines.push(`#ifndef ${safeDefine}\n#define ${safeDefine}\n#endif`);
       });
@@ -1026,23 +1028,24 @@ function generateModuleCppPreamble(enabledModules: InstalledModule[]): string {
 function generateModuleDependencyReport(enabledModules: InstalledModule[]): string {
   if (enabledModules.length === 0) return '当前项目未启用模块。';
   return enabledModules.map(module => {
-    const cpp = module.manifest.contributes?.cpp;
+    const target = getPreferredModuleTarget(module);
     return [
       `模块: ${module.manifest.name}`,
       `ID: ${module.manifest.id}`,
       `版本: ${module.manifest.version}`,
       `内置: ${module.isBuiltin ? '是' : '否'}`,
+      `目标: ${target ? `${target.id} (${target.platform}/${target.toolchain}/${target.arch})` : '无'}`,
       `命令数: ${module.manifest.contributes?.commands?.length || 0}`,
       `控件数: ${module.manifest.contributes?.designerControls?.length || 0}`,
-      `头文件: ${(cpp?.headers || []).join(', ') || '无'}`,
-      `源码: ${(cpp?.sources || []).join(', ') || '无'}`,
-      `库: ${(cpp?.libs || []).join(', ') || '无'}`,
-      `运行时文件: ${(cpp?.runtimeFiles || []).join(', ') || '无'}`
+      `头文件: ${(target?.headers || []).join(', ') || '无'}`,
+      `源码: ${(target?.sources || []).join(', ') || '无'}`,
+      `库: ${(target?.libs || []).join(', ') || '无'}`,
+      `运行时文件: ${(target?.runtimeFiles || []).join(', ') || '无'}`
     ].join('\n');
   }).join('\n\n');
 }
 
-function generateWindowClass(window: LingWindowModel, windowIndex: number, program: LingCppProgram): string {
+function generateWindowClass(window: LingWindowModel, windowIndex: number, program: LingCppProgram, enabledModules: InstalledModule[]): string {
   const className = toCppIdentifier(window.className);
   const sourceClass = findLingCppClassForWindow(program, window);
   const handlers = getWindowHandlers(window);
@@ -1054,11 +1057,11 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
     .map(handler => `        if (std::wcscmp(control.handler, L"${escapeWideString(handler)}") == 0) { ${toCppIdentifier(handler)}(); return; }`)
     .join('\n') || '        (void)control;';
   const eventMethods = methodHandlers
-    .map(handler => generateHandlerMethod(handler, findLingCppMethod(program, handler)));
+    .map(handler => generateHandlerMethod(handler, findLingCppMethod(program, handler), enabledModules));
   const userMethods = (sourceClass?.methods || []).filter(method => method.kind === 'method');
-  const publicUserMethods = userMethods.filter(method => method.access === '公开').map(generateUserMethod);
-  const protectedUserMethods = userMethods.filter(method => method.access === '保护').map(generateUserMethod);
-  const privateUserMethods = userMethods.filter(method => method.access !== '公开' && method.access !== '保护').map(generateUserMethod);
+  const publicUserMethods = userMethods.filter(method => method.access === '公开').map(method => generateUserMethod(method, enabledModules));
+  const protectedUserMethods = userMethods.filter(method => method.access === '保护').map(method => generateUserMethod(method, enabledModules));
+  const privateUserMethods = userMethods.filter(method => method.access !== '公开' && method.access !== '保护').map(method => generateUserMethod(method, enabledModules));
   const publicUserMethodBlock = publicUserMethods.length ? `\n${publicUserMethods.join('\n\n')}\n` : '';
   const protectedUserMethodBlock = protectedUserMethods.length ? `\n${protectedUserMethods.join('\n\n')}\n` : '';
   const privateMethods = [...eventMethods, ...privateUserMethods].join('\n\n') || '    // 当前窗口暂无绑定事件。';
@@ -1090,19 +1093,19 @@ function findLingCppClassForWindow(program: LingCppProgram, window: LingWindowMo
   return program.classes.find(cls => toCppIdentifier(cls.name) === toCppIdentifier(window.className));
 }
 
-function generateHandlerMethod(handler: string, method?: LingCppMethod): string {
+function generateHandlerMethod(handler: string, method: LingCppMethod | undefined, enabledModules: InstalledModule[]): string {
   const body = method
-    ? translateMethodStatements(method)
+    ? translateMethodStatements(method, enabledModules)
     : `        调试输出(L"未找到 ${escapeWideString(handler)} 的中文 C++ 事件实现。");`;
   return `    void ${toCppIdentifier(handler)}() {
 ${body || '        // 空事件处理器。'}
     }`;
 }
 
-function generateUserMethod(method: LingCppMethod): string {
+function generateUserMethod(method: LingCppMethod, enabledModules: InstalledModule[]): string {
   const returnType = toCppType(method.returnType, 'return');
   const parameters = formatCppParameters(method.parameters);
-  const body = translateMethodStatements(method);
+  const body = translateMethodStatements(method, enabledModules);
   const fallbackReturn = defaultReturnStatement(returnType);
   const staticPrefix = method.isStatic ? 'static ' : '';
   const bodyWithFallback = [
@@ -1143,7 +1146,7 @@ function defaultReturnStatement(returnType: string): string {
   return 'return 0;';
 }
 
-function translateMethodStatementsWithMetadata(method: LingCppMethod): TranslatedStatementLine[] {
+function translateMethodStatementsWithMetadata(method: LingCppMethod, enabledModules: InstalledModule[] = []): TranslatedStatementLine[] {
   const lines: TranslatedStatementLine[] = [];
 
   for (let index = 0; index < method.statements.length; index += 1) {
@@ -1173,58 +1176,31 @@ function translateMethodStatementsWithMetadata(method: LingCppMethod): Translate
       continue;
     }
 
-    lines.push(translateStatementToMetadata(currentStatement));
+    lines.push(translateStatementToMetadata(currentStatement, enabledModules));
   }
 
   return lines;
 }
 
-function translateStatementToMetadata(statement: LingCppStatement): TranslatedStatementLine {
+function translateStatementToMetadata(statement: LingCppStatement, enabledModules: InstalledModule[] = []): TranslatedStatementLine {
   const text = statement.text.trim();
   const nativeCpp = parseNativeCppStatement(text);
 
   return {
-    code: nativeCpp !== undefined ? nativeCpp : translateStatement(text),
+    code: nativeCpp !== undefined ? nativeCpp : translateStatement(text, enabledModules),
     sourceStartLine: statement.line,
     sourceEndLine: statement.line,
     kind: nativeCpp !== undefined ? 'native-cpp' : 'statement'
   };
 }
 
-function translateMethodStatements(method: LingCppMethod): string {
-  return translateMethodStatementsWithMetadata(method)
+function translateMethodStatements(method: LingCppMethod, enabledModules: InstalledModule[] = []): string {
+  return translateMethodStatementsWithMetadata(method, enabledModules)
     .map(item => `        ${item.code}`)
     .join('\n');
-  const lines: string[] = [];
-
-  for (let index = 0; index < method.statements.length; index += 1) {
-    const current = method.statements[index]?.text.trim() || '';
-    const next = method.statements[index + 1]?.text.trim() || '';
-    const third = method.statements[index + 2]?.text.trim() || '';
-
-    if (!current) continue;
-
-    const messageBox = parseMessageBox(current);
-    if (
-      /^如果(?:\s|[（(])/.test(current) &&
-      messageBox &&
-      /[=＝]{1,2}\s*6/.test(current) &&
-      /^结束\s*[（(]?\s*[）)]?$/.test(next)
-    ) {
-      lines.push(
-        `        if (信息框(L"${escapeWideString(messageBox.text)}", ${messageBox.flags}, L"${escapeWideString(messageBox.title)}") == IDYES) { 结束(); return; }`
-      );
-      index += /^如果结束/.test(third) ? 2 : 1;
-      continue;
-    }
-
-    lines.push(`        ${translateStatement(current)}`);
-  }
-
-  return lines.join('\n');
 }
 
-function translateStatement(statement: string): string {
+function translateStatement(statement: string, enabledModules: InstalledModule[] = []): string {
   const nativeCpp = parseNativeCppStatement(statement);
   if (nativeCpp !== undefined) return nativeCpp;
 
@@ -1261,10 +1237,26 @@ function translateStatement(statement: string): string {
 
   const callStatement = parseCallStatement(statement);
   if (callStatement) {
+    const binding = findModuleCommandBinding(callStatement.name, enabledModules);
+    if (binding) return `${toCppIdentifier(binding.runtimeName)}(${translateCallArguments(callStatement.argumentsText)});`;
+    const looksLikeModuleCommand = enabledModules.some(module =>
+      (module.manifest.contributes?.commands || []).some(command => command.name === callStatement.name)
+    );
+    if (looksLikeModuleCommand) {
+      return `// 模块命令缺少 v2 binding，无法生成确定性 C++ 调用：${escapeCppComment(callStatement.name)}`;
+    }
     return `${toCppIdentifier(callStatement.name)}(${translateCallArguments(callStatement.argumentsText)});`;
   }
 
   return `// 暂不支持的中文 C++ 语句：${escapeCppComment(statement)}`;
+}
+
+function findModuleCommandBinding(commandName: string, enabledModules: InstalledModule[]) {
+  for (const module of enabledModules) {
+    const binding = (module.manifest.bindings?.commands || []).find(item => item.command === commandName);
+    if (binding) return binding;
+  }
+  return undefined;
 }
 
 function parseNativeCppStatement(statement: string): string | undefined {

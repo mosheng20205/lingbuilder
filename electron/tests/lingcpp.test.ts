@@ -241,7 +241,7 @@ const completionModule: InstalledModule = {
   installPath: 'C:/modules/com.example.completion',
   diagnostics: [],
   manifest: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'com.example.completion',
     name: '测试补全模块',
     version: '1.0.0',
@@ -249,7 +249,8 @@ const completionModule: InstalledModule = {
     description: '用于验证 LingCpp 统一补全上下文。',
     contributes: {
       commands: [{ name: '模块提示', signature: '模块提示(文本)', description: '显示一条模块提示。', insertText: '模块提示("$1")' }]
-    }
+    },
+    bindings: { commands: [{ command: '模块提示', runtimeName: '模块提示', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'void' }] }
   }
 };
 

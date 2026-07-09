@@ -14,7 +14,6 @@ export interface ModuleCommandContribution {
   description: string;
   insertText?: string;
   returnType?: string;
-  cppRuntimeName?: string;
 }
 
 export interface ModuleTypeContribution {
@@ -50,8 +49,73 @@ export interface ModuleDocContribution {
   path: string;
 }
 
+export interface ModuleExampleContribution {
+  title: string;
+  path: string;
+  description?: string;
+}
+
+export type ModuleTargetPlatform = 'windows' | 'linux' | 'macos';
+export type ModuleTargetArch = 'win32' | 'x64' | 'arm64' | 'any';
+export type ModuleTargetToolchain = 'msvc' | 'gcc' | 'clang' | 'cmake' | 'any';
+
+export interface ModuleTargetContribution {
+  id: string;
+  platform: ModuleTargetPlatform;
+  arch: ModuleTargetArch;
+  toolchain: ModuleTargetToolchain;
+  includeDirs?: string[];
+  sources?: string[];
+  headers?: string[];
+  libs?: string[];
+  defines?: string[];
+  runtimeFiles?: string[];
+  compileOptions?: string[];
+  linkOptions?: string[];
+}
+
+export type ModuleBindingValueType =
+  | 'void'
+  | 'int'
+  | 'longLong'
+  | 'double'
+  | 'bool'
+  | 'wideString'
+  | 'utf8String'
+  | 'handle'
+  | 'raw';
+
+export interface ModuleCommandBindingParameter {
+  name: string;
+  type: ModuleBindingValueType;
+  description?: string;
+}
+
+export interface ModuleCommandBinding {
+  command: string;
+  runtimeName: string;
+  parameters?: ModuleCommandBindingParameter[];
+  returnType?: ModuleBindingValueType;
+  targetIds?: string[];
+  encoding?: 'wide' | 'utf8' | 'raw';
+  example?: string;
+  description?: string;
+}
+
+export interface ModuleBindingsContribution {
+  commands?: ModuleCommandBinding[];
+}
+
+export interface ModulePublishContribution {
+  homepage?: string;
+  repository?: string;
+  downloadUrl?: string;
+  sha256?: string;
+  signature?: string;
+}
+
 export interface LingBuilderModuleManifest {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
   name: string;
   version: string;
@@ -67,9 +131,12 @@ export interface LingBuilderModuleManifest {
     types?: ModuleTypeContribution[];
     snippets?: ModuleSnippetContribution[];
     designerControls?: ModuleDesignerControlContribution[];
-    cpp?: ModuleCppContribution;
     docs?: ModuleDocContribution[];
+    examples?: ModuleExampleContribution[];
   };
+  targets?: ModuleTargetContribution[];
+  bindings?: ModuleBindingsContribution;
+  publish?: ModulePublishContribution;
 }
 
 export interface InstalledModule {

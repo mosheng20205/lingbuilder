@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { InstalledModule } from './types';
 import { validateModuleRelativePath } from './manifest';
+import { getPreferredModuleTarget } from './targetResolver';
 
 export interface ModuleNativeDependencyLayout {
   buildDir: string;
@@ -33,8 +34,8 @@ export async function materializeModuleNativeDependencies(
   };
 
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
-    const cpp = module.manifest.contributes?.cpp;
-    if (!cpp || !module.installPath || module.installPath.startsWith('builtin://')) continue;
+    const target = getPreferredModuleTarget(module);
+    if (!target || !module.installPath || module.installPath.startsWith('builtin://')) continue;
 
     const moduleId = module.manifest.id;
     const buildModuleRoot = path.join(layout.buildDir, 'modules', moduleId);
@@ -42,20 +43,20 @@ export async function materializeModuleNativeDependencies(
     const exportModuleRoot = path.join(layout.exportDir, 'modules', moduleId);
 
     for (const relativePath of unique([
-      ...(cpp.headers || []),
-      ...(cpp.sources || []),
-      ...(cpp.libs || []),
-      ...(cpp.runtimeFiles || [])
+      ...(target.headers || []),
+      ...(target.sources || []),
+      ...(target.libs || []),
+      ...(target.runtimeFiles || [])
     ])) {
       await copyModuleFile(module, relativePath, buildModuleRoot, plan.diagnostics);
       await copyModuleFile(module, relativePath, exportModuleRoot, plan.diagnostics);
     }
 
-    for (const relativePath of unique([...(cpp.headers || []), ...(cpp.sources || [])])) {
+    for (const relativePath of unique([...(target.headers || []), ...(target.sources || [])])) {
       await copyModuleFile(module, relativePath, sourceModuleRoot, plan.diagnostics);
     }
 
-    for (const includeDir of cpp.includeDirs || []) {
+    for (const includeDir of target.includeDirs || []) {
       if (!validateModuleRelativePath(includeDir)) {
         plan.diagnostics.push(`模块 ${module.manifest.name} 的 includeDirs 包含不安全路径：${includeDir}`);
         continue;
@@ -63,14 +64,14 @@ export async function materializeModuleNativeDependencies(
       plan.includeDirs.push(path.join(sourceModuleRoot, includeDir));
     }
 
-    for (const header of cpp.headers || []) {
+    for (const header of target.headers || []) {
       const firstSegment = normalizeRelativePath(header).split('/')[0];
       if (firstSegment && !plan.includeDirs.includes(path.join(sourceModuleRoot, firstSegment))) {
         plan.includeDirs.push(path.join(sourceModuleRoot, firstSegment));
       }
     }
 
-    for (const source of cpp.sources || []) {
+    for (const source of target.sources || []) {
       if (!validateModuleRelativePath(source)) {
         plan.diagnostics.push(`模块 ${module.manifest.name} 的源码包含不安全路径：${source}`);
         continue;
@@ -78,7 +79,7 @@ export async function materializeModuleNativeDependencies(
       plan.sourceFiles.push(path.join(sourceModuleRoot, source));
     }
 
-    for (const lib of cpp.libs || []) {
+    for (const lib of target.libs || []) {
       if (!validateModuleRelativePath(lib)) {
         plan.diagnostics.push(`模块 ${module.manifest.name} 的库文件包含不安全路径：${lib}`);
         continue;
@@ -87,7 +88,7 @@ export async function materializeModuleNativeDependencies(
       plan.libFiles.push(path.join(buildModuleRoot, lib));
     }
 
-    for (const runtimeFile of cpp.runtimeFiles || []) {
+    for (const runtimeFile of target.runtimeFiles || []) {
       if (!validateModuleRelativePath(runtimeFile)) {
         plan.diagnostics.push(`模块 ${module.manifest.name} 的运行时文件包含不安全路径：${runtimeFile}`);
         continue;
@@ -117,14 +118,14 @@ export async function exportModuleNativeDependencies(
 ): Promise<string[]> {
   const diagnostics: string[] = [];
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
-    const cpp = module.manifest.contributes?.cpp;
-    if (!cpp || !module.installPath || module.installPath.startsWith('builtin://')) continue;
+    const target = getPreferredModuleTarget(module);
+    if (!target || !module.installPath || module.installPath.startsWith('builtin://')) continue;
     const exportModuleRoot = path.join(exportDir, 'modules', module.manifest.id);
     for (const relativePath of unique([
-      ...(cpp.headers || []),
-      ...(cpp.sources || []),
-      ...(cpp.libs || []),
-      ...(cpp.runtimeFiles || [])
+      ...(target.headers || []),
+      ...(target.sources || []),
+      ...(target.libs || []),
+      ...(target.runtimeFiles || [])
     ])) {
       await copyModuleFile(module, relativePath, exportModuleRoot, diagnostics);
     }

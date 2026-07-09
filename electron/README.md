@@ -105,3 +105,28 @@ new_emoji YOLO 示例约束：
 - `preview` 写文件、导出和构建运行必须传入 `approved=true`。
 - `yolo` 允许带 token 的客户端自动执行受控 LingBuilder 命令，但仍不开放任意 shell。
 - 敏感操作记录在 `.lingbuilder/ai-bridge-log.jsonl`。
+
+## 模块 SDK CLI
+
+LingBuilder 模块标准为 `schemaVersion: 2`。旧 `.lbmod` v1 不再兼容，C++ 依赖写入 `targets[]`，中文命令到 C++ 的确定性映射写入 `bindings.commands[]`。根目录 `模块开发手册.md` 是面向外部模块作者的正式说明。
+
+常用命令：
+
+```bash
+node dist/cli.cjs module init --template cpp-source --out ../.lingbuilder/module-build/com.example.native
+node dist/cli.cjs module validate ../.lingbuilder/module-build/com.example.native
+node dist/cli.cjs module pack ../.lingbuilder/module-build/com.example.native --out ../.lingbuilder/module-packages/native.lbmod
+node dist/cli.cjs module inspect ../.lingbuilder/module-build/com.example.native
+node dist/cli.cjs module migrate-cpp --config ../migrate.json --out ../.lingbuilder/module-build/com.example.native
+node dist/cli.cjs module market index --packages ../.lingbuilder/module-packages --out ../.lingbuilder/module-market.json
+```
+
+开发期可用 `tsx src/cli.ts module ...` 直接调试。模块页中的“模块开发者中心”复用同一套服务能力。
+
+`new_emoji` v2 模块仍使用：
+
+```bash
+npm run module:new-emoji -- --install
+```
+
+生成结果必须包含 Win32/x64 targets、`NE_` 中文桥接命令 bindings、桥接源码、文档和示例。验证可运行 exe 时仍需确认 exe 同目录存在 `new_emoji.dll`，并等待至少 3 秒确认进程仍在运行。

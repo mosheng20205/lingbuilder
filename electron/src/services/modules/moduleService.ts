@@ -411,12 +411,15 @@ async function expandArchive(source: string, destination: string): Promise<void>
 }
 
 async function compressArchive(sourceDir: string, targetPath: string): Promise<void> {
+  const tempZipPath = `${targetPath}.zip`;
   await fs.rm(targetPath, { force: true });
+  await fs.rm(tempZipPath, { force: true });
   await execFileAsync('powershell.exe', [
     '-NoProfile',
     '-Command',
-    `Compress-Archive -Path ${quotePs(path.join(sourceDir, '*'))} -DestinationPath ${quotePs(targetPath)} -Force`
+    `Compress-Archive -Path ${quotePs(path.join(sourceDir, '*'))} -DestinationPath ${quotePs(tempZipPath)} -Force`
   ], { windowsHide: true, maxBuffer: 1024 * 1024 * 10 });
+  await fs.rename(tempZipPath, targetPath);
 }
 
 function quotePs(value: string): string {
@@ -482,7 +485,7 @@ async function hashDirectoryManifest(dir: string): Promise<string> {
 
 function createInvalidManifest(id: string): LingBuilderModuleManifest {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id,
     name: id,
     version: '0.0.0',

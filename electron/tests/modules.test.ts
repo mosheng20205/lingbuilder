@@ -37,34 +37,45 @@ const sampleProject: LingWindowProject = {
 
 test('module manifest validation accepts valid modules and rejects unsafe cpp paths', () => {
   const valid = validateModuleManifest({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'com.example.sqlite',
     name: 'SQLite数据库模块',
     version: '1.0.0',
     category: '数据库',
     description: '提供 SQLite 数据库访问能力。',
     contributes: {
-      commands: [{ name: '执行SQL', signature: '执行SQL(语句)', description: '执行一条 SQL 语句。' }],
-      cpp: { headers: ['include/sqlite_bridge.h'], sources: ['src/sqlite_bridge.cpp'] }
-    }
+      commands: [{ name: '执行SQL', signature: '执行SQL(语句)', description: '执行一条 SQL 语句。' }]
+    },
+    targets: [{ id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', headers: ['include/sqlite_bridge.h'], sources: ['src/sqlite_bridge.cpp'] }],
+    bindings: { commands: [{ command: '执行SQL', runtimeName: 'ExecuteSql', parameters: [{ name: '语句', type: 'wideString' }], returnType: 'int' }] }
   });
 
   assert.equal(valid.diagnostics.length, 0);
   assert.equal(valid.manifest?.id, 'com.example.sqlite');
 
   const invalid = validateModuleManifest({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'com.example.bad',
     name: '坏模块',
     version: '1.0.0',
     category: '数据库',
     description: '包含不安全路径。',
-    contributes: {
-      cpp: { headers: ['../secret.h'] }
-    }
+    targets: [{ id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', headers: ['../secret.h'] }]
   });
 
   assert.ok(invalid.diagnostics.some(message => message.includes('安全')));
+});
+
+test('module manifest validation rejects v1 packages with migration guidance', () => {
+  const invalid = validateModuleManifest({
+    schemaVersion: 1,
+    id: 'com.example.legacy',
+    name: '旧模块',
+    version: '1.0.0',
+    category: '其他',
+    description: '旧版模块。'
+  });
+  assert.ok(invalid.diagnostics.some(message => message.includes('schemaVersion 必须为 2')));
 });
 
 test('LingCpp language service consumes module completions and disabled-module diagnostics', () => {
@@ -128,14 +139,21 @@ test('generateLingCppNativeWin32Project emits module dependency report', () => {
       name: '原生扩展模块',
       category: '系统',
       contributes: {
-        commands: [{ name: '原生命令', signature: '原生命令()', description: '测试命令。' }],
-        cpp: {
+        commands: [{ name: '原生命令', signature: '原生命令()', description: '测试命令。' }]
+      },
+      targets: [
+        {
+          id: 'windows-msvc-win32',
+          platform: 'windows',
+          arch: 'win32',
+          toolchain: 'msvc',
           headers: ['include/native_bridge.h'],
           sources: ['src/native_bridge.cpp'],
           libs: ['native_bridge.lib'],
           defines: ['LINGBUILDER_NATIVE_BRIDGE']
         }
-      }
+      ],
+      bindings: { commands: [{ command: '原生命令', runtimeName: 'NativeCommand', returnType: 'void' }] }
     }
   };
 
@@ -156,7 +174,7 @@ test('generateLingCppNativeWin32Project emits module dependency report', () => {
 
 test('new_emoji style module manifest supports full command and runtime contributions', () => {
   const validation = validateModuleManifest({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'lingbuilder.new_emoji.ui',
     name: 'new_emoji 原生界面库',
     version: '1.0.0',
@@ -166,8 +184,14 @@ test('new_emoji style module manifest supports full command and runtime contribu
       commands: [
         { name: 'NE_创建窗口', signature: 'NE_创建窗口(标题, X, Y, 宽度, 高度)', description: '创建 new_emoji 原生窗口。' },
         { name: '创建按钮', signature: '创建按钮(hwnd, parent_id, emoji_bytes, emoji_len, text_bytes, text_len, x, y, w, h)', description: 'new_emoji 创建按钮底层导出。' }
-      ],
-      cpp: {
+      ]
+    },
+    targets: [
+      {
+        id: 'windows-msvc-win32',
+        platform: 'windows',
+        arch: 'win32',
+        toolchain: 'msvc',
         includeDirs: ['include'],
         headers: ['include/new_emoji_bridge.h'],
         sources: ['src/new_emoji_bridge.cpp'],
@@ -175,6 +199,12 @@ test('new_emoji style module manifest supports full command and runtime contribu
         runtimeFiles: ['bin/Win32/new_emoji.dll'],
         defines: ['LINGBUILDER_NEW_EMOJI_MODULE']
       }
+    ],
+    bindings: {
+      commands: [
+        { command: 'NE_创建窗口', runtimeName: 'NE_创建窗口', parameters: [{ name: '标题', type: 'wideString' }], returnType: 'handle' },
+        { command: '创建按钮', runtimeName: 'EU_CreateButton', returnType: 'int', encoding: 'raw' }
+      ]
     }
   });
 
@@ -280,7 +310,7 @@ function createTestModule(): InstalledModule {
     installPath: 'C:/modules/com.example.sqlite',
     diagnostics: [],
     manifest: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: 'com.example.sqlite',
       name: 'SQLite数据库模块',
       version: '1.0.0',
@@ -290,7 +320,8 @@ function createTestModule(): InstalledModule {
         commands: [{ name: '执行SQL', signature: '执行SQL(语句)', description: '执行 SQL。', insertText: '执行SQL("$1")' }],
         types: [{ name: '数据库连接', description: '数据库连接句柄。' }],
         snippets: [{ label: '打开数据库模板', insertText: '打开数据库("$1")', description: '打开数据库。' }]
-      }
+      },
+      bindings: { commands: [{ command: '执行SQL', runtimeName: 'ExecuteSql', parameters: [{ name: '语句', type: 'wideString' }], returnType: 'int' }] }
     }
   };
 }
@@ -301,7 +332,7 @@ function createNewEmojiTestModule(installPath: string): InstalledModule {
     installPath,
     diagnostics: [],
     manifest: {
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: 'lingbuilder.new_emoji.ui',
       name: 'new_emoji 原生界面库',
       version: '1.0.0',
@@ -311,8 +342,14 @@ function createNewEmojiTestModule(installPath: string): InstalledModule {
         commands: [
           { name: 'NE_创建窗口', signature: 'NE_创建窗口(标题, X, Y, 宽度, 高度)', description: '创建 new_emoji 原生窗口。', insertText: 'NE_创建窗口("$1", 120, 120, 860, 560)' },
           { name: '创建按钮', signature: '创建按钮(hwnd, parent_id, emoji_bytes, emoji_len, text_bytes, text_len, x, y, w, h)', description: 'new_emoji 创建按钮底层导出。' }
-        ],
-        cpp: {
+        ]
+      },
+      targets: [
+        {
+          id: 'windows-msvc-win32',
+          platform: 'windows',
+          arch: 'win32',
+          toolchain: 'msvc',
           includeDirs: ['include'],
           headers: ['include/new_emoji_bridge.h'],
           sources: ['src/new_emoji_bridge.cpp'],
@@ -320,6 +357,12 @@ function createNewEmojiTestModule(installPath: string): InstalledModule {
           runtimeFiles: ['bin/Win32/new_emoji.dll'],
           defines: ['LINGBUILDER_NEW_EMOJI_MODULE']
         }
+      ],
+      bindings: {
+        commands: [
+          { command: 'NE_创建窗口', runtimeName: 'NE_创建窗口', parameters: [{ name: '标题', type: 'wideString' }], returnType: 'handle' },
+          { command: '创建按钮', runtimeName: 'EU_CreateButton', returnType: 'int', encoding: 'raw' }
+        ]
       }
     }
   };

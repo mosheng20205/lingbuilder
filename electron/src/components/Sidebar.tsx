@@ -44,7 +44,7 @@ import {
   PersistedWindowDesignerState
 } from '../services/windowDesigner/windowDesignerService';
 import type { LingWindowModel } from '../services/windowDesigner/types';
-import type { InstalledModule } from '../services/modules/types';
+import type { InstalledModule, ModuleTargetContribution } from '../services/modules/types';
 import { BUILTIN_MODULES } from '../services/modules/builtinModules';
 
 type WindowContextMenu =
@@ -58,6 +58,53 @@ interface ModuleParameterDoc {
   type: string;
   example: string;
   description: string;
+}
+
+type ModuleCppRow = {
+  label: string;
+  values: Array<{ id: string; value: string }>;
+};
+
+function buildModuleCppRows(
+  targets: ModuleTargetContribution[],
+  bindings: Array<{ command: string; runtimeName: string; returnType?: string }>,
+  docs: Array<{ title: string; path: string }>
+): ModuleCppRow[] {
+  const targetValues = (field: keyof Pick<ModuleTargetContribution, 'headers' | 'sources' | 'libs' | 'runtimeFiles' | 'includeDirs' | 'defines'>) => (
+    targets.flatMap((target, targetIndex) => (target[field] || []).map((value, valueIndex) => ({
+      id: `${field}:${target.id}:${targetIndex}:${valueIndex}:${value}`,
+      value
+    })))
+  );
+  return [
+    {
+      label: '目标',
+      values: targets.map((target, index) => ({
+        id: `target:${target.id}:${index}`,
+        value: `${target.id} · ${target.platform}/${target.toolchain}/${target.arch}`
+      }))
+    },
+    { label: '头文件', values: targetValues('headers') },
+    { label: '源码', values: targetValues('sources') },
+    { label: '库文件', values: targetValues('libs') },
+    { label: '运行时文件', values: targetValues('runtimeFiles') },
+    { label: '包含目录', values: targetValues('includeDirs') },
+    { label: '宏定义', values: targetValues('defines') },
+    {
+      label: '命令绑定',
+      values: bindings.map((binding, index) => ({
+        id: `binding:${binding.command}:${binding.runtimeName}:${index}`,
+        value: `${binding.command} -> ${binding.runtimeName}`
+      }))
+    },
+    {
+      label: '文档',
+      values: docs.map((doc, index) => ({
+        id: `doc:${doc.path}:${index}`,
+        value: `${doc.title} · ${doc.path}`
+      }))
+    }
+  ].filter(row => row.values.length > 0);
 }
 
 interface SidebarProps {
@@ -156,8 +203,7 @@ export default function Sidebar({
       command.name,
       command.signature,
       command.description,
-      command.returnType,
-      command.cppRuntimeName
+      command.returnType
     ]),
     ...(module.manifest.contributes?.types || []).flatMap(type => [type.name, type.description, type.cppType]),
     ...(module.manifest.contributes?.designerControls || []).flatMap(control => [
@@ -166,7 +212,18 @@ export default function Sidebar({
       ...(control.events || []).flatMap(event => [event.label, event.handlerPattern])
     ]),
     ...(module.manifest.contributes?.snippets || []).flatMap(snippet => [snippet.label, snippet.description]),
-    ...(module.manifest.contributes?.docs || []).flatMap(doc => [doc.title, doc.path])
+    ...(module.manifest.contributes?.docs || []).flatMap(doc => [doc.title, doc.path]),
+    ...(module.manifest.targets || []).flatMap(target => [
+      target.id,
+      target.platform,
+      target.arch,
+      target.toolchain,
+      ...(target.headers || []),
+      ...(target.sources || []),
+      ...(target.libs || []),
+      ...(target.runtimeFiles || [])
+    ]),
+    ...(module.manifest.bindings?.commands || []).flatMap(binding => [binding.command, binding.runtimeName])
   ));
 
   const refreshProjectModules = useCallback(async () => {
@@ -1496,16 +1553,9 @@ function ModuleInterfaceTree({
   const snippets = contributes.snippets || [];
   const designerControls = contributes.designerControls || [];
   const docs = contributes.docs || [];
-  const cpp = contributes.cpp;
-  const cppRows = [
-    { label: '头文件', values: cpp?.headers || [] },
-    { label: '源码', values: cpp?.sources || [] },
-    { label: '库文件', values: cpp?.libs || [] },
-    { label: '运行时文件', values: cpp?.runtimeFiles || [] },
-    { label: '包含目录', values: cpp?.includeDirs || [] },
-    { label: '宏定义', values: cpp?.defines || [] },
-    { label: '文档', values: docs.map(doc => `${doc.title} · ${doc.path}`) }
-  ].filter(row => row.values.length > 0);
+  const targets = module.manifest.targets || [];
+  const bindings = module.manifest.bindings?.commands || [];
+  const cppRows = buildModuleCppRows(targets, bindings, docs);
   const hasInterface = commands.length > 0 || types.length > 0 || snippets.length > 0 || designerControls.length > 0 || cppRows.length > 0;
   const subtleClass = isDarkMode ? 'text-slate-500' : 'text-slate-500';
 
@@ -1629,11 +1679,11 @@ function ModuleInterfaceTree({
         {cppRows.map(row => (
           <div key={`${module.manifest.id}:cpp:${row.label}`} className="min-w-0">
             <div className={`px-1.5 py-0.5 text-[10px] font-semibold ${subtleClass}`}>{row.label}</div>
-            {row.values.map(value => (
+            {row.values.map(item => (
               <ModuleTreeLeaf
-                key={`${module.manifest.id}:cpp:${row.label}:${value}`}
+                key={`${module.manifest.id}:cpp:${item.id}`}
                 icon={<FileText className="h-3 w-3 text-slate-400" />}
-                title={value}
+                title={item.value}
                 isDarkMode={isDarkMode}
                 compact
               />
@@ -1738,16 +1788,18 @@ function ModuleTreeLeaf({
 
 function getModuleCapabilityCount(module: InstalledModule): number {
   const contributes = module.manifest.contributes || {};
-  const cpp = contributes.cpp;
+  const targets = module.manifest.targets || [];
   return (contributes.commands || []).length
     + (contributes.types || []).length
     + (contributes.snippets || []).length
     + (contributes.designerControls || []).length
     + (contributes.docs || []).length
-    + (cpp?.headers || []).length
-    + (cpp?.sources || []).length
-    + (cpp?.libs || []).length
-    + (cpp?.runtimeFiles || []).length;
+    + targets.reduce((sum, target) => sum
+      + (target.headers || []).length
+      + (target.sources || []).length
+      + (target.libs || []).length
+      + (target.runtimeFiles || []).length, 0)
+    + (module.manifest.bindings?.commands || []).length;
 }
 
 function getModuleCommandParameterDocs(command: { name: string; signature: string; description: string }): ModuleParameterDoc[] {
@@ -1832,7 +1884,8 @@ function ModuleInfoDialog({
   const snippets = contributes.snippets || [];
   const designerControls = contributes.designerControls || [];
   const docs = contributes.docs || [];
-  const cpp = contributes.cpp;
+  const targets = manifest.targets || [];
+  const bindings = manifest.bindings?.commands || [];
   const normalizedSearch = searchText.trim().toLowerCase();
   const matchesSearch = (...values: Array<string | undefined>) => (
     !normalizedSearch || values.some(value => value?.toLowerCase().includes(normalizedSearch))
@@ -1843,7 +1896,7 @@ function ModuleInfoDialog({
     command.signature,
     command.description,
     command.returnType,
-    command.cppRuntimeName
+    bindings.find(binding => binding.command === command.name)?.runtimeName
   ));
   const filteredControls = designerControls.filter(control => matchesSearch(
     control.label,
@@ -1852,14 +1905,9 @@ function ModuleInfoDialog({
   ));
   const filteredSnippets = snippets.filter(snippet => matchesSearch(snippet.label, snippet.description, snippet.insertText));
   const filteredDocs = docs.filter(doc => matchesSearch(doc.title, doc.path));
-  const cppRows = [
-    { label: '头文件', values: cpp?.headers || [] },
-    { label: '源码', values: cpp?.sources || [] },
-    { label: '库文件', values: cpp?.libs || [] },
-    { label: '运行时文件', values: cpp?.runtimeFiles || [] },
-    { label: '包含目录', values: cpp?.includeDirs || [] },
-    { label: '宏定义', values: cpp?.defines || [] }
-  ].map(row => ({ ...row, values: row.values.filter(value => matchesSearch(row.label, value)) })).filter(row => row.values.length > 0);
+  const cppRows = buildModuleCppRows(targets, bindings, docs)
+    .map(row => ({ ...row, values: row.values.filter(item => matchesSearch(row.label, item.value)) }))
+    .filter(row => row.values.length > 0);
   const totalVisible = filteredTypes.length
     + filteredCommands.length
     + filteredControls.length
@@ -1918,13 +1966,14 @@ function ModuleInfoDialog({
     }
     const selectedCommand = commands.find(command => selectedInfoNodeId === `command:${command.name}:${command.signature}`);
     if (selectedCommand) {
+      const selectedBinding = bindings.find(binding => binding.command === selectedCommand.name);
       return {
         kind: '命令接口',
         title: selectedCommand.name,
         declaration: selectedCommand.signature,
         description: selectedCommand.description,
         badge: selectedCommand.returnType || '空',
-        extra: selectedCommand.cppRuntimeName ? `C++ 运行时：${selectedCommand.cppRuntimeName}` : undefined,
+        extra: selectedBinding ? `C++ 运行时：${selectedBinding.runtimeName}` : undefined,
         parameters: getModuleCommandParameterDocs(selectedCommand),
         example: selectedCommand.insertText || selectedCommand.signature,
         copyText: selectedCommand.insertText || selectedCommand.signature
@@ -1963,15 +2012,15 @@ function ModuleInfoDialog({
       };
     }
     for (const row of cppRows) {
-      const value = row.values.find(item => selectedInfoNodeId === `cpp:${row.label}:${item}`);
-      if (value) {
+      const item = row.values.find(value => selectedInfoNodeId === `cpp:${value.id}`);
+      if (item) {
         return {
           kind: 'C++ 依赖',
-          title: value,
-          declaration: value,
+          title: item.value,
+          declaration: item.value,
           description: row.label,
           badge: row.label,
-          copyText: value
+          copyText: item.value
         };
       }
     }
@@ -2144,15 +2193,15 @@ function ModuleInfoDialog({
                     isDarkMode={isDarkMode}
                     onToggle={toggleInfoGroup}
                   >
-                    {cppRows.flatMap(row => row.values.map(value => (
+                    {cppRows.flatMap(row => row.values.map(item => (
                       <ModuleInfoTreeLeaf
-                        key={`cpp:${row.label}:${value}`}
+                        key={`cpp:${item.id}`}
                         icon={<FileText className="h-3 w-3 text-slate-400" />}
-                        label={value}
+                        label={item.value}
                         detail={row.label}
                         isDarkMode={isDarkMode}
-                        selected={selectedInfoNodeId === `cpp:${row.label}:${value}`}
-                        onClick={() => setSelectedInfoNodeId(`cpp:${row.label}:${value}`)}
+                        selected={selectedInfoNodeId === `cpp:${item.id}`}
+                        onClick={() => setSelectedInfoNodeId(`cpp:${item.id}`)}
                       />
                     )))}
                   </ModuleInfoTreeGroup>
@@ -2241,7 +2290,11 @@ function ModuleInfoDialog({
                           </div>
                           <div className="mt-1 break-all font-mono text-[11px] text-slate-400">{command.signature}</div>
                           <div className={`mt-1 break-words text-[11px] leading-5 ${subtleClass}`}>{command.description}</div>
-                          {command.cppRuntimeName && <div className={`mt-1 break-all text-[10px] ${subtleClass}`}>C++ 运行时：{command.cppRuntimeName}</div>}
+                          {bindings.find(binding => binding.command === command.name) && (
+                            <div className={`mt-1 break-all text-[10px] ${subtleClass}`}>
+                              C++ 运行时：{bindings.find(binding => binding.command === command.name)?.runtimeName}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -2283,7 +2336,7 @@ function ModuleInfoDialog({
                           <div className={`mb-1 text-xs font-semibold ${subtleClass}`}>{row.label}</div>
                           <ModuleInfoTable
                             headers={['项目', '路径/值']}
-                            rows={row.values.map(value => [row.label, value])}
+                            rows={row.values.map(item => [row.label, item.value])}
                             isDarkMode={isDarkMode}
                             onCopy={copyText}
                           />

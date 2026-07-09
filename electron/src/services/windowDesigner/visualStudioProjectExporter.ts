@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { InstalledModule } from '../modules/types';
+import { getPreferredModuleTarget } from '../modules/targetResolver';
 import { LingCppNativeProjectFile } from './lingCppWin32Project';
 
 export interface VisualStudioProjectExportResult {
@@ -65,7 +66,7 @@ function getSourceFiles(generatedFiles: LingCppNativeProjectFile[], enabledModul
       .filter(file => /\.(c|cc|cpp|cxx)$/i.test(file)),
     ...enabledModules.flatMap(module => {
       const moduleId = module.manifest.id;
-      return (module.manifest.contributes?.cpp?.sources || [])
+      return (getPreferredModuleTarget(module)?.sources || [])
         .map(file => normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
     })
   ]);
@@ -80,10 +81,10 @@ function getNoneFiles(generatedFiles: LingCppNativeProjectFile[]): string[] {
 function getModuleIncludeDirs(enabledModules: InstalledModule[]): string[] {
   return unique(enabledModules.flatMap(module => {
     const moduleId = module.manifest.id;
-    const cpp = module.manifest.contributes?.cpp;
-    if (!cpp) return [];
-    const explicitDirs = (cpp.includeDirs || []).map(dir => normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(dir))));
-    const headerDirs = (cpp.headers || []).map(header => {
+    const target = getPreferredModuleTarget(module);
+    if (!target) return [];
+    const explicitDirs = (target.includeDirs || []).map(dir => normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(dir))));
+    const headerDirs = (target.headers || []).map(header => {
       const firstSegment = normalizeSlash(header).split('/')[0];
       return firstSegment ? normalizeSlash(path.posix.join('modules', moduleId, firstSegment)) : '';
     }).filter(Boolean);
@@ -94,7 +95,7 @@ function getModuleIncludeDirs(enabledModules: InstalledModule[]): string[] {
 function getModuleLibFiles(enabledModules: InstalledModule[]): string[] {
   return unique(enabledModules.flatMap(module => {
     const moduleId = module.manifest.id;
-    return (module.manifest.contributes?.cpp?.libs || [])
+    return (getPreferredModuleTarget(module)?.libs || [])
       .map(file => normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
   }));
 }
@@ -102,7 +103,7 @@ function getModuleLibFiles(enabledModules: InstalledModule[]): string[] {
 function getModuleRuntimeFiles(enabledModules: InstalledModule[]): string[] {
   return unique(enabledModules.flatMap(module => {
     const moduleId = module.manifest.id;
-    return (module.manifest.contributes?.cpp?.runtimeFiles || [])
+    return (getPreferredModuleTarget(module)?.runtimeFiles || [])
       .map(file => normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
   }));
 }

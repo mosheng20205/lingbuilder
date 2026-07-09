@@ -125,11 +125,19 @@ function formatModuleForAi(module: InstalledModule): string {
   const manifest = module.manifest;
   const lines = [`- ${manifest.name} (${manifest.id}) v${manifest.version}：${manifest.description}`];
   const commands = (manifest.contributes?.commands || []).slice(0, 12);
+  const bindings = (manifest.bindings?.commands || []).slice(0, 12);
+  const targets = (manifest.targets || []).slice(0, 4);
   const types = (manifest.contributes?.types || []).slice(0, 12);
   const snippets = (manifest.contributes?.snippets || []).slice(0, 8);
 
   if (commands.length > 0) {
     lines.push(`  命令：${commands.map(command => `${command.name} => ${command.signature || command.name}`).join('；')}`);
+  }
+  if (bindings.length > 0) {
+    lines.push(`  C++绑定：${bindings.map(binding => `${binding.command}->${binding.runtimeName}`).join('；')}`);
+  }
+  if (targets.length > 0) {
+    lines.push(`  目标：${targets.map(target => `${target.id}(${target.platform}/${target.toolchain}/${target.arch})`).join('；')}`);
   }
   if (types.length > 0) {
     lines.push(`  类型：${types.map(type => `${type.name}（${type.description}）`).join('；')}`);

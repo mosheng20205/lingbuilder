@@ -7,9 +7,20 @@ import { AiBridgeService } from './services/aiBridge/aiBridgeService';
 import { createAiBridgeRouter } from './services/aiBridge/httpRoutes';
 import { startAiBridgeMcpServer } from './services/aiBridge/mcpServer';
 import { AiBridgePermissionMode, AiBridgeServerOptions } from './services/aiBridge/types';
+import { createModuleService } from './services/modules/moduleService';
+import {
+  createMarketIndex,
+  createModuleTemplate,
+  migrateCppModule,
+  validateModuleDirectory
+} from './services/modules/moduleSdkService';
 
 async function main(): Promise<void> {
   const [command, subcommand, ...rest] = process.argv.slice(2);
+  if (command === 'module') {
+    await runModuleCommand(subcommand, rest);
+    return;
+  }
   if (command !== 'ai-server' && subcommand !== 'ai-server') {
     printUsage();
     process.exitCode = 1;
@@ -60,6 +71,74 @@ async function main(): Promise<void> {
   }
 }
 
+async function runModuleCommand(subcommand: string | undefined, rest: string[]): Promise<void> {
+  const args = parseArgs(rest);
+  if (subcommand === 'init') {
+    const outDir = path.resolve(getStringArg(args.out) || process.cwd());
+    const manifest = await createModuleTemplate({
+      template: getStringArg(args.template) || 'cpp-source',
+      outDir,
+      id: getStringArg(args.id),
+      name: getStringArg(args.name)
+    });
+    console.log(`已创建模块模板：${manifest.name} (${manifest.id})`);
+    console.log(outDir);
+    return;
+  }
+
+  if (subcommand === 'validate') {
+    const target = path.resolve(getStringArg(args.path) || rest.find(item => !item.startsWith('--')) || process.cwd());
+    const result = await validateModuleDirectory(target);
+    console.log(result.diagnostics.length ? result.diagnostics.join('\n') : '模块校验通过。');
+    if (result.diagnostics.length > 0) process.exitCode = 1;
+    return;
+  }
+
+  if (subcommand === 'inspect') {
+    const target = path.resolve(getStringArg(args.path) || rest.find(item => !item.startsWith('--')) || process.cwd());
+    const result = await validateModuleDirectory(target);
+    if (!result.manifest) throw new Error(result.diagnostics.join('\n'));
+    console.log(JSON.stringify({
+      id: result.manifest.id,
+      name: result.manifest.name,
+      version: result.manifest.version,
+      targets: result.manifest.targets || [],
+      bindings: result.manifest.bindings || { commands: [] }
+    }, null, 2));
+    return;
+  }
+
+  if (subcommand === 'pack') {
+    const moduleDir = path.resolve(getStringArg(args.path) || rest.find(item => !item.startsWith('--')) || process.cwd());
+    const out = path.resolve(getStringArg(args.out) || `${moduleDir}.lbmod`);
+    await createModuleService(process.cwd()).exportModulePackage(moduleDir, out);
+    console.log(`已导出模块包：${out}`);
+    return;
+  }
+
+  if (subcommand === 'migrate-cpp') {
+    const config = getStringArg(args.config);
+    const outDir = getStringArg(args.out);
+    if (!config || !outDir) throw new Error('migrate-cpp 需要 --config <file> 和 --out <dir>。');
+    const manifest = await migrateCppModule(path.resolve(config), path.resolve(outDir));
+    console.log(`已生成 C++ 迁移模块：${manifest.name} (${manifest.id})`);
+    return;
+  }
+
+  if (subcommand === 'market' && rest[0] === 'index') {
+    const packageDir = path.resolve(getStringArg(args.packages) || process.cwd());
+    const out = path.resolve(getStringArg(args.out) || 'module-market.json');
+    const fs = await import('node:fs/promises');
+    const entries = await fs.readdir(packageDir);
+    await createMarketIndex(entries.filter(item => item.toLowerCase().endsWith('.lbmod')).map(item => path.join(packageDir, item)), out);
+    console.log(`已生成模块市场索引：${out}`);
+    return;
+  }
+
+  printUsage();
+  process.exitCode = 1;
+}
+
 function parseArgs(args: string[]): Record<string, string | boolean> {
   const result: Record<string, string | boolean> = {};
   for (let index = 0; index < args.length; index += 1) {
@@ -89,6 +168,12 @@ function parsePermission(value: string): AiBridgePermissionMode {
 function printUsage(): void {
   console.log(`Usage:
   lingbuilder ai-server --workspace <path> [--host 127.0.0.1] [--port 17860] [--permission preview] [--token <token>] [--mcp]
+  lingbuilder module init --template cpp-source --out <dir> [--id <id>] [--name <name>]
+  lingbuilder module validate <dir>
+  lingbuilder module pack <dir> --out <file.lbmod>
+  lingbuilder module inspect <dir>
+  lingbuilder module migrate-cpp --config <file> --out <dir>
+  lingbuilder module market index --packages <dir> --out module-market.json
 
 Permissions:
   readonly  只允许读取、搜索、诊断和生成预览

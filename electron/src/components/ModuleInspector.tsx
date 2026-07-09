@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
+  BookOpen,
   Check,
+  ChevronDown,
+  ChevronRight,
   Download,
   FileArchive,
   Layers,
@@ -17,10 +20,12 @@ import {
 import {
   InstalledModule,
   MarketModule,
-  ModuleCppContribution,
+  ModuleTargetContribution,
   ModuleHistoryEntry,
   ModuleInstallPreview
 } from '../services/modules/types';
+
+type ModuleSectionId = 'installed' | 'packageInstall' | 'packageExport' | 'developer' | 'market' | 'history';
 
 interface ModuleInspectorProps {
   onAddLog: (log: string) => void;
@@ -29,6 +34,7 @@ interface ModuleInspectorProps {
 }
 
 const PROJECT_ID = 'lingbuilder-ui-project';
+const MODULE_DEVELOPER_MANUAL_PATH = 'C:\\Users\\Administrator\\Downloads\\c++-汉化集成开发环境(lingbuilder)\\模块开发手册.md';
 
 export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedModuleId: externalSelectedModuleId = null }: ModuleInspectorProps) {
   const [installedModules, setInstalledModules] = useState<InstalledModule[]>([]);
@@ -43,8 +49,23 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
   const [packagePath, setPackagePath] = useState('');
   const [exportModuleDir, setExportModuleDir] = useState('');
   const [exportTargetPath, setExportTargetPath] = useState('');
+  const [developerOutDir, setDeveloperOutDir] = useState('');
+  const [developerTemplate, setDeveloperTemplate] = useState('cpp-source');
+  const [developerValidatePath, setDeveloperValidatePath] = useState('');
+  const [developerMigrateConfig, setDeveloperMigrateConfig] = useState('');
+  const [developerMigrateOut, setDeveloperMigrateOut] = useState('');
+  const [developerMarketPackages, setDeveloperMarketPackages] = useState('');
+  const [developerMarketOut, setDeveloperMarketOut] = useState('');
   const [installPreview, setInstallPreview] = useState<ModuleInstallPreview | null>(null);
   const [enableAfterInstall, setEnableAfterInstall] = useState(true);
+  const [expandedSections, setExpandedSections] = useState<Record<ModuleSectionId, boolean>>({
+    installed: true,
+    packageInstall: false,
+    packageExport: false,
+    developer: false,
+    market: false,
+    history: false
+  });
   const onAddLogRef = useRef(onAddLog);
   const refreshInFlightRef = useRef(false);
   const detailPanelRef = useRef<HTMLElement | null>(null);
@@ -130,6 +151,10 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
   const inspectModule = useCallback((moduleId: string) => {
     setSelectedModuleId(moduleId);
     setModuleApiSearchText('');
+  }, []);
+
+  const toggleSection = useCallback((sectionId: ModuleSectionId) => {
+    setExpandedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }));
   }, []);
 
   const previewPackage = async (pathValue: string) => {
@@ -254,6 +279,114 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
     }
   };
 
+  const createDeveloperTemplate = async () => {
+    if (!developerOutDir.trim()) {
+      setStatusText('请填写模块模板输出目录。');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/modules/developer/template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template: developerTemplate, outDir: developerOutDir.trim() })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || '模块模板创建失败');
+      setStatusText(`已创建模块模板：${result.manifest.name}`);
+      onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块开发】已创建模板 ${result.manifest.id}。`);
+    } catch (error) {
+      setStatusText(`模块模板创建失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const validateDeveloperModule = async () => {
+    if (!developerValidatePath.trim()) {
+      setStatusText('请填写要校验的模块目录或 manifest 路径。');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/modules/developer/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ modulePath: developerValidatePath.trim() })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || '模块校验失败');
+      const diagnostics = result.result?.diagnostics || [];
+      setStatusText(diagnostics.length ? `模块校验未通过：${diagnostics.join('；')}` : '模块校验通过。');
+    } catch (error) {
+      setStatusText(`模块校验失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const migrateDeveloperCpp = async () => {
+    if (!developerMigrateConfig.trim() || !developerMigrateOut.trim()) {
+      setStatusText('请填写 C++ 迁移配置和输出目录。');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/modules/developer/migrate-cpp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ configPath: developerMigrateConfig.trim(), outDir: developerMigrateOut.trim() })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'C++ 模块迁移失败');
+      setStatusText(`已生成 C++ 迁移模块：${result.manifest.name}`);
+      onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块开发】已迁移 C++ 模块 ${result.manifest.id}。`);
+    } catch (error) {
+      setStatusText(`C++ 模块迁移失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const createDeveloperMarketIndex = async () => {
+    const packagePaths = developerMarketPackages.split(/\r?\n/u).map(item => item.trim()).filter(Boolean);
+    if (packagePaths.length === 0 || !developerMarketOut.trim()) {
+      setStatusText('请填写 .lbmod 路径列表和市场索引输出路径。');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/modules/developer/market-index', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packagePaths, outPath: developerMarketOut.trim() })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || '模块市场索引生成失败');
+      setStatusText('模块市场索引已生成。');
+    } catch (error) {
+      setStatusText(`模块市场索引生成失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const openDeveloperManual = async () => {
+    try {
+      if (window.lingBuilder?.shell?.openPath) {
+        const result = await window.lingBuilder.shell.openPath(MODULE_DEVELOPER_MANUAL_PATH);
+        if (result) throw new Error(result);
+        setStatusText('已打开模块开发手册。');
+        onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块开发】已打开模块开发手册。`);
+        return;
+      }
+      setStatusText(`模块开发手册路径：${MODULE_DEVELOPER_MANUAL_PATH}`);
+      onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块开发】模块开发手册：${MODULE_DEVELOPER_MANUAL_PATH}`);
+    } catch (error) {
+      setStatusText(`打开模块开发手册失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
   const onDropPackage = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     const file = event.dataTransfer.files?.[0] as File & { path?: string };
@@ -312,8 +445,14 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
       </div>
 
       <div className="min-w-0 flex-1 overflow-auto p-3 space-y-3">
-        <section className={`min-w-0 rounded-md border ${cardClass}`}>
-          <Header icon={<Package size={16} />} title="本地模块" desc={`${installedModules.length} 个模块已索引，勾选状态代表当前项目引用。`} />
+        <CollapsibleSection
+          className={cardClass}
+          icon={<Package size={16} />}
+          title="本地模块"
+          desc={`${installedModules.length} 个模块已索引，勾选状态代表当前项目引用。`}
+          isOpen={expandedSections.installed}
+          onToggle={() => toggleSection('installed')}
+        >
           <div className="divide-y divide-white/10">
             {filteredInstalledModules.length === 0 ? (
               <Empty text="没有匹配的本地模块。" />
@@ -328,7 +467,7 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
               />
             ))}
           </div>
-        </section>
+        </CollapsibleSection>
 
         {selectedModule && (
           <ModuleDetailPanel
@@ -341,8 +480,14 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
           />
         )}
 
-        <section className={`min-w-0 rounded-md border ${cardClass}`}>
-          <Header icon={<FileArchive size={16} />} title="拖入安装 .lbmod" desc="支持拖入模块包，或手动填写本机路径后预览安装。" />
+        <CollapsibleSection
+          className={cardClass}
+          icon={<FileArchive size={16} />}
+          title="拖入安装 .lbmod"
+          desc="支持拖入模块包，或手动填写本机路径后预览安装。"
+          isOpen={expandedSections.packageInstall}
+          onToggle={() => toggleSection('packageInstall')}
+        >
           <div className="p-3 grid min-w-0 grid-cols-1 gap-2">
             <input
               value={packagePath}
@@ -355,10 +500,16 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
               预览安装
             </button>
           </div>
-        </section>
+        </CollapsibleSection>
 
-        <section className={`min-w-0 rounded-md border ${cardClass}`}>
-          <Header icon={<Archive size={16} />} title="模块包制作" desc="把包含 lingbuilder.module.json 的模块目录导出为标准 .lbmod 包。" />
+        <CollapsibleSection
+          className={cardClass}
+          icon={<Archive size={16} />}
+          title="模块包制作"
+          desc="把包含 lingbuilder.module.json 的模块目录导出为标准 .lbmod 包。"
+          isOpen={expandedSections.packageExport}
+          onToggle={() => toggleSection('packageExport')}
+        >
           <div className="p-3 grid min-w-0 grid-cols-1 gap-2">
             <input value={exportModuleDir} onChange={event => setExportModuleDir(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="模块目录" />
             <input value={exportTargetPath} onChange={event => setExportTargetPath(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="导出路径，例如 D:\\demo.lbmod" />
@@ -367,10 +518,59 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
               导出
             </button>
           </div>
-        </section>
+        </CollapsibleSection>
 
-        <section className={`min-w-0 rounded-md border ${cardClass}`}>
-          <Header icon={<Store size={16} />} title="模块市场" desc="从本地、官方或企业市场源读取模块索引；安装仍走同一套预览确认流程。" />
+        <CollapsibleSection
+          className={cardClass}
+          icon={<Upload size={16} />}
+          title="模块开发者中心"
+          desc="创建 v2 模块模板、迁移 C++ 库、校验模块和生成本地市场索引。"
+          isOpen={expandedSections.developer}
+          onToggle={() => toggleSection('developer')}
+        >
+          <div className="p-3 grid min-w-0 grid-cols-1 gap-2">
+            <button onClick={openDeveloperManual} className={`h-9 w-full px-3 rounded border border-amber-500/50 text-amber-200 text-xs inline-flex items-center justify-center gap-2 hover:bg-amber-500/10 hover:text-amber-100 ${actionButtonClass}`}>
+              <BookOpen size={14} />
+              打开模块开发手册
+            </button>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[140px_1fr]">
+              <select value={developerTemplate} onChange={event => setDeveloperTemplate(event.target.value)} className={`h-9 rounded border px-2 text-xs outline-none ${inputClass}`}>
+                {['cpp-source', 'dll-lib', 'ui-control', 'command-only', 'empty'].map(item => <option key={item}>{item}</option>)}
+              </select>
+              <input value={developerOutDir} onChange={event => setDeveloperOutDir(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="模块模板输出目录" />
+            </div>
+            <button onClick={createDeveloperTemplate} className={`h-9 w-full px-3 rounded bg-sky-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-sky-500 ${actionButtonClass}`}>
+              <Package size={14} />
+              创建模块模板
+            </button>
+            <input value={developerValidatePath} onChange={event => setDeveloperValidatePath(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="校验模块目录或 lingbuilder.module.json" />
+            <button onClick={validateDeveloperModule} className={`h-9 w-full px-3 rounded border border-emerald-500/40 text-emerald-300 text-xs inline-flex items-center justify-center gap-2 hover:bg-emerald-500/10 ${actionButtonClass}`}>
+              <ShieldCheck size={14} />
+              校验模块
+            </button>
+            <input value={developerMigrateConfig} onChange={event => setDeveloperMigrateConfig(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="C++ 迁移配置 JSON" />
+            <input value={developerMigrateOut} onChange={event => setDeveloperMigrateOut(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="C++ 迁移输出目录" />
+            <button onClick={migrateDeveloperCpp} className={`h-9 w-full px-3 rounded bg-violet-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-violet-500 ${actionButtonClass}`}>
+              <FileArchive size={14} />
+              迁移 C++ 库
+            </button>
+            <textarea value={developerMarketPackages} onChange={event => setDeveloperMarketPackages(event.target.value)} className={`min-h-20 min-w-0 rounded border px-3 py-2 text-xs outline-none ${inputClass}`} placeholder="每行一个 .lbmod 路径" />
+            <input value={developerMarketOut} onChange={event => setDeveloperMarketOut(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="module-market.json 输出路径" />
+            <button onClick={createDeveloperMarketIndex} className={`h-9 w-full px-3 rounded border border-sky-500/40 text-sky-300 text-xs inline-flex items-center justify-center gap-2 hover:bg-sky-500/10 ${actionButtonClass}`}>
+              <Store size={14} />
+              生成市场索引
+            </button>
+          </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          className={cardClass}
+          icon={<Store size={16} />}
+          title="模块市场"
+          desc="从本地、官方或企业市场源读取模块索引；安装仍走同一套预览确认流程。"
+          isOpen={expandedSections.market}
+          onToggle={() => toggleSection('market')}
+        >
           <div className="divide-y divide-white/10">
             {filteredMarketModules.length === 0 ? (
               <Empty text="未发现市场模块。可在 .lingbuilder/module-market.json 中添加本地索引。" />
@@ -392,10 +592,16 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
               </div>
             ))}
           </div>
-        </section>
+        </CollapsibleSection>
 
-        <section className={`min-w-0 rounded-md border ${cardClass}`}>
-          <Header icon={<Check size={16} />} title="操作历史" desc="记录安装、卸载、启用、禁用和导出动作。" />
+        <CollapsibleSection
+          className={cardClass}
+          icon={<Check size={16} />}
+          title="操作历史"
+          desc="记录安装、卸载、启用、禁用和导出动作。"
+          isOpen={expandedSections.history}
+          onToggle={() => toggleSection('history')}
+        >
           <div className="divide-y divide-white/10">
             {history.length === 0 ? (
               <Empty text="暂无模块操作历史。" />
@@ -409,7 +615,7 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
               </div>
             ))}
           </div>
-        </section>
+        </CollapsibleSection>
       </div>
 
       {installPreview && (
@@ -456,15 +662,45 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
   );
 }
 
-function Header({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
+function CollapsibleSection({
+  className,
+  icon,
+  title,
+  desc,
+  isOpen,
+  onToggle,
+  children
+}: {
+  className: string;
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="min-w-0 p-3 border-b border-white/10 flex items-start gap-2">
-      <span className="mt-0.5 shrink-0 text-sky-400">{icon}</span>
-      <div className="min-w-0">
-        <div className="text-sm font-semibold">{title}</div>
-        <div className="text-[11px] leading-4 text-slate-500">{desc}</div>
+    <section className={`min-w-0 rounded-md border ${className}`}>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`w-full min-w-0 p-3 flex items-start gap-2 text-left transition-colors hover:bg-white/5 ${isOpen ? 'border-b border-white/10' : ''}`}
+        aria-expanded={isOpen}
+        title={isOpen ? `折叠${title}` : `展开${title}`}
+      >
+        <span className="mt-0.5 shrink-0 text-sky-400">{icon}</span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold">{title}</div>
+          <div className="text-[11px] leading-4 text-slate-500">{desc}</div>
+        </div>
+        <span className="mt-0.5 shrink-0 rounded p-0.5 text-slate-400">
+          {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+        </span>
+      </button>
+      <div className={isOpen ? 'block' : 'hidden'}>
+        {children}
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -535,7 +771,6 @@ const ModuleDetailPanel = React.forwardRef<HTMLElement, {
   const snippets = contributes.snippets || [];
   const designerControls = contributes.designerControls || [];
   const docs = contributes.docs || [];
-  const cpp = contributes.cpp;
   const subtleClass = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const panelClass = isDarkMode
     ? 'bg-[#252526] border-white/10 text-slate-200'
@@ -551,7 +786,6 @@ const ModuleDetailPanel = React.forwardRef<HTMLElement, {
       command.signature,
       command.description,
       command.returnType,
-      command.cppRuntimeName
     ].filter(Boolean).join(' ').toLowerCase().includes(normalizedSearch);
   });
   const visibleCommands = filteredCommands.slice(0, 80);
@@ -604,7 +838,6 @@ const ModuleDetailPanel = React.forwardRef<HTMLElement, {
               </div>
               <div className="mt-1 break-all font-mono text-[11px] text-slate-300">{command.signature}</div>
               <div className={`mt-1 break-words text-[11px] leading-4 ${subtleClass}`}>{command.description}</div>
-              {command.cppRuntimeName && <div className={`mt-1 break-all text-[10px] ${subtleClass}`}>C++：{command.cppRuntimeName}</div>}
             </div>
           ))}
         </CapabilityBlock>
@@ -631,7 +864,7 @@ const ModuleDetailPanel = React.forwardRef<HTMLElement, {
           ))}
         </CapabilityBlock>
 
-        <CppContributionBlock cpp={cpp} docs={docs} isDarkMode={isDarkMode} />
+        <CppContributionBlock targets={manifest.targets || []} bindings={manifest.bindings?.commands || []} docs={docs} isDarkMode={isDarkMode} />
       </div>
     </section>
   );
@@ -667,14 +900,26 @@ function CapabilityBlock({
   );
 }
 
-function CppContributionBlock({ cpp, docs, isDarkMode }: { cpp?: ModuleCppContribution; docs: Array<{ title: string; path: string }>; isDarkMode: boolean }) {
+function CppContributionBlock({
+  targets,
+  bindings,
+  docs,
+  isDarkMode
+}: {
+  targets: ModuleTargetContribution[];
+  bindings: Array<{ command: string; runtimeName: string; returnType?: string }>;
+  docs: Array<{ title: string; path: string }>;
+  isDarkMode: boolean;
+}) {
   const rows = [
-    ['头文件', cpp?.headers || []],
-    ['源码', cpp?.sources || []],
-    ['库文件', cpp?.libs || []],
-    ['运行时 DLL', cpp?.runtimeFiles || []],
-    ['包含目录', cpp?.includeDirs || []],
-    ['宏定义', cpp?.defines || []],
+    ['目标', targets.map(target => `${target.id}：${target.platform}/${target.toolchain}/${target.arch}`)],
+    ['头文件', targets.flatMap(target => target.headers || [])],
+    ['源码', targets.flatMap(target => target.sources || [])],
+    ['库文件', targets.flatMap(target => target.libs || [])],
+    ['运行时 DLL', targets.flatMap(target => target.runtimeFiles || [])],
+    ['包含目录', targets.flatMap(target => target.includeDirs || [])],
+    ['宏定义', targets.flatMap(target => target.defines || [])],
+    ['命令绑定', bindings.map(binding => `${binding.command} -> ${binding.runtimeName}${binding.returnType ? ` : ${binding.returnType}` : ''}`)],
     ['文档', docs.map(doc => `${doc.title}：${doc.path}`)]
   ] as Array<[string, string[]]>;
   const hasAny = rows.some(([, values]) => values.length > 0);
@@ -689,7 +934,7 @@ function CppContributionBlock({ cpp, docs, isDarkMode }: { cpp?: ModuleCppContri
           {rows.filter(([, values]) => values.length > 0).map(([label, values]) => (
             <div key={label} className={`rounded border p-2 ${rowClass}`}>
               <div className="mb-1 text-[11px] font-semibold text-slate-300">{label}</div>
-              {values.map(value => <div key={value} className="break-all font-mono text-[10px] text-slate-400">{value}</div>)}
+              {values.map((value, index) => <div key={`${label}:${index}:${value}`} className="break-all font-mono text-[10px] text-slate-400">{value}</div>)}
             </div>
           ))}
         </div>

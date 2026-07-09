@@ -36,6 +36,12 @@ import {
   materializeModuleNativeDependencies,
   ModuleNativeDependencyPlan
 } from "./src/services/modules/nativeDependencyService";
+import {
+  createMarketIndex,
+  createModuleTemplate,
+  migrateCppModule,
+  validateModuleDirectory
+} from "./src/services/modules/moduleSdkService";
 import { AiBridgeService } from "./src/services/aiBridge/aiBridgeService";
 import { createAiBridgeRouter } from "./src/services/aiBridge/httpRoutes";
 import { AiBridgePermissionMode, AiBridgeServerOptions } from "./src/services/aiBridge/types";
@@ -449,6 +455,50 @@ app.get("/api/modules/history", async (_req, res) => {
     res.json({ ok: true, history: await getModuleService().getHistory() });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "模块历史读取失败" });
+  }
+});
+
+app.post("/api/modules/developer/template", async (req, res) => {
+  try {
+    const { template = "cpp-source", outDir, id, name } = req.body as { template?: string; outDir?: string; id?: string; name?: string };
+    if (!outDir) return res.status(400).json({ ok: false, error: "缺少 outDir" });
+    const manifest = await createModuleTemplate({ template, outDir, id, name });
+    res.json({ ok: true, manifest });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "模块模板创建失败" });
+  }
+});
+
+app.post("/api/modules/developer/validate", async (req, res) => {
+  try {
+    const { modulePath } = req.body as { modulePath?: string };
+    if (!modulePath) return res.status(400).json({ ok: false, error: "缺少 modulePath" });
+    const result = await validateModuleDirectory(modulePath);
+    res.json({ ok: true, result });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "模块校验失败" });
+  }
+});
+
+app.post("/api/modules/developer/migrate-cpp", async (req, res) => {
+  try {
+    const { configPath, outDir } = req.body as { configPath?: string; outDir?: string };
+    if (!configPath || !outDir) return res.status(400).json({ ok: false, error: "缺少 configPath 或 outDir" });
+    const manifest = await migrateCppModule(configPath, outDir);
+    res.json({ ok: true, manifest });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "C++ 模块迁移失败" });
+  }
+});
+
+app.post("/api/modules/developer/market-index", async (req, res) => {
+  try {
+    const { packagePaths, outPath } = req.body as { packagePaths?: string[]; outPath?: string };
+    if (!Array.isArray(packagePaths) || !outPath) return res.status(400).json({ ok: false, error: "缺少 packagePaths 或 outPath" });
+    await createMarketIndex(packagePaths, outPath);
+    res.json({ ok: true });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "模块市场索引生成失败" });
   }
 });
 

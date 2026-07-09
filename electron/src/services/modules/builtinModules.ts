@@ -2,7 +2,7 @@ import { LingBuilderModuleManifest } from './types';
 
 export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: 'lingbuilder.win32.basic',
     name: 'Win32窗口基础模块',
     version: '1.0.0',
@@ -17,24 +17,21 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           signature: '信息框(内容, 标志, 标题)',
           description: '显示一个 Win32 系统消息框。',
           insertText: '信息框("$1", 64, "提示")',
-          returnType: '整数型',
-          cppRuntimeName: '信息框'
+          returnType: '整数型'
         },
         {
           name: '调试输出',
           signature: '调试输出(内容)',
           description: '向调试输出窗口和控制台输出文本。',
           insertText: '调试输出("$1")',
-          returnType: '空',
-          cppRuntimeName: '调试输出'
+          returnType: '空'
         },
         {
           name: '结束',
           signature: '结束()',
           description: '关闭当前窗口。',
           insertText: '结束()',
-          returnType: '空',
-          cppRuntimeName: '结束'
+          returnType: '空'
         }
       ],
       types: [
@@ -57,10 +54,47 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           events: [{ name: 'Change', label: '内容被改变', handlerPattern: '_{controlName}_内容被改变' }]
         }
       ],
-      cpp: {
+    },
+    targets: [
+      {
+        id: 'windows-msvc-win32',
+        platform: 'windows',
+        arch: 'win32',
+        toolchain: 'msvc',
         libs: ['comctl32.lib'],
         defines: ['UNICODE', '_UNICODE']
       }
+    ],
+    bindings: {
+      commands: [
+        {
+          command: '信息框',
+          runtimeName: '信息框',
+          parameters: [
+            { name: '内容', type: 'wideString' },
+            { name: '标志', type: 'int' },
+            { name: '标题', type: 'wideString' }
+          ],
+          returnType: 'int',
+          encoding: 'wide',
+          example: '信息框("你好", 64, "提示")'
+        },
+        {
+          command: '调试输出',
+          runtimeName: '调试输出',
+          parameters: [{ name: '内容', type: 'wideString' }],
+          returnType: 'void',
+          encoding: 'wide',
+          example: '调试输出("按钮被单击")'
+        },
+        {
+          command: '结束',
+          runtimeName: '结束',
+          parameters: [],
+          returnType: 'void',
+          example: '结束()'
+        }
+      ]
     }
   }
 ];

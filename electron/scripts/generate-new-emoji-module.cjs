@@ -176,7 +176,7 @@ function buildCommands(exports, prototypes, apiManifest) {
       description: `${MODULE_NAME} 底层导出 ${exportName}。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。`,
       insertText: `${name}(${prototype.params.map((_, index) => `$${index + 1}`).join(', ')})`,
       returnType: mapReturnType(prototype.returnType),
-      cppRuntimeName: exportName
+      runtimeName: exportName
     });
   }
 
@@ -200,13 +200,22 @@ function bridgeCommands() {
     description,
     insertText: `${name}($1)`,
     returnType,
-    cppRuntimeName: name
+    runtimeName: name
   }));
 }
 
 function buildManifest(commands) {
+  const commandContributions = commands.map(({ runtimeName, ...command }) => command);
+  const bindings = commands.map(command => ({
+    command: command.name,
+    runtimeName: command.runtimeName || command.name,
+    parameters: parseBindingParameters(command.signature),
+    returnType: mapBindingReturnType(command.returnType),
+    encoding: command.name.startsWith('NE_EU_') ? 'raw' : 'wide',
+    example: command.insertText || command.signature
+  }));
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: MODULE_ID,
     name: MODULE_NAME,
     version: '1.0.0',
@@ -216,7 +225,7 @@ function buildManifest(commands) {
     license: 'MIT',
     tags: ['界面', 'Direct2D', 'DirectWrite', 'emoji', 'Windows', '原生控件'],
     contributes: {
-      commands,
+      commands: commandContributions,
       types: [
         { name: 'NE窗口句柄', description: 'new_emoji 原生窗口句柄。', cppType: 'HWND' },
         { name: 'NE元素ID', description: 'new_emoji Element 元素编号。', cppType: 'int' }
@@ -231,7 +240,17 @@ function buildManifest(commands) {
           description: '插入 new_emoji 最小窗口调用。'
         }
       ],
-      cpp: {
+      docs: [
+        { title: 'new_emoji API 索引', path: 'docs/new_emoji-api.json' },
+        { title: 'new_emoji 模块说明', path: 'README.md' }
+      ]
+    },
+    targets: [
+      {
+        id: 'windows-msvc-win32',
+        platform: 'windows',
+        arch: 'win32',
+        toolchain: 'msvc',
         includeDirs: ['include'],
         headers: ['include/new_emoji_bridge.h'],
         sources: ['src/new_emoji_bridge.cpp'],
@@ -239,12 +258,49 @@ function buildManifest(commands) {
         runtimeFiles: ['bin/Win32/new_emoji.dll'],
         defines: ['LINGBUILDER_NEW_EMOJI_MODULE']
       },
-      docs: [
-        { title: 'new_emoji API 索引', path: 'docs/new_emoji-api.json' },
-        { title: 'new_emoji 模块说明', path: 'README.md' }
-      ]
+      {
+        id: 'windows-msvc-x64',
+        platform: 'windows',
+        arch: 'x64',
+        toolchain: 'msvc',
+        includeDirs: ['include'],
+        headers: ['include/new_emoji_bridge.h'],
+        sources: ['src/new_emoji_bridge.cpp'],
+        libs: ['lib/x64/new_emoji.lib'],
+        runtimeFiles: ['bin/x64/new_emoji.dll'],
+        defines: ['LINGBUILDER_NEW_EMOJI_MODULE']
+      }
+    ],
+    bindings: { commands: bindings },
+    publish: {
+      repository: 'T:/github/new_emoji'
     }
   };
+}
+
+function parseBindingParameters(signature) {
+  const match = signature.match(/^[^(（]+[（(](.*)[）)]/u);
+  if (!match || !match[1].trim()) return [];
+  return match[1].split(/[，,]/u).map(part => part.trim()).filter(Boolean).map(name => ({
+    name,
+    type: inferBindingParameterType(name)
+  }));
+}
+
+function inferBindingParameterType(name) {
+  if (/标题|文本|表情|内容/u.test(name)) return 'wideString';
+  if (/句柄|hwnd|HWND/u.test(name)) return 'handle';
+  if (/是否|visible/u.test(name)) return 'bool';
+  if (/bytes|len|指针|callback/u.test(name)) return 'raw';
+  return 'int';
+}
+
+function mapBindingReturnType(returnType) {
+  if (returnType === '空') return 'void';
+  if (returnType === '窗口句柄') return 'handle';
+  if (returnType === '逻辑型') return 'bool';
+  if (returnType === '小数型') return 'double';
+  return 'int';
 }
 
 function bridgeHeader() {
