@@ -40,6 +40,22 @@ npm run dev
 http://127.0.0.1:3001/
 ```
 
+开发脚本显式传入工作区、规则手册、回环 host/port，并显式启用仅限 `development + loopback` 的无会话鉴权模式。生产/安装版不能关闭会话鉴权。
+
+## Windows 打包与安装版冒烟
+
+```bash
+npm run package:dir
+npm run smoke:packaged
+npm run package:win
+```
+
+- `package:dir` 生成 `release/win-unpacked/LingBuilder.exe`；`smoke:packaged` 启动该程序并验证 renderer、普通 API、模块 API、退出码和服务进程回收；`package:win` 生成 Windows x64 NSIS 安装包。
+- 安装版主进程先启动不可见的独立本地服务，显式传入工作区、renderer 静态目录、规则手册、`127.0.0.1` 随机端口和随机会话 token，收到 ready 信息后才加载窗口。
+- renderer 仍使用相对 `/api/*`，Electron 会自动注入本地会话 token；普通 IDE 服务拒绝 `0.0.0.0`，默认不挂载 `/api/ai-bridge/*`。
+- 首次运行会把版本化示例的缺失文件复制到“文档/LingBuilder/示例工作区”，不会覆盖已有文件；以后从 `userData/workspace-state.json` 恢复最近工作区。工具栏“打开”使用原生目录选择器并重启本地服务。
+- 规则手册、模块手册、renderer、server 和默认工作区模板均作为打包资源携带，不依赖安装目录或启动时的 `cwd`。
+
 ## 设计约定
 
 - `src/` 保留现有 Web IDE 原型代码，作为 Electron 的渲染端。
@@ -101,6 +117,9 @@ new_emoji YOLO 示例约束：
 
 安全约束：
 
+- Electron IDE 内嵌 AI Bridge 默认关闭；外部客户端必须显式运行 `lingbuilder ai-server`。
+- HTTP 鉴权只接受 `Authorization: Bearer <token>`，不接受 query/body token。
+- 文件访问按真实工作区路径校验，文件树/搜索不跟随符号链接或 Windows junction，新文件写入拒绝链接路径链。
 - `readonly` 禁止写入和执行。
 - `preview` 写文件、导出和构建运行必须传入 `approved=true`。
 - `yolo` 允许带 token 的客户端自动执行受控 LingBuilder 命令，但仍不开放任意 shell。
@@ -117,6 +136,8 @@ node dist/cli.cjs module init --template cpp-source --out ../.lingbuilder/module
 node dist/cli.cjs module validate ../.lingbuilder/module-build/com.example.native
 node dist/cli.cjs module pack ../.lingbuilder/module-build/com.example.native --out ../.lingbuilder/module-packages/native.lbmod
 node dist/cli.cjs module inspect ../.lingbuilder/module-build/com.example.native
+node dist/cli.cjs module validate ../.lingbuilder/module-packages/native.lbmod
+node dist/cli.cjs module inspect ../.lingbuilder/module-packages/native.lbmod
 node dist/cli.cjs module migrate-cpp --config ../migrate.json --out ../.lingbuilder/module-build/com.example.native
 node dist/cli.cjs module market index --packages ../.lingbuilder/module-packages --out ../.lingbuilder/module-market.json
 ```

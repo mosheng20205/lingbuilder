@@ -8,10 +8,16 @@
 - C++ 依赖从旧 `contributes.cpp` 迁移到顶层 `targets[]`，当前默认构建目标为 `windows-msvc-win32`，并预留 `windows-msvc-x64`、CMake、Linux、macOS 等后续目标。
 - 中文命令到 C++ 的确定性映射从旧 `cppRuntimeName` 迁移到 `bindings.commands[]`。`contributes.commands` 只负责补全、诊断和文档；生成 C++ 必须优先使用 binding。
 - 新增模块 SDK 能力：`lingbuilder module init`、`module validate`、`module pack`、`module inspect`、`module migrate-cpp`、`module market index`。
+- `module validate` / `module inspect` 可直接检查模块目录、manifest 或 `.lbmod`；包检查使用临时工作区预览并在结束后清理，不改变项目启用状态。
 - 模块页新增“模块开发者中心”，支持创建模板、校验模块、C++ 迁移和本地市场索引生成；这些入口复用服务层，不把模块逻辑写入 React 组件。
 - 根目录 `模块开发手册.md` 是对外模块作者手册；修改 v2 manifest、binding、target、迁移流程或发布流程时必须同步更新。
 - `new_emoji` 模块需要用 `electron/scripts/generate-new-emoji-module.cjs` 重新生成 v2 包，输出仍为 `.lingbuilder/module-packages/new_emoji.lbmod`，安装目录仍为 `.lingbuilder/modules/lingbuilder.new_emoji.ui`。
 - 新建普通 Win32 项目默认只引用 `lingbuilder.win32.basic`。`new_emoji`、网页访问、HTTP 服务端、WebSocket 客户端/服务端等模块即使已安装或属于内置网络模块，也必须由模板、用户或明确的一键启用动作加入项目引用。
+- 模块管理 UI 的 `projectId` 为必填，始终跟随解决方案中的活动项目；切换项目会清空旧请求状态并重新读取，安装后启用、启用/禁用、刷新和变更事件均携带项目 ID，服务端拒绝不存在的项目。
+- HTTP 模块开发入口只接受工作区相对路径：模板/迁移输出位于 `.lingbuilder/module-build`，包位于 `.lingbuilder/module-packages`，市场索引位于 `.lingbuilder`；CLI 仍可显式使用本机路径。
+- 当前 F5 目标只接受精确 `windows-msvc-win32`。缺少该 target 时跳过原生依赖并返回中文诊断，不会回退到 `targets[0]`。
+- manifest 预览、目录校验、安装与打包会确认 `docs`、`examples`、`headers`、`sources`、`libs`、`runtimeFiles` 和 include 目录实际存在。
+- 命令 `insertText` 必须由签名参数生成并与 binding 参数数量一致；零参数命令生成 `命令()`，多参数按顺序生成 `$1` 到 `$N`。
 
 ## 当前实现范围
 

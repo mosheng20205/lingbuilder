@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useMemo, useState, useCallback, useImperativeHandle } from 'react';
 import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X, ListTree, PanelRightClose, GraduationCap, Lightbulb, ClipboardList, Wand2, PlayCircle, Pencil, Save, Trash2, Plus, ChevronDown, ChevronRight, RefreshCw, FolderOpen, Copy, FileInput, ExternalLink } from 'lucide-react';
 
 function FileIcon({ fileName, isDarkMode }: { fileName: string; isDarkMode: boolean }) {
@@ -59,6 +59,15 @@ import {
   getBeginnerModuleCodeCompletions,
   getBeginnerModuleCommandHints
 } from '../services/modules/moduleContextAdapters';
+import {
+  applyPendingBeginnerCodeDrafts,
+  createBeginnerCodeDraftKey,
+  FlushPendingEditsResult
+} from '../services/lingCpp/beginnerEditTransactionService';
+
+export interface DiffViewerHandle {
+  flushPendingEdits: () => Promise<FlushPendingEditsResult>;
+}
 
 interface DiffViewerProps {
   diffResult: DiffResult;
@@ -1154,7 +1163,7 @@ const buildEplVisualLines = (lines: string[]): EplVisualLine[] => {
   });
 };
 
-export default function DiffViewer({
+const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function DiffViewer({
   diffResult,
   strings,
   onUpdateStringTranslation,
@@ -1179,7 +1188,7 @@ export default function DiffViewer({
   onIgnoreBeginnerTask,
   onApplyWorkspaceEdit,
   onOpenProblemsPanel
-}: DiffViewerProps) {
+}: DiffViewerProps, ref) {
   const [viewType, setViewType] = useState<'code' | 'designer'>('code');
 
   useEffect(() => {
@@ -1234,6 +1243,7 @@ export default function DiffViewer({
   const [beginnerCompletionState, setBeginnerCompletionState] = useState<BeginnerCompletionState | null>(null);
   const [beginnerJumpHighlight, setBeginnerJumpHighlight] = useState<BeginnerJumpHighlightState | null>(null);
   const [beginnerCodeDrafts, setBeginnerCodeDrafts] = useState<Record<string, string>>({});
+  const beginnerCodeDraftsRef = useRef<Record<string, string>>({});
   const [beginnerContextMenu, setBeginnerContextMenu] = useState<BeginnerContextMenuState | null>(null);
   const [beginnerTypeCompletionState, setBeginnerTypeCompletionState] = useState<BeginnerTypeCompletionState | null>(null);
   const [beginnerCommandHintState, setBeginnerCommandHintState] = useState<BeginnerCommandHintState | null>(null);
@@ -1257,6 +1267,7 @@ export default function DiffViewer({
     setFunctionCallDrafts({});
     setBeginnerCompletionState(null);
     setBeginnerJumpHighlight(null);
+    beginnerCodeDraftsRef.current = {};
     setBeginnerCodeDrafts({});
     setBeginnerContextMenu(null);
     setBeginnerTypeCompletionState(null);
@@ -1303,6 +1314,10 @@ export default function DiffViewer({
     ? activeFile?.translatedContent ?? ''
     : activeFile?.originalContent || diffResult.translatedLines.map(line => line.content).join('\n');
   const normalizedSourceCode = activeFile?.language === 'epl' ? optimizeEplName(sourceCode) : sourceCode;
+  const latestSourceCodeRef = useRef(normalizedSourceCode);
+  useEffect(() => {
+    latestSourceCodeRef.current = normalizedSourceCode;
+  }, [activeFile?.path, normalizedSourceCode]);
   const lingCppStructure = useMemo(
     () => activeFile?.language === 'lingcpp'
       ? getLingCppStructureView(normalizedSourceCode, designerProject, activeFile?.path)
@@ -1321,6 +1336,32 @@ export default function DiffViewer({
       : null,
     [activeFile?.language, activeFile?.path, designerProject, moduleContext, normalizedSourceCode]
   );
+  useImperativeHandle(ref, () => ({
+    flushPendingEdits: async () => {
+      const currentSourceCode = latestSourceCodeRef.current;
+      if (activeFile?.language !== 'lingcpp' || editorExperienceMode !== 'beginner') {
+        return {
+          success: true,
+          sourceCode: currentSourceCode,
+          changed: false,
+          diagnostics: [],
+          appliedDraftCount: 0
+        };
+      }
+
+      const result = applyPendingBeginnerCodeDrafts(currentSourceCode, beginnerCodeDraftsRef.current);
+      if (!result.success) {
+        setStructureEditError(result.diagnostics[0] || '新手代码提交失败，源码已保持不变。');
+        return result;
+      }
+
+      latestSourceCodeRef.current = result.sourceCode;
+      beginnerCodeDraftsRef.current = {};
+      setBeginnerCodeDrafts({});
+      setStructureEditError(null);
+      return result;
+    }
+  }), [activeFile?.language, editorExperienceMode]);
   const beginnerModuleCodeCompletions = useMemo(
     () => getBeginnerModuleCodeCompletions(moduleContext).map(item => ({
       label: item.label,
@@ -1590,7 +1631,9 @@ export default function DiffViewer({
   };
 
   const updateSourceCode = (nextCode: string) => {
-    onUpdateSourceContent?.(activeFile?.language === 'epl' ? optimizeEplName(nextCode) : nextCode);
+    const normalizedNextCode = activeFile?.language === 'epl' ? optimizeEplName(nextCode) : nextCode;
+    latestSourceCodeRef.current = normalizedNextCode;
+    onUpdateSourceContent?.(normalizedNextCode);
   };
 
   const refreshNativePreview = async () => {
@@ -3492,7 +3535,7 @@ export default function DiffViewer({
       || codeTargets.find(target => target.method.kind === 'event')
       || codeTargets[0];
     const codeTargetKey = (target: BeginnerCodeTarget) =>
-      `${target.className}:${target.method.kind}:${target.method.name}`;
+      createBeginnerCodeDraftKey(target.className, target.method.kind, target.method.name);
     const commonLingCppTypes = ['文本型', '整数型', '逻辑型', '小数型', '长整数型', '按钮', '标签', '编辑框', '复选框', '窗体', '对象'];
     const memberNameSuggestions = Array.from(new Set([
       ...memberRows.map(row => row.targetName || row.name),
@@ -3558,16 +3601,17 @@ export default function DiffViewer({
     );
     const updateBeginnerCodeDraft = (target: BeginnerCodeTarget, nextValue: string) => {
       const targetKey = codeTargetKey(target);
-      setBeginnerCodeDrafts(current => ({ ...current, [targetKey]: nextValue }));
+      const nextDrafts = { ...beginnerCodeDraftsRef.current, [targetKey]: nextValue };
+      beginnerCodeDraftsRef.current = nextDrafts;
+      setBeginnerCodeDrafts(nextDrafts);
     };
     const clearBeginnerCodeDraft = (target: BeginnerCodeTarget) => {
       const targetKey = codeTargetKey(target);
-      setBeginnerCodeDrafts(current => {
-        if (!(targetKey in current)) return current;
-        const next = { ...current };
-        delete next[targetKey];
-        return next;
-      });
+      if (!(targetKey in beginnerCodeDraftsRef.current)) return;
+      const nextDrafts = { ...beginnerCodeDraftsRef.current };
+      delete nextDrafts[targetKey];
+      beginnerCodeDraftsRef.current = nextDrafts;
+      setBeginnerCodeDrafts(nextDrafts);
     };
     const updateBeginnerCompletion = (
       target: BeginnerCodeTarget,
@@ -7524,4 +7568,8 @@ export default function DiffViewer({
       )}
     </div>
   );
-}
+});
+
+DiffViewer.displayName = 'DiffViewer';
+
+export default DiffViewer;

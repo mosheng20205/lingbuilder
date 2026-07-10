@@ -1,12 +1,13 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { WorkspacePathPolicy } from '../workspace/workspacePathPolicy';
 import { AiBridgePermissionMode } from './types';
 
 export type AiBridgeOperation = 'read' | 'write' | 'execute';
 
 export class AiBridgePermissionService {
   constructor(
-    private readonly workspaceRoot: string,
+    private readonly pathPolicy: WorkspacePathPolicy,
     private readonly mode: AiBridgePermissionMode
   ) {}
 
@@ -53,8 +54,8 @@ export class AiBridgePermissionService {
     target?: string;
     details?: unknown;
   }): Promise<void> {
-    const logDir = path.join(this.workspaceRoot, '.lingbuilder');
-    const logPath = path.join(logDir, 'ai-bridge-log.jsonl');
+    const logPath = await this.pathPolicy.resolveForWrite('.lingbuilder/ai-bridge-log.jsonl');
+    const logDir = path.dirname(logPath);
     const payload = {
       at: new Date().toISOString(),
       permission: this.mode,

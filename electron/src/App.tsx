@@ -59,7 +59,7 @@ import { computeDiff } from './utils/diff';
 
 // Components
 import Sidebar from './components/Sidebar';
-import DiffViewer from './components/DiffViewer';
+import DiffViewer, { DiffViewerHandle } from './components/DiffViewer';
 import AiAssistant from './components/AiAssistant';
 import BottomPanel from './components/BottomPanel';
 import {
@@ -273,6 +273,15 @@ const inferFileLanguage = (filePath: string): CppFile['language'] => {
   return 'cpp';
 };
 
+const getCurrentFileContent = (file: CppFile): string =>
+  file.isModified ? file.translatedContent : (file.translatedContent || file.originalContent || '');
+
+interface EditorFlushState {
+  ok: boolean;
+  files: CppFile[];
+  diagnostics: string[];
+}
+
 export default function App() {
   const [solution, setSolution] = useState<SolutionModel>(DEFAULT_SOLUTION);
   const [windowDesignerState, setWindowDesignerState] = useState<PersistedWindowDesignerState>(() => readWindowDesignerState());
@@ -311,6 +320,7 @@ export default function App() {
   });
   const filesRef = useRef<CppFile[]>([]);
   const activeFileRef = useRef<CppFile | null>(null);
+  const diffViewerRef = useRef<DiffViewerHandle>(null);
   useEffect(() => {
     filesRef.current = files;
   }, [files]);
@@ -347,43 +357,89 @@ export default function App() {
     }
   }, [activeFile]);
 
-  const handleSelectFile = useCallback((file: CppFile, forceCodeView: boolean = true) => {
-    setOpenTabs(prev => {
-      if (!prev.includes(file.path)) {
-        return [...prev, file.path];
+  const flushCurrentEditorDrafts = useCallback(async (): Promise<EditorFlushState> => {
+    const currentFile = activeFileRef.current;
+    const editorHandle = diffViewerRef.current;
+    if (!currentFile || !editorHandle) {
+      return { ok: true, files: filesRef.current, diagnostics: [] };
+    }
+
+    const result = await editorHandle.flushPendingEdits();
+    if (!result.success) {
+      return { ok: false, files: filesRef.current, diagnostics: result.diagnostics };
+    }
+
+    if (result.sourceCode === getCurrentFileContent(currentFile)) {
+      return { ok: true, files: filesRef.current, diagnostics: [] };
+    }
+
+    const updatedFile: CppFile = {
+      ...currentFile,
+      translatedContent: result.sourceCode,
+      isModified: result.sourceCode !== currentFile.originalContent
+    };
+    const nextFiles = filesRef.current.map(file => file.path === updatedFile.path ? updatedFile : file);
+    filesRef.current = nextFiles;
+    activeFileRef.current = updatedFile;
+    setFiles(nextFiles);
+    setActiveFile(updatedFile);
+    return { ok: true, files: nextFiles, diagnostics: [] };
+  }, []);
+
+  const showEditorFlushFailure = useCallback((diagnostics: string[]) => {
+    window.alert(diagnostics[0] || '新手代码提交失败，当前操作已取消，源码未被覆盖。');
+  }, []);
+
+  const handleSelectFile = useCallback(async (file: CppFile, forceCodeView: boolean = true): Promise<boolean> => {
+    let availableFiles = filesRef.current;
+    if (activeFileRef.current && activeFileRef.current.path !== file.path) {
+      const flushState = await flushCurrentEditorDrafts();
+      if (!flushState.ok) {
+        showEditorFlushFailure(flushState.diagnostics);
+        return false;
       }
-      return prev;
-    });
-    setActiveFile(file);
+      availableFiles = flushState.files;
+    }
+
+    const latestFile = availableFiles.find(candidate => candidate.path === file.path) || file;
+    setOpenTabs(prev => prev.includes(latestFile.path) ? prev : [...prev, latestFile.path]);
+    activeFileRef.current = latestFile;
+    setActiveFile(latestFile);
     if (forceCodeView) {
       window.dispatchEvent(new CustomEvent('force-code-view'));
     }
-  }, []);
+    return true;
+  }, [flushCurrentEditorDrafts, showEditorFlushFailure]);
 
-  const handleCloseTab = useCallback((tabPath: string, event: React.MouseEvent) => {
+  const handleCloseTab = useCallback(async (tabPath: string, event: React.MouseEvent) => {
     event.stopPropagation();
     event.preventDefault();
+
+    if (activeFileRef.current?.path === tabPath) {
+      const flushState = await flushCurrentEditorDrafts();
+      if (!flushState.ok) {
+        showEditorFlushFailure(flushState.diagnostics);
+        return;
+      }
+    }
 
     setOpenTabs(prev => {
       const index = prev.indexOf(tabPath);
       if (index === -1) return prev;
 
       const nextTabs = prev.filter(p => p !== tabPath);
-      
-      // If the closed tab was the active one, switch focus to another open tab
-      if (activeFileRef.current && activeFileRef.current.path === tabPath) {
-        if (nextTabs.length > 0) {
-          const nextActivePath = nextTabs[Math.min(index, nextTabs.length - 1)];
-          const nextActive = filesRef.current.find(f => f.path === nextActivePath);
-          if (nextActive) {
-            setActiveFile(nextActive);
-          }
+      if (activeFileRef.current?.path === tabPath && nextTabs.length > 0) {
+        const nextActivePath = nextTabs[Math.min(index, nextTabs.length - 1)];
+        const nextActive = filesRef.current.find(f => f.path === nextActivePath);
+        if (nextActive) {
+          activeFileRef.current = nextActive;
+          setActiveFile(nextActive);
         }
       }
-      
+
       return nextTabs.length > 0 ? nextTabs : ['src/游戏主窗体.lcpp'];
     });
-  }, []);
+  }, [flushCurrentEditorDrafts, showEditorFlushFailure]);
   const [glossary, setGlossary] = useState<GlossaryTerm[]>(defaultGlossary);
   const [problems, setProblems] = useState<ProblemItem[]>([]);
   const [isDarkMode, setIsDarkMode] = useState(true);
@@ -483,6 +539,16 @@ export default function App() {
       // Experience mode is UI state; editing should keep working without storage.
     }
   }, []);
+
+  const handleEditorExperienceModeChange = useCallback(async (mode: EditorExperienceMode) => {
+    if (mode === editorExperienceMode) return;
+    const flushState = await flushCurrentEditorDrafts();
+    if (!flushState.ok) {
+      showEditorFlushFailure(flushState.diagnostics);
+      return;
+    }
+    setEditorExperienceMode(mode);
+  }, [editorExperienceMode, flushCurrentEditorDrafts, setEditorExperienceMode, showEditorFlushFailure]);
 
   const ignoreBeginnerTask = useCallback((taskId: string) => {
     setIgnoredBeginnerTaskIds(previousIds => {
@@ -593,6 +659,7 @@ export default function App() {
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [showBottomPanel, setShowBottomPanel] = useState(true);
+  const [activeTabInBottom, setActiveTabInBottom] = useState<BottomPanelTabType>('extracted');
 
   // Resizable sidebars state
   const [leftWidth, setLeftWidth] = useState(264);
@@ -656,6 +723,12 @@ export default function App() {
   ]);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
   const [isBuilding, setIsBuilding] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const editorOperationRef = useRef<'save' | 'build' | null>(null);
+  const buildStartedRef = useRef(false);
+  const buildRequestIdRef = useRef(0);
+  const buildDispatchTimeoutRef = useRef<number | null>(null);
+  const buildLaunchTimeoutRef = useRef<number | null>(null);
   const buildIntervalRef = useRef<any>(null);
   const [isAutoTranslating, setIsAutoTranslating] = useState(false);
   const [designerGeneratedPanels, setDesignerGeneratedPanels] = useState<DesignerGeneratedPanelData>(DEFAULT_DESIGNER_GENERATED_PANELS);
@@ -810,10 +883,17 @@ void DisplayStatus() {
       if (!detail) return;
 
       if (detail.status === 'started') {
+        buildStartedRef.current = true;
+        if (buildLaunchTimeoutRef.current !== null) {
+          window.clearTimeout(buildLaunchTimeoutRef.current);
+          buildLaunchTimeoutRef.current = null;
+        }
         setIsBuilding(true);
         setShowBottomPanel(true);
         setActiveTabInBottom('designer_logs');
       } else {
+        buildStartedRef.current = false;
+        if (editorOperationRef.current === 'build') editorOperationRef.current = null;
         setIsBuilding(false);
       }
     };
@@ -821,6 +901,14 @@ void DisplayStatus() {
     window.addEventListener(WINDOW_DESIGNER_BUILD_RUN_STATE, handleWindowDesignerBuildRunState);
     return () => {
       window.removeEventListener(WINDOW_DESIGNER_BUILD_RUN_STATE, handleWindowDesignerBuildRunState);
+      if (buildLaunchTimeoutRef.current !== null) {
+        window.clearTimeout(buildLaunchTimeoutRef.current);
+        buildLaunchTimeoutRef.current = null;
+      }
+      if (buildDispatchTimeoutRef.current !== null) {
+        window.clearTimeout(buildDispatchTimeoutRef.current);
+        buildDispatchTimeoutRef.current = null;
+      }
     };
   }, []);
 
@@ -909,6 +997,7 @@ void DisplayStatus() {
       isModified: content !== activeFile.originalContent
     };
 
+    activeFileRef.current = updatedFile;
     setActiveFile(updatedFile);
     setFiles(prevFiles => {
       const nextFiles = prevFiles.map(file => (
@@ -1010,7 +1099,7 @@ void DisplayStatus() {
   }, []);
 
   useEffect(() => {
-    const handleOpenControlEventCode = (event: Event) => {
+    const handleOpenControlEventCode = async (event: Event) => {
       const customEvent = event as CustomEvent<OpenControlEventCodeDetail>;
       const detail = customEvent.detail || {};
       const handlerName = detail.handlerName?.trim();
@@ -1019,7 +1108,7 @@ void DisplayStatus() {
 
       const currentFiles = filesRef.current;
       const targetSourceName = getLingWindowSourceFileName(detail.windowFileName, detail.windowClassName);
-      const targetFile = currentFiles.find(file => file.name === targetSourceName)
+      let targetFile = currentFiles.find(file => file.name === targetSourceName)
         || currentFiles.find(file => file.language === 'lingcpp')
         || currentFiles.find(file => file.path.endsWith('.lcpp'));
 
@@ -1031,13 +1120,18 @@ void DisplayStatus() {
         return;
       }
 
-      const currentContent = targetFile.translatedContent || targetFile.originalContent;
+      const flushState = await flushCurrentEditorDrafts();
+      if (!flushState.ok) {
+        appendEditorTransactionLog(`【事件代码错误】${flushState.diagnostics[0] || '新手代码提交失败，未切换事件。'}`);
+        return;
+      }
+      targetFile = flushState.files.find(file => file.path === targetFile?.path) || targetFile;
+
+      const currentContent = getCurrentFileContent(targetFile);
       if (hasLingCppEventHandler(currentContent, handlerName)) {
         setPendingDesignerEventEdit(null);
-        setOpenTabs(prev => (
-          prev.includes(targetFile.path) ? prev : [...prev, targetFile.path]
-        ));
-        setActiveFile(targetFile);
+        const selected = await handleSelectFile(targetFile);
+        if (!selected) return;
         setEditorExperienceMode('beginner');
         setBuildLogs(prev => [
           ...prev,
@@ -1081,10 +1175,8 @@ void DisplayStatus() {
 
       filesRef.current = nextFiles;
       setFiles(nextFiles);
-      setOpenTabs(prev => (
-        prev.includes(updatedFile.path) ? prev : [...prev, updatedFile.path]
-      ));
-      setActiveFile(updatedFile);
+      const selected = await handleSelectFile(updatedFile);
+      if (!selected) return;
       setBuildLogs(prev => [
         ...prev,
         `> [${new Date().toLocaleTimeString()}] 【事件代码】已打开 ${targetFile.path} 并定位到 ${handlerName}。`
@@ -1112,8 +1204,7 @@ void DisplayStatus() {
 
       filesRef.current = nextFiles;
       setFiles(nextFiles);
-      setOpenTabs(prev => (prev.includes(targetFile.path) ? prev : [...prev, targetFile.path]));
-      setActiveFile(targetFile);
+      void handleSelectFile(targetFile);
     };
 
     const handleWindowDeleted = (event: Event) => {
@@ -1163,8 +1254,7 @@ void DisplayStatus() {
 
       filesRef.current = nextFiles;
       setFiles(nextFiles);
-      setOpenTabs(prev => (prev.includes(targetFile.path) ? prev : [...prev, targetFile.path]));
-      setActiveFile(targetFile);
+      void handleSelectFile(targetFile);
     };
 
     const handleDesignerSwitchWindow = (event: Event) => {
@@ -1194,7 +1284,7 @@ void DisplayStatus() {
       window.removeEventListener('window-deleted', handleWindowDeleted);
       window.removeEventListener('window-duplicated', handleWindowDuplicated);
     };
-  }, [editorExperienceMode, focusLingCppHandler, handleApplyWorkspaceEdit, handleSelectFile]);
+  }, [editorExperienceMode, flushCurrentEditorDrafts, focusLingCppHandler, handleApplyWorkspaceEdit, handleSelectFile]);
 
 
   useEffect(() => {
@@ -1410,53 +1500,153 @@ void DisplayStatus() {
     }
   };
 
-  // Tool handlers for our LingBuilder IDE Custom Toolbar
-  const handleToolbarAction = (actionName: string) => {
+  const appendEditorTransactionLog = (message: string) => {
     setShowBottomPanel(true);
     setActiveTabInBottom('output');
-    
+    setBuildLogs(previous => [
+      ...previous,
+      `> [${new Date().toLocaleTimeString()}] ${message}`
+    ]);
+  };
+
+  const saveWorkspaceCore = async (
+    reason = '保存',
+    ownedByBuild = false
+  ): Promise<boolean> => {
+    if (!ownedByBuild) {
+      if (editorOperationRef.current) {
+        appendEditorTransactionLog(`【${reason}】已有${editorOperationRef.current === 'build' ? '构建' : '保存'}任务正在进行，本次请求未重复执行。`);
+        return false;
+      }
+      editorOperationRef.current = 'save';
+    }
+
+    setIsSaving(true);
+    try {
+      const flushState = await flushCurrentEditorDrafts();
+      if (!flushState.ok) {
+        appendEditorTransactionLog(`【${reason}错误】${flushState.diagnostics[0] || '新手代码提交失败，磁盘文件未改动。'}`);
+        return false;
+      }
+
+      const designerProject = getCurrentWindowDesignerProject();
+      const projectId = activeProjectId || designerProject.id || 'lingbuilder-ui-project';
+      const savedContentByPath = new Map<string, string>();
+      const projectFiles: Record<string, string> = {};
+      flushState.files.forEach(file => {
+        const content = getCurrentFileContent(file);
+        projectFiles[file.path] = content;
+        savedContentByPath.set(file.path, content);
+      });
+
+      const response = await fetch('/api/window-designer/files', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, files: projectFiles, project: designerProject })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload?.ok === false) {
+        throw new Error(payload?.error || '无法写入文件到项目磁盘。');
+      }
+
+      // Preserve edits made while the request was in flight. Only content that
+      // still matches the saved snapshot becomes clean; newer content stays dirty.
+      const nextFiles = filesRef.current.map(file => {
+        const savedContent = savedContentByPath.get(file.path);
+        if (savedContent === undefined) return file;
+        const currentContent = getCurrentFileContent(file);
+        if (currentContent === savedContent) {
+          return {
+            ...file,
+            originalContent: savedContent,
+            translatedContent: savedContent,
+            isModified: false
+          };
+        }
+        return {
+          ...file,
+          originalContent: savedContent,
+          isModified: currentContent !== savedContent
+        };
+      });
+
+      filesRef.current = nextFiles;
+      setFiles(nextFiles);
+      const currentActivePath = activeFileRef.current?.path;
+      const nextActiveFile = currentActivePath
+        ? nextFiles.find(file => file.path === currentActivePath)
+        : undefined;
+      if (nextActiveFile) {
+        activeFileRef.current = nextActiveFile;
+        setActiveFile(nextActiveFile);
+      }
+
+      void refreshSourceControlStatus();
+      appendEditorTransactionLog(`【${reason}】当前中文代码及 UI 界面结构已写入项目磁盘。`);
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误';
+      appendEditorTransactionLog(`【${reason}错误】${message}`);
+      return false;
+    } finally {
+      setIsSaving(false);
+      if (!ownedByBuild && editorOperationRef.current === 'save') {
+        editorOperationRef.current = null;
+      }
+    }
+  };
+
+  const handleSaveWorkspace = (reason = '保存') => saveWorkspaceCore(reason, false);
+
+  const handleOpenWorkspace = async (): Promise<void> => {
+    if (editorOperationRef.current) {
+      appendEditorTransactionLog(`【打开工作区】已有${editorOperationRef.current === 'build' ? '构建' : '保存'}任务正在进行，请稍后再试。`);
+      return;
+    }
+    const flushState = await flushCurrentEditorDrafts();
+    if (!flushState.ok) {
+      appendEditorTransactionLog(`【打开工作区错误】${flushState.diagnostics[0] || '新手代码提交失败，未切换工作区。'}`);
+      return;
+    }
+
+    if (flushState.files.some(file => file.isModified)) {
+      const saved = await handleSaveWorkspace('切换工作区前保存');
+      if (!saved) return;
+    }
+
+    const workspaceApi = window.lingBuilder?.workspace;
+    if (!workspaceApi) {
+      appendEditorTransactionLog('【打开工作区错误】当前运行环境不支持原生目录选择。');
+      return;
+    }
+
+    try {
+      const result = await workspaceApi.open();
+      if (result.canceled) return;
+      if (!result.ok) {
+        appendEditorTransactionLog(`【打开工作区错误】${result.error || '工作区切换失败。'}`);
+        return;
+      }
+      appendEditorTransactionLog(`【打开工作区】已切换到 ${result.workspacePath || '所选目录'}。`);
+    } catch (error) {
+      appendEditorTransactionLog(`【打开工作区错误】${error instanceof Error ? error.message : '原生目录选择失败。'}`);
+    }
+  };
+
+  // Tool handlers for our LingBuilder IDE Custom Toolbar
+  const handleToolbarAction = async (actionName: string) => {
+    setShowBottomPanel(true);
+    setActiveTabInBottom('output');
+
     if (actionName === 'new') {
       setBuildLogs(prev => [
         ...prev,
         `> [${new Date().toLocaleTimeString()}] 【新建】已为您成功创建新的 LingBuilder 中文 UI 项目模板及设计窗体 (MainWindow.xml)。`
       ]);
     } else if (actionName === 'open') {
-      setBuildLogs(prev => [
-        ...prev,
-        `> [${new Date().toLocaleTimeString()}] 【打开】成功打开已有的项目设计文件：'MainWindow.xml' 及对应类映射源文件。`
-      ]);
+      await handleOpenWorkspace();
     } else if (actionName === 'save') {
-      const designerProject = getCurrentWindowDesignerProject();
-      const projectId = activeProjectId || designerProject.id || 'lingbuilder-ui-project';
-
-      const projectFiles: Record<string, string> = {};
-      filesRef.current.forEach(file => {
-        projectFiles[file.path] = file.translatedContent || file.originalContent || '';
-      });
-
-      fetch('/api/window-designer/files', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, files: projectFiles, project: designerProject })
-      }).then(res => {
-        if (res.ok) {
-          void refreshSourceControlStatus();
-          setBuildLogs(prev => [
-            ...prev,
-            `> [${new Date().toLocaleTimeString()}] 【保存】正在序列化并将当前中文代码及 UI 界面结构写入项目磁盘... 成功写入并同步完成！`
-          ]);
-        } else {
-          setBuildLogs(prev => [
-            ...prev,
-            `> [${new Date().toLocaleTimeString()}] 【保存错误】无法写入文件到项目磁盘。`
-          ]);
-        }
-      }).catch(err => {
-        setBuildLogs(prev => [
-          ...prev,
-          `> [${new Date().toLocaleTimeString()}] 【保存错误】网络连接失败: ${err.message}`
-        ]);
-      });
+      await handleSaveWorkspace();
     } else if (actionName === 'undo') {
       setBuildLogs(prev => [
         ...prev,
@@ -1528,6 +1718,15 @@ void DisplayStatus() {
   const handleCreateSolutionProject = useCallback(async () => {
     const name = window.prompt('新建项目名称', `LingBuilder项目${solution.projects.length + 1}`);
     if (!name?.trim()) return;
+    const flushState = await flushCurrentEditorDrafts();
+    if (!flushState.ok) {
+      appendEditorTransactionLog(`【新建项目错误】${flushState.diagnostics[0] || '新手代码提交失败，未切换项目。'}`);
+      return;
+    }
+    if (flushState.files.some(file => file.isModified)) {
+      const saved = await handleSaveWorkspace('新建项目前保存');
+      if (!saved) return;
+    }
     const result = await createSolutionProject(name.trim());
     appendSolutionLogs('新建项目', result);
     if (result.solution) setSolution(result.solution);
@@ -1536,9 +1735,18 @@ void DisplayStatus() {
       const nextSolution = await refreshSolution();
       setSolution(nextSolution);
     }
-  }, [appendSolutionLogs, refreshSolution, solution.projects.length]);
+  }, [appendSolutionLogs, flushCurrentEditorDrafts, refreshSolution, solution.projects.length]);
 
   const handleSetStartupProject = useCallback(async (projectId: string) => {
+    const flushState = await flushCurrentEditorDrafts();
+    if (!flushState.ok) {
+      appendEditorTransactionLog(`【切换项目错误】${flushState.diagnostics[0] || '新手代码提交失败，未切换项目。'}`);
+      return;
+    }
+    if (flushState.files.some(file => file.isModified)) {
+      const saved = await handleSaveWorkspace('切换项目前保存');
+      if (!saved) return;
+    }
     const result = await setStartupProject(projectId);
     appendSolutionLogs('设为启动项目', {
       ok: result.ok,
@@ -1547,7 +1755,7 @@ void DisplayStatus() {
     });
     if (result.solution) setSolution(result.solution);
     await refreshSolution();
-  }, [appendSolutionLogs, refreshSolution]);
+  }, [appendSolutionLogs, flushCurrentEditorDrafts, refreshSolution]);
 
   const handleDeleteSolutionProject = useCallback(async (projectId: string, deleteFiles: boolean) => {
     const project = solution.projects.find(item => item.id === projectId);
@@ -1581,7 +1789,28 @@ void DisplayStatus() {
   }, [appendSolutionLogs]);
 
   // Real window designer build task (F5)
-  const handleRunBuild = useCallback(() => {
+  const handleRunBuild = useCallback(async (): Promise<boolean> => {
+    if (editorOperationRef.current) {
+      appendEditorTransactionLog(`【F5】已有${editorOperationRef.current === 'build' ? '构建' : '保存'}任务正在进行，本次运行请求未重复执行。`);
+      return false;
+    }
+    editorOperationRef.current = 'build';
+    buildStartedRef.current = false;
+    const buildRequestId = ++buildRequestIdRef.current;
+    setIsBuilding(true);
+
+    const saved = await saveWorkspaceCore('F5 构建前保存', true);
+    if (!saved) {
+      editorOperationRef.current = null;
+      setIsBuilding(false);
+      appendEditorTransactionLog('【F5】保存未完成，已取消构建，磁盘和运行程序均未使用旧草稿。');
+      return false;
+    }
+    if (buildRequestId !== buildRequestIdRef.current || editorOperationRef.current !== 'build') {
+      setIsBuilding(false);
+      return false;
+    }
+
     if (buildIntervalRef.current) {
       clearInterval(buildIntervalRef.current);
       buildIntervalRef.current = null;
@@ -1595,10 +1824,20 @@ void DisplayStatus() {
       `> [${new Date().toLocaleTimeString()}] 【F5】正在调用窗口设计器“生成并运行”命令...`
     ]);
 
-    window.setTimeout(() => {
+    buildDispatchTimeoutRef.current = window.setTimeout(() => {
+      buildDispatchTimeoutRef.current = null;
+      if (buildRequestId !== buildRequestIdRef.current || editorOperationRef.current !== 'build') return;
+      buildLaunchTimeoutRef.current = window.setTimeout(() => {
+        if (buildStartedRef.current) return;
+        buildLaunchTimeoutRef.current = null;
+        if (editorOperationRef.current === 'build') editorOperationRef.current = null;
+        setIsBuilding(false);
+        appendEditorTransactionLog('【F5错误】窗口设计器未响应构建请求，互斥锁已安全释放。');
+      }, 15_000);
       requestWindowDesignerBuildRun();
     }, 50);
-  }, []);
+    return true;
+  }, [saveWorkspaceCore]);
 
   // Stop Simulation Build / Debugging (Shift+F5)
   const handleStopBuild = useCallback(() => {
@@ -1606,6 +1845,17 @@ void DisplayStatus() {
       clearInterval(buildIntervalRef.current);
       buildIntervalRef.current = null;
     }
+    if (buildLaunchTimeoutRef.current !== null) {
+      window.clearTimeout(buildLaunchTimeoutRef.current);
+      buildLaunchTimeoutRef.current = null;
+    }
+    if (buildDispatchTimeoutRef.current !== null) {
+      window.clearTimeout(buildDispatchTimeoutRef.current);
+      buildDispatchTimeoutRef.current = null;
+    }
+    buildRequestIdRef.current += 1;
+    buildStartedRef.current = false;
+    if (editorOperationRef.current === 'build') editorOperationRef.current = null;
     setIsBuilding(false);
     setBuildLogs(prev => [
       ...prev,
@@ -1622,12 +1872,12 @@ void DisplayStatus() {
         if (e.shiftKey) {
           handleStopBuild();
         } else {
-          handleRunBuild();
+          void handleRunBuild();
         }
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         e.stopPropagation();
-        handleToolbarAction('save');
+        void handleSaveWorkspace();
       }
     };
     window.addEventListener('keydown', handleKeyDown, true); // Use capturing phase to guarantee interception in all inputs/editors
@@ -1651,9 +1901,6 @@ void DisplayStatus() {
       setTimeout(() => el.classList.remove('animate-pulse', 'bg-blue-500/20'), 1500);
     }
   };
-
-  // Helper to force Bottom panel selection
-  const [activeTabInBottom, setActiveTabInBottom] = useState<BottomPanelTabType>('extracted');
 
   // Custom User Code Extraction API Call
   const handleExtractCustomCode = async () => {
@@ -1819,7 +2066,7 @@ void DisplayStatus() {
       {/* Title Bar */}
       <div
         onDoubleClick={handleWindowToggleMaximize}
-        className={`h-8 flex items-center justify-between pl-3 pr-0 border-b text-[11px] shrink-0 select-none cursor-default ${
+        className={`window-drag-region h-8 flex items-center justify-between pl-3 pr-0 border-b text-[11px] shrink-0 select-none cursor-default ${
           isDarkMode 
             ? 'bg-[#323233] text-slate-200 border-[#2B2B2B]' 
             : 'bg-[#F3F3F3] text-slate-800 border-slate-200'
@@ -1829,7 +2076,7 @@ void DisplayStatus() {
           <div className="text-[#007ACC] font-bold tracking-wide">C++ LocMaster (LingBuilder)</div>
           <div
             onDoubleClick={e => e.stopPropagation()}
-            className={`hidden md:flex gap-4 ${isDarkMode ? 'text-[#CCCCCC]' : 'text-slate-600'} z-50`}
+            className={`window-no-drag hidden md:flex gap-4 ${isDarkMode ? 'text-[#CCCCCC]' : 'text-slate-600'} z-50`}
           >
             {/* 文件(F) */}
             <div className="relative">
@@ -1845,11 +2092,11 @@ void DisplayStatus() {
                     <span>新建项目</span>
                     <span className="opacity-50 text-[10px]">Ctrl+N</span>
                   </button>
-                  <button onClick={() => { handleToolbarAction('open'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <button onClick={() => { void handleToolbarAction('open'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>打开项目</span>
                     <span className="opacity-50 text-[10px]">Ctrl+O</span>
                   </button>
-                  <button onClick={() => { handleToolbarAction('save'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <button disabled={isSaving || isBuilding} onClick={() => { void handleToolbarAction('save'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>保存项目</span>
                     <span className="opacity-50 text-[10px]">Ctrl+S</span>
                   </button>
@@ -1966,7 +2213,7 @@ void DisplayStatus() {
               </span>
               {activeDropdown === 'project' && (
                 <div className={`absolute left-0 top-6 w-52 shadow-2xl border rounded-md py-1 flex flex-col z-50 ${isDarkMode ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
-                  <button onClick={() => { handleRunBuild(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <button onClick={() => { void handleRunBuild(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>编译并热运行游戏</span>
                     <span className="opacity-50 text-[10px]">F5</span>
                   </button>
@@ -2074,7 +2321,7 @@ void DisplayStatus() {
         </div>
 
         {/* Right window controls */}
-        <div className="flex items-center gap-0" onDoubleClick={e => e.stopPropagation()}>
+        <div className="window-no-drag flex items-center gap-0" onDoubleClick={e => e.stopPropagation()}>
           <div className={`text-[10px] opacity-50 px-2 italic hidden lg:block ${isDarkMode ? 'text-[#CCCCCC]' : 'text-slate-600'}`}>
             LingBuilder_v2.0 - 汉化方案
           </div>
@@ -2139,7 +2386,7 @@ void DisplayStatus() {
               <FolderPlus className="w-4 h-4 text-sky-400" />
             </button>
             <button
-              onClick={() => handleToolbarAction('open')}
+              onClick={() => void handleToolbarAction('open')}
               className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
                 isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
@@ -2148,11 +2395,12 @@ void DisplayStatus() {
               <FolderOpen className="w-4 h-4 text-amber-500" />
             </button>
             <button
-              onClick={() => handleToolbarAction('save')}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
+              onClick={() => void handleToolbarAction('save')}
+              disabled={isSaving || isBuilding}
+              className={`p-1 rounded cursor-pointer transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 ${
                 isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
-              title="保存 (保存当前项目、窗口设计、代码或配置修改)"
+              title={isSaving ? '正在保存当前项目' : '保存 (保存当前项目、窗口设计、代码或配置修改)'}
             >
               <Save className="w-4 h-4 text-emerald-500" />
             </button>
@@ -2310,7 +2558,7 @@ void DisplayStatus() {
             <button
               onClick={() => {
                 setBuildLogs(prev => [...prev, `> [${new Date().toLocaleTimeString()}] 正在重启当前调试实例...`]);
-                handleRunBuild();
+                void handleRunBuild();
               }}
               disabled={isBuilding}
               className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
@@ -2457,6 +2705,7 @@ void DisplayStatus() {
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           <div className="flex-1 flex flex-col min-h-0 bg-[#141418]">
             <DiffViewer
+              ref={diffViewerRef}
               diffResult={diffResult}
               strings={activeFile.strings}
               onUpdateStringTranslation={handleUpdateStringTranslation}
@@ -2475,7 +2724,7 @@ void DisplayStatus() {
               moduleContext={moduleContext}
               activeWindowId={windowDesignerState.activeWindowId}
               editorExperienceMode={editorExperienceMode}
-              onExperienceModeChange={setEditorExperienceMode}
+              onExperienceModeChange={handleEditorExperienceModeChange}
               problems={problems}
               ignoredBeginnerTaskIds={ignoredBeginnerTaskIds}
               onIgnoreBeginnerTask={ignoreBeginnerTask}
@@ -2893,13 +3142,14 @@ void DisplayStatus() {
                 直接退出
               </button>
               <button
-                onClick={() => {
-                  handleToolbarAction('save');
-                  void handleWindowCloseConfirmed();
+                onClick={async () => {
+                  const saved = await handleSaveWorkspace('退出前保存');
+                  if (saved) await handleWindowCloseConfirmed();
                 }}
-                className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-semibold transition-colors cursor-pointer"
+                disabled={isSaving || isBuilding}
+                className="px-3 py-1 bg-blue-600 hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50 text-white rounded text-[11px] font-semibold transition-colors cursor-pointer"
               >
-                保存并退出
+                {isSaving ? '正在保存…' : '保存并退出'}
               </button>
             </div>
           </div>

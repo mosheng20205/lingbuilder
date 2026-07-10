@@ -52,8 +52,8 @@ async function main() {
     const installPath = path.join(repoRoot, '.lingbuilder', 'modules', MODULE_ID);
     await fs.rm(installPath, { recursive: true, force: true });
     await copyDirectory(workRoot, installPath);
-    await enableModule(repoRoot);
     console.log(`Installed ${MODULE_ID} to ${installPath}`);
+    console.log('Project module references were left unchanged.');
   }
 
   console.log(`Generated ${MODULE_NAME}`);
@@ -198,10 +198,15 @@ function bridgeCommands() {
     name,
     signature,
     description,
-    insertText: `${name}($1)`,
+    insertText: buildInsertTextFromSignature(name, signature),
     returnType,
     runtimeName: name
   }));
+}
+
+function buildInsertTextFromSignature(name, signature) {
+  const parameters = parseBindingParameters(signature);
+  return `${name}(${parameters.map((_, index) => `$${index + 1}`).join(', ')})`;
 }
 
 function buildManifest(commands) {
@@ -476,21 +481,6 @@ async function compressArchive(sourceDir, targetPath) {
     `Compress-Archive -Path ${quotePs(path.join(sourceDir, '*'))} -DestinationPath ${quotePs(tempZipPath)} -Force`
   ], { windowsHide: true, maxBuffer: 1024 * 1024 * 10 });
   await fs.rename(tempZipPath, targetPath);
-}
-
-async function enableModule(repoRoot) {
-  const projectModulesPath = path.join(repoRoot, '.lingbuilder', 'project-modules.json');
-  const fallback = {
-    schemaVersion: 1,
-    enabledModuleIds: ['lingbuilder.win32.basic'],
-    pinnedVersions: { 'lingbuilder.win32.basic': '1.0.0' }
-  };
-  const refs = await readJson(projectModulesPath, fallback);
-  if (!refs.enabledModuleIds.includes('lingbuilder.win32.basic')) refs.enabledModuleIds.unshift('lingbuilder.win32.basic');
-  if (!refs.enabledModuleIds.includes(MODULE_ID)) refs.enabledModuleIds.push(MODULE_ID);
-  refs.pinnedVersions['lingbuilder.win32.basic'] ||= '1.0.0';
-  refs.pinnedVersions[MODULE_ID] = '1.0.0';
-  await writeText(projectModulesPath, JSON.stringify(refs, null, 2) + '\n');
 }
 
 function quotePs(value) {

@@ -29,6 +29,10 @@ import {
 } from '../src/services/lingCpp/languageService';
 import { applyLingCppAstEdit } from '../src/services/lingCpp/astEditService';
 import {
+  applyPendingBeginnerCodeDrafts,
+  createBeginnerCodeDraftKey
+} from '../src/services/lingCpp/beginnerEditTransactionService';
+import {
   createWorkspaceEditFromActionBlock,
   getActionBlocksForEvent,
   getBeginnerTasks,
@@ -1301,4 +1305,34 @@ test('createWorkspaceEditChangeFromRewrite keeps range tightly scoped', () => {
   assert.equal(change.range.endLine, 2);
   assert.equal(change.originalText, '旧');
   assert.equal(change.newText, '新');
+});
+
+test('新手编辑事务会一次性提交多个未失焦正文草稿', () => {
+  const result = applyPendingBeginnerCodeDrafts(sampleSource, {
+    [createBeginnerCodeDraftKey('游戏主窗体', 'event', '_按钮1_被单击')]: [
+      '调试输出("按钮1草稿已提交")',
+      '信息框("最新正文", 64, "保存")'
+    ].join('\n'),
+    [createBeginnerCodeDraftKey('游戏主窗体', 'event', '_按钮2_被单击')]: '调试输出("按钮2草稿已提交")'
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.changed, true);
+  assert.equal(result.appliedDraftCount, 2);
+  assert.ok(result.sourceCode.includes('调试输出("按钮1草稿已提交")'));
+  assert.ok(result.sourceCode.includes('信息框("最新正文", 64, "保存")'));
+  assert.ok(result.sourceCode.includes('调试输出("按钮2草稿已提交")'));
+});
+
+test('新手编辑事务失败时保持原源码且不返回部分提交结果', () => {
+  const result = applyPendingBeginnerCodeDrafts(sampleSource, {
+    [createBeginnerCodeDraftKey('游戏主窗体', 'event', '_按钮1_被单击')]: '调试输出("这段不能部分保存")',
+    [createBeginnerCodeDraftKey('游戏主窗体', 'event', '_不存在的事件')]: '调试输出("无效目标")'
+  });
+
+  assert.equal(result.success, false);
+  assert.equal(result.sourceCode, sampleSource);
+  assert.equal(result.changed, false);
+  assert.equal(result.appliedDraftCount, 0);
+  assert.match(result.diagnostics[0] || '', /找不到待提交的代码块/u);
 });

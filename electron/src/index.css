@@ -17,6 +17,15 @@ body {
   inset: 0;
 }
 
+/* Electron 无边框窗口的自定义标题栏拖动区域。交互控件必须排除在拖动区域之外。 */
+.window-drag-region {
+  -webkit-app-region: drag;
+}
+
+.window-no-drag {
+  -webkit-app-region: no-drag;
+}
+
 #root {
   display: flex;
 }

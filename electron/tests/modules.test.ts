@@ -3,11 +3,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 import { getLingCppCompletions, getLingCppSemanticDiagnostics } from '../src/services/lingCpp/languageService';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import { validateModuleManifest } from '../src/services/modules/manifest';
 import { createModuleService } from '../src/services/modules/moduleService';
+import { createMarketIndex, validateModuleDirectory } from '../src/services/modules/moduleSdkService';
+import { getPreferredModuleTarget } from '../src/services/modules/targetResolver';
 import {
   describeLingCppModuleContextForAi,
   getBeginnerModuleCodeCompletions,
@@ -37,6 +41,8 @@ const sampleProject: LingWindowProject = {
   ]
 };
 
+const execFileAsync = promisify(execFile);
+
 test('module service defaults ordinary projects to Win32 basic module only', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-defaults-'));
   const service = createModuleService(root);
@@ -48,6 +54,118 @@ test('module service defaults ordinary projects to Win32 basic module only', asy
     () => service.disableModuleForProject('fresh-win32-project', 'lingbuilder.win32.basic'),
     /不能禁用/
   );
+});
+
+test('module project references stay isolated and unknown project writes are rejected', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-projects-'));
+  await writeSolutionFixture(root, ['project-a', 'project-b']);
+  const manifest = createTestModule().manifest;
+  await writeFixture(
+    path.join(root, '.lingbuilder', 'modules', manifest.id, 'lingbuilder.module.json'),
+    JSON.stringify(manifest, null, 2)
+  );
+  const service = createModuleService(root);
+
+  await service.enableModuleForProject('project-a', manifest.id);
+  assert.ok((await service.getEnabledProjectModules('project-a')).some(module => module.manifest.id === manifest.id));
+  assert.ok(!(await service.getEnabledProjectModules('project-b')).some(module => module.manifest.id === manifest.id));
+  await assert.rejects(() => service.enableModuleForProject('missing-project', manifest.id), /项目不存在/);
+});
+
+test('uninstall removes module references from every solution project', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-uninstall-'));
+  await writeSolutionFixture(root, ['lingbuilder-ui-project', 'project-b']);
+  const moduleId = 'com.example.shared';
+  await writeFixture(
+    path.join(root, '.lingbuilder', 'modules', moduleId, 'lingbuilder.module.json'),
+    JSON.stringify({
+      schemaVersion: 2,
+      id: moduleId,
+      name: '共享模块',
+      version: '1.0.0',
+      category: '其他',
+      description: '卸载引用清理测试。'
+    }, null, 2)
+  );
+  const references = {
+    schemaVersion: 1,
+    enabledModuleIds: ['lingbuilder.win32.basic', moduleId],
+    pinnedVersions: { 'lingbuilder.win32.basic': '1.0.0', [moduleId]: '1.0.0' }
+  };
+  const defaultReferencePath = path.join(root, '.lingbuilder', 'project-modules.json');
+  const projectBReferencePath = path.join(root, '.lingbuilder', 'projects', 'project-b', 'project-modules.json');
+  await Promise.all([
+    writeFixture(defaultReferencePath, JSON.stringify(references, null, 2)),
+    writeFixture(projectBReferencePath, JSON.stringify(references, null, 2))
+  ]);
+
+  await createModuleService(root).uninstallModule(moduleId);
+  for (const referencePath of [defaultReferencePath, projectBReferencePath]) {
+    const saved = JSON.parse(await fs.readFile(referencePath, 'utf8'));
+    assert.ok(!saved.enabledModuleIds.includes(moduleId));
+    assert.equal(saved.pinnedVersions[moduleId], undefined);
+  }
+});
+
+test('module validation, preview and pack reject missing declared files', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-completeness-'));
+  const moduleDir = path.join(root, 'module');
+  const manifest = {
+    schemaVersion: 2,
+    id: 'com.example.incomplete',
+    name: '不完整模块',
+    version: '1.0.0',
+    category: '其他',
+    description: '用于校验缺失资源。',
+    contributes: {
+      docs: [{ title: '使用说明', path: 'docs/usage.md' }],
+      examples: [{ title: '示例', path: 'examples/demo.lcpp' }]
+    },
+    targets: [{
+      id: 'windows-msvc-win32',
+      platform: 'windows',
+      arch: 'win32',
+      toolchain: 'msvc',
+      includeDirs: ['include'],
+      headers: ['include/missing.h'],
+      libs: ['lib/missing.lib'],
+      runtimeFiles: ['bin/missing.dll']
+    }]
+  };
+  await writeFixture(path.join(moduleDir, 'lingbuilder.module.json'), JSON.stringify(manifest, null, 2));
+  await fs.mkdir(path.join(moduleDir, 'include'), { recursive: true });
+
+  const validation = await validateModuleDirectory(moduleDir);
+  assert.ok(validation.diagnostics.some(message => message.includes('文档不存在')));
+  assert.ok(validation.diagnostics.some(message => message.includes('示例不存在')));
+  assert.ok(validation.diagnostics.some(message => message.includes('库文件不存在')));
+
+  const service = createModuleService(root);
+  await assert.rejects(
+    () => service.exportModulePackage(moduleDir, path.join(root, 'incomplete.lbmod')),
+    /模块内容不完整/
+  );
+
+  const packagePath = path.join(root, 'incomplete.lbmod');
+  await createLbmodArchive(moduleDir, packagePath);
+  const preview = await service.previewPackageInstall(packagePath);
+  assert.equal(preview.canInstall, false);
+  assert.ok(preview.diagnostics.some(message => message.includes('文档不存在')));
+});
+
+test('market index can store portable workspace-relative package paths without changing CLI defaults', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-market-'));
+  const packagePath = path.join(root, '.lingbuilder', 'module-packages', 'demo.lbmod');
+  const relativeOut = path.join(root, '.lingbuilder', 'relative-market.json');
+  const absoluteOut = path.join(root, '.lingbuilder', 'absolute-market.json');
+  await writeFixture(packagePath, 'package');
+
+  await createMarketIndex([packagePath], relativeOut, { packagePathRoot: root });
+  await createMarketIndex([packagePath], absoluteOut);
+  const relativeMarket = JSON.parse(await fs.readFile(relativeOut, 'utf8'));
+  const absoluteMarket = JSON.parse(await fs.readFile(absoluteOut, 'utf8'));
+  assert.equal(relativeMarket.modules[0].packagePath, '.lingbuilder/module-packages/demo.lbmod');
+  assert.equal(absoluteMarket.modules[0].packagePath, path.resolve(packagePath));
 });
 
 test('module manifest validation accepts valid modules and rejects unsafe cpp paths', () => {
@@ -402,6 +520,72 @@ test('materializeModuleNativeDependencies copies module source, libs and runtime
   assert.ok(await exists(path.join(binDir, 'new_emoji.dll')));
 });
 
+test('Win32 native builds never fall back to an incompatible module target', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-incompatible-target-'));
+  const module: InstalledModule = {
+    isInstalled: true,
+    installPath: path.join(root, 'installed'),
+    diagnostics: [],
+    manifest: {
+      schemaVersion: 2,
+      id: 'com.example.linux-only',
+      name: 'Linux 专用模块',
+      version: '1.0.0',
+      category: '系统',
+      description: '不兼容 Win32 的测试模块。',
+      targets: [{
+        id: 'linux-gcc-x64',
+        platform: 'linux',
+        arch: 'x64',
+        toolchain: 'gcc',
+        libs: ['lib/liblinux.a']
+      }]
+    }
+  };
+  assert.equal(getPreferredModuleTarget(module), undefined);
+
+  const plan = await materializeModuleNativeDependencies([module], {
+    buildDir: path.join(root, 'build'),
+    sourceDir: path.join(root, 'source'),
+    binDir: path.join(root, 'bin'),
+    exportDir: path.join(root, 'export')
+  });
+  assert.equal(plan.libFiles.length, 0);
+  assert.ok(plan.diagnostics.some(message => message.includes('未提供兼容目标 windows-msvc-win32')));
+
+  const generated = generateLingCppNativeWin32Project(sampleProject, { enabledModules: [module] });
+  assert.ok(generated.diagnostics.some(message => message.includes('未提供兼容目标 windows-msvc-win32')));
+  assert.doesNotMatch(generated.files.find(file => file.relativePath === 'main.cpp')?.content || '', /liblinux\.a/);
+});
+
+test('generated new_emoji bridge completions match binding parameter counts', async () => {
+  const manifestPath = path.join(process.cwd(), '..', '.lingbuilder', 'module-build', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  const highLevelNames = [
+    'NE_创建窗口',
+    'NE_创建深色窗口',
+    'NE_显示窗口',
+    'NE_运行消息循环',
+    'NE_销毁窗口',
+    'NE_创建容器',
+    'NE_创建文本',
+    'NE_创建按钮',
+    'NE_设置窗口标题'
+  ];
+  for (const name of highLevelNames) {
+    const command = manifest.contributes.commands.find((item: { name: string }) => item.name === name);
+    const binding = manifest.bindings.commands.find((item: { command: string }) => item.command === name);
+    assert.ok(command, `缺少命令 ${name}`);
+    assert.ok(binding, `缺少 binding ${name}`);
+    const placeholders = [...String(command.insertText).matchAll(/\$(\d+)/gu)].map(match => Number(match[1]));
+    const parameterCount = Array.isArray(binding.parameters) ? binding.parameters.length : 0;
+    assert.deepEqual(placeholders, Array.from({ length: parameterCount }, (_, index) => index + 1), `${name} 的补全占位符与参数不一致`);
+    assert.equal(binding.example, command.insertText);
+  }
+  const runLoop = manifest.contributes.commands.find((item: { name: string }) => item.name === 'NE_运行消息循环');
+  assert.equal(runLoop.insertText, 'NE_运行消息循环()');
+});
+
 test('exportVisualStudioProject writes sln and vcxproj with module dependencies', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-vs-export-'));
   const module = createNewEmojiTestModule(path.join(root, 'installed'));
@@ -540,6 +724,37 @@ function createNewEmojiTestModule(installPath: string): InstalledModule {
 async function writeFixture(filePath: string, content: string): Promise<void> {
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, content, 'utf8');
+}
+
+async function writeSolutionFixture(root: string, projectIds: string[]): Promise<void> {
+  await writeFixture(path.join(root, '.lingbuilder', 'solution.json'), JSON.stringify({
+    schemaVersion: 1,
+    id: 'test-solution',
+    name: '模块测试解决方案',
+    startupProjectId: projectIds[0],
+    projects: projectIds.map(projectId => ({
+      id: projectId,
+      name: projectId,
+      type: 'visual-cpp',
+      sourceRoot: `src/${projectId}`,
+      configRoot: `config/${projectId}`,
+      designerPath: `.lingbuilder/projects/${projectId}/window-designer.json`
+    }))
+  }, null, 2));
+}
+
+async function createLbmodArchive(sourceDir: string, targetPath: string): Promise<void> {
+  const zipPath = `${targetPath}.zip`;
+  await execFileAsync('powershell.exe', [
+    '-NoProfile',
+    '-Command',
+    `Compress-Archive -Path ${quotePowerShell(path.join(sourceDir, '*'))} -DestinationPath ${quotePowerShell(zipPath)} -Force`
+  ], { windowsHide: true });
+  await fs.rename(zipPath, targetPath);
+}
+
+function quotePowerShell(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
 }
 
 async function exists(filePath: string): Promise<boolean> {

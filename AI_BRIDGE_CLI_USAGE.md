@@ -97,7 +97,9 @@ curl -H "Authorization: Bearer local-token" ^
   http://127.0.0.1:17860/api/ai-bridge/health
 ```
 
-也可以用 `token` 查询参数或请求体字段，但推荐使用 `Authorization: Bearer <token>`。
+只接受 `Authorization: Bearer <token>`。查询参数和请求体中的 `token` 不再用于鉴权，避免 token 出现在 URL、访问日志或普通业务载荷中。
+
+Electron IDE 自己使用的是独立的本地会话，不会默认挂载 `/api/ai-bridge/*`。外部 AI 必须通过本节的 `lingbuilder ai-server` 命令显式启动 AI Bridge；普通 IDE 会话 token 不能代替 AI Bridge Bearer token。
 
 ### 4.1 健康检查
 
@@ -340,6 +342,9 @@ MCP 工具和 HTTP API 复用同一套 `AiBridgeService`，权限、路径校验
 ## 6. 安全规则
 
 - 不要把 AI Bridge 暴露到公网，除非你明确知道风险。
+- AI Bridge 默认只监听 `127.0.0.1`；只有同时显式指定 `--host 0.0.0.0 --allow-remote` 才允许远程监听。
+- HTTP 鉴权只接受 Bearer token；不要把 token 放入查询字符串或请求 JSON。
+- 文件读取会按真实路径确认仍位于工作区内；文件树和搜索不跟随符号链接或 Windows junction，新文件写入也会拒绝链接路径链。
 - 不要把 token 发给不可信客户端。
 - `preview` 是推荐默认模式，外部 AI 只能先生成提案，写入前需要确认。
 - `yolo` 模式适合本机可信自动化，不适合陌生模型或远程客户端。

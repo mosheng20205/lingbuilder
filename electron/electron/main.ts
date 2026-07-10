@@ -1,15 +1,219 @@
-import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  session,
+  shell,
+  utilityProcess,
+  UtilityProcess
+} from 'electron';
+import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
 import path from 'node:path';
+import { DesktopWorkspaceService, getArgumentValue } from './workspaceService';
 
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:3001/';
+const SERVER_READY_PREFIX = 'LINGBUILDER_SERVER_READY ';
+const SERVER_START_TIMEOUT_MS = 30_000;
+
+interface ServerReadyInfo {
+  host: string;
+  port: number;
+  origin: string;
+  workspaceRoot: string;
+  pid: number;
+}
 
 let mainWindow: BrowserWindow | null = null;
+let rendererServer: UtilityProcess | null = null;
+let rendererReadyInfo: ServerReadyInfo | null = null;
+const intentionallyStoppedServers = new WeakSet<UtilityProcess>();
+let rendererOrigin = DEV_SERVER_URL;
+let rendererSessionToken = process.env.LINGBUILDER_SESSION_TOKEN || '';
+let activeWorkspace = '';
+let isQuitting = false;
+let shutdownPromise: Promise<void> | null = null;
+let workspaceService: DesktopWorkspaceService;
 
 function getFocusedWindow() {
   return BrowserWindow.getFocusedWindow() || mainWindow;
 }
 
-function createMainWindow() {
+function repoRoot(): string {
+  return path.resolve(__dirname, '..', '..');
+}
+
+function serverEntryPath(): string {
+  return path.join(__dirname, '..', 'dist', 'server.cjs');
+}
+
+function rendererStaticRoot(): string {
+  return path.join(__dirname, '..', 'dist');
+}
+
+function defaultWorkspaceSource(): string | undefined {
+  return app.isPackaged ? path.join(process.resourcesPath, 'default-workspace') : undefined;
+}
+
+function rulebookPath(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'docs', 'LingBuilder AI 规则手册.md')
+    : path.join(repoRoot(), 'LingBuilder AI 规则手册.md');
+}
+
+function moduleManualPath(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'docs', '模块开发手册.md')
+    : path.join(repoRoot(), '模块开发手册.md');
+}
+
+async function startPackagedRendererServer(workspaceRoot: string): Promise<ServerReadyInfo> {
+  await stopRendererServer();
+  rendererSessionToken = crypto.randomBytes(32).toString('hex');
+
+  const child = utilityProcess.fork(serverEntryPath(), [], {
+    cwd: workspaceRoot,
+    serviceName: 'LingBuilder Local Service',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      NODE_ENV: 'production',
+      HOST: '127.0.0.1',
+      PORT: '0',
+      LINGBUILDER_WORKSPACE_ROOT: workspaceRoot,
+      LINGBUILDER_STATIC_ROOT: rendererStaticRoot(),
+      LINGBUILDER_RULEBOOK_PATH: rulebookPath(),
+      LINGBUILDER_SESSION_TOKEN: rendererSessionToken,
+      LINGBUILDER_DEV_NO_AUTH: 'false',
+      LINGBUILDER_AI_BRIDGE_ENABLED: 'false',
+      LINGBUILDER_SERVER_AUTOSTART: 'true'
+    }
+  });
+  rendererServer = child;
+
+  child.stderr?.on('data', chunk => {
+    const message = String(chunk).trim();
+    if (message) console.error(`[local-service] ${message}`);
+  });
+  child.on('exit', code => {
+    if (rendererServer === child) rendererServer = null;
+    if (!intentionallyStoppedServers.has(child) && !isQuitting) {
+      console.error(`LingBuilder local service exited unexpectedly with code ${code}.`);
+      dialog.showErrorBox('LingBuilder 本地服务已停止', '本地 API 服务意外退出，请重新启动 LingBuilder。');
+    }
+  });
+
+  return await new Promise<ServerReadyInfo>((resolve, reject) => {
+    let stdoutBuffer = '';
+    let settled = false;
+    const timeout = setTimeout(() => finish(new Error('等待 LingBuilder 本地服务启动超时。')), SERVER_START_TIMEOUT_MS);
+
+    const finish = (error?: Error, ready?: ServerReadyInfo) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      child.off('exit', onEarlyExit);
+      if (error) reject(error);
+      else resolve(ready!);
+    };
+    const onEarlyExit = (code: number) => finish(new Error(`LingBuilder 本地服务启动失败，退出码 ${code}。`));
+    child.once('exit', onEarlyExit);
+    child.stdout?.on('data', chunk => {
+      stdoutBuffer += String(chunk);
+      const lines = stdoutBuffer.split(/\r?\n/);
+      stdoutBuffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith(SERVER_READY_PREFIX)) continue;
+        try {
+          const ready = JSON.parse(line.slice(SERVER_READY_PREFIX.length)) as ServerReadyInfo;
+          if (ready.host !== '127.0.0.1' || !Number.isInteger(ready.port) || ready.port <= 0) {
+            finish(new Error('LingBuilder 本地服务返回了无效监听地址。'));
+            return;
+          }
+          rendererReadyInfo = ready;
+          finish(undefined, ready);
+        } catch (error) {
+          finish(error instanceof Error ? error : new Error(String(error)));
+        }
+      }
+    });
+  });
+}
+
+async function stopRendererServer(): Promise<void> {
+  const child = rendererServer;
+  rendererReadyInfo = null;
+  if (!child) return;
+  rendererServer = null;
+  intentionallyStoppedServers.add(child);
+  const pid = child.pid;
+  child.kill();
+  if (!pid) return;
+  if (await waitForProcessExit(pid, 5_000)) return;
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch {
+    // The service may have exited between the timeout and the force-kill.
+  }
+  if (!await waitForProcessExit(pid, 2_000)) {
+    throw new Error(`LingBuilder 本地服务进程 ${pid} 未能退出。`);
+  }
+}
+
+async function waitForProcessExit(pid: number, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(pid)) return true;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  return !isProcessAlive(pid);
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function shutdownAndExit(code: number): Promise<void> {
+  if (shutdownPromise) return shutdownPromise;
+  isQuitting = true;
+  shutdownPromise = (async () => {
+    let exitCode = code;
+    try {
+      await stopRendererServer();
+    } catch (error) {
+      exitCode = 1;
+      console.error(error);
+    }
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.destroy();
+    }
+    app.exit(exitCode);
+  })();
+  return shutdownPromise;
+}
+
+function configureRendererSession(origin: string, token: string): void {
+  session.defaultSession.webRequest.onBeforeSendHeaders(null);
+  if (!token) return;
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls: [`${origin}/*`] }, (details, callback) => {
+    callback({
+      requestHeaders: {
+        ...details.requestHeaders,
+        'X-LingBuilder-Session': token
+      }
+    });
+  });
+}
+
+async function createMainWindow(): Promise<void> {
+  const smokeTest = process.argv.includes('--smoke-test');
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -24,71 +228,198 @@ function createMainWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
-    },
+      sandbox: false
+    }
   });
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
+    if (!smokeTest) mainWindow?.show();
   });
-
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    void shell.openExternal(url);
     return { action: 'deny' };
   });
 
-  if (app.isPackaged) {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
-  } else {
-    mainWindow.loadURL(DEV_SERVER_URL);
+  await mainWindow.loadURL(rendererOrigin);
+  if (!app.isPackaged && process.env.LINGBUILDER_OPEN_DEVTOOLS === 'true') {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
+  }
+  if (smokeTest) await runPackagedSmokeTest(mainWindow);
+}
+
+async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
+  const resultPath = getArgumentValue(process.argv, '--smoke-result');
+  try {
+    const rendererResult = await window.webContents.executeJavaScript(`(async () => {
+      const healthResponse = await fetch('/api/health');
+      const modulesResponse = await fetch('/api/modules/installed?projectId=lingbuilder-ui-project');
+      const aiResponse = await fetch('/api/lingcpp/edit/propose', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          filePath: 'src/Smoke.lcpp',
+          sourceCode: '类 Smoke\\n结束类\\n',
+          instruction: '保持结构并生成安全提案',
+          aiConfig: {
+            provider: 'openai',
+            baseUrl: 'http://127.0.0.1:1',
+            apiKey: 'packaged-smoke',
+            modelName: 'packaged-smoke'
+          }
+        })
+      });
+      const bridgeResponse = await fetch('/api/ai-bridge/health');
+      const health = await healthResponse.json();
+      const modules = await modulesResponse.json();
+      const ai = await aiResponse.json();
+      return {
+        ok: healthResponse.ok
+          && modulesResponse.ok
+          && aiResponse.ok
+          && bridgeResponse.status === 404
+          && health.status === 'ok'
+          && Array.isArray(modules.modules)
+          && ai.ok === true
+          && Boolean(ai.proposal?.id),
+        healthStatus: healthResponse.status,
+        modulesStatus: modulesResponse.status,
+        aiStatus: aiResponse.status,
+        bridgeStatus: bridgeResponse.status,
+        moduleCount: Array.isArray(modules.modules) ? modules.modules.length : 0,
+        title: document.title,
+        hasRoot: Boolean(document.getElementById('root'))
+      };
+    })()`);
+    const serviceInfo = rendererReadyInfo;
+    await stopRendererServer();
+    const result = {
+      ...rendererResult,
+      workspacePath: activeWorkspace,
+      serviceStopped: true,
+      serviceOrigin: serviceInfo?.origin,
+      servicePid: serviceInfo?.pid
+    };
+    if (resultPath) await fs.writeFile(resultPath, JSON.stringify(result, null, 2), 'utf8');
+    await shutdownAndExit(result.ok ? 0 : 1);
+  } catch (error) {
+    try {
+      await stopRendererServer();
+    } catch {
+      // The original smoke failure remains the primary diagnostic.
+    }
+    if (resultPath) {
+      await fs.writeFile(resultPath, JSON.stringify({
+        ok: false,
+        serviceStopped: rendererServer === null,
+        error: error instanceof Error ? error.message : String(error)
+      }, null, 2), 'utf8');
+    }
+    await shutdownAndExit(1);
   }
 }
 
-app.whenReady().then(() => {
-  Menu.setApplicationMenu(null);
+async function switchWorkspace(workspacePath: string): Promise<void> {
+  if (!app.isPackaged) throw new Error('开发模式切换工作区后请重新运行 npm run dev。');
+  const candidateWorkspace = await workspaceService.validateWorkspace(workspacePath);
+  const previousWorkspace = activeWorkspace;
+  try {
+    const ready = await startPackagedRendererServer(candidateWorkspace);
+    rendererOrigin = ready.origin;
+    configureRendererSession(rendererOrigin, rendererSessionToken);
+    await mainWindow?.loadURL(rendererOrigin);
+    activeWorkspace = await workspaceService.rememberWorkspace(candidateWorkspace);
+  } catch (error) {
+    let restoreError: unknown;
+    try {
+      const restored = await startPackagedRendererServer(previousWorkspace);
+      rendererOrigin = restored.origin;
+      configureRendererSession(rendererOrigin, rendererSessionToken);
+      await mainWindow?.loadURL(rendererOrigin);
+      activeWorkspace = previousWorkspace;
+    } catch (caught) {
+      restoreError = caught;
+    }
+    const primaryMessage = error instanceof Error ? error.message : String(error);
+    if (restoreError) {
+      throw new Error(`${primaryMessage}；恢复原工作区也失败：${restoreError instanceof Error ? restoreError.message : String(restoreError)}`);
+    }
+    throw error;
+  }
+}
 
-  ipcMain.handle('window:minimize', () => {
-    getFocusedWindow()?.minimize();
-  });
-
+function registerIpcHandlers(): void {
+  ipcMain.handle('window:minimize', () => getFocusedWindow()?.minimize());
   ipcMain.handle('window:toggle-maximize', () => {
     const window = getFocusedWindow();
     if (!window) return false;
-
     if (window.isMaximized()) {
       window.unmaximize();
       return false;
     }
-
     window.maximize();
     return true;
   });
-
-  ipcMain.handle('window:is-maximized', () => {
-    return getFocusedWindow()?.isMaximized() ?? false;
-  });
-
-  ipcMain.handle('window:close', () => {
-    getFocusedWindow()?.close();
-  });
-
-  ipcMain.handle('shell:open-path', async (_event, targetPath: string) => {
-    if (!targetPath) return 'missing-path';
-    return shell.openPath(targetPath);
-  });
-
-  createMainWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
+  ipcMain.handle('window:is-maximized', () => getFocusedWindow()?.isMaximized() ?? false);
+  ipcMain.handle('window:close', () => getFocusedWindow()?.close());
+  ipcMain.handle('shell:open-path', async (_event, targetPath: string) => targetPath ? shell.openPath(targetPath) : 'missing-path');
+  ipcMain.handle('docs:open-module-manual', async () => shell.openPath(moduleManualPath()));
+  ipcMain.handle('workspace:get-current', () => activeWorkspace);
+  ipcMain.handle('workspace:open', async () => {
+    const owner = getFocusedWindow();
+    const result = owner
+      ? await dialog.showOpenDialog(owner, { title: '打开 LingBuilder 工作区', properties: ['openDirectory', 'createDirectory'] })
+      : await dialog.showOpenDialog({ title: '打开 LingBuilder 工作区', properties: ['openDirectory', 'createDirectory'] });
+    if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
+    try {
+      await switchWorkspace(result.filePaths[0]);
+      return { ok: true, canceled: false, workspacePath: activeWorkspace };
+    } catch (error) {
+      return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
+}
+
+app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
+  const smokeDocumentsPath = process.argv.includes('--smoke-test')
+    ? getArgumentValue(process.argv, '--smoke-documents-dir')
+    : undefined;
+  workspaceService = new DesktopWorkspaceService({
+    argv: process.argv,
+    documentsPath: smokeDocumentsPath || app.getPath('documents'),
+    userDataPath: app.getPath('userData'),
+    defaultWorkspaceSource: defaultWorkspaceSource(),
+    seedVersion: app.getVersion()
+  });
+  activeWorkspace = await workspaceService.resolveInitialWorkspace(
+    app.isPackaged ? undefined : (process.env.LINGBUILDER_WORKSPACE_ROOT || repoRoot())
+  );
+
+  if (app.isPackaged) {
+    const ready = await startPackagedRendererServer(activeWorkspace);
+    rendererOrigin = ready.origin;
+    configureRendererSession(rendererOrigin, rendererSessionToken);
+  } else {
+    rendererOrigin = DEV_SERVER_URL;
+    configureRendererSession(rendererOrigin, rendererSessionToken);
+  }
+
+  registerIpcHandlers();
+  await createMainWindow();
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) void createMainWindow();
+  });
+}).catch(async error => {
+  dialog.showErrorBox('LingBuilder 启动失败', error instanceof Error ? error.message : String(error));
+  await shutdownAndExit(1);
+});
+
+app.on('before-quit', event => {
+  if (shutdownPromise) return;
+  event.preventDefault();
+  void shutdownAndExit(0);
 });
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (process.platform !== 'darwin') app.quit();
 });

@@ -29,14 +29,12 @@ type ModuleSectionId = 'installed' | 'packageInstall' | 'packageExport' | 'devel
 
 interface ModuleInspectorProps {
   onAddLog: (log: string) => void;
+  projectId: string;
   isDarkMode?: boolean;
   selectedModuleId?: string | null;
 }
 
-const PROJECT_ID = 'lingbuilder-ui-project';
-const MODULE_DEVELOPER_MANUAL_PATH = 'C:\\Users\\Administrator\\Downloads\\c++-汉化集成开发环境(lingbuilder)\\模块开发手册.md';
-
-export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedModuleId: externalSelectedModuleId = null }: ModuleInspectorProps) {
+export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true, selectedModuleId: externalSelectedModuleId = null }: ModuleInspectorProps) {
   const [installedModules, setInstalledModules] = useState<InstalledModule[]>([]);
   const [marketModules, setMarketModules] = useState<MarketModule[]>([]);
   const [history, setHistory] = useState<ModuleHistoryEntry[]>([]);
@@ -67,7 +65,7 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
     history: false
   });
   const onAddLogRef = useRef(onAddLog);
-  const refreshInFlightRef = useRef(false);
+  const refreshRequestIdRef = useRef(0);
   const detailPanelRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -75,7 +73,7 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
   }, [onAddLog]);
 
   useEffect(() => {
-    if (externalSelectedModuleId) setSelectedModuleId(externalSelectedModuleId);
+    setSelectedModuleId(externalSelectedModuleId);
   }, [externalSelectedModuleId]);
 
   const cardClass = isDarkMode
@@ -88,32 +86,38 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
   const actionButtonClass = 'cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-50';
 
   const refresh = useCallback(async () => {
-    if (refreshInFlightRef.current) return;
-    refreshInFlightRef.current = true;
+    const requestId = ++refreshRequestIdRef.current;
     setIsLoading(true);
-    setStatusText('正在读取本地模块、项目引用和市场索引...');
+    setStatusText(`正在读取项目 ${projectId} 的模块引用和市场索引...`);
     try {
       const [installedRes, marketRes, historyRes] = await Promise.all([
-        fetch(`/api/modules/installed?projectId=${encodeURIComponent(PROJECT_ID)}`).then(res => res.json()),
-        fetch('/api/modules/market').then(res => res.json()),
-        fetch('/api/modules/history').then(res => res.json())
+        fetch(`/api/modules/installed?projectId=${encodeURIComponent(projectId)}`).then(res => res.json()),
+        fetch(`/api/modules/market?projectId=${encodeURIComponent(projectId)}`).then(res => res.json()),
+        fetch(`/api/modules/history?projectId=${encodeURIComponent(projectId)}`).then(res => res.json())
       ]);
+      if (requestId !== refreshRequestIdRef.current) return;
+      if (!installedRes.ok) throw new Error(installedRes.error || '项目模块读取失败');
       setInstalledModules(Array.isArray(installedRes.modules) ? installedRes.modules : []);
       setMarketModules(Array.isArray(marketRes.modules) ? marketRes.modules : []);
       setHistory(Array.isArray(historyRes.history) ? historyRes.history : []);
       setStatusText('模块索引已刷新。');
       onAddLogRef.current(`> [${new Date().toLocaleTimeString()}] 【模块】已刷新模块索引。`);
     } catch (error) {
+      if (requestId !== refreshRequestIdRef.current) return;
       setStatusText(`模块刷新失败：${error instanceof Error ? error.message : String(error)}`);
     } finally {
-      setIsLoading(false);
-      refreshInFlightRef.current = false;
+      if (requestId === refreshRequestIdRef.current) setIsLoading(false);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
+    setInstalledModules([]);
+    setMarketModules([]);
+    setHistory([]);
+    setInstallPreview(null);
+    setSelectedModuleId(null);
     refresh();
-  }, [refresh]);
+  }, [projectId, refresh]);
 
   const filteredInstalledModules = useMemo(() => {
     const search = searchText.trim().toLowerCase();
@@ -162,12 +166,16 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
       setStatusText('请先填写或拖入 .lbmod 模块包路径。');
       return;
     }
+    if (!isAllowedWorkspacePath(pathValue, '.lingbuilder/module-packages')) {
+      setStatusText('模块包必须使用 .lingbuilder/module-packages 下的工作区相对路径。');
+      return;
+    }
     setIsLoading(true);
     try {
       const response = await fetch('/api/modules/package/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packagePath: pathValue.trim() })
+        body: JSON.stringify({ projectId, packagePath: pathValue.trim() })
       });
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || '模块包预览失败');
@@ -190,7 +198,7 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           previewId: installPreview.previewId,
-          projectId: PROJECT_ID,
+          projectId,
           enableForProject: enableAfterInstall
         })
       });
@@ -200,7 +208,7 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
       setPackagePath('');
       setStatusText(`模块 ${result.result.moduleName} 已安装。`);
       onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块】已安装 ${result.result.moduleName}。`);
-      window.dispatchEvent(new CustomEvent('lingbuilder-modules-changed'));
+      dispatchModulesChanged(projectId, result.result.moduleId, 'project');
       await refresh();
     } catch (error) {
       setStatusText(`模块安装失败：${error instanceof Error ? error.message : String(error)}`);
@@ -217,12 +225,12 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId: PROJECT_ID, moduleId: module.manifest.id })
+        body: JSON.stringify({ projectId, moduleId: module.manifest.id })
       });
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || '项目模块状态更新失败');
       onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块】${enabled ? '禁用' : '启用'} ${module.manifest.name}。`);
-      window.dispatchEvent(new CustomEvent('lingbuilder-modules-changed'));
+      dispatchModulesChanged(projectId, module.manifest.id, 'project');
       await refresh();
     } catch (error) {
       setStatusText(`项目模块状态更新失败：${error instanceof Error ? error.message : String(error)}`);
@@ -241,12 +249,12 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
       const response = await fetch('/api/modules/uninstall', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ moduleId: module.manifest.id })
+        body: JSON.stringify({ projectId, moduleId: module.manifest.id })
       });
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || '模块卸载失败');
       onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块】已卸载 ${module.manifest.name}。`);
-      window.dispatchEvent(new CustomEvent('lingbuilder-modules-changed'));
+      dispatchModulesChanged(projectId, module.manifest.id, 'workspace');
       await refresh();
     } catch (error) {
       setStatusText(`模块卸载失败：${error instanceof Error ? error.message : String(error)}`);
@@ -260,12 +268,16 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
       setStatusText('请填写模块目录和 .lbmod 导出路径。');
       return;
     }
+    if (!isAllowedWorkspacePath(exportModuleDir, '.lingbuilder/module-build') || !isAllowedWorkspacePath(exportTargetPath, '.lingbuilder/module-packages')) {
+      setStatusText('模块目录和导出文件必须分别位于 .lingbuilder/module-build 与 .lingbuilder/module-packages。');
+      return;
+    }
     setIsLoading(true);
     try {
       const response = await fetch('/api/modules/package/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ moduleDir: exportModuleDir.trim(), targetPath: exportTargetPath.trim() })
+        body: JSON.stringify({ projectId, moduleDir: exportModuleDir.trim(), targetPath: exportTargetPath.trim() })
       });
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || '模块包导出失败');
@@ -284,12 +296,16 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
       setStatusText('请填写模块模板输出目录。');
       return;
     }
+    if (!isAllowedWorkspacePath(developerOutDir, '.lingbuilder/module-build')) {
+      setStatusText('模块模板必须输出到 .lingbuilder/module-build 下的工作区相对路径。');
+      return;
+    }
     setIsLoading(true);
     try {
       const response = await fetch('/api/modules/developer/template', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ template: developerTemplate, outDir: developerOutDir.trim() })
+        body: JSON.stringify({ projectId, template: developerTemplate, outDir: developerOutDir.trim() })
       });
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || '模块模板创建失败');
@@ -307,12 +323,16 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
       setStatusText('请填写要校验的模块目录或 manifest 路径。');
       return;
     }
+    if (!isAllowedWorkspacePath(developerValidatePath, '.lingbuilder/module-build')) {
+      setStatusText('只能校验 .lingbuilder/module-build 下的模块目录。');
+      return;
+    }
     setIsLoading(true);
     try {
       const response = await fetch('/api/modules/developer/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ modulePath: developerValidatePath.trim() })
+        body: JSON.stringify({ projectId, modulePath: developerValidatePath.trim() })
       });
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || '模块校验失败');
@@ -330,12 +350,16 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
       setStatusText('请填写 C++ 迁移配置和输出目录。');
       return;
     }
+    if (!isAllowedWorkspacePath(developerMigrateConfig) || !isAllowedWorkspacePath(developerMigrateOut, '.lingbuilder/module-build')) {
+      setStatusText('迁移配置必须是工作区相对路径，输出目录必须位于 .lingbuilder/module-build。');
+      return;
+    }
     setIsLoading(true);
     try {
       const response = await fetch('/api/modules/developer/migrate-cpp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ configPath: developerMigrateConfig.trim(), outDir: developerMigrateOut.trim() })
+        body: JSON.stringify({ projectId, configPath: developerMigrateConfig.trim(), outDir: developerMigrateOut.trim() })
       });
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || 'C++ 模块迁移失败');
@@ -354,12 +378,19 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
       setStatusText('请填写 .lbmod 路径列表和市场索引输出路径。');
       return;
     }
+    if (packagePaths.some(item => !isAllowedWorkspacePath(item, '.lingbuilder/module-packages'))
+      || !isAllowedWorkspacePath(developerMarketOut, '.lingbuilder')
+      || normalizeWorkspacePath(developerMarketOut).split('/').length !== 2
+      || !developerMarketOut.trim().toLowerCase().endsWith('.json')) {
+      setStatusText('市场包必须位于 .lingbuilder/module-packages，索引必须是 .lingbuilder 下的 JSON 文件。');
+      return;
+    }
     setIsLoading(true);
     try {
       const response = await fetch('/api/modules/developer/market-index', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packagePaths, outPath: developerMarketOut.trim() })
+        body: JSON.stringify({ projectId, packagePaths, outPath: developerMarketOut.trim() })
       });
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || '模块市场索引生成失败');
@@ -373,15 +404,15 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
 
   const openDeveloperManual = async () => {
     try {
-      if (window.lingBuilder?.shell?.openPath) {
-        const result = await window.lingBuilder.shell.openPath(MODULE_DEVELOPER_MANUAL_PATH);
+      const docsApi = window.lingBuilder?.docs;
+      if (docsApi?.openModuleManual) {
+        const result = await docsApi.openModuleManual();
         if (result) throw new Error(result);
         setStatusText('已打开模块开发手册。');
         onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块开发】已打开模块开发手册。`);
         return;
       }
-      setStatusText(`模块开发手册路径：${MODULE_DEVELOPER_MANUAL_PATH}`);
-      onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块开发】模块开发手册：${MODULE_DEVELOPER_MANUAL_PATH}`);
+      setStatusText('请在 LingBuilder 桌面版中打开模块开发手册。');
     } catch (error) {
       setStatusText(`打开模块开发手册失败：${error instanceof Error ? error.message : String(error)}`);
     }
@@ -392,6 +423,10 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
     const file = event.dataTransfer.files?.[0] as File & { path?: string };
     const nextPath = file?.path || file?.name || '';
     if (nextPath) {
+      if (!isAllowedWorkspacePath(nextPath, '.lingbuilder/module-packages')) {
+        setStatusText('请先把模块包复制到工作区 .lingbuilder/module-packages，再填写相对路径预览。');
+        return;
+      }
       setPackagePath(nextPath);
       previewPackage(nextPath);
     }
@@ -483,8 +518,8 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
         <CollapsibleSection
           className={cardClass}
           icon={<FileArchive size={16} />}
-          title="拖入安装 .lbmod"
-          desc="支持拖入模块包，或手动填写本机路径后预览安装。"
+          title="安装 .lbmod"
+          desc="使用 .lingbuilder/module-packages 下的工作区相对路径预览安装。"
           isOpen={expandedSections.packageInstall}
           onToggle={() => toggleSection('packageInstall')}
         >
@@ -493,7 +528,7 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
               value={packagePath}
               onChange={event => setPackagePath(event.target.value)}
               className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`}
-              placeholder="C:\\path\\module.lbmod"
+              placeholder=".lingbuilder/module-packages/demo.lbmod"
             />
             <button onClick={() => previewPackage(packagePath)} className={`h-9 w-full px-3 rounded bg-sky-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-sky-500 ${actionButtonClass}`}>
               <ShieldCheck size={14} />
@@ -511,8 +546,8 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
           onToggle={() => toggleSection('packageExport')}
         >
           <div className="p-3 grid min-w-0 grid-cols-1 gap-2">
-            <input value={exportModuleDir} onChange={event => setExportModuleDir(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="模块目录" />
-            <input value={exportTargetPath} onChange={event => setExportTargetPath(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="导出路径，例如 D:\\demo.lbmod" />
+            <input value={exportModuleDir} onChange={event => setExportModuleDir(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-build/demo" />
+            <input value={exportTargetPath} onChange={event => setExportTargetPath(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-packages/demo.lbmod" />
             <button onClick={exportModulePackage} className={`h-9 w-full px-3 rounded bg-emerald-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-emerald-500 ${actionButtonClass}`}>
               <Upload size={14} />
               导出
@@ -537,25 +572,25 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
               <select value={developerTemplate} onChange={event => setDeveloperTemplate(event.target.value)} className={`h-9 rounded border px-2 text-xs outline-none ${inputClass}`}>
                 {['cpp-source', 'dll-lib', 'ui-control', 'command-only', 'empty'].map(item => <option key={item}>{item}</option>)}
               </select>
-              <input value={developerOutDir} onChange={event => setDeveloperOutDir(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="模块模板输出目录" />
+              <input value={developerOutDir} onChange={event => setDeveloperOutDir(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-build/demo" />
             </div>
             <button onClick={createDeveloperTemplate} className={`h-9 w-full px-3 rounded bg-sky-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-sky-500 ${actionButtonClass}`}>
               <Package size={14} />
               创建模块模板
             </button>
-            <input value={developerValidatePath} onChange={event => setDeveloperValidatePath(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="校验模块目录或 lingbuilder.module.json" />
+            <input value={developerValidatePath} onChange={event => setDeveloperValidatePath(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-build/demo" />
             <button onClick={validateDeveloperModule} className={`h-9 w-full px-3 rounded border border-emerald-500/40 text-emerald-300 text-xs inline-flex items-center justify-center gap-2 hover:bg-emerald-500/10 ${actionButtonClass}`}>
               <ShieldCheck size={14} />
               校验模块
             </button>
-            <input value={developerMigrateConfig} onChange={event => setDeveloperMigrateConfig(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="C++ 迁移配置 JSON" />
-            <input value={developerMigrateOut} onChange={event => setDeveloperMigrateOut(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="C++ 迁移输出目录" />
+            <input value={developerMigrateConfig} onChange={event => setDeveloperMigrateConfig(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="config/module-migration.json" />
+            <input value={developerMigrateOut} onChange={event => setDeveloperMigrateOut(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-build/demo" />
             <button onClick={migrateDeveloperCpp} className={`h-9 w-full px-3 rounded bg-violet-600 text-white text-xs inline-flex items-center justify-center gap-2 hover:bg-violet-500 ${actionButtonClass}`}>
               <FileArchive size={14} />
               迁移 C++ 库
             </button>
-            <textarea value={developerMarketPackages} onChange={event => setDeveloperMarketPackages(event.target.value)} className={`min-h-20 min-w-0 rounded border px-3 py-2 text-xs outline-none ${inputClass}`} placeholder="每行一个 .lbmod 路径" />
-            <input value={developerMarketOut} onChange={event => setDeveloperMarketOut(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder="module-market.json 输出路径" />
+            <textarea value={developerMarketPackages} onChange={event => setDeveloperMarketPackages(event.target.value)} className={`min-h-20 min-w-0 rounded border px-3 py-2 text-xs outline-none ${inputClass}`} placeholder="每行一个 .lingbuilder/module-packages/*.lbmod" />
+            <input value={developerMarketOut} onChange={event => setDeveloperMarketOut(event.target.value)} className={`h-9 min-w-0 rounded border px-3 text-xs outline-none ${inputClass}`} placeholder=".lingbuilder/module-market.json" />
             <button onClick={createDeveloperMarketIndex} className={`h-9 w-full px-3 rounded border border-sky-500/40 text-sky-300 text-xs inline-flex items-center justify-center gap-2 hover:bg-sky-500/10 ${actionButtonClass}`}>
               <Store size={14} />
               生成市场索引
@@ -660,6 +695,12 @@ export default function ModuleInspector({ onAddLog, isDarkMode = true, selectedM
       )}
     </div>
   );
+}
+
+function dispatchModulesChanged(projectId: string, moduleId: string, scope: 'project' | 'workspace'): void {
+  window.dispatchEvent(new CustomEvent('lingbuilder-modules-changed', {
+    detail: { projectId, moduleId, scope }
+  }));
 }
 
 function CollapsibleSection({
@@ -966,4 +1007,17 @@ function formatBytes(value: number): string {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function normalizeWorkspacePath(value: string): string {
+  return value.trim().replace(/\\/g, '/').replace(/^\.\//u, '').replace(/\/{2,}/gu, '/');
+}
+
+function isAllowedWorkspacePath(value: string, allowedRoot?: string): boolean {
+  const normalized = normalizeWorkspacePath(value);
+  if (!normalized || normalized.startsWith('/') || /^[a-zA-Z]:\//u.test(normalized)) return false;
+  const parts = normalized.split('/');
+  if (parts.some(part => !part || part === '..')) return false;
+  if (!allowedRoot) return true;
+  return normalized === allowedRoot || normalized.startsWith(`${allowedRoot}/`);
 }

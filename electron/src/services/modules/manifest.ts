@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import {
   LingBuilderModuleManifest,
   LingBuilderModuleCategory,
@@ -63,6 +65,69 @@ export function validateModuleRelativePath(value: string): boolean {
   if (/^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('/') || value.startsWith('\\')) return false;
   const normalized = value.replace(/\\/g, '/').split('/');
   return !normalized.some(part => part === '..' || part === '');
+}
+
+export async function validateModuleManifestContents(
+  moduleRoot: string,
+  manifest: LingBuilderModuleManifest
+): Promise<string[]> {
+  const diagnostics: string[] = [];
+  const fileReferences = uniqueReferences([
+    ...(manifest.contributes?.docs || []).map(item => ({ path: item.path, label: '文档' })),
+    ...(manifest.contributes?.examples || []).map(item => ({ path: item.path, label: '示例' })),
+    ...(manifest.targets || []).flatMap(target => [
+      ...(target.headers || []).map(item => ({ path: item, label: `目标 ${target.id} 的头文件` })),
+      ...(target.sources || []).map(item => ({ path: item, label: `目标 ${target.id} 的源码` })),
+      ...(target.libs || []).map(item => ({ path: item, label: `目标 ${target.id} 的库文件` })),
+      ...(target.runtimeFiles || []).map(item => ({ path: item, label: `目标 ${target.id} 的运行时文件` }))
+    ])
+  ]);
+  const directoryReferences = uniqueReferences(
+    (manifest.targets || []).flatMap(target => (target.includeDirs || []).map(item => ({
+      path: item,
+      label: `目标 ${target.id} 的包含目录`
+    })))
+  );
+
+  for (const reference of fileReferences) {
+    await validateReferencedEntry(moduleRoot, reference, 'file', diagnostics);
+  }
+  for (const reference of directoryReferences) {
+    await validateReferencedEntry(moduleRoot, reference, 'directory', diagnostics);
+  }
+  return diagnostics;
+}
+
+async function validateReferencedEntry(
+  moduleRoot: string,
+  reference: { path: string; label: string },
+  expectedType: 'file' | 'directory',
+  diagnostics: string[]
+): Promise<void> {
+  if (!validateModuleRelativePath(reference.path)) return;
+  const targetPath = path.join(moduleRoot, reference.path);
+  try {
+    const stat = await fs.lstat(targetPath);
+    if (stat.isSymbolicLink()) {
+      diagnostics.push(`${reference.label}不能是符号链接：${reference.path}`);
+      return;
+    }
+    if (expectedType === 'file' ? !stat.isFile() : !stat.isDirectory()) {
+      diagnostics.push(`${reference.label}类型不正确：${reference.path}`);
+    }
+  } catch {
+    diagnostics.push(`${reference.label}不存在：${reference.path}`);
+  }
+}
+
+function uniqueReferences(values: Array<{ path: string; label: string }>): Array<{ path: string; label: string }> {
+  const seen = new Set<string>();
+  return values.filter(value => {
+    const key = `${value.label}\0${value.path}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function validateTargets(targets: unknown, diagnostics: string[]): void {

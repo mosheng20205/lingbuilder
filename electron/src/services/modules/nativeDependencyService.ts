@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { InstalledModule } from './types';
 import { validateModuleRelativePath } from './manifest';
-import { getPreferredModuleTarget } from './targetResolver';
+import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from './targetResolver';
 
 export interface ModuleNativeDependencyLayout {
   buildDir: string;
@@ -35,7 +35,12 @@ export async function materializeModuleNativeDependencies(
 
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
     const target = getPreferredModuleTarget(module);
-    if (!target || !module.installPath || module.installPath.startsWith('builtin://')) continue;
+    if (!target) {
+      const diagnostic = getUnsupportedModuleTargetDiagnostic(module);
+      if (diagnostic) plan.diagnostics.push(diagnostic);
+      continue;
+    }
+    if (!module.installPath || module.installPath.startsWith('builtin://')) continue;
 
     const moduleId = module.manifest.id;
     const buildModuleRoot = path.join(layout.buildDir, 'modules', moduleId);
@@ -119,7 +124,12 @@ export async function exportModuleNativeDependencies(
   const diagnostics: string[] = [];
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
     const target = getPreferredModuleTarget(module);
-    if (!target || !module.installPath || module.installPath.startsWith('builtin://')) continue;
+    if (!target) {
+      const diagnostic = getUnsupportedModuleTargetDiagnostic(module);
+      if (diagnostic) diagnostics.push(diagnostic);
+      continue;
+    }
+    if (!module.installPath || module.installPath.startsWith('builtin://')) continue;
     const exportModuleRoot = path.join(exportDir, 'modules', module.manifest.id);
     for (const relativePath of unique([
       ...(target.headers || []),

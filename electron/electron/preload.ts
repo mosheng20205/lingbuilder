@@ -12,4 +12,11 @@ contextBridge.exposeInMainWorld('lingBuilder', {
   shell: {
     openPath: (targetPath: string) => ipcRenderer.invoke('shell:open-path', targetPath),
   },
+  workspace: {
+    getCurrent: () => ipcRenderer.invoke('workspace:get-current'),
+    open: () => ipcRenderer.invoke('workspace:open'),
+  },
+  docs: {
+    openModuleManual: () => ipcRenderer.invoke('docs:open-module-manual'),
+  },
 });

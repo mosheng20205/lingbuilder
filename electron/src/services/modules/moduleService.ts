@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { BUILTIN_MODULES } from './builtinModules';
-import { validateModuleManifest, validateModuleRelativePath } from './manifest';
+import { validateModuleManifest, validateModuleManifestContents, validateModuleRelativePath } from './manifest';
 import {
   InstalledModule,
   LingBuilderModuleManifest,
@@ -64,12 +64,13 @@ export class ModuleService {
           });
           continue;
         }
+        const contentDiagnostics = await validateModuleManifestContents(installPath, validation.manifest);
         modules.push({
           manifest: validation.manifest,
           installPath,
           isInstalled: true,
           isEnabledForProject: projectRefs.enabledModuleIds.includes(validation.manifest.id),
-          diagnostics: validation.diagnostics,
+          diagnostics: [...validation.diagnostics, ...contentDiagnostics],
           sha256: await hashDirectoryManifest(installPath)
         });
       } catch (error) {
@@ -91,9 +92,11 @@ export class ModuleService {
   }
 
   async enableModuleForProject(projectId: string, moduleId: string): Promise<void> {
+    await this.assertProjectExists(projectId);
     const modules = await this.scanInstalledModules(projectId);
     const target = modules.find(module => module.manifest.id === moduleId);
     if (!target) throw new Error(`模块不存在：${moduleId}`);
+    if (target.diagnostics.length > 0) throw new Error(`模块校验未通过，不能启用：${target.diagnostics.join('；')}`);
 
     const refs = await this.readProjectModules(projectId);
     if (!refs.enabledModuleIds.includes(moduleId)) refs.enabledModuleIds.push(moduleId);
@@ -112,6 +115,7 @@ export class ModuleService {
 
   async disableModuleForProject(projectId: string, moduleId: string): Promise<void> {
     if (moduleId === BASIC_MODULE_ID) throw new Error('Win32窗口基础模块是普通 Win32 项目的默认基础能力，不能禁用。');
+    await this.assertProjectExists(projectId);
     const refs = await this.readProjectModules(projectId);
     refs.enabledModuleIds = refs.enabledModuleIds.filter(id => id !== moduleId);
     delete refs.pinnedVersions[moduleId];
@@ -154,6 +158,7 @@ export class ModuleService {
       const validation = validateModuleManifest(JSON.parse(manifestRaw));
       manifest = validation.manifest;
       diagnostics.push(...validation.diagnostics);
+      if (manifest) diagnostics.push(...await validateModuleManifestContents(unpackedPath, manifest));
     } catch (error) {
       diagnostics.push(`模块包缺少有效的 ${MODULE_MANIFEST_FILE}：${errorMessage(error)}`);
     }
@@ -193,6 +198,12 @@ export class ModuleService {
     const preview = previewCache.get(previewId);
     if (!preview || !preview.manifest || !preview.canInstall) throw new Error('安装预览不存在或未通过校验。');
     if (BUILTIN_MODULES.some(module => module.id === preview.manifest?.id)) throw new Error('不能覆盖内置模块。');
+    const contentDiagnostics = await validateModuleManifestContents(preview.unpackedPath, preview.manifest);
+    if (contentDiagnostics.length > 0) {
+      preview.canInstall = false;
+      preview.diagnostics.push(...contentDiagnostics);
+      throw new Error(`模块包内容在安装前校验失败：${contentDiagnostics.join('；')}`);
+    }
 
     const targetPath = path.join(this.installedModulesDir(), preview.manifest.id);
     const snapshotPath = await this.snapshotIfExists(targetPath, preview.manifest.id);
@@ -225,17 +236,14 @@ export class ModuleService {
     const snapshotPath = await this.snapshotIfExists(installPath, moduleId);
     await fs.rm(installPath, { recursive: true, force: true });
 
-    const projectRefs = await this.readProjectModules(DEFAULT_PROJECT_ID);
-    projectRefs.enabledModuleIds = projectRefs.enabledModuleIds.filter(id => id !== moduleId);
-    delete projectRefs.pinnedVersions[moduleId];
-    await this.writeProjectModules(DEFAULT_PROJECT_ID, projectRefs);
+    const cleanedProjectReferences = await this.removeModuleFromAllProjects(moduleId);
 
     await this.appendHistory({
       action: 'uninstall',
       moduleId,
       status: 'success',
       summary: `已卸载模块 ${moduleId}`,
-      details: `模块文件已移除，项目引用已清理。`,
+      details: `模块文件已移除，已清理 ${cleanedProjectReferences} 个项目引用。`,
       snapshotPath
     });
   }
@@ -258,6 +266,8 @@ export class ModuleService {
     const manifest = JSON.parse(await fs.readFile(path.join(resolvedModuleDir, MODULE_MANIFEST_FILE), 'utf8'));
     const validation = validateModuleManifest(manifest);
     if (!validation.manifest) throw new Error(validation.diagnostics.join('\n'));
+    const contentDiagnostics = await validateModuleManifestContents(resolvedModuleDir, validation.manifest);
+    if (contentDiagnostics.length > 0) throw new Error(`模块内容不完整：${contentDiagnostics.join('；')}`);
     if (!resolvedTargetPath.toLowerCase().endsWith('.lbmod')) throw new Error('导出目标必须是 .lbmod 文件。');
 
     await fs.mkdir(path.dirname(resolvedTargetPath), { recursive: true });
@@ -277,6 +287,24 @@ export class ModuleService {
     return readJsonFile<ModuleHistoryEntry[]>(this.historyPath(), []);
   }
 
+  async assertProjectExists(projectId: string): Promise<void> {
+    const normalizedProjectId = projectId?.trim();
+    if (!normalizedProjectId || safeProjectId(normalizedProjectId) !== normalizedProjectId) {
+      throw new Error(`项目 ID 无效：${projectId || '(空)'}`);
+    }
+    const solutionPath = path.join(this.lingBuilderDir(), 'solution.json');
+    try {
+      const solution = JSON.parse(await fs.readFile(solutionPath, 'utf8')) as { projects?: Array<{ id?: string }> };
+      if (!Array.isArray(solution.projects) || !solution.projects.some(project => project?.id === normalizedProjectId)) {
+        throw new Error(`项目不存在或未加入当前解决方案：${normalizedProjectId}`);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT' && normalizedProjectId === DEFAULT_PROJECT_ID) return;
+      if (error instanceof SyntaxError) throw new Error('解决方案文件不是合法 JSON，无法校验项目模块引用。');
+      throw error;
+    }
+  }
+
   private async readProjectModules(_projectId: string): Promise<LingBuilderProjectModules> {
     const refs = await readJsonFile<LingBuilderProjectModules>(this.projectModulesPath(_projectId), {
       schemaVersion: 1,
@@ -294,6 +322,33 @@ export class ModuleService {
     const targetPath = this.projectModulesPath(_projectId);
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
     await fs.writeFile(targetPath, JSON.stringify(refs, null, 2), 'utf8');
+  }
+
+  private async removeModuleFromAllProjects(moduleId: string): Promise<number> {
+    const referencePaths = [this.projectModulesPath(DEFAULT_PROJECT_ID)];
+    const projectsRoot = path.join(this.lingBuilderDir(), 'projects');
+    for (const entry of await safeReadDir(projectsRoot)) {
+      if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+      referencePaths.push(path.join(projectsRoot, entry.name, PROJECT_MODULES_FILE));
+    }
+
+    let cleanedCount = 0;
+    for (const referencePath of referencePaths) {
+      try {
+        const refs = JSON.parse(await fs.readFile(referencePath, 'utf8')) as LingBuilderProjectModules;
+        const enabledModuleIds = Array.isArray(refs.enabledModuleIds) ? refs.enabledModuleIds : [];
+        const pinnedVersions = refs.pinnedVersions && typeof refs.pinnedVersions === 'object' ? refs.pinnedVersions : {};
+        if (!enabledModuleIds.includes(moduleId) && !(moduleId in pinnedVersions)) continue;
+        refs.enabledModuleIds = enabledModuleIds.filter(id => id !== moduleId);
+        delete pinnedVersions[moduleId];
+        refs.pinnedVersions = pinnedVersions;
+        await fs.writeFile(referencePath, JSON.stringify(refs, null, 2), 'utf8');
+        cleanedCount += 1;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw error;
+      }
+    }
+    return cleanedCount;
   }
 
   private async readMarketSources(): Promise<MarketSource[]> {

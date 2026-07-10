@@ -19,6 +19,11 @@
 - 已完成：`new_emoji` 模块生成脚本升级为 v2 manifest，包含 Win32/x64 targets、`NE_` 桥接命令 binding、底层 API 文档和重新打包安装入口。
 - 已完成：新增内置 `WebSocket 客户端模块`（`lingbuilder.websocket.client`），提供 `WS_连接`、`WS_发送文本`、`WS_接收到调试输出`、`WS_接收文本`、`WS_关闭`，Win32 生成器内置 WinHTTP WebSocket 运行时和 `winhttp.lib` 链接。
 - 已完成：新增内置 `HTTP 服务端模块`（`lingbuilder.http.server`）和 `WebSocket 服务端模块`（`lingbuilder.websocket.server`），提供本地 `127.0.0.1` 单连接同步服务端命令；Win32 生成器内置 Winsock HTTP/WebSocket 服务端运行时，并链接 `ws2_32.lib` / `advapi32.lib`。
+- 已完成：Electron 安装版改为由主进程管理独立本地服务进程，服务只监听 `127.0.0.1` 随机端口，renderer 请求由桌面宿主注入随机会话 token；安装版不再直接 `loadFile`，退出和工作区切换会终止旧服务。
+- 已完成：IDE 内嵌 AI Bridge 默认关闭，外部 AI 继续通过 `lingbuilder ai-server` 显式启动；HTTP 只接受独立 Bearer token，工作区访问统一使用 realpath/符号链接策略并补齐拒绝审计。
+- 已完成：安装版首次运行只补充复制“文档/LingBuilder/示例工作区”的缺失文件，保留用户修改，并在 `userData/workspace-state.json` 恢复最近工作区。
+- 已完成：新手编辑器建立 flush/save/build 事务；`Ctrl+S`、F5、保存并退出及文件/项目/模式切换都会先提交未失焦草稿，保存失败不会构建或关闭，保存与构建互斥。
+- 已完成：模块页按当前活动 `projectId` 隔离状态；Win32 原生依赖不再回退到 `targets[0]`，模块包预览/校验/打包会验证所有声明文件存在，`new_emoji` 高层命令补全与 binding 参数数量一致。
 - 后续建议：继续增强模块 v2 跨平台 target 的真实构建能力，包括 CMake、Linux/macOS、x64 F5 选择、签名校验和远程市场上传审核服务。
 - 后续建议：继续把 AI 编辑扩展到语义级 range 规划、跨模块依赖分析和更细粒度的审查提示。
 - 后续建议：AI Bridge 的 `build.run` 已复用受控生成、编译和运行链路，但仍未开放任意 shell；后续应接入正式 `TaskService`，提供结构化构建、问题面板跳转和运行日志流。

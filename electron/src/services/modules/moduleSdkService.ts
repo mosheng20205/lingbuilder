@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { LingBuilderModuleManifest, ModuleCommandContribution, ModuleCommandBinding, ModuleBindingValueType } from './types';
-import { validateModuleManifest } from './manifest';
+import { validateModuleManifest, validateModuleManifestContents } from './manifest';
 
 const MODULE_MANIFEST_FILE = 'lingbuilder.module.json';
 
@@ -49,8 +49,10 @@ export async function createModuleTemplate(options: ModuleInitOptions): Promise<
   await fs.mkdir(options.outDir, { recursive: true });
   await fs.writeFile(path.join(options.outDir, MODULE_MANIFEST_FILE), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
   await fs.mkdir(path.join(options.outDir, 'docs'), { recursive: true });
+  await fs.mkdir(path.join(options.outDir, 'examples'), { recursive: true });
   await fs.writeFile(path.join(options.outDir, 'README.md'), buildReadme(manifest), 'utf8');
   await fs.writeFile(path.join(options.outDir, 'docs', 'usage.md'), `# ${manifest.name} 使用说明\n\n在这里补充模块命令、示例和注意事项。\n`, 'utf8');
+  await fs.writeFile(path.join(options.outDir, 'examples', '最小示例.lcpp'), buildExampleSource(manifest), 'utf8');
   if (options.template.includes('cpp') || options.template.includes('dll') || options.template.includes('ui')) {
     await fs.mkdir(path.join(options.outDir, 'include'), { recursive: true });
     await fs.mkdir(path.join(options.outDir, 'src'), { recursive: true });
@@ -63,9 +65,17 @@ export async function createModuleTemplate(options: ModuleInitOptions): Promise<
 export async function validateModuleDirectory(modulePath: string): Promise<ModuleValidationResult> {
   const stat = await fs.stat(modulePath);
   const manifestPath = stat.isDirectory() ? path.join(modulePath, MODULE_MANIFEST_FILE) : modulePath;
+  const moduleRoot = path.dirname(manifestPath);
   const raw = await fs.readFile(manifestPath, 'utf8');
   const validation = validateModuleManifest(JSON.parse(raw));
-  return { manifest: validation.manifest, diagnostics: validation.diagnostics, manifestPath };
+  const contentDiagnostics = validation.manifest
+    ? await validateModuleManifestContents(moduleRoot, validation.manifest)
+    : [];
+  return {
+    manifest: validation.manifest,
+    diagnostics: [...validation.diagnostics, ...contentDiagnostics],
+    manifestPath
+  };
 }
 
 export async function migrateCppModule(configPath: string, outDir: string): Promise<LingBuilderModuleManifest> {
@@ -113,20 +123,39 @@ export async function migrateCppModule(configPath: string, outDir: string): Prom
   return manifest;
 }
 
-export async function createMarketIndex(packagePaths: string[], outPath: string): Promise<void> {
+export interface CreateMarketIndexOptions {
+  packagePathRoot?: string;
+}
+
+export async function createMarketIndex(
+  packagePaths: string[],
+  outPath: string,
+  options: CreateMarketIndexOptions = {}
+): Promise<void> {
   const modules = [];
   for (const packagePath of packagePaths) {
+    const resolvedPackagePath = path.resolve(packagePath);
     modules.push({
       id: path.basename(packagePath, path.extname(packagePath)),
       name: path.basename(packagePath, path.extname(packagePath)),
       version: '1.0.0',
       category: '其他',
       description: '由 LingBuilder 模块 SDK 生成的本地市场索引项。',
-      packagePath: path.resolve(packagePath)
+      packagePath: options.packagePathRoot
+        ? toPortableRelativePath(options.packagePathRoot, resolvedPackagePath)
+        : resolvedPackagePath
     });
   }
   await fs.mkdir(path.dirname(outPath), { recursive: true });
   await fs.writeFile(outPath, JSON.stringify({ schemaVersion: 1, modules }, null, 2) + '\n', 'utf8');
+}
+
+function toPortableRelativePath(root: string, targetPath: string): string {
+  const relativePath = path.relative(path.resolve(root), targetPath).replace(/\\/g, '/');
+  if (!relativePath || relativePath === '..' || relativePath.startsWith('../')) {
+    throw new Error(`模块包不在市场索引工作区内：${targetPath}`);
+  }
+  return relativePath;
 }
 
 function buildTemplateManifest(options: ModuleInitOptions): LingBuilderModuleManifest {

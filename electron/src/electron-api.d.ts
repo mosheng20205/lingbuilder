@@ -14,6 +14,18 @@ declare global {
       shell?: {
         openPath: (targetPath: string) => Promise<string>;
       };
+      workspace?: {
+        getCurrent: () => Promise<string>;
+        open: () => Promise<{
+          ok: boolean;
+          canceled: boolean;
+          workspacePath?: string;
+          error?: string;
+        }>;
+      };
+      docs?: {
+        openModuleManual: () => Promise<string>;
+      };
     };
   }
 }

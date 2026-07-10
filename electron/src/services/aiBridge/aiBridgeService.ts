@@ -9,6 +9,7 @@ import { LingCppEditContext, LingCppWorkspaceFile } from '../lingCpp/types';
 import { createModuleService } from '../modules/moduleService';
 import { describeLingCppModuleContextForAi } from '../modules/moduleContextAdapters';
 import { exportModuleNativeDependencies, materializeModuleNativeDependencies, ModuleNativeDependencyPlan } from '../modules/nativeDependencyService';
+import { WorkspacePathPolicy } from '../workspace/workspacePathPolicy';
 import { generateLingCppNativeWin32Project } from '../windowDesigner/lingCppWin32Project';
 import { exportVisualStudioProject } from '../windowDesigner/visualStudioProjectExporter';
 import { LingWindowProject } from '../windowDesigner/types';
@@ -81,11 +82,13 @@ type CompilerInfo = {
 export class AiBridgeService {
   readonly permissions: AiBridgePermissionService;
   private readonly workspaceRoot: string;
+  private readonly pathPolicy: WorkspacePathPolicy;
   private readonly moduleService;
 
   constructor(private readonly options: AiBridgeServerOptions) {
     this.workspaceRoot = path.resolve(options.workspaceRoot);
-    this.permissions = new AiBridgePermissionService(this.workspaceRoot, options.permission);
+    this.pathPolicy = new WorkspacePathPolicy(this.workspaceRoot);
+    this.permissions = new AiBridgePermissionService(this.pathPolicy, options.permission);
     this.moduleService = createModuleService(this.workspaceRoot);
   }
 
@@ -101,13 +104,23 @@ export class AiBridgeService {
   }
 
   async listWorkspaceTree(): Promise<AiBridgeTreeEntry[]> {
-    return await this.readDirectoryTree(this.workspaceRoot, 0);
+    try {
+      return await this.readDirectoryTree(await this.pathPolicy.getRealWorkspaceRoot(), 0);
+    } catch (error) {
+      await this.auditFailure('read', 'workspace.list', '.', error);
+      throw error;
+    }
   }
 
   async readFile(filePath: string): Promise<{ filePath: string; content: string }> {
-    const absolutePath = this.resolveReadablePath(filePath);
-    const content = await fs.readFile(absolutePath, 'utf8');
-    return { filePath: this.toWorkspacePath(absolutePath), content };
+    try {
+      const absolutePath = await this.resolveReadablePath(filePath);
+      const content = await fs.readFile(absolutePath, 'utf8');
+      return { filePath: await this.pathPolicy.toWorkspaceRelative(absolutePath), content };
+    } catch (error) {
+      await this.auditFailure('read', 'file.read', filePath, error);
+      throw error;
+    }
   }
 
   async searchFiles(request: AiBridgeSearchRequest): Promise<{ matches: AiBridgeSearchMatch[] }> {
@@ -117,11 +130,21 @@ export class AiBridgeService {
     const maxResults = Math.max(1, Math.min(request.maxResults || 100, 500));
     const matches: AiBridgeSearchMatch[] = [];
 
-    for (const item of include) {
-      const root = this.resolveInsideWorkspace(item);
-      if (!await pathExists(root)) continue;
-      await this.searchPath(root, query, matches, maxResults);
-      if (matches.length >= maxResults) break;
+    try {
+      for (const item of include) {
+        let root: string;
+        try {
+          root = await this.pathPolicy.resolveExisting(item, { rejectSymlinks: true });
+        } catch (error: any) {
+          if (error?.code === 'ENOENT') continue;
+          throw error;
+        }
+        await this.searchPath(root, query, matches, maxResults);
+        if (matches.length >= maxResults) break;
+      }
+    } catch (error) {
+      await this.auditFailure('read', 'file.search', include.join(','), error);
+      throw error;
     }
 
     return { matches };
@@ -168,17 +191,22 @@ export class AiBridgeService {
     const proposal = request.proposalId ? getWorkspaceEditProposal(request.proposalId) : undefined;
     if (!proposal) throw new Error('未找到编辑提案。');
 
-    this.permissions.requireWrite(request.approved);
+    await this.requireWriteWithAudit('edit.apply', request.proposalId, request.approved);
     const workspaceFiles = await this.resolveApplyWorkspaceFiles(request);
     const appliedFiles = applyWorkspaceEditToFiles(workspaceFiles, proposal);
     const persistedFiles = [];
 
     for (const file of appliedFiles) {
-      const absolutePath = this.resolveWritablePath(file.filePath);
-      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-      await fs.writeFile(absolutePath, file.sourceCode, 'utf8');
-      persistedFiles.push({ ...file, absolutePath });
-      await this.permissions.audit({ operation: 'write', action: 'edit.apply', ok: true, target: file.filePath });
+      try {
+        const absolutePath = await this.resolveWritablePath(file.filePath);
+        await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+        await fs.writeFile(absolutePath, file.sourceCode, 'utf8');
+        persistedFiles.push({ ...file, absolutePath });
+        await this.permissions.audit({ operation: 'write', action: 'edit.apply', ok: true, target: file.filePath });
+      } catch (error) {
+        await this.auditFailure('write', 'edit.apply', file.filePath, error);
+        throw error;
+      }
     }
 
     rejectWorkspaceEdit(request.proposalId);
@@ -219,33 +247,49 @@ export class AiBridgeService {
   }
 
   async nativeExport(request: AiBridgeNativeRequest) {
-    this.permissions.requireWrite(request.approved);
-    const preview = await this.nativePreview(request);
-    const exportDir = path.join(this.workspaceRoot, 'generated', 'cpp', sanitizeFilename(request.project.id || 'window-preview'));
-    await fs.mkdir(exportDir, { recursive: true });
-    await Promise.all(preview.files.map(async file => {
-      const targetPath = path.join(exportDir, file.relativePath);
-      await fs.mkdir(path.dirname(targetPath), { recursive: true });
-      await fs.writeFile(targetPath, file.content, 'utf8');
-    }));
-    const moduleDiagnostics = await exportModuleNativeDependencies(preview.enabledModules, exportDir);
-    const visualStudioProject = await exportVisualStudioProject({
-      projectDir: exportDir,
-      projectId: request.project.id || 'window-preview',
-      generatedFiles: preview.files,
-      enabledModules: preview.enabledModules
-    });
-    await this.permissions.audit({ operation: 'write', action: 'native.export', ok: true, target: exportDir });
-    return {
-      ...preview,
-      exportDir,
-      visualStudioProject,
-      diagnostics: [...preview.diagnostics, ...moduleDiagnostics]
-    };
+    await this.requireWriteWithAudit('native.export', request.project?.id, request.approved);
+    try {
+      const preview = await this.nativePreview(request);
+      const exportDir = await this.pathPolicy.resolveDirectoryForWrite(
+        normalizeFilePath(path.join('generated', 'cpp', sanitizeFilename(request.project.id || 'window-preview')))
+      );
+      await fs.mkdir(exportDir, { recursive: true });
+      await Promise.all(preview.files.map(async file => {
+        const targetPath = path.join(exportDir, file.relativePath);
+        await fs.mkdir(path.dirname(targetPath), { recursive: true });
+        await fs.writeFile(targetPath, file.content, 'utf8');
+      }));
+      const moduleDiagnostics = await exportModuleNativeDependencies(preview.enabledModules, exportDir);
+      const visualStudioProject = await exportVisualStudioProject({
+        projectDir: exportDir,
+        projectId: request.project.id || 'window-preview',
+        generatedFiles: preview.files,
+        enabledModules: preview.enabledModules
+      });
+      await this.permissions.audit({ operation: 'write', action: 'native.export', ok: true, target: exportDir });
+      return {
+        ...preview,
+        exportDir,
+        visualStudioProject,
+        diagnostics: [...preview.diagnostics, ...moduleDiagnostics]
+      };
+    } catch (error) {
+      await this.auditFailure('write', 'native.export', request.project?.id, error);
+      throw error;
+    }
   }
 
   async buildRun(request: AiBridgeBuildRunRequest) {
-    this.permissions.requireExecute(request.approved);
+    await this.requireExecuteWithAudit('build.run', request.project?.id, request.approved);
+    try {
+      return await this.executeBuildRun(request);
+    } catch (error) {
+      await this.auditFailure('execute', 'build.run', request.project?.id, error);
+      throw error;
+    }
+  }
+
+  private async executeBuildRun(request: AiBridgeBuildRunRequest) {
     const enabledModules = await this.moduleService.getEnabledProjectModules(request.project.id || 'lingbuilder-ui-project');
     const generatedProject = generateLingCppNativeWin32Project(request.project, {
       activeWindowId: request.activeWindowId,
@@ -254,11 +298,13 @@ export class AiBridgeService {
       enabledModules
     });
     const projectId = sanitizeFilename(request.project.id || 'window-preview');
-    const buildDir = path.join(this.workspaceRoot, '.lingbuilder-build', projectId);
+    const [buildDir, exportDir] = await Promise.all([
+      this.pathPolicy.resolveDirectoryForWrite(normalizeFilePath(path.join('.lingbuilder-build', projectId))),
+      this.pathPolicy.resolveDirectoryForWrite(normalizeFilePath(path.join('generated', 'cpp', projectId)))
+    ]);
     const sourceDir = path.join(buildDir, 'src');
     const binDir = path.join(buildDir, 'bin');
     const objDir = path.join(buildDir, 'obj');
-    const exportDir = path.join(this.workspaceRoot, 'generated', 'cpp', projectId);
     await Promise.all([
       fs.mkdir(sourceDir, { recursive: true }),
       fs.mkdir(binDir, { recursive: true }),
@@ -460,9 +506,10 @@ export class AiBridgeService {
     const entries = await fs.readdir(directory, { withFileTypes: true });
     const result: AiBridgeTreeEntry[] = [];
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory() && IGNORED_DIRS.has(entry.name)) continue;
       const absolutePath = path.join(directory, entry.name);
-      const relativePath = this.toWorkspacePath(absolutePath);
+      const relativePath = await this.pathPolicy.toWorkspaceRelative(absolutePath);
       if (entry.isDirectory()) {
         result.push({
           path: relativePath,
@@ -479,11 +526,13 @@ export class AiBridgeService {
   }
 
   private async searchPath(targetPath: string, query: string, matches: AiBridgeSearchMatch[], maxResults: number): Promise<void> {
-    const stat = await fs.stat(targetPath);
+    const stat = await fs.lstat(targetPath);
+    if (stat.isSymbolicLink()) return;
     if (stat.isDirectory()) {
       const entries = await fs.readdir(targetPath, { withFileTypes: true });
       for (const entry of entries) {
         if (matches.length >= maxResults) return;
+        if (entry.isSymbolicLink()) continue;
         if (entry.isDirectory() && IGNORED_DIRS.has(entry.name)) continue;
         await this.searchPath(path.join(targetPath, entry.name), query, matches, maxResults);
       }
@@ -491,45 +540,71 @@ export class AiBridgeService {
     }
     if (!stat.isFile() || !isReadableExtension(targetPath)) return;
     const content = await fs.readFile(targetPath, 'utf8');
-    content.split(/\r?\n/).forEach((line, index) => {
-      if (matches.length >= maxResults) return;
+    const workspacePath = await this.pathPolicy.toWorkspaceRelative(targetPath);
+    const lines = content.split(/\r?\n/);
+    for (let index = 0; index < lines.length && matches.length < maxResults; index += 1) {
+      const line = lines[index];
       const column = line.indexOf(query);
       if (column >= 0) {
         matches.push({
-          filePath: this.toWorkspacePath(targetPath),
+          filePath: workspacePath,
           line: index + 1,
           column: column + 1,
           preview: line.trim()
         });
       }
-    });
+    }
   }
 
-  private resolveReadablePath(filePath: string): string {
-    const absolutePath = this.resolveInsideWorkspace(filePath);
+  private async resolveReadablePath(filePath: string): Promise<string> {
+    const absolutePath = await this.pathPolicy.resolveExisting(filePath, { rejectSymlinks: true });
     if (!isReadableExtension(absolutePath)) throw new Error('该文件类型不允许通过 AI Bridge 读取。');
     return absolutePath;
   }
 
-  private resolveWritablePath(filePath: string): string {
-    const absolutePath = this.resolveInsideWorkspace(filePath);
+  private async resolveWritablePath(filePath: string): Promise<string> {
+    const absolutePath = await this.pathPolicy.resolveForWrite(filePath);
     if (!WRITABLE_EXTENSIONS.has(path.extname(absolutePath).toLowerCase())) {
       throw new Error('该文件类型不允许通过 AI Bridge 写入。');
     }
     return absolutePath;
   }
 
-  private resolveInsideWorkspace(filePath: string): string {
-    const absolutePath = path.resolve(this.workspaceRoot, normalizeFilePath(filePath));
-    const relativePath = path.relative(this.workspaceRoot, absolutePath);
-    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
-      throw new Error('路径越界：只能访问当前 LingBuilder 工作区内的文件。');
+  private async requireWriteWithAudit(action: string, target: string | undefined, approved?: boolean): Promise<void> {
+    try {
+      this.permissions.requireWrite(approved);
+    } catch (error) {
+      await this.auditFailure('write', action, target, error);
+      throw error;
     }
-    return absolutePath;
   }
 
-  private toWorkspacePath(absolutePath: string): string {
-    return normalizeFilePath(path.relative(this.workspaceRoot, absolutePath));
+  private async requireExecuteWithAudit(action: string, target: string | undefined, approved?: boolean): Promise<void> {
+    try {
+      this.permissions.requireExecute(approved);
+    } catch (error) {
+      await this.auditFailure('execute', action, target, error);
+      throw error;
+    }
+  }
+
+  private async auditFailure(
+    operation: 'read' | 'write' | 'execute',
+    action: string,
+    target: string | undefined,
+    error: unknown
+  ): Promise<void> {
+    try {
+      await this.permissions.audit({
+        operation,
+        action,
+        ok: false,
+        target,
+        details: error instanceof Error ? error.message : String(error)
+      });
+    } catch {
+      // Never replace the original security or operation error with an audit-log failure.
+    }
   }
 }
 

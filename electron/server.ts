@@ -4,7 +4,6 @@ import fs from "fs/promises";
 import { execFile, spawn } from "child_process";
 import { createWriteStream } from "fs";
 import { promisify } from "util";
-import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedString } from "./src/types";
@@ -46,31 +45,36 @@ import { AiBridgeService } from "./src/services/aiBridge/aiBridgeService";
 import { createAiBridgeRouter } from "./src/services/aiBridge/httpRoutes";
 import { AiBridgePermissionMode, AiBridgeServerOptions } from "./src/services/aiBridge/types";
 import { createSolutionService, LingBuilderSolutionProject } from "./src/services/solution/solutionService";
+import { WorkspacePathPolicy } from "./src/services/workspace/workspacePathPolicy";
+import {
+  formatServerReady,
+  isServerSessionAuthorized,
+  resolveServerRuntimeConfig,
+  ServerReadyInfo,
+  ServerRuntimeConfig
+} from "./src/services/server/serverRuntime";
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
-let lingBuilderAiRulebookCache: string | null | undefined;
+const serverRuntimeConfig = resolveServerRuntimeConfig(process.env);
+// This process is already running as an Electron utility process. Ensure that
+// any later process.execPath probe starts Electron in Node mode instead of
+// recursively launching the packaged LingBuilder application.
+if (serverRuntimeConfig.environment === "production") {
+  process.env.ELECTRON_RUN_AS_NODE = "1";
+}
+const workspacePathPolicy = new WorkspacePathPolicy(serverRuntimeConfig.workspaceRoot);
+let lingBuilderAiRulebookCache: string | undefined;
 let solutionServiceCache: ReturnType<typeof createSolutionService> | null = null;
 
-function getLingBuilderAiRulebookCandidates(): string[] {
-  return [
-    path.resolve(process.cwd(), "LingBuilder AI 规则手册.md"),
-    path.resolve(process.cwd(), "..", "LingBuilder AI 规则手册.md")
-  ];
-}
-
 async function getLingBuilderAiRulebook(): Promise<string> {
-  if (lingBuilderAiRulebookCache !== undefined) return lingBuilderAiRulebookCache || "";
-  for (const candidate of getLingBuilderAiRulebookCandidates()) {
-    try {
-      lingBuilderAiRulebookCache = await fs.readFile(candidate, "utf8");
-      return lingBuilderAiRulebookCache;
-    } catch {
-      // Try the next likely workspace location.
-    }
+  if (lingBuilderAiRulebookCache !== undefined) return lingBuilderAiRulebookCache;
+  try {
+    lingBuilderAiRulebookCache = await fs.readFile(serverRuntimeConfig.rulebookPath, "utf8");
+    return lingBuilderAiRulebookCache;
+  } catch (error: any) {
+    throw new Error(`LingBuilder AI 规则手册读取失败：${error?.message || String(error)}`);
   }
-  lingBuilderAiRulebookCache = null;
-  return "";
 }
 
 function attachLingBuilderAiRulebook(systemPrompt: string, rulebook: string): string {
@@ -86,7 +90,7 @@ LINGBUILDER_AI_RULEBOOK`;
 
 function getSolutionService() {
   if (!solutionServiceCache) {
-    solutionServiceCache = createSolutionService(getRepoWorkspaceRoot());
+    solutionServiceCache = createSolutionService(serverRuntimeConfig.workspaceRoot);
   }
   return solutionServiceCache;
 }
@@ -280,11 +284,27 @@ function getGeminiClient(config?: AiConnectionConfig): GoogleGenAI {
 }
 
 const app = express();
-const PORT = Number.parseInt(process.env.PORT || "3000", 10);
 const execFileAsync = promisify(execFile);
 const ALLOWED_PROJECT_EXTS = [".lcpp", ".cpp", ".h", ".rc", ".xml", ".json", ".ini"];
 
 app.use(express.json({ limit: "2mb" }));
+app.use((req, res, next) => {
+  const isAiBridgePath = req.path === "/api/ai-bridge" || req.path.startsWith("/api/ai-bridge/");
+  if (!req.path.startsWith("/api/") || isAiBridgePath) {
+    next();
+    return;
+  }
+  if (serverRuntimeConfig.devNoAuth) {
+    next();
+    return;
+  }
+  const sessionToken = req.header("x-lingbuilder-session") || "";
+  if (!isServerSessionAuthorized(serverRuntimeConfig, sessionToken)) {
+    res.status(401).json({ ok: false, error: "LingBuilder 本地会话无效或缺失。" });
+    return;
+  }
+  next();
+});
 
 function getAiBridgePermissionMode(): AiBridgePermissionMode {
   const value = process.env.LINGBUILDER_AI_BRIDGE_PERMISSION;
@@ -292,27 +312,89 @@ function getAiBridgePermissionMode(): AiBridgePermissionMode {
 }
 
 function getRepoWorkspaceRoot() {
-  return path.basename(process.cwd()).toLowerCase() === "electron"
-    ? path.resolve(process.cwd(), "..")
-    : process.cwd();
+  return serverRuntimeConfig.workspaceRoot;
 }
 
 function getModuleService() {
   return createModuleService(getRepoWorkspaceRoot());
 }
 
-const aiBridgeToken = process.env.LINGBUILDER_AI_BRIDGE_TOKEN || "";
-const aiBridgeOptions: AiBridgeServerOptions = {
-  workspaceRoot: getRepoWorkspaceRoot(),
-  host: process.env.HOST || "0.0.0.0",
-  port: PORT,
-  token: aiBridgeToken,
-  permission: getAiBridgePermissionMode(),
-  allowRemote: process.env.LINGBUILDER_AI_BRIDGE_ALLOW_REMOTE === "true",
-  enableMcp: false
-};
-const aiBridgeService = new AiBridgeService(aiBridgeOptions);
-app.use("/api/ai-bridge", createAiBridgeRouter(aiBridgeService, aiBridgeToken, planLingCppEditWithGemini));
+async function requireExistingProject(projectId: string | undefined): Promise<string> {
+  const normalizedProjectId = projectId?.trim();
+  if (!normalizedProjectId) throw new Error("缺少 projectId，模块操作必须指定当前项目。");
+  const solutionService = getSolutionService();
+  const solution = await solutionService.getSolution();
+  solutionService.getProject(solution, normalizedProjectId);
+  return normalizedProjectId;
+}
+
+function normalizeWorkspaceRelativePath(value: string, allowedRoot?: string): string {
+  if (!value?.trim()) throw new Error("缺少工作区相对路径。");
+  const normalized = value.trim().replace(/\\/gu, "/");
+  if (path.posix.isAbsolute(normalized) || /^[a-zA-Z]:/u.test(normalized)) {
+    throw new Error("模块 HTTP API 只接受工作区相对路径；本机绝对路径仅允许通过 CLI 使用。");
+  }
+  const collapsed = path.posix.normalize(normalized).replace(/^\.\//u, "");
+  if (collapsed === ".." || collapsed.startsWith("../")) {
+    throw new Error("路径越界：只能访问当前 LingBuilder 工作区内的文件。");
+  }
+  if (allowedRoot && collapsed !== allowedRoot && !collapsed.startsWith(`${allowedRoot}/`)) {
+    throw new Error(`该操作只允许访问 ${allowedRoot} 目录。`);
+  }
+  return collapsed;
+}
+
+async function resolveExistingModulePath(value: string, allowedRoot?: string): Promise<string> {
+  const relativePath = normalizeWorkspaceRelativePath(value, allowedRoot);
+  return await workspacePathPolicy.resolveExisting(relativePath, { rejectSymlinks: true });
+}
+
+async function resolveModuleWritePath(value: string, allowedRoot: string): Promise<string> {
+  const relativePath = normalizeWorkspaceRelativePath(value, allowedRoot);
+  return await workspacePathPolicy.resolveForWrite(relativePath);
+}
+
+async function resolveModuleWriteDirectory(value: string, allowedRoot: string): Promise<string> {
+  const relativePath = normalizeWorkspaceRelativePath(value, allowedRoot);
+  return await workspacePathPolicy.resolveDirectoryForWrite(relativePath);
+}
+
+async function toSafeHttpPackagePath(value: string | undefined): Promise<string | undefined> {
+  if (!value) return undefined;
+  try {
+    if (!path.isAbsolute(value)) {
+      const relativePath = normalizeWorkspaceRelativePath(value, ".lingbuilder/module-packages");
+      await workspacePathPolicy.resolveExisting(relativePath, { rejectSymlinks: true });
+      return relativePath;
+    }
+    const realPath = await fs.realpath(value);
+    const relativePath = await workspacePathPolicy.toWorkspaceRelative(realPath);
+    return normalizeWorkspaceRelativePath(relativePath, ".lingbuilder/module-packages");
+  } catch {
+    return undefined;
+  }
+}
+
+if (serverRuntimeConfig.aiBridgeEnabled) {
+  const aiBridgeOptions: AiBridgeServerOptions = {
+    workspaceRoot: getRepoWorkspaceRoot(),
+    host: serverRuntimeConfig.host,
+    port: serverRuntimeConfig.port,
+    token: serverRuntimeConfig.aiBridgeToken,
+    permission: getAiBridgePermissionMode(),
+    allowRemote: false,
+    enableMcp: false
+  };
+  const aiBridgeService = new AiBridgeService(aiBridgeOptions);
+  app.use(
+    "/api/ai-bridge",
+    createAiBridgeRouter(aiBridgeService, serverRuntimeConfig.aiBridgeToken, planLingCppEditWithGemini)
+  );
+} else {
+  app.use("/api/ai-bridge", (_req, res) => {
+    res.status(404).json({ ok: false, error: "内嵌 AI Bridge 未启用；请使用 lingbuilder ai-server 显式启动。" });
+  });
+}
 
 async function resolveLingCppEditModuleContext(
   projectId?: string,
@@ -367,7 +449,8 @@ app.post("/api/ai/connect", async (req, res) => {
 app.get("/api/modules/installed", async (req, res) => {
   try {
     const { projectId } = req.query as { projectId?: string };
-    res.json({ ok: true, modules: await getModuleService().scanInstalledModules(projectId) });
+    const validatedProjectId = await requireExistingProject(projectId);
+    res.json({ ok: true, modules: await getModuleService().scanInstalledModules(validatedProjectId) });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "模块扫描失败" });
   }
@@ -376,7 +459,8 @@ app.get("/api/modules/installed", async (req, res) => {
 app.get("/api/modules/project", async (req, res) => {
   try {
     const { projectId } = req.query as { projectId?: string };
-    res.json({ ok: true, modules: await getModuleService().getEnabledProjectModules(projectId || "lingbuilder-ui-project") });
+    const validatedProjectId = await requireExistingProject(projectId);
+    res.json({ ok: true, modules: await getModuleService().getEnabledProjectModules(validatedProjectId) });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "项目模块读取失败" });
   }
@@ -384,9 +468,10 @@ app.get("/api/modules/project", async (req, res) => {
 
 app.post("/api/modules/project/enable", async (req, res) => {
   try {
-    const { projectId = "lingbuilder-ui-project", moduleId } = req.body as { projectId?: string; moduleId?: string };
+    const { projectId, moduleId } = req.body as { projectId?: string; moduleId?: string };
     if (!moduleId) return res.status(400).json({ ok: false, error: "缺少 moduleId" });
-    await getModuleService().enableModuleForProject(projectId, moduleId);
+    const validatedProjectId = await requireExistingProject(projectId);
+    await getModuleService().enableModuleForProject(validatedProjectId, moduleId);
     res.json({ ok: true });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "启用模块失败" });
@@ -395,9 +480,10 @@ app.post("/api/modules/project/enable", async (req, res) => {
 
 app.post("/api/modules/project/disable", async (req, res) => {
   try {
-    const { projectId = "lingbuilder-ui-project", moduleId } = req.body as { projectId?: string; moduleId?: string };
+    const { projectId, moduleId } = req.body as { projectId?: string; moduleId?: string };
     if (!moduleId) return res.status(400).json({ ok: false, error: "缺少 moduleId" });
-    await getModuleService().disableModuleForProject(projectId, moduleId);
+    const validatedProjectId = await requireExistingProject(projectId);
+    await getModuleService().disableModuleForProject(validatedProjectId, moduleId);
     res.json({ ok: true });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "禁用模块失败" });
@@ -408,7 +494,8 @@ app.post("/api/modules/package/preview", async (req, res) => {
   try {
     const { packagePath } = req.body as { packagePath?: string };
     if (!packagePath) return res.status(400).json({ ok: false, error: "缺少 packagePath" });
-    res.json({ ok: true, preview: await getModuleService().previewPackageInstall(packagePath) });
+    const resolvedPackagePath = await resolveExistingModulePath(packagePath, ".lingbuilder/module-packages");
+    res.json({ ok: true, preview: await getModuleService().previewPackageInstall(resolvedPackagePath) });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "模块包预览失败" });
   }
@@ -418,9 +505,10 @@ app.post("/api/modules/package/install", async (req, res) => {
   try {
     const { previewId, projectId, enableForProject = true } = req.body as { previewId?: string; projectId?: string; enableForProject?: boolean };
     if (!previewId) return res.status(400).json({ ok: false, error: "缺少 previewId" });
+    const validatedProjectId = await requireExistingProject(projectId);
     const result = await getModuleService().installPackage(previewId);
     if (enableForProject) {
-      await getModuleService().enableModuleForProject(projectId || "lingbuilder-ui-project", result.moduleId);
+      await getModuleService().enableModuleForProject(validatedProjectId, result.moduleId);
     }
     res.json({ ok: true, result });
   } catch (error: any) {
@@ -515,7 +603,11 @@ app.post("/api/modules/package/export", async (req, res) => {
   try {
     const { moduleDir, targetPath } = req.body as { moduleDir?: string; targetPath?: string };
     if (!moduleDir || !targetPath) return res.status(400).json({ ok: false, error: "缺少 moduleDir 或 targetPath" });
-    await getModuleService().exportModulePackage(moduleDir, targetPath);
+    const [resolvedModuleDir, resolvedTargetPath] = await Promise.all([
+      resolveExistingModulePath(moduleDir, ".lingbuilder/module-build"),
+      resolveModuleWritePath(targetPath, ".lingbuilder/module-packages")
+    ]);
+    await getModuleService().exportModulePackage(resolvedModuleDir, resolvedTargetPath);
     res.json({ ok: true });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "模块包导出失败" });
@@ -536,7 +628,14 @@ app.post("/api/modules/uninstall", async (req, res) => {
 app.get("/api/modules/market", async (req, res) => {
   try {
     const { sourceId } = req.query as { sourceId?: string };
-    res.json({ ok: true, modules: await getModuleService().listMarketModules(sourceId) });
+    const modules = await getModuleService().listMarketModules(sourceId);
+    res.json({
+      ok: true,
+      modules: await Promise.all(modules.map(async module => ({
+        ...module,
+        packagePath: await toSafeHttpPackagePath(module.packagePath)
+      })))
+    });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "模块市场读取失败" });
   }
@@ -554,7 +653,8 @@ app.post("/api/modules/developer/template", async (req, res) => {
   try {
     const { template = "cpp-source", outDir, id, name } = req.body as { template?: string; outDir?: string; id?: string; name?: string };
     if (!outDir) return res.status(400).json({ ok: false, error: "缺少 outDir" });
-    const manifest = await createModuleTemplate({ template, outDir, id, name });
+    const resolvedOutDir = await resolveModuleWriteDirectory(outDir, ".lingbuilder/module-build");
+    const manifest = await createModuleTemplate({ template, outDir: resolvedOutDir, id, name });
     res.json({ ok: true, manifest });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "模块模板创建失败" });
@@ -565,7 +665,11 @@ app.post("/api/modules/developer/validate", async (req, res) => {
   try {
     const { modulePath } = req.body as { modulePath?: string };
     if (!modulePath) return res.status(400).json({ ok: false, error: "缺少 modulePath" });
-    const result = await validateModuleDirectory(modulePath);
+    let resolvedModulePath = await resolveExistingModulePath(modulePath, ".lingbuilder/module-build");
+    if (path.basename(resolvedModulePath).toLowerCase() === "lingbuilder.module.json") {
+      resolvedModulePath = path.dirname(resolvedModulePath);
+    }
+    const result = await validateModuleDirectory(resolvedModulePath);
     res.json({ ok: true, result });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "模块校验失败" });
@@ -576,7 +680,11 @@ app.post("/api/modules/developer/migrate-cpp", async (req, res) => {
   try {
     const { configPath, outDir } = req.body as { configPath?: string; outDir?: string };
     if (!configPath || !outDir) return res.status(400).json({ ok: false, error: "缺少 configPath 或 outDir" });
-    const manifest = await migrateCppModule(configPath, outDir);
+    const [resolvedConfigPath, resolvedOutDir] = await Promise.all([
+      resolveExistingModulePath(configPath),
+      resolveModuleWriteDirectory(outDir, ".lingbuilder/module-build")
+    ]);
+    const manifest = await migrateCppModule(resolvedConfigPath, resolvedOutDir);
     res.json({ ok: true, manifest });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "C++ 模块迁移失败" });
@@ -587,7 +695,15 @@ app.post("/api/modules/developer/market-index", async (req, res) => {
   try {
     const { packagePaths, outPath } = req.body as { packagePaths?: string[]; outPath?: string };
     if (!Array.isArray(packagePaths) || !outPath) return res.status(400).json({ ok: false, error: "缺少 packagePaths 或 outPath" });
-    await createMarketIndex(packagePaths, outPath);
+    const normalizedOutPath = normalizeWorkspaceRelativePath(outPath, ".lingbuilder");
+    if (path.posix.dirname(normalizedOutPath) !== ".lingbuilder" || !normalizedOutPath.toLowerCase().endsWith(".json")) {
+      throw new Error("模块市场索引必须输出为 .lingbuilder 目录下的 JSON 文件。");
+    }
+    const [resolvedPackagePaths, resolvedOutPath] = await Promise.all([
+      Promise.all(packagePaths.map(packagePath => resolveExistingModulePath(packagePath, ".lingbuilder/module-packages"))),
+      workspacePathPolicy.resolveForWrite(normalizedOutPath)
+    ]);
+    await createMarketIndex(resolvedPackagePaths, resolvedOutPath, { packagePathRoot: getRepoWorkspaceRoot() });
     res.json({ ok: true });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "模块市场索引生成失败" });
@@ -1959,6 +2075,7 @@ async function collectFilesRecursively(repoRoot: string, directory: string, file
   if (!await pathExists(directory)) return;
   const entries = await fs.readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue;
     const targetPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       await collectFilesRecursively(repoRoot, targetPath, files);
@@ -2057,9 +2174,22 @@ function normalizeFilePath(value: string): string {
   return value.replace(/\\/g, "/").trim();
 }
 
-async function startServer() {
+function formatOrigin(host: ServerRuntimeConfig["host"], port: number): string {
+  return `http://${host === "::1" ? "[::1]" : host}:${port}`;
+}
+
+export async function startServer(): Promise<ServerReadyInfo> {
+  await workspacePathPolicy.getRealWorkspaceRoot();
+  if (!(await getLingBuilderAiRulebook()).trim()) {
+    throw new Error("LingBuilder AI 规则手册为空，服务拒绝启动。");
+  }
   // Vite integration
-  if (process.env.NODE_ENV !== "production") {
+  if (serverRuntimeConfig.environment === "development") {
+    // Keep Vite out of the packaged server's module graph. Some Vite/Rollup
+    // dependencies probe process.execPath; inside Electron that is the app exe
+    // and would recursively launch LingBuilder unless development explicitly
+    // requests Vite here.
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: {
         middlewareMode: true,
@@ -2071,16 +2201,42 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    const distPath = serverRuntimeConfig.staticRoot as string;
+    await fs.access(path.join(distPath, "index.html"));
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`C++ Localization Server running on port ${PORT}`);
+  const server = app.listen(serverRuntimeConfig.port, serverRuntimeConfig.host);
+  await new Promise<void>((resolve, reject) => {
+    server.once("listening", resolve);
+    server.once("error", reject);
   });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    server.close();
+    throw new Error("LingBuilder IDE 服务未能获取有效监听地址。");
+  }
+  const ready: ServerReadyInfo = {
+    host: serverRuntimeConfig.host,
+    port: address.port,
+    origin: formatOrigin(serverRuntimeConfig.host, address.port),
+    workspaceRoot: serverRuntimeConfig.workspaceRoot,
+    pid: process.pid
+  };
+  console.log(formatServerReady(ready));
+  console.log(`LingBuilder IDE Server listening on ${ready.origin}`);
+
+  const closeServer = () => {
+    server.close(() => {
+      process.exitCode = 0;
+    });
+  };
+  process.once("SIGTERM", closeServer);
+  process.once("SIGINT", closeServer);
+  return ready;
 }
 
 export function createLingBuilderServer() {
@@ -2088,5 +2244,12 @@ export function createLingBuilderServer() {
 }
 
 if (process.env.LINGBUILDER_SERVER_AUTOSTART !== "false") {
-  startServer();
+  startServer().catch(error => {
+    const payload = JSON.stringify({
+      message: error instanceof Error ? error.message : String(error),
+      pid: process.pid
+    });
+    console.error(`LINGBUILDER_SERVER_ERROR ${payload}`);
+    process.exitCode = 1;
+  });
 }

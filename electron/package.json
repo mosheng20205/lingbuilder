@@ -11,13 +11,16 @@
     "build": "vite build && npm run build:server && npm run build:cli && npm run build:electron",
     "build:server": "esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "build:cli": "esbuild src/cli.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/cli.cjs",
-    "build:electron": "tsc -p electron/tsconfig.json && node scripts/rename-electron-output.cjs",
+    "build:electron": "tsc -p electron/tsconfig.json --noEmit && esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --packages=external --external:electron --sourcemap --outdir=dist-electron --out-extension:.js=.cjs",
     "start": "node dist/server.cjs",
     "ai-server": "tsx src/cli.ts ai-server",
     "lint": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
     "test": "npm run test:lingcpp",
-    "test:lingcpp": "node --import tsx --test tests/lingcpp.test.ts tests/modules.test.ts tests/aiBridge.test.ts tests/solution.test.ts",
+    "test:lingcpp": "node --import tsx --test tests/lingcpp.test.ts tests/modules.test.ts tests/aiBridge.test.ts tests/solution.test.ts tests/workspaceService.test.ts",
     "module:new-emoji": "node scripts/generate-new-emoji-module.cjs",
+    "package:dir": "npm run build && electron-builder --dir",
+    "package:win": "npm run build && electron-builder --win nsis --x64",
+    "smoke:packaged": "node scripts/smoke-packaged.cjs",
     "clean": "rimraf dist dist-electron"
   },
   "dependencies": {
@@ -26,7 +29,6 @@
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
-    "electron": "^33.4.11",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
@@ -39,6 +41,8 @@
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.1.2",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.0.12",
     "esbuild": "^0.25.0",
     "rimraf": "^6.0.1",
     "tailwindcss": "^4.1.14",
@@ -49,5 +53,63 @@
   "bin": {
     "lingbuilder": "./dist/cli.cjs"
   },
-  "allowScripts": {}
+  "overrides": {
+    "dompurify": "3.4.11"
+  },
+  "build": {
+    "appId": "cn.lingbuilder.ide",
+    "productName": "LingBuilder",
+    "artifactName": "LingBuilder-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../src",
+        "to": "default-workspace/src"
+      },
+      {
+        "from": "../config",
+        "to": "default-workspace/config"
+      },
+      {
+        "from": "../.lingbuilder/window-designer.json",
+        "to": "default-workspace/.lingbuilder/window-designer.json"
+      },
+      {
+        "from": "../.lingbuilder/project-modules.json",
+        "to": "default-workspace/.lingbuilder/project-modules.json"
+      },
+      {
+        "from": "../.lingbuilder/modules",
+        "to": "default-workspace/.lingbuilder/modules"
+      },
+      {
+        "from": "../LingBuilder AI 规则手册.md",
+        "to": "docs/LingBuilder AI 规则手册.md"
+      },
+      {
+        "from": "../模块开发手册.md",
+        "to": "docs/模块开发手册.md"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "allowScripts": {
+    "electron@43.1.0": true,
+    "electron-winstaller@5.4.0": true
+  }
 }

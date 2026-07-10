@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Folder,
   FileCode,
@@ -202,6 +202,9 @@ export default function Sidebar({
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const solutionProjects = solution?.projects || [];
   const activeSolutionProjectId = activeProjectId || solution?.startupProjectId || solutionProjects[0]?.id;
+  const moduleProjectId = activeSolutionProjectId || designerState.project.id || 'lingbuilder-ui-project';
+  const moduleProjectIdRef = useRef(moduleProjectId);
+  moduleProjectIdRef.current = moduleProjectId;
   const isActiveProjectTreeOpen = activeSolutionProjectId ? expandedProjectIds[activeSolutionProjectId] !== false : true;
 
   // Group files by directories
@@ -251,18 +254,22 @@ export default function Sidebar({
   ));
 
   const refreshProjectModules = useCallback(async () => {
-    const projectId = designerState.project.id || 'lingbuilder-ui-project';
+    const projectId = moduleProjectId;
+    setProjectModules([]);
+    setProjectModulesStatus(`正在读取项目 ${projectId} 的模块...`);
     try {
       const result = await fetchJson(`/api/modules/project?projectId=${encodeURIComponent(projectId)}`);
+      if (moduleProjectIdRef.current !== projectId) return;
       if (!result.ok) throw new Error(result.error || '项目模块读取失败');
       const modules = Array.isArray(result.modules) ? result.modules as InstalledModule[] : [];
       setProjectModules(modules.length > 0 ? modules : getFallbackProjectModules());
       setProjectModulesStatus(modules.length > 0 ? '项目模块已载入' : '当前项目未启用模块');
     } catch (error) {
+      if (moduleProjectIdRef.current !== projectId) return;
       setProjectModules(getFallbackProjectModules());
       setProjectModulesStatus('模块服务等待重启，已显示内置基础模块');
     }
-  }, [designerState.project.id]);
+  }, [moduleProjectId]);
 
   useEffect(() => {
     const handleDesignerProjectUpdated = (event: Event) => {
@@ -281,10 +288,20 @@ export default function Sidebar({
   }, [refreshProjectModules]);
 
   useEffect(() => {
-    const handleModulesChanged = () => refreshProjectModules();
+    const handleModulesChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string; scope?: 'project' | 'workspace' }>).detail;
+      if (detail?.scope === 'project' && detail.projectId && detail.projectId !== moduleProjectId) return;
+      refreshProjectModules();
+    };
     window.addEventListener('lingbuilder-modules-changed', handleModulesChanged);
     return () => window.removeEventListener('lingbuilder-modules-changed', handleModulesChanged);
-  }, [refreshProjectModules]);
+  }, [moduleProjectId, refreshProjectModules]);
+
+  useEffect(() => {
+    setSelectedModuleInspectorId(null);
+    setExpandedModuleIds({});
+    setExpandedModuleGroups({});
+  }, [moduleProjectId]);
 
   const openModuleInspector = useCallback((moduleId: string) => {
     setSelectedModuleInspectorId(moduleId);
@@ -1674,6 +1691,7 @@ export default function Sidebar({
           {activeTab === 'outline' && (
             <div className="flex-1 flex flex-col h-full overflow-hidden font-sans">
               <ModuleInspector
+                projectId={moduleProjectId}
                 isDarkMode={isDarkMode}
                 selectedModuleId={selectedModuleInspectorId}
                 onAddLog={(msg) => {

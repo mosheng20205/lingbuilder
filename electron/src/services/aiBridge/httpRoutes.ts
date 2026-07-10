@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import express from 'express';
 import { LingCppEditContext } from '../lingCpp/types';
 import { AiBridgeService } from './aiBridgeService';
@@ -7,16 +8,17 @@ export function createAiBridgeRouter(
   token: string,
   planner?: (context: LingCppEditContext) => Promise<any>
 ): express.Router {
+  const expectedToken = token.trim();
+  if (!expectedToken) {
+    throw new Error('AI Bridge 必须配置非空独立 token。');
+  }
   const router = express.Router();
 
   router.use((req, res, next) => {
     const authHeader = req.header('authorization') || '';
-    const bearerToken = authHeader.toLowerCase().startsWith('bearer ')
-      ? authHeader.slice(7).trim()
-      : '';
-    const queryToken = typeof req.query.token === 'string' ? req.query.token : '';
-    const bodyToken = typeof req.body?.token === 'string' ? req.body.token : '';
-    if (token && bearerToken !== token && queryToken !== token && bodyToken !== token) {
+    const match = /^Bearer\s+(.+)$/iu.exec(authHeader);
+    const bearerToken = match?.[1]?.trim() || '';
+    if (!tokensEqual(bearerToken, expectedToken)) {
       return res.status(401).json({ ok: false, error: 'AI Bridge token 无效或缺失。' });
     }
     next();
@@ -48,6 +50,13 @@ export function createAiBridgeRouter(
   router.post('/native/export', async (req, res) => handle(res, () => service.nativeExport(req.body)));
 
   return router;
+}
+
+function tokensEqual(actual: string, expected: string): boolean {
+  const actualBuffer = Buffer.from(actual);
+  const expectedBuffer = Buffer.from(expected);
+  return actualBuffer.length === expectedBuffer.length
+    && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
 async function handle(res: express.Response, fn: () => Promise<unknown>): Promise<void> {

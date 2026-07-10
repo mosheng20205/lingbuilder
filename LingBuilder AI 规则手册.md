@@ -208,3 +208,12 @@ WSS_关闭服务()
 ```
 
 AI 生成网络服务端示例前应确认项目已启用对应模块；不要承诺多客户端、路由、异步事件循环或公网监听，除非后续实现已经提供明确 API 和权限提示。
+
+## 13. IDE 本地服务与 AI Bridge 安全边界
+
+- Electron IDE 的普通本地服务只能监听回环地址，并使用每次启动随机生成的独立会话 token；renderer 由桌面宿主自动注入该 token，AI 不得要求用户关闭安装版鉴权。
+- IDE 内嵌 `/api/ai-bridge/*` 默认关闭。外部 AI 只能通过用户显式启动的 `lingbuilder ai-server` 接入，并使用独立 Bearer token。
+- AI Bridge HTTP 鉴权只接受 `Authorization: Bearer <token>`；不得把 token 写入查询参数、请求体、示例源码或项目配置。
+- 工作区文件访问以真实路径为准；读取不得越过工作区，文件树与搜索不得跟随符号链接或 Windows junction，写入新文件时也必须拒绝链接路径链。
+- `readonly`、`preview`、`yolo` 的含义不变；`preview` 的写入、导出和构建必须显式批准，`yolo` 仍只允许 LingBuilder 的受控工具，不得生成或要求开放任意 shell。
+- 路径越界、链接绕过、权限拒绝和失败写入必须进入 `.lingbuilder/ai-bridge-log.jsonl` 审计记录。

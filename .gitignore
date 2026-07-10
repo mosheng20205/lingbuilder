@@ -4,6 +4,7 @@ dist/
 dist-electron/
 .lingbuilder-build/
 electron/scratch/
+electron/release/
 coverage/
 .DS_Store
 .vs/

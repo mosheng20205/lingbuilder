@@ -11,7 +11,7 @@ import {
   LingCppStatement
 } from '../lingCpp/types';
 import { InstalledModule } from '../modules/types';
-import { getPreferredModuleTarget } from '../modules/targetResolver';
+import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from '../modules/targetResolver';
 
 export interface LingCppNativeProjectFile {
   relativePath: string;
@@ -66,10 +66,17 @@ export function generateLingCppNativeWin32Project(
   const mainCppContent = generateMainCpp(project, selectedWindow, parseResult.ast, enabledModules);
   const sourceMap = generateLingCppNativeSourceMap(mainCppContent, project, parseResult.program, sourceFilePath);
   const manifestContent = generateNativeManifest(project, selectedWindow, enabledModules, sourceFilePath, sourceMap);
+  const moduleTargetDiagnostics = enabledModules
+    .filter(module => !module.isBuiltin)
+    .map(module => getUnsupportedModuleTargetDiagnostic(module))
+    .filter((diagnostic): diagnostic is string => Boolean(diagnostic));
 
   return {
     selectedWindow,
-    diagnostics: parseResult.diagnostics.map(diagnostic => `第 ${diagnostic.line} 行：${diagnostic.message}`),
+    diagnostics: [
+      ...parseResult.diagnostics.map(diagnostic => `第 ${diagnostic.line} 行：${diagnostic.message}`),
+      ...moduleTargetDiagnostics
+    ],
     sourceMap,
     files: [
       {
@@ -1605,6 +1612,7 @@ function generateModuleDependencyReport(enabledModules: InstalledModule[]): stri
       `版本: ${module.manifest.version}`,
       `内置: ${module.isBuiltin ? '是' : '否'}`,
       `目标: ${target ? `${target.id} (${target.platform}/${target.toolchain}/${target.arch})` : '无'}`,
+      ...(!target && !module.isBuiltin ? [getUnsupportedModuleTargetDiagnostic(module) || '未提供兼容的 Win32/MSVC 模块目标。'] : []),
       `命令数: ${module.manifest.contributes?.commands?.length || 0}`,
       `控件数: ${module.manifest.contributes?.designerControls?.length || 0}`,
       `头文件: ${(target?.headers || []).join(', ') || '无'}`,

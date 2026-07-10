@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import crypto from 'crypto';
 import express from 'express';
+import fs from 'node:fs/promises';
 import http from 'http';
+import os from 'node:os';
 import path from 'path';
 import { AiBridgeService } from './services/aiBridge/aiBridgeService';
 import { createAiBridgeRouter } from './services/aiBridge/httpRoutes';
@@ -88,6 +90,12 @@ async function runModuleCommand(subcommand: string | undefined, rest: string[]):
 
   if (subcommand === 'validate') {
     const target = path.resolve(getStringArg(args.path) || rest.find(item => !item.startsWith('--')) || process.cwd());
+    if (isModulePackagePath(target)) {
+      const preview = await previewPackageForCli(target);
+      console.log(preview.diagnostics.length ? preview.diagnostics.join('\n') : '模块包校验通过。');
+      if (!preview.canInstall) process.exitCode = 1;
+      return;
+    }
     const result = await validateModuleDirectory(target);
     console.log(result.diagnostics.length ? result.diagnostics.join('\n') : '模块校验通过。');
     if (result.diagnostics.length > 0) process.exitCode = 1;
@@ -96,6 +104,23 @@ async function runModuleCommand(subcommand: string | undefined, rest: string[]):
 
   if (subcommand === 'inspect') {
     const target = path.resolve(getStringArg(args.path) || rest.find(item => !item.startsWith('--')) || process.cwd());
+    if (isModulePackagePath(target)) {
+      const preview = await previewPackageForCli(target);
+      if (!preview.manifest || !preview.canInstall) {
+        throw new Error(preview.diagnostics.join('\n') || '模块包检查未通过。');
+      }
+      console.log(JSON.stringify({
+        id: preview.manifest.id,
+        name: preview.manifest.name,
+        version: preview.manifest.version,
+        fileCount: preview.fileCount,
+        totalBytes: preview.totalBytes,
+        sha256: preview.sha256,
+        targets: preview.manifest.targets || [],
+        bindings: preview.manifest.bindings || { commands: [] }
+      }, null, 2));
+      return;
+    }
     const result = await validateModuleDirectory(target);
     if (!result.manifest) throw new Error(result.diagnostics.join('\n'));
     console.log(JSON.stringify({
@@ -139,6 +164,19 @@ async function runModuleCommand(subcommand: string | undefined, rest: string[]):
   process.exitCode = 1;
 }
 
+function isModulePackagePath(target: string): boolean {
+  return target.toLowerCase().endsWith('.lbmod');
+}
+
+async function previewPackageForCli(packagePath: string) {
+  const tempWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-cli-'));
+  try {
+    return await createModuleService(tempWorkspace).previewPackageInstall(packagePath);
+  } finally {
+    await fs.rm(tempWorkspace, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+}
+
 function parseArgs(args: string[]): Record<string, string | boolean> {
   const result: Record<string, string | boolean> = {};
   for (let index = 0; index < args.length; index += 1) {
@@ -169,9 +207,9 @@ function printUsage(): void {
   console.log(`Usage:
   lingbuilder ai-server --workspace <path> [--host 127.0.0.1] [--port 17860] [--permission preview] [--token <token>] [--mcp]
   lingbuilder module init --template cpp-source --out <dir> [--id <id>] [--name <name>]
-  lingbuilder module validate <dir>
+  lingbuilder module validate <dir|file.lbmod>
   lingbuilder module pack <dir> --out <file.lbmod>
-  lingbuilder module inspect <dir>
+  lingbuilder module inspect <dir|file.lbmod>
   lingbuilder module migrate-cpp --config <file> --out <dir>
   lingbuilder module market index --packages <dir> --out module-market.json
 

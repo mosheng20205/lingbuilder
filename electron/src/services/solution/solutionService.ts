@@ -324,6 +324,7 @@ async function collectTextFiles(workspaceRoot: string, directory: string, files:
   if (!(await exists(directory))) return;
   const entries = await fs.readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue;
     const targetPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
       await collectTextFiles(workspaceRoot, targetPath, files);
