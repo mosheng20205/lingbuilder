@@ -139,6 +139,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
       { id: 'm16', original: 'TODO: Add any drawing code that uses hdc here...', translated: '', line: 72, type: 'comment', status: 'pending', context: '// TODO: Add any drawing code that uses hdc here...' },
       { id: 'm17', original: 'Parse the menu selections:', translated: '', line: 80, type: 'comment', status: 'pending', context: '// Parse the menu selections:' }
     ],
+    encoding: 'utf8',
+    eol: 'lf',
+    savedEncoding: 'utf8',
+    savedEol: 'lf',
+    formatModified: false,
     isModified: false
   },
   {
@@ -175,6 +180,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
       { id: 'h2', original: 'Used by game_client.rc', translated: '', line: 3, type: 'comment', status: 'pending', context: '// Used by game_client.rc' },
       { id: 'h3', original: 'Next default values for new objects', translated: '', line: 14, type: 'comment', status: 'pending', context: '// Next default values for new objects' }
     ],
+    encoding: 'utf8',
+    eol: 'lf',
+    savedEncoding: 'utf8',
+    savedEol: 'lf',
+    formatModified: false,
     isModified: false
   },
   {
@@ -210,6 +220,11 @@ END`,
       { id: 'r4', original: 'Copyright (C) 2026 Space Dev. All rights reserved.', translated: '', line: 19, type: 'resource', status: 'pending', context: 'LTEXT           "Copyright (C) 2026 Space Dev. All rights reserved.",IDC_STATIC,42,26,114,8' },
       { id: 'r5', original: 'OK', translated: '', line: 20, type: 'resource', status: 'pending', context: 'DEFPUSHBUTTON   "OK",IDOK,113,41,50,14,WS_GROUP' }
     ],
+    encoding: 'utf8',
+    eol: 'lf',
+    savedEncoding: 'utf8',
+    savedEol: 'lf',
+    formatModified: false,
     isModified: false
   },
   {
@@ -233,6 +248,11 @@ LoadingText = "Teleporting to outer space... Please wait."`,
       { id: 'i3', original: 'Do you really want to exit the Game Universe?', translated: '', line: 9, type: 'string', status: 'pending', context: 'ExitConfirmation = "Do you really want to exit the Game Universe?"' },
       { id: 'i4', original: 'Teleporting to outer space... Please wait.', translated: '', line: 10, type: 'string', status: 'pending', context: 'LoadingText = "Teleporting to outer space... Please wait."' }
     ],
+    encoding: 'utf8',
+    eol: 'lf',
+    savedEncoding: 'utf8',
+    savedEol: 'lf',
+    formatModified: false,
     isModified: false
   },
   {
@@ -271,6 +291,11 @@ LoadingText = "Teleporting to outer space... Please wait."`,
       { id: 'lc2', original: '开始运行太空冒险游戏客户端！', translated: '', line: 14, type: 'string', status: 'pending', context: '信息框("开始运行太空冒险游戏客户端！", 64, "运行成功")' },
       { id: 'lc3', original: '您确定要退出游戏吗？', translated: '', line: 18, type: 'string', status: 'pending', context: '如果 (信息框("您确定要退出游戏吗？", 36, "退出确认") == 6)' }
     ],
+    encoding: 'utf8',
+    eol: 'lf',
+    savedEncoding: 'utf8',
+    savedEol: 'lf',
+    formatModified: false,
     isModified: false
   }
 ];

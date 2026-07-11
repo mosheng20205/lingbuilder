@@ -1,7 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { execFile, spawn } from 'child_process';
-import { createWriteStream } from 'fs';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { applyWorkspaceEditToFiles, getWorkspaceEditProposal, proposeLingCppEdit, rejectWorkspaceEdit } from '../lingCpp/aiEditService';
 import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
@@ -9,7 +8,23 @@ import { LingCppEditContext, LingCppWorkspaceFile } from '../lingCpp/types';
 import { createModuleService } from '../modules/moduleService';
 import { describeLingCppModuleContextForAi } from '../modules/moduleContextAdapters';
 import { exportModuleNativeDependencies, materializeModuleNativeDependencies, ModuleNativeDependencyPlan } from '../modules/nativeDependencyService';
+import { createManagedProcessService } from '../tasks/managedProcessService';
+import type { ManagedProcessService, ManagedProcessStopAllResult } from '../tasks/managedProcessService';
+import {
+  createProjectBuildCoordinator,
+  ProjectBuildBusyError,
+  ProjectBuildCancelledBeforeStartError,
+  type ProjectBuildCoordinator,
+  type ProjectBuildLease
+} from '../tasks/projectBuildCoordinator';
+import {
+  createProjectBuildSessionService,
+  ProjectBuildPreparationError,
+  type ProjectBuildSessionService
+} from '../tasks/projectBuildSessionService';
 import { WorkspacePathPolicy } from '../workspace/workspacePathPolicy';
+import { decodeTextFile, encodeTextFile } from '../files/textFileService';
+import type { TextFileFormat } from '../files/types';
 import { generateLingCppNativeWin32Project } from '../windowDesigner/lingCppWin32Project';
 import { exportVisualStudioProject } from '../windowDesigner/visualStudioProjectExporter';
 import { LingWindowProject } from '../windowDesigner/types';
@@ -73,23 +88,62 @@ const WRITABLE_EXTENSIONS = new Set([
 
 const execFileAsync = promisify(execFile);
 
-type CompilerInfo = {
+export type AiBridgeCompilerInfo = {
   kind: 'msvc' | 'g++' | 'clang++';
   command: string;
   setupBatch?: string;
 };
+
+export interface AiBridgeCompileResult {
+  ok: boolean;
+  logs: string[];
+}
+
+export type AiBridgeProcessManager = Pick<ManagedProcessService, 'start' | 'stop' | 'stopAll'>;
+
+export interface AiBridgeServiceDependencies {
+  managedProcessService?: AiBridgeProcessManager;
+  projectBuildCoordinator?: ProjectBuildCoordinator;
+  detectCompiler?: () => Promise<AiBridgeCompilerInfo | null>;
+  compileWin32Preview?: (
+    compiler: AiBridgeCompilerInfo,
+    sourcePath: string,
+    exePath: string,
+    objDir: string,
+    cwd: string,
+    modulePlan?: ModuleNativeDependencyPlan
+  ) => Promise<AiBridgeCompileResult>;
+}
 
 export class AiBridgeService {
   readonly permissions: AiBridgePermissionService;
   private readonly workspaceRoot: string;
   private readonly pathPolicy: WorkspacePathPolicy;
   private readonly moduleService;
+  private readonly managedProcessService: AiBridgeProcessManager;
+  private readonly projectBuildCoordinator: ProjectBuildCoordinator;
+  private readonly projectBuildSessionService: ProjectBuildSessionService;
+  private readonly compilerDetector: () => Promise<AiBridgeCompilerInfo | null>;
+  private readonly compilerRunner: NonNullable<AiBridgeServiceDependencies['compileWin32Preview']>;
+  private runAdmissionClosed = false;
+  private shuttingDown = false;
 
-  constructor(private readonly options: AiBridgeServerOptions) {
+  constructor(
+    private readonly options: AiBridgeServerOptions,
+    dependencies: AiBridgeServiceDependencies = {}
+  ) {
     this.workspaceRoot = path.resolve(options.workspaceRoot);
     this.pathPolicy = new WorkspacePathPolicy(this.workspaceRoot);
     this.permissions = new AiBridgePermissionService(this.pathPolicy, options.permission);
     this.moduleService = createModuleService(this.workspaceRoot);
+    this.managedProcessService = dependencies.managedProcessService ?? createManagedProcessService();
+    this.projectBuildCoordinator = dependencies.projectBuildCoordinator ?? createProjectBuildCoordinator();
+    this.projectBuildSessionService = createProjectBuildSessionService(
+      this.projectBuildCoordinator,
+      this.managedProcessService
+    );
+    this.compilerDetector = dependencies.detectCompiler ?? detectCompiler;
+    this.compilerRunner = dependencies.compileWin32Preview ?? compileWin32Preview;
   }
 
   health(): AiBridgeHealth {
@@ -112,11 +166,15 @@ export class AiBridgeService {
     }
   }
 
-  async readFile(filePath: string): Promise<{ filePath: string; content: string }> {
+  async readFile(filePath: string): Promise<{ filePath: string; content: string; format: TextFileFormat }> {
     try {
       const absolutePath = await this.resolveReadablePath(filePath);
-      const content = await fs.readFile(absolutePath, 'utf8');
-      return { filePath: await this.pathPolicy.toWorkspaceRelative(absolutePath), content };
+      const snapshot = decodeTextFile(await fs.readFile(absolutePath));
+      return {
+        filePath: await this.pathPolicy.toWorkspaceRelative(absolutePath),
+        content: snapshot.content,
+        format: snapshot.format
+      };
     } catch (error) {
       await this.auditFailure('read', 'file.read', filePath, error);
       throw error;
@@ -199,8 +257,9 @@ export class AiBridgeService {
     for (const file of appliedFiles) {
       try {
         const absolutePath = await this.resolveWritablePath(file.filePath);
+        const format = await this.readExistingTextFileFormat(absolutePath);
         await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-        await fs.writeFile(absolutePath, file.sourceCode, 'utf8');
+        await fs.writeFile(absolutePath, encodeTextFile(file.sourceCode, format));
         persistedFiles.push({ ...file, absolutePath });
         await this.permissions.audit({ operation: 'write', action: 'edit.apply', ok: true, target: file.filePath });
       } catch (error) {
@@ -280,16 +339,74 @@ export class AiBridgeService {
   }
 
   async buildRun(request: AiBridgeBuildRunRequest) {
+    const projectId = sanitizeFilename((request.project.id || 'window-preview').trim());
+    const buildAdmission = this.projectBuildCoordinator.captureAdmission(projectId);
     await this.requireExecuteWithAudit('build.run', request.project?.id, request.approved);
+    if (this.runAdmissionClosed || this.shuttingDown) {
+      return await this.createCancelledBuildResult(
+        projectId,
+        this.shuttingDown ? 'AI Bridge 正在关闭。' : 'AI Bridge 正在停止受控运行任务。'
+      );
+    }
+
+    let buildLease: ProjectBuildLease | undefined;
+    let preBuildLogs: string[] = [];
     try {
-      return await this.executeBuildRun(request);
+      const buildSession = await this.projectBuildSessionService.begin(projectId, buildAdmission);
+      buildLease = buildSession.lease;
+      if (buildSession.previousRun.found) preBuildLogs = [buildSession.previousRun.message];
+      if (buildLease.isCancelled()) {
+        return await this.createCancelledBuildResult(projectId, '任务在生成前已被停止。', preBuildLogs);
+      }
+      return await this.executeBuildRun(request, buildLease, preBuildLogs);
     } catch (error) {
       await this.auditFailure('execute', 'build.run', request.project?.id, error);
+      if (
+        error instanceof ProjectBuildBusyError
+        || error instanceof ProjectBuildCancelledBeforeStartError
+        || error instanceof ProjectBuildPreparationError
+      ) {
+        return {
+          ok: false,
+          stage: error instanceof ProjectBuildBusyError
+            ? 'busy'
+            : error instanceof ProjectBuildCancelledBeforeStartError
+              ? 'cancelled'
+              : error.stage,
+          error: error.message,
+          logs: [error.message]
+        };
+      }
       throw error;
+    } finally {
+      buildLease?.finish();
     }
   }
 
-  private async executeBuildRun(request: AiBridgeBuildRunRequest) {
+  async stopRuns(): Promise<ManagedProcessStopAllResult> {
+    this.runAdmissionClosed = true;
+    this.projectBuildCoordinator.cancelAll('user');
+    try {
+      await this.projectBuildCoordinator.waitForIdle();
+      return await this.managedProcessService.stopAll();
+    } finally {
+      if (!this.shuttingDown) this.runAdmissionClosed = false;
+    }
+  }
+
+  async shutdown(): Promise<ManagedProcessStopAllResult> {
+    this.shuttingDown = true;
+    this.runAdmissionClosed = true;
+    this.projectBuildCoordinator.shutdown();
+    await this.projectBuildCoordinator.waitForIdle();
+    return await this.managedProcessService.stopAll();
+  }
+
+  private async executeBuildRun(
+    request: AiBridgeBuildRunRequest,
+    buildLease: ProjectBuildLease,
+    preBuildLogs: string[]
+  ) {
     const enabledModules = await this.moduleService.getEnabledProjectModules(request.project.id || 'lingbuilder-ui-project');
     const generatedProject = generateLingCppNativeWin32Project(request.project, {
       activeWindowId: request.activeWindowId,
@@ -297,7 +414,8 @@ export class AiBridgeService {
       lingCppSourceFilePath: request.lingCppSourceFilePath,
       enabledModules
     });
-    const projectId = sanitizeFilename(request.project.id || 'window-preview');
+    const managedProjectId = buildLease.projectId;
+    const projectId = sanitizeFilename(managedProjectId);
     const [buildDir, exportDir] = await Promise.all([
       this.pathPolicy.resolveDirectoryForWrite(normalizeFilePath(path.join('.lingbuilder-build', projectId))),
       this.pathPolicy.resolveDirectoryForWrite(normalizeFilePath(path.join('generated', 'cpp', projectId)))
@@ -352,8 +470,17 @@ export class AiBridgeService {
       generatedFiles: generatedProject.files,
       enabledModules
     });
-    const compiler = await detectCompiler();
+    if (buildLease.isCancelled()) {
+      return await this.createCancelledBuildResult(
+        managedProjectId,
+        '已完成源码导出，但任务在编译前被停止。',
+        preBuildLogs,
+        buildDir
+      );
+    }
+    const compiler = await this.compilerDetector();
     const baseLogs = [
+      ...preBuildLogs,
       `AI Bridge 已生成 Win32 C++ 工程：${buildDir}`,
       `C++ 源码目录：${sourceDir}`,
       `可复制生成目录：${exportDir}`,
@@ -387,7 +514,7 @@ export class AiBridgeService {
 
     const sourcePath = path.join(sourceDir, 'main.cpp');
     const exePath = path.join(binDir, 'LingBuilderPreview.exe');
-    const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan);
+    const compileResult = await this.compilerRunner(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan);
     const logs = [
       ...baseLogs,
       `exe 输出目录：${binDir}`,
@@ -417,22 +544,59 @@ export class AiBridgeService {
       return result;
     }
 
+    if (buildLease.isCancelled()) {
+      return await this.createCancelledBuildResult(
+        managedProjectId,
+        '编译已结束，但启动请求已被停止；不会启动生成的 exe。',
+        logs,
+        buildDir
+      );
+    }
+
     if (request.run !== false) {
       try {
         const logFile = path.join(buildDir, 'run.log');
-        const logStream = createWriteStream(logFile, { flags: 'w' });
-        const child = spawn(exePath, [], {
+        const started = await this.managedProcessService.start(managedProjectId, exePath, {
           cwd: binDir,
-          detached: true,
-          stdio: ['ignore', 'pipe', 'pipe'],
-          windowsHide: false
+          detached: false,
+          windowsHide: false,
+          logFilePath: logFile
         });
-        child.stdout.pipe(logStream);
-        child.stderr.pipe(logStream);
-        child.unref();
-        logs.push(`已启动运行窗口：${exePath}`);
-      } catch (error: any) {
-        logs.push(`运行启动失败：${error?.message || '无法启动生成的 exe'}`);
+        if (buildLease.isCancelled()) {
+          const stopped = await this.managedProcessService.stop(managedProjectId);
+          return await this.createCancelledBuildResult(
+            managedProjectId,
+            '运行进程在登记期间收到停止请求，已回收且不会遗留后台进程。',
+            [...logs, stopped.message],
+            buildDir
+          );
+        }
+        logs.push(started.message, `运行文件：${exePath}`);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        const failedLogs = [...logs, `运行启动失败：${reason || '无法启动生成的 exe'}`];
+        await this.permissions.audit({
+          operation: 'execute',
+          action: 'build.run',
+          ok: false,
+          target: buildDir,
+          details: { stage: 'run-start', reason }
+        });
+        return {
+          ok: false,
+          stage: 'run-start',
+          buildDir,
+          sourceDir,
+          binDir,
+          objDir,
+          exePath,
+          compiler,
+          exportDir,
+          visualStudioProject: buildVisualStudioProject,
+          exportVisualStudioProject: exportVisualStudioProjectResult,
+          sourceMap: generatedProject.sourceMap,
+          logs: failedLogs
+        };
       }
     }
 
@@ -458,6 +622,27 @@ export class AiBridgeService {
       sourceMap: generatedProject.sourceMap,
       logs
     };
+  }
+
+  private async createCancelledBuildResult(
+    projectId: string,
+    reason: string,
+    logs: string[] = [],
+    target = projectId
+  ) {
+    const error = `项目“${projectId}”的 AI Bridge 生成运行任务已取消：${reason}`;
+    try {
+      await this.permissions.audit({
+        operation: 'execute',
+        action: 'build.run',
+        ok: false,
+        target,
+        details: { stage: 'cancelled', reason }
+      });
+    } catch {
+      // Audit failure must not turn a safe cancellation into an unhandled error.
+    }
+    return { ok: false, stage: 'cancelled', error, projectId, logs: [...logs, error] };
   }
 
   private async getModuleContext(projectId = 'lingbuilder-ui-project') {
@@ -539,7 +724,7 @@ export class AiBridgeService {
       return;
     }
     if (!stat.isFile() || !isReadableExtension(targetPath)) return;
-    const content = await fs.readFile(targetPath, 'utf8');
+    const content = decodeTextFile(await fs.readFile(targetPath)).content;
     const workspacePath = await this.pathPolicy.toWorkspaceRelative(targetPath);
     const lines = content.split(/\r?\n/);
     for (let index = 0; index < lines.length && matches.length < maxResults; index += 1) {
@@ -568,6 +753,15 @@ export class AiBridgeService {
       throw new Error('该文件类型不允许通过 AI Bridge 写入。');
     }
     return absolutePath;
+  }
+
+  private async readExistingTextFileFormat(filePath: string): Promise<TextFileFormat> {
+    try {
+      return decodeTextFile(await fs.readFile(filePath)).format;
+    } catch (error: any) {
+      if (error?.code === 'ENOENT') return { encoding: 'utf8', eol: 'lf' };
+      throw error;
+    }
   }
 
   private async requireWriteWithAudit(action: string, target: string | undefined, approved?: boolean): Promise<void> {
@@ -608,7 +802,7 @@ export class AiBridgeService {
   }
 }
 
-async function detectCompiler(): Promise<CompilerInfo | null> {
+async function detectCompiler(): Promise<AiBridgeCompilerInfo | null> {
   try {
     await execFileAsync('where.exe', ['cl'], { timeout: 4000, windowsHide: true });
     return { kind: 'msvc', command: 'cl' };
@@ -621,7 +815,7 @@ async function detectCompiler(): Promise<CompilerInfo | null> {
     return { kind: 'msvc', command: 'cl', setupBatch: msvcSetupBatch };
   }
 
-  const candidates: CompilerInfo[] = [
+  const candidates: AiBridgeCompilerInfo[] = [
     { kind: 'g++', command: 'g++' },
     { kind: 'clang++', command: 'clang++' }
   ];
@@ -696,13 +890,13 @@ async function canUseMsvcSetupBatch(setupBatch: string): Promise<boolean> {
 }
 
 async function compileWin32Preview(
-  compiler: CompilerInfo,
+  compiler: AiBridgeCompilerInfo,
   sourcePath: string,
   exePath: string,
   objDir: string,
   cwd: string,
   modulePlan?: ModuleNativeDependencyPlan
-): Promise<{ ok: boolean; logs: string[] }> {
+): Promise<AiBridgeCompileResult> {
   const includeArgs = (modulePlan?.includeDirs || []).flatMap(includeDir => ['/I', includeDir]);
   const moduleSources = modulePlan?.sourceFiles || [];
   const moduleLibs = modulePlan?.libFiles || [];
@@ -808,7 +1002,7 @@ async function compileWin32Preview(
 }
 
 async function compileMsvcPreviewWithModules(
-  compiler: CompilerInfo,
+  compiler: AiBridgeCompilerInfo,
   sourcePath: string,
   exePath: string,
   objDir: string,
@@ -865,7 +1059,7 @@ async function compileMsvcPreviewWithModules(
   }
 }
 
-async function runMsvcCommand(compiler: CompilerInfo, commandArgs: string[], cwd: string) {
+async function runMsvcCommand(compiler: AiBridgeCompilerInfo, commandArgs: string[], cwd: string) {
   const command = compiler.setupBatch ? 'cmd.exe' : compiler.command;
   const args = compiler.setupBatch
     ? ['/d', '/c', `call ${quoteCmdArg(compiler.setupBatch)} >nul && ${compiler.command} ${commandArgs.map(quoteCmdArg).join(' ')}`]

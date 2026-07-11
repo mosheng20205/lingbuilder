@@ -7,8 +7,9 @@ export function getPreferredModuleTarget(
   preferredTargetId = DEFAULT_MODULE_TARGET_ID
 ): ModuleTargetContribution | undefined {
   const targets = module.manifest.targets || [];
+  const preferredArch = preferredTargetId.endsWith('-x64') ? 'x64' : 'win32';
   const isCompatible = (target: ModuleTargetContribution) => (
-    target.platform === 'windows' && target.toolchain === 'msvc' && target.arch === 'win32'
+    target.platform === 'windows' && target.toolchain === 'msvc' && target.arch === preferredArch
   );
   return targets.find(target => target.id === preferredTargetId && isCompatible(target))
     || targets.find(isCompatible);

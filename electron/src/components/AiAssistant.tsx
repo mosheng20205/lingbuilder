@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Brain, Sparkles, Send, RefreshCw, Cpu, Check, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { AppliedWorkspaceFile, ExtractedString, GlossaryTerm, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
 import { LingCppModuleContext } from '../services/modules/types';
+import type { ProjectMutationOwner } from '../services/workspace/projectMutationOwner';
 
 const AI_CONFIG_STORAGE_KEY = 'lingbuilder.aiConnectionConfig.v1';
 
@@ -47,7 +48,7 @@ function loadAiConfig(): AiConnectionConfig {
     const preset = AI_MODEL_PRESETS.find(item => item.id === parsed.presetId);
     return {
       baseUrl: typeof parsed.baseUrl === 'string' ? parsed.baseUrl : '',
-      apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
+      apiKey: '',
       modelName: typeof parsed.modelName === 'string' && parsed.modelName.trim() ? parsed.modelName : DEFAULT_AI_CONFIG.modelName,
       presetId: typeof parsed.presetId === 'string' ? parsed.presetId : DEFAULT_AI_CONFIG.presetId,
       provider: preset && preset.id !== 'custom'
@@ -64,15 +65,20 @@ function loadAiConfig(): AiConnectionConfig {
 interface AiAssistantProps {
   strings: ExtractedString[];
   glossary: GlossaryTerm[];
-  onBatchTranslate: (translations: { id: string; translated: string }[]) => void;
-  onSetStatus: (id: string, status: 'translated' | 'skipped' | 'pending') => void;
+  onBatchTranslate: (translations: { id: string; translated: string }[], owner?: ProjectMutationOwner) => void;
+  onSetStatus: (id: string, status: 'translated' | 'skipped' | 'pending', owner?: ProjectMutationOwner) => void;
   filePath: string;
   sourceCode: string;
   activeLanguage: string;
   projectId?: string;
+  projectMutationOwner: ProjectMutationOwner;
   moduleContext?: LingCppModuleContext;
   workspaceFiles: WorkspaceFileSnapshot[];
-  onApplyWorkspaceEdit?: (proposal: WorkspaceEditProposal, appliedFiles: AppliedWorkspaceFile[]) => void;
+  onApplyWorkspaceEdit?: (
+    proposal: WorkspaceEditProposal,
+    appliedFiles: AppliedWorkspaceFile[],
+    owner?: ProjectMutationOwner
+  ) => void;
   isDarkMode?: boolean;
 }
 
@@ -93,6 +99,7 @@ export default function AiAssistant({
   sourceCode,
   activeLanguage,
   projectId,
+  projectMutationOwner,
   moduleContext,
   workspaceFiles,
   onApplyWorkspaceEdit,
@@ -118,6 +125,7 @@ export default function AiAssistant({
   const isLingCppFile = activeLanguage === 'lingcpp' || filePath.endsWith('.lcpp');
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const chatAbortRef = useRef<AbortController | null>(null);
   const effectiveModelName = aiConfig.modelName.trim() || DEFAULT_AI_CONFIG.modelName;
   const aiConnectionSignature = [
     aiConfig.provider || DEFAULT_AI_CONFIG.provider,
@@ -200,15 +208,18 @@ export default function AiAssistant({
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify({ ...aiConfig, modelName: effectiveModelName }));
+      window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify({ ...aiConfig, apiKey: undefined, modelName: effectiveModelName }));
+      void window.lingBuilder?.credentials?.setAiApiKey(aiConfig.apiKey);
     } catch {
       // AI settings remain usable for the current session even if storage fails.
     }
   }, [aiConfig, effectiveModelName]);
 
+  useEffect(() => { try { const raw = window.localStorage.getItem(AI_CONFIG_STORAGE_KEY); if (raw) { const parsed = JSON.parse(raw); if (parsed.apiKey) { delete parsed.apiKey; window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify(parsed)); } } } catch { /* ignore legacy cleanup failure */ } void window.lingBuilder?.credentials?.getAiApiKey().then(apiKey => { if (apiKey) setAiConfig(current => ({ ...current, apiKey })); }); }, []);
+
   useEffect(() => {
     setEditProposal(null);
-  }, [filePath]);
+  }, [filePath, projectMutationOwner.loadGeneration, projectMutationOwner.projectId]);
 
   // Handle one-click AI translation
   const handleBatchAiTranslate = async () => {
@@ -253,7 +264,7 @@ export default function AiAssistant({
       }
 
       if (data.translations && Array.isArray(data.translations)) {
-        onBatchTranslate(data.translations);
+        onBatchTranslate(data.translations, projectMutationOwner);
         setTranslationProgress(100);
       } else {
         throw new Error('未返回有效的代码生成数据结构');
@@ -302,10 +313,12 @@ export default function AiAssistant({
     setChatHistory(prev => [...prev, userMsg]);
     setChatInput('');
     setIsAiResponding(true);
+    const controller = new AbortController(); chatAbortRef.current?.abort(); chatAbortRef.current = controller;
 
     try {
       if (isLingCppFile) {
         const response = await fetch('/api/lingcpp/edit/propose', {
+          signal: controller.signal,
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -343,6 +356,7 @@ export default function AiAssistant({
       const prompt = `您是 C++ 编程与代码映射专家。以下是当前文件 ${filePath} 中提取的部分字符串（仅供参考）：\n${fileContext}\n\n用户提问：${userMsg.text}\n\n请针对用户的中文代码映射或 C++ 语法问题，进行专业解答。如果涉及代码，请用 Markdown 代码块返回，以便用户拷贝。`;
 
       const response = await fetch('/api/translate', {
+        signal: controller.signal,
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -379,6 +393,7 @@ export default function AiAssistant({
         }
       ]);
     } finally {
+      if (chatAbortRef.current === controller) chatAbortRef.current = null;
       setIsAiResponding(false);
     }
   };
@@ -397,7 +412,7 @@ export default function AiAssistant({
     if (!response.ok) return;
     const data = await response.json();
     const appliedFiles = (data.appliedFiles || []) as AppliedWorkspaceFile[];
-    onApplyWorkspaceEdit(editProposal, appliedFiles);
+    onApplyWorkspaceEdit(editProposal, appliedFiles, projectMutationOwner);
     const changedFileList = editProposal.changes.map(change => change.filePath).join('、');
     setChatHistory(prev => [
       ...prev,
@@ -691,6 +706,7 @@ export default function AiAssistant({
             value={chatInput}
             onChange={e => setChatInput(e.target.value)}
             disabled={isAiResponding}
+            aria-label="向 AI 助手提问"
             className={`flex-1 border rounded px-3 py-1.5 text-xs focus:outline-none focus:border-purple-500 disabled:opacity-50 ${
               isDarkMode ? 'bg-[#24242b] border-[#2d2d34] text-slate-200' : 'bg-white border-slate-300 text-slate-800'
             }`}
@@ -698,10 +714,12 @@ export default function AiAssistant({
           <button
             type="submit"
             disabled={isAiResponding || !chatInput.trim()}
+            aria-label="发送 AI 请求"
             className="p-1.5 rounded bg-[#4f46e5] text-white hover:bg-indigo-600 transition-colors cursor-pointer disabled:opacity-50"
           >
             <Send className="w-3.5 h-3.5" />
           </button>
+          {isAiResponding && <button type="button" aria-label="取消 AI 请求" onClick={() => chatAbortRef.current?.abort()} className="rounded border border-slate-500 px-2">取消</button>}
         </form>
       </div>
     </div>

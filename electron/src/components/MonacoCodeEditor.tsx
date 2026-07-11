@@ -1,5 +1,18 @@
-import { useEffect, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 import Editor, { loader } from '@monaco-editor/react';
+import * as monacoRuntime from 'monaco-editor/esm/vs/editor/editor.api.js';
+import MonacoEditorWorker from 'monaco-editor/esm/vs/editor/editor.worker.js?worker';
+import 'monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution.js';
+import 'monaco-editor/esm/vs/basic-languages/ini/ini.contribution.js';
 import { LING_CPP_COMMANDS, LING_CPP_KEYWORDS, LING_CPP_TYPES } from '../services/lingCpp/parser';
 import {
   formatLingCpp,
@@ -15,20 +28,52 @@ import {
 import { LingCppDesignerBindingHint, LingCppDocumentSymbol, LingCppReadingMode, LingCppStructuredReadingRow } from '../services/lingCpp/types';
 import { LingWindowProject } from '../services/windowDesigner/types';
 import { InstalledModule, LingCppModuleContext } from '../services/modules/types';
+import {
+  MonacoTextModelAdapter,
+  TextModelGeneration,
+  TextModelIdentity,
+  TextEditorStatus,
+  WorkbenchTextModel,
+  mapWorkbenchLanguageToMonaco,
+  workbenchTextModelService
+} from '../services/textModel';
+import {
+  createMonacoValueBinding,
+  synchronizeMonacoModelValue
+} from '../services/textModel/monacoModelSync';
+import { applyLspRefactor, lspRangeToMonaco, markupToText, normalizeCompletionItems, normalizeLspLocations, previewLspRefactor, requestLsp } from '../services/lsp/lspClient';
 
-// Configure monaco loader path if needed (default CDN is fine)
-loader.config({
-  paths: {
-    vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.43.0/min/vs'
-  }
-});
+// Keep the primary editor fully local/offline. Every language used here can
+// share Monaco's core editor worker; no CDN or hidden machine state is needed.
+(globalThis as typeof globalThis & {
+  MonacoEnvironment?: { getWorker: (_moduleId: string, _label: string) => Worker };
+}).MonacoEnvironment = {
+  getWorker: () => new MonacoEditorWorker()
+};
+loader.config({ monaco: monacoRuntime });
+
+export type MonacoEditorState = TextEditorStatus;
+
+export interface MonacoContentChange {
+  isUndoing: boolean;
+  isRedoing: boolean;
+  isFlush: boolean;
+}
+
+export interface MonacoCodeEditorHandle {
+  undo: () => Promise<boolean>;
+  redo: () => Promise<boolean>;
+  replaceValueAuthoritatively: (value: string) => boolean;
+  focus: () => boolean;
+  captureViewState: () => boolean;
+}
 
 interface MonacoCodeEditorProps {
   sourceCode: string;
   language: string;
   isDarkMode: boolean;
   readOnly: boolean;
-  onChange: (value: string) => void;
+  onChange: (value: string, change?: MonacoContentChange) => void;
   focusHandlerName?: string | null;
   onFocusHandled?: () => void;
   editorFontSize?: number;
@@ -41,9 +86,15 @@ interface MonacoCodeEditorProps {
   focusedBlockId?: string;
   onRevealReadableBlock?: (blockId: string) => void;
   moduleContext?: LingCppModuleContext;
+  modelIdentity?: TextModelIdentity;
+  modelSurface?: string;
+  onEditorStateChange?: (state: MonacoEditorState) => void;
 }
 
 let lingCppProvidersRegistered = false;
+let cppProvidersRegistered = false;
+const cppFilePaths = new Map<string, string>();
+let cppCodeActionCommandId: string | undefined;
 let lingCppDesignerProjectSnapshot: LingWindowProject | undefined;
 let lingCppFilePathSnapshot: string | undefined;
 let lingCppRevealBindingSnapshot: ((binding: LingCppDesignerBindingHint) => void) | undefined;
@@ -167,7 +218,7 @@ const lingCppMonarchLanguage = createMonarchLanguage(
   /^\s*(包|使用|类|公开|私有|保护|构造|析构|事件|结束类)\b/
 );
 
-export default function MonacoCodeEditor({
+const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProps>(function MonacoCodeEditor({
   sourceCode,
   language,
   isDarkMode,
@@ -184,13 +235,203 @@ export default function MonacoCodeEditor({
   readingMode = 'off',
   focusedBlockId,
   onRevealReadableBlock,
-  moduleContext: providedModuleContext
-}: MonacoCodeEditorProps) {
+  moduleContext: providedModuleContext,
+  modelIdentity: providedModelIdentity,
+  modelSurface = 'professional',
+  onEditorStateChange
+}: MonacoCodeEditorProps, ref) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const decorationIdsRef = useRef<string[]>([]);
+  const debugDecorationIdsRef = useRef<string[]>([]);
+  const coverageDecorationIdsRef = useRef<string[]>([]);
+  const [coverageLines, setCoverageLines] = useState<Array<{ line: number; state: 'covered' | 'uncovered'; hits: number }>>([]);
+  const stateFrameRef = useRef<number | null>(null);
+  const modelIdentity = useMemo<TextModelIdentity>(() => providedModelIdentity || ({
+    workspaceId: 'lingbuilder-renderer',
+    projectId: 'default-project',
+    filePath: filePath || 'untitled/source.txt'
+  }), [filePath, providedModelIdentity]);
+  const modelRecord = workbenchTextModelService.ensure(modelIdentity);
+  const activeContextRef = useRef({
+    identity: modelIdentity,
+    modelId: modelRecord.modelId,
+    uri: modelRecord.uri,
+    token: { modelId: modelRecord.modelId, generation: modelRecord.generation } as TextModelGeneration,
+    surface: modelSurface,
+    sourceCode,
+    readOnly,
+    onCursorPositionChange,
+    onEditorStateChange
+  });
+  activeContextRef.current = {
+    identity: modelIdentity,
+    modelId: modelRecord.modelId,
+    uri: modelRecord.uri,
+    token: { modelId: modelRecord.modelId, generation: modelRecord.generation },
+    surface: modelSurface,
+    sourceCode,
+    readOnly,
+    onCursorPositionChange,
+    onEditorStateChange
+  };
+  const boundContextRef = useRef<typeof activeContextRef.current | null>(null);
+  const nativeHistoryContextRef = useRef<string | null>(null);
+  const adapterRef = useRef(new MonacoTextModelAdapter<WorkbenchTextModel>());
   const [fetchedModuleContext, setFetchedModuleContext] = useState<LingCppModuleContext | undefined>();
+  const [debugBreakpointLines, setDebugBreakpointLines] = useState<number[]>([]);
   const moduleContext = providedModuleContext || fetchedModuleContext;
+  const monacoValueBinding = createMonacoValueBinding(language, sourceCode);
+
+  const emitEditorState = useCallback(() => {
+    const editor = editorRef.current;
+    const model = editor?.getModel?.() as WorkbenchTextModel | undefined;
+    const context = boundContextRef.current || activeContextRef.current;
+    if (!editor || !model || model.isDisposed?.() || adapterRef.current.getCurrentModel() !== model) return;
+    const position = editor.getPosition?.() || { lineNumber: 1, column: 1 };
+    const selection = editor.getSelection?.();
+    let selectionLength = 0;
+    if (selection && model.getOffsetAt) {
+      try {
+        const anchorOffset = model.getOffsetAt({
+          lineNumber: selection.selectionStartLineNumber,
+          column: selection.selectionStartColumn
+        });
+        const activeOffset = model.getOffsetAt({
+          lineNumber: selection.positionLineNumber,
+          column: selection.positionColumn
+        });
+        selectionLength = Math.abs(activeOffset - anchorOffset);
+      } catch {
+        selectionLength = 0;
+      }
+    }
+    const state: MonacoEditorState = {
+      modelId: context.modelId,
+      surface: context.surface,
+      line: Math.max(1, position.lineNumber || 1),
+      column: Math.max(1, position.column || 1),
+      selectionLength,
+      canUndo: !context.readOnly && adapterRef.current.canUndo(),
+      canRedo: !context.readOnly && adapterRef.current.canRedo(),
+      readOnly: context.readOnly,
+      positionAvailable: true
+    };
+    context.onCursorPositionChange?.({ line: state.line, column: state.column });
+    context.onEditorStateChange?.(state);
+  }, []);
+
+  const captureBoundViewState = useCallback(() => {
+    const context = boundContextRef.current;
+    if (!context) return false;
+    const state = adapterRef.current.captureViewState();
+    if (!state) return false;
+    return workbenchTextModelService.saveViewStateIfCurrent(context.token, context.surface, state);
+  }, []);
+
+  const scheduleStateUpdate = useCallback(() => {
+    if (stateFrameRef.current !== null) return;
+    stateFrameRef.current = window.requestAnimationFrame(() => {
+      stateFrameRef.current = null;
+      captureBoundViewState();
+      emitEditorState();
+    });
+  }, [captureBoundViewState, emitEditorState]);
+
+  const bindCurrentModel = useCallback(() => {
+    const editor = editorRef.current;
+    const model = editor?.getModel?.() as WorkbenchTextModel | null | undefined;
+    const context = activeContextRef.current;
+    if (!editor || !model || model.isDisposed?.()) return false;
+
+    const modelUri = model.uri?.toString?.();
+    if (modelUri && modelUri !== context.uri) return false;
+    const previousBoundContext = boundContextRef.current;
+    const shouldRestoreSavedView = adapterRef.current.getCurrentModel() !== model
+      || previousBoundContext?.modelId !== context.modelId
+      || previousBoundContext?.surface !== context.surface;
+
+    const nativeHistoryContext = `${context.modelId}:${language}`;
+    const syncResult = synchronizeMonacoModelValue(model, editor, context.sourceCode, {
+      // LingCpp has one canonical per-file history shared with beginner mode.
+      // A retained Monaco model must not create a second undo entry when it is
+      // rebound to a canonical snapshot produced outside the Monaco surface.
+      authoritative: language === 'lingcpp',
+      readOnly: context.readOnly,
+      resetNativeHistory: language === 'lingcpp'
+        && nativeHistoryContextRef.current !== nativeHistoryContext
+    });
+    if (syncResult !== 'unavailable') nativeHistoryContextRef.current = nativeHistoryContext;
+
+    if (!workbenchTextModelService.attachModelIfCurrent(context.token, model)) return false;
+    adapterRef.current.bind(editor, model);
+    boundContextRef.current = { ...context };
+    if (shouldRestoreSavedView) {
+      const savedState = workbenchTextModelService.getViewState(context.identity, context.surface);
+      if (savedState) adapterRef.current.restoreViewState(savedState);
+    }
+    emitEditorState();
+    return true;
+  }, [emitEditorState, language]);
+
+  useImperativeHandle(ref, () => ({
+    undo: async () => {
+      const context = activeContextRef.current;
+      if (context.readOnly || !bindCurrentModel()) return false;
+      const changed = await adapterRef.current.undo();
+      if (changed) scheduleStateUpdate();
+      return changed;
+    },
+    redo: async () => {
+      const context = activeContextRef.current;
+      if (context.readOnly || !bindCurrentModel()) return false;
+      const changed = await adapterRef.current.redo();
+      if (changed) scheduleStateUpdate();
+      return changed;
+    },
+    replaceValueAuthoritatively: (value: string) => {
+      const context = activeContextRef.current;
+      if (context.readOnly || !bindCurrentModel()) return false;
+      const editor = editorRef.current;
+      const model = editor?.getModel?.() as WorkbenchTextModel | null | undefined;
+      if (!editor || !model || model.isDisposed?.() || !model.setValue) return false;
+      adapterRef.current.bind(editor, model);
+      if (!adapterRef.current.replaceValuePreservingView(value)) return false;
+      emitEditorState();
+      return true;
+    },
+    focus: () => {
+      if (!editorRef.current) return false;
+      editorRef.current.focus?.();
+      return true;
+    },
+    captureViewState: captureBoundViewState
+  }), [bindCurrentModel, captureBoundViewState, scheduleStateUpdate]);
+
+  useLayoutEffect(() => () => {
+    if (stateFrameRef.current !== null) {
+      window.cancelAnimationFrame(stateFrameRef.current);
+      stateFrameRef.current = null;
+    }
+    captureBoundViewState();
+    boundContextRef.current = null;
+  }, [captureBoundViewState, modelRecord.uri, modelSurface]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      bindCurrentModel();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [bindCurrentModel, modelRecord.uri, modelSurface, sourceCode]);
+
+  useEffect(() => () => {
+    captureBoundViewState();
+    if (stateFrameRef.current !== null) {
+      window.cancelAnimationFrame(stateFrameRef.current);
+      stateFrameRef.current = null;
+    }
+    boundContextRef.current = null;
+  }, [captureBoundViewState]);
 
   useEffect(() => {
     editorRef.current?.updateOptions?.({ fontSize: editorFontSize });
@@ -226,18 +467,39 @@ export default function MonacoCodeEditor({
 
   useEffect(() => {
     const handleRevealLine = (event: Event) => {
-      const detail = (event as CustomEvent<{ filePath?: string; line: number }>).detail;
+      const detail = (event as CustomEvent<{
+        filePath?: string;
+        line: number;
+        column?: number;
+        endLine?: number;
+        endColumn?: number;
+      }>).detail;
       if (!detail || !editorRef.current) return;
       if (filePath && detail.filePath && filePath !== detail.filePath) return;
       const line = Math.max(1, detail.line);
+      const column = Math.max(1, detail.column || 1);
+      const endLine = Math.max(line, detail.endLine || line);
+      const endColumn = Math.max(endLine === line ? column : 1, detail.endColumn || column);
       editorRef.current.revealLineInCenter(line);
-      editorRef.current.setPosition({ lineNumber: line, column: 1 });
+      editorRef.current.setSelection({
+        startLineNumber: line,
+        startColumn: column,
+        endLineNumber: endLine,
+        endColumn
+      });
       editorRef.current.focus();
     };
 
     window.addEventListener('lingcpp-reveal-line', handleRevealLine);
     return () => window.removeEventListener('lingcpp-reveal-line', handleRevealLine);
   }, [filePath]);
+
+  useEffect(() => {
+    const editor = editorRef.current; const monaco = monacoRef.current; if (!editor || !monaco) return;
+    coverageDecorationIdsRef.current = editor.deltaDecorations(coverageDecorationIdsRef.current, coverageLines.map(item => ({ range: new monaco.Range(item.line, 1, item.line, 1), options: { isWholeLine: true, className: item.state === 'covered' ? 'lingbuilder-coverage-covered' : 'lingbuilder-coverage-uncovered', linesDecorationsClassName: item.state === 'covered' ? 'lingbuilder-coverage-gutter-covered' : 'lingbuilder-coverage-gutter-uncovered', hoverMessage: { value: item.state === 'covered' ? `覆盖：执行 ${item.hits} 次` : '未覆盖' } } })));
+  }, [coverageLines]);
+
+  useEffect(() => { const update = (event: Event) => { const detail = (event as CustomEvent<{ filePath?: string; lines?: Array<{ line: number; state: 'covered' | 'uncovered'; hits: number }> }>).detail; if (!detail?.filePath || detail.filePath.replace(/\\/gu, '/') !== (filePath || '').replace(/\\/gu, '/')) return; setCoverageLines(detail.lines || []); }; window.addEventListener('lingbuilder-coverage-updated', update); return () => window.removeEventListener('lingbuilder-coverage-updated', update); }, [filePath]);
 
   useEffect(() => {
     const handleRevealBlock = (event: Event) => {
@@ -277,10 +539,9 @@ export default function MonacoCodeEditor({
     editorRef.current = editor;
     monacoRef.current = monaco;
     injectLingCppEditorStyles();
-    const initialPosition = editor.getPosition?.();
-    if (initialPosition) {
-      onCursorPositionChange?.({ line: initialPosition.lineNumber, column: initialPosition.column });
-    }
+    bindCurrentModel();
+    window.dispatchEvent(new Event('lingbuilder-debug-breakpoints-request'));
+    if (filePath) cppFilePaths.set(editor.getModel()?.uri?.toString(), filePath);
     const editorDomNode = editor.getDomNode?.();
     const handleFontWheel = (event: WheelEvent) => {
       if (!onFontSizeChange || !(event.ctrlKey || event.metaKey)) return;
@@ -292,11 +553,33 @@ export default function MonacoCodeEditor({
     editor.onDidDispose?.(() => {
       editorDomNode?.removeEventListener('wheel', handleFontWheel);
     });
-    editor.onDidChangeCursorPosition?.((event: any) => {
-      onCursorPositionChange?.({ line: event.position.lineNumber, column: event.position.column });
+    editor.onDidChangeCursorSelection?.(scheduleStateUpdate);
+    editor.onDidScrollChange?.(scheduleStateUpdate);
+    editor.onDidChangeModelContent?.(scheduleStateUpdate);
+    editor.onMouseDown?.((event: any) => {
+      if (!filePath || language !== 'lingcpp' || event.target?.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return;
+      const line = event.target?.position?.lineNumber;
+      if (Number.isInteger(line) && line > 0) window.dispatchEvent(new CustomEvent('lingbuilder-debug-breakpoint-toggle', {
+        detail: { filePath, line, conditionRequested: Boolean(event.event?.browserEvent?.shiftKey) }
+      }));
+    });
+    editor.onDidChangeModel?.(() => {
+      window.setTimeout(() => {
+        bindCurrentModel();
+        scheduleStateUpdate();
+      }, 0);
     });
     lingCppRevealCommandId ||= editor.addCommand(0, (_accessor: any, binding: LingCppDesignerBindingHint) => {
       lingCppRevealBindingSnapshot?.(binding);
+    });
+    cppCodeActionCommandId ||= editor.addCommand(0, async (_accessor: any, edit: unknown, title: string, targetPath: string, sourceText: string) => {
+      try {
+        const preview = await previewLspRefactor({ kind: 'codeAction', edit, filePath: targetPath, sourceText });
+        const summary = preview.files.map((file: any) => `${file.filePath}（${file.editCount} 处）`).join('\n');
+        if (!window.confirm(`应用代码操作“${title}”？\n\n${summary}`)) return;
+        await applyLspRefactor(preview.previewId);
+        window.dispatchEvent(new CustomEvent('lingbuilder-lsp-files-applied', { detail: { files: preview.files.map((file: any) => file.filePath) } }));
+      } catch (error) { window.alert(error instanceof Error ? error.message : '代码操作失败。'); }
     });
 
     // Define EPL custom language if not registered
@@ -431,6 +714,126 @@ export default function MonacoCodeEditor({
       });
     }
 
+    if (!cppProvidersRegistered) {
+      cppProvidersRegistered = true;
+      const pathFor = (model: any) => cppFilePaths.get(model.uri.toString());
+      const cancellation = (token: any) => {
+        const controller = new AbortController();
+        token?.onCancellationRequested?.(() => controller.abort());
+        return controller.signal;
+      };
+      monaco.languages.registerCompletionItemProvider('cpp', {
+        triggerCharacters: ['.', '>', ':', '#', '"', '<'],
+        provideCompletionItems: async (model: any, position: any, _context: any, token: any) => {
+          const targetPath = pathFor(model); if (!targetPath) return { suggestions: [] };
+          const result = await requestLsp<any>({ method: 'textDocument/completion', filePath: targetPath, line: position.lineNumber, column: position.column }, cancellation(token));
+          const word = model.getWordUntilPosition(position);
+          return { suggestions: normalizeCompletionItems(result).map(item => ({
+            label: typeof item.label === 'string' ? item.label : item.label?.label,
+            kind: monaco.languages.CompletionItemKind.Text,
+            insertText: item.insertText || item.textEdit?.newText || (typeof item.label === 'string' ? item.label : item.label?.label),
+            detail: item.detail,
+            documentation: { value: markupToText(item.documentation) },
+            range: item.textEdit?.range ? lspRangeToMonaco(item.textEdit.range) : {
+              startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
+              startColumn: word.startColumn, endColumn: word.endColumn
+            }
+          })) };
+        }
+      });
+      monaco.languages.registerHoverProvider('cpp', {
+        provideHover: async (model: any, position: any, token: any) => {
+          const targetPath = pathFor(model); if (!targetPath) return null;
+          const result = await requestLsp<any>({ method: 'textDocument/hover', filePath: targetPath, line: position.lineNumber, column: position.column }, cancellation(token));
+          return result ? { range: result.range ? lspRangeToMonaco(result.range) : undefined, contents: [{ value: markupToText(result.contents) }] } : null;
+        }
+      });
+      monaco.languages.registerSignatureHelpProvider('cpp', {
+        signatureHelpTriggerCharacters: ['(', ','],
+        provideSignatureHelp: async (model: any, position: any, token: any) => {
+          const targetPath = pathFor(model); if (!targetPath) return null;
+          const value = await requestLsp<any>({ method: 'textDocument/signatureHelp', filePath: targetPath, line: position.lineNumber, column: position.column }, cancellation(token));
+          return value ? { value, dispose: () => undefined } : null;
+        }
+      });
+      const locations = (method: 'textDocument/definition' | 'textDocument/implementation' | 'textDocument/references') => async (model: any, position: any, token: any) => {
+        const targetPath = pathFor(model); if (!targetPath) return [];
+        const value = await requestLsp<any>({ method, filePath: targetPath, line: position.lineNumber, column: position.column }, cancellation(token));
+        return normalizeLspLocations(value).map(location => ({ uri: monaco.Uri.parse(location.uri), range: lspRangeToMonaco(location.range) }));
+      };
+      monaco.languages.registerDefinitionProvider('cpp', { provideDefinition: locations('textDocument/definition') });
+      monaco.languages.registerImplementationProvider('cpp', { provideImplementation: locations('textDocument/implementation') });
+      monaco.languages.registerReferenceProvider('cpp', { provideReferences: locations('textDocument/references') });
+      monaco.languages.registerRenameProvider('cpp', {
+        resolveRenameLocation: async (model: any, position: any, token: any) => {
+          const targetPath = pathFor(model); if (!targetPath) return { rejectReason: '未找到工作区文件。' };
+          const value = await requestLsp<any>({ method: 'textDocument/prepareRename', filePath: targetPath, line: position.lineNumber, column: position.column }, cancellation(token));
+          if (!value) return { rejectReason: 'clangd 认为该符号不可重命名。' };
+          const range = value.range || value;
+          return { range: lspRangeToMonaco(range), text: value.placeholder || model.getValueInRange(lspRangeToMonaco(range)) };
+        },
+        provideRenameEdits: async (model: any, position: any, newName: string, token: any) => {
+          const targetPath = pathFor(model); if (!targetPath) return { edits: [], rejectReason: '未找到工作区文件。' };
+          try {
+            const preview = await previewLspRefactor({ kind: 'rename', filePath: targetPath, sourceText: model.getValue(), newName, position: { line: position.lineNumber - 1, character: position.column - 1 } });
+            const summary = preview.files.map((file: any) => `${file.filePath}（${file.editCount} 处）`).join('\n');
+            if (!window.confirm(`确认把符号重命名为“${newName}”？\n\n${summary}`)) return { edits: [], rejectReason: '用户取消了重命名。' };
+            await applyLspRefactor(preview.previewId);
+            window.dispatchEvent(new CustomEvent('lingbuilder-lsp-files-applied', { detail: { files: preview.files.map((file: any) => file.filePath) } }));
+            return { edits: [] };
+          } catch (error) { return { edits: [], rejectReason: error instanceof Error ? error.message : '重命名失败。' }; }
+        }
+      });
+      monaco.languages.registerCodeActionProvider('cpp', {
+        provideCodeActions: async (model: any, range: any, context: any, token: any) => {
+          const targetPath = pathFor(model); if (!targetPath) return { actions: [], dispose: () => undefined };
+          const values = await requestLsp<any[]>({
+            method: 'textDocument/codeAction', filePath: targetPath,
+            range: { start: { line: range.startLineNumber - 1, character: range.startColumn - 1 }, end: { line: range.endLineNumber - 1, character: range.endColumn - 1 } },
+            context: { diagnostics: context.markers || [] }
+          }, cancellation(token));
+          return {
+            actions: (Array.isArray(values) ? values : []).filter(action => action.edit).map(action => ({
+              title: action.title, kind: action.kind, diagnostics: context.markers,
+              command: { id: cppCodeActionCommandId, title: action.title, arguments: [action.edit, action.title, targetPath, model.getValue()] }
+            })),
+            dispose: () => undefined
+          };
+        }
+      });
+      monaco.languages.registerDocumentSymbolProvider('cpp', {
+        provideDocumentSymbols: async (model: any, token: any) => {
+          const targetPath = pathFor(model); if (!targetPath) return [];
+          const values = await requestLsp<any[]>({ method: 'textDocument/documentSymbol', filePath: targetPath }, cancellation(token));
+          const mapSymbol = (item: any): any => ({
+            name: item.name, detail: item.detail || '', kind: monaco.languages.SymbolKind.Variable,
+            range: lspRangeToMonaco(item.range || item.location?.range),
+            selectionRange: lspRangeToMonaco(item.selectionRange || item.range || item.location?.range),
+            children: Array.isArray(item.children) ? item.children.map(mapSymbol) : undefined
+          });
+          return Array.isArray(values) ? values.map(mapSymbol) : [];
+        }
+      });
+      // `registerWorkspaceSymbolProvider` is exposed by some VS Code-style
+      // Monaco hosts, but it is not part of every standalone Monaco runtime.
+      // Restored professional editors mount immediately in Electron, so an
+      // unconditional call here used to tear down the complete React tree and
+      // leave only the BrowserWindow background visible.
+      const registerWorkspaceSymbolProvider = (monaco.languages as any).registerWorkspaceSymbolProvider;
+      if (typeof registerWorkspaceSymbolProvider === 'function') {
+        registerWorkspaceSymbolProvider.call(monaco.languages, {
+          provideWorkspaceSymbols: async (query: string, token: any) => {
+            const values = await requestLsp<any[]>({ method: 'workspace/symbol', query }, cancellation(token));
+            return (Array.isArray(values) ? values : []).filter(item => item.location?.uri && item.location?.range).map(item => ({
+              name: item.name, kind: monaco.languages.SymbolKind.Variable,
+              containerName: item.containerName || '',
+              location: { uri: monaco.Uri.parse(item.location.uri), range: lspRangeToMonaco(item.location.range) }
+            }));
+          }
+        });
+      }
+    }
+
     // Configure themes
     monaco.editor.defineTheme('epl-dark', {
       base: 'vs-dark',
@@ -515,7 +918,7 @@ export default function MonacoCodeEditor({
     const model = editor?.getModel?.();
     if (!monaco || !model) return;
 
-    if (mapLanguage(language) !== 'lingcpp') {
+    if (mapWorkbenchLanguageToMonaco(language) !== 'lingcpp') {
       monaco.editor.setModelMarkers(model, 'lingcpp', []);
       decorationIdsRef.current = editor.deltaDecorations(decorationIdsRef.current, []);
       return;
@@ -566,25 +969,41 @@ export default function MonacoCodeEditor({
     decorationIdsRef.current = editor.deltaDecorations(decorationIdsRef.current, [...bindingDecorations, ...structureDecorations, ...readingDecorations]);
   }, [sourceCode, language, designerProject, filePath, onRevealDesignerBinding, moduleContext, readingMode, focusedBlockId]);
 
-  const mapLanguage = (lang: string) => {
-    const l = lang.toLowerCase();
-    if (l === 'epl') return 'epl';
-    if (l === 'lingcpp' || l === 'lcpp') return 'lingcpp';
-    if (l === 'cpp' || l === 'h') return 'cpp';
-    if (l === 'rc' || l === 'ini') return 'ini';
-    return 'plaintext';
-  };
+  useEffect(() => {
+    const editor = editorRef.current; const monaco = monacoRef.current; if (!editor || !monaco) return;
+    debugDecorationIdsRef.current = editor.deltaDecorations(debugDecorationIdsRef.current, debugBreakpointLines.map(line => ({
+      range: new monaco.Range(line, 1, line, 1),
+      options: { isWholeLine: false, glyphMarginClassName: 'lingbuilder-debug-breakpoint', glyphMarginHoverMessage: { value: `断点：第 ${line} 行` } }
+    })));
+  }, [debugBreakpointLines]);
+
+  useEffect(() => {
+    const update = (event: Event) => {
+      const items = (event as CustomEvent<{ breakpoints?: Array<{ filePath: string; line: number }> }>).detail?.breakpoints || [];
+      setDebugBreakpointLines(items.filter(item => item.filePath === filePath).map(item => item.line));
+    };
+    window.addEventListener('lingbuilder-debug-breakpoints-changed', update);
+    return () => window.removeEventListener('lingbuilder-debug-breakpoints-changed', update);
+  }, [filePath]);
 
   return (
-    <div className="flex-1 w-full h-full relative overflow-hidden">
+    <div data-lingbuilder-editor-command-owner="true" className="flex-1 w-full h-full relative overflow-hidden">
       <Editor
         height="100%"
         width="100%"
-        value={sourceCode}
-        language={mapLanguage(language)}
+        defaultValue={monacoValueBinding.defaultValue}
+        value={monacoValueBinding.value}
+        path={modelRecord.uri}
+        language={mapWorkbenchLanguageToMonaco(language)}
         theme={isDarkMode ? 'epl-dark' : 'epl-light'}
         onMount={handleEditorDidMount}
-        onChange={value => onChange(value || '')}
+        onChange={(value, event) => onChange(value || '', {
+          isUndoing: event.isUndoing,
+          isRedoing: event.isRedoing,
+          isFlush: event.isFlush
+        })}
+        saveViewState={false}
+        keepCurrentModel
         options={{
           readOnly,
           fontSize: editorFontSize,
@@ -608,7 +1027,9 @@ export default function MonacoCodeEditor({
       />
     </div>
   );
-}
+});
+
+export default MonacoCodeEditor;
 
 function injectLingCppEditorStyles(): void {
   const existing = document.getElementById('lingcpp-editor-language-service-styles') as HTMLStyleElement | null;
@@ -669,7 +1090,8 @@ function injectLingCppEditorStyles(): void {
     '.lingcpp-action-debug::before { background: #34d399; }',
     '.lingcpp-action-exit::before { background: #fb7185; }',
     '.lingcpp-action-text::before { background: #fbbf24; }',
-    '.lingcpp-action-window::before { background: #c084fc; }'
+    '.lingcpp-action-window::before { background: #c084fc; }',
+    '.lingbuilder-debug-breakpoint::before { content: ""; display: block; width: 10px; height: 10px; margin: 5px auto 0; border-radius: 999px; background: #ef4444; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.22); } .lingbuilder-coverage-covered { background: rgba(34,197,94,.10); } .lingbuilder-coverage-uncovered { background: rgba(244,63,94,.13); } .lingbuilder-coverage-gutter-covered { border-left: 3px solid #22c55e; } .lingbuilder-coverage-gutter-uncovered { border-left: 3px solid #f43f5e; }'
   ].join('\n');
   if (!existing) document.head.appendChild(style);
 }

@@ -1,4 +1,5 @@
 const { spawn } = require('node:child_process');
+const net = require('node:net');
 const path = require('node:path');
 
 const DEV_URL = process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:3001/';
@@ -28,10 +29,28 @@ const command = [
   '"npm:dev:desktop"',
 ].join(' ');
 
-const dev = spawn(command, {
-  stdio: 'inherit',
-  shell: true,
-  env,
-});
+function assertPortAvailable(host, port) {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.unref();
+    probe.once('error', error => reject(new Error(
+      `LingBuilder 开发端口 ${host}:${port} 已被占用。请先关闭旧的 npm run dev 窗口，再重新启动。\n${error.message}`
+    )));
+    probe.listen({ host, port, exclusive: true }, () => probe.close(resolve));
+  });
+}
 
-dev.on('exit', (code) => process.exit(code ?? 0));
+async function main() {
+  await assertPortAvailable(env.HOST, Number(env.PORT));
+  const dev = spawn(command, {
+    stdio: 'inherit',
+    shell: true,
+    env,
+  });
+  dev.on('exit', (code) => process.exit(code ?? 0));
+}
+
+main().catch(error => {
+  console.error(`[dev] ${error.message}`);
+  process.exit(1);
+});

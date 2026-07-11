@@ -1,0 +1,162 @@
+export type Win32ControlModuleId = 'lingbuilder.win32.basic' | 'lingbuilder.win32.common-controls';
+
+export type Win32ControlPropertyType =
+  | 'text'
+  | 'number'
+  | 'boolean'
+  | 'enum'
+  | 'color'
+  | 'file'
+  | 'stringList'
+  | 'columns'
+  | 'treeNodes'
+  | 'tabs'
+  | 'date'
+  | 'controlRef';
+
+export type Win32ControlPropertyValue = string | number | boolean | string[] | Array<Record<string, unknown>> | null;
+
+export interface Win32ControlPropertyDefinition {
+  key: string;
+  label: string;
+  type: Win32ControlPropertyType;
+  defaultValue: Win32ControlPropertyValue;
+  options?: Array<{ value: string; label: string }>;
+  min?: number;
+  max?: number;
+  description?: string;
+}
+
+export interface Win32ControlEventDefinition {
+  name: string;
+  label: string;
+  handlerSuffix: string;
+  notification: 'command' | 'notify' | 'scroll' | 'focus' | 'mouse' | 'window';
+}
+
+export interface Win32ControlDefinition {
+  type: string;
+  label: string;
+  moduleId: Win32ControlModuleId;
+  category: '基础' | '输入' | '集合' | '导航' | '日期' | '外壳' | '容器' | '媒体' | '非可视';
+  icon: string;
+  nativeClass: string;
+  nativeAdapter: string;
+  defaultProps: {
+    content: string;
+    width: number;
+    height: number;
+    background?: string;
+    foreground?: string;
+  };
+  properties: Win32ControlPropertyDefinition[];
+  events: Win32ControlEventDefinition[];
+  isContainer?: boolean;
+  isVisual?: boolean;
+  requiredLibraries?: string[];
+}
+
+const option = (value: string, label = value) => ({ value, label });
+const text = (key: string, label: string, defaultValue = ''): Win32ControlPropertyDefinition => ({ key, label, type: 'text', defaultValue });
+const number = (key: string, label: string, defaultValue = 0, min?: number, max?: number): Win32ControlPropertyDefinition => ({ key, label, type: 'number', defaultValue, min, max });
+const bool = (key: string, label: string, defaultValue = false): Win32ControlPropertyDefinition => ({ key, label, type: 'boolean', defaultValue });
+const enumProp = (key: string, label: string, defaultValue: string, values: string[]): Win32ControlPropertyDefinition => ({
+  key, label, type: 'enum', defaultValue, options: values.map(value => option(value))
+});
+const event = (
+  name: string,
+  label: string,
+  handlerSuffix: string,
+  notification: Win32ControlEventDefinition['notification']
+): Win32ControlEventDefinition => ({ name, label, handlerSuffix, notification });
+
+const COMMON_MOUSE_EVENTS = [
+  event('MouseDown', '鼠标按下', '鼠标被按下', 'mouse'),
+  event('MouseEnter', '鼠标移入', '鼠标移入', 'mouse'),
+  event('MouseLeave', '鼠标移出', '鼠标移出', 'mouse')
+];
+const COMMON_FOCUS_EVENTS = [
+  event('GotFocus', '获得焦点', '获得焦点', 'focus'),
+  event('LostFocus', '失去焦点', '失去焦点', 'focus')
+];
+const ITEMS: Win32ControlPropertyDefinition = { key: 'items', label: '项目集合', type: 'stringList', defaultValue: [] };
+const IMAGE_SOURCE: Win32ControlPropertyDefinition = { key: 'imageSource', label: '图片源', type: 'file', defaultValue: '' };
+
+function control(definition: Omit<Win32ControlDefinition, 'isVisual'>): Win32ControlDefinition {
+  return { ...definition, isVisual: true };
+}
+
+function nonVisual(definition: Omit<Win32ControlDefinition, 'isVisual'>): Win32ControlDefinition {
+  return { ...definition, isVisual: false };
+}
+
+export const WIN32_CONTROL_DEFINITIONS: Win32ControlDefinition[] = [
+  control({ type: 'Button', label: '按钮', moduleId: 'lingbuilder.win32.basic', category: '基础', icon: 'SquareDot', nativeClass: 'BUTTON', nativeAdapter: 'button', defaultProps: { content: '新按钮', width: 120, height: 35, background: '#007ACC' }, properties: [enumProp('buttonStyle', '按钮样式', 'push', ['push', 'default', 'toggle', 'split', 'commandLink']), bool('checked', '按下状态')], events: [event('Click', '被单击', '被单击', 'command'), ...COMMON_MOUSE_EVENTS, ...COMMON_FOCUS_EVENTS] }),
+  control({ type: 'TextBox', label: '编辑框', moduleId: 'lingbuilder.win32.basic', category: '输入', icon: 'Keyboard', nativeClass: 'EDIT', nativeAdapter: 'edit', defaultProps: { content: '请输入内容...', width: 160, height: 34, background: '#2D2D30' }, properties: [bool('multiline', '多行'), bool('password', '密码输入'), bool('readOnly', '只读'), bool('numeric', '仅数字'), enumProp('textAlign', '文本对齐', 'left', ['left', 'center', 'right']), enumProp('scrollBars', '滚动条', 'none', ['none', 'horizontal', 'vertical', 'both'])], events: [event('TextChanged', '内容被改变', '内容被改变', 'command'), ...COMMON_FOCUS_EVENTS] }),
+  control({ type: 'Label', label: '标签/静态控件', moduleId: 'lingbuilder.win32.basic', category: '基础', icon: 'Type', nativeClass: 'STATIC', nativeAdapter: 'static', defaultProps: { content: '新文本标签', width: 180, height: 32 }, properties: [enumProp('staticStyle', '静态样式', 'text', ['text', 'bitmap', 'icon', 'frame']), enumProp('textAlign', '文本对齐', 'left', ['left', 'center', 'right']), IMAGE_SOURCE], events: [...COMMON_MOUSE_EVENTS] }),
+  control({ type: 'CheckBox', label: '复选框', moduleId: 'lingbuilder.win32.basic', category: '输入', icon: 'CheckSquare', nativeClass: 'BUTTON', nativeAdapter: 'checkbox', defaultProps: { content: '选项复选框', width: 150, height: 24 }, properties: [bool('checked', '默认选中'), bool('threeState', '三态模式')], events: [event('Checked', '被选中', '被选中', 'command'), event('Unchecked', '被取消选中', '被取消选中', 'command')] }),
+  control({ type: 'RadioButton', label: '单选框', moduleId: 'lingbuilder.win32.basic', category: '输入', icon: 'CircleDot', nativeClass: 'BUTTON', nativeAdapter: 'radio', defaultProps: { content: '单选选项', width: 150, height: 24 }, properties: [bool('checked', '默认选中'), text('groupName', '分组名称')], events: [event('Checked', '被选中', '被选中', 'command'), event('Unchecked', '被取消选中', '被取消选中', 'command')] }),
+  control({ type: 'ListBox', label: '列表框', moduleId: 'lingbuilder.win32.basic', category: '集合', icon: 'List', nativeClass: 'LISTBOX', nativeAdapter: 'listbox', defaultProps: { content: '', width: 180, height: 120 }, properties: [ITEMS, number('selectedIndex', '默认选中项', 0, -1), bool('sorted', '自动排序'), bool('multiple', '允许多选')], events: [event('SelectionChanged', '选择项被改变', '选择项被改变', 'command'), event('DoubleClick', '被双击', '被双击', 'command')] }),
+  control({ type: 'ComboBox', label: '组合框', moduleId: 'lingbuilder.win32.basic', category: '集合', icon: 'List', nativeClass: 'COMBOBOX', nativeAdapter: 'combobox', defaultProps: { content: '选择项', width: 160, height: 160 }, properties: [ITEMS, number('selectedIndex', '默认选中项', 0, -1), bool('sorted', '自动排序'), bool('editable', '允许编辑')], events: [event('SelectionChanged', '选择项被改变', '选择项被改变', 'command'), event('TextChanged', '内容被改变', '内容被改变', 'command')] }),
+  control({ type: 'GroupBox', label: '分组框', moduleId: 'lingbuilder.win32.basic', category: '容器', icon: 'Box', nativeClass: 'BUTTON', nativeAdapter: 'groupbox', defaultProps: { content: '分组', width: 260, height: 160 }, properties: [], events: [], isContainer: true }),
+  control({ type: 'ScrollBar', label: '滚动条', moduleId: 'lingbuilder.win32.basic', category: '输入', icon: 'MoveVertical', nativeClass: 'SCROLLBAR', nativeAdapter: 'scrollbar', defaultProps: { content: '', width: 20, height: 140 }, properties: [enumProp('orientation', '方向', 'vertical', ['horizontal', 'vertical']), number('minimum', '最小值', 0), number('maximum', '最大值', 100), number('value', '当前值', 0)], events: [event('ValueChanged', '数值被改变', '数值被改变', 'scroll')] }),
+  control({ type: 'Image', label: '图片框', moduleId: 'lingbuilder.win32.basic', category: '媒体', icon: 'Image', nativeClass: 'STATIC', nativeAdapter: 'image', defaultProps: { content: '', width: 180, height: 140 }, properties: [IMAGE_SOURCE, enumProp('stretch', '填充方式', 'uniform', ['none', 'fill', 'uniform', 'uniformToFill'])], events: [...COMMON_MOUSE_EVENTS] }),
+  control({ type: 'ProgressBar', label: '进度条', moduleId: 'lingbuilder.win32.basic', category: '基础', icon: 'Minus', nativeClass: 'msctls_progress32', nativeAdapter: 'progress', defaultProps: { content: '50', width: 300, height: 20 }, properties: [number('minimum', '最小值', 0), number('maximum', '最大值', 100), number('value', '当前值', 50), bool('marquee', '不确定进度')], events: [] }),
+  control({ type: 'Grid', label: '网格容器', moduleId: 'lingbuilder.win32.basic', category: '容器', icon: 'LayoutGrid', nativeClass: 'STATIC', nativeAdapter: 'container', defaultProps: { content: '', width: 360, height: 220 }, properties: [bool('showBorder', '显示边框', true)], events: [event('Loaded', '创建完毕', '创建完毕', 'window')], isContainer: true }),
+
+  control({ type: 'ListView', label: '列表视图', moduleId: 'lingbuilder.win32.common-controls', category: '集合', icon: 'Table', nativeClass: 'SysListView32', nativeAdapter: 'listview', defaultProps: { content: '', width: 320, height: 180 }, properties: [{ key: 'columns', label: '列集合', type: 'columns', defaultValue: [] }, { key: 'items', label: '行项目', type: 'columns', defaultValue: [] }, enumProp('view', '视图模式', 'details', ['icon', 'smallIcon', 'list', 'details']), bool('gridLines', '显示网格线', true), bool('multiple', '允许多选')], events: [event('SelectionChanged', '选择项被改变', '选择项被改变', 'notify'), event('DoubleClick', '被双击', '被双击', 'notify'), event('ColumnClick', '列被单击', '列被单击', 'notify')] }),
+  control({ type: 'TreeView', label: '树形视图', moduleId: 'lingbuilder.win32.common-controls', category: '集合', icon: 'ListTree', nativeClass: 'SysTreeView32', nativeAdapter: 'treeview', defaultProps: { content: '', width: 260, height: 200 }, properties: [{ key: 'nodes', label: '节点集合', type: 'treeNodes', defaultValue: [] }, bool('showLines', '显示连接线', true), bool('checkBoxes', '显示复选框')], events: [event('SelectionChanged', '选择节点被改变', '选择节点被改变', 'notify'), event('Expanded', '节点被展开', '节点被展开', 'notify'), event('Collapsed', '节点被折叠', '节点被折叠', 'notify'), event('DoubleClick', '被双击', '被双击', 'notify')] }),
+  control({ type: 'TabControl', label: '选项卡', moduleId: 'lingbuilder.win32.common-controls', category: '容器', icon: 'PanelsTopLeft', nativeClass: 'SysTabControl32', nativeAdapter: 'tab', defaultProps: { content: '', width: 360, height: 240 }, properties: [{ key: 'tabs', label: '标签页', type: 'tabs', defaultValue: [{ id: 'page1', title: '标签页 1' }] }, number('selectedIndex', '当前页', 0, 0)], events: [event('SelectionChanged', '标签页被改变', '标签页被改变', 'notify')], isContainer: true }),
+  control({ type: 'Header', label: '表头', moduleId: 'lingbuilder.win32.common-controls', category: '集合', icon: 'Columns3', nativeClass: 'SysHeader32', nativeAdapter: 'header', defaultProps: { content: '', width: 320, height: 28 }, properties: [{ key: 'columns', label: '列集合', type: 'columns', defaultValue: [] }], events: [event('ColumnClick', '列被单击', '列被单击', 'notify'), event('ColumnResized', '列宽被改变', '列宽被改变', 'notify')] }),
+  control({ type: 'ComboBoxEx', label: '增强组合框', moduleId: 'lingbuilder.win32.common-controls', category: '集合', icon: 'ListPlus', nativeClass: 'ComboBoxEx32', nativeAdapter: 'comboboxex', defaultProps: { content: '', width: 180, height: 160 }, properties: [ITEMS, number('selectedIndex', '默认选中项', 0, -1), text('imageListId', '图像列表 ID')], events: [event('SelectionChanged', '选择项被改变', '选择项被改变', 'command')] }),
+  control({ type: 'SysLink', label: '超链接', moduleId: 'lingbuilder.win32.common-controls', category: '基础', icon: 'Link', nativeClass: 'SysLink', nativeAdapter: 'syslink', defaultProps: { content: '打开链接', width: 160, height: 28 }, properties: [text('url', '链接地址', 'https://example.com')], events: [event('Click', '链接被单击', '链接被单击', 'notify')] }),
+  control({ type: 'DateTimePicker', label: '日期时间选择器', moduleId: 'lingbuilder.win32.common-controls', category: '日期', icon: 'CalendarClock', nativeClass: 'SysDateTimePick32', nativeAdapter: 'datetime', defaultProps: { content: '', width: 180, height: 30 }, properties: [{ key: 'value', label: '当前日期', type: 'date', defaultValue: '' }, enumProp('format', '显示格式', 'shortDate', ['shortDate', 'longDate', 'time', 'custom']), text('customFormat', '自定义格式')], events: [event('ValueChanged', '日期被改变', '日期被改变', 'notify')] }),
+  control({ type: 'MonthCalendar', label: '月历', moduleId: 'lingbuilder.win32.common-controls', category: '日期', icon: 'CalendarDays', nativeClass: 'SysMonthCal32', nativeAdapter: 'monthcalendar', defaultProps: { content: '', width: 250, height: 190 }, properties: [{ key: 'value', label: '当前日期', type: 'date', defaultValue: '' }, bool('multiSelect', '允许范围选择')], events: [event('ValueChanged', '日期被改变', '日期被改变', 'notify')] }),
+  control({ type: 'TrackBar', label: '滑块', moduleId: 'lingbuilder.win32.common-controls', category: '输入', icon: 'SlidersHorizontal', nativeClass: 'msctls_trackbar32', nativeAdapter: 'trackbar', defaultProps: { content: '', width: 220, height: 36 }, properties: [number('minimum', '最小值', 0), number('maximum', '最大值', 100), number('value', '当前值', 50), number('tickFrequency', '刻度间隔', 10, 1)], events: [event('ValueChanged', '数值被改变', '数值被改变', 'scroll')] }),
+  control({ type: 'UpDown', label: '数值调节器', moduleId: 'lingbuilder.win32.common-controls', category: '输入', icon: 'ChevronsUpDown', nativeClass: 'msctls_updown32', nativeAdapter: 'updown', defaultProps: { content: '', width: 24, height: 32 }, properties: [number('minimum', '最小值', 0), number('maximum', '最大值', 100), number('value', '当前值', 0), { key: 'buddyControl', label: '关联编辑框', type: 'controlRef', defaultValue: '' }], events: [event('ValueChanged', '数值被改变', '数值被改变', 'notify')] }),
+  control({ type: 'HotKey', label: '热键输入框', moduleId: 'lingbuilder.win32.common-controls', category: '输入', icon: 'Command', nativeClass: 'msctls_hotkey32', nativeAdapter: 'hotkey', defaultProps: { content: '', width: 160, height: 30 }, properties: [text('hotKey', '默认热键')], events: [event('ValueChanged', '热键被改变', '热键被改变', 'command')] }),
+  control({ type: 'IPAddress', label: 'IP 地址框', moduleId: 'lingbuilder.win32.common-controls', category: '输入', icon: 'Network', nativeClass: 'SysIPAddress32', nativeAdapter: 'ipaddress', defaultProps: { content: '127.0.0.1', width: 180, height: 30 }, properties: [text('address', 'IP 地址', '127.0.0.1')], events: [event('ValueChanged', '地址被改变', '地址被改变', 'notify')] }),
+  control({ type: 'ToolBar', label: '工具栏', moduleId: 'lingbuilder.win32.common-controls', category: '外壳', icon: 'PanelTop', nativeClass: 'ToolbarWindow32', nativeAdapter: 'toolbar', defaultProps: { content: '', width: 480, height: 34 }, properties: [{ key: 'buttons', label: '按钮集合', type: 'columns', defaultValue: [] }, text('imageListId', '图像列表 ID')], events: [event('Click', '按钮被单击', '工具栏按钮被单击', 'command')] }),
+  control({ type: 'StatusBar', label: '状态栏', moduleId: 'lingbuilder.win32.common-controls', category: '外壳', icon: 'PanelBottom', nativeClass: 'msctls_statusbar32', nativeAdapter: 'statusbar', defaultProps: { content: '就绪', width: 480, height: 24 }, properties: [{ key: 'parts', label: '分区集合', type: 'columns', defaultValue: [] }], events: [event('DoubleClick', '分区被双击', '状态栏分区被双击', 'notify')] }),
+  nonVisual({ type: 'ToolTip', label: '工具提示', moduleId: 'lingbuilder.win32.common-controls', category: '非可视', icon: 'MessageSquareText', nativeClass: 'tooltips_class32', nativeAdapter: 'tooltip', defaultProps: { content: '提示文字', width: 120, height: 30 }, properties: [{ key: 'targetControl', label: '目标控件', type: 'controlRef', defaultValue: '' }, number('initialDelay', '显示延迟', 500, 0)], events: [] }),
+  nonVisual({ type: 'ImageList', label: '图像列表资源', moduleId: 'lingbuilder.win32.common-controls', category: '非可视', icon: 'Images', nativeClass: 'HIMAGELIST', nativeAdapter: 'imagelist', defaultProps: { content: '', width: 0, height: 0 }, properties: [{ key: 'images', label: '图片集合', type: 'stringList', defaultValue: [] }, number('imageWidth', '图片宽度', 16, 1), number('imageHeight', '图片高度', 16, 1)], events: [] }),
+  control({ type: 'ReBar', label: 'Rebar 容器', moduleId: 'lingbuilder.win32.common-controls', category: '容器', icon: 'Rows3', nativeClass: 'ReBarWindow32', nativeAdapter: 'rebar', defaultProps: { content: '', width: 480, height: 42 }, properties: [{ key: 'bands', label: '带区集合', type: 'columns', defaultValue: [] }], events: [], isContainer: true }),
+  control({ type: 'Pager', label: '分页容器', moduleId: 'lingbuilder.win32.common-controls', category: '容器', icon: 'GalleryHorizontal', nativeClass: 'SysPager', nativeAdapter: 'pager', defaultProps: { content: '', width: 320, height: 120 }, properties: [enumProp('orientation', '方向', 'horizontal', ['horizontal', 'vertical'])], events: [event('Scroll', '被滚动', '被滚动', 'notify')], isContainer: true }),
+  control({ type: 'RichEdit', label: '富文本框', moduleId: 'lingbuilder.win32.common-controls', category: '输入', icon: 'TextCursorInput', nativeClass: 'RICHEDIT50W', nativeAdapter: 'richedit', defaultProps: { content: '富文本内容', width: 320, height: 180 }, properties: [bool('readOnly', '只读'), bool('wordWrap', '自动换行', true), bool('multiline', '多行', true), enumProp('scrollBars', '滚动条', 'vertical', ['none', 'horizontal', 'vertical', 'both'])], events: [event('TextChanged', '内容被改变', '内容被改变', 'command'), event('SelectionChanged', '选择区被改变', '选择区被改变', 'notify'), ...COMMON_FOCUS_EVENTS], requiredLibraries: ['ole32.lib'] }),
+  control({ type: 'Animation', label: '动画控件', moduleId: 'lingbuilder.win32.common-controls', category: '媒体', icon: 'Film', nativeClass: 'SysAnimate32', nativeAdapter: 'animation', defaultProps: { content: '', width: 240, height: 160 }, properties: [{ key: 'aviSource', label: 'AVI 文件', type: 'file', defaultValue: '' }, bool('autoPlay', '自动播放', true), bool('loop', '循环播放', true)], events: [event('Finished', '播放完毕', '播放完毕', 'command')] }),
+  control({ type: 'FlatScrollBar', label: '平面滚动条', moduleId: 'lingbuilder.win32.common-controls', category: '输入', icon: 'MoveVertical', nativeClass: 'SCROLLBAR', nativeAdapter: 'flatscrollbar', defaultProps: { content: '', width: 20, height: 140 }, properties: [enumProp('orientation', '方向', 'vertical', ['horizontal', 'vertical']), number('minimum', '最小值', 0), number('maximum', '最大值', 100), number('value', '当前值', 0)], events: [event('ValueChanged', '数值被改变', '数值被改变', 'scroll')] }),
+  nonVisual({ type: 'PropertySheet', label: '属性页窗口', moduleId: 'lingbuilder.win32.common-controls', category: '非可视', icon: 'PanelTopOpen', nativeClass: '#32770', nativeAdapter: 'propertysheet', defaultProps: { content: '属性', width: 420, height: 320 }, properties: [{ key: 'tabs', label: '属性页', type: 'tabs', defaultValue: [] }], events: [event('Applied', '应用', '属性被应用', 'notify')] })
+];
+
+WIN32_CONTROL_DEFINITIONS.forEach(definition => {
+  if (definition.isVisual !== false && !definition.properties.some(property => property.key === 'toolTip')) {
+    definition.properties.push(text('toolTip', '工具提示文字'));
+  }
+});
+
+export type Win32ControlType = typeof WIN32_CONTROL_DEFINITIONS[number]['type'];
+
+const definitionsByType = new Map(WIN32_CONTROL_DEFINITIONS.map(definition => [definition.type, definition]));
+
+export function getWin32ControlDefinition(type: string): Win32ControlDefinition | undefined {
+  return definitionsByType.get(type);
+}
+
+export function getWin32ControlsForModule(moduleId: Win32ControlModuleId): Win32ControlDefinition[] {
+  return WIN32_CONTROL_DEFINITIONS.filter(definition => definition.moduleId === moduleId);
+}
+
+export function createDefaultControlProperties(type: string, legacyContent = ''): Record<string, Win32ControlPropertyValue> {
+  const definition = getWin32ControlDefinition(type);
+  const properties = Object.fromEntries((definition?.properties || []).map(property => [property.key, property.defaultValue]));
+  if (!definition) return properties;
+  if (type === 'ProgressBar') properties.value = Number.parseInt(legacyContent, 10) || 50;
+  if (type === 'Image') properties.imageSource = legacyContent && !legacyContent.startsWith('【') ? legacyContent : '';
+  if (type === 'ComboBox' && legacyContent) properties.items = [legacyContent];
+  if (type === 'IPAddress' && legacyContent) properties.address = legacyContent;
+  return properties;
+}
+
+export function getPrimaryWin32ControlEvent(type: string): Win32ControlEventDefinition | undefined {
+  return getWin32ControlDefinition(type)?.events[0];
+}

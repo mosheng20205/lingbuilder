@@ -1,4 +1,33 @@
 import { LingBuilderModuleManifest } from './types';
+import { getWin32ControlsForModule, Win32ControlModuleId } from '../windowDesigner/win32ControlRegistry';
+
+function createControlContributions(moduleId: Win32ControlModuleId) {
+  return getWin32ControlsForModule(moduleId).map(definition => ({
+    type: definition.type,
+    label: definition.label,
+    category: definition.category,
+    icon: definition.icon,
+    isContainer: definition.isContainer,
+    isVisual: definition.isVisual,
+    nativeAdapter: definition.nativeAdapter,
+    requiredLibraries: definition.requiredLibraries,
+    defaultProps: definition.defaultProps,
+    properties: definition.properties,
+    events: definition.events.map(event => ({
+      name: event.name,
+      label: event.label,
+      handlerPattern: `_{controlName}_${event.handlerSuffix}`
+    }))
+  }));
+}
+
+function createControlTypes(moduleId: Win32ControlModuleId) {
+  return getWin32ControlsForModule(moduleId).map(definition => ({
+    name: definition.label.split('/')[0],
+    description: `Win32 ${definition.label}控件。`,
+    cppType: 'HWND'
+  }));
+}
 
 export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   {
@@ -36,24 +65,9 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       ],
       types: [
         { name: '窗口', description: 'Win32 窗口基类。', cppType: 'LingWindowBase' },
-        { name: '按钮', description: 'Win32 按钮控件。', cppType: 'BUTTON' },
-        { name: '编辑框', description: 'Win32 编辑框控件。', cppType: 'EDIT' },
-        { name: '标签', description: 'Win32 静态文本控件。', cppType: 'STATIC' }
+        ...createControlTypes('lingbuilder.win32.basic')
       ],
-      designerControls: [
-        {
-          type: 'Button',
-          label: '按钮',
-          defaultProps: { content: '按钮', width: 120, height: 32 },
-          events: [{ name: 'Click', label: '被单击', handlerPattern: '_{controlName}_被单击' }]
-        },
-        {
-          type: 'TextBox',
-          label: '编辑框',
-          defaultProps: { content: '', width: 160, height: 32 },
-          events: [{ name: 'Change', label: '内容被改变', handlerPattern: '_{controlName}_内容被改变' }]
-        }
-      ],
+      designerControls: createControlContributions('lingbuilder.win32.basic'),
     },
     targets: [
       {
@@ -94,6 +108,55 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           returnType: 'void',
           example: '结束()'
         }
+      ]
+    }
+  },
+  {
+    schemaVersion: 2,
+    id: 'lingbuilder.win32.common-controls',
+    name: 'Win32高级控件模块',
+    version: '1.0.0',
+    category: '界面',
+    description: '提供列表视图、树形视图、选项卡、日期、工具栏、状态栏、富文本和系统通用对话框等标准 Win32 控件。',
+    author: 'LingBuilder',
+    tags: ['内置', 'Win32', 'Common Controls', '富文本', '系统对话框'],
+    contributes: {
+      commands: [
+        { name: '打开文件', signature: '打开文件(标题, 筛选器)', description: '显示 Windows 文件打开对话框并返回路径。', insertText: '打开文件("选择文件", "所有文件|*.*")', returnType: '文本型' },
+        { name: '保存文件', signature: '保存文件(标题, 筛选器)', description: '显示 Windows 文件保存对话框并返回路径。', insertText: '保存文件("保存文件", "所有文件|*.*")', returnType: '文本型' },
+        { name: '选择文件夹', signature: '选择文件夹(标题)', description: '显示 Windows 文件夹选择对话框并返回路径。', insertText: '选择文件夹("选择文件夹")', returnType: '文本型' },
+        { name: '选择颜色', signature: '选择颜色(默认颜色)', description: '显示系统颜色对话框并返回 COLORREF 整数。', insertText: '选择颜色(0)', returnType: '整数型' },
+        { name: '选择字体', signature: '选择字体(默认字号)', description: '显示系统字体对话框并返回字体说明。', insertText: '选择字体(12)', returnType: '文本型' },
+        { name: '查找文本', signature: '查找文本(默认文本)', description: '显示系统查找对话框。', insertText: '查找文本("$1")', returnType: '空' },
+        { name: '替换文本', signature: '替换文本(查找内容, 替换内容)', description: '显示系统替换对话框。', insertText: '替换文本("$1", "$2")', returnType: '空' },
+        { name: '打印', signature: '打印()', description: '显示系统打印对话框。', insertText: '打印()', returnType: '逻辑型' },
+        { name: '页面设置', signature: '页面设置()', description: '显示系统页面设置对话框。', insertText: '页面设置()', returnType: '逻辑型' },
+        { name: '任务对话框', signature: '任务对话框(标题, 内容)', description: '显示 Windows Task Dialog。', insertText: '任务对话框("提示", "$1")', returnType: '整数型' }
+      ],
+      types: createControlTypes('lingbuilder.win32.common-controls'),
+      designerControls: createControlContributions('lingbuilder.win32.common-controls'),
+      snippets: [
+        { label: '选择文件并输出', insertText: '调试输出(打开文件("选择文件", "所有文件|*.*"))', description: '选择一个文件并输出路径。' },
+        { label: '任务对话框提示', insertText: '任务对话框("LingBuilder", "操作完成")', description: '显示标准 Windows 任务对话框。' }
+      ]
+    },
+    targets: [{
+      id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc',
+      libs: ['comctl32.lib', 'comdlg32.lib', 'ole32.lib', 'shell32.lib'],
+      defines: ['UNICODE', '_UNICODE', 'LINGBUILDER_WIN32_COMMON_CONTROLS']
+    }],
+    bindings: {
+      commands: [
+        { command: '打开文件', runtimeName: '打开文件', parameters: [{ name: '标题', type: 'wideString' }, { name: '筛选器', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+        { command: '保存文件', runtimeName: '保存文件', parameters: [{ name: '标题', type: 'wideString' }, { name: '筛选器', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+        { command: '选择文件夹', runtimeName: '选择文件夹', parameters: [{ name: '标题', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+        { command: '选择颜色', runtimeName: '选择颜色', parameters: [{ name: '默认颜色', type: 'int' }], returnType: 'int' },
+        { command: '选择字体', runtimeName: '选择字体', parameters: [{ name: '默认字号', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
+        { command: '查找文本', runtimeName: '查找文本', parameters: [{ name: '默认文本', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
+        { command: '替换文本', runtimeName: '替换文本', parameters: [{ name: '查找内容', type: 'wideString' }, { name: '替换内容', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
+        { command: '打印', runtimeName: '打印', parameters: [], returnType: 'bool' },
+        { command: '页面设置', runtimeName: '页面设置', parameters: [], returnType: 'bool' },
+        { command: '任务对话框', runtimeName: '任务对话框', parameters: [{ name: '标题', type: 'wideString' }, { name: '内容', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
       ]
     }
   },

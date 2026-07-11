@@ -347,6 +347,8 @@ test('new_emoji style module manifest supports full command and runtime contribu
 
 test('new_emoji module commands feed completion and disabled-module diagnostics', () => {
   const module = createNewEmojiTestModule('C:/modules/lingbuilder.new_emoji.ui');
+  assert.equal(getPreferredModuleTarget(module, 'windows-msvc-win32')?.arch, 'win32');
+  assert.equal(getPreferredModuleTarget(module, 'windows-msvc-x64')?.arch, 'x64');
   const completions = getLingCppCompletions(
     { source: '', line: 1, column: 1 },
     { enabledModules: [module], availableModules: [module] }
@@ -500,6 +502,8 @@ test('materializeModuleNativeDependencies copies module source, libs and runtime
     writeFixture(path.join(installPath, 'src', 'new_emoji_bridge.cpp'), '#include "new_emoji_bridge.h"\n'),
     writeFixture(path.join(installPath, 'lib', 'Win32', 'new_emoji.lib'), 'fake lib\n'),
     writeFixture(path.join(installPath, 'bin', 'Win32', 'new_emoji.dll'), 'fake dll\n')
+    , writeFixture(path.join(installPath, 'lib', 'x64', 'new_emoji.lib'), 'fake x64 lib\n')
+    , writeFixture(path.join(installPath, 'bin', 'x64', 'new_emoji.dll'), 'fake x64 dll\n')
   ]);
 
   const plan = await materializeModuleNativeDependencies([createNewEmojiTestModule(installPath)], {
@@ -606,10 +610,12 @@ test('exportVisualStudioProject writes sln and vcxproj with module dependencies'
 
   const vcxproj = await fs.readFile(result.projectPath, 'utf8');
   assert.match(vcxproj, /<Platform>Win32<\/Platform>/);
+  assert.match(vcxproj, /<Platform>x64<\/Platform>/);
   assert.match(vcxproj, /<ClCompile Include="main\.cpp" \/>/);
   assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\src\\new_emoji_bridge\.cpp/);
   assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\include/);
   assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\lib\\Win32\\new_emoji\.lib/);
+  assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\lib\\x64\\new_emoji\.lib/);
   assert.match(vcxproj, /new_emoji\.dll/);
 });
 
@@ -708,6 +714,18 @@ function createNewEmojiTestModule(installPath: string): InstalledModule {
           sources: ['src/new_emoji_bridge.cpp'],
           libs: ['lib/Win32/new_emoji.lib'],
           runtimeFiles: ['bin/Win32/new_emoji.dll'],
+          defines: ['LINGBUILDER_NEW_EMOJI_MODULE']
+        },
+        {
+          id: 'windows-msvc-x64',
+          platform: 'windows',
+          arch: 'x64',
+          toolchain: 'msvc',
+          includeDirs: ['include'],
+          headers: ['include/new_emoji_bridge.h'],
+          sources: ['src/new_emoji_bridge.cpp'],
+          libs: ['lib/x64/new_emoji.lib'],
+          runtimeFiles: ['bin/x64/new_emoji.dll'],
           defines: ['LINGBUILDER_NEW_EMOJI_MODULE']
         }
       ],

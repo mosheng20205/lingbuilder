@@ -63,6 +63,7 @@ async function main(): Promise<void> {
   });
 
   const log = enableMcp ? console.error : console.log;
+  installAiBridgeShutdownHandlers(server, service, log);
   log(`LingBuilder AI Bridge listening on http://${host}:${port}/api/ai-bridge`);
   log(`Workspace: ${workspaceRoot}`);
   log(`Permission: ${permission}`);
@@ -71,6 +72,53 @@ async function main(): Promise<void> {
   if (enableMcp) {
     startAiBridgeMcpServer(service);
   }
+}
+
+function installAiBridgeShutdownHandlers(
+  server: http.Server,
+  service: AiBridgeService,
+  log: (...values: unknown[]) => void
+): void {
+  let shutdownPromise: Promise<void> | null = null;
+
+  const shutdown = (signal: 'SIGINT' | 'SIGTERM'): Promise<void> => {
+    if (shutdownPromise) return shutdownPromise;
+    shutdownPromise = (async () => {
+      process.off('SIGINT', handleSigint);
+      process.off('SIGTERM', handleSigterm);
+      log(`收到 ${signal}，正在停止 AI Bridge 及其受控运行进程…`);
+      try {
+        await closeHttpServer(server);
+      } catch (error) {
+        console.error(`AI Bridge HTTP 服务关闭失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+      try {
+        const result = await service.shutdown();
+        log(result.message);
+      } catch (error) {
+        console.error(`AI Bridge 受控进程清理失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    })();
+    return shutdownPromise;
+  };
+
+  const requestShutdown = (signal: 'SIGINT' | 'SIGTERM', exitCode: number) => {
+    void shutdown(signal).finally(() => process.exit(exitCode));
+  };
+  const handleSigint = () => requestShutdown('SIGINT', 130);
+  const handleSigterm = () => requestShutdown('SIGTERM', 143);
+
+  process.once('SIGINT', handleSigint);
+  process.once('SIGTERM', handleSigterm);
+}
+
+async function closeHttpServer(server: http.Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close(error => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
 }
 
 async function runModuleCommand(subcommand: string | undefined, rest: string[]): Promise<void> {

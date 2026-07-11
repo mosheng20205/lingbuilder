@@ -1,4 +1,5 @@
 const { spawn } = require('node:child_process');
+const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 
@@ -44,6 +45,23 @@ function run(command, args, options = {}) {
   });
 }
 
+function resolveNpmInvocation() {
+  const candidates = [
+    process.env.npm_execpath,
+    path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+  ].filter(Boolean);
+  const npmCliPath = candidates.find((candidate) => path.isAbsolute(candidate) && fs.existsSync(candidate));
+
+  if (!npmCliPath) {
+    throw new Error('无法定位 npm CLI。请确认已通过 npm run dev 启动，或重新安装 Node.js/npm。');
+  }
+
+  return {
+    command: process.execPath,
+    args: [npmCliPath],
+  };
+}
+
 async function waitForRenderer() {
   const started = Date.now();
 
@@ -60,7 +78,8 @@ async function main() {
   await waitForRenderer();
 
   const projectRoot = path.join(__dirname, '..');
-  await run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build:electron'], {
+  const npmInvocation = resolveNpmInvocation();
+  await run(npmInvocation.command, [...npmInvocation.args, 'run', 'build:electron'], {
     cwd: projectRoot,
   });
 

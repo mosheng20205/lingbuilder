@@ -16,6 +16,7 @@ const TARGET_PLATFORMS: ModuleTargetPlatform[] = ['windows', 'linux', 'macos'];
 const TARGET_ARCHES: ModuleTargetArch[] = ['win32', 'x64', 'arm64', 'any'];
 const TARGET_TOOLCHAINS: ModuleTargetToolchain[] = ['msvc', 'gcc', 'clang', 'cmake', 'any'];
 const BINDING_VALUE_TYPES: ModuleBindingValueType[] = ['void', 'int', 'longLong', 'double', 'bool', 'wideString', 'utf8String', 'handle', 'raw'];
+const DESIGNER_PROPERTY_TYPES = ['text', 'number', 'boolean', 'enum', 'color', 'file', 'stringList', 'columns', 'treeNodes', 'tabs', 'date', 'controlRef'];
 
 export function validateModuleManifest(value: unknown): { manifest?: LingBuilderModuleManifest; diagnostics: string[] } {
   const diagnostics: string[] = [];
@@ -46,6 +47,37 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
         seen.add(command?.name);
         if (typeof command?.signature !== 'string' || !command.signature.trim()) diagnostics.push(`命令 ${command?.name || index + 1} 缺少 signature。`);
         if (typeof command?.description !== 'string' || !command.description.trim()) diagnostics.push(`命令 ${command?.name || index + 1} 缺少 description。`);
+      });
+    }
+  }
+
+  if (contributes?.designerControls) {
+    if (!Array.isArray(contributes.designerControls)) diagnostics.push('contributes.designerControls 必须是数组。');
+    else {
+      const seenControls = new Set<string>();
+      contributes.designerControls.forEach((control: any, controlIndex: number) => {
+        if (typeof control?.type !== 'string' || !control.type.trim()) diagnostics.push(`designerControls[${controlIndex}] 缺少 type。`);
+        if (seenControls.has(control?.type)) diagnostics.push(`设计器控件重复：${control.type}`);
+        seenControls.add(control?.type);
+        if (typeof control?.label !== 'string' || !control.label.trim()) diagnostics.push(`designerControls[${controlIndex}] 缺少 label。`);
+        if (!control?.defaultProps || typeof control.defaultProps !== 'object' || Array.isArray(control.defaultProps)) diagnostics.push(`designerControls[${controlIndex}].defaultProps 必须是对象。`);
+        const eventNames = new Set<string>();
+        if (control?.events !== undefined && !Array.isArray(control.events)) diagnostics.push(`designerControls[${controlIndex}].events 必须是数组。`);
+        else (control?.events || []).forEach((event: any, eventIndex: number) => {
+          if (typeof event?.name !== 'string' || !event.name.trim()) diagnostics.push(`designerControls[${controlIndex}].events[${eventIndex}] 缺少 name。`);
+          if (eventNames.has(event?.name)) diagnostics.push(`控件 ${control.type} 的事件重复：${event.name}`);
+          eventNames.add(event?.name);
+          if (typeof event?.handlerPattern !== 'string' || !event.handlerPattern.includes('{controlName}')) diagnostics.push(`控件 ${control.type} 的事件 ${event?.name || eventIndex} 缺少 {controlName} 处理器占位符。`);
+        });
+        const propertyKeys = new Set<string>();
+        if (control?.properties !== undefined && !Array.isArray(control.properties)) diagnostics.push(`designerControls[${controlIndex}].properties 必须是数组。`);
+        else (control?.properties || []).forEach((property: any, propertyIndex: number) => {
+          if (typeof property?.key !== 'string' || !property.key.trim()) diagnostics.push(`designerControls[${controlIndex}].properties[${propertyIndex}] 缺少 key。`);
+          if (propertyKeys.has(property?.key)) diagnostics.push(`控件 ${control.type} 的属性重复：${property.key}`);
+          propertyKeys.add(property?.key);
+          if (!DESIGNER_PROPERTY_TYPES.includes(property?.type)) diagnostics.push(`控件 ${control.type} 的属性 ${property?.key || propertyIndex} 类型不受支持。`);
+          if (property?.type === 'file' && typeof property?.defaultValue === 'string' && property.defaultValue && !validateModuleRelativePath(property.defaultValue)) diagnostics.push(`控件 ${control.type} 的文件属性 ${property.key} 默认值不是安全相对路径。`);
+        });
       });
     }
   }

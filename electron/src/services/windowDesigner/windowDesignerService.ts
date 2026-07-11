@@ -5,6 +5,12 @@ import {
   LingWindowModel,
   LingWindowProject
 } from './types';
+import { normalizeControlHierarchy } from './controlHierarchy';
+import {
+  createDefaultControlProperties,
+  getPrimaryWin32ControlEvent,
+  getWin32ControlDefinition
+} from './win32ControlRegistry';
 
 export const WINDOW_DESIGNER_AUTOSAVE_KEY = 'lingbuilder.windowDesigner.autosave.v1';
 export const WINDOW_DESIGNER_PROJECT_UPDATED = 'window-designer:project-updated';
@@ -60,24 +66,12 @@ const EPL_EVENT_SUFFIX_MAP: Record<string, string> = {
   LostFocus: '失去焦点'
 };
 
-const PRIMARY_EVENT_NAME_MAP: Record<LingControlType, string> = {
-  Button: 'Click',
-  TextBox: 'TextChanged',
-  Label: 'MouseDown',
-  CheckBox: 'Checked',
-  RadioButton: 'Checked',
-  Image: 'MouseDown',
-  ProgressBar: 'ValueChanged',
-  ComboBox: 'SelectionChanged',
-  Grid: 'Loaded'
-};
-
 export function getEplEventSuffix(eventName: string): string {
   return EPL_EVENT_SUFFIX_MAP[eventName] || EVENT_NAME_MAP[eventName] || eventName;
 }
 
 export function getPrimaryEventNameForType(type: LingControlType): string {
-  return PRIMARY_EVENT_NAME_MAP[type] || getEventsForType(type)[0]?.name || 'Loaded';
+  return getPrimaryWin32ControlEvent(type)?.name || getEventsForType(type)[0]?.name || 'Loaded';
 }
 
 export function getEplEventHandlerName(controlName: string, eventName: string): string {
@@ -86,6 +80,14 @@ export function getEplEventHandlerName(controlName: string, eventName: string): 
 }
 
 export function getEventsForType(type: LingControlType): LingDesignerEventInfo[] {
+  const registered = getWin32ControlDefinition(type);
+  if (registered) {
+    return registered.events.map(item => ({
+      name: item.name,
+      label: `${item.label} (${item.name})`,
+      desc: `${registered.label}触发“${item.label}”时执行中文事件处理器。`
+    }));
+  }
   switch (type as any) {
     case 'MenuBar':
       return [
@@ -126,46 +128,25 @@ export function getEventsForType(type: LingControlType): LingDesignerEventInfo[]
 }
 
 export function createControl(type: LingControlType, index: number): LingControl {
-  const typeLabelMap: Record<LingControlType, string> = {
-    Button: '按钮',
-    TextBox: '编辑框',
-    Label: '标签',
-    CheckBox: '复选框',
-    RadioButton: '单选框',
-    Image: '图片框',
-    ProgressBar: '进度条',
-    ComboBox: '组合框',
-    Grid: '网格'
-  };
-
-  const typeDefaultContentMap: Record<LingControlType, string> = {
-    Button: '新按钮',
-    TextBox: '请输入内容...',
-    Label: '新文本标签',
-    CheckBox: '选项复选框',
-    RadioButton: '单选选项',
-    Image: '【界面图形素材】',
-    ProgressBar: '50',
-    ComboBox: '选择项_A',
-    Grid: ''
-  };
-
+  const definition = getWin32ControlDefinition(type);
+  if (!definition) throw new Error(`未知 Win32 控件类型：${type}`);
   const newId = `${type.toLowerCase()}_${Math.floor(1000 + Math.random() * 9000)}`;
 
   return {
     id: newId,
     type,
-    name: `${typeLabelMap[type]}${index}`,
-    content: typeDefaultContentMap[type],
-    width: type === 'ProgressBar' ? 300 : type === 'Label' ? 180 : 120,
-    height: type === 'ProgressBar' ? 20 : type === 'TextBox' ? 34 : 35,
+    name: `${definition.label.split('/')[0]}${index}`,
+    content: definition.defaultProps.content,
+    width: definition.defaultProps.width,
+    height: definition.defaultProps.height,
     x: 180 + Math.floor(Math.random() * 50),
     y: 150 + Math.floor(Math.random() * 50),
     fontSize: 12,
-    background: type === 'Button' ? '#007ACC' : type === 'TextBox' ? '#2D2D30' : 'transparent',
-    foreground: '#FFFFFF',
+    background: definition.defaultProps.background || 'transparent',
+    foreground: definition.defaultProps.foreground || '#FFFFFF',
     isEnabled: true,
-    visibility: 'Visible'
+    visibility: 'Visible',
+    properties: createDefaultControlProperties(type, definition.defaultProps.content)
   };
 }
 
@@ -217,6 +198,7 @@ export function createBlankWindow(index: number): LingWindowModel {
 }
 
 export const createDefaultWindowProject = (): LingWindowProject => ({
+  schemaVersion: 2,
   id: 'lingbuilder-ui-project',
   name: '太空冒险中文桌面应用',
   windows: [
@@ -523,15 +505,36 @@ export const createDefaultWindowProject = (): LingWindowProject => ({
 
 export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesignerState> | null): PersistedWindowDesignerState {
   const fallbackProject = createDefaultWindowProject();
-  const project = state?.project && Array.isArray(state.project.windows) && state.project.windows.length > 0
+  const sourceProject = state?.project && Array.isArray(state.project.windows) && state.project.windows.length > 0
     ? state.project
     : fallbackProject;
+  let projectChanged = sourceProject.schemaVersion !== 2;
+  const normalizedWindows = sourceProject.windows.map(window => {
+    const hierarchyControls = normalizeControlHierarchy(window.controls || []);
+    let controlsChanged = hierarchyControls !== window.controls;
+    const controls = hierarchyControls.map(control => {
+      if (control.properties) return control;
+      controlsChanged = true;
+      return { ...control, properties: createDefaultControlProperties(control.type, control.content) };
+    });
+    if (!controlsChanged) return window;
+    projectChanged = true;
+    return { ...window, controls };
+  });
+  const project = projectChanged ? { ...sourceProject, schemaVersion: 2 as const, windows: normalizedWindows } : sourceProject;
   const activeWindowId = project.windows.some(window => window.id === state?.activeWindowId)
     ? state!.activeWindowId!
     : project.windows[0].id;
   const activeWindow = project.windows.find(window => window.id === activeWindowId) || project.windows[0];
-  const selectedControlId = activeWindow.controls.some(control => control.id === state?.selectedControlId)
-    ? state!.selectedControlId!
+  const hasPersistedSelection = Boolean(state && Object.prototype.hasOwnProperty.call(state, 'selectedControlId'));
+  const persistedSelection = state?.selectedControlId;
+  const isVirtualWindowChild = typeof persistedSelection === 'string' && persistedSelection.startsWith('__window_');
+  const selectedControlId = hasPersistedSelection && (
+    persistedSelection === null
+    || isVirtualWindowChild
+    || activeWindow.controls.some(control => control.id === persistedSelection)
+  )
+    ? persistedSelection ?? null
     : activeWindow.controls[0]?.id || null;
 
   return {
@@ -598,6 +601,7 @@ export function generateWindowXml(window: LingWindowModel): string {
     const visibilityAttr = control.visibility === 'Collapsed' ? ' 可见性="隐藏"' : '';
     const stateAttr = !control.isEnabled ? ' 启用状态="禁用"' : '';
     const styleAttr = control.background !== 'transparent' ? ` 背景色="${control.background}"` : '';
+    const parentAttr = control.parentId ? ` 父级控件="${control.parentId}"` : '';
     const eventAttrs = Object.entries(control.events || {})
       .filter(([, handler]) => handler.trim())
       .map(([eventName, handler]) => ` ${EVENT_NAME_MAP[eventName] || eventName}="${handler}"`)
@@ -605,32 +609,38 @@ export function generateWindowXml(window: LingWindowModel): string {
 
     switch (control.type) {
       case 'Button':
-        xml += `        <中文按钮 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 字体大小="${control.fontSize}"${styleAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
+        xml += `        <中文按钮 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 字体大小="${control.fontSize}"${parentAttr}${styleAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
         break;
       case 'TextBox':
-        xml += `        <中文输入框 名称="${control.name}" 默认文本="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 字体大小="${control.fontSize}"${styleAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
+        xml += `        <中文输入框 名称="${control.name}" 默认文本="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 字体大小="${control.fontSize}"${parentAttr}${styleAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
         break;
       case 'Label':
-        xml += `        <中文标签 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 字体大小="${control.fontSize}" 字体颜色="${control.foreground}"${visibilityAttr}${eventAttrs} />\n`;
+        xml += `        <中文标签 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 字体大小="${control.fontSize}" 字体颜色="${control.foreground}"${parentAttr}${visibilityAttr}${eventAttrs} />\n`;
         break;
       case 'CheckBox':
-        xml += `        <中文复选框 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 默认选中="否" 字体大小="${control.fontSize}"${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
+        xml += `        <中文复选框 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 默认选中="否" 字体大小="${control.fontSize}"${parentAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
         break;
       case 'RadioButton':
-        xml += `        <中文单选框 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 默认选中="否" 字体大小="${control.fontSize}"${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
+        xml += `        <中文单选框 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 默认选中="否" 字体大小="${control.fontSize}"${parentAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
         break;
       case 'ProgressBar':
-        xml += `        <中文进度条 名称="${control.name}" 当前值="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 进度条颜色="${control.foreground}"${visibilityAttr}${eventAttrs} />\n`;
+        xml += `        <中文进度条 名称="${control.name}" 当前值="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 进度条颜色="${control.foreground}"${parentAttr}${visibilityAttr}${eventAttrs} />\n`;
         break;
       case 'ComboBox':
-        xml += `        <中文下拉框 名称="${control.name}" 默认选中项="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}"${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
+        xml += `        <中文下拉框 名称="${control.name}" 默认选中项="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}"${parentAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
         break;
       case 'Image':
-        xml += `        <中文图片 名称="${control.name}" 图片源="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 填充模式="等比例拉伸"${visibilityAttr}${eventAttrs} />\n`;
+        xml += `        <中文图片 名称="${control.name}" 图片源="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 填充模式="等比例拉伸"${parentAttr}${visibilityAttr}${eventAttrs} />\n`;
         break;
       case 'Grid':
-        xml += `        <中文网格 名称="${control.name}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}"${visibilityAttr}${eventAttrs} />\n`;
+        xml += `        <中文网格 名称="${control.name}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}"${parentAttr}${visibilityAttr}${eventAttrs} />\n`;
         break;
+      default: {
+        const definition = getWin32ControlDefinition(control.type);
+        const properties = escapeXmlAttribute(JSON.stringify(control.properties || {}));
+        xml += `        <Win32控件 类型="${control.type}" 中文名称="${definition?.label || control.type}" 名称="${control.name}" 内容="${escapeXmlAttribute(control.content)}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 专属属性="${properties}"${parentAttr}${styleAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
+        break;
+      }
     }
   });
 
@@ -750,7 +760,7 @@ export function generateProjectManifest(project: LingWindowProject): string {
 }
 
 function getCppControlType(type: LingControlType): string {
-  const map: Record<LingControlType, string> = {
+  const map: Partial<Record<LingControlType, string>> = {
     Button: '中文按钮*',
     TextBox: '中文文本输入框*',
     Label: '中文文本标签*',
@@ -761,11 +771,11 @@ function getCppControlType(type: LingControlType): string {
     ComboBox: '中文下拉选择框*',
     Grid: '中文网格*'
   };
-  return map[type];
+  return map[type] || `Win32控件<${getWin32ControlDefinition(type)?.label || type}>*`;
 }
 
 function getCppFactory(type: LingControlType): string {
-  const map: Record<LingControlType, string> = {
+  const map: Partial<Record<LingControlType, string>> = {
     Button: '新 中文按钮',
     TextBox: '新 中文文本输入框',
     Label: '新 中文文本标签',
@@ -776,5 +786,13 @@ function getCppFactory(type: LingControlType): string {
     ComboBox: '新 中文下拉选择框',
     Grid: '新 中文网格'
   };
-  return map[type];
+  return map[type] || `新 Win32控件<${getWin32ControlDefinition(type)?.label || type}>`;
+}
+
+function escapeXmlAttribute(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }

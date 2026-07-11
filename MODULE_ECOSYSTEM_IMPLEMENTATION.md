@@ -4,6 +4,14 @@
 
 ## 2026-07 v2 模块 SDK 重构状态
 
+### Win32 标准控件注册表（2026-07）
+
+- 新增统一 `electron/src/services/windowDesigner/win32ControlRegistry.ts`，基础/高级模块清单、设计器工具箱、专属属性、事件和原生适配器均从该注册表读取。
+- 默认 `lingbuilder.win32.basic` 覆盖基础输入、列表、组合、分组、滚动、图片、进度和网格容器；可选 `lingbuilder.win32.common-controls` 覆盖 ListView、TreeView、Tab、日期、滑块、工具栏、状态栏、RichEdit 等系统标准控件。
+- `ModuleDesignerControlContribution` 可声明 `category`、`icon`、`properties`、`isContainer`、`isVisual`、`nativeAdapter` 和 `requiredLibraries`；字段保持 manifest v2 向后兼容。
+- 非可视 ToolTip、ImageList、PropertySheet 不进入普通控件工具箱；系统通用对话框通过高级模块中文命令和 bindings 暴露。
+- 模块 manifest 校验会拒绝未知属性类型、重复控件、重复属性、重复事件、不含 `{controlName}` 的事件模板和不安全文件默认路径。
+
 - 模块清单已升级为 `schemaVersion: 2`；旧 `.lbmod` v1 不再作为兼容目标，安装预览会提示使用模块迁移工具重新打包。
 - C++ 依赖从旧 `contributes.cpp` 迁移到顶层 `targets[]`，当前默认构建目标为 `windows-msvc-win32`，并预留 `windows-msvc-x64`、CMake、Linux、macOS 等后续目标。
 - 中文命令到 C++ 的确定性映射从旧 `cppRuntimeName` 迁移到 `bindings.commands[]`。`contributes.commands` 只负责补全、诊断和文档；生成 C++ 必须优先使用 binding。
@@ -14,6 +22,7 @@
 - `new_emoji` 模块需要用 `electron/scripts/generate-new-emoji-module.cjs` 重新生成 v2 包，输出仍为 `.lingbuilder/module-packages/new_emoji.lbmod`，安装目录仍为 `.lingbuilder/modules/lingbuilder.new_emoji.ui`。
 - 新建普通 Win32 项目默认只引用 `lingbuilder.win32.basic`。`new_emoji`、网页访问、HTTP 服务端、WebSocket 客户端/服务端等模块即使已安装或属于内置网络模块，也必须由模板、用户或明确的一键启用动作加入项目引用。
 - 模块管理 UI 的 `projectId` 为必填，始终跟随解决方案中的活动项目；切换项目会清空旧请求状态并重新读取，安装后启用、启用/禁用、刷新和变更事件均携带项目 ID，服务端拒绝不存在的项目。
+- 窗口设计器监听 `lingbuilder-modules-changed`；当前项目启用或禁用模块后会立即重新读取项目模块上下文，高级控件工具箱无需重载即可更新可用状态。
 - HTTP 模块开发入口只接受工作区相对路径：模板/迁移输出位于 `.lingbuilder/module-build`，包位于 `.lingbuilder/module-packages`，市场索引位于 `.lingbuilder`；CLI 仍可显式使用本机路径。
 - 当前 F5 目标只接受精确 `windows-msvc-win32`。缺少该 target 时跳过原生依赖并返回中文诊断，不会回退到 `targets[0]`。
 - manifest 预览、目录校验、安装与打包会确认 `docs`、`examples`、`headers`、`sources`、`libs`、`runtimeFiles` 和 include 目录实际存在。

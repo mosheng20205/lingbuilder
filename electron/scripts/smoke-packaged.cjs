@@ -81,7 +81,7 @@ async function launchSmoke(name, documentsRoot, userDataRoot) {
 
     while (child.exitCode === null && Date.now() < deadline) await delay(50);
     if (child.exitCode === null) throw new Error('安装版写入结果后未能在超时内自行退出。');
-    if (child.exitCode !== 0) throw new Error(`安装版退出码异常：${child.exitCode}\n${stderr || stdout}`);
+    if (child.exitCode !== 0) throw new Error(`安装版退出码异常：${child.exitCode}\n结果：${JSON.stringify(result)}\n${stderr || stdout}`);
 
     await assertServiceStopped(result);
     return result;
@@ -94,7 +94,8 @@ async function launchSmoke(name, documentsRoot, userDataRoot) {
 }
 
 function assertSmokeResult(result, expectedWorkspace) {
-  if (!result.ok || !result.hasRoot || result.healthStatus !== 200 || result.modulesStatus !== 200 || result.aiStatus !== 200 || result.bridgeStatus !== 404) {
+  if (!result.ok || !result.hasRoot || result.healthStatus !== 200 || result.modulesStatus !== 200 || result.aiStatus !== 200 || result.bridgeStatus !== 404
+    || result.terminalStatus !== 201 || result.terminalResizeStatus !== 200 || result.terminalCloseStatus !== 200 || !result.terminalPtyOutput) {
     throw new Error(`安装版接口冒烟失败：${JSON.stringify(result)}`);
   }
   if (path.resolve(result.workspacePath) !== path.resolve(expectedWorkspace)) {

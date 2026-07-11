@@ -1,6 +1,10 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { decodeTextFile } from '../files/textFileService';
+import type { TextFileSnapshot } from '../files/types';
 import { LingWindowProject } from '../windowDesigner/types';
+import { normalizeStartupProjects, topologicalProjectOrder, validateProjectDependencies } from './projectDependencyGraph';
+import { ExternalProjectService, validateProperties, type ExternalProjectProperties } from './externalProjectService';
 
 export const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
 export const DEFAULT_SOLUTION_ID = 'lingbuilder-solution';
@@ -8,18 +12,22 @@ export const DEFAULT_SOLUTION_ID = 'lingbuilder-solution';
 export interface LingBuilderSolutionProject {
   id: string;
   name: string;
-  type: 'visual-cpp';
+  type: 'visual-cpp' | 'external-msbuild' | 'external-cmake';
   sourceRoot: string;
   configRoot: string;
   designerPath: string;
   isDefault?: boolean;
+  references?: string[];
+  projectFile?: string;
+  buildProperties?: ExternalProjectProperties;
 }
 
 export interface LingBuilderSolution {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
   name: string;
   startupProjectId: string;
+  startupProjectIds: string[];
   projects: LingBuilderSolutionProject[];
 }
 
@@ -41,11 +49,16 @@ export interface CleanSolutionResult {
 }
 
 export class SolutionService {
-  constructor(private readonly workspaceRoot: string) {}
+  private readonly externalProjectService: ExternalProjectService;
+  constructor(private readonly workspaceRoot: string) { this.externalProjectService = new ExternalProjectService(workspaceRoot); }
 
   async getSolution(): Promise<LingBuilderSolution> {
     const existing = await this.readSolutionFile();
-    if (existing) return this.normalizeSolution(existing);
+    if (existing) {
+      const normalized = this.normalizeSolution(existing);
+      if ((existing as any).schemaVersion !== 2 || JSON.stringify(existing) !== JSON.stringify(normalized)) await this.writeSolution(normalized);
+      return normalized;
+    }
 
     const migrated = this.createDefaultSolution();
     await this.writeSolution(migrated);
@@ -63,6 +76,7 @@ export class SolutionService {
       sourceRoot: `src/${projectId}`,
       configRoot: `config/${projectId}`,
       designerPath: `.lingbuilder/projects/${projectId}/window-designer.json`
+      , references: []
     };
     const designerProject = createDesignerProject(project.id, project.name);
 
@@ -76,21 +90,38 @@ export class SolutionService {
     return { solution: nextSolution, project, designerProject };
   }
 
-  async updateProject(projectId: string, patch: Partial<Pick<LingBuilderSolutionProject, 'name'>> & { startup?: boolean }): Promise<LingBuilderSolution> {
+  async importExternalProject(relativePath: string): Promise<{ solution: LingBuilderSolution; project: LingBuilderSolutionProject }> {
+    const solution = await this.getSolution();
+    const inspected = await this.externalProjectService.inspect(relativePath);
+    const project = { ...inspected, id: this.createUniqueProjectId(inspected.id, solution) } as LingBuilderSolutionProject;
+    const nextSolution = { ...solution, projects: [...solution.projects, project] };
+    await this.writeSolution(nextSolution);
+    return { solution: nextSolution, project };
+  }
+
+  async updateProject(projectId: string, patch: Partial<Pick<LingBuilderSolutionProject, 'name' | 'references' | 'buildProperties'>> & { startup?: boolean; startupProjectIds?: string[] }): Promise<LingBuilderSolution> {
     const solution = await this.getSolution();
     const target = solution.projects.find(project => project.id === projectId);
     if (!target) throw new Error(`未找到项目：${projectId}`);
+    if (patch.buildProperties) validateProperties(patch.buildProperties);
 
     const projects = solution.projects.map(project => {
       if (project.id !== projectId) return project;
       return {
         ...project,
-        name: patch.name?.trim() || project.name
+        name: patch.name?.trim() || project.name,
+        references: project.id === projectId && patch.references ? [...new Set(patch.references)] : (project.references || []),
+        buildProperties: patch.buildProperties || project.buildProperties
       };
     });
+    validateProjectDependencies(projects);
+    const startupProjectIds = patch.startupProjectIds
+      ? normalizeStartupProjects(projects, patch.startupProjectIds, projectId)
+      : patch.startup ? [projectId] : solution.startupProjectIds;
     const nextSolution = {
       ...solution,
-      startupProjectId: patch.startup ? projectId : solution.startupProjectId,
+      startupProjectId: startupProjectIds[0] || projectId,
+      startupProjectIds,
       projects
     };
     await this.writeSolution(nextSolution);
@@ -109,7 +140,8 @@ export class SolutionService {
     const nextSolution = {
       ...solution,
       startupProjectId: nextStartupProjectId,
-      projects
+      startupProjectIds: normalizeStartupProjects(projects, solution.startupProjectIds.filter(id => id !== projectId), nextStartupProjectId),
+      projects: projects.map(project => ({ ...project, references: (project.references || []).filter(id => id !== projectId) }))
     };
     const removedPaths: string[] = [];
 
@@ -140,7 +172,14 @@ export class SolutionService {
   }
 
   async readProjectFiles(project: LingBuilderSolutionProject): Promise<Record<string, string>> {
-    const files: Record<string, string> = {};
+    const snapshots = await this.readProjectFileSnapshots(project);
+    return Object.fromEntries(
+      Object.entries(snapshots).map(([filePath, snapshot]) => [filePath, snapshot.content])
+    );
+  }
+
+  async readProjectFileSnapshots(project: LingBuilderSolutionProject): Promise<Record<string, TextFileSnapshot>> {
+    const files: Record<string, TextFileSnapshot> = {};
     for (const relativeRoot of [project.sourceRoot, project.configRoot]) {
       await collectTextFiles(this.workspaceRoot, this.resolveWorkspacePath(relativeRoot), files);
     }
@@ -185,6 +224,10 @@ export class SolutionService {
     return target;
   }
 
+  getBuildOrder(solution: LingBuilderSolution, projectIds?: string[]): LingBuilderSolutionProject[] {
+    return topologicalProjectOrder(solution.projects, projectIds).map(id => this.getProject(solution, id));
+  }
+
   private async materializeProject(project: LingBuilderSolutionProject, designerProject: LingWindowProject): Promise<void> {
     const sourceRoot = this.resolveWorkspacePath(project.sourceRoot);
     const configRoot = this.resolveWorkspacePath(project.configRoot);
@@ -214,31 +257,36 @@ export class SolutionService {
     const fallback = this.createDefaultSolution();
     const projects = Array.isArray(solution.projects) && solution.projects.length > 0
       ? solution.projects.map(project => ({
-          type: 'visual-cpp' as const,
+          type: project.type || ('visual-cpp' as const),
           ...project,
           sourceRoot: project.sourceRoot || (project.id === DEFAULT_PROJECT_ID ? 'src' : `src/${project.id}`),
           configRoot: project.configRoot || (project.id === DEFAULT_PROJECT_ID ? 'config' : `config/${project.id}`),
           designerPath: project.designerPath || (project.id === DEFAULT_PROJECT_ID ? '.lingbuilder/window-designer.json' : `.lingbuilder/projects/${project.id}/window-designer.json`)
         }))
       : fallback.projects;
-    const startupProjectId = projects.some(project => project.id === solution.startupProjectId)
+    const normalizedProjects = projects.map(project => ({ ...project, references: Array.isArray(project.references) ? [...new Set(project.references)] : [] }));
+    validateProjectDependencies(normalizedProjects);
+    const startupProjectId = normalizedProjects.some(project => project.id === solution.startupProjectId)
       ? solution.startupProjectId
-      : projects[0].id;
+      : normalizedProjects[0].id;
+    const startupProjectIds = normalizeStartupProjects(normalizedProjects, (solution as any).startupProjectIds, startupProjectId);
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: solution.id || DEFAULT_SOLUTION_ID,
       name: solution.name || 'UI_CppLocProj',
-      startupProjectId,
-      projects
+      startupProjectId: startupProjectIds[0],
+      startupProjectIds,
+      projects: normalizedProjects
     };
   }
 
   private createDefaultSolution(): LingBuilderSolution {
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: DEFAULT_SOLUTION_ID,
       name: 'UI_CppLocProj',
       startupProjectId: DEFAULT_PROJECT_ID,
+      startupProjectIds: [DEFAULT_PROJECT_ID],
       projects: [
         {
           id: DEFAULT_PROJECT_ID,
@@ -248,6 +296,7 @@ export class SolutionService {
           configRoot: 'config',
           designerPath: '.lingbuilder/window-designer.json',
           isDefault: true
+          , references: []
         }
       ]
     };
@@ -268,7 +317,9 @@ export class SolutionService {
   private async writeSolution(solution: LingBuilderSolution): Promise<void> {
     const targetPath = this.solutionPath();
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.writeFile(targetPath, JSON.stringify(this.normalizeSolution(solution), null, 2), 'utf8');
+    const temporaryPath = `${targetPath}.${process.pid}.tmp`;
+    await fs.writeFile(temporaryPath, JSON.stringify(this.normalizeSolution(solution), null, 2), 'utf8');
+    await fs.rename(temporaryPath, targetPath);
   }
 
   private solutionPath(): string {
@@ -320,7 +371,11 @@ function createDefaultLingCppSource(className: string): string {
   ].join('\n');
 }
 
-async function collectTextFiles(workspaceRoot: string, directory: string, files: Record<string, string>): Promise<void> {
+async function collectTextFiles(
+  workspaceRoot: string,
+  directory: string,
+  files: Record<string, TextFileSnapshot>
+): Promise<void> {
   if (!(await exists(directory))) return;
   const entries = await fs.readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
@@ -332,7 +387,7 @@ async function collectTextFiles(workspaceRoot: string, directory: string, files:
     }
     if (!/\.(cpp|h|rc|ini|lcpp|e|xml|json)$/i.test(entry.name)) continue;
     const relativePath = path.relative(workspaceRoot, targetPath).replace(/\\/g, '/');
-    files[relativePath] = await fs.readFile(targetPath, 'utf8');
+    files[relativePath] = decodeTextFile(await fs.readFile(targetPath));
   }
 }
 

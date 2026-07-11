@@ -12,6 +12,7 @@ import {
 } from '../lingCpp/types';
 import { InstalledModule } from '../modules/types';
 import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from '../modules/targetResolver';
+import { getWin32ControlDefinition, WIN32_CONTROL_DEFINITIONS } from './win32ControlRegistry';
 
 export interface LingCppNativeProjectFile {
   relativePath: string;
@@ -70,12 +71,19 @@ export function generateLingCppNativeWin32Project(
     .filter(module => !module.isBuiltin)
     .map(module => getUnsupportedModuleTargetDiagnostic(module))
     .filter((diagnostic): diagnostic is string => Boolean(diagnostic));
+  const enabledModuleIds = new Set(enabledModules.map(module => module.manifest.id));
+  const missingControlModuleDiagnostics = project.windows.flatMap(window => window.controls.flatMap(control => {
+    const definition = getWin32ControlDefinition(control.type);
+    if (!definition || definition.moduleId === 'lingbuilder.win32.basic' || enabledModuleIds.has(definition.moduleId)) return [];
+    return [`窗口“${window.title}”中的控件“${control.name}”需要启用模块 ${definition.moduleId}；控件已保留，未静默降级。`];
+  }));
 
   return {
     selectedWindow,
     diagnostics: [
       ...parseResult.diagnostics.map(diagnostic => `第 ${diagnostic.line} 行：${diagnostic.message}`),
-      ...moduleTargetDiagnostics
+      ...moduleTargetDiagnostics,
+      ...missingControlModuleDiagnostics
     ],
     sourceMap,
     files: [
@@ -148,6 +156,10 @@ function generateMainCpp(
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <commctrl.h>
+#include <commdlg.h>
+#include <shlobj.h>
+#include <shobjidl.h>
+#include <richedit.h>
 #include <winhttp.h>
 #include <wincrypt.h>
 #include <algorithm>
@@ -164,6 +176,11 @@ function generateMainCpp(
 #endif
 
 #pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "comdlg32.lib")
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "advapi32.lib")
@@ -172,6 +189,7 @@ ${moduleCppPreamble}
 
 struct ControlSpec {
     int id;
+    int parentId;
     const wchar_t* type;
     const wchar_t* text;
     int x;
@@ -182,8 +200,27 @@ struct ControlSpec {
     COLORREF background;
     COLORREF foreground;
     bool enabled;
-    int progress;
-    const wchar_t* handler;
+    const wchar_t* data;
+    const wchar_t* tooltip;
+    int minimum;
+    int maximum;
+    int value;
+    int selectedIndex;
+    unsigned int flags;
+    const wchar_t* events;
+};
+
+enum ControlFlags : unsigned int {
+    CF_CHECKED = 1u << 0, CF_THREE_STATE = 1u << 1, CF_MULTILINE = 1u << 2,
+    CF_PASSWORD = 1u << 3, CF_READ_ONLY = 1u << 4, CF_NUMERIC = 1u << 5,
+    CF_SORTED = 1u << 6, CF_MULTIPLE = 1u << 7, CF_EDITABLE = 1u << 8,
+    CF_MARQUEE = 1u << 9, CF_GRID_LINES = 1u << 10, CF_CHECKBOXES = 1u << 11,
+    CF_WORD_WRAP = 1u << 12, CF_AUTO_PLAY = 1u << 13, CF_LOOP = 1u << 14,
+    CF_HORIZONTAL = 1u << 15, CF_BUTTON_DEFAULT = 1u << 16,
+    CF_BUTTON_TOGGLE = 1u << 17, CF_BUTTON_SPLIT = 1u << 18,
+    CF_BUTTON_COMMAND_LINK = 1u << 19, CF_ALIGN_CENTER = 1u << 20,
+    CF_ALIGN_RIGHT = 1u << 21, CF_VIEW_ICON = 1u << 22,
+    CF_VIEW_SMALL_ICON = 1u << 23, CF_VIEW_LIST = 1u << 24
 };
 
 struct WindowSpec {
@@ -203,8 +240,11 @@ struct WindowSpec {
 
 struct RuntimeControl {
     int id;
+    HWND hwnd;
     HFONT font;
     HBRUSH brush;
+    HGDIOBJ resource;
+    bool mouseInside;
 };
 
 static HINSTANCE g_instance = nullptr;
@@ -258,6 +298,37 @@ static HFONT CreateControlFont(int cssPx, UINT dpi) {
 
 static bool IsType(const ControlSpec& control, const wchar_t* type) {
     return std::wcscmp(control.type, type) == 0;
+}
+
+static std::wstring GetEventHandler(const ControlSpec& control, const wchar_t* eventName) {
+    if (!control.events || !eventName) return L"";
+    std::wstring source(control.events);
+    std::wstring prefix(eventName);
+    prefix += L"=";
+    size_t start = 0;
+    while (start < source.size()) {
+        size_t end = source.find(L'\\n', start);
+        std::wstring row = source.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start);
+        if (row.rfind(prefix, 0) == 0) return row.substr(prefix.size());
+        if (end == std::wstring::npos) break;
+        start = end + 1;
+    }
+    return L"";
+}
+
+static std::vector<std::wstring> SplitControlData(const wchar_t* data) {
+    std::vector<std::wstring> rows;
+    if (!data) return rows;
+    std::wstring source(data);
+    size_t start = 0;
+    while (start <= source.size()) {
+        size_t end = source.find(L'\\n', start);
+        std::wstring row = source.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start);
+        if (!row.empty()) rows.push_back(row);
+        if (end == std::wstring::npos) break;
+        start = end + 1;
+    }
+    return rows;
 }
 
 static bool TextEquals(const wchar_t* value, const wchar_t* expected) {
@@ -323,6 +394,7 @@ public:
     explicit LingWindowBase(const WindowSpec& spec)
         : spec_(spec),
           hwnd_(nullptr),
+          tooltip_(nullptr),
           windowBrush_(nullptr),
           dpi_(96),
           wsSession_(nullptr),
@@ -379,6 +451,7 @@ public:
 protected:
     const WindowSpec& spec_;
     HWND hwnd_;
+    HWND tooltip_;
     std::vector<RuntimeControl> runtimeControls_;
     HBRUSH windowBrush_;
     UINT dpi_;
@@ -394,12 +467,18 @@ protected:
     SOCKET wsServerClientSocket_;
     std::wstring httpLastRequest_;
     std::wstring wssLastMessage_;
+    FINDREPLACEW findReplace_ = {};
+    wchar_t findBuffer_[256] = {};
+    wchar_t replaceBuffer_[256] = {};
+    HWND findDialog_ = nullptr;
 
     virtual void OnWindowCreated() {}
 
-    virtual void DispatchLingEvent(const ControlSpec& control) {
+    virtual void DispatchLingEvent(const ControlSpec& control, const wchar_t* eventName) {
+        std::wstring handler = GetEventHandler(control, eventName);
+        if (handler.empty()) return;
         std::wstring message = L"已触发中文 C++ 事件：";
-        message += control.handler;
+        message += handler;
         MessageBoxW(hwnd_, message.c_str(), L"LingBuilder 中文 C++", MB_OK | MB_ICONINFORMATION);
     }
 
@@ -418,6 +497,104 @@ protected:
 
     int 信息框(const wchar_t* text, UINT flags, const wchar_t* title) {
         return MessageBoxW(hwnd_, text, title && title[0] ? title : L"LingBuilder 中文 C++", flags);
+    }
+
+    std::wstring 选择系统项目(const wchar_t* title, bool save, bool folder) {
+        IFileDialog* dialog = nullptr;
+        HRESULT result = CoCreateInstance(
+            save ? CLSID_FileSaveDialog : CLSID_FileOpenDialog,
+            nullptr,
+            CLSCTX_INPROC_SERVER,
+            IID_PPV_ARGS(&dialog)
+        );
+        if (FAILED(result) || !dialog) return L"";
+        if (title && title[0]) dialog->SetTitle(title);
+        if (folder) {
+            FILEOPENDIALOGOPTIONS options = {};
+            dialog->GetOptions(&options);
+            dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+        }
+        std::wstring path;
+        if (SUCCEEDED(dialog->Show(hwnd_))) {
+            IShellItem* item = nullptr;
+            if (SUCCEEDED(dialog->GetResult(&item)) && item) {
+                PWSTR value = nullptr;
+                if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &value)) && value) {
+                    path = value;
+                    CoTaskMemFree(value);
+                }
+                item->Release();
+            }
+        }
+        dialog->Release();
+        return path;
+    }
+
+    std::wstring 打开文件(const wchar_t* title, const wchar_t*) { return 选择系统项目(title, false, false); }
+    std::wstring 保存文件(const wchar_t* title, const wchar_t*) { return 选择系统项目(title, true, false); }
+    std::wstring 选择文件夹(const wchar_t* title) { return 选择系统项目(title, false, true); }
+
+    int 选择颜色(int defaultColor) {
+        static COLORREF customColors[16] = {};
+        CHOOSECOLORW dialog = {};
+        dialog.lStructSize = sizeof(dialog); dialog.hwndOwner = hwnd_;
+        dialog.rgbResult = static_cast<COLORREF>(defaultColor); dialog.lpCustColors = customColors;
+        dialog.Flags = CC_FULLOPEN | CC_RGBINIT;
+        return ChooseColorW(&dialog) ? static_cast<int>(dialog.rgbResult) : defaultColor;
+    }
+
+    std::wstring 选择字体(int defaultSize) {
+        LOGFONTW font = {};
+        wcscpy_s(font.lfFaceName, L"Microsoft YaHei UI");
+        font.lfHeight = -MulDiv(defaultSize > 0 ? defaultSize : 12, static_cast<int>(dpi_), 72);
+        CHOOSEFONTW dialog = {};
+        dialog.lStructSize = sizeof(dialog); dialog.hwndOwner = hwnd_; dialog.lpLogFont = &font;
+        dialog.Flags = CF_SCREENFONTS | CF_INITTOLOGFONTSTRUCT;
+        if (!ChooseFontW(&dialog)) return L"";
+        std::wstringstream result;
+        result << font.lfFaceName << L"," << (dialog.iPointSize / 10);
+        return result.str();
+    }
+
+    void 查找文本(const wchar_t* initial) {
+        wcsncpy_s(findBuffer_, initial ? initial : L"", _TRUNCATE);
+        findReplace_ = {}; findReplace_.lStructSize = sizeof(findReplace_); findReplace_.hwndOwner = hwnd_;
+        findReplace_.lpstrFindWhat = findBuffer_; findReplace_.wFindWhatLen = 256;
+        findDialog_ = FindTextW(&findReplace_);
+    }
+
+    void 替换文本(const wchar_t* initial, const wchar_t* replacement) {
+        wcsncpy_s(findBuffer_, initial ? initial : L"", _TRUNCATE);
+        wcsncpy_s(replaceBuffer_, replacement ? replacement : L"", _TRUNCATE);
+        findReplace_ = {}; findReplace_.lStructSize = sizeof(findReplace_); findReplace_.hwndOwner = hwnd_;
+        findReplace_.lpstrFindWhat = findBuffer_; findReplace_.wFindWhatLen = 256;
+        findReplace_.lpstrReplaceWith = replaceBuffer_; findReplace_.wReplaceWithLen = 256;
+        findDialog_ = ReplaceTextW(&findReplace_);
+    }
+
+    bool 打印() {
+        PRINTDLGW dialog = {}; dialog.lStructSize = sizeof(dialog); dialog.hwndOwner = hwnd_;
+        dialog.Flags = PD_RETURNDC | PD_NOPAGENUMS;
+        bool accepted = PrintDlgW(&dialog) == TRUE;
+        if (dialog.hDC) DeleteDC(dialog.hDC);
+        if (dialog.hDevMode) GlobalFree(dialog.hDevMode);
+        if (dialog.hDevNames) GlobalFree(dialog.hDevNames);
+        return accepted;
+    }
+
+    bool 页面设置() {
+        PAGESETUPDLGW dialog = {}; dialog.lStructSize = sizeof(dialog); dialog.hwndOwner = hwnd_;
+        bool accepted = PageSetupDlgW(&dialog) == TRUE;
+        if (dialog.hDevMode) GlobalFree(dialog.hDevMode);
+        if (dialog.hDevNames) GlobalFree(dialog.hDevNames);
+        return accepted;
+    }
+
+    int 任务对话框(const wchar_t* title, const wchar_t* content) {
+        int button = 0;
+        HRESULT result = TaskDialog(hwnd_, g_instance, title, title, content, TDCBF_OK_BUTTON, TD_INFORMATION_ICON, &button);
+        if (FAILED(result)) return MessageBoxW(hwnd_, content, title, MB_OK | MB_ICONINFORMATION);
+        return button;
     }
 
     void 结束() {
@@ -1013,35 +1190,180 @@ private:
         return nullptr;
     }
 
-    void CreateGeneratedControl(const ControlSpec& control) {
+    void AttachTooltip(HWND child, const ControlSpec& control) {
+        if (!control.tooltip || !control.tooltip[0]) return;
+        if (!tooltip_) {
+            tooltip_ = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr,
+                WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX,
+                CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                hwnd_, nullptr, g_instance, nullptr);
+            if (tooltip_) SetWindowPos(tooltip_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+        if (!tooltip_) return;
+        TOOLINFOW info = {};
+        info.cbSize = sizeof(info); info.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
+        info.hwnd = hwnd_; info.uId = reinterpret_cast<UINT_PTR>(child);
+        info.lpszText = const_cast<wchar_t*>(control.tooltip);
+        SendMessageW(tooltip_, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&info));
+    }
+
+    static LRESULT CALLBACK ControlSubclassProc(
+        HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam,
+        UINT_PTR subclassId, DWORD_PTR referenceData
+    ) {
+        LingWindowBase* self = reinterpret_cast<LingWindowBase*>(referenceData);
+        if (!self) return DefSubclassProc(hwnd, message, wParam, lParam);
+        const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
+        RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
+        if (control && runtime) {
+            if (message == WM_MOUSEMOVE && !runtime->mouseInside) {
+                runtime->mouseInside = true;
+                TRACKMOUSEEVENT tracking = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0 };
+                TrackMouseEvent(&tracking);
+                self->DispatchLingEvent(*control, L"MouseEnter");
+            } else if (message == WM_MOUSELEAVE) {
+                runtime->mouseInside = false;
+                self->DispatchLingEvent(*control, L"MouseLeave");
+            } else if (message == WM_LBUTTONDOWN) {
+                self->DispatchLingEvent(*control, L"MouseDown");
+            } else if (message == WM_SETFOCUS) {
+                self->DispatchLingEvent(*control, L"GotFocus");
+            } else if (message == WM_KILLFOCUS) {
+                self->DispatchLingEvent(*control, L"LostFocus");
+            } else if (message == WM_NCDESTROY) {
+                RemoveWindowSubclass(hwnd, ControlSubclassProc, subclassId);
+            }
+        }
+        return DefSubclassProc(hwnd, message, wParam, lParam);
+    }
+
+    bool CreateGeneratedControl(const ControlSpec& control) {
         DWORD style = WS_CHILD | WS_VISIBLE;
         DWORD exStyle = 0;
         const wchar_t* className = L"STATIC";
         const wchar_t* text = control.text;
+        HWND parentHwnd = hwnd_;
+        if (control.parentId > 0) {
+            RuntimeControl* parent = FindRuntimeControl(control.parentId);
+            if (!parent || !parent->hwnd) return false;
+            parentHwnd = parent->hwnd;
+        }
 
         if (!control.enabled) style |= WS_DISABLED;
         if (IsType(control, L"Button")) {
             className = L"BUTTON";
-            style |= BS_PUSHBUTTON;
+            if (control.flags & CF_BUTTON_DEFAULT) style |= BS_DEFPUSHBUTTON;
+            else if (control.flags & CF_BUTTON_TOGGLE) style |= BS_AUTOCHECKBOX | BS_PUSHLIKE;
+            else if (control.flags & CF_BUTTON_SPLIT) style |= BS_SPLITBUTTON;
+            else if (control.flags & CF_BUTTON_COMMAND_LINK) style |= BS_COMMANDLINK;
+            else style |= BS_PUSHBUTTON;
         } else if (IsType(control, L"TextBox")) {
             className = L"EDIT";
             style |= WS_BORDER | ES_AUTOHSCROLL;
+            if (control.flags & CF_MULTILINE) style |= ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL;
+            if (control.flags & CF_PASSWORD) style |= ES_PASSWORD;
+            if (control.flags & CF_READ_ONLY) style |= ES_READONLY;
+            if (control.flags & CF_NUMERIC) style |= ES_NUMBER;
+            if (control.flags & CF_ALIGN_CENTER) style |= ES_CENTER;
+            if (control.flags & CF_ALIGN_RIGHT) style |= ES_RIGHT;
             exStyle = WS_EX_CLIENTEDGE;
         } else if (IsType(control, L"Label")) {
             className = L"STATIC";
-            style |= SS_LEFT | SS_NOTIFY;
+            style |= SS_NOTIFY;
+            if (control.flags & CF_ALIGN_CENTER) style |= SS_CENTER;
+            else if (control.flags & CF_ALIGN_RIGHT) style |= SS_RIGHT;
+            else style |= SS_LEFT;
         } else if (IsType(control, L"CheckBox")) {
             className = L"BUTTON";
-            style |= BS_AUTOCHECKBOX;
+            style |= (control.flags & CF_THREE_STATE) ? BS_AUTO3STATE : BS_AUTOCHECKBOX;
         } else if (IsType(control, L"RadioButton")) {
             className = L"BUTTON";
             style |= BS_AUTORADIOBUTTON;
+        } else if (IsType(control, L"GroupBox")) {
+            className = L"BUTTON";
+            style |= BS_GROUPBOX;
+        } else if (IsType(control, L"ListBox")) {
+            className = L"LISTBOX";
+            style |= WS_BORDER | WS_VSCROLL | LBS_NOTIFY;
+            if (control.flags & CF_SORTED) style |= LBS_SORT;
+            if (control.flags & CF_MULTIPLE) style |= LBS_EXTENDEDSEL;
+            exStyle = WS_EX_CLIENTEDGE;
         } else if (IsType(control, L"ProgressBar")) {
             className = PROGRESS_CLASSW;
             text = L"";
         } else if (IsType(control, L"ComboBox")) {
             className = L"COMBOBOX";
-            style |= CBS_DROPDOWNLIST | WS_VSCROLL;
+            style |= (control.flags & CF_EDITABLE) ? CBS_DROPDOWN : CBS_DROPDOWNLIST;
+            if (control.flags & CF_SORTED) style |= CBS_SORT;
+            style |= WS_VSCROLL;
+        } else if (IsType(control, L"ScrollBar") || IsType(control, L"FlatScrollBar")) {
+            className = L"SCROLLBAR";
+            style |= (control.flags & CF_HORIZONTAL) ? SBS_HORZ : SBS_VERT;
+        } else if (IsType(control, L"Image")) {
+            className = L"STATIC";
+            style |= SS_BITMAP | SS_CENTERIMAGE | SS_NOTIFY;
+        } else if (IsType(control, L"Grid")) {
+            className = L"STATIC";
+            style |= SS_WHITERECT | WS_BORDER;
+        } else if (IsType(control, L"ListView")) {
+            className = WC_LISTVIEWW;
+            if (control.flags & CF_VIEW_ICON) style |= LVS_ICON;
+            else if (control.flags & CF_VIEW_SMALL_ICON) style |= LVS_SMALLICON;
+            else if (control.flags & CF_VIEW_LIST) style |= LVS_LIST;
+            else style |= LVS_REPORT;
+            style |= LVS_SHOWSELALWAYS | WS_BORDER;
+            if (!(control.flags & CF_MULTIPLE)) style |= LVS_SINGLESEL;
+            exStyle = WS_EX_CLIENTEDGE;
+        } else if (IsType(control, L"TreeView")) {
+            className = WC_TREEVIEWW;
+            style |= TVS_HASBUTTONS | TVS_HASLINES | TVS_LINESATROOT | WS_BORDER;
+            if (control.flags & CF_CHECKBOXES) style |= TVS_CHECKBOXES;
+            exStyle = WS_EX_CLIENTEDGE;
+        } else if (IsType(control, L"TabControl")) {
+            className = WC_TABCONTROLW;
+            style |= WS_CLIPSIBLINGS;
+        } else if (IsType(control, L"Header")) {
+            className = WC_HEADERW;
+            style |= HDS_BUTTONS | HDS_HORZ;
+        } else if (IsType(control, L"ComboBoxEx")) {
+            className = WC_COMBOBOXEXW;
+            style |= CBS_DROPDOWNLIST;
+        } else if (IsType(control, L"SysLink")) {
+            className = WC_LINK;
+        } else if (IsType(control, L"DateTimePicker")) {
+            className = DATETIMEPICK_CLASSW;
+            style |= DTS_SHORTDATEFORMAT;
+        } else if (IsType(control, L"MonthCalendar")) {
+            className = MONTHCAL_CLASSW;
+        } else if (IsType(control, L"TrackBar")) {
+            className = TRACKBAR_CLASSW;
+            style |= TBS_AUTOTICKS;
+        } else if (IsType(control, L"UpDown")) {
+            className = UPDOWN_CLASSW;
+            style |= UDS_ARROWKEYS | UDS_SETBUDDYINT;
+        } else if (IsType(control, L"HotKey")) {
+            className = HOTKEY_CLASSW;
+        } else if (IsType(control, L"IPAddress")) {
+            className = WC_IPADDRESSW;
+        } else if (IsType(control, L"ToolBar")) {
+            className = TOOLBARCLASSNAMEW;
+            style |= TBSTYLE_FLAT | TBSTYLE_TOOLTIPS;
+        } else if (IsType(control, L"StatusBar")) {
+            className = STATUSCLASSNAMEW;
+        } else if (IsType(control, L"ReBar")) {
+            className = REBARCLASSNAMEW;
+            style |= RBS_VARHEIGHT | CCS_NODIVIDER;
+        } else if (IsType(control, L"Pager")) {
+            className = WC_PAGESCROLLERW;
+        } else if (IsType(control, L"RichEdit")) {
+            className = MSFTEDIT_CLASS;
+            style |= WS_BORDER | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL;
+            if (control.flags & CF_READ_ONLY) style |= ES_READONLY;
+            if (!(control.flags & CF_WORD_WRAP)) style |= ES_AUTOHSCROLL | WS_HSCROLL;
+            exStyle = WS_EX_CLIENTEDGE;
+        } else if (IsType(control, L"Animation")) {
+            className = ANIMATE_CLASSW;
+            style |= ACS_CENTER | ACS_TRANSPARENT;
         }
 
         HWND child = CreateWindowExW(
@@ -1053,29 +1375,140 @@ private:
             ScaleForDpi(control.y, dpi_),
             ScaleForDpi(control.width, dpi_),
             ScaleForDpi(control.height, dpi_),
-            hwnd_,
+            parentHwnd,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(control.id)),
             g_instance,
             nullptr
         );
-        if (!child) return;
+        if (!child) return false;
 
         HFONT font = CreateControlFont(control.fontSize, dpi_);
         HBRUSH brush = CreateSolidBrush(control.background);
-        runtimeControls_.push_back({ control.id, font, brush });
+        runtimeControls_.push_back({ control.id, child, font, brush, nullptr, false });
+        SetWindowSubclass(child, ControlSubclassProc, static_cast<UINT_PTR>(control.id), reinterpret_cast<DWORD_PTR>(this));
+        AttachTooltip(child, control);
         if (font) SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-        if (IsType(control, L"ProgressBar")) {
-            SendMessageW(child, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
-            SendMessageW(child, PBM_SETPOS, control.progress, 0);
-        } else if (IsType(control, L"ComboBox")) {
-            SendMessageW(child, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(control.text));
-            SendMessageW(child, CB_SETCURSEL, 0, 0);
+        if ((IsType(control, L"CheckBox") || IsType(control, L"RadioButton") || IsType(control, L"Button")) && (control.flags & CF_CHECKED)) {
+            SendMessageW(child, BM_SETCHECK, BST_CHECKED, 0);
         }
+        if (IsType(control, L"ProgressBar")) {
+            SendMessageW(child, PBM_SETRANGE32, control.minimum, control.maximum);
+            SendMessageW(child, PBM_SETPOS, control.value, 0);
+            if (control.flags & CF_MARQUEE) SendMessageW(child, PBM_SETMARQUEE, TRUE, 30);
+        } else if (IsType(control, L"ComboBox")) {
+            auto rows = SplitControlData(control.data);
+            if (rows.empty() && control.text[0]) rows.push_back(control.text);
+            for (const auto& row : rows) SendMessageW(child, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(row.c_str()));
+            SendMessageW(child, CB_SETCURSEL, control.selectedIndex, 0);
+        } else if (IsType(control, L"SysLink") && control.data && control.data[0]) {
+            std::wstring markup = L"<a href=\\\"";
+            markup += control.data; markup += L"\\\">"; markup += control.text; markup += L"</a>";
+            SetWindowTextW(child, markup.c_str());
+        } else if (IsType(control, L"IPAddress") && control.data && control.data[0]) {
+            unsigned int a = 0, b = 0, c = 0, d = 0;
+            if (swscanf_s(control.data, L"%u.%u.%u.%u", &a, &b, &c, &d) == 4) {
+                SendMessageW(child, IPM_SETADDRESS, 0, MAKEIPADDRESS(a, b, c, d));
+            }
+        } else if (IsType(control, L"ListBox")) {
+            auto rows = SplitControlData(control.data);
+            if (rows.empty() && control.text[0]) rows.push_back(control.text);
+            for (const auto& row : rows) SendMessageW(child, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(row.c_str()));
+            SendMessageW(child, LB_SETCURSEL, control.selectedIndex, 0);
+        } else if (IsType(control, L"ScrollBar") || IsType(control, L"FlatScrollBar")) {
+            SetScrollRange(child, SB_CTL, control.minimum, control.maximum, FALSE);
+            SetScrollPos(child, SB_CTL, control.value, TRUE);
+        } else if (IsType(control, L"TrackBar")) {
+            SendMessageW(child, TBM_SETRANGE, TRUE, MAKELPARAM(control.minimum, control.maximum));
+            SendMessageW(child, TBM_SETPOS, TRUE, control.value);
+        } else if (IsType(control, L"UpDown")) {
+            SendMessageW(child, UDM_SETRANGE32, control.minimum, control.maximum);
+            SendMessageW(child, UDM_SETPOS32, 0, control.value);
+        } else if (IsType(control, L"ListView")) {
+            DWORD extended = LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER;
+            if (control.flags & CF_GRID_LINES) extended |= LVS_EX_GRIDLINES;
+            ListView_SetExtendedListViewStyle(child, extended);
+            auto rows = SplitControlData(control.data);
+            if (rows.empty()) rows.push_back(L"内容");
+            for (int index = 0; index < static_cast<int>(rows.size()); ++index) {
+                LVCOLUMNW column = { LVCF_TEXT | LVCF_WIDTH, 0, ScaleForDpi(140, dpi_), const_cast<wchar_t*>(rows[index].c_str()) };
+                ListView_InsertColumn(child, index, &column);
+            }
+            if (control.text[0]) { LVITEMW item = { LVIF_TEXT, 0, 0, 0, 0, const_cast<wchar_t*>(control.text) }; ListView_InsertItem(child, &item); }
+        } else if (IsType(control, L"TreeView")) {
+            auto rows = SplitControlData(control.data);
+            if (rows.empty() && control.text[0]) rows.push_back(control.text);
+            for (const auto& row : rows) {
+                TVINSERTSTRUCTW item = {};
+                item.hParent = TVI_ROOT; item.hInsertAfter = TVI_LAST;
+                item.item.mask = TVIF_TEXT; item.item.pszText = const_cast<wchar_t*>(row.c_str());
+                TreeView_InsertItem(child, &item);
+            }
+        } else if (IsType(control, L"TabControl")) {
+            auto rows = SplitControlData(control.data);
+            if (rows.empty()) rows.push_back(L"标签页 1");
+            for (int index = 0; index < static_cast<int>(rows.size()); ++index) {
+                TCITEMW item = { TCIF_TEXT, 0, 0, const_cast<wchar_t*>(rows[index].c_str()) };
+                TabCtrl_InsertItem(child, index, &item);
+            }
+            TabCtrl_SetCurSel(child, control.selectedIndex);
+        } else if (IsType(control, L"StatusBar")) {
+            auto rows = SplitControlData(control.data);
+            if (rows.empty()) rows.push_back(control.text);
+            std::vector<int> edges(rows.size(), 0);
+            for (size_t index = 0; index < rows.size(); ++index) edges[index] = index + 1 == rows.size() ? -1 : ScaleForDpi(static_cast<int>((index + 1) * 140), dpi_);
+            SendMessageW(child, SB_SETPARTS, static_cast<WPARAM>(edges.size()), reinterpret_cast<LPARAM>(edges.data()));
+            for (size_t index = 0; index < rows.size(); ++index) SendMessageW(child, SB_SETTEXTW, index, reinterpret_cast<LPARAM>(rows[index].c_str()));
+        } else if (IsType(control, L"RichEdit")) {
+            SendMessageW(child, EM_SETEVENTMASK, 0, ENM_CHANGE | ENM_SELCHANGE);
+        } else if (IsType(control, L"Image") && control.data && control.data[0]) {
+            HBITMAP bitmap = reinterpret_cast<HBITMAP>(LoadImageW(nullptr, control.data, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE | LR_CREATEDIBSECTION));
+            if (bitmap) {
+                SendMessageW(child, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(bitmap));
+                RuntimeControl* runtime = FindRuntimeControl(control.id);
+                if (runtime) runtime->resource = bitmap;
+            }
+        } else if (IsType(control, L"Header")) {
+            auto rows = SplitControlData(control.data);
+            for (int index = 0; index < static_cast<int>(rows.size()); ++index) {
+                HDITEMW item = {}; item.mask = HDI_TEXT | HDI_WIDTH; item.cxy = ScaleForDpi(120, dpi_); item.pszText = const_cast<wchar_t*>(rows[index].c_str());
+                Header_InsertItem(child, index, &item);
+            }
+        } else if (IsType(control, L"ComboBoxEx")) {
+            auto rows = SplitControlData(control.data);
+            for (int index = 0; index < static_cast<int>(rows.size()); ++index) {
+                COMBOBOXEXITEMW item = {}; item.mask = CBEIF_TEXT; item.iItem = index; item.pszText = const_cast<wchar_t*>(rows[index].c_str());
+                SendMessageW(child, CBEM_INSERTITEMW, 0, reinterpret_cast<LPARAM>(&item));
+            }
+            SendMessageW(child, CB_SETCURSEL, control.selectedIndex, 0);
+        } else if (IsType(control, L"ToolBar")) {
+            SendMessageW(child, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
+            TBBUTTON button = {}; button.idCommand = control.id; button.fsState = TBSTATE_ENABLED; button.fsStyle = BTNS_BUTTON | BTNS_AUTOSIZE; button.iString = reinterpret_cast<INT_PTR>(control.text);
+            SendMessageW(child, TB_ADDBUTTONSW, 1, reinterpret_cast<LPARAM>(&button));
+            SendMessageW(child, TB_AUTOSIZE, 0, 0);
+        } else if (IsType(control, L"Animation") && control.data && control.data[0]) {
+            Animate_Open(child, control.data);
+            if (control.flags & CF_AUTO_PLAY) Animate_Play(child, 0, -1, (control.flags & CF_LOOP) ? -1 : 1);
+        }
+        return true;
     }
 
     void RebuildControls() {
-        for (int i = 0; i < spec_.controlCount; ++i) {
-            CreateGeneratedControl(spec_.controls[i]);
+        std::vector<const ControlSpec*> pending;
+        for (int i = 0; i < spec_.controlCount; ++i) pending.push_back(&spec_.controls[i]);
+        while (!pending.empty()) {
+            size_t before = pending.size();
+            for (auto item = pending.begin(); item != pending.end();) {
+                if (CreateGeneratedControl(**item)) item = pending.erase(item);
+                else ++item;
+            }
+            if (pending.size() == before) {
+                for (const ControlSpec* control : pending) {
+                    ControlSpec rootFallback = *control;
+                    rootFallback.parentId = 0;
+                    CreateGeneratedControl(rootFallback);
+                }
+                break;
+            }
         }
     }
 
@@ -1089,8 +1522,10 @@ private:
         for (auto& control : runtimeControls_) {
             if (control.font) DeleteObject(control.font);
             if (control.brush) DeleteObject(control.brush);
+            if (control.resource) DeleteObject(control.resource);
         }
         runtimeControls_.clear();
+        if (tooltip_) { DestroyWindow(tooltip_); tooltip_ = nullptr; }
     }
 
     LRESULT OnMessage(UINT message, WPARAM wParam, LPARAM lParam) {
@@ -1106,16 +1541,69 @@ private:
             int notification = HIWORD(wParam);
             const ControlSpec* control = FindControl(controlId);
             if (controlId >= 50000 && controlId < 50100 && control) {
-                DispatchLingEvent(*control);
+                DispatchLingEvent(*control, L"Select");
                 return 0;
             }
             if (!control) return 0;
-            if ((IsType(*control, L"Button") && notification == BN_CLICKED) ||
-                (IsType(*control, L"CheckBox") && notification == BN_CLICKED) ||
-                (IsType(*control, L"RadioButton") && notification == BN_CLICKED) ||
-                (IsType(*control, L"ComboBox") && notification == CBN_SELCHANGE) ||
-                (IsType(*control, L"Label") && notification == STN_CLICKED)) {
-                DispatchLingEvent(*control);
+            if (IsType(*control, L"CheckBox") && notification == BN_CLICKED) {
+                HWND child = reinterpret_cast<HWND>(lParam);
+                DispatchLingEvent(*control, SendMessageW(child, BM_GETCHECK, 0, 0) == BST_CHECKED ? L"Checked" : L"Unchecked");
+            } else if (IsType(*control, L"RadioButton") && notification == BN_CLICKED) {
+                DispatchLingEvent(*control, L"Checked");
+            } else if ((IsType(*control, L"Button") || IsType(*control, L"Label") || IsType(*control, L"SysLink")) && (notification == BN_CLICKED || notification == STN_CLICKED)) {
+                DispatchLingEvent(*control, L"Click");
+            } else if ((IsType(*control, L"TextBox") || IsType(*control, L"RichEdit")) && notification == EN_CHANGE) {
+                DispatchLingEvent(*control, L"TextChanged");
+            } else if (IsType(*control, L"ListBox") && notification == LBN_SELCHANGE) {
+                DispatchLingEvent(*control, L"SelectionChanged");
+            } else if (IsType(*control, L"ListBox") && notification == LBN_DBLCLK) {
+                DispatchLingEvent(*control, L"DoubleClick");
+            } else if ((IsType(*control, L"ComboBox") || IsType(*control, L"ComboBoxEx")) && notification == CBN_SELCHANGE) {
+                DispatchLingEvent(*control, L"SelectionChanged");
+            } else if ((IsType(*control, L"ComboBox") || IsType(*control, L"ComboBoxEx")) && notification == CBN_EDITCHANGE) {
+                DispatchLingEvent(*control, L"TextChanged");
+            }
+            return 0;
+        }
+        case WM_NOTIFY: {
+            NMHDR* header = reinterpret_cast<NMHDR*>(lParam);
+            if (!header) return 0;
+            const ControlSpec* control = FindControl(static_cast<int>(header->idFrom));
+            if (!control) return 0;
+            if ((IsType(*control, L"ListView") && header->code == LVN_ITEMCHANGED) ||
+                (IsType(*control, L"TreeView") && header->code == TVN_SELCHANGEDW) ||
+                (IsType(*control, L"TabControl") && header->code == TCN_SELCHANGE)) {
+                DispatchLingEvent(*control, L"SelectionChanged");
+            } else if (IsType(*control, L"ListView") && header->code == LVN_COLUMNCLICK) {
+                DispatchLingEvent(*control, L"ColumnClick");
+            } else if ((IsType(*control, L"ListView") || IsType(*control, L"TreeView")) && header->code == NM_DBLCLK) {
+                DispatchLingEvent(*control, L"DoubleClick");
+            } else if (IsType(*control, L"TreeView") && header->code == TVN_ITEMEXPANDEDW) {
+                NMTREEVIEWW* tree = reinterpret_cast<NMTREEVIEWW*>(lParam);
+                DispatchLingEvent(*control, tree->action == TVE_COLLAPSE ? L"Collapsed" : L"Expanded");
+            } else if (IsType(*control, L"Header") && header->code == HDN_ITEMCLICKW) {
+                DispatchLingEvent(*control, L"ColumnClick");
+            } else if (IsType(*control, L"Header") && header->code == HDN_ENDTRACKW) {
+                DispatchLingEvent(*control, L"ColumnResized");
+            } else if ((IsType(*control, L"DateTimePicker") && header->code == DTN_DATETIMECHANGE) ||
+                       (IsType(*control, L"MonthCalendar") && header->code == MCN_SELCHANGE) ||
+                       (IsType(*control, L"UpDown") && header->code == UDN_DELTAPOS) ||
+                       (IsType(*control, L"IPAddress") && header->code == IPN_FIELDCHANGED)) {
+                DispatchLingEvent(*control, L"ValueChanged");
+            } else if (IsType(*control, L"SysLink") && (header->code == NM_CLICK || header->code == NM_RETURN)) {
+                DispatchLingEvent(*control, L"Click");
+            } else if (IsType(*control, L"RichEdit") && header->code == EN_SELCHANGE) {
+                DispatchLingEvent(*control, L"SelectionChanged");
+            }
+            return 0;
+        }
+        case WM_HSCROLL:
+        case WM_VSCROLL: {
+            HWND child = reinterpret_cast<HWND>(lParam);
+            if (!child) return 0;
+            const ControlSpec* control = FindControl(GetDlgCtrlID(child));
+            if (control && (IsType(*control, L"TrackBar") || IsType(*control, L"ScrollBar") || IsType(*control, L"FlatScrollBar"))) {
+                DispatchLingEvent(*control, L"ValueChanged");
             }
             return 0;
         }
@@ -1213,11 +1701,16 @@ static HWND OpenGeneratedWindowByName(const wchar_t* windowName, int showCommand
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     g_instance = instance;
     EnableDpiAwareness();
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 
     INITCOMMONCONTROLSEX controls = {};
     controls.dwSize = sizeof(INITCOMMONCONTROLSEX);
-    controls.dwICC = ICC_PROGRESS_CLASS | ICC_STANDARD_CLASSES;
+    controls.dwICC = ICC_WIN95_CLASSES | ICC_DATE_CLASSES | ICC_USEREX_CLASSES |
+        ICC_COOL_CLASSES | ICC_BAR_CLASSES | ICC_TAB_CLASSES |
+        ICC_TREEVIEW_CLASSES | ICC_LISTVIEW_CLASSES |
+        ICC_PAGESCROLLER_CLASS | ICC_LINK_CLASS;
     InitCommonControlsEx(&controls);
+    LoadLibraryW(L"Msftedit.dll");
 
     WNDCLASSEXW windowClass = {};
     windowClass.cbSize = sizeof(WNDCLASSEXW);
@@ -1227,7 +1720,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     windowClass.hbrBackground = nullptr;
     windowClass.lpszClassName = GENERATED_WINDOW_CLASS;
 
-    if (!RegisterClassExW(&windowClass)) return 0;
+    if (!RegisterClassExW(&windowClass)) { CoUninitialize(); return 0; }
     OpenGeneratedWindow(g_startWindowIndex, showCommand);
 
     MSG message;
@@ -1235,6 +1728,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }
+    CoUninitialize();
     return static_cast<int>(message.wParam);
 }
 `;
@@ -1632,8 +2126,8 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
     ? [windowCreatedHandler, ...handlers.filter(handler => handler !== windowCreatedHandler)]
     : handlers;
   const dispatchCases = handlers
-    .map(handler => `        if (std::wcscmp(control.handler, L"${escapeWideString(handler)}") == 0) { ${toCppIdentifier(handler)}(); return; }`)
-    .join('\n') || '        (void)control;';
+    .map(handler => `        if (handler == L"${escapeWideString(handler)}") { ${toCppIdentifier(handler)}(); return; }`)
+    .join('\n') || '        (void)control; (void)eventName;';
   const eventMethods = methodHandlers
     .map(handler => generateHandlerMethod(handler, findLingCppMethod(program, handler), enabledModules));
   const userMethods = (sourceClass?.methods || []).filter(method => method.kind === 'method');
@@ -1654,9 +2148,10 @@ ${publicUserMethodBlock}
 
 protected:
 ${windowCreatedOverride}
-    void DispatchLingEvent(const ControlSpec& control) override {
+    void DispatchLingEvent(const ControlSpec& control, const wchar_t* eventName) override {
+        std::wstring handler = GetEventHandler(control, eventName);
 ${dispatchCases}
-        LingWindowBase::DispatchLingEvent(control);
+        LingWindowBase::DispatchLingEvent(control, eventName);
     }
 ${protectedUserMethodBlock}
 
@@ -1711,7 +2206,9 @@ function toCppType(type: string, position: 'parameter' | 'return'): string {
   if (/^(小数型|小数|双精度|双精度型)$/u.test(normalized)) return 'double';
   if (/^(逻辑型|逻辑|布尔型|布尔)$/u.test(normalized)) return 'bool';
   if (/^(字节型|字节)$/u.test(normalized)) return 'unsigned char';
-  if (/按钮|标签|编辑框|复选框|单选框|下拉框|控件|窗体/u.test(normalized)) return 'HWND';
+  if (/控件|窗体/u.test(normalized) || WIN32_CONTROL_DEFINITIONS.some(definition => (
+    normalized === definition.label || normalized === definition.label.split('/')[0] || normalized === definition.type
+  ))) return 'HWND';
   return 'void*';
 }
 
@@ -2029,6 +2526,7 @@ function toMessageBoxFlagsExpression(flagCode: number): string {
 
 function generateControlArray(window: LingWindowModel, windowIndex: number, program: LingCppProgram): string {
   const visibleControls = [...getVisibleControls(window)];
+  const controlIds = new Map(visibleControls.map((control, index) => [control.id, index + 1001]));
   const items = ((window as any).menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件')
     .split(',')
     .map((item: string) => item.trim())
@@ -2061,9 +2559,10 @@ function generateControlArray(window: LingWindowModel, windowIndex: number, prog
         const parts = control.id.split('_');
         id = 50000 + Number.parseInt(parts[parts.length - 1], 10);
       }
-      return generateControlSpec(control, id);
+      const parent = control.parentId ? visibleControls.find(item => item.id === control.parentId) : undefined;
+      return generateControlSpec(control, id, parent ? controlIds.get(parent.id) || 0 : 0, parent);
     })
-    .join(',\n') || '    { 0, L"", L"", 0, 0, 0, 0, 12, RGB(0, 0, 0), RGB(0, 0, 0), true, 0, L"" }';
+    .join(',\n') || '    { 0, 0, L"", L"", 0, 0, 0, 0, 12, RGB(0, 0, 0), RGB(0, 0, 0), true, L"", L"", 0, 100, 0, 0, 0, L"" }';
 
   return `static ControlSpec g_controls_${windowIndex}[] = {
 ${controls}
@@ -2079,14 +2578,29 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number): strin
   return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - TITLE_BAR_HEIGHT)}, ${toColorRef(window.background)}, L"${escapeWideString(openPlacement)}", ${openX}, ${openY}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}" }`;
 }
 
-function generateControlSpec(control: LingControl, id: number): string {
-  const handler = Object.values(control.events || {}).find(value => value.trim()) || '';
+function generateControlSpec(control: LingControl, id: number, parentId = 0, parent?: LingControl): string {
+  const events = Object.entries(control.events || {})
+    .filter(([, handler]) => handler.trim())
+    .map(([eventName, handler]) => `${eventName}=${handler.trim()}`)
+    .join('\n');
   const background = control.background === 'transparent' ? '#1E1E24' : control.background;
-  return `    { ${id}, L"${control.type}", L"${escapeWideString(control.content)}", ${int(control.x)}, ${int(control.y)}, ${int(control.width)}, ${int(control.height)}, ${int(control.fontSize)}, ${toColorRef(background)}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, ${parseProgress(control)}, L"${escapeWideString(handler)}" }`;
+  const x = parent ? control.x - parent.x : control.x;
+  const y = parent ? control.y - parent.y : control.y;
+  const minimum = numericControlProperty(control, 'minimum', 0);
+  const maximum = numericControlProperty(control, 'maximum', 100);
+  const value = parseControlValue(control);
+  const selectedIndex = numericControlProperty(control, 'selectedIndex', 0);
+  const data = serializeControlData(control);
+  const tooltip = typeof control.properties?.toolTip === 'string' ? control.properties.toolTip : '';
+  const flags = generateControlFlags(control);
+  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.content)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${int(control.fontSize)}, ${toColorRef(background)}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(tooltip)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(events)}" }`;
 }
 
 function getWindowHandlers(window: LingWindowModel): string[] {
   const handlers = new Set<string>();
+  Object.values(window.events || {}).forEach(handler => {
+    if (handler.trim()) handlers.add(handler.trim());
+  });
   window.controls.forEach(control => {
     Object.values(control.events || {}).forEach(handler => {
       if (handler.trim()) handlers.add(handler.trim());
@@ -2100,9 +2614,10 @@ function getWindowHandlers(window: LingWindowModel): string[] {
 
 function findWindowCreatedHandler(window: LingWindowModel, program: LingCppProgram): string | undefined {
   const candidates = [
+    window.events?.Loaded?.trim(),
     `_${window.className}_创建完毕`,
     `${window.className}_创建完毕`
-  ];
+  ].filter((candidate): candidate is string => Boolean(candidate));
 
   return candidates.find(candidate => Boolean(findLingCppMethod(program, candidate)));
 }
@@ -2111,10 +2626,65 @@ function getVisibleControls(window: LingWindowModel): LingControl[] {
   return window.controls.filter(control => control.visibility === 'Visible');
 }
 
-function parseProgress(control: LingControl): number {
-  if (control.type !== 'ProgressBar') return 0;
-  const value = Number.parseInt(control.content, 10);
-  return Number.isNaN(value) ? 0 : Math.max(0, Math.min(100, value));
+function parseControlValue(control: LingControl): number {
+  const configured = control.properties?.value;
+  const value = typeof configured === 'number' ? configured : Number.parseInt(control.content, 10);
+  const minimum = numericControlProperty(control, 'minimum', 0);
+  const maximum = numericControlProperty(control, 'maximum', 100);
+  return Number.isNaN(value) ? minimum : Math.max(minimum, Math.min(maximum, value));
+}
+
+function numericControlProperty(control: LingControl, key: string, fallback: number): number {
+  const value = control.properties?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : fallback;
+}
+
+function serializeControlData(control: LingControl): string {
+  const properties = control.properties || {};
+  const candidates = [properties.columns, properties.nodes, properties.tabs, properties.items, properties.buttons, properties.parts, properties.bands];
+  const source = candidates.find(value => Array.isArray(value) && value.length > 0) || candidates.find(Array.isArray);
+  if (!Array.isArray(source)) {
+    const scalar = properties.imageSource ?? properties.aviSource ?? properties.url ?? properties.address ?? properties.hotKey
+      ?? (typeof properties.value === 'string' ? properties.value : undefined);
+    return typeof scalar === 'string' ? scalar : '';
+  }
+  const labels: string[] = [];
+  const visit = (item: unknown, depth = 0) => {
+    if (typeof item === 'string') {
+      labels.push(item);
+      return;
+    }
+    if (!item || typeof item !== 'object') return;
+    const record = item as Record<string, unknown>;
+    const label = record.title ?? record.label ?? record.name ?? record.text ?? record.id;
+    if (typeof label === 'string') labels.push(`${'  '.repeat(depth)}${label}`);
+    if (Array.isArray(record.children)) record.children.forEach(child => visit(child, depth + 1));
+  };
+  source.forEach(item => visit(item));
+  return labels.join('\n');
+}
+
+function generateControlFlags(control: LingControl): number {
+  const properties = control.properties || {};
+  const flags: Array<[string, number]> = [
+    ['checked', 1 << 0], ['threeState', 1 << 1], ['multiline', 1 << 2],
+    ['password', 1 << 3], ['readOnly', 1 << 4], ['numeric', 1 << 5],
+    ['sorted', 1 << 6], ['multiple', 1 << 7], ['editable', 1 << 8],
+    ['marquee', 1 << 9], ['gridLines', 1 << 10], ['checkBoxes', 1 << 11],
+    ['wordWrap', 1 << 12], ['autoPlay', 1 << 13], ['loop', 1 << 14]
+  ];
+  let result = flags.reduce((sum, [key, flag]) => properties[key] === true ? sum | flag : sum, 0);
+  if (properties.orientation === 'horizontal') result |= 1 << 15;
+  if (properties.buttonStyle === 'default') result |= 1 << 16;
+  if (properties.buttonStyle === 'toggle') result |= 1 << 17;
+  if (properties.buttonStyle === 'split') result |= 1 << 18;
+  if (properties.buttonStyle === 'commandLink') result |= 1 << 19;
+  if (properties.textAlign === 'center') result |= 1 << 20;
+  if (properties.textAlign === 'right') result |= 1 << 21;
+  if (properties.view === 'icon') result |= 1 << 22;
+  if (properties.view === 'smallIcon') result |= 1 << 23;
+  if (properties.view === 'list') result |= 1 << 24;
+  return result;
 }
 
 function toColorRef(hex: string): string {

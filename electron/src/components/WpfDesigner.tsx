@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Check,
   CheckSquare,
+  ChevronDown,
+  ChevronRight,
   CircleDot,
   Copy,
   FileCode,
@@ -10,6 +12,7 @@ import {
   Keyboard,
   Layers,
   LayoutGrid,
+  ListTree,
   List,
   Maximize2,
   Minus,
@@ -26,7 +29,9 @@ import {
   Wrench,
   X,
   Zap,
-  Menu
+  Menu,
+  ZoomIn,
+  ZoomOut
 } from 'lucide-react';
 import ModuleInspector from './ModuleInspector';
 import { DesignerGeneratedPanelData } from '../types';
@@ -57,9 +62,22 @@ import {
   LingWindowOpenPlacement,
   LingWindowProject
 } from '../services/windowDesigner/types';
+import {
+  getWin32ControlDefinition,
+  WIN32_CONTROL_DEFINITIONS,
+  Win32ControlPropertyDefinition,
+  Win32ControlPropertyValue
+} from '../services/windowDesigner/win32ControlRegistry';
+import {
+  buildControlHierarchy,
+  getControlDescendantIds,
+  LingControlHierarchyNode
+} from '../services/windowDesigner/controlHierarchy';
+import { applyDesignerLayout, DesignerHistory, nudgeControls, type DesignerLayoutOperation } from '../services/windowDesigner/designerOperations';
 
-type InspectorTab = 'properties' | 'events' | 'modules';
+type InspectorTab = 'properties' | 'events' | 'layout';
 type ResizeDirection = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+type DesignerZoomMode = 'fit' | 'manual';
 
 interface OpenControlEventCodeDetail {
   controlId: string;
@@ -79,31 +97,16 @@ interface WpfDesignerProps {
 }
 
 const CONTROL_TYPES: (LingControlType | 'MenuBar')[] = [
-  'Button',
-  'TextBox',
-  'Label',
-  'CheckBox',
-  'RadioButton',
-  'ProgressBar',
-  'ComboBox',
-  'Image',
+  ...WIN32_CONTROL_DEFINITIONS.filter(definition => definition.isVisual !== false).map(definition => definition.type as LingControlType),
   'MenuBar'
-] as any;
+];
 
-const CONTROL_LABELS: Record<LingControlType | 'MenuBar', string> = {
-  Button: '按钮',
-  TextBox: '文本框',
-  Label: '标签',
-  CheckBox: '复选框',
-  RadioButton: '单选框',
-  Image: '图片',
-  ProgressBar: '进度条',
-  ComboBox: '下拉框',
-  Grid: '网格',
-  MenuBar: '窗口菜单栏'
-} as any;
+const CONTROL_LABELS: Record<string, string> = Object.fromEntries([
+  ...WIN32_CONTROL_DEFINITIONS.map(definition => [definition.type, definition.label]),
+  ['MenuBar', '窗口菜单栏']
+]);
 
-const TYPE_ICONS: Record<LingControlType | 'MenuBar', React.ReactNode> = {
+const TYPE_ICONS: Partial<Record<LingControlType | 'MenuBar', React.ReactNode>> = {
   Button: <SquareDot className="w-3.5 h-3.5 text-blue-400" />,
   TextBox: <Keyboard className="w-3.5 h-3.5 text-teal-400" />,
   Label: <Type className="w-3.5 h-3.5 text-cyan-400" />,
@@ -115,6 +118,10 @@ const TYPE_ICONS: Record<LingControlType | 'MenuBar', React.ReactNode> = {
   Grid: <LayoutGrid className="w-3.5 h-3.5 text-slate-400" />,
   MenuBar: <Menu className="w-3.5 h-3.5 text-amber-400" />
 } as any;
+
+function getControlIcon(type: LingControlType | 'MenuBar'): React.ReactNode {
+  return TYPE_ICONS[type] || <SquareDot className="h-3.5 w-3.5 text-sky-400" />;
+}
 
 const TITLE_BAR_HEIGHT = 52;
 
@@ -142,6 +149,7 @@ function getInitialDesignerState(): PersistedWindowDesignerState {
 export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps) {
   const initialDesignerState = getInitialDesignerState();
   const [project, setProject] = useState<LingWindowProject>(() => initialDesignerState.project);
+  const [enabledDesignerModules, setEnabledDesignerModules] = useState<Set<string>>(() => new Set(['lingbuilder.win32.basic']));
   const [activeWindowId, setActiveWindowId] = useState(initialDesignerState.activeWindowId);
 
   useEffect(() => {
@@ -169,12 +177,17 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     }
   }, [activeWindowId]);
   const [selectedControlId, setSelectedControlId] = useState<string | null>(initialDesignerState.selectedControlId);
-  const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>('properties');
+  const [selectedControlIds, setSelectedControlIds] = useState<string[]>(initialDesignerState.selectedControlId ? [initialDesignerState.selectedControlId] : []);
+  const selectOnlyControl = (id: string | null) => { setSelectedControlId(id); setSelectedControlIds(id && !id.startsWith('__window_') ? [id] : []); };
+  const designerHistoryRef = useRef(new DesignerHistory(initialDesignerState.project));
+  const applyingHistoryRef = useRef(false);
+  const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>('layout');
   const [isMenuDropdownOpen, setIsMenuDropdownOpen] = useState(false);
   const [nativeBuildLogs, setNativeBuildLogs] = useState<string[]>([
     '> [编译日志] 等待 F5 或“生成并运行”触发真实 Win32 构建。'
   ]);
   const [isNativeBuilding, setIsNativeBuilding] = useState(false);
+  useEffect(() => { if (!selectedControlId || selectedControlId.startsWith('__window_')) { if (selectedControlIds.length) setSelectedControlIds([]); } else if (!selectedControlIds.includes(selectedControlId)) setSelectedControlIds([selectedControlId]); }, [selectedControlId]);
 
   useEffect(() => {
     const handleDesignerProjectUpdated = (event: Event) => {
@@ -185,6 +198,8 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
       setProject(nextState.project);
       setActiveWindowId(nextState.activeWindowId);
       setSelectedControlId(nextState.selectedControlId);
+      setSelectedControlIds(nextState.selectedControlId ? [nextState.selectedControlId] : []);
+      designerHistoryRef.current = new DesignerHistory(nextState.project);
     };
 
     window.addEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
@@ -201,12 +216,79 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
   const [initialPos, setInitialPos] = useState({ x: 0, y: 0 });
   const [initialControlPos, setInitialControlPos] = useState({ x: 0, y: 0 });
   const [inspectorWidth, setInspectorWidth] = useState(300);
+  const [zoomMode, setZoomMode] = useState<DesignerZoomMode>('fit');
+  const [manualZoom, setManualZoom] = useState(1);
+  const [fitScale, setFitScale] = useState(1);
 
   const canvasRef = useRef<HTMLDivElement>(null);
+  const canvasViewportRef = useRef<HTMLDivElement>(null);
+  const projectIdRef = useRef(project.id);
+  projectIdRef.current = project.id;
 
   const activeWindow = useMemo(() => {
     return project.windows.find(window => window.id === activeWindowId) || project.windows[0];
   }, [activeWindowId, project.windows]);
+
+  const refreshDesignerModules = useCallback(async (projectId: string) => {
+    try {
+      const response = await fetch(`/api/modules/project?projectId=${encodeURIComponent(projectId)}`);
+      if (!response.ok) throw new Error('模块服务不可用');
+      const result = await response.json();
+      if (projectIdRef.current !== projectId) return;
+      const ids = (Array.isArray(result.modules) ? result.modules : [])
+        .map((module: any) => module?.manifest?.id)
+        .filter((id: unknown): id is string => typeof id === 'string');
+      setEnabledDesignerModules(new Set(['lingbuilder.win32.basic', ...ids]));
+    } catch {
+      if (projectIdRef.current === projectId) {
+        setEnabledDesignerModules(new Set(['lingbuilder.win32.basic']));
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshDesignerModules(project.id);
+
+    const handleModulesChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string; scope?: string }>).detail;
+      if (detail?.scope === 'project' && detail.projectId && detail.projectId !== project.id) return;
+      void refreshDesignerModules(project.id);
+    };
+
+    window.addEventListener('lingbuilder-modules-changed', handleModulesChanged);
+    return () => window.removeEventListener('lingbuilder-modules-changed', handleModulesChanged);
+  }, [project.id, refreshDesignerModules]);
+
+  const canvasScale = zoomMode === 'fit' ? fitScale : manualZoom;
+
+  useEffect(() => {
+    const viewport = canvasViewportRef.current;
+    if (!viewport || !activeWindow) return;
+
+    const updateFitScale = () => {
+      const availableWidth = Math.max(240, viewport.clientWidth - 48);
+      const availableHeight = Math.max(180, viewport.clientHeight - 82);
+      const nextScale = Math.max(
+        0.25,
+        Math.min(1, availableWidth / activeWindow.width, availableHeight / activeWindow.height)
+      );
+      setFitScale(previous => Math.abs(previous - nextScale) < 0.005 ? previous : nextScale);
+    };
+
+    updateFitScale();
+    const observer = new ResizeObserver(updateFitScale);
+    observer.observe(viewport);
+    window.addEventListener('resize', updateFitScale);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', updateFitScale);
+    };
+  }, [activeWindow?.height, activeWindow?.width]);
+
+  const setCanvasZoom = (nextZoom: number) => {
+    setZoomMode('manual');
+    setManualZoom(Math.max(0.25, Math.min(1.5, nextZoom)));
+  };
 
   const isWindowMenuInteractionActive = Boolean(
     isMenuDropdownOpen
@@ -344,8 +426,8 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     const startHeight = activeWindow.height;
 
     const doDrag = (mouseMoveEvent: MouseEvent) => {
-      const deltaX = mouseMoveEvent.clientX - startX;
-      const deltaY = mouseMoveEvent.clientY - startY;
+      const deltaX = (mouseMoveEvent.clientX - startX) / canvasScale;
+      const deltaY = (mouseMoveEvent.clientY - startY) / canvasScale;
 
       let nextWidth = startWidth;
       let nextHeight = startHeight;
@@ -424,7 +506,7 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     const nextWindow = project.windows.find(window => window.id === windowId);
     if (!nextWindow) return;
     setActiveWindowId(windowId);
-    setSelectedControlId(nextWindow.controls[0]?.id || null);
+    selectOnlyControl(nextWindow.controls[0]?.id || null);
   };
 
   const handleCanvasDoubleClick = (event: React.MouseEvent) => {
@@ -485,6 +567,13 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     }));
   };
 
+  useEffect(() => { if (applyingHistoryRef.current) { applyingHistoryRef.current = false; return; } const timer = setTimeout(() => { designerHistoryRef.current.commit(project); }, 250); return () => clearTimeout(timer); }, [project]);
+  const applyHistoryValue = (value: LingWindowProject | null) => { if (!value) return; applyingHistoryRef.current = true; setProject(value); };
+  const undoDesigner = () => { designerHistoryRef.current.commit(project); applyHistoryValue(designerHistoryRef.current.undo()); };
+  const redoDesigner = () => applyHistoryValue(designerHistoryRef.current.redo());
+  const applyLayoutOperation = (operation: DesignerLayoutOperation) => { try { setProject(previous => ({ ...previous, windows: previous.windows.map(item => item.id === activeWindowId ? applyDesignerLayout(item, selectedControlIds, operation) : item) })); } catch (error) { addLog(`> 【布局】${error instanceof Error ? error.message : String(error)}`); } };
+  const nudgeSelection = (dx: number, dy: number) => { if (!selectedControlIds.length) return; setProject(previous => ({ ...previous, windows: previous.windows.map(item => item.id === activeWindowId ? nudgeControls(item, selectedControlIds, dx, dy) : item) })); };
+
   const handleDuplicateWindow = () => {
     if (!activeWindow) return;
     const cloneIndex = project.windows.length + 1;
@@ -527,8 +616,19 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
       addLog(`> [${new Date().toLocaleTimeString()}] 【可视化设计】已在 ${activeWindow.fileName} 启用并选中窗口菜单栏。`);
       return;
     }
+    const definition = getWin32ControlDefinition(type);
+    if (definition && !enabledDesignerModules.has(definition.moduleId)) {
+      addLog(`> [${new Date().toLocaleTimeString()}] 【模块】${definition.label} 需要先启用 Win32高级控件模块。`);
+      return;
+    }
     const typeIndex = activeWindow.controls.filter(control => control.type === type).length + 1;
-    const newControl = createControl(type, typeIndex);
+    const selectedParent = activeWindow.controls.find(control => (
+      control.id === selectedControlId && getWin32ControlDefinition(control.type)?.isContainer
+    ));
+    const newControl = {
+      ...createControl(type, typeIndex),
+      parentId: selectedParent?.id
+    };
     updateActiveWindow(window => ({
       ...window,
       controls: [...window.controls, newControl]
@@ -542,21 +642,28 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     if (!selectedControlId) return;
     updateActiveWindow(window => ({
       ...window,
-      controls: window.controls.filter(control => control.id !== selectedControlId)
+      controls: window.controls
+        .filter(control => !new Set(selectedControlIds.length ? selectedControlIds : [selectedControlId]).has(control.id))
+        .map(control => selectedControlIds.includes(control.parentId || '')
+          ? { ...control, parentId: undefined }
+          : control)
     }));
     setSelectedControlId(null);
+    setSelectedControlIds([]);
   };
 
   const handleMouseDown = (event: React.MouseEvent, control: LingControl, action: 'drag' | ResizeDirection) => {
     event.stopPropagation();
     event.preventDefault();
+    if (event.shiftKey || event.ctrlKey || event.metaKey) { setSelectedControlIds(current => current.includes(control.id) ? current.filter(id => id !== control.id) : [...current, control.id]); setSelectedControlId(control.id); return; }
+    if (!selectedControlIds.includes(control.id)) setSelectedControlIds([control.id]);
     setSelectedControlId(control.id);
 
     if (action === 'drag') {
       setIsDragging(true);
       setDragOffset({
-        x: event.clientX - control.x,
-        y: event.clientY - control.y
+        x: event.clientX - control.x * canvasScale,
+        y: event.clientY - control.y * canvasScale
       });
       return;
     }
@@ -657,6 +764,8 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     };
   }, []);
 
+  useEffect(() => { const keydown = (event: KeyboardEvent) => { const target = event.target as HTMLElement | null; if (target?.closest('input,textarea,select,[contenteditable="true"]')) return; if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redoDesigner() : undoDesigner(); return; } if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); redoDesigner(); return; } const step = event.shiftKey ? 10 : 1; const movement: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }; if (movement[event.key] && selectedControlIds.length) { event.preventDefault(); nudgeSelection(...movement[event.key]); } }; window.addEventListener('keydown', keydown); return () => window.removeEventListener('keydown', keydown); }, [project, selectedControlIds, activeWindowId]);
+
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
       if (!activeWindow || !selectedControlId || !selectedControl) return;
@@ -664,8 +773,8 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
       if (isDragging) {
         const maxX = Math.max(0, activeWindow.width - selectedControl.width);
         const maxY = Math.max(0, activeWindow.height - TITLE_BAR_HEIGHT - selectedControl.height);
-        const nextX = Math.max(0, Math.min(maxX, event.clientX - dragOffset.x));
-        const nextY = Math.max(0, Math.min(maxY, event.clientY - dragOffset.y));
+        const nextX = Math.max(0, Math.min(maxX, (event.clientX - dragOffset.x) / canvasScale));
+        const nextY = Math.max(0, Math.min(maxY, (event.clientY - dragOffset.y) / canvasScale));
 
         updateSelectedControl({
           x: Math.round(nextX / 5) * 5,
@@ -674,8 +783,8 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
       }
 
       if (isResizing) {
-        const deltaX = event.clientX - initialPos.x;
-        const deltaY = event.clientY - initialPos.y;
+        const deltaX = (event.clientX - initialPos.x) / canvasScale;
+        const deltaY = (event.clientY - initialPos.y) / canvasScale;
         const minWidth = 20;
         const minHeight = 15;
         const maxCanvasX = activeWindow.width;
@@ -735,6 +844,7 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     };
   }, [
     activeWindow,
+    canvasScale,
     dragOffset,
     initialPos,
     initialControlPos,
@@ -779,6 +889,9 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
 
       const result = await response.json();
       const logs: string[] = Array.isArray(result.logs) ? result.logs : [];
+      window.dispatchEvent(new CustomEvent('lingbuilder-compiler-diagnostics', {
+        detail: { diagnostics: Array.isArray(result.compilerDiagnostics) ? result.compilerDiagnostics : [] }
+      }));
 
       logs.forEach(message => {
         addLog(`> [${new Date().toLocaleTimeString()}] ${message}`);
@@ -962,18 +1075,29 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
             </p>
             <div className="grid grid-cols-1 gap-1">
               {CONTROL_TYPES.map(type => (
+                (() => {
+                  const definition = type === 'MenuBar' ? undefined : getWin32ControlDefinition(type);
+                  const enabled = !definition || enabledDesignerModules.has(definition.moduleId);
+                  return (
                 <button
                   key={type}
                   onClick={() => handleAddControl(type)}
+                  disabled={!enabled}
+                  title={enabled ? `添加${CONTROL_LABELS[type]}` : `需要启用 ${definition?.moduleId}`}
                   className={`flex items-center gap-2 px-2.5 py-2 text-left text-xs rounded border cursor-pointer transition-all ${
+                    !enabled ? 'opacity-45 cursor-not-allowed ' : ''
+                  }${
                     isDarkMode
                       ? 'text-slate-300 hover:text-white border-transparent hover:border-[#3c3c44] hover:bg-[#25252b]/80'
                       : 'text-slate-700 hover:text-slate-900 border-slate-200 bg-white hover:bg-slate-100 shadow-sm'
                   }`}
                 >
-                  {TYPE_ICONS[type]}
-                  <span>{CONTROL_LABELS[type]} ({type})</span>
+                  {getControlIcon(type)}
+                  <span className="min-w-0 flex-1 truncate">{CONTROL_LABELS[type]} ({type})</span>
+                  {definition?.moduleId === 'lingbuilder.win32.common-controls' && <span className="text-[8px] text-violet-400">高级</span>}
                 </button>
+                  );
+                })()
               ))}
             </div>
 
@@ -989,33 +1113,81 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
           </div>
         </div>
 
-        <div className={`flex-1 p-6 flex flex-col overflow-auto items-center justify-start relative select-none ${
+        <div ref={canvasViewportRef} className={`flex-1 p-6 flex flex-col overflow-auto items-center justify-start relative select-none ${
           isDarkMode ? 'bg-[#101014]' : 'bg-slate-100/50'
         }`}>
-          <div className="text-[10px] text-slate-500 font-mono mb-2 uppercase select-none w-full flex justify-center">
-            <div className="flex justify-between w-full" style={{ maxWidth: `${Math.max(560, activeWindow.width)}px` }}>
-              <span>[{activeWindow.fileName} / {activeWindow.width} x {activeWindow.height}]</span>
-              <span>拖拽控件移动，拖动八向控制点调整尺寸</span>
+          <div className="mb-2 flex w-full shrink-0 items-center justify-between gap-3 text-[10px] text-slate-500 select-none">
+            <span className="truncate font-mono uppercase">
+              [{activeWindow.fileName} / {activeWindow.width} x {activeWindow.height}]
+            </span>
+            <span className="hidden truncate xl:inline">拖拽控件移动，拖动八向控制点调整尺寸</span>
+            <div className={`flex shrink-0 items-center gap-0.5 rounded border p-0.5 ${
+              isDarkMode ? 'border-slate-700 bg-[#25252b]' : 'border-slate-300 bg-white'
+            }`}>
+              <button type="button" onClick={undoDesigner} title="撤销设计操作 Ctrl+Z" className="rounded px-1 py-0.5 hover:bg-slate-500/15">撤销</button><button type="button" onClick={redoDesigner} title="重做设计操作 Ctrl+Y" className="rounded px-1 py-0.5 hover:bg-slate-500/15">重做</button>
+              {([['align-left','左齐'],['align-top','顶齐'],['align-right','右齐'],['align-bottom','底齐'],['align-hcenter','水平居中'],['align-vcenter','垂直居中'],['distribute-horizontal','横向分布'],['distribute-vertical','纵向分布'],['same-width','等宽'],['same-height','等高']] as Array<[DesignerLayoutOperation,string]>).map(([operation,label]) => <button key={operation} type="button" disabled={selectedControlIds.length < 2} onClick={() => applyLayoutOperation(operation)} title={label} className="rounded px-1 py-0.5 hover:bg-slate-500/15 disabled:opacity-30">{label}</button>)}
+              <button
+                type="button"
+                onClick={() => setCanvasZoom(canvasScale - 0.1)}
+                className="rounded p-1 hover:bg-slate-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={canvasScale <= 0.25}
+                title="缩小画布"
+                aria-label="缩小画布"
+              >
+                <ZoomOut className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoomMode('fit')}
+                className={`min-w-14 rounded px-1.5 py-1 font-sans font-semibold ${
+                  zoomMode === 'fit' ? 'bg-blue-500/15 text-blue-400' : 'hover:bg-slate-500/15'
+                }`}
+                title="自动缩放并显示完整组件布局"
+              >
+                适应 · {Math.round(canvasScale * 100)}%
+              </button>
+              <button
+                type="button"
+                onClick={() => setCanvasZoom(canvasScale + 0.1)}
+                className="rounded p-1 hover:bg-slate-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                disabled={canvasScale >= 1.5}
+                title="放大画布"
+                aria-label="放大画布"
+              >
+                <ZoomIn className="h-3.5 w-3.5" />
+              </button>
             </div>
           </div>
 
           <div
-            ref={canvasRef}
-            id="wpf-design-canvas"
-            onDoubleClick={handleCanvasDoubleClick}
-            className="relative rounded-lg shadow-2xl border-2 border-slate-700/60 overflow-hidden shrink-0 select-none"
+            className="relative shrink-0"
             style={{
-              width: `${activeWindow.width}px`,
-              height: `${activeWindow.height}px`,
-              backgroundColor: activeWindow.background,
-              backgroundImage: isDarkMode
-                ? 'radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.34) 0.85px, transparent 0.95px)'
-                : 'radial-gradient(circle at 1px 1px, rgba(71, 85, 105, 0.24) 0.85px, transparent 0.95px)',
-              backgroundSize: '12px 12px',
-              backgroundPosition: '0 0'
+              width: `${activeWindow.width * canvasScale}px`,
+              height: `${activeWindow.height * canvasScale}px`
             }}
-            onClick={() => setSelectedControlId(null)}
           >
+            <div
+              ref={canvasRef}
+              id="wpf-design-canvas"
+              onDoubleClick={handleCanvasDoubleClick}
+              className="relative rounded-lg shadow-2xl border-2 border-slate-700/60 overflow-hidden shrink-0 select-none"
+              style={{
+                width: `${activeWindow.width}px`,
+                height: `${activeWindow.height}px`,
+                transform: `scale(${canvasScale})`,
+                transformOrigin: 'top left',
+                backgroundColor: activeWindow.background,
+                backgroundImage: isDarkMode
+                  ? 'radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.34) 0.85px, transparent 0.95px)'
+                  : 'radial-gradient(circle at 1px 1px, rgba(71, 85, 105, 0.24) 0.85px, transparent 0.95px)',
+                backgroundSize: '12px 12px',
+                backgroundPosition: '0 0'
+              }}
+              onClick={() => {
+                selectOnlyControl(null);
+                setActiveInspectorTab('properties');
+              }}
+            >
             {/* Window Resize Handles */}
             <div
               onMouseDown={e => startResizeWindow(e, 'r')}
@@ -1141,11 +1313,12 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
 
             {activeWindow.controls.map(control => renderControl(
               control,
-              control.id === selectedControlId,
+              selectedControlIds.includes(control.id),
               handleMouseDown,
               setSelectedControlId,
               handleControlDoubleClick
             ))}
+            </div>
           </div>
         </div>
 
@@ -1167,14 +1340,20 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
           }`}>
             <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 text-slate-500">
               <Layers className="w-3.5 h-3.5 text-amber-500" />
-              <span>属性与事件</span>
+              <span>属性、事件与布局</span>
             </span>
             <div className={`flex p-0.5 rounded border ${isDarkMode ? 'bg-[#2a2a34] border-[#3e3e4a]' : 'bg-slate-200 border-slate-300'}`}>
               <IconTabButton active={activeInspectorTab === 'properties'} isDarkMode={isDarkMode} onClick={() => setActiveInspectorTab('properties')} title="属性">
                 <Wrench className="w-3.5 h-3.5" />
+                <span>属性</span>
               </IconTabButton>
               <IconTabButton active={activeInspectorTab === 'events'} isDarkMode={isDarkMode} onClick={() => setActiveInspectorTab('events')} title="事件">
                 <Zap className="w-3.5 h-3.5" />
+                <span>事件</span>
+              </IconTabButton>
+              <IconTabButton active={activeInspectorTab === 'layout'} isDarkMode={isDarkMode} onClick={() => setActiveInspectorTab('layout')} title="布局内容">
+                <ListTree className="w-3.5 h-3.5" />
+                <span>布局</span>
               </IconTabButton>
             </div>
           </div>
@@ -1182,28 +1361,196 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
           <div className="flex-1 overflow-y-auto p-3 space-y-4">
             {activeInspectorTab === 'properties' && (
               <>
-                <WindowProperties
-                  window={activeWindow}
-                  isDarkMode={isDarkMode}
-                  onChange={fields => updateActiveWindow(window => ({ ...window, ...fields }))}
-                />
-                <ControlProperties
-                  control={selectedControl}
-                  isDarkMode={isDarkMode}
-                  onChange={updateSelectedControl}
-                  onDelete={handleDeleteControl}
-                />
+                {selectedControlId === null ? (
+                  <WindowProperties
+                    window={activeWindow}
+                    isDarkMode={isDarkMode}
+                    onChange={fields => updateActiveWindow(window => ({ ...window, ...fields }))}
+                  />
+                ) : (
+                  <ControlProperties
+                    control={selectedControl}
+                    controls={activeWindow.controls}
+                    isDarkMode={isDarkMode}
+                    onChange={updateSelectedControl}
+                    onDelete={handleDeleteControl}
+                  />
+                )}
               </>
             )}
 
             {activeInspectorTab === 'events' && (
-              <ControlEvents control={selectedControl} isDarkMode={isDarkMode} onChange={updateSelectedControl} />
+              selectedControlId === null ? (
+                <WindowEvents
+                  window={activeWindow}
+                  isDarkMode={isDarkMode}
+                  onChange={events => updateActiveWindow(window => ({ ...window, events }))}
+                />
+              ) : (
+                <ControlEvents control={selectedControl} isDarkMode={isDarkMode} onChange={updateSelectedControl} />
+              )
+            )}
+
+            {activeInspectorTab === 'layout' && (
+              <LayoutHierarchy
+                window={activeWindow}
+                selectedControlId={selectedControlId}
+                isDarkMode={isDarkMode}
+                onSelectControl={controlId => {
+                  selectOnlyControl(controlId);
+                  if (controlId === null) setActiveInspectorTab('properties');
+                }}
+              />
             )}
           </div>
         </div>
       </div>
 
     </div>
+  );
+}
+
+function LayoutHierarchy({
+  window,
+  selectedControlId,
+  isDarkMode,
+  onSelectControl
+}: {
+  window: LingWindowModel;
+  selectedControlId: string | null;
+  isDarkMode: boolean;
+  onSelectControl: (controlId: string | null) => void;
+}) {
+  const hierarchy = useMemo(() => buildControlHierarchy(window.controls), [window.controls]);
+  const hierarchySignature = window.controls.map(control => `${control.id}:${control.parentId || ''}`).join('|');
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set([window.id]));
+  const menuItems = (window.menuItems || '').split(',').map(item => item.trim()).filter(Boolean);
+
+  useEffect(() => {
+    const parentIds = window.controls
+      .filter(control => window.controls.some(item => item.parentId === control.id))
+      .map(control => control.id);
+    setExpandedIds(previous => new Set([...previous, window.id, ...parentIds]));
+  }, [hierarchySignature, window.id]);
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds(previous => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const getRowClassName = (selected: boolean) => `group flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 text-left text-[11px] transition-colors ${
+    selected
+      ? isDarkMode ? 'bg-[#094771] text-white' : 'bg-blue-100 text-blue-900'
+      : isDarkMode ? 'text-slate-300 hover:bg-[#2a2d2e]' : 'text-slate-700 hover:bg-slate-100'
+  }`;
+
+  const renderControlNode = (node: LingControlHierarchyNode, depth: number): React.ReactNode => {
+    const hasChildren = node.children.length > 0;
+    const expanded = expandedIds.has(node.control.id);
+    const selected = selectedControlId === node.control.id;
+
+    return (
+      <React.Fragment key={node.control.id}>
+        <div
+          role="treeitem"
+          aria-expanded={hasChildren ? expanded : undefined}
+          aria-selected={selected}
+          className="flex min-w-0 items-center"
+          style={{ paddingLeft: `${depth * 16}px` }}
+        >
+          <button
+            type="button"
+            onClick={() => hasChildren && toggleExpanded(node.control.id)}
+            className={`flex h-6 w-5 shrink-0 items-center justify-center rounded ${
+              hasChildren ? 'cursor-pointer hover:bg-slate-500/20' : 'cursor-default text-transparent'
+            }`}
+            aria-label={hasChildren ? `${expanded ? '折叠' : '展开'}${node.control.name}` : undefined}
+            tabIndex={hasChildren ? 0 : -1}
+          >
+            {hasChildren && (expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
+          </button>
+          <button type="button" onClick={() => onSelectControl(node.control.id)} className={getRowClassName(selected)}>
+            <span className="shrink-0">{getControlIcon(node.control.type)}</span>
+            <span className="min-w-0 flex-1 truncate">{node.control.name}</span>
+            <span className="shrink-0 text-[9px] text-slate-500">{CONTROL_LABELS[node.control.type]}</span>
+          </button>
+        </div>
+        {hasChildren && expanded && node.children.map(child => renderControlNode(child, depth + 1))}
+      </React.Fragment>
+    );
+  };
+
+  const rootExpanded = expandedIds.has(window.id);
+  const menuNodeId = `${window.id}:menu`;
+  const menuExpanded = expandedIds.has(menuNodeId);
+  const hasRootChildren = window.controls.length > 0 || menuItems.length > 0;
+
+  return (
+    <section className={`overflow-hidden rounded border ${isDarkMode ? 'border-[#34343c] bg-[#18181d]' : 'border-slate-200 bg-white'}`}>
+      <div className={`border-b px-2.5 py-2 ${isDarkMode ? 'border-[#34343c] bg-[#222229]' : 'border-slate-200 bg-slate-50'}`}>
+        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
+          <ListTree className="h-3.5 w-3.5 text-amber-500" />
+          <span>布局内容</span>
+          <span className="ml-auto rounded bg-slate-500/15 px-1.5 py-0.5 text-[9px] font-normal">{window.controls.length} 个控件</span>
+        </div>
+        <p className="mt-1 text-[10px] leading-4 text-slate-500">点击窗口或控件节点即可选中，并在属性页中编辑当前对象。</p>
+      </div>
+
+      <div role="tree" aria-label={`${window.title}布局组件树`} className="max-h-[62vh] overflow-auto p-1.5">
+        <div role="treeitem" aria-expanded={hasRootChildren ? rootExpanded : undefined} aria-selected={selectedControlId === null} className="flex min-w-0 items-center">
+          <button
+            type="button"
+            onClick={() => hasRootChildren && toggleExpanded(window.id)}
+            className="flex h-6 w-5 shrink-0 cursor-pointer items-center justify-center rounded hover:bg-slate-500/20"
+            aria-label={`${rootExpanded ? '折叠' : '展开'}窗口`}
+          >
+            {hasRootChildren && (rootExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
+          </button>
+          <button type="button" onClick={() => onSelectControl(null)} className={getRowClassName(selectedControlId === null)}>
+            <Monitor className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+            <span className="min-w-0 flex-1 truncate font-semibold">{window.title}</span>
+            <span className="shrink-0 text-[9px] text-slate-500">窗口</span>
+          </button>
+        </div>
+
+        {rootExpanded && (
+          <div role="group">
+            {menuItems.length > 0 && (
+              <>
+                <div role="treeitem" aria-expanded={menuExpanded} aria-selected={selectedControlId === '__window_menu_bar__'} className="flex min-w-0 items-center pl-4">
+                  <button type="button" onClick={() => toggleExpanded(menuNodeId)} className="flex h-6 w-5 shrink-0 items-center justify-center rounded hover:bg-slate-500/20">
+                    {menuExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+                  </button>
+                  <button type="button" onClick={() => onSelectControl('__window_menu_bar__')} className={getRowClassName(selectedControlId === '__window_menu_bar__')}>
+                    {TYPE_ICONS.MenuBar}
+                    <span className="min-w-0 flex-1 truncate">{window.menuName || '窗口菜单栏'}</span>
+                    <span className="text-[9px] text-slate-500">菜单栏</span>
+                  </button>
+                </div>
+                {menuExpanded && menuItems.map((item, index) => {
+                  const itemId = `__window_menu_item_${index}__`;
+                  return (
+                    <div key={itemId} role="treeitem" aria-selected={selectedControlId === itemId} className="flex min-w-0 items-center pl-8">
+                      <span className="h-6 w-5 shrink-0" />
+                      <button type="button" onClick={() => onSelectControl(itemId)} className={getRowClassName(selectedControlId === itemId)}>
+                        <Menu className="h-3.5 w-3.5 shrink-0 text-amber-400" />
+                        <span className="min-w-0 flex-1 truncate">{item}</span>
+                        <span className="text-[9px] text-slate-500">菜单项</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </>
+            )}
+            {hierarchy.map(node => renderControlNode(node, 1))}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -1215,6 +1562,8 @@ function renderControl(
   onOpenEventCode: (event: React.MouseEvent, control: LingControl) => void
 ) {
   const isCollapsed = control.visibility === 'Collapsed';
+  const definition = getWin32ControlDefinition(control.type);
+  const hasSpecialPreview = ['Button', 'TextBox', 'Label', 'CheckBox', 'RadioButton', 'ProgressBar', 'ComboBox', 'Image'].includes(control.type);
   const resizeHandles: Array<{
     direction: ResizeDirection;
     className: string;
@@ -1356,6 +1705,16 @@ function renderControl(
             <span className="text-[10px] text-indigo-400 font-bold z-10 font-sans truncate">{control.content}</span>
           </div>
         )}
+
+        {!hasSpecialPreview && (
+          <div
+            className={`flex h-full w-full overflow-hidden rounded border ${definition?.isContainer ? 'items-start border-dashed p-2' : 'items-center justify-center px-2'} border-sky-500/40 bg-sky-950/15 text-sky-200`}
+            style={{ fontSize: `${control.fontSize}px`, backgroundColor: control.background === 'transparent' ? undefined : control.background, color: control.foreground }}
+          >
+            <span className="truncate">{control.content || definition?.label || control.type}</span>
+            {definition?.isContainer && <span className="ml-auto text-[9px] text-sky-400/70">容器</span>}
+          </div>
+        )}
       </div>
 
       {isSelected && (
@@ -1495,11 +1854,13 @@ function WindowProperties({
 
 function ControlProperties({
   control,
+  controls,
   isDarkMode,
   onChange,
   onDelete
 }: {
   control: LingControl | null;
+  controls: LingControl[];
   isDarkMode: boolean;
   onChange: (fields: Partial<LingControl>) => void;
   onDelete: () => void;
@@ -1528,9 +1889,39 @@ function ControlProperties({
     onChange({ name: value });
   };
 
+  const descendantIds = getControlDescendantIds(controls, control.id);
+  const availableParents = controls.filter(item => (
+    getWin32ControlDefinition(item.type)?.isContainer
+    && item.id !== control.id
+    && !descendantIds.has(item.id)
+  ));
+  const controlDefinition = getWin32ControlDefinition(control.type);
+  const updateControlProperty = (key: string, value: Win32ControlPropertyValue) => {
+    const properties = { ...(control.properties || {}), [key]: value };
+    const content = key === 'value' && control.type === 'ProgressBar' ? String(value) : control.content;
+    onChange({ properties, content });
+  };
+
   return (
     <div className="space-y-2">
       <PropertyGroup title="控件 / 布局" isDarkMode={isDarkMode}>
+        {control.type !== ('MenuBar' as any) && control.type !== ('MenuItem' as any) && (
+          <PropertyRow label="父级容器" isDarkMode={isDarkMode}>
+            <select
+              value={control.parentId || ''}
+              onChange={event => onChange({ parentId: event.target.value || undefined })}
+              className={`w-full rounded border px-2 py-0.5 text-xs focus:outline-none focus:border-amber-500 ${
+                isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44] text-slate-200' : 'bg-white border-slate-300 text-slate-800'
+              }`}
+              aria-label="父级容器"
+            >
+              <option value="">当前窗口（根级）</option>
+              {availableParents.map(parent => (
+                <option key={parent.id} value={parent.id}>{parent.name}</option>
+              ))}
+            </select>
+          </PropertyRow>
+        )}
         <NumberField label="左距" value={control.x} min={0} isDarkMode={isDarkMode} onChange={value => onChange({ x: value })} />
         <NumberField label="顶距" value={control.y} min={0} isDarkMode={isDarkMode} onChange={value => onChange({ y: value })} />
         <NumberField label="宽度" value={control.width} min={20} isDarkMode={isDarkMode} onChange={value => onChange({ width: value })} />
@@ -1576,6 +1967,21 @@ function ControlProperties({
           onChange={value => onChange({ background: value })}
         />
       </PropertyGroup>
+
+      {controlDefinition && controlDefinition.properties.length > 0 && (
+        <PropertyGroup title="控件 / 专属属性" isDarkMode={isDarkMode}>
+          {controlDefinition.properties.map(property => (
+            <ControlPropertyField
+              key={property.key}
+              definition={property}
+              value={control.properties?.[property.key] ?? property.defaultValue}
+              controls={controls}
+              isDarkMode={isDarkMode}
+              onChange={value => updateControlProperty(property.key, value)}
+            />
+          ))}
+        </PropertyGroup>
+      )}
 
       <PropertyGroup title="控件 / 状态" isDarkMode={isDarkMode}>
         <PropertyRow label="启用" isDarkMode={isDarkMode}>
@@ -1673,6 +2079,124 @@ function ControlEvents({
         );
       })}
     </div>
+  );
+}
+
+function ControlPropertyField({
+  definition,
+  value,
+  controls,
+  isDarkMode,
+  onChange
+}: {
+  key?: React.Key;
+  definition: Win32ControlPropertyDefinition;
+  value: Win32ControlPropertyValue;
+  controls: LingControl[];
+  isDarkMode: boolean;
+  onChange: (value: Win32ControlPropertyValue) => void;
+}) {
+  const complex = ['columns', 'treeNodes', 'tabs'].includes(definition.type);
+  const serialized = complex ? JSON.stringify(value, null, 2) : '';
+  const [draft, setDraft] = useState(serialized);
+  const [invalid, setInvalid] = useState(false);
+
+  useEffect(() => {
+    if (complex) setDraft(serialized);
+  }, [complex, serialized]);
+
+  if (definition.type === 'boolean') {
+    return <PropertyRow label={definition.label} isDarkMode={isDarkMode}><input type="checkbox" checked={Boolean(value)} onChange={event => onChange(event.target.checked)} className="h-4 w-4 accent-amber-500" /></PropertyRow>;
+  }
+  if (definition.type === 'number') {
+    return (
+      <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
+        <input type="number" value={typeof value === 'number' ? value : 0} min={definition.min} max={definition.max} onChange={event => onChange(Number(event.target.value))} className={`w-full rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
+      </PropertyRow>
+    );
+  }
+  if (definition.type === 'enum') {
+    return (
+      <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
+        <select value={String(value ?? '')} onChange={event => onChange(event.target.value)} className={`w-full rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`}>
+          {(definition.options || []).map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
+        </select>
+      </PropertyRow>
+    );
+  }
+  if (definition.type === 'controlRef') {
+    return (
+      <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
+        <select value={String(value ?? '')} onChange={event => onChange(event.target.value)} className={`w-full rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`}>
+          <option value="">未绑定</option>
+          {controls.map(control => <option key={control.id} value={control.id}>{control.name}</option>)}
+        </select>
+      </PropertyRow>
+    );
+  }
+  if (definition.type === 'stringList') {
+    return (
+      <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
+        <textarea value={Array.isArray(value) ? value.join('\n') : ''} onChange={event => onChange(event.target.value.split(/\r?\n/).filter(Boolean))} rows={4} placeholder="每行一个项目" className={`w-full resize-y rounded border px-2 py-1 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
+      </PropertyRow>
+    );
+  }
+  if (complex) {
+    const commit = () => {
+      try {
+        const parsed = JSON.parse(draft);
+        if (!Array.isArray(parsed)) throw new Error('必须是数组');
+        setInvalid(false);
+        onChange(parsed);
+      } catch {
+        setInvalid(true);
+      }
+    };
+    return (
+      <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
+        <div className="w-full">
+          <textarea value={draft} onChange={event => setDraft(event.target.value)} onBlur={commit} rows={6} className={`w-full resize-y rounded border px-2 py-1 font-mono text-[10px] ${invalid ? 'border-red-500' : isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
+          {invalid && <div className="text-[9px] text-red-400">请输入合法的 JSON 数组。</div>}
+        </div>
+      </PropertyRow>
+    );
+  }
+  return <TextField label={definition.label} value={String(value ?? '')} isDarkMode={isDarkMode} onChange={onChange} />;
+}
+
+function WindowEvents({
+  window,
+  isDarkMode,
+  onChange
+}: {
+  window: LingWindowModel;
+  isDarkMode: boolean;
+  onChange: (events: NonNullable<LingWindowModel['events']>) => void;
+}) {
+  const createdHandler = window.events?.Loaded?.trim() || `_${window.className}_创建完毕`;
+  const windowEventTarget: LingControl = {
+    id: window.id,
+    type: 'Grid',
+    name: window.className,
+    content: window.title,
+    x: 0,
+    y: 0,
+    width: window.width,
+    height: window.height,
+    fontSize: 12,
+    background: window.background,
+    foreground: '#FFFFFF',
+    isEnabled: true,
+    visibility: 'Visible',
+    events: { ...(window.events || {}), Loaded: createdHandler }
+  };
+
+  return (
+    <ControlEvents
+      control={windowEventTarget}
+      isDarkMode={isDarkMode}
+      onChange={fields => onChange(fields.events || {})}
+    />
   );
 }
 
@@ -1805,7 +2329,7 @@ function IconTabButton({
   return (
     <button
       onClick={onClick}
-      className={`p-1.5 rounded cursor-pointer transition-all ${
+      className={`flex items-center gap-1 p-1.5 rounded cursor-pointer text-[10px] transition-all ${
         active
           ? isDarkMode ? 'bg-[#3b3b45] text-amber-400 font-bold' : 'bg-white text-amber-600 font-bold shadow-sm'
           : isDarkMode ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'

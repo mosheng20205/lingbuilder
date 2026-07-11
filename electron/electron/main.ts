@@ -4,7 +4,9 @@ import {
   dialog,
   ipcMain,
   Menu,
+  screen,
   session,
+  safeStorage,
   shell,
   utilityProcess,
   UtilityProcess
@@ -12,7 +14,8 @@ import {
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { DesktopWorkspaceService, getArgumentValue } from './workspaceService';
+import { spawn } from 'node:child_process';
+import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, getArgumentValue, resolveWorkspaceDropTarget } from './workspaceService';
 
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:3001/';
 const SERVER_READY_PREFIX = 'LINGBUILDER_SERVER_READY ';
@@ -36,6 +39,7 @@ let activeWorkspace = '';
 let isQuitting = false;
 let shutdownPromise: Promise<void> | null = null;
 let workspaceService: DesktopWorkspaceService;
+const rendererConfirmedClose = new WeakSet<BrowserWindow>();
 
 function getFocusedWindow() {
   return BrowserWindow.getFocusedWindow() || mainWindow;
@@ -69,6 +73,10 @@ function moduleManualPath(): string {
     : path.join(repoRoot(), '模块开发手册.md');
 }
 
+function credentialPath(): string { return path.join(app.getPath('userData'), 'credentials', 'ai-api-key.bin'); }
+async function readAiCredential(): Promise<string> { try { if (!safeStorage.isEncryptionAvailable()) return ''; const encrypted = await fs.readFile(credentialPath()); return safeStorage.decryptString(encrypted); } catch { return ''; } }
+async function writeAiCredential(value: string): Promise<void> { if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统不支持安全凭据存储。'); const file = credentialPath(); await fs.mkdir(path.dirname(file), { recursive: true }); if (!value) { await fs.rm(file, { force: true }); return; } const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(value)); await fs.rename(temporary, file); }
+
 async function startPackagedRendererServer(workspaceRoot: string): Promise<ServerReadyInfo> {
   await stopRendererServer();
   rendererSessionToken = crypto.randomBytes(32).toString('hex');
@@ -83,6 +91,7 @@ async function startPackagedRendererServer(workspaceRoot: string): Promise<Serve
       HOST: '127.0.0.1',
       PORT: '0',
       LINGBUILDER_WORKSPACE_ROOT: workspaceRoot,
+      LINGBUILDER_USER_SETTINGS_PATH: path.join(app.getPath('userData'), 'settings.json'),
       LINGBUILDER_STATIC_ROOT: rendererStaticRoot(),
       LINGBUILDER_RULEBOOK_PATH: rulebookPath(),
       LINGBUILDER_SESSION_TOKEN: rendererSessionToken,
@@ -214,9 +223,14 @@ function configureRendererSession(origin: string, token: string): void {
 
 async function createMainWindow(): Promise<void> {
   const smokeTest = process.argv.includes('--smoke-test');
+  const savedWindowState = await workspaceService.getWindowState();
+  const usableBounds = savedWindowState && screen.getAllDisplays().some(display => intersects(display.workArea, savedWindowState))
+    ? savedWindowState
+    : undefined;
   mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    width: usableBounds?.width || 1440,
+    height: usableBounds?.height || 900,
+    ...(usableBounds ? { x: usableBounds.x, y: usableBounds.y } : {}),
     minWidth: 1024,
     minHeight: 680,
     title: 'LingBuilder',
@@ -233,11 +247,17 @@ async function createMainWindow(): Promise<void> {
   });
 
   mainWindow.once('ready-to-show', () => {
+    if (savedWindowState?.maximized) mainWindow?.maximize();
     if (!smokeTest) mainWindow?.show();
   });
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: 'deny' };
+  });
+  mainWindow.on('close', event => {
+    if (isQuitting || !mainWindow || rendererConfirmedClose.has(mainWindow)) return;
+    event.preventDefault();
+    mainWindow.webContents.send('window:close-requested');
   });
 
   await mainWindow.loadURL(rendererOrigin);
@@ -269,6 +289,30 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
         })
       });
       const bridgeResponse = await fetch('/api/ai-bridge/health');
+      const terminalCreateResponse = await fetch('/api/terminal/sessions', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ profile: 'cmd', cols: 80, rows: 24 })
+      });
+      const terminalCreate = await terminalCreateResponse.json();
+      let terminalSnapshot = null;
+      let terminalResizeStatus = 0;
+      let terminalCloseStatus = 0;
+      if (terminalCreateResponse.ok && terminalCreate.session?.id) {
+        await fetch('/api/terminal/sessions/' + encodeURIComponent(terminalCreate.session.id) + '/input', {
+          method: 'POST', headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ data: 'echo LINGBUILDER_PACKAGED_PTY_OK\\r' })
+        });
+        for (let attempt = 0; attempt < 120; attempt += 1) {
+          const list = await (await fetch('/api/terminal/sessions')).json();
+          terminalSnapshot = list.sessions?.find(session => session.id === terminalCreate.session.id) || null;
+          if (terminalSnapshot?.buffer?.includes('LINGBUILDER_PACKAGED_PTY_OK')) break;
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        terminalResizeStatus = (await fetch('/api/terminal/sessions/' + encodeURIComponent(terminalCreate.session.id) + '/resize', {
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cols: 100, rows: 30 })
+        })).status;
+        terminalCloseStatus = (await fetch('/api/terminal/sessions/' + encodeURIComponent(terminalCreate.session.id), { method: 'DELETE' })).status;
+      }
       const health = await healthResponse.json();
       const modules = await modulesResponse.json();
       const ai = await aiResponse.json();
@@ -280,11 +324,20 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
           && health.status === 'ok'
           && Array.isArray(modules.modules)
           && ai.ok === true
-          && Boolean(ai.proposal?.id),
+          && Boolean(ai.proposal?.id)
+          && terminalCreateResponse.status === 201
+          && terminalSnapshot?.buffer?.includes('LINGBUILDER_PACKAGED_PTY_OK')
+          && terminalResizeStatus === 200
+          && terminalCloseStatus === 200,
         healthStatus: healthResponse.status,
         modulesStatus: modulesResponse.status,
         aiStatus: aiResponse.status,
         bridgeStatus: bridgeResponse.status,
+        terminalStatus: terminalCreateResponse.status,
+        terminalResizeStatus,
+        terminalCloseStatus,
+        terminalPtyOutput: Boolean(terminalSnapshot?.buffer?.includes('LINGBUILDER_PACKAGED_PTY_OK')),
+        terminalBuffer: terminalSnapshot?.buffer || '',
         moduleCount: Array.isArray(modules.modules) ? modules.modules.length : 0,
         title: document.title,
         hasRoot: Boolean(document.getElementById('root'))
@@ -360,10 +413,36 @@ function registerIpcHandlers(): void {
     return true;
   });
   ipcMain.handle('window:is-maximized', () => getFocusedWindow()?.isMaximized() ?? false);
-  ipcMain.handle('window:close', () => getFocusedWindow()?.close());
+  ipcMain.handle('window:close', () => getFocusedWindow()?.webContents.send('window:close-requested'));
+  ipcMain.handle('window:confirm-close', async () => {
+    const window = getFocusedWindow();
+    if (!window) return;
+    const bounds = window.getNormalBounds();
+    await workspaceService.rememberWindowState({ ...bounds, maximized: window.isMaximized() });
+    rendererConfirmedClose.add(window);
+    window.close();
+  });
   ipcMain.handle('shell:open-path', async (_event, targetPath: string) => targetPath ? shell.openPath(targetPath) : 'missing-path');
   ipcMain.handle('docs:open-module-manual', async () => shell.openPath(moduleManualPath()));
+  ipcMain.handle('credentials:ai:get', () => readAiCredential());
+  ipcMain.handle('credentials:ai:set', (_event, value: string) => writeAiCredential(typeof value === 'string' ? value.slice(0, 16_384) : ''));
+  ipcMain.handle('credentials:ai:delete', () => writeAiCredential(''));
   ipcMain.handle('workspace:get-current', () => activeWorkspace);
+  ipcMain.handle('workspace:list-recent', () => workspaceService.listRecentWorkspaces());
+  ipcMain.handle('workspace:forget-recent', (_event, workspacePath: string) => workspaceService.forgetWorkspace(workspacePath));
+  ipcMain.handle('workspace:open-path', async (_event, targetPath: string, newWindow = false) => {
+    try {
+      const workspacePath = await resolveWorkspaceDropTarget(targetPath);
+      if (newWindow) {
+        launchWorkspaceWindow(workspacePath);
+        return { ok: true, canceled: false, workspacePath, newWindow: true };
+      }
+      await switchWorkspace(workspacePath);
+      return { ok: true, canceled: false, workspacePath: activeWorkspace, newWindow: false };
+    } catch (error) {
+      return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
   ipcMain.handle('workspace:open', async () => {
     const owner = getFocusedWindow();
     const result = owner
@@ -377,6 +456,32 @@ function registerIpcHandlers(): void {
       return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
+  ipcMain.handle('workspace:open-new-window', async () => {
+    const owner = getFocusedWindow();
+    const result = owner
+      ? await dialog.showOpenDialog(owner, { title: '在新窗口打开 LingBuilder 工作区', properties: ['openDirectory'] })
+      : await dialog.showOpenDialog({ title: '在新窗口打开 LingBuilder 工作区', properties: ['openDirectory'] });
+    if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
+    const workspacePath = await workspaceService.validateWorkspace(result.filePaths[0]);
+    launchWorkspaceWindow(workspacePath);
+    return { ok: true, canceled: false, workspacePath, newWindow: true };
+  });
+}
+
+function launchWorkspaceWindow(workspacePath: string): void {
+  const launch = buildWorkspaceWindowLaunch({
+    packaged: app.isPackaged,
+    executablePath: process.execPath,
+    mainEntryPath: path.join(repoRoot(), 'electron', 'dist-electron', 'main.cjs'),
+    workspacePath
+  });
+  const child = spawn(launch.command, launch.args, { detached: true, stdio: 'ignore', env: { ...process.env } });
+  child.unref();
+}
+
+function intersects(area: Electron.Rectangle, bounds: { x: number; y: number; width: number; height: number }): boolean {
+  return bounds.x < area.x + area.width && bounds.x + bounds.width > area.x
+    && bounds.y < area.y + area.height && bounds.y + bounds.height > area.y;
 }
 
 app.whenReady().then(async () => {

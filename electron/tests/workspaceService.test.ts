@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { DesktopWorkspaceService, getArgumentValue } from '../electron/workspaceService';
+import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, getArgumentValue, resolveWorkspaceDropTarget } from '../electron/workspaceService';
 
 test('workspace service prefers --workspace and remembers it', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-arg-'));
@@ -42,4 +42,46 @@ test('workspace seed copies missing files and never overwrites user changes', as
   assert.equal(await fs.readFile(path.join(target, 'src', 'Main.lcpp'), 'utf8'), '用户修改');
   const marker = JSON.parse(await fs.readFile(path.join(target, '.lingbuilder', 'seed.json'), 'utf8'));
   assert.equal(marker.seedVersion, '2.0.0');
+});
+
+test('workspace service migrates recents, deduplicates, bounds history, and forgets entries', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-recents-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const userDataPath = path.join(root, 'UserData');
+  await fs.mkdir(userDataPath, { recursive: true });
+  const first = path.join(root, 'first'); await fs.mkdir(first);
+  await fs.writeFile(path.join(userDataPath, 'workspace-state.json'), JSON.stringify({ schemaVersion: 1, lastWorkspace: first }));
+  const service = new DesktopWorkspaceService({ argv: ['app'], documentsPath: root, userDataPath });
+  assert.deepEqual(await service.listRecentWorkspaces(), [first]);
+  for (let index = 0; index < 12; index += 1) await service.rememberWorkspace(path.join(root, `workspace-${index}`));
+  const recent = await service.listRecentWorkspaces();
+  assert.equal(recent.length, 10);
+  assert.equal(recent[0], path.join(root, 'workspace-11'));
+  await service.rememberWorkspace(recent[1]);
+  assert.equal((await service.listRecentWorkspaces())[0], recent[1]);
+  await service.forgetWorkspace(recent[1]);
+  assert.equal((await service.listRecentWorkspaces()).includes(recent[1]), false);
+});
+
+test('workspace service persists window state and validates dropped files', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-drop-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const project = path.join(root, 'project'); await fs.mkdir(project);
+  const source = path.join(project, 'Main.lcpp'); await fs.writeFile(source, '类 Main\n结束类\n');
+  const unsupported = path.join(project, 'readme.txt'); await fs.writeFile(unsupported, 'x');
+  assert.equal(await resolveWorkspaceDropTarget(project), project);
+  assert.equal(await resolveWorkspaceDropTarget(source), project);
+  await assert.rejects(resolveWorkspaceDropTarget(unsupported), /不支持/u);
+  const service = new DesktopWorkspaceService({ argv: ['app', source], documentsPath: root, userDataPath: path.join(root, 'profile') });
+  assert.equal(await service.resolveInitialWorkspace(), project);
+  await service.rememberWindowState({ x: 20, y: 30, width: 1200, height: 800, maximized: true });
+  assert.deepEqual(await service.getWindowState(), { x: 20, y: 30, width: 1200, height: 800, maximized: true });
+});
+
+test('new workspace windows use an isolated process with an explicit workspace argument', () => {
+  const packaged = buildWorkspaceWindowLaunch({ packaged: true, executablePath: 'LingBuilder.exe', mainEntryPath: 'main.cjs', workspacePath: 'C:\\项目' });
+  assert.equal(packaged.command, 'LingBuilder.exe');
+  assert.deepEqual(packaged.args.slice(-3), ['--workspace', path.resolve('C:\\项目'), '--new-window']);
+  const development = buildWorkspaceWindowLaunch({ packaged: false, executablePath: 'electron.exe', mainEntryPath: 'dist/main.cjs', workspacePath: 'C:\\项目' });
+  assert.equal(development.args[0], path.resolve('dist/main.cjs'));
 });

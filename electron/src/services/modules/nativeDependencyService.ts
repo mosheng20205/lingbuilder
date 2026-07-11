@@ -9,6 +9,7 @@ export interface ModuleNativeDependencyLayout {
   sourceDir: string;
   binDir: string;
   exportDir: string;
+  preferredTargetId?: string;
 }
 
 export interface ModuleNativeDependencyPlan {
@@ -34,9 +35,9 @@ export async function materializeModuleNativeDependencies(
   };
 
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
-    const target = getPreferredModuleTarget(module);
+    const target = getPreferredModuleTarget(module, layout.preferredTargetId);
     if (!target) {
-      const diagnostic = getUnsupportedModuleTargetDiagnostic(module);
+      const diagnostic = getUnsupportedModuleTargetDiagnostic(module, layout.preferredTargetId);
       if (diagnostic) plan.diagnostics.push(diagnostic);
       continue;
     }
@@ -54,6 +55,11 @@ export async function materializeModuleNativeDependencies(
       ...(target.runtimeFiles || [])
     ])) {
       await copyModuleFile(module, relativePath, buildModuleRoot, plan.diagnostics);
+      await copyModuleFile(module, relativePath, exportModuleRoot, plan.diagnostics);
+    }
+    for (const relativePath of unique((module.manifest.targets || []).flatMap(candidate => [
+      ...(candidate.headers || []), ...(candidate.sources || []), ...(candidate.libs || []), ...(candidate.runtimeFiles || [])
+    ]))) {
       await copyModuleFile(module, relativePath, exportModuleRoot, plan.diagnostics);
     }
 

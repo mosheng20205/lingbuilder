@@ -32,6 +32,7 @@ import {
   CheckCircle,
   Monitor,
   Package
+  , Link
 } from 'lucide-react';
 import { CppFile, ExtractedString, GlossaryTerm, SourceControlStatus } from '../types';
 import ModuleInspector from './ModuleInspector';
@@ -44,9 +45,16 @@ import {
   PersistedWindowDesignerState
 } from '../services/windowDesigner/windowDesignerService';
 import type { LingWindowModel } from '../services/windowDesigner/types';
-import type { InstalledModule, ModuleTargetContribution } from '../services/modules/types';
+import type { InstalledModule, ModuleHintContent, ModuleTargetContribution } from '../services/modules/types';
 import { BUILTIN_MODULES } from '../services/modules/builtinModules';
 import type { SolutionModel, SolutionProject } from '../services/solution/solutionClient';
+import SourceControlPanel from './SourceControlPanel';
+import ExtensionHostPanel from './ExtensionHostPanel';
+import DependencyPanel from './DependencyPanel';
+import RcResourcePanel from './RcResourcePanel';
+import PublishingPanel from './PublishingPanel';
+import AiIndexPanel from './AiIndexPanel';
+import SettingsSyncPanel from './SettingsSyncPanel';
 
 type WindowContextMenu =
   | { x: number; y: number; target: 'group' }
@@ -124,16 +132,21 @@ interface SidebarProps {
   onSetStatus?: (id: string, status: 'translated' | 'skipped' | 'pending') => void;
   glossary?: GlossaryTerm[];
   drawerWidth?: number;
-  onDeleteFile?: (file: CppFile) => void;
-  onRenameFile?: (file: CppFile, newName: string) => void;
+  onDeleteFile?: (file: CppFile) => boolean | Promise<boolean>;
+  onRenameFile?: (file: CppFile, newName: string) => boolean | Promise<boolean>;
   sourceControlStatus?: SourceControlStatus | null;
   solution?: SolutionModel;
   activeProjectId?: string;
   onRefreshSolution?: () => void | Promise<unknown>;
   onCreateProject?: () => void | Promise<void>;
   onSetStartupProject?: (projectId: string) => void | Promise<void>;
+  onConfigureProjectReferences?: (projectId: string) => void | Promise<void>;
+  onToggleMultiStartupProject?: (projectId: string) => void | Promise<void>;
+  onConfigureExternalProject?: (projectId: string) => void | Promise<void>;
   onDeleteProject?: (projectId: string, deleteFiles: boolean) => void | Promise<void>;
   onSolutionCommand?: (command: 'build' | 'clean' | 'rebuild', projectId?: string) => void | Promise<void>;
+  activeModuleHintId?: string;
+  onShowModuleHint?: (hint: ModuleHintContent) => void;
 }
 
 export default function Sidebar({
@@ -157,8 +170,13 @@ export default function Sidebar({
   onRefreshSolution,
   onCreateProject,
   onSetStartupProject,
+  onConfigureProjectReferences,
+  onToggleMultiStartupProject,
+  onConfigureExternalProject,
   onDeleteProject,
-  onSolutionCommand
+  onSolutionCommand,
+  activeModuleHintId,
+  onShowModuleHint
 }: SidebarProps) {
   // Tabs: 'explorer' (解决方案), 'actions' (快捷工具), 'outline' (大纲视图)
   const [activeTab, setActiveTab] = useState<'explorer' | 'actions' | 'outline'>('explorer');
@@ -755,8 +773,9 @@ export default function Sidebar({
           onClick={() => {
             const newName = window.prompt(`重命名文件 ${contextMenu.file.name}`, contextMenu.file.name);
             if (newName && newName.trim() && newName !== contextMenu.file.name) {
-              onRenameFile?.(contextMenu.file, newName.trim());
-              triggerSuccess(`重命名文件为 ${newName.trim()}`);
+              void Promise.resolve(onRenameFile?.(contextMenu.file, newName.trim()) ?? false).then(success => {
+                if (success) triggerSuccess(`已重命名文件为 ${newName.trim()}`);
+              });
             }
           }}
         >
@@ -766,7 +785,10 @@ export default function Sidebar({
         <div
           className={`px-3 py-1.5 text-rose-500 hover:bg-rose-500 hover:text-white cursor-pointer transition-colors`}
           onClick={() => {
-            onDeleteFile?.(contextMenu.file);
+            const fileName = contextMenu.file.name;
+            void Promise.resolve(onDeleteFile?.(contextMenu.file) ?? false).then(success => {
+              if (success) triggerSuccess(`已删除文件 ${fileName}`);
+            });
           }}
         >
           <span>删除文件 (D)</span>
@@ -910,6 +932,18 @@ export default function Sidebar({
               <CheckCircle2 className={`w-3.5 h-3.5 ${isStartup ? 'text-emerald-500' : 'text-slate-400'}`} />
               <span>{isStartup ? '当前启动项目' : '设为启动项目'}</span>
             </div>
+            <div className={menuItemClass} onClick={() => void onToggleMultiStartupProject?.(project.id)}>
+              <Play className="w-3.5 h-3.5 text-sky-400" />
+              <span>{solution?.startupProjectIds?.includes(project.id) ? '从多启动项移除' : '添加到多启动项'}</span>
+            </div>
+            <div className={menuItemClass} onClick={() => void onConfigureProjectReferences?.(project.id)}>
+              <Link className="w-3.5 h-3.5 text-violet-400" />
+              <span>配置项目引用…</span>
+            </div>
+            {project.type !== 'visual-cpp' && <div className={menuItemClass} onClick={() => void onConfigureExternalProject?.(project.id)}>
+              <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+              <span>构建属性…</span>
+            </div>}
             <div className={menuItemClass} onClick={() => void onCreateProject?.()}>
               <Plus className="w-3.5 h-3.5 text-emerald-500" />
               <span>新建项目</span>
@@ -1169,18 +1203,6 @@ export default function Sidebar({
                     />
                   )}
                 </div>
-                <div className={`mt-2 rounded border px-2 py-1.5 text-[10px] font-sans ${
-                  isDarkMode ? 'border-[#2d2d34] bg-[#1E1E1E] text-slate-400' : 'border-slate-200 bg-white text-slate-600'
-                }`}>
-                  {sourceControlStatus?.isRepository ? (
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate">Git: {sourceControlStatus.branch || 'detached'}</span>
-                      <span className="text-amber-500 font-semibold">{sourceControlStatus.files.length} 个改动</span>
-                    </div>
-                  ) : (
-                    <span>Git: 当前目录未检测到可用仓库状态</span>
-                  )}
-                </div>
               </div>
 
               {/* Solution Tree */}
@@ -1246,6 +1268,7 @@ export default function Sidebar({
                           {isStartupProject && (
                             <span className="ml-auto text-[9px] text-emerald-400">启动</span>
                           )}
+                          {(project.references?.length || 0) > 0 && <span className="text-[9px] text-sky-400">引用 {project.references!.length}</span>}
                         </div>
                       );})}
 
@@ -1335,6 +1358,8 @@ export default function Sidebar({
                                         expandedGroups={expandedModuleGroups}
                                         onToggleGroup={toggleModuleGroup}
                                         onOpenModule={() => openModuleInspector(moduleId)}
+                                        activeHintId={activeModuleHintId}
+                                        onShowHint={onShowModuleHint}
                                       />
                                     )}
                                   </div>
@@ -1483,12 +1508,27 @@ export default function Sidebar({
               <div className="border-b pb-2 mb-3 shrink-0" style={{ borderColor: isDarkMode ? '#2d2d34' : '#e2e8f0' }}>
                 <h3 className={`text-xs font-bold flex items-center gap-1 ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>
                   <Wrench className="w-3.5 h-3.5 text-[#007ACC]" />
-                  <span>快捷本地化工具箱</span>
+                  <span>工作台工具</span>
                 </h3>
-                <p className="text-[10px] text-slate-500 mt-1">大幅提升 C++ 与界面布局中文代码开发与映射效率</p>
+                <p className="text-[10px] text-slate-500 mt-1">源代码管理、项目服务、发布和本地化开发工具</p>
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                <section aria-labelledby="workspace-services-title" className="space-y-2">
+                  <h4 id="workspace-services-title" className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
+                    工作区服务
+                  </h4>
+                  <SourceControlPanel initialStatus={sourceControlStatus} isDarkMode={isDarkMode} />
+                  <ExtensionHostPanel isDarkMode={isDarkMode} />
+                  <DependencyPanel isDarkMode={isDarkMode} />
+                  <RcResourcePanel isDarkMode={isDarkMode} />
+                  <PublishingPanel isDarkMode={isDarkMode} />
+                  <AiIndexPanel isDarkMode={isDarkMode} />
+                  <SettingsSyncPanel isDarkMode={isDarkMode} />
+                </section>
+
+                <div className="border-t" style={{ borderColor: isDarkMode ? '#2d2d34' : '#e2e8f0' }} />
+
                 {/* 1. Batch Smart AI Translation */}
                 <div className={`p-2.5 rounded border space-y-2 ${
                   isDarkMode ? 'bg-[#1E1E1E]/50 border-slate-800/40' : 'bg-slate-100/60 border-slate-200'
@@ -1723,13 +1763,17 @@ function ModuleInterfaceTree({
   isDarkMode,
   expandedGroups,
   onToggleGroup,
-  onOpenModule
+  onOpenModule,
+  activeHintId,
+  onShowHint
 }: {
   module: InstalledModule;
   isDarkMode: boolean;
   expandedGroups: Record<string, boolean>;
   onToggleGroup: (groupId: string) => void;
   onOpenModule: () => void;
+  activeHintId?: string;
+  onShowHint?: (hint: ModuleHintContent) => void;
 }) {
   const contributes = module.manifest.contributes || {};
   const commands = contributes.commands || [];
@@ -1782,6 +1826,20 @@ function ModuleInterfaceTree({
             title={type.name}
             detail={type.cppType ? `${type.description} · C++ ${type.cppType}` : type.description}
             isDarkMode={isDarkMode}
+            selected={activeHintId === `${module.manifest.id}:type:${type.name}`}
+            onClick={() => onShowHint?.({
+              itemId: `${module.manifest.id}:type:${type.name}`,
+              moduleId: module.manifest.id,
+              moduleName: module.manifest.name,
+              kind: '类型',
+              title: type.name,
+              description: type.description || '该模块未提供此类型的详细说明。',
+              declaration: type.cppType,
+              fields: [
+                { label: '中文类型', value: type.name },
+                { label: '对应 C++ 类型', value: type.cppType || '模块未声明' }
+              ]
+            })}
           />
         ))}
       </ModuleTreeGroup>
@@ -1798,15 +1856,38 @@ function ModuleInterfaceTree({
         footer={commands.length > 120 ? `已显示前 120 个接口，可用上方搜索缩小范围。` : undefined}
       >
         {commands.slice(0, 120).map(command => (
-          <ModuleTreeLeaf
-            key={`${module.manifest.id}:command:${command.name}:${command.signature}`}
-            icon={<FileCode className="h-3 w-3 text-cyan-300" />}
-            title={command.name}
-            badge={command.returnType}
-            detail={command.signature}
-            description={command.description}
-            isDarkMode={isDarkMode}
-          />
+          (() => {
+            const itemId = `${module.manifest.id}:command:${command.name}:${command.signature}`;
+            const binding = bindings.find(item => item.command === command.name);
+            return (
+              <ModuleTreeLeaf
+                key={itemId}
+                icon={<FileCode className="h-3 w-3 text-cyan-300" />}
+                title={command.name}
+                badge={command.returnType}
+                detail={command.signature}
+                description={command.description}
+                isDarkMode={isDarkMode}
+                selected={activeHintId === itemId}
+                onClick={() => onShowHint?.({
+                  itemId,
+                  moduleId: module.manifest.id,
+                  moduleName: module.manifest.name,
+                  kind: '命令接口',
+                  title: command.name,
+                  description: command.description || '该模块未提供此命令的详细说明。',
+                  declaration: command.signature,
+                  fields: [
+                    { label: '返回值', value: command.returnType || '空' },
+                    { label: '插入代码', value: command.insertText || command.signature },
+                    { label: 'C++ 运行时', value: binding?.runtimeName || '模块未声明绑定' },
+                    { label: '编码', value: binding?.encoding || '默认' },
+                    { label: '适用目标', value: binding?.targetIds?.join('、') || '全部已支持目标' }
+                  ]
+                })}
+              />
+            );
+          })()
         ))}
       </ModuleTreeGroup>
 
@@ -1827,6 +1908,23 @@ function ModuleInterfaceTree({
             detail={control.type}
             description={(control.events || []).map(event => `${event.label}：${event.handlerPattern}`).join('；') || '未声明事件'}
             isDarkMode={isDarkMode}
+            selected={activeHintId === `${module.manifest.id}:control:${control.type}`}
+            onClick={() => onShowHint?.({
+              itemId: `${module.manifest.id}:control:${control.type}`,
+              moduleId: module.manifest.id,
+              moduleName: module.manifest.name,
+              kind: '设计器控件',
+              title: control.label,
+              description: (control.events || []).length > 0
+                ? '该控件可在窗口设计器中使用，并提供下列事件绑定。'
+                : '该控件可在窗口设计器中使用，模块暂未声明事件。',
+              declaration: control.type,
+              fields: [
+                { label: '控件类型', value: control.type },
+                { label: '默认属性', value: Object.keys(control.defaultProps || {}).length > 0 ? JSON.stringify(control.defaultProps, null, 2) : '模块未声明' },
+                { label: '事件', value: (control.events || []).map(event => `${event.label}（${event.name}）→ ${event.handlerPattern}`).join('\n') || '模块未声明' }
+              ]
+            })}
           />
         ))}
       </ModuleTreeGroup>
@@ -1870,6 +1968,21 @@ function ModuleInterfaceTree({
                 title={item.value}
                 isDarkMode={isDarkMode}
                 compact
+                selected={activeHintId === `${module.manifest.id}:cpp:${item.id}`}
+                onClick={() => onShowHint?.({
+                  itemId: `${module.manifest.id}:cpp:${item.id}`,
+                  moduleId: module.manifest.id,
+                  moduleName: module.manifest.name,
+                  kind: 'C++ 依赖',
+                  title: item.value,
+                  description: `这是模块声明的${row.label}信息，构建或导出 C++ 工程时由模块服务按目标平台处理。`,
+                  declaration: item.value,
+                  fields: [
+                    { label: '依赖类别', value: row.label },
+                    { label: '声明值', value: item.value },
+                    { label: '模块标识', value: module.manifest.id }
+                  ]
+                })}
               />
             ))}
           </div>
@@ -1935,7 +2048,9 @@ function ModuleTreeLeaf({
   description,
   badge,
   isDarkMode,
-  compact = false
+  compact = false,
+  selected = false,
+  onClick
 }: {
   key?: React.Key;
   icon: React.ReactNode;
@@ -1945,13 +2060,24 @@ function ModuleTreeLeaf({
   badge?: string;
   isDarkMode: boolean;
   compact?: boolean;
+  selected?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <div
-      className={`min-w-0 rounded px-1.5 ${compact ? 'py-0.5' : 'py-1'} text-[10px] ${
-        isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/30' : 'text-slate-700 hover:bg-slate-50'
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-[calc(100%-4px)] min-w-0 rounded px-1.5 text-left ${compact ? 'py-0.5' : 'py-1'} text-[10px] ${
+        selected
+          ? isDarkMode
+            ? 'bg-sky-500/20 text-sky-100'
+            : 'bg-sky-100 text-sky-900'
+          : isDarkMode
+            ? 'text-slate-300 hover:bg-[#2A2D2E]/30'
+            : 'text-slate-700 hover:bg-slate-50'
       }`}
       title={[title, detail, description].filter(Boolean).join('\n')}
+      aria-label={`查看${title}的提示信息`}
     >
       <div className="flex min-w-0 items-center gap-1.5">
         <span className="shrink-0">{icon}</span>
@@ -1966,7 +2092,7 @@ function ModuleTreeLeaf({
       </div>
       {detail && <div className="ml-4 truncate font-mono text-[9px] text-slate-500">{detail}</div>}
       {description && <div className="ml-4 truncate text-[9px] text-slate-500">{description}</div>}
-    </div>
+    </button>
   );
 }
 

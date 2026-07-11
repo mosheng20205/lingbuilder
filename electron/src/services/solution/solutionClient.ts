@@ -1,18 +1,22 @@
 export interface SolutionProject {
   id: string;
   name: string;
-  type: 'visual-cpp';
+  type: 'visual-cpp' | 'external-msbuild' | 'external-cmake';
   sourceRoot: string;
   configRoot: string;
   designerPath: string;
   isDefault?: boolean;
+  references?: string[];
+  projectFile?: string;
+  buildProperties?: { configuration: 'Debug' | 'Release'; architecture: 'Win32' | 'x64'; additionalArguments: string[] };
 }
 
 export interface SolutionModel {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
   name: string;
   startupProjectId: string;
+  startupProjectIds: string[];
   projects: SolutionProject[];
 }
 
@@ -23,13 +27,16 @@ export interface SolutionCommandResult {
   logs?: string[];
   error?: string;
   stage?: string;
+  compilerDiagnostics?: any[];
+  results?: Array<{ compilerDiagnostics?: any[] }>;
 }
 
 export const DEFAULT_SOLUTION: SolutionModel = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: 'lingbuilder-solution',
   name: 'UI_CppLocProj',
   startupProjectId: 'lingbuilder-ui-project',
+  startupProjectIds: ['lingbuilder-ui-project'],
   projects: [
     {
       id: 'lingbuilder-ui-project',
@@ -39,6 +46,7 @@ export const DEFAULT_SOLUTION: SolutionModel = {
       configRoot: 'config',
       designerPath: '.lingbuilder/window-designer.json',
       isDefault: true
+      , references: []
     }
   ]
 };
@@ -54,8 +62,16 @@ export async function createSolutionProject(name?: string): Promise<SolutionComm
   return postJson('/api/solution/projects', { name });
 }
 
+export async function importSolutionProject(projectFile: string): Promise<SolutionCommandResult> {
+  return postJson('/api/solution/import', { projectFile });
+}
+
 export async function setStartupProject(projectId: string): Promise<SolutionCommandResult> {
   return patchJson(`/api/solution/projects/${encodeURIComponent(projectId)}`, { startup: true });
+}
+
+export async function configureSolutionProject(projectId: string, patch: { references?: string[]; startupProjectIds?: string[]; buildProperties?: SolutionProject['buildProperties'] }): Promise<SolutionCommandResult> {
+  return patchJson(`/api/solution/projects/${encodeURIComponent(projectId)}`, patch);
 }
 
 export async function deleteSolutionProject(projectId: string, deleteFiles: boolean): Promise<SolutionCommandResult> {

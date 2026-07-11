@@ -18,6 +18,14 @@ export interface CppFile {
   path: string;
   name: string;
   language: 'cpp' | 'header' | 'resource' | 'ini' | 'epl' | 'lingcpp';
+  /** Disk encoding selected for the next save. Editor content is normalized to LF. */
+  encoding: import('./services/files/types').TextFileEncoding;
+  /** Disk line-ending style selected for the next save. */
+  eol: import('./services/files/types').TextFileEol;
+  savedEncoding: import('./services/files/types').TextFileEncoding;
+  savedEol: import('./services/files/types').TextFileEol;
+  /** True when only encoding/EOL (rather than text) differs from the saved file. */
+  formatModified: boolean;
   originalContent: string;
   translatedContent: string;
   strings: ExtractedString[];
@@ -48,6 +56,9 @@ export interface ProblemItem {
   id: string;
   filePath: string;
   line: number;
+  column?: number;
+  code?: string;
+  source?: string;
   level: 'error' | 'warning' | 'info';
   message: string;
   codeSnippet: string;
@@ -62,12 +73,15 @@ export interface ProblemItem {
 
 export type BottomPanelTabType =
   | 'extracted'
+  | 'module_hint'
   | 'designer_xml'
   | 'designer_cpp'
   | 'designer_manifest'
   | 'designer_logs'
   | 'problems'
   | 'output'
+  | 'terminal'
+  | 'tests'
   | 'debug_locals'
   | 'debug_logs';
 
@@ -125,6 +139,9 @@ export interface SourceControlFileStatus {
 export interface SourceControlStatus {
   isRepository: boolean;
   branch: string;
+  upstream?: string;
+  ahead: number;
+  behind: number;
   files: SourceControlFileStatus[];
   error?: string;
 }

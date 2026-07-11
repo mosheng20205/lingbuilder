@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { createSolutionService, DEFAULT_PROJECT_ID } from '../src/services/solution/solutionService';
+import { normalizeStartupProjects, topologicalProjectOrder } from '../src/services/solution/projectDependencyGraph';
 
 test('solution service creates a default solution for an empty workspace', async () => {
   const root = await createTempWorkspace();
@@ -12,12 +13,57 @@ test('solution service creates a default solution for an empty workspace', async
 
   const solution = await service.getSolution();
 
-  assert.equal(solution.schemaVersion, 1);
+  assert.equal(solution.schemaVersion, 2);
   assert.equal(solution.startupProjectId, DEFAULT_PROJECT_ID);
   assert.equal(solution.projects.length, 1);
   assert.equal(solution.projects[0].id, DEFAULT_PROJECT_ID);
   assert.equal(solution.projects[0].sourceRoot, 'src');
   assert.ok(await exists(path.join(root, '.lingbuilder', 'solution.json')));
+});
+
+test('solution references persist, dependencies build first, cycles are rejected, and delete prunes references', async () => {
+  const root = await createTempWorkspace(); const service = createSolutionService(root);
+  await service.createProject({ name: 'Core', projectId: 'core' });
+  await service.createProject({ name: 'App', projectId: 'app' });
+  let solution = await service.updateProject('app', { references: ['core'] });
+  assert.deepEqual(service.getBuildOrder(solution, ['app']).map(project => project.id), ['core', 'app']);
+  await assert.rejects(service.updateProject('core', { references: ['app'] }), /循环/u);
+  solution = (await service.deleteProject('core', { deleteFiles: false })).solution;
+  assert.deepEqual(solution.projects.find(project => project.id === 'app')?.references, []);
+});
+
+test('solution migrates v1 startup state and supports multiple startup projects', async () => {
+  const root = await createTempWorkspace();
+  await fs.mkdir(path.join(root, '.lingbuilder'), { recursive: true });
+  await fs.writeFile(path.join(root, '.lingbuilder', 'solution.json'), JSON.stringify({
+    schemaVersion: 1, id: 'old', name: 'old', startupProjectId: 'a', projects: [
+      { id: 'a', name: 'A', type: 'visual-cpp', sourceRoot: 'src/a', configRoot: 'config/a', designerPath: '.lingbuilder/a.json' },
+      { id: 'b', name: 'B', type: 'visual-cpp', sourceRoot: 'src/b', configRoot: 'config/b', designerPath: '.lingbuilder/b.json' }
+    ]
+  }));
+  const service = createSolutionService(root); let solution = await service.getSolution();
+  assert.deepEqual(solution.startupProjectIds, ['a']);
+  assert.equal(JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'solution.json'), 'utf8')).schemaVersion, 2);
+  solution = await service.updateProject('a', { startupProjectIds: ['a', 'b'] });
+  assert.deepEqual(solution.startupProjectIds, ['a', 'b']);
+  assert.deepEqual(normalizeStartupProjects(solution.projects, ['missing', 'b', 'b'], 'a'), ['b']);
+});
+
+test('dependency graph includes transitive dependencies once and gives actionable cycle paths', () => {
+  const projects = [{ id: 'ui', references: ['service', 'common'] }, { id: 'service', references: ['common'] }, { id: 'common', references: [] }];
+  assert.deepEqual(topologicalProjectOrder(projects, ['ui']), ['common', 'service', 'ui']);
+  assert.throws(() => topologicalProjectOrder([{ id: 'a', references: ['b'] }, { id: 'b', references: ['a'] }]), /a -> b -> a/u);
+});
+
+test('solution imports external project metadata and persists property updates', async () => {
+  const root = await createTempWorkspace(); await fs.mkdir(path.join(root, 'native'), { recursive: true });
+  await fs.writeFile(path.join(root, 'native', 'CMakeLists.txt'), 'project(NativeTool)');
+  const service = createSolutionService(root);
+  const imported = await service.importExternalProject('native/CMakeLists.txt');
+  assert.equal(imported.project.type, 'external-cmake');
+  const solution = await service.updateProject(imported.project.id, { buildProperties: { configuration: 'Release', architecture: 'x64', additionalArguments: ['-DENABLE_TEST=ON'] } });
+  assert.equal(solution.projects.find(project => project.id === imported.project.id)?.buildProperties?.architecture, 'x64');
+  await assert.rejects(service.updateProject(imported.project.id, { buildProperties: { configuration: 'Debug', architecture: 'x64', additionalArguments: ['bad\narg'] } }), /参数无效/u);
 });
 
 test('solution service creates project files and designer model', async () => {

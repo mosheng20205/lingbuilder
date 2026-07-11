@@ -33,6 +33,22 @@ export interface ModuleDesignerControlContribution {
   label: string;
   defaultProps: Record<string, unknown>;
   events?: Array<{ name: string; label: string; handlerPattern: string }>;
+  category?: string;
+  icon?: string;
+  isContainer?: boolean;
+  isVisual?: boolean;
+  nativeAdapter?: string;
+  requiredLibraries?: string[];
+  properties?: Array<{
+    key: string;
+    label: string;
+    type: 'text' | 'number' | 'boolean' | 'enum' | 'color' | 'file' | 'stringList' | 'columns' | 'treeNodes' | 'tabs' | 'date' | 'controlRef';
+    defaultValue: unknown;
+    options?: Array<{ value: string; label: string }>;
+    min?: number;
+    max?: number;
+    description?: string;
+  }>;
 }
 
 export interface ModuleCppContribution {
@@ -147,6 +163,24 @@ export interface InstalledModule {
   isEnabledForProject?: boolean;
   diagnostics: string[];
   sha256?: string;
+}
+
+export type ModuleHintKind = '类型' | '命令接口' | '设计器控件' | 'C++ 依赖';
+
+export interface ModuleHintField {
+  label: string;
+  value: string;
+}
+
+export interface ModuleHintContent {
+  itemId: string;
+  moduleId: string;
+  moduleName: string;
+  kind: ModuleHintKind;
+  title: string;
+  description: string;
+  declaration?: string;
+  fields?: ModuleHintField[];
 }
 
 export interface LingBuilderProjectModules {

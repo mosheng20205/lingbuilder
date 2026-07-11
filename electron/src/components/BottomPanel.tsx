@@ -21,6 +21,10 @@ import {
   Trash
 } from 'lucide-react';
 import { BottomPanelTabType, DesignerGeneratedPanelData, ExtractedString, ProblemItem } from '../types';
+import type { ModuleHintContent } from '../services/modules/types';
+import TerminalPanel from './TerminalPanel';
+import DebugInspector from './DebugInspector';
+import TestExplorer from './TestExplorer';
 
 interface BottomPanelProps {
   strings: ExtractedString[];
@@ -28,11 +32,13 @@ interface BottomPanelProps {
   buildLogs: string[];
   debugLogs: string[];
   onSelectLine: (lineNum: number) => void;
+  onSelectProblem?: (problem: ProblemItem) => void;
   onUpdateStringTranslation: (id: string, value: string) => void;
   onSetStatus: (id: string, status: 'translated' | 'skipped' | 'pending') => void;
   isDarkMode?: boolean;
   activeTab: BottomPanelTabType;
   onActiveTabChange: (tab: BottomPanelTabType) => void;
+  moduleHint: ModuleHintContent | null;
   generatedPanels: DesignerGeneratedPanelData;
   height: number;
   onClearLogs?: (tab: string) => void;
@@ -44,11 +50,13 @@ export default function BottomPanel({
   buildLogs,
   debugLogs,
   onSelectLine,
+  onSelectProblem,
   onUpdateStringTranslation,
   onSetStatus,
   isDarkMode = true,
   activeTab,
   onActiveTabChange,
+  moduleHint,
   generatedPanels,
   height,
   onClearLogs
@@ -108,14 +116,6 @@ export default function BottomPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editVal, setEditVal] = useState('');
 
-  // Simulating WPF Live Controls watch states inside C# IDE
-  const [wpfLocals, setWpfLocals] = useState([
-    { id: 'txt_account', name: '账号输入框', type: 'System.Windows.Controls.TextBox', value: 'admin@space_adventure.com', binding: '关联设计文件 / .局部变量 系统配置', status: '正在监视' },
-    { id: 'btn_launch', name: '按钮1', type: 'System.Windows.Controls.Button', value: '已被单击 / 触发 _按钮1_被单击', binding: '信息框 ("开始运行太空冒险...", 64, "运行成功")', status: '就绪' },
-    { id: 'progress_sync', name: '资源同步进度条', type: 'System.Windows.Controls.ProgressBar', value: '35%', binding: '载入可视化设计 (关联设计文件)', status: '正在更新' },
-    { id: 'chk_remember', name: '记住配置复选框', type: 'System.Windows.Controls.CheckBox', value: '已勾选 (True)', binding: '记住配置_Checked 事件绑定', status: '就绪' },
-    { id: 'lbl_login_title', name: '登录窗体标题标签', type: 'System.Windows.Controls.Label', value: '太空冒险安全账户登录', binding: '静态属性', status: '只读' }
-  ]);
 
   const filteredStrings = strings.filter(s => {
     if (filterType === 'all') return true;
@@ -188,14 +188,6 @@ export default function BottomPanel({
     onActiveTabChange('output');
   };
 
-  const handleLocalValChange = (id: string, newVal: string) => {
-    setWpfLocals(prev => prev.map(item => {
-      if (item.id === id) {
-        return { ...item, value: newVal };
-      }
-      return item;
-    }));
-  };
 
   return (
     <div 
@@ -251,6 +243,27 @@ export default function BottomPanel({
             <ListCollapse className="w-3.5 h-3.5 text-blue-500" />
             <span>中文代码映射表 ({strings.length})</span>
           </button>
+
+          {moduleHint && (
+            <button
+              type="button"
+              onClick={() => onActiveTabChange('module_hint')}
+              className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
+                activeTab === 'module_hint'
+                  ? isDarkMode
+                    ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10'
+                    : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
+                  : isDarkMode
+                    ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
+                    : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
+              }`}
+              aria-label={`提示：${moduleHint.title}`}
+              title={`${moduleHint.kind} · ${moduleHint.title}`}
+            >
+              <Info className="w-3.5 h-3.5 text-sky-500" />
+              <span>提示</span>
+            </button>
+          )}
 
           <button
             onClick={() => onActiveTabChange('designer_xml')}
@@ -349,6 +362,15 @@ export default function BottomPanel({
           </button>
 
           <button
+            onClick={() => onActiveTabChange('terminal')}
+            className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${activeTab === 'terminal' ? isDarkMode ? 'text-white bg-[#1E1E1E] border-[#2d2d30]' : 'text-slate-900 bg-white border-slate-300' : isDarkMode ? 'text-slate-400 hover:text-slate-200 border-transparent' : 'text-slate-600 hover:text-slate-800 border-transparent'}`}
+          >
+            <Terminal className="w-3.5 h-3.5 text-sky-500" /><span>终端</span>
+          </button>
+
+          <button onClick={() => onActiveTabChange('tests')} className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${activeTab === 'tests' ? isDarkMode ? 'text-white bg-[#1E1E1E] border-[#2d2d30]' : 'text-slate-900 bg-white border-slate-300' : isDarkMode ? 'text-slate-400 hover:text-slate-200 border-transparent' : 'text-slate-600 hover:text-slate-800 border-transparent'}`}><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /><span>测试</span></button>
+
+          <button
             onClick={() => onActiveTabChange('debug_logs')}
             className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
               activeTab === 'debug_logs' 
@@ -377,7 +399,7 @@ export default function BottomPanel({
             }`}
           >
             <Bug className="w-3.5 h-3.5 text-amber-500" />
-            <span>局部变量 & WPF 监视器 (Locals)</span>
+            <span>局部变量 / 监视 / 调用栈</span>
           </button>
         </div>
 
@@ -588,6 +610,92 @@ export default function BottomPanel({
           </table>
         )}
 
+        {activeTab === 'module_hint' && moduleHint && (
+          <section
+            className="h-full overflow-auto p-4 font-sans select-text"
+            aria-live="polite"
+            aria-label={`${moduleHint.kind}提示信息`}
+          >
+            <div className={`mx-auto max-w-5xl overflow-hidden rounded border ${
+              isDarkMode ? 'border-slate-700/70 bg-[#18181c]' : 'border-slate-200 bg-slate-50'
+            }`}>
+              <div className={`flex min-w-0 items-start gap-3 border-b px-4 py-3 ${
+                isDarkMode ? 'border-slate-700/60 bg-[#202024]' : 'border-slate-200 bg-white'
+              }`}>
+                <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded ${
+                  isDarkMode ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-100 text-sky-700'
+                }`}>
+                  <Info className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <h2 className={`break-all text-sm font-semibold ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>
+                      {moduleHint.title}
+                    </h2>
+                    <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+                      isDarkMode
+                        ? 'border-sky-500/25 bg-sky-500/10 text-sky-300'
+                        : 'border-sky-200 bg-sky-50 text-sky-700'
+                    }`}>
+                      {moduleHint.kind}
+                    </span>
+                  </div>
+                  <div className={`mt-0.5 break-all text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                    {moduleHint.moduleName} · {moduleHint.moduleId}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4 p-4">
+                <div>
+                  <div className={`mb-1 text-[10px] font-semibold uppercase tracking-wide ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
+                    说明
+                  </div>
+                  <p className={`whitespace-pre-wrap break-words text-xs leading-5 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                    {moduleHint.description}
+                  </p>
+                </div>
+
+                {moduleHint.declaration && (
+                  <div>
+                    <div className={`mb-1 text-[10px] font-semibold uppercase tracking-wide ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
+                      声明 / 标识
+                    </div>
+                    <pre className={`overflow-x-auto rounded border px-3 py-2 font-mono text-[11px] leading-5 whitespace-pre-wrap break-all ${
+                      isDarkMode
+                        ? 'border-slate-700/60 bg-black/25 text-cyan-300'
+                        : 'border-slate-200 bg-white text-cyan-800'
+                    }`}>
+                      {moduleHint.declaration}
+                    </pre>
+                  </div>
+                )}
+
+                {moduleHint.fields && moduleHint.fields.length > 0 && (
+                  <dl className={`grid grid-cols-[minmax(96px,160px)_minmax(0,1fr)] overflow-hidden rounded border text-[11px] ${
+                    isDarkMode ? 'border-slate-700/60' : 'border-slate-200'
+                  }`}>
+                    {moduleHint.fields.map(field => (
+                      <React.Fragment key={`${field.label}:${field.value}`}>
+                        <dt className={`border-b px-3 py-2 font-semibold last:border-b-0 ${
+                          isDarkMode ? 'border-slate-700/50 bg-white/[0.03] text-slate-400' : 'border-slate-200 bg-slate-100 text-slate-600'
+                        }`}>
+                          {field.label}
+                        </dt>
+                        <dd className={`border-b px-3 py-2 font-mono whitespace-pre-wrap break-all last:border-b-0 ${
+                          isDarkMode ? 'border-slate-700/50 text-slate-300' : 'border-slate-200 bg-white text-slate-700'
+                        }`}>
+                          {field.value}
+                        </dd>
+                      </React.Fragment>
+                    ))}
+                  </dl>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
         {designerCodePanel && (
           <div 
             onContextMenu={(e) => handleContextMenu(e, 'designer_logs')}
@@ -615,7 +723,7 @@ export default function BottomPanel({
               problems.map(prob => (
                 <div
                   key={prob.id}
-                  onClick={() => onSelectLine(prob.line)}
+                  onClick={() => onSelectProblem ? onSelectProblem(prob) : onSelectLine(prob.line)}
                   className={`p-3 rounded-lg border flex flex-col md:flex-row md:items-center justify-between gap-3 cursor-pointer hover:scale-[1.002] transition-transform ${
                     prob.level === 'error'
                       ? isDarkMode
@@ -643,7 +751,7 @@ export default function BottomPanel({
                       >
                         {prob.level === 'error' ? '编译阻断 (Error)' : prob.level === 'warning' ? '规范缺陷 (Warning)' : '辅助信息 (Info)'}
                       </span>
-                      <span className="font-semibold text-slate-400 text-[10px]">{prob.filePath}{" -> "}第 {prob.line} 行</span>
+                      <span className="font-semibold text-slate-400 text-[10px]">{prob.filePath}{" -> "}第 {prob.line} 行{prob.column ? `:${prob.column}` : ''}{prob.code ? ` · ${prob.code}` : ''}</span>
                     </div>
                     <p className={`text-xs font-sans mt-1.5 leading-relaxed ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>{prob.message}</p>
                     <div className={`flex items-center gap-1.5 text-[11px] p-1.5 rounded border mt-1 max-w-full overflow-x-auto select-text ${
@@ -713,6 +821,9 @@ export default function BottomPanel({
           </div>
         )}
 
+        {activeTab === 'terminal' && <TerminalPanel isDarkMode={isDarkMode} />}
+        {activeTab === 'tests' && <TestExplorer isDarkMode={isDarkMode} />}
+
         {activeTab === 'debug_logs' && (
           // ================= RUNTIME DEBUG LOGS PANEL =================
           <div 
@@ -734,74 +845,7 @@ export default function BottomPanel({
           </div>
         )}
 
-        {activeTab === 'debug_locals' && (
-          // ================= DEBUG LOCALS & WATCH (WPF & EPL BRIDGING) =================
-          <div className="p-4 overflow-x-auto">
-            <div 
-              className={`mb-2 text-[10px] font-sans flex justify-between items-center p-2 rounded border ${
-                isDarkMode ? 'bg-slate-900/40 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
-              }`}
-            >
-              <span>在 C# WPF 底层架构下，以下中文 易语言(EPL) 变量与可视标签属性正处于实时内存监视状态：</span>
-              <span className="text-emerald-500 flex items-center gap-1 font-bold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>调试器正常工作 (端口: 3000)</span>
-              </span>
-            </div>
-            
-            <table className="w-full text-left border-collapse text-xs select-text">
-              <thead>
-                <tr className={`select-none ${isDarkMode ? 'bg-[#252526] border-b border-[#181818] text-slate-400' : 'bg-slate-100 border-b border-slate-200 text-slate-600'}`}>
-                  <th className="py-2 px-4 font-semibold w-28">变量/控件标识符</th>
-                  <th className="py-2 px-4 font-semibold w-36">易语言中文化绑定名称</th>
-                  <th className="py-2 px-4 font-semibold w-48">WPF 宿主底层托管类型</th>
-                  <th className="py-2 px-4 font-semibold w-1/3">实时内存数值 (Value) [双击修改]</th>
-                  <th className="py-2 px-4 font-semibold w-36">WPF 后台绑定逻辑</th>
-                  <th className="py-2 px-4 font-semibold w-24">运行状态</th>
-                </tr>
-              </thead>
-              <tbody className={`font-mono divide-y ${isDarkMode ? 'divide-[#181818]' : 'divide-slate-200'}`}>
-                {wpfLocals.map(item => (
-                  <tr key={item.id} className={`transition-colors group ${isDarkMode ? 'hover:bg-[#2A2D2E]' : 'hover:bg-slate-50'}`}>
-                    <td className={`py-1.5 px-4 font-semibold ${isDarkMode ? 'text-amber-400' : 'text-amber-700'}`}>{item.id}</td>
-                    <td className={`py-1.5 px-4 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{item.name}</td>
-                    <td className="py-1.5 px-4 text-slate-400 text-[11px]">{item.type}</td>
-                    <td className="py-1.5 px-4">
-                      <input
-                        type="text"
-                        value={item.value}
-                        onChange={(e) => handleLocalValChange(item.id, e.target.value)}
-                        className={`bg-transparent border border-transparent rounded px-1.5 py-0.5 w-full focus:outline-none transition-all text-xs ${
-                          isDarkMode 
-                            ? 'hover:border-slate-700 focus:border-[#007ACC] focus:bg-[#252526] text-slate-200' 
-                            : 'hover:border-slate-300 focus:border-blue-500 focus:bg-slate-50 text-slate-800'
-                        }`}
-                      />
-                    </td>
-                    <td className="py-1.5 px-4 text-slate-400 text-[10px]">{item.binding}</td>
-                    <td className="py-1.5 px-4">
-                      <span className={`px-1.5 py-0.2 rounded text-[9px] font-semibold ${
-                        item.status === '正在监视' 
-                          ? isDarkMode
-                            ? 'bg-blue-950/40 text-blue-400 border border-blue-500/20' 
-                            : 'bg-blue-50 text-blue-600 border border-blue-200'
-                          : item.status === '正在更新'
-                          ? isDarkMode
-                            ? 'bg-amber-950/40 text-amber-400 border border-amber-500/20'
-                            : 'bg-amber-50 text-amber-600 border border-amber-200'
-                          : isDarkMode
-                          ? 'bg-slate-800 text-slate-400 border border-slate-700/50'
-                          : 'bg-slate-100 text-slate-500 border border-slate-200'
-                      }`}>
-                        {item.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {activeTab === 'debug_locals' && <DebugInspector isDarkMode={isDarkMode} />}
       </div>
 
       {/* Visual Studio Style Context Menu */}

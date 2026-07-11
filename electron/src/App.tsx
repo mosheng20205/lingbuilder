@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   FolderCode,
   Layers,
@@ -39,7 +39,11 @@ import {
   Maximize2,
   Minimize2,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  Command as CommandIcon,
+  Settings as SettingsIcon,
+  Search,
+  Bug
 } from 'lucide-react';
 
 import {
@@ -60,8 +64,54 @@ import { computeDiff } from './utils/diff';
 // Components
 import Sidebar from './components/Sidebar';
 import DiffViewer, { DiffViewerHandle } from './components/DiffViewer';
+import MonacoCodeEditor from './components/MonacoCodeEditor';
+import type { MonacoEditorState } from './components/MonacoCodeEditor';
 import AiAssistant from './components/AiAssistant';
 import BottomPanel from './components/BottomPanel';
+import CommandPalette from './components/CommandPalette';
+import SettingsDialog from './components/SettingsDialog';
+import WorkspaceSearchDialog from './components/WorkspaceSearchDialog';
+import TextFileStatusControls from './components/TextFileStatusControls';
+import EditorPositionStatus from './components/EditorPositionStatus';
+import {
+  DIFF_VIEW_MODE_CHANGE_EVENT,
+  type DiffViewMode
+} from './components/DiffViewModeSelector';
+import {
+  TEXT_FILE_ENCODINGS,
+  TEXT_FILE_EOLS,
+  type TextFileEncoding,
+  type TextFileEol,
+  type TextFileFormat
+} from './services/files/types';
+import {
+  getCurrentFileContent,
+  isEditorFileDirty
+} from './services/files/editorFileState';
+import {
+  createCommandService,
+  createKeybindingService,
+  createCommandPaletteContext,
+  isSafeGlobalKeybinding,
+  isSuccessfulCommandResult,
+  normalizeKeybinding,
+  WORKBENCH_DEFAULT_KEYBINDINGS,
+  type CommandContext,
+  type CommandPresentation,
+  type RegisteredCommand
+} from './services/commands';
+import type {
+  ConfigurationTarget,
+  ConfigurationValue,
+  WorkbenchConfigurationKey,
+  WorkbenchConfigurationSnapshot
+} from './services/configuration';
+import {
+  LEGACY_EDITOR_EXPERIENCE_MODE_KEY,
+  LEGACY_EDITOR_FONT_SIZE_KEY,
+  planLegacyWorkbenchConfigurationMigration
+} from './services/configuration/legacyWorkbenchConfiguration';
+import { runGuardedConfigurationUpdate } from './services/configuration/configurationUpdateGuard';
 import {
   requestWindowDesignerBuildRun,
   WINDOW_DESIGNER_LINGCPP_SOURCE_REQUEST,
@@ -78,24 +128,73 @@ import {
   WINDOW_DESIGNER_PROJECT_UPDATED
 } from './services/windowDesigner/windowDesignerService';
 import { sourceControlService } from './services/lingCpp/sourceControlService';
+import { applyProjectFileDelete, applyProjectFileRename } from './services/workspace/projectFileState';
+import {
+  applyWorkspaceReplace,
+  previewWorkspaceReplace,
+  queryWorkspace,
+  rollbackWorkspaceReplace
+} from './services/workspace/workspaceSearchClient';
+import {
+  createWorkspaceSearchRevealDetail,
+  findWorkspaceSearchProject,
+  refreshWorkspaceSearchEditorFiles
+} from './services/workspace/workspaceSearchEditorState';
+import {
+  createProjectFileLoadState,
+  getProjectFileEditorAvailability,
+  hasUsableProjectFilePayload,
+  isProjectFileLoadPending
+} from './services/workspace/projectFileLoadState';
+import {
+  createProjectMutationOwner,
+  isProjectMutationOwnerCurrent,
+  type ProjectMutationOwner
+} from './services/workspace/projectMutationOwner';
+import type {
+  WorkspaceReplaceApplyRequest,
+  WorkspaceReplaceApplyResponse,
+  WorkspaceReplacePreviewRequest,
+  WorkspaceReplacePreviewResponse,
+  WorkspaceReplaceRollbackRequest,
+  WorkspaceReplaceRollbackResponse,
+  WorkspaceSearchMatch,
+  WorkspaceSearchQueryRequest,
+  WorkspaceSearchQueryResponse
+} from './services/workspace/workspaceSearchTypes';
+import { formatEnvironmentCheckOutput } from './services/tasks/environmentCheckPresentation';
+import { createEnvironmentCheckRequestGate } from './services/tasks/environmentCheckRequestGate';
+import type { TaskSnapshot } from './services/tasks/taskService';
+import type { ClangdStatus } from './services/lsp/clangdService';
+import type { BuildArchitecture, BuildConfiguration, BuildMode } from './services/tasks/buildConfigurationService';
+import { closeEditorGroup, closeEditorGroupTab, moveEditorTab, restoreEditorGroupLayout, selectEditorGroupTab, splitEditorGroup, type EditorGroupLayout } from './services/editor/editorGroupLayout';
 import { getLingCppProblems } from './services/lingCpp/languageService';
 import { EditorExperienceMode, adaptProblemForBeginner } from './services/lingCpp/beginnerService';
 import { createWorkspaceEditChangeFromRewrite } from './services/lingCpp/aiEditService';
 import { findLingCppMethod, parseLingCpp } from './services/lingCpp/parser';
-import { InstalledModule, LingCppModuleContext } from './services/modules/types';
+import { InstalledModule, LingCppModuleContext, ModuleHintContent } from './services/modules/types';
 import {
   DEFAULT_SOLUTION,
   SolutionModel,
   buildSolution,
   cleanSolution,
+  configureSolutionProject,
+  importSolutionProject,
   createSolutionProject,
   deleteSolutionProject,
   fetchSolution,
   rebuildSolution,
   setStartupProject
 } from './services/solution/solutionClient';
+import {
+  createInactiveTextEditorStatus,
+  disposeWorkbenchTextModelsForSource,
+  getEditorHistoryPresentation,
+  renameWorkbenchTextModelsForSource,
+  TextModelIdentity,
+  workbenchTextModelService
+} from './services/textModel';
 
-const EDITOR_EXPERIENCE_MODE_STORAGE_KEY = 'lingbuilder.editorExperienceMode';
 const BEGINNER_IGNORED_TASKS_STORAGE_KEY = 'lingbuilder.beginnerIgnoredTasks';
 
 const generateDefaultLingCppContentForWindow = (win: any) => {
@@ -124,6 +223,8 @@ type LingBuilderWindowControls = {
   toggleMaximize: () => Promise<boolean>;
   isMaximized: () => Promise<boolean>;
   close: () => Promise<void>;
+  confirmClose: () => Promise<void>;
+  onCloseRequested: (listener: () => void) => () => void;
 };
 
 const getNativeWindowControls = () => {
@@ -155,6 +256,20 @@ type PendingDesignerEventEdit = {
   eventName?: string;
   windowTitle?: string;
   newText: string;
+  owner: ProjectMutationOwner;
+};
+
+type OwnedWorkspaceReplacePreview = {
+  preview: WorkspaceReplacePreviewResponse;
+  owner: ProjectMutationOwner;
+};
+
+type EditorOperation = 'save' | 'build' | 'file-mutation';
+
+const getEditorOperationLabel = (operation: EditorOperation | null) => {
+  if (operation === 'build') return '构建';
+  if (operation === 'file-mutation') return '文件操作';
+  return '保存';
 };
 
 const DEFAULT_DESIGNER_GENERATED_PANELS: DesignerGeneratedPanelData = {
@@ -168,7 +283,6 @@ const DEFAULT_DESIGNER_GENERATED_PANELS: DesignerGeneratedPanelData = {
   isBuilding: false
 };
 
-const EDITOR_FONT_SIZE_STORAGE_KEY = 'lingbuilder.editor.fontSize';
 const DEFAULT_EDITOR_FONT_SIZE = 13;
 const MIN_EDITOR_FONT_SIZE = 10;
 const MAX_EDITOR_FONT_SIZE = 24;
@@ -179,7 +293,7 @@ const clampEditorFontSize = (value: number) => {
 
 const getInitialEditorFontSize = () => {
   try {
-    const savedValue = window.localStorage.getItem(EDITOR_FONT_SIZE_STORAGE_KEY);
+    const savedValue = window.localStorage.getItem(LEGACY_EDITOR_FONT_SIZE_KEY);
     if (!savedValue) return DEFAULT_EDITOR_FONT_SIZE;
     const parsedValue = Number.parseInt(savedValue, 10);
     return Number.isFinite(parsedValue) ? clampEditorFontSize(parsedValue) : DEFAULT_EDITOR_FONT_SIZE;
@@ -190,7 +304,7 @@ const getInitialEditorFontSize = () => {
 
 const getInitialEditorExperienceMode = (): EditorExperienceMode => {
   try {
-    const savedValue = window.localStorage.getItem(EDITOR_EXPERIENCE_MODE_STORAGE_KEY);
+    const savedValue = window.localStorage.getItem(LEGACY_EDITOR_EXPERIENCE_MODE_KEY);
     if (savedValue === 'professional' || savedValue === 'native') return savedValue;
     return 'beginner';
   } catch {
@@ -265,16 +379,44 @@ const getCurrentWindowDesignerProject = () => readWindowDesignerState().project;
 const getCurrentWindowDesignerProjectId = () => getCurrentWindowDesignerProject().id || 'lingbuilder-ui-project';
 
 const inferFileLanguage = (filePath: string): CppFile['language'] => {
-  if (filePath.endsWith('.lcpp')) return 'lingcpp';
-  if (filePath.endsWith('.cpp')) return 'cpp';
-  if (filePath.endsWith('.h')) return 'header';
-  if (filePath.endsWith('.rc')) return 'resource';
-  if (filePath.endsWith('.ini')) return 'ini';
+  const normalizedPath = filePath.toLowerCase();
+  if (normalizedPath.endsWith('.lcpp')) return 'lingcpp';
+  if (normalizedPath.endsWith('.e')) return 'epl';
+  if (normalizedPath.endsWith('.cpp')) return 'cpp';
+  if (normalizedPath.endsWith('.h')) return 'header';
+  if (normalizedPath.endsWith('.rc')) return 'resource';
+  if (normalizedPath.endsWith('.ini')) return 'ini';
   return 'cpp';
 };
 
-const getCurrentFileContent = (file: CppFile): string =>
-  file.isModified ? file.translatedContent : (file.translatedContent || file.originalContent || '');
+const DEFAULT_TEXT_FILE_FORMAT: TextFileFormat = { encoding: 'utf8', eol: 'lf' };
+const DIFF_VIEW_MODE_COMMANDS: Readonly<Record<DiffViewMode, string>> = {
+  chinese: 'workbench.action.diff.edit',
+  split: 'workbench.action.diff.split',
+  unified: 'workbench.action.diff.unified'
+};
+
+const readTextFileFormat = (value: unknown): TextFileFormat => {
+  if (!value || typeof value !== 'object') return DEFAULT_TEXT_FILE_FORMAT;
+  const candidate = value as Partial<TextFileFormat>;
+  return {
+    encoding: TEXT_FILE_ENCODINGS.includes(candidate.encoding as TextFileEncoding)
+      ? candidate.encoding as TextFileEncoding
+      : DEFAULT_TEXT_FILE_FORMAT.encoding,
+    eol: TEXT_FILE_EOLS.includes(candidate.eol as TextFileEol)
+      ? candidate.eol as TextFileEol
+      : DEFAULT_TEXT_FILE_FORMAT.eol
+  };
+};
+
+const getTextFileFormat = (file: CppFile): TextFileFormat => ({
+  encoding: file.encoding,
+  eol: file.eol
+});
+
+const isSameTextFileFormat = (left: TextFileFormat, right: TextFileFormat): boolean => (
+  left.encoding === right.encoding && left.eol === right.eol
+);
 
 interface EditorFlushState {
   ok: boolean;
@@ -282,11 +424,80 @@ interface EditorFlushState {
   diagnostics: string[];
 }
 
+const isStringRecord = (value: unknown): value is Record<string, string> => Boolean(value)
+  && typeof value === 'object'
+  && !Array.isArray(value)
+  && Object.values(value as Record<string, unknown>).every(item => typeof item === 'string');
+
+const STALE_PROJECT_MUTATION_MESSAGE = '项目已切换或重新载入，已忽略旧项目的异步响应。';
+
+const getWorkbenchCommandKeybindings = (
+  commandId: string,
+  defaults: readonly string[],
+  overrides: Record<string, string>
+): string[] => {
+  const override = overrides[commandId];
+  if (!override?.trim()) return [...defaults];
+  try {
+    const normalized = normalizeKeybinding(override);
+    return isSafeGlobalKeybinding(normalized) ? [normalized] : [...defaults];
+  } catch {
+    return [...defaults];
+  }
+};
+
 export default function App() {
   const [solution, setSolution] = useState<SolutionModel>(DEFAULT_SOLUTION);
   const [windowDesignerState, setWindowDesignerState] = useState<PersistedWindowDesignerState>(() => readWindowDesignerState());
   const activeSolutionProject = solution.projects.find(project => project.id === solution.startupProjectId) || solution.projects[0] || DEFAULT_SOLUTION.projects[0];
   const activeProjectId = activeSolutionProject.id;
+  const textModelWorkspaceId = solution.id || DEFAULT_SOLUTION.id;
+  const textModelIdentity = (projectId: string, filePath: string): TextModelIdentity => ({
+    workspaceId: textModelWorkspaceId,
+    projectId,
+    filePath
+  });
+  const activeProjectIdRef = useRef(activeProjectId);
+  activeProjectIdRef.current = activeProjectId;
+  const [loadedProjectId, setLoadedProjectId] = useState(activeProjectId);
+  const loadedProjectIdRef = useRef(loadedProjectId);
+  loadedProjectIdRef.current = loadedProjectId;
+  const [projectFileLoadState, setProjectFileLoadState] = useState(() => createProjectFileLoadState(activeProjectId));
+  const [projectFileReloadToken, setProjectFileReloadToken] = useState(0);
+  const projectFileLoadGenerationRef = useRef(0);
+  const projectFileLoadKeyRef = useRef('');
+  const projectFileLoadKey = JSON.stringify([activeProjectId, projectFileReloadToken]);
+  if (projectFileLoadKeyRef.current !== projectFileLoadKey) {
+    projectFileLoadKeyRef.current = projectFileLoadKey;
+    projectFileLoadGenerationRef.current += 1;
+  }
+  const hydratedProjectIdsRef = useRef(new Set<string>());
+  const projectSwitchInFlightRef = useRef(false);
+  const projectFileEditorAvailability = getProjectFileEditorAvailability(
+    activeProjectId,
+    loadedProjectId,
+    projectFileLoadState
+  );
+  const projectFilesLoading = projectFileEditorAvailability === 'loading';
+  const projectFilesReady = projectFileEditorAvailability === 'ready';
+  const projectFilesReadyRef = useRef(projectFilesReady);
+  projectFilesReadyRef.current = projectFilesReady;
+  const captureProjectMutationOwner = useCallback((): ProjectMutationOwner => (
+    createProjectMutationOwner(activeProjectIdRef.current, projectFileLoadGenerationRef.current)
+  ), []);
+  const isCurrentProjectMutationOwner = useCallback((owner: ProjectMutationOwner): boolean => (
+    isProjectMutationOwnerCurrent(owner, {
+      activeProjectId: activeProjectIdRef.current,
+      loadedProjectId: loadedProjectIdRef.current,
+      loadGeneration: projectFileLoadGenerationRef.current,
+      projectFilesReady: projectFilesReadyRef.current
+    })
+  ), []);
+  const requireCurrentProjectMutationOwner = useCallback((owner: ProjectMutationOwner): void => {
+    if (!isCurrentProjectMutationOwner(owner)) {
+      throw new Error(STALE_PROJECT_MUTATION_MESSAGE);
+    }
+  }, [isCurrentProjectMutationOwner]);
   const [files, setFiles] = useState<CppFile[]>(() => {
     const proj = readWindowDesignerState().project;
 
@@ -299,6 +510,11 @@ export default function App() {
           path: sourcePath,
           name: sourceName,
           language: 'lingcpp',
+          encoding: 'utf8',
+          eol: 'lf',
+          savedEncoding: 'utf8',
+          savedEol: 'lf',
+          formatModified: false,
           originalContent: generateDefaultLingCppContentForWindow(win),
           translatedContent: '',
           strings: [],
@@ -319,14 +535,39 @@ export default function App() {
     return files ? (files.find(f => f.name === '游戏主窗体.lcpp') || files[0]) : initialFiles[0];
   });
   const filesRef = useRef<CppFile[]>([]);
+  const projectFileVersionsRef = useRef<Record<string, string>>({});
   const activeFileRef = useRef<CppFile | null>(null);
   const diffViewerRef = useRef<DiffViewerHandle>(null);
+  const [editorState, setEditorState] = useState<MonacoEditorState>(() => createInactiveTextEditorStatus('loading'));
   useEffect(() => {
     filesRef.current = files;
   }, [files]);
   useEffect(() => {
     activeFileRef.current = activeFile;
   }, [activeFile]);
+
+  useEffect(() => {
+    if (!projectFilesReady || loadedProjectId !== activeProjectId) return;
+    const dirtyFiles = files.filter(isEditorFileDirty);
+    if (dirtyFiles.length === 0) return;
+    const timer = window.setTimeout(() => {
+      const recoveryFiles = Object.fromEntries(filesRef.current.map(file => [file.path, getCurrentFileContent(file)]));
+      const fileFormats = Object.fromEntries(filesRef.current.map(file => [file.path, getTextFileFormat(file)]));
+      void fetch('/api/window-designer/recovery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: activeProjectId,
+          files: recoveryFiles,
+          fileFormats,
+          baseVersions: projectFileVersionsRef.current,
+          openTabs: openTabsRef.current,
+          activeFilePath: activeFileRef.current?.path
+        })
+      });
+    }, 750);
+    return () => window.clearTimeout(timer);
+  }, [activeProjectId, files, loadedProjectId, projectFilesReady]);
 
   const focusLingCppHandler = useCallback((handlerName: string, filePath?: string) => {
     [80, 220, 480].forEach(delay => {
@@ -346,10 +587,22 @@ export default function App() {
     } catch (e) {}
     return ['src/游戏主窗体.lcpp'];
   });
+  const openTabsRef = useRef(openTabs);
+  const [editorGroupLayout, setEditorGroupLayout] = useState<EditorGroupLayout>(() => {
+    try { return restoreEditorGroupLayout(JSON.parse(window.localStorage.getItem('lingbuilder.editorGroups.v1') || 'null'), files.map(file => file.path), activeFile.path); }
+    catch { return restoreEditorGroupLayout(null, files.map(file => file.path), activeFile.path); }
+  });
 
   useEffect(() => {
+    openTabsRef.current = openTabs;
     window.localStorage.setItem('lingbuilder.openTabs.v1', JSON.stringify(openTabs));
   }, [openTabs]);
+  useEffect(() => {
+    setEditorGroupLayout(previous => ({ ...previous, groups: previous.groups.map((group, index) => index === 0
+      ? { ...group, tabs: openTabs, activePath: activeFile.path }
+      : group) }));
+  }, [activeFile.path, openTabs]);
+  useEffect(() => { window.localStorage.setItem('lingbuilder.editorGroups.v1', JSON.stringify(editorGroupLayout)); }, [editorGroupLayout]);
 
   useEffect(() => {
     if (activeFile) {
@@ -358,6 +611,10 @@ export default function App() {
   }, [activeFile]);
 
   const flushCurrentEditorDrafts = useCallback(async (): Promise<EditorFlushState> => {
+    const owner = captureProjectMutationOwner();
+    if (!isCurrentProjectMutationOwner(owner)) {
+      return { ok: false, files: filesRef.current, diagnostics: [STALE_PROJECT_MUTATION_MESSAGE] };
+    }
     const currentFile = activeFileRef.current;
     const editorHandle = diffViewerRef.current;
     if (!currentFile || !editorHandle) {
@@ -365,6 +622,9 @@ export default function App() {
     }
 
     const result = await editorHandle.flushPendingEdits();
+    if (!isCurrentProjectMutationOwner(owner)) {
+      return { ok: false, files: filesRef.current, diagnostics: [STALE_PROJECT_MUTATION_MESSAGE] };
+    }
     if (!result.success) {
       return { ok: false, files: filesRef.current, diagnostics: result.diagnostics };
     }
@@ -384,13 +644,17 @@ export default function App() {
     setFiles(nextFiles);
     setActiveFile(updatedFile);
     return { ok: true, files: nextFiles, diagnostics: [] };
-  }, []);
+  }, [captureProjectMutationOwner, isCurrentProjectMutationOwner]);
 
   const showEditorFlushFailure = useCallback((diagnostics: string[]) => {
     window.alert(diagnostics[0] || '新手代码提交失败，当前操作已取消，源码未被覆盖。');
   }, []);
 
   const handleSelectFile = useCallback(async (file: CppFile, forceCodeView: boolean = true): Promise<boolean> => {
+    if (!projectFilesReadyRef.current) {
+      appendEditorTransactionLog('【切换文件】项目文件仍在载入，请稍后再试。');
+      return false;
+    }
     let availableFiles = filesRef.current;
     if (activeFileRef.current && activeFileRef.current.path !== file.path) {
       const flushState = await flushCurrentEditorDrafts();
@@ -403,6 +667,7 @@ export default function App() {
 
     const latestFile = availableFiles.find(candidate => candidate.path === file.path) || file;
     setOpenTabs(prev => prev.includes(latestFile.path) ? prev : [...prev, latestFile.path]);
+    setEditorState(createInactiveTextEditorStatus('switching-file'));
     activeFileRef.current = latestFile;
     setActiveFile(latestFile);
     if (forceCodeView) {
@@ -421,6 +686,7 @@ export default function App() {
         showEditorFlushFailure(flushState.diagnostics);
         return;
       }
+      setEditorState(createInactiveTextEditorStatus('switching-file'));
     }
 
     setOpenTabs(prev => {
@@ -440,28 +706,99 @@ export default function App() {
       return nextTabs.length > 0 ? nextTabs : ['src/游戏主窗体.lcpp'];
     });
   }, [flushCurrentEditorDrafts, showEditorFlushFailure]);
+
+  const updateEditorGroupFile = useCallback((filePath: string, content: string) => {
+    setFiles(previous => {
+      const next = previous.map(file => file.path === filePath
+        ? { ...file, translatedContent: content, isModified: content !== file.originalContent }
+        : file);
+      filesRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const splitActiveEditor = useCallback((orientation: 'horizontal' | 'vertical') => {
+    setEditorGroupLayout(previous => splitEditorGroup(previous, activeFileRef.current?.path || activeFile.path, orientation));
+  }, [activeFile.path]);
+
+  const movePrimaryTabToSecondary = useCallback(async () => {
+    const filePath = activeFileRef.current?.path; if (!filePath) return;
+    const flush = await flushCurrentEditorDrafts(); if (!flush.ok) return;
+    setEditorGroupLayout(previous => {
+      const split = splitEditorGroup(previous, filePath, previous.orientation);
+      return moveEditorTab(split, split.groups[0].id, split.groups[1].id, filePath);
+    });
+    const remaining = openTabsRef.current.filter(path => path !== filePath);
+    const fallbackPath = remaining[0] || filesRef.current.find(file => file.path !== filePath)?.path;
+    if (fallbackPath) {
+      const fallback = filesRef.current.find(file => file.path === fallbackPath);
+      openTabsRef.current = remaining.includes(fallbackPath) ? remaining : [...remaining, fallbackPath];
+      setOpenTabs(openTabsRef.current);
+      if (fallback) { activeFileRef.current = fallback; setActiveFile(fallback); }
+    }
+  }, [flushCurrentEditorDrafts]);
+
+  const moveSecondaryTabToPrimary = useCallback(async (filePath: string) => {
+    const file = filesRef.current.find(item => item.path === filePath); if (!file) return;
+    const selected = await handleSelectFile(file); if (!selected) return;
+    setEditorGroupLayout(previous => previous.groups[1]
+      ? moveEditorTab(previous, previous.groups[1].id, previous.groups[0].id, filePath)
+      : previous);
+  }, [handleSelectFile]);
   const [glossary, setGlossary] = useState<GlossaryTerm[]>(defaultGlossary);
   const [problems, setProblems] = useState<ProblemItem[]>([]);
+  const [compilerProblems, setCompilerProblems] = useState<ProblemItem[]>([]);
+  const [qualityProblems, setQualityProblems] = useState<ProblemItem[]>([]);
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [activeDropdown, setActiveDropdown] = useState<'file' | 'edit' | 'view' | 'project' | 'tools' | 'help' | null>(null);
   const [isMinimizedApp, setIsMinimizedApp] = useState(false);
   const [isMaximizedApp, setIsMaximizedApp] = useState(false);
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [commandQuery, setCommandQuery] = useState('');
+  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  const [workspaceSearchMode, setWorkspaceSearchMode] = useState<'search' | 'replace' | null>(null);
+  const pendingWorkspaceSearchRevealRef = useRef<WorkspaceSearchMatch | null>(null);
+  const workspaceReplacePreviewRef = useRef(new Map<string, OwnedWorkspaceReplacePreview>());
+  const workspaceReplaceTransactionRef = useRef(new Map<string, OwnedWorkspaceReplacePreview>());
+  const [configurationSnapshot, setConfigurationSnapshot] = useState<WorkbenchConfigurationSnapshot | null>(null);
+  const [configurationLoading, setConfigurationLoading] = useState(true);
+  const [configurationError, setConfigurationError] = useState('');
+  const [recentWorkspaces, setRecentWorkspaces] = useState<string[]>([]);
+  const [shortcutOverrides, setShortcutOverrides] = useState<Record<string, string>>({});
+  const [commandRegistryVersion, setCommandRegistryVersion] = useState(0);
+  const commandServiceRef = useRef(createCommandService());
+  const commandContextRef = useRef<CommandContext>({});
+  const configurationMutationRef = useRef<(
+    key: WorkbenchConfigurationKey,
+    value: ConfigurationValue,
+    target: ConfigurationTarget
+  ) => Promise<boolean>>(async () => false);
   const [isAppClosed, setIsAppClosed] = useState(false);
   const [editorFontSize, setEditorFontSizeState] = useState(getInitialEditorFontSize);
   const [editorExperienceMode, setEditorExperienceModeState] = useState<EditorExperienceMode>(getInitialEditorExperienceMode);
+  const [autoSaveMode, setAutoSaveMode] = useState<'off' | 'afterDelay'>('off');
+  const [autoSaveDelay, setAutoSaveDelay] = useState(1200);
   const [ignoredBeginnerTaskIds, setIgnoredBeginnerTaskIds] = useState<string[]>(getInitialIgnoredBeginnerTasks);
   const [sourceControlStatus, setSourceControlStatus] = useState<SourceControlStatus | null>(null);
   const [pendingDesignerEventEdit, setPendingDesignerEventEdit] = useState<PendingDesignerEventEdit | null>(null);
   const [moduleContext, setModuleContext] = useState<LingCppModuleContext>({ enabledModules: [], availableModules: [] });
 
+  useEffect(() => {
+    workspaceReplacePreviewRef.current.clear();
+    workspaceReplaceTransactionRef.current.clear();
+  }, [activeProjectId, projectFileReloadToken]);
+
   const refreshModuleContext = useCallback(async () => {
     const projectId = activeProjectId;
+    const loadGeneration = projectFileLoadGenerationRef.current;
     const [installedResult, enabledResult] = await Promise.all([
       fetch(`/api/modules/installed?projectId=${encodeURIComponent(projectId)}`).then(res => res.json()).catch(() => ({ ok: false, modules: [] })),
       fetch(`/api/modules/project?projectId=${encodeURIComponent(projectId)}`).then(res => res.json()).catch(() => ({ ok: false, modules: [] }))
     ]);
+    if (activeProjectIdRef.current !== projectId
+      || projectFileLoadGenerationRef.current !== loadGeneration) return;
     const availableModules = Array.isArray(installedResult.modules) ? installedResult.modules as InstalledModule[] : [];
     const enabledModules = Array.isArray(enabledResult.modules) ? enabledResult.modules as InstalledModule[] : [];
     setModuleContext({ availableModules, enabledModules });
@@ -480,6 +817,25 @@ export default function App() {
 
   useEffect(() => {
     void refreshSolution();
+  }, []);
+
+  useEffect(() => { const receive = (event: Event) => { const diagnostics = (event as CustomEvent<{ diagnostics?: any[] }>).detail?.diagnostics || []; const next: ProblemItem[] = diagnostics.map((item, index) => ({ id: `quality:${item.source}:${index}:${item.filePath || ''}:${item.line || 0}`, filePath: item.filePath || '质量分析', line: item.line || 1, column: item.column, code: item.code, source: item.source, level: item.severity, message: item.message, codeSnippet: item.message, suggestion: item.source === 'sarif' ? '请根据静态分析规则修正代码后重新生成报告。' : '请根据 Sanitizer 调用栈修复内存或未定义行为问题。' })); setQualityProblems(next); if (next.length) { setShowBottomPanel(true); setActiveTabInBottom('problems'); } }; window.addEventListener('lingbuilder-quality-diagnostics', receive); return () => window.removeEventListener('lingbuilder-quality-diagnostics', receive); }, []);
+
+  useEffect(() => {
+    const receiveDiagnostics = (event: Event) => {
+      const diagnostics = (event as CustomEvent<{ diagnostics?: any[] }>).detail?.diagnostics || [];
+      const next: ProblemItem[] = diagnostics.map(item => ({
+        id: item.id, filePath: item.filePath || item.generatedFile || '构建链接器', line: item.line || 1,
+        column: item.column, code: item.code, source: item.tool, level: item.severity,
+        message: item.message, codeSnippet: item.raw, suggestion: item.filePath
+          ? '单击跳转到映射后的源码位置，修正后重新构建。'
+          : '请检查链接库、输出目录和构建架构。'
+      }));
+      setCompilerProblems(next);
+      if (next.length) { setShowBottomPanel(true); setActiveTabInBottom('problems'); }
+    };
+    window.addEventListener('lingbuilder-compiler-diagnostics', receiveDiagnostics);
+    return () => window.removeEventListener('lingbuilder-compiler-diagnostics', receiveDiagnostics);
   }, []);
 
   useEffect(() => {
@@ -531,24 +887,14 @@ export default function App() {
     setProblems(nextProblems);
   }, [activeFile.language, activeFile.originalContent, activeFile.path, activeFile.translatedContent, editorExperienceMode, moduleContext, windowDesignerState.project]);
 
-  const setEditorExperienceMode = useCallback((mode: EditorExperienceMode) => {
-    setEditorExperienceModeState(mode);
-    try {
-      window.localStorage.setItem(EDITOR_EXPERIENCE_MODE_STORAGE_KEY, mode);
-    } catch {
-      // Experience mode is UI state; editing should keep working without storage.
-    }
+  const setEditorExperienceMode = useCallback(async (mode: EditorExperienceMode): Promise<boolean> => {
+    return configurationMutationRef.current('editor.experienceMode', mode, 'user');
   }, []);
 
   const handleEditorExperienceModeChange = useCallback(async (mode: EditorExperienceMode) => {
     if (mode === editorExperienceMode) return;
-    const flushState = await flushCurrentEditorDrafts();
-    if (!flushState.ok) {
-      showEditorFlushFailure(flushState.diagnostics);
-      return;
-    }
-    setEditorExperienceMode(mode);
-  }, [editorExperienceMode, flushCurrentEditorDrafts, setEditorExperienceMode, showEditorFlushFailure]);
+    await setEditorExperienceMode(mode);
+  }, [editorExperienceMode, setEditorExperienceMode]);
 
   const ignoreBeginnerTask = useCallback((taskId: string) => {
     setIgnoredBeginnerTaskIds(previousIds => {
@@ -566,11 +912,9 @@ export default function App() {
     setEditorFontSizeState(previousValue => {
       const rawValue = typeof nextValue === 'function' ? nextValue(previousValue) : nextValue;
       const clampedValue = clampEditorFontSize(rawValue);
-      try {
-        window.localStorage.setItem(EDITOR_FONT_SIZE_STORAGE_KEY, String(clampedValue));
-      } catch {
-        // Font size persistence is a convenience; editing should not depend on localStorage.
-      }
+      window.queueMicrotask(() => {
+        void configurationMutationRef.current('editor.fontSize', clampedValue, 'user');
+      });
       return clampedValue;
     });
   }, []);
@@ -636,7 +980,7 @@ export default function App() {
     }
 
     try {
-      await windowControls.close();
+      await windowControls.confirmClose();
     } catch (error) {
       console.error('Failed to close native LingBuilder window:', error);
       setIsAppClosed(true);
@@ -660,6 +1004,210 @@ export default function App() {
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [showBottomPanel, setShowBottomPanel] = useState(true);
   const [activeTabInBottom, setActiveTabInBottom] = useState<BottomPanelTabType>('extracted');
+
+  const applyConfigurationSnapshot = useCallback((snapshot: WorkbenchConfigurationSnapshot) => {
+    setConfigurationSnapshot(snapshot);
+    const readValue = (key: WorkbenchConfigurationKey) => snapshot.settings
+      .find(item => item.metadata.key === key)?.inspection.value;
+    const fontSize = readValue('editor.fontSize');
+    const experienceMode = readValue('editor.experienceMode');
+    const nextAutoSaveMode = readValue('files.autoSave');
+    const nextAutoSaveDelay = readValue('files.autoSaveDelay');
+    const colorTheme = readValue('workbench.colorTheme');
+    const sidebarVisible = readValue('workbench.sidebar.visible');
+    const panelVisible = readValue('workbench.panel.visible');
+    const aiPanelVisible = readValue('workbench.aiPanel.visible');
+    const shortcuts = readValue('keyboard.shortcuts');
+
+    if (typeof fontSize === 'number') setEditorFontSizeState(clampEditorFontSize(fontSize));
+    if (experienceMode === 'beginner' || experienceMode === 'professional' || experienceMode === 'native') {
+      setEditorExperienceModeState(experienceMode);
+    }
+    if (nextAutoSaveMode === 'off' || nextAutoSaveMode === 'afterDelay') setAutoSaveMode(nextAutoSaveMode);
+    if (typeof nextAutoSaveDelay === 'number') setAutoSaveDelay(nextAutoSaveDelay);
+    if (colorTheme === 'dark' || colorTheme === 'light') setIsDarkMode(colorTheme === 'dark');
+    if (typeof sidebarVisible === 'boolean') setShowLeftSidebar(sidebarVisible);
+    if (typeof panelVisible === 'boolean') setShowBottomPanel(panelVisible);
+    if (typeof aiPanelVisible === 'boolean') setShowRightPanel(aiPanelVisible);
+    setShortcutOverrides(isStringRecord(shortcuts) ? shortcuts : {});
+  }, []);
+
+  const loadWorkbenchConfiguration = useCallback(async (): Promise<void> => {
+    setConfigurationLoading(true);
+    try {
+      const response = await fetch('/api/configuration');
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || '读取工作台设置失败。');
+      let snapshot = result as WorkbenchConfigurationSnapshot;
+      let legacyFontSize: string | null = null;
+      let legacyExperienceMode: string | null = null;
+      try {
+        legacyFontSize = window.localStorage.getItem(LEGACY_EDITOR_FONT_SIZE_KEY);
+        legacyExperienceMode = window.localStorage.getItem(LEGACY_EDITOR_EXPERIENCE_MODE_KEY);
+      } catch {
+        // Configuration remains usable when renderer storage is unavailable.
+      }
+      const migration = planLegacyWorkbenchConfigurationMigration(snapshot, {
+        editorFontSize: legacyFontSize,
+        editorExperienceMode: legacyExperienceMode
+      });
+      for (const update of migration.updates) {
+        const migrationResponse = await fetch('/api/configuration', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: update.key, value: update.value, target: 'user' })
+        });
+        const migrationResult = await migrationResponse.json().catch(() => ({}));
+        if (!migrationResponse.ok || migrationResult.ok === false) {
+          throw new Error(migrationResult.error || '迁移旧版工作台设置失败。');
+        }
+        snapshot = migrationResult as WorkbenchConfigurationSnapshot;
+      }
+      try {
+        migration.storageKeysToClear.forEach(key => window.localStorage.removeItem(key));
+      } catch {
+        // The migration has already persisted; stale renderer storage is ignored next time.
+      }
+      applyConfigurationSnapshot(snapshot);
+      setConfigurationError('');
+    } catch (error) {
+      setConfigurationError(error instanceof Error ? error.message : '读取工作台设置失败。');
+    } finally {
+      setConfigurationLoading(false);
+    }
+  }, [applyConfigurationSnapshot]);
+
+  const updateWorkbenchConfiguration = useCallback(async (
+    key: WorkbenchConfigurationKey,
+    value: ConfigurationValue,
+    target: ConfigurationTarget
+  ): Promise<boolean> => {
+    return runGuardedConfigurationUpdate({
+      key,
+      value,
+      currentEditorExperienceMode: editorExperienceMode,
+      flushEditorDrafts: async () => {
+        const result = await flushCurrentEditorDrafts();
+        return { ok: result.ok, diagnostics: result.diagnostics };
+      },
+      onFlushFailure: diagnostics => {
+        const messages = [...diagnostics];
+        showEditorFlushFailure(messages);
+        setConfigurationError(messages[0] || '新手代码提交失败，未切换编辑器体验模式。');
+      },
+      commit: async () => {
+        try {
+          const response = await fetch('/api/configuration', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key, value, target })
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || result.ok === false) throw new Error(result.error || '保存工作台设置失败。');
+          applyConfigurationSnapshot(result as WorkbenchConfigurationSnapshot);
+          setConfigurationError('');
+          return true;
+        } catch (error) {
+          setConfigurationError(error instanceof Error ? error.message : '保存工作台设置失败。');
+          return false;
+        }
+      }
+    });
+  }, [applyConfigurationSnapshot, editorExperienceMode, flushCurrentEditorDrafts, showEditorFlushFailure]);
+
+  const resetWorkbenchConfiguration = useCallback(async (
+    key: WorkbenchConfigurationKey,
+    target: ConfigurationTarget
+  ): Promise<boolean> => {
+    return runGuardedConfigurationUpdate({
+      key,
+      value: editorExperienceMode,
+      currentEditorExperienceMode: editorExperienceMode,
+      forceEditorDraftFlush: key === 'editor.experienceMode',
+      flushEditorDrafts: async () => {
+        const result = await flushCurrentEditorDrafts();
+        return { ok: result.ok, diagnostics: result.diagnostics };
+      },
+      onFlushFailure: diagnostics => {
+        const messages = [...diagnostics];
+        showEditorFlushFailure(messages);
+        setConfigurationError(messages[0] || '新手代码提交失败，未恢复编辑器体验设置。');
+      },
+      commit: async () => {
+        try {
+          const response = await fetch(`/api/configuration/${encodeURIComponent(key)}?target=${target}`, { method: 'DELETE' });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || result.ok === false) throw new Error(result.error || '恢复默认设置失败。');
+          applyConfigurationSnapshot(result as WorkbenchConfigurationSnapshot);
+          setConfigurationError('');
+          return true;
+        } catch (error) {
+          setConfigurationError(error instanceof Error ? error.message : '恢复默认设置失败。');
+          return false;
+        }
+      }
+    });
+  }, [applyConfigurationSnapshot, editorExperienceMode, flushCurrentEditorDrafts, showEditorFlushFailure]);
+
+  useEffect(() => {
+    configurationMutationRef.current = updateWorkbenchConfiguration;
+  }, [updateWorkbenchConfiguration]);
+
+  useEffect(() => {
+    void loadWorkbenchConfiguration();
+  }, [loadWorkbenchConfiguration]);
+
+  const openCommandPalette = useCallback(() => {
+    setActiveDropdown(null);
+    setShowSettingsDialog(false);
+    setWorkspaceSearchMode(null);
+    setCommandQuery('');
+    setShowCommandPalette(true);
+  }, []);
+
+  const openSettingsDialog = useCallback(() => {
+    setActiveDropdown(null);
+    setShowCommandPalette(false);
+    setWorkspaceSearchMode(null);
+    setShowSettingsDialog(true);
+    void loadWorkbenchConfiguration();
+  }, [loadWorkbenchConfiguration]);
+
+  const openWorkspaceSearch = useCallback(async (mode: 'search' | 'replace'): Promise<boolean> => {
+    const flushState = await flushCurrentEditorDrafts();
+    if (!flushState.ok) {
+      showEditorFlushFailure(flushState.diagnostics);
+      return false;
+    }
+    setActiveDropdown(null);
+    setShowCommandPalette(false);
+    setShowSettingsDialog(false);
+    setWorkspaceSearchMode(mode);
+    return true;
+  }, [flushCurrentEditorDrafts, showEditorFlushFailure]);
+
+  const toggleSidebarVisibility = useCallback(async (): Promise<boolean> => (
+    configurationMutationRef.current('workbench.sidebar.visible', !showLeftSidebar, 'user')
+  ), [showLeftSidebar]);
+
+  const toggleBottomPanelVisibility = useCallback(async (): Promise<boolean> => (
+    configurationMutationRef.current('workbench.panel.visible', !showBottomPanel, 'user')
+  ), [showBottomPanel]);
+
+  const toggleAiPanelVisibility = useCallback(async (): Promise<boolean> => (
+    configurationMutationRef.current('workbench.aiPanel.visible', !showRightPanel, 'user')
+  ), [showRightPanel]);
+
+  const toggleWorkbenchTheme = useCallback(async (): Promise<boolean> => (
+    configurationMutationRef.current('workbench.colorTheme', isDarkMode ? 'light' : 'dark', 'user')
+  ), [isDarkMode]);
+  const [moduleHint, setModuleHint] = useState<ModuleHintContent | null>(null);
+
+  const handleShowModuleHint = useCallback((hint: ModuleHintContent) => {
+    setModuleHint(hint);
+    setActiveTabInBottom('module_hint');
+    setShowBottomPanel(true);
+  }, []);
 
   // Resizable sidebars state
   const [leftWidth, setLeftWidth] = useState(264);
@@ -719,18 +1267,105 @@ export default function App() {
   // Compilation Logs
   const [buildLogs, setBuildLogs] = useState<string[]>([
     '欢迎使用 LingBuilder C++ 中文集成开发环境 (IDE)。',
-    '已就绪。点击上方“编译 F5”或左侧“运行”开始模拟目标构建。',
+    '已就绪。点击上方“编译 F5”或左侧“运行”开始真实生成、编译并运行当前项目。',
   ]);
+  const [taskSnapshots, setTaskSnapshots] = useState<TaskSnapshot[]>([]);
+  const [clangdStatus, setClangdStatus] = useState<ClangdStatus>({ state: 'stopped', message: 'clangd 尚未启动。', restartCount: 0 });
+  const [buildConfiguration, setBuildConfiguration] = useState<BuildConfiguration>({ schemaVersion: 1, mode: 'Debug', architecture: 'Win32' });
+  const clangdDocumentRef = useRef<{ path: string; text: string } | null>(null);
+  const clangdSyncGenerationRef = useRef(0);
+  const taskLogCountsRef = useRef(new Map<string, number>());
+
+  useEffect(() => {
+    const events = new EventSource('/api/tasks/events');
+    const handleTask = (event: MessageEvent<string>) => {
+      const task = JSON.parse(event.data) as TaskSnapshot;
+      setTaskSnapshots(previous => [...previous.filter(item => item.id !== task.id), task]
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)).slice(0, 30));
+      const consumed = taskLogCountsRef.current.get(task.id) || 0;
+      const additions = task.logs.slice(consumed).map(log => `> [${new Date(log.timestamp).toLocaleTimeString()}] [${task.title}] ${log.message}`);
+      taskLogCountsRef.current.set(task.id, task.logs.length);
+      if (additions.length) setBuildLogs(previous => [...previous, ...additions]);
+    };
+    events.addEventListener('task', handleTask as EventListener);
+    return () => events.close();
+  }, []);
+
+  useEffect(() => {
+    const events = new EventSource('/api/lsp/events');
+    events.addEventListener('status', ((event: MessageEvent<string>) => setClangdStatus(JSON.parse(event.data))) as EventListener);
+    events.addEventListener('diagnostics', ((event: MessageEvent<string>) => {
+      const payload = JSON.parse(event.data);
+      const count = Array.isArray(payload?.diagnostics) ? payload.diagnostics.length : 0;
+      if (count) setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] [clangd] 收到 ${count} 条 C/C++ 诊断。`]);
+    }) as EventListener);
+    return () => events.close();
+  }, []);
+
+  useEffect(() => { void fetch('/api/build-configuration').then(response => response.json()).then(payload => payload.configuration && setBuildConfiguration(payload.configuration)); }, []);
+  const updateBuildConfiguration = useCallback(async (patch: { mode?: BuildMode; architecture?: BuildArchitecture }) => {
+    const next = { ...buildConfiguration, ...patch };
+    const response = await fetch('/api/build-configuration', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next) });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok) setBuildConfiguration(payload.configuration);
+    else appendEditorTransactionLog(`【构建配置错误】${payload.error || '保存失败。'}`);
+  }, [buildConfiguration]);
+
+  useEffect(() => {
+    const isCpp = activeFile.language === 'cpp' || /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/iu.test(activeFile.path);
+    if (!isCpp || !projectFilesReady) return;
+    const generation = ++clangdSyncGenerationRef.current;
+    const text = getCurrentFileContent(activeFile);
+    const timer = window.setTimeout(async () => {
+      const previous = clangdDocumentRef.current;
+      if (previous?.path && previous.path !== activeFile.path) {
+        await fetch(`/api/lsp/documents?filePath=${encodeURIComponent(previous.path)}`, { method: 'DELETE' });
+      }
+      if (generation !== clangdSyncGenerationRef.current) return;
+      const method = previous?.path === activeFile.path ? 'PATCH' : 'PUT';
+      const body = method === 'PUT'
+        ? { filePath: activeFile.path, text, languageId: 'cpp' }
+        : { filePath: activeFile.path, changes: [{ text }] };
+      const response = await fetch('/api/lsp/documents', { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const payload = await response.json().catch(() => ({}));
+      if (generation !== clangdSyncGenerationRef.current) return;
+      if (response.ok) clangdDocumentRef.current = { path: activeFile.path, text };
+      else if (payload.status) setClangdStatus(payload.status);
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [activeFile.language, activeFile.path, activeFile.originalContent, activeFile.translatedContent, projectFilesReady]);
+
+  useEffect(() => () => {
+    const current = clangdDocumentRef.current;
+    if (current) void fetch(`/api/lsp/documents?filePath=${encodeURIComponent(current.path)}`, { method: 'DELETE' });
+  }, []);
+
+  useEffect(() => {
+    const handleApplied = (event: Event) => {
+      const files = (event as CustomEvent<{ files?: string[] }>).detail?.files || [];
+      appendEditorTransactionLog(`【C/C++ 重构】已原子应用 ${files.length} 个文件，正在重新载入。`);
+      setProjectFileReloadToken(token => token + 1);
+    };
+    window.addEventListener('lingbuilder-lsp-files-applied', handleApplied);
+    return () => window.removeEventListener('lingbuilder-lsp-files-applied', handleApplied);
+  }, []);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const [debugBreakpoints, setDebugBreakpoints] = useState<Array<{ filePath: string; line: number; condition?: string }>>([]);
+  const [nativeDebugSession, setNativeDebugSession] = useState<any>(null);
   const [isBuilding, setIsBuilding] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const editorOperationRef = useRef<'save' | 'build' | null>(null);
+  const editorOperationRef = useRef<EditorOperation | null>(null);
   const buildStartedRef = useRef(false);
   const buildRequestIdRef = useRef(0);
   const buildDispatchTimeoutRef = useRef<number | null>(null);
   const buildLaunchTimeoutRef = useRef<number | null>(null);
   const buildIntervalRef = useRef<any>(null);
+  const environmentCheckRequestGateRef = useRef(createEnvironmentCheckRequestGate());
+  useEffect(() => () => {
+    environmentCheckRequestGateRef.current.cancel();
+  }, []);
   const [isAutoTranslating, setIsAutoTranslating] = useState(false);
+  const autoTranslateOwnerRef = useRef<ProjectMutationOwner | null>(null);
   const [designerGeneratedPanels, setDesignerGeneratedPanels] = useState<DesignerGeneratedPanelData>(DEFAULT_DESIGNER_GENERATED_PANELS);
 
   // Custom File Modal
@@ -744,8 +1379,9 @@ void DisplayStatus() {
     std::cout << "Critical Warning: Database connection is offline!" << std::endl;
     // TO-DO: translate this dialog notice
     MessageBoxW(NULL, L"Operation completed successfully. Press OK to close.", L"Success Notice", MB_OK);
-}`);
+  }`);
   const [isExtracting, setIsExtracting] = useState(false);
+  const extractOwnerRef = useRef<ProjectMutationOwner | null>(null);
 
   // Calculate overall project progress
   const getOverallProgress = () => {
@@ -759,7 +1395,12 @@ void DisplayStatus() {
   };
 
   // Run the C++ reconstruct algorithm on a file when its string definitions are updated
-  const triggerReconstruction = async (fileToRebuild: CppFile, updatedStrings: ExtractedString[]) => {
+  const triggerReconstruction = async (
+    fileToRebuild: CppFile,
+    updatedStrings: ExtractedString[],
+    requestOwner: ProjectMutationOwner = captureProjectMutationOwner()
+  ) => {
+    if (!isCurrentProjectMutationOwner(requestOwner)) return;
     try {
       const response = await fetch('/api/reconstruct', {
         method: 'POST',
@@ -775,8 +1416,10 @@ void DisplayStatus() {
       }
 
       const data = await response.json();
-      
+      if (!isCurrentProjectMutationOwner(requestOwner)) return;
+
       setFiles(prevFiles => {
+        if (!isCurrentProjectMutationOwner(requestOwner)) return prevFiles;
         const nextFiles = prevFiles.map(f => {
           if (f.path === fileToRebuild.path) {
             return {
@@ -791,7 +1434,8 @@ void DisplayStatus() {
 
         // Sync active file reference
         const matched = nextFiles.find(f => f.path === fileToRebuild.path);
-        if (matched) {
+        if (matched && activeFileRef.current?.path === fileToRebuild.path) {
+          activeFileRef.current = matched;
           setActiveFile(matched);
         }
 
@@ -800,6 +1444,7 @@ void DisplayStatus() {
 
       // Dynamically clear resolved problems/warnings
       setProblems(prevProbs => {
+        if (!isCurrentProjectMutationOwner(requestOwner)) return prevProbs;
         return prevProbs.filter(p => {
           if (p.filePath !== fileToRebuild.path) return true;
           // Check if warning matches any pending strings
@@ -810,14 +1455,27 @@ void DisplayStatus() {
       });
 
     } catch (error) {
-      console.error('Error rebuilding C++ file structure:', error);
       // Fallback offline reconstruction if server is building/loading
-      rebuildFileOffline(fileToRebuild, updatedStrings);
+      if (isCurrentProjectMutationOwner(requestOwner)) {
+        console.error('Error rebuilding C++ file structure:', error);
+        rebuildFileOffline(fileToRebuild, updatedStrings, requestOwner);
+      }
     }
   };
 
+  useEffect(() => {
+    const windowControls = getNativeWindowControls();
+    if (!windowControls?.onCloseRequested) return;
+    return windowControls.onCloseRequested(() => setShowCloseConfirmModal(true));
+  }, []);
+
   // Fallback offline reconstruction
-  const rebuildFileOffline = (fileToRebuild: CppFile, updatedStrings: ExtractedString[]) => {
+  const rebuildFileOffline = (
+    fileToRebuild: CppFile,
+    updatedStrings: ExtractedString[],
+    requestOwner: ProjectMutationOwner
+  ) => {
+    if (!isCurrentProjectMutationOwner(requestOwner)) return;
     let rebuiltCode = fileToRebuild.originalContent;
     updatedStrings.forEach(s => {
       if (s.translated && s.status === 'translated') {
@@ -827,6 +1485,7 @@ void DisplayStatus() {
     });
 
     setFiles(prevFiles => {
+      if (!isCurrentProjectMutationOwner(requestOwner)) return prevFiles;
       const nextFiles = prevFiles.map(f => {
         if (f.path === fileToRebuild.path) {
           return {
@@ -839,7 +1498,10 @@ void DisplayStatus() {
         return f;
       });
       const matched = nextFiles.find(f => f.path === fileToRebuild.path);
-      if (matched) setActiveFile(matched);
+      if (matched && activeFileRef.current?.path === fileToRebuild.path) {
+        activeFileRef.current = matched;
+        setActiveFile(matched);
+      }
       return nextFiles;
     });
   };
@@ -946,6 +1608,7 @@ void DisplayStatus() {
 
   // Update translation for a single extracted string
   const handleUpdateStringTranslation = (id: string, value: string) => {
+    if (!projectFilesReadyRef.current) return;
     const updatedStrings = activeFile.strings.map(s => {
       if (s.id === id) {
         return {
@@ -974,23 +1637,159 @@ void DisplayStatus() {
     triggerReconstruction(activeFile, updatedStrings);
   };
 
-  const handleDeleteFile = (file: CppFile) => {
+  const handleDeleteFile = async (file: CppFile): Promise<boolean> => {
+    if (!projectFilesReadyRef.current) {
+      appendEditorTransactionLog('【删除文件】项目文件仍在载入，请稍后再试。');
+      return false;
+    }
     const confirmed = window.confirm(`确认删除文件 ${file.name} 吗？`);
-    if (!confirmed) return;
-    setFiles(prev => prev.filter(f => f.path !== file.path));
-    if (activeFile?.path === file.path) {
-      const remaining = filesRef.current.filter(f => f.path !== file.path);
-      if (remaining.length > 0) {
-        setActiveFile(remaining[0]);
+    if (!confirmed) return false;
+    if (editorOperationRef.current) {
+      appendEditorTransactionLog(`【删除文件】已有${getEditorOperationLabel(editorOperationRef.current)}任务正在进行，请稍后再试。`);
+      return false;
+    }
+
+    const requestOwner = captureProjectMutationOwner();
+    const requestProjectId = requestOwner.projectId;
+    editorOperationRef.current = 'file-mutation';
+    try {
+      const flushState = await flushCurrentEditorDrafts();
+      if (!flushState.ok) {
+        throw new Error(flushState.diagnostics[0] || '新手代码提交失败，未删除磁盘文件。');
       }
+      const latestFile = filesRef.current.find(candidate => candidate.path === file.path);
+      if (!latestFile) throw new Error(`当前项目中找不到文件：${file.path}`);
+      if (filesRef.current.length <= 1) {
+        throw new Error('当前工作台至少需要保留一个可编辑文件。空编辑器状态将在 TextModel 阶段实现。');
+      }
+
+      const response = await fetch('/api/window-designer/files/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: requestProjectId, filePath: latestFile.path })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) {
+        throw new Error(result.error || '磁盘文件删除失败。');
+      }
+      if (!isCurrentProjectMutationOwner(requestOwner)) {
+        appendEditorTransactionLog(`【文件】已删除项目 ${requestProjectId} 中的 ${latestFile.path}；当前项目已切换，将在下次载入时刷新。`);
+        return true;
+      }
+      disposeWorkbenchTextModelsForSource(textModelIdentity(requestProjectId, latestFile.path));
+
+      const nextState = applyProjectFileDelete({
+        files: filesRef.current,
+        openTabs: openTabsRef.current,
+        activeFilePath: activeFileRef.current?.path || null
+      }, latestFile.path);
+      openTabsRef.current = nextState.openTabs;
+      filesRef.current = nextState.files;
+      setFiles(nextState.files);
+      setOpenTabs(nextState.openTabs);
+      if (nextState.activeFilePath) {
+        const nextActiveFile = nextState.files.find(candidate => candidate.path === nextState.activeFilePath);
+        if (nextActiveFile) {
+        activeFileRef.current = nextActiveFile;
+        setActiveFile(nextActiveFile);
+        }
+      }
+      appendEditorTransactionLog(`【文件】已从项目和磁盘删除：${latestFile.path}`);
+      void refreshSourceControlStatus();
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '磁盘文件删除失败。';
+      appendEditorTransactionLog(`【文件删除错误】${message}`);
+      window.alert(message);
+      return false;
+    } finally {
+      if (editorOperationRef.current === 'file-mutation') editorOperationRef.current = null;
     }
   };
 
-  const handleRenameFile = (file: CppFile, newName: string) => {
-    setFiles(prev => prev.map(f => f.path === file.path ? { ...f, name: newName, path: f.path.replace(f.name, newName) } : f));
+  const handleRenameFile = async (file: CppFile, newName: string): Promise<boolean> => {
+    if (!projectFilesReadyRef.current) {
+      appendEditorTransactionLog('【重命名文件】项目文件仍在载入，请稍后再试。');
+      return false;
+    }
+    const normalizedName = newName.trim();
+    if (!normalizedName || normalizedName === file.name) return false;
+    if (normalizedName === '.' || normalizedName === '..' || /[<>:"/\\|?*\u0000-\u001f]/u.test(normalizedName) || /[. ]$/u.test(normalizedName)) {
+      window.alert('文件名包含 Windows 不允许的字符，或以空格/句点结尾。');
+      return false;
+    }
+    if (editorOperationRef.current) {
+      appendEditorTransactionLog(`【重命名文件】已有${getEditorOperationLabel(editorOperationRef.current)}任务正在进行，请稍后再试。`);
+      return false;
+    }
+    const separatorIndex = file.path.lastIndexOf('/');
+    const directory = separatorIndex >= 0 ? file.path.slice(0, separatorIndex + 1) : '';
+    const nextPath = `${directory}${normalizedName}`;
+
+    const requestOwner = captureProjectMutationOwner();
+    const requestProjectId = requestOwner.projectId;
+    editorOperationRef.current = 'file-mutation';
+    try {
+      const flushState = await flushCurrentEditorDrafts();
+      if (!flushState.ok) {
+        throw new Error(flushState.diagnostics[0] || '新手代码提交失败，未重命名磁盘文件。');
+      }
+      const sourceFile = filesRef.current.find(candidate => candidate.path === file.path);
+      if (!sourceFile) throw new Error(`当前项目中找不到文件：${file.path}`);
+
+      const response = await fetch('/api/window-designer/files/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: requestProjectId,
+          sourcePath: sourceFile.path,
+          targetPath: nextPath
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) {
+        throw new Error(result.error || '磁盘文件重命名失败。');
+      }
+      const targetPath = typeof result.targetPath === 'string' ? result.targetPath : nextPath;
+      if (!isCurrentProjectMutationOwner(requestOwner)) {
+        appendEditorTransactionLog(`【文件】已在项目 ${requestProjectId} 中重命名 ${sourceFile.path}；当前项目已切换，将在下次载入时刷新。`);
+        return true;
+      }
+      const sourceIdentity = textModelIdentity(requestProjectId, sourceFile.path);
+      const targetIdentity = textModelIdentity(requestProjectId, targetPath);
+      workbenchTextModelService.ensure(sourceIdentity);
+      renameWorkbenchTextModelsForSource(sourceIdentity, targetIdentity);
+
+      const nextState = applyProjectFileRename({
+        files: filesRef.current,
+        openTabs: openTabsRef.current,
+        activeFilePath: activeFileRef.current?.path || null
+      }, sourceFile.path, targetPath, inferFileLanguage(targetPath));
+      const renamedFile = nextState.files.find(candidate => candidate.path === targetPath);
+      if (!renamedFile) throw new Error('磁盘文件已重命名，但工作台状态更新失败。');
+      filesRef.current = nextState.files;
+      openTabsRef.current = nextState.openTabs;
+      setFiles(nextState.files);
+      setOpenTabs(nextState.openTabs);
+      if (nextState.activeFilePath === targetPath) {
+        activeFileRef.current = renamedFile;
+        setActiveFile(renamedFile);
+      }
+      appendEditorTransactionLog(`【文件】已重命名磁盘文件：${sourceFile.path} -> ${renamedFile.path}`);
+      void refreshSourceControlStatus();
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '磁盘文件重命名失败。';
+      appendEditorTransactionLog(`【文件重命名错误】${message}`);
+      window.alert(message);
+      return false;
+    } finally {
+      if (editorOperationRef.current === 'file-mutation') editorOperationRef.current = null;
+    }
   };
 
   const handleUpdateSourceContent = (content: string) => {
+    if (!projectFilesReadyRef.current) return;
     const updatedFile: CppFile = {
       ...activeFile,
       translatedContent: content,
@@ -1008,8 +1807,37 @@ void DisplayStatus() {
     });
   };
 
-  const handleApplyWorkspaceEdit = useCallback((proposal: WorkspaceEditProposal, appliedFiles: AppliedWorkspaceFile[]) => {
-    if (!appliedFiles.length) return;
+  const updateActiveTextFileFormat = useCallback((patch: Partial<TextFileFormat>) => {
+    if (!projectFilesReadyRef.current) return;
+    const currentFile = activeFileRef.current;
+    if (!currentFile) return;
+    const nextFormat: TextFileFormat = {
+      encoding: patch.encoding || currentFile.encoding,
+      eol: patch.eol || currentFile.eol
+    };
+    const savedFormat: TextFileFormat = {
+      encoding: currentFile.savedEncoding,
+      eol: currentFile.savedEol
+    };
+    if (isSameTextFileFormat(nextFormat, getTextFileFormat(currentFile))) return;
+    const updatedFile: CppFile = {
+      ...currentFile,
+      ...nextFormat,
+      formatModified: !isSameTextFileFormat(nextFormat, savedFormat)
+    };
+    const nextFiles = filesRef.current.map(file => file.path === updatedFile.path ? updatedFile : file);
+    filesRef.current = nextFiles;
+    activeFileRef.current = updatedFile;
+    setFiles(nextFiles);
+    setActiveFile(updatedFile);
+  }, []);
+
+  const handleApplyWorkspaceEdit = useCallback((
+    proposal: WorkspaceEditProposal,
+    appliedFiles: AppliedWorkspaceFile[],
+    requestOwner: ProjectMutationOwner = captureProjectMutationOwner()
+  ): boolean => {
+    if (!isCurrentProjectMutationOwner(requestOwner) || !appliedFiles.length) return false;
 
     const appliedMap = new Map(appliedFiles.map(file => [file.filePath, file.sourceCode]));
     const knownPaths = new Set(filesRef.current.map(file => file.path));
@@ -1029,6 +1857,11 @@ void DisplayStatus() {
         path: appliedFile.filePath,
         name: appliedFile.filePath.split('/').pop() || appliedFile.filePath,
         language: inferFileLanguage(appliedFile.filePath),
+        encoding: 'utf8',
+        eol: 'lf',
+        savedEncoding: 'utf8',
+        savedEol: 'lf',
+        formatModified: false,
         originalContent: '',
         translatedContent: appliedFile.sourceCode,
         strings: [],
@@ -1045,21 +1878,38 @@ void DisplayStatus() {
       || nextFiles.find(file => appliedMap.has(file.path))
       || nextFiles[0];
     if (nextActiveFile) {
+      activeFileRef.current = nextActiveFile;
       setActiveFile(nextActiveFile);
     }
-  }, []);
+    return true;
+  }, [captureProjectMutationOwner, isCurrentProjectMutationOwner]);
 
-  const handleConfirmDesignerEventEdit = useCallback(() => {
+  const handleConfirmDesignerEventEdit = useCallback(async () => {
     if (!pendingDesignerEventEdit) return;
 
-    handleApplyWorkspaceEdit(pendingDesignerEventEdit.proposal, pendingDesignerEventEdit.appliedFiles);
+    if (!isCurrentProjectMutationOwner(pendingDesignerEventEdit.owner)) {
+      setPendingDesignerEventEdit(null);
+      appendEditorTransactionLog(`【事件代码】${STALE_PROJECT_MUTATION_MESSAGE}`);
+      return;
+    }
+    if (!handleApplyWorkspaceEdit(
+      pendingDesignerEventEdit.proposal,
+      pendingDesignerEventEdit.appliedFiles,
+      pendingDesignerEventEdit.owner
+    )) return;
     setPendingDesignerEventEdit(null);
-    setEditorExperienceMode('beginner');
+    const switched = await setEditorExperienceMode('beginner');
+    if (!switched) return;
     focusLingCppHandler(pendingDesignerEventEdit.handlerName, pendingDesignerEventEdit.targetFilePath);
-  }, [focusLingCppHandler, handleApplyWorkspaceEdit, pendingDesignerEventEdit, setEditorExperienceMode]);
+  }, [focusLingCppHandler, handleApplyWorkspaceEdit, isCurrentProjectMutationOwner, pendingDesignerEventEdit, setEditorExperienceMode]);
 
-  const handleCancelDesignerEventEdit = useCallback(() => {
+  const handleCancelDesignerEventEdit = useCallback(async () => {
     if (!pendingDesignerEventEdit) return;
+
+    if (!isCurrentProjectMutationOwner(pendingDesignerEventEdit.owner)) {
+      setPendingDesignerEventEdit(null);
+      return;
+    }
 
     const targetFile = filesRef.current.find(file => file.path === pendingDesignerEventEdit.targetFilePath);
     if (targetFile) {
@@ -1067,9 +1917,14 @@ void DisplayStatus() {
       setActiveFile(targetFile);
     }
     setPendingDesignerEventEdit(null);
-    setEditorExperienceMode('beginner');
+    const switched = await setEditorExperienceMode('beginner');
+    if (!switched) return;
     focusLingCppHandler(pendingDesignerEventEdit.handlerName, pendingDesignerEventEdit.targetFilePath);
-  }, [focusLingCppHandler, pendingDesignerEventEdit, setEditorExperienceMode]);
+  }, [focusLingCppHandler, isCurrentProjectMutationOwner, pendingDesignerEventEdit, setEditorExperienceMode]);
+
+  useEffect(() => {
+    setPendingDesignerEventEdit(null);
+  }, [activeProjectId, projectFileReloadToken]);
 
   useEffect(() => {
     const handleLingCppSourceRequest = (event: Event) => {
@@ -1100,6 +1955,8 @@ void DisplayStatus() {
 
   useEffect(() => {
     const handleOpenControlEventCode = async (event: Event) => {
+      const requestOwner = captureProjectMutationOwner();
+      if (!isCurrentProjectMutationOwner(requestOwner)) return;
       const customEvent = event as CustomEvent<OpenControlEventCodeDetail>;
       const detail = customEvent.detail || {};
       const handlerName = detail.handlerName?.trim();
@@ -1125,6 +1982,7 @@ void DisplayStatus() {
         appendEditorTransactionLog(`【事件代码错误】${flushState.diagnostics[0] || '新手代码提交失败，未切换事件。'}`);
         return;
       }
+      if (!isCurrentProjectMutationOwner(requestOwner)) return;
       targetFile = flushState.files.find(file => file.path === targetFile?.path) || targetFile;
 
       const currentContent = getCurrentFileContent(targetFile);
@@ -1132,7 +1990,8 @@ void DisplayStatus() {
         setPendingDesignerEventEdit(null);
         const selected = await handleSelectFile(targetFile);
         if (!selected) return;
-        setEditorExperienceMode('beginner');
+        const switched = await setEditorExperienceMode('beginner');
+        if (!switched) return;
         setBuildLogs(prev => [
           ...prev,
           `> [${new Date().toLocaleTimeString()}] 【事件代码】${handlerName} 已存在，已直接定位。`
@@ -1162,7 +2021,8 @@ void DisplayStatus() {
           controlName: detail.controlName,
           eventName: detail.eventName,
           windowTitle: detail.windowTitle,
-          newText: change?.newText || ''
+          newText: change?.newText || '',
+          owner: requestOwner
         });
         return;
       }
@@ -1195,6 +2055,11 @@ void DisplayStatus() {
         path: filePath,
         name: fileName,
         language: 'lingcpp' as const,
+        encoding: 'utf8' as const,
+        eol: 'lf' as const,
+        savedEncoding: 'utf8' as const,
+        savedEol: 'lf' as const,
+        formatModified: false,
         originalContent: generateDefaultLingCppContentForWindow(nextWindow),
         translatedContent: '',
         strings: [],
@@ -1214,6 +2079,7 @@ void DisplayStatus() {
       const fileName = getLingWindowSourceFileName(deletedWindow.fileName, deletedWindow.className);
       const filePath = `src/${fileName}`;
       const nextFiles = filesRef.current.filter(f => f.path !== filePath);
+      disposeWorkbenchTextModelsForSource(textModelIdentity(activeProjectIdRef.current, filePath));
 
       filesRef.current = nextFiles;
       setFiles(nextFiles);
@@ -1245,6 +2111,11 @@ void DisplayStatus() {
           path: filePath,
           name: fileName,
           language: 'lingcpp' as const,
+          encoding: 'utf8' as const,
+          eol: 'lf' as const,
+          savedEncoding: 'utf8' as const,
+          savedEol: 'lf' as const,
+          formatModified: false,
           originalContent: generateDefaultLingCppContentForWindow(clonedWindow),
           translatedContent: '',
           strings: [],
@@ -1284,16 +2155,45 @@ void DisplayStatus() {
       window.removeEventListener('window-deleted', handleWindowDeleted);
       window.removeEventListener('window-duplicated', handleWindowDuplicated);
     };
-  }, [editorExperienceMode, flushCurrentEditorDrafts, focusLingCppHandler, handleApplyWorkspaceEdit, handleSelectFile]);
+  }, [captureProjectMutationOwner, editorExperienceMode, flushCurrentEditorDrafts, focusLingCppHandler, handleApplyWorkspaceEdit, handleSelectFile, isCurrentProjectMutationOwner]);
 
 
   useEffect(() => {
+    let cancelled = false;
+    let timedOut = false;
+    const loadGeneration = projectFileLoadGenerationRef.current;
+    const isCurrentLoad = (projectId: string) => !cancelled
+      && activeProjectIdRef.current === projectId
+      && projectFileLoadGenerationRef.current === loadGeneration;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 15_000);
+    setProjectFileLoadState(createProjectFileLoadState(activeProjectId, 'loading'));
+    setEditorState(createInactiveTextEditorStatus('loading-project'));
     const loadSavedFiles = async () => {
       try {
         const projectId = activeProjectId;
-        const res = await fetch(`/api/window-designer/files?projectId=${projectId}`);
-        if (!res.ok) return;
-        const data = await res.json();
+        const res = await fetch(`/api/window-designer/files?projectId=${encodeURIComponent(projectId)}`, {
+          signal: controller.signal
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.ok === false) {
+          if (isCurrentLoad(projectId)) {
+            pendingWorkspaceSearchRevealRef.current = null;
+            const message = data?.error || '读取项目文本文件失败。';
+            setProjectFileLoadState(createProjectFileLoadState(projectId, 'error', message));
+            setShowBottomPanel(true);
+            setActiveTabInBottom('output');
+            setBuildLogs(previous => [
+              ...previous,
+              `> [${new Date().toLocaleTimeString()}] 【文件读取错误】${message}`
+            ]);
+          }
+          return;
+        }
+        if (!isCurrentLoad(projectId)) return;
         if (data?.designerProject) {
           saveWindowDesignerState({
             project: data.designerProject,
@@ -1301,58 +2201,188 @@ void DisplayStatus() {
             selectedControlId: data.designerProject.windows?.[0]?.controls?.[0]?.id || null
           });
         }
-        if (data && data.files) {
-          setFiles(prevFiles => {
-            const knownPaths = new Set(prevFiles.map(file => file.path));
-            const nextFiles = prevFiles.map(file => {
-              if (data.files[file.path] !== undefined) {
-                return {
-                  ...file,
-                  translatedContent: data.files[file.path],
-                  isModified: false
-                };
-              }
-              return file;
-            });
-            Object.entries(data.files).forEach(([filePath, content]) => {
-              if (knownPaths.has(filePath)) return;
-              nextFiles.push({
-                path: filePath,
-                name: filePath.split('/').pop() || filePath,
-                language: inferFileLanguage(filePath),
-                originalContent: content,
-                translatedContent: content,
-                strings: [],
-                isModified: false
-              });
-            });
-            filesRef.current = nextFiles;
-            
-            // Sync activeFile if it is the main .lcpp file or currently loaded
-            const activeName = activeFileRef.current ? activeFileRef.current.name : '游戏主窗体.lcpp';
-            const matchedActive = nextFiles.find(f => f.name === activeName);
-            if (matchedActive) {
-              setActiveFile(matchedActive);
-            }
-            return nextFiles;
+        if (hasUsableProjectFilePayload(data?.files)) {
+          projectFileVersionsRef.current = data.fileVersions || {};
+          const previousFiles = filesRef.current;
+          let nextFiles: CppFile[] = Object.entries(data.files).map(([filePath, content]) => {
+            const previousFile = previousFiles.find(file => file.path === filePath)
+              || initialFiles.find(file => file.path === filePath);
+            const format = readTextFileFormat(data.fileFormats?.[filePath]);
+            return {
+              ...previousFile,
+              path: filePath,
+              name: filePath.split('/').pop() || filePath,
+              language: inferFileLanguage(filePath),
+              encoding: format.encoding,
+              eol: format.eol,
+              savedEncoding: format.encoding,
+              savedEol: format.eol,
+              formatModified: false,
+              originalContent: String(content),
+              translatedContent: String(content),
+              strings: previousFile?.strings || [],
+              isModified: false
+            };
           });
+          const recoveryResponse = await fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(projectId)}`);
+          const recoveryPayload = await recoveryResponse.json().catch(() => ({}));
+          const recovery = recoveryPayload?.recovery;
+          if (recovery?.files && window.confirm(`发现 ${new Date(recovery.savedAt).toLocaleString()} 的未保存编辑，是否恢复？\n\n恢复只会进入编辑器内存，不会立即覆盖磁盘。`)) {
+            nextFiles = nextFiles.map(file => typeof recovery.files[file.path] === 'string'
+              ? { ...file, translatedContent: recovery.files[file.path], isModified: recovery.files[file.path] !== file.originalContent }
+              : file);
+          } else if (recovery) {
+            void fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+          }
+          const previousPaths = new Set(previousFiles.map(file => file.path));
+          const nextPaths = new Set(nextFiles.map(file => file.path));
+          const firstAuthoritativeHydration = !hydratedProjectIdsRef.current.has(projectId);
+          workbenchTextModelService.list()
+            .filter(record => {
+              if (record.identity.workspaceId !== textModelWorkspaceId || record.identity.projectId !== projectId) return false;
+              if (firstAuthoritativeHydration) {
+                return previousPaths.has(record.identity.filePath) || nextPaths.has(record.identity.filePath);
+              }
+              return previousPaths.has(record.identity.filePath) && !nextPaths.has(record.identity.filePath);
+            })
+            .forEach(record => disposeWorkbenchTextModelsForSource(record.identity));
+          hydratedProjectIdsRef.current.add(projectId);
+          nextFiles.forEach(file => {
+            workbenchTextModelService.ensure(textModelIdentity(projectId, file.path));
+          });
+          loadedProjectIdRef.current = projectId;
+          setLoadedProjectId(projectId);
+          setProjectFileLoadState(createProjectFileLoadState(projectId, 'ready'));
+          filesRef.current = nextFiles;
+          setFiles(nextFiles);
+          try {
+            setEditorGroupLayout(restoreEditorGroupLayout(
+              JSON.parse(window.localStorage.getItem('lingbuilder.editorGroups.v1') || 'null'),
+              nextFiles.map(file => file.path),
+              nextFiles[0]?.path
+            ));
+          } catch {
+            setEditorGroupLayout(restoreEditorGroupLayout(null, nextFiles.map(file => file.path), nextFiles[0]?.path));
+          }
+
+          const pendingReveal = pendingWorkspaceSearchRevealRef.current;
+          const pendingRevealFile = pendingReveal
+            ? nextFiles.find(file => file.path === pendingReveal.filePath)
+            : undefined;
+          const previousActivePath = activeFileRef.current?.path;
+          const nextActive = pendingRevealFile
+            || nextFiles.find(file => file.path === previousActivePath)
+            || nextFiles.find(file => file.language === 'lingcpp')
+            || nextFiles[0];
+          if (nextActive) {
+            activeFileRef.current = nextActive;
+            setActiveFile(nextActive);
+            const nextTabs = openTabsRef.current.filter(tabPath => nextFiles.some(file => file.path === tabPath));
+            if (!nextTabs.includes(nextActive.path)) nextTabs.push(nextActive.path);
+            openTabsRef.current = nextTabs;
+            setOpenTabs(nextTabs);
+          }
+          if (pendingReveal && pendingRevealFile) {
+            pendingWorkspaceSearchRevealRef.current = null;
+            const detail = createWorkspaceSearchRevealDetail(pendingReveal);
+            [60, 180].forEach(delay => {
+              window.setTimeout(() => {
+                window.dispatchEvent(new CustomEvent('lingcpp-reveal-line', { detail }));
+              }, delay);
+            });
+          } else if (pendingReveal) {
+            pendingWorkspaceSearchRevealRef.current = null;
+            setShowBottomPanel(true);
+            setActiveTabInBottom('output');
+            setBuildLogs(previous => [
+              ...previous,
+              `> [${new Date().toLocaleTimeString()}] 【搜索结果跳转错误】项目 ${projectId} 中未找到 ${pendingReveal.filePath}。`
+            ]);
+          }
           void refreshSourceControlStatus();
+        } else {
+          const message = '项目文件服务没有返回有效的文件列表。';
+          setProjectFileLoadState(createProjectFileLoadState(projectId, 'error', message));
+          const missingPath = pendingWorkspaceSearchRevealRef.current?.filePath;
+          pendingWorkspaceSearchRevealRef.current = null;
+          setShowBottomPanel(true);
+          setActiveTabInBottom('output');
+          setBuildLogs(previous => [
+            ...previous,
+            `> [${new Date().toLocaleTimeString()}] 【文件读取错误】${message}`,
+            ...(missingPath ? [`> [${new Date().toLocaleTimeString()}] 【搜索结果跳转错误】无法打开 ${missingPath}。`] : [])
+          ]);
         }
       } catch (e) {
         console.error('Failed to load files from disk:', e);
+        if (isCurrentLoad(activeProjectId)) {
+          const message = timedOut
+            ? '读取项目文件超时，请检查本地服务后重试。'
+            : e instanceof Error ? e.message : '无法连接本地文件服务。';
+          pendingWorkspaceSearchRevealRef.current = null;
+          setProjectFileLoadState(createProjectFileLoadState(activeProjectId, 'error', message));
+          setShowBottomPanel(true);
+          setActiveTabInBottom('output');
+          setBuildLogs(previous => [
+            ...previous,
+            `> [${new Date().toLocaleTimeString()}] 【文件读取错误】${message}`
+          ]);
+        }
+      } finally {
+        window.clearTimeout(timeout);
       }
     };
-    loadSavedFiles();
-  }, [activeProjectId]);
+    void loadSavedFiles();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [activeProjectId, projectFileReloadToken]);
+
+  useEffect(() => {
+    if (!projectFilesReady || loadedProjectId !== activeProjectId) return;
+    const events = new EventSource(`/api/window-designer/files/watch?projectId=${encodeURIComponent(activeProjectId)}`);
+    let handling = false;
+    const handleFileChange = async (event: MessageEvent<string>) => {
+      if (handling) return;
+      handling = true;
+      try {
+        const changedPath = JSON.parse(event.data)?.path as string | undefined;
+        if (!changedPath) return;
+        const response = await fetch(`/api/window-designer/files?projectId=${encodeURIComponent(activeProjectId)}`);
+        const payload = await response.json().catch(() => ({}));
+        const nextVersion = payload.fileVersions?.[changedPath];
+        if (!response.ok || !nextVersion || nextVersion === projectFileVersionsRef.current[changedPath]) return;
+        const localFile = filesRef.current.find(file => file.path === changedPath);
+        if (localFile && isEditorFileDirty(localFile)) {
+          const reload = window.confirm(`文件“${changedPath}”已被外部修改。\n\n“确定”重新载入磁盘版本；“取消”保留本地编辑。`);
+          projectFileVersionsRef.current[changedPath] = nextVersion;
+          if (!reload) return;
+          await fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(activeProjectId)}`, { method: 'DELETE' });
+        }
+        projectFileVersionsRef.current = payload.fileVersions || projectFileVersionsRef.current;
+        setProjectFileReloadToken(token => token + 1);
+      } finally {
+        handling = false;
+      }
+    };
+    events.addEventListener('file-change', handleFileChange as EventListener);
+    return () => events.close();
+  }, [activeProjectId, loadedProjectId, projectFilesReady]);
 
   useEffect(() => {
     let intervalId: any;
+    const loadGeneration = projectFileLoadGenerationRef.current;
     const pollLogs = async () => {
+      if (nativeDebugSession && !['terminated', 'error'].includes(nativeDebugSession.state)) return;
       try {
         const projectId = activeProjectId;
         const res = await fetch(`/api/window-designer/debug-logs?projectId=${projectId}`);
         if (!res.ok) return;
         const data = await res.json();
+        if (activeProjectIdRef.current !== projectId
+          || projectFileLoadGenerationRef.current !== loadGeneration) return;
         if (data && Array.isArray(data.logs)) {
           const formatted = data.logs
             .map(line => line.trim())
@@ -1365,7 +2395,42 @@ void DisplayStatus() {
     };
     intervalId = setInterval(pollLogs, 1000);
     return () => clearInterval(intervalId);
-  }, [activeProjectId]);
+  }, [activeProjectId, projectFileReloadToken, nativeDebugSession?.state]);
+
+  useEffect(() => {
+    const toggle = (event: Event) => {
+      const detail = (event as CustomEvent<{ filePath: string; line: number; conditionRequested?: boolean }>).detail;
+      if (!detail?.filePath || !Number.isInteger(detail.line)) return;
+      setDebugBreakpoints(current => {
+        const existing = current.find(item => item.filePath === detail.filePath && item.line === detail.line);
+        if (detail.conditionRequested) {
+          const condition = window.prompt('输入条件断点表达式；留空则取消该断点：', existing?.condition || '');
+          if (condition === null) return current;
+          const without = current.filter(item => item !== existing);
+          return condition.trim() ? [...without, { filePath: detail.filePath, line: detail.line, condition: condition.trim() }] : without;
+        }
+        return existing ? current.filter(item => item !== existing) : [...current, { filePath: detail.filePath, line: detail.line }];
+      });
+    };
+    window.addEventListener('lingbuilder-debug-breakpoint-toggle', toggle);
+    return () => window.removeEventListener('lingbuilder-debug-breakpoint-toggle', toggle);
+  }, []);
+
+  useEffect(() => {
+    const publish = () => window.dispatchEvent(new CustomEvent('lingbuilder-debug-breakpoints-changed', { detail: { breakpoints: debugBreakpoints } }));
+    publish(); window.addEventListener('lingbuilder-debug-breakpoints-request', publish);
+    return () => window.removeEventListener('lingbuilder-debug-breakpoints-request', publish);
+  }, [debugBreakpoints]);
+
+  useEffect(() => {
+    const events = new EventSource('/api/debug/events');
+    events.addEventListener('debug', raw => {
+      const session = JSON.parse((raw as MessageEvent).data); setNativeDebugSession(session);
+      if (Array.isArray(session.logs)) setDebugLogs(session.logs.filter(Boolean));
+      if (session.state === 'stopped') { setShowBottomPanel(true); setActiveTabInBottom('debug_locals'); }
+    });
+    return () => events.close();
+  }, []);
 
   const handleClearLogs = useCallback((tab: string) => {
     if (tab === 'designer_logs') {
@@ -1383,7 +2448,12 @@ void DisplayStatus() {
   }, [activeProjectId]);
 
   // Update status (translated, skipped, pending)
-  const handleSetStatus = (id: string, status: 'translated' | 'skipped' | 'pending') => {
+  const handleSetStatus = (
+    id: string,
+    status: 'translated' | 'skipped' | 'pending',
+    owner: ProjectMutationOwner = captureProjectMutationOwner()
+  ) => {
+    if (!isCurrentProjectMutationOwner(owner)) return;
     const updatedStrings = activeFile.strings.map(s => {
       if (s.id === id) {
         return {
@@ -1394,11 +2464,15 @@ void DisplayStatus() {
       }
       return s;
     });
-    triggerReconstruction(activeFile, updatedStrings);
+    triggerReconstruction(activeFile, updatedStrings, owner);
   };
 
   // Handle batch AI translations from AiAssistant
-  const handleBatchTranslate = (translations: { id: string; translated: string }[]) => {
+  const handleBatchTranslate = (
+    translations: { id: string; translated: string }[],
+    owner: ProjectMutationOwner = captureProjectMutationOwner()
+  ) => {
+    if (!isCurrentProjectMutationOwner(owner)) return;
     const translationsMap = new Map(translations.map(t => [t.id, t.translated]));
     const updatedStrings = activeFile.strings.map(s => {
       if (translationsMap.has(s.id)) {
@@ -1410,11 +2484,13 @@ void DisplayStatus() {
       }
       return s;
     });
-    triggerReconstruction(activeFile, updatedStrings);
+    triggerReconstruction(activeFile, updatedStrings, owner);
   };
 
   // Perform one-click batch AI translation for all pending strings in active file
   const handleAutoTranslateAll = async () => {
+    const requestOwner = captureProjectMutationOwner();
+    if (!isCurrentProjectMutationOwner(requestOwner)) return;
     const pendingStrings = activeFile.strings.filter(s => s.status === 'pending' || !s.translated);
     if (pendingStrings.length === 0) {
       setShowBottomPanel(true);
@@ -1427,6 +2503,7 @@ void DisplayStatus() {
       return;
     }
 
+    autoTranslateOwnerRef.current = requestOwner;
     setIsAutoTranslating(true);
     setShowBottomPanel(true);
     setActiveTabInBottom('output');
@@ -1452,8 +2529,9 @@ void DisplayStatus() {
       }
 
       const data = await response.json();
+      if (!isCurrentProjectMutationOwner(requestOwner)) return;
       if (data.translations && Array.isArray(data.translations)) {
-        handleBatchTranslate(data.translations);
+        handleBatchTranslate(data.translations, requestOwner);
         setBuildLogs(prev => [
           ...prev,
           `> [${new Date().toLocaleTimeString()}] 【一键智能汉化】成功！已生成并注入 ${data.translations.length} 项精准中文字段。`,
@@ -1463,6 +2541,7 @@ void DisplayStatus() {
         throw new Error('未返回预期的翻译结果格式');
       }
     } catch (err: any) {
+      if (!isCurrentProjectMutationOwner(requestOwner)) return;
       console.warn('一键智能汉化使用本地词典/模拟汉化降级处理:', err);
       // Fallback: translate using mock dictionary matching / local rules so it works perfectly offline too!
       const fallbackTranslations = pendingStrings.map(s => {
@@ -1489,14 +2568,19 @@ void DisplayStatus() {
         return { id: s.id, translated: mockTrans };
       });
 
-      handleBatchTranslate(fallbackTranslations);
+      handleBatchTranslate(fallbackTranslations, requestOwner);
       setBuildLogs(prev => [
         ...prev,
         `> [${new Date().toLocaleTimeString()}] 【一键智能汉化】已应用本地翻译词典机制！成功翻译填充了 ${fallbackTranslations.length} 项汉化字段。`,
         `> [AI] 建议配置 GEMINI_API_KEY 以开启完全上下文智能 C++ 原生宏替换功能。`
       ]);
     } finally {
-      setIsAutoTranslating(false);
+      const activeRequestOwner = autoTranslateOwnerRef.current;
+      if (activeRequestOwner?.projectId === requestOwner.projectId
+        && activeRequestOwner.loadGeneration === requestOwner.loadGeneration) {
+        autoTranslateOwnerRef.current = null;
+        setIsAutoTranslating(false);
+      }
     }
   };
 
@@ -1513,9 +2597,14 @@ void DisplayStatus() {
     reason = '保存',
     ownedByBuild = false
   ): Promise<boolean> => {
+    const requestOwner = captureProjectMutationOwner();
+    if (!isCurrentProjectMutationOwner(requestOwner)) {
+      appendEditorTransactionLog(`【${reason}】项目文件仍在载入，已取消本次保存。`);
+      return false;
+    }
     if (!ownedByBuild) {
       if (editorOperationRef.current) {
-        appendEditorTransactionLog(`【${reason}】已有${editorOperationRef.current === 'build' ? '构建' : '保存'}任务正在进行，本次请求未重复执行。`);
+        appendEditorTransactionLog(`【${reason}】已有${getEditorOperationLabel(editorOperationRef.current)}任务正在进行，本次请求未重复执行。`);
         return false;
       }
       editorOperationRef.current = 'save';
@@ -1528,45 +2617,88 @@ void DisplayStatus() {
         appendEditorTransactionLog(`【${reason}错误】${flushState.diagnostics[0] || '新手代码提交失败，磁盘文件未改动。'}`);
         return false;
       }
+      requireCurrentProjectMutationOwner(requestOwner);
 
       const designerProject = getCurrentWindowDesignerProject();
-      const projectId = activeProjectId || designerProject.id || 'lingbuilder-ui-project';
-      const savedContentByPath = new Map<string, string>();
+      const projectId = requestOwner.projectId || designerProject.id || 'lingbuilder-ui-project';
+      const savedStateByPath = new Map<string, { content: string; format: TextFileFormat }>();
       const projectFiles: Record<string, string> = {};
+      const projectFileFormats: Record<string, TextFileFormat> = {};
       flushState.files.forEach(file => {
         const content = getCurrentFileContent(file);
+        const format = getTextFileFormat(file);
         projectFiles[file.path] = content;
-        savedContentByPath.set(file.path, content);
+        projectFileFormats[file.path] = format;
+        savedStateByPath.set(file.path, { content, format });
       });
 
       const response = await fetch('/api/window-designer/files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, files: projectFiles, project: designerProject })
+        body: JSON.stringify({
+          projectId,
+          files: projectFiles,
+          fileFormats: projectFileFormats,
+          baseVersions: projectFileVersionsRef.current,
+          project: designerProject
+        })
       });
       const payload = await response.json().catch(() => ({}));
+      if (response.status === 409 && payload?.code === 'PROJECT_FILE_CONFLICT') {
+        projectFileVersionsRef.current = payload.fileVersions || {};
+        const conflictingPaths = Object.keys(payload.files || {}).filter(filePath => {
+          const local = flushState.files.find(file => file.path === filePath);
+          return local && getCurrentFileContent(local) !== payload.files[filePath];
+        });
+        const reloadDisk = window.confirm(
+          `检测到外部修改：${conflictingPaths.join('、') || '项目文件'}\n\n选择“确定”重新载入磁盘版本；选择“取消”保留本地编辑，下次保存将明确覆盖。`
+        );
+        if (reloadDisk) {
+          void fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+          setProjectFileReloadToken(token => token + 1);
+        }
+        appendEditorTransactionLog(reloadDisk
+          ? `【${reason}】已取消覆盖并重新载入磁盘版本。`
+          : `【${reason}】已保留本地编辑；未在本次请求中覆盖磁盘。`);
+        return false;
+      }
       if (!response.ok || payload?.ok === false) {
         throw new Error(payload?.error || '无法写入文件到项目磁盘。');
       }
+      requireCurrentProjectMutationOwner(requestOwner);
+      projectFileVersionsRef.current = payload.fileVersions || projectFileVersionsRef.current;
+      void fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
 
       // Preserve edits made while the request was in flight. Only content that
       // still matches the saved snapshot becomes clean; newer content stays dirty.
       const nextFiles = filesRef.current.map(file => {
-        const savedContent = savedContentByPath.get(file.path);
-        if (savedContent === undefined) return file;
+        const savedState = savedStateByPath.get(file.path);
+        if (!savedState) return file;
+        const persistedFormat = readTextFileFormat(payload.fileFormats?.[file.path] || savedState.format);
         const currentContent = getCurrentFileContent(file);
-        if (currentContent === savedContent) {
+        const currentFormat = getTextFileFormat(file);
+        const contentModified = currentContent !== savedState.content;
+        const formatModified = !isSameTextFileFormat(currentFormat, persistedFormat);
+        if (!contentModified && !formatModified) {
           return {
             ...file,
-            originalContent: savedContent,
-            translatedContent: savedContent,
+            encoding: persistedFormat.encoding,
+            eol: persistedFormat.eol,
+            savedEncoding: persistedFormat.encoding,
+            savedEol: persistedFormat.eol,
+            formatModified: false,
+            originalContent: savedState.content,
+            translatedContent: savedState.content,
             isModified: false
           };
         }
         return {
           ...file,
-          originalContent: savedContent,
-          isModified: currentContent !== savedContent
+          savedEncoding: persistedFormat.encoding,
+          savedEol: persistedFormat.eol,
+          formatModified,
+          originalContent: savedState.content,
+          isModified: contentModified
         };
       });
 
@@ -1598,43 +2730,255 @@ void DisplayStatus() {
 
   const handleSaveWorkspace = (reason = '保存') => saveWorkspaceCore(reason, false);
 
-  const handleOpenWorkspace = async (): Promise<void> => {
-    if (editorOperationRef.current) {
-      appendEditorTransactionLog(`【打开工作区】已有${editorOperationRef.current === 'build' ? '构建' : '保存'}任务正在进行，请稍后再试。`);
+  useEffect(() => {
+    if (autoSaveMode !== 'afterDelay' || !projectFilesReady || isSaving || !files.some(isEditorFileDirty)) return;
+    const timer = window.setTimeout(() => { void saveWorkspaceCore('自动保存', false); }, autoSaveDelay);
+    return () => window.clearTimeout(timer);
+  }, [autoSaveDelay, autoSaveMode, files, isSaving, projectFilesReady, saveWorkspaceCore]);
+
+  const commitWorkspaceSearchEditorFiles = (
+    diskFiles: Record<string, string>,
+    changedPaths: readonly string[],
+    fileFormats?: Record<string, TextFileFormat>
+  ) => {
+    const nextFiles = refreshWorkspaceSearchEditorFiles(filesRef.current, {
+      files: diskFiles,
+      fileFormats
+    }, changedPaths);
+    filesRef.current = nextFiles;
+    setFiles(nextFiles);
+    const activePath = activeFileRef.current?.path;
+    const nextActive = activePath ? nextFiles.find(file => file.path === activePath) : undefined;
+    if (nextActive) {
+      activeFileRef.current = nextActive;
+      setActiveFile(nextActive);
+    }
+    void refreshSourceControlStatus();
+  };
+
+  const handleWorkspaceSearchQuery = async (
+    request: WorkspaceSearchQueryRequest
+  ): Promise<WorkspaceSearchQueryResponse> => {
+    if (!projectFilesReadyRef.current) throw new Error('项目文件尚未载入完成，不能搜索工作区。');
+    const requestOwner = captureProjectMutationOwner();
+    requireCurrentProjectMutationOwner(requestOwner);
+    const result = await queryWorkspace(request);
+    requireCurrentProjectMutationOwner(requestOwner);
+    return result;
+  };
+
+  const handleWorkspaceReplacePreview = async (
+    request: WorkspaceReplacePreviewRequest
+  ): Promise<WorkspaceReplacePreviewResponse> => {
+    if (!projectFilesReadyRef.current) throw new Error('项目文件尚未载入完成，不能创建替换预览。');
+    const requestOwner = captureProjectMutationOwner();
+    requireCurrentProjectMutationOwner(requestOwner);
+    const result = await previewWorkspaceReplace(request);
+    requireCurrentProjectMutationOwner(requestOwner);
+    workspaceReplacePreviewRef.current.clear();
+    workspaceReplacePreviewRef.current.set(result.previewId, {
+      preview: result,
+      owner: requestOwner
+    });
+    return result;
+  };
+
+  const handleWorkspaceReplaceApply = async (
+    request: WorkspaceReplaceApplyRequest
+  ): Promise<WorkspaceReplaceApplyResponse> => {
+    if (!projectFilesReadyRef.current) throw new Error('项目文件尚未载入完成，不能应用工作区替换。');
+    const requestOwner = captureProjectMutationOwner();
+    requireCurrentProjectMutationOwner(requestOwner);
+    const previewEntry = workspaceReplacePreviewRef.current.get(request.previewId);
+    if (!previewEntry || !isCurrentProjectMutationOwner(previewEntry.owner)) {
+      throw new Error('替换预览所属项目已变化，请重新搜索并生成预览。');
+    }
+    const result = await applyWorkspaceReplace(request);
+    requireCurrentProjectMutationOwner(requestOwner);
+    const preview = previewEntry.preview;
+    commitWorkspaceSearchEditorFiles(
+      Object.fromEntries(preview.files.map(file => [file.filePath, file.after])),
+      result.updatedFiles
+    );
+    workspaceReplacePreviewRef.current.delete(request.previewId);
+    workspaceReplaceTransactionRef.current.set(result.transactionId, {
+      preview,
+      owner: requestOwner
+    });
+    requireCurrentProjectMutationOwner(requestOwner);
+    appendEditorTransactionLog(`【工作区替换】已更新 ${result.updatedFiles.length} 个文件，共替换 ${result.replacementCount} 处；事务 ${result.transactionId} 可撤销。`);
+    return result;
+  };
+
+  const handleWorkspaceReplaceRollback = async (
+    request: WorkspaceReplaceRollbackRequest
+  ): Promise<WorkspaceReplaceRollbackResponse> => {
+    if (!projectFilesReadyRef.current) throw new Error('项目文件尚未载入完成，不能撤销工作区替换。');
+    const requestOwner = captureProjectMutationOwner();
+    requireCurrentProjectMutationOwner(requestOwner);
+    const transactionEntry = workspaceReplaceTransactionRef.current.get(request.transactionId);
+    if (!transactionEntry || !isCurrentProjectMutationOwner(transactionEntry.owner)) {
+      throw new Error('替换事务所属项目已变化，不能写入当前编辑器状态。');
+    }
+    const result = await rollbackWorkspaceReplace(request);
+    requireCurrentProjectMutationOwner(requestOwner);
+    const preview = transactionEntry.preview;
+    commitWorkspaceSearchEditorFiles(
+      Object.fromEntries(preview.files.map(file => [file.filePath, file.before])),
+      result.restoredFiles
+    );
+    workspaceReplaceTransactionRef.current.delete(request.transactionId);
+    requireCurrentProjectMutationOwner(requestOwner);
+    appendEditorTransactionLog(`【工作区替换撤销】已恢复 ${result.restoredFiles.length} 个文件。`);
+    return result;
+  };
+
+  const dispatchWorkspaceSearchReveal = (match: WorkspaceSearchMatch) => {
+    const detail = createWorkspaceSearchRevealDetail(match);
+    [40, 160].forEach(delay => {
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('lingcpp-reveal-line', { detail }));
+      }, delay);
+    });
+  };
+
+  const handleWorkspaceSearchReveal = async (match: WorkspaceSearchMatch): Promise<void> => {
+    const owner = findWorkspaceSearchProject(match.filePath, solution.projects);
+    if (!owner) {
+      setWorkspaceSearchMode(null);
+      setShowBottomPanel(true);
+      setActiveTabInBottom('output');
+      appendEditorTransactionLog(`【搜索结果】${match.filePath} 不属于当前解决方案的源码或配置根目录；已保留搜索预览，但不能在项目编辑器中打开。`);
       return;
+    }
+
+    const loadedFile = filesRef.current.find(file => file.path === match.filePath);
+    if (owner.id === activeProjectIdRef.current && loadedFile) {
+      setWorkspaceSearchMode(null);
+      if (await handleSelectFile(loadedFile)) dispatchWorkspaceSearchReveal(match);
+      return;
+    }
+
+    const flushState = await flushCurrentEditorDrafts();
+    if (!flushState.ok) {
+      showEditorFlushFailure(flushState.diagnostics);
+      return;
+    }
+    if (flushState.files.some(isEditorFileDirty)) {
+      const saved = await handleSaveWorkspace('跳转搜索结果前保存');
+      if (!saved) return;
+    }
+
+    pendingWorkspaceSearchRevealRef.current = match;
+    setWorkspaceSearchMode(null);
+    if (owner.id === activeProjectIdRef.current) {
+      pendingWorkspaceSearchRevealRef.current = null;
+      appendEditorTransactionLog(`【搜索结果】项目文件列表中未找到 ${match.filePath}，请刷新解决方案后重试。`);
+      return;
+    }
+
+    const result = await setStartupProject(owner.id);
+    if (!result.ok || !result.solution) {
+      pendingWorkspaceSearchRevealRef.current = null;
+      appendEditorTransactionLog(`【搜索结果跳转错误】${result.error || `无法切换到项目 ${owner.id}。`}`);
+      return;
+    }
+    setSolution(result.solution);
+  };
+
+  const handleOpenWorkspace = async (): Promise<boolean> => {
+    if (editorOperationRef.current) {
+      appendEditorTransactionLog(`【打开工作区】已有${getEditorOperationLabel(editorOperationRef.current)}任务正在进行，请稍后再试。`);
+      return false;
     }
     const flushState = await flushCurrentEditorDrafts();
     if (!flushState.ok) {
       appendEditorTransactionLog(`【打开工作区错误】${flushState.diagnostics[0] || '新手代码提交失败，未切换工作区。'}`);
-      return;
+      return false;
     }
 
-    if (flushState.files.some(file => file.isModified)) {
+    if (flushState.files.some(isEditorFileDirty)) {
       const saved = await handleSaveWorkspace('切换工作区前保存');
-      if (!saved) return;
+      if (!saved) return false;
     }
 
     const workspaceApi = window.lingBuilder?.workspace;
     if (!workspaceApi) {
       appendEditorTransactionLog('【打开工作区错误】当前运行环境不支持原生目录选择。');
-      return;
+      return false;
     }
 
     try {
       const result = await workspaceApi.open();
-      if (result.canceled) return;
+      if (result.canceled) return false;
       if (!result.ok) {
         appendEditorTransactionLog(`【打开工作区错误】${result.error || '工作区切换失败。'}`);
-        return;
+        return false;
       }
       appendEditorTransactionLog(`【打开工作区】已切换到 ${result.workspacePath || '所选目录'}。`);
+      return true;
     } catch (error) {
       appendEditorTransactionLog(`【打开工作区错误】${error instanceof Error ? error.message : '原生目录选择失败。'}`);
+      return false;
     }
   };
 
+  const handleOpenWorkspacePath = async (targetPath: string, newWindow = false): Promise<boolean> => {
+    const workspaceApi = window.lingBuilder?.workspace;
+    if (!workspaceApi) return false;
+    if (!newWindow) {
+      const flushState = await flushCurrentEditorDrafts();
+      if (!flushState.ok) return false;
+      if (flushState.files.some(isEditorFileDirty) && !await handleSaveWorkspace('切换工作区前保存')) return false;
+    }
+    const result = await workspaceApi.openPath(targetPath, newWindow);
+    if (!result.ok) {
+      appendEditorTransactionLog(`【打开工作区错误】${result.error || '无法打开目标。'}`);
+      return false;
+    }
+    appendEditorTransactionLog(newWindow
+      ? `【新窗口】已打开 ${result.workspacePath}。`
+      : `【打开工作区】已切换到 ${result.workspacePath}。`);
+    setRecentWorkspaces(await workspaceApi.listRecent());
+    return true;
+  };
+
+  useEffect(() => {
+    const workspaceApi = window.lingBuilder?.workspace;
+    if (!workspaceApi) return;
+    void workspaceApi.listRecent().then(setRecentWorkspaces);
+    const preventDefault = (event: DragEvent) => event.preventDefault();
+    const handleDrop = (event: DragEvent) => {
+      event.preventDefault();
+      const droppedPath = (event.dataTransfer?.files[0] as (File & { path?: string }) | undefined)?.path;
+      if (!droppedPath) {
+        appendEditorTransactionLog('【拖放打开错误】未能读取本地文件路径。');
+        return;
+      }
+      void handleOpenWorkspacePath(droppedPath, event.shiftKey);
+    };
+    window.addEventListener('dragover', preventDefault);
+    window.addEventListener('drop', handleDrop);
+    return () => {
+      window.removeEventListener('dragover', preventDefault);
+      window.removeEventListener('drop', handleDrop);
+    };
+  }, [activeProjectId]);
+
   // Tool handlers for our LingBuilder IDE Custom Toolbar
-  const handleToolbarAction = async (actionName: string) => {
+  const handleToolbarAction = async (actionName: string): Promise<boolean> => {
+    if (actionName === 'undo' || actionName === 'redo') {
+      const changed = actionName === 'undo'
+        ? await diffViewerRef.current?.undo()
+        : await diffViewerRef.current?.redo();
+      if (changed) return true;
+      setBuildLogs(previous => [
+        ...previous,
+        `> [${new Date().toLocaleTimeString()}] 【编辑】${actionName === 'undo' ? '当前没有可撤销的编辑。' : '当前没有可重做的编辑。'}`
+      ]);
+      return false;
+    }
+
     setShowBottomPanel(true);
     setActiveTabInBottom('output');
 
@@ -1647,16 +2991,6 @@ void DisplayStatus() {
       await handleOpenWorkspace();
     } else if (actionName === 'save') {
       await handleSaveWorkspace();
-    } else if (actionName === 'undo') {
-      setBuildLogs(prev => [
-        ...prev,
-        `> [${new Date().toLocaleTimeString()}] 【编辑】撤销成功 (无更早打造的属性或布局历史)。`
-      ]);
-    } else if (actionName === 'redo') {
-      setBuildLogs(prev => [
-        ...prev,
-        `> [${new Date().toLocaleTimeString()}] 【编辑】重做成功 (属性和布局已同步最新)。`
-      ]);
     } else if (actionName === 'copy') {
       setBuildLogs(prev => [
         ...prev,
@@ -1668,6 +3002,7 @@ void DisplayStatus() {
         `> [${new Date().toLocaleTimeString()}] 【剪贴板】正在从系统剪贴板读取数据... 已成功将中文控件实例实例化至画布。`
       ]);
     }
+    return true;
   };
 
   const handleGenerateCpp = () => {
@@ -1689,22 +3024,47 @@ void DisplayStatus() {
     }, 50);
   };
 
-  const handleEnvCheck = () => {
+  const handleEnvCheck = async (): Promise<boolean> => {
+    const requestLease = environmentCheckRequestGateRef.current.begin();
+    if (!requestLease) {
+      setShowBottomPanel(true);
+      setActiveTabInBottom('output');
+      setBuildLogs(prev => [
+        ...prev,
+        `> [${new Date().toLocaleTimeString()}] 【环境检查】已有检测正在进行，本次请求未重复执行。`
+      ]);
+      return false;
+    }
+    const controller = requestLease.controller;
+    const timeout = window.setTimeout(() => controller.abort(), 32_000);
     setShowBottomPanel(true);
     setActiveTabInBottom('output');
-    setBuildLogs([
-      `>>> [${new Date().toLocaleTimeString()}] 开始全套 LingBuilder 本机开发环境自检 (C++ / Windows SDK / LING C++ Runtime)...`,
-      `> [环境] LING_SDK_ROOT = C:\\LingBuilder\\SDK\\v4.2`,
-      `> [环境] MSVC Toolset = Visual Studio 2022 Build Tools (v143)`,
-      `> [环境] WindowsSDK = 10.0.22621.0`,
-      `> [自检] 正在验证 C++ 20 依赖库及 Unicode 语言资源转换编译器 (rc.exe / cl.exe)...`,
-      `> [自检] 检测到 64 位 MSVC 本机编译器 (x64) 运行状态良好。`,
-      `> [自检] 本地 UTF-8 中文转换规则包校验成功：加载 13,041 个标准中英对照符号。`,
-      `>>> [${new Date().toLocaleTimeString()}] 【自检成功】本地开发及编译环境状态：已就绪 (READY)。您可以安全地点击 "编译 F5" 进行代码热编译运行。`
-    ]);
+    setBuildLogs([`> [${new Date().toLocaleTimeString()}] 正在检测真实开发环境，请稍候...`]);
+    try {
+      const response = await fetch('/api/environment/check', { signal: controller.signal });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) {
+        throw new Error(result.error || '开发环境检测失败。');
+      }
+      setBuildLogs(formatEnvironmentCheckOutput(result, new Date().toLocaleTimeString()));
+      return Boolean(result.ready);
+    } catch (error) {
+      const message = error instanceof DOMException && error.name === 'AbortError'
+        ? '环境检测超过 32 秒，已取消本次等待；请检查系统工具响应后重试。'
+        : error instanceof Error
+          ? error.message
+          : '开发环境检测失败。';
+      setBuildLogs([
+        `>>> [${new Date().toLocaleTimeString()}] 【环境检测错误】${message}`
+      ]);
+      return false;
+    } finally {
+      window.clearTimeout(timeout);
+      requestLease.finish();
+    }
   };
 
-  const appendSolutionLogs = useCallback((title: string, result: { ok: boolean; logs?: string[]; error?: string; stage?: string }) => {
+  const appendSolutionLogs = useCallback((title: string, result: { ok: boolean; logs?: string[]; error?: string; stage?: string; compilerDiagnostics?: any[]; results?: Array<{ compilerDiagnostics?: any[] }> }) => {
     setShowBottomPanel(true);
     setActiveTabInBottom('output');
     setBuildLogs(prev => [
@@ -1713,19 +3073,21 @@ void DisplayStatus() {
       ...(result.logs || []).map(line => `> [${new Date().toLocaleTimeString()}] ${line}`),
       ...(!result.ok ? [`> [${new Date().toLocaleTimeString()}] 错误：${result.error || result.stage || '未知错误'}`] : [])
     ]);
+    const diagnostics = [...(result.compilerDiagnostics || []), ...(result.results || []).flatMap(item => item.compilerDiagnostics || [])];
+    window.dispatchEvent(new CustomEvent('lingbuilder-compiler-diagnostics', { detail: { diagnostics } }));
   }, []);
 
-  const handleCreateSolutionProject = useCallback(async () => {
+  const handleCreateSolutionProject = useCallback(async (): Promise<boolean> => {
     const name = window.prompt('新建项目名称', `LingBuilder项目${solution.projects.length + 1}`);
-    if (!name?.trim()) return;
+    if (!name?.trim()) return false;
     const flushState = await flushCurrentEditorDrafts();
     if (!flushState.ok) {
       appendEditorTransactionLog(`【新建项目错误】${flushState.diagnostics[0] || '新手代码提交失败，未切换项目。'}`);
-      return;
+      return false;
     }
-    if (flushState.files.some(file => file.isModified)) {
+    if (flushState.files.some(isEditorFileDirty)) {
       const saved = await handleSaveWorkspace('新建项目前保存');
-      if (!saved) return;
+      if (!saved) return false;
     }
     const result = await createSolutionProject(name.trim());
     appendSolutionLogs('新建项目', result);
@@ -1735,27 +3097,81 @@ void DisplayStatus() {
       const nextSolution = await refreshSolution();
       setSolution(nextSolution);
     }
+    return result.ok;
   }, [appendSolutionLogs, flushCurrentEditorDrafts, refreshSolution, solution.projects.length]);
 
   const handleSetStartupProject = useCallback(async (projectId: string) => {
-    const flushState = await flushCurrentEditorDrafts();
-    if (!flushState.ok) {
-      appendEditorTransactionLog(`【切换项目错误】${flushState.diagnostics[0] || '新手代码提交失败，未切换项目。'}`);
+    if (isProjectFileLoadPending(activeProjectId, loadedProjectId, projectFileLoadState)) {
+      appendEditorTransactionLog('【切换项目】当前项目文件仍在载入，请稍后再切换。');
       return;
     }
-    if (flushState.files.some(file => file.isModified)) {
-      const saved = await handleSaveWorkspace('切换项目前保存');
-      if (!saved) return;
+    if (projectSwitchInFlightRef.current) {
+      appendEditorTransactionLog('【切换项目】已有项目切换正在进行，请等待文件载入完成。');
+      return;
     }
-    const result = await setStartupProject(projectId);
-    appendSolutionLogs('设为启动项目', {
-      ok: result.ok,
-      logs: result.ok ? [`启动项目已切换为：${projectId}`] : result.logs,
-      error: result.error
-    });
+    projectSwitchInFlightRef.current = true;
+    try {
+      const flushState = await flushCurrentEditorDrafts();
+      if (!flushState.ok) {
+        appendEditorTransactionLog(`【切换项目错误】${flushState.diagnostics[0] || '新手代码提交失败，未切换项目。'}`);
+        return;
+      }
+      if (flushState.files.some(isEditorFileDirty)) {
+        const saved = await handleSaveWorkspace('切换项目前保存');
+        if (!saved) return;
+      }
+      const result = await setStartupProject(projectId);
+      appendSolutionLogs('设为启动项目', {
+        ok: result.ok,
+        logs: result.ok ? [`启动项目已切换为：${projectId}`] : result.logs,
+        error: result.error
+      });
+      if (result.solution) setSolution(result.solution);
+      await refreshSolution();
+    } finally {
+      projectSwitchInFlightRef.current = false;
+    }
+  }, [activeProjectId, appendSolutionLogs, flushCurrentEditorDrafts, loadedProjectId, projectFileLoadState, refreshSolution]);
+
+  const handleConfigureProjectReferences = useCallback(async (projectId: string) => {
+    const project = solution.projects.find(item => item.id === projectId); if (!project) return;
+    const available = solution.projects.filter(item => item.id !== projectId).map(item => item.id);
+    const value = window.prompt(`输入“${project.name}”引用的项目 ID，用逗号分隔。\n可选：${available.join('、') || '无'}`, (project.references || []).join(', '));
+    if (value === null) return;
+    const references = value.split(/[,，]/u).map(item => item.trim()).filter(Boolean);
+    const result = await configureSolutionProject(projectId, { references });
+    appendSolutionLogs('配置项目引用', result);
     if (result.solution) setSolution(result.solution);
-    await refreshSolution();
-  }, [appendSolutionLogs, flushCurrentEditorDrafts, refreshSolution]);
+  }, [appendSolutionLogs, solution]);
+
+  const handleImportExternalProject = useCallback(async () => {
+    const projectFile = window.prompt('输入工作区内的 CMakeLists.txt、.vcxproj 或 .sln 相对路径：');
+    if (!projectFile?.trim()) return;
+    const result = await importSolutionProject(projectFile.trim());
+    appendSolutionLogs('导入现有工程', result);
+    if (result.solution) setSolution(result.solution);
+  }, [appendSolutionLogs]);
+
+  const handleConfigureExternalProject = useCallback(async (projectId: string) => {
+    const project = solution.projects.find(item => item.id === projectId); if (!project?.buildProperties) return;
+    const mode = window.prompt('构建模式：Debug 或 Release', project.buildProperties.configuration);
+    if (mode !== 'Debug' && mode !== 'Release') return;
+    const architecture = window.prompt('构建架构：Win32 或 x64', project.buildProperties.architecture);
+    if (architecture !== 'Win32' && architecture !== 'x64') return;
+    const args = window.prompt('附加参数（用空格分隔，可留空）', project.buildProperties.additionalArguments.join(' '));
+    if (args === null) return;
+    const result = await configureSolutionProject(projectId, { buildProperties: { configuration: mode, architecture, additionalArguments: args.split(/\s+/u).filter(Boolean) } });
+    appendSolutionLogs('更新外部工程属性', result); if (result.solution) setSolution(result.solution);
+  }, [appendSolutionLogs, solution]);
+
+  const handleToggleMultiStartupProject = useCallback(async (projectId: string) => {
+    const current = solution.startupProjectIds || [solution.startupProjectId];
+    const next = current.includes(projectId) ? current.filter(id => id !== projectId) : [...current, projectId];
+    if (!next.length) { window.alert('至少需要保留一个启动项目。'); return; }
+    const result = await configureSolutionProject(projectId, { startupProjectIds: next });
+    appendSolutionLogs('配置多启动项目', result);
+    if (result.solution) setSolution(result.solution);
+  }, [appendSolutionLogs, solution]);
 
   const handleDeleteSolutionProject = useCallback(async (projectId: string, deleteFiles: boolean) => {
     const project = solution.projects.find(item => item.id === projectId);
@@ -1766,14 +3182,19 @@ void DisplayStatus() {
     if (!window.confirm(message)) return;
     const result = await deleteSolutionProject(projectId, deleteFiles);
     appendSolutionLogs(deleteFiles ? '删除项目文件' : '移除项目', result);
+    if (result.ok) {
+      workbenchTextModelService.list()
+        .filter(record => record.identity.workspaceId === textModelWorkspaceId && record.identity.projectId === projectId)
+        .forEach(record => workbenchTextModelService.dispose(record.identity));
+    }
     if (result.solution) setSolution(result.solution);
     await refreshSolution();
-  }, [appendSolutionLogs, refreshSolution, solution.projects]);
+  }, [appendSolutionLogs, refreshSolution, solution.projects, textModelWorkspaceId]);
 
   const handleSolutionBuildCommand = useCallback(async (
     command: 'build' | 'clean' | 'rebuild',
     projectId?: string
-  ) => {
+  ): Promise<boolean> => {
     const titleMap = {
       build: projectId ? '生成项目' : '生成解决方案',
       clean: projectId ? '清理项目' : '清理解决方案',
@@ -1786,12 +3207,13 @@ void DisplayStatus() {
         : await rebuildSolution(projectId);
     appendSolutionLogs(titleMap[command], result);
     if (result.solution) setSolution(result.solution);
+    return result.ok;
   }, [appendSolutionLogs]);
 
   // Real window designer build task (F5)
   const handleRunBuild = useCallback(async (): Promise<boolean> => {
     if (editorOperationRef.current) {
-      appendEditorTransactionLog(`【F5】已有${editorOperationRef.current === 'build' ? '构建' : '保存'}任务正在进行，本次运行请求未重复执行。`);
+      appendEditorTransactionLog(`【F5】已有${getEditorOperationLabel(editorOperationRef.current)}任务正在进行，本次运行请求未重复执行。`);
       return false;
     }
     editorOperationRef.current = 'build';
@@ -1839,8 +3261,33 @@ void DisplayStatus() {
     return true;
   }, [saveWorkspaceCore]);
 
-  // Stop Simulation Build / Debugging (Shift+F5)
-  const handleStopBuild = useCallback(() => {
+  const handleStartNativeDebug = useCallback(async (): Promise<boolean> => {
+    if (editorOperationRef.current) return false;
+    editorOperationRef.current = 'build'; setIsBuilding(true);
+    try {
+      if (!await saveWorkspaceCore('原生调试前保存', true)) return false;
+      setShowBottomPanel(true); setActiveTabInBottom('debug_logs'); setDebugLogs(['正在构建 Debug 目标并启动原生调试适配器…']);
+      const response = await fetch('/api/debug/start', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: activeProjectId, breakpoints: debugBreakpoints, stopAtEntry: debugBreakpoints.length === 0 })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) throw new Error(result.error || '启动原生调试失败。');
+      setNativeDebugSession(result.session); setDebugLogs(result.session.logs || []); return true;
+    } catch (error) {
+      setDebugLogs(previous => [...previous, `启动失败：${error instanceof Error ? error.message : String(error)}`]); return false;
+    } finally { editorOperationRef.current = null; setIsBuilding(false); }
+  }, [activeProjectId, debugBreakpoints, saveWorkspaceCore]);
+
+  const handleDebugControl = useCallback(async (action: 'continue' | 'next' | 'step-in' | 'step-out'): Promise<boolean> => {
+    try {
+      const response = await fetch(`/api/debug/${action}`, { method: 'POST' }); const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) throw new Error(result.error || '调试控制失败。'); setNativeDebugSession(result.session); return true;
+    } catch (error) { setDebugLogs(previous => [...previous, `调试控制失败：${error instanceof Error ? error.message : String(error)}`]); return false; }
+  }, []);
+
+  // Stop the active build request and the managed native process (Shift+F5).
+  const handleStopBuild = useCallback(async (): Promise<boolean> => {
     if (buildIntervalRef.current) {
       clearInterval(buildIntervalRef.current);
       buildIntervalRef.current = null;
@@ -1857,34 +3304,388 @@ void DisplayStatus() {
     buildStartedRef.current = false;
     if (editorOperationRef.current === 'build') editorOperationRef.current = null;
     setIsBuilding(false);
-    setBuildLogs(prev => [
-      ...prev,
-      `> [${new Date().toLocaleTimeString()}] 🔴 调试已终止 (用户通过 Stop Debugging/Shift+F5 终止了程序的运行)。`
-    ]);
+    try {
+      await fetch('/api/debug/stop', { method: 'POST' }).catch(() => undefined);
+      const response = await fetch('/api/window-designer/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ all: true })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) {
+        throw new Error(result.error || '停止运行进程失败。');
+      }
+      setBuildLogs(prev => [
+        ...prev,
+        result.stopped || (Array.isArray(result.cancelledBuilds) && result.cancelledBuilds.length > 0)
+          ? `> [${new Date().toLocaleTimeString()}] 🔴 ${result.message || '已取消生成任务并终止所有受控运行进程。'}`
+          : `> [${new Date().toLocaleTimeString()}] 【停止】${result.message || '当前没有正在生成或运行的受控任务。'}`
+      ]);
+      return true;
+    } catch (error) {
+      setBuildLogs(prev => [
+        ...prev,
+        `> [${new Date().toLocaleTimeString()}] 【停止错误】${error instanceof Error ? error.message : '停止运行进程失败。'}`
+      ]);
+      return false;
+    }
   }, []);
 
-  // Keyboard Shortcuts (F5 to run, Shift+F5 to stop)
+  const showDiffViewMode = useCallback((mode: DiffViewMode): boolean => {
+    window.dispatchEvent(new CustomEvent(DIFF_VIEW_MODE_CHANGE_EVENT, { detail: { mode } }));
+    return true;
+  }, []);
+
+  const workbenchCommandHandlersRef = useRef<Record<string, () => unknown | Promise<unknown>>>({});
+  workbenchCommandHandlersRef.current = {
+    showCommands: openCommandPalette,
+    openSettings: openSettingsDialog,
+    findInFiles: () => openWorkspaceSearch('search'),
+    replaceInFiles: () => openWorkspaceSearch('replace'),
+    openWorkspace: handleOpenWorkspace,
+    save: () => handleSaveWorkspace(),
+    undo: () => handleToolbarAction('undo'),
+    redo: () => handleToolbarAction('redo'),
+    run: handleRunBuild,
+    stop: handleStopBuild,
+    solutionBuild: () => handleSolutionBuildCommand('build'),
+    solutionRebuild: () => handleSolutionBuildCommand('rebuild'),
+    solutionClean: () => handleSolutionBuildCommand('clean'),
+    environmentCheck: handleEnvCheck,
+    toggleSidebar: toggleSidebarVisibility,
+    togglePanel: toggleBottomPanelVisibility,
+    toggleAiPanel: toggleAiPanelVisibility,
+    toggleTheme: toggleWorkbenchTheme,
+    createProject: handleCreateSolutionProject,
+    diffEdit: () => showDiffViewMode('chinese'),
+    diffSplit: () => showDiffViewMode('split'),
+    diffUnified: () => showDiffViewMode('unified')
+  };
+
+  const blockingDialogOpen = showCloseConfirmModal
+    || showAboutModal
+    || showCustomModal
+    || Boolean(pendingDesignerEventEdit)
+    || Boolean(workspaceSearchMode);
+  commandContextRef.current = {
+    'workspace.open': true,
+    'workbench.commandPaletteOpen': showCommandPalette,
+    'workbench.settingsOpen': showSettingsDialog,
+    'workbench.workspaceSearchOpen': Boolean(workspaceSearchMode),
+    'workbench.blockingDialogOpen': blockingDialogOpen,
+    'workbench.modalOpen': showCommandPalette || showSettingsDialog || blockingDialogOpen,
+    'operation.saving': isSaving,
+    'operation.building': isBuilding,
+    'operation.busy': Boolean(editorOperationRef.current) || projectFilesLoading,
+    'editor.canUndo': editorState.canUndo,
+    'editor.canRedo': editorState.canRedo,
+    'editor.readOnly': editorState.readOnly,
+    'editor.surface': editorState.surface,
+    'view.sidebarVisible': showLeftSidebar,
+    'view.panelVisible': showBottomPanel,
+    'view.aiPanelVisible': showRightPanel,
+    'workbench.darkTheme': isDarkMode
+  };
+
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'F5') {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.shiftKey) {
-          handleStopBuild();
-        } else {
-          void handleRunBuild();
-        }
-      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        e.stopPropagation();
-        void handleSaveWorkspace();
+    const commands = commandServiceRef.current;
+    commands.clearDiagnostics();
+    const bindings = (id: string, defaults: readonly string[]) => getWorkbenchCommandKeybindings(id, defaults, shortcutOverrides);
+    const registration = commands.registerCommands([
+      {
+        id: 'workbench.action.showCommands',
+        title: '显示命令面板',
+        aliases: ['Show Command Palette', 'commands', 'command palette'],
+        category: '视图',
+        description: '搜索并执行所有已注册的 LingBuilder 命令。',
+        keybindings: bindings('workbench.action.showCommands', WORKBENCH_DEFAULT_KEYBINDINGS['workbench.action.showCommands']),
+        when: '!workbench.commandPaletteOpen && !workbench.settingsOpen && !workbench.blockingDialogOpen',
+        order: 1,
+        handler: () => workbenchCommandHandlersRef.current.showCommands()
+      },
+      {
+        id: 'workbench.action.openSettings',
+        title: '打开设置',
+        aliases: ['Open Settings', 'preferences', 'options'],
+        category: '首选项',
+        description: '编辑用户设置、工作区设置和键盘快捷键。',
+        keybindings: bindings('workbench.action.openSettings', WORKBENCH_DEFAULT_KEYBINDINGS['workbench.action.openSettings']),
+        when: '!workbench.commandPaletteOpen && !workbench.settingsOpen && !workbench.blockingDialogOpen',
+        order: 2,
+        handler: () => workbenchCommandHandlersRef.current.openSettings()
+      },
+      {
+        id: 'workbench.action.files.openWorkspace',
+        title: '打开工作区',
+        aliases: ['Open Workspace'],
+        category: '文件',
+        keybindings: bindings('workbench.action.files.openWorkspace', WORKBENCH_DEFAULT_KEYBINDINGS['workbench.action.files.openWorkspace']),
+        when: '!workbench.modalOpen',
+        order: 10,
+        handler: () => workbenchCommandHandlersRef.current.openWorkspace()
+      },
+      {
+        id: 'workbench.action.files.save',
+        title: '保存工作区',
+        aliases: ['Save', 'Save Workspace'],
+        category: '文件',
+        keybindings: bindings('workbench.action.files.save', WORKBENCH_DEFAULT_KEYBINDINGS['workbench.action.files.save']),
+        when: 'workspace.open && !workbench.modalOpen',
+        enabled: context => !context['operation.saving'] && !context['operation.building'] && !context['operation.busy'],
+        order: 11,
+        handler: () => workbenchCommandHandlersRef.current.save()
+      },
+      {
+        id: 'workbench.action.editor.undo',
+        title: '编辑器：撤销',
+        aliases: ['Undo', 'Editor Undo'],
+        category: '编辑',
+        description: '仅撤销当前文件模型中的上一步编辑，不影响其他标签。',
+        keybindings: bindings('workbench.action.editor.undo', WORKBENCH_DEFAULT_KEYBINDINGS['workbench.action.editor.undo']),
+        when: '!workbench.modalOpen',
+        enabled: context => Boolean(context['editor.canUndo']) && !context['editor.readOnly'],
+        order: 12,
+        handler: () => workbenchCommandHandlersRef.current.undo()
+      },
+      {
+        id: 'workbench.action.editor.redo',
+        title: '编辑器：重做',
+        aliases: ['Redo', 'Editor Redo'],
+        category: '编辑',
+        description: '仅重做当前文件模型中刚撤销的编辑。',
+        keybindings: bindings('workbench.action.editor.redo', WORKBENCH_DEFAULT_KEYBINDINGS['workbench.action.editor.redo']),
+        when: '!workbench.modalOpen',
+        enabled: context => Boolean(context['editor.canRedo']) && !context['editor.readOnly'],
+        order: 13,
+        handler: () => workbenchCommandHandlersRef.current.redo()
+      },
+      {
+        id: 'workbench.action.findInFiles',
+        title: '在文件中查找',
+        aliases: ['Find in Files', 'Workspace Search'],
+        category: '编辑',
+        description: '在当前文件、项目或整个工作区的已保存内容中搜索。',
+        keybindings: bindings('workbench.action.findInFiles', WORKBENCH_DEFAULT_KEYBINDINGS['workbench.action.findInFiles']),
+        when: '!workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 14,
+        handler: () => workbenchCommandHandlersRef.current.findInFiles()
+      },
+      {
+        id: 'workbench.action.replaceInFiles',
+        title: '在文件中替换',
+        aliases: ['Replace in Files', 'Workspace Replace'],
+        category: '编辑',
+        description: '选择搜索结果，预览后以可撤销事务替换工作区文件。',
+        keybindings: bindings('workbench.action.replaceInFiles', WORKBENCH_DEFAULT_KEYBINDINGS['workbench.action.replaceInFiles']),
+        when: '!workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 15,
+        handler: () => workbenchCommandHandlersRef.current.replaceInFiles()
+      },
+      {
+        id: 'workbench.action.project.create',
+        title: '新建解决方案项目',
+        aliases: ['Create Project', 'New Project'],
+        category: '文件',
+        when: '!workbench.modalOpen',
+        order: 12,
+        handler: () => workbenchCommandHandlersRef.current.createProject()
+      },
+      {
+        id: 'workbench.action.build.run',
+        title: '生成并运行当前项目',
+        aliases: ['Run', 'Build and Run'],
+        category: '生成',
+        keybindings: bindings('workbench.action.build.run', WORKBENCH_DEFAULT_KEYBINDINGS['workbench.action.build.run']),
+        when: '!workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 20,
+        handler: () => workbenchCommandHandlersRef.current.run()
+      },
+      {
+        id: 'workbench.action.build.stop',
+        title: '停止所有生成与运行任务',
+        aliases: ['Stop', 'Stop Build'],
+        category: '生成',
+        keybindings: bindings('workbench.action.build.stop', WORKBENCH_DEFAULT_KEYBINDINGS['workbench.action.build.stop']),
+        order: 21,
+        handler: () => workbenchCommandHandlersRef.current.stop()
+      },
+      {
+        id: 'workbench.action.solution.build',
+        title: '生成解决方案',
+        aliases: ['Build Solution'],
+        category: '生成',
+        when: '!workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 22,
+        handler: () => workbenchCommandHandlersRef.current.solutionBuild()
+      },
+      {
+        id: 'workbench.action.solution.rebuild',
+        title: '重新生成解决方案',
+        aliases: ['Rebuild Solution'],
+        category: '生成',
+        when: '!workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 23,
+        handler: () => workbenchCommandHandlersRef.current.solutionRebuild()
+      },
+      {
+        id: 'workbench.action.solution.clean',
+        title: '清理解决方案',
+        aliases: ['Clean Solution'],
+        category: '生成',
+        when: '!workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 24,
+        handler: () => workbenchCommandHandlersRef.current.solutionClean()
+      },
+      {
+        id: 'workbench.action.environment.check',
+        title: '检查开发环境',
+        aliases: ['Environment Check', 'doctor'],
+        category: '工具',
+        when: '!workbench.modalOpen',
+        order: 30,
+        handler: () => workbenchCommandHandlersRef.current.environmentCheck()
+      },
+      {
+        id: 'workbench.action.toggleSidebar',
+        title: '切换侧边栏可见性',
+        aliases: ['Toggle Sidebar'],
+        category: '视图',
+        when: '!workbench.modalOpen',
+        order: 40,
+        handler: () => workbenchCommandHandlersRef.current.toggleSidebar()
+      },
+      {
+        id: 'workbench.action.togglePanel',
+        title: '切换底部面板可见性',
+        aliases: ['Toggle Panel'],
+        category: '视图',
+        when: '!workbench.modalOpen',
+        order: 41,
+        handler: () => workbenchCommandHandlersRef.current.togglePanel()
+      },
+      {
+        id: 'workbench.action.toggleAiPanel',
+        title: '切换 AI 助手面板可见性',
+        aliases: ['Toggle AI Panel'],
+        category: '视图',
+        when: '!workbench.modalOpen',
+        order: 42,
+        handler: () => workbenchCommandHandlersRef.current.toggleAiPanel()
+      },
+      {
+        id: 'workbench.action.toggleColorTheme',
+        title: '切换暗色/亮色主题',
+        aliases: ['Toggle Color Theme'],
+        category: '首选项',
+        when: '!workbench.modalOpen',
+        order: 43,
+        handler: () => workbenchCommandHandlersRef.current.toggleTheme()
+      },
+      {
+        id: 'workbench.action.diff.edit',
+        title: '对比视图：编辑',
+        aliases: ['Diff Edit View'],
+        category: '视图',
+        when: '!workbench.modalOpen',
+        order: 44,
+        handler: () => workbenchCommandHandlersRef.current.diffEdit()
+      },
+      {
+        id: 'workbench.action.diff.split',
+        title: '对比视图：并排对比',
+        aliases: ['Diff Side by Side', 'Split Diff'],
+        category: '视图',
+        when: '!workbench.modalOpen',
+        order: 45,
+        handler: () => workbenchCommandHandlersRef.current.diffSplit()
+      },
+      {
+        id: 'workbench.action.diff.unified',
+        title: '对比视图：内联对比',
+        aliases: ['Unified Diff', 'Inline Diff'],
+        category: '视图',
+        when: '!workbench.modalOpen',
+        order: 46,
+        handler: () => workbenchCommandHandlersRef.current.diffUnified()
       }
+    ]);
+    setCommandRegistryVersion(version => version + 1);
+    return () => registration.dispose();
+  }, [shortcutOverrides]);
+
+  useEffect(() => {
+    const keybindings = createKeybindingService(commandServiceRef.current, () => commandContextRef.current);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      void keybindings.dispatch(event).then(result => {
+        if (!result.error) return;
+        setBuildLogs(previous => [
+          ...previous,
+          `> [${new Date().toLocaleTimeString()}] 【命令错误】${result.error?.message}`
+        ]);
+      });
     };
-    window.addEventListener('keydown', handleKeyDown, true); // Use capturing phase to guarantee interception in all inputs/editors
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown, true);
-    };
-  }, [handleRunBuild, handleStopBuild]);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, []);
+
+  const executeWorkbenchCommand = useCallback(async (commandId: string): Promise<boolean> => {
+    try {
+      const result = await commandServiceRef.current.executeCommand(commandId, commandContextRef.current);
+      return isSuccessfulCommandResult(result);
+    } catch (error) {
+      setBuildLogs(previous => [
+        ...previous,
+        `> [${new Date().toLocaleTimeString()}] 【命令错误】${error instanceof Error ? error.message : '命令执行失败。'}`
+      ]);
+      return false;
+    }
+  }, []);
+
+  const commandPaletteContext = createCommandPaletteContext(commandContextRef.current);
+  const executeCommandFromPalette = useCallback(async (commandId: string): Promise<boolean> => {
+    try {
+      const result = await commandServiceRef.current.executeCommand(
+        commandId,
+        createCommandPaletteContext(commandContextRef.current)
+      );
+      return isSuccessfulCommandResult(result);
+    } catch (error) {
+      setBuildLogs(previous => [
+        ...previous,
+        `> [${new Date().toLocaleTimeString()}] 【命令错误】${error instanceof Error ? error.message : '命令执行失败。'}`
+      ]);
+      return false;
+    }
+  }, []);
+
+  const commandPaletteCommands: CommandPresentation[] = commandServiceRef.current.searchCommands(
+    commandQuery,
+    commandPaletteContext,
+    { includeDisabled: true, limit: 100 }
+  ).filter(command => command.id !== 'workbench.action.showCommands');
+  const registeredWorkbenchCommands: RegisteredCommand[] = commandServiceRef.current.listCommands(
+    commandContextRef.current,
+    { includeUnavailable: true, includeDisabled: true }
+  );
+  const settingsWorkbenchCommands: RegisteredCommand[] = registeredWorkbenchCommands.map(command => ({
+    ...command,
+    keybindings: [...(WORKBENCH_DEFAULT_KEYBINDINGS[command.id] || [])]
+  }));
+  void commandRegistryVersion;
+  const undoKeybindingLabel = registeredWorkbenchCommands
+    .find(command => command.id === 'workbench.action.editor.undo')?.keybindings.join(' / ') || '';
+  const redoKeybindingLabel = registeredWorkbenchCommands
+    .find(command => command.id === 'workbench.action.editor.redo')?.keybindings.join(' / ') || '';
+  const { undoDisabled, redoDisabled, undoTitle, redoTitle } = getEditorHistoryPresentation(editorState, {
+    undo: undoKeybindingLabel,
+    redo: redoKeybindingLabel
+  });
 
   // Handle selection of a row inside extracted strings list
   const handleSelectLine = (lineNum: number) => {
@@ -1901,10 +3702,20 @@ void DisplayStatus() {
       setTimeout(() => el.classList.remove('animate-pulse', 'bg-blue-500/20'), 1500);
     }
   };
+  const handleSelectProblem = async (problem: ProblemItem) => {
+    const target = filesRef.current.find(file => file.path === problem.filePath);
+    if (target) await handleSelectFile(target);
+    window.setTimeout(() => window.dispatchEvent(new CustomEvent('lingcpp-reveal-line', {
+      detail: { filePath: problem.filePath, line: problem.line, column: problem.column || 1 }
+    })), 60);
+  };
 
   // Custom User Code Extraction API Call
   const handleExtractCustomCode = async () => {
+    const requestOwner = captureProjectMutationOwner();
+    if (!isCurrentProjectMutationOwner(requestOwner)) return;
     if (!customCode.trim() || !customFilename.trim()) return;
+    extractOwnerRef.current = requestOwner;
     setIsExtracting(true);
 
     try {
@@ -1922,18 +3733,27 @@ void DisplayStatus() {
       }
 
       const data = await response.json();
-      
+      if (!isCurrentProjectMutationOwner(requestOwner)) return;
+
       const newFile: CppFile = {
         path: `src/${customFilename}`,
         name: customFilename,
         language: customFilename.endsWith('.h') ? 'header' : 'cpp',
+        encoding: 'utf8',
+        eol: 'lf',
+        savedEncoding: 'utf8',
+        savedEol: 'lf',
+        formatModified: false,
         originalContent: customCode,
         translatedContent: '',
         strings: data.strings || [],
         isModified: false
       };
 
-      setFiles(prev => [...prev, newFile]);
+      const nextFiles = [...filesRef.current, newFile];
+      filesRef.current = nextFiles;
+      activeFileRef.current = newFile;
+      setFiles(nextFiles);
       setActiveFile(newFile);
       setShowCustomModal(false);
       
@@ -1946,17 +3766,26 @@ void DisplayStatus() {
       ]);
 
       // Trigger translated rebuild right away
-      triggerReconstruction(newFile, newFile.strings);
+      triggerReconstruction(newFile, newFile.strings, requestOwner);
 
     } catch (err: any) {
+      if (!isCurrentProjectMutationOwner(requestOwner)) return;
       console.error(err);
       alert(`提取解析出错：${err.message || '未知错误'}`);
     } finally {
-      setIsExtracting(false);
+      const activeRequestOwner = extractOwnerRef.current;
+      if (activeRequestOwner?.projectId === requestOwner.projectId
+        && activeRequestOwner.loadGeneration === requestOwner.loadGeneration) {
+        extractOwnerRef.current = null;
+        setIsExtracting(false);
+      }
     }
   };
 
-  const diffResult: DiffResult = computeDiff(activeFile.originalContent, activeFile.translatedContent || activeFile.originalContent);
+  const diffResult: DiffResult = useMemo(
+    () => computeDiff(activeFile.originalContent, getCurrentFileContent(activeFile)),
+    [activeFile.isModified, activeFile.originalContent, activeFile.translatedContent]
+  );
 
   if (isAppClosed) {
     return (
@@ -2090,12 +3919,27 @@ void DisplayStatus() {
                 <div className={`absolute left-0 top-6 w-48 shadow-2xl border rounded-md py-1 flex flex-col z-50 ${isDarkMode ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
                   <button onClick={() => { void handleCreateSolutionProject(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>新建项目</span>
-                    <span className="opacity-50 text-[10px]">Ctrl+N</span>
                   </button>
                   <button onClick={() => { void handleToolbarAction('open'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>打开项目</span>
                     <span className="opacity-50 text-[10px]">Ctrl+O</span>
                   </button>
+                  <button onClick={() => { void handleImportExternalProject(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    导入 MSBuild/CMake 工程…
+                  </button>
+                  <button onClick={() => { void window.lingBuilder?.workspace?.openNewWindow(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    在新窗口打开工作区…
+                  </button>
+                  {recentWorkspaces.length > 0 && <>
+                    <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+                    <div className="px-3 py-1 text-[10px] opacity-55">最近工作区</div>
+                    {recentWorkspaces.slice(0, 5).map(workspacePath => <button
+                      key={workspacePath}
+                      title={workspacePath}
+                      onClick={() => { void handleOpenWorkspacePath(workspacePath); setActiveDropdown(null); }}
+                      className={`px-3 py-1.5 text-left text-[11px] truncate ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}
+                    >{workspacePath.split(/[\\/]/u).pop() || workspacePath}</button>)}
+                  </>}
                   <button disabled={isSaving || isBuilding} onClick={() => { void handleToolbarAction('save'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>保存项目</span>
                     <span className="opacity-50 text-[10px]">Ctrl+S</span>
@@ -2115,7 +3959,6 @@ void DisplayStatus() {
                   </button>
                   <button onClick={() => { setShowCustomModal(true); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>添加自定义文件</span>
-                    <span className="opacity-50 text-[10px]">Ctrl+Shift+N</span>
                   </button>
                   <button onClick={() => { 
                     handleImportDictionary("精选本地化词典", [
@@ -2125,7 +3968,6 @@ void DisplayStatus() {
                     setActiveDropdown(null); 
                   }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>导入翻译词典</span>
-                    <span className="opacity-50 text-[10px]">Ctrl+I</span>
                   </button>
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
                   <button onClick={() => { setShowCloseConfirmModal(true); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-rose-600 hover:text-white text-rose-500' : 'hover:bg-rose-600 hover:text-white text-rose-600 font-semibold'}`}>
@@ -2151,13 +3993,36 @@ void DisplayStatus() {
                     <span>一键智能汉化</span>
                   </button>
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
-                  <button onClick={() => { handleToolbarAction('undo'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
-                    <span>撤销上次操作</span>
-                    <span className="opacity-50 text-[10px]">Ctrl+Z</span>
+                  <button disabled={isSaving || isBuilding} onClick={() => { void executeWorkbenchCommand('workbench.action.findInFiles'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] disabled:cursor-not-allowed disabled:opacity-45 ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>在文件中查找</span>
+                    <span className="opacity-50 text-[10px]">Ctrl+Shift+F</span>
                   </button>
-                  <button onClick={() => { handleToolbarAction('redo'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <button disabled={isSaving || isBuilding} onClick={() => { void executeWorkbenchCommand('workbench.action.replaceInFiles'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] disabled:cursor-not-allowed disabled:opacity-45 ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>在文件中替换</span>
+                    <span className="opacity-50 text-[10px]">Ctrl+Shift+H</span>
+                  </button>
+                  <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+                  <button
+                    type="button"
+                    disabled={undoDisabled}
+                    aria-label={undoTitle}
+                    title={undoTitle}
+                    onClick={() => { void executeWorkbenchCommand('workbench.action.editor.undo'); setActiveDropdown(null); }}
+                    className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] disabled:cursor-not-allowed disabled:opacity-45 ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}
+                  >
+                    <span>撤销上次操作</span>
+                    <span className="max-w-[92px] truncate opacity-50 text-[10px]">{undoKeybindingLabel}</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={redoDisabled}
+                    aria-label={redoTitle}
+                    title={redoTitle}
+                    onClick={() => { void executeWorkbenchCommand('workbench.action.editor.redo'); setActiveDropdown(null); }}
+                    className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] disabled:cursor-not-allowed disabled:opacity-45 ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}
+                  >
                     <span>重做上次操作</span>
-                    <span className="opacity-50 text-[10px]">Ctrl+Y</span>
+                    <span className="max-w-[92px] truncate opacity-50 text-[10px]">{redoKeybindingLabel}</span>
                   </button>
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
                   <button onClick={() => { handleToolbarAction('copy'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
@@ -2182,20 +4047,20 @@ void DisplayStatus() {
               </span>
               {activeDropdown === 'view' && (
                 <div className={`absolute left-0 top-6 w-52 shadow-2xl border rounded-md py-1 flex flex-col z-50 ${isDarkMode ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
-                  <button onClick={() => { setShowLeftSidebar(!showLeftSidebar); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <button onClick={() => { void executeWorkbenchCommand('workbench.action.toggleSidebar'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>解决方案资源管理器</span>
                     <span className="opacity-50 text-[9px]">{showLeftSidebar ? '隐藏' : '显示'}</span>
                   </button>
-                  <button onClick={() => { setShowBottomPanel(!showBottomPanel); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <button onClick={() => { void executeWorkbenchCommand('workbench.action.togglePanel'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>提取字段与终端面板</span>
                     <span className="opacity-50 text-[9px]">{showBottomPanel ? '隐藏' : '显示'}</span>
                   </button>
-                  <button onClick={() => { setShowRightPanel(!showRightPanel); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <button onClick={() => { void executeWorkbenchCommand('workbench.action.toggleAiPanel'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>AI 智能建议面板</span>
                     <span className="opacity-50 text-[9px]">{showRightPanel ? '隐藏' : '显示'}</span>
                   </button>
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
-                  <button onClick={() => { setIsDarkMode(!isDarkMode); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <button onClick={() => { void executeWorkbenchCommand('workbench.action.toggleColorTheme'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>切换暗色/亮色皮肤</span>
                     <span className="opacity-50 text-[9px]">{isDarkMode ? '亮色' : '暗色'}</span>
                   </button>
@@ -2240,11 +4105,9 @@ void DisplayStatus() {
                   <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
                   <button onClick={() => { handleGenerateCpp(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>生成 C++ 宏定义类</span>
-                    <span className="opacity-50 text-[10px]">Ctrl+G</span>
                   </button>
                   <button onClick={() => { handleEnvCheck(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>项目环境开发自检</span>
-                    <span className="opacity-50 text-[10px]">Ctrl+E</span>
                   </button>
                 </div>
               )}
@@ -2260,6 +4123,15 @@ void DisplayStatus() {
               </span>
               {activeDropdown === 'tools' && (
                 <div className={`absolute left-0 top-6 w-52 shadow-2xl border rounded-md py-1 flex flex-col z-50 ${isDarkMode ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
+                  <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.showCommands'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>命令面板...</span>
+                    <span className="opacity-50 text-[10px]">Ctrl+Shift+P</span>
+                  </button>
+                  <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.openSettings'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>设置...</span>
+                    <span className="opacity-50 text-[10px]">Ctrl+,</span>
+                  </button>
+                  <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
                   <button onClick={() => { handleEnvCheck(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>自检开发环境依赖</span>
                     <span className="opacity-50 text-[10px]">检测</span>
@@ -2371,7 +4243,7 @@ void DisplayStatus() {
           isDarkMode ? 'bg-[#252526] border-[#181818]' : 'bg-slate-50 border-slate-200'
         }`}
       >
-        <div className="flex items-center gap-1.5">
+        <div className="min-w-0 flex-1 flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {/* GROUP 1: 文件和编辑操作 */}
           <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border ${
             isDarkMode ? 'bg-[#1e1e1f] border-[#2d2d30]' : 'bg-white border-slate-200 shadow-sm'
@@ -2408,20 +4280,26 @@ void DisplayStatus() {
             <div className={`w-px h-3.5 mx-1 ${isDarkMode ? 'bg-[#3d3d42]' : 'bg-slate-200'}`}></div>
 
             <button
-              onClick={() => handleToolbarAction('undo')}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
+              type="button"
+              onClick={() => void executeWorkbenchCommand('workbench.action.editor.undo')}
+              disabled={undoDisabled}
+              aria-label={undoTitle}
+              className={`p-1 rounded cursor-pointer transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 ${
                 isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
-              title="撤销 (撤回上一步操作，比如移动组件、修改属性、输入内容等)"
+              title={undoTitle}
             >
               <Undo2 className="w-4 h-4 text-slate-400" />
             </button>
             <button
-              onClick={() => handleToolbarAction('redo')}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
+              type="button"
+              onClick={() => void executeWorkbenchCommand('workbench.action.editor.redo')}
+              disabled={redoDisabled}
+              aria-label={redoTitle}
+              className={`p-1 rounded cursor-pointer transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 ${
                 isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
-              title="重做 (恢复刚才被撤销的操作)"
+              title={redoTitle}
             >
               <Redo2 className="w-4 h-4 text-slate-400" />
             </button>
@@ -2543,15 +4421,10 @@ void DisplayStatus() {
             <button
               id="btn-stop-debugging"
               onClick={handleStopBuild}
-              disabled={!isBuilding}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
-                isBuilding 
-                  ? 'text-red-500 hover:text-red-650' 
-                  : isDarkMode 
-                    ? 'opacity-40 text-slate-500 cursor-not-allowed' 
-                    : 'opacity-40 text-slate-400 cursor-not-allowed'
+              className={`p-1 rounded cursor-pointer transition-all active:scale-95 text-red-500 ${
+                isDarkMode ? 'hover:text-red-300 hover:bg-[#2d2d30]' : 'hover:text-red-700 hover:bg-slate-100'
               }`}
-              title="停止调试 (Shift+F5)&#10;终止现行易程序的运行"
+              title="停止 (Shift+F5)&#10;取消在途生成请求并终止所有受控运行进程"
             >
               <Square className="w-4 h-4 fill-red-500/10" />
             </button>
@@ -2573,7 +4446,7 @@ void DisplayStatus() {
               className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
                 isDarkMode ? 'text-rose-400 hover:text-rose-300 hover:bg-[#2d2d30]' : 'text-rose-600 hover:text-rose-700 hover:bg-slate-100'
               }`}
-              title="环境检查 (检测本机开发环境，例如 .NET、MSVC、Windows SDK、CMake、WebView2、运行时 DLL 等是否就绪)"
+              title="环境检查 (检测 Node.js、MSVC、Windows SDK、CMake、g++、clang++、WebView2 与 Windows 平台)"
             >
               <ShieldCheck className="w-4 h-4" />
             </button>
@@ -2581,14 +4454,63 @@ void DisplayStatus() {
         </div>
 
         {/* Right side items */}
-        <div className="flex items-center gap-4">
+        <div className="shrink-0 flex items-center gap-2 sm:gap-4">
+
+          {/* Command and settings entry points remain visible when the desktop menu is collapsed. */}
+          <div className={`flex items-center rounded p-0.5 border ${
+            isDarkMode ? 'bg-[#37373D] border-[#181818]' : 'bg-white border-slate-200 shadow-sm'
+          }`}>
+            <button
+              onClick={() => void handleStartNativeDebug()}
+              disabled={isBuilding || (nativeDebugSession && !['terminated', 'error'].includes(nativeDebugSession.state))}
+              className="p-1 rounded text-violet-400 hover:text-violet-200 disabled:opacity-40"
+              title="开始原生调试（点击编辑器左侧圆点区域设置断点；Shift+点击设置条件断点）"
+              aria-label="开始原生调试"
+            >
+              <Bug className="w-4 h-4" />
+            </button>
+            {nativeDebugSession?.state === 'stopped' && <>
+              <button onClick={() => void handleDebugControl('continue')} className="px-1 text-[10px] text-emerald-400" title="继续">继续</button>
+              <button onClick={() => void handleDebugControl('next')} className="px-1 text-[10px] text-sky-400" title="逐过程">单步</button>
+              <button onClick={() => void handleDebugControl('step-in')} className="px-1 text-[10px] text-cyan-400" title="逐语句">进入</button>
+              <button onClick={() => void handleDebugControl('step-out')} className="px-1 text-[10px] text-amber-400" title="跳出">跳出</button>
+            </>}
+            <button
+              type="button"
+              onClick={() => void executeWorkbenchCommand('workbench.action.findInFiles')}
+              disabled={isSaving || isBuilding}
+              aria-label="在文件中查找"
+              className={`p-1 rounded cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-45 ${isDarkMode ? 'text-amber-400 hover:bg-[#1E1E1E] hover:text-white' : 'text-amber-700 hover:bg-slate-100'}`}
+              title="在文件中查找 (Ctrl+Shift+F)"
+            >
+              <Search className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void executeWorkbenchCommand('workbench.action.showCommands')}
+              aria-label="打开命令面板"
+              className={`p-1 rounded cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${isDarkMode ? 'text-sky-400 hover:bg-[#1E1E1E] hover:text-white' : 'text-sky-700 hover:bg-slate-100'}`}
+              title="命令面板 (Ctrl+Shift+P / F1)"
+            >
+              <CommandIcon className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void executeWorkbenchCommand('workbench.action.openSettings')}
+              aria-label="打开设置"
+              className={`p-1 rounded cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${isDarkMode ? 'text-slate-300 hover:bg-[#1E1E1E] hover:text-white' : 'text-slate-700 hover:bg-slate-100'}`}
+              title="设置 (Ctrl+,)"
+            >
+              <SettingsIcon className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          </div>
 
           {/* Panels Toggles */}
           <div className={`flex items-center rounded p-0.5 border ${
             isDarkMode ? 'bg-[#37373D] border-[#181818]' : 'bg-white border-slate-200 shadow-sm'
           }`}>
             <button
-              onClick={() => setShowLeftSidebar(!showLeftSidebar)}
+              onClick={() => void executeWorkbenchCommand('workbench.action.toggleSidebar')}
               className={`p-1 rounded cursor-pointer transition-colors ${
                 showLeftSidebar 
                   ? isDarkMode ? 'bg-[#1E1E1E] text-white' : 'bg-slate-100 text-slate-900 font-medium' 
@@ -2599,7 +4521,7 @@ void DisplayStatus() {
               <FolderCode className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => setShowBottomPanel(!showBottomPanel)}
+              onClick={() => void executeWorkbenchCommand('workbench.action.togglePanel')}
               className={`p-1 rounded cursor-pointer transition-colors ${
                 showBottomPanel 
                   ? isDarkMode ? 'bg-[#1E1E1E] text-white' : 'bg-slate-100 text-slate-900 font-medium' 
@@ -2610,7 +4532,7 @@ void DisplayStatus() {
               <Terminal className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => setShowRightPanel(!showRightPanel)}
+              onClick={() => void executeWorkbenchCommand('workbench.action.toggleAiPanel')}
               className={`p-1 rounded cursor-pointer transition-colors ${
                 showRightPanel 
                   ? isDarkMode ? 'bg-[#1E1E1E] text-white' : 'bg-slate-100 text-slate-900 font-medium' 
@@ -2626,7 +4548,7 @@ void DisplayStatus() {
 
           {/* Theme Switcher */}
           <button
-            onClick={() => setIsDarkMode(!isDarkMode)}
+            onClick={() => void executeWorkbenchCommand('workbench.action.toggleColorTheme')}
             className={`p-1 rounded transition-colors cursor-pointer ${
               isDarkMode ? 'hover:bg-[#3E3E40] text-slate-400 hover:text-white' : 'hover:bg-slate-200 text-slate-600 hover:text-slate-900'
             }`}
@@ -2661,8 +4583,13 @@ void DisplayStatus() {
           onRefreshSolution={refreshSolution}
           onCreateProject={handleCreateSolutionProject}
           onSetStartupProject={handleSetStartupProject}
+          onConfigureProjectReferences={handleConfigureProjectReferences}
+          onToggleMultiStartupProject={handleToggleMultiStartupProject}
+          onConfigureExternalProject={handleConfigureExternalProject}
           onDeleteProject={handleDeleteSolutionProject}
           onSolutionCommand={handleSolutionBuildCommand}
+          activeModuleHintId={moduleHint?.itemId}
+          onShowModuleHint={handleShowModuleHint}
         />
 
         {/* LEFT DRAG RESIZER & COLLAPSE TOGGLE */}
@@ -2675,7 +4602,7 @@ void DisplayStatus() {
           onMouseDown={showLeftSidebar ? startResizeLeft : undefined}
           title={showLeftSidebar ? "拖拽两侧边缘调整宽度 / 双击重置 / 点击按钮折叠" : "点击展开左侧解决方案资源管理器"}
           onDoubleClick={showLeftSidebar ? () => setLeftWidth(264) : undefined}
-          onClick={showLeftSidebar ? undefined : () => setShowLeftSidebar(true)}
+          onClick={showLeftSidebar ? undefined : toggleSidebarVisibility}
         >
           {/* Thin line indicator */}
           <div className={`w-[1px] rounded-full transition-all ${
@@ -2688,7 +4615,7 @@ void DisplayStatus() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              setShowLeftSidebar(!showLeftSidebar);
+              toggleSidebarVisibility();
             }}
             className="absolute left-1/2 -translate-x-1/2 w-[16px] h-12 bg-[#2d2d36] hover:bg-[#3a3a45] active:bg-[#4a4a58] border border-[#444] hover:border-blue-500/60 rounded shadow-lg flex items-center justify-center cursor-pointer transition-all hover:scale-105 z-30 group-hover:opacity-100 opacity-60"
             title={showLeftSidebar ? "折叠左侧面板" : "展开左侧面板"}
@@ -2703,8 +4630,16 @@ void DisplayStatus() {
 
         {/* Central Comparative Editor Area */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-          <div className="flex-1 flex flex-col min-h-0 bg-[#141418]">
-            <DiffViewer
+          <div className={`h-7 shrink-0 border-b px-2 flex items-center gap-2 text-[10px] ${isDarkMode ? 'border-[#303038] bg-[#18181e] text-slate-300' : 'border-slate-200 bg-slate-100 text-slate-700'}`}>
+            <button onClick={() => splitActiveEditor('horizontal')} className="hover:text-white">左右拆分</button>
+            <button onClick={() => splitActiveEditor('vertical')} className="hover:text-white">上下拆分</button>
+            {editorGroupLayout.groups.length > 1 && <>
+              <button onClick={() => void movePrimaryTabToSecondary()} className="hover:text-white">移到第二组</button>
+              <button onClick={() => setEditorGroupLayout(previous => closeEditorGroup(previous, previous.groups[1].id))} className="ml-auto hover:text-rose-300">关闭第二组</button>
+            </>}
+          </div>
+          <div className={`flex-1 flex min-h-0 bg-[#141418] ${editorGroupLayout.orientation === 'horizontal' ? 'flex-row' : 'flex-col'}`}>
+            {projectFilesReady ? <div className="flex min-h-0 min-w-0 flex-1 flex-col"><DiffViewer
               ref={diffViewerRef}
               diffResult={diffResult}
               strings={activeFile.strings}
@@ -2723,17 +4658,88 @@ void DisplayStatus() {
               designerProject={windowDesignerState.project}
               moduleContext={moduleContext}
               activeWindowId={windowDesignerState.activeWindowId}
+              textModelWorkspaceId={textModelWorkspaceId}
+              textModelProjectId={loadedProjectId}
+              onEditorStateChange={setEditorState}
               editorExperienceMode={editorExperienceMode}
               onExperienceModeChange={handleEditorExperienceModeChange}
-              problems={problems}
+              problems={[...compilerProblems, ...qualityProblems, ...problems]}
               ignoredBeginnerTaskIds={ignoredBeginnerTaskIds}
               onIgnoreBeginnerTask={ignoreBeginnerTask}
               onApplyWorkspaceEdit={handleApplyWorkspaceEdit}
+              onDiffViewModeChange={mode => {
+                void executeWorkbenchCommand(DIFF_VIEW_MODE_COMMANDS[mode]);
+              }}
               onOpenProblemsPanel={() => {
                 setActiveTabInBottom('problems');
                 setShowBottomPanel(true);
               }}
-            />
+            /></div> : (
+              <div
+                className={`flex min-h-0 flex-1 items-center justify-center p-6 ${isDarkMode ? 'bg-[#141418] text-slate-200' : 'bg-slate-50 text-slate-800'}`}
+                role={projectFileEditorAvailability === 'error' ? 'alert' : 'status'}
+                aria-live={projectFileEditorAvailability === 'error' ? 'assertive' : 'polite'}
+                data-project-file-load-state={projectFileEditorAvailability}
+              >
+                <div className={`w-full max-w-md rounded-lg border p-6 text-center shadow-sm ${
+                  isDarkMode ? 'border-[#34343c] bg-[#1c1c22]' : 'border-slate-200 bg-white'
+                }`}>
+                  <RefreshCw className={`mx-auto mb-3 h-7 w-7 ${projectFilesLoading ? 'animate-spin text-blue-400' : 'text-amber-500'}`} />
+                  <div className="text-sm font-semibold">
+                    {projectFilesLoading ? '正在载入项目文件' : '项目文件载入失败'}
+                  </div>
+                  <p className={`mt-2 text-xs leading-5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                    {projectFilesLoading
+                      ? `正在读取“${activeSolutionProject.name}”的权威磁盘内容，完成前编辑器保持只读。`
+                      : projectFileLoadState.error || '无法读取项目文件，请重试或切换到其他项目。'}
+                  </p>
+                  {projectFileEditorAvailability === 'error' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProjectFileLoadState(createProjectFileLoadState(activeProjectId, 'loading'));
+                        setEditorState(createInactiveTextEditorStatus('loading-project'));
+                        setProjectFileReloadToken(token => token + 1);
+                      }}
+                      className={`mt-4 inline-flex items-center gap-2 rounded border px-3 py-1.5 text-xs font-medium ${
+                        isDarkMode
+                          ? 'border-blue-500/50 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20'
+                          : 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                      }`}
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      重试载入
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {projectFilesReady && editorGroupLayout.groups[1] && (() => {
+              const group = editorGroupLayout.groups[1];
+              const selected = files.find(file => file.path === group.activePath) || files.find(file => file.path === group.tabs[0]);
+              if (!selected) return null;
+              return <div className={`flex min-h-0 min-w-0 flex-1 flex-col border-[#303038] ${editorGroupLayout.orientation === 'horizontal' ? 'border-l' : 'border-t'}`}>
+                <div className="flex h-8 shrink-0 items-center overflow-x-auto bg-[#18181e]">
+                  {group.tabs.map(tabPath => {
+                    const file = files.find(item => item.path === tabPath); if (!file) return null;
+                    return <button key={tabPath} onClick={() => setEditorGroupLayout(previous => selectEditorGroupTab(previous, group.id, tabPath))} className={`h-8 px-3 text-[11px] ${tabPath === selected.path ? 'bg-[#25252c] text-white' : 'text-slate-400 hover:text-white'}`}>
+                      {file.isModified ? '● ' : ''}{file.name}
+                      <span onClick={event => { event.stopPropagation(); setEditorGroupLayout(previous => closeEditorGroupTab(previous, group.id, tabPath)); }} className="ml-2 opacity-60 hover:opacity-100">×</span>
+                    </button>;
+                  })}
+                  <button onClick={() => void moveSecondaryTabToPrimary(selected.path)} className="ml-auto shrink-0 px-2 text-[10px] text-slate-400 hover:text-white">移到第一组</button>
+                </div>
+                <div className="min-h-0 flex-1">
+                  <MonacoCodeEditor
+                    sourceCode={getCurrentFileContent(selected)} language={selected.language} isDarkMode={isDarkMode}
+                    readOnly={isSaving || isBuilding} onChange={value => updateEditorGroupFile(selected.path, value)}
+                    editorFontSize={editorFontSize} onFontSizeChange={setEditorFontSize} filePath={selected.path}
+                    modelIdentity={textModelIdentity(loadedProjectId, selected.path)} modelSurface="secondary"
+                    moduleContext={moduleContext} designerProject={windowDesignerState.project}
+                  />
+                </div>
+              </div>;
+            })()}
           </div>
 
           {/* BOTTOM DRAG RESIZER & COLLAPSE TOGGLE */}
@@ -2750,7 +4756,7 @@ void DisplayStatus() {
             onMouseDown={showBottomPanel ? startResizeBottom : undefined}
             title={showBottomPanel ? "拖拽调整底部面板高度 / 双击重置 / 点击按钮折叠" : "点击展开底部面板"}
             onDoubleClick={showBottomPanel ? () => setBottomHeight(260) : undefined}
-            onClick={showBottomPanel ? undefined : () => setShowBottomPanel(true)}
+            onClick={showBottomPanel ? undefined : toggleBottomPanelVisibility}
           >
             <div className={`h-[1px] rounded-full transition-all ${
               showBottomPanel
@@ -2762,7 +4768,7 @@ void DisplayStatus() {
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                setShowBottomPanel(!showBottomPanel);
+                toggleBottomPanelVisibility();
               }}
               className={`absolute top-1/2 -translate-y-1/2 w-12 h-[16px] border rounded shadow-lg flex items-center justify-center cursor-pointer transition-all hover:scale-105 z-30 group-hover:opacity-100 opacity-60 ${
                 isDarkMode
@@ -2789,11 +4795,13 @@ void DisplayStatus() {
               debugLogs={debugLogs}
               onClearLogs={handleClearLogs}
               onSelectLine={handleSelectLine}
+              onSelectProblem={handleSelectProblem}
               onUpdateStringTranslation={handleUpdateStringTranslation}
               onSetStatus={handleSetStatus}
               isDarkMode={isDarkMode}
               activeTab={activeTabInBottom}
               onActiveTabChange={setActiveTabInBottom}
+              moduleHint={moduleHint}
               generatedPanels={designerGeneratedPanels}
               height={bottomHeight}
             />
@@ -2814,7 +4822,7 @@ void DisplayStatus() {
           onMouseDown={showRightPanel ? startResizeRight : undefined}
           title={showRightPanel ? "拖拽两侧边缘调整宽度 / 双击重置 / 点击按钮折叠" : "点击展开右侧 AI 助手面板"}
           onDoubleClick={showRightPanel ? () => setRightWidth(320) : undefined}
-          onClick={showRightPanel ? undefined : () => setShowRightPanel(true)}
+          onClick={showRightPanel ? undefined : toggleAiPanelVisibility}
         >
           {/* Thin line indicator */}
           <div className={`w-[1px] rounded-full transition-all ${
@@ -2827,7 +4835,7 @@ void DisplayStatus() {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              setShowRightPanel(!showRightPanel);
+              toggleAiPanelVisibility();
             }}
             className={`absolute left-1/2 -translate-x-1/2 w-[16px] h-12 border rounded shadow-lg flex items-center justify-center cursor-pointer transition-all hover:scale-105 z-30 group-hover:opacity-100 opacity-60 ${
               isDarkMode 
@@ -2866,7 +4874,10 @@ void DisplayStatus() {
             </div>
 
             {/* AI assistant */}
-            <div className="flex-1 overflow-hidden">
+            <div
+              key={`${activeProjectId}:${projectFileLoadGenerationRef.current}:${activeFile.path}`}
+              className="flex-1 overflow-hidden"
+            >
               <AiAssistant
                 strings={activeFile.strings}
                 glossary={glossary}
@@ -2876,6 +4887,10 @@ void DisplayStatus() {
                 sourceCode={activeFile.translatedContent || activeFile.originalContent}
                 activeLanguage={activeFile.language}
                 projectId={activeProjectId}
+                projectMutationOwner={createProjectMutationOwner(
+                  activeProjectId,
+                  projectFileLoadGenerationRef.current
+                )}
                 moduleContext={moduleContext}
                 workspaceFiles={files.map(file => ({
                   filePath: file.path,
@@ -2889,6 +4904,46 @@ void DisplayStatus() {
           </div>
         )}
       </div>
+
+      <CommandPalette
+        open={showCommandPalette}
+        query={commandQuery}
+        commands={commandPaletteCommands}
+        isDarkMode={isDarkMode}
+        onQueryChange={setCommandQuery}
+        onExecute={executeCommandFromPalette}
+        onClose={() => setShowCommandPalette(false)}
+      />
+
+      <WorkspaceSearchDialog
+        open={workspaceSearchMode !== null}
+        initialMode={workspaceSearchMode || 'search'}
+        isDarkMode={isDarkMode}
+        activeFilePath={activeFile?.path}
+        activeProjectId={activeProjectId}
+        hasUnsavedFiles={files.some(isEditorFileDirty)}
+        onClose={() => setWorkspaceSearchMode(null)}
+        contextVersion={projectFileLoadGenerationRef.current}
+        onQuery={handleWorkspaceSearchQuery}
+        onPreview={handleWorkspaceReplacePreview}
+        onApply={handleWorkspaceReplaceApply}
+        onRollback={handleWorkspaceReplaceRollback}
+        onReveal={match => { void handleWorkspaceSearchReveal(match); }}
+        onSaveBeforeReplace={() => handleSaveWorkspace('工作区替换前保存')}
+      />
+
+      <SettingsDialog
+        open={showSettingsDialog}
+        snapshot={configurationSnapshot}
+        commands={settingsWorkbenchCommands}
+        isDarkMode={isDarkMode}
+        loading={configurationLoading}
+        error={configurationError || undefined}
+        onUpdate={updateWorkbenchConfiguration}
+        onReset={resetWorkbenchConfiguration}
+        onReload={loadWorkbenchConfiguration}
+        onClose={() => setShowSettingsDialog(false)}
+      />
 
       {/* Load Custom Code Modal */}
       {showCustomModal && (
@@ -3157,19 +5212,51 @@ void DisplayStatus() {
       )}
 
       {/* Status Bar */}
-      <div className="h-6 bg-[#007ACC] text-white flex items-center px-3 justify-between text-[11px] shrink-0 select-none font-sans">
-        <div className="flex items-center gap-4">
+      <div data-workbench-statusbar className="h-7 bg-[#007ACC] text-white flex items-center px-3 justify-between gap-3 text-[11px] shrink-0 select-none font-sans overflow-x-auto">
+        <div className="flex min-w-0 items-center gap-3">
           <div className="flex items-center gap-1.5 font-medium">
             <span className="w-2 h-2 rounded-full bg-white opacity-80"></span>
-            <span>已就绪</span>
+            <span>{projectFilesReady ? '已就绪' : projectFilesLoading ? '载入项目文件' : '项目文件不可用'}</span>
           </div>
-          <div>字符集: UTF-8 / Unicode</div>
-          <div className="hidden sm:block text-slate-200">构建配置: Release (x64)</div>
+          <TextFileStatusControls
+            format={getTextFileFormat(activeFile)}
+            fileName={activeFile.name}
+            isDarkMode={isDarkMode}
+            disabled={isSaving || isBuilding || !projectFilesReady}
+            isModified={activeFile.formatModified}
+            onEncodingChange={encoding => updateActiveTextFileFormat({ encoding })}
+            onEolChange={eol => updateActiveTextFileFormat({ eol })}
+          />
+          <div className="hidden sm:flex items-center gap-1 text-slate-100">
+            <span>构建:</span>
+            <select aria-label="构建模式" value={buildConfiguration.mode} onChange={event => void updateBuildConfiguration({ mode: event.target.value as BuildMode })} className="bg-[#0069a8] rounded px-1 py-0.5">
+              <option>Debug</option><option>Release</option>
+            </select>
+            <select aria-label="构建架构" value={buildConfiguration.architecture} onChange={event => void updateBuildConfiguration({ architecture: event.target.value as BuildArchitecture })} className="bg-[#0069a8] rounded px-1 py-0.5">
+              <option>Win32</option><option>x64</option>
+            </select>
+          </div>
+          <button
+            type="button"
+            title={clangdStatus.message}
+            onClick={() => { void fetch(clangdStatus.state === 'ready' ? '/api/lsp/stop' : '/api/lsp/start', { method: 'POST' }); }}
+            className="hidden md:block rounded px-2 py-0.5 hover:bg-white/15"
+          >clangd: {clangdStatus.state === 'ready' ? '已就绪' : clangdStatus.state === 'unavailable' ? '本地降级' : clangdStatus.state === 'restarting' ? '重启中' : '未启动'}</button>
+          {taskSnapshots.find(task => task.state === 'running' || task.state === 'queued') && (() => {
+            const task = taskSnapshots.find(candidate => candidate.state === 'running' || candidate.state === 'queued')!;
+            return <button
+              type="button"
+              title="点击取消当前任务"
+              onClick={() => { void fetch(`/api/tasks/${encodeURIComponent(task.id)}/cancel`, { method: 'POST' }); setShowBottomPanel(true); setActiveTabInBottom('output'); }}
+              className="rounded px-2 py-0.5 hover:bg-white/15"
+            >{task.state === 'queued' ? '排队' : `${task.progress}%`} · {task.title} ×</button>;
+          })()}
         </div>
-        <div className="flex items-center gap-4 text-slate-100">
-          <div>双击行编写中文</div>
-          <div>空格: 4</div>
-          <div className="hover:bg-[#1f8ad2] px-2 py-0.5 rounded cursor-pointer transition-colors">反馈支持</div>
+        <div className="flex shrink-0 items-center gap-4 whitespace-nowrap text-slate-100">
+          <EditorPositionStatus state={editorState} />
+          <div className="shrink-0">双击行编写中文</div>
+          <div className="shrink-0">空格: 4</div>
+          <div className="shrink-0 hover:bg-[#1f8ad2] px-2 py-0.5 rounded cursor-pointer transition-colors">反馈支持</div>
         </div>
       </div>
     </div>

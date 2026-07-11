@@ -12,6 +12,8 @@ export class SourceControlService {
       return {
         isRepository: false,
         branch: '',
+        ahead: 0,
+        behind: 0,
         files: [],
         error: error?.message || '无法读取 Git 状态'
       };

@@ -31,9 +31,12 @@ export async function exportVisualStudioProject(
   const filtersPath = path.join(options.projectDir, `${projectName}.vcxproj.filters`);
   const sourceFiles = getSourceFiles(options.generatedFiles, options.enabledModules);
   const noneFiles = getNoneFiles(options.generatedFiles);
-  const includeDirs = getModuleIncludeDirs(options.enabledModules);
-  const libFiles = getModuleLibFiles(options.enabledModules);
-  const runtimeFiles = getModuleRuntimeFiles(options.enabledModules);
+  const includeDirs = getModuleIncludeDirs(options.enabledModules, 'windows-msvc-win32');
+  const includeDirsX64 = getModuleIncludeDirs(options.enabledModules, 'windows-msvc-x64');
+  const libFiles = getModuleLibFiles(options.enabledModules, 'windows-msvc-win32');
+  const libFilesX64 = getModuleLibFiles(options.enabledModules, 'windows-msvc-x64');
+  const runtimeFiles = getModuleRuntimeFiles(options.enabledModules, 'windows-msvc-win32');
+  const runtimeFilesX64 = getModuleRuntimeFiles(options.enabledModules, 'windows-msvc-x64');
 
   await fs.mkdir(options.projectDir, { recursive: true });
   await Promise.all([
@@ -44,8 +47,11 @@ export async function exportVisualStudioProject(
       sourceFiles,
       noneFiles,
       includeDirs,
+      includeDirsX64,
       libFiles,
-      runtimeFiles
+      libFilesX64,
+      runtimeFiles,
+      runtimeFilesX64
     }), 'utf8'),
     fs.writeFile(filtersPath, generateFilters(sourceFiles, noneFiles), 'utf8')
   ]);
@@ -66,7 +72,10 @@ function getSourceFiles(generatedFiles: LingCppNativeProjectFile[], enabledModul
       .filter(file => /\.(c|cc|cpp|cxx)$/i.test(file)),
     ...enabledModules.flatMap(module => {
       const moduleId = module.manifest.id;
-      return (getPreferredModuleTarget(module)?.sources || [])
+      return unique([
+        ...(getPreferredModuleTarget(module, 'windows-msvc-win32')?.sources || []),
+        ...(getPreferredModuleTarget(module, 'windows-msvc-x64')?.sources || [])
+      ])
         .map(file => normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
     })
   ]);
@@ -78,10 +87,10 @@ function getNoneFiles(generatedFiles: LingCppNativeProjectFile[]): string[] {
     .filter(file => !/\.(c|cc|cpp|cxx)$/i.test(file));
 }
 
-function getModuleIncludeDirs(enabledModules: InstalledModule[]): string[] {
+function getModuleIncludeDirs(enabledModules: InstalledModule[], targetId = 'windows-msvc-win32'): string[] {
   return unique(enabledModules.flatMap(module => {
     const moduleId = module.manifest.id;
-    const target = getPreferredModuleTarget(module);
+    const target = getPreferredModuleTarget(module, targetId);
     if (!target) return [];
     const explicitDirs = (target.includeDirs || []).map(dir => normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(dir))));
     const headerDirs = (target.headers || []).map(header => {
@@ -92,20 +101,20 @@ function getModuleIncludeDirs(enabledModules: InstalledModule[]): string[] {
   }));
 }
 
-function getModuleLibFiles(enabledModules: InstalledModule[]): string[] {
+function getModuleLibFiles(enabledModules: InstalledModule[], targetId = 'windows-msvc-win32'): string[] {
   return unique(enabledModules.flatMap(module => {
     const moduleId = module.manifest.id;
-    return (getPreferredModuleTarget(module)?.libs || [])
+    return (getPreferredModuleTarget(module, targetId)?.libs || [])
       .map(file => isBuiltinModule(module)
         ? normalizeSlash(file)
         : normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
   }));
 }
 
-function getModuleRuntimeFiles(enabledModules: InstalledModule[]): string[] {
+function getModuleRuntimeFiles(enabledModules: InstalledModule[], targetId = 'windows-msvc-win32'): string[] {
   return unique(enabledModules.flatMap(module => {
     const moduleId = module.manifest.id;
-    return (getPreferredModuleTarget(module)?.runtimeFiles || [])
+    return (getPreferredModuleTarget(module, targetId)?.runtimeFiles || [])
       .map(file => normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
   }));
 }
@@ -122,12 +131,18 @@ function generateSolution(projectName: string, projectGuid: string): string {
     '\tGlobalSection(SolutionConfigurationPlatforms) = preSolution',
     '\t\tDebug|Win32 = Debug|Win32',
     '\t\tRelease|Win32 = Release|Win32',
+    '\t\tDebug|x64 = Debug|x64',
+    '\t\tRelease|x64 = Release|x64',
     '\tEndGlobalSection',
     '\tGlobalSection(ProjectConfigurationPlatforms) = postSolution',
     `\t\t{${projectGuid}}.Debug|Win32.ActiveCfg = Debug|Win32`,
     `\t\t{${projectGuid}}.Debug|Win32.Build.0 = Debug|Win32`,
     `\t\t{${projectGuid}}.Release|Win32.ActiveCfg = Release|Win32`,
     `\t\t{${projectGuid}}.Release|Win32.Build.0 = Release|Win32`,
+    `\t\t{${projectGuid}}.Debug|x64.ActiveCfg = Debug|x64`,
+    `\t\t{${projectGuid}}.Debug|x64.Build.0 = Debug|x64`,
+    `\t\t{${projectGuid}}.Release|x64.ActiveCfg = Release|x64`,
+    `\t\t{${projectGuid}}.Release|x64.Build.0 = Release|x64`,
     '\tEndGlobalSection',
     '\tGlobalSection(SolutionProperties) = preSolution',
     '\t\tHideSolutionNode = FALSE',
@@ -143,8 +158,11 @@ function generateVcxproj(options: {
   sourceFiles: string[];
   noneFiles: string[];
   includeDirs: string[];
+  includeDirsX64: string[];
   libFiles: string[];
+  libFilesX64: string[];
   runtimeFiles: string[];
+  runtimeFilesX64: string[];
 }): string {
   const includeDirectories = options.includeDirs.map(toWindowsPath).join(';');
   const additionalIncludeDirectories = includeDirectories
@@ -156,7 +174,12 @@ function generateVcxproj(options: {
     'comctl32.lib',
     ...options.libFiles.map(toWindowsPath)
   ].join(';');
+  const additionalIncludeDirectoriesX64 = options.includeDirsX64.length
+    ? `${xmlEscape(options.includeDirsX64.map(toWindowsPath).join(';'))};%(AdditionalIncludeDirectories)`
+    : '%(AdditionalIncludeDirectories)';
+  const additionalDependenciesX64 = ['user32.lib', 'gdi32.lib', 'comctl32.lib', ...options.libFilesX64.map(toWindowsPath)].join(';');
   const postBuild = generatePostBuildCommand(options.runtimeFiles);
+  const postBuildX64 = generatePostBuildCommand(options.runtimeFilesX64);
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
@@ -169,6 +192,8 @@ function generateVcxproj(options: {
       <Configuration>Release</Configuration>
       <Platform>Win32</Platform>
     </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -191,6 +216,8 @@ function generateVcxproj(options: {
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration"><ConfigurationType>Application</ConfigurationType><UseDebugLibraries>true</UseDebugLibraries><PlatformToolset>v143</PlatformToolset><CharacterSet>Unicode</CharacterSet></PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration"><ConfigurationType>Application</ConfigurationType><UseDebugLibraries>false</UseDebugLibraries><PlatformToolset>v143</PlatformToolset><WholeProgramOptimization>true</WholeProgramOptimization><CharacterSet>Unicode</CharacterSet></PropertyGroup>
   <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings" />
   <ImportGroup Label="Shared" />
@@ -200,6 +227,8 @@ function generateVcxproj(options: {
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <Import Project="$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><Import Project="$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" /></ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><Import Project="$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" /></ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -235,6 +264,8 @@ function generateVcxproj(options: {
       <AdditionalDependencies>${xmlEscape(additionalDependencies)};%(AdditionalDependencies)</AdditionalDependencies>
     </Link>${postBuild}
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>_DEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>stdcpp17</LanguageStandard><AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>Windows</SubSystem><AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><FunctionLevelLinking>true</FunctionLevelLinking><IntrinsicFunctions>true</IntrinsicFunctions><SDLCheck>true</SDLCheck><PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>stdcpp17</LanguageStandard><AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>Windows</SubSystem><EnableCOMDATFolding>true</EnableCOMDATFolding><OptimizeReferences>true</OptimizeReferences><AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
 ${generateFileItems('ClCompile', options.sourceFiles)}${generateFileItems('None', options.noneFiles)}
   <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

@@ -207,6 +207,9 @@ export interface SourceControlFileStatus {
 export interface SourceControlStatus {
   isRepository: boolean;
   branch: string;
+  upstream?: string;
+  ahead: number;
+  behind: number;
   files: SourceControlFileStatus[];
   error?: string;
 }

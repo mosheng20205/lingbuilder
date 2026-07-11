@@ -1,9 +1,11 @@
 import crypto from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 
 export interface ServerRuntimeConfig {
   environment: 'development' | 'production';
   workspaceRoot: string;
+  userSettingsPath: string;
   staticRoot?: string;
   rulebookPath: string;
   host: '127.0.0.1' | '::1';
@@ -35,6 +37,10 @@ export function resolveServerRuntimeConfig(environment: NodeJS.ProcessEnv): Serv
     environment.LINGBUILDER_STATIC_ROOT || environment.STATIC_ROOT,
     'STATIC_ROOT'
   );
+  const userSettingsPath = optionalAbsolutePath(
+    environment.LINGBUILDER_USER_SETTINGS_PATH,
+    'LINGBUILDER_USER_SETTINGS_PATH'
+  ) ?? path.join(os.homedir(), '.lingbuilder', 'settings.json');
   if (mode === 'production' && !staticRoot) {
     throw new Error('生产模式必须配置绝对路径 LINGBUILDER_STATIC_ROOT。');
   }
@@ -62,6 +68,7 @@ export function resolveServerRuntimeConfig(environment: NodeJS.ProcessEnv): Serv
   return {
     environment: mode,
     workspaceRoot,
+    userSettingsPath,
     staticRoot,
     rulebookPath,
     host,

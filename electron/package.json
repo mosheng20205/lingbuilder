@@ -8,15 +8,18 @@
     "dev": "node scripts/dev.cjs",
     "dev:renderer": "tsx server.ts",
     "dev:desktop": "node scripts/start-electron.cjs",
-    "build": "vite build && npm run build:server && npm run build:cli && npm run build:electron",
+    "build": "vite build && node scripts/verify-local-monaco-build.cjs && npm run build:server && npm run build:cli && npm run build:extension-host && npm run build:electron",
     "build:server": "esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "build:cli": "esbuild src/cli.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/cli.cjs",
+    "build:extension-host": "esbuild src/services/extensions/extensionHostProcess.ts --bundle --platform=node --format=cjs --sourcemap --outfile=dist/extension-host.cjs",
     "build:electron": "tsc -p electron/tsconfig.json --noEmit && esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --packages=external --external:electron --sourcemap --outdir=dist-electron --out-extension:.js=.cjs",
     "start": "node dist/server.cjs",
     "ai-server": "tsx src/cli.ts ai-server",
     "lint": "tsc --noEmit && tsc -p electron/tsconfig.json --noEmit",
     "test": "npm run test:lingcpp",
-    "test:lingcpp": "node --import tsx --test tests/lingcpp.test.ts tests/modules.test.ts tests/aiBridge.test.ts tests/solution.test.ts tests/workspaceService.test.ts",
+    "test:debug-real": "node --import tsx --test tests/nativeDebug.real.test.ts",
+    "pretest:lingcpp": "npm run build:extension-host && node --import tsx --test tests/projectFilePersistence.test.ts tests/taskService.test.ts tests/lsp.test.ts tests/editorGroupLayout.test.ts tests/buildConfiguration.test.ts tests/externalProject.test.ts tests/compilerDiagnostic.test.ts tests/incrementalBuild.test.ts tests/ptyTerminal.test.ts tests/terminalPanel.test.tsx tests/dapConnection.test.ts tests/nativeDebug.test.ts tests/debugUi.test.ts tests/debugInspector.test.ts tests/gitService.test.ts tests/gitRemote.test.ts tests/sourceControlPanel.test.tsx tests/testExplorerService.test.ts tests/nodeTestDebug.test.ts tests/testExplorerUi.test.tsx tests/qualityService.test.ts tests/qualityUi.test.tsx tests/extensionService.test.ts tests/extensionUi.test.tsx tests/dependencyService.test.ts tests/dependencyUi.test.tsx tests/designerOperations.test.ts tests/rcResourceService.test.ts tests/designerProfessionalUi.test.tsx tests/performanceService.test.ts tests/performanceUi.test.tsx tests/publishingService.test.ts tests/publishingUi.test.tsx tests/aiWorkspaceIndex.test.ts tests/aiSecurityAccessibility.test.tsx tests/settingsSync.test.ts tests/settingsSyncUi.test.tsx",
+    "test:lingcpp": "node --import tsx --test tests/lingcpp.test.ts tests/modules.test.ts tests/aiBridge.test.ts tests/solution.test.ts tests/workspaceService.test.ts tests/windowDesigner.test.ts tests/projectFileMutation.test.ts tests/projectFileState.test.ts tests/projectFileLoadState.test.ts tests/projectMutationOwner.test.ts tests/managedProcess.test.ts tests/environmentCheck.test.ts tests/environmentCheckPresentation.test.ts tests/environmentCheckRequestGate.test.ts tests/projectBuildCoordinator.test.ts tests/projectBuildSession.test.ts tests/commandService.test.ts tests/keybindingService.test.ts tests/commandPaletteModel.test.ts tests/shortcutOverrides.test.ts tests/configurationService.test.ts tests/workbenchConfiguration.test.ts tests/configurationUpdateGuard.test.ts tests/legacyWorkbenchConfiguration.test.ts tests/workbenchDialogs.test.tsx tests/textFileService.test.ts tests/editorFileState.test.ts tests/diff.test.ts tests/diffViewModeSelector.test.tsx tests/textFileStatusControls.test.tsx tests/workspaceSearch.test.ts tests/workspaceSearchClient.test.ts tests/workspaceSearchDialog.test.tsx tests/workspaceSearchEditorState.test.ts tests/textModelService.test.ts tests/monacoTextModelAdapter.test.ts tests/monacoModelSync.test.ts tests/editorModelPresentation.test.tsx tests/textEditHistory.test.ts tests/workbenchTextModelLifecycle.test.ts tests/monacoLanguage.test.ts tests/beginnerTextPosition.test.ts",
     "module:new-emoji": "node scripts/generate-new-emoji-module.cjs",
     "package:dir": "npm run build && electron-builder --dir",
     "package:win": "npm run build && electron-builder --win nsis --x64",
@@ -28,12 +31,17 @@
     "@monaco-editor/react": "^4.7.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
+    "monaco-editor": "^0.55.1",
     "motion": "^12.23.24",
+    "node-pty": "^1.1.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "tsx": "^4.21.0",
     "vite": "^6.2.3"
   },
   "devDependencies": {
@@ -46,7 +54,6 @@
     "esbuild": "^0.25.0",
     "rimraf": "^6.0.1",
     "tailwindcss": "^4.1.14",
-    "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "wait-on": "^8.0.1"
   },
@@ -59,6 +66,27 @@
   "build": {
     "appId": "cn.lingbuilder.ide",
     "productName": "LingBuilder",
+    "npmRebuild": false,
+    "asarUnpack": [
+      "node_modules/node-pty/**/*"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "lingbuilder",
+        "name": "LingBuilder 工作区",
+        "role": "Editor"
+      },
+      {
+        "ext": "lbworkspace",
+        "name": "LingBuilder 工作区",
+        "role": "Editor"
+      },
+      {
+        "ext": "lcpp",
+        "name": "LingBuilder 中文源文件",
+        "role": "Editor"
+      }
+    ],
     "artifactName": "LingBuilder-${version}-${arch}.${ext}",
     "directories": {
       "output": "release"
@@ -110,6 +138,7 @@
   },
   "allowScripts": {
     "electron@43.1.0": true,
-    "electron-winstaller@5.4.0": true
+    "electron-winstaller@5.4.0": true,
+    "node-pty@1.1.0": true
   }
 }

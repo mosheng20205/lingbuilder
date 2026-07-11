@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo, useState, useCallback, useImperativeHandle } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useImperativeHandle } from 'react';
 import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X, ListTree, PanelRightClose, GraduationCap, Lightbulb, ClipboardList, Wand2, PlayCircle, Pencil, Save, Trash2, Plus, ChevronDown, ChevronRight, RefreshCw, FolderOpen, Copy, FileInput, ExternalLink } from 'lucide-react';
 
 function FileIcon({ fileName, isDarkMode }: { fileName: string; isDarkMode: boolean }) {
@@ -33,8 +33,16 @@ function getEditorTabClassName(isActive: boolean, isDarkMode: boolean) {
 }
 import { AppliedWorkspaceFile, DiffLine, DiffResult, ExtractedString, ProblemItem, WorkspaceEditProposal } from '../types';
 import WpfDesigner from './WpfDesigner';
-import MonacoCodeEditor from './MonacoCodeEditor';
+import MonacoCodeEditor, {
+  MonacoContentChange,
+  MonacoCodeEditorHandle,
+  MonacoEditorState
+} from './MonacoCodeEditor';
 import LingCppStructureEditor from './LingCppStructureEditor';
+import DiffViewModeSelector, {
+  DIFF_VIEW_MODE_CHANGE_EVENT,
+  type DiffViewMode
+} from './DiffViewModeSelector';
 import { buildLingCppLanguageContext, getLingCppReadableBlocks, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
 import { LingCppAccessModifier, LingCppAstEdit, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
 import { applyLingCppAstEdit } from '../services/lingCpp/astEditService';
@@ -64,9 +72,22 @@ import {
   createBeginnerCodeDraftKey,
   FlushPendingEditsResult
 } from '../services/lingCpp/beginnerEditTransactionService';
+import {
+  TextEditorViewState,
+  TextModelIdentity,
+  getOrCreateWorkbenchTextHistory,
+  getBeginnerBodySourceColumns,
+  inferBeginnerBodyStartColumn,
+  mapBeginnerBodyTextPosition,
+  reconcileTextEditHistory,
+  workbenchTextModelService
+} from '../services/textModel';
 
 export interface DiffViewerHandle {
   flushPendingEdits: () => Promise<FlushPendingEditsResult>;
+  undo: () => Promise<boolean>;
+  redo: () => Promise<boolean>;
+  focusEditor: () => boolean;
 }
 
 interface DiffViewerProps {
@@ -94,6 +115,10 @@ interface DiffViewerProps {
   onIgnoreBeginnerTask?: (taskId: string) => void;
   onApplyWorkspaceEdit?: (proposal: WorkspaceEditProposal, appliedFiles: AppliedWorkspaceFile[]) => void;
   onOpenProblemsPanel?: () => void;
+  onDiffViewModeChange?: (mode: DiffViewMode) => void;
+  textModelWorkspaceId?: string;
+  textModelProjectId?: string;
+  onEditorStateChange?: (state: MonacoEditorState) => void;
 }
 
 function mapNativeBuildDiagnostics(
@@ -1163,6 +1188,36 @@ const buildEplVisualLines = (lines: string[]): EplVisualLine[] => {
   });
 };
 
+function beginnerSourcePositionAtOffset(
+  textarea: HTMLTextAreaElement,
+  offset: number
+): { line: number; column: number } {
+  const sourceLines = (textarea.dataset.sourceLineMap || '')
+    .split(',')
+    .map(value => Number.parseInt(value, 10))
+    .filter(value => Number.isInteger(value) && value > 0);
+  const sourceColumns = (textarea.dataset.sourceColumnMap || '')
+    .split(',')
+    .map(value => Number.parseInt(value, 10))
+    .filter(value => Number.isInteger(value) && value > 0);
+  const fallbackStartLine = Number.parseInt(textarea.dataset.sourceLineStart || '', 10);
+  const fallbackStartColumn = Number.parseInt(textarea.dataset.sourceColumnStart || '', 10);
+  return mapBeginnerBodyTextPosition(
+    textarea.value,
+    offset,
+    sourceLines,
+    Number.isInteger(fallbackStartLine) && fallbackStartLine > 0 ? fallbackStartLine : 1,
+    sourceColumns,
+    Number.isInteger(fallbackStartColumn) && fallbackStartColumn > 0 ? fallbackStartColumn : 1
+  );
+}
+
+function readSerializableObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
 const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function DiffViewer({
   diffResult,
   strings,
@@ -1187,7 +1242,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   ignoredBeginnerTaskIds = [],
   onIgnoreBeginnerTask,
   onApplyWorkspaceEdit,
-  onOpenProblemsPanel
+  onOpenProblemsPanel,
+  onDiffViewModeChange,
+  textModelWorkspaceId = 'lingbuilder-renderer',
+  textModelProjectId = 'default-project',
+  onEditorStateChange
 }: DiffViewerProps, ref) {
   const [viewType, setViewType] = useState<'code' | 'designer'>('code');
 
@@ -1205,7 +1264,18 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
 
 
-  const [viewMode, setViewMode] = useState<'chinese' | 'split' | 'unified'>('chinese');
+  const [viewMode, setViewMode] = useState<DiffViewMode>('chinese');
+  useEffect(() => {
+    const handleModeChange = (event: Event) => {
+      const mode = (event as CustomEvent<{ mode?: DiffViewMode }>).detail?.mode;
+      if (mode === 'chinese' || mode === 'split' || mode === 'unified') {
+        setViewType('code');
+        setViewMode(mode);
+      }
+    };
+    window.addEventListener(DIFF_VIEW_MODE_CHANGE_EVENT, handleModeChange);
+    return () => window.removeEventListener(DIFF_VIEW_MODE_CHANGE_EVENT, handleModeChange);
+  }, []);
   const [preset, setPreset] = useState<DiffPreset>(isDarkMode ? 'vs-dark' : 'classic-light');
   const searchQuery: string = '';
   const [editingStringId, setEditingStringId] = useState<string | null>(null);
@@ -1214,7 +1284,23 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [showFolds, setShowFolds] = useState(true);
   const [showLingCppStructure, setShowLingCppStructure] = useState(true);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
+  const monacoEditorRef = useRef<MonacoCodeEditorHandle>(null);
+  const professionalHistoryApplyRef = useRef(false);
+  const latestEditorStateRef = useRef<MonacoEditorState | null>(null);
+  const sourceModelIdentity = useMemo<TextModelIdentity>(() => ({
+    workspaceId: textModelWorkspaceId,
+    projectId: textModelProjectId,
+    filePath: activeFile?.path || 'untitled/source.txt'
+  }), [activeFile?.path, textModelProjectId, textModelWorkspaceId]);
+  const sourceModelRecord = workbenchTextModelService.ensure(sourceModelIdentity);
+  const publishEditorState = useCallback((state: MonacoEditorState) => {
+    latestEditorStateRef.current = state;
+    setCursorPosition({ line: state.line, column: state.column });
+    onEditorStateChange?.(state);
+  }, [onEditorStateChange]);
   const [selectedBeginnerHandler, setSelectedBeginnerHandler] = useState<string | null>(null);
+  const selectedBeginnerHandlerRef = useRef<string | null>(null);
+  selectedBeginnerHandlerRef.current = selectedBeginnerHandler;
   const [selectedBeginnerCodeTarget, setSelectedBeginnerCodeTarget] = useState<{ className?: string; methodName: string } | null>(null);
   const [collapsedVolcanoSections, setCollapsedVolcanoSections] = useState<string[]>([]);
   const [readingMode, setReadingMode] = useState<LingCppReadingMode>(editorExperienceMode === 'beginner' ? 'beginner' : 'off');
@@ -1232,6 +1318,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [expandedBeginnerFunctionTargetKey, setExpandedBeginnerFunctionTargetKey] = useState<string | null>(null);
   const [selectedFunctionTemplateKey, setSelectedFunctionTemplateKey] = useState<string | null>(null);
   const [nativePreviewState, setNativePreviewState] = useState<NativePreviewState | null>(null);
+  const nativePreviewStateRef = useRef<NativePreviewState | null>(null);
+  nativePreviewStateRef.current = nativePreviewState;
+  const nativePreviewOwnerRef = useRef<{
+    ownerKey: string;
+    token: { modelId: string; generation: number };
+  } | null>(null);
+  const nativePreviewRequestRef = useRef(0);
+  const nativePreviewAbortRef = useRef<AbortController | null>(null);
+  const sourceModelOwnerKey = `${sourceModelRecord.modelId}:${sourceModelIdentity.filePath}`;
+  const activeSourceOwnerKeyRef = useRef(sourceModelOwnerKey);
+  activeSourceOwnerKeyRef.current = sourceModelOwnerKey;
   const [isNativePreviewLoading, setIsNativePreviewLoading] = useState(false);
   const [nativePreviewError, setNativePreviewError] = useState<string | null>(null);
   const [nativeImportSource, setNativeImportSource] = useState('');
@@ -1260,6 +1357,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   }, [editorExperienceMode]);
 
   useEffect(() => {
+    setCursorPosition({ line: 1, column: 1 });
+    setSelectedBeginnerHandler(null);
+    beginnerTextareaViewRef.current = null;
     setSelectedBeginnerCodeTarget(null);
     setExpandedBeginnerEventTargetKey(null);
     setExpandedBeginnerFunctionTargetKey(null);
@@ -1287,6 +1387,19 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const sourceLineNumberRef = useRef<HTMLDivElement>(null);
   const beginnerStructureScrollRef = useRef<HTMLDivElement>(null);
   const beginnerJumpHighlightTimerRef = useRef<number | null>(null);
+  const cursorPositionRef = useRef(cursorPosition);
+  cursorPositionRef.current = cursorPosition;
+  const beginnerTextareaViewRef = useRef<{
+    focusKey: string;
+    value: string;
+    selectionStart: number;
+    selectionEnd: number;
+    selectionDirection: 'forward' | 'backward' | 'none';
+    scrollTop: number;
+    scrollLeft: number;
+    startPosition: { line: number; column: number };
+    endPosition: { line: number; column: number };
+  } | null>(null);
 
   useEffect(() => () => {
     if (beginnerJumpHighlightTimerRef.current !== null) {
@@ -1314,10 +1427,80 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     ? activeFile?.translatedContent ?? ''
     : activeFile?.originalContent || diffResult.translatedLines.map(line => line.content).join('\n');
   const normalizedSourceCode = activeFile?.language === 'epl' ? optimizeEplName(sourceCode) : sourceCode;
+  const normalizedSourceLines = useMemo(() => normalizedSourceCode.split(/\r\n|\r|\n/u), [normalizedSourceCode]);
   const latestSourceCodeRef = useRef(normalizedSourceCode);
+  const [textHistoryVersion, setTextHistoryVersion] = useState(0);
+  const textEditHistory = useMemo(
+    () => getOrCreateWorkbenchTextHistory(sourceModelIdentity, normalizedSourceCode),
+    [sourceModelRecord.modelId]
+  );
+  const publishProfessionalEditorState = useCallback((state: MonacoEditorState) => {
+    const supportsFileHistory = activeFile?.language === 'lingcpp' && !state.readOnly;
+    publishEditorState({
+      ...state,
+      canUndo: supportsFileHistory ? textEditHistory.canUndo() : state.canUndo,
+      canRedo: supportsFileHistory ? textEditHistory.canRedo() : state.canRedo
+    });
+    void textHistoryVersion;
+  }, [activeFile?.language, publishEditorState, textEditHistory, textHistoryVersion]);
   useEffect(() => {
+    const latest = latestEditorStateRef.current;
+    if (editorExperienceMode === 'professional' && latest?.surface === 'professional') {
+      publishProfessionalEditorState(latest);
+    }
+  }, [editorExperienceMode, publishProfessionalEditorState, textHistoryVersion]);
+  const captureBeginnerTextareaView = useCallback((textarea: HTMLTextAreaElement) => {
+    const selectionStart = textarea.selectionStart;
+    const selectionEnd = textarea.selectionEnd;
+    const selectionDirection = textarea.selectionDirection || 'none';
+    const start = beginnerSourcePositionAtOffset(textarea, selectionStart);
+    const end = beginnerSourcePositionAtOffset(textarea, selectionEnd);
+    const backwards = selectionDirection === 'backward';
+    const cursor = backwards ? start : end;
+    beginnerTextareaViewRef.current = {
+      focusKey: textarea.dataset.textModelViewKey || '',
+      value: textarea.value,
+      selectionStart,
+      selectionEnd,
+      selectionDirection,
+      scrollTop: textarea.scrollTop,
+      scrollLeft: textarea.scrollLeft,
+      startPosition: start,
+      endPosition: end
+    };
+    setCursorPosition(cursor);
+    const state: MonacoEditorState = {
+      modelId: sourceModelRecord.modelId,
+      surface: 'beginner',
+      line: cursor.line,
+      column: cursor.column,
+      selectionLength: Math.max(0, selectionEnd - selectionStart),
+      canUndo: textEditHistory.canUndo() || Object.keys(beginnerCodeDraftsRef.current).length > 0,
+      canRedo: textEditHistory.canRedo() && Object.keys(beginnerCodeDraftsRef.current).length === 0,
+      readOnly: false,
+      positionAvailable: true
+    };
+    latestEditorStateRef.current = state;
+    onEditorStateChange?.(state);
+  }, [onEditorStateChange, sourceModelRecord.modelId, textEditHistory]);
+  useEffect(() => {
+    const historyChanged = reconcileTextEditHistory(textEditHistory, {
+      contextKey: activeFile?.language || 'unknown',
+      value: normalizedSourceCode,
+      canonical: activeFile?.language === 'lingcpp',
+      deferExternalChange: activeFile?.language === 'lingcpp'
+        && editorExperienceMode === 'beginner'
+        && Object.keys(beginnerCodeDraftsRef.current).length > 0
+    });
     latestSourceCodeRef.current = normalizedSourceCode;
-  }, [activeFile?.path, normalizedSourceCode]);
+    if (historyChanged) setTextHistoryVersion(version => version + 1);
+  }, [
+    activeFile?.language,
+    editorExperienceMode,
+    normalizedSourceCode,
+    sourceModelRecord.modelId,
+    textEditHistory
+  ]);
   const lingCppStructure = useMemo(
     () => activeFile?.language === 'lingcpp'
       ? getLingCppStructureView(normalizedSourceCode, designerProject, activeFile?.path)
@@ -1336,6 +1519,42 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       : null,
     [activeFile?.language, activeFile?.path, designerProject, moduleContext, normalizedSourceCode]
   );
+  const flushBeginnerDrafts = useCallback((applyToParent: boolean): FlushPendingEditsResult => {
+    const currentSourceCode = latestSourceCodeRef.current;
+    const result = applyPendingBeginnerCodeDrafts(currentSourceCode, beginnerCodeDraftsRef.current);
+    if (!result.success) {
+      setStructureEditError(result.diagnostics[0] || '新手代码提交失败，源码已保持不变。');
+      return result;
+    }
+    if (result.changed && textEditHistory.record(result.sourceCode)) {
+      setTextHistoryVersion(version => version + 1);
+    }
+    latestSourceCodeRef.current = result.sourceCode;
+    beginnerCodeDraftsRef.current = {};
+    setBeginnerCodeDrafts({});
+    setStructureEditError(null);
+    if (applyToParent && result.changed) onUpdateSourceContent?.(result.sourceCode);
+    return result;
+  }, [onUpdateSourceContent, textEditHistory]);
+
+  const applyBeginnerHistoryValue = useCallback((value: string) => {
+    latestSourceCodeRef.current = value;
+    beginnerCodeDraftsRef.current = {};
+    setBeginnerCodeDrafts({});
+    setStructureEditError(null);
+    onUpdateSourceContent?.(value);
+    setTextHistoryVersion(version => version + 1);
+  }, [onUpdateSourceContent]);
+
+  const applyProfessionalHistoryValue = useCallback((value: string) => {
+    professionalHistoryApplyRef.current = true;
+    monacoEditorRef.current?.replaceValueAuthoritatively(value);
+    applyBeginnerHistoryValue(value);
+    queueMicrotask(() => {
+      professionalHistoryApplyRef.current = false;
+    });
+  }, [applyBeginnerHistoryValue]);
+
   useImperativeHandle(ref, () => ({
     flushPendingEdits: async () => {
       const currentSourceCode = latestSourceCodeRef.current;
@@ -1349,19 +1568,55 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         };
       }
 
-      const result = applyPendingBeginnerCodeDrafts(currentSourceCode, beginnerCodeDraftsRef.current);
-      if (!result.success) {
-        setStructureEditError(result.diagnostics[0] || '新手代码提交失败，源码已保持不变。');
-        return result;
+      return flushBeginnerDrafts(false);
+    },
+    undo: async () => {
+      if (viewType !== 'code' || viewMode !== 'chinese') return false;
+      if (activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner') {
+        const flushResult = flushBeginnerDrafts(true);
+        if (!flushResult.success) return false;
+        const previous = textEditHistory.undo();
+        if (previous === undefined) return false;
+        applyBeginnerHistoryValue(previous);
+        return true;
       }
-
-      latestSourceCodeRef.current = result.sourceCode;
-      beginnerCodeDraftsRef.current = {};
-      setBeginnerCodeDrafts({});
-      setStructureEditError(null);
-      return result;
-    }
-  }), [activeFile?.language, editorExperienceMode]);
+      const monacoSurfaceActive = activeFile?.language !== 'lingcpp' || editorExperienceMode === 'professional';
+      if (!monacoSurfaceActive) return false;
+      if (activeFile?.language !== 'lingcpp') return await monacoEditorRef.current?.undo() || false;
+      const previous = textEditHistory.undo();
+      if (previous === undefined) return false;
+      applyProfessionalHistoryValue(previous);
+      return true;
+    },
+    redo: async () => {
+      if (viewType !== 'code' || viewMode !== 'chinese') return false;
+      if (activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner') {
+        const flushResult = flushBeginnerDrafts(true);
+        if (!flushResult.success || flushResult.changed) return false;
+        const next = textEditHistory.redo();
+        if (next === undefined) return false;
+        applyBeginnerHistoryValue(next);
+        return true;
+      }
+      const monacoSurfaceActive = activeFile?.language !== 'lingcpp' || editorExperienceMode === 'professional';
+      if (!monacoSurfaceActive) return false;
+      if (activeFile?.language !== 'lingcpp') return await monacoEditorRef.current?.redo() || false;
+      const next = textEditHistory.redo();
+      if (next === undefined) return false;
+      applyProfessionalHistoryValue(next);
+      return true;
+    },
+    focusEditor: () => monacoEditorRef.current?.focus() || false
+  }), [
+    activeFile?.language,
+    applyBeginnerHistoryValue,
+    applyProfessionalHistoryValue,
+    editorExperienceMode,
+    flushBeginnerDrafts,
+    textEditHistory,
+    viewMode,
+    viewType
+  ]);
   const beginnerModuleCodeCompletions = useMemo(
     () => getBeginnerModuleCodeCompletions(moduleContext).map(item => ({
       label: item.label,
@@ -1457,6 +1712,212 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   );
   const isLingCppBeginnerStructureMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner';
   const isLingCppNativeMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'native';
+
+  useEffect(() => {
+    let surface: string | null = null;
+    let surfaceReadOnly = false;
+    if (viewType === 'designer') {
+      surface = 'designer';
+      surfaceReadOnly = true;
+    } else if (viewMode !== 'chinese') {
+      surface = `diff:${viewMode}`;
+      surfaceReadOnly = true;
+    } else if (isLingCppBeginnerStructureMode) {
+      surface = 'beginner';
+    } else if (isLingCppNativeMode) {
+      surface = 'native';
+      surfaceReadOnly = true;
+    }
+    if (!surface) return;
+    if (surface === 'native' && nativePreviewState?.selectedFilePath) return;
+    const preciseBeginnerState = surface === 'beginner'
+      && latestEditorStateRef.current?.surface === 'beginner'
+      && latestEditorStateRef.current.modelId === sourceModelRecord.modelId
+      ? latestEditorStateRef.current
+      : null;
+    const state: MonacoEditorState = {
+      modelId: sourceModelRecord.modelId,
+      surface,
+      line: cursorPosition.line,
+      column: cursorPosition.column,
+      selectionLength: preciseBeginnerState?.selectionLength || 0,
+      canUndo: surface === 'beginner'
+        ? textEditHistory.canUndo() || Object.keys(beginnerCodeDrafts).length > 0
+        : false,
+      canRedo: surface === 'beginner'
+        ? textEditHistory.canRedo() && Object.keys(beginnerCodeDrafts).length === 0
+        : false,
+      readOnly: surfaceReadOnly,
+      positionAvailable: surface === 'beginner' || surface === 'native'
+    };
+    latestEditorStateRef.current = state;
+    onEditorStateChange?.(state);
+    void textHistoryVersion;
+  }, [
+    cursorPosition.column,
+    cursorPosition.line,
+    beginnerCodeDrafts,
+    isLingCppBeginnerStructureMode,
+    isLingCppNativeMode,
+    nativePreviewState?.selectedFilePath,
+    onEditorStateChange,
+    sourceModelRecord.modelId,
+    textEditHistory,
+    textHistoryVersion,
+    viewMode,
+    viewType
+  ]);
+
+  useLayoutEffect(() => {
+    if (!isLingCppBeginnerStructureMode || viewType !== 'code' || viewMode !== 'chinese') return undefined;
+    const savedState = workbenchTextModelService.getViewState(sourceModelIdentity, 'beginner');
+    let restoreFrame: number | null = null;
+
+    if (savedState) {
+      setCursorPosition(savedState.cursor);
+      const opaque = readSerializableObject(savedState.opaque);
+      setSelectedBeginnerHandler(typeof opaque.selectedHandler === 'string' && opaque.selectedHandler
+        ? opaque.selectedHandler
+        : null);
+      restoreFrame = window.requestAnimationFrame(() => {
+        const root = beginnerStructureScrollRef.current;
+        if (!root) return;
+        root.scrollTop = savedState.scrollTop;
+        root.scrollLeft = savedState.scrollLeft;
+        const focusKey = typeof opaque.focusKey === 'string' ? opaque.focusKey : '';
+        const textareas = root.querySelectorAll('[data-text-model-view-key]') as NodeListOf<HTMLTextAreaElement>;
+        const textarea = Array.from(textareas)
+          .find((item: HTMLTextAreaElement) => item.dataset.textModelViewKey === focusKey) as HTMLTextAreaElement | undefined;
+        if (!textarea) return;
+        const start = typeof opaque.selectionStart === 'number' ? opaque.selectionStart : 0;
+        const end = typeof opaque.selectionEnd === 'number' ? opaque.selectionEnd : start;
+        const direction = opaque.selectionDirection === 'backward' ? 'backward' : 'forward';
+        textarea.setSelectionRange(
+          Math.max(0, Math.min(textarea.value.length, start)),
+          Math.max(0, Math.min(textarea.value.length, end)),
+          direction
+        );
+        textarea.scrollTop = typeof opaque.textareaScrollTop === 'number' ? Math.max(0, opaque.textareaScrollTop) : 0;
+        textarea.scrollLeft = typeof opaque.textareaScrollLeft === 'number' ? Math.max(0, opaque.textareaScrollLeft) : 0;
+        // Restore the selection before focusing. The textarea focus handler
+        // captures view state synchronously; focusing first would persist the
+        // browser's default 0/0 selection and could overwrite this restore.
+        textarea.focus({ preventScroll: true });
+        captureBeginnerTextareaView(textarea);
+      });
+    } else {
+      setCursorPosition({ line: 1, column: 1 });
+      setSelectedBeginnerHandler(null);
+      restoreFrame = window.requestAnimationFrame(() => {
+        const root = beginnerStructureScrollRef.current;
+        if (!root) return;
+        root.scrollTop = 0;
+        root.scrollLeft = 0;
+      });
+    }
+
+    return () => {
+      if (restoreFrame !== null) window.cancelAnimationFrame(restoreFrame);
+      const root = beginnerStructureScrollRef.current;
+      const activeElement = document.activeElement;
+      const textarea = root && activeElement instanceof HTMLTextAreaElement && root.contains(activeElement)
+        ? activeElement
+        : null;
+      const storedTextarea = textarea ? {
+        focusKey: textarea.dataset.textModelViewKey || '',
+        value: textarea.value,
+        selectionStart: textarea.selectionStart,
+        selectionEnd: textarea.selectionEnd,
+        selectionDirection: textarea.selectionDirection || 'none' as const,
+        scrollTop: textarea.scrollTop,
+        scrollLeft: textarea.scrollLeft,
+        startPosition: beginnerSourcePositionAtOffset(textarea, textarea.selectionStart),
+        endPosition: beginnerSourcePositionAtOffset(textarea, textarea.selectionEnd)
+      } : beginnerTextareaViewRef.current;
+      const fallback = cursorPositionRef.current;
+      const startPosition = storedTextarea?.startPosition || fallback;
+      const endPosition = storedTextarea?.endPosition || fallback;
+      const backwards = storedTextarea?.selectionDirection === 'backward';
+      const state: TextEditorViewState = {
+        cursor: backwards ? startPosition : endPosition,
+        selection: {
+          anchor: backwards ? endPosition : startPosition,
+          active: backwards ? startPosition : endPosition
+        },
+        scrollTop: root?.scrollTop || 0,
+        scrollLeft: root?.scrollLeft || 0,
+        opaque: {
+          selectedHandler: selectedBeginnerHandlerRef.current || '',
+          focusKey: storedTextarea?.focusKey || '',
+          selectionStart: storedTextarea?.selectionStart || 0,
+          selectionEnd: storedTextarea?.selectionEnd || 0,
+          selectionDirection: storedTextarea?.selectionDirection || 'none',
+          textareaScrollTop: storedTextarea?.scrollTop || 0,
+          textareaScrollLeft: storedTextarea?.scrollLeft || 0
+        }
+      };
+      workbenchTextModelService.saveViewStateIfCurrent({
+        modelId: sourceModelRecord.modelId,
+        generation: sourceModelRecord.generation
+      }, 'beginner', state);
+    };
+  }, [
+    isLingCppBeginnerStructureMode,
+    captureBeginnerTextareaView,
+    sourceModelIdentity.filePath,
+    sourceModelRecord.modelId,
+    viewMode,
+    viewType
+  ]);
+
+  useLayoutEffect(() => {
+    const ownerKey = sourceModelOwnerKey;
+    const ownerToken = { modelId: sourceModelRecord.modelId, generation: sourceModelRecord.generation };
+    return () => {
+      nativePreviewRequestRef.current += 1;
+      nativePreviewAbortRef.current?.abort();
+      const preview = nativePreviewStateRef.current;
+      if (!preview?.selectedFilePath || nativePreviewOwnerRef.current?.ownerKey !== ownerKey) return;
+      const latest = latestEditorStateRef.current;
+      const cursor = latest?.surface.startsWith('native:')
+        ? { line: latest.line, column: latest.column }
+        : cursorPositionRef.current;
+      workbenchTextModelService.saveViewStateIfCurrent(ownerToken, 'native', {
+        cursor,
+        selection: { anchor: cursor, active: cursor },
+        scrollTop: 0,
+        scrollLeft: 0,
+        opaque: { selectedFilePath: preview.selectedFilePath }
+      });
+    };
+  }, [sourceModelOwnerKey, sourceModelRecord.generation, sourceModelRecord.modelId]);
+
+  useEffect(() => {
+    setNativePreviewState(null);
+    nativePreviewOwnerRef.current = null;
+    setNativePreviewError(null);
+  }, [sourceModelOwnerKey]);
+
+  useEffect(() => {
+    if (!isLingCppNativeMode || !nativePreviewState?.selectedFilePath) return;
+    const owner = nativePreviewOwnerRef.current;
+    if (!owner || owner.ownerKey !== sourceModelOwnerKey) return;
+    const latest = latestEditorStateRef.current;
+    const cursor = latest?.surface.startsWith('native:')
+      ? { line: latest.line, column: latest.column }
+      : cursorPositionRef.current;
+    workbenchTextModelService.saveViewStateIfCurrent(owner.token, 'native', {
+      cursor,
+      selection: { anchor: cursor, active: cursor },
+      scrollTop: 0,
+      scrollLeft: 0,
+      opaque: { selectedFilePath: nativePreviewState.selectedFilePath }
+    });
+  }, [
+    isLingCppNativeMode,
+    nativePreviewState?.selectedFilePath,
+    sourceModelOwnerKey
+  ]);
   const sourceLineNumbers = useMemo(() => {
     const lineCount = Math.max(1, normalizedSourceCode.split('\n').length);
     return Array.from({ length: lineCount }, (_, index) => index + 1);
@@ -1630,8 +2091,30 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     }
   };
 
-  const updateSourceCode = (nextCode: string) => {
+  const updateSourceCode = (nextCode: string, change?: MonacoContentChange) => {
     const normalizedNextCode = activeFile?.language === 'epl' ? optimizeEplName(nextCode) : nextCode;
+    if (activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner') {
+      if (textEditHistory.record(normalizedNextCode)) {
+        setTextHistoryVersion(version => version + 1);
+      }
+    } else if (
+      activeFile?.language === 'lingcpp'
+      && editorExperienceMode === 'professional'
+      && !professionalHistoryApplyRef.current
+    ) {
+      let historyChanged = change?.isUndoing
+        ? textEditHistory.undoTo(normalizedNextCode)
+        : change?.isRedoing
+          ? textEditHistory.redoTo(normalizedNextCode)
+          : textEditHistory.record(normalizedNextCode);
+      if (!historyChanged && textEditHistory.current() !== normalizedNextCode) {
+        // A third-party Monaco action produced a snapshot outside the known
+        // timeline. Resetting is safer than turning an undo into a forward edit.
+        textEditHistory.reset(normalizedNextCode);
+        historyChanged = true;
+      }
+      if (historyChanged) setTextHistoryVersion(version => version + 1);
+    }
     latestSourceCodeRef.current = normalizedNextCode;
     onUpdateSourceContent?.(normalizedNextCode);
   };
@@ -1639,12 +2122,20 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const refreshNativePreview = async () => {
     if (!designerProject || activeFile?.language !== 'lingcpp') return;
 
+    nativePreviewAbortRef.current?.abort();
+    const controller = new AbortController();
+    nativePreviewAbortRef.current = controller;
+    const requestId = ++nativePreviewRequestRef.current;
+    const requestOwnerKey = sourceModelOwnerKey;
+    const requestIdentity = { ...sourceModelIdentity };
+    const requestToken = { modelId: sourceModelRecord.modelId, generation: sourceModelRecord.generation };
     setIsNativePreviewLoading(true);
     setNativePreviewError(null);
     try {
       const response = await fetch('/api/window-designer/native-preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           project: designerProject,
           activeWindowId,
@@ -1653,25 +2144,40 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         })
       });
       const result = await response.json();
+      if (requestId !== nativePreviewRequestRef.current
+        || requestOwnerKey !== activeSourceOwnerKeyRef.current
+        || !workbenchTextModelService.isCurrent(requestToken)) return;
       if (!response.ok || !result.ok) {
         throw new Error(result.error || '原生 C++ 预览生成失败');
       }
+      const savedNativeState = workbenchTextModelService.getViewState(requestIdentity, 'native');
+      const savedNativeOpaque = readSerializableObject(savedNativeState?.opaque);
+      const savedSelectedFile = typeof savedNativeOpaque.selectedFilePath === 'string'
+        ? savedNativeOpaque.selectedFilePath
+        : '';
+      nativePreviewOwnerRef.current = { ownerKey: requestOwnerKey, token: requestToken };
       setNativePreviewState(previous => ({
         files: result.files || [],
         diagnostics: result.diagnostics || [],
         enabledModules: result.enabledModules || [],
         sourceMap: result.sourceMap || [],
-        selectedFilePath: previous?.selectedFilePath && (result.files || []).some((file: LingCppNativePreviewFile) => file.relativePath === previous.selectedFilePath)
-          ? previous.selectedFilePath
+        selectedFilePath: savedSelectedFile && (result.files || []).some((file: LingCppNativePreviewFile) => file.relativePath === savedSelectedFile)
+          ? savedSelectedFile
+          : previous?.selectedFilePath && (result.files || []).some((file: LingCppNativePreviewFile) => file.relativePath === previous.selectedFilePath)
+            ? previous.selectedFilePath
           : ((result.files || [])[0]?.relativePath || 'main.cpp'),
         selectedWindowTitle: result.selectedWindow?.title || '',
         lastExportDir: previous?.lastExportDir,
         lastBuildLogs: previous?.lastBuildLogs || []
       }));
     } catch (error: any) {
+      if (error instanceof DOMException && error.name === 'AbortError') return;
+      if (requestId !== nativePreviewRequestRef.current || requestOwnerKey !== activeSourceOwnerKeyRef.current) return;
       setNativePreviewError(error?.message || '原生 C++ 预览生成失败');
     } finally {
-      setIsNativePreviewLoading(false);
+      if (requestId === nativePreviewRequestRef.current && requestOwnerKey === activeSourceOwnerKeyRef.current) {
+        setIsNativePreviewLoading(false);
+      }
     }
   };
 
@@ -1838,7 +2344,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const timer = window.setTimeout(() => {
       void refreshNativePreview();
     }, 220);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      nativePreviewRequestRef.current += 1;
+      nativePreviewAbortRef.current?.abort();
+    };
   }, [activeFile?.path, activeWindowId, designerProject, isLingCppNativeMode, normalizedSourceCode]);
 
   useEffect(() => {
@@ -3104,6 +3614,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
   const methodBodyText = (method: LingCppMethod) =>
     method.statements.map(statement => statement.text).join('\n').replace(/\s+$/u, '');
+
+  const methodBodyStartColumn = (method: LingCppMethod) => inferBeginnerBodyStartColumn(
+    normalizedSourceLines,
+    method.line,
+    method.statements.map(statement => statement.line)
+  );
+
+  const methodBodySourceColumns = (method: LingCppMethod) => getBeginnerBodySourceColumns(
+    method.statements,
+    methodBodyStartColumn(method)
+  );
 
   const commitBeginnerCodeBody = (
     className: string | undefined,
@@ -4979,22 +5500,29 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             </div>
             <textarea
               key={`${target.className}:${target.method.name}:${target.method.line}:${bodyText}:${compact ? 'inline' : 'section'}`}
+              data-text-model-view-key={`${target.className}:${target.method.kind}:${target.method.name}`}
+              data-lingbuilder-editor-command-owner="true"
+              data-source-line-start={target.method.statements[0]?.line || target.method.line + 1}
+              data-source-line-map={target.method.statements.map(statement => statement.line).join(',')}
+              data-source-column-start={methodBodyStartColumn(target.method)}
+              data-source-column-map={methodBodySourceColumns(target.method).join(',')}
               value={draftBodyText}
               spellCheck={false}
               readOnly={!onUpdateSourceContent}
               placeholder="输入中文代码，@ 后面写原生 C++"
-              onChange={event => handleBeginnerCodeChange(target, event)}
+              onChange={event => { handleBeginnerCodeChange(target, event); captureBeginnerTextareaView(event.currentTarget); }}
               onBlur={event => handleBeginnerCodeBlur(target, bodyText, event)}
-              onFocus={event => updateBeginnerCommandHint(target, event.currentTarget)}
-              onClick={event => updateBeginnerCommandHint(target, event.currentTarget)}
+              onFocus={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
+              onClick={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
               onKeyDown={event => handleBeginnerCodeKeyDown(target, event)}
-              onKeyUp={event => updateBeginnerCommandHint(target, event.currentTarget)}
-              onSelect={event => updateBeginnerCommandHint(target, event.currentTarget)}
+              onKeyUp={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
+              onSelect={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
               onScroll={event => {
                 const lineNumberColumn = event.currentTarget.closest('[data-beginner-editor-root]')?.querySelector('[data-beginner-line-numbers]');
                 const flowGuideColumn = event.currentTarget.closest('[data-beginner-editor-root]')?.querySelector('[data-beginner-flow-guide]');
                 if (lineNumberColumn instanceof HTMLElement) lineNumberColumn.scrollTop = event.currentTarget.scrollTop;
                 if (flowGuideColumn instanceof HTMLElement) flowGuideColumn.scrollTop = event.currentTarget.scrollTop;
+                captureBeginnerTextareaView(event.currentTarget);
               }}
               onWheel={handleEditorFontWheel}
               style={editorTextStyle}
@@ -6001,23 +6529,30 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             </div>
             <textarea
               key={`${target.className}:${target.method.name}:${target.method.line}:${bodyText}:yc-source`}
+              data-text-model-view-key={`${target.className}:${target.method.kind}:${target.method.name}`}
+              data-lingbuilder-editor-command-owner="true"
+              data-source-line-start={target.method.statements[0]?.line || target.method.line + 1}
+              data-source-line-map={target.method.statements.map(statement => statement.line).join(',')}
+              data-source-column-start={methodBodyStartColumn(target.method)}
+              data-source-column-map={methodBodySourceColumns(target.method).join(',')}
               value={draftBodyText}
               spellCheck={false}
               readOnly={!onUpdateSourceContent}
               placeholder="输入中文代码；@ 后面写原生 C++"
-              onChange={event => handleBeginnerCodeChange(target, event)}
+              onChange={event => { handleBeginnerCodeChange(target, event); captureBeginnerTextareaView(event.currentTarget); }}
               onBlur={event => handleBeginnerCodeBlur(target, bodyText, event)}
-              onFocus={event => updateBeginnerCommandHint(target, event.currentTarget)}
-              onClick={event => updateBeginnerCommandHint(target, event.currentTarget)}
+              onFocus={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
+              onClick={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
               onKeyDown={event => handleBeginnerCodeKeyDown(target, event)}
-              onKeyUp={event => updateBeginnerCommandHint(target, event.currentTarget)}
-              onSelect={event => updateBeginnerCommandHint(target, event.currentTarget)}
+              onKeyUp={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
+              onSelect={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
               onScroll={event => {
                 const root = event.currentTarget.closest('[data-beginner-editor-root]');
                 const lineNumberColumn = root?.querySelector('[data-beginner-line-numbers]');
                 const flowGuideColumn = root?.querySelector('[data-beginner-flow-guide]');
                 if (lineNumberColumn instanceof HTMLElement) lineNumberColumn.scrollTop = event.currentTarget.scrollTop;
                 if (flowGuideColumn instanceof HTMLElement) flowGuideColumn.scrollTop = event.currentTarget.scrollTop;
+                captureBeginnerTextareaView(event.currentTarget);
               }}
               onWheel={handleEditorFontWheel}
               style={editorTextStyle}
@@ -6411,6 +6946,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 editorFontSize={editorFontSize}
                 onFontSizeChange={onFontSizeChange}
                 filePath={selectedNativePreviewFile.relativePath}
+                modelIdentity={{
+                  workspaceId: textModelWorkspaceId,
+                  projectId: textModelProjectId,
+                  filePath: `__native_preview__/${activeFile?.path || 'source'}/${selectedNativePreviewFile.relativePath}`
+                }}
+                modelSurface={`native:${selectedNativePreviewFile.relativePath}`}
+                onEditorStateChange={publishEditorState}
               />
             ) : (
               <div className="flex h-full items-center justify-center text-xs text-slate-500">暂无原生预览文件</div>
@@ -7080,7 +7622,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       }`}>
         <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto scrollbar-none">
           <div
+            role="button"
+            tabIndex={0}
             onClick={() => setViewType('designer')}
+            onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') setViewType('designer');
+            }}
             className={getEditorTabClassName(viewType === 'designer', isDarkMode)}
             title="打开界面可视化设计器"
           >
@@ -7097,13 +7644,22 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             return (
               <div
                 key={tabPath}
+                role="button"
+                tabIndex={0}
+                data-editor-tab-path={tabPath}
+                aria-current={isActive ? 'page' : undefined}
+                aria-label={`打开文件标签：${fileName}`}
                 onClick={() => onSelectTab(file)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' || event.key === ' ') void onSelectTab(file);
+                }}
                 className={getEditorTabClassName(isActive, isDarkMode)}
               >
                 <FileIcon fileName={fileName} isDarkMode={isDarkMode} />
                 <span className="max-w-32 truncate whitespace-nowrap" title={fileName}>{fileName}</span>
                 <button
                   onClick={(e) => onCloseTab(tabPath, e)}
+                  aria-label={`关闭文件标签：${fileName}`}
                   className="w-3.5 h-3.5 shrink-0 rounded-full hover:bg-slate-400/20 flex items-center justify-center text-slate-500 hover:text-red-500 opacity-60 group-hover:opacity-100"
                 >
                   <X className="w-2 h-2" />
@@ -7149,14 +7705,24 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
 
       {/* Statistics Banner */}
-      <div className={`px-4 py-1.5 border-b flex gap-4 text-xs font-mono shrink-0 select-none ${
+      <div className={`px-4 py-1.5 border-b flex flex-wrap items-center justify-between gap-2 text-xs font-mono shrink-0 select-none ${
         isDarkMode ? 'bg-[#18181c]/50 border-[#2d2d34] text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-650'
       }`}>
-        <span>对比统计：</span>
-        <span className="text-emerald-500 font-bold">+{diffResult.stats.added} 插入</span>
-        <span className="text-rose-500 font-bold">-{diffResult.stats.deleted} 移除</span>
-        <span className="text-amber-500 font-bold">~{diffResult.stats.modified} 修改</span>
-        <span>({diffResult.stats.unchanged} 行未改动)</span>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+          <span>对比统计：</span>
+          <span className="text-emerald-500 font-bold">+{diffResult.stats.added} 插入</span>
+          <span className="text-rose-500 font-bold">-{diffResult.stats.deleted} 移除</span>
+          <span className="text-amber-500 font-bold">~{diffResult.stats.modified} 修改</span>
+          <span>({diffResult.stats.unchanged} 行未改动)</span>
+        </div>
+        {viewType === 'code' && (
+          <DiffViewModeSelector
+            value={viewMode}
+            onChange={mode => onDiffViewModeChange ? onDiffViewModeChange(mode) : setViewMode(mode)}
+            isDarkMode={isDarkMode}
+            hasDifferences={diffResult.stats.added + diffResult.stats.deleted + diffResult.stats.modified > 0}
+          />
+        )}
       </div>
 
       {/* Main Comparative Frame */}
@@ -7181,7 +7747,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   {activeFile?.path || '未命名中文源码'}
                 </span>
                 <span className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${
-                  activeFile?.isModified
+                  activeFile?.isModified || activeFile?.formatModified
                     ? isDarkMode
                       ? 'bg-amber-500/10 border-amber-500/25 text-amber-300'
                       : 'bg-amber-50 border-amber-200 text-amber-700'
@@ -7189,7 +7755,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                       ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
                       : 'bg-emerald-50 border-emerald-200 text-emerald-700'
                 }`}>
-                  {activeFile?.isModified ? '已修改' : '已同步'}
+                  {activeFile?.isModified || activeFile?.formatModified ? '已修改' : '已同步'}
                 </span>
               </div>
 
@@ -7292,6 +7858,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 renderNativePreviewEditor()
               ) : (
                 <MonacoCodeEditor
+                  ref={monacoEditorRef}
                   sourceCode={normalizedSourceCode}
                   language={activeFile?.language || 'plaintext'}
                   isDarkMode={isDarkMode}
@@ -7309,6 +7876,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   readingMode={activeFile?.language === 'lingcpp' ? readingMode : 'off'}
                   focusedBlockId={focusedReadableBlockId}
                   onRevealReadableBlock={setFocusedReadableBlockId}
+                  modelIdentity={sourceModelIdentity}
+                  modelSurface="professional"
+                  onEditorStateChange={publishProfessionalEditorState}
                 />
               )}
             </div>
