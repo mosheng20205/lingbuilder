@@ -92,6 +92,7 @@ AI 必须遵守：
 - 生成或迁移模块时应优先使用 `lingbuilder module init`、`module migrate-cpp`、`module validate`、`module pack` 等 SDK/CLI 流程，并参考根目录 `模块开发手册.md`。
 - 使用 `new_emoji 原生界面库` 时，优先生成 `NE_` 中文桥接命令；不要默认生成 `NE_EU_*` 底层命令，除非用户明确要求高级 DLL 参数调用。
 - 已启用 `WebSocket 客户端模块`（模块 ID：`lingbuilder.websocket.client`）时，可使用 `WS_连接`、`WS_发送文本`、`WS_接收到调试输出`、`WS_接收文本`、`WS_关闭`。这些命令当前面向 Windows/MSVC WinHTTP 生成链路，地址应使用 `ws://` 或 `wss://`。
+- 已启用 `多线程模块`（模块 ID：`lingbuilder.threading`）时，可使用 `线程_启动延时输出`、`线程_等待全部`、`线程_活动数量`、`线程_硬件并发数` 和 `线程_休眠`。界面事件中调用 `线程_休眠` 或 `线程_等待全部` 会阻塞界面，AI 应优先把等待放在确实需要同步结果的位置。
 - `new_emoji` 底层 `EU_` API 使用 UTF-8 字节指针和长度，AI 不应把普通中文字符串直接塞给底层 API。
 - 生成 new_emoji 独立演示窗口时，不要在“创建完毕”事件末尾写 `结束` / `结束()`；这会让 exe 创建窗口后马上退出，表现为闪退。
 - 纯 new_emoji 示例应在创建窗口、文本、按钮等控件后进入 `NE_运行消息循环` 或底层 `EU_RunMessageLoop()`。

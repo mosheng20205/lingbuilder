@@ -416,6 +416,50 @@ test('built-in WebSocket client module contributes commands and deterministic C+
   assert.ok(moduleReport.includes('winhttp.lib'));
 });
 
+test('built-in threading module contributes safe background task commands and C++ runtime', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.threading');
+  assert.ok(manifest);
+  assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
+
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.threading',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const completions = getLingCppCompletions(
+    { source: '', line: 1, column: 1 },
+    { enabledModules: [module], availableModules: [module] }
+  );
+  assert.ok(completions.some(item => item.label === '线程_启动延时输出'));
+  assert.ok(completions.some(item => item.label === '多线程并行输出示例'));
+
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'main-window',
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        线程_启动延时输出("后台完成", 20)',
+      '        线程_等待全部()',
+      '        线程_活动数量()',
+      '结束类'
+    ].join('\n'),
+    enabledModules: [module]
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const moduleReport = generated.files.find(file => file.relativePath === 'module-dependencies.txt')?.content || '';
+  assert.ok(mainCpp.includes('#include <thread>'));
+  assert.ok(mainCpp.includes('int 线程_启动延时输出(const wchar_t* text, int delayMs)'));
+  assert.ok(mainCpp.includes('const int safeDelayMs = (std::max)(0, delayMs);'));
+  assert.ok(mainCpp.includes('output += L"\\n";'));
+  assert.ok(mainCpp.includes('线程_启动延时输出(L"后台完成", 20);'));
+  assert.ok(mainCpp.includes('线程_等待全部();'));
+  assert.ok(mainCpp.includes('std::vector<std::thread> threadTasks_'));
+  assert.ok(moduleReport.includes('多线程模块'));
+});
+
 test('built-in HTTP and WebSocket server modules contribute commands and deterministic C++ bindings', () => {
   const httpManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.http.server');
   const websocketManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.websocket.server');

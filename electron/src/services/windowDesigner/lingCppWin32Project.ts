@@ -163,12 +163,16 @@ function generateMainCpp(
 #include <winhttp.h>
 #include <wincrypt.h>
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cwchar>
 #include <sstream>
 #include <string>
+#include <thread>
+#include <mutex>
 #include <vector>
 
 #ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
@@ -408,6 +412,7 @@ public:
           wsServerClientSocket_(INVALID_SOCKET) {}
 
     virtual ~LingWindowBase() {
+        线程_等待全部();
         WS_关闭();
         HTTP_关闭服务();
         WSS_关闭服务();
@@ -471,6 +476,10 @@ protected:
     wchar_t findBuffer_[256] = {};
     wchar_t replaceBuffer_[256] = {};
     HWND findDialog_ = nullptr;
+    std::vector<std::thread> threadTasks_;
+    std::mutex threadTasksMutex_;
+    std::atomic<int> activeThreadTasks_{0};
+    std::atomic<int> nextThreadTaskId_{1};
 
     virtual void OnWindowCreated() {}
 
@@ -599,6 +608,51 @@ protected:
 
     void 结束() {
         if (hwnd_) PostMessageW(hwnd_, WM_CLOSE, 0, 0);
+    }
+
+    int 线程_启动延时输出(const wchar_t* text, int delayMs) {
+        const int taskId = nextThreadTaskId_.fetch_add(1);
+        const std::wstring message = text ? text : L"";
+        const int safeDelayMs = (std::max)(0, delayMs);
+        activeThreadTasks_.fetch_add(1);
+        try {
+            std::lock_guard<std::mutex> lock(threadTasksMutex_);
+            threadTasks_.emplace_back([this, message, safeDelayMs]() {
+                std::this_thread::sleep_for(std::chrono::milliseconds(safeDelayMs));
+                std::wstring output = message;
+                output += L"\\n";
+                OutputDebugStringW(output.c_str());
+                activeThreadTasks_.fetch_sub(1);
+            });
+        } catch (...) {
+            activeThreadTasks_.fetch_sub(1);
+            调试输出(L"线程任务启动失败：无法创建后台线程。");
+            return 0;
+        }
+        return taskId;
+    }
+
+    void 线程_等待全部() {
+        std::vector<std::thread> tasks;
+        {
+            std::lock_guard<std::mutex> lock(threadTasksMutex_);
+            tasks.swap(threadTasks_);
+        }
+        for (auto& task : tasks) {
+            if (task.joinable()) task.join();
+        }
+    }
+
+    int 线程_活动数量() const {
+        return activeThreadTasks_.load();
+    }
+
+    int 线程_硬件并发数() const {
+        return static_cast<int>(std::thread::hardware_concurrency());
+    }
+
+    void 线程_休眠(int milliseconds) {
+        std::this_thread::sleep_for(std::chrono::milliseconds((std::max)(0, milliseconds)));
     }
 
     int WS_连接(const wchar_t* url) {

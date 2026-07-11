@@ -162,6 +162,44 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   },
   {
     schemaVersion: 2,
+    id: 'lingbuilder.threading',
+    name: '多线程模块',
+    version: '1.0.0',
+    category: '系统',
+    description: '提供受控后台任务、等待回收、活动任务查询、硬件并发数和线程休眠能力。',
+    author: 'LingBuilder',
+    tags: ['内置', '系统', '多线程', '并发'],
+    contributes: {
+      commands: [
+        { name: '线程_启动延时输出', signature: '线程_启动延时输出(内容, 延时毫秒)', description: '启动后台线程，等待指定毫秒后写入调试输出，并返回任务编号。', insertText: '线程_启动延时输出("$1", 1000)', returnType: '整数型' },
+        { name: '线程_等待全部', signature: '线程_等待全部()', description: '等待当前窗口启动的全部后台任务结束并回收线程。', insertText: '线程_等待全部()', returnType: '空' },
+        { name: '线程_活动数量', signature: '线程_活动数量()', description: '返回当前仍在执行的后台任务数量。', insertText: '线程_活动数量()', returnType: '整数型' },
+        { name: '线程_硬件并发数', signature: '线程_硬件并发数()', description: '返回 C++ 运行时建议的并行线程数量。', insertText: '线程_硬件并发数()', returnType: '整数型' },
+        { name: '线程_休眠', signature: '线程_休眠(毫秒)', description: '让当前线程休眠指定毫秒；界面线程中使用会暂停界面响应。', insertText: '线程_休眠(100)', returnType: '空' }
+      ],
+      types: [
+        { name: '线程任务', description: '由多线程模块管理的后台任务编号。', cppType: 'int' }
+      ],
+      snippets: [
+        { label: '多线程并行输出示例', insertText: '线程_启动延时输出("任务一完成", 300)\n线程_启动延时输出("任务二完成", 100)\n线程_等待全部()\n调试输出("全部线程任务已完成")', description: '并行启动两个延时输出任务并等待它们安全结束。' }
+      ]
+    },
+    targets: [{
+      id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc',
+      defines: ['LINGBUILDER_THREADING_MODULE']
+    }],
+    bindings: {
+      commands: [
+        { command: '线程_启动延时输出', runtimeName: '线程_启动延时输出', parameters: [{ name: '内容', type: 'wideString' }, { name: '延时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide', example: '线程_启动延时输出("后台任务完成", 500)' },
+        { command: '线程_等待全部', runtimeName: '线程_等待全部', parameters: [], returnType: 'void', example: '线程_等待全部()' },
+        { command: '线程_活动数量', runtimeName: '线程_活动数量', parameters: [], returnType: 'int', example: '线程_活动数量()' },
+        { command: '线程_硬件并发数', runtimeName: '线程_硬件并发数', parameters: [], returnType: 'int', example: '线程_硬件并发数()' },
+        { command: '线程_休眠', runtimeName: '线程_休眠', parameters: [{ name: '毫秒', type: 'int' }], returnType: 'void', example: '线程_休眠(100)' }
+      ]
+    }
+  },
+  {
+    schemaVersion: 2,
     id: 'lingbuilder.websocket.client',
     name: 'WebSocket 客户端模块',
     version: '1.0.0',
