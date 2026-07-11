@@ -1,0 +1,9 @@
+.mfa-uri {
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px;
+  background: #0c1322;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}

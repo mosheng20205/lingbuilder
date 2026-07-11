@@ -223,7 +223,6 @@ export default function Sidebar({
   const moduleProjectId = activeSolutionProjectId || designerState.project.id || 'lingbuilder-ui-project';
   const moduleProjectIdRef = useRef(moduleProjectId);
   moduleProjectIdRef.current = moduleProjectId;
-  const isActiveProjectTreeOpen = activeSolutionProjectId ? expandedProjectIds[activeSolutionProjectId] !== false : true;
 
   // Group files by directories
   const normalizedFileSearch = fileSearch.trim().toLowerCase();
@@ -1230,12 +1229,15 @@ export default function Sidebar({
                     <div className="pl-1.5 border-l border-slate-750/30 dark:border-slate-800 ml-4">
                       {/* Project Subnode */}
                       {solutionProjects.map(project => {
-                        const isProjectOpen = expandedProjectIds[project.id] !== false;
                         const isStartupProject = project.id === (activeProjectId || solution?.startupProjectId);
+                        const isProjectOpen = isStartupProject && expandedProjectIds[project.id] !== false;
                         return (
+                        <React.Fragment key={project.id}>
                         <div
-                          key={project.id}
-                          onClick={() => void onSetStartupProject?.(project.id)}
+                          onClick={() => {
+                            setExpandedProjectIds(previous => ({ ...previous, [project.id]: true }));
+                            void onSetStartupProject?.(project.id);
+                          }}
                           onContextMenu={(event) => {
                             event.preventDefault();
                             event.stopPropagation();
@@ -1256,8 +1258,14 @@ export default function Sidebar({
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              setExpandedProjectIds(previous => ({ ...previous, [project.id]: !isProjectOpen }));
+                              if (isStartupProject) {
+                                setExpandedProjectIds(previous => ({ ...previous, [project.id]: !isProjectOpen }));
+                                return;
+                              }
+                              setExpandedProjectIds(previous => ({ ...previous, [project.id]: true }));
+                              void onSetStartupProject?.(project.id);
                             }}
+                            aria-expanded={isProjectOpen}
                             className={`shrink-0 rounded p-0.5 ${isDarkMode ? 'hover:bg-white/10' : 'hover:bg-slate-200'}`}
                             title={isProjectOpen ? '折叠项目' : '展开项目'}
                           >
@@ -1270,10 +1278,9 @@ export default function Sidebar({
                           )}
                           {(project.references?.length || 0) > 0 && <span className="text-[9px] text-sky-400">引用 {project.references!.length}</span>}
                         </div>
-                      );})}
 
                       {/* Project modules group */}
-                      {isActiveProjectTreeOpen && <div className="pl-2 mt-1">
+                      {isProjectOpen && <div className="pl-2 mt-1">
                         <div
                           onClick={() => setIsProjectModulesOpen(!isProjectModulesOpen)}
                           className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
@@ -1371,7 +1378,7 @@ export default function Sidebar({
                       </div>}
 
                       {/* Window designer group */}
-                      {isActiveProjectTreeOpen && <div className="pl-2">
+                      {isProjectOpen && <div className="pl-2">
                         <div
                           onClick={() => setIsWindowsOpen(!isWindowsOpen)}
                           onContextMenu={(event) => {
@@ -1410,7 +1417,7 @@ export default function Sidebar({
                       </div>}
 
                       {/* includes / src Folder */}
-                      {isActiveProjectTreeOpen && <div className="pl-2 mt-1.5">
+                      {isProjectOpen && <div className="pl-2 mt-1.5">
                         <div
                           onClick={() => setIsSrcOpen(!isSrcOpen)}
                           className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
@@ -1433,7 +1440,7 @@ export default function Sidebar({
                       </div>}
 
                       {/* Config Folder */}
-                      {isActiveProjectTreeOpen && <div className="pl-2 mt-1.5">
+                      {isProjectOpen && <div className="pl-2 mt-1.5">
                         <div
                           onClick={() => setIsConfigOpen(!isConfigOpen)}
                           className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
@@ -1454,6 +1461,8 @@ export default function Sidebar({
                           </div>
                         )}
                       </div>}
+                      </React.Fragment>
+                      );})}
                     </div>
                   )}
                 </div>

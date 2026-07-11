@@ -34,6 +34,10 @@ export async function materializeModuleNativeDependencies(
     requiresMsvc: false
   };
 
+  if (enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview')) {
+    await materializeEdgeViewSdk(layout, plan);
+  }
+
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
     const target = getPreferredModuleTarget(module, layout.preferredTargetId);
     if (!target) {
@@ -128,6 +132,16 @@ export async function exportModuleNativeDependencies(
   exportDir: string
 ): Promise<string[]> {
   const diagnostics: string[] = [];
+  if (enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview')) {
+    const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, requiresMsvc: true };
+    await materializeEdgeViewSdk({
+      buildDir: exportDir,
+      sourceDir: exportDir,
+      binDir: exportDir,
+      exportDir,
+      preferredTargetId: 'windows-msvc-win32'
+    }, plan);
+  }
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
     const target = getPreferredModuleTarget(module);
     if (!target) {
@@ -147,6 +161,74 @@ export async function exportModuleNativeDependencies(
     }
   }
   return diagnostics;
+}
+
+async function materializeEdgeViewSdk(
+  layout: ModuleNativeDependencyLayout,
+  plan: ModuleNativeDependencyPlan
+): Promise<void> {
+  const packageRoot = await findLatestWebView2Package();
+  if (!packageRoot) {
+    plan.diagnostics.push('EdgeView 模块缺少 Microsoft.Web.WebView2 NuGet SDK。请先恢复该包后重新构建。');
+    plan.requiresMsvc = true;
+    return;
+  }
+  const moduleRoot = path.join('modules', 'lingbuilder.edgeview');
+  const includeSource = path.join(packageRoot, 'build', 'native', 'include');
+  const architecture = layout.preferredTargetId === 'windows-msvc-x64' ? 'x64' : 'x86';
+  const loaderSource = path.join(packageRoot, 'build', 'native', architecture, 'WebView2Loader.dll');
+  const roots = unique([
+    path.join(layout.buildDir, moduleRoot),
+    path.join(layout.sourceDir, moduleRoot),
+    path.join(layout.exportDir, moduleRoot)
+  ]);
+  try {
+    for (const root of roots) {
+      await fs.mkdir(path.join(root, 'include'), { recursive: true });
+      await fs.copyFile(path.join(includeSource, 'WebView2.h'), path.join(root, 'include', 'WebView2.h'));
+      await fs.copyFile(path.join(includeSource, 'WebView2EnvironmentOptions.h'), path.join(root, 'include', 'WebView2EnvironmentOptions.h'));
+      const packagedLoader = path.join(root, 'bin', architecture, 'WebView2Loader.dll');
+      await fs.mkdir(path.dirname(packagedLoader), { recursive: true });
+      await fs.copyFile(loaderSource, packagedLoader);
+    }
+    for (const exportArchitecture of ['x86', 'x64']) {
+      const exportLoaderSource = path.join(packageRoot, 'build', 'native', exportArchitecture, 'WebView2Loader.dll');
+      const exportLoaderTarget = path.join(layout.exportDir, moduleRoot, 'bin', exportArchitecture, 'WebView2Loader.dll');
+      await fs.mkdir(path.dirname(exportLoaderTarget), { recursive: true });
+      await fs.copyFile(exportLoaderSource, exportLoaderTarget);
+    }
+    await fs.mkdir(layout.binDir, { recursive: true });
+    const runtimeTarget = path.join(layout.binDir, 'WebView2Loader.dll');
+    await fs.copyFile(loaderSource, runtimeTarget);
+    plan.includeDirs.push(path.join(layout.sourceDir, moduleRoot, 'include'));
+    plan.runtimeFiles.push(runtimeTarget);
+    plan.requiresMsvc = true;
+  } catch (error) {
+    plan.diagnostics.push(`准备 EdgeView WebView2 SDK 失败：${errorMessage(error)}`);
+  }
+}
+
+async function findLatestWebView2Package(): Promise<string | null> {
+  const candidates = unique([
+    process.env.NUGET_PACKAGES ? path.join(process.env.NUGET_PACKAGES, 'microsoft.web.webview2') : '',
+    process.env.USERPROFILE ? path.join(process.env.USERPROFILE, '.nuget', 'packages', 'microsoft.web.webview2') : ''
+  ].filter(Boolean));
+  for (const root of candidates) {
+    try {
+      const versions = (await fs.readdir(root, { withFileTypes: true }))
+        .filter(entry => entry.isDirectory())
+        .map(entry => entry.name)
+        .sort((left, right) => right.localeCompare(left, undefined, { numeric: true }));
+      for (const version of versions) {
+        const packageRoot = path.join(root, version);
+        await fs.access(path.join(packageRoot, 'build', 'native', 'include', 'WebView2.h'));
+        return packageRoot;
+      }
+    } catch {
+      // Try the next configured NuGet package root.
+    }
+  }
+  return null;
 }
 
 function normalizeRelativePath(value: string): string {

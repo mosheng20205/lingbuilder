@@ -203,7 +203,30 @@
 # 2026-07-11：窗口自身事件面板
 
 - 已完成：窗口选中后事件页不再显示控件空状态；窗口模型持久化 `events.Loaded`，并由 Win32 C++ 生成器按绑定调用创建完毕处理器。
+
+## 系统 AI 云端、账号计费与管理后台（2026-07-12）
+
+- 已完成：建立根 npm workspaces，新增 `cloud/api` NestJS 服务、`cloud/admin` React/Vite 管理后台和 `packages/contracts` 共享协议；PostgreSQL/Redis/Mailpit 开发依赖由根 `docker-compose.yml` 描述。
+- 已完成：账号服务覆盖邮箱注册验证、登录、刷新令牌轮换/重复使用撤销、找回密码、设备码授权和管理员 TOTP MFA；Refresh Token 只保存哈希，Electron 使用 safeStorage，CLI 使用 Windows DPAPI。
+- 已完成：AI 点数使用 bigint 账户和不可变流水，提供赠送、管理员调账、冻结、结算和失败释放；注册送点在邮箱验证后唯一发放，免费窗口支持时区、模型范围、请求数和点数上限。
+- 已完成：模型网关按逻辑别名路由 OpenAI-compatible、Anthropic 和 Gemini 流式接口；Provider 地址执行 HTTPS/私网/DNS 校验，密钥使用 AES-256-GCM SecretVault 保存。
+- 已完成：管理后台提供用户、点数、活动、供应商、模型、用量和审计页面，包含响应式布局、键盘焦点、错误/加载/空状态；管理员路由要求角色与 MFA。
+- 已完成：Electron AI 面板新增系统 AI/BYOK 双模式、账号登录、点数、云端模型、SSE、取消和云端编辑草稿的本地二次校验；系统账号刷新令牌不进入 renderer、localStorage 或工作区。
+- 已完成：CLI 新增版本、帮助、doctor、账号设备登录、模型、余额、聊天、工作区检查和受控项目诊断/导出/构建/运行入口；AI Bridge 改为回环限定、官方 MCP SDK 严格 schema、UUID/TTL 提案、文件冲突拒绝、多文件失败回滚、搜索资源上限和编译 AbortSignal。
+- 后续建议：生产发布前在真实 PostgreSQL/Redis 上执行迁移和并发账本压力测试，接入部署平台 KMS、OpenTelemetry/Prometheus、备份恢复演练和真实供应商沙箱；当前开发机未安装 Docker，无法在本轮完成容器集成 smoke。
+- 后续建议：系统 AI 的供应商成本预算、熔断健康任务、管理后台图表导出、跨平台 CLI Keychain 和在线支付仍按首版范围之外单独推进。
+- 已修复：OpenAI-compatible 思考模型现在独立解析 `reasoning_content`，聊天不会再出现消耗 Token 但空白完成；编辑草稿仍只消费最终 `content`。
+- 已修复：AI 幂等检查提前到 SSE 响应头提交之前，重复请求返回结构化 HTTP 409，不再以连接 `terminated` 结束。
+- 已修复：取消结算复用包含规则手册的实际消息集合估算输入 Token，中文/CJK 字符按约一字符一 Token、ASCII 按约四字符一 Token估算，并按最终选中的路由价格记录估算供应商成本。
 - 后续建议：在生成器具备确定性分发后，再扩展关闭请求、尺寸改变、激活和失去焦点等窗口事件；未支持事件不提前暴露为无效配置。
+# 2026-07-11：EdgeView 浏览器模块
+
+- 已完成：`lingbuilder.edgeview` 支持 HWND 嵌入、区域承载、多实例、独立 User Data Folder、导航、前进后退、刷新关闭、分实例 JavaScript JSON 返回值，以及导航/标题/网页消息到 `.lcpp` 无参数处理器的直接回调。
+- 已完成：构建链路从 NuGet 缓存受控发现 WebView2 SDK，复制头文件和 Win32/x64 Loader 到临时构建与可复制 VS 工程；AI Bridge CLI 多实例项目已真实编译运行，并验证两个独立 WebView2 进程组、两个缓存目录、JS 标题返回值和事件日志。
+- 已完成：修复 WebView2 已加载且 JS/事件正常但画面被父窗口背景覆盖的问题；主窗口和承载 HWND 使用裁剪样式，控制器显式可见、通知父窗口位置变化并提升承载窗口 Z 序。
+- 已完成：通过 WebView2 `ContextMenuRequested` 给每个 EdgeView 实例的原生右键菜单追加中文“刷新”，菜单选择回调只调用当前实例的 `Reload()`。
+- 已完成：增加 EdgeView 全局默认代理与单实例覆盖代理，使用受校验的 `--proxy-server` Environment 参数，支持 HTTP、HTTPS、SOCKS5，并明确现有实例需重建后生效。
+- 后续优化：增加非阻塞 Promise/取消令牌、设计器可视控件适配器、权限/下载/新窗口/进程失败等更多 WebView2 事件，以及缓存清理和运行时版本策略；当前同步 JS/等待事件封装会泵送消息并有超时。
 # 2026-07-11：内置多线程模块基础闭环
 
 - 已完成：新增 `lingbuilder.threading` 内置 v2 模块，统一贡献补全、中文诊断、代码片段和确定性 C++ binding。

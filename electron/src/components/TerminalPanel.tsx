@@ -5,7 +5,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import type { TerminalSessionSnapshot } from '../services/terminal/ptyTerminalService';
 
 export default function TerminalPanel({ isDarkMode }: { isDarkMode: boolean }) {
-  const hostRef = useRef<HTMLDivElement>(null); const terminalRef = useRef<Terminal>(); const fitRef = useRef<FitAddon>();
+  const hostRef = useRef<HTMLDivElement>(null); const terminalRef = useRef<Terminal | undefined>(undefined); const fitRef = useRef<FitAddon | undefined>(undefined);
   const activeRef = useRef(''); const sequencesRef = useRef(new Map<string, number>());
   const [sessions, setSessions] = useState<TerminalSessionSnapshot[]>([]); const [activeId, setActiveId] = useState('');
   const [error, setError] = useState(''); const [creating, setCreating] = useState(false);

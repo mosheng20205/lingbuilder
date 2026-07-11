@@ -3049,6 +3049,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       });
       return;
     }
+    if (row.editKind === 'note') return;
     setStructureEditDraft({
       mode: row.editKind,
       rowId: row.id,

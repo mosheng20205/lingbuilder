@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Brain, Sparkles, Send, RefreshCw, Cpu, Check, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { Brain, Sparkles, Send, RefreshCw, Cpu, Check, AlertTriangle, ShieldCheck, Cloud, KeyRound, Coins, LogOut } from 'lucide-react';
 import { AppliedWorkspaceFile, ExtractedString, GlossaryTerm, WorkspaceEditProposal, WorkspaceFileSnapshot } from '../types';
 import { LingCppModuleContext } from '../services/modules/types';
 import type { ProjectMutationOwner } from '../services/workspace/projectMutationOwner';
@@ -105,6 +105,14 @@ export default function AiAssistant({
   onApplyWorkspaceEdit,
   isDarkMode = true
 }: AiAssistantProps) {
+  const [aiMode, setAiMode] = useState<'system' | 'byok'>('system');
+  const [cloudSession, setCloudSession] = useState<{ authenticated: boolean; email?: string; balance?: { available: string; reserved: string }; error?: string }>({ authenticated: false });
+  const [cloudModels, setCloudModels] = useState<Array<{ alias: string; displayName: string; description: string; maxOutputTokens: number }>>([]);
+  const [cloudModelAlias, setCloudModelAlias] = useState('');
+  const [accountEmail, setAccountEmail] = useState('');
+  const [accountPassword, setAccountPassword] = useState('');
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [accountMessage, setAccountMessage] = useState('');
   const [aiConfig, setAiConfig] = useState<AiConnectionConfig>(loadAiConfig);
   const [isTranslating, setIsTranslating] = useState(false);
   const [translationProgress, setTranslationProgress] = useState(0);
@@ -126,6 +134,7 @@ export default function AiAssistant({
 
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const chatAbortRef = useRef<AbortController | null>(null);
+  const cloudRequestRef = useRef<string | null>(null);
   const effectiveModelName = aiConfig.modelName.trim() || DEFAULT_AI_CONFIG.modelName;
   const aiConnectionSignature = [
     aiConfig.provider || DEFAULT_AI_CONFIG.provider,
@@ -220,6 +229,57 @@ export default function AiAssistant({
   useEffect(() => {
     setEditProposal(null);
   }, [filePath, projectMutationOwner.loadGeneration, projectMutationOwner.projectId]);
+
+  useEffect(() => {
+    if (!window.lingBuilder?.cloudAccount) {
+      setAiMode('byok');
+      return;
+    }
+    void window.lingBuilder.cloudAccount.session().then(async session => {
+      setCloudSession(session);
+      if (!session.authenticated) return;
+      const result = await window.lingBuilder!.cloudAccount!.models();
+      setCloudModels(result.models || []);
+      setCloudModelAlias(current => current || result.models?.[0]?.alias || '');
+    }).catch(error => setCloudSession({ authenticated: false, error: error instanceof Error ? error.message : String(error) }));
+    return window.lingBuilder.cloudAi?.onEvent((requestKey, event) => {
+      if (requestKey !== cloudRequestRef.current) return;
+      if (event.type === 'delta' && event.text) {
+        setChatHistory(previous => {
+          const id = `cloud-${requestKey}`;
+          const existing = previous.find(message => message.id === id);
+          if (existing) return previous.map(message => message.id === id ? { ...message, text: message.text + event.text } : message);
+          return [...previous, { id, sender: 'ai', text: event.text, timestamp: new Date().toLocaleTimeString() }];
+        });
+      }
+      if (event.type === 'edit_draft' && Array.isArray(event.files)) {
+        void fetch('/api/lingcpp/edit/from-system-draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ filePath, sourceCode, instruction: '系统 AI 工作区编辑', projectId, moduleContext, workspaceFiles, files: event.files }) }).then(response => response.json()).then(value => { if (!value.ok) throw new Error(value.error || '系统 AI 编辑草稿校验失败'); setEditProposal(value.proposal); });
+      }
+      if (event.type === 'usage') {
+        setChatHistory(previous => [...previous, { id: `usage-${requestKey}`, sender: 'ai', text: `本次用量：输入 ${event.receipt.inputTokens}、输出 ${event.receipt.outputTokens} Token，扣除 ${event.receipt.chargedPoints} AI 点数${event.receipt.freePromotionId ? '（免费活动）' : ''}。`, timestamp: new Date().toLocaleTimeString() }]);
+        void window.lingBuilder?.cloudAccount?.balance().then(value => setCloudSession(current => ({ ...current, balance: value.balance })));
+      }
+      if (event.type === 'completed' || event.type === 'error') {
+        if (event.type === 'error') setChatHistory(previous => [...previous, { id: `error-${requestKey}`, sender: 'ai', text: event.message || '系统 AI 请求失败。', timestamp: new Date().toLocaleTimeString() }]);
+        cloudRequestRef.current = null; setIsAiResponding(false);
+      }
+    });
+  }, [filePath, sourceCode, projectId, moduleContext, workspaceFiles]);
+
+  const handleCloudAccount = async (action: 'login' | 'register') => {
+    if (!window.lingBuilder?.cloudAccount) return;
+    setAccountBusy(true); setAccountMessage('');
+    try {
+      if (action === 'register') {
+        await window.lingBuilder.cloudAccount.register({ email: accountEmail, password: accountPassword });
+        setAccountMessage('注册成功，请在邮箱中完成验证后登录。');
+      } else {
+        const session = await window.lingBuilder.cloudAccount.login({ email: accountEmail, password: accountPassword });
+        setCloudSession(session); const result = await window.lingBuilder.cloudAccount.models(); setCloudModels(result.models || []); setCloudModelAlias(result.models?.[0]?.alias || ''); setAccountPassword('');
+      }
+    } catch (error) { setAccountMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setAccountBusy(false); }
+  };
 
   // Handle one-click AI translation
   const handleBatchAiTranslate = async () => {
@@ -316,6 +376,18 @@ export default function AiAssistant({
     const controller = new AbortController(); chatAbortRef.current?.abort(); chatAbortRef.current = controller;
 
     try {
+      if (aiMode === 'system') {
+        if (!cloudSession.authenticated || !window.lingBuilder?.cloudAi || !cloudModelAlias) throw new Error('请先登录系统 AI 并选择可用模型。');
+        const messages = [...chatHistory.filter(message => message.id !== 'welcome').slice(-18).map(message => ({ role: message.sender === 'ai' ? 'assistant' as const : 'user' as const, content: message.text })), { role: 'user' as const, content: userMsg.text }];
+        const rulebookVersion = 'lingbuilder-rulebook-v1';
+        const payload = isLingCppFile ? {
+          modelAlias: cloudModelAlias, messages, rulebookVersion, activeFilePath: filePath, instruction: userMsg.text,
+          files: await Promise.all(workspaceFiles.slice(0, 5).map(async file => ({ filePath: file.filePath, content: file.sourceCode.slice(0, 24_000), language: file.language, sha256: await sha256(file.sourceCode) })))
+        } : { modelAlias: cloudModelAlias, messages, rulebookVersion };
+        const requestKey = await window.lingBuilder.cloudAi.start(isLingCppFile ? 'edit' : 'chat', payload);
+        cloudRequestRef.current = requestKey;
+        return;
+      }
       if (isLingCppFile) {
         const response = await fetch('/api/lingcpp/edit/propose', {
           signal: controller.signal,
@@ -503,7 +575,26 @@ export default function AiAssistant({
               {isAiConfigExpanded ? '收起' : '展开'}
             </button>
           </div>
-          {isAiConfigExpanded && (
+          <div className={`grid grid-cols-2 gap-1 rounded border p-1 ${isDarkMode ? 'border-[#343442] bg-[#18181c]' : 'border-slate-200 bg-slate-100'}`} role="tablist" aria-label="AI 使用模式">
+            <button type="button" role="tab" aria-selected={aiMode === 'system'} onClick={() => setAiMode('system')} className={`flex min-h-8 items-center justify-center gap-1 rounded px-2 text-[10px] ${aiMode === 'system' ? 'bg-violet-600 text-white' : 'text-slate-500'}`}><Cloud className="h-3 w-3"/>系统 AI</button>
+            <button type="button" role="tab" aria-selected={aiMode === 'byok'} onClick={() => setAiMode('byok')} className={`flex min-h-8 items-center justify-center gap-1 rounded px-2 text-[10px] ${aiMode === 'byok' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}><KeyRound className="h-3 w-3"/>自定义 API</button>
+          </div>
+          {aiMode === 'system' && isAiConfigExpanded && (
+            <div className={`space-y-2 rounded border p-2.5 ${isDarkMode ? 'border-violet-500/20 bg-violet-500/5' : 'border-violet-200 bg-violet-50'}`}>
+              {cloudSession.authenticated ? <>
+                <div className="flex items-center justify-between gap-2 text-[10px]"><span className="truncate text-slate-400">{cloudSession.email}</span><button type="button" aria-label="退出系统 AI 账号" className="flex min-h-7 items-center gap-1 text-rose-400" onClick={() => void window.lingBuilder?.cloudAccount?.logout().then(() => setCloudSession({ authenticated: false }))}><LogOut className="h-3 w-3"/>退出</button></div>
+                <div className="flex items-center gap-2 rounded bg-black/10 px-2 py-1.5 text-[10px]"><Coins className="h-3.5 w-3.5 text-amber-400"/><span>可用点数</span><strong className="ml-auto tabular-nums">{cloudSession.balance?.available || '0'}</strong></div>
+                <label className="block text-[10px] text-slate-500" htmlFor="system-ai-model">系统模型</label>
+                <select id="system-ai-model" value={cloudModelAlias} onChange={event => setCloudModelAlias(event.target.value)} className={`min-h-9 w-full rounded border px-2 text-xs ${isDarkMode ? 'border-slate-700 bg-slate-900 text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`}>{cloudModels.map(model => <option key={model.alias} value={model.alias}>{model.displayName}</option>)}</select>
+              </> : <>
+                <label className="block text-[10px] text-slate-500" htmlFor="system-ai-email">账号邮箱</label><input id="system-ai-email" type="email" autoComplete="username" value={accountEmail} onChange={event => setAccountEmail(event.target.value)} className={`min-h-9 w-full rounded border px-2 text-xs ${isDarkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-300 bg-white'}`}/>
+                <label className="block text-[10px] text-slate-500" htmlFor="system-ai-password">密码</label><input id="system-ai-password" type="password" autoComplete="current-password" value={accountPassword} onChange={event => setAccountPassword(event.target.value)} className={`min-h-9 w-full rounded border px-2 text-xs ${isDarkMode ? 'border-slate-700 bg-slate-900' : 'border-slate-300 bg-white'}`}/>
+                <div className="grid grid-cols-2 gap-2"><button type="button" disabled={accountBusy} onClick={() => void handleCloudAccount('login')} className="min-h-9 rounded bg-violet-600 text-[10px] font-semibold text-white disabled:opacity-50">登录</button><button type="button" disabled={accountBusy} onClick={() => void handleCloudAccount('register')} className="min-h-9 rounded border border-violet-500/40 text-[10px] text-violet-400 disabled:opacity-50">注册</button></div>
+                {accountMessage && <div role="status" className="text-[10px] text-amber-400">{accountMessage}</div>}
+              </>}
+            </div>
+          )}
+          {aiMode === 'byok' && isAiConfigExpanded && (
             <>
               <select
                 value={aiConfig.presetId || 'custom'}
@@ -595,7 +686,7 @@ export default function AiAssistant({
         }`}
       >
         <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-        <span>AI 连接配置已本地保存，请确认 API Key 与模型服务可用</span>
+        <span>{aiMode === 'system' ? '系统 AI 源码默认零保留，所有文件修改仍需本地预览确认' : '自定义 API Key 使用系统安全凭据存储，不进入工作区或同步包'}</span>
       </div>
 
       {editProposal && (
@@ -719,9 +810,14 @@ export default function AiAssistant({
           >
             <Send className="w-3.5 h-3.5" />
           </button>
-          {isAiResponding && <button type="button" aria-label="取消 AI 请求" onClick={() => chatAbortRef.current?.abort()} className="rounded border border-slate-500 px-2">取消</button>}
+          {isAiResponding && <button type="button" aria-label="取消 AI 请求" onClick={() => { if (aiMode === 'system' && cloudRequestRef.current) void window.lingBuilder?.cloudAi?.cancel(cloudRequestRef.current); else chatAbortRef.current?.abort(); }} className="rounded border border-slate-500 px-2">取消</button>}
         </form>
       </div>
     </div>
   );
+}
+
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
 }

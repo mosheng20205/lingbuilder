@@ -9,6 +9,7 @@ import { AiBridgeService } from './services/aiBridge/aiBridgeService';
 import { createAiBridgeRouter } from './services/aiBridge/httpRoutes';
 import { startAiBridgeMcpServer } from './services/aiBridge/mcpServer';
 import { AiBridgePermissionMode, AiBridgeServerOptions } from './services/aiBridge/types';
+import { CloudCliClient } from './services/cloud/cloudCliClient';
 import { createModuleService } from './services/modules/moduleService';
 import {
   createMarketIndex,
@@ -19,6 +20,13 @@ import {
 
 async function main(): Promise<void> {
   const [command, subcommand, ...rest] = process.argv.slice(2);
+  if (command === '--version' || command === 'version') { console.log('LingBuilder CLI 0.2.0'); return; }
+  if (command === '--help' || command === 'help' || !command) { printUsage(); return; }
+  if (command === 'doctor') { await runDoctor(rest); return; }
+  if (command === 'auth') { await runAuthCommand(subcommand, rest); return; }
+  if (command === 'ai') { await runAiCommand(subcommand, rest); return; }
+  if (command === 'workspace' && subcommand === 'inspect') { await runWorkspaceInspect(rest); return; }
+  if (command === 'project') { await runProjectCommand(subcommand, rest); return; }
   if (command === 'module') {
     await runModuleCommand(subcommand, rest);
     return;
@@ -34,11 +42,11 @@ async function main(): Promise<void> {
   const host = getStringArg(args.host) || '127.0.0.1';
   const port = Number.parseInt(getStringArg(args.port) || '17860', 10);
   const permission = parsePermission(getStringArg(args.permission) || 'preview');
-  const allowRemote = args['allow-remote'] === 'true' || args['allow-remote'] === true;
+  const allowRemote = false;
   const enableMcp = args.mcp === 'true' || args.mcp === true;
 
-  if (host !== '127.0.0.1' && host !== 'localhost' && !allowRemote) {
-    throw new Error('AI Bridge 默认禁止监听公网地址；如确需远程连接，请显式传入 --allow-remote。');
+  if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
+    throw new Error('AI Bridge 只允许监听 127.0.0.1、localhost 或 ::1；远程 AI 请使用 LingBuilder 云端 API。');
   }
 
   const token = getStringArg(args.token) || crypto.randomBytes(24).toString('hex');
@@ -73,6 +81,60 @@ async function main(): Promise<void> {
     startAiBridgeMcpServer(service);
   }
 }
+
+async function runAuthCommand(subcommand: string | undefined, rest: string[]) {
+  const client = new CloudCliClient(getStringArg(parseArgs(rest).server));
+  if (subcommand === 'login') { const result = await client.login(console.log); console.log(result.message); return; }
+  if (subcommand === 'logout') { await client.logout(); console.log('已退出 LingBuilder 系统 AI。'); return; }
+  if (subcommand === 'status') { printValue(await client.status(), parseArgs(rest).json === true); return; }
+  throw new Error('auth 子命令仅支持 login、logout、status。');
+}
+
+async function runAiCommand(subcommand: string | undefined, rest: string[]) {
+  const args = parseArgs(rest); const client = new CloudCliClient(getStringArg(args.server)); const asJson = args.json === true;
+  if (subcommand === 'models') { printValue(await client.models(), asJson); return; }
+  if (subcommand === 'balance') { printValue(await client.balance(), asJson); return; }
+  if (subcommand === 'chat') {
+    const model = getStringArg(args.model); const prompt = getStringArg(args.prompt) || rest.filter(item => !item.startsWith('--') && item !== model).join(' ');
+    if (!model || !prompt) throw new Error('ai chat 需要 --model <别名> 和 --prompt <问题>。');
+    for await (const event of client.chat(model, prompt)) { if (asJson) console.log(JSON.stringify(event)); else if (event.type === 'delta') process.stdout.write(event.text); else if (event.type === 'usage') console.log(`\n用量：输入 ${event.receipt.inputTokens}，输出 ${event.receipt.outputTokens}，扣除 ${event.receipt.chargedPoints} 点`); else if (event.type === 'error') throw new Error(event.message); }
+    return;
+  }
+  throw new Error('ai 子命令仅支持 models、balance、chat。');
+}
+
+async function runDoctor(rest: string[]) {
+  const args = parseArgs(rest); const checks = [
+    { id: 'node', ok: Number(process.versions.node.split('.')[0]) >= 20, detail: `Node ${process.versions.node}` },
+    { id: 'platform', ok: process.platform === 'win32', detail: `${process.platform}/${process.arch}` },
+    { id: 'workspace', ok: await pathExists(path.resolve(getStringArg(args.workspace) || process.cwd())), detail: path.resolve(getStringArg(args.workspace) || process.cwd()) }
+  ];
+  printValue({ ok: checks.every(item => item.ok), checks }, args.json === true);
+}
+
+async function runWorkspaceInspect(rest: string[]) {
+  const args = parseArgs(rest); const workspaceRoot = path.resolve(getStringArg(args.workspace) || process.cwd());
+  const service = new AiBridgeService({ workspaceRoot, host: '127.0.0.1', port: 0, token: 'local-cli-inspect', permission: 'readonly', allowRemote: false, enableMcp: false });
+  printValue({ ok: true, workspaceRoot, tree: await service.listWorkspaceTree() }, args.json === true);
+}
+
+async function runProjectCommand(subcommand: string | undefined, rest: string[]) {
+  const args = parseArgs(rest); const workspaceRoot = path.resolve(getStringArg(args.workspace) || process.cwd()); const requestFile = getStringArg(args.request);
+  if (!requestFile) throw new Error('project 命令需要 --request <受控项目请求.json>。');
+  const request = JSON.parse(await fs.readFile(path.resolve(requestFile), 'utf8')); const approved = args.yes === true;
+  const service = new AiBridgeService({ workspaceRoot, host: '127.0.0.1', port: 0, token: 'local-project-cli', permission: approved ? 'yolo' : 'preview', allowRemote: false, enableMcp: false });
+  try {
+    if (subcommand === 'diagnose') { printValue(await service.getLingCppDiagnostics(request), args.json === true); return; }
+    if (subcommand === 'export') { if (!approved) { printValue(await service.nativePreview(request), args.json === true); return; } printValue(await service.nativeExport({ ...request, approved: true }), args.json === true); return; }
+    if (subcommand === 'build' || subcommand === 'run') { if (!approved) throw new Error('构建和运行必须显式传入 --yes；可先使用 project export 预览。'); printValue(await service.buildRun({ ...request, run: subcommand === 'run', approved: true }), args.json === true); return; }
+    if (subcommand === 'stop') { printValue(await service.stopRuns(), args.json === true); return; }
+    throw new Error('project 子命令仅支持 diagnose、export、build、run、stop。');
+  } finally { await service.shutdown(); }
+}
+
+function printValue(value: unknown, json: boolean) { if (json) console.log(JSON.stringify(value, bigintReplacer, 2)); else console.log(formatHuman(value)); }
+function bigintReplacer(_key: string, value: unknown) { return typeof value === 'bigint' ? value.toString() : value; }
+function formatHuman(value: unknown) { return typeof value === 'string' ? value : JSON.stringify(value, bigintReplacer, 2); }
 
 function installAiBridgeShutdownHandlers(
   server: http.Server,
@@ -216,6 +278,10 @@ function isModulePackagePath(target: string): boolean {
   return target.toLowerCase().endsWith('.lbmod');
 }
 
+async function pathExists(target: string): Promise<boolean> {
+  try { await fs.stat(target); return true; } catch { return false; }
+}
+
 async function previewPackageForCli(packagePath: string) {
   const tempWorkspace = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-cli-'));
   try {
@@ -253,6 +319,13 @@ function parsePermission(value: string): AiBridgePermissionMode {
 
 function printUsage(): void {
   console.log(`Usage:
+  lingbuilder --help | --version
+  lingbuilder doctor [--workspace <path>] [--json]
+  lingbuilder auth login|logout|status [--server <url>] [--json]
+  lingbuilder ai models|balance [--json]
+  lingbuilder ai chat --model <alias> --prompt <text> [--json]
+  lingbuilder workspace inspect [--workspace <path>] [--json]
+  lingbuilder project diagnose|export|build|run|stop --request <file.json> [--workspace <path>] [--yes] [--json]
   lingbuilder ai-server --workspace <path> [--host 127.0.0.1] [--port 17860] [--permission preview] [--token <token>] [--mcp]
   lingbuilder module init --template cpp-source --out <dir> [--id <id>] [--name <name>]
   lingbuilder module validate <dir|file.lbmod>

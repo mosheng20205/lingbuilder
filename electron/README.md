@@ -85,6 +85,7 @@ npm run package:win
 - 新建项目默认启用 `lingbuilder.win32.basic`；ListView、TreeView、Tab、日期、工具栏、状态栏、RichEdit 和系统通用对话框来自可选 `lingbuilder.win32.common-controls`。
 - 设计器项目保存为 `schemaVersion: 2`，控件专属数据位于 `properties`，旧无版本项目在读取时安全迁移。
 - 高级模块未启用时，工具箱显示依赖状态但不能新增高级控件；项目已有高级控件不得被删除或静默替换。
+- 内置 `lingbuilder.edgeview` 模块支持多个 WebView2 实例、独立缓存目录、HWND/区域嵌入、JavaScript JSON 返回值和 `.lcpp` 事件回调。原生构建从 NuGet 缓存复制 WebView2 SDK 头文件与目标架构 Loader，不依赖 React 组件硬编码路径。
 
 ## IDE 基础服务闭环
 
@@ -112,7 +113,7 @@ npm run ai-server -- --workspace .. --port 17860
 - HTTP 地址：`http://127.0.0.1:17860/api/ai-bridge`
 - 默认权限：`preview`
 - token 未传入时会自动生成并打印到终端。
-- 默认禁止监听公网地址；如确需远程连接，必须同时传入 `--host 0.0.0.0 --allow-remote`。
+- AI Bridge 强制只监听回环地址，不支持公网或局域网监听；远程 AI 使用独立云端账号 API。
 
 常用参数：
 
@@ -209,6 +210,19 @@ npm run module:new-emoji -- --install
 解决方案侧栏可重建和搜索 AI 工作区索引。索引文件位于 `.lingbuilder/ai-index.json`，仅包含受支持文本源码的相对路径、哈希、短预览和有界词项；不会遍历依赖、生成目录或符号链接。构建可以取消。
 
 “设置同步”可导出用户设置、工作区设置和扩展启用状态。导入前必须预览确认，文件变化会触发冲突，批量写入失败会回滚；API Key、token、secret、password 和 credential 字段始终被剔除。
+
+## 系统内置 AI 账号模式
+
+AI 面板现在提供“系统 AI”和“自定义 API”两个独立模式。系统 AI 从 `LINGBUILDER_CLOUD_API_URL`（默认 `http://127.0.0.1:17900`）读取账号、AI 点数和逻辑模型；BYOK 继续使用用户自己的 API Key/Base URL。
+
+- 系统账号 Refresh Token 由 Electron 主进程 safeStorage 保存到独立凭据文件；renderer 只获得账号摘要和流式事件。
+- 系统 AI 使用主进程网络客户端消费 SSE，可端到端取消；完成后刷新点数余额并显示输入/输出 Token 与扣点。
+- 云端编辑返回完整文件草稿后，renderer 必须调用本地 `/api/lingcpp/edit/from-system-draft`，经过允许路径、模块上下文和 LingCpp 结构校验才能形成 Diff 提案。
+- 系统 AI 与 BYOK 共享根规则手册，但凭据和账本完全隔离。
+- 云端默认零保留；本地工作区、API Key、Refresh Token 和源码不得进入设置同步包。
+- 系统 AI 支持 OpenAI-compatible `reasoning_content` 流式增量；编辑草稿不会混入推理文本。幂等冲突会在 SSE 建连前返回 409，取消后的估算用量包含云端注入的规则手册上下文。
+
+云端开发和后台部署参见根目录 README。
 
 在工作区创建 `.lingbuilder/publish.json` 后，可从解决方案侧栏读取配置并发布。示例：
 

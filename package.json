@@ -1,0 +1,30 @@
+{
+  "name": "lingbuilder-platform",
+  "private": true,
+  "version": "0.2.0",
+  "workspaces": [
+    "electron",
+    "cloud/api",
+    "cloud/admin",
+    "packages/contracts"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,admin,ide -c cyan,magenta,green \"npm run dev -w @lingbuilder/cloud-api\" \"npm run dev -w @lingbuilder/admin\" \"npm run dev -w lingbuilder-electron\"",
+    "dev:cloud": "concurrently -n api,admin -c cyan,magenta \"npm run dev -w @lingbuilder/cloud-api\" \"npm run dev -w @lingbuilder/admin\"",
+    "build": "npm run build -w @lingbuilder/contracts && npm run build -w @lingbuilder/cloud-api && npm run build -w @lingbuilder/admin && npm run build -w lingbuilder-electron",
+    "build:cloud": "npm run build -w @lingbuilder/contracts && npm run build -w @lingbuilder/cloud-api && npm run build -w @lingbuilder/admin",
+    "lint": "npm run lint -w @lingbuilder/contracts && npm run lint -w @lingbuilder/cloud-api && npm run lint -w @lingbuilder/admin && npm run lint -w lingbuilder-electron",
+    "test": "npm run test -w @lingbuilder/contracts && npm run test -w @lingbuilder/cloud-api && npm run test -w @lingbuilder/admin && npm run test -w lingbuilder-electron",
+    "db:generate": "npm run prisma:generate -w @lingbuilder/cloud-api",
+    "db:migrate": "npm run prisma:migrate -w @lingbuilder/cloud-api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "allowScripts": {
+    "argon2@0.41.1": true,
+    "electron@43.1.0": true,
+    "electron-winstaller@5.4.0": true,
+    "node-pty@1.1.0": true
+  }
+}

@@ -296,7 +296,7 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     || selectedControlId?.startsWith('__window_menu_item_')
   );
 
-  const selectedControl = useMemo(() => {
+  const selectedControl = useMemo<LingControl | undefined>(() => {
     if (selectedControlId === '__window_menu_bar__') {
       return {
         id: '__window_menu_bar__',

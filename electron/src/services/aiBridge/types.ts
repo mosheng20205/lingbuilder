@@ -62,6 +62,7 @@ export interface AiBridgeEditProposeRequest {
   selection?: WorkspaceEditRange;
   workspaceFiles?: LingCppWorkspaceFile[];
   aiConfig?: AiConnectionConfig;
+  files?: Array<{ filePath: string; updatedSource: string }>;
 }
 
 export interface AiBridgeEditApplyRequest {

@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: lingbuilder
+      POSTGRES_USER: lingbuilder
+      POSTGRES_PASSWORD: lingbuilder-dev
+    ports:
+      - "54329:5432"
+    volumes:
+      - lingbuilder-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lingbuilder"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6389:6379"
+    volumes:
+      - lingbuilder-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  mailpit:
+    image: axllent/mailpit:v1.21
+    ports:
+      - "10259:1025"
+      - "8029:8025"
+volumes:
+  lingbuilder-postgres:
+  lingbuilder-redis:

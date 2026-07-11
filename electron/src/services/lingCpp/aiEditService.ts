@@ -9,7 +9,9 @@ import {
   WorkspaceEditRange
 } from './types';
 
-const proposalStore = new Map<string, WorkspaceEditProposal>();
+const PROPOSAL_TTL_MS = 30 * 60_000;
+const MAX_PROPOSALS = 100;
+const proposalStore = new Map<string, { proposal: WorkspaceEditProposal; expiresAt: number }>();
 
 export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEditDraft = {}): WorkspaceEditProposal {
   const now = new Date().toISOString();
@@ -29,7 +31,7 @@ export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEd
   }
 
   const proposal: WorkspaceEditProposal = {
-    id: `lingcpp-edit-${Date.now()}`,
+    id: `lingcpp-edit-${globalThis.crypto.randomUUID()}`,
     title: 'AI 中文 C++ 编辑预览',
     summary: draft.summary?.trim() || context.instruction.trim() || '根据当前上下文生成中文 C++ 编辑建议',
     createdAt: now,
@@ -37,12 +39,19 @@ export function proposeLingCppEdit(context: LingCppEditContext, draft: LingCppEd
     changes
   };
 
-  proposalStore.set(proposal.id, proposal);
+  purgeExpiredProposals();
+  while (proposalStore.size >= MAX_PROPOSALS) proposalStore.delete(proposalStore.keys().next().value as string);
+  proposalStore.set(proposal.id, { proposal, expiresAt: Date.now() + PROPOSAL_TTL_MS });
   return proposal;
 }
 
 export function getWorkspaceEditProposal(proposalId: string): WorkspaceEditProposal | undefined {
-  return proposalStore.get(proposalId);
+  purgeExpiredProposals();
+  return proposalStore.get(proposalId)?.proposal;
+}
+
+function purgeExpiredProposals(now = Date.now()): void {
+  for (const [id, record] of proposalStore) if (record.expiresAt <= now) proposalStore.delete(id);
 }
 
 export function rejectWorkspaceEdit(proposalId: string): boolean {
@@ -66,6 +75,10 @@ export function applyWorkspaceEditToFiles(
   proposal.changes.forEach(change => {
     const normalizedPath = normalizeFilePath(change.filePath);
     const currentSource = sourceMap.get(normalizedPath) || '';
+    const currentText = getTextForRange(currentSource, change.range);
+    if (currentText !== change.originalText) {
+      throw new Error(`文件 ${change.filePath} 在 AI 提案生成后已发生变化，请重新生成提案。`);
+    }
     const nextSource = replaceRange(currentSource, change.range, change.newText);
     sourceMap.set(normalizedPath, nextSource);
   });
@@ -224,6 +237,11 @@ function getTextForRange(sourceCode: string, range: WorkspaceEditRange): string 
   const lines = sourceCode.split(/\r?\n/);
   const startLine = Math.max(1, range.startLine);
   const endLine = Math.max(startLine, range.endLine);
+  if (startLine === endLine) {
+    const line = lines[startLine - 1] || '';
+    const endColumn = range.endColumn === Number.MAX_SAFE_INTEGER ? line.length : Math.max(0, range.endColumn - 1);
+    return line.slice(Math.max(0, range.startColumn - 1), endColumn);
+  }
   const selected = lines.slice(startLine - 1, endLine);
   if (selected.length === 0) return '';
   selected[0] = selected[0].slice(Math.max(0, range.startColumn - 1));

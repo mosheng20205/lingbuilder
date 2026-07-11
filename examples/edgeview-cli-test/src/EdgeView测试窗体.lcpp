@@ -1,0 +1,44 @@
+包 EdgeViewCLI测试
+使用 Win32窗口基础模块
+使用 EdgeView浏览器模块
+
+类 EdgeView测试窗体 : 窗口
+公开
+  构造()
+  结束
+
+  事件 _EdgeView测试窗体_创建完毕()
+    EdgeView_创建区域(1, 10, 10, 560, 600, "about:blank", "edgeview-cache/cache-1")
+    EdgeView_创建区域(2, 580, 10, 560, 600, "about:blank", "edgeview-cache/cache-2")
+    EdgeView_绑定事件(1, "导航完成", "浏览器1_导航完成")
+    EdgeView_绑定事件(2, "导航完成", "浏览器2_导航完成")
+    EdgeView_绑定事件(1, "网页消息", "浏览器1_网页消息")
+    EdgeView_绑定事件(2, "网页消息", "浏览器2_网页消息")
+    EdgeView_导航实例(1, "https://example.com")
+    EdgeView_导航实例(2, "https://example.org")
+    EdgeView_等待事件(1, "导航完成", 15000)
+    EdgeView_等待事件(2, "导航完成", 15000)
+    @ std::wstring js1 = EdgeView_执行JS实例(1, L"document.title");
+    @ std::wstring js2 = EdgeView_执行JS实例(2, L"document.title");
+    @ 调试输出((L"JS返回值-实例1=" + js1).c_str());
+    @ 调试输出((L"JS返回值-实例2=" + js2).c_str());
+    @ EdgeView_执行JS实例(1, L"window.chrome.webview.postMessage('实例1消息'); 'sent-1'");
+    @ EdgeView_执行JS实例(2, L"window.chrome.webview.postMessage('实例2消息'); 'sent-2'");
+  结束
+
+  事件 浏览器1_导航完成()
+    调试输出("事件回调：浏览器1导航完成")
+  结束
+
+  事件 浏览器2_导航完成()
+    调试输出("事件回调：浏览器2导航完成")
+  结束
+
+  事件 浏览器1_网页消息()
+    调试输出("事件回调：浏览器1网页消息")
+  结束
+
+  事件 浏览器2_网页消息()
+    调试输出("事件回调：浏览器2网页消息")
+  结束
+结束类

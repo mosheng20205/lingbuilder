@@ -1,0 +1,292 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  OPERATOR
+  SUPPORT
+  AUDITOR
+}
+
+enum LedgerKind {
+  SIGNUP_GIFT
+  ADMIN_ADJUSTMENT
+  RESERVE
+  RELEASE
+  CHARGE
+  REFUND
+}
+
+enum AiRequestStatus {
+  RESERVED
+  STREAMING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum ProviderKind {
+  OPENAI_COMPATIBLE
+  ANTHROPIC
+  GEMINI
+}
+
+enum PromotionKind {
+  SIGNUP_GIFT
+  FREE_WINDOW
+}
+
+model User {
+  id                 String                   @id @default(uuid())
+  email              String                   @unique
+  passwordHash       String
+  status             UserStatus               @default(PENDING)
+  emailVerifiedAt    DateTime?
+  mustChangePassword Boolean                  @default(false)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  sessions           AuthSession[]
+  verificationTokens EmailVerificationToken[]
+  resetTokens        PasswordResetToken[]
+  creditAccount      CreditAccount?
+  ledgerEntries      CreditLedger[]
+  aiRequests         AiRequest[]
+  promotionGrants    PromotionGrant[]
+  freeUsages         FreeUsage[]
+  adminMembership    AdminMembership?
+}
+
+model AuthSession {
+  id               String    @id @default(uuid())
+  userId           String
+  familyId         String
+  refreshTokenHash String    @unique
+  deviceName       String
+  ipAddress        String?
+  userAgent        String?
+  expiresAt        DateTime
+  rotatedAt        DateTime?
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, familyId])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model DeviceCode {
+  id              String    @id @default(uuid())
+  deviceCodeHash  String    @unique
+  userCode        String    @unique
+  userId          String?
+  deviceName      String
+  expiresAt       DateTime
+  intervalSeconds Int       @default(5)
+  approvedAt      DateTime?
+  consumedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([userCode, expiresAt])
+}
+
+model AdminMembership {
+  userId             String    @id
+  role               AdminRole
+  mfaSecretEncrypted String?
+  mfaEnabledAt       DateTime?
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CreditAccount {
+  userId          String   @id
+  available       BigInt   @default(0)
+  reserved        BigInt   @default(0)
+  lifetimeGranted BigInt   @default(0)
+  lifetimeSpent   BigInt   @default(0)
+  version         Int      @default(0)
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CreditLedger {
+  id             String     @id @default(uuid())
+  userId         String
+  kind           LedgerKind
+  availableDelta BigInt
+  reservedDelta  BigInt
+  balanceAfter   BigInt
+  requestId      String?
+  promotionId    String?
+  actorUserId    String?
+  reason         String
+  createdAt      DateTime   @default(now())
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([requestId, kind])
+  @@index([userId, createdAt])
+}
+
+model AiRequest {
+  id                 String          @id @default(uuid())
+  userId             String
+  idempotencyKey     String
+  operation          String
+  modelAlias         String
+  routeVersion       Int
+  status             AiRequestStatus @default(RESERVED)
+  reservedPoints     BigInt
+  listPricePoints    BigInt          @default(0)
+  chargedPoints      BigInt          @default(0)
+  inputTokens        Int             @default(0)
+  cachedInputTokens  Int             @default(0)
+  outputTokens       Int             @default(0)
+  usageEstimated     Boolean         @default(false)
+  providerCostMicros BigInt          @default(0)
+  freePromotionId    String?
+  errorCode          String?
+  startedAt          DateTime        @default(now())
+  finishedAt         DateTime?
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, idempotencyKey])
+  @@index([userId, startedAt])
+}
+
+model ProviderChannel {
+  id               String       @id @default(uuid())
+  name             String       @unique
+  kind             ProviderKind
+  baseUrl          String
+  encryptedSecret  String
+  enabled          Boolean      @default(true)
+  timeoutMs        Int          @default(30000)
+  maxConcurrency   Int          @default(20)
+  failureCount     Int          @default(0)
+  circuitOpenUntil DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  routes           ModelRoute[]
+}
+
+model LogicalModel {
+  alias                       String       @id
+  displayName                 String
+  description                 String       @default("")
+  contextWindow               Int
+  maxOutputTokens             Int
+  inputPointsPerMillion       BigInt
+  cachedInputPointsPerMillion BigInt
+  outputPointsPerMillion      BigInt
+  enabled                     Boolean      @default(true)
+  etagVersion                 Int          @default(1)
+  routes                      ModelRoute[]
+}
+
+model ModelRoute {
+  id                         String          @id @default(uuid())
+  alias                      String
+  providerId                 String
+  upstreamModel              String
+  version                    Int
+  priority                   Int             @default(100)
+  weight                     Int             @default(100)
+  enabled                    Boolean         @default(true)
+  retryCount                 Int             @default(1)
+  costInputMicrosPerMillion  BigInt          @default(0)
+  costOutputMicrosPerMillion BigInt          @default(0)
+  createdAt                  DateTime        @default(now())
+  model                      LogicalModel    @relation(fields: [alias], references: [alias], onDelete: Cascade)
+  provider                   ProviderChannel @relation(fields: [providerId], references: [id], onDelete: Restrict)
+
+  @@unique([alias, version, providerId])
+  @@index([alias, enabled, priority])
+}
+
+model PromotionPolicy {
+  id                  String           @id @default(uuid())
+  name                String
+  kind                PromotionKind
+  startsAt            DateTime
+  endsAt              DateTime
+  timezone            String           @default("Asia/Shanghai")
+  giftPoints          BigInt?
+  perUserListPriceCap BigInt?
+  perUserRequestCap   Int?
+  modelAliases        String[]
+  enabled             Boolean          @default(true)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  grants              PromotionGrant[]
+  freeUsages          FreeUsage[]
+}
+
+model PromotionGrant {
+  id          String          @id @default(uuid())
+  promotionId String
+  userId      String
+  points      BigInt
+  createdAt   DateTime        @default(now())
+  promotion   PromotionPolicy @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([promotionId, userId])
+}
+
+model FreeUsage {
+  id              String          @id @default(uuid())
+  promotionId     String
+  userId          String
+  usageDate       String
+  requestCount    Int             @default(0)
+  listPricePoints BigInt          @default(0)
+  promotion       PromotionPolicy @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([promotionId, userId, usageDate])
+}
+
+model AdminAuditLog {
+  id          String   @id @default(uuid())
+  actorUserId String
+  action      String
+  targetType  String
+  targetId    String?
+  requestId   String
+  ipAddress   String?
+  details     Json?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}

@@ -37,6 +37,20 @@ declare global {
         setAiApiKey: (value: string) => Promise<void>;
         deleteAiApiKey: () => Promise<void>;
       };
+      cloudAccount?: {
+        register: (value: { email: string; password: string }) => Promise<{ ok: boolean; verificationRequired: boolean }>;
+        verifyEmail: (token: string) => Promise<{ ok: boolean }>;
+        login: (value: { email: string; password: string }) => Promise<{ authenticated: boolean; email?: string; balance?: { available: string; reserved: string } }>;
+        logout: () => Promise<{ ok: boolean }>;
+        session: () => Promise<{ authenticated: boolean; email?: string; balance?: { available: string; reserved: string }; error?: string }>;
+        models: () => Promise<{ ok: boolean; models: Array<{ alias: string; displayName: string; description: string; maxOutputTokens: number }> }>;
+        balance: () => Promise<{ ok: boolean; balance: { available: string; reserved: string } }>;
+      };
+      cloudAi?: {
+        start: (kind: 'chat' | 'edit', payload: unknown) => Promise<string>;
+        cancel: (requestKey: string) => Promise<boolean>;
+        onEvent: (listener: (requestKey: string, event: any) => void) => () => void;
+      };
     };
   }
 }

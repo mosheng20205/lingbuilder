@@ -2568,6 +2568,42 @@ app.post("/api/lingcpp/edit/propose", async (req, res) => {
   res.json({ ok: true, proposal });
 });
 
+app.post("/api/lingcpp/edit/from-system-draft", async (req, res) => {
+  const { filePath, sourceCode, instruction, workspaceFiles, files, projectId, moduleContext } = req.body as {
+    filePath?: string;
+    sourceCode?: string;
+    instruction?: string;
+    projectId?: string;
+    moduleContext?: LingCppModuleContext;
+    workspaceFiles?: Array<{ filePath: string; sourceCode: string; language?: string }>;
+    files?: Array<{ filePath: string; updatedSource: string }>;
+  };
+  if (!filePath || typeof sourceCode !== "string" || !Array.isArray(files)) {
+    return res.status(400).json({ ok: false, error: "系统 AI 编辑草稿缺少必要字段。" });
+  }
+  const safeWorkspaceFiles = sanitizeWorkspaceFiles(workspaceFiles);
+  const allowedPaths = new Set([filePath, ...safeWorkspaceFiles.map(file => file.filePath)].map(normalizeFilePath));
+  const safeDraftFiles = files
+    .filter(file => file && typeof file.filePath === "string" && typeof file.updatedSource === "string")
+    .filter(file => allowedPaths.has(normalizeFilePath(file.filePath)))
+    .slice(0, 5);
+  if (!safeDraftFiles.length) return res.status(400).json({ ok: false, error: "系统 AI 未返回允许范围内的文件修改。" });
+  for (const file of safeDraftFiles) {
+    if (!file.filePath.endsWith(".lcpp")) continue;
+    const original = safeWorkspaceFiles.find(item => normalizeFilePath(item.filePath) === normalizeFilePath(file.filePath));
+    if (original && parseLingCpp(original.sourceCode).program.classes.length > 0 && parseLingCpp(file.updatedSource).program.classes.length === 0) {
+      return res.status(400).json({ ok: false, error: `系统 AI 返回的 ${file.filePath} 未通过 LingCpp 类结构校验。` });
+    }
+  }
+  const context: LingCppEditContext = {
+    filePath: normalizeFilePath(filePath), sourceCode, instruction: instruction || "系统 AI 编辑",
+    workspaceFiles: safeWorkspaceFiles,
+    moduleContext: await resolveLingCppEditModuleContext(projectId, moduleContext)
+  };
+  const proposal = proposeLingCppEdit(context, { summary: instruction || "系统 AI 编辑提案", explanation: "系统 AI 已返回完整文件草稿；该草稿经过本地路径与 LingCpp 结构校验，仍需预览确认后才能应用。", files: safeDraftFiles });
+  res.json({ ok: true, proposal });
+});
+
 app.post("/api/lingcpp/edit/apply", async (req, res) => {
   const { proposalId, sourceCode, workspaceFiles } = req.body as {
     proposalId?: string;

@@ -4581,13 +4581,13 @@ void DisplayStatus() {
           solution={solution}
           activeProjectId={activeProjectId}
           onRefreshSolution={refreshSolution}
-          onCreateProject={handleCreateSolutionProject}
+          onCreateProject={async () => { await handleCreateSolutionProject(); }}
           onSetStartupProject={handleSetStartupProject}
           onConfigureProjectReferences={handleConfigureProjectReferences}
           onToggleMultiStartupProject={handleToggleMultiStartupProject}
           onConfigureExternalProject={handleConfigureExternalProject}
           onDeleteProject={handleDeleteSolutionProject}
-          onSolutionCommand={handleSolutionBuildCommand}
+          onSolutionCommand={async (command, projectId) => { await handleSolutionBuildCommand(command, projectId); }}
           activeModuleHintId={moduleHint?.itemId}
           onShowModuleHint={handleShowModuleHint}
         />

@@ -416,6 +416,68 @@ test('built-in WebSocket client module contributes commands and deterministic C+
   assert.ok(moduleReport.includes('winhttp.lib'));
 });
 
+test('built-in EdgeView module contributes HWND embedding, browser events and JavaScript results', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
+  assert.ok(manifest);
+  assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.edgeview',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const completions = getLingCppCompletions(
+    { source: 'EdgeView_', line: 1, column: 10 },
+    { enabledModules: [module], availableModules: [module] }
+  );
+  assert.ok(completions.some(item => item.label === 'EdgeView_创建'));
+  assert.ok(completions.some(item => item.label === 'EdgeView_创建区域'));
+  assert.ok(completions.some(item => item.label === 'EdgeView_绑定事件'));
+  assert.ok(completions.some(item => item.label === 'EdgeView_设置全局代理'));
+  assert.ok(completions.some(item => item.label === 'EdgeView_创建区域代理'));
+  assert.ok(completions.some(item => item.label === 'EdgeView_执行JS'));
+  assert.ok(completions.some(item => item.label === 'EdgeView 嵌入与 JS 返回值'));
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules: [module],
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '  事件 _MainWindow_创建完毕()',
+      '    EdgeView_创建区域(1, 10, 10, 300, 400, "https://example.com", ".edgeview/cache-1")',
+      '    EdgeView_创建区域(2, 320, 10, 300, 400, "https://example.org", ".edgeview/cache-2")',
+      '    EdgeView_绑定事件(1, "导航完成", "浏览器1_导航完成")',
+      '  结束',
+      '  事件 浏览器1_导航完成()',
+      '    调试输出("浏览器1回调")',
+      '  结束',
+      '结束类'
+    ].join('\n')
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(mainCpp.includes('#include <WebView2.h>'));
+  assert.ok(mainCpp.includes('#define LINGBUILDER_EDGEVIEW_MODULE'));
+  assert.ok(mainCpp.includes('int EdgeView_创建实例(int instanceId'));
+  assert.ok(mainCpp.includes('int EdgeView_创建区域(int instanceId'));
+  assert.ok(mainCpp.includes('std::map<int, std::unique_ptr<EdgeViewInstance>> edgeViews_'));
+  assert.ok(mainCpp.includes('std::wstring EdgeView_执行JS实例'));
+  assert.ok(mainCpp.includes('add_NavigationCompleted'));
+  assert.ok(mainCpp.includes('add_WebMessageReceived'));
+  assert.ok(mainCpp.includes('add_ContextMenuRequested'));
+  assert.ok(mainCpp.includes('CreateContextMenuItem(L"刷新"'));
+  assert.ok(mainCpp.includes('EdgeView_刷新实例(instanceId);'));
+  assert.ok(mainCpp.includes('std::wstring edgeViewGlobalProxy_'));
+  assert.ok(mainCpp.includes('L"--proxy-server=" + raw->proxyServer'));
+  assert.ok(mainCpp.includes('environmentOptions->put_AdditionalBrowserArguments'));
+  assert.ok(mainCpp.includes('EdgeView_调整全部大小();'));
+  assert.ok(mainCpp.includes('WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS'));
+  assert.ok(mainCpp.includes('controller->put_IsVisible(TRUE);'));
+  assert.ok(mainCpp.includes('instance.controller->NotifyParentWindowPositionChanged();'));
+  assert.ok(mainCpp.includes('SetWindowPos(raw->host, HWND_TOP'));
+  assert.ok(mainCpp.includes('if (callback == L"浏览器1_导航完成") { 浏览器1_导航完成(); return; }'));
+  assert.ok(mainCpp.includes('EdgeView_创建区域(1, 10, 10, 300, 400, L"https://example.com", L".edgeview/cache-1");'));
+});
+
 test('built-in threading module contributes safe background task commands and C++ runtime', () => {
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.threading');
   assert.ok(manifest);
@@ -566,6 +628,41 @@ test('materializeModuleNativeDependencies copies module source, libs and runtime
   assert.ok(await exists(path.join(buildDir, 'modules', 'lingbuilder.new_emoji.ui', 'lib', 'Win32', 'new_emoji.lib')));
   assert.ok(await exists(path.join(exportDir, 'modules', 'lingbuilder.new_emoji.ui', 'bin', 'Win32', 'new_emoji.dll')));
   assert.ok(await exists(path.join(binDir, 'new_emoji.dll')));
+});
+
+test('EdgeView native dependencies restore headers and architecture loader from NuGet cache', async () => {
+  const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-edgeview-sdk-'));
+  const previousNugetPackages = process.env.NUGET_PACKAGES;
+  try {
+    const packageRoot = path.join(tempRoot, 'packages', 'microsoft.web.webview2', '1.0.9999.1', 'build', 'native');
+    await fs.mkdir(path.join(packageRoot, 'include'), { recursive: true });
+    await fs.mkdir(path.join(packageRoot, 'x86'), { recursive: true });
+    await fs.mkdir(path.join(packageRoot, 'x64'), { recursive: true });
+    await fs.writeFile(path.join(packageRoot, 'include', 'WebView2.h'), '// header', 'utf8');
+    await fs.writeFile(path.join(packageRoot, 'include', 'WebView2EnvironmentOptions.h'), '// options', 'utf8');
+    await fs.writeFile(path.join(packageRoot, 'x86', 'WebView2Loader.dll'), Buffer.from([1, 2, 3]));
+    await fs.writeFile(path.join(packageRoot, 'x64', 'WebView2Loader.dll'), Buffer.from([4, 5, 6, 7]));
+    process.env.NUGET_PACKAGES = path.join(tempRoot, 'packages');
+    const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
+    assert.ok(manifest);
+    const module: InstalledModule = { manifest, installPath: 'builtin://lingbuilder.edgeview', isBuiltin: true, isInstalled: true, diagnostics: [] };
+    const plan = await materializeModuleNativeDependencies([module], {
+      buildDir: path.join(tempRoot, 'build'),
+      sourceDir: path.join(tempRoot, 'source'),
+      binDir: path.join(tempRoot, 'bin'),
+      exportDir: path.join(tempRoot, 'export'),
+      preferredTargetId: 'windows-msvc-win32'
+    });
+    assert.equal(plan.diagnostics.length, 0);
+    assert.ok(plan.includeDirs.some(item => item.endsWith(path.join('lingbuilder.edgeview', 'include'))));
+    assert.equal(await fs.readFile(path.join(tempRoot, 'bin', 'WebView2Loader.dll')).then(value => value.length), 3);
+    assert.equal(await fs.readFile(path.join(tempRoot, 'export', 'modules', 'lingbuilder.edgeview', 'include', 'WebView2.h'), 'utf8'), '// header');
+    assert.equal(await fs.readFile(path.join(tempRoot, 'export', 'modules', 'lingbuilder.edgeview', 'bin', 'x64', 'WebView2Loader.dll')).then(value => value.length), 4);
+  } finally {
+    if (previousNugetPackages === undefined) delete process.env.NUGET_PACKAGES;
+    else process.env.NUGET_PACKAGES = previousNugetPackages;
+    await fs.rm(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('Win32 native builds never fall back to an incompatible module target', async () => {

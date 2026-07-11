@@ -87,6 +87,10 @@ const WRITABLE_EXTENSIONS = new Set([
 ]);
 
 const execFileAsync = promisify(execFile);
+const SEARCH_FILE_LIMIT = 2 * 1024 * 1024;
+const SEARCH_TOTAL_LIMIT = 64 * 1024 * 1024;
+const SEARCH_FILE_COUNT_LIMIT = 20_000;
+const TREE_NODE_LIMIT = 10_000;
 
 export type AiBridgeCompilerInfo = {
   kind: 'msvc' | 'g++' | 'clang++';
@@ -111,7 +115,8 @@ export interface AiBridgeServiceDependencies {
     exePath: string,
     objDir: string,
     cwd: string,
-    modulePlan?: ModuleNativeDependencyPlan
+    modulePlan?: ModuleNativeDependencyPlan,
+    signal?: AbortSignal
   ) => Promise<AiBridgeCompileResult>;
 }
 
@@ -159,7 +164,7 @@ export class AiBridgeService {
 
   async listWorkspaceTree(): Promise<AiBridgeTreeEntry[]> {
     try {
-      return await this.readDirectoryTree(await this.pathPolicy.getRealWorkspaceRoot(), 0);
+      return await this.readDirectoryTree(await this.pathPolicy.getRealWorkspaceRoot(), 0, { nodes: 0 });
     } catch (error) {
       await this.auditFailure('read', 'workspace.list', '.', error);
       throw error;
@@ -187,6 +192,7 @@ export class AiBridgeService {
     const include = request.include?.length ? request.include : ['src', 'config', '.lingbuilder'];
     const maxResults = Math.max(1, Math.min(request.maxResults || 100, 500));
     const matches: AiBridgeSearchMatch[] = [];
+    const budget = { files: 0, bytes: 0, deadline: Date.now() + 10_000 };
 
     try {
       for (const item of include) {
@@ -197,7 +203,7 @@ export class AiBridgeService {
           if (error?.code === 'ENOENT') continue;
           throw error;
         }
-        await this.searchPath(root, query, matches, maxResults);
+        await this.searchPath(root, query, matches, maxResults, budget);
         if (matches.length >= maxResults) break;
       }
     } catch (error) {
@@ -240,7 +246,10 @@ export class AiBridgeService {
       moduleContext: await this.getModuleContext(request.projectId),
       aiConfig: request.aiConfig
     };
-    const draft = planner ? await planner(context) : undefined;
+    if (!planner && !request.files?.length) {
+      throw new Error('当前独立 AI Bridge 未配置系统 AI planner；请由外部 AI 提供 files 完整文件草稿后再创建提案。');
+    }
+    const draft = planner ? await planner(context) : { summary: request.instruction || '外部 AI 编辑提案', explanation: '外部 AI 提供了完整文件草稿，LingBuilder 仅创建可预览提案。', files: request.files };
     const proposal = proposeLingCppEdit(context, draft);
     return { ok: true, proposal };
   }
@@ -252,20 +261,32 @@ export class AiBridgeService {
     await this.requireWriteWithAudit('edit.apply', request.proposalId, request.approved);
     const workspaceFiles = await this.resolveApplyWorkspaceFiles(request);
     const appliedFiles = applyWorkspaceEditToFiles(workspaceFiles, proposal);
-    const persistedFiles = [];
+    const persistedFiles: Array<{ filePath: string; sourceCode: string; absolutePath: string }> = [];
+    const staged: Array<{ file: typeof appliedFiles[number]; absolutePath: string; temporaryPath: string; original?: Buffer }> = [];
 
-    for (const file of appliedFiles) {
-      try {
+    try {
+      for (const file of appliedFiles) {
         const absolutePath = await this.resolveWritablePath(file.filePath);
         const format = await this.readExistingTextFileFormat(absolutePath);
         await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-        await fs.writeFile(absolutePath, encodeTextFile(file.sourceCode, format));
-        persistedFiles.push({ ...file, absolutePath });
-        await this.permissions.audit({ operation: 'write', action: 'edit.apply', ok: true, target: file.filePath });
-      } catch (error) {
-        await this.auditFailure('write', 'edit.apply', file.filePath, error);
-        throw error;
+        const temporaryPath = `${absolutePath}.${process.pid}.${Date.now()}.ai-edit.tmp`;
+        let original: Buffer | undefined;
+        try { original = await fs.readFile(absolutePath); } catch (error: any) { if (error?.code !== 'ENOENT') throw error; }
+        await fs.writeFile(temporaryPath, encodeTextFile(file.sourceCode, format));
+        staged.push({ file, absolutePath, temporaryPath, original });
       }
+      for (const item of staged) { await fs.rename(item.temporaryPath, item.absolutePath); persistedFiles.push({ ...item.file, absolutePath: item.absolutePath }); }
+      for (const file of persistedFiles) await this.permissions.audit({ operation: 'write', action: 'edit.apply', ok: true, target: file.filePath });
+    } catch (error) {
+      for (const item of staged) {
+        await fs.rm(item.temporaryPath, { force: true }).catch(() => undefined);
+        if (persistedFiles.some(file => file.absolutePath === item.absolutePath)) {
+          if (item.original) await fs.writeFile(item.absolutePath, item.original).catch(() => undefined);
+          else await fs.rm(item.absolutePath, { force: true }).catch(() => undefined);
+        }
+      }
+      await this.auditFailure('write', 'edit.apply', request.proposalId, error);
+      throw error;
     }
 
     rejectWorkspaceEdit(request.proposalId);
@@ -514,7 +535,7 @@ export class AiBridgeService {
 
     const sourcePath = path.join(sourceDir, 'main.cpp');
     const exePath = path.join(binDir, 'LingBuilderPreview.exe');
-    const compileResult = await this.compilerRunner(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan);
+    const compileResult = await this.compilerRunner(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, buildLease.signal);
     const logs = [
       ...baseLogs,
       `exe 输出目录：${binDir}`,
@@ -676,31 +697,32 @@ export class AiBridgeService {
       }));
     }
     const proposal = getWorkspaceEditProposal(request.proposalId);
-    if (!proposal?.changes[0]) return [];
-    const filePath = proposal.changes[0].filePath;
-    return [{
-      filePath,
-      sourceCode: typeof request.sourceCode === 'string'
+    if (!proposal?.changes.length) return [];
+    return await Promise.all(proposal.changes.map(async (change, index) => ({
+      filePath: change.filePath,
+      sourceCode: index === 0 && typeof request.sourceCode === 'string'
         ? normalizeLineEndings(request.sourceCode)
-        : (await this.readFile(filePath)).content
-    }];
+        : (await this.readFile(change.filePath)).content
+    })));
   }
 
-  private async readDirectoryTree(directory: string, depth: number): Promise<AiBridgeTreeEntry[]> {
-    if (depth > 5) return [];
+  private async readDirectoryTree(directory: string, depth: number, budget: { nodes: number }): Promise<AiBridgeTreeEntry[]> {
+    if (depth > 10 || budget.nodes >= TREE_NODE_LIMIT) return [];
     const entries = await fs.readdir(directory, { withFileTypes: true });
     const result: AiBridgeTreeEntry[] = [];
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (budget.nodes >= TREE_NODE_LIMIT) break;
       if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory() && IGNORED_DIRS.has(entry.name)) continue;
       const absolutePath = path.join(directory, entry.name);
       const relativePath = await this.pathPolicy.toWorkspaceRelative(absolutePath);
+      budget.nodes += 1;
       if (entry.isDirectory()) {
         result.push({
           path: relativePath,
           name: entry.name,
           type: 'directory',
-          children: await this.readDirectoryTree(absolutePath, depth + 1)
+          children: await this.readDirectoryTree(absolutePath, depth + 1, budget)
         });
       } else if (entry.isFile() && isReadableExtension(entry.name)) {
         const stat = await fs.stat(absolutePath);
@@ -710,7 +732,8 @@ export class AiBridgeService {
     return result;
   }
 
-  private async searchPath(targetPath: string, query: string, matches: AiBridgeSearchMatch[], maxResults: number): Promise<void> {
+  private async searchPath(targetPath: string, query: string, matches: AiBridgeSearchMatch[], maxResults: number, budget: { files: number; bytes: number; deadline: number }): Promise<void> {
+    if (Date.now() > budget.deadline) throw new Error('AI Bridge 搜索超过 10 秒资源上限。');
     const stat = await fs.lstat(targetPath);
     if (stat.isSymbolicLink()) return;
     if (stat.isDirectory()) {
@@ -719,11 +742,14 @@ export class AiBridgeService {
         if (matches.length >= maxResults) return;
         if (entry.isSymbolicLink()) continue;
         if (entry.isDirectory() && IGNORED_DIRS.has(entry.name)) continue;
-        await this.searchPath(path.join(targetPath, entry.name), query, matches, maxResults);
+        await this.searchPath(path.join(targetPath, entry.name), query, matches, maxResults, budget);
       }
       return;
     }
     if (!stat.isFile() || !isReadableExtension(targetPath)) return;
+    if (stat.size > SEARCH_FILE_LIMIT) return;
+    budget.files += 1; budget.bytes += stat.size;
+    if (budget.files > SEARCH_FILE_COUNT_LIMIT || budget.bytes > SEARCH_TOTAL_LIMIT) throw new Error('AI Bridge 搜索超过文件数或 64 MiB 总扫描上限。');
     const content = decodeTextFile(await fs.readFile(targetPath)).content;
     const workspacePath = await this.pathPolicy.toWorkspaceRelative(targetPath);
     const lines = content.split(/\r?\n/);
@@ -895,7 +921,8 @@ async function compileWin32Preview(
   exePath: string,
   objDir: string,
   cwd: string,
-  modulePlan?: ModuleNativeDependencyPlan
+  modulePlan?: ModuleNativeDependencyPlan,
+  signal?: AbortSignal
 ): Promise<AiBridgeCompileResult> {
   const includeArgs = (modulePlan?.includeDirs || []).flatMap(includeDir => ['/I', includeDir]);
   const moduleSources = modulePlan?.sourceFiles || [];
@@ -912,7 +939,7 @@ async function compileWin32Preview(
 
   const objectPath = path.join(objDir, 'main.obj');
   if (compiler.kind === 'msvc' && moduleSources.length > 0) {
-    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs);
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, signal);
   }
 
   const commandArgs = compiler.kind === 'msvc'
@@ -968,6 +995,7 @@ async function compileWin32Preview(
       windowsHide: true,
       windowsVerbatimArguments: command === 'cmd.exe',
       maxBuffer: 1024 * 1024 * 4
+      , signal
     });
     const linkResult = linkArgs.length > 0
       ? await execFileAsync(compiler.command, linkArgs, {
@@ -975,6 +1003,7 @@ async function compileWin32Preview(
           timeout: 60000,
           windowsHide: true,
           maxBuffer: 1024 * 1024 * 4
+          , signal
         })
       : undefined;
 
@@ -1009,7 +1038,8 @@ async function compileMsvcPreviewWithModules(
   cwd: string,
   includeArgs: string[],
   moduleSources: string[],
-  moduleLibs: string[]
+  moduleLibs: string[],
+  signal?: AbortSignal
 ): Promise<{ ok: boolean; logs: string[] }> {
   const sources = [sourcePath, ...moduleSources];
   const objectFiles = sources.map((source, index) => path.join(objDir, `${index === 0 ? 'main' : `module_${index}`}.obj`));
@@ -1038,11 +1068,11 @@ async function compileMsvcPreviewWithModules(
   try {
     const outputs: string[] = [];
     for (const args of compileCommands) {
-      const result = await runMsvcCommand(compiler, args, cwd);
+      const result = await runMsvcCommand(compiler, args, cwd, signal);
       if (result.stdout?.trim()) outputs.push(`stdout:\n${result.stdout.trim()}`);
       if (result.stderr?.trim()) outputs.push(`stderr:\n${result.stderr.trim()}`);
     }
-    const linkResult = await runMsvcCommand(compiler, linkArgs, cwd);
+    const linkResult = await runMsvcCommand(compiler, linkArgs, cwd, signal);
     if (linkResult.stdout?.trim()) outputs.push(`link stdout:\n${linkResult.stdout.trim()}`);
     if (linkResult.stderr?.trim()) outputs.push(`link stderr:\n${linkResult.stderr.trim()}`);
     return { ok: true, logs: ['编译成功。', ...outputs] };
@@ -1059,7 +1089,7 @@ async function compileMsvcPreviewWithModules(
   }
 }
 
-async function runMsvcCommand(compiler: AiBridgeCompilerInfo, commandArgs: string[], cwd: string) {
+async function runMsvcCommand(compiler: AiBridgeCompilerInfo, commandArgs: string[], cwd: string, signal?: AbortSignal) {
   const command = compiler.setupBatch ? 'cmd.exe' : compiler.command;
   const args = compiler.setupBatch
     ? ['/d', '/c', `call ${quoteCmdArg(compiler.setupBatch)} >nul && ${compiler.command} ${commandArgs.map(quoteCmdArg).join(' ')}`]
@@ -1070,6 +1100,7 @@ async function runMsvcCommand(compiler: AiBridgeCompilerInfo, commandArgs: strin
     windowsHide: true,
     windowsVerbatimArguments: command === 'cmd.exe',
     maxBuffer: 1024 * 1024 * 4
+    , signal
   });
 }
 

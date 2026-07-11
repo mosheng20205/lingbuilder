@@ -56,13 +56,8 @@ npm run ai-server -- --workspace .. --permission yolo --mcp
 | `--permission` | `preview` | 权限模式：`readonly`、`preview`、`yolo`。 |
 | `--token` | 自动生成 | 访问 HTTP API 的鉴权 token。 |
 | `--mcp` | 关闭 | 启用 MCP stdio 工具服务。 |
-| `--allow-remote` | 关闭 | 允许非本机监听。只有明确需要远程连接时使用。 |
 
-默认禁止公网监听。如果要监听所有网卡，必须显式传入：
-
-```bash
-npm run ai-server -- --workspace .. --host 0.0.0.0 --allow-remote --token local-token
-```
+AI Bridge 强制只监听回环地址。`--host` 只接受 `127.0.0.1`、`localhost` 或 `::1`。
 
 ## 3. 权限模式
 
@@ -330,7 +325,13 @@ MCP 使用 stdio JSON-RPC。服务同时启动 HTTP API，但 MCP 消息走标�
 
 MCP 工具和 HTTP API 复用同一套 `AiBridgeService`，权限、路径校验和模块上下文保持一致。
 
-## 5.1 new_emoji YOLO 构建注意事项
+## 5.1 EdgeView CLI 测试项目
+
+仓库内 `edgeview-cli-test` 项目用于验证 `lingbuilder.edgeview`。通过 `native.export` / `build.run` 请求传入项目 ID、`.lcpp` 源码和窗口模型后，CLI 会自动读取项目模块上下文、从 NuGet 缓存准备 WebView2 SDK、复制对应架构的 `WebView2Loader.dll` 并生成 Visual Studio 工程。
+
+验收时应同时确认：预览 exe 持续运行；两个 `msedgewebview2.exe` 主进程的 `--user-data-dir` 分别指向不同缓存目录；`run.log` 包含两个实例的 JS 返回值，以及导航完成和网页消息处理器日志。示例源码位于 `examples/edgeview-cli-test/src/EdgeView测试窗体.lcpp`。
+
+## 5.2 new_emoji YOLO 构建注意事项
 
 使用 `yolo` 模式自动生成 `lingbuilder.new_emoji.ui` 示例时，必须避免生成“创建完毕后立刻结束”的代码：
 
@@ -342,7 +343,7 @@ MCP 工具和 HTTP API 复用同一套 `AiBridgeService`，权限、路径校验
 ## 6. 安全规则
 
 - 不要把 AI Bridge 暴露到公网，除非你明确知道风险。
-- AI Bridge 默认只监听 `127.0.0.1`；只有同时显式指定 `--host 0.0.0.0 --allow-remote` 才允许远程监听。
+- AI Bridge 强制只监听回环地址；远程 AI 统一使用独立云端账号 API。
 - HTTP 鉴权只接受 Bearer token；不要把 token 放入查询字符串或请求 JSON。
 - 文件读取会按真实路径确认仍位于工作区内；文件树和搜索不跟随符号链接或 Windows junction，新文件写入也会拒绝链接路径链。
 - 不要把 token 发给不可信客户端。
@@ -420,11 +421,31 @@ npm run ai-server -- --workspace .. --port 17861
 
 ### 8.4 远程客户端无法连接
 
-默认只监听本机。确需远程连接时使用：
+AI Bridge 只允许本机回环连接，不再支持 `--allow-remote`。远程客户端应登录 LingBuilder 系统 AI 云端 API，不能把本地工作区 Bridge 直接暴露到网络。
 
-```bash
-npm run ai-server -- --workspace .. --host 0.0.0.0 --allow-remote --token local-token
+## 9. 0.2 安全与 CLI 变更
+
+- AI Bridge 现在强制只监听 `127.0.0.1`、`localhost` 或 `::1`；`--allow-remote` 已移除。需要远程 AI 时使用带账号、TLS、点数和限流的 LingBuilder 云端 API。
+- MCP stdio 已切换到官方 `@modelcontextprotocol/sdk`，十个工具均使用严格 JSON Schema，不再接受任意额外字段。
+- 独立 Bridge 不再把普通 instruction 降级成“追加 AI 编辑建议”假提案。外部 AI 必须在 `files[]` 中提供允许路径的完整 `updatedSource`；IDE 内嵌 planner 或系统 AI 才能根据自然语言生成草稿。
+- 编辑提案使用 UUID，30 分钟过期，最多保留 100 份；应用时核对原始文本，多文件写入失败会恢复已替换文件。
+- 搜索限制单文件 2 MiB、总扫描 64 MiB、20,000 文件、500 条结果和 10 秒；文件树限制节点数与深度。
+- 构建编译接受项目租约 `AbortSignal`，停止和关闭会中断编译器，而不再只等待固定超时。
+
+新增产品 CLI：
+
+```text
+lingbuilder doctor [--workspace <path>] [--json]
+lingbuilder auth login|logout|status [--server <url>]
+lingbuilder ai models|balance
+lingbuilder ai chat --model <alias> --prompt <text> [--json]
+lingbuilder workspace inspect [--workspace <path>] [--json]
+lingbuilder project diagnose|export|build|run|stop --request <file.json> [--yes] [--json]
 ```
+
+CLI 设备登录通过浏览器确认，刷新令牌使用 Windows DPAPI 保护文件保存；它与 AI Bridge 本地 Bearer Token 完全不同。
+
+系统 AI 云端的 SSE 在提交响应头前校验幂等键；重复键返回 HTTP 409。OpenAI-compatible 思考模型的推理增量与最终正文分离，取消结算按包含规则手册的完整云端消息上下文估算，以上行为不改变本地 AI Bridge Bearer Token 或 MCP 协议。
 
 请同时确认防火墙和网络安全策略。
 

@@ -58,6 +58,13 @@ test('AI Bridge router requires a non-empty independent token', async () => {
   );
 });
 
+test('AI Bridge MCP uses the official SDK and strict tool schemas', async () => {
+  const source = await fs.readFile(new URL('../src/services/aiBridge/mcpServer.ts', import.meta.url), 'utf8');
+  assert.match(source, /@modelcontextprotocol\/sdk\/server/u);
+  assert.match(source, /additionalProperties:\s*false/u);
+  assert.match(source, /CallToolRequestSchema/u);
+});
+
 test('AI Bridge rejects workspace path traversal', async () => {
   const workspaceRoot = await createTempWorkspace();
   const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
@@ -717,7 +724,8 @@ test('AI Bridge permission modes gate edit apply', async () => {
   const previewProposal = await previewService.proposeEdit({
     filePath: sourcePath,
     sourceCode,
-    instruction: '添加一条注释'
+    instruction: '添加一条注释',
+    files: [{ filePath: sourcePath, updatedSource: `${sourceCode}// 外部 AI 已提供完整文件草稿\n` }]
   });
   await assert.rejects(
     () => previewService.applyEdit({ proposalId: previewProposal.proposal.id }),
@@ -738,12 +746,19 @@ test('AI Bridge permission modes gate edit apply', async () => {
   const readonlyProposal = await readonlyService.proposeEdit({
     filePath: sourcePath,
     sourceCode,
-    instruction: '添加一条注释'
+    instruction: '添加一条注释',
+    files: [{ filePath: sourcePath, updatedSource: `${sourceCode}// 只读模式草稿\n` }]
   });
   await assert.rejects(
     () => readonlyService.applyEdit({ proposalId: readonlyProposal.proposal.id, approved: true }),
     /只读模式/
   );
+});
+
+test('standalone AI Bridge refuses fake local edit proposals when no planner or full draft is provided', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  await assert.rejects(() => service.proposeEdit({ filePath: 'src/main.lcpp', sourceCode: '类 Main\n结束类\n', instruction: '添加功能' }), /未配置系统 AI planner/u);
 });
 
 test('AI Bridge reads and applies edits without corrupting UTF-16 or CRLF files', async () => {
@@ -761,7 +776,8 @@ test('AI Bridge reads and applies edits without corrupting UTF-16 or CRLF files'
 
   const proposal = await service.proposeEdit({
     filePath: sourcePath,
-    instruction: '补充编码安全说明'
+    instruction: '补充编码安全说明',
+    files: [{ filePath: sourcePath, updatedSource: `${sourceCode}// 外部 AI 编码安全说明\n` }]
   });
   const applied = await service.applyEdit({ proposalId: proposal.proposal.id, approved: true });
   assert.equal(applied.ok, true);
@@ -769,7 +785,7 @@ test('AI Bridge reads and applies edits without corrupting UTF-16 or CRLF files'
   const persistedBytes = await fs.readFile(absolutePath);
   const persisted = decodeTextFile(persistedBytes);
   assert.deepEqual(persisted.format, { encoding: 'utf16le', eol: 'crlf' });
-  assert.match(persisted.content, /AI 编辑建议：补充编码安全说明/u);
+  assert.match(persisted.content, /外部 AI 编码安全说明/u);
   assert.match(persistedBytes.subarray(2).toString('utf16le'), /\r\n/u);
 });
 

@@ -141,6 +141,9 @@ function generateMainCpp(
     .map((window, index) => `    case ${index}: return new ${toCppIdentifier(window.className)}(g_windows[${index}]);`)
     .join('\n');
   const moduleCppPreamble = generateModuleCppPreamble(enabledModules);
+  const moduleFeatureDefines = enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview')
+    ? '#ifndef LINGBUILDER_EDGEVIEW_MODULE\n#define LINGBUILDER_EDGEVIEW_MODULE\n#endif'
+    : '';
 
   return `#ifndef UNICODE
 #define UNICODE
@@ -151,6 +154,7 @@ function generateMainCpp(
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+${moduleFeatureDefines}
 
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -162,6 +166,14 @@ function generateMainCpp(
 #include <richedit.h>
 #include <winhttp.h>
 #include <wincrypt.h>
+#if defined(LINGBUILDER_EDGEVIEW_MODULE) && __has_include(<WebView2.h>)
+#include <WebView2.h>
+#include <WebView2EnvironmentOptions.h>
+#include <wrl.h>
+#define LINGBUILDER_EDGEVIEW_AVAILABLE 1
+#else
+#define LINGBUILDER_EDGEVIEW_AVAILABLE 0
+#endif
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -173,6 +185,8 @@ function generateMainCpp(
 #include <string>
 #include <thread>
 #include <mutex>
+#include <memory>
+#include <map>
 #include <vector>
 
 #ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
@@ -416,6 +430,7 @@ public:
         WS_关闭();
         HTTP_关闭服务();
         WSS_关闭服务();
+        EdgeView_关闭();
         if (socketsStarted_) {
             WSACleanup();
             socketsStarted_ = false;
@@ -436,7 +451,7 @@ public:
             0,
             GENERATED_WINDOW_CLASS,
             spec_.title,
-            WS_OVERLAPPEDWINDOW,
+            WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
             windowX,
             windowY,
             windowWidth,
@@ -480,8 +495,37 @@ protected:
     std::mutex threadTasksMutex_;
     std::atomic<int> activeThreadTasks_{0};
     std::atomic<int> nextThreadTaskId_{1};
+    struct EdgeViewInstance {
+        int id = 0;
+        HWND host = nullptr;
+        bool ownsHost = false;
+        std::wstring cacheDirectory;
+        std::wstring proxyServer;
+        std::wstring lastEvent;
+        std::wstring lastEventData;
+        std::map<std::wstring, std::wstring> handlers;
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        Microsoft::WRL::ComPtr<ICoreWebView2Environment> environment;
+        Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller;
+        Microsoft::WRL::ComPtr<ICoreWebView2> webView;
+#endif
+    };
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+    HMODULE edgeViewLoader_ = nullptr;
+#endif
+    std::map<int, std::unique_ptr<EdgeViewInstance>> edgeViews_;
+    std::wstring edgeViewGlobalProxy_;
 
     virtual void OnWindowCreated() {}
+
+    virtual void DispatchEdgeViewEvent(const wchar_t* handler, int instanceId, const wchar_t* eventName, const wchar_t* data) {
+        std::wstring message = L"EdgeView 事件未绑定到中文处理器：";
+        message += handler ? handler : L"";
+        message += L" / ";
+        message += eventName ? eventName : L"";
+        调试输出(message.c_str());
+        (void)instanceId; (void)data;
+    }
 
     virtual void DispatchLingEvent(const ControlSpec& control, const wchar_t* eventName) {
         std::wstring handler = GetEventHandler(control, eventName);
@@ -507,6 +551,450 @@ protected:
     int 信息框(const wchar_t* text, UINT flags, const wchar_t* title) {
         return MessageBoxW(hwnd_, text, title && title[0] ? title : L"LingBuilder 中文 C++", flags);
     }
+
+    // 旧单实例实现保留在生成模板中但不参与编译，便于旧产物差异审查。
+#if 0
+    int EdgeView_创建(long long parentHandle, const wchar_t* address) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        EdgeView_关闭();
+        edgeViewHost_ = parentHandle ? reinterpret_cast<HWND>(static_cast<INT_PTR>(parentHandle)) : hwnd_;
+        if (!edgeViewHost_ || !IsWindow(edgeViewHost_)) {
+            调试输出(L"EdgeView 创建失败：父组件句柄无效。");
+            return 0;
+        }
+        edgeViewLoader_ = LoadLibraryW(L"WebView2Loader.dll");
+        if (!edgeViewLoader_) {
+            调试输出(L"EdgeView 创建失败：未找到 WebView2Loader.dll。请安装 WebView2 SDK 并把 Loader DLL 放到 exe 同目录。");
+            return 0;
+        }
+        using CreateEnvironmentProc = HRESULT (STDAPICALLTYPE*)(PCWSTR, PCWSTR, ICoreWebView2EnvironmentOptions*, ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler*);
+        auto createEnvironment = reinterpret_cast<CreateEnvironmentProc>(GetProcAddress(edgeViewLoader_, "CreateCoreWebView2EnvironmentWithOptions"));
+        if (!createEnvironment) {
+            调试输出(L"EdgeView 创建失败：WebView2Loader.dll 不包含所需入口。");
+            EdgeView_关闭();
+            return 0;
+        }
+        bool completed = false;
+        HRESULT result = E_FAIL;
+        auto environmentCallback = Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
+            [this, &completed, &result](HRESULT environmentResult, ICoreWebView2Environment* environment) -> HRESULT {
+                result = environmentResult;
+                if (SUCCEEDED(environmentResult) && environment) {
+                    return environment->CreateCoreWebView2Controller(edgeViewHost_, Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+                        [this, &completed, &result](HRESULT controllerResult, ICoreWebView2Controller* controller) -> HRESULT {
+                            result = controllerResult;
+                            if (SUCCEEDED(controllerResult) && controller) {
+                                edgeViewController_ = controller;
+                                controller->get_CoreWebView2(&edgeView_);
+                                EdgeView_调整大小();
+                                EdgeView_注册事件();
+                            }
+                            completed = true;
+                            return S_OK;
+                        }).Get());
+                }
+                completed = true;
+                return S_OK;
+            });
+        result = createEnvironment(nullptr, nullptr, nullptr, environmentCallback.Get());
+        if (FAILED(result) || !EdgeView_等待(&completed, 15000) || !edgeView_) {
+            调试输出(L"EdgeView 创建失败：无法初始化 WebView2 环境或等待超时。");
+            EdgeView_关闭();
+            return 0;
+        }
+        edgeViewLastEvent_ = L"浏览器创建完成";
+        edgeViewLastEventData_ = address ? address : L"";
+        if (address && address[0]) edgeView_->Navigate(address);
+        return 1;
+#else
+        (void)parentHandle; (void)address;
+        调试输出(L"EdgeView 不可用：当前 C++ 构建环境缺少 WebView2.h。请通过 NuGet 安装 Microsoft.Web.WebView2 SDK。");
+        return 0;
+#endif
+    }
+
+    int EdgeView_导航(const wchar_t* address) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        return edgeView_ && address && SUCCEEDED(edgeView_->Navigate(address)) ? 1 : 0;
+#else
+        (void)address; return 0;
+#endif
+    }
+
+    std::wstring EdgeView_执行JS(const wchar_t* script) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (!edgeView_ || !script) return L"";
+        bool completed = false;
+        std::wstring value;
+        HRESULT result = edgeView_->ExecuteScript(script, Microsoft::WRL::Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+            [&completed, &value](HRESULT error, LPCWSTR json) -> HRESULT {
+                if (SUCCEEDED(error) && json) value = json;
+                completed = true;
+                return S_OK;
+            }).Get());
+        if (FAILED(result) || !EdgeView_等待(&completed, 15000)) {
+            调试输出(L"EdgeView 执行 JavaScript 失败或等待返回值超时。");
+            return L"";
+        }
+        return value;
+#else
+        (void)script; return L"";
+#endif
+    }
+
+    std::wstring EdgeView_取最近事件() const { return edgeViewLastEvent_; }
+    std::wstring EdgeView_取事件数据() const { return edgeViewLastEventData_; }
+    int EdgeView_后退() {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        BOOL allowed = FALSE; if (!edgeView_ || FAILED(edgeView_->get_CanGoBack(&allowed)) || !allowed) return 0; edgeView_->GoBack(); return 1;
+#else
+        return 0;
+#endif
+    }
+    int EdgeView_前进() {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        BOOL allowed = FALSE; if (!edgeView_ || FAILED(edgeView_->get_CanGoForward(&allowed)) || !allowed) return 0; edgeView_->GoForward(); return 1;
+#else
+        return 0;
+#endif
+    }
+    void EdgeView_刷新() {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (edgeView_) edgeView_->Reload();
+#endif
+    }
+    void EdgeView_关闭() {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (edgeViewController_) edgeViewController_->Close();
+        edgeView_.Reset(); edgeViewController_.Reset();
+        if (edgeViewLoader_) { FreeLibrary(edgeViewLoader_); edgeViewLoader_ = nullptr; }
+#endif
+        edgeViewHost_ = nullptr;
+    }
+
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+    bool EdgeView_等待(bool* completed, DWORD timeout) {
+        DWORD started = GetTickCount();
+        MSG message = {};
+        while (!*completed && GetTickCount() - started < timeout) {
+            while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&message); DispatchMessageW(&message); }
+            MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_ALLINPUT);
+        }
+        return *completed;
+    }
+    void EdgeView_调整大小() {
+        if (!edgeViewController_ || !edgeViewHost_) return;
+        RECT bounds = {}; GetClientRect(edgeViewHost_, &bounds); edgeViewController_->put_Bounds(bounds);
+    }
+    void EdgeView_记录事件(const wchar_t* name, const wchar_t* data) {
+        edgeViewLastEvent_ = name ? name : L""; edgeViewLastEventData_ = data ? data : L"";
+    }
+    void EdgeView_注册事件() {
+        if (!edgeView_) return;
+        EventRegistrationToken token = {};
+        edgeView_->add_NavigationStarting(Microsoft::WRL::Callback<ICoreWebView2NavigationStartingEventHandler>([this](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT { LPWSTR uri = nullptr; args->get_Uri(&uri); EdgeView_记录事件(L"导航开始", uri); CoTaskMemFree(uri); return S_OK; }).Get(), &token);
+        edgeView_->add_NavigationCompleted(Microsoft::WRL::Callback<ICoreWebView2NavigationCompletedEventHandler>([this](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT { BOOL ok = FALSE; args->get_IsSuccess(&ok); EdgeView_记录事件(L"导航完成", ok ? L"成功" : L"失败"); return S_OK; }).Get(), &token);
+        edgeView_->add_DocumentTitleChanged(Microsoft::WRL::Callback<ICoreWebView2DocumentTitleChangedEventHandler>([this](ICoreWebView2* sender, IUnknown*) -> HRESULT { LPWSTR title = nullptr; sender->get_DocumentTitle(&title); EdgeView_记录事件(L"标题改变", title); CoTaskMemFree(title); return S_OK; }).Get(), &token);
+        edgeView_->add_WebMessageReceived(Microsoft::WRL::Callback<ICoreWebView2WebMessageReceivedEventHandler>([this](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT { LPWSTR message = nullptr; if (FAILED(args->TryGetWebMessageAsString(&message))) args->get_WebMessageAsJson(&message); EdgeView_记录事件(L"网页消息", message); CoTaskMemFree(message); return S_OK; }).Get(), &token);
+    }
+#endif
+#endif
+
+    EdgeViewInstance* EdgeView_查找(int instanceId) {
+        auto found = edgeViews_.find(instanceId);
+        return found == edgeViews_.end() ? nullptr : found->second.get();
+    }
+
+    int EdgeView_创建(long long parentHandle, const wchar_t* address) {
+        return EdgeView_创建实例(0, parentHandle, address, L"");
+    }
+
+    int EdgeView_创建实例(int instanceId, long long parentHandle, const wchar_t* address, const wchar_t* cacheDirectory) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (instanceId < 0) { 调试输出(L"EdgeView 创建失败：实例编号不能为负数。"); return 0; }
+        EdgeView_关闭实例(instanceId);
+        HWND host = parentHandle ? reinterpret_cast<HWND>(static_cast<INT_PTR>(parentHandle)) : hwnd_;
+        if (!host || !IsWindow(host)) { 调试输出(L"EdgeView 创建失败：父组件句柄无效。"); return 0; }
+        return EdgeView_创建核心(instanceId, host, false, address, cacheDirectory, edgeViewGlobalProxy_.c_str());
+#else
+        (void)instanceId; (void)parentHandle; (void)address; (void)cacheDirectory;
+        调试输出(L"EdgeView 不可用：构建环境缺少 WebView2.h，请恢复 Microsoft.Web.WebView2 SDK。");
+        return 0;
+#endif
+    }
+
+    int EdgeView_创建实例代理(int instanceId, long long parentHandle, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        EdgeView_关闭实例(instanceId);
+        HWND host = parentHandle ? reinterpret_cast<HWND>(static_cast<INT_PTR>(parentHandle)) : hwnd_;
+        if (!host || !IsWindow(host)) { 调试输出(L"EdgeView 创建失败：父组件句柄无效。"); return 0; }
+        return EdgeView_创建核心(instanceId, host, false, address, cacheDirectory, proxyServer);
+#else
+        (void)instanceId; (void)parentHandle; (void)address; (void)cacheDirectory; (void)proxyServer; return 0;
+#endif
+    }
+
+    int EdgeView_创建区域(int instanceId, int x, int y, int width, int height, const wchar_t* address, const wchar_t* cacheDirectory) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (width <= 0 || height <= 0) { 调试输出(L"EdgeView 创建失败：区域宽高必须大于零。"); return 0; }
+        EdgeView_关闭实例(instanceId);
+        HWND host = CreateWindowExW(WS_EX_CONTROLPARENT, L"STATIC", L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+            x, y, width, height, hwnd_, nullptr, g_instance, nullptr);
+        if (!host) { 调试输出(L"EdgeView 创建失败：无法创建浏览器承载组件。"); return 0; }
+        if (!EdgeView_创建核心(instanceId, host, true, address, cacheDirectory, edgeViewGlobalProxy_.c_str())) { DestroyWindow(host); return 0; }
+        return 1;
+#else
+        (void)instanceId; (void)x; (void)y; (void)width; (void)height; (void)address; (void)cacheDirectory;
+        return 0;
+#endif
+    }
+
+    int EdgeView_创建区域代理(int instanceId, int x, int y, int width, int height, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (width <= 0 || height <= 0) return 0;
+        EdgeView_关闭实例(instanceId);
+        HWND host = CreateWindowExW(WS_EX_CONTROLPARENT, L"STATIC", L"", WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
+            x, y, width, height, hwnd_, nullptr, g_instance, nullptr);
+        if (!host) return 0;
+        if (!EdgeView_创建核心(instanceId, host, true, address, cacheDirectory, proxyServer)) { DestroyWindow(host); return 0; }
+        return 1;
+#else
+        (void)instanceId; (void)x; (void)y; (void)width; (void)height; (void)address; (void)cacheDirectory; (void)proxyServer; return 0;
+#endif
+    }
+
+    bool EdgeView_代理有效(const wchar_t* proxyServer) const {
+        if (!proxyServer || !proxyServer[0]) return true;
+        std::wstring value(proxyServer);
+        if (value.find_first_of(L" \t\r\n\"") != std::wstring::npos) return false;
+        return value.rfind(L"http://", 0) == 0 || value.rfind(L"https://", 0) == 0 || value.rfind(L"socks5://", 0) == 0;
+    }
+    int EdgeView_设置全局代理(const wchar_t* proxyServer) {
+        if (!EdgeView_代理有效(proxyServer) || !proxyServer || !proxyServer[0]) {
+            调试输出(L"EdgeView 全局代理无效：请使用 http://、https:// 或 socks5:// 地址，且不要包含空白或引号。");
+            return 0;
+        }
+        edgeViewGlobalProxy_ = proxyServer;
+        return 1;
+    }
+    void EdgeView_清除全局代理() { edgeViewGlobalProxy_.clear(); }
+    std::wstring EdgeView_取全局代理() const { return edgeViewGlobalProxy_; }
+    std::wstring EdgeView_取实例代理(int instanceId) const {
+        auto found = edgeViews_.find(instanceId); return found == edgeViews_.end() ? L"" : found->second->proxyServer;
+    }
+
+    int EdgeView_绑定事件(int instanceId, const wchar_t* eventName, const wchar_t* handler) {
+        EdgeViewInstance* instance = EdgeView_查找(instanceId);
+        if (!instance || !eventName || !eventName[0] || !handler || !handler[0]) return 0;
+        instance->handlers[eventName] = handler;
+        return 1;
+    }
+
+    int EdgeView_等待事件(int instanceId, const wchar_t* eventName, int timeoutMilliseconds) {
+        EdgeViewInstance* instance = EdgeView_查找(instanceId);
+        if (!instance || !eventName || timeoutMilliseconds < 0) return 0;
+        DWORD started = GetTickCount(); MSG message = {};
+        while (GetTickCount() - started < static_cast<DWORD>(timeoutMilliseconds)) {
+            if (instance->lastEvent == eventName) return 1;
+            while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&message); DispatchMessageW(&message); }
+            MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_ALLINPUT);
+        }
+        return instance->lastEvent == eventName ? 1 : 0;
+    }
+
+    int EdgeView_导航实例(int instanceId, const wchar_t* address) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        EdgeViewInstance* instance = EdgeView_查找(instanceId);
+        if (!instance || !instance->webView || !address) return 0;
+        instance->lastEvent.clear(); instance->lastEventData.clear();
+        return SUCCEEDED(instance->webView->Navigate(address)) ? 1 : 0;
+#else
+        (void)instanceId; (void)address; return 0;
+#endif
+    }
+    int EdgeView_导航(const wchar_t* address) { return EdgeView_导航实例(0, address); }
+
+    std::wstring EdgeView_执行JS实例(int instanceId, const wchar_t* script) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        EdgeViewInstance* instance = EdgeView_查找(instanceId);
+        if (!instance || !instance->webView || !script) return L"";
+        bool completed = false;
+        std::wstring value;
+        HRESULT result = instance->webView->ExecuteScript(script, Microsoft::WRL::Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+            [&completed, &value](HRESULT error, LPCWSTR json) -> HRESULT {
+                if (SUCCEEDED(error) && json) value = json;
+                completed = true;
+                return S_OK;
+            }).Get());
+        if (FAILED(result) || !EdgeView_等待(&completed, 15000)) {
+            调试输出(L"EdgeView 执行 JavaScript 失败或等待返回值超时。");
+            return L"";
+        }
+        return value;
+#else
+        (void)instanceId; (void)script; return L"";
+#endif
+    }
+    std::wstring EdgeView_执行JS(const wchar_t* script) { return EdgeView_执行JS实例(0, script); }
+
+    std::wstring EdgeView_取最近事件实例(int instanceId) const {
+        auto found = edgeViews_.find(instanceId); return found == edgeViews_.end() ? L"" : found->second->lastEvent;
+    }
+    std::wstring EdgeView_取事件数据实例(int instanceId) const {
+        auto found = edgeViews_.find(instanceId); return found == edgeViews_.end() ? L"" : found->second->lastEventData;
+    }
+    std::wstring EdgeView_取最近事件() const { return EdgeView_取最近事件实例(0); }
+    std::wstring EdgeView_取事件数据() const { return EdgeView_取事件数据实例(0); }
+
+    int EdgeView_后退实例(int instanceId) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        EdgeViewInstance* instance = EdgeView_查找(instanceId); BOOL allowed = FALSE;
+        if (!instance || !instance->webView || FAILED(instance->webView->get_CanGoBack(&allowed)) || !allowed) return 0;
+        instance->webView->GoBack(); return 1;
+#else
+        (void)instanceId; return 0;
+#endif
+    }
+    int EdgeView_前进实例(int instanceId) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        EdgeViewInstance* instance = EdgeView_查找(instanceId); BOOL allowed = FALSE;
+        if (!instance || !instance->webView || FAILED(instance->webView->get_CanGoForward(&allowed)) || !allowed) return 0;
+        instance->webView->GoForward(); return 1;
+#else
+        (void)instanceId; return 0;
+#endif
+    }
+    int EdgeView_后退() { return EdgeView_后退实例(0); }
+    int EdgeView_前进() { return EdgeView_前进实例(0); }
+    void EdgeView_刷新实例(int instanceId) {
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        EdgeViewInstance* instance = EdgeView_查找(instanceId); if (instance && instance->webView) instance->webView->Reload();
+#else
+        (void)instanceId;
+#endif
+    }
+    void EdgeView_刷新() { EdgeView_刷新实例(0); }
+    void EdgeView_关闭实例(int instanceId) {
+        auto found = edgeViews_.find(instanceId);
+        if (found == edgeViews_.end()) return;
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (found->second->controller) found->second->controller->Close();
+#endif
+        if (found->second->ownsHost && found->second->host && IsWindow(found->second->host)) DestroyWindow(found->second->host);
+        edgeViews_.erase(found);
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (edgeViews_.empty() && edgeViewLoader_) { FreeLibrary(edgeViewLoader_); edgeViewLoader_ = nullptr; }
+#endif
+    }
+    void EdgeView_关闭() {
+        while (!edgeViews_.empty()) EdgeView_关闭实例(edgeViews_.begin()->first);
+    }
+
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+    int EdgeView_创建核心(int instanceId, HWND host, bool ownsHost, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer) {
+        if (!EdgeView_代理有效(proxyServer)) {
+            调试输出(L"EdgeView 创建失败：代理地址无效。");
+            return 0;
+        }
+        if (!edgeViewLoader_) edgeViewLoader_ = LoadLibraryW(L"WebView2Loader.dll");
+        if (!edgeViewLoader_) { 调试输出(L"EdgeView 创建失败：exe 同目录缺少 WebView2Loader.dll。"); return 0; }
+        using CreateEnvironmentProc = HRESULT (STDAPICALLTYPE*)(PCWSTR, PCWSTR, ICoreWebView2EnvironmentOptions*, ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler*);
+        auto createEnvironment = reinterpret_cast<CreateEnvironmentProc>(GetProcAddress(edgeViewLoader_, "CreateCoreWebView2EnvironmentWithOptions"));
+        if (!createEnvironment) { 调试输出(L"EdgeView 创建失败：Loader 入口无效。"); return 0; }
+        auto instance = std::make_unique<EdgeViewInstance>();
+        instance->id = instanceId; instance->host = host; instance->ownsHost = ownsHost;
+        instance->cacheDirectory = cacheDirectory ? cacheDirectory : L"";
+        instance->proxyServer = proxyServer ? proxyServer : L"";
+        EdgeViewInstance* raw = instance.get(); edgeViews_[instanceId] = std::move(instance);
+        bool completed = false; HRESULT asyncResult = E_FAIL;
+        auto environmentCallback = Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
+            [this, raw, &completed, &asyncResult](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
+                asyncResult = result;
+                if (FAILED(result) || !environment) { completed = true; return S_OK; }
+                raw->environment = environment;
+                return environment->CreateCoreWebView2Controller(raw->host, Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+                    [this, raw, &completed, &asyncResult](HRESULT result, ICoreWebView2Controller* controller) -> HRESULT {
+                        asyncResult = result;
+                        if (SUCCEEDED(result) && controller) {
+                            raw->controller = controller; controller->get_CoreWebView2(&raw->webView);
+                            controller->put_IsVisible(TRUE);
+                            EdgeView_调整大小(*raw); EdgeView_注册事件(*raw);
+                            ShowWindow(raw->host, SW_SHOW);
+                            SetWindowPos(raw->host, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                            InvalidateRect(raw->host, nullptr, TRUE);
+                            UpdateWindow(raw->host);
+                        }
+                        completed = true; return S_OK;
+                    }).Get());
+            });
+        Microsoft::WRL::ComPtr<CoreWebView2EnvironmentOptions> environmentOptions;
+        if (!raw->proxyServer.empty()) {
+            environmentOptions = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
+            std::wstring arguments = L"--proxy-server=" + raw->proxyServer;
+            environmentOptions->put_AdditionalBrowserArguments(arguments.c_str());
+        }
+        HRESULT startResult = createEnvironment(nullptr, raw->cacheDirectory.empty() ? nullptr : raw->cacheDirectory.c_str(), environmentOptions.Get(), environmentCallback.Get());
+        if (FAILED(startResult) || !EdgeView_等待(&completed, 15000) || FAILED(asyncResult) || !raw->webView) {
+            调试输出(L"EdgeView 创建失败：WebView2 环境初始化失败或超时。"); EdgeView_关闭实例(instanceId); return 0;
+        }
+        EdgeView_记录事件(*raw, L"浏览器创建完成", raw->cacheDirectory.c_str());
+        if (address && address[0]) raw->webView->Navigate(address);
+        return 1;
+    }
+    bool EdgeView_等待(bool* completed, DWORD timeout) {
+        DWORD started = GetTickCount(); MSG message = {};
+        while (!*completed && GetTickCount() - started < timeout) {
+            while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&message); DispatchMessageW(&message); }
+            MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_ALLINPUT);
+        }
+        return *completed;
+    }
+    void EdgeView_调整大小(EdgeViewInstance& instance) {
+        if (!instance.controller || !instance.host) return;
+        RECT bounds = {};
+        GetClientRect(instance.host, &bounds);
+        instance.controller->put_Bounds(bounds);
+        instance.controller->NotifyParentWindowPositionChanged();
+        instance.controller->put_IsVisible(IsWindowVisible(instance.host) ? TRUE : FALSE);
+    }
+    void EdgeView_调整全部大小() { for (auto& item : edgeViews_) EdgeView_调整大小(*item.second); }
+    void EdgeView_记录事件(EdgeViewInstance& instance, const wchar_t* name, const wchar_t* data) {
+        instance.lastEvent = name ? name : L""; instance.lastEventData = data ? data : L"";
+        auto handler = instance.handlers.find(instance.lastEvent);
+        if (handler != instance.handlers.end()) DispatchEdgeViewEvent(handler->second.c_str(), instance.id, instance.lastEvent.c_str(), instance.lastEventData.c_str());
+    }
+    void EdgeView_注册事件(EdgeViewInstance& instance) {
+        EventRegistrationToken token = {}; EdgeViewInstance* raw = &instance;
+        instance.webView->add_NavigationStarting(Microsoft::WRL::Callback<ICoreWebView2NavigationStartingEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT { LPWSTR value = nullptr; args->get_Uri(&value); EdgeView_记录事件(*raw, L"导航开始", value); CoTaskMemFree(value); return S_OK; }).Get(), &token);
+        instance.webView->add_NavigationCompleted(Microsoft::WRL::Callback<ICoreWebView2NavigationCompletedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT { BOOL ok = FALSE; args->get_IsSuccess(&ok); EdgeView_记录事件(*raw, L"导航完成", ok ? L"成功" : L"失败"); return S_OK; }).Get(), &token);
+        instance.webView->add_DocumentTitleChanged(Microsoft::WRL::Callback<ICoreWebView2DocumentTitleChangedEventHandler>([this, raw](ICoreWebView2* sender, IUnknown*) -> HRESULT { LPWSTR value = nullptr; sender->get_DocumentTitle(&value); EdgeView_记录事件(*raw, L"标题改变", value); CoTaskMemFree(value); return S_OK; }).Get(), &token);
+        instance.webView->add_WebMessageReceived(Microsoft::WRL::Callback<ICoreWebView2WebMessageReceivedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT { LPWSTR value = nullptr; if (FAILED(args->TryGetWebMessageAsString(&value))) args->get_WebMessageAsJson(&value); EdgeView_记录事件(*raw, L"网页消息", value); CoTaskMemFree(value); return S_OK; }).Get(), &token);
+        Microsoft::WRL::ComPtr<ICoreWebView2_11> webView11;
+        if (SUCCEEDED(instance.webView.As(&webView11)) && webView11) {
+            webView11->add_ContextMenuRequested(Microsoft::WRL::Callback<ICoreWebView2ContextMenuRequestedEventHandler>(
+                [this, raw](ICoreWebView2*, ICoreWebView2ContextMenuRequestedEventArgs* args) -> HRESULT {
+                    Microsoft::WRL::ComPtr<ICoreWebView2ContextMenuItemCollection> menuItems;
+                    if (FAILED(args->get_MenuItems(&menuItems)) || !menuItems) return S_OK;
+                    Microsoft::WRL::ComPtr<ICoreWebView2Environment9> environment9;
+                    if (!raw->environment || FAILED(raw->environment.As(&environment9)) || !environment9) return S_OK;
+                    Microsoft::WRL::ComPtr<ICoreWebView2ContextMenuItem> refreshItem;
+                    if (FAILED(environment9->CreateContextMenuItem(L"刷新", nullptr, COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND_COMMAND, &refreshItem)) || !refreshItem) return S_OK;
+                    EventRegistrationToken selectedToken = {};
+                    refreshItem->add_CustomItemSelected(Microsoft::WRL::Callback<ICoreWebView2CustomItemSelectedEventHandler>(
+                        [this, instanceId = raw->id](ICoreWebView2ContextMenuItem*, IUnknown*) -> HRESULT {
+                            EdgeView_刷新实例(instanceId);
+                            return S_OK;
+                        }).Get(), &selectedToken);
+                    UINT32 count = 0;
+                    menuItems->get_Count(&count);
+                    menuItems->InsertValueAtIndex(count, refreshItem.Get());
+                    return S_OK;
+                }).Get(), &token);
+        }
+    }
+#else
+    void EdgeView_调整全部大小() {}
+#endif
 
     std::wstring 选择系统项目(const wchar_t* title, bool save, bool folder) {
         IFileDialog* dialog = nullptr;
@@ -1590,6 +2078,11 @@ private:
             RebuildControls();
             OnWindowCreated();
             return 0;
+        case WM_SIZE:
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+            EdgeView_调整全部大小();
+#endif
+            return 0;
         case WM_COMMAND: {
             int controlId = LOWORD(wParam);
             int notification = HIWORD(wParam);
@@ -2129,6 +2622,13 @@ function findGeneratedStatementLine(lines: string[], code: string, fromLine: num
 
 function generateModuleCppPreamble(enabledModules: InstalledModule[]): string {
   const lines: string[] = [];
+  enabledModules.forEach(module => {
+    const target = getPreferredModuleTarget(module);
+    (target?.defines || []).forEach(define => {
+      const safeDefine = toCppDefineIdentifier(define);
+      lines.push(`#ifndef ${safeDefine}\n#define ${safeDefine}\n#endif`);
+    });
+  });
   enabledModules
     .filter(module => !module.isBuiltin)
     .forEach(module => {
@@ -2142,10 +2642,6 @@ function generateModuleCppPreamble(enabledModules: InstalledModule[]): string {
       (target?.sources || []).forEach(source => lines.push(`// 模块源码: ${source}`));
       (target?.libs || []).forEach(lib => lines.push(`#pragma comment(lib, "${escapeWideString(`${modulePath}/${lib}`)}")`));
       (target?.runtimeFiles || []).forEach(runtimeFile => lines.push(`// 模块运行时文件: ${runtimeFile}`));
-      (target?.defines || []).forEach(define => {
-        const safeDefine = toCppDefineIdentifier(define);
-        lines.push(`#ifndef ${safeDefine}\n#define ${safeDefine}\n#endif`);
-      });
     });
   return lines.join('\n');
 }
@@ -2175,16 +2671,22 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
   const className = toCppIdentifier(window.className);
   const sourceClass = findLingCppClassForWindow(program, window);
   const handlers = getWindowHandlers(window);
+  const sourceEventHandlers = (sourceClass?.methods || []).filter(method => method.kind === 'event').map(method => method.name);
   const windowCreatedHandler = findWindowCreatedHandler(window, program);
+  const allEventHandlers = [...new Set([...handlers, ...sourceEventHandlers])];
   const methodHandlers = windowCreatedHandler
-    ? [windowCreatedHandler, ...handlers.filter(handler => handler !== windowCreatedHandler)]
-    : handlers;
+    ? [windowCreatedHandler, ...allEventHandlers.filter(handler => handler !== windowCreatedHandler)]
+    : allEventHandlers;
   const dispatchCases = handlers
     .map(handler => `        if (handler == L"${escapeWideString(handler)}") { ${toCppIdentifier(handler)}(); return; }`)
     .join('\n') || '        (void)control; (void)eventName;';
   const eventMethods = methodHandlers
     .map(handler => generateHandlerMethod(handler, findLingCppMethod(program, handler), enabledModules));
   const userMethods = (sourceClass?.methods || []).filter(method => method.kind === 'method');
+  const edgeCallbackMethods = (sourceClass?.methods || []).filter(method => method.parameters.length === 0 && (method.kind === 'event' || method.kind === 'method'));
+  const edgeDispatchCases = edgeCallbackMethods
+    .map(method => `        if (callback == L"${escapeWideString(method.name)}") { ${toCppIdentifier(method.name)}(); return; }`)
+    .join('\n');
   const publicUserMethods = userMethods.filter(method => method.access === '公开').map(method => generateUserMethod(method, enabledModules));
   const protectedUserMethods = userMethods.filter(method => method.access === '保护').map(method => generateUserMethod(method, enabledModules));
   const privateUserMethods = userMethods.filter(method => method.access !== '公开' && method.access !== '保护').map(method => generateUserMethod(method, enabledModules));
@@ -2206,6 +2708,11 @@ ${windowCreatedOverride}
         std::wstring handler = GetEventHandler(control, eventName);
 ${dispatchCases}
         LingWindowBase::DispatchLingEvent(control, eventName);
+    }
+    void DispatchEdgeViewEvent(const wchar_t* handler, int instanceId, const wchar_t* eventName, const wchar_t* data) override {
+        std::wstring callback = handler ? handler : L"";
+${edgeDispatchCases || '        (void)callback;'}
+        LingWindowBase::DispatchEdgeViewEvent(handler, instanceId, eventName, data);
     }
 ${protectedUserMethodBlock}
 

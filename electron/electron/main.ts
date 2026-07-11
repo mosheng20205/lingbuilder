@@ -16,6 +16,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, getArgumentValue, resolveWorkspaceDropTarget } from './workspaceService';
+import { CloudAccountService } from './cloudAccountService';
 
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:3001/';
 const SERVER_READY_PREFIX = 'LINGBUILDER_SERVER_READY ';
@@ -76,6 +77,10 @@ function moduleManualPath(): string {
 function credentialPath(): string { return path.join(app.getPath('userData'), 'credentials', 'ai-api-key.bin'); }
 async function readAiCredential(): Promise<string> { try { if (!safeStorage.isEncryptionAvailable()) return ''; const encrypted = await fs.readFile(credentialPath()); return safeStorage.decryptString(encrypted); } catch { return ''; } }
 async function writeAiCredential(value: string): Promise<void> { if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统不支持安全凭据存储。'); const file = credentialPath(); await fs.mkdir(path.dirname(file), { recursive: true }); if (!value) { await fs.rm(file, { force: true }); return; } const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(value)); await fs.rename(temporary, file); }
+function cloudRefreshPath(): string { return path.join(app.getPath('userData'), 'credentials', 'cloud-refresh-token.bin'); }
+async function readCloudRefresh(): Promise<string> { try { if (!safeStorage.isEncryptionAvailable()) return ''; return safeStorage.decryptString(await fs.readFile(cloudRefreshPath())); } catch { return ''; } }
+async function writeCloudRefresh(value: string): Promise<void> { if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统不支持安全账号凭据存储。'); const file = cloudRefreshPath(); await fs.mkdir(path.dirname(file), { recursive: true }); if (!value) { await fs.rm(file, { force: true }); return; } const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(value)); await fs.rename(temporary, file); }
+const cloudAccountService = new CloudAccountService(process.env.LINGBUILDER_CLOUD_API_URL || 'http://127.0.0.1:17900', readCloudRefresh, writeCloudRefresh);
 
 async function startPackagedRendererServer(workspaceRoot: string): Promise<ServerReadyInfo> {
   await stopRendererServer();
@@ -427,6 +432,15 @@ function registerIpcHandlers(): void {
   ipcMain.handle('credentials:ai:get', () => readAiCredential());
   ipcMain.handle('credentials:ai:set', (_event, value: string) => writeAiCredential(typeof value === 'string' ? value.slice(0, 16_384) : ''));
   ipcMain.handle('credentials:ai:delete', () => writeAiCredential(''));
+  ipcMain.handle('cloud-account:register', (_event, value: any) => cloudAccountService.register(String(value?.email || ''), String(value?.password || '')));
+  ipcMain.handle('cloud-account:verify-email', (_event, token: string) => cloudAccountService.verifyEmail(String(token || '')));
+  ipcMain.handle('cloud-account:login', (_event, value: any) => cloudAccountService.login(String(value?.email || ''), String(value?.password || '')));
+  ipcMain.handle('cloud-account:logout', () => cloudAccountService.logout());
+  ipcMain.handle('cloud-account:session', () => cloudAccountService.snapshot());
+  ipcMain.handle('cloud-account:models', () => cloudAccountService.models());
+  ipcMain.handle('cloud-account:balance', () => cloudAccountService.balance());
+  ipcMain.handle('cloud-ai:start', async (event, kind: 'chat'|'edit', payload: unknown) => cloudAccountService.startAi(kind, payload, (requestKey, streamEvent) => event.sender.send('cloud-ai:event', requestKey, streamEvent)));
+  ipcMain.handle('cloud-ai:cancel', (_event, requestKey: string) => cloudAccountService.cancel(requestKey));
   ipcMain.handle('workspace:get-current', () => activeWorkspace);
   ipcMain.handle('workspace:list-recent', () => workspaceService.listRecentWorkspaces());
   ipcMain.handle('workspace:forget-recent', (_event, workspacePath: string) => workspaceService.forgetWorkspace(workspacePath));
@@ -509,6 +523,7 @@ app.whenReady().then(async () => {
     configureRendererSession(rendererOrigin, rendererSessionToken);
   }
 
+  await cloudAccountService.initialize().catch(error => console.warn(`系统 AI 账号恢复失败：${error instanceof Error ? error.message : String(error)}`));
   registerIpcHandlers();
   await createMainWindow();
   app.on('activate', () => {
