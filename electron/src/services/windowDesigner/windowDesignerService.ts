@@ -201,6 +201,7 @@ export const createDefaultWindowProject = (): LingWindowProject => ({
   schemaVersion: 2,
   id: 'lingbuilder-ui-project',
   name: '太空冒险中文桌面应用',
+  resources: [],
   windows: [
     {
       id: 'main-window',
@@ -508,7 +509,7 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
   const sourceProject = state?.project && Array.isArray(state.project.windows) && state.project.windows.length > 0
     ? state.project
     : fallbackProject;
-  let projectChanged = sourceProject.schemaVersion !== 2;
+  let projectChanged = sourceProject.schemaVersion !== 2 || !Array.isArray(sourceProject.resources);
   const normalizedWindows = sourceProject.windows.map(window => {
     const hierarchyControls = normalizeControlHierarchy(window.controls || []);
     let controlsChanged = hierarchyControls !== window.controls;
@@ -521,7 +522,7 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
     projectChanged = true;
     return { ...window, controls };
   });
-  const project = projectChanged ? { ...sourceProject, schemaVersion: 2 as const, windows: normalizedWindows } : sourceProject;
+  const project = projectChanged ? { ...sourceProject, schemaVersion: 2 as const, resources: sourceProject.resources || [], windows: normalizedWindows } : sourceProject;
   const activeWindowId = project.windows.some(window => window.id === state?.activeWindowId)
     ? state!.activeWindowId!
     : project.windows[0].id;

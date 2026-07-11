@@ -65,11 +65,49 @@ export interface LingWindowModel {
   events?: LingEventBinding;
 }
 
+export interface LingImageListResource {
+  id: string;
+  type: 'ImageList';
+  name: string;
+  imageWidth: number;
+  imageHeight: number;
+  images: string[];
+}
+
+export interface LingToolTipResource {
+  id: string;
+  type: 'ToolTip';
+  name: string;
+  targetControlId: string;
+  text: string;
+  initialDelay: number;
+}
+
+export interface LingPropertySheetPage {
+  id: string;
+  title: string;
+  content: string;
+  /** 可选的设计器窗口模板；其全部控件会作为该属性页的真实子 HWND 创建。 */
+  sourceWindowId?: string;
+}
+
+export interface LingPropertySheetResource {
+  id: string;
+  type: 'PropertySheet';
+  name: string;
+  title: string;
+  pages: LingPropertySheetPage[];
+  appliedHandler?: string;
+}
+
+export type LingDesignerResource = LingImageListResource | LingToolTipResource | LingPropertySheetResource;
+
 export interface LingWindowProject {
   schemaVersion?: 2;
   id: string;
   name: string;
   windows: LingWindowModel[];
+  resources?: LingDesignerResource[];
 }
 
 export interface LingDesignerEventInfo {

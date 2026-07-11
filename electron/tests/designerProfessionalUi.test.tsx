@@ -14,3 +14,28 @@ test('designer exposes the selected window created event instead of the control 
   assert.match(source, /window\.events\?\.Loaded\?\.trim\(\) \|\| `_\$\{window\.className\}_创建完毕`/u);
 });
 test('RC editor exposes load, editable entries, save and conflict errors',async()=>{ const source=await fs.readFile(path.resolve(import.meta.dirname,'../src/components/RcResourcePanel.tsx'),'utf8'); assert.match(source,/C\+\+ RC 资源编辑器/u); assert.match(source,/\/api\/resources\/rc/u); assert.match(source,/打开其他 \.rc/u); assert.match(source,/保存/u); assert.match(source,/role="alert"/u); });
+
+test('designer exposes an ImageList resource editor and resource-backed control selector', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /项目 \/ 图像列表资源/u);
+  assert.match(source, /每行一个工作区内图片路径/u);
+  assert.match(source, /definition\.key === 'imageListId'/u);
+  assert.match(source, /不使用图像列表/u);
+});
+
+test('designer uses structured collection editors instead of JSON array textareas', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /StructuredCollectionEditor/u);
+  assert.match(source, /TreeNodeCollectionEditor/u);
+  assert.match(source, /单元格（Tab 分隔）/u);
+  assert.doesNotMatch(source, /请输入合法的 JSON 数组/u);
+});
+
+test('designer exposes dedicated ToolTip and PropertySheet resource editors', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /BehaviorResourceEditor/u);
+  assert.match(source, /工具提示目标控件/u);
+  assert.match(source, /添加属性页/u);
+  assert.match(source, /属性页_显示/u);
+  assert.match(source, /属性页控件模板窗口/u);
+});

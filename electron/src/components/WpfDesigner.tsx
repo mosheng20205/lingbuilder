@@ -58,6 +58,10 @@ import {
 import {
   LingControl,
   LingControlType,
+  LingDesignerResource,
+  LingImageListResource,
+  LingPropertySheetResource,
+  LingToolTipResource,
   LingWindowModel,
   LingWindowOpenPlacement,
   LingWindowProject
@@ -1361,6 +1365,17 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
           <div className="flex-1 overflow-y-auto p-3 space-y-4">
             {activeInspectorTab === 'properties' && (
               <>
+                <ImageListResourceEditor
+                  resources={(project.resources || []).filter((resource): resource is LingImageListResource => resource.type === 'ImageList')}
+                  isDarkMode={isDarkMode}
+                  onChange={resources => setProject(previous => ({ ...previous, resources: [...(previous.resources || []).filter(resource => resource.type !== 'ImageList'), ...resources] }))}
+                />
+                <BehaviorResourceEditor
+                  resources={project.resources || []}
+                  windows={project.windows}
+                  isDarkMode={isDarkMode}
+                  onChange={resources => setProject(previous => ({ ...previous, resources }))}
+                />
                 {selectedControlId === null ? (
                   <WindowProperties
                     window={activeWindow}
@@ -1371,6 +1386,7 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
                   <ControlProperties
                     control={selectedControl}
                     controls={activeWindow.controls}
+                    imageLists={(project.resources || []).filter((resource): resource is LingImageListResource => resource.type === 'ImageList')}
                     isDarkMode={isDarkMode}
                     onChange={updateSelectedControl}
                     onDelete={handleDeleteControl}
@@ -1852,15 +1868,96 @@ function WindowProperties({
   );
 }
 
+function BehaviorResourceEditor({ resources, windows, isDarkMode, onChange }: { resources: LingDesignerResource[]; windows: LingWindowModel[]; isDarkMode: boolean; onChange: (resources: LingDesignerResource[]) => void }) {
+  const controls = windows.flatMap(window => window.controls);
+  const tooltips = resources.filter((resource): resource is LingToolTipResource => resource.type === 'ToolTip');
+  const sheets = resources.filter((resource): resource is LingPropertySheetResource => resource.type === 'PropertySheet');
+  const replace = (resource: LingDesignerResource) => onChange(resources.map(item => item.id === resource.id ? resource : item));
+  const remove = (id: string) => onChange(resources.filter(item => item.id !== id));
+  const uniqueId = (prefix: string) => { let index = 1; while (resources.some(resource => resource.id === `${prefix}-${index}`)) index += 1; return `${prefix}-${index}`; };
+  const inputClass = `w-full rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`;
+  return <PropertyGroup title={`项目 / 行为与属性页（${tooltips.length + sheets.length}）`} isDarkMode={isDarkMode} defaultOpen={false}>
+    <div className="space-y-2 p-2">
+      {tooltips.map(resource => <div key={resource.id} className={`space-y-1 rounded border p-2 ${isDarkMode ? 'border-[#34343d]' : 'border-slate-200'}`}>
+        <div className="flex items-center gap-1"><span className="text-[10px] font-semibold text-cyan-500">ToolTip · {resource.name}</span><button type="button" onClick={() => remove(resource.id)} className="ml-auto text-red-400"><Trash2 className="h-3 w-3" /></button></div>
+        <select aria-label="工具提示目标控件" value={resource.targetControlId} onChange={event => replace({ ...resource, targetControlId: event.target.value })} className={inputClass}><option value="">选择目标控件</option>{controls.map(control => <option key={control.id} value={control.id}>{control.name}</option>)}</select>
+        <input aria-label="工具提示文字" value={resource.text} onChange={event => replace({ ...resource, text: event.target.value })} placeholder="提示文字" className={inputClass} />
+        <input aria-label="工具提示延迟" type="number" min={0} value={resource.initialDelay} onChange={event => replace({ ...resource, initialDelay: Math.max(0, Number(event.target.value) || 0) })} className={inputClass} />
+      </div>)}
+      {sheets.map(resource => <div key={resource.id} className={`space-y-1 rounded border p-2 ${isDarkMode ? 'border-[#34343d]' : 'border-slate-200'}`}>
+        <div className="flex items-center gap-1"><span className="text-[10px] font-semibold text-violet-500">PropertySheet · {resource.name}</span><button type="button" onClick={() => remove(resource.id)} className="ml-auto text-red-400"><Trash2 className="h-3 w-3" /></button></div>
+        <input aria-label="属性页窗口标题" value={resource.title} onChange={event => replace({ ...resource, title: event.target.value })} className={inputClass} />
+        <input aria-label="属性页应用事件处理器" value={resource.appliedHandler || ''} onChange={event => replace({ ...resource, appliedHandler: event.target.value })} placeholder="如：_设置属性页_属性被应用" className={inputClass} />
+        {resource.pages.map((page, index) => <div key={page.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-1">
+          <input aria-label="属性页标题" value={page.title} onChange={event => replace({ ...resource, pages: resource.pages.map((item, row) => row === index ? { ...item, title: event.target.value } : item) })} className={inputClass} />
+          <input aria-label="属性页内容" value={page.content} onChange={event => replace({ ...resource, pages: resource.pages.map((item, row) => row === index ? { ...item, content: event.target.value } : item) })} className={inputClass} />
+          <button type="button" onClick={() => replace({ ...resource, pages: resource.pages.filter((_, row) => row !== index) })} className="text-red-400">×</button>
+          <select aria-label="属性页控件模板窗口" value={page.sourceWindowId || ''} onChange={event => replace({ ...resource, pages: resource.pages.map((item, row) => row === index ? { ...item, sourceWindowId: event.target.value || undefined } : item) })} className={`${inputClass} col-span-2`}><option value="">仅显示页面文字</option>{windows.map(window => <option key={window.id} value={window.id}>{window.title}（{window.controls.length} 个控件）</option>)}</select>
+        </div>)}
+        <button type="button" onClick={() => replace({ ...resource, pages: [...resource.pages, { id: `page-${resource.pages.length + 1}`, title: `页面 ${resource.pages.length + 1}`, content: '' }] })} className="w-full text-[9px] text-emerald-500">+ 添加属性页</button>
+        <div className="text-[9px] text-slate-500">中文代码调用：属性页_显示(&quot;{resource.id}&quot;)</div>
+      </div>)}
+      <div className="flex gap-1">
+        <button type="button" onClick={() => { const id = uniqueId('tooltip'); onChange([...resources, { id, type: 'ToolTip', name: `工具提示 ${tooltips.length + 1}`, targetControlId: '', text: '提示文字', initialDelay: 500 }]); }} className="flex-1 rounded border border-cyan-500/30 py-1 text-[9px] text-cyan-500">+ ToolTip</button>
+        <button type="button" onClick={() => { const id = uniqueId('property-sheet'); onChange([...resources, { id, type: 'PropertySheet', name: `属性页 ${sheets.length + 1}`, title: '属性', pages: [{ id: 'page-1', title: '常规', content: '' }] }]); }} className="flex-1 rounded border border-violet-500/30 py-1 text-[9px] text-violet-500">+ PropertySheet</button>
+      </div>
+    </div>
+  </PropertyGroup>;
+}
+
+function ImageListResourceEditor({
+  resources,
+  isDarkMode,
+  onChange
+}: {
+  resources: LingImageListResource[];
+  isDarkMode: boolean;
+  onChange: (resources: LingImageListResource[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const update = (id: string, fields: Partial<LingImageListResource>) => onChange(resources.map(resource => resource.id === id ? { ...resource, ...fields } : resource));
+  const add = () => {
+    let suffix = resources.length + 1;
+    while (resources.some(resource => resource.id === `images-${suffix}`)) suffix += 1;
+    onChange([...resources, { id: `images-${suffix}`, type: 'ImageList', name: `图像列表 ${suffix}`, imageWidth: 16, imageHeight: 16, images: [] }]);
+    setOpen(true);
+  };
+  return (
+    <PropertyGroup title={`项目 / 图像列表资源（${resources.length}）`} isDarkMode={isDarkMode} defaultOpen={false}>
+      <div className="space-y-2 p-2">
+        <button type="button" onClick={() => setOpen(value => !value)} className="w-full rounded border border-cyan-500/30 px-2 py-1 text-[10px] text-cyan-500">{open ? '收起资源编辑器' : '管理 ImageList'}</button>
+        {open && resources.map(resource => (
+          <div key={resource.id} className={`space-y-1 rounded border p-2 ${isDarkMode ? 'border-[#34343d] bg-black/10' : 'border-slate-200 bg-white'}`}>
+            <div className="flex gap-1">
+              <input aria-label="图像列表名称" value={resource.name} onChange={event => update(resource.id, { name: event.target.value })} className={`min-w-0 flex-1 rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
+              <button type="button" aria-label={`删除图像列表 ${resource.name}`} onClick={() => onChange(resources.filter(item => item.id !== resource.id))} className="rounded px-1 text-red-400"><Trash2 className="h-3 w-3" /></button>
+            </div>
+            <div className="text-[9px] text-slate-500">资源 ID：{resource.id}</div>
+            <div className="flex gap-1">
+              <input aria-label="图像宽度" type="number" min={1} value={resource.imageWidth} onChange={event => update(resource.id, { imageWidth: Math.max(1, Number(event.target.value) || 1) })} className={`w-1/2 rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
+              <input aria-label="图像高度" type="number" min={1} value={resource.imageHeight} onChange={event => update(resource.id, { imageHeight: Math.max(1, Number(event.target.value) || 1) })} className={`w-1/2 rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
+            </div>
+            <textarea aria-label="图像文件列表" value={resource.images.join('\n')} onChange={event => update(resource.id, { images: event.target.value.split(/\r?\n/).map(item => item.trim()).filter(Boolean) })} rows={3} placeholder="每行一个工作区内图片路径" className={`w-full resize-y rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
+          </div>
+        ))}
+        {open && resources.length === 0 && <div className="text-[10px] text-slate-500">尚未创建图像列表资源。</div>}
+        <button type="button" onClick={add} className="flex w-full items-center justify-center gap-1 rounded border border-emerald-500/30 px-2 py-1 text-[10px] text-emerald-500"><Plus className="h-3 w-3" />新建图像列表</button>
+      </div>
+    </PropertyGroup>
+  );
+}
+
 function ControlProperties({
   control,
   controls,
+  imageLists,
   isDarkMode,
   onChange,
   onDelete
 }: {
   control: LingControl | null;
   controls: LingControl[];
+  imageLists: LingImageListResource[];
   isDarkMode: boolean;
   onChange: (fields: Partial<LingControl>) => void;
   onDelete: () => void;
@@ -1973,9 +2070,11 @@ function ControlProperties({
           {controlDefinition.properties.map(property => (
             <ControlPropertyField
               key={property.key}
+              controlType={control.type}
               definition={property}
               value={control.properties?.[property.key] ?? property.defaultValue}
               controls={controls}
+              imageLists={imageLists}
               isDarkMode={isDarkMode}
               onChange={value => updateControlProperty(property.key, value)}
             />
@@ -2082,28 +2181,113 @@ function ControlEvents({
   );
 }
 
-function ControlPropertyField({
-  definition,
+type CollectionField = { key: string; label: string; kind?: 'number' | 'control' | 'style' | 'cells' };
+
+function StructuredCollectionEditor({
+  controlType,
+  propertyKey,
   value,
   controls,
   isDarkMode,
   onChange
 }: {
-  key?: React.Key;
-  definition: Win32ControlPropertyDefinition;
+  controlType: LingControlType;
+  propertyKey: string;
   value: Win32ControlPropertyValue;
   controls: LingControl[];
   isDarkMode: boolean;
   onChange: (value: Win32ControlPropertyValue) => void;
 }) {
-  const complex = ['columns', 'treeNodes', 'tabs'].includes(definition.type);
-  const serialized = complex ? JSON.stringify(value, null, 2) : '';
-  const [draft, setDraft] = useState(serialized);
-  const [invalid, setInvalid] = useState(false);
+  if (propertyKey === 'nodes') return <TreeNodeCollectionEditor value={value} isDarkMode={isDarkMode} onChange={onChange} />;
+  const items = Array.isArray(value) ? value.map(item => typeof item === 'string' ? { title: item } : { ...(item as Record<string, unknown>) }) : [];
+  const fields: CollectionField[] = propertyKey === 'tabs'
+    ? [{ key: 'id', label: '页面 ID' }, { key: 'title', label: '标题' }, { key: 'image', label: '图片', kind: 'number' }]
+    : propertyKey === 'buttons'
+      ? [{ key: 'id', label: '命令 ID', kind: 'number' }, { key: 'title', label: '文字' }, { key: 'image', label: '图片', kind: 'number' }, { key: 'style', label: '样式', kind: 'style' }]
+      : propertyKey === 'parts'
+        ? [{ key: 'title', label: '文字' }, { key: 'width', label: '宽度', kind: 'number' }]
+        : propertyKey === 'bands'
+          ? [{ key: 'id', label: '带区 ID' }, { key: 'title', label: '文字' }, { key: 'childControl', label: '子控件', kind: 'control' }, { key: 'width', label: '宽度', kind: 'number' }]
+          : propertyKey === 'items' && controlType === 'ListView'
+            ? [{ key: 'id', label: '行 ID' }, { key: 'cells', label: '单元格（Tab 分隔）', kind: 'cells' }, { key: 'image', label: '图片', kind: 'number' }]
+            : [{ key: 'title', label: '标题' }, { key: 'width', label: '宽度', kind: 'number' }, { key: 'image', label: '图片', kind: 'number' }];
+  const defaults = Object.fromEntries(fields.map(field => [field.key, field.kind === 'number' ? (field.key === 'image' ? -1 : field.key === 'width' ? 120 : items.length + 1) : field.kind === 'style' ? 'button' : field.kind === 'cells' ? [''] : '']));
+  const commit = (next: Array<Record<string, unknown>>) => onChange(next);
+  const inputClass = `w-full rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`;
+  return (
+    <div className="w-full space-y-1.5" aria-label={`${propertyKey} 结构化集合编辑器`}>
+      {items.map((item, index) => (
+        <div key={index} className={`space-y-1 rounded border p-1.5 ${isDarkMode ? 'border-[#34343d]' : 'border-slate-200'}`}>
+          {fields.map(field => (
+            <label key={field.key} className="grid grid-cols-[78px_minmax(0,1fr)] items-center gap-1 text-[9px] text-slate-500">
+              <span>{field.label}</span>
+              {field.kind === 'control' ? (
+                <select value={String(item[field.key] ?? '')} onChange={event => commit(items.map((current, row) => row === index ? { ...current, [field.key]: event.target.value } : current))} className={inputClass}>
+                  <option value="">未绑定</option>{controls.map(control => <option key={control.id} value={control.id}>{control.name}</option>)}
+                </select>
+              ) : field.kind === 'style' ? (
+                <select value={String(item[field.key] ?? 'button')} onChange={event => commit(items.map((current, row) => row === index ? { ...current, [field.key]: event.target.value } : current))} className={inputClass}>
+                  <option value="button">普通按钮</option><option value="check">切换按钮</option><option value="separator">分隔符</option><option value="dropdown">下拉按钮</option>
+                </select>
+              ) : (
+                <input type={field.kind === 'number' ? 'number' : 'text'} value={field.kind === 'cells' ? (Array.isArray(item[field.key]) ? (item[field.key] as unknown[]).join('\t') : String(item[field.key] ?? '')) : String(item[field.key] ?? '')} onChange={event => {
+                  const nextValue = field.kind === 'number' ? Number(event.target.value) : field.kind === 'cells' ? event.target.value.split('\t') : event.target.value;
+                  commit(items.map((current, row) => row === index ? { ...current, [field.key]: nextValue } : current));
+                }} className={inputClass} />
+              )}
+            </label>
+          ))}
+          <div className="flex justify-end gap-1">
+            <button type="button" disabled={index === 0} onClick={() => { const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; commit(next); }} className="px-1 text-cyan-500 disabled:opacity-30">上移</button>
+            <button type="button" disabled={index === items.length - 1} onClick={() => { const next = [...items]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; commit(next); }} className="px-1 text-cyan-500 disabled:opacity-30">下移</button>
+            <button type="button" onClick={() => commit(items.filter((_, row) => row !== index))} className="px-1 text-red-400">删除</button>
+          </div>
+        </div>
+      ))}
+      <button type="button" onClick={() => commit([...items, defaults])} className="w-full rounded border border-emerald-500/30 py-1 text-[10px] text-emerald-500">+ 添加项目</button>
+    </div>
+  );
+}
 
-  useEffect(() => {
-    if (complex) setDraft(serialized);
-  }, [complex, serialized]);
+function TreeNodeCollectionEditor({ value, isDarkMode, onChange }: { value: Win32ControlPropertyValue; isDarkMode: boolean; onChange: (value: Win32ControlPropertyValue) => void }) {
+  const nodes = Array.isArray(value) ? value.map(item => ({ ...(item as Record<string, unknown>) })) : [];
+  const updateAt = (source: Array<Record<string, unknown>>, path: number[], updater: (items: Array<Record<string, unknown>>, index: number) => Array<Record<string, unknown>>): Array<Record<string, unknown>> => {
+    const [index, ...rest] = path;
+    if (rest.length === 0) return updater(source, index);
+    return source.map((node, row) => row === index ? { ...node, children: updateAt(Array.isArray(node.children) ? node.children as Array<Record<string, unknown>> : [], rest, updater) } : node);
+  };
+  const inputClass = `w-full rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`;
+  const render = (items: Array<Record<string, unknown>>, parentPath: number[] = []): React.ReactNode => items.map((node, index) => {
+    const path = [...parentPath, index];
+    const children = Array.isArray(node.children) ? node.children as Array<Record<string, unknown>> : [];
+    return <div key={path.join('.')} className={`mt-1 rounded border p-1.5 ${isDarkMode ? 'border-[#34343d]' : 'border-slate-200'}`} style={{ marginLeft: parentPath.length * 8 }}>
+      <div className="grid grid-cols-[46px_minmax(0,1fr)] gap-1 text-[9px] text-slate-500"><span>ID</span><input value={String(node.id ?? '')} onChange={event => onChange(updateAt(nodes, path, (rows, row) => rows.map((item, current) => current === row ? { ...item, id: event.target.value } : item)))} className={inputClass} /><span>标题</span><input value={String(node.title ?? node.text ?? '')} onChange={event => onChange(updateAt(nodes, path, (rows, row) => rows.map((item, current) => current === row ? { ...item, title: event.target.value } : item)))} className={inputClass} /></div>
+      <div className="mt-1 flex justify-end gap-1 text-[9px]"><button type="button" onClick={() => onChange(updateAt(nodes, path, (rows, row) => rows.map((item, current) => current === row ? { ...item, children: [...(Array.isArray(item.children) ? item.children : []), { id: `node${Date.now()}`, title: '子节点', image: -1 }] } : item)))} className="text-emerald-500">添加子节点</button><button type="button" onClick={() => onChange(updateAt(nodes, path, (rows, row) => rows.filter((_, current) => current !== row)))} className="text-red-400">删除</button></div>
+      {render(children, path)}
+    </div>;
+  });
+  return <div className="w-full" aria-label="树节点结构化编辑器">{render(nodes)}<button type="button" onClick={() => onChange([...nodes, { id: `node${nodes.length + 1}`, title: '新节点', image: -1 }])} className="mt-1 w-full rounded border border-emerald-500/30 py-1 text-[10px] text-emerald-500">+ 添加根节点</button></div>;
+}
+
+function ControlPropertyField({
+  controlType,
+  definition,
+  value,
+  controls,
+  imageLists,
+  isDarkMode,
+  onChange
+}: {
+  key?: React.Key;
+  controlType: LingControlType;
+  definition: Win32ControlPropertyDefinition;
+  value: Win32ControlPropertyValue;
+  controls: LingControl[];
+  imageLists: LingImageListResource[];
+  isDarkMode: boolean;
+  onChange: (value: Win32ControlPropertyValue) => void;
+}) {
+  const complex = ['columns', 'treeNodes', 'tabs'].includes(definition.type);
 
   if (definition.type === 'boolean') {
     return <PropertyRow label={definition.label} isDarkMode={isDarkMode}><input type="checkbox" checked={Boolean(value)} onChange={event => onChange(event.target.checked)} className="h-4 w-4 accent-amber-500" /></PropertyRow>;
@@ -2134,6 +2318,16 @@ function ControlPropertyField({
       </PropertyRow>
     );
   }
+  if (definition.key === 'imageListId') {
+    return (
+      <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
+        <select value={String(value ?? '')} onChange={event => onChange(event.target.value)} className={`w-full rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`}>
+          <option value="">不使用图像列表</option>
+          {imageLists.map(resource => <option key={resource.id} value={resource.id}>{resource.name}（{resource.id}）</option>)}
+        </select>
+      </PropertyRow>
+    );
+  }
   if (definition.type === 'stringList') {
     return (
       <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
@@ -2142,22 +2336,9 @@ function ControlPropertyField({
     );
   }
   if (complex) {
-    const commit = () => {
-      try {
-        const parsed = JSON.parse(draft);
-        if (!Array.isArray(parsed)) throw new Error('必须是数组');
-        setInvalid(false);
-        onChange(parsed);
-      } catch {
-        setInvalid(true);
-      }
-    };
     return (
       <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
-        <div className="w-full">
-          <textarea value={draft} onChange={event => setDraft(event.target.value)} onBlur={commit} rows={6} className={`w-full resize-y rounded border px-2 py-1 font-mono text-[10px] ${invalid ? 'border-red-500' : isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
-          {invalid && <div className="text-[9px] text-red-400">请输入合法的 JSON 数组。</div>}
-        </div>
+        <StructuredCollectionEditor controlType={controlType} propertyKey={definition.key} value={value} controls={controls} isDarkMode={isDarkMode} onChange={onChange} />
       </PropertyRow>
     );
   }

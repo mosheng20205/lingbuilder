@@ -61,7 +61,19 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           description: '关闭当前窗口。',
           insertText: '结束()',
           returnType: '空'
-        }
+        },
+        { name: '控件_设置文本', signature: '控件_设置文本(控件名, 文本)', description: '设置当前窗口中指定控件的文本。', insertText: '控件_设置文本("$1", "$2")', returnType: '逻辑型' },
+        { name: '控件_取文本', signature: '控件_取文本(控件名)', description: '读取指定控件的当前文本。', insertText: '控件_取文本("$1")', returnType: '文本型' },
+        { name: '控件_设置启用', signature: '控件_设置启用(控件名, 启用)', description: '启用或禁用指定控件。', insertText: '控件_设置启用("$1", 真)', returnType: '逻辑型' },
+        { name: '控件_设置可见', signature: '控件_设置可见(控件名, 可见)', description: '显示或隐藏指定控件。', insertText: '控件_设置可见("$1", 真)', returnType: '逻辑型' },
+        { name: '控件_设置勾选', signature: '控件_设置勾选(控件名, 勾选)', description: '设置复选框、单选框或切换按钮状态。', insertText: '控件_设置勾选("$1", 真)', returnType: '逻辑型' },
+        { name: '控件_取勾选', signature: '控件_取勾选(控件名)', description: '读取控件勾选状态。', insertText: '控件_取勾选("$1")', returnType: '逻辑型' },
+        { name: '控件_设置数值', signature: '控件_设置数值(控件名, 数值)', description: '设置进度条、滑块、调节器或滚动条数值。', insertText: '控件_设置数值("$1", 50)', returnType: '逻辑型' },
+        { name: '控件_取数值', signature: '控件_取数值(控件名)', description: '读取数值型控件当前值。', insertText: '控件_取数值("$1")', returnType: '整数型' },
+        { name: '控件_设置选择项', signature: '控件_设置选择项(控件名, 索引)', description: '设置列表、组合框、列表视图或选项卡选择项。', insertText: '控件_设置选择项("$1", 0)', returnType: '逻辑型' },
+        { name: '控件_取选择项', signature: '控件_取选择项(控件名)', description: '读取选择项索引。', insertText: '控件_取选择项("$1")', returnType: '整数型' },
+        { name: '控件_添加项目', signature: '控件_添加项目(控件名, 文本)', description: '向列表框、组合框或增强组合框追加项目。', insertText: '控件_添加项目("$1", "$2")', returnType: '整数型' },
+        { name: '控件_清空项目', signature: '控件_清空项目(控件名)', description: '清空集合控件项目。', insertText: '控件_清空项目("$1")', returnType: '逻辑型' }
       ],
       types: [
         { name: '窗口', description: 'Win32 窗口基类。', cppType: 'LingWindowBase' },
@@ -107,7 +119,19 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           parameters: [],
           returnType: 'void',
           example: '结束()'
-        }
+        },
+        { command: '控件_设置文本', runtimeName: '控件_设置文本', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_取文本', runtimeName: '控件_取文本', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+        { command: '控件_设置启用', runtimeName: '控件_设置启用', parameters: [{ name: '控件名', type: 'wideString' }, { name: '启用', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置可见', runtimeName: '控件_设置可见', parameters: [{ name: '控件名', type: 'wideString' }, { name: '可见', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置勾选', runtimeName: '控件_设置勾选', parameters: [{ name: '控件名', type: 'wideString' }, { name: '勾选', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_取勾选', runtimeName: '控件_取勾选', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置数值', runtimeName: '控件_设置数值', parameters: [{ name: '控件名', type: 'wideString' }, { name: '数值', type: 'int' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_取数值', runtimeName: '控件_取数值', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+        { command: '控件_设置选择项', runtimeName: '控件_设置选择项', parameters: [{ name: '控件名', type: 'wideString' }, { name: '索引', type: 'int' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_取选择项', runtimeName: '控件_取选择项', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+        { command: '控件_添加项目', runtimeName: '控件_添加项目', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+        { command: '控件_清空项目', runtimeName: '控件_清空项目', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
       ]
     }
   },
@@ -132,6 +156,21 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '打印', signature: '打印()', description: '显示系统打印对话框。', insertText: '打印()', returnType: '逻辑型' },
         { name: '页面设置', signature: '页面设置()', description: '显示系统页面设置对话框。', insertText: '页面设置()', returnType: '逻辑型' },
         { name: '任务对话框', signature: '任务对话框(标题, 内容)', description: '显示 Windows Task Dialog。', insertText: '任务对话框("提示", "$1")', returnType: '整数型' }
+        ,{ name: '系统对话框_状态', signature: '系统对话框_状态()', description: '返回最近文件或目录对话框状态：1 成功、0 取消、-1 错误。', insertText: '系统对话框_状态()', returnType: '整数型' }
+        ,{ name: '工具栏_最后命令', signature: '工具栏_最后命令()', description: '返回最近点击的工具栏按钮命令 ID。', insertText: '工具栏_最后命令()', returnType: '整数型' }
+        ,{ name: '状态栏_最后分区', signature: '状态栏_最后分区()', description: '返回最近双击的状态栏分区索引。', insertText: '状态栏_最后分区()', returnType: '整数型' }
+        ,{ name: '查找替换_动作', signature: '查找替换_动作()', description: '返回最近查找替换动作。', insertText: '查找替换_动作()', returnType: '文本型' }
+        ,{ name: '查找替换_查找内容', signature: '查找替换_查找内容()', description: '返回查找替换对话框中的查找文本。', insertText: '查找替换_查找内容()', returnType: '文本型' }
+        ,{ name: '查找替换_替换内容', signature: '查找替换_替换内容()', description: '返回查找替换对话框中的替换文本。', insertText: '查找替换_替换内容()', returnType: '文本型' }
+        ,{ name: '打印文本', signature: '打印文本(文档名, 文本)', description: '选择打印机并把指定文本作为真实打印文档输出。', insertText: '打印文本("文档", "$1")', returnType: '逻辑型' }
+        ,{ name: '页面设置_左边距', signature: '页面设置_左边距()', description: '返回最近页面设置的左边距。', insertText: '页面设置_左边距()', returnType: '整数型' }
+        ,{ name: '页面设置_上边距', signature: '页面设置_上边距()', description: '返回最近页面设置的上边距。', insertText: '页面设置_上边距()', returnType: '整数型' }
+        ,{ name: '页面设置_右边距', signature: '页面设置_右边距()', description: '返回最近页面设置的右边距。', insertText: '页面设置_右边距()', returnType: '整数型' }
+        ,{ name: '页面设置_下边距', signature: '页面设置_下边距()', description: '返回最近页面设置的下边距。', insertText: '页面设置_下边距()', returnType: '整数型' }
+        ,{ name: '属性页_显示', signature: '属性页_显示(资源ID)', description: '显示设计器资源中定义的顶层 Windows PropertySheet。', insertText: '属性页_显示("property-sheet-1")', returnType: '整数型' }
+        ,{ name: '列表视图_添加行', signature: '列表视图_添加行(控件名, Tab分隔单元格)', description: '向 ListView 追加结构化行。', insertText: '列表视图_添加行("$1", "名称\\t状态")', returnType: '整数型' }
+        ,{ name: '树形框_添加节点', signature: '树形框_添加节点(控件名, 父节点文字, 节点文字)', description: '向 TreeView 根级或指定父节点追加节点。', insertText: '树形框_添加节点("$1", "", "$2")', returnType: '逻辑型' }
+        ,{ name: '选项卡_添加页', signature: '选项卡_添加页(控件名, 标题)', description: '向 TabControl 追加标签页。', insertText: '选项卡_添加页("$1", "$2")', returnType: '整数型' }
       ],
       types: createControlTypes('lingbuilder.win32.common-controls'),
       designerControls: createControlContributions('lingbuilder.win32.common-controls'),
@@ -157,6 +196,21 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '打印', runtimeName: '打印', parameters: [], returnType: 'bool' },
         { command: '页面设置', runtimeName: '页面设置', parameters: [], returnType: 'bool' },
         { command: '任务对话框', runtimeName: '任务对话框', parameters: [{ name: '标题', type: 'wideString' }, { name: '内容', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '系统对话框_状态', runtimeName: '系统对话框_状态', parameters: [], returnType: 'int' }
+        ,{ command: '工具栏_最后命令', runtimeName: '工具栏_最后命令', parameters: [], returnType: 'int' }
+        ,{ command: '状态栏_最后分区', runtimeName: '状态栏_最后分区', parameters: [], returnType: 'int' }
+        ,{ command: '查找替换_动作', runtimeName: '查找替换_动作', parameters: [], returnType: 'wideString', encoding: 'wide' }
+        ,{ command: '查找替换_查找内容', runtimeName: '查找替换_查找内容', parameters: [], returnType: 'wideString', encoding: 'wide' }
+        ,{ command: '查找替换_替换内容', runtimeName: '查找替换_替换内容', parameters: [], returnType: 'wideString', encoding: 'wide' }
+        ,{ command: '打印文本', runtimeName: '打印文本', parameters: [{ name: '文档名', type: 'wideString' }, { name: '文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '页面设置_左边距', runtimeName: '页面设置_左边距', parameters: [], returnType: 'int' }
+        ,{ command: '页面设置_上边距', runtimeName: '页面设置_上边距', parameters: [], returnType: 'int' }
+        ,{ command: '页面设置_右边距', runtimeName: '页面设置_右边距', parameters: [], returnType: 'int' }
+        ,{ command: '页面设置_下边距', runtimeName: '页面设置_下边距', parameters: [], returnType: 'int' }
+        ,{ command: '属性页_显示', runtimeName: '属性页_显示', parameters: [{ name: '资源ID', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_添加行', runtimeName: '列表视图_添加行', parameters: [{ name: '控件名', type: 'wideString' }, { name: 'Tab分隔单元格', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '树形框_添加节点', runtimeName: '树形框_添加节点', parameters: [{ name: '控件名', type: 'wideString' }, { name: '父节点文字', type: 'wideString' }, { name: '节点文字', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '选项卡_添加页', runtimeName: '选项卡_添加页', parameters: [{ name: '控件名', type: 'wideString' }, { name: '标题', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
       ]
     }
   },
