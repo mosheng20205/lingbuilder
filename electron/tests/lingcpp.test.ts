@@ -1040,6 +1040,29 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
   assert.ok(mainCpp.includes('find_first_not_of(L" \\t\\r\\n,")'));
   assert.equal(/find_first_not_of\(L"[^"\r\n]*[\r\n]/u.test(mainCpp), false);
   assert.ok(mainCpp.includes('RoundRect(item->hDC'));
+  assert.ok(mainCpp.includes('static COLORREF BlendColor'));
+  assert.ok(mainCpp.includes('bool IsButtonControl(const ControlSpec& control) const'));
+  assert.ok(mainCpp.includes('IsWindowEnabled(item->hwndItem) != FALSE'));
+  assert.ok(mainCpp.includes('bool hovered = enabled && !pressed && runtime->mouseInside'));
+  assert.ok(mainCpp.includes('&& (item->itemState & ODS_FOCUS)'));
+  assert.ok(mainCpp.includes('&& !(item->itemState & ODS_NOFOCUSRECT)'));
+  assert.ok(mainCpp.includes('HBRUSH backgroundBrush = CreateSolidBrush(rowBackground)'));
+  assert.ok(mainCpp.includes('(hovered || focused) ? RGB(125, 211, 252)'));
+  assert.ok(mainCpp.includes('focused && !IsType(*control, L"CheckBox") && !IsType(*control, L"RadioButton")'));
+  assert.ok(mainCpp.includes('HGDIOBJ previousMarkPen = SelectObject(item->hDC, markPen)'));
+  assert.ok(mainCpp.includes('SelectObject(item->hDC, previousDotBrush)'));
+  assert.ok(mainCpp.includes('int checkState;'));
+  assert.ok(mainCpp.includes('ownerDrawSelection && message == BM_GETCHECK'));
+  assert.ok(mainCpp.includes('ownerDrawSelection && message == BM_SETCHECK'));
+  assert.ok(mainCpp.includes('runtime->checkState = nextState'));
+  assert.ok(mainCpp.includes('NotifyWinEvent(EVENT_OBJECT_STATECHANGE'));
+  assert.ok(mainCpp.includes('checkState == BST_INDETERMINATE'));
+  assert.ok(mainCpp.includes('if (control->flags & CF_THREE_STATE)'));
+  assert.ok(mainCpp.includes('currentState == BST_CHECKED ? BST_INDETERMINATE'));
+  assert.ok(mainCpp.includes('background = BlendColor(control->background, RGB(255, 255, 255), 10)'));
+  assert.ok(mainCpp.includes('background = BlendColor(control->background, RGB(0, 0, 0), 16)'));
+  assert.ok(mainCpp.includes('RGB(125, 211, 252)'));
+  assert.equal(mainCpp.includes('DrawFocusRect(item->hDC'), false);
   assert.ok(mainCpp.includes('message == WM_PAINT && IsType(*control, L"ProgressBar")'));
   assert.ok(mainCpp.includes('swprintf_s(label, L"%d%%", percent)'));
   assert.ok(mainCpp.includes('SetTextColor(hdc, RGB(255, 255, 255))'));
@@ -1061,6 +1084,19 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
   assert.ok(mainCpp.includes('rect.right - borderWidth, rect.bottom - borderWidth'));
   assert.ok(mainCpp.includes('SetFocus(runtime->hwnd)'));
   assert.ok(mainCpp.includes('InvalidateRect(runtime->frameHwnd, nullptr, FALSE)'));
+  assert.ok(mainCpp.includes('if (ownerDraw) InvalidateRect(hwnd, nullptr, FALSE)'));
+  assert.ok(mainCpp.includes('message == WM_MOUSELEAVE'));
+  assert.ok(mainCpp.includes('message == WM_ENABLE'));
+  assert.ok(mainCpp.includes('message == BM_SETSTATE'));
+  assert.ok(mainCpp.includes('wParam == VK_SPACE'));
+  assert.ok(mainCpp.includes('UpdateWindow(hwnd)'));
+  assert.ok(mainCpp.includes('if (buttonControl)'));
+  assert.ok(mainCpp.includes('if (!IsWindow(hwnd)) return result;'));
+  assert.ok(mainCpp.includes('if (!liveRuntime || liveRuntime->hwnd != hwnd) return result;'));
+  assert.ok(mainCpp.includes('style |= WS_TABSTOP;'));
+  assert.ok(mainCpp.includes('style |= WS_TABSTOP | BS_OWNERDRAW;'));
+  assert.ok(mainCpp.includes('HWND startWindow = OpenGeneratedWindow'));
+  assert.ok(mainCpp.includes('IsDialogMessageW(navigationRoot, &message)'));
   assert.ok(mainCpp.includes('SendMessageW(self->hwnd_, WM_COMMAND, wParam, lParam)'));
   assert.equal(mainCpp.includes('WM_NCCALCSIZE'), false);
   assert.equal(mainCpp.includes('WM_NCPAINT'), false);
@@ -1074,6 +1110,15 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
   assert.ok(textBoxBranchStart >= 0 && textBoxBranchEnd > textBoxBranchStart);
   const textBoxBranch = mainCpp.slice(textBoxBranchStart, textBoxBranchEnd);
   assert.doesNotMatch(textBoxBranch, /WS_BORDER|WS_EX_CLIENTEDGE/);
+
+  const stateTransitionsStart = mainCpp.indexOf('static LRESULT CALLBACK ControlSubclassProc');
+  const stateTransitionsEnd = mainCpp.indexOf('bool CreateGeneratedControl', stateTransitionsStart);
+  assert.ok(stateTransitionsStart >= 0 && stateTransitionsEnd > stateTransitionsStart);
+  const stateTransitions = mainCpp.slice(stateTransitionsStart, stateTransitionsEnd);
+  assert.doesNotMatch(
+    stateTransitions,
+    /\b(?:MoveWindow|SetWindowPos|SetWindowRgn|DeferWindowPos|AdjustWindowRectEx)\s*\(/
+  );
 
   const layoutJson = generated.files.find(file => file.relativePath === 'layout.json')?.content || '';
   assert.equal(JSON.parse(layoutJson).id, 'sample-project');

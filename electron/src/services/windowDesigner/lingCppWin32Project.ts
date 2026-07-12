@@ -339,6 +339,7 @@ struct RuntimeControl {
     HGDIOBJ resource;
     bool iconResource;
     bool mouseInside;
+    int checkState;
 };
 
 static HINSTANCE g_instance = nullptr;
@@ -2269,42 +2270,98 @@ private:
         tooltipWindows_.push_back(tooltip);
     }
 
+    static COLORREF BlendColor(COLORREF source, COLORREF target, int targetPercent) {
+        int percent = std::clamp(targetPercent, 0, 100);
+        int sourcePercent = 100 - percent;
+        return RGB(
+            (GetRValue(source) * sourcePercent + GetRValue(target) * percent + 50) / 100,
+            (GetGValue(source) * sourcePercent + GetGValue(target) * percent + 50) / 100,
+            (GetBValue(source) * sourcePercent + GetBValue(target) * percent + 50) / 100
+        );
+    }
+
+    bool IsButtonControl(const ControlSpec& control) const {
+        return IsType(control, L"Button")
+            || IsType(control, L"CheckBox")
+            || IsType(control, L"RadioButton");
+    }
+
+    bool IsOwnerDrawControl(const ControlSpec& control) const {
+        if (!IsButtonControl(control)) return false;
+        if (IsType(control, L"CheckBox") || IsType(control, L"RadioButton")) return true;
+        return IsType(control, L"Button")
+            && !(control.flags & (CF_BUTTON_TOGGLE | CF_BUTTON_SPLIT | CF_BUTTON_COMMAND_LINK));
+    }
+
     bool PaintOwnerButton(const DRAWITEMSTRUCT* item) {
         if (!item) return false;
         const ControlSpec* control = FindControl(static_cast<int>(item->CtlID));
         RuntimeControl* runtime = FindRuntimeControl(static_cast<int>(item->CtlID));
         if (!control || !runtime) return false;
         HFONT oldFont = runtime->font ? reinterpret_cast<HFONT>(SelectObject(item->hDC, runtime->font)) : nullptr;
-        COLORREF background = control->enabled ? control->background : RGB(80, 80, 86);
-        COLORREF foreground = control->enabled ? control->foreground : RGB(170, 170, 176);
+        bool enabled = IsWindowEnabled(item->hwndItem) != FALSE && !(item->itemState & ODS_DISABLED);
+        bool pressed = enabled && (item->itemState & ODS_SELECTED);
+        bool hovered = enabled && !pressed && runtime->mouseInside;
+        bool focused = enabled
+            && (item->itemState & ODS_FOCUS)
+            && !(item->itemState & ODS_NOFOCUSRECT);
+        COLORREF background = control->background;
+        COLORREF rowBackground = control->background;
+        COLORREF foreground = control->foreground;
+        COLORREF border = BlendColor(control->background, RGB(255, 255, 255), 18);
+        if (!enabled) {
+            background = BlendColor(control->background, spec_.background, 55);
+            rowBackground = background;
+            foreground = BlendColor(control->foreground, spec_.background, 55);
+            border = BlendColor(border, spec_.background, 55);
+        } else if (pressed) {
+            background = BlendColor(control->background, RGB(0, 0, 0), 16);
+            border = BlendColor(control->background, RGB(255, 255, 255), 24);
+        } else if (hovered) {
+            background = BlendColor(control->background, RGB(255, 255, 255), 10);
+            border = BlendColor(control->background, RGB(255, 255, 255), 34);
+        }
         SetBkMode(item->hDC, TRANSPARENT);
         SetTextColor(item->hDC, foreground);
 
         if (IsType(*control, L"CheckBox") || IsType(*control, L"RadioButton")) {
-            HBRUSH backgroundBrush = CreateSolidBrush(background);
+            HBRUSH backgroundBrush = CreateSolidBrush(rowBackground);
             FillRect(item->hDC, &item->rcItem, backgroundBrush);
             DeleteObject(backgroundBrush);
             int boxSize = ScaleForDpi(14, dpi_);
             int boxTop = item->rcItem.top + (item->rcItem.bottom - item->rcItem.top - boxSize) / 2;
             RECT box = { item->rcItem.left, boxTop, item->rcItem.left + boxSize, boxTop + boxSize };
             HBRUSH boxBrush = CreateSolidBrush(RGB(17, 24, 39));
-            HPEN borderPen = CreatePen(PS_SOLID, 1, RGB(100, 116, 139));
+            COLORREF boxBorder = enabled
+                ? (pressed
+                    ? RGB(148, 163, 184)
+                    : (hovered || focused) ? RGB(125, 211, 252) : RGB(100, 116, 139))
+                : BlendColor(RGB(100, 116, 139), spec_.background, 55);
+            HPEN borderPen = CreatePen(PS_SOLID, 1, boxBorder);
             HGDIOBJ oldBrush = SelectObject(item->hDC, boxBrush);
             HGDIOBJ oldPen = SelectObject(item->hDC, borderPen);
             if (IsType(*control, L"RadioButton")) Ellipse(item->hDC, box.left, box.top, box.right, box.bottom);
             else Rectangle(item->hDC, box.left, box.top, box.right, box.bottom);
-            if (SendMessageW(item->hwndItem, BM_GETCHECK, 0, 0) == BST_CHECKED) {
+            int checkState = static_cast<int>(SendMessageW(item->hwndItem, BM_GETCHECK, 0, 0));
+            if (checkState != BST_UNCHECKED) {
                 HPEN markPen = CreatePen(PS_SOLID, std::max(1, ScaleForDpi(2, dpi_)), foreground);
-                SelectObject(item->hDC, markPen);
+                HGDIOBJ previousMarkPen = SelectObject(item->hDC, markPen);
                 if (IsType(*control, L"RadioButton")) {
-                    HBRUSH dot = CreateSolidBrush(foreground); SelectObject(item->hDC, dot);
+                    HBRUSH dot = CreateSolidBrush(foreground);
+                    HGDIOBJ previousDotBrush = SelectObject(item->hDC, dot);
                     int inset = ScaleForDpi(4, dpi_); Ellipse(item->hDC, box.left + inset, box.top + inset, box.right - inset, box.bottom - inset);
+                    SelectObject(item->hDC, previousDotBrush);
                     DeleteObject(dot);
+                } else if (checkState == BST_INDETERMINATE) {
+                    int centerY = box.top + boxSize / 2;
+                    MoveToEx(item->hDC, box.left + ScaleForDpi(3, dpi_), centerY, nullptr);
+                    LineTo(item->hDC, box.right - ScaleForDpi(3, dpi_), centerY);
                 } else {
                     MoveToEx(item->hDC, box.left + ScaleForDpi(3, dpi_), box.top + ScaleForDpi(7, dpi_), nullptr);
                     LineTo(item->hDC, box.left + ScaleForDpi(6, dpi_), box.top + ScaleForDpi(10, dpi_));
                     LineTo(item->hDC, box.right - ScaleForDpi(3, dpi_), box.top + ScaleForDpi(4, dpi_));
                 }
+                SelectObject(item->hDC, previousMarkPen);
                 DeleteObject(markPen);
             }
             SelectObject(item->hDC, oldBrush); SelectObject(item->hDC, oldPen);
@@ -2316,7 +2373,7 @@ private:
             FillRect(item->hDC, &item->rcItem, cornerBrush);
             DeleteObject(cornerBrush);
             HBRUSH buttonBrush = CreateSolidBrush(background);
-            HPEN borderPen = CreatePen(PS_SOLID, 1, (item->itemState & ODS_SELECTED) ? foreground : RGB(90, 90, 96));
+            HPEN borderPen = CreatePen(PS_SOLID, 1, border);
             HGDIOBJ oldPen = SelectObject(item->hDC, borderPen);
             HGDIOBJ oldBrush = SelectObject(item->hDC, buttonBrush);
             int radius = std::max(ScaleForDpi(6, dpi_), 2);
@@ -2324,10 +2381,24 @@ private:
             SelectObject(item->hDC, oldBrush); SelectObject(item->hDC, oldPen);
             DeleteObject(buttonBrush); DeleteObject(borderPen);
             RECT textRect = item->rcItem;
-            if (item->itemState & ODS_SELECTED) OffsetRect(&textRect, ScaleForDpi(1, dpi_), ScaleForDpi(1, dpi_));
+            if (pressed) OffsetRect(&textRect, ScaleForDpi(1, dpi_), ScaleForDpi(1, dpi_));
             DrawTextW(item->hDC, control->text, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
         }
-        if (item->itemState & ODS_FOCUS) DrawFocusRect(item->hDC, &item->rcItem);
+        if (focused && !IsType(*control, L"CheckBox") && !IsType(*control, L"RadioButton")) {
+            RECT focusRect = item->rcItem;
+            int focusInset = std::max(ScaleForDpi(3, dpi_), 2);
+            InflateRect(&focusRect, -focusInset, -focusInset);
+            if (focusRect.right > focusRect.left && focusRect.bottom > focusRect.top) {
+                HPEN focusPen = CreatePen(PS_SOLID, std::max(1, ScaleForDpi(1, dpi_)), RGB(125, 211, 252));
+                HGDIOBJ oldFocusPen = SelectObject(item->hDC, focusPen);
+                HGDIOBJ oldFocusBrush = SelectObject(item->hDC, GetStockObject(NULL_BRUSH));
+                int focusRadius = std::max(ScaleForDpi(4, dpi_), 2);
+                RoundRect(item->hDC, focusRect.left, focusRect.top, focusRect.right, focusRect.bottom, focusRadius, focusRadius);
+                SelectObject(item->hDC, oldFocusBrush);
+                SelectObject(item->hDC, oldFocusPen);
+                DeleteObject(focusPen);
+            }
+        }
         if (oldFont) SelectObject(item->hDC, oldFont);
         return true;
     }
@@ -2473,6 +2544,23 @@ private:
         const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
         RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
         if (control && runtime) {
+            bool buttonControl = self->IsButtonControl(*control);
+            bool ownerDraw = self->IsOwnerDrawControl(*control);
+            bool ownerDrawSelection = IsType(*control, L"CheckBox") || IsType(*control, L"RadioButton");
+            if (ownerDrawSelection && message == BM_GETCHECK) {
+                return static_cast<LRESULT>(runtime->checkState);
+            }
+            if (ownerDrawSelection && message == BM_SETCHECK) {
+                int nextState = wParam == BST_CHECKED
+                    ? BST_CHECKED
+                    : wParam == BST_INDETERMINATE ? BST_INDETERMINATE : BST_UNCHECKED;
+                if (runtime->checkState != nextState) {
+                    runtime->checkState = nextState;
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    NotifyWinEvent(EVENT_OBJECT_STATECHANGE, hwnd, OBJID_CLIENT, CHILDID_SELF);
+                }
+                return 0;
+            }
             if (message == WM_PAINT && IsType(*control, L"ProgressBar") && !(control->flags & CF_MARQUEE)) {
                 LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
                 HDC hdc = GetDC(hwnd);
@@ -2499,18 +2587,51 @@ private:
                 runtime->mouseInside = true;
                 TRACKMOUSEEVENT tracking = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0 };
                 TrackMouseEvent(&tracking);
+                if (ownerDraw) InvalidateRect(hwnd, nullptr, FALSE);
                 self->DispatchLingEvent(*control, L"MouseEnter");
             } else if (message == WM_MOUSELEAVE) {
                 runtime->mouseInside = false;
+                if (ownerDraw) InvalidateRect(hwnd, nullptr, FALSE);
                 self->DispatchLingEvent(*control, L"MouseLeave");
             } else if (message == WM_LBUTTONDOWN) {
+                if (buttonControl) {
+                    LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                    if (!IsWindow(hwnd)) return result;
+                    RuntimeControl* liveRuntime = self->FindRuntimeControl(static_cast<int>(subclassId));
+                    if (!liveRuntime || liveRuntime->hwnd != hwnd) return result;
+                    if (ownerDraw) {
+                        InvalidateRect(hwnd, nullptr, FALSE);
+                        UpdateWindow(hwnd);
+                    }
+                    if (!IsWindow(hwnd)) return result;
+                    self->DispatchLingEvent(*control, L"MouseDown");
+                    return result;
+                }
                 self->DispatchLingEvent(*control, L"MouseDown");
             } else if (message == WM_SETFOCUS) {
                 if (runtime->frameHwnd) InvalidateRect(runtime->frameHwnd, nullptr, FALSE);
+                if (ownerDraw) InvalidateRect(hwnd, nullptr, FALSE);
                 self->DispatchLingEvent(*control, L"GotFocus");
             } else if (message == WM_KILLFOCUS) {
                 if (runtime->frameHwnd) InvalidateRect(runtime->frameHwnd, nullptr, FALSE);
+                if (ownerDraw) InvalidateRect(hwnd, nullptr, FALSE);
                 self->DispatchLingEvent(*control, L"LostFocus");
+            } else if (message == WM_ENABLE) {
+                runtime->mouseInside = false;
+                LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                if (ownerDraw) InvalidateRect(hwnd, nullptr, FALSE);
+                return result;
+            } else if (
+                message == WM_LBUTTONUP
+                || message == WM_CAPTURECHANGED
+                || message == WM_CANCELMODE
+                || message == BM_SETSTATE
+                || message == BM_SETCHECK
+                || ((message == WM_KEYDOWN || message == WM_KEYUP) && wParam == VK_SPACE)
+            ) {
+                LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                if (ownerDraw) InvalidateRect(hwnd, nullptr, FALSE);
+                return result;
             } else if (message == WM_NCDESTROY) {
                 RemoveWindowSubclass(hwnd, ControlSubclassProc, subclassId);
             }
@@ -2533,6 +2654,7 @@ private:
         if (!control.enabled) style |= WS_DISABLED;
         if (IsType(control, L"Button")) {
             className = L"BUTTON";
+            style |= WS_TABSTOP;
             if (!(control.flags & (CF_BUTTON_TOGGLE | CF_BUTTON_SPLIT | CF_BUTTON_COMMAND_LINK))) style |= BS_OWNERDRAW;
             else if (control.flags & CF_BUTTON_DEFAULT) style |= BS_DEFPUSHBUTTON;
             else if (control.flags & CF_BUTTON_TOGGLE) style |= BS_AUTOCHECKBOX | BS_PUSHLIKE;
@@ -2541,6 +2663,7 @@ private:
             else style |= BS_PUSHBUTTON;
         } else if (IsType(control, L"TextBox")) {
             className = L"EDIT";
+            style |= WS_TABSTOP;
             if (control.flags & CF_MULTILINE) style |= ES_MULTILINE | ES_WANTRETURN;
             if (TextEquals(control.option2, L"horizontal") || TextEquals(control.option2, L"both")) style |= ES_AUTOHSCROLL | WS_HSCROLL;
             if (TextEquals(control.option2, L"vertical") || TextEquals(control.option2, L"both")) style |= ES_AUTOVSCROLL | WS_VSCROLL;
@@ -2562,10 +2685,10 @@ private:
             else style |= SS_LEFT;
         } else if (IsType(control, L"CheckBox")) {
             className = L"BUTTON";
-            style |= BS_OWNERDRAW;
+            style |= WS_TABSTOP | BS_OWNERDRAW;
         } else if (IsType(control, L"RadioButton")) {
             className = L"BUTTON";
-            style |= BS_OWNERDRAW;
+            style |= WS_TABSTOP | BS_OWNERDRAW;
         } else if (IsType(control, L"GroupBox")) {
             className = L"BUTTON";
             style |= BS_GROUPBOX;
@@ -2713,7 +2836,17 @@ private:
 
         HFONT font = CreateControlFont(control.fontSize, dpi_);
         HBRUSH brush = CreateSolidBrush(control.background);
-        runtimeControls_.push_back({ control.id, child, frameHwnd, font, brush, nullptr, false, false });
+        runtimeControls_.push_back({
+            control.id,
+            child,
+            frameHwnd,
+            font,
+            brush,
+            nullptr,
+            false,
+            false,
+            (control.flags & CF_CHECKED) ? BST_CHECKED : BST_UNCHECKED
+        });
         SetWindowSubclass(child, ControlSubclassProc, static_cast<UINT_PTR>(control.id), reinterpret_cast<DWORD_PTR>(this));
         if (frameHwnd) SetWindowSubclass(frameHwnd, TextBoxFrameSubclassProc, static_cast<UINT_PTR>(control.id), reinterpret_cast<DWORD_PTR>(this));
         AttachTooltip(child, control);
@@ -3007,10 +3140,18 @@ private:
             if (!control) return 0;
             if (IsType(*control, L"CheckBox") && notification == BN_CLICKED) {
                 HWND child = reinterpret_cast<HWND>(lParam);
-                bool checked = SendMessageW(child, BM_GETCHECK, 0, 0) != BST_CHECKED;
-                SendMessageW(child, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0);
+                int currentState = static_cast<int>(SendMessageW(child, BM_GETCHECK, 0, 0));
+                int nextState = BST_UNCHECKED;
+                if (control->flags & CF_THREE_STATE) {
+                    nextState = currentState == BST_UNCHECKED
+                        ? BST_CHECKED
+                        : currentState == BST_CHECKED ? BST_INDETERMINATE : BST_UNCHECKED;
+                } else {
+                    nextState = currentState == BST_CHECKED ? BST_UNCHECKED : BST_CHECKED;
+                }
+                SendMessageW(child, BM_SETCHECK, nextState, 0);
                 InvalidateRect(child, nullptr, TRUE);
-                DispatchLingEvent(*control, checked ? L"Checked" : L"Unchecked");
+                DispatchLingEvent(*control, nextState == BST_CHECKED ? L"Checked" : L"Unchecked");
             } else if (IsType(*control, L"RadioButton") && notification == BN_CLICKED) {
                 SelectRadioControl(*control, reinterpret_cast<HWND>(lParam));
             } else if ((IsType(*control, L"Button") || IsType(*control, L"Label") || IsType(*control, L"SysLink")) && (notification == BN_CLICKED || notification == STN_CLICKED)) {
@@ -3225,10 +3366,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     windowClass.lpszClassName = GENERATED_WINDOW_CLASS;
 
     if (!RegisterClassExW(&windowClass)) { CoUninitialize(); return 0; }
-    OpenGeneratedWindow(g_startWindowIndex, showCommand);
+    HWND startWindow = OpenGeneratedWindow(g_startWindowIndex, showCommand);
 
     MSG message;
     while (GetMessageW(&message, nullptr, 0, 0)) {
+        HWND navigationRoot = message.hwnd ? GetAncestor(message.hwnd, GA_ROOT) : startWindow;
+        if (navigationRoot && IsWindow(navigationRoot) && IsDialogMessageW(navigationRoot, &message)) continue;
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }
