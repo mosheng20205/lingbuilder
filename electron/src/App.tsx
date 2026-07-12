@@ -881,7 +881,8 @@ export default function App() {
         audienceText: beginner.audienceText,
         beginnerActionLabel: beginner.beginnerActionLabel,
         severityForBeginner: beginner.severityForBeginner,
-        canIgnore: beginner.canIgnore
+        canIgnore: beginner.canIgnore,
+        locationKind: problem.locationKind
       };
     });
     setProblems(nextProblems);
@@ -3703,11 +3704,13 @@ void DisplayStatus() {
     }
   };
   const handleSelectProblem = async (problem: ProblemItem) => {
-    const target = filesRef.current.find(file => file.path === problem.filePath);
-    if (target) await handleSelectFile(target);
-    window.setTimeout(() => window.dispatchEvent(new CustomEvent('lingcpp-reveal-line', {
-      detail: { filePath: problem.filePath, line: problem.line, column: problem.column || 1 }
-    })), 60);
+    const normalizePath = (value: string) => value.replace(/\\/gu, '/').replace(/^\.\//u, '').toLocaleLowerCase();
+    const target = filesRef.current.find(file => normalizePath(file.path) === normalizePath(problem.filePath));
+    if (target && !(await handleSelectFile(target))) return;
+    const detail = { filePath: target?.path || problem.filePath, line: problem.line, column: problem.column || 1 };
+    [0, 80, 220].forEach(delay => window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('lingcpp-reveal-line', { detail }));
+    }, delay));
   };
 
   // Custom User Code Extraction API Call

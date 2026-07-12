@@ -88,6 +88,17 @@ test('Win32 控件注册表与基础/高级模块贡献保持一致', () => {
   });
 });
 
+test('编辑框垂直对齐默认居中并提供顶部、居中、底部选项', () => {
+  const textBox = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'TextBox');
+  assert.ok(textBox);
+  const verticalAlign = textBox.properties.find(property => property.key === 'verticalAlign');
+  assert.ok(verticalAlign);
+  assert.equal(verticalAlign.type, 'enum');
+  assert.equal(verticalAlign.defaultValue, 'center');
+  assert.deepEqual(verticalAlign.options?.map(option => option.value), ['top', 'center', 'bottom']);
+  assert.equal(createDefaultControlProperties('TextBox').verticalAlign, 'center');
+});
+
 test('无版本设计器项目迁移为 v2 并保留旧字段', () => {
   const legacyProject: LingWindowProject = {
     id: 'legacy', name: '旧项目', windows: [{
@@ -145,6 +156,10 @@ test('高级控件生成真实 Win32 类、专属数据和多事件通知', () =
   assert.match(cpp, /ImageList_Add/);
   assert.match(cpp, /L"main-icons"/);
   assert.match(cpp, /L"13:assets\/ok\.png"/);
+  assert.match(cpp, /BS_OWNERDRAW/);
+  assert.match(cpp, /PBM_SETBARCOLOR/);
+  assert.match(cpp, /SetTimer\(hwnd_, 0x4C42, 900/);
+  assert.doesNotMatch(cpp, /关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件/);
   assert.ok(generated.diagnostics.some(diagnostic => diagnostic.includes('lingbuilder.win32.common-controls') && diagnostic.includes('未静默降级')));
 });
 

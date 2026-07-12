@@ -475,7 +475,8 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
         endColumn?: number;
       }>).detail;
       if (!detail || !editorRef.current) return;
-      if (filePath && detail.filePath && filePath !== detail.filePath) return;
+      const normalizePath = (value: string) => value.replace(/\\/gu, '/').replace(/^\.\//u, '').toLocaleLowerCase();
+      if (filePath && detail.filePath && normalizePath(filePath) !== normalizePath(detail.filePath)) return;
       const line = Math.max(1, detail.line);
       const column = Math.max(1, detail.column || 1);
       const endLine = Math.max(line, detail.endLine || line);

@@ -333,6 +333,7 @@ struct WindowSpec {
 struct RuntimeControl {
     int id;
     HWND hwnd;
+    HWND frameHwnd;
     HFONT font;
     HBRUSH brush;
     HGDIOBJ resource;
@@ -676,7 +677,8 @@ public:
     HWND Open(int showCommand, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false) {
         dpi_ = GetSystemDpiValue();
         RECT rect = { 0, 0, ScaleForDpi(spec_.width, dpi_), ScaleForDpi(spec_.height, dpi_) };
-        AdjustWindowRectEx(&rect, WS_OVERLAPPEDWINDOW, TRUE, 0);
+        BOOL hasMenu = spec_.menuItems && spec_.menuItems[0] ? TRUE : FALSE;
+        AdjustWindowRectEx(&rect, WS_OVERLAPPEDWINDOW, hasMenu, 0);
         int windowWidth = rect.right - rect.left;
         int windowHeight = rect.bottom - rect.top;
         int windowX = CW_USEDEFAULT;
@@ -701,6 +703,11 @@ public:
         if (!hwnd_) return nullptr;
         ShowWindow(hwnd_, showCommand);
         UpdateWindow(hwnd_);
+        SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+        SetForegroundWindow(hwnd_);
+        BringWindowToTop(hwnd_);
+        SetFocus(hwnd_);
+        SetTimer(hwnd_, 0x4C42, 900, nullptr);
         return hwnd_;
     }
 
@@ -1842,8 +1849,17 @@ protected:
         int length = GetWindowTextLengthW(runtime->hwnd); std::wstring value(static_cast<size_t>(length + 1), L'\\0');
         GetWindowTextW(runtime->hwnd, value.data(), length + 1); value.resize(static_cast<size_t>(length)); return value;
     }
-    bool 控件_设置启用(const wchar_t* controlName, bool enabled) { RuntimeControl* runtime = FindRuntimeControlByName(controlName); return runtime && EnableWindow(runtime->hwnd, enabled) != FALSE; }
-    bool 控件_设置可见(const wchar_t* controlName, bool visible) { RuntimeControl* runtime = FindRuntimeControlByName(controlName); if (!runtime) return false; ShowWindow(runtime->hwnd, visible ? SW_SHOW : SW_HIDE); return true; }
+    bool 控件_设置启用(const wchar_t* controlName, bool enabled) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); if (!runtime) return false;
+        BOOL result = EnableWindow(runtime->hwnd, enabled);
+        if (runtime->frameHwnd) EnableWindow(runtime->frameHwnd, enabled);
+        return result != FALSE;
+    }
+    bool 控件_设置可见(const wchar_t* controlName, bool visible) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); if (!runtime) return false;
+        ShowWindow(runtime->frameHwnd ? runtime->frameHwnd : runtime->hwnd, visible ? SW_SHOW : SW_HIDE);
+        return true;
+    }
     bool 控件_设置勾选(const wchar_t* controlName, bool checked) { RuntimeControl* runtime = FindRuntimeControlByName(controlName); if (!runtime) return false; SendMessageW(runtime->hwnd, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0); return true; }
     bool 控件_取勾选(const wchar_t* controlName) { RuntimeControl* runtime = FindRuntimeControlByName(controlName); return runtime && SendMessageW(runtime->hwnd, BM_GETCHECK, 0, 0) != BST_UNCHECKED; }
     bool 控件_设置数值(const wchar_t* controlName, int value) {
@@ -2107,9 +2123,10 @@ private:
     }
 
     HMENU CreateMenuForWindow() {
+        std::wstring items = spec_.menuItems ? spec_.menuItems : L"";
+        if (items.find_first_not_of(L" \\t\\r\\n,") == std::wstring::npos) return nullptr;
         HMENU root = CreateMenu();
         HMENU windowMenu = CreatePopupMenu();
-        std::wstring items = spec_.menuItems ? spec_.menuItems : L"";
         size_t pos = 0;
         int index = 0;
         while (!items.empty()) {
@@ -2122,6 +2139,11 @@ private:
             }
             if (next == std::wstring::npos) break;
             pos = next + 1;
+        }
+        if (index == 0) {
+            DestroyMenu(windowMenu);
+            DestroyMenu(root);
+            return nullptr;
         }
         AppendMenuW(root, MF_POPUP, reinterpret_cast<UINT_PTR>(windowMenu), L"窗口");
         return root;
@@ -2177,10 +2199,12 @@ private:
             if (!(sameNamedGroup || sameDefaultGroup)) continue;
             if (SendMessageW(runtime.hwnd, BM_GETCHECK, 0, 0) == BST_CHECKED) {
                 SendMessageW(runtime.hwnd, BM_SETCHECK, BST_UNCHECKED, 0);
+                InvalidateRect(runtime.hwnd, nullptr, TRUE);
                 DispatchLingEvent(*candidate, L"Unchecked");
             }
         }
         SendMessageW(selectedHwnd, BM_SETCHECK, BST_CHECKED, 0);
+        InvalidateRect(selectedHwnd, nullptr, TRUE);
         DispatchLingEvent(selected, L"Checked");
     }
 
@@ -2194,7 +2218,7 @@ private:
             const ControlSpec* child = FindControl(runtime.id);
             if (!child || child->parentId != tabControl.id) continue;
             bool visible = !child->containerSlot || !child->containerSlot[0] || activeSlot == child->containerSlot;
-            ShowWindow(runtime.hwnd, visible ? SW_SHOW : SW_HIDE);
+            ShowWindow(runtime.frameHwnd ? runtime.frameHwnd : runtime.hwnd, visible ? SW_SHOW : SW_HIDE);
         }
     }
 
@@ -2214,13 +2238,13 @@ private:
                     REBARBANDINFOW info = {}; info.cbSize = sizeof(info);
                     info.fMask = RBBIM_TEXT | RBBIM_CHILD | RBBIM_CHILDSIZE | RBBIM_SIZE | RBBIM_STYLE;
                     info.fStyle = RBBS_CHILDEDGE | RBBS_GRIPPERALWAYS; info.lpText = const_cast<wchar_t*>(band[1].c_str());
-                    info.hwndChild = child->hwnd; info.cxMinChild = ScaleForDpi(40, dpi_); info.cyMinChild = ScaleForDpi(24, dpi_); info.cx = ScaleForDpi(_wtoi(band[3].c_str()), dpi_);
+                    info.hwndChild = child->frameHwnd ? child->frameHwnd : child->hwnd; info.cxMinChild = ScaleForDpi(40, dpi_); info.cyMinChild = ScaleForDpi(24, dpi_); info.cx = ScaleForDpi(_wtoi(band[3].c_str()), dpi_);
                     SendMessageW(runtime->hwnd, RB_INSERTBANDW, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(&info));
                 }
             } else if (IsType(control, L"Pager")) {
                 for (auto& candidate : runtimeControls_) {
                     const ControlSpec* child = FindControl(candidate.id);
-                    if (child && child->parentId == control.id) { SendMessageW(runtime->hwnd, PGM_SETCHILD, 0, reinterpret_cast<LPARAM>(candidate.hwnd)); break; }
+                    if (child && child->parentId == control.id) { SendMessageW(runtime->hwnd, PGM_SETCHILD, 0, reinterpret_cast<LPARAM>(candidate.frameHwnd ? candidate.frameHwnd : candidate.hwnd)); break; }
                 }
             } else if (IsType(control, L"TabControl")) {
                 UpdateTabChildren(control);
@@ -2245,6 +2269,69 @@ private:
         tooltipWindows_.push_back(tooltip);
     }
 
+    bool PaintOwnerButton(const DRAWITEMSTRUCT* item) {
+        if (!item) return false;
+        const ControlSpec* control = FindControl(static_cast<int>(item->CtlID));
+        RuntimeControl* runtime = FindRuntimeControl(static_cast<int>(item->CtlID));
+        if (!control || !runtime) return false;
+        HFONT oldFont = runtime->font ? reinterpret_cast<HFONT>(SelectObject(item->hDC, runtime->font)) : nullptr;
+        COLORREF background = control->enabled ? control->background : RGB(80, 80, 86);
+        COLORREF foreground = control->enabled ? control->foreground : RGB(170, 170, 176);
+        SetBkMode(item->hDC, TRANSPARENT);
+        SetTextColor(item->hDC, foreground);
+
+        if (IsType(*control, L"CheckBox") || IsType(*control, L"RadioButton")) {
+            HBRUSH backgroundBrush = CreateSolidBrush(background);
+            FillRect(item->hDC, &item->rcItem, backgroundBrush);
+            DeleteObject(backgroundBrush);
+            int boxSize = ScaleForDpi(14, dpi_);
+            int boxTop = item->rcItem.top + (item->rcItem.bottom - item->rcItem.top - boxSize) / 2;
+            RECT box = { item->rcItem.left, boxTop, item->rcItem.left + boxSize, boxTop + boxSize };
+            HBRUSH boxBrush = CreateSolidBrush(RGB(17, 24, 39));
+            HPEN borderPen = CreatePen(PS_SOLID, 1, RGB(100, 116, 139));
+            HGDIOBJ oldBrush = SelectObject(item->hDC, boxBrush);
+            HGDIOBJ oldPen = SelectObject(item->hDC, borderPen);
+            if (IsType(*control, L"RadioButton")) Ellipse(item->hDC, box.left, box.top, box.right, box.bottom);
+            else Rectangle(item->hDC, box.left, box.top, box.right, box.bottom);
+            if (SendMessageW(item->hwndItem, BM_GETCHECK, 0, 0) == BST_CHECKED) {
+                HPEN markPen = CreatePen(PS_SOLID, std::max(1, ScaleForDpi(2, dpi_)), foreground);
+                SelectObject(item->hDC, markPen);
+                if (IsType(*control, L"RadioButton")) {
+                    HBRUSH dot = CreateSolidBrush(foreground); SelectObject(item->hDC, dot);
+                    int inset = ScaleForDpi(4, dpi_); Ellipse(item->hDC, box.left + inset, box.top + inset, box.right - inset, box.bottom - inset);
+                    DeleteObject(dot);
+                } else {
+                    MoveToEx(item->hDC, box.left + ScaleForDpi(3, dpi_), box.top + ScaleForDpi(7, dpi_), nullptr);
+                    LineTo(item->hDC, box.left + ScaleForDpi(6, dpi_), box.top + ScaleForDpi(10, dpi_));
+                    LineTo(item->hDC, box.right - ScaleForDpi(3, dpi_), box.top + ScaleForDpi(4, dpi_));
+                }
+                DeleteObject(markPen);
+            }
+            SelectObject(item->hDC, oldBrush); SelectObject(item->hDC, oldPen);
+            DeleteObject(boxBrush); DeleteObject(borderPen);
+            RECT textRect = item->rcItem; textRect.left = box.right + ScaleForDpi(8, dpi_);
+            DrawTextW(item->hDC, control->text, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+        } else {
+            HBRUSH cornerBrush = CreateSolidBrush(spec_.background);
+            FillRect(item->hDC, &item->rcItem, cornerBrush);
+            DeleteObject(cornerBrush);
+            HBRUSH buttonBrush = CreateSolidBrush(background);
+            HPEN borderPen = CreatePen(PS_SOLID, 1, (item->itemState & ODS_SELECTED) ? foreground : RGB(90, 90, 96));
+            HGDIOBJ oldPen = SelectObject(item->hDC, borderPen);
+            HGDIOBJ oldBrush = SelectObject(item->hDC, buttonBrush);
+            int radius = std::max(ScaleForDpi(6, dpi_), 2);
+            RoundRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom, radius, radius);
+            SelectObject(item->hDC, oldBrush); SelectObject(item->hDC, oldPen);
+            DeleteObject(buttonBrush); DeleteObject(borderPen);
+            RECT textRect = item->rcItem;
+            if (item->itemState & ODS_SELECTED) OffsetRect(&textRect, ScaleForDpi(1, dpi_), ScaleForDpi(1, dpi_));
+            DrawTextW(item->hDC, control->text, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+        }
+        if (item->itemState & ODS_FOCUS) DrawFocusRect(item->hDC, &item->rcItem);
+        if (oldFont) SelectObject(item->hDC, oldFont);
+        return true;
+    }
+
     void CreateImageLists() {
         for (int index = 0; index < g_imageListCount; ++index) {
             const ImageListSpec& spec = g_imageLists[index];
@@ -2265,6 +2352,118 @@ private:
         return found == imageLists_.end() ? nullptr : found->second;
     }
 
+    void ApplyTextBoxFrameRegion(HWND frameHwnd) {
+        if (!frameHwnd) return;
+        RECT rect = {}; GetClientRect(frameHwnd, &rect);
+        int width = std::max(1, static_cast<int>(rect.right - rect.left));
+        int height = std::max(1, static_cast<int>(rect.bottom - rect.top));
+        int cornerDiameter = std::max(ScaleForDpi(8, dpi_), 4);
+        HRGN region = CreateRoundRectRgn(0, 0, width, height, cornerDiameter, cornerDiameter);
+        if (!region) return;
+        if (SetWindowRgn(frameHwnd, region, TRUE) == 0) DeleteObject(region);
+    }
+
+    void LayoutTextBoxControl(const ControlSpec& control, RuntimeControl& runtime) {
+        if (!runtime.frameHwnd || !runtime.hwnd) return;
+        RECT rect = {}; GetClientRect(runtime.frameHwnd, &rect);
+        int frameWidth = std::max(1, static_cast<int>(rect.right - rect.left));
+        int frameHeight = std::max(1, static_cast<int>(rect.bottom - rect.top));
+        int inset = std::max(ScaleForDpi(2, dpi_), 2);
+        int contentWidth = std::max(1, frameWidth - inset * 2);
+        int contentHeight = std::max(1, frameHeight - inset * 2);
+        int editY = inset;
+        int editHeight = contentHeight;
+        if (!(control.flags & CF_MULTILINE)) {
+            int textHeight = std::max(ScaleForDpi(control.fontSize, dpi_), 8);
+            HDC hdc = GetDC(runtime.hwnd);
+            if (hdc) {
+                HGDIOBJ oldFont = runtime.font ? SelectObject(hdc, runtime.font) : nullptr;
+                TEXTMETRICW metrics = {};
+                if (GetTextMetricsW(hdc, &metrics)) textHeight = metrics.tmHeight + metrics.tmExternalLeading;
+                if (oldFont) SelectObject(hdc, oldFont);
+                ReleaseDC(runtime.hwnd, hdc);
+            }
+            editHeight = std::min(contentHeight, std::max(textHeight + ScaleForDpi(4, dpi_), ScaleForDpi(18, dpi_)));
+            if (TextEquals(control.data2, L"bottom")) editY = std::max(inset, frameHeight - inset - editHeight);
+            else if (!TextEquals(control.data2, L"top")) editY = std::max(inset, (frameHeight - editHeight) / 2);
+        }
+        SetWindowPos(runtime.hwnd, nullptr, inset, editY, contentWidth, editHeight,
+            SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    static LRESULT CALLBACK TextBoxFrameSubclassProc(
+        HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam,
+        UINT_PTR subclassId, DWORD_PTR referenceData
+    ) {
+        LingWindowBase* self = reinterpret_cast<LingWindowBase*>(referenceData);
+        if (!self) return DefSubclassProc(hwnd, message, wParam, lParam);
+        const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
+        RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
+        if (!control || !runtime) return DefSubclassProc(hwnd, message, wParam, lParam);
+        if (message == WM_ERASEBKGND) return 1;
+        if (message == WM_PAINT) {
+            PAINTSTRUCT paint = {};
+            HDC hdc = BeginPaint(hwnd, &paint);
+            if (hdc) {
+                RECT rect = {}; GetClientRect(hwnd, &rect);
+                int cornerDiameter = std::max(ScaleForDpi(8, self->dpi_), 4);
+                COLORREF borderColor = GetFocus() == runtime->hwnd
+                    ? RGB(14, 165, 233)
+                    : IsWindowEnabled(runtime->hwnd) ? RGB(51, 65, 85) : RGB(63, 63, 70);
+                HBRUSH borderBrush = CreateSolidBrush(borderColor);
+                HRGN outerRegion = CreateRoundRectRgn(
+                    rect.left, rect.top, rect.right, rect.bottom,
+                    cornerDiameter, cornerDiameter
+                );
+                if (borderBrush && outerRegion) FillRgn(hdc, outerRegion, borderBrush);
+                int borderWidth = 1;
+                if (rect.right - rect.left > borderWidth * 2 && rect.bottom - rect.top > borderWidth * 2) {
+                    HRGN innerRegion = CreateRoundRectRgn(
+                        rect.left + borderWidth, rect.top + borderWidth,
+                        rect.right - borderWidth, rect.bottom - borderWidth,
+                        std::max(2, cornerDiameter - borderWidth * 2),
+                        std::max(2, cornerDiameter - borderWidth * 2)
+                    );
+                    if (innerRegion) {
+                        if (runtime->brush) FillRgn(hdc, innerRegion, runtime->brush);
+                        DeleteObject(innerRegion);
+                    }
+                }
+                if (outerRegion) DeleteObject(outerRegion);
+                if (borderBrush) DeleteObject(borderBrush);
+                EndPaint(hwnd, &paint);
+            }
+            return 0;
+        }
+        if (message == WM_SIZE) {
+            self->ApplyTextBoxFrameRegion(hwnd);
+            self->LayoutTextBoxControl(*control, *runtime);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
+        if (message == WM_LBUTTONDOWN) {
+            if (IsWindowEnabled(runtime->hwnd)) SetFocus(runtime->hwnd);
+            return 0;
+        }
+        if (message == WM_SETCURSOR) {
+            SetCursor(LoadCursorW(nullptr, IDC_IBEAM));
+            return TRUE;
+        }
+        if (message == WM_ENABLE) {
+            InvalidateRect(hwnd, nullptr, FALSE);
+        } else if (message == WM_COMMAND) {
+            return SendMessageW(self->hwnd_, WM_COMMAND, wParam, lParam);
+        } else if (message == WM_CTLCOLOREDIT || message == WM_CTLCOLORSTATIC) {
+            HDC hdc = reinterpret_cast<HDC>(wParam);
+            SetTextColor(hdc, control->foreground);
+            SetBkColor(hdc, control->background);
+            return reinterpret_cast<LRESULT>(runtime->brush ? runtime->brush : self->windowBrush_);
+        } else if (message == WM_NCDESTROY) {
+            RemoveWindowSubclass(hwnd, TextBoxFrameSubclassProc, subclassId);
+        }
+        return DefSubclassProc(hwnd, message, wParam, lParam);
+    }
+
     static LRESULT CALLBACK ControlSubclassProc(
         HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam,
         UINT_PTR subclassId, DWORD_PTR referenceData
@@ -2274,6 +2473,28 @@ private:
         const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
         RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
         if (control && runtime) {
+            if (message == WM_PAINT && IsType(*control, L"ProgressBar") && !(control->flags & CF_MARQUEE)) {
+                LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                HDC hdc = GetDC(hwnd);
+                if (hdc) {
+                    RECT rect = {}; GetClientRect(hwnd, &rect);
+                    int minimum = control->minimum;
+                    int maximum = std::max(minimum + 1, control->maximum);
+                    int current = static_cast<int>(SendMessageW(hwnd, PBM_GETPOS, 0, 0));
+                    int percent = std::clamp((current - minimum) * 100 / (maximum - minimum), 0, 100);
+                    wchar_t label[16] = {}; swprintf_s(label, L"%d%%", percent);
+                    HFONT oldFont = runtime->font ? reinterpret_cast<HFONT>(SelectObject(hdc, runtime->font)) : nullptr;
+                    SetBkMode(hdc, TRANSPARENT);
+                    RECT shadowRect = rect; OffsetRect(&shadowRect, 1, 1);
+                    SetTextColor(hdc, RGB(24, 24, 28));
+                    DrawTextW(hdc, label, -1, &shadowRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                    SetTextColor(hdc, RGB(255, 255, 255));
+                    DrawTextW(hdc, label, -1, &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+                    if (oldFont) SelectObject(hdc, oldFont);
+                    ReleaseDC(hwnd, hdc);
+                }
+                return result;
+            }
             if (message == WM_MOUSEMOVE && !runtime->mouseInside) {
                 runtime->mouseInside = true;
                 TRACKMOUSEEVENT tracking = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0 };
@@ -2285,8 +2506,10 @@ private:
             } else if (message == WM_LBUTTONDOWN) {
                 self->DispatchLingEvent(*control, L"MouseDown");
             } else if (message == WM_SETFOCUS) {
+                if (runtime->frameHwnd) InvalidateRect(runtime->frameHwnd, nullptr, FALSE);
                 self->DispatchLingEvent(*control, L"GotFocus");
             } else if (message == WM_KILLFOCUS) {
+                if (runtime->frameHwnd) InvalidateRect(runtime->frameHwnd, nullptr, FALSE);
                 self->DispatchLingEvent(*control, L"LostFocus");
             } else if (message == WM_NCDESTROY) {
                 RemoveWindowSubclass(hwnd, ControlSubclassProc, subclassId);
@@ -2310,14 +2533,14 @@ private:
         if (!control.enabled) style |= WS_DISABLED;
         if (IsType(control, L"Button")) {
             className = L"BUTTON";
-            if (control.flags & CF_BUTTON_DEFAULT) style |= BS_DEFPUSHBUTTON;
+            if (!(control.flags & (CF_BUTTON_TOGGLE | CF_BUTTON_SPLIT | CF_BUTTON_COMMAND_LINK))) style |= BS_OWNERDRAW;
+            else if (control.flags & CF_BUTTON_DEFAULT) style |= BS_DEFPUSHBUTTON;
             else if (control.flags & CF_BUTTON_TOGGLE) style |= BS_AUTOCHECKBOX | BS_PUSHLIKE;
             else if (control.flags & CF_BUTTON_SPLIT) style |= BS_SPLITBUTTON;
             else if (control.flags & CF_BUTTON_COMMAND_LINK) style |= BS_COMMANDLINK;
             else style |= BS_PUSHBUTTON;
         } else if (IsType(control, L"TextBox")) {
             className = L"EDIT";
-            style |= WS_BORDER;
             if (control.flags & CF_MULTILINE) style |= ES_MULTILINE | ES_WANTRETURN;
             if (TextEquals(control.option2, L"horizontal") || TextEquals(control.option2, L"both")) style |= ES_AUTOHSCROLL | WS_HSCROLL;
             if (TextEquals(control.option2, L"vertical") || TextEquals(control.option2, L"both")) style |= ES_AUTOVSCROLL | WS_VSCROLL;
@@ -2327,7 +2550,7 @@ private:
             if (control.flags & CF_NUMERIC) style |= ES_NUMBER;
             if (control.flags & CF_ALIGN_CENTER) style |= ES_CENTER;
             if (control.flags & CF_ALIGN_RIGHT) style |= ES_RIGHT;
-            exStyle = WS_EX_CLIENTEDGE;
+            exStyle = 0;
         } else if (IsType(control, L"Label")) {
             className = L"STATIC";
             style |= SS_NOTIFY;
@@ -2339,10 +2562,10 @@ private:
             else style |= SS_LEFT;
         } else if (IsType(control, L"CheckBox")) {
             className = L"BUTTON";
-            style |= (control.flags & CF_THREE_STATE) ? BS_AUTO3STATE : BS_AUTOCHECKBOX;
+            style |= BS_OWNERDRAW;
         } else if (IsType(control, L"RadioButton")) {
             className = L"BUTTON";
-            style |= BS_AUTORADIOBUTTON;
+            style |= BS_OWNERDRAW;
         } else if (IsType(control, L"GroupBox")) {
             className = L"BUTTON";
             style |= BS_GROUPBOX;
@@ -2368,7 +2591,7 @@ private:
             style |= WS_BORDER | ((control.flags & CF_HORIZONTAL) ? WS_HSCROLL : WS_VSCROLL);
         } else if (IsType(control, L"Image")) {
             className = L"STATIC";
-            style |= SS_BITMAP | SS_CENTERIMAGE | SS_NOTIFY;
+            style |= control.data && control.data[0] ? (SS_BITMAP | SS_CENTERIMAGE | SS_NOTIFY) : (SS_CENTER | SS_CENTERIMAGE | SS_NOTIFY | WS_BORDER);
         } else if (IsType(control, L"Grid")) {
             className = L"STATIC";
             style |= SS_WHITERECT;
@@ -2422,6 +2645,7 @@ private:
             style |= TBSTYLE_FLAT | TBSTYLE_TOOLTIPS;
         } else if (IsType(control, L"StatusBar")) {
             className = STATUSCLASSNAMEW;
+            style |= CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE;
         } else if (IsType(control, L"ReBar")) {
             className = REBARCLASSNAMEW;
             style |= RBS_VARHEIGHT | CCS_NODIVIDER;
@@ -2442,26 +2666,56 @@ private:
             style |= ACS_CENTER | ACS_TRANSPARENT;
         }
 
+        int controlX = ScaleForDpi(control.x, dpi_);
+        int controlY = ScaleForDpi(control.y, dpi_);
+        int controlWidth = ScaleForDpi(control.width, dpi_);
+        int controlHeight = ScaleForDpi(control.height, dpi_);
+        HWND frameHwnd = nullptr;
+        HWND childParent = parentHwnd;
+        int childX = controlX;
+        int childY = controlY;
+        int childWidth = controlWidth;
+        int childHeight = controlHeight;
+        if (IsType(control, L"TextBox")) {
+            DWORD frameStyle = WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | SS_NOTIFY;
+            if (!control.enabled) frameStyle |= WS_DISABLED;
+            frameHwnd = CreateWindowExW(
+                0, L"STATIC", L"", frameStyle,
+                controlX, controlY, controlWidth, controlHeight,
+                parentHwnd, nullptr, g_instance, nullptr
+            );
+            if (!frameHwnd) return false;
+            childParent = frameHwnd;
+            childX = 0;
+            childY = 0;
+            childWidth = controlWidth;
+            childHeight = controlHeight;
+        }
+
         HWND child = CreateWindowExW(
             exStyle,
             className,
             text,
             style,
-            ScaleForDpi(control.x, dpi_),
-            ScaleForDpi(control.y, dpi_),
-            ScaleForDpi(control.width, dpi_),
-            ScaleForDpi(control.height, dpi_),
-            parentHwnd,
+            childX,
+            childY,
+            childWidth,
+            childHeight,
+            childParent,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(control.id)),
             g_instance,
             nullptr
         );
-        if (!child) return false;
+        if (!child) {
+            if (frameHwnd) DestroyWindow(frameHwnd);
+            return false;
+        }
 
         HFONT font = CreateControlFont(control.fontSize, dpi_);
         HBRUSH brush = CreateSolidBrush(control.background);
-        runtimeControls_.push_back({ control.id, child, font, brush, nullptr, false, false });
+        runtimeControls_.push_back({ control.id, child, frameHwnd, font, brush, nullptr, false, false });
         SetWindowSubclass(child, ControlSubclassProc, static_cast<UINT_PTR>(control.id), reinterpret_cast<DWORD_PTR>(this));
+        if (frameHwnd) SetWindowSubclass(frameHwnd, TextBoxFrameSubclassProc, static_cast<UINT_PTR>(control.id), reinterpret_cast<DWORD_PTR>(this));
         AttachTooltip(child, control);
         HIMAGELIST imageList = FindImageList(IsType(control, L"ListView") ? control.option2 : control.option1);
         if (imageList) {
@@ -2473,12 +2727,21 @@ private:
             else if (IsType(control, L"ToolBar")) SendMessageW(child, TB_SETIMAGELIST, 0, reinterpret_cast<LPARAM>(imageList));
         }
         if (font) SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+        if (IsType(control, L"TextBox")) {
+            SendMessageW(child, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(ScaleForDpi(10, dpi_), ScaleForDpi(10, dpi_)));
+            RuntimeControl& runtime = runtimeControls_.back();
+            ApplyTextBoxFrameRegion(frameHwnd);
+            LayoutTextBoxControl(control, runtime);
+            InvalidateRect(frameHwnd, nullptr, FALSE);
+        }
         if ((IsType(control, L"CheckBox") || IsType(control, L"RadioButton") || IsType(control, L"Button")) && (control.flags & CF_CHECKED)) {
             SendMessageW(child, BM_SETCHECK, BST_CHECKED, 0);
         }
         if (IsType(control, L"ProgressBar")) {
             SendMessageW(child, PBM_SETRANGE32, control.minimum, control.maximum);
             SendMessageW(child, PBM_SETPOS, control.value, 0);
+            SendMessageW(child, PBM_SETBKCOLOR, 0, static_cast<LPARAM>(control.background));
+            SendMessageW(child, PBM_SETBARCOLOR, 0, static_cast<LPARAM>(control.foreground));
             if (control.flags & CF_MARQUEE) SendMessageW(child, PBM_SETMARQUEE, TRUE, 30);
         } else if (IsType(control, L"ComboBox")) {
             auto rows = DecodeControlRecords(control.data, 2);
@@ -2720,6 +2983,16 @@ private:
             EdgeView_调整全部大小();
 #endif
             return 0;
+        case WM_TIMER:
+            if (wParam == 0x4C42) {
+                KillTimer(hwnd_, 0x4C42);
+                SetWindowPos(hwnd_, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+                SetForegroundWindow(hwnd_);
+                BringWindowToTop(hwnd_);
+                SetFocus(hwnd_);
+                return 0;
+            }
+            break;
         case WM_COMMAND: {
             int controlId = LOWORD(wParam);
             int notification = HIWORD(wParam);
@@ -2734,7 +3007,10 @@ private:
             if (!control) return 0;
             if (IsType(*control, L"CheckBox") && notification == BN_CLICKED) {
                 HWND child = reinterpret_cast<HWND>(lParam);
-                DispatchLingEvent(*control, SendMessageW(child, BM_GETCHECK, 0, 0) == BST_CHECKED ? L"Checked" : L"Unchecked");
+                bool checked = SendMessageW(child, BM_GETCHECK, 0, 0) != BST_CHECKED;
+                SendMessageW(child, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0);
+                InvalidateRect(child, nullptr, TRUE);
+                DispatchLingEvent(*control, checked ? L"Checked" : L"Unchecked");
             } else if (IsType(*control, L"RadioButton") && notification == BN_CLICKED) {
                 SelectRadioControl(*control, reinterpret_cast<HWND>(lParam));
             } else if ((IsType(*control, L"Button") || IsType(*control, L"Label") || IsType(*control, L"SysLink")) && (notification == BN_CLICKED || notification == STN_CLICKED)) {
@@ -2760,6 +3036,8 @@ private:
             }
             return 0;
         }
+        case WM_DRAWITEM:
+            return PaintOwnerButton(reinterpret_cast<DRAWITEMSTRUCT*>(lParam)) ? TRUE : FALSE;
         case WM_NOTIFY: {
             NMHDR* header = reinterpret_cast<NMHDR*>(lParam);
             if (!header) return 0;
@@ -3775,7 +4053,7 @@ function toMessageBoxFlagsExpression(flagCode: number): string {
 function generateControlArray(window: LingWindowModel, windowIndex: number, program: LingCppProgram, resources: LingDesignerResource[]): string {
   const visibleControls = [...getVisibleControls(window)];
   const controlIds = new Map(visibleControls.map((control, index) => [control.id, index + 1001]));
-  const items = ((window as any).menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件')
+  const items = ((window as any).menuItems || '')
     .split(',')
     .map((item: string) => item.trim())
     .filter(Boolean);
@@ -3838,7 +4116,7 @@ function generatePropertySheetSpecs(project: LingWindowProject): string {
 }
 
 function generateWindowSpec(window: LingWindowModel, windowIndex: number): string {
-  const menuItemsStr = (window as any).menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件';
+  const menuItemsStr = (window as any).menuItems || '';
   const visibleCount = getVisibleControls(window).length + menuItemsStr.split(',').map((item: string) => item.trim()).filter(Boolean).length;
   const openPlacement = normalizeOpenWindowPlacement(window.openPlacement || 'default');
   const openX = openPlacement === 'custom' ? int(window.openX ?? 120) : 'CW_USEDEFAULT';
@@ -3906,8 +4184,11 @@ function getVisibleControls(window: LingWindowModel): LingControl[] {
 }
 
 function parseControlValue(control: LingControl): number {
+  const contentValue = Number.parseInt(control.content, 10);
   const configured = control.properties?.value;
-  const value = typeof configured === 'number' ? configured : Number.parseInt(control.content, 10);
+  const value = control.type === 'ProgressBar' && !Number.isNaN(contentValue)
+    ? contentValue
+    : typeof configured === 'number' ? configured : contentValue;
   const minimum = numericControlProperty(control, 'minimum', 0);
   const maximum = numericControlProperty(control, 'maximum', 100);
   return Number.isNaN(value) ? minimum : Math.max(minimum, Math.min(maximum, value));
@@ -3925,6 +4206,10 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
     : [];
   const labelOf = (record: Record<string, unknown>) => String(record.title ?? record.label ?? record.name ?? record.text ?? record.id ?? '');
   const numberOf = (value: unknown, fallback = 0) => typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : fallback;
+
+  if (control.type === 'TextBox') {
+    return ['', typeof properties.verticalAlign === 'string' ? properties.verticalAlign : 'center'];
+  }
 
   if (control.type === 'ListBox' || control.type === 'ComboBox' || control.type === 'ComboBoxEx') {
     return [encodeControlRecords(records(properties.items).map(item => [labelOf(item), String(numberOf(item.image, -1))])), ''];

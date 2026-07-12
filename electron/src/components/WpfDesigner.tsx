@@ -83,6 +83,12 @@ type InspectorTab = 'properties' | 'events' | 'layout';
 type ResizeDirection = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 type DesignerZoomMode = 'fit' | 'manual';
 
+interface DesignerContextMenuState {
+  x: number;
+  y: number;
+  controlId: string;
+}
+
 interface OpenControlEventCodeDetail {
   controlId: string;
   controlName: string;
@@ -187,6 +193,7 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
   const applyingHistoryRef = useRef(false);
   const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>('layout');
   const [isMenuDropdownOpen, setIsMenuDropdownOpen] = useState(false);
+  const [controlContextMenu, setControlContextMenu] = useState<DesignerContextMenuState | null>(null);
   const [nativeBuildLogs, setNativeBuildLogs] = useState<string[]>([
     '> [编译日志] 等待 F5 或“生成并运行”触发真实 Win32 构建。'
   ]);
@@ -642,18 +649,96 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     addLog(`> [${new Date().toLocaleTimeString()}] 【可视化设计】已在 ${activeWindow.fileName} 添加控件：${CONTROL_LABELS[type]}。`);
   };
 
-  const handleDeleteControl = () => {
-    if (!selectedControlId) return;
+  const deleteControlById = (controlId: string) => {
+    if (controlId === '__window_menu_bar__') {
+      updateActiveWindow(window => ({
+        ...window,
+        menuName: undefined,
+        menuItems: undefined,
+        menuEvents: undefined
+      }));
+      setSelectedControlId(null);
+      setSelectedControlIds([]);
+      addLog(`> [${new Date().toLocaleTimeString()}] 已移除当前窗口菜单栏。`);
+      return;
+    }
+    if (controlId.startsWith('__window_menu_item_')) {
+      const itemIndex = Number.parseInt(controlId.replace('__window_menu_item_', '').replace('__', ''), 10);
+      updateActiveWindow(window => {
+        const items = (window.menuItems || '').split(',').map(item => item.trim()).filter(Boolean);
+        if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= items.length) return window;
+        items.splice(itemIndex, 1);
+        const nextEvents: Record<string, string> = {};
+        Object.entries(window.menuEvents || {}).forEach(([key, value]) => {
+          const match = /^Item_(\d+)$/.exec(key);
+          if (!match) nextEvents[key] = value;
+          else {
+            const index = Number.parseInt(match[1], 10);
+            if (index < itemIndex) nextEvents[key] = value;
+            if (index > itemIndex) nextEvents[`Item_${index - 1}`] = value;
+          }
+        });
+        return { ...window, menuItems: items.join(', '), menuEvents: nextEvents };
+      });
+      setSelectedControlId('__window_menu_bar__');
+      setSelectedControlIds([]);
+      addLog(`> [${new Date().toLocaleTimeString()}] 已删除窗口菜单项。`);
+      return;
+    }
+    const idsToDelete = selectedControlIds.includes(controlId) && selectedControlIds.length
+      ? new Set(selectedControlIds)
+      : new Set([controlId]);
     updateActiveWindow(window => ({
       ...window,
       controls: window.controls
-        .filter(control => !new Set(selectedControlIds.length ? selectedControlIds : [selectedControlId]).has(control.id))
-        .map(control => selectedControlIds.includes(control.parentId || '')
+        .filter(control => !idsToDelete.has(control.id))
+        .map(control => idsToDelete.has(control.parentId || '')
           ? { ...control, parentId: undefined }
           : control)
     }));
     setSelectedControlId(null);
     setSelectedControlIds([]);
+  };
+
+  const handleDeleteControl = () => {
+    if (selectedControlId) deleteControlById(selectedControlId);
+  };
+
+  const duplicateControlById = (controlId: string) => {
+    if (controlId === '__window_menu_bar__') return;
+    if (controlId.startsWith('__window_menu_item_')) {
+      const itemIndex = Number.parseInt(controlId.replace('__window_menu_item_', '').replace('__', ''), 10);
+      updateActiveWindow(window => {
+        const items = (window.menuItems || '').split(',').map(item => item.trim()).filter(Boolean);
+        if (!Number.isInteger(itemIndex) || itemIndex < 0 || itemIndex >= items.length) return window;
+        items.splice(itemIndex + 1, 0, `${items[itemIndex]} 副本`);
+        return { ...window, menuItems: items.join(', ') };
+      });
+      setSelectedControlId(`__window_menu_item_${itemIndex + 1}__`);
+      addLog(`> [${new Date().toLocaleTimeString()}] 已复制窗口菜单项。`);
+      return;
+    }
+    const source = activeWindow.controls.find(control => control.id === controlId);
+    if (!source) return;
+    const copy: LingControl = {
+      ...source,
+      id: `${source.id}_copy_${Date.now()}`,
+      name: `${source.name}副本`,
+      x: Math.min(activeWindow.width - source.width, source.x + 10),
+      y: Math.min(activeWindow.height - TITLE_BAR_HEIGHT - source.height, source.y + 10),
+      events: source.events ? { ...source.events } : undefined,
+      properties: source.properties ? { ...source.properties } : undefined
+    };
+    updateActiveWindow(window => ({ ...window, controls: [...window.controls, copy] }));
+    selectOnlyControl(copy.id);
+    addLog(`> [${new Date().toLocaleTimeString()}] 已复制控件：${source.name}。`);
+  };
+
+  const openControlContextMenu = (event: React.MouseEvent, controlId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    selectOnlyControl(controlId);
+    setControlContextMenu({ x: event.clientX, y: event.clientY, controlId });
   };
 
   const handleMouseDown = (event: React.MouseEvent, control: LingControl, action: 'drag' | ResizeDirection) => {
@@ -761,6 +846,7 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
   useEffect(() => {
     const handleGlobalClick = () => {
       setIsMenuDropdownOpen(false);
+      setControlContextMenu(null);
     };
     window.addEventListener('click', handleGlobalClick);
     return () => {
@@ -768,7 +854,7 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     };
   }, []);
 
-  useEffect(() => { const keydown = (event: KeyboardEvent) => { const target = event.target as HTMLElement | null; if (target?.closest('input,textarea,select,[contenteditable="true"]')) return; if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redoDesigner() : undoDesigner(); return; } if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); redoDesigner(); return; } const step = event.shiftKey ? 10 : 1; const movement: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }; if (movement[event.key] && selectedControlIds.length) { event.preventDefault(); nudgeSelection(...movement[event.key]); } }; window.addEventListener('keydown', keydown); return () => window.removeEventListener('keydown', keydown); }, [project, selectedControlIds, activeWindowId]);
+  useEffect(() => { const keydown = (event: KeyboardEvent) => { const target = event.target as HTMLElement | null; if (target?.closest('input,textarea,select,[contenteditable="true"]')) return; if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); event.shiftKey ? redoDesigner() : undoDesigner(); return; } if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); redoDesigner(); return; } if (event.key === 'Delete' && selectedControlId) { event.preventDefault(); deleteControlById(selectedControlId); setControlContextMenu(null); return; } const step = event.shiftKey ? 10 : 1; const movement: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }; if (movement[event.key] && selectedControlIds.length) { event.preventDefault(); nudgeSelection(...movement[event.key]); } }; window.addEventListener('keydown', keydown); return () => window.removeEventListener('keydown', keydown); }, [project, selectedControlId, selectedControlIds, activeWindowId]);
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
@@ -1217,11 +1303,12 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
               </div>
             </div>
             {/* Menu Bar (Simulating native Win32 window menu bar) */}
-            <div
+            {(activeWindow.menuName || activeWindow.menuItems || activeWindow.menuEvents) && <div
               onMouseDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
               }}
+              onContextMenu={(event) => openControlContextMenu(event, '__window_menu_bar__')}
               onClick={(e) => {
                 e.stopPropagation();
                 setSelectedControlId('__window_menu_bar__');
@@ -1273,6 +1360,7 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
                         return (
                           <div
                             key={idx}
+                            onContextMenu={(event) => openControlContextMenu(event, `__window_menu_item_${idx}__`)}
                             onMouseDown={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
@@ -1313,14 +1401,15 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
                   </div>
                 )}
               </div>
-            </div>
+            </div>}
 
             {activeWindow.controls.map(control => renderControl(
               control,
               selectedControlIds.includes(control.id),
               handleMouseDown,
               setSelectedControlId,
-              handleControlDoubleClick
+              handleControlDoubleClick,
+              openControlContextMenu
             ))}
             </div>
           </div>
@@ -1422,6 +1511,51 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
         </div>
       </div>
 
+      {controlContextMenu && (
+        <div
+          role="menu"
+          aria-label="控件快捷菜单"
+          className={`fixed z-[200] min-w-36 overflow-hidden rounded-md border py-1 shadow-2xl ${
+            isDarkMode ? 'border-[#45454f] bg-[#252526] text-slate-200' : 'border-slate-200 bg-white text-slate-800'
+          }`}
+          style={{
+            left: `${Math.min(controlContextMenu.x, window.innerWidth - 160)}px`,
+            top: `${Math.min(controlContextMenu.y, window.innerHeight - 90)}px`
+          }}
+          onClick={event => event.stopPropagation()}
+          onContextMenu={event => event.preventDefault()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            disabled={controlContextMenu.controlId === '__window_menu_bar__'}
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
+              isDarkMode ? 'hover:bg-[#094771]' : 'hover:bg-blue-50'
+            } disabled:cursor-not-allowed disabled:opacity-40`}
+            onClick={() => {
+              duplicateControlById(controlContextMenu.controlId);
+              setControlContextMenu(null);
+            }}
+          >
+            <Copy className="h-3.5 w-3.5" />
+            <span>复制</span>
+          </button>
+          <div className={isDarkMode ? 'my-1 border-t border-[#3c3c44]' : 'my-1 border-t border-slate-200'} />
+          <button
+            type="button"
+            role="menuitem"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-rose-500 transition-colors hover:bg-rose-500/15"
+            onClick={() => {
+              deleteControlById(controlContextMenu.controlId);
+              setControlContextMenu(null);
+            }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>删除</span>
+            <span className="ml-auto text-[10px] opacity-60">Delete</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -1575,7 +1709,8 @@ function renderControl(
   isSelected: boolean,
   handleMouseDown: (event: React.MouseEvent, control: LingControl, action: 'drag' | ResizeDirection) => void,
   setSelectedControlId: (id: string) => void,
-  onOpenEventCode: (event: React.MouseEvent, control: LingControl) => void
+  onOpenEventCode: (event: React.MouseEvent, control: LingControl) => void,
+  onOpenContextMenu: (event: React.MouseEvent, controlId: string) => void
 ) {
   const isCollapsed = control.visibility === 'Collapsed';
   const definition = getWin32ControlDefinition(control.type);
@@ -1604,6 +1739,7 @@ function renderControl(
         setSelectedControlId(control.id);
       }}
       onDoubleClick={event => onOpenEventCode(event, control)}
+      onContextMenu={event => onOpenContextMenu(event, control.id)}
       onMouseDown={event => handleMouseDown(event, control, 'drag')}
       title={`双击打开事件代码：${getEplEventHandlerName(control.name, getPrimaryEventNameForType(control.type))}`}
       className={`absolute group cursor-move select-none ${
@@ -1647,8 +1783,8 @@ function renderControl(
 
         {control.type === 'TextBox' && (
           <div
-            className="w-full h-full rounded border border-slate-700 px-2 flex items-center justify-start text-xs select-none"
-            style={{ backgroundColor: control.background, color: control.foreground, fontSize: `${control.fontSize}px`, opacity: control.isEnabled ? 1 : 0.5 }}
+            className="w-full h-full rounded border border-slate-700 px-2 py-1 flex justify-start text-xs select-none"
+            style={{ backgroundColor: control.background, color: control.foreground, fontSize: `${control.fontSize}px`, opacity: control.isEnabled ? 1 : 0.5, alignItems: control.properties?.verticalAlign === 'top' ? 'flex-start' : control.properties?.verticalAlign === 'bottom' ? 'flex-end' : 'center' }}
           >
             {control.content}
           </div>
@@ -1669,7 +1805,7 @@ function renderControl(
             style={{ color: control.foreground, fontSize: `${control.fontSize}px`, backgroundColor: control.background === 'transparent' ? 'transparent' : control.background }}
           >
             <div className="w-3.5 h-3.5 border border-slate-500 rounded bg-slate-900 flex items-center justify-center shrink-0">
-              <Check className="w-2.5 h-2.5 text-emerald-400" />
+              {control.properties?.checked === true && <Check className="w-2.5 h-2.5" style={{ color: control.foreground }} />}
             </div>
             <span className="truncate">{control.content}</span>
           </div>
@@ -1681,7 +1817,7 @@ function renderControl(
             style={{ color: control.foreground, fontSize: `${control.fontSize}px`, backgroundColor: control.background === 'transparent' ? 'transparent' : control.background }}
           >
             <div className="w-3.5 h-3.5 border border-slate-500 rounded-full bg-slate-900 flex items-center justify-center shrink-0">
-              <div className="w-1.5 h-1.5 bg-amber-500 rounded-full" />
+              {control.properties?.checked === true && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: control.foreground }} />}
             </div>
             <span className="truncate">{control.content}</span>
           </div>
@@ -2033,7 +2169,14 @@ function ControlProperties({
         </PropertyRow>
         <TextField label="中文名称" value={control.name} isDarkMode={isDarkMode} onChange={handleNameChange} />
         {control.type !== 'Grid' && (
-          <TextField label={control.type === 'ProgressBar' ? '进度值' : '显示内容'} value={control.content} isDarkMode={isDarkMode} onChange={value => onChange({ content: value })} />
+          <TextField
+            label={control.type === 'ProgressBar' ? '进度值' : '显示内容'}
+            value={control.content}
+            isDarkMode={isDarkMode}
+            onChange={value => onChange(control.type === 'ProgressBar'
+              ? { content: value, properties: { ...(control.properties || {}), value: Number.parseInt(value, 10) || 0 } }
+              : { content: value })}
+          />
         )}
         <PropertyRow label="字体大小" isDarkMode={isDarkMode}>
           <div className="flex w-full items-center gap-2">
@@ -2104,7 +2247,7 @@ function ControlProperties({
             <option value="Collapsed">隐藏</option>
           </select>
         </PropertyRow>
-        {control.type !== 'MenuBar' as any && control.type !== 'MenuItem' as any && (
+        {control.type !== 'MenuItem' as any && (
           <div className="p-2">
             <button
               onClick={onDelete}

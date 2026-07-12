@@ -597,7 +597,10 @@ test('LingCpp designer bindings produce bound and missing-source hints', () => {
   assert.ok(missingHints.some(hint => hint.status === 'missing-source' && hint.handlerName === '_missing_handler'));
   assert.equal(diagnostics.some(diagnostic => diagnostic.id.includes('missing-source')), false);
   assert.ok(problems.some(problem => problem.id.includes('missing-source') && problem.actionLabel === '生成事件函数'));
-  assert.equal(missingHints.find(hint => hint.status === 'missing-source' && hint.handlerName === '_missing_handler')?.line, parseLingCpp(sampleSource).program.classes[0]?.line);
+  assert.equal(missingHints.find(hint => hint.status === 'missing-source' && hint.handlerName === '_missing_handler')?.line, parseLingCpp(sampleSource).program.classes[0]?.endLine);
+  assert.equal(problems.find(problem => problem.actionKind === 'generate-event')?.locationKind, 'insertion');
+  assert.equal(new Set(problems.map(problem => problem.id)).size, problems.length);
+  assert.equal(problems.filter(problem => problem.codeSnippet === '_missing_handler').length, 1);
 });
 
 test('LingCpp readable names and blocks summarize events for reading mode', () => {
@@ -1034,6 +1037,43 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
   assert.ok(mainCpp.includes('信息框(L"开始运行", MB_OK | MB_ICONINFORMATION, L"提示");'));
   assert.ok(mainCpp.includes('if (信息框(L"确认退出？", MB_YESNO | MB_ICONQUESTION, L"退出确认") == IDYES) { 结束(); return; }'));
   assert.ok(mainCpp.includes('void 游戏主窗体_文件_被选择()'));
+  assert.ok(mainCpp.includes('find_first_not_of(L" \\t\\r\\n,")'));
+  assert.equal(/find_first_not_of\(L"[^"\r\n]*[\r\n]/u.test(mainCpp), false);
+  assert.ok(mainCpp.includes('RoundRect(item->hDC'));
+  assert.ok(mainCpp.includes('message == WM_PAINT && IsType(*control, L"ProgressBar")'));
+  assert.ok(mainCpp.includes('swprintf_s(label, L"%d%%", percent)'));
+  assert.ok(mainCpp.includes('SetTextColor(hdc, RGB(255, 255, 255))'));
+  assert.ok(mainCpp.includes('CreateRoundRectRgn'));
+  assert.ok(mainCpp.includes('EM_SETMARGINS'));
+  assert.ok(mainCpp.includes('className = L"EDIT";'));
+  assert.ok(mainCpp.includes('SendMessageW(child, EM_SETMARGINS'));
+  assert.ok(mainCpp.includes('HWND frameHwnd;'));
+  assert.ok(mainCpp.includes('TextBoxFrameSubclassProc'));
+  assert.ok(mainCpp.includes('LayoutTextBoxControl'));
+  assert.ok(mainCpp.includes('GetTextMetricsW(hdc, &metrics)'));
+  assert.ok(mainCpp.includes('FillRgn(hdc, outerRegion, borderBrush)'));
+  assert.ok(mainCpp.includes('GetFocus() == runtime->hwnd'));
+  assert.ok(mainCpp.includes('RGB(14, 165, 233)'));
+  assert.ok(mainCpp.includes('RGB(51, 65, 85)'));
+  assert.ok(mainCpp.includes('int borderWidth = 1;'));
+  assert.ok(mainCpp.includes('cornerDiameter = std::max(ScaleForDpi(8, self->dpi_), 4)'));
+  assert.ok(mainCpp.includes('rect.left + borderWidth, rect.top + borderWidth'));
+  assert.ok(mainCpp.includes('rect.right - borderWidth, rect.bottom - borderWidth'));
+  assert.ok(mainCpp.includes('SetFocus(runtime->hwnd)'));
+  assert.ok(mainCpp.includes('InvalidateRect(runtime->frameHwnd, nullptr, FALSE)'));
+  assert.ok(mainCpp.includes('SendMessageW(self->hwnd_, WM_COMMAND, wParam, lParam)'));
+  assert.equal(mainCpp.includes('WM_NCCALCSIZE'), false);
+  assert.equal(mainCpp.includes('WM_NCPAINT'), false);
+  assert.equal(mainCpp.includes('GetWindowDC(hwnd)'), false);
+  assert.equal(mainCpp.includes('RDW_FRAME'), false);
+  assert.equal(mainCpp.includes('SetWindowRgn(child'), false);
+  assert.ok(mainCpp.includes('TextEquals(control.data2, L"bottom")'));
+  assert.ok(mainCpp.includes('TextEquals(control.data2, L"top")'));
+  const textBoxBranchStart = mainCpp.indexOf('} else if (IsType(control, L"TextBox")) {');
+  const textBoxBranchEnd = mainCpp.indexOf('} else if (IsType(control, L"Label")) {', textBoxBranchStart);
+  assert.ok(textBoxBranchStart >= 0 && textBoxBranchEnd > textBoxBranchStart);
+  const textBoxBranch = mainCpp.slice(textBoxBranchStart, textBoxBranchEnd);
+  assert.doesNotMatch(textBoxBranch, /WS_BORDER|WS_EX_CLIENTEDGE/);
 
   const layoutJson = generated.files.find(file => file.relativePath === 'layout.json')?.content || '';
   assert.equal(JSON.parse(layoutJson).id, 'sample-project');

@@ -765,6 +765,11 @@ static HWND OpenGeneratedWindow(int windowIndex, int showCommand) {
     SetWindowTextW(hwnd, spec.title);
     ShowWindow(hwnd, showCommand);
     UpdateWindow(hwnd);
+    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    SetForegroundWindow(hwnd);
+    BringWindowToTop(hwnd);
+    SetFocus(hwnd);
     return hwnd;
 }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { 
   Terminal, 
   AlertTriangle, 
@@ -62,6 +62,7 @@ export default function BottomPanel({
   onClearLogs
 }: BottomPanelProps) {
   const [filterType, setFilterType] = useState<'all' | 'string' | 'comment'>('all');
+  const logViewportRef = useRef<HTMLDivElement | null>(null);
   const [copyNotice, setCopyNotice] = useState<{ message: string; tone: 'success' | 'error' } | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     show: boolean;
@@ -83,6 +84,17 @@ export default function BottomPanel({
     const timer = window.setTimeout(() => setCopyNotice(null), 1800);
     return () => window.clearTimeout(timer);
   }, [copyNotice]);
+
+  useLayoutEffect(() => {
+    if (activeTab !== 'output' && activeTab !== 'designer_logs') return;
+    const viewport = logViewportRef.current;
+    if (!viewport) return;
+    viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'auto' });
+    const frame = window.requestAnimationFrame(() => {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'auto' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, buildLogs.length, generatedPanels.logs.length]);
 
   const getLogsText = (tabType: 'designer_logs' | 'output' | 'debug_logs') => {
     if (tabType === 'designer_logs') {
@@ -485,7 +497,7 @@ export default function BottomPanel({
       </div>
 
       {/* Active Tab Panel Body */}
-      <div className={`flex-1 overflow-auto min-h-0 ${isDarkMode ? 'bg-[#1E1E1E]' : 'bg-white text-slate-800'}`}>
+      <div ref={logViewportRef} className={`flex-1 overflow-auto min-h-0 ${isDarkMode ? 'bg-[#1E1E1E]' : 'bg-white text-slate-800'}`}>
         {activeTab === 'extracted' && (
           // ================= EXTRACTED STRINGS PANEL =================
           <table className="w-full text-left border-collapse text-xs select-text">
@@ -751,7 +763,7 @@ export default function BottomPanel({
                       >
                         {prob.level === 'error' ? '编译阻断 (Error)' : prob.level === 'warning' ? '规范缺陷 (Warning)' : '辅助信息 (Info)'}
                       </span>
-                      <span className="font-semibold text-slate-400 text-[10px]">{prob.filePath}{" -> "}第 {prob.line} 行{prob.column ? `:${prob.column}` : ''}{prob.code ? ` · ${prob.code}` : ''}</span>
+                      <span className="font-semibold text-slate-400 text-[10px]">{prob.filePath}{" -> "}{prob.locationKind === 'insertion' ? '待生成事件（类末尾）' : `第 ${prob.line} 行${prob.column ? `:${prob.column}` : ''}`}{prob.code ? ` · ${prob.code}` : ''}</span>
                     </div>
                     <p className={`text-xs font-sans mt-1.5 leading-relaxed ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>{prob.message}</p>
                     <div className={`flex items-center gap-1.5 text-[11px] p-1.5 rounded border mt-1 max-w-full overflow-x-auto select-text ${

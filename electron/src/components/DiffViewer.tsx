@@ -1346,6 +1346,24 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [beginnerCommandHintState, setBeginnerCommandHintState] = useState<BeginnerCommandHintState | null>(null);
 
   useEffect(() => {
+    const handleRevealLingCppLine = (event: Event) => {
+      const detail = (event as CustomEvent<{ filePath?: string; line?: number; column?: number }>).detail;
+      if (!detail?.line || activeFile?.language !== 'lingcpp') return;
+      const normalizePath = (value: string) => value.replace(/\\/gu, '/').replace(/^\.\//u, '').toLocaleLowerCase();
+      if (detail.filePath && activeFile?.path && normalizePath(detail.filePath) !== normalizePath(activeFile.path)) return;
+
+      const line = Math.max(1, Math.trunc(detail.line));
+      const column = Math.max(1, Math.trunc(detail.column || 1));
+      setViewType('code');
+      setCursorPosition({ line, column });
+      if (editorExperienceMode === 'beginner') setStructuredRevealLine(line);
+    };
+
+    window.addEventListener('lingcpp-reveal-line', handleRevealLingCppLine);
+    return () => window.removeEventListener('lingcpp-reveal-line', handleRevealLingCppLine);
+  }, [activeFile?.language, activeFile?.path, editorExperienceMode]);
+
+  useEffect(() => {
     if (pendingHandlerFocus) {
       setViewType('code');
     }
@@ -3765,6 +3783,36 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     );
   };
 
+  const createMissingDesignerEventEdit = (row: LingCppStructuredReadingRow): LingCppAstEdit | null => {
+    const handlerName = row.targetName || row.name;
+    const className = row.className || primaryLingCppClass?.name;
+    if (!handlerName || !className) return null;
+    return {
+      kind: 'add-event',
+      className,
+      event: {
+        handlerName,
+        parameters: row.parameters || [],
+        note: row.note || '由设计器事件自动生成'
+      }
+    };
+  };
+
+  const quickGenerateMissingDesignerEvent = (row: LingCppStructuredReadingRow) => {
+    const edit = createMissingDesignerEventEdit(row);
+    if (!edit || edit.kind !== 'add-event') {
+      setStructureEditError('当前源码里还没有可绑定事件的类。');
+      return false;
+    }
+    const applied = applyStructureAstEdits([edit], row.line);
+    if (applied) {
+      setSelectedBeginnerHandler(edit.event.handlerName);
+      setSelectedBeginnerCodeTarget({ className: edit.className, methodName: edit.event.handlerName });
+      setExpandedBeginnerEventTargetKey(`${edit.className}:event:${edit.event.handlerName}`);
+    }
+    return applied;
+  };
+
   const renderStructuredReadingRows = () => {
     const groupTitle: Record<LingCppStructuredReadingRow['group'], string> = {
       declaration: '源码声明',
@@ -3895,6 +3943,19 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               )}
             </div>
             <div className="flex shrink-0 items-center gap-1">
+              {isMissingEvent && (
+                <button
+                  type="button"
+                  onClick={() => quickGenerateMissingDesignerEvent(row)}
+                  disabled={!onUpdateSourceContent}
+                  className={`rounded px-1.5 py-1 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    isDarkMode ? 'bg-amber-400/15 text-amber-200 hover:bg-amber-400/25' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                  }`}
+                  title={`快速生成事件 ${row.targetName || row.name}`}
+                >
+                  快速生成
+                </button>
+              )}
               {!compact && !isLingCppBeginnerStructureMode && (
                 <button
                   type="button"
@@ -5704,34 +5765,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       </table>
     );
 
-    const getMissingDesignerEventEdit = (row: LingCppStructuredReadingRow): LingCppAstEdit | null => {
-      const handlerName = row.targetName || row.name;
-      const className = row.className || primaryLingCppClass?.name;
-      if (!handlerName || !className) {
-        return null;
-      }
-      return {
-        kind: 'add-event',
-        className,
-        event: {
-          handlerName,
-          parameters: row.parameters || [],
-          note: row.note || '由设计器事件自动生成'
-        }
-      };
-    };
+    const getMissingDesignerEventEdit = createMissingDesignerEventEdit;
 
     const generateMissingDesignerEvent = (row: LingCppStructuredReadingRow) => {
-      const edit = getMissingDesignerEventEdit(row);
-      if (!edit || edit.kind !== 'add-event') {
-        setStructureEditError('当前源码里还没有可绑定事件的类。');
-        return;
-      }
-      const applied = applyStructureAstEdits([edit], row.line);
+      const applied = quickGenerateMissingDesignerEvent(row);
       if (applied) {
-        setSelectedBeginnerHandler(edit.event.handlerName);
-        setSelectedBeginnerCodeTarget({ className: edit.className, methodName: edit.event.handlerName });
-        setExpandedBeginnerEventTargetKey(`${edit.className}:event:${edit.event.handlerName}`);
         window.requestAnimationFrame(() => scrollToStructureSection('event'));
       }
     };
@@ -5838,7 +5876,29 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                           {renderTextCell(row.type || row.name, 'type')}
                         </div>
                       </td>
-                      <td className={cellClass}>{renderDirectStructureInput(row, 'event-handler', row.targetName || row.name, '处理器', 'procedure')}</td>
+                      <td className={cellClass}>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <div className="min-w-0 flex-1">
+                            {renderDirectStructureInput(row, 'event-handler', row.targetName || row.name, '处理器', 'procedure')}
+                          </div>
+                          {(row.editKind === 'missing-event' || row.status === 'missing-source') && (
+                            <button
+                              type="button"
+                              onClick={event => {
+                                event.stopPropagation();
+                                generateMissingDesignerEvent(row);
+                              }}
+                              disabled={!onUpdateSourceContent}
+                              className={`h-6 shrink-0 rounded px-2 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                isDarkMode ? 'bg-amber-400/15 text-amber-200 hover:bg-amber-400/25' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                              }`}
+                              title={`快速生成事件 ${row.targetName || row.name}`}
+                            >
+                              快速生成
+                            </button>
+                          )}
+                        </div>
+                      </td>
                       <td className={cellClass}>{renderStatusCell(row)}</td>
                       <td className={cellClass}>
                         {row.editKind === 'event'
@@ -6222,7 +6282,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           className={`border-r px-2 py-2 text-right font-mono text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] tabular-nums ${canvasBorder} ${gutterBg}`}
           title={`定位到源码第 ${sourceLine} 行`}
         >
-          {visualLine}
+          {sourceLine}
         </button>
         <div className="min-w-0 px-3 py-2">{children}</div>
       </section>
@@ -6230,7 +6290,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
     const renderBlankSourceLine = (visualLine: number) => (
       <section key={`blank-${visualLine}`} className={`grid grid-cols-[var(--beginner-gutter-width)_minmax(0,1fr)] ${canvasBg}`}>
-        <div className={`border-r px-2 py-1 text-right font-mono text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] tabular-nums ${canvasBorder} ${gutterBg}`}>{visualLine}</div>
+        <div className={`border-r px-2 py-1 text-right font-mono text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] tabular-nums ${canvasBorder} ${gutterBg}`} />
         <div className="h-[var(--beginner-blank-row-height)]" />
       </section>
     );
@@ -6376,7 +6436,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 className="block h-[var(--beginner-table-row-height)] w-full text-right"
                 title={`定位到源码第 ${item.sourceLine} 行`}
               >
-                {item.visualLine}
+                {item.sourceLine}
               </button>
             ))}
             {showNewMemberRow && rows.length > 0 && (
@@ -6469,7 +6529,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         >
           <div data-beginner-line-numbers className={`select-none overflow-hidden border-r px-2 py-2 text-right text-[11px] tabular-nums ${canvasBorder} ${gutterBg}`} style={editorTextStyle}>
             {bodyLines.map((_, index) => {
-              const displayLine = firstVisualLine + index;
+              const displayLine = target.method.statements[index]?.line
+                || (target.method.statements[0]?.line || target.method.line + 1) + index;
               const localLine = index + 1;
               const isJumpTarget = beginnerJumpHighlight?.targetKey === targetKey && beginnerJumpHighlight.line === localLine;
               return (
@@ -6691,6 +6752,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         <div className="min-w-0">
           {canvasItems.length > 0 ? canvasItems.map((item, index) => <React.Fragment key={index}>{item}</React.Fragment>) : (
             <div className="p-4 text-center text-xs text-slate-500">暂无结构信息</div>
+          )}
+          {canvasItems.length > 0 && (
+            <div aria-hidden="true" className="h-[50vh] min-h-[160px] max-h-[360px]" data-beginner-scroll-tail />
           )}
         </div>
       </div>
@@ -7110,6 +7174,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       error={structureEditError}
       isDarkMode={isDarkMode}
       onRevealLine={revealLingCppLine}
+      onGenerateMissingEvent={quickGenerateMissingDesignerEvent}
     >
       {structuredReadingRows.length > 0 ? renderVolcanoStructuredRows() : (
         <div className="p-4 text-center text-xs text-slate-500">暂无结构信息</div>

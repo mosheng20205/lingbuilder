@@ -370,8 +370,10 @@ export function getLingCppProblems(
   filePath = 'src/未命名.lcpp',
   moduleContext?: LingCppModuleContext
 ): LingCppProblem[] {
-  const parseDiagnostics = [...getLingCppSemanticDiagnostics(source, designerProject, filePath, moduleContext), ...getBlockDiagnostics(source)];
-  const parserProblems = parseDiagnostics.map(diagnostic => ({
+  const parseDiagnostics = getLingCppSemanticDiagnostics(source, designerProject, filePath, moduleContext);
+  const parserProblems = parseDiagnostics
+    .filter(diagnostic => !diagnostic.id.startsWith('lingcpp-designer-'))
+    .map(diagnostic => ({
     id: diagnostic.id,
     filePath,
     line: diagnostic.line,
@@ -381,7 +383,7 @@ export function getLingCppProblems(
     codeSnippet: diagnostic.codeSnippet,
     suggestion: diagnostic.suggestion,
     actionKind: 'none' as const
-  }));
+    }));
 
   const designerProblems = designerProject
     ? getLingCppDesignerBindings(source, designerProject, filePath)
@@ -396,7 +398,8 @@ export function getLingCppProblems(
         codeSnippet: binding.handlerName,
         suggestion: problemSuggestionForBinding(binding),
         actionKind: binding.actionKind || actionKindForBinding(binding.status),
-        actionLabel: actionLabelForBinding(binding.status)
+        actionLabel: actionLabelForBinding(binding.status),
+        locationKind: binding.status === 'missing-source' ? 'insertion' as const : 'source' as const
       }))
     : [];
 
@@ -1071,7 +1074,10 @@ export function getLingCppDesignerBindings(
       .filter(method => method.kind === 'event')
       .map(method => ({ className: cls.name, handlerName: method.name, line: method.line }))
   );
-  const classLineByName = new Map(parsed.program.classes.map(cls => [normalizeIdentifier(cls.name), cls.line]));
+  const classInsertionLineByName = new Map(parsed.program.classes.map(cls => [
+    normalizeIdentifier(cls.name),
+    Math.max(cls.line, cls.endLine || cls.methods.at(-1)?.endLine || cls.methods.at(-1)?.line || cls.line)
+  ]));
   const fallbackDiagnosticLine = parsed.program.classes[0]?.line || 1;
   const sourceEventMap = new Map(sourceEvents.map(event => [normalizeIdentifier(event.handlerName), event]));
   const expectedBindings = collectDesignerEventBindings(currentWindows);
@@ -1138,7 +1144,7 @@ export function getLingCppDesignerBindings(
     if (sourceEventMap.has(normalizeIdentifier(binding.handlerName))) return;
     hints.push({
       status: 'missing-source',
-      line: classLineByName.get(normalizeIdentifier(binding.className)) || fallbackDiagnosticLine,
+      line: classInsertionLineByName.get(normalizeIdentifier(binding.className)) || fallbackDiagnosticLine,
       handlerName: binding.handlerName,
       className: binding.className,
       controlName: binding.controlName,

@@ -69,6 +69,7 @@ export interface ProblemItem {
   beginnerActionLabel?: string;
   severityForBeginner?: 'must-fix' | 'suggestion' | 'learning';
   canIgnore?: boolean;
+  locationKind?: 'source' | 'insertion';
 }
 
 export type BottomPanelTabType =

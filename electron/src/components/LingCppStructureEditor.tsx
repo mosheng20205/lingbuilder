@@ -13,6 +13,7 @@ interface LingCppStructureEditorProps {
   isDarkMode: boolean;
   children: React.ReactNode;
   onRevealLine: (line: number) => void;
+  onGenerateMissingEvent?: (row: LingCppStructuredReadingRow) => void;
 }
 
 type OutlineGroup = {
@@ -96,7 +97,8 @@ export default function LingCppStructureEditor({
   error,
   isDarkMode,
   children,
-  onRevealLine
+  onRevealLine,
+  onGenerateMissingEvent
 }: LingCppStructureEditorProps) {
   const [outlineQuery, setOutlineQuery] = useState('');
   const outlineGroups = useMemo(() => buildOutlineGroups(rows, outlineQuery), [outlineQuery, rows]);
@@ -192,25 +194,39 @@ export default function LingCppStructureEditor({
                   </div>
                   {group.rows.map(row => {
                     const selected = activeLine === row.line;
+                    const missingEvent = row.editKind === 'missing-event' || row.status === 'missing-source';
                     return (
-                      <button
-                        key={`${group.id}:${row.id}`}
-                        type="button"
-                        onClick={() => onRevealLine(row.line)}
-                        className={`grid w-full grid-cols-[16px_minmax(0,1fr)_42px] items-center gap-1 border-b px-2 py-1.5 text-left text-[11px] transition-colors ${border} ${
-                          selected
-                            ? isDarkMode ? 'bg-cyan-500/12 text-cyan-100' : 'bg-cyan-50 text-cyan-900'
-                            : isDarkMode ? 'text-slate-300 hover:bg-[#20222a]' : 'text-slate-700 hover:bg-slate-50'
-                        }`}
-                        title={`${row.targetName || row.name} - 第 ${row.line} 行`}
-                      >
-                        <ChevronRight className={`h-3.5 w-3.5 ${selected ? 'text-cyan-400' : 'text-slate-500'}`} />
-                        <span className="min-w-0">
-                          <span className="block truncate font-semibold">{row.targetName || row.name}</span>
-                          <span className="block truncate text-[10px] text-slate-500">{row.type || groupLabel[row.group]}</span>
-                        </span>
-                        <span className="text-right font-mono text-[10px] text-slate-500">{row.line}</span>
-                      </button>
+                      <div key={`${group.id}:${row.id}`} className={`flex items-stretch border-b ${border}`}>
+                        <button
+                          type="button"
+                          onClick={() => onRevealLine(row.line)}
+                          className={`grid min-w-0 flex-1 grid-cols-[16px_minmax(0,1fr)_42px] items-center gap-1 px-2 py-1.5 text-left text-[11px] transition-colors ${
+                            selected
+                              ? isDarkMode ? 'bg-cyan-500/12 text-cyan-100' : 'bg-cyan-50 text-cyan-900'
+                              : isDarkMode ? 'text-slate-300 hover:bg-[#20222a]' : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                          title={`${row.targetName || row.name} - 第 ${row.line} 行`}
+                        >
+                          <ChevronRight className={`h-3.5 w-3.5 ${selected ? 'text-cyan-400' : 'text-slate-500'}`} />
+                          <span className="min-w-0">
+                            <span className="block truncate font-semibold">{row.targetName || row.name}</span>
+                            <span className="block truncate text-[10px] text-slate-500">{row.type || groupLabel[row.group]}</span>
+                          </span>
+                          <span className="text-right font-mono text-[10px] text-slate-500">{missingEvent ? '待生成' : row.line}</span>
+                        </button>
+                        {missingEvent && onGenerateMissingEvent && (
+                          <button
+                            type="button"
+                            onClick={() => onGenerateMissingEvent(row)}
+                            className={`m-1 shrink-0 rounded px-1.5 text-[9px] font-semibold transition-colors ${
+                              isDarkMode ? 'bg-amber-400/15 text-amber-200 hover:bg-amber-400/25' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                            }`}
+                            title={`快速生成事件 ${row.targetName || row.name}`}
+                          >
+                            生成
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </section>

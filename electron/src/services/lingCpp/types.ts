@@ -316,6 +316,7 @@ export interface LingCppProblem {
   suggestion: string;
   actionKind: LingCppProblemActionKind;
   actionLabel?: string;
+  locationKind?: 'source' | 'insertion';
 }
 
 export type LingCppQuickActionKind =
