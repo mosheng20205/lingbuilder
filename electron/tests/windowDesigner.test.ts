@@ -99,6 +99,19 @@ test('编辑框垂直对齐默认居中并提供顶部、居中、底部选项',
   assert.equal(createDefaultControlProperties('TextBox').verticalAlign, 'center');
 });
 
+test('按钮圆角属性允许输入 0 到 100，并默认使用 6 像素', () => {
+  const button = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'Button');
+  assert.ok(button);
+  const cornerRadius = button.properties.find(property => property.key === 'cornerRadius');
+  assert.ok(cornerRadius);
+  assert.equal(cornerRadius.type, 'number');
+  assert.equal(cornerRadius.label, '圆角大小');
+  assert.equal(cornerRadius.defaultValue, 6);
+  assert.equal(cornerRadius.min, 0);
+  assert.equal(cornerRadius.max, 100);
+  assert.equal(createDefaultControlProperties('Button').cornerRadius, 6);
+});
+
 test('无版本设计器项目迁移为 v2 并保留旧字段', () => {
   const legacyProject: LingWindowProject = {
     id: 'legacy', name: '旧项目', windows: [{

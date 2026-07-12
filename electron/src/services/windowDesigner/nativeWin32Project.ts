@@ -90,6 +90,8 @@ function generateMainCpp(
 
 #include <windows.h>
 #include <commctrl.h>
+#include <gdiplus.h>
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <cwchar>
@@ -99,7 +101,40 @@ function generateMainCpp(
 #endif
 
 #pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "gdiplus.lib")
 #pragma comment(linker, "/manifestdependency:\\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\\"")
+
+static Gdiplus::Color ToGdiPlusColor(COLORREF color) {
+    return Gdiplus::Color(255, GetRValue(color), GetGValue(color), GetBValue(color));
+}
+
+static void AddRoundedRectanglePath(Gdiplus::GraphicsPath& path, const Gdiplus::RectF& rect, float radius) {
+    float safeRadius = std::max(0.0f, std::min(radius, std::min(rect.Width, rect.Height) / 2.0f));
+    if (safeRadius <= 0.0f) { path.AddRectangle(rect); return; }
+    float diameter = safeRadius * 2.0f;
+    path.AddArc(rect.X, rect.Y, diameter, diameter, 180.0f, 90.0f);
+    path.AddArc(rect.GetRight() - diameter, rect.Y, diameter, diameter, 270.0f, 90.0f);
+    path.AddArc(rect.GetRight() - diameter, rect.GetBottom() - diameter, diameter, diameter, 0.0f, 90.0f);
+    path.AddArc(rect.X, rect.GetBottom() - diameter, diameter, diameter, 90.0f, 90.0f);
+    path.CloseFigure();
+}
+
+static bool DrawAntiAliasedRoundedRectangle(HDC hdc, const RECT& rect, int radius, COLORREF fill, COLORREF border) {
+    Gdiplus::Graphics graphics(hdc);
+    if (graphics.GetLastStatus() != Gdiplus::Ok) return false;
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+    Gdiplus::RectF bounds(static_cast<Gdiplus::REAL>(rect.left) + 0.5f, static_cast<Gdiplus::REAL>(rect.top) + 0.5f,
+        std::max(0.0f, static_cast<Gdiplus::REAL>(rect.right - rect.left) - 1.0f),
+        std::max(0.0f, static_cast<Gdiplus::REAL>(rect.bottom - rect.top) - 1.0f));
+    Gdiplus::GraphicsPath path;
+    AddRoundedRectanglePath(path, bounds, static_cast<float>(radius));
+    Gdiplus::SolidBrush brush(ToGdiPlusColor(fill));
+    graphics.FillPath(&brush, &path);
+    Gdiplus::Pen pen(ToGdiPlusColor(border), 1.0f);
+    graphics.DrawPath(&pen, &path);
+    return true;
+}
 
 struct ControlSpec {
     int id;
@@ -110,6 +145,7 @@ struct ControlSpec {
     int width;
     int height;
     int fontSize;
+    int cornerRadius;
     COLORREF background;
     COLORREF foreground;
     bool enabled;
@@ -553,10 +589,28 @@ static void PaintOwnerButton(const DRAWITEMSTRUCT* item, WindowState& state) {
         return;
     }
 
+    HBRUSH cornerBrush = CreateSolidBrush(state.spec->background);
+    FillRect(item->hDC, &item->rcItem, cornerBrush);
+    DeleteObject(cornerBrush);
+
     COLORREF fillColor = control->enabled ? control->background : RGB(80, 80, 86);
-    HBRUSH fillBrush = CreateSolidBrush(fillColor);
-    FillRect(item->hDC, &item->rcItem, fillBrush);
-    DeleteObject(fillBrush);
+    COLORREF borderColor = control->enabled ? RGB(100, 116, 139) : RGB(70, 70, 78);
+    int itemWidth = static_cast<int>(item->rcItem.right - item->rcItem.left);
+    int itemHeight = static_cast<int>(item->rcItem.bottom - item->rcItem.top);
+    int maxRadius = std::max(0, std::min(itemWidth, itemHeight) / 2);
+    int radius = std::clamp(ScaleForDpi(control->cornerRadius, state.dpi), 0, maxRadius);
+    if (!DrawAntiAliasedRoundedRectangle(item->hDC, item->rcItem, radius, fillColor, borderColor)) {
+        HBRUSH fillBrush = CreateSolidBrush(fillColor);
+        HPEN borderPen = CreatePen(PS_SOLID, 1, borderColor);
+        HGDIOBJ oldBrush = SelectObject(item->hDC, fillBrush);
+        HGDIOBJ oldPen = SelectObject(item->hDC, borderPen);
+        if (radius == 0) Rectangle(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);
+        else RoundRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom, radius * 2, radius * 2);
+        SelectObject(item->hDC, oldPen);
+        SelectObject(item->hDC, oldBrush);
+        DeleteObject(borderPen);
+        DeleteObject(fillBrush);
+    }
 
     SetBkMode(item->hDC, TRANSPARENT);
     SetTextColor(item->hDC, control->enabled ? control->foreground : RGB(170, 170, 176));
@@ -776,6 +830,9 @@ static HWND OpenGeneratedWindow(int windowIndex, int showCommand) {
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     g_instance = instance;
     EnableDpiAwareness();
+    Gdiplus::GdiplusStartupInput gdiplusInput;
+    ULONG_PTR gdiplusToken = 0;
+    Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusInput, nullptr);
 
     INITCOMMONCONTROLSEX controls;
     controls.dwSize = sizeof(INITCOMMONCONTROLSEX);
@@ -791,6 +848,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     windowClass.lpszClassName = GENERATED_WINDOW_CLASS;
 
     if (!RegisterClassExW(&windowClass)) {
+        if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
         return 0;
     }
 
@@ -802,6 +860,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
         DispatchMessageW(&message);
     }
 
+    if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
     return static_cast<int>(message.wParam);
 }
 `;
@@ -898,7 +957,14 @@ function generateControlSpec(control: LingControl, id: number, eventRules: EplRu
   const debugText = eventRule?.debugOutputs.join('\n') || '';
   const background = control.background === 'transparent' ? '#1E1E24' : control.background;
 
-  return `    { ${id}, L"${control.type}", L"${escapeWideString(control.content)}", ${int(control.x)}, ${int(control.y)}, ${int(control.width)}, ${int(control.height)}, ${int(control.fontSize)}, ${toColorRef(background)}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, ${parseProgress(control)}, L"${escapeWideString(handler)}", L"${escapeWideString(messageBox?.text || '')}", L"${escapeWideString(messageBox?.title || '')}", ${messageBox?.cppFlagsExpression || 'MB_OK'}, L"${escapeWideString(debugText)}", ${eventRule?.closesWindowOnConfirm ? 'true' : 'false'} }`;
+  const cornerRadius = control.type === 'Button' ? clampInteger(control.properties?.cornerRadius, 6, 0, 100) : 0;
+  return `    { ${id}, L"${control.type}", L"${escapeWideString(control.content)}", ${int(control.x)}, ${int(control.y)}, ${int(control.width)}, ${int(control.height)}, ${int(control.fontSize)}, ${cornerRadius}, ${toColorRef(background)}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, ${parseProgress(control)}, L"${escapeWideString(handler)}", L"${escapeWideString(messageBox?.text || '')}", L"${escapeWideString(messageBox?.title || '')}", ${messageBox?.cppFlagsExpression || 'MB_OK'}, L"${escapeWideString(debugText)}", ${eventRule?.closesWindowOnConfirm ? 'true' : 'false'} }`;
+}
+
+function clampInteger(value: unknown, fallback: number, minimum: number, maximum: number): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maximum, Math.max(minimum, Math.round(parsed)));
 }
 
 function getVisibleControls(window: LingWindowModel): LingControl[] {

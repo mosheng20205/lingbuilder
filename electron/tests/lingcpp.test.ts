@@ -107,6 +107,7 @@ const sampleProject: LingWindowProject = {
           foreground: '#FFFFFF',
           isEnabled: true,
           visibility: 'Visible',
+          properties: { cornerRadius: 18 },
           events: {
             Click: '_按钮1_被单击'
           }
@@ -125,6 +126,7 @@ const sampleProject: LingWindowProject = {
           foreground: '#FFFFFF',
           isEnabled: true,
           visibility: 'Visible',
+          properties: { cornerRadius: 0 },
           events: {
             Click: '_按钮2_被单击'
           }
@@ -1040,6 +1042,18 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
   assert.ok(mainCpp.includes('find_first_not_of(L" \\t\\r\\n,")'));
   assert.equal(/find_first_not_of\(L"[^"\r\n]*[\r\n]/u.test(mainCpp), false);
   assert.ok(mainCpp.includes('RoundRect(item->hDC'));
+  assert.ok(mainCpp.includes('int cornerRadius;'));
+  assert.ok(mainCpp.includes('ScaleForDpi(control->cornerRadius, dpi_)'));
+  assert.ok(mainCpp.includes('#include <gdiplus.h>'));
+  assert.ok(mainCpp.includes('#pragma comment(lib, "gdiplus.lib")'));
+  assert.ok(mainCpp.includes('DrawAntiAliasedRoundedRectangle'));
+  assert.ok(mainCpp.includes('Gdiplus::SmoothingModeAntiAlias'));
+  assert.ok(mainCpp.includes('Gdiplus::PixelOffsetModeHalf'));
+  assert.ok(mainCpp.includes('Gdiplus::GdiplusStartup'));
+  assert.ok(mainCpp.includes('Gdiplus::GdiplusShutdown'));
+  assert.ok(mainCpp.includes('if (radius == 0)'));
+  assert.match(mainCpp, /L"Button", L"按钮1", L"开始", 48, 72, 120, 36, 14, 18,/);
+  assert.match(mainCpp, /L"Button", L"按钮2", L"退出", 48, 124, 120, 36, 14, 0,/);
   assert.ok(mainCpp.includes('static COLORREF BlendColor'));
   assert.ok(mainCpp.includes('bool IsButtonControl(const ControlSpec& control) const'));
   assert.ok(mainCpp.includes('IsWindowEnabled(item->hwndItem) != FALSE'));

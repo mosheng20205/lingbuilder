@@ -213,6 +213,7 @@ ${moduleFeatureDefines}
 #include <shobjidl.h>
 #include <richedit.h>
 #include <wincodec.h>
+#include <gdiplus.h>
 #include <winhttp.h>
 #include <wincrypt.h>
 #if defined(LINGBUILDER_EDGEVIEW_MODULE) && __has_include(<WebView2.h>)
@@ -250,12 +251,44 @@ ${moduleFeatureDefines}
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(linker, "/manifestdependency:\\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\\"")
 ${moduleCppPreamble}
+
+static Gdiplus::Color ToGdiPlusColor(COLORREF color) {
+    return Gdiplus::Color(255, GetRValue(color), GetGValue(color), GetBValue(color));
+}
+
+static void AddRoundedRectanglePath(Gdiplus::GraphicsPath& path, const Gdiplus::RectF& rect, float radius) {
+    float safeRadius = std::max(0.0f, std::min(radius, std::min(rect.Width, rect.Height) / 2.0f));
+    if (safeRadius <= 0.0f) { path.AddRectangle(rect); return; }
+    float diameter = safeRadius * 2.0f;
+    path.AddArc(rect.X, rect.Y, diameter, diameter, 180.0f, 90.0f);
+    path.AddArc(rect.GetRight() - diameter, rect.Y, diameter, diameter, 270.0f, 90.0f);
+    path.AddArc(rect.GetRight() - diameter, rect.GetBottom() - diameter, diameter, diameter, 0.0f, 90.0f);
+    path.AddArc(rect.X, rect.GetBottom() - diameter, diameter, diameter, 90.0f, 90.0f);
+    path.CloseFigure();
+}
+
+static bool DrawAntiAliasedRoundedRectangle(HDC hdc, const RECT& rect, int radius, COLORREF fill, COLORREF border, bool fillShape, float borderWidth = 1.0f) {
+    Gdiplus::Graphics graphics(hdc);
+    if (graphics.GetLastStatus() != Gdiplus::Ok) return false;
+    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+    graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+    Gdiplus::RectF bounds(static_cast<Gdiplus::REAL>(rect.left) + 0.5f, static_cast<Gdiplus::REAL>(rect.top) + 0.5f,
+        std::max(0.0f, static_cast<Gdiplus::REAL>(rect.right - rect.left) - 1.0f),
+        std::max(0.0f, static_cast<Gdiplus::REAL>(rect.bottom - rect.top) - 1.0f));
+    Gdiplus::GraphicsPath path;
+    AddRoundedRectanglePath(path, bounds, static_cast<float>(radius));
+    if (fillShape) { Gdiplus::SolidBrush brush(ToGdiPlusColor(fill)); graphics.FillPath(&brush, &path); }
+    Gdiplus::Pen pen(ToGdiPlusColor(border), borderWidth);
+    graphics.DrawPath(&pen, &path);
+    return true;
+}
 
 struct ControlSpec {
     int id;
@@ -268,6 +301,7 @@ struct ControlSpec {
     int width;
     int height;
     int fontSize;
+    int cornerRadius;
     COLORREF background;
     COLORREF foreground;
     bool enabled;
@@ -2372,14 +2406,20 @@ private:
             HBRUSH cornerBrush = CreateSolidBrush(spec_.background);
             FillRect(item->hDC, &item->rcItem, cornerBrush);
             DeleteObject(cornerBrush);
-            HBRUSH buttonBrush = CreateSolidBrush(background);
-            HPEN borderPen = CreatePen(PS_SOLID, 1, border);
-            HGDIOBJ oldPen = SelectObject(item->hDC, borderPen);
-            HGDIOBJ oldBrush = SelectObject(item->hDC, buttonBrush);
-            int radius = std::max(ScaleForDpi(6, dpi_), 2);
-            RoundRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom, radius, radius);
-            SelectObject(item->hDC, oldBrush); SelectObject(item->hDC, oldPen);
-            DeleteObject(buttonBrush); DeleteObject(borderPen);
+            int itemWidth = static_cast<int>(item->rcItem.right - item->rcItem.left);
+            int itemHeight = static_cast<int>(item->rcItem.bottom - item->rcItem.top);
+            int maxRadius = std::max(0, std::min(itemWidth, itemHeight) / 2);
+            int radius = std::clamp(ScaleForDpi(control->cornerRadius, dpi_), 0, maxRadius);
+            if (!DrawAntiAliasedRoundedRectangle(item->hDC, item->rcItem, radius, background, border, true)) {
+                HBRUSH buttonBrush = CreateSolidBrush(background);
+                HPEN borderPen = CreatePen(PS_SOLID, 1, border);
+                HGDIOBJ oldPen = SelectObject(item->hDC, borderPen);
+                HGDIOBJ oldBrush = SelectObject(item->hDC, buttonBrush);
+                if (radius == 0) Rectangle(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);
+                else RoundRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom, radius * 2, radius * 2);
+                SelectObject(item->hDC, oldBrush); SelectObject(item->hDC, oldPen);
+                DeleteObject(buttonBrush); DeleteObject(borderPen);
+            }
             RECT textRect = item->rcItem;
             if (pressed) OffsetRect(&textRect, ScaleForDpi(1, dpi_), ScaleForDpi(1, dpi_));
             DrawTextW(item->hDC, control->text, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
@@ -2389,14 +2429,22 @@ private:
             int focusInset = std::max(ScaleForDpi(3, dpi_), 2);
             InflateRect(&focusRect, -focusInset, -focusInset);
             if (focusRect.right > focusRect.left && focusRect.bottom > focusRect.top) {
-                HPEN focusPen = CreatePen(PS_SOLID, std::max(1, ScaleForDpi(1, dpi_)), RGB(125, 211, 252));
-                HGDIOBJ oldFocusPen = SelectObject(item->hDC, focusPen);
-                HGDIOBJ oldFocusBrush = SelectObject(item->hDC, GetStockObject(NULL_BRUSH));
-                int focusRadius = std::max(ScaleForDpi(4, dpi_), 2);
-                RoundRect(item->hDC, focusRect.left, focusRect.top, focusRect.right, focusRect.bottom, focusRadius, focusRadius);
-                SelectObject(item->hDC, oldFocusBrush);
-                SelectObject(item->hDC, oldFocusPen);
-                DeleteObject(focusPen);
+                int focusItemWidth = static_cast<int>(item->rcItem.right - item->rcItem.left);
+                int focusItemHeight = static_cast<int>(item->rcItem.bottom - item->rcItem.top);
+                int outerRadius = std::clamp(ScaleForDpi(control->cornerRadius, dpi_), 0,
+                    std::max(0, std::min(focusItemWidth, focusItemHeight) / 2));
+                int focusRadius = std::max(0, outerRadius - focusInset);
+                if (!DrawAntiAliasedRoundedRectangle(item->hDC, focusRect, focusRadius, RGB(0, 0, 0), RGB(125, 211, 252), false,
+                    static_cast<float>(std::max(1, ScaleForDpi(1, dpi_))))) {
+                    HPEN focusPen = CreatePen(PS_SOLID, std::max(1, ScaleForDpi(1, dpi_)), RGB(125, 211, 252));
+                    HGDIOBJ oldFocusPen = SelectObject(item->hDC, focusPen);
+                    HGDIOBJ oldFocusBrush = SelectObject(item->hDC, GetStockObject(NULL_BRUSH));
+                    if (focusRadius == 0) Rectangle(item->hDC, focusRect.left, focusRect.top, focusRect.right, focusRect.bottom);
+                    else RoundRect(item->hDC, focusRect.left, focusRect.top, focusRect.right, focusRect.bottom, focusRadius * 2, focusRadius * 2);
+                    SelectObject(item->hDC, oldFocusBrush);
+                    SelectObject(item->hDC, oldFocusPen);
+                    DeleteObject(focusPen);
+                }
             }
         }
         if (oldFont) SelectObject(item->hDC, oldFont);
@@ -3347,6 +3395,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     g_instance = instance;
     EnableDpiAwareness();
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+    Gdiplus::GdiplusStartupInput gdiplusInput;
+    ULONG_PTR gdiplusToken = 0;
+    Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusInput, nullptr);
 
     INITCOMMONCONTROLSEX controls = {};
     controls.dwSize = sizeof(INITCOMMONCONTROLSEX);
@@ -3365,7 +3416,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     windowClass.hbrBackground = nullptr;
     windowClass.lpszClassName = GENERATED_WINDOW_CLASS;
 
-    if (!RegisterClassExW(&windowClass)) { CoUninitialize(); return 0; }
+    if (!RegisterClassExW(&windowClass)) { if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken); CoUninitialize(); return 0; }
     HWND startWindow = OpenGeneratedWindow(g_startWindowIndex, showCommand);
 
     MSG message;
@@ -3375,6 +3426,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }
+    if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
     CoUninitialize();
     return static_cast<int>(message.wParam);
 }
@@ -4293,7 +4345,14 @@ function generateControlSpec(
   const containerSlot = control.containerSlot || '';
   const [option1, option2] = getControlOptions(control, controlIds);
   const flags = generateControlFlags(control);
-  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(control.content)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${int(control.fontSize)}, ${toColorRef(background)}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(events)}" }`;
+  const cornerRadius = control.type === 'Button' ? clampInteger(control.properties?.cornerRadius, 6, 0, 100) : 0;
+  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(control.content)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${int(control.fontSize)}, ${cornerRadius}, ${toColorRef(background)}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(events)}" }`;
+}
+
+function clampInteger(value: unknown, fallback: number, minimum: number, maximum: number): number {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(maximum, Math.max(minimum, Math.round(parsed)));
 }
 
 function getWindowHandlers(window: LingWindowModel): string[] {

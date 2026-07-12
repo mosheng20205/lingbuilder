@@ -1774,8 +1774,14 @@ function renderControl(
         {control.type === 'Button' && (
           <button
             disabled={!control.isEnabled}
-            className="w-full h-full rounded text-center text-xs font-semibold shadow flex items-center justify-center px-2 select-none"
-            style={{ backgroundColor: control.background, color: control.foreground, fontSize: `${control.fontSize}px`, opacity: control.isEnabled ? 1 : 0.5 }}
+            className="w-full h-full text-center text-xs font-semibold shadow flex items-center justify-center px-2 select-none"
+            style={{
+              backgroundColor: control.background,
+              color: control.foreground,
+              fontSize: `${control.fontSize}px`,
+              opacity: control.isEnabled ? 1 : 0.5,
+              borderRadius: `${Math.min(Math.max(Number(control.properties?.cornerRadius ?? 6), 0), Math.min(control.width, control.height) / 2)}px`
+            }}
           >
             {control.content}
           </button>
