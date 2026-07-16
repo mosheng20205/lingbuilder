@@ -62,6 +62,12 @@ import { applyWorkspaceEdit } from '../services/lingCpp/aiEditService';
 import { importNativeCppToLingBuilder } from '../services/windowDesigner/nativeCppImportService';
 import { saveWindowDesignerState } from '../services/windowDesigner/windowDesignerService';
 import { normalizeIdentifier } from '../services/lingCpp/parser';
+import {
+  classifyLingCppPresentationCode,
+  extractLingCppNativeVariableNames,
+  LingCppPresentationTokenKind
+} from '../services/lingCpp/beginnerSyntaxPresentation';
+import { getLingCppModuleCommandNames } from '../services/lingCpp/monacoTokens';
 import { LingCppModuleContext } from '../services/modules/types';
 import {
   getBeginnerModuleCodeCompletions,
@@ -6188,7 +6194,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     type CompactColumn = { label: string; className?: string };
     const beginnerKnownMembers = new Set(memberRows.map(row => row.targetName || row.name).filter(Boolean));
     const beginnerKnownProcedures = new Set(codeTargets.map(target => target.method.name).filter(Boolean));
-    const beginnerCodeTokenPattern = /("(?:(?:\\.)|[^"\\])*"|“[^”]*”|否则如果|如果结束|调试输出|输出调试文本|信息框|打开窗口|窗口_打开|载入窗口|载入新窗口|载入可视化设计|读取配置项|取运行目录|如果真|如果|否则|结束|返回|文本型|整数型|逻辑型|小数型|长整数型|双精度小数型|字节集|日期时间型|真|假|\d+(?:\.\d+)?|[\w\u4e00-\u9fa5]+|[＝=＋+\-*/（）(),，])/gu;
+    const beginnerModuleCommands = new Set(getLingCppModuleCommandNames(moduleContext));
+    const beginnerNativeVariables = extractLingCppNativeVariableNames(normalizedSourceCode);
 
     const findBeginnerLineCommentStart = (line: string) => {
       let inDoubleQuote = false;
@@ -6217,33 +6224,27 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       return -1;
     };
 
-    const renderBeginnerCodeToken = (token: string, index: number) => {
+    const renderBeginnerCodeToken = (token: string, kind: LingCppPresentationTokenKind, index: number) => {
       if (!token) return null;
-      if (token.startsWith('"') || token.startsWith('“')) {
-        return <span key={index} className={isDarkMode ? 'text-[#d7c5a1]' : 'text-amber-700'}>{token}</span>;
-      }
-      if (/^(调试输出|输出调试文本|信息框|打开窗口|窗口_打开|载入窗口|载入新窗口|载入可视化设计|读取配置项|取运行目录)$/.test(token)) {
-        return <span key={index} className={isDarkMode ? 'text-[#dcdcaa]' : 'text-amber-700'}>{token}</span>;
-      }
-      if (/^(如果真|否则如果|否则|如果结束|如果|结束|返回)$/.test(token)) {
-        return <span key={index} className={isDarkMode ? 'text-[#4ea5ff]' : 'text-blue-700'}>{token}</span>;
-      }
-      if (/^(文本型|整数型|逻辑型|小数型|长整数型|双精度小数型|字节集|日期时间型)$/.test(token)) {
-        return <span key={index} className={isDarkMode ? 'text-[#2bd4c6]' : 'text-teal-700'}>{token}</span>;
-      }
-      if (/^(真|假)$/.test(token) || /^\d+(?:\.\d+)?$/.test(token)) {
-        return <span key={index} className={isDarkMode ? 'text-[#b5cea8]' : 'text-emerald-700'}>{token}</span>;
-      }
-      if (beginnerKnownMembers.has(token)) {
-        return <span key={index} className={isDarkMode ? 'text-amber-200' : 'text-amber-800'}>{token}</span>;
-      }
-      if (beginnerKnownProcedures.has(token)) {
-        return <span key={index} className={isDarkMode ? 'text-cyan-200' : 'text-cyan-800'}>{token}</span>;
-      }
-      if (/^[＝=＋+\-*/（）(),，]$/.test(token)) {
-        return <span key={index} className={isDarkMode ? 'text-slate-400' : 'text-slate-500'}>{token}</span>;
-      }
-      return <span key={index} className={isDarkMode ? 'text-slate-100' : 'text-slate-900'}>{token}</span>;
+      const className = {
+        string: isDarkMode ? 'text-[#d7c5a1]' : 'text-amber-700',
+        command: isDarkMode ? 'text-[#dcdcaa]' : 'text-amber-700',
+        keyword: isDarkMode ? 'text-[#4ea5ff]' : 'text-blue-700',
+        type: isDarkMode ? 'text-[#2bd4c6]' : 'text-teal-700',
+        literal: isDarkMode ? 'text-[#b5cea8]' : 'text-emerald-700',
+        'module-command': isDarkMode ? 'font-bold text-[#22d3ee]' : 'font-bold text-[#006a7a]',
+        member: isDarkMode ? 'text-amber-200' : 'text-amber-800',
+        procedure: isDarkMode ? 'text-cyan-200' : 'text-cyan-800',
+        operator: isDarkMode ? 'text-slate-400' : 'text-slate-500',
+        'native-marker': isDarkMode ? 'font-bold text-[#c586c0]' : 'font-bold text-[#7a1fa2]',
+        'native-keyword': isDarkMode ? 'font-semibold text-[#569cd6]' : 'font-semibold text-blue-700',
+        'native-type': isDarkMode ? 'text-[#4ec9b0]' : 'text-teal-700',
+        'native-namespace': isDarkMode ? 'text-[#4fc1ff]' : 'text-blue-700',
+        'native-function': isDarkMode ? 'text-[#dcdcaa]' : 'text-[#795e26]',
+        'native-variable': isDarkMode ? 'text-[#9cdcfe]' : 'text-[#001080]',
+        identifier: isDarkMode ? 'text-slate-100' : 'text-slate-900'
+      }[kind];
+      return <span key={index} data-lingcpp-token={kind} className={className}>{token}</span>;
     };
 
     const renderBeginnerCodeLine = (line: string) => {
@@ -6253,10 +6254,18 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const commentStart = findBeginnerLineCommentStart(body);
       const codePart = commentStart >= 0 ? body.slice(0, commentStart) : body;
       const commentPart = commentStart >= 0 ? body.slice(commentStart) : '';
+      const isNativeCpp = codePart.trimStart().startsWith('@');
+      const tokens = classifyLingCppPresentationCode(codePart, {
+        isNativeCpp,
+        moduleCommands: beginnerModuleCommands,
+        knownMembers: beginnerKnownMembers,
+        knownProcedures: beginnerKnownProcedures,
+        nativeVariables: beginnerNativeVariables
+      });
       return (
         <>
           <span>{leadingSpace}</span>
-          {codePart.split(beginnerCodeTokenPattern).map(renderBeginnerCodeToken)}
+          {tokens.map((token, index) => renderBeginnerCodeToken(token.text, token.kind, index))}
           {commentPart && (
             <span className={isDarkMode ? 'text-[#6A9955]' : 'text-green-700'}>{commentPart}</span>
           )}

@@ -13,7 +13,6 @@ import * as monacoRuntime from 'monaco-editor/esm/vs/editor/editor.api.js';
 import MonacoEditorWorker from 'monaco-editor/esm/vs/editor/editor.worker.js?worker';
 import 'monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution.js';
 import 'monaco-editor/esm/vs/basic-languages/ini/ini.contribution.js';
-import { LING_CPP_COMMANDS, LING_CPP_KEYWORDS, LING_CPP_TYPES } from '../services/lingCpp/parser';
 import {
   formatLingCpp,
   getLingCppBilingualCompletions,
@@ -25,6 +24,7 @@ import {
   getLingCppStructuredReadingRows,
   getLingCppSymbols
 } from '../services/lingCpp/languageService';
+import { createLingCppMonarchLanguage } from '../services/lingCpp/monacoTokens';
 import { LingCppDesignerBindingHint, LingCppDocumentSymbol, LingCppReadingMode, LingCppStructuredReadingRow } from '../services/lingCpp/types';
 import { LingWindowProject } from '../services/windowDesigner/types';
 import { InstalledModule, LingCppModuleContext } from '../services/modules/types';
@@ -92,6 +92,7 @@ interface MonacoCodeEditorProps {
 }
 
 let lingCppProvidersRegistered = false;
+let lingCppTokensProviderDisposable: { dispose: () => void } | undefined;
 let cppProvidersRegistered = false;
 const cppFilePaths = new Map<string, string>();
 let cppCodeActionCommandId: string | undefined;
@@ -137,8 +138,6 @@ const EPL_TYPES = [
 ];
 
 const EPL_BOOLEANS = ['真', '假'];
-
-const LINGCPP_BOOLEANS = ['真', '假'];
 
 const createMonarchLanguage = (
   keywords: string[],
@@ -208,14 +207,6 @@ const eplMonarchLanguage = createMonarchLanguage(
   EPL_TYPES,
   EPL_BOOLEANS,
   /^\s*\.(子程序|局部变量|变量|程序集|程序集变量|版本|支持库)\b/
-);
-
-const lingCppMonarchLanguage = createMonarchLanguage(
-  LING_CPP_KEYWORDS,
-  LING_CPP_COMMANDS,
-  LING_CPP_TYPES,
-  LINGCPP_BOOLEANS,
-  /^\s*(包|使用|类|公开|私有|保护|构造|析构|事件|结束类)\b/
 );
 
 const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProps>(function MonacoCodeEditor({
@@ -626,8 +617,12 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     }
     if (!monaco.languages.getLanguages().some((lang: any) => lang.id === 'lingcpp')) {
       monaco.languages.register({ id: 'lingcpp' });
-      monaco.languages.setMonarchTokensProvider('lingcpp', lingCppMonarchLanguage);
     }
+    lingCppTokensProviderDisposable?.dispose();
+    lingCppTokensProviderDisposable = monaco.languages.setMonarchTokensProvider(
+      'lingcpp',
+      createLingCppMonarchLanguage(lingCppModuleContextSnapshot)
+    );
 
     if (!lingCppProvidersRegistered) {
       lingCppProvidersRegistered = true;
@@ -842,6 +837,8 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       rules: [
         { token: 'keyword', foreground: '569cd6', fontStyle: 'bold' },
         { token: 'predefined', foreground: '4ec9b0' },
+        { token: 'module.command', foreground: '22d3ee', fontStyle: 'bold' },
+        { token: 'native.marker', foreground: 'c586c0', fontStyle: 'bold' },
         { token: 'type', foreground: '4fc1ff' },
         { token: 'tag', foreground: 'c586c0', fontStyle: 'bold' },
         { token: 'comment', foreground: '6a9955', fontStyle: 'italic' },
@@ -863,6 +860,8 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       rules: [
         { token: 'keyword', foreground: '0000ff', fontStyle: 'bold' },
         { token: 'predefined', foreground: '008080' },
+        { token: 'module.command', foreground: '006a7a', fontStyle: 'bold' },
+        { token: 'native.marker', foreground: '7a1fa2', fontStyle: 'bold' },
         { token: 'type', foreground: '0000ff' },
         { token: 'tag', foreground: '800080', fontStyle: 'bold' },
         { token: 'comment', foreground: '008000', fontStyle: 'italic' },
@@ -887,6 +886,19 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       monacoRef.current.editor.setTheme(isDarkMode ? 'epl-dark' : 'epl-light');
     }
   }, [isDarkMode]);
+
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    const editor = editorRef.current;
+    if (!monaco || !editor || language !== 'lingcpp') return;
+    lingCppTokensProviderDisposable?.dispose();
+    lingCppTokensProviderDisposable = monaco.languages.setMonarchTokensProvider(
+      'lingcpp',
+      createLingCppMonarchLanguage(moduleContext)
+    );
+    const model = editor.getModel?.();
+    model?.forceTokenization?.(model.getLineCount());
+  }, [language, moduleContext]);
 
   useEffect(() => {
     if (providedModuleContext) return;
