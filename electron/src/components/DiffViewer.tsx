@@ -5516,7 +5516,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               <span className="truncate font-normal">Alt+↑/↓ 跳分支 · Ctrl+Shift+\ 循环</span>
             </div>
           </div>
-          <div className={`grid ${editorHeightClass} grid-cols-[var(--beginner-gutter-width)_var(--beginner-flow-width)_minmax(0,1fr)]`}>
+          <div className={`grid ${editorHeightClass} grid-cols-[var(--beginner-gutter-width)_var(--beginner-flow-width)_minmax(0,1fr)] ${
+            isDarkMode ? 'bg-[#101116]' : 'bg-slate-50'
+          }`}>
             <div data-beginner-line-numbers className={`select-none overflow-hidden border-r px-2 py-2 text-right text-[11px] leading-6 tabular-nums ${
               isDarkMode ? 'border-[#2b2d34] bg-[#111217] text-slate-600' : 'border-slate-200 bg-slate-50 text-slate-400'
             }`} style={editorTextStyle}>
@@ -5593,8 +5595,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               style={editorTextStyle}
               className={`${editorHeightClass} w-full resize-y border-0 bg-transparent px-3 py-2 font-mono outline-none ${
                 isDarkMode
-                  ? 'text-slate-100 placeholder:text-slate-600 focus:bg-[#111118]'
-                  : 'text-slate-900 placeholder:text-slate-400 focus:bg-white'
+                  ? 'text-slate-100 placeholder:text-slate-600'
+                  : 'text-slate-900 placeholder:text-slate-400'
               }`}
             />
           </div>
@@ -6169,6 +6171,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
     const canvasBorder = isDarkMode ? 'border-[#2b2d34]' : 'border-slate-200';
     const canvasBg = isDarkMode ? 'bg-[#15161b]' : 'bg-white';
+    const editorCanvasBg = isDarkMode ? 'bg-[#101116]' : 'bg-slate-50';
     const gutterBg = isDarkMode ? 'bg-[#111217] text-slate-500' : 'bg-slate-50 text-slate-400';
     const allProcessTargets = [...codeTargets].sort((left, right) => left.method.line - right.method.line);
     const activeCanvasTarget = activeCodeTarget || allProcessTargets[0];
@@ -6273,7 +6276,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         data-structured-line={sourceLine}
         className={`grid grid-cols-[var(--beginner-gutter-width)_minmax(0,1fr)] border-b ${canvasBorder} ${
           tone === 'active'
-            ? isDarkMode ? 'bg-cyan-500/[0.06]' : 'bg-cyan-50'
+            ? `${canvasBg} ${isDarkMode ? 'shadow-[inset_2px_0_0_rgba(34,211,238,0.55)]' : 'shadow-[inset_2px_0_0_rgba(8,145,178,0.5)]'}`
             : tone === 'warning'
               ? isDarkMode ? 'bg-amber-500/[0.06]' : 'bg-amber-50'
               : canvasBg
@@ -6292,7 +6295,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     );
 
     const renderBlankSourceLine = (visualLine: number) => (
-      <section key={`blank-${visualLine}`} className={`grid grid-cols-[var(--beginner-gutter-width)_minmax(0,1fr)] ${canvasBg}`}>
+      <section key={`blank-${visualLine}`} className={`grid grid-cols-[var(--beginner-gutter-width)_minmax(0,1fr)] ${editorCanvasBg}`}>
         <div className={`border-r px-2 py-1 text-right font-mono text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] tabular-nums ${canvasBorder} ${gutterBg}`} />
         <div className="h-[var(--beginner-blank-row-height)]" />
       </section>
@@ -6525,7 +6528,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         <section
           key={`${target.className}:${target.method.name}:code`}
           data-structured-line={target.method.statements[0]?.line || target.method.line}
-          className={`relative grid grid-cols-[var(--beginner-gutter-width)_var(--beginner-flow-width)_minmax(0,1fr)] ${canvasBg}`}
+          className={`relative grid grid-cols-[var(--beginner-gutter-width)_var(--beginner-flow-width)_minmax(0,1fr)] ${editorCanvasBg}`}
           data-beginner-editor-root
           onContextMenu={event => openBeginnerContextMenu(event, target)}
           onWheel={handleEditorFontWheel}
@@ -6576,7 +6579,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               );
             })}
           </div>
-          <div className={`relative min-w-0 ${isDarkMode ? 'focus-within:bg-[#111118]' : 'focus-within:bg-white'}`} style={editorTextStyle}>
+          <div className={`relative min-w-0 ${editorCanvasBg}`} style={editorTextStyle}>
             <div
               aria-hidden="true"
               className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-2 font-mono font-normal not-italic tracking-normal"
@@ -6742,7 +6745,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       <div
         ref={beginnerStructureScrollRef}
         data-beginner-structure-scroll
-        className={`h-full min-h-0 overflow-auto ${isDarkMode ? 'bg-[#101116]' : 'bg-slate-50'}`}
+        className={`h-full min-h-0 overflow-auto ${editorCanvasBg}`}
         onContextMenu={event => openBeginnerContextMenu(event, activeCanvasTarget)}
       >
         <datalist id="beginner-member-name-suggestions">
