@@ -17,7 +17,8 @@
 - 后续建议：复制/粘贴和设计器专用操作仍需逐步注册为带编辑器上下文的命令贡献；撤销/重做已经进入工作台命令，结构字段保留浏览器原生撤销，只有代码正文/Monaco 才由文件模型接管快捷键。
 - 已完成：项目文件重命名/删除改为真实服务端磁盘操作，统一限制在当前项目 `sourceRoot` / `configRoot` 和工作区真实路径内，拒绝越界、符号链接、目录、目标冲突；工作台会串行提交新手草稿并同步标签页/活动文件状态，不再只改 React 内存。
 - 已完成：F5 和 AI Bridge `build.run` 启动的原生 exe 改由 `ManagedProcessService` 按 `projectId` 持有进程句柄；重新生成会在写入/编译固定 exe 前等待旧进程与日志流收尾，避免 Windows 文件锁导致链接失败。IDE 内嵌 AI Bridge 与 F5 共享项目构建租约，外部 CLI 使用独立租约；同项目并发会被拒绝。Shift+F5 可取消在途生成并停止全部受控进程，服务/CLI/MCP 退出会等待在途租约并最终回收登记进程，不再遗留 detached 预览进程或发生“停止后迟到启动”。
-- 已完成：“环境检查”改为真实只读探测 Node.js、MSVC/vswhere/vcvars、Windows SDK `rc.exe`、CMake、g++、clang++、WebView2 和 Windows 平台，并通过 `/api/environment/check` 返回中文明细与缺失警告，不再输出固定成功日志。
+- 已完成：“环境检查”改为真实只读探测 Node.js、MSVC/vswhere/vcvars、Windows SDK `rc.exe`、CMake、g++、clang++、WebView2 和 Windows 平台，并通过 `/api/environment/check` 返回中文明细与缺失警告，不再输出固定成功日志。Windows 上的 CMake 探测覆盖 PATH、标准独立安装目录及 `vswhere -find` 返回的 Visual Studio 内置 CMake，避免 VS 已安装 CMake 但未加入 PATH 时误报缺失。g++ 与 clang++ 作为可选替代编译器仍显示检测明细，但单独缺失时不再进入警告区；只有所有 C++ 编译器均缺失时才报告编译器警告。
+- 已完成：新增“环境修复中心”服务、受控 API、工具菜单/命令入口和暗亮主题响应式对话框；只允许从固定微软 HTTPS 地址下载并以固定参数安装 `Microsoft.VisualStudio.Workload.VCTools` 或 WebView2，具备显式确认、并发拒绝、下载/安装/成功/失败状态和完成后复检。Windows NSIS 安装包会冻结并校验 WebView2 Evergreen Bootstrapper，缺失时补装；离线开发环境包结构、layout、哈希、签名与验收方案记录在 `LINGBUILDER_OFFLINE_ENVIRONMENT_PACKAGE.md`。
 - 已完成：上述三项新增独立服务测试和 renderer server API 集成测试，并纳入 `npm run test:lingcpp` 全量门禁；完成度与验收证据统一记录在根目录 `IDE_FEATURE_COMPLETION.md`。
 
 - 已完成：建立统一 Win32 控件注册表，窗口设计器项目升级到 schemaVersion 2 并兼容迁移旧 `content` 数据；基础与高级控件模块、工具箱、专属属性、事件和 C++ 原生适配器共享同一份定义。

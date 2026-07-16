@@ -74,6 +74,11 @@ import { BuildConfigurationService, getBuildCompilerFlags, getBuildOutputSegment
 import { ClangdService } from "./src/services/lsp/clangdService";
 import { LspWorkspaceEditService } from "./src/services/lsp/lspWorkspaceEditService";
 import { checkDevelopmentEnvironment } from "./src/services/tasks/environmentCheckService";
+import {
+  EnvironmentRepairBusyError,
+  EnvironmentRepairService,
+  isEnvironmentRepairTarget
+} from "./src/services/tasks/environmentRepairService";
 import { mapCompilerDiagnostics, parseCompilerDiagnostics } from "./src/services/tasks/compilerDiagnosticService";
 import { dependencyBuildBatches, IncrementalBuildService } from "./src/services/tasks/incrementalBuildService";
 import { PtyTerminalService } from "./src/services/terminal/ptyTerminalService";
@@ -135,6 +140,7 @@ const hotExitRecoveryService = new HotExitRecoveryService(serverRuntimeConfig.wo
 const workspaceSearchService = createWorkspaceSearchService(serverRuntimeConfig.workspaceRoot);
 const managedProcessService = createManagedProcessService();
 const taskService = new TaskService();
+const environmentRepairService = new EnvironmentRepairService();
 const buildConfigurationService = new BuildConfigurationService(serverRuntimeConfig.workspaceRoot);
 const incrementalBuildService = new IncrementalBuildService(serverRuntimeConfig.workspaceRoot);
 const ptyTerminalService = new PtyTerminalService(serverRuntimeConfig.workspaceRoot);
@@ -631,6 +637,27 @@ app.get("/api/environment/check", async (_req, res) => {
     });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "开发环境检测失败。" });
+  }
+});
+
+app.get("/api/environment/repair/status", (_req, res) => {
+  res.json({ ok: true, repair: environmentRepairService.status() });
+});
+
+app.post("/api/environment/repair/start", (req, res) => {
+  const target = req.body?.target;
+  if (!isEnvironmentRepairTarget(target)) {
+    return res.status(400).json({ ok: false, error: "环境修复目标无效。" });
+  }
+  try {
+    const repair = environmentRepairService.start(target);
+    res.status(202).json({ ok: true, repair });
+  } catch (error) {
+    const status = error instanceof EnvironmentRepairBusyError ? 409 : 400;
+    res.status(status).json({
+      ok: false,
+      error: error instanceof Error ? error.message : "启动环境修复失败。"
+    });
   }
 });
 

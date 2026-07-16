@@ -125,6 +125,46 @@ test('environment check discovers MSVC and Windows SDK through vswhere and vcvar
   assert.equal(result.checks.windowsSdk.available, true);
   assert.equal(result.checks.windowsSdk.version, '10.0.22621.0');
   assert.ok(calls.some(call => call.command === 'cmd.exe' && (call.args.at(-1) || '').includes('rc.exe /?')));
+  assert.equal(result.warnings.some(warning => warning.includes('g++')), false);
+  assert.equal(result.warnings.some(warning => warning.includes('clang++')), false);
+});
+
+test('environment check discovers the CMake bundled with Visual Studio when it is not on PATH', async () => {
+  const visualStudioCmakePath = [
+    'C:\\Program Files\\Microsoft Visual Studio\\2022\\Community',
+    'Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe'
+  ].join('\\');
+  const runner = createRunner((command, args) => {
+    const executable = baseName(command);
+    if (executable === 'where.exe') return missing();
+    if (executable === 'vswhere.exe') {
+      if (args.includes('-?')) return ok('Visual Studio Locator version 3.1.7');
+      if (args.includes('-latest') && args.includes('-find')) return ok(`${visualStudioCmakePath}\r\n`);
+      return missing();
+    }
+    if (command === visualStudioCmakePath) return ok('cmake version 3.31.6-msvc6');
+    return missing();
+  });
+
+  const result = await new EnvironmentCheckService({
+    commandRunner: runner,
+    platform: 'win32',
+    architecture: 'x64',
+    osRelease: '10.0.19045',
+    nodeVersion: '26.4.0',
+    nodePath: 'C:\\Program Files\\nodejs\\node.exe',
+    environment: {
+      SystemRoot: 'C:\\Windows',
+      ProgramFiles: 'C:\\Program Files',
+      'ProgramFiles(x86)': 'C:\\Program Files (x86)'
+    }
+  }).check();
+
+  assert.equal(result.checks.cmake.available, true);
+  assert.equal(result.checks.cmake.version, '3.31.6-msvc6');
+  assert.equal(result.checks.cmake.path, visualStudioCmakePath);
+  assert.match(result.checks.cmake.detail, /Visual Studio Installer/u);
+  assert.equal(result.warnings.some(warning => warning.includes('未检测到 CMake')), false);
 });
 
 test('an alternative compiler is build-ready but exposes missing optional capabilities as warnings', async () => {
@@ -151,6 +191,7 @@ test('an alternative compiler is build-ready but exposes missing optional capabi
   assert.ok(result.warnings.some(warning => warning.includes('未检测到 MSVC')));
   assert.ok(result.warnings.some(warning => warning.includes('rc.exe')));
   assert.equal(result.warnings.some(warning => warning.includes('未检测到可用的 C++ 编译器')), false);
+  assert.equal(result.warnings.some(warning => warning.includes('clang++')), false);
 });
 
 test('unsupported platform and missing compilers make the environment not ready', async () => {

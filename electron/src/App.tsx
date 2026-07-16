@@ -70,6 +70,7 @@ import BottomPanel from './components/BottomPanel';
 import CommandPalette from './components/CommandPalette';
 import SettingsDialog from './components/SettingsDialog';
 import WorkspaceSearchDialog from './components/WorkspaceSearchDialog';
+import EnvironmentRepairCenter from './components/EnvironmentRepairCenter';
 import ProjectNameDialog from './components/ProjectNameDialog';
 import TextFileStatusControls from './components/TextFileStatusControls';
 import EditorPositionStatus from './components/EditorPositionStatus';
@@ -748,6 +749,7 @@ export default function App() {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  const [showEnvironmentRepairCenter, setShowEnvironmentRepairCenter] = useState(false);
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
   const [createProjectName, setCreateProjectName] = useState('');
   const [createProjectError, setCreateProjectError] = useState('');
@@ -3377,6 +3379,7 @@ void DisplayStatus() {
     solutionRebuild: () => handleSolutionBuildCommand('rebuild'),
     solutionClean: () => handleSolutionBuildCommand('clean'),
     environmentCheck: handleEnvCheck,
+    environmentRepair: () => { setShowEnvironmentRepairCenter(true); return true; },
     toggleSidebar: toggleSidebarVisibility,
     togglePanel: toggleBottomPanelVisibility,
     toggleAiPanel: toggleAiPanelVisibility,
@@ -3391,12 +3394,14 @@ void DisplayStatus() {
     || showAboutModal
     || showCustomModal
     || showCreateProjectDialog
+    || showEnvironmentRepairCenter
     || Boolean(pendingDesignerEventEdit)
     || Boolean(workspaceSearchMode);
   commandContextRef.current = {
     'workspace.open': true,
     'workbench.commandPaletteOpen': showCommandPalette,
     'workbench.settingsOpen': showSettingsDialog,
+    'workbench.environmentRepairOpen': showEnvironmentRepairCenter,
     'workbench.workspaceSearchOpen': Boolean(workspaceSearchMode),
     'workbench.blockingDialogOpen': blockingDialogOpen,
     'workbench.modalOpen': showCommandPalette || showSettingsDialog || blockingDialogOpen,
@@ -3576,6 +3581,16 @@ void DisplayStatus() {
         when: '!workbench.modalOpen',
         order: 30,
         handler: () => workbenchCommandHandlersRef.current.environmentCheck()
+      },
+      {
+        id: 'workbench.action.environment.repair',
+        title: '打开环境修复中心',
+        aliases: ['Environment Repair', 'Install Build Tools', 'repair dependencies'],
+        category: '工具',
+        description: '检测并通过微软官方安装程序修复 C++ Build Tools、Windows SDK、CMake 或 WebView2。',
+        when: '!workbench.modalOpen',
+        order: 31,
+        handler: () => workbenchCommandHandlersRef.current.environmentRepair()
       },
       {
         id: 'workbench.action.toggleSidebar',
@@ -4163,6 +4178,10 @@ void DisplayStatus() {
                   <button onClick={() => { handleEnvCheck(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>自检开发环境依赖</span>
                     <span className="opacity-50 text-[10px]">检测</span>
+                  </button>
+                  <button onClick={() => { setShowEnvironmentRepairCenter(true); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>环境修复中心...</span>
+                    <span className="opacity-50 text-[10px]">安装</span>
                   </button>
                   <button onClick={() => { setBuildLogs([`> [${new Date().toLocaleTimeString()}] 【系统】编译输出终端已清空。`]); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>清空输出终端日志</span>
@@ -4989,6 +5008,17 @@ void DisplayStatus() {
         onReset={resetWorkbenchConfiguration}
         onReload={loadWorkbenchConfiguration}
         onClose={() => setShowSettingsDialog(false)}
+      />
+
+      <EnvironmentRepairCenter
+        open={showEnvironmentRepairCenter}
+        isDarkMode={isDarkMode}
+        onClose={() => setShowEnvironmentRepairCenter(false)}
+        onEvent={message => {
+          setShowBottomPanel(true);
+          setActiveTabInBottom('output');
+          setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] 【环境修复】${message}`]);
+        }}
       />
 
       {/* Load Custom Code Modal */}

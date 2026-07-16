@@ -108,7 +108,7 @@ export class EnvironmentCheckService {
 
     const [msvcDetection, cmake, gpp, clangpp, webView2] = await Promise.all([
       this.detectMsvc(),
-      this.detectVersionedTool('cmake', ['--version'], parseCmakeVersion, '未检测到 CMake。'),
+      this.detectCmake(),
       this.detectVersionedTool('g++', ['--version'], parseGppVersion, '未检测到 GNU C++ 编译器。'),
       this.detectVersionedTool('clang++', ['--version'], parseClangVersion, '未检测到 Clang C++ 编译器。'),
       this.detectWebView2()
@@ -189,6 +189,89 @@ export class EnvironmentCheckService {
       version,
       path: executablePath,
       detail: version ? `已验证 ${command} ${version}。` : `已验证 ${command}，但未能解析版本号。`
+    };
+  }
+
+  private async detectCmake(): Promise<EnvironmentCheckItem> {
+    const fromPath = await this.detectVersionedTool(
+      'cmake',
+      ['--version'],
+      parseCmakeVersion,
+      '未检测到 CMake。'
+    );
+    if (fromPath.available) return fromPath;
+
+    if (this.dependencies.platform !== 'win32') return fromPath;
+
+    const programFiles = this.dependencies.environment.ProgramFiles;
+    if (programFiles) {
+      const standalonePath = path.join(programFiles, 'CMake', 'bin', 'cmake.exe');
+      const standalone = await this.detectCmakeAtPath(standalonePath, '标准安装目录');
+      if (standalone.available) return standalone;
+    }
+
+    const vswherePath = await this.findVswhere();
+    if (!vswherePath) return fromPath;
+
+    const relativeCmakePath = path.join(
+      'Common7',
+      'IDE',
+      'CommonExtensions',
+      'Microsoft',
+      'CMake',
+      'CMake',
+      'bin',
+      'cmake.exe'
+    );
+    const latestFindResult = await this.run(vswherePath, [
+      '-latest',
+      '-products',
+      '*',
+      '-find',
+      relativeCmakePath
+    ], { timeoutMs: 8_000 });
+    let visualStudioCmakePath = latestFindResult?.exitCode === 0
+      ? firstPathLine(latestFindResult.stdout)
+      : null;
+    if (!visualStudioCmakePath) {
+      const fallbackFindResult = await this.run(vswherePath, [
+        '-products',
+        '*',
+        '-find',
+        relativeCmakePath
+      ], { timeoutMs: 8_000 });
+      visualStudioCmakePath = fallbackFindResult?.exitCode === 0
+        ? firstPathLine(fallbackFindResult.stdout)
+        : null;
+    }
+    if (!visualStudioCmakePath) return fromPath;
+
+    return await this.detectCmakeAtPath(visualStudioCmakePath, 'Visual Studio Installer');
+  }
+
+  private async detectCmakeAtPath(
+    executablePath: string,
+    source: string
+  ): Promise<EnvironmentCheckItem> {
+    const versionResult = await this.run(executablePath, ['--version'], { timeoutMs: 5_000 });
+    const output = combineOutput(versionResult);
+    const version = parseCmakeVersion(output);
+    if (!versionResult || versionResult.exitCode !== 0) {
+      return {
+        available: false,
+        version,
+        path: executablePath,
+        detail: `已在 ${source} 找到 CMake，但执行版本检查失败。`
+      };
+    }
+
+    return {
+      available: true,
+      version,
+      path: executablePath,
+      detail: version
+        ? `已通过 ${source} 验证 CMake ${version}。`
+        : `已通过 ${source} 验证 CMake，但未能解析版本号。`
     };
   }
 
@@ -431,8 +514,6 @@ function buildWarnings(checks: EnvironmentChecks): string[] {
   }
   if (!checks.windowsSdk.available) warnings.push('未检测到 Windows SDK rc.exe，资源文件编译不可用。');
   if (!checks.cmake.available) warnings.push('未检测到 CMake，CMake 项目功能不可用。');
-  if (!checks.gpp.available) warnings.push('未检测到 g++（可选替代编译器）。');
-  if (!checks.clangpp.available) warnings.push('未检测到 clang++（可选替代编译器）。');
   if (!checks.webView2.available) warnings.push('未检测到 WebView2 Runtime，需要 WebView2 的原生预览功能可能不可用。');
   return warnings;
 }

@@ -628,6 +628,20 @@ test('renderer server enforces auth and exposes safe modules, files, process, an
     assert.equal(compilerChecks.every((check: any) => check.required === !hasCompiler), true);
     if (environmentResult.ready) assert.equal(hasCompiler, true);
 
+    const environmentRepairStatusResponse = await fetch(`${ready.origin}/api/environment/repair/status`, { headers });
+    assert.equal(environmentRepairStatusResponse.status, 200, await environmentRepairStatusResponse.clone().text());
+    const environmentRepairStatus = await environmentRepairStatusResponse.json();
+    assert.equal(environmentRepairStatus.ok, true);
+    assert.equal(environmentRepairStatus.repair.state, 'idle');
+    assert.equal(environmentRepairStatus.repair.active, false);
+
+    const invalidEnvironmentRepairResponse = await fetch(`${ready.origin}/api/environment/repair/start`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ target: 'arbitrary-shell' })
+    });
+    assert.equal(invalidEnvironmentRepairResponse.status, 400);
+
     const bridge = await fetch(`${ready.origin}/api/ai-bridge/health?token=renderer-session-test`);
     assert.equal(bridge.status, 404);
 

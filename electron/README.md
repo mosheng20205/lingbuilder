@@ -73,6 +73,7 @@ npm run package:win
 ```
 
 - `package:dir` 生成 `release/win-unpacked/LingBuilder.exe`；`smoke:packaged` 启动该程序并验证 renderer、普通 API、模块 API、退出码和服务进程回收；`package:win` 生成 Windows x64 NSIS 安装包。
+- `package:win` 会先从微软官方地址下载并校验 WebView2 Evergreen Bootstrapper，再冻结到 NSIS 资源；安装阶段仅在注册表未检测到 WebView2 Runtime 时补装，失败不会阻止 LingBuilder 本体安装，可稍后从“工具 → 环境修复中心”重试。
 - 安装版主进程先启动不可见的独立本地服务，显式传入工作区、renderer 静态目录、规则手册、`127.0.0.1` 随机端口和随机会话 token，收到 ready 信息后才加载窗口。
 - renderer 仍使用相对 `/api/*`，Electron 会自动注入本地会话 token；普通 IDE 服务拒绝 `0.0.0.0`，默认不挂载 `/api/ai-bridge/*`。
 - 首次运行会把版本化示例的缺失文件复制到“文档/LingBuilder/示例工作区”，不会覆盖已有文件；以后从 `userData/workspace-state.json` 恢复最近工作区。工具栏“打开”使用原生目录选择器并重启本地服务。
@@ -104,7 +105,7 @@ npm run package:win
 - 项目文本文件通过 `src/services/files/textFileService.ts` 按字节读取和保存。`/api/window-designer/files` 同时返回 `files` 与 `fileFormats`，支持 UTF-8、UTF-8 BOM、UTF-16 LE/BE 及 LF/CRLF；`.e` 和大小写扩展使用同一读写白名单，拒绝类型、越界或符号链接路径会返回中文 400，格式/路径校验完成前不会写入任何请求文件。编辑器内部统一使用 LF，状态栏切换编码或换行后会标记文件待保存。Diff 的“编辑 / 并排对比 / 内联对比”入口与命令面板共用工作台命令，CRLF/LF 不会产生伪差异，清空文件会显示为删除。
 - `Ctrl+Shift+F` / `Ctrl+Shift+H` 打开工作区搜索与替换。`WorkspaceSearchService` 支持纯文本/正则、大小写和文件/项目/工作区范围；搜索只读取磁盘快照并跳过构建目录、依赖目录、链接、过大或非文本文件。替换必须勾选结果、生成预览并明确确认，应用和撤销都重新校验文件哈希；中途写入或落盘后校验失败会恢复到完整的替换前/替换后状态，并保留 UTF BOM、UTF-16 与 LF/CRLF。服务保守拒绝灾难性回溯、反向引用和指数可选量词链，并以 32 MiB/256 匹配文件查询快照、16 MiB 预览、128 MiB 总缓存和 5 个可撤销事务为默认硬边界。四个 `/api/workspace-search/*` 路由复用本地会话鉴权；成功应用/撤销后，编辑器直接采用已确认事务的 before/after 快照，异常情况下才从磁盘重新读取，避免旧模型再次覆盖结果。
 - F5 原生程序由 `ManagedProcessService` 按项目管理。`/api/window-designer/run-status` 返回受控进程与在途生成状态，`/api/window-designer/stop` 可取消生成代次并停止受控进程；重新生成会先停止旧 exe 再写入/链接固定输出，避免 Windows 文件锁。同项目任务串行，IDE 内嵌 AI Bridge 与 F5 共享租约，停止后不会迟到启动 exe。Shift+F5 停止全部受控任务，服务关闭时执行最终回收。
-- `/api/environment/check` 执行真实只读环境探测，覆盖 Node.js、MSVC、Windows SDK、CMake、g++、clang++、WebView2 和平台信息；工具栏环境检查显示检测结果和中文修复提示，不再使用固定成功文本。
+- `/api/environment/check` 执行真实只读环境探测，覆盖 Node.js、MSVC、Windows SDK、CMake、g++、clang++、WebView2 和平台信息；工具栏环境检查显示检测结果和中文修复提示，不再使用固定成功文本。工具菜单与命令面板可打开“环境修复中心”，通过固定微软下载地址和固定参数安装 C++ Build Tools 工作负载或 WebView2；API 不接受任意 URL、命令或参数。离线部署见根目录 `LINGBUILDER_OFFLINE_ENVIRONMENT_PACKAGE.md`。
 - 自动回归包含命令注册/面板模型/快捷键路由/可访问对话框、配置优先级/持久化/迁移/API、项目文件、工作区搜索事务、受控进程、构建协调和环境检查测试，并在 renderer server / AI Bridge 集成测试中验证鉴权、跨入口互斥、停止代次、关服回收和 API 契约。
 - Windows 原生按钮与复选框视觉/交互 smoke 可在完成 F5 编译后运行：`powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-owner-draw-button-states.ps1 -ExecutablePath ../.lingbuilder-build/lingbuilder-ui-project/Win32/Debug/bin/LingBuilderPreview.exe -OutputDirectory ../.lingbuilder-build/button-visual-smoke`。脚本会确认 `BS_OWNERDRAW`，使用真实鼠标、Tab 和空格验证按钮五态、复选框勾选/取消、禁用不响应 hover、控件几何不变及焦点绘制不越过左侧勾选框，并输出逐态 PNG 与 `metrics.json`；发送真实输入前会校验前台窗口和命中 HWND。
 

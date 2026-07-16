@@ -28,3 +28,13 @@ test('environment check UI output reports the not-ready empty state', () => {
   const logs = formatEnvironmentCheckOutput({ ready: false, checks: [] }, '12:00:01');
   assert.match(logs.join('\n'), /自检未就绪/u);
 });
+
+test('environment check UI output omits the warning hint when there are no warnings', () => {
+  const logs = formatEnvironmentCheckOutput({
+    ready: true,
+    checks: [{ id: 'msvc', label: 'MSVC C++ 编译器', available: true }],
+    warnings: []
+  }, '12:00:02');
+  assert.match(logs.join('\n'), /核心开发环境已全部就绪/u);
+  assert.doesNotMatch(logs.join('\n'), /查看上方警告/u);
+});

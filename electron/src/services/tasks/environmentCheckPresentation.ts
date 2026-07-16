@@ -41,7 +41,9 @@ export function formatEnvironmentCheckOutput(
     ...checkLines,
     ...warningLines,
     result.ready
-      ? `>>> [${timestamp}] 【自检成功】基础构建环境已就绪；可选能力和目标平台限制请查看上方警告。`
+      ? warningLines.length > 0
+        ? `>>> [${timestamp}] 【自检成功】基础构建环境已就绪；可选能力和目标平台限制请查看上方警告。`
+        : `>>> [${timestamp}] 【自检成功】核心开发环境已全部就绪。`
       : `>>> [${timestamp}] 【自检未就绪】请根据上方缺失项安装或配置开发工具。`
   ].filter(Boolean);
 }
