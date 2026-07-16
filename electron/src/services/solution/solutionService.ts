@@ -5,6 +5,7 @@ import type { TextFileSnapshot } from '../files/types';
 import { LingWindowProject } from '../windowDesigner/types';
 import { normalizeStartupProjects, topologicalProjectOrder, validateProjectDependencies } from './projectDependencyGraph';
 import { ExternalProjectService, validateProperties, type ExternalProjectProperties } from './externalProjectService';
+import { writeSolutionEntry } from './solutionEntryFile';
 
 export const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
 export const DEFAULT_SOLUTION_ID = 'lingbuilder-solution';
@@ -57,6 +58,7 @@ export class SolutionService {
     if (existing) {
       const normalized = this.normalizeSolution(existing);
       if ((existing as any).schemaVersion !== 2 || JSON.stringify(existing) !== JSON.stringify(normalized)) await this.writeSolution(normalized);
+      else await writeSolutionEntry(this.workspaceRoot, normalized);
       return normalized;
     }
 
@@ -315,11 +317,13 @@ export class SolutionService {
   }
 
   private async writeSolution(solution: LingBuilderSolution): Promise<void> {
+    const normalized = this.normalizeSolution(solution);
     const targetPath = this.solutionPath();
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
     const temporaryPath = `${targetPath}.${process.pid}.tmp`;
-    await fs.writeFile(temporaryPath, JSON.stringify(this.normalizeSolution(solution), null, 2), 'utf8');
+    await fs.writeFile(temporaryPath, JSON.stringify(normalized, null, 2), 'utf8');
     await fs.rename(temporaryPath, targetPath);
+    await writeSolutionEntry(this.workspaceRoot, normalized);
   }
 
   private solutionPath(): string {

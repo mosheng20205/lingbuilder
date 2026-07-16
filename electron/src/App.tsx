@@ -50,7 +50,6 @@ import {
   AppliedWorkspaceFile,
   BottomPanelTabType,
   CppFile,
-  DesignerGeneratedPanelData,
   ExtractedString,
   GlossaryTerm,
   ProblemItem,
@@ -71,6 +70,7 @@ import BottomPanel from './components/BottomPanel';
 import CommandPalette from './components/CommandPalette';
 import SettingsDialog from './components/SettingsDialog';
 import WorkspaceSearchDialog from './components/WorkspaceSearchDialog';
+import ProjectNameDialog from './components/ProjectNameDialog';
 import TextFileStatusControls from './components/TextFileStatusControls';
 import EditorPositionStatus from './components/EditorPositionStatus';
 import {
@@ -183,6 +183,7 @@ import {
   createSolutionProject,
   deleteSolutionProject,
   fetchSolution,
+  getSolutionProjectDirectory,
   rebuildSolution,
   setStartupProject
 } from './services/solution/solutionClient';
@@ -270,17 +271,6 @@ const getEditorOperationLabel = (operation: EditorOperation | null) => {
   if (operation === 'build') return '构建';
   if (operation === 'file-mutation') return '文件操作';
   return '保存';
-};
-
-const DEFAULT_DESIGNER_GENERATED_PANELS: DesignerGeneratedPanelData = {
-  xmlLabel: 'MainWindow.xml',
-  cppLabel: '登录窗体.h',
-  manifestLabel: '窗口程序集',
-  xmlCode: '',
-  cppCode: '',
-  manifestCode: '',
-  logs: ['> [编译日志] 等待 F5 触发真实 Win32 构建。'],
-  isBuilding: false
 };
 
 const DEFAULT_EDITOR_FONT_SIZE = 13;
@@ -758,6 +748,10 @@ export default function App() {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
+  const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
+  const [createProjectName, setCreateProjectName] = useState('');
+  const [createProjectError, setCreateProjectError] = useState('');
+  const [isCreatingSolutionProject, setIsCreatingSolutionProject] = useState(false);
   const [workspaceSearchMode, setWorkspaceSearchMode] = useState<'search' | 'replace' | null>(null);
   const pendingWorkspaceSearchRevealRef = useRef<WorkspaceSearchMatch | null>(null);
   const workspaceReplacePreviewRef = useRef(new Map<string, OwnedWorkspaceReplacePreview>());
@@ -1004,7 +998,7 @@ export default function App() {
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
   const [showRightPanel, setShowRightPanel] = useState(true);
   const [showBottomPanel, setShowBottomPanel] = useState(true);
-  const [activeTabInBottom, setActiveTabInBottom] = useState<BottomPanelTabType>('extracted');
+  const [activeTabInBottom, setActiveTabInBottom] = useState<BottomPanelTabType>('output');
 
   const applyConfigurationSnapshot = useCallback((snapshot: WorkbenchConfigurationSnapshot) => {
     setConfigurationSnapshot(snapshot);
@@ -1367,7 +1361,6 @@ export default function App() {
   }, []);
   const [isAutoTranslating, setIsAutoTranslating] = useState(false);
   const autoTranslateOwnerRef = useRef<ProjectMutationOwner | null>(null);
-  const [designerGeneratedPanels, setDesignerGeneratedPanels] = useState<DesignerGeneratedPanelData>(DEFAULT_DESIGNER_GENERATED_PANELS);
 
   // Custom File Modal
   const [showCustomModal, setShowCustomModal] = useState(false);
@@ -1522,20 +1515,6 @@ void DisplayStatus() {
   }, []);
 
   useEffect(() => {
-    const handleDesignerGeneratedPanels = (event: Event) => {
-      const customEvent = event as CustomEvent<DesignerGeneratedPanelData>;
-      if (customEvent.detail) {
-        setDesignerGeneratedPanels(customEvent.detail);
-      }
-    };
-
-    window.addEventListener('window-designer-generated-panels', handleDesignerGeneratedPanels);
-    return () => {
-      window.removeEventListener('window-designer-generated-panels', handleDesignerGeneratedPanels);
-    };
-  }, []);
-
-  useEffect(() => {
     filesRef.current = files;
   }, [files]);
 
@@ -1553,7 +1532,7 @@ void DisplayStatus() {
         }
         setIsBuilding(true);
         setShowBottomPanel(true);
-        setActiveTabInBottom('designer_logs');
+        setActiveTabInBottom('output');
       } else {
         buildStartedRef.current = false;
         if (editorOperationRef.current === 'build') editorOperationRef.current = null;
@@ -2434,12 +2413,7 @@ void DisplayStatus() {
   }, []);
 
   const handleClearLogs = useCallback((tab: string) => {
-    if (tab === 'designer_logs') {
-      setDesignerGeneratedPanels(prev => ({
-        ...prev,
-        logs: []
-      }));
-    } else if (tab === 'output') {
+    if (tab === 'output') {
       setBuildLogs([]);
     } else if (tab === 'debug_logs') {
       setDebugLogs([]);
@@ -3078,20 +3052,31 @@ void DisplayStatus() {
     window.dispatchEvent(new CustomEvent('lingbuilder-compiler-diagnostics', { detail: { diagnostics } }));
   }, []);
 
-  const handleCreateSolutionProject = useCallback(async (): Promise<boolean> => {
-    const name = window.prompt('新建项目名称', `LingBuilder项目${solution.projects.length + 1}`);
-    if (!name?.trim()) return false;
+  const openCreateSolutionProjectDialog = useCallback(() => {
+    setCreateProjectName(`LingBuilder项目${solution.projects.length + 1}`);
+    setCreateProjectError('');
+    setShowCreateProjectDialog(true);
+  }, [solution.projects.length]);
+
+  const handleCreateSolutionProject = useCallback(async (name: string): Promise<boolean> => {
+    if (!name.trim()) return false;
     const flushState = await flushCurrentEditorDrafts();
     if (!flushState.ok) {
-      appendEditorTransactionLog(`【新建项目错误】${flushState.diagnostics[0] || '新手代码提交失败，未切换项目。'}`);
+      const message = flushState.diagnostics[0] || '新手代码提交失败，未切换项目。';
+      appendEditorTransactionLog(`【新建项目错误】${message}`);
+      setCreateProjectError(message);
       return false;
     }
     if (flushState.files.some(isEditorFileDirty)) {
       const saved = await handleSaveWorkspace('新建项目前保存');
-      if (!saved) return false;
+      if (!saved) {
+        setCreateProjectError('当前文件保存失败，已取消新建项目。');
+        return false;
+      }
     }
     const result = await createSolutionProject(name.trim());
     appendSolutionLogs('新建项目', result);
+    if (!result.ok) setCreateProjectError(result.error || '新建项目失败。');
     if (result.solution) setSolution(result.solution);
     if (result.project) {
       await setStartupProject(result.project.id);
@@ -3099,7 +3084,21 @@ void DisplayStatus() {
       setSolution(nextSolution);
     }
     return result.ok;
-  }, [appendSolutionLogs, flushCurrentEditorDrafts, refreshSolution, solution.projects.length]);
+  }, [appendSolutionLogs, flushCurrentEditorDrafts, refreshSolution]);
+
+  const submitCreateSolutionProject = useCallback(async () => {
+    if (isCreatingSolutionProject || !createProjectName.trim()) return;
+    setIsCreatingSolutionProject(true);
+    setCreateProjectError('');
+    try {
+      const created = await handleCreateSolutionProject(createProjectName);
+      if (created) setShowCreateProjectDialog(false);
+    } catch (error) {
+      setCreateProjectError(error instanceof Error ? error.message : '新建项目失败。');
+    } finally {
+      setIsCreatingSolutionProject(false);
+    }
+  }, [createProjectName, handleCreateSolutionProject, isCreatingSolutionProject]);
 
   const handleSetStartupProject = useCallback(async (projectId: string) => {
     if (isProjectFileLoadPending(activeProjectId, loadedProjectId, projectFileLoadState)) {
@@ -3210,6 +3209,31 @@ void DisplayStatus() {
     if (result.solution) setSolution(result.solution);
     return result.ok;
   }, [appendSolutionLogs]);
+
+  const handleOpenSolutionDirectory = useCallback(async () => {
+    const shellApi = window.lingBuilder?.shell;
+    if (!shellApi?.openWorkspacePath) {
+      appendEditorTransactionLog('【打开目录错误】当前运行环境不支持打开解决方案目录。');
+      return;
+    }
+    const error = await shellApi.openWorkspacePath('.');
+    if (error) appendEditorTransactionLog(`【打开目录错误】${error}`);
+  }, []);
+
+  const handleOpenProjectDirectory = useCallback(async (projectId: string) => {
+    const project = solution.projects.find(item => item.id === projectId);
+    if (!project) {
+      appendEditorTransactionLog(`【打开目录错误】未找到项目：${projectId}`);
+      return;
+    }
+    const shellApi = window.lingBuilder?.shell;
+    if (!shellApi?.openWorkspacePath) {
+      appendEditorTransactionLog('【打开目录错误】当前运行环境不支持打开项目目录。');
+      return;
+    }
+    const error = await shellApi.openWorkspacePath(getSolutionProjectDirectory(project));
+    if (error) appendEditorTransactionLog(`【打开目录错误】${error}`);
+  }, [solution.projects]);
 
   // Real window designer build task (F5)
   const handleRunBuild = useCallback(async (): Promise<boolean> => {
@@ -3357,7 +3381,7 @@ void DisplayStatus() {
     togglePanel: toggleBottomPanelVisibility,
     toggleAiPanel: toggleAiPanelVisibility,
     toggleTheme: toggleWorkbenchTheme,
-    createProject: handleCreateSolutionProject,
+    createProject: openCreateSolutionProjectDialog,
     diffEdit: () => showDiffViewMode('chinese'),
     diffSplit: () => showDiffViewMode('split'),
     diffUnified: () => showDiffViewMode('unified')
@@ -3366,6 +3390,7 @@ void DisplayStatus() {
   const blockingDialogOpen = showCloseConfirmModal
     || showAboutModal
     || showCustomModal
+    || showCreateProjectDialog
     || Boolean(pendingDesignerEventEdit)
     || Boolean(workspaceSearchMode);
   commandContextRef.current = {
@@ -3920,7 +3945,7 @@ void DisplayStatus() {
               </span>
               {activeDropdown === 'file' && (
                 <div className={`absolute left-0 top-6 w-48 shadow-2xl border rounded-md py-1 flex flex-col z-50 ${isDarkMode ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
-                  <button onClick={() => { void handleCreateSolutionProject(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                  <button onClick={() => { openCreateSolutionProjectDialog(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>新建项目</span>
                   </button>
                   <button onClick={() => { void handleToolbarAction('open'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
@@ -4584,13 +4609,15 @@ void DisplayStatus() {
           solution={solution}
           activeProjectId={activeProjectId}
           onRefreshSolution={refreshSolution}
-          onCreateProject={async () => { await handleCreateSolutionProject(); }}
+          onCreateProject={openCreateSolutionProjectDialog}
           onSetStartupProject={handleSetStartupProject}
           onConfigureProjectReferences={handleConfigureProjectReferences}
           onToggleMultiStartupProject={handleToggleMultiStartupProject}
           onConfigureExternalProject={handleConfigureExternalProject}
           onDeleteProject={handleDeleteSolutionProject}
           onSolutionCommand={async (command, projectId) => { await handleSolutionBuildCommand(command, projectId); }}
+          onOpenSolutionDirectory={handleOpenSolutionDirectory}
+          onOpenProjectDirectory={handleOpenProjectDirectory}
           activeModuleHintId={moduleHint?.itemId}
           onShowModuleHint={handleShowModuleHint}
         />
@@ -4804,8 +4831,8 @@ void DisplayStatus() {
               isDarkMode={isDarkMode}
               activeTab={activeTabInBottom}
               onActiveTabChange={setActiveTabInBottom}
+              showCodeMapping={activeFile.language !== 'lingcpp'}
               moduleHint={moduleHint}
-              generatedPanels={designerGeneratedPanels}
               height={bottomHeight}
             />
           )}
@@ -4933,6 +4960,22 @@ void DisplayStatus() {
         onRollback={handleWorkspaceReplaceRollback}
         onReveal={match => { void handleWorkspaceSearchReveal(match); }}
         onSaveBeforeReplace={() => handleSaveWorkspace('工作区替换前保存')}
+      />
+
+      <ProjectNameDialog
+        open={showCreateProjectDialog}
+        value={createProjectName}
+        isDarkMode={isDarkMode}
+        busy={isCreatingSolutionProject}
+        error={createProjectError || undefined}
+        onChange={value => {
+          setCreateProjectName(value);
+          if (createProjectError) setCreateProjectError('');
+        }}
+        onConfirm={submitCreateSolutionProject}
+        onClose={() => {
+          if (!isCreatingSolutionProject) setShowCreateProjectDialog(false);
+        }}
       />
 
       <SettingsDialog

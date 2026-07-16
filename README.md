@@ -2,6 +2,8 @@
 
 LingBuilder 是面向中文用户的中文 C++ / `.lcpp` 集成开发环境。仓库同时包含 Electron IDE、本地 AI Bridge、系统 AI 云端 API、AI 点数计费服务和独立管理后台。
 
+LingBuilder 解决方案使用工作区根目录下的 `.lbsln` 文件作为可见入口。双击、拖入或在 IDE 中选择该文件即可打开解决方案；`.lingbuilder/solution.json` 保存内部完整状态，二者由解决方案服务自动同步。导出目录中的 `.sln` 仍是供 Visual Studio 使用的标准 C++ 解决方案，不能与 `.lbsln` 混用。
+
 ## 工程目录
 
 - `electron/`：桌面 IDE、本地工作区服务、CLI 和 AI Bridge。

@@ -20,6 +20,21 @@ test('workspace service prefers --workspace and remembers it', async () => {
   assert.equal(getArgumentValue(['app', '--workspace=E:\\项目'], '--workspace'), 'E:\\项目');
 });
 
+test('workspace service accepts a .lbsln through the explicit --workspace argument', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-arg-entry-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.mkdir(path.join(root, '.lingbuilder'));
+  await fs.writeFile(path.join(root, '.lingbuilder', 'solution.json'), '{}');
+  const entryPath = path.join(root, 'Demo.lbsln');
+  await fs.writeFile(entryPath, JSON.stringify({ schemaVersion: 1, kind: 'lingbuilder-solution', solutionFile: '.lingbuilder/solution.json' }));
+  const service = new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe', '--workspace', entryPath],
+    documentsPath: path.join(root, 'Documents'),
+    userDataPath: path.join(root, 'UserData')
+  });
+  assert.equal(await service.resolveInitialWorkspace(), root);
+});
+
 test('workspace seed copies missing files and never overwrites user changes', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-seed-'));
   const source = path.join(root, 'seed');
@@ -76,6 +91,22 @@ test('workspace service persists window state and validates dropped files', asyn
   assert.equal(await service.resolveInitialWorkspace(), project);
   await service.rememberWindowState({ x: 20, y: 30, width: 1200, height: 800, maximized: true });
   assert.deepEqual(await service.getWindowState(), { x: 20, y: 30, width: 1200, height: 800, maximized: true });
+});
+
+test('a valid .lbsln opens its workspace and damaged entries are rejected', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-lbsln-open-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await fs.mkdir(path.join(root, '.lingbuilder'), { recursive: true });
+  await fs.writeFile(path.join(root, '.lingbuilder', 'solution.json'), '{}', 'utf8');
+  const entryPath = path.join(root, '演示解决方案.lbsln');
+  await fs.writeFile(entryPath, JSON.stringify({
+    schemaVersion: 1,
+    kind: 'lingbuilder-solution',
+    solutionFile: '.lingbuilder/solution.json'
+  }), 'utf8');
+  assert.equal(await resolveWorkspaceDropTarget(entryPath), root);
+  await fs.writeFile(entryPath, JSON.stringify({ schemaVersion: 1, kind: 'unknown', solutionFile: '.lingbuilder/solution.json' }), 'utf8');
+  await assert.rejects(resolveWorkspaceDropTarget(entryPath), /不是有效/u);
 });
 
 test('new workspace windows use an isolated process with an explicit workspace argument', () => {

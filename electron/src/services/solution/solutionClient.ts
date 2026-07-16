@@ -93,6 +93,13 @@ export async function rebuildSolution(projectId?: string): Promise<SolutionComma
   return postJson('/api/solution/rebuild', projectId ? { projectId, run: false } : { run: false });
 }
 
+export function getSolutionProjectDirectory(project: SolutionProject): string {
+  if (project.type === 'visual-cpp') return project.sourceRoot || '.';
+  const projectFile = (project.projectFile || '').replace(/\\/gu, '/');
+  const separator = projectFile.lastIndexOf('/');
+  return separator > 0 ? projectFile.slice(0, separator) : '.';
+}
+
 async function postJson(url: string, body: unknown): Promise<SolutionCommandResult> {
   const response = await fetch(url, {
     method: 'POST',

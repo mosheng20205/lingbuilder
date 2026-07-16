@@ -15,6 +15,7 @@ declare global {
       };
       shell?: {
         openPath: (targetPath: string) => Promise<string>;
+        openWorkspacePath: (relativePath?: string) => Promise<string>;
       };
       workspace?: {
         getCurrent: () => Promise<string>;

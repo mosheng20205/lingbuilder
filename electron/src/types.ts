@@ -75,27 +75,12 @@ export interface ProblemItem {
 export type BottomPanelTabType =
   | 'extracted'
   | 'module_hint'
-  | 'designer_xml'
-  | 'designer_cpp'
-  | 'designer_manifest'
-  | 'designer_logs'
   | 'problems'
   | 'output'
   | 'terminal'
   | 'tests'
   | 'debug_locals'
   | 'debug_logs';
-
-export interface DesignerGeneratedPanelData {
-  xmlLabel: string;
-  cppLabel: string;
-  manifestLabel: string;
-  xmlCode: string;
-  cppCode: string;
-  manifestCode: string;
-  logs: string[];
-  isBuilding: boolean;
-}
 
 export interface WorkspaceEditRange {
   startLine: number;

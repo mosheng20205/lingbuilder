@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "lingbuilder-solution",
+  "name": "UI_CppLocProj",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "lingbuilder-ui-project",
+  "startupProjectIds": [
+    "lingbuilder-ui-project"
+  ],
+  "projects": [
+    {
+      "id": "lingbuilder-ui-project",
+      "name": "GameClient",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    }
+  ]
+}

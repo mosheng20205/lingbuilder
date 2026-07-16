@@ -75,6 +75,11 @@
     ],
     "fileAssociations": [
       {
+        "ext": "lbsln",
+        "name": "LingBuilder 解决方案",
+        "role": "Editor"
+      },
+      {
         "ext": "lingbuilder",
         "name": "LingBuilder 工作区",
         "role": "Editor"

@@ -25,7 +25,10 @@ export class DesktopWorkspaceService {
 
   async resolveInitialWorkspace(fallbackWorkspace?: string): Promise<string> {
     const requested = getArgumentValue(this.options.argv, '--workspace');
-    if (requested) return await this.rememberWorkspace(requested);
+    if (requested) {
+      const target = await pathExists(requested) ? await resolveWorkspaceDropTarget(requested) : requested;
+      return await this.rememberWorkspace(target);
+    }
     const associatedFile = this.options.argv.slice(1).find(value => value && !value.startsWith('-'));
     if (associatedFile) {
       try { return await this.rememberWorkspace(await resolveWorkspaceDropTarget(associatedFile)); }
@@ -144,6 +147,7 @@ export async function resolveWorkspaceDropTarget(targetPath: string): Promise<st
   const stat = await fs.stat(resolved);
   if (stat.isDirectory()) return resolved;
   if (!stat.isFile()) throw new Error(`不支持的工作区目标：${targetPath}`);
+  if (resolved.toLowerCase().endsWith('.lbsln')) return await resolveSolutionEntryWorkspace(resolved);
   if (!/\.(?:sln|code-workspace|lingbuilder|lbworkspace|lcpp|e)$/iu.test(resolved)) {
     throw new Error(`不支持通过该文件打开工作区：${path.basename(resolved)}`);
   }
@@ -204,6 +208,26 @@ async function pathExists(value: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+async function resolveSolutionEntryWorkspace(entryPath: string): Promise<string> {
+  const parsed = JSON.parse(await fs.readFile(entryPath, 'utf8')) as {
+    schemaVersion?: unknown;
+    kind?: unknown;
+    solutionFile?: unknown;
+  };
+  if (parsed.schemaVersion !== 1 || parsed.kind !== 'lingbuilder-solution') {
+    throw new Error(`不是有效的 LingBuilder 解决方案文件：${path.basename(entryPath)}`);
+  }
+  if (parsed.solutionFile !== '.lingbuilder/solution.json') {
+    throw new Error('解决方案入口中的内部状态路径无效。');
+  }
+  const workspaceRoot = path.dirname(entryPath);
+  const internalPath = path.resolve(workspaceRoot, parsed.solutionFile);
+  if (path.dirname(internalPath) !== path.join(workspaceRoot, '.lingbuilder') || !await pathExists(internalPath)) {
+    throw new Error(`解决方案内部状态文件不存在：${parsed.solutionFile}`);
+  }
+  return workspaceRoot;
 }
 
 function samePath(left: string, right: string): boolean {

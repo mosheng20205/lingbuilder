@@ -1728,6 +1728,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     () => getLearningPathState(designerProject?.id || 'local-workspace', normalizedSourceCode, designerProject),
     [designerProject, normalizedSourceCode]
   );
+  const designerTabLabel = designerProject?.windows.find(window => window.id === activeWindowId)?.fileName
+    || designerProject?.windows[0]?.fileName
+    || '界面可视化';
   const isLingCppBeginnerStructureMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner';
   const isLingCppNativeMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'native';
 
@@ -7695,10 +7698,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               if (event.key === 'Enter' || event.key === ' ') setViewType('designer');
             }}
             className={getEditorTabClassName(viewType === 'designer', isDarkMode)}
-            title="打开界面可视化设计器"
+            title={`打开窗口设计器：${designerTabLabel}`}
+            aria-label={`打开窗口设计器：${designerTabLabel}`}
           >
             <LayoutGrid className="w-3.5 h-3.5 text-amber-500" />
-            <span className="whitespace-nowrap">界面可视化</span>
+            <span className="whitespace-nowrap">{designerTabLabel}</span>
           </div>
 
           {openTabs.map(tabPath => {

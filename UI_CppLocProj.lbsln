@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "lingbuilder-solution",
+  "name": "UI_CppLocProj",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "edgeview-cli-test",
+  "startupProjectIds": [
+    "edgeview-cli-test"
+  ],
+  "projects": [
+    {
+      "id": "lingbuilder-ui-project",
+      "name": "GameClient",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    },
+    {
+      "id": "edgeview-cli-test",
+      "name": "EdgeView CLI 多实例测试",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/edgeview-cli-test/src",
+      "references": []
+    },
+    {
+      "id": "lingbuilder-3",
+      "name": "LingBuilder项目3",
+      "type": "visual-cpp",
+      "sourceRoot": "src/lingbuilder-3",
+      "references": []
+    },
+    {
+      "id": "lingbuilder-4",
+      "name": "LingBuilder项目4",
+      "type": "visual-cpp",
+      "sourceRoot": "src/lingbuilder-4",
+      "references": []
+    }
+  ]
+}

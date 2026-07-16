@@ -17,3 +17,10 @@ test('sidebar renders the real source control panel instead of a status-only bad
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/Sidebar.tsx'), 'utf8');
   assert.match(source, /<SourceControlPanel/u); assert.doesNotMatch(source, /Git: 当前目录未检测到可用仓库状态/u);
 });
+
+test('solution explorer visually groups projects apart from their child nodes', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/Sidebar.tsx'), 'utf8');
+  assert.match(source, /data-solution-project=/u);
+  assert.match(source, /mb-2 last:mb-0 overflow-hidden rounded-md border/u);
+  assert.match(source, /flex min-h-8 items-center/u);
+});

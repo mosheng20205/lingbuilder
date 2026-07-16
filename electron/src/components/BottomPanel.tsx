@@ -14,13 +14,10 @@ import {
   Sliders,
   Cpu,
   Eye,
-  FileCode,
-  FileText,
-  Layers,
   Copy,
   Trash
 } from 'lucide-react';
-import { BottomPanelTabType, DesignerGeneratedPanelData, ExtractedString, ProblemItem } from '../types';
+import { BottomPanelTabType, ExtractedString, ProblemItem } from '../types';
 import type { ModuleHintContent } from '../services/modules/types';
 import TerminalPanel from './TerminalPanel';
 import DebugInspector from './DebugInspector';
@@ -38,8 +35,8 @@ interface BottomPanelProps {
   isDarkMode?: boolean;
   activeTab: BottomPanelTabType;
   onActiveTabChange: (tab: BottomPanelTabType) => void;
+  showCodeMapping: boolean;
   moduleHint: ModuleHintContent | null;
-  generatedPanels: DesignerGeneratedPanelData;
   height: number;
   onClearLogs?: (tab: string) => void;
 }
@@ -56,8 +53,8 @@ export default function BottomPanel({
   isDarkMode = true,
   activeTab,
   onActiveTabChange,
+  showCodeMapping,
   moduleHint,
-  generatedPanels,
   height,
   onClearLogs
 }: BottomPanelProps) {
@@ -68,7 +65,7 @@ export default function BottomPanel({
     show: boolean;
     x: number;
     y: number;
-    tabType: 'designer_logs' | 'output' | 'debug_logs' | null;
+    tabType: 'output' | 'debug_logs' | null;
   }>({ show: false, x: 0, y: 0, tabType: null });
 
   useEffect(() => {
@@ -86,7 +83,7 @@ export default function BottomPanel({
   }, [copyNotice]);
 
   useLayoutEffect(() => {
-    if (activeTab !== 'output' && activeTab !== 'designer_logs') return;
+    if (activeTab !== 'output') return;
     const viewport = logViewportRef.current;
     if (!viewport) return;
     viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'auto' });
@@ -94,26 +91,29 @@ export default function BottomPanel({
       viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'auto' });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [activeTab, buildLogs.length, generatedPanels.logs.length]);
+  }, [activeTab, buildLogs.length]);
 
-  const getLogsText = (tabType: 'designer_logs' | 'output' | 'debug_logs') => {
-    if (tabType === 'designer_logs') {
-      return generatedPanels.logs.length > 0 ? generatedPanels.logs.join('\n') : '> [编译日志] 空';
+  useEffect(() => {
+    if (!showCodeMapping && activeTab === 'extracted') {
+      onActiveTabChange('output');
     }
+  }, [activeTab, onActiveTabChange, showCodeMapping]);
+
+  const getLogsText = (tabType: 'output' | 'debug_logs') => {
     if (tabType === 'output') {
       return buildLogs.length > 0 ? buildLogs.join('\n') : '> [输出] 空';
     }
     return debugLogs.length > 0 ? debugLogs.join('\n') : '> [调试输出] 空';
   };
 
-  const copyLogsToClipboard = (tabType: 'designer_logs' | 'output' | 'debug_logs') => {
+  const copyLogsToClipboard = (tabType: 'output' | 'debug_logs') => {
     const logsText = getLogsText(tabType);
     navigator.clipboard.writeText(logsText)
       .then(() => setCopyNotice({ message: '已复制全部日志到剪贴板', tone: 'success' }))
       .catch(() => setCopyNotice({ message: '复制失败，请重试', tone: 'error' }));
   };
 
-  const handleContextMenu = (e: React.MouseEvent, tabType: 'designer_logs' | 'output' | 'debug_logs') => {
+  const handleContextMenu = (e: React.MouseEvent, tabType: 'output' | 'debug_logs') => {
     e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -133,42 +133,6 @@ export default function BottomPanel({
     if (filterType === 'all') return true;
     return s.type === filterType;
   });
-
-  const designerCodePanel = (() => {
-    if (activeTab === 'designer_xml') {
-      return {
-        code: generatedPanels.xmlCode,
-        colorClass: 'text-cyan-400/90',
-        emptyText: '等待窗口设计器生成 XML 预览。'
-      };
-    }
-
-    if (activeTab === 'designer_cpp') {
-      return {
-        code: generatedPanels.cppCode,
-        colorClass: 'text-emerald-400/95',
-        emptyText: '等待窗口设计器生成头文件预览。'
-      };
-    }
-
-    if (activeTab === 'designer_manifest') {
-      return {
-        code: generatedPanels.manifestCode,
-        colorClass: 'text-amber-300/90',
-        emptyText: '等待窗口设计器生成窗口程序集。'
-      };
-    }
-
-    if (activeTab === 'designer_logs') {
-      return {
-        code: generatedPanels.logs.length > 0 ? generatedPanels.logs.join('\n') : '> [编译日志] 等待 F5 触发真实 Win32 构建。',
-        colorClass: 'text-slate-300',
-        emptyText: '等待编译日志。'
-      };
-    }
-
-    return null;
-  })();
 
   const handleStartEdit = (s: ExtractedString) => {
     setEditingId(s.id);
@@ -240,21 +204,23 @@ export default function BottomPanel({
         
         {/* Left Side: Standard VS Panels Tabs */}
         <div className="flex gap-1 h-full items-end overflow-x-auto scrollbar-none flex-nowrap shrink-0">
-          <button
-            onClick={() => onActiveTabChange('extracted')}
-            className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
-              activeTab === 'extracted' 
-                ? isDarkMode
-                  ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10' 
-                  : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
-                : isDarkMode
-                  ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
-                  : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
-            }`}
-          >
-            <ListCollapse className="w-3.5 h-3.5 text-blue-500" />
-            <span>中文代码映射表 ({strings.length})</span>
-          </button>
+          {showCodeMapping && (
+            <button
+              onClick={() => onActiveTabChange('extracted')}
+              className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
+                activeTab === 'extracted'
+                  ? isDarkMode
+                    ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10'
+                    : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
+                  : isDarkMode
+                    ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
+                    : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
+              }`}
+            >
+              <ListCollapse className="w-3.5 h-3.5 text-blue-500" />
+              <span>中文代码映射表 ({strings.length})</span>
+            </button>
+          )}
 
           {moduleHint && (
             <button
@@ -277,70 +243,6 @@ export default function BottomPanel({
             </button>
           )}
 
-          <button
-            onClick={() => onActiveTabChange('designer_xml')}
-            className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
-              activeTab === 'designer_xml'
-                ? isDarkMode
-                  ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10'
-                  : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
-                : isDarkMode
-                  ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
-                  : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
-            }`}
-          >
-            <FileCode className="w-3.5 h-3.5 text-cyan-500" />
-            <span>{generatedPanels.xmlLabel}</span>
-          </button>
-
-          <button
-            onClick={() => onActiveTabChange('designer_cpp')}
-            className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
-              activeTab === 'designer_cpp'
-                ? isDarkMode
-                  ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10'
-                  : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
-                : isDarkMode
-                  ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
-                  : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5 text-emerald-500" />
-            <span>{generatedPanels.cppLabel}</span>
-          </button>
-
-          <button
-            onClick={() => onActiveTabChange('designer_manifest')}
-            className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
-              activeTab === 'designer_manifest'
-                ? isDarkMode
-                  ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10'
-                  : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
-                : isDarkMode
-                  ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
-                  : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5 text-amber-500" />
-            <span>{generatedPanels.manifestLabel}</span>
-          </button>
-
-          <button
-            onClick={() => onActiveTabChange('designer_logs')}
-            className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
-              activeTab === 'designer_logs'
-                ? isDarkMode
-                  ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10'
-                  : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
-                : isDarkMode
-                  ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
-                  : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
-            }`}
-          >
-            <Terminal className={`w-3.5 h-3.5 ${generatedPanels.isBuilding ? 'text-amber-400 animate-pulse' : 'text-emerald-500'}`} />
-            <span>编译日志</span>
-          </button>
-          
           <button
             onClick={() => onActiveTabChange('problems')}
             className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
@@ -416,7 +318,7 @@ export default function BottomPanel({
         </div>
 
         {/* Copy Logs button when logs or output or debug logs is selected */}
-        {(activeTab === 'designer_logs' || activeTab === 'output' || activeTab === 'debug_logs') && (
+        {(activeTab === 'output' || activeTab === 'debug_logs') && (
           <button
             onClick={() => {
               copyLogsToClipboard(activeTab);
@@ -455,7 +357,7 @@ export default function BottomPanel({
           </div>
 
           {/* Quick Filter inside Mapping Table */}
-          {activeTab === 'extracted' && (
+          {showCodeMapping && activeTab === 'extracted' && (
             <div className={`flex items-center gap-1 text-[10px] border-l pl-3 ${isDarkMode ? 'border-slate-700/60' : 'border-slate-300'}`}>
               <span className="text-slate-400 font-medium">过滤:</span>
               <div className={`flex rounded p-0.5 border ${isDarkMode ? 'bg-[#37373D] border-[#181818]' : 'bg-[#E3E3E3] border-slate-300'}`}>
@@ -498,7 +400,7 @@ export default function BottomPanel({
 
       {/* Active Tab Panel Body */}
       <div ref={logViewportRef} className={`flex-1 overflow-auto min-h-0 ${isDarkMode ? 'bg-[#1E1E1E]' : 'bg-white text-slate-800'}`}>
-        {activeTab === 'extracted' && (
+        {showCodeMapping && activeTab === 'extracted' && (
           // ================= EXTRACTED STRINGS PANEL =================
           <table className="w-full text-left border-collapse text-xs select-text">
             <thead>
@@ -706,21 +608,6 @@ export default function BottomPanel({
               </div>
             </div>
           </section>
-        )}
-
-        {designerCodePanel && (
-          <div 
-            onContextMenu={(e) => handleContextMenu(e, 'designer_logs')}
-            title="右键打开日志菜单"
-            className="h-full overflow-auto p-3 bg-[#0d0d10] font-mono text-[11.5px] leading-relaxed select-text cursor-context-menu">
-            {designerCodePanel.code.trim() ? (
-              <pre className="whitespace-pre min-w-max">
-                <span className={designerCodePanel.colorClass}>{designerCodePanel.code}</span>
-              </pre>
-            ) : (
-              <div className="text-slate-500 py-10 text-center font-sans">{designerCodePanel.emptyText}</div>
-            )}
-          </div>
         )}
 
         {activeTab === 'problems' && (

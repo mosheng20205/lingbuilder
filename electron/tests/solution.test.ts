@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { createSolutionService, DEFAULT_PROJECT_ID } from '../src/services/solution/solutionService';
+import { getSolutionProjectDirectory } from '../src/services/solution/solutionClient';
 import { normalizeStartupProjects, topologicalProjectOrder } from '../src/services/solution/projectDependencyGraph';
 
 test('solution service creates a default solution for an empty workspace', async () => {
@@ -19,6 +20,21 @@ test('solution service creates a default solution for an empty workspace', async
   assert.equal(solution.projects[0].id, DEFAULT_PROJECT_ID);
   assert.equal(solution.projects[0].sourceRoot, 'src');
   assert.ok(await exists(path.join(root, '.lingbuilder', 'solution.json')));
+  const entryPath = path.join(root, 'UI_CppLocProj.lbsln');
+  assert.ok(await exists(entryPath));
+  const entry = JSON.parse(await fs.readFile(entryPath, 'utf8'));
+  assert.equal(entry.kind, 'lingbuilder-solution');
+  assert.equal(entry.solutionFile, '.lingbuilder/solution.json');
+  assert.deepEqual(entry.startupProjectIds, [DEFAULT_PROJECT_ID]);
+});
+
+test('solution project directory resolves visual and external project locations', () => {
+  assert.equal(getSolutionProjectDirectory({
+    id: 'ui', name: 'UI', type: 'visual-cpp', sourceRoot: 'src/ui', configRoot: 'config/ui', designerPath: '.lingbuilder/projects/ui/window-designer.json'
+  }), 'src/ui');
+  assert.equal(getSolutionProjectDirectory({
+    id: 'native', name: 'Native', type: 'external-msbuild', sourceRoot: '.', configRoot: '.', designerPath: '', projectFile: 'native/app.vcxproj'
+  }), 'native');
 });
 
 test('solution references persist, dependencies build first, cycles are rejected, and delete prunes references', async () => {
@@ -27,9 +43,13 @@ test('solution references persist, dependencies build first, cycles are rejected
   await service.createProject({ name: 'App', projectId: 'app' });
   let solution = await service.updateProject('app', { references: ['core'] });
   assert.deepEqual(service.getBuildOrder(solution, ['app']).map(project => project.id), ['core', 'app']);
+  let entry = JSON.parse(await fs.readFile(path.join(root, 'UI_CppLocProj.lbsln'), 'utf8'));
+  assert.deepEqual(entry.projects.find((project: { id: string }) => project.id === 'app').references, ['core']);
   await assert.rejects(service.updateProject('core', { references: ['app'] }), /循环/u);
   solution = (await service.deleteProject('core', { deleteFiles: false })).solution;
   assert.deepEqual(solution.projects.find(project => project.id === 'app')?.references, []);
+  entry = JSON.parse(await fs.readFile(path.join(root, 'UI_CppLocProj.lbsln'), 'utf8'));
+  assert.equal(entry.projects.some((project: { id: string }) => project.id === 'core'), false);
 });
 
 test('solution migrates v1 startup state and supports multiple startup projects', async () => {

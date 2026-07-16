@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 import CommandPalette from '../src/components/CommandPalette';
 import SettingsDialog from '../src/components/SettingsDialog';
+import ProjectNameDialog from '../src/components/ProjectNameDialog';
 import type { CommandPresentation, RegisteredCommand } from '../src/services/commands';
 import {
   WORKBENCH_CONFIGURATION_METADATA,
@@ -90,6 +91,26 @@ test('closed command palette does not leave a hidden interactive surface', () =>
     />
   );
   assert.equal(markup, '');
+});
+
+test('new solution project uses an in-app input dialog instead of a browser prompt', () => {
+  const markup = renderToStaticMarkup(
+    <ProjectNameDialog
+      open
+      value="LingBuilder项目3"
+      isDarkMode
+      onChange={() => undefined}
+      onConfirm={() => undefined}
+      onClose={() => undefined}
+    />
+  );
+
+  assert.match(markup, /role="dialog"/u);
+  assert.match(markup, /aria-modal="true"/u);
+  assert.match(markup, /新建解决方案项目/u);
+  assert.match(markup, /aria-label="项目名称"/u);
+  assert.match(markup, /LingBuilder项目3/u);
+  assert.match(markup, /创建项目/u);
 });
 
 test('settings dialog exposes scope, search, categories, effective values, and reset controls', () => {

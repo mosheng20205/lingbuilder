@@ -34,14 +34,10 @@ import {
   ZoomOut
 } from 'lucide-react';
 import ModuleInspector from './ModuleInspector';
-import { DesignerGeneratedPanelData } from '../types';
 import {
   createBlankWindow,
   createControl,
   getEplEventHandlerName,
-  generateProjectManifest,
-  generateWindowCpp,
-  generateWindowXml,
   getEventsForType,
   getPrimaryEventNameForType,
   readWindowDesignerState,
@@ -194,9 +190,6 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
   const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>('layout');
   const [isMenuDropdownOpen, setIsMenuDropdownOpen] = useState(false);
   const [controlContextMenu, setControlContextMenu] = useState<DesignerContextMenuState | null>(null);
-  const [nativeBuildLogs, setNativeBuildLogs] = useState<string[]>([
-    '> [编译日志] 等待 F5 或“生成并运行”触发真实 Win32 构建。'
-  ]);
   const [isNativeBuilding, setIsNativeBuilding] = useState(false);
   useEffect(() => { if (!selectedControlId || selectedControlId.startsWith('__window_')) { if (selectedControlIds.length) setSelectedControlIds([]); } else if (!selectedControlIds.includes(selectedControlId)) setSelectedControlIds([selectedControlId]); }, [selectedControlId]);
 
@@ -361,36 +354,7 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     return activeWindow?.controls.find(control => control.id === selectedControlId) || null;
   }, [activeWindow, selectedControlId]);
 
-  const xmlCode = activeWindow ? generateWindowXml(activeWindow) : '';
-  const cppCode = activeWindow ? generateWindowCpp(activeWindow) : '';
-  const manifestCode = generateProjectManifest(project);
-
-  useEffect(() => {
-    if (!activeWindow) return;
-
-    const detail: DesignerGeneratedPanelData = {
-      xmlLabel: activeWindow.fileName,
-      cppLabel: `${activeWindow.className}.h`,
-      manifestLabel: '窗口程序集',
-      xmlCode,
-      cppCode,
-      manifestCode,
-      logs: nativeBuildLogs,
-      isBuilding: isNativeBuilding
-    };
-
-    window.dispatchEvent(new CustomEvent<DesignerGeneratedPanelData>('window-designer-generated-panels', { detail }));
-  }, [
-    activeWindow,
-    cppCode,
-    isNativeBuilding,
-    manifestCode,
-    nativeBuildLogs,
-    xmlCode
-  ]);
-
   const addLog = useCallback((message: string) => {
-    setNativeBuildLogs(prev => [...prev, message]);
     window.dispatchEvent(new CustomEvent('add-app-log', { detail: { message } }));
   }, []);
 
@@ -952,7 +916,6 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
       return;
     }
 
-    setNativeBuildLogs([]);
     setIsNativeBuilding(true);
     notifyWindowDesignerBuildRunState({
       status: 'started',

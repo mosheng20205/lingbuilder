@@ -1,5 +1,12 @@
 # LingBuilder Electron
 
+## LingBuilder 解决方案文件
+
+- 工作区根目录的 `<解决方案名称>.lbsln` 是用户可见的解决方案入口，可双击、拖入或通过“打开项目”选择。
+- `.lbsln` 保存解决方案 ID、名称、启动项目、项目摘要及内部状态路径；完整状态继续保存在 `.lingbuilder/solution.json`。
+- 新工作区和旧工作区首次读取解决方案时都会自动生成 `.lbsln`，新增/删除项目、项目引用和启动项变化会同步更新。
+- `generated/cpp/<项目>/<项目>.sln` 是导给 Visual Studio 的标准解决方案，不是 LingBuilder 入口。
+
 ## 集成终端
 
 - 底部“终端”页使用 xterm 渲染，服务端通过 `node-pty` 提供真实 PTY；Windows 使用随包输出的 ConPTY，支持 PowerShell 与 CMD 多会话。

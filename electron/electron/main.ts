@@ -428,6 +428,14 @@ function registerIpcHandlers(): void {
     window.close();
   });
   ipcMain.handle('shell:open-path', async (_event, targetPath: string) => targetPath ? shell.openPath(targetPath) : 'missing-path');
+  ipcMain.handle('shell:open-workspace-path', async (_event, relativePath = '.') => {
+    if (!activeWorkspace) return '当前没有已打开的工作区。';
+    const workspaceRoot = path.resolve(activeWorkspace);
+    const targetPath = path.resolve(workspaceRoot, relativePath || '.');
+    const relativeTarget = path.relative(workspaceRoot, targetPath);
+    if (relativeTarget.startsWith('..') || path.isAbsolute(relativeTarget)) return '目标目录超出当前工作区。';
+    return await shell.openPath(targetPath);
+  });
   ipcMain.handle('docs:open-module-manual', async () => shell.openPath(moduleManualPath()));
   ipcMain.handle('credentials:ai:get', () => readAiCredential());
   ipcMain.handle('credentials:ai:set', (_event, value: string) => writeAiCredential(typeof value === 'string' ? value.slice(0, 16_384) : ''));
@@ -459,12 +467,20 @@ function registerIpcHandlers(): void {
   });
   ipcMain.handle('workspace:open', async () => {
     const owner = getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: '打开 LingBuilder 解决方案',
+      properties: ['openFile'],
+      filters: [
+        { name: 'LingBuilder 解决方案', extensions: ['lbsln'] },
+        { name: '兼容的工作区入口', extensions: ['lingbuilder', 'lbworkspace', 'sln'] }
+      ]
+    };
     const result = owner
-      ? await dialog.showOpenDialog(owner, { title: '打开 LingBuilder 工作区', properties: ['openDirectory', 'createDirectory'] })
-      : await dialog.showOpenDialog({ title: '打开 LingBuilder 工作区', properties: ['openDirectory', 'createDirectory'] });
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options);
     if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
     try {
-      await switchWorkspace(result.filePaths[0]);
+      await switchWorkspace(await resolveWorkspaceDropTarget(result.filePaths[0]));
       return { ok: true, canceled: false, workspacePath: activeWorkspace };
     } catch (error) {
       return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
@@ -472,11 +488,19 @@ function registerIpcHandlers(): void {
   });
   ipcMain.handle('workspace:open-new-window', async () => {
     const owner = getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: '在新窗口打开 LingBuilder 解决方案',
+      properties: ['openFile'],
+      filters: [
+        { name: 'LingBuilder 解决方案', extensions: ['lbsln'] },
+        { name: '兼容的工作区入口', extensions: ['lingbuilder', 'lbworkspace', 'sln'] }
+      ]
+    };
     const result = owner
-      ? await dialog.showOpenDialog(owner, { title: '在新窗口打开 LingBuilder 工作区', properties: ['openDirectory'] })
-      : await dialog.showOpenDialog({ title: '在新窗口打开 LingBuilder 工作区', properties: ['openDirectory'] });
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options);
     if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
-    const workspacePath = await workspaceService.validateWorkspace(result.filePaths[0]);
+    const workspacePath = await resolveWorkspaceDropTarget(result.filePaths[0]);
     launchWorkspaceWindow(workspacePath);
     return { ok: true, canceled: false, workspacePath, newWindow: true };
   });

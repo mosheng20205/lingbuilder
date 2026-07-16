@@ -145,6 +145,8 @@ interface SidebarProps {
   onConfigureExternalProject?: (projectId: string) => void | Promise<void>;
   onDeleteProject?: (projectId: string, deleteFiles: boolean) => void | Promise<void>;
   onSolutionCommand?: (command: 'build' | 'clean' | 'rebuild', projectId?: string) => void | Promise<void>;
+  onOpenSolutionDirectory?: () => void | Promise<void>;
+  onOpenProjectDirectory?: (projectId: string) => void | Promise<void>;
   activeModuleHintId?: string;
   onShowModuleHint?: (hint: ModuleHintContent) => void;
 }
@@ -175,6 +177,8 @@ export default function Sidebar({
   onConfigureExternalProject,
   onDeleteProject,
   onSolutionCommand,
+  onOpenSolutionDirectory,
+  onOpenProjectDirectory,
   activeModuleHintId,
   onShowModuleHint
 }: SidebarProps) {
@@ -920,6 +924,10 @@ export default function Sidebar({
               <span>清理解决方案</span>
             </div>
             <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
+            <div className={menuItemClass} onClick={() => void onOpenSolutionDirectory?.()}>
+              <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
+              <span>打开解决方案所在目录</span>
+            </div>
             <div className={menuItemClass} onClick={() => void onRefreshSolution?.()}>
               <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
               <span>刷新</span>
@@ -946,6 +954,11 @@ export default function Sidebar({
             <div className={menuItemClass} onClick={() => void onCreateProject?.()}>
               <Plus className="w-3.5 h-3.5 text-emerald-500" />
               <span>新建项目</span>
+            </div>
+            <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
+            <div className={menuItemClass} onClick={() => void onOpenProjectDirectory?.(project.id)}>
+              <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
+              <span>打开项目所在目录</span>
             </div>
             <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
             <div className={menuItemClass} onClick={() => void onSolutionCommand?.('build', project.id)}>
@@ -1232,7 +1245,19 @@ export default function Sidebar({
                         const isStartupProject = project.id === (activeProjectId || solution?.startupProjectId);
                         const isProjectOpen = isStartupProject && expandedProjectIds[project.id] !== false;
                         return (
-                        <React.Fragment key={project.id}>
+                        <div
+                          key={project.id}
+                          data-solution-project={project.id}
+                          className={`mb-2 last:mb-0 overflow-hidden rounded-md border ${
+                            isStartupProject
+                              ? isDarkMode
+                                ? 'border-violet-500/25 bg-violet-500/[0.025]'
+                                : 'border-violet-300 bg-violet-50/35'
+                              : isDarkMode
+                                ? 'border-slate-800/80 bg-black/5'
+                                : 'border-slate-200 bg-white/50'
+                          }`}
+                        >
                         <div
                           onClick={() => {
                             setExpandedProjectIds(previous => ({ ...previous, [project.id]: true }));
@@ -1246,7 +1271,7 @@ export default function Sidebar({
                             setModuleContextMenu(null);
                             setSolutionContextMenu({ x: event.clientX, y: event.clientY, target: 'project', project });
                           }}
-                          className={`flex items-center gap-1.5 px-2 py-1.5 text-[13px] font-semibold font-sans cursor-pointer border-l-2 transition-colors ${
+                          className={`flex min-h-8 items-center gap-1.5 px-2 py-2 text-[13px] font-semibold font-sans cursor-pointer border-l-2 transition-colors ${
                             isStartupProject
                               ? 'bg-violet-500/10 text-violet-300'
                               : isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/40' : 'text-slate-700 hover:bg-slate-100'
@@ -1461,7 +1486,7 @@ export default function Sidebar({
                           </div>
                         )}
                       </div>}
-                      </React.Fragment>
+                      </div>
                       );})}
                     </div>
                   )}
