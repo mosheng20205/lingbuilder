@@ -13,6 +13,18 @@ test('designer exposes the selected window created event instead of the control 
   assert.match(source, /selectedControlId === null \? \(\s*<WindowEvents/u);
   assert.match(source, /window\.events\?\.Loaded\?\.trim\(\) \|\| `_\$\{window\.className\}_创建完毕`/u);
 });
+
+test('designer state is isolated by project identity across unmounts and project switches', async () => {
+  const designerSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  const diffSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/DiffViewer.tsx'), 'utf8');
+  const sidebarSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/Sidebar.tsx'), 'utf8');
+  assert.doesNotMatch(designerSource, /cachedInitialDesignerState/u);
+  assert.match(designerSource, /nextState\.project\.id !== projectId/u);
+  assert.match(designerSource, /project\.id !== projectId/u);
+  assert.match(diffSource, /designer:\$\{textModelProjectId\}/u);
+  assert.match(sidebarSource, /detail\.project\.id !== activeSolutionProjectId/u);
+  assert.match(sidebarSource, /handleOpenDesignerWindow\(projectId, windowModel\)/u);
+});
 test('RC editor exposes load, editable entries, save and conflict errors',async()=>{ const source=await fs.readFile(path.resolve(import.meta.dirname,'../src/components/RcResourcePanel.tsx'),'utf8'); assert.match(source,/C\+\+ RC 资源编辑器/u); assert.match(source,/\/api\/resources\/rc/u); assert.match(source,/打开其他 \.rc/u); assert.match(source,/保存/u); assert.match(source,/role="alert"/u); });
 
 test('designer exposes an ImageList resource editor and resource-backed control selector', async () => {

@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "edgeview-cli-test",
+  "startupProjectId": "lingbuilder-ui-project",
   "startupProjectIds": [
-    "edgeview-cli-test"
+    "lingbuilder-ui-project"
   ],
   "projects": [
     {

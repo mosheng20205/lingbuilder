@@ -58,7 +58,7 @@ import SettingsSyncPanel from './SettingsSyncPanel';
 
 type WindowContextMenu =
   | { x: number; y: number; target: 'group' }
-  | { x: number; y: number; target: 'window'; windowModel: LingWindowModel };
+  | { x: number; y: number; target: 'window'; projectId: string; windowModel: LingWindowModel };
 
 type ModuleContextMenu = { x: number; y: number; module: InstalledModule };
 type SolutionContextMenu =
@@ -235,7 +235,8 @@ export default function Sidebar({
   );
   const srcFiles = files.filter(f => f.path.startsWith('src/') && includesSearch(f.name, f.path));
   const configFiles = files.filter(f => f.path.startsWith('config/') && includesSearch(f.name, f.path));
-  const designerWindows = designerState.project.windows.filter(windowModel => includesSearch(
+  const designerStateMatchesActiveProject = designerState.project.id === activeSolutionProjectId;
+  const designerWindows = (designerStateMatchesActiveProject ? designerState.project.windows : []).filter(windowModel => includesSearch(
     windowModel.title,
     windowModel.fileName,
     windowModel.className,
@@ -295,6 +296,7 @@ export default function Sidebar({
   useEffect(() => {
     const handleDesignerProjectUpdated = (event: Event) => {
       const detail = (event as CustomEvent<PersistedWindowDesignerState>).detail;
+      if (detail?.project.id && activeSolutionProjectId && detail.project.id !== activeSolutionProjectId) return;
       setDesignerState(detail || readWindowDesignerState());
     };
 
@@ -302,7 +304,7 @@ export default function Sidebar({
     return () => {
       window.removeEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
     };
-  }, []);
+  }, [activeSolutionProjectId]);
 
   useEffect(() => {
     refreshProjectModules();
@@ -350,7 +352,11 @@ export default function Sidebar({
     return files.find(file => file.path === sourcePath || file.name === sourceName);
   };
 
-  const handleOpenDesignerWindow = (windowModel: LingWindowModel) => {
+  const handleOpenDesignerWindow = (projectId: string, windowModel: LingWindowModel) => {
+    if (projectId !== activeSolutionProjectId || designerState.project.id !== projectId) {
+      triggerSuccess('项目窗口状态仍在载入，请稍后重试。');
+      return;
+    }
     const sourceName = getLingWindowSourceFileName(windowModel.fileName, windowModel.className);
     const sourceFile = getSourceFileForWindow(windowModel);
 
@@ -359,13 +365,16 @@ export default function Sidebar({
       return;
     }
 
-    setDesignerState(prev => ({
-      ...prev,
+    const nextState = saveWindowDesignerState({
+      ...designerState,
       activeWindowId: windowModel.id,
       selectedControlId: windowModel.controls[0]?.id || null
-    }));
+    });
+    setDesignerState(nextState);
     onSelectFile(sourceFile, false);
-    window.dispatchEvent(new CustomEvent('show-window-designer'));
+    window.dispatchEvent(new CustomEvent('show-window-designer', {
+      detail: { projectId, windowId: windowModel.id }
+    }));
   };
 
   const commitDesignerState = (nextState: PersistedWindowDesignerState) => {
@@ -375,6 +384,10 @@ export default function Sidebar({
   };
 
   const handleCreateWindowFromExplorer = () => {
+    if (!designerStateMatchesActiveProject) {
+      triggerSuccess('项目窗口状态仍在载入，请稍后重试。');
+      return;
+    }
     const nextWindow = createBlankWindow(designerState.project.windows.length + 1);
     commitDesignerState({
       project: {
@@ -391,6 +404,10 @@ export default function Sidebar({
   };
 
   const handleDuplicateWindowFromExplorer = (windowModel: LingWindowModel) => {
+    if (!designerStateMatchesActiveProject) {
+      triggerSuccess('项目窗口状态仍在载入，请稍后重试。');
+      return;
+    }
     const cloneIndex = designerState.project.windows.length + 1;
     const clonedWindow: LingWindowModel = {
       ...windowModel,
@@ -420,6 +437,10 @@ export default function Sidebar({
   };
 
   const handleDeleteWindowFromExplorer = (windowModel: LingWindowModel) => {
+    if (!designerStateMatchesActiveProject) {
+      triggerSuccess('项目窗口状态仍在载入，请稍后重试。');
+      return;
+    }
     if (designerState.project.windows.length <= 1) {
       triggerSuccess('至少需要保留一个窗口，未执行删除。');
       return;
@@ -692,7 +713,7 @@ export default function Sidebar({
     );
   };
 
-  const renderWindowRow = (windowModel: LingWindowModel) => {
+  const renderWindowRow = (projectId: string, windowModel: LingWindowModel) => {
     const sourceName = getLingWindowSourceFileName(windowModel.fileName, windowModel.className);
     const isActive = activeFile.name === sourceName;
 
@@ -700,7 +721,7 @@ export default function Sidebar({
       <button
         type="button"
         key={windowModel.id}
-        onClick={() => handleOpenDesignerWindow(windowModel)}
+        onClick={() => handleOpenDesignerWindow(projectId, windowModel)}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -709,6 +730,7 @@ export default function Sidebar({
             x: event.clientX,
             y: event.clientY,
             target: 'window',
+            projectId,
             windowModel
           });
         }}
@@ -825,7 +847,7 @@ export default function Sidebar({
           <>
             <div
               className={menuItemClass}
-              onClick={() => handleOpenDesignerWindow(windowContextMenu.windowModel)}
+              onClick={() => handleOpenDesignerWindow(windowContextMenu.projectId, windowContextMenu.windowModel)}
             >
               <Monitor className="w-3.5 h-3.5 text-amber-500" />
               <span>打开设计器 (O)</span>
@@ -1427,15 +1449,17 @@ export default function Sidebar({
                           <span className={`ml-auto text-[9px] px-1 rounded border ${
                             isDarkMode ? 'border-amber-500/20 text-amber-300 bg-amber-500/5' : 'border-amber-200 text-amber-700 bg-amber-50'
                           }`}>
-                            {designerState.project.windows.length}
+                            {designerStateMatchesActiveProject ? designerState.project.windows.length : 0}
                           </span>
                         </div>
                         {isWindowsOpen && (
                           <div className="mt-0.5 border-l border-slate-750/30 dark:border-slate-800 ml-3.5 pl-0.5">
                             {designerWindows.length === 0 ? (
-                              <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">未找到匹配窗口</div>
+                              <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">
+                                {designerStateMatchesActiveProject ? '未找到匹配窗口' : '正在载入当前项目窗口…'}
+                              </div>
                             ) : (
-                              designerWindows.map(renderWindowRow)
+                              designerWindows.map(windowModel => renderWindowRow(project.id, windowModel))
                             )}
                           </div>
                         )}

@@ -7797,7 +7797,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
       {/* Main Comparative Frame */}
       {viewType === 'designer' ? (
-        <WpfDesigner isDarkMode={isDarkMode} activeFile={activeFile} />
+        <WpfDesigner
+          key={`designer:${textModelProjectId}`}
+          projectId={textModelProjectId}
+          isDarkMode={isDarkMode}
+          activeFile={activeFile}
+        />
       ) : (
         <div className={`flex-1 flex overflow-hidden ${style.bg} ${style.text}`}>
           {viewMode === 'chinese' ? (

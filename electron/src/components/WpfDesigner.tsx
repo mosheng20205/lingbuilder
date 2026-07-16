@@ -100,6 +100,7 @@ interface OpenControlEventCodeDetail {
 interface WpfDesignerProps {
   isDarkMode: boolean;
   activeFile?: any;
+  projectId: string;
 }
 
 const CONTROL_TYPES: (LingControlType | 'MenuBar')[] = [
@@ -141,19 +142,8 @@ const WINDOW_OPEN_PLACEMENT_OPTIONS: { value: LingWindowOpenPlacement; label: st
   { value: 'custom', label: '自定义坐标' }
 ];
 
-let cachedInitialDesignerState: PersistedWindowDesignerState | null = null;
-
-function getInitialDesignerState(): PersistedWindowDesignerState {
-  if (cachedInitialDesignerState) {
-    return cachedInitialDesignerState;
-  }
-
-  cachedInitialDesignerState = readWindowDesignerState();
-  return cachedInitialDesignerState;
-}
-
-export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps) {
-  const initialDesignerState = getInitialDesignerState();
+export default function WpfDesigner({ isDarkMode, activeFile, projectId }: WpfDesignerProps) {
+  const initialDesignerState = readWindowDesignerState();
   const [project, setProject] = useState<LingWindowProject>(() => initialDesignerState.project);
   const [enabledDesignerModules, setEnabledDesignerModules] = useState<Set<string>>(() => new Set(['lingbuilder.win32.basic']));
   const [activeWindowId, setActiveWindowId] = useState(initialDesignerState.activeWindowId);
@@ -197,8 +187,8 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     const handleDesignerProjectUpdated = (event: Event) => {
       const nextState = (event as CustomEvent<PersistedWindowDesignerState>).detail;
       if (!nextState) return;
+      if (nextState.project.id !== projectId) return;
 
-      cachedInitialDesignerState = nextState;
       setProject(nextState.project);
       setActiveWindowId(nextState.activeWindowId);
       setSelectedControlId(nextState.selectedControlId);
@@ -210,7 +200,7 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
     return () => {
       window.removeEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
     };
-  }, []);
+  }, [projectId]);
 
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
@@ -359,12 +349,13 @@ export default function WpfDesigner({ isDarkMode, activeFile }: WpfDesignerProps
   }, []);
 
   useEffect(() => {
-    cachedInitialDesignerState = saveWindowDesignerState({
+    if (project.id !== projectId) return;
+    saveWindowDesignerState({
       project,
       activeWindowId,
       selectedControlId
     });
-  }, [activeWindowId, project, selectedControlId]);
+  }, [activeWindowId, project, projectId, selectedControlId]);
 
   const updateActiveWindow = (updater: (window: LingWindowModel) => LingWindowModel) => {
     setProject(prev => ({
