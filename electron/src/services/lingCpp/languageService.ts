@@ -1907,6 +1907,14 @@ function extractAssociatedDesignerFile(source: string): string | undefined {
 
 function findWindowEventMatch(handlerName: string, className: string, windows: LingWindowModel[]): LingWindowModel | undefined {
   const normalizedHandler = normalizeIdentifier(handlerName);
+  const isBareWindowEvent = WINDOW_EVENT_DEFINITIONS.some(definition => [
+    definition.name,
+    definition.label,
+    definition.handlerSuffix
+  ].some(alias => normalizeIdentifier(alias) === normalizedHandler));
+  if (isBareWindowEvent) {
+    return windows.find(win => normalizeIdentifier(win.className) === normalizeIdentifier(className)) || windows[0];
+  }
   return windows.find(win => {
     const normalizedClass = normalizeIdentifier(className || win.className);
     const normalizedWindowClass = normalizeIdentifier(win.className);

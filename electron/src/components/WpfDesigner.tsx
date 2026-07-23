@@ -35,7 +35,9 @@ import {
 } from 'lucide-react';
 import ModuleInspector from './ModuleInspector';
 import ListViewDesignerPreview from './ListViewDesignerPreview';
+import TabControlDesignerPreview from './TabControlDesignerPreview';
 import ListViewCollectionDialog, { type ListViewCollectionEditorKind } from './ListViewCollectionDialog';
+import TreeViewCollectionDialog from './TreeViewCollectionDialog';
 import {
   createBlankWindow,
   createControl,
@@ -83,10 +85,13 @@ import {
 } from '../services/windowDesigner/win32ControlRegistry';
 import {
   buildControlHierarchy,
+  canReparentControl,
+  getEffectiveControlState,
   getControlDescendantIds,
-  LingControlHierarchyNode
+  LingControlHierarchyNode,
+  reparentControl
 } from '../services/windowDesigner/controlHierarchy';
-import { applyDesignerLayout, DesignerHistory, nudgeControls, type DesignerLayoutOperation } from '../services/windowDesigner/designerOperations';
+import { applyDesignerLayout, DesignerHistory, nudgeControls, updateControlWithDescendants, type DesignerLayoutOperation } from '../services/windowDesigner/designerOperations';
 import {
   getWindowEventHandlerName,
   WINDOW_EVENT_CATEGORIES,
@@ -98,10 +103,26 @@ import {
   type ListViewEditableColumn,
   type ListViewEditableRow
 } from '../services/windowDesigner/listViewCollectionModel';
+import { flattenTreeViewNodes, normalizeTreeViewNodes } from '../services/windowDesigner/treeViewCollectionModel';
+import {
+  isNewEmojiDesignerControlSupported,
+  isNewEmojiDesignerEnabled
+} from '../services/windowDesigner/newEmojiDesignerAdapter';
+import {
+  getControlTabSlot,
+  getSelectedTabPage,
+  getTabControlPages,
+  isControlOnSelectedTab
+} from '../services/windowDesigner/tabControlModel';
 
 type InspectorTab = 'properties' | 'events' | 'layout';
 type ResizeDirection = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 type DesignerZoomMode = 'fit' | 'manual';
+const WINDOW_ROOT_DROP_TARGET = '__layout_window_root__';
+
+export function parseStringListPropertyText(text: string): string[] {
+  return text.split(/\r?\n/).filter(item => item.length > 0);
+}
 
 interface DesignerContextMenuState {
   x: number;
@@ -262,6 +283,7 @@ export default function WpfDesigner({
     return project.windows.find(window => window.id === activeWindowId) || project.windows[0];
   }, [activeWindowId, project.windows]);
   const windowContentOffset = getDesignerWindowContentOffset(activeWindow);
+  const useNewEmojiDesigner = isNewEmojiDesignerEnabled(enabledDesignerModules);
 
   const refreshDesignerModules = useCallback(async (projectId: string) => {
     try {
@@ -538,10 +560,7 @@ export default function WpfDesigner({
     }
     updateActiveWindow(window => ({
       ...window,
-      controls: window.controls.map(control => {
-        if (control.id !== selectedControlId) return control;
-        return { ...control, ...updatedFields };
-      })
+      controls: updateControlWithDescendants(window.controls, selectedControlId, updatedFields)
     }));
   };
 
@@ -550,6 +569,48 @@ export default function WpfDesigner({
     if (!nextWindow) return;
     setActiveWindowId(windowId);
     selectOnlyControl(nextWindow.controls[0]?.id || null);
+  };
+
+  const handleReparentControl = (controlId: string, parentId?: string, containerSlot?: string) => {
+    const source = activeWindow.controls.find(control => control.id === controlId);
+    const target = parentId ? activeWindow.controls.find(control => control.id === parentId) : undefined;
+    if (!source || (parentId && (!target || !getWin32ControlDefinition(target.type)?.isContainer))) return;
+    if (!canReparentControl(activeWindow.controls, controlId, parentId, containerSlot)) return;
+
+    updateActiveWindow(window => {
+      const controls = reparentControl(window.controls, controlId, parentId, containerSlot);
+      if (controls === window.controls) return window;
+      if (!target) return { ...window, controls };
+      const inset = 12;
+      const topInset = target.type === 'TabControl' ? 36 : inset;
+      return {
+        ...window,
+        controls: controls.map(control => control.id === controlId ? {
+          ...control,
+          x: Math.max(target.x + inset, Math.min(control.x, target.x + target.width - control.width - inset)),
+          y: Math.max(target.y + topInset, Math.min(control.y, target.y + target.height - control.height - inset))
+        } : control)
+      };
+    });
+    selectOnlyControl(controlId);
+    const page = target?.type === 'TabControl'
+      ? getTabControlPages(target).find(item => item.id === containerSlot)
+      : undefined;
+    addLog(`> [${new Date().toLocaleTimeString()}] 【可视化设计】已将 ${source.name} 移到${page ? `${target?.name} / ${page.title}` : target ? `容器 ${target.name}` : '窗口根级'}。`);
+  };
+
+  const handleSelectTabPage = (tabControlId: string, pageId: string) => {
+    const tabControl = activeWindow.controls.find(control => control.id === tabControlId && control.type === 'TabControl');
+    if (!tabControl) return;
+    const pageIndex = getTabControlPages(tabControl).findIndex(page => page.id === pageId);
+    if (pageIndex < 0) return;
+    updateActiveWindow(window => ({
+      ...window,
+      controls: window.controls.map(control => control.id === tabControlId
+        ? { ...control, properties: { ...(control.properties || {}), selectedIndex: pageIndex } }
+        : control)
+    }));
+    selectOnlyControl(tabControlId);
   };
 
   const handleCanvasDoubleClick = (event: React.MouseEvent) => {
@@ -669,9 +730,14 @@ export default function WpfDesigner({
     const selectedParent = activeWindow.controls.find(control => (
       control.id === selectedControlId && getWin32ControlDefinition(control.type)?.isContainer
     ));
+    const selectedPage = selectedParent?.type === 'TabControl' ? getSelectedTabPage(selectedParent) : undefined;
+    const createdControl = createControl(type, typeIndex);
     const newControl = {
-      ...createControl(type, typeIndex),
-      parentId: selectedParent?.id
+      ...createdControl,
+      x: selectedParent ? selectedParent.x + 12 : createdControl.x,
+      y: selectedParent ? selectedParent.y + (selectedParent.type === 'TabControl' ? 36 : 12) : createdControl.y,
+      parentId: selectedParent?.id,
+      containerSlot: selectedPage?.id
     };
     updateActiveWindow(window => ({
       ...window,
@@ -1180,6 +1246,7 @@ export default function WpfDesigner({
             <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500">
               <Wrench className="w-3.5 h-3.5 text-blue-500" />
               <span>控件工具箱</span>
+              {useNewEmojiDesigner && <span className="ml-auto rounded border border-fuchsia-400/30 bg-fuchsia-500/10 px-1.5 py-0.5 text-[8px] normal-case tracking-normal text-fuchsia-300">new_emoji 原生</span>}
             </div>
           </div>
 
@@ -1191,13 +1258,19 @@ export default function WpfDesigner({
               {CONTROL_TYPES.map(type => (
                 (() => {
                   const definition = type === 'MenuBar' ? undefined : getWin32ControlDefinition(type);
-                  const enabled = !definition || enabledDesignerModules.has(definition.moduleId);
+                  const moduleEnabled = !definition || enabledDesignerModules.has(definition.moduleId);
+                  const backendSupported = type === 'MenuBar' ? !useNewEmojiDesigner : !useNewEmojiDesigner || isNewEmojiDesignerControlSupported(type);
+                  const enabled = moduleEnabled && backendSupported;
+                  const disabledReason = !moduleEnabled
+                    ? `需要启用 ${definition?.moduleId}`
+                    : `new_emoji 设计后端暂不支持 ${CONTROL_LABELS[type]}`;
                   return (
                 <button
                   key={type}
                   onClick={() => handleAddControl(type)}
                   disabled={!enabled}
-                  title={enabled ? `添加${CONTROL_LABELS[type]}` : `需要启用 ${definition?.moduleId}`}
+                  title={enabled ? `添加${useNewEmojiDesigner ? 'new_emoji ' : ''}${CONTROL_LABELS[type]}` : disabledReason}
+                  aria-label={enabled ? `添加${CONTROL_LABELS[type]}` : disabledReason}
                   className={`flex items-center gap-2 px-2.5 py-2 text-left text-xs rounded border cursor-pointer transition-all ${
                     !enabled ? 'opacity-45 cursor-not-allowed ' : ''
                   }${
@@ -1208,6 +1281,7 @@ export default function WpfDesigner({
                 >
                   {getControlIcon(type)}
                   <span className="min-w-0 flex-1 truncate">{CONTROL_LABELS[type]} ({type})</span>
+                  {useNewEmojiDesigner && backendSupported && type !== 'MenuBar' && <span className="text-[8px] text-fuchsia-300">NE</span>}
                   {definition?.moduleId === 'lingbuilder.win32.common-controls' && <span className="text-[8px] text-violet-400">高级</span>}
                 </button>
                   );
@@ -1224,6 +1298,12 @@ export default function WpfDesigner({
               </span>
               每个窗口都会生成独立的中文 XML 布局和中文 C++ 类，事件处理器可直接用中文命名。
             </div>
+            {useNewEmojiDesigner && (
+              <div role="status" className="rounded border border-fuchsia-400/25 bg-fuchsia-500/10 p-2 text-[10px] leading-relaxed text-fuchsia-200">
+                <span className="mb-1 flex items-center gap-1 font-semibold"><Check className="h-3 w-3" />new_emoji 设计后端已启用</span>
+                画布与 F5 将使用 Direct2D/DirectWrite 原生控件；未适配控件会保持禁用并说明原因。
+              </div>
+            )}
           </div>
         </div>
 
@@ -1291,9 +1371,11 @@ export default function WpfDesigner({
                 transform: `scale(${canvasScale})`,
                 transformOrigin: 'top left',
                 backgroundColor: activeWindow.background,
-                backgroundImage: isDarkMode
-                  ? 'radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.34) 0.85px, transparent 0.95px)'
-                  : 'radial-gradient(circle at 1px 1px, rgba(71, 85, 105, 0.24) 0.85px, transparent 0.95px)',
+                backgroundImage: useNewEmojiDesigner
+                  ? 'radial-gradient(circle at 15% 10%, rgba(168,85,247,0.16), transparent 32%), radial-gradient(circle at 85% 90%, rgba(34,211,238,0.12), transparent 34%), radial-gradient(circle at 1px 1px, rgba(148,163,184,0.22) 0.8px, transparent 0.9px)'
+                  : isDarkMode
+                    ? 'radial-gradient(circle at 1px 1px, rgba(148, 163, 184, 0.34) 0.85px, transparent 0.95px)'
+                    : 'radial-gradient(circle at 1px 1px, rgba(71, 85, 105, 0.24) 0.85px, transparent 0.95px)',
                 backgroundSize: '12px 12px',
                 backgroundPosition: '0 0',
                 borderRadius: activeWindow.cornerStyle === 'square'
@@ -1322,7 +1404,8 @@ export default function WpfDesigner({
               className="h-7 flex items-center justify-between px-3 border-b border-black/25 select-none canvas-title-bar"
               style={{
                 backgroundColor: activeWindow.titleBarBackground || DEFAULT_WINDOW_TITLE_BAR_BACKGROUND,
-                color: activeWindow.titleBarForeground || DEFAULT_WINDOW_TITLE_BAR_FOREGROUND
+                color: activeWindow.titleBarForeground || DEFAULT_WINDOW_TITLE_BAR_FOREGROUND,
+                backgroundImage: useNewEmojiDesigner ? 'linear-gradient(90deg, rgba(126,34,206,0.7), rgba(8,145,178,0.55))' : undefined
               }}
             >
               <div className="flex items-center gap-1.5 text-[11px] font-sans font-medium min-w-0">
@@ -1436,15 +1519,25 @@ export default function WpfDesigner({
               </div>
             </div>}
 
-            {activeWindow.controls.map(control => renderControl(
-              control,
-              selectedControlIds.includes(control.id),
-              handleMouseDown,
-              setSelectedControlId,
-              handleControlDoubleClick,
-              openControlContextMenu,
-              windowContentOffset
-            ))}
+            {activeWindow.controls.map(control => {
+              const effectiveState = getEffectiveControlState(activeWindow.controls, control.id);
+              const ancestorsVisible = !control.parentId
+                || getEffectiveControlState(activeWindow.controls, control.parentId).visible;
+              return renderControl(
+                control,
+                selectedControlIds.includes(control.id),
+                handleMouseDown,
+                setSelectedControlId,
+                handleControlDoubleClick,
+                openControlContextMenu,
+                windowContentOffset,
+                useNewEmojiDesigner,
+                effectiveState.visible,
+                effectiveState.enabled,
+                ancestorsVisible && isControlOnSelectedTab(activeWindow.controls, control.id),
+                control.type === 'TabControl' ? pageId => handleSelectTabPage(control.id, pageId) : undefined
+              );
+            })}
             </div>
           </div>
         </div>
@@ -1539,6 +1632,8 @@ export default function WpfDesigner({
                   selectOnlyControl(controlId);
                   if (controlId === null) setActiveInspectorTab('properties');
                 }}
+                onSelectTabPage={handleSelectTabPage}
+                onReparentControl={handleReparentControl}
               />
             )}
           </div>
@@ -1598,16 +1693,22 @@ function LayoutHierarchy({
   window,
   selectedControlId,
   isDarkMode,
-  onSelectControl
+  onSelectControl,
+  onSelectTabPage,
+  onReparentControl
 }: {
   window: LingWindowModel;
   selectedControlId: string | null;
   isDarkMode: boolean;
   onSelectControl: (controlId: string | null) => void;
+  onSelectTabPage: (tabControlId: string, pageId: string) => void;
+  onReparentControl: (controlId: string, parentId?: string, containerSlot?: string) => void;
 }) {
   const hierarchy = useMemo(() => buildControlHierarchy(window.controls), [window.controls]);
   const hierarchySignature = window.controls.map(control => `${control.id}:${control.parentId || ''}`).join('|');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set([window.id]));
+  const [draggedControlId, setDraggedControlId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
   const menuItems = (window.menuItems || '').split(',').map(item => item.trim()).filter(Boolean);
 
   useEffect(() => {
@@ -1626,16 +1727,77 @@ function LayoutHierarchy({
     });
   };
 
-  const getRowClassName = (selected: boolean) => `group flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 text-left text-[11px] transition-colors ${
-    selected
+  const getRowClassName = (selected: boolean, isDropTarget = false) => `group flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 text-left text-[11px] transition-colors ${
+    isDropTarget
+      ? isDarkMode ? 'bg-emerald-900/70 text-emerald-100 ring-1 ring-inset ring-emerald-400' : 'bg-emerald-100 text-emerald-950 ring-1 ring-inset ring-emerald-500'
+      : selected
       ? isDarkMode ? 'bg-[#094771] text-white' : 'bg-blue-100 text-blue-900'
       : isDarkMode ? 'text-slate-300 hover:bg-[#2a2d2e]' : 'text-slate-700 hover:bg-slate-100'
   }`;
 
+  const readDraggedControlId = (event: React.DragEvent) => (
+    draggedControlId
+    || event.dataTransfer.getData('application/x-lingbuilder-control-id')
+    || event.dataTransfer.getData('text/plain')
+  );
+
+  const canDropOnParent = (controlId: string, parentId?: string, containerSlot?: string) => {
+    if (!canReparentControl(window.controls, controlId, parentId, containerSlot)) return false;
+    if (!parentId) return true;
+    const target = window.controls.find(control => control.id === parentId);
+    return Boolean(target && getWin32ControlDefinition(target.type)?.isContainer);
+  };
+
+  const handleDragStart = (event: React.DragEvent, controlId: string) => {
+    event.stopPropagation();
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('application/x-lingbuilder-control-id', controlId);
+    event.dataTransfer.setData('text/plain', controlId);
+    setDraggedControlId(controlId);
+    setDropTargetId(null);
+    onSelectControl(controlId);
+  };
+
+  const handleDragOver = (event: React.DragEvent, parentId?: string, containerSlot?: string) => {
+    const controlId = readDraggedControlId(event);
+    if (!canDropOnParent(controlId, parentId, containerSlot)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'move';
+    setDropTargetId(containerSlot ? `${parentId}:${containerSlot}` : parentId || WINDOW_ROOT_DROP_TARGET);
+  };
+
+  const handleDragLeave = (event: React.DragEvent, targetId: string) => {
+    const relatedTarget = event.relatedTarget;
+    if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) return;
+    setDropTargetId(previous => previous === targetId ? null : previous);
+  };
+
+  const handleDrop = (event: React.DragEvent, parentId?: string, containerSlot?: string) => {
+    const controlId = readDraggedControlId(event);
+    if (!canDropOnParent(controlId, parentId, containerSlot)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    onReparentControl(controlId, parentId, containerSlot);
+    setExpandedIds(previous => new Set([...previous, parentId || window.id]));
+    setDraggedControlId(null);
+    setDropTargetId(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedControlId(null);
+    setDropTargetId(null);
+  };
+
   const renderControlNode = (node: LingControlHierarchyNode, depth: number): React.ReactNode => {
-    const hasChildren = node.children.length > 0;
+    const tabPages = node.control.type === 'TabControl' ? getTabControlPages(node.control) : [];
+    const selectedTabPage = node.control.type === 'TabControl' ? getSelectedTabPage(node.control) : undefined;
+    const hasChildren = node.children.length > 0 || tabPages.length > 0;
     const expanded = expandedIds.has(node.control.id);
-    const selected = selectedControlId === node.control.id;
+    const selected = selectedControlId === node.control.id && node.control.type !== 'TabControl';
+    const isContainer = Boolean(getWin32ControlDefinition(node.control.type)?.isContainer);
+    const defaultDropSlot = node.control.type === 'TabControl' ? selectedTabPage?.id : undefined;
+    const isDropTarget = dropTargetId === (defaultDropSlot ? `${node.control.id}:${defaultDropSlot}` : node.control.id);
 
     return (
       <React.Fragment key={node.control.id}>
@@ -1643,8 +1805,11 @@ function LayoutHierarchy({
           role="treeitem"
           aria-expanded={hasChildren ? expanded : undefined}
           aria-selected={selected}
-          className="flex min-w-0 items-center"
+          className={`flex min-w-0 items-center ${draggedControlId === node.control.id ? 'opacity-55' : ''}`}
           style={{ paddingLeft: `${depth * 16}px` }}
+          onDragOver={event => isContainer && handleDragOver(event, node.control.id, defaultDropSlot)}
+          onDragLeave={event => isContainer && handleDragLeave(event, node.control.id)}
+          onDrop={event => isContainer && handleDrop(event, node.control.id, defaultDropSlot)}
         >
           <button
             type="button"
@@ -1657,13 +1822,52 @@ function LayoutHierarchy({
           >
             {hasChildren && (expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
           </button>
-          <button type="button" onClick={() => onSelectControl(node.control.id)} className={getRowClassName(selected)}>
+          <button
+            type="button"
+            draggable
+            aria-grabbed={draggedControlId === node.control.id}
+            onDragStart={event => handleDragStart(event, node.control.id)}
+            onDragEnd={handleDragEnd}
+            onClick={() => onSelectControl(node.control.id)}
+            className={`${getRowClassName(selected, isDropTarget)} cursor-grab active:cursor-grabbing`}
+            title={isContainer ? '拖动此控件，或将其他控件拖到这里更换父级' : '拖动到窗口或容器节点以更换父级'}
+          >
             <span className="shrink-0">{getControlIcon(node.control.type)}</span>
             <span className="min-w-0 flex-1 truncate">{node.control.name}</span>
             <span className="shrink-0 text-[9px] text-slate-500">{CONTROL_LABELS[node.control.type]}</span>
           </button>
         </div>
-        {hasChildren && expanded && node.children.map(child => renderControlNode(child, depth + 1))}
+        {hasChildren && expanded && (tabPages.length > 0 ? tabPages.map(page => {
+          const pageSelected = selectedControlId === node.control.id && selectedTabPage?.id === page.id;
+          const pageDropTargetId = `${node.control.id}:${page.id}`;
+          const pageChildren = node.children.filter(child => getControlTabSlot(child.control, node.control) === page.id);
+          return (
+            <React.Fragment key={page.id}>
+              <div
+                role="treeitem"
+                aria-selected={pageSelected}
+                className="flex min-w-0 items-center"
+                style={{ paddingLeft: `${(depth + 1) * 16}px` }}
+                onDragOver={event => handleDragOver(event, node.control.id, page.id)}
+                onDragLeave={event => handleDragLeave(event, pageDropTargetId)}
+                onDrop={event => handleDrop(event, node.control.id, page.id)}
+              >
+                <span className="flex h-6 w-5 shrink-0 items-center justify-center text-slate-500">{pageChildren.length > 0 ? <ChevronDown className="h-3 w-3" /> : null}</span>
+                <button
+                  type="button"
+                  onClick={() => onSelectTabPage(node.control.id, page.id)}
+                  className={getRowClassName(pageSelected, dropTargetId === pageDropTargetId)}
+                  title={`选择 ${page.title}；将控件拖到这里可移动到此页面`}
+                >
+                  <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-sky-400" />
+                  <span className="min-w-0 flex-1 truncate">{page.title}</span>
+                  <span className="shrink-0 text-[9px] text-slate-500">页面 HWND</span>
+                </button>
+              </div>
+              {pageChildren.map(child => renderControlNode(child, depth + 2))}
+            </React.Fragment>
+          );
+        }) : node.children.map(child => renderControlNode(child, depth + 1)))}
       </React.Fragment>
     );
   };
@@ -1681,11 +1885,19 @@ function LayoutHierarchy({
           <span>布局内容</span>
           <span className="ml-auto rounded bg-slate-500/15 px-1.5 py-0.5 text-[9px] font-normal">{window.controls.length} 个控件</span>
         </div>
-        <p className="mt-1 text-[10px] leading-4 text-slate-500">点击窗口或控件节点即可选中，并在属性页中编辑当前对象。</p>
+        <p className="mt-1 text-[10px] leading-4 text-slate-500">点击窗口或控件节点即可选中；拖动控件到窗口或容器节点可更换父级。</p>
       </div>
 
       <div role="tree" aria-label={`${window.title}布局组件树`} className="max-h-[62vh] overflow-auto p-1.5">
-        <div role="treeitem" aria-expanded={hasRootChildren ? rootExpanded : undefined} aria-selected={selectedControlId === null} className="flex min-w-0 items-center">
+        <div
+          role="treeitem"
+          aria-expanded={hasRootChildren ? rootExpanded : undefined}
+          aria-selected={selectedControlId === null}
+          className="flex min-w-0 items-center"
+          onDragOver={event => handleDragOver(event)}
+          onDragLeave={event => handleDragLeave(event, WINDOW_ROOT_DROP_TARGET)}
+          onDrop={event => handleDrop(event)}
+        >
           <button
             type="button"
             onClick={() => hasRootChildren && toggleExpanded(window.id)}
@@ -1694,7 +1906,7 @@ function LayoutHierarchy({
           >
             {hasRootChildren && (rootExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
           </button>
-          <button type="button" onClick={() => onSelectControl(null)} className={getRowClassName(selectedControlId === null)}>
+          <button type="button" onClick={() => onSelectControl(null)} className={getRowClassName(selectedControlId === null, dropTargetId === WINDOW_ROOT_DROP_TARGET)} title="将控件拖到这里可提升为窗口根级控件">
             <Monitor className="h-3.5 w-3.5 shrink-0 text-amber-500" />
             <span className="min-w-0 flex-1 truncate font-semibold">{window.title}</span>
             <span className="shrink-0 text-[9px] text-slate-500">窗口</span>
@@ -1745,11 +1957,19 @@ function renderControl(
   setSelectedControlId: (id: string) => void,
   onOpenEventCode: (event: React.MouseEvent, control: LingControl) => void,
   onOpenContextMenu: (event: React.MouseEvent, controlId: string) => void,
-  contentOffset: number
+  contentOffset: number,
+  useNewEmojiDesigner: boolean,
+  isEffectivelyVisible: boolean,
+  isEffectivelyEnabled: boolean,
+  ancestorsVisible: boolean,
+  onSelectTabPage?: (pageId: string) => void
 ) {
-  const isCollapsed = control.visibility === 'Collapsed';
+  const isCollapsed = !isEffectivelyVisible && ancestorsVisible;
+  const isHiddenByAncestor = !ancestorsVisible;
   const definition = getWin32ControlDefinition(control.type);
-  const hasSpecialPreview = ['Button', 'TextBox', 'Label', 'CheckBox', 'RadioButton', 'ProgressBar', 'ComboBox', 'Image', 'ListView'].includes(control.type);
+  const newEmojiSupported = isNewEmojiDesignerControlSupported(control.type);
+  const hasSpecialPreview = ['Button', 'TextBox', 'Label', 'CheckBox', 'RadioButton', 'ListBox', 'ProgressBar', 'ComboBox', 'GroupBox', 'Image', 'ListView', 'TreeView', 'TabControl'].includes(control.type)
+    || (useNewEmojiDesigner && !newEmojiSupported);
   const resizeHandles: Array<{
     direction: ResizeDirection;
     className: string;
@@ -1778,13 +1998,16 @@ function renderControl(
       onMouseDown={event => handleMouseDown(event, control, 'drag')}
       title={`双击打开事件代码：${getEplEventHandlerName(control.name, getPrimaryEventNameForType(control.type))}`}
       className={`absolute group cursor-move select-none ${
-        isSelected ? 'ring-1 ring-amber-500 z-40' : 'hover:ring-1 hover:ring-slate-500 z-20'
+        definition?.isContainer
+          ? isSelected ? 'ring-1 ring-amber-500 z-10' : 'hover:ring-1 hover:ring-slate-500 z-10'
+          : isSelected ? 'ring-1 ring-amber-500 z-40' : 'hover:ring-1 hover:ring-slate-500 z-20'
       } ${isCollapsed ? 'opacity-30 border border-dashed border-red-500' : ''}`}
       style={{
         left: `${control.x}px`,
         top: `${control.y + contentOffset}px`,
         width: `${control.width}px`,
-        height: `${control.height}px`
+        height: `${control.height}px`,
+        visibility: isHiddenByAncestor ? 'hidden' : undefined
       }}
     >
       {isSelected && (
@@ -1808,14 +2031,14 @@ function renderControl(
       <div className="w-full h-full relative select-none pointer-events-none">
         {control.type === 'Button' && (
           <button
-            disabled={!control.isEnabled}
-            className="w-full h-full text-center text-xs font-semibold shadow flex items-center justify-center px-2 select-none"
+            disabled={!isEffectivelyEnabled}
+            className={`w-full h-full text-center text-xs font-semibold shadow flex items-center justify-center px-2 select-none border ${useNewEmojiDesigner ? 'border-fuchsia-300/35 shadow-[0_8px_24px_rgba(124,58,237,0.24)]' : 'border-transparent'}`}
             style={{
-              backgroundColor: control.background,
+              background: useNewEmojiDesigner ? `linear-gradient(135deg, ${control.background === 'transparent' ? '#7C3AED' : control.background}, #0891B2)` : control.background,
               color: control.foreground,
               fontSize: `${control.fontSize}px`,
-              opacity: control.isEnabled ? 1 : 0.5,
-              borderRadius: `${Math.min(Math.max(Number(control.properties?.cornerRadius ?? 6), 0), Math.min(control.width, control.height) / 2)}px`
+              opacity: isEffectivelyEnabled ? 1 : 0.5,
+              borderRadius: `${useNewEmojiDesigner ? Math.max(8, Math.min(control.height / 2, 12)) : Math.min(Math.max(Number(control.properties?.cornerRadius ?? 6), 0), Math.min(control.width, control.height) / 2)}px`
             }}
           >
             {control.content}
@@ -1824,8 +2047,8 @@ function renderControl(
 
         {control.type === 'TextBox' && (
           <div
-            className="w-full h-full rounded border border-slate-700 px-2 py-1 flex justify-start text-xs select-none"
-            style={{ backgroundColor: control.background, color: control.foreground, fontSize: `${control.fontSize}px`, opacity: control.isEnabled ? 1 : 0.5, alignItems: control.properties?.verticalAlign === 'top' ? 'flex-start' : control.properties?.verticalAlign === 'bottom' ? 'flex-end' : 'center' }}
+            className={`w-full h-full rounded border px-2 py-1 flex justify-start text-xs select-none ${useNewEmojiDesigner ? 'border-fuchsia-300/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]' : 'border-slate-700'}`}
+            style={{ backgroundColor: useNewEmojiDesigner && control.background === 'transparent' ? 'rgba(15,23,42,0.82)' : control.background, color: control.foreground, fontSize: `${control.fontSize}px`, opacity: isEffectivelyEnabled ? 1 : 0.5, alignItems: control.properties?.verticalAlign === 'top' ? 'flex-start' : control.properties?.verticalAlign === 'bottom' ? 'flex-end' : 'center' }}
           >
             {control.content}
           </div>
@@ -1845,7 +2068,7 @@ function renderControl(
             className="w-full h-full flex items-center gap-2 text-xs select-none"
             style={{ color: control.foreground, fontSize: `${control.fontSize}px`, backgroundColor: control.background === 'transparent' ? 'transparent' : control.background }}
           >
-            <div className="w-3.5 h-3.5 border border-slate-500 rounded bg-slate-900 flex items-center justify-center shrink-0">
+            <div className={`w-3.5 h-3.5 border rounded flex items-center justify-center shrink-0 ${useNewEmojiDesigner ? 'border-fuchsia-300/70 bg-fuchsia-950/60' : 'border-slate-500 bg-slate-900'}`}>
               {control.properties?.checked === true && <Check className="w-2.5 h-2.5" style={{ color: control.foreground }} />}
             </div>
             <span className="truncate">{control.content}</span>
@@ -1857,7 +2080,7 @@ function renderControl(
             className="w-full h-full flex items-center gap-2 text-xs select-none"
             style={{ color: control.foreground, fontSize: `${control.fontSize}px`, backgroundColor: control.background === 'transparent' ? 'transparent' : control.background }}
           >
-            <div className="w-3.5 h-3.5 border border-slate-500 rounded-full bg-slate-900 flex items-center justify-center shrink-0">
+            <div className={`w-3.5 h-3.5 border rounded-full flex items-center justify-center shrink-0 ${useNewEmojiDesigner ? 'border-cyan-300/80 bg-cyan-950/60 shadow-[0_0_10px_rgba(34,211,238,0.28)]' : 'border-slate-500 bg-slate-900'}`}>
               {control.properties?.checked === true && <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: control.foreground }} />}
             </div>
             <span className="truncate">{control.content}</span>
@@ -1873,33 +2096,201 @@ function renderControl(
               className="absolute left-0 top-0 bottom-0"
               style={{
                 width: `${Math.min(100, Math.max(0, parseInt(control.content) || 0))}%`,
-                backgroundColor: control.foreground
+                background: useNewEmojiDesigner ? `linear-gradient(90deg, ${control.foreground}, #A855F7)` : control.foreground
               }}
             />
             <span className="z-10 font-mono text-[9px] text-white select-none">{control.content}%</span>
           </div>
         )}
 
-        {control.type === 'ComboBox' && (
-          <div
-            className="w-full h-full rounded border border-slate-700 px-2 flex items-center justify-between text-xs select-none"
-            style={{ backgroundColor: control.background === 'transparent' ? '#1E1E24' : control.background }}
-          >
-            <span style={{ color: control.foreground, fontSize: `${control.fontSize}px` }} className="truncate">
-              {control.content}
-            </span>
-            <span className="text-[9px] text-slate-500">v</span>
-          </div>
-        )}
+        {control.type === 'ComboBox' && (() => {
+          const items = Array.isArray(control.properties?.items)
+            ? control.properties.items.map(item => typeof item === 'string'
+              ? item
+              : String((item as Record<string, unknown>).title ?? (item as Record<string, unknown>).label ?? (item as Record<string, unknown>).text ?? ''))
+            : [];
+          const sortedItems = control.properties?.sorted === true ? [...items].sort((left, right) => left.localeCompare(right, 'zh-CN')) : items;
+          const selectedIndex = typeof control.properties?.selectedIndex === 'number' ? control.properties.selectedIndex : 0;
+          const selectedText = sortedItems[selectedIndex] ?? control.content;
+          return (
+            <div
+              className="h-full w-full overflow-hidden rounded border px-2 text-xs select-none flex items-center justify-between"
+              style={{
+                backgroundColor: control.background === 'transparent' ? '#1E1E24' : control.background,
+                borderColor: String(control.properties?.borderColor ?? '#334155'),
+                opacity: isEffectivelyEnabled ? 1 : 0.5
+              }}
+            >
+              <span style={{ color: control.foreground, fontSize: `${control.fontSize}px` }} className="truncate">
+                {selectedText}
+              </span>
+              <svg aria-hidden="true" viewBox="0 0 12 8" className="h-2 w-3 shrink-0 text-slate-400">
+                <path d="M1 1.5 6 6.5l5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          );
+        })()}
+
+        {control.type === 'ListBox' && (() => {
+          const items = Array.isArray(control.properties?.items)
+            ? control.properties.items.map(item => typeof item === 'string'
+              ? item
+              : String((item as Record<string, unknown>).title ?? (item as Record<string, unknown>).label ?? (item as Record<string, unknown>).text ?? ''))
+            : [];
+          const sortedItems = control.properties?.sorted === true ? [...items].sort((left, right) => left.localeCompare(right, 'zh-CN')) : items;
+          const selectedIndex = typeof control.properties?.selectedIndex === 'number' ? control.properties.selectedIndex : (sortedItems.length > 0 ? 0 : -1);
+          const borderWidth = Math.max(0, Math.min(8, Number(control.properties?.borderWidth ?? 1)));
+          const borderColor = String(control.properties?.borderColor ?? '#334155');
+          const selectionStartColor = String(control.properties?.selectionStartColor ?? '#7C3AED');
+          const selectionEndColor = String(control.properties?.selectionEndColor ?? '#0891B2');
+          const selectionBorderColor = String(control.properties?.selectionBorderColor ?? '#38BDF8');
+          const selectionCornerRadius = Math.max(0, Math.min(24, Number(control.properties?.selectionCornerRadius ?? 4)));
+          const itemHeight = Math.max(16, Math.min(96, Number(control.properties?.itemHeight ?? 28)));
+          const contentPadding = Math.max(0, Math.min(24, Number(control.properties?.contentPadding ?? 4)));
+          const scrollBarVisibility = String(control.properties?.scrollBarVisibility ?? 'auto');
+          const scrollBarWidth = Math.max(4, Math.min(24, Number(control.properties?.scrollBarWidth ?? 8)));
+          const scrollBarTrackColor = String(control.properties?.scrollBarTrackColor ?? '#172033');
+          const scrollBarThumbColor = String(control.properties?.scrollBarThumbColor ?? '#0E7490');
+          const availableHeight = Math.max(1, control.height - borderWidth * 2 - contentPadding * 2);
+          const contentHeight = sortedItems.length * itemHeight;
+          const showScrollBar = scrollBarVisibility === 'visible'
+            || (scrollBarVisibility !== 'hidden' && contentHeight > availableHeight);
+          const scrollThumbHeight = Math.max(scrollBarWidth * 2, Math.min(availableHeight, availableHeight * Math.min(1, availableHeight / Math.max(1, contentHeight))));
+          return (
+            <div
+              className={`relative h-full w-full overflow-hidden text-[11px] ${useNewEmojiDesigner ? 'shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_10px_28px_rgba(8,145,178,0.12)]' : ''}`}
+              style={{
+                backgroundColor: control.background === 'transparent' ? '#0F172A' : control.background,
+                borderStyle: borderWidth > 0 ? 'solid' : 'none',
+                borderWidth: `${borderWidth}px`,
+                borderColor,
+                color: control.foreground,
+                fontSize: `${control.fontSize}px`,
+                opacity: isEffectivelyEnabled ? 1 : 0.5
+              }}
+            >
+              {control.content && (
+                <div className="truncate border-b border-cyan-400/20 px-2 py-1 font-semibold text-cyan-100">{control.content}</div>
+              )}
+              <div
+                className="h-full overflow-hidden"
+                style={{
+                  padding: `${contentPadding}px`,
+                  paddingRight: `${contentPadding + (showScrollBar ? scrollBarWidth + 2 : 0)}px`
+                }}
+              >
+                {sortedItems.length > 0 ? sortedItems.map((item, index) => (
+                  <div
+                    key={`${item}-${index}`}
+                    className="flex shrink-0 items-center truncate border px-2"
+                    style={index === selectedIndex ? {
+                      height: `${itemHeight}px`,
+                      backgroundImage: `linear-gradient(90deg, ${selectionStartColor}, ${selectionEndColor})`,
+                      borderColor: selectionBorderColor,
+                      borderRadius: `${selectionCornerRadius}px`,
+                      color: control.foreground
+                    } : {
+                      height: `${itemHeight}px`,
+                      borderColor: 'transparent',
+                      borderRadius: `${selectionCornerRadius}px`,
+                      color: control.foreground
+                    }}
+                    aria-selected={index === selectedIndex}
+                  >
+                    {item || `项目 ${index + 1}`}
+                  </div>
+                )) : <div className="flex h-full items-center justify-center text-slate-500">暂无列表项</div>}
+              </div>
+              {showScrollBar && (
+                <div
+                  aria-hidden="true"
+                  className="absolute overflow-hidden"
+                  style={{
+                    top: `${contentPadding}px`,
+                    right: `${contentPadding}px`,
+                    bottom: `${contentPadding}px`,
+                    width: `${scrollBarWidth}px`,
+                    borderRadius: `${scrollBarWidth / 2}px`,
+                    backgroundColor: scrollBarTrackColor
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '100%',
+                      height: `${scrollThumbHeight}px`,
+                      borderRadius: `${scrollBarWidth / 2}px`,
+                      backgroundColor: scrollBarThumbColor
+                    }}
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {control.type === 'Image' && (
-          <div className="w-full h-full bg-indigo-950/20 border border-indigo-500/20 rounded flex items-center justify-center overflow-hidden relative">
-            <div className="absolute inset-0 opacity-10 bg-gradient-to-tr from-cyan-500 to-indigo-500" />
-            <span className="text-[10px] text-indigo-400 font-bold z-10 font-sans truncate">{control.content}</span>
+          <div className={`w-full h-full border rounded flex items-center justify-center overflow-hidden relative ${useNewEmojiDesigner ? 'border-fuchsia-400/30 bg-slate-950/70 shadow-[0_10px_28px_rgba(124,58,237,0.14)]' : 'border-indigo-500/20 bg-indigo-950/20'}`}>
+            {typeof control.properties?.imageSource === 'string' && control.properties.imageSource ? (
+              <img
+                src={control.properties.imageSource}
+                alt={control.content || '图片'}
+                className="h-full w-full"
+                style={{ objectFit: control.properties?.stretch === 'fill' ? 'fill' : control.properties?.stretch === 'uniformToFill' ? 'cover' : control.properties?.stretch === 'none' ? 'none' : 'contain' }}
+              />
+            ) : (
+              <>
+                <div className="absolute inset-0 opacity-15 bg-gradient-to-tr from-cyan-500 via-violet-500 to-fuchsia-500" />
+                <span className="z-10 max-w-full truncate px-2 text-[10px] font-semibold text-indigo-200">{control.content || '请设置图片源'}</span>
+              </>
+            )}
           </div>
         )}
 
         {control.type === 'ListView' && <ListViewDesignerPreview control={control} />}
+
+        {control.type === 'TabControl' && <TabControlDesignerPreview control={control} onSelectPage={onSelectTabPage} />}
+
+        {control.type === 'TreeView' && <TreeViewDesignerPreview control={control} isEnabled={isEffectivelyEnabled} />}
+
+        {control.type === 'GroupBox' && (() => {
+          const showBorder = control.properties?.showBorder !== false;
+          const borderWidth = showBorder ? Math.max(0, Math.min(8, Number(control.properties?.borderWidth ?? 1))) : 0;
+          const borderColor = String(control.properties?.borderColor ?? '#64748B');
+          const titleAlign = control.properties?.titleAlign === 'center' || control.properties?.titleAlign === 'right'
+            ? control.properties.titleAlign
+            : 'left';
+          return (
+            <fieldset
+              className="h-full w-full min-w-0 overflow-hidden px-2 pb-2"
+              style={{
+                backgroundColor: control.background === 'transparent' ? 'transparent' : control.background,
+                borderStyle: borderWidth > 0 ? 'solid' : 'none',
+                borderWidth: `${borderWidth}px`,
+                borderColor,
+                color: control.foreground,
+                fontSize: `${control.fontSize}px`,
+                opacity: isEffectivelyEnabled ? 1 : 0.5
+              }}
+            >
+              <legend
+                className="max-w-[calc(100%-12px)] truncate px-1"
+                style={{
+                  color: control.foreground,
+                  marginLeft: titleAlign === 'left' ? 0 : 'auto',
+                  marginRight: titleAlign === 'right' ? 0 : 'auto'
+                }}
+              >
+                {control.content}
+              </legend>
+            </fieldset>
+          );
+        })()}
+
+        {useNewEmojiDesigner && !newEmojiSupported && (
+          <div className="flex h-full w-full items-center justify-center rounded border border-dashed border-red-400/60 bg-red-950/35 px-2 text-center text-[10px] text-red-200">
+            new_emoji 暂不支持 {definition?.label || control.type}
+          </div>
+        )}
 
         {!hasSpecialPreview && (
           <div
@@ -1924,6 +2315,74 @@ function renderControl(
           ))}
         </>
       )}
+    </div>
+  );
+}
+
+interface TreeViewPreviewNode {
+  id: string;
+  title: string;
+  children: TreeViewPreviewNode[];
+}
+
+function TreeViewDesignerPreview({ control, isEnabled }: { control: LingControl; isEnabled: boolean }) {
+  const normalizeNodes = (value: unknown, path = 'node'): TreeViewPreviewNode[] => {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((item, index) => {
+      if (!item || typeof item !== 'object') return [];
+      const record = item as Record<string, unknown>;
+      return [{
+        id: String(record.id ?? `${path}-${index}`),
+        title: String(record.title ?? record.label ?? record.name ?? record.text ?? record.id ?? ''),
+        children: normalizeNodes(record.children, `${path}-${index}`)
+      }];
+    });
+  };
+  const nodes = normalizeNodes(control.properties?.nodes);
+  const showLines = control.properties?.showLines !== false;
+  const showCheckBoxes = control.properties?.checkBoxes === true;
+  const borderWidth = Math.max(0, Math.min(8, Number(control.properties?.borderWidth ?? 1)));
+  const borderColor = String(control.properties?.borderColor ?? '#64748B');
+  const nodeSpacing = Math.max(0, Math.min(24, Number(control.properties?.nodeSpacing ?? 2)));
+  const nodePadding = Math.max(0, Math.min(24, Number(control.properties?.nodePadding ?? 3)));
+
+  const renderNodes = (items: TreeViewPreviewNode[], depth = 0): React.ReactNode => items.map(node => (
+    <React.Fragment key={`${depth}:${node.id}`}>
+      <div
+        className="relative flex min-w-0 items-center gap-1.5 pr-1"
+        style={{
+          minHeight: `${Math.max(18, control.fontSize + nodePadding * 2)}px`,
+          marginBottom: `${nodeSpacing}px`,
+          paddingLeft: `${nodePadding + 4 + depth * (18 + nodePadding)}px`,
+          paddingTop: `${nodePadding}px`,
+          paddingBottom: `${nodePadding}px`
+        }}
+      >
+        {showLines && depth > 0 && (
+          <span className="absolute bottom-1/2 top-0 border-l opacity-45" style={{ left: `${nodePadding + 11 + (depth - 1) * (18 + nodePadding)}px`, borderColor: control.foreground }} />
+        )}
+        <span className="w-3 shrink-0 text-center text-[9px] opacity-70">{node.children.length > 0 ? '▾' : ''}</span>
+        {showCheckBoxes && <span className="h-3 w-3 shrink-0 border opacity-70" style={{ borderColor: control.foreground }} />}
+        <span className="min-w-0 truncate">{node.title}</span>
+      </div>
+      {node.children.length > 0 && renderNodes(node.children, depth + 1)}
+    </React.Fragment>
+  ));
+
+  return (
+    <div
+      className="box-border h-full w-full overflow-hidden"
+      style={{
+        backgroundColor: control.background === 'transparent' ? '#1E1E24' : control.background,
+        borderStyle: borderWidth > 0 ? 'solid' : 'none',
+        borderWidth: `${borderWidth}px`,
+        borderColor,
+        color: control.foreground,
+        fontSize: `${control.fontSize}px`,
+        opacity: isEnabled ? 1 : 0.5
+      }}
+    >
+      {renderNodes(nodes)}
     </div>
   );
 }
@@ -2189,9 +2648,11 @@ function ControlProperties({
   onDelete: () => void;
 }) {
   const [listViewEditorKind, setListViewEditorKind] = useState<ListViewCollectionEditorKind | null>(null);
+  const [treeViewEditorOpen, setTreeViewEditorOpen] = useState(false);
 
   useEffect(() => {
     setListViewEditorKind(null);
+    setTreeViewEditorOpen(false);
   }, [control?.id]);
 
   if (!control) {
@@ -2231,6 +2692,9 @@ function ControlProperties({
   const listViewRows = control.type === 'ListView'
     ? normalizeListViewRows(control.properties?.items)
     : [];
+  const treeViewNodeCount = control.type === 'TreeView'
+    ? flattenTreeViewNodes(normalizeTreeViewNodes(control.properties?.nodes)).length
+    : 0;
   const updateControlProperty = (key: string, value: Win32ControlPropertyValue) => {
     const properties = { ...(control.properties || {}), [key]: value };
     const content = key === 'value' && control.type === 'ProgressBar' ? String(value) : control.content;
@@ -2342,6 +2806,24 @@ function ControlProperties({
                 </PropertyRow>
               );
             }
+            if (control.type === 'TreeView' && property.key === 'nodes') {
+              return (
+                <PropertyRow key={property.key} label={property.label} isDarkMode={isDarkMode}>
+                  <button
+                    type="button"
+                    onClick={() => setTreeViewEditorOpen(true)}
+                    className={`flex w-full items-center justify-between rounded border px-2.5 py-1.5 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                      isDarkMode
+                        ? 'border-[#3f3f49] bg-[#24242b] text-slate-200 hover:bg-[#303038]'
+                        : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{treeViewNodeCount} 个节点</span>
+                    <span className="font-semibold text-cyan-500">编辑节点</span>
+                  </button>
+                </PropertyRow>
+              );
+            }
             return (
               <ControlPropertyField
                 key={property.key}
@@ -2402,6 +2884,16 @@ function ControlProperties({
           isDarkMode={isDarkMode}
           onChange={updateListViewCollections}
           onClose={() => setListViewEditorKind(null)}
+        />
+      )}
+      {control.type === 'TreeView' && treeViewEditorOpen && (
+        <TreeViewCollectionDialog
+          controlName={control.name}
+          value={control.properties?.nodes}
+          showImages={Boolean(control.properties?.imageListId)}
+          isDarkMode={isDarkMode}
+          onChange={nodes => updateControlProperty('nodes', nodes)}
+          onClose={() => setTreeViewEditorOpen(false)}
         />
       )}
     </div>
@@ -2484,7 +2976,6 @@ function StructuredCollectionEditor({
   isDarkMode: boolean;
   onChange: (value: Win32ControlPropertyValue) => void;
 }) {
-  if (propertyKey === 'nodes') return <TreeNodeCollectionEditor value={value} isDarkMode={isDarkMode} onChange={onChange} />;
   const items = Array.isArray(value) ? value.map(item => typeof item === 'string' ? { title: item } : { ...(item as Record<string, unknown>) }) : [];
   const fields: CollectionField[] = propertyKey === 'tabs'
     ? [{ key: 'id', label: '页面 ID' }, { key: 'title', label: '标题' }, { key: 'image', label: '图片', kind: 'number' }]
@@ -2533,26 +3024,6 @@ function StructuredCollectionEditor({
   );
 }
 
-function TreeNodeCollectionEditor({ value, isDarkMode, onChange }: { value: Win32ControlPropertyValue; isDarkMode: boolean; onChange: (value: Win32ControlPropertyValue) => void }) {
-  const nodes = Array.isArray(value) ? value.map(item => ({ ...(item as Record<string, unknown>) })) : [];
-  const updateAt = (source: Array<Record<string, unknown>>, path: number[], updater: (items: Array<Record<string, unknown>>, index: number) => Array<Record<string, unknown>>): Array<Record<string, unknown>> => {
-    const [index, ...rest] = path;
-    if (rest.length === 0) return updater(source, index);
-    return source.map((node, row) => row === index ? { ...node, children: updateAt(Array.isArray(node.children) ? node.children as Array<Record<string, unknown>> : [], rest, updater) } : node);
-  };
-  const inputClass = `w-full rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`;
-  const render = (items: Array<Record<string, unknown>>, parentPath: number[] = []): React.ReactNode => items.map((node, index) => {
-    const path = [...parentPath, index];
-    const children = Array.isArray(node.children) ? node.children as Array<Record<string, unknown>> : [];
-    return <div key={path.join('.')} className={`mt-1 rounded border p-1.5 ${isDarkMode ? 'border-[#34343d]' : 'border-slate-200'}`} style={{ marginLeft: parentPath.length * 8 }}>
-      <div className="grid grid-cols-[46px_minmax(0,1fr)] gap-1 text-[9px] text-slate-500"><span>ID</span><input value={String(node.id ?? '')} onChange={event => onChange(updateAt(nodes, path, (rows, row) => rows.map((item, current) => current === row ? { ...item, id: event.target.value } : item)))} className={inputClass} /><span>标题</span><input value={String(node.title ?? node.text ?? '')} onChange={event => onChange(updateAt(nodes, path, (rows, row) => rows.map((item, current) => current === row ? { ...item, title: event.target.value } : item)))} className={inputClass} /></div>
-      <div className="mt-1 flex justify-end gap-1 text-[9px]"><button type="button" onClick={() => onChange(updateAt(nodes, path, (rows, row) => rows.map((item, current) => current === row ? { ...item, children: [...(Array.isArray(item.children) ? item.children : []), { id: `node${Date.now()}`, title: '子节点', image: -1 }] } : item)))} className="text-emerald-500">添加子节点</button><button type="button" onClick={() => onChange(updateAt(nodes, path, (rows, row) => rows.filter((_, current) => current !== row)))} className="text-red-400">删除</button></div>
-      {render(children, path)}
-    </div>;
-  });
-  return <div className="w-full" aria-label="树节点结构化编辑器">{render(nodes)}<button type="button" onClick={() => onChange([...nodes, { id: `node${nodes.length + 1}`, title: '新节点', image: -1 }])} className="mt-1 w-full rounded border border-emerald-500/30 py-1 text-[10px] text-emerald-500">+ 添加根节点</button></div>;
-}
-
 function ControlPropertyField({
   definition,
   value,
@@ -2569,7 +3040,7 @@ function ControlPropertyField({
   isDarkMode: boolean;
   onChange: (value: Win32ControlPropertyValue) => void;
 }) {
-  const complex = ['columns', 'treeNodes', 'tabs'].includes(definition.type);
+  const complex = ['columns', 'tabs'].includes(definition.type);
 
   if (definition.type === 'boolean') {
     return <PropertyRow label={definition.label} isDarkMode={isDarkMode}><input type="checkbox" checked={Boolean(value)} onChange={event => onChange(event.target.checked)} className="h-4 w-4 accent-amber-500" /></PropertyRow>;
@@ -2588,6 +3059,17 @@ function ControlPropertyField({
           {(definition.options || []).map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
         </select>
       </PropertyRow>
+    );
+  }
+  if (definition.type === 'color') {
+    return (
+      <ColorField
+        label={definition.label}
+        value={String(value ?? definition.defaultValue)}
+        isDarkMode={isDarkMode}
+        swatches={['#0F172A', '#1E293B', '#334155', '#7C3AED', '#6366F1', '#0891B2', '#38BDF8', '#E2E8F0']}
+        onChange={onChange}
+      />
     );
   }
   if (definition.type === 'controlRef') {
@@ -2613,7 +3095,7 @@ function ControlPropertyField({
   if (definition.type === 'stringList') {
     return (
       <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
-        <textarea value={Array.isArray(value) ? value.join('\n') : ''} onChange={event => onChange(event.target.value.split(/\r?\n/).filter(Boolean))} rows={4} placeholder="每行一个项目" className={`w-full resize-y rounded border px-2 py-1 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
+        <StringListPropertyEditor value={value} isDarkMode={isDarkMode} onChange={onChange} />
       </PropertyRow>
     );
   }
@@ -2625,6 +3107,46 @@ function ControlPropertyField({
     );
   }
   return <TextField label={definition.label} value={String(value ?? '')} isDarkMode={isDarkMode} onChange={onChange} />;
+}
+
+function StringListPropertyEditor({
+  value,
+  isDarkMode,
+  onChange
+}: {
+  value: Win32ControlPropertyValue;
+  isDarkMode: boolean;
+  onChange: (value: Win32ControlPropertyValue) => void;
+}) {
+  const items = Array.isArray(value) ? value.map(item => String(item)) : [];
+  const externalText = items.join('\n');
+  const externalSignature = JSON.stringify(items);
+  const lastEmittedSignature = useRef(externalSignature);
+  const [draft, setDraft] = useState(externalText);
+
+  useEffect(() => {
+    if (externalSignature === lastEmittedSignature.current) return;
+    lastEmittedSignature.current = externalSignature;
+    setDraft(externalText);
+  }, [externalSignature, externalText]);
+
+  return (
+    <textarea
+      value={draft}
+      onChange={event => {
+        const nextDraft = event.target.value;
+        const nextItems = parseStringListPropertyText(nextDraft);
+        setDraft(nextDraft);
+        lastEmittedSignature.current = JSON.stringify(nextItems);
+        onChange(nextItems);
+      }}
+      onBlur={() => setDraft(current => parseStringListPropertyText(current).join('\n'))}
+      rows={4}
+      aria-label="项目集合，每行一个项目"
+      placeholder="每行一个项目，按 Enter 换行"
+      className={`w-full resize-y rounded border px-2 py-1 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`}
+    />
+  );
 }
 
 function WindowEvents({

@@ -29,9 +29,9 @@ function PreviewImage({ image, compact = false }: { image: number; compact?: boo
 export default function ListViewDesignerPreview({ control }: ListViewDesignerPreviewProps) {
   const model = createListViewPreviewModel(control);
   const fontSize = Math.max(9, control.fontSize);
-  const rowHeight = Math.max(22, fontSize + 10);
   const background = control.background === 'transparent' ? 'rgba(15, 23, 42, 0.9)' : control.background;
   const foreground = control.foreground || '#e2e8f0';
+  const borderStyle = `${model.borderWidth}px solid ${model.borderColor}`;
 
   if (model.mode !== 'details') {
     const iconMode = model.mode === 'icon';
@@ -39,10 +39,10 @@ export default function ListViewDesignerPreview({ control }: ListViewDesignerPre
     return (
       <div
         data-list-view-preview={model.mode}
-        className={`h-full w-full overflow-hidden rounded border border-slate-500/70 p-1 ${
+        className={`h-full w-full overflow-hidden p-1 ${
           iconMode ? 'grid content-start grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-1' : 'flex flex-col content-start gap-0.5'
         }`}
-        style={{ backgroundColor: background, color: foreground, fontSize: `${fontSize}px`, opacity: control.isEnabled ? 1 : 0.5 }}
+        style={{ backgroundColor: background, color: foreground, fontSize: `${fontSize}px`, opacity: control.isEnabled ? 1 : 0.5, border: borderStyle }}
       >
         {model.rows.length > 0 ? model.rows.map(row => (
           <div
@@ -50,7 +50,7 @@ export default function ListViewDesignerPreview({ control }: ListViewDesignerPre
             className={`flex min-w-0 items-center rounded px-1 ${
               iconMode ? 'h-16 flex-col justify-center gap-1 text-center' : 'justify-start gap-1.5'
             } ${model.gridLines ? 'border border-slate-500/35' : ''}`}
-            style={{ minHeight: iconMode ? undefined : `${rowHeight}px` }}
+            style={{ minHeight: iconMode ? undefined : `${model.itemHeight}px` }}
           >
             <PreviewImage image={row.image} compact={smallIconMode || model.mode === 'list'} />
             <span className="max-w-full truncate">{row.cells.filter(Boolean).join('　') || row.id}</span>
@@ -70,14 +70,14 @@ export default function ListViewDesignerPreview({ control }: ListViewDesignerPre
   return (
     <div
       data-list-view-preview="details"
-      className="h-full w-full overflow-hidden rounded border border-slate-500/70"
-      style={{ backgroundColor: background, color: foreground, fontSize: `${fontSize}px`, opacity: control.isEnabled ? 1 : 0.5 }}
+      className="h-full w-full overflow-hidden"
+      style={{ backgroundColor: background, color: foreground, fontSize: `${fontSize}px`, opacity: control.isEnabled ? 1 : 0.5, border: borderStyle }}
     >
       <div style={{ width: `${Math.max(control.width, tableWidth)}px`, minWidth: '100%' }}>
         <div
           role="row"
           className="grid bg-slate-500/25 font-semibold shadow-[inset_0_-1px_0_rgba(148,163,184,0.5)]"
-          style={{ gridTemplateColumns, height: `${rowHeight}px` }}
+          style={{ gridTemplateColumns, height: `${model.headerHeight}px` }}
         >
           {model.columns.map((column, index) => (
             <div key={`${column.title}-${index}`} role="columnheader" className={`flex min-w-0 items-center gap-1 px-1.5 ${alignmentClass(column.alignment)} ${cellBorderClass}`}>
@@ -92,7 +92,7 @@ export default function ListViewDesignerPreview({ control }: ListViewDesignerPre
             key={row.id}
             role="row"
             className={`grid ${rowIndex % 2 === 1 ? 'bg-slate-400/5' : ''}`}
-            style={{ gridTemplateColumns, height: `${rowHeight}px` }}
+            style={{ gridTemplateColumns, height: `${model.itemHeight}px` }}
           >
             {model.columns.map((column, columnIndex) => (
               <div key={`${row.id}-${columnIndex}`} role="cell" className={`flex min-w-0 items-center gap-1 px-1.5 ${alignmentClass(column.alignment)} ${cellBorderClass}`}>
@@ -102,7 +102,7 @@ export default function ListViewDesignerPreview({ control }: ListViewDesignerPre
             ))}
           </div>
         )) : (
-          <div className="flex items-center justify-center px-2 text-slate-400" style={{ height: `${rowHeight * 2}px` }}>
+          <div className="flex items-center justify-center px-2 text-slate-400" style={{ height: `${model.itemHeight * 2}px` }}>
             暂无行项目
           </div>
         )}

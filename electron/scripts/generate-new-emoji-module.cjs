@@ -193,6 +193,12 @@ function bridgeCommands() {
     ['NE_创建容器', 'NE_创建容器(窗口句柄, 父元素ID, X, Y, 宽度, 高度)', '创建 new_emoji 容器。', '整数型'],
     ['NE_创建文本', 'NE_创建文本(窗口句柄, 父元素ID, 文本, X, Y, 宽度, 高度)', '创建 new_emoji 文本元素。', '整数型'],
     ['NE_创建按钮', 'NE_创建按钮(窗口句柄, 父元素ID, 表情, 文本, X, Y, 宽度, 高度)', '创建 new_emoji 按钮。', '整数型'],
+    ['NE_创建编辑框', 'NE_创建编辑框(窗口句柄, 父元素ID, 文本, X, Y, 宽度, 高度)', '创建 new_emoji 编辑框。', '整数型'],
+    ['NE_创建复选框', 'NE_创建复选框(窗口句柄, 父元素ID, 文本, 是否选中, X, Y, 宽度, 高度)', '创建 new_emoji 复选框。', '整数型'],
+    ['NE_创建单选框', 'NE_创建单选框(窗口句柄, 父元素ID, 文本, 是否选中, X, Y, 宽度, 高度)', '创建 new_emoji 单选框。', '整数型'],
+    ['NE_创建列表框', 'NE_创建列表框(窗口句柄, 父元素ID, 标题, 项目文本, 默认选中项, X, Y, 宽度, 高度)', '创建 new_emoji 列表框，项目文本使用 | 分隔。', '整数型'],
+    ['NE_创建图片', 'NE_创建图片(窗口句柄, 父元素ID, 图片源, 替代文本, 填充方式, X, Y, 宽度, 高度)', '创建 new_emoji 图片，填充方式 0-4 依次为 contain、cover、fill、none、scale-down。', '整数型'],
+    ['NE_创建进度条', 'NE_创建进度条(窗口句柄, 父元素ID, 文本, 进度值, X, Y, 宽度, 高度)', '创建 new_emoji 进度条。', '整数型'],
     ['NE_设置窗口标题', 'NE_设置窗口标题(窗口句柄, 标题)', '设置 new_emoji 窗口标题。', '空']
   ].map(([name, signature, description, returnType]) => ({
     name,
@@ -231,6 +237,7 @@ function buildManifest(commands) {
     tags: ['界面', 'Direct2D', 'DirectWrite', 'emoji', 'Windows', '原生控件'],
     contributes: {
       commands: commandContributions,
+      designerControls: newEmojiDesignerControls(),
       types: [
         { name: 'NE窗口句柄', description: 'new_emoji 原生窗口句柄。', cppType: 'HWND' },
         { name: 'NE元素ID', description: 'new_emoji Element 元素编号。', cppType: 'int' }
@@ -283,6 +290,29 @@ function buildManifest(commands) {
   };
 }
 
+function newEmojiDesignerControls() {
+  const common = (type, label, nativeAdapter, content, width, height, extra = {}) => ({
+    type,
+    label,
+    category: 'new_emoji 原生控件',
+    icon: type,
+    nativeAdapter,
+    defaultProps: { content, width, height, background: 'transparent', foreground: '#F8FAFC' },
+    ...extra
+  });
+  return [
+    common('Button', 'new_emoji 按钮', 'new-emoji-button', '新按钮', 120, 36, { events: [{ name: 'Click', label: '被单击', handlerPattern: '_{controlName}_被单击' }] }),
+    common('TextBox', 'new_emoji 编辑框', 'new-emoji-input', '请输入内容…', 180, 36),
+    common('Label', 'new_emoji 文本', 'new-emoji-text', '新文本标签', 180, 32),
+    common('CheckBox', 'new_emoji 复选框', 'new-emoji-checkbox', '复选选项', 150, 28),
+    common('RadioButton', 'new_emoji 单选框', 'new-emoji-radio', '单选选项', 150, 28),
+    common('ListBox', 'new_emoji 列表框', 'new-emoji-listbox', '', 200, 150),
+    common('Image', 'new_emoji 图片', 'new-emoji-image', '图片', 220, 180),
+    common('ProgressBar', 'new_emoji 进度条', 'new-emoji-progress', '50', 300, 22),
+    common('Grid', 'new_emoji 容器', 'new-emoji-container', '', 360, 220, { isContainer: true })
+  ];
+}
+
 function parseBindingParameters(signature) {
   const match = signature.match(/^[^(（]+[（(](.*)[）)]/u);
   if (!match || !match[1].trim()) return [];
@@ -293,7 +323,7 @@ function parseBindingParameters(signature) {
 }
 
 function inferBindingParameterType(name) {
-  if (/标题|文本|表情|内容/u.test(name)) return 'wideString';
+  if (/标题|文本|表情|内容|图片源|项目/u.test(name)) return 'wideString';
   if (/句柄|hwnd|HWND/u.test(name)) return 'handle';
   if (/是否|visible/u.test(name)) return 'bool';
   if (/bytes|len|指针|callback/u.test(name)) return 'raw';
@@ -323,6 +353,13 @@ void NE_销毁窗口(HWND hwnd);
 int NE_创建容器(HWND hwnd, int parentId, int x, int y, int width, int height);
 int NE_创建文本(HWND hwnd, int parentId, const wchar_t* text, int x, int y, int width, int height);
 int NE_创建按钮(HWND hwnd, int parentId, const wchar_t* emoji, const wchar_t* text, int x, int y, int width, int height);
+int NE_创建编辑框(HWND hwnd, int parentId, const wchar_t* text, int x, int y, int width, int height);
+int NE_创建复选框(HWND hwnd, int parentId, const wchar_t* text, int checked, int x, int y, int width, int height);
+int NE_创建单选框(HWND hwnd, int parentId, const wchar_t* text, int checked, int x, int y, int width, int height);
+int NE_创建列表框(HWND hwnd, int parentId, const wchar_t* title, const wchar_t* items, int selectedIndex, int x, int y, int width, int height);
+int NE_创建图片(HWND hwnd, int parentId, const wchar_t* source, const wchar_t* alt, int fit, int x, int y, int width, int height);
+int NE_创建进度条(HWND hwnd, int parentId, const wchar_t* text, int percentage, int x, int y, int width, int height);
+void NE_设置元素状态(HWND hwnd, int elementId, int visible, int enabled, unsigned int background, unsigned int foreground);
 void NE_设置窗口标题(HWND hwnd, const wchar_t* title);
 `;
 }
@@ -343,6 +380,17 @@ __declspec(dllimport) void __stdcall EU_DestroyWindow(HWND hwnd);
 __declspec(dllimport) int __stdcall EU_CreateContainer(HWND hwnd, int parent_id, int x, int y, int w, int h);
 __declspec(dllimport) int __stdcall EU_CreateText(HWND hwnd, int parent_id, const unsigned char* text_bytes, int text_len, int x, int y, int w, int h);
 __declspec(dllimport) int __stdcall EU_CreateButton(HWND hwnd, int parent_id, const unsigned char* emoji_bytes, int emoji_len, const unsigned char* text_bytes, int text_len, int x, int y, int w, int h);
+__declspec(dllimport) int __stdcall EU_CreateEditBox(HWND hwnd, int parent_id, int x, int y, int w, int h);
+__declspec(dllimport) int __stdcall EU_CreateCheckbox(HWND hwnd, int parent_id, const unsigned char* text_bytes, int text_len, int checked, int x, int y, int w, int h);
+__declspec(dllimport) int __stdcall EU_CreateRadio(HWND hwnd, int parent_id, const unsigned char* text_bytes, int text_len, int checked, int x, int y, int w, int h);
+__declspec(dllimport) int __stdcall EU_CreateListBox(HWND hwnd, int parent_id, const unsigned char* title_bytes, int title_len, const unsigned char* items_bytes, int items_len, int x, int y, int w, int h);
+__declspec(dllimport) void __stdcall EU_SetListBoxSelectedIndex(HWND hwnd, int element_id, int index);
+__declspec(dllimport) int __stdcall EU_CreateImage(HWND hwnd, int parent_id, const unsigned char* src_bytes, int src_len, const unsigned char* alt_bytes, int alt_len, int fit, int x, int y, int w, int h);
+__declspec(dllimport) int __stdcall EU_CreateProgress(HWND hwnd, int parent_id, const unsigned char* text_bytes, int text_len, int percentage, int status, int x, int y, int w, int h);
+__declspec(dllimport) void __stdcall EU_SetElementText(HWND hwnd, int element_id, const unsigned char* bytes, int len);
+__declspec(dllimport) void __stdcall EU_SetElementVisible(HWND hwnd, int element_id, int visible);
+__declspec(dllimport) void __stdcall EU_SetElementEnabled(HWND hwnd, int element_id, int enabled);
+__declspec(dllimport) void __stdcall EU_SetElementColor(HWND hwnd, int element_id, NEColor background, NEColor foreground);
 __declspec(dllimport) void __stdcall EU_SetWindowTitle(HWND hwnd, const unsigned char* bytes, int len);
 
 static std::vector<std::unique_ptr<std::string>>& NE_Utf8Pool() {
@@ -407,6 +455,49 @@ int NE_创建按钮(HWND hwnd, int parentId, const wchar_t* emoji, const wchar_t
     const std::string& emojiBytes = NE_KeepUtf8(emoji);
     const std::string& textBytes = NE_KeepUtf8(text);
     return EU_CreateButton(hwnd, parentId, reinterpret_cast<const unsigned char*>(emojiBytes.c_str()), static_cast<int>(emojiBytes.size()), reinterpret_cast<const unsigned char*>(textBytes.c_str()), static_cast<int>(textBytes.size()), x, y, width, height);
+}
+
+int NE_创建编辑框(HWND hwnd, int parentId, const wchar_t* text, int x, int y, int width, int height) {
+    int elementId = EU_CreateEditBox(hwnd, parentId, x, y, width, height);
+    const std::string& textBytes = NE_KeepUtf8(text);
+    if (elementId > 0 && !textBytes.empty()) EU_SetElementText(hwnd, elementId, reinterpret_cast<const unsigned char*>(textBytes.c_str()), static_cast<int>(textBytes.size()));
+    return elementId;
+}
+
+int NE_创建复选框(HWND hwnd, int parentId, const wchar_t* text, int checked, int x, int y, int width, int height) {
+    const std::string& textBytes = NE_KeepUtf8(text);
+    return EU_CreateCheckbox(hwnd, parentId, reinterpret_cast<const unsigned char*>(textBytes.c_str()), static_cast<int>(textBytes.size()), checked, x, y, width, height);
+}
+
+int NE_创建单选框(HWND hwnd, int parentId, const wchar_t* text, int checked, int x, int y, int width, int height) {
+    const std::string& textBytes = NE_KeepUtf8(text);
+    return EU_CreateRadio(hwnd, parentId, reinterpret_cast<const unsigned char*>(textBytes.c_str()), static_cast<int>(textBytes.size()), checked, x, y, width, height);
+}
+
+int NE_创建列表框(HWND hwnd, int parentId, const wchar_t* title, const wchar_t* items, int selectedIndex, int x, int y, int width, int height) {
+    const std::string& titleBytes = NE_KeepUtf8(title);
+    const std::string& itemBytes = NE_KeepUtf8(items);
+    int elementId = EU_CreateListBox(hwnd, parentId, reinterpret_cast<const unsigned char*>(titleBytes.c_str()), static_cast<int>(titleBytes.size()), reinterpret_cast<const unsigned char*>(itemBytes.c_str()), static_cast<int>(itemBytes.size()), x, y, width, height);
+    if (elementId > 0 && selectedIndex >= 0) EU_SetListBoxSelectedIndex(hwnd, elementId, selectedIndex);
+    return elementId;
+}
+
+int NE_创建图片(HWND hwnd, int parentId, const wchar_t* source, const wchar_t* alt, int fit, int x, int y, int width, int height) {
+    const std::string& sourceBytes = NE_KeepUtf8(source);
+    const std::string& altBytes = NE_KeepUtf8(alt);
+    return EU_CreateImage(hwnd, parentId, reinterpret_cast<const unsigned char*>(sourceBytes.c_str()), static_cast<int>(sourceBytes.size()), reinterpret_cast<const unsigned char*>(altBytes.c_str()), static_cast<int>(altBytes.size()), fit, x, y, width, height);
+}
+
+int NE_创建进度条(HWND hwnd, int parentId, const wchar_t* text, int percentage, int x, int y, int width, int height) {
+    const std::string& textBytes = NE_KeepUtf8(text);
+    return EU_CreateProgress(hwnd, parentId, reinterpret_cast<const unsigned char*>(textBytes.c_str()), static_cast<int>(textBytes.size()), percentage, 0, x, y, width, height);
+}
+
+void NE_设置元素状态(HWND hwnd, int elementId, int visible, int enabled, unsigned int background, unsigned int foreground) {
+    if (elementId <= 0) return;
+    EU_SetElementVisible(hwnd, elementId, visible);
+    EU_SetElementEnabled(hwnd, elementId, enabled);
+    EU_SetElementColor(hwnd, elementId, background, foreground);
 }
 
 void NE_设置窗口标题(HWND hwnd, const wchar_t* title) {

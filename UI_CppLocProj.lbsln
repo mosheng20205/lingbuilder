@@ -43,6 +43,13 @@
       "type": "visual-cpp",
       "sourceRoot": "examples/module-cli-smoke/src",
       "references": []
+    },
+    {
+      "id": "newemoji",
+      "name": "NewEmoji项目",
+      "type": "visual-cpp",
+      "sourceRoot": "src/newemoji",
+      "references": []
     }
   ]
 }

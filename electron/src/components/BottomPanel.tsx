@@ -22,6 +22,9 @@ import type { ModuleHintContent } from '../services/modules/types';
 import TerminalPanel from './TerminalPanel';
 import DebugInspector from './DebugInspector';
 import TestExplorer from './TestExplorer';
+import { formatProblemsForClipboard } from '../services/problems/problemClipboard';
+
+type LogContextMenuTab = 'problems' | 'output' | 'debug_logs';
 
 interface BottomPanelProps {
   strings: ExtractedString[];
@@ -65,7 +68,7 @@ export default function BottomPanel({
     show: boolean;
     x: number;
     y: number;
-    tabType: 'output' | 'debug_logs' | null;
+    tabType: LogContextMenuTab | null;
   }>({ show: false, x: 0, y: 0, tabType: null });
 
   useEffect(() => {
@@ -99,21 +102,27 @@ export default function BottomPanel({
     }
   }, [activeTab, onActiveTabChange, showCodeMapping]);
 
-  const getLogsText = (tabType: 'output' | 'debug_logs') => {
+  const getLogsText = (tabType: LogContextMenuTab) => {
+    if (tabType === 'problems') {
+      return formatProblemsForClipboard(problems);
+    }
     if (tabType === 'output') {
       return buildLogs.length > 0 ? buildLogs.join('\n') : '> [输出] 空';
     }
     return debugLogs.length > 0 ? debugLogs.join('\n') : '> [调试输出] 空';
   };
 
-  const copyLogsToClipboard = (tabType: 'output' | 'debug_logs') => {
+  const copyLogsToClipboard = (tabType: LogContextMenuTab) => {
     const logsText = getLogsText(tabType);
     navigator.clipboard.writeText(logsText)
-      .then(() => setCopyNotice({ message: '已复制全部日志到剪贴板', tone: 'success' }))
+      .then(() => setCopyNotice({
+        message: tabType === 'problems' ? `已复制全部 ${problems.length} 条诊断到剪贴板` : '已复制全部日志到剪贴板',
+        tone: 'success'
+      }))
       .catch(() => setCopyNotice({ message: '复制失败，请重试', tone: 'error' }));
   };
 
-  const handleContextMenu = (e: React.MouseEvent, tabType: 'output' | 'debug_logs') => {
+  const handleContextMenu = (e: React.MouseEvent, tabType: LogContextMenuTab) => {
     e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -318,7 +327,7 @@ export default function BottomPanel({
         </div>
 
         {/* Copy Logs button when logs or output or debug logs is selected */}
-        {(activeTab === 'output' || activeTab === 'debug_logs') && (
+        {(activeTab === 'problems' || activeTab === 'output' || activeTab === 'debug_logs') && (
           <button
             onClick={() => {
               copyLogsToClipboard(activeTab);
@@ -330,7 +339,7 @@ export default function BottomPanel({
             }`}
           >
             <Copy className="w-3 h-3" />
-            <span>复制全部日志</span>
+            <span>{activeTab === 'problems' ? '复制全部诊断' : '复制全部日志'}</span>
           </button>
         )}
 
@@ -612,7 +621,11 @@ export default function BottomPanel({
 
         {activeTab === 'problems' && (
           // ================= DIAGNOSIS Trap checklist =================
-          <div className="p-4 space-y-3 font-mono text-xs">
+          <div
+            onContextMenu={(e) => handleContextMenu(e, 'problems')}
+            title="右键打开错误列表菜单"
+            className="p-4 space-y-3 font-mono text-xs select-text cursor-context-menu"
+          >
             {problems.length === 0 ? (
               <div className={`text-center py-10 flex flex-col items-center gap-1 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`}>
                 <CheckCircle2 className="w-8 h-8 text-emerald-500" />
@@ -786,7 +799,7 @@ export default function BottomPanel({
             }`}
           >
             <Trash className="w-3.5 h-3.5 text-rose-500" />
-            <span>清空日志</span>
+            <span>{contextMenu.tabType === 'problems' ? '清空错误列表' : '清空日志'}</span>
           </div>
         </div>
       )}

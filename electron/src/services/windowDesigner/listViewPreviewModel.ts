@@ -20,6 +20,10 @@ export interface ListViewPreviewModel {
   mode: ListViewPreviewMode;
   gridLines: boolean;
   multiple: boolean;
+  borderColor: string;
+  borderWidth: number;
+  headerHeight: number;
+  itemHeight: number;
   columns: ListViewPreviewColumn[];
   rows: ListViewPreviewRow[];
 }
@@ -37,6 +41,14 @@ function labelOf(record: Record<string, unknown>): string {
 
 function finiteNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : fallback;
+}
+
+function boundedNumber(value: unknown, fallback: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, finiteNumber(value, fallback)));
+}
+
+function color(value: unknown, fallback: string): string {
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/iu.test(value) ? value : fallback;
 }
 
 function normalizeMode(value: unknown): ListViewPreviewMode {
@@ -76,6 +88,10 @@ export function createListViewPreviewModel(control: LingControl): ListViewPrevie
     mode: normalizeMode(properties.view),
     gridLines: properties.gridLines !== false,
     multiple: properties.multiple === true,
+    borderColor: color(properties.borderColor, '#64748B'),
+    borderWidth: boundedNumber(properties.borderWidth, 1, 0, 8),
+    headerHeight: boundedNumber(properties.headerHeight, 28, 16, 96),
+    itemHeight: boundedNumber(properties.itemHeight, 28, 16, 96),
     columns,
     rows
   };

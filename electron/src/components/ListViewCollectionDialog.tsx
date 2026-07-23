@@ -48,6 +48,58 @@ function moveItem<T>(items: T[], from: number, to: number): T[] {
   return next;
 }
 
+interface ColumnWidthInputProps {
+  columnIndex: number;
+  value: number;
+  className: string;
+  onCommit: (value: number) => void;
+}
+
+function ColumnWidthInput({ columnIndex, value, className, onCommit }: ColumnWidthInputProps) {
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => setDraft(String(value)), [value]);
+
+  const commitDraft = (nextDraft: string, finalize = false) => {
+    setDraft(nextDraft);
+    if (nextDraft.trim() === '') {
+      if (finalize) setDraft(String(value));
+      return;
+    }
+
+    const parsed = Number(nextDraft);
+    if (!Number.isFinite(parsed)) {
+      if (finalize) setDraft(String(value));
+      return;
+    }
+
+    const integer = Math.trunc(parsed);
+    if (!finalize && (integer < 24 || integer > 2000)) return;
+    const normalized = Math.min(2000, Math.max(24, integer));
+    setDraft(String(normalized));
+    if (normalized !== value) onCommit(normalized);
+  };
+
+  return (
+    <input
+      aria-label={`第 ${columnIndex + 1} 列宽度`}
+      type="number"
+      min={24}
+      max={2000}
+      value={draft}
+      onChange={event => commitDraft(event.target.value)}
+      onBlur={() => commitDraft(draft, true)}
+      onKeyDown={event => {
+        if (event.key === 'Enter') {
+          commitDraft(draft, true);
+          event.currentTarget.select();
+        }
+      }}
+      className={className}
+    />
+  );
+}
+
 export default function ListViewCollectionDialog({
   kind,
   controlName,
@@ -283,7 +335,7 @@ export default function ListViewCollectionDialog({
                       <tr key={index} className={isDarkMode ? 'hover:bg-white/[0.025]' : 'hover:bg-slate-100/60'}>
                         <td className="border-b p-2 font-mono text-slate-500">{index + 1}</td>
                         <td className="border-b p-2"><input aria-label={`第 ${index + 1} 列标题`} value={column.title} onChange={event => updateColumn(index, { title: event.target.value })} className={inputClass} /></td>
-                        <td className="border-b p-2"><input aria-label={`第 ${index + 1} 列宽度`} type="number" min={24} max={2000} value={column.width} onChange={event => updateColumn(index, { width: Math.max(24, Number(event.target.value) || 24) })} className={inputClass} /></td>
+                        <td className="border-b p-2"><ColumnWidthInput columnIndex={index} value={column.width} onCommit={width => updateColumn(index, { width })} className={inputClass} /></td>
                         <td className="border-b p-2">
                           <select
                             aria-label={`第 ${index + 1} 列对齐方式`}
@@ -306,7 +358,7 @@ export default function ListViewCollectionDialog({
                   <section key={index} className={`rounded border p-3 ${isDarkMode ? 'border-[#3d3d46] bg-[#202026]' : 'border-slate-200 bg-white'}`}>
                     <div className="mb-2 flex items-center justify-between"><span className="text-xs font-semibold">第 {index + 1} 列</span><div className="flex"><button type="button" aria-label={`左移第 ${index + 1} 列`} disabled={index === 0} onClick={() => moveColumn(index, index - 1)} className={iconButton}><ArrowLeft className="h-3.5 w-3.5" /></button><button type="button" aria-label={`右移第 ${index + 1} 列`} disabled={index === columns.length - 1} onClick={() => moveColumn(index, index + 1)} className={iconButton}><ArrowRight className="h-3.5 w-3.5" /></button><button type="button" aria-label={`删除第 ${index + 1} 列`} disabled={columns.length === 1} onClick={() => deleteColumn(index)} className={`${iconButton} text-rose-400`}><Trash2 className="h-3.5 w-3.5" /></button></div></div>
                     <label className="mb-2 block text-[10px] text-slate-500">标题<input value={column.title} onChange={event => updateColumn(index, { title: event.target.value })} className={`${inputClass} mt-1`} /></label>
-                    <label className="block text-[10px] text-slate-500">宽度<input type="number" min={24} max={2000} value={column.width} onChange={event => updateColumn(index, { width: Math.max(24, Number(event.target.value) || 24) })} className={`${inputClass} mt-1`} /></label>
+                    <label className="block text-[10px] text-slate-500">宽度<ColumnWidthInput columnIndex={index} value={column.width} onCommit={width => updateColumn(index, { width })} className={`${inputClass} mt-1`} /></label>
                     <label className="mt-2 block text-[10px] text-slate-500">
                       对齐方式
                       <select

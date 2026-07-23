@@ -938,6 +938,10 @@ test('Win32 native builds never fall back to an incompatible module target', asy
 test('generated new_emoji bridge completions match binding parameter counts', async () => {
   const manifestPath = path.join(process.cwd(), '..', '.lingbuilder', 'module-build', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json');
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  assert.deepEqual(
+    manifest.contributes.designerControls.map((control: { type: string }) => control.type),
+    ['Button', 'TextBox', 'Label', 'CheckBox', 'RadioButton', 'ListBox', 'Image', 'ProgressBar', 'Grid']
+  );
   const highLevelNames = [
     'NE_创建窗口',
     'NE_创建深色窗口',
@@ -947,6 +951,12 @@ test('generated new_emoji bridge completions match binding parameter counts', as
     'NE_创建容器',
     'NE_创建文本',
     'NE_创建按钮',
+    'NE_创建编辑框',
+    'NE_创建复选框',
+    'NE_创建单选框',
+    'NE_创建列表框',
+    'NE_创建图片',
+    'NE_创建进度条',
     'NE_设置窗口标题'
   ];
   for (const name of highLevelNames) {

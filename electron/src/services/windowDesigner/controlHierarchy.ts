@@ -5,6 +5,11 @@ export interface LingControlHierarchyNode {
   children: LingControlHierarchyNode[];
 }
 
+export interface EffectiveControlState {
+  visible: boolean;
+  enabled: boolean;
+}
+
 function createsParentCycle(controlId: string, parentId: string, controlsById: Map<string, LingControl>): boolean {
   const visited = new Set<string>([controlId]);
   let currentId: string | undefined = parentId;
@@ -72,4 +77,65 @@ export function getControlDescendantIds(controls: LingControl[], controlId: stri
     pending.push(...(childrenByParent.get(childId) || []));
   }
   return descendants;
+}
+
+export function canReparentControl(
+  controls: LingControl[],
+  controlId: string,
+  parentId?: string,
+  containerSlot?: string
+): boolean {
+  const control = controls.find(item => item.id === controlId);
+  if (!control) return false;
+
+  const normalizedParentId = parentId?.trim() || undefined;
+  const currentParentId = control.parentId?.trim() || undefined;
+  const targetParent = normalizedParentId ? controls.find(item => item.id === normalizedParentId) : undefined;
+  const normalizedSlot = targetParent?.type === 'TabControl' ? containerSlot?.trim() || undefined : undefined;
+  const currentSlot = currentParentId && controls.find(item => item.id === currentParentId)?.type === 'TabControl'
+    ? control.containerSlot?.trim() || undefined
+    : undefined;
+  if (currentParentId === normalizedParentId && currentSlot === normalizedSlot) return false;
+  if (!normalizedParentId) return true;
+  if (normalizedParentId === controlId) return false;
+  if (!controls.some(item => item.id === normalizedParentId)) return false;
+
+  return !getControlDescendantIds(controls, controlId).has(normalizedParentId);
+}
+
+export function reparentControl(
+  controls: LingControl[],
+  controlId: string,
+  parentId?: string,
+  containerSlot?: string
+): LingControl[] {
+  if (!canReparentControl(controls, controlId, parentId, containerSlot)) return controls;
+  const normalizedParentId = parentId?.trim() || undefined;
+  const targetParent = normalizedParentId ? controls.find(item => item.id === normalizedParentId) : undefined;
+  const normalizedSlot = targetParent?.type === 'TabControl' ? containerSlot?.trim() || undefined : undefined;
+
+  return controls.map(control => control.id === controlId
+    ? { ...control, parentId: normalizedParentId, containerSlot: normalizedSlot }
+    : control);
+}
+
+export function getEffectiveControlState(
+  controls: LingControl[],
+  controlId: string
+): EffectiveControlState {
+  const controlsById = new Map(controls.map(control => [control.id, control]));
+  const visited = new Set<string>();
+  let current = controlsById.get(controlId);
+  let visible = true;
+  let enabled = true;
+
+  while (current) {
+    if (visited.has(current.id)) return { visible: false, enabled: false };
+    visited.add(current.id);
+    visible = visible && current.visibility === 'Visible';
+    enabled = enabled && current.isEnabled;
+    current = current.parentId ? controlsById.get(current.parentId) : undefined;
+  }
+
+  return { visible, enabled };
 }

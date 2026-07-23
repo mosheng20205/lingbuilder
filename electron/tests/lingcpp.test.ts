@@ -865,6 +865,37 @@ test('LingCpp designer bindings treat class-prefixed events as window events', (
   assert.equal(hints.some(hint => hint.status === 'missing-control'), false);
 });
 
+test('LingCpp designer bindings treat bare registered event names as window events', () => {
+  const source = [
+    `${LING_CPP_KEYWORDS[2]} MainWindow`,
+    `    ${LING_CPP_KEYWORDS[8]} 创建完毕()`,
+    '    结束',
+    `${LING_CPP_KEYWORDS[16]}`
+  ].join('\n');
+  const project: LingWindowProject = {
+    id: 'bare-window-event-project',
+    name: 'Demo',
+    windows: [{
+      id: 'main-window',
+      fileName: 'MainWindow.xml',
+      className: 'MainWindow',
+      title: 'MainWindow',
+      width: 640,
+      height: 480,
+      background: '#111111',
+      description: 'MainWindow',
+      controls: []
+    }]
+  };
+
+  const hints = getLingCppDesignerBindings(source, project, 'src/MainWindow.lcpp');
+  const diagnostics = getLingCppSemanticDiagnostics(source, project, 'src/MainWindow.lcpp');
+
+  assert.ok(hints.some(hint => hint.status === 'bound' && hint.eventName === 'Window'));
+  assert.equal(hints.some(hint => hint.status === 'missing-control'), false);
+  assert.equal(diagnostics.some(diagnostic => diagnostic.message.includes('控件不存在')), false);
+});
+
 test('LingCpp designer bindings use associated designer file to isolate other windows', () => {
   const source = [
     `${LING_CPP_KEYWORDS[0]} Demo`,
@@ -1242,7 +1273,6 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
   assert.ok(mainCpp.includes('IsDialogMessageW(navigationRoot, &message)'));
   assert.ok(mainCpp.includes('SendMessageW(self->hwnd_, WM_COMMAND, wParam, lParam)'));
   assert.equal(mainCpp.includes('WM_NCCALCSIZE'), false);
-  assert.equal(mainCpp.includes('WM_NCPAINT'), false);
   assert.equal(mainCpp.includes('GetWindowDC(hwnd)'), false);
   assert.equal(mainCpp.includes('RDW_FRAME'), false);
   assert.equal(mainCpp.includes('SetWindowRgn(child'), false);
@@ -1252,6 +1282,7 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
   const textBoxBranchEnd = mainCpp.indexOf('} else if (IsType(control, L"Label")) {', textBoxBranchStart);
   assert.ok(textBoxBranchStart >= 0 && textBoxBranchEnd > textBoxBranchStart);
   const textBoxBranch = mainCpp.slice(textBoxBranchStart, textBoxBranchEnd);
+  assert.equal(textBoxBranch.includes('WM_NCPAINT'), false);
   assert.doesNotMatch(textBoxBranch, /WS_BORDER|WS_EX_CLIENTEDGE/);
 
   const stateTransitionsStart = mainCpp.indexOf('static LRESULT CALLBACK ControlSubclassProc');
@@ -1265,6 +1296,23 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
 
   const layoutJson = generated.files.find(file => file.relativePath === 'layout.json')?.content || '';
   assert.equal(JSON.parse(layoutJson).id, 'sample-project');
+});
+
+test('generateLingCppNativeWin32Project paints Grid with the designer background brush', () => {
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: sampleSource
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const gridBranchStart = mainCpp.indexOf('} else if (IsType(control, L"Grid")) {');
+  const gridBranchEnd = mainCpp.indexOf('} else if (IsType(control, L"ListView")) {', gridBranchStart);
+
+  assert.ok(gridBranchStart >= 0 && gridBranchEnd > gridBranchStart);
+  const gridBranch = mainCpp.slice(gridBranchStart, gridBranchEnd);
+  assert.ok(gridBranch.includes('style |= SS_NOTIFY;'));
+  assert.equal(gridBranch.includes('style |= SS_WHITERECT;'), false);
+  assert.ok(mainCpp.includes('case WM_CTLCOLORSTATIC:'));
+  assert.ok(mainCpp.includes('if (runtime && runtime->brush) return reinterpret_cast<LRESULT>(runtime->brush);'));
 });
 
 test('generateLingCppNativeWin32Project translates beginner open-window commands', () => {

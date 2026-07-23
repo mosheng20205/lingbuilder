@@ -1,4 +1,22 @@
-import test from 'node:test'; import assert from 'node:assert/strict'; import { applyDesignerLayout, DesignerHistory, nudgeControls } from '../src/services/windowDesigner/designerOperations'; import type { LingWindowModel, LingWindowProject } from '../src/services/windowDesigner/types';
+import test from 'node:test'; import assert from 'node:assert/strict'; import { applyDesignerLayout, DesignerHistory, nudgeControls, updateControlWithDescendants } from '../src/services/windowDesigner/designerOperations'; import type { LingWindowModel, LingWindowProject } from '../src/services/windowDesigner/types';
 const control=(id:string,x:number,y:number,w=20,h=10):any=>({id,type:'Button',name:id,content:id,x,y,width:w,height:h,fontSize:12,background:'#fff',foreground:'#000',isEnabled:true,visibility:'Visible'}); const windowModel: LingWindowModel={id:'w',fileName:'w.lcpp',className:'W',title:'W',width:300,height:200,background:'#fff',description:'',controls:[control('a',10,20,30),control('b',80,50,20),control('c',160,90,40)]};
 test('designer multi-selection aligns, sizes, distributes and nudges controls deterministically',()=>{ assert.deepEqual(applyDesignerLayout(windowModel,['a','b'],'align-left').controls.map(x=>x.x),[10,10,160]); assert.deepEqual(applyDesignerLayout(windowModel,['a','b'],'align-right').controls.slice(0,2).map(x=>x.x),[10,20]); assert.deepEqual(applyDesignerLayout(windowModel,['a','b'],'align-top').controls.slice(0,2).map(x=>x.y),[20,20]); assert.deepEqual(applyDesignerLayout(windowModel,['a','b'],'same-width').controls.slice(0,2).map(x=>x.width),[30,30]); const distributed=applyDesignerLayout(windowModel,['a','b','c'],'distribute-horizontal'); assert.ok(distributed.controls[1].x>40&&distributed.controls[1].x<150); const nudged=nudgeControls(windowModel,['a','b'],5,-10); assert.deepEqual(nudged.controls.slice(0,2).map(x=>[x.x,x.y]),[[15,10],[85,40]]); assert.throws(()=>applyDesignerLayout(windowModel,['a'],'align-left'),/至少/u); assert.throws(()=>applyDesignerLayout(windowModel,['a','b'],'distribute-vertical'),/三个/u); });
 test('designer history supports bounded undo/redo and clears redo after a new edit',()=>{ const project: LingWindowProject={id:'p',name:'p',windows:[windowModel]}; const history=new DesignerHistory(project,2); history.commit({...project,name:'one'}); history.commit({...project,name:'two'}); assert.equal(history.undo()?.name,'one'); assert.equal(history.redo()?.name,'two'); history.undo(); history.commit({...project,name:'branch'}); assert.equal(history.canRedo,false); history.commit({...project,name:'last'}); history.commit({...project,name:'bounded'}); assert.equal(history.undo()?.name,'last'); assert.equal(history.undo()?.name,'branch'); assert.equal(history.undo(),null); });
+
+test('moving a container translates every descendant exactly once', () => {
+  const controls = [
+    { ...control('group', 20, 30, 160, 120), type: 'GroupBox' },
+    { ...control('combo', 40, 60, 100, 30), type: 'ComboBox', parentId: 'group' },
+    { ...control('button', 55, 95), parentId: 'combo' }
+  ];
+  const moved = updateControlWithDescendants(controls, 'group', { x: 50, y: 70 });
+  assert.deepEqual(moved.map(item => [item.id, item.x, item.y]), [
+    ['group', 50, 70], ['combo', 70, 100], ['button', 85, 135]
+  ]);
+
+  const nestedWindow = { ...windowModel, controls };
+  const nudged = nudgeControls(nestedWindow, ['group', 'combo'], 5, 5);
+  assert.deepEqual(nudged.controls.map(item => [item.id, item.x, item.y]), [
+    ['group', 25, 35], ['combo', 45, 65], ['button', 60, 100]
+  ]);
+});

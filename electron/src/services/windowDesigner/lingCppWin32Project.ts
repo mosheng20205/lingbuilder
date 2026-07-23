@@ -19,6 +19,12 @@ import { generatePlatformAdvancedRuntime } from './platformAdvancedRuntime';
 import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from '../modules/targetResolver';
 import { getWin32ControlDefinition, WIN32_CONTROL_DEFINITIONS } from './win32ControlRegistry';
 import { getWindowEventHandlerName } from './windowEventRegistry';
+import {
+  getNewEmojiUnsupportedControlDiagnostics,
+  isNewEmojiDesignerControlSupported,
+  NEW_EMOJI_MODULE_ID
+} from './newEmojiDesignerAdapter';
+import { getEffectiveControlState } from './controlHierarchy';
 
 export interface LingCppNativeProjectFile {
   relativePath: string;
@@ -70,7 +76,10 @@ export function generateLingCppNativeWin32Project(
   const selectedWindow = resolveNativeWindowForSource(project, options, parseResult.program);
   const enabledModules = options.enabledModules || [];
   const sourceFilePath = options.lingCppSourceFilePath || getLingWindowSourceFileName(selectedWindow.fileName, selectedWindow.className);
-  const mainCppContent = generateMainCpp(project, selectedWindow, parseResult.ast, enabledModules);
+  const usesNewEmojiDesigner = enabledModules.some(module => module.manifest.id === NEW_EMOJI_MODULE_ID);
+  const mainCppContent = usesNewEmojiDesigner
+    ? generateNewEmojiMainCpp(selectedWindow, parseResult.ast.program, enabledModules)
+    : generateMainCpp(project, selectedWindow, parseResult.ast, enabledModules);
   const sourceMap = generateLingCppNativeSourceMap(mainCppContent, project, parseResult.program, sourceFilePath);
   const manifestContent = generateNativeManifest(project, selectedWindow, enabledModules, sourceFilePath, sourceMap);
   const moduleTargetDiagnostics = enabledModules
@@ -101,6 +110,7 @@ export function generateLingCppNativeWin32Project(
       ...sourceClassMismatchDiagnostic,
       ...moduleTargetDiagnostics,
       ...missingControlModuleDiagnostics,
+      ...(usesNewEmojiDesigner ? getNewEmojiUnsupportedControlDiagnostics(selectedWindow) : []),
       ...resourceDiagnostics
     ],
     sourceMap,
@@ -136,6 +146,164 @@ export function generateLingCppNativeWin32Project(
       }
     ]
   };
+}
+
+function generateNewEmojiMainCpp(
+  window: LingWindowModel,
+  program: LingCppProgram,
+  enabledModules: InstalledModule[]
+): string {
+  const controls = orderNewEmojiControls(window.controls
+    .filter(control => (
+      getEffectiveControlState(window.controls, control.id).visible
+      && isNewEmojiDesignerControlSupported(control.type)
+    ))
+    .map(control => ({
+      ...control,
+      isEnabled: getEffectiveControlState(window.controls, control.id).enabled
+    })));
+  const variables = new Map(controls.map((control, index) => [control.id, `ne_element_${index + 1}`]));
+  const createLines = controls.flatMap(control => {
+    const variable = variables.get(control.id)!;
+    const parent = control.parentId ? window.controls.find(item => item.id === control.parentId) : undefined;
+    const parentVariable = parent ? variables.get(parent.id) || '0' : '0';
+    const x = parent ? control.x - parent.x : control.x;
+    const y = parent ? control.y - parent.y : control.y;
+    const text = `L"${escapeWideString(control.content)}"`;
+    const checked = control.properties?.checked === true ? 1 : 0;
+    const progress = parseControlValue(control);
+    let call: string;
+    switch (control.type) {
+      case 'Button':
+        call = `NE_创建按钮(g_newEmojiWindow, ${parentVariable}, L"", ${text}, ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)})`;
+        break;
+      case 'TextBox':
+        call = `NE_创建编辑框(g_newEmojiWindow, ${parentVariable}, ${text}, ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)})`;
+        break;
+      case 'Label':
+        call = `NE_创建文本(g_newEmojiWindow, ${parentVariable}, ${text}, ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)})`;
+        break;
+      case 'CheckBox':
+        call = `NE_创建复选框(g_newEmojiWindow, ${parentVariable}, ${text}, ${checked}, ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)})`;
+        break;
+      case 'RadioButton':
+        call = `NE_创建单选框(g_newEmojiWindow, ${parentVariable}, ${text}, ${checked}, ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)})`;
+        break;
+      case 'ListBox': {
+        const rawItems = Array.isArray(control.properties?.items) ? control.properties.items : [];
+        const itemLabels = rawItems.map(item => typeof item === 'string'
+          ? item
+          : String((item as Record<string, unknown>)?.title ?? (item as Record<string, unknown>)?.label ?? (item as Record<string, unknown>)?.text ?? ''));
+        const items = control.properties?.sorted === true ? [...itemLabels].sort((left, right) => left.localeCompare(right, 'zh-CN')) : itemLabels;
+        const itemSpec = `L"${escapeWideString(items.join('|'))}"`;
+        const selectedIndex = numericControlProperty(control, 'selectedIndex', items.length > 0 ? 0 : -1);
+        call = `NE_创建列表框(g_newEmojiWindow, ${parentVariable}, ${text}, ${itemSpec}, ${selectedIndex}, ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)})`;
+        break;
+      }
+      case 'Image': {
+        const source = typeof control.properties?.imageSource === 'string' ? control.properties.imageSource : '';
+        const stretch = typeof control.properties?.stretch === 'string' ? control.properties.stretch : 'uniform';
+        const fit = stretch === 'uniformToFill' ? 1 : stretch === 'fill' ? 2 : stretch === 'none' ? 3 : 0;
+        call = `NE_创建图片(g_newEmojiWindow, ${parentVariable}, L"${escapeWideString(source)}", ${text}, ${fit}, ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)})`;
+        break;
+      }
+      case 'ProgressBar':
+        call = `NE_创建进度条(g_newEmojiWindow, ${parentVariable}, ${text}, ${progress}, ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)})`;
+        break;
+      case 'Grid':
+        call = `NE_创建容器(g_newEmojiWindow, ${parentVariable}, ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)})`;
+        break;
+      default:
+        return [];
+    }
+    return [
+      `    int ${variable} = ${call};`,
+      `    NE_设置元素状态(g_newEmojiWindow, ${variable}, 1, ${control.isEnabled ? 1 : 0}, ${toNewEmojiColor(control.background, 0x00000000)}, ${toNewEmojiColor(control.foreground, 0xfff8fafc)});`
+    ];
+  });
+  const createdHandler = findWindowCreatedHandler(window, program);
+  const createdMethod = createdHandler ? findLingCppMethod(program, createdHandler) : undefined;
+  const createdBody = createdMethod
+    ? translateMethodStatements(createdMethod, enabledModules).replace(/^ {8}/gmu, '    ')
+    : '    调试输出(L"new_emoji 窗口创建完毕");';
+  const darkWindow = isDarkBackground(window.background);
+  const createWindow = darkWindow ? 'NE_创建深色窗口' : 'NE_创建窗口';
+  const modulePreamble = generateModuleCppPreamble(enabledModules);
+
+  return `#ifndef UNICODE
+#define UNICODE
+#endif
+#ifndef _UNICODE
+#define _UNICODE
+#endif
+#include <windows.h>
+#include <string>
+#include "new_emoji_bridge.h"
+${modulePreamble}
+
+static HWND g_newEmojiWindow = nullptr;
+
+static void 调试输出(const wchar_t* message) {
+    OutputDebugStringW(message ? message : L"");
+    OutputDebugStringW(L"\\r\\n");
+}
+
+static int 信息框(const wchar_t* text, UINT flags = MB_OK, const wchar_t* title = L"LingBuilder") {
+    return MessageBoxW(g_newEmojiWindow, text ? text : L"", title ? title : L"LingBuilder", flags);
+}
+
+static void 结束() {
+    if (g_newEmojiWindow) {
+        NE_销毁窗口(g_newEmojiWindow);
+        g_newEmojiWindow = nullptr;
+    }
+}
+
+int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+    SetProcessDPIAware();
+    g_newEmojiWindow = ${createWindow}(L"${escapeWideString(window.title)}", ${window.openPlacement === 'custom' ? int(window.openX ?? 120) : 120}, ${window.openPlacement === 'custom' ? int(window.openY ?? 80) : 80}, ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height))});
+    if (!g_newEmojiWindow) {
+        MessageBoxW(nullptr, L"new_emoji 原生窗口创建失败，请确认 new_emoji.dll 与 exe 位于同一目录。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
+        return 2;
+    }
+${createLines.join('\n')}
+${createdBody}
+    if (!g_newEmojiWindow) return 0;
+    return NE_运行消息循环();
+}
+`;
+}
+
+function orderNewEmojiControls(controls: LingControl[]): LingControl[] {
+  const byId = new Map(controls.map(control => [control.id, control]));
+  const ordered: LingControl[] = [];
+  const visited = new Set<string>();
+  const visit = (control: LingControl) => {
+    if (visited.has(control.id)) return;
+    const parent = control.parentId ? byId.get(control.parentId) : undefined;
+    if (parent) visit(parent);
+    visited.add(control.id);
+    ordered.push(control);
+  };
+  controls.forEach(visit);
+  return ordered;
+}
+
+function toNewEmojiColor(value: string, fallback: number): string {
+  if (value === 'transparent') return '0x00000000u';
+  const match = value.match(/^#([0-9a-f]{6})$/iu);
+  if (!match) return `0x${fallback.toString(16).padStart(8, '0')}u`;
+  return `0xFF${match[1]!.toUpperCase()}u`;
+}
+
+function isDarkBackground(value: string): boolean {
+  const match = value.match(/^#([0-9a-f]{6})$/iu);
+  if (!match) return true;
+  const rgb = Number.parseInt(match[1]!, 16);
+  const red = (rgb >> 16) & 0xff;
+  const green = (rgb >> 8) & 0xff;
+  const blue = rgb & 0xff;
+  return (red * 299 + green * 587 + blue * 114) / 1000 < 150;
 }
 
 function resolveNativeWindowForSource(
@@ -432,7 +600,25 @@ struct ControlSpec {
     int height;
     int fontSize;
     int cornerRadius;
+    int listBorderWidth;
+    COLORREF listBorderColor;
+    COLORREF listSelectionStart;
+    COLORREF listSelectionEnd;
+    COLORREF listSelectionBorder;
+    int listSelectionCornerRadius;
+    int listItemHeight;
+    int listHeaderHeight;
+    int listContentPadding;
+    int listScrollBarVisibility;
+    int listScrollBarWidth;
+    COLORREF listScrollBarTrack;
+    COLORREF listScrollBarThumb;
+    int treeBorderWidth;
+    COLORREF treeBorderColor;
+    int treeNodeSpacing;
+    int treeNodePadding;
     COLORREF background;
+    bool backgroundTransparent;
     COLORREF foreground;
     bool enabled;
     const wchar_t* data;
@@ -509,6 +695,13 @@ struct RuntimeControl {
     bool iconResource;
     bool mouseInside;
     int checkState;
+};
+
+struct RuntimeTabPage {
+    int tabControlId;
+    std::wstring slot;
+    HWND hwnd;
+    RECT contentRect;
 };
 
 static HINSTANCE g_instance = nullptr;
@@ -953,7 +1146,9 @@ protected:
     HWND hwnd_;
     std::vector<HWND> tooltipWindows_;
     std::vector<RuntimeControl> runtimeControls_;
+    std::vector<RuntimeTabPage> tabPages_;
     std::map<std::wstring, HIMAGELIST> imageLists_;
+    std::map<int, HIMAGELIST> listViewSizingImageLists_;
     HBRUSH windowBrush_;
     HICON largeWindowIcon_ = nullptr;
     HICON smallWindowIcon_ = nullptr;
@@ -969,6 +1164,9 @@ protected:
     bool sizeBaselineReady_ = false;
     bool moveBaselineReady_ = false;
     bool windowStateBaselineReady_ = false;
+    int listScrollDragControlId_ = 0;
+    int listScrollDragOffset_ = 0;
+    std::map<int, int> listWheelDeltaRemainders_;
     int eventWidth_ = 0;
     int eventHeight_ = 0;
     int eventX_ = 0;
@@ -2461,6 +2659,13 @@ private:
         return nullptr;
     }
 
+    const RuntimeControl* FindRuntimeControl(int id) const {
+        for (const auto& control : runtimeControls_) {
+            if (control.id == id) return &control;
+        }
+        return nullptr;
+    }
+
     const ControlSpec* FindControlByName(const wchar_t* name) const {
         if (!name || !name[0]) return nullptr;
         for (int index = 0; index < spec_.controlCount; ++index) if (TextEquals(spec_.controls[index].name, name)) return &spec_.controls[index];
@@ -2499,17 +2704,37 @@ private:
         DispatchLingEvent(selected, L"Checked");
     }
 
+    RuntimeTabPage* FindTabPage(int tabControlId, const wchar_t* slot) {
+        RuntimeTabPage* first = nullptr;
+        for (auto& page : tabPages_) {
+            if (page.tabControlId != tabControlId) continue;
+            if (!first) first = &page;
+            if (slot && slot[0] && page.slot == slot) return &page;
+        }
+        return first;
+    }
+
+    static LRESULT CALLBACK TabPageSubclassProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR subclassId, DWORD_PTR referenceData) {
+        LingWindowBase* self = reinterpret_cast<LingWindowBase*>(referenceData);
+        if (self && (
+            message == WM_COMMAND || message == WM_NOTIFY || message == WM_HSCROLL || message == WM_VSCROLL
+            || message == WM_DRAWITEM || message == WM_MEASUREITEM || message == WM_COMPAREITEM || message == WM_DELETEITEM
+            || message == WM_CTLCOLORSTATIC || message == WM_CTLCOLOREDIT || message == WM_CTLCOLORBTN
+            || message == WM_CTLCOLORLISTBOX || message == WM_CTLCOLORSCROLLBAR
+        )) return SendMessageW(self->hwnd_, message, wParam, lParam);
+        if (message == WM_NCDESTROY) RemoveWindowSubclass(hwnd, TabPageSubclassProc, subclassId);
+        return DefSubclassProc(hwnd, message, wParam, lParam);
+    }
+
     void UpdateTabChildren(const ControlSpec& tabControl) {
         RuntimeControl* tabRuntime = FindRuntimeControl(tabControl.id);
         if (!tabRuntime || !tabRuntime->hwnd) return;
         auto tabs = DecodeControlRecords(tabControl.data, 3);
         int selectedIndex = TabCtrl_GetCurSel(tabRuntime->hwnd);
         std::wstring activeSlot = selectedIndex >= 0 && selectedIndex < static_cast<int>(tabs.size()) ? tabs[selectedIndex][0] : L"";
-        for (auto& runtime : runtimeControls_) {
-            const ControlSpec* child = FindControl(runtime.id);
-            if (!child || child->parentId != tabControl.id) continue;
-            bool visible = !child->containerSlot || !child->containerSlot[0] || activeSlot == child->containerSlot;
-            ShowWindow(runtime.frameHwnd ? runtime.frameHwnd : runtime.hwnd, visible ? SW_SHOW : SW_HIDE);
+        for (auto& page : tabPages_) {
+            if (page.tabControlId != tabControl.id) continue;
+            ShowWindow(page.hwnd, page.slot == activeSlot ? SW_SHOW : SW_HIDE);
         }
     }
 
@@ -2583,6 +2808,30 @@ private:
             && !(control.flags & (CF_BUTTON_TOGGLE | CF_BUTTON_SPLIT | CF_BUTTON_COMMAND_LINK));
     }
 
+    COLORREF ResolveControlSurroundingColor(const ControlSpec& control, HWND controlHwnd) const {
+        HWND parentHwnd = controlHwnd ? GetParent(controlHwnd) : nullptr;
+        for (const auto& page : tabPages_) {
+            if (page.hwnd == parentHwnd) return GetSysColor(COLOR_WINDOW);
+        }
+        if (control.parentId > 0) {
+            const ControlSpec* parent = FindControl(control.parentId);
+            if (parent) return parent->background;
+        }
+        return spec_.background;
+    }
+
+    HBRUSH ResolveControlSurroundingBrush(const ControlSpec& control, HWND controlHwnd) const {
+        HWND parentHwnd = controlHwnd ? GetParent(controlHwnd) : nullptr;
+        for (const auto& page : tabPages_) {
+            if (page.hwnd == parentHwnd) return GetSysColorBrush(COLOR_WINDOW);
+        }
+        if (control.parentId > 0) {
+            const RuntimeControl* parent = FindRuntimeControl(control.parentId);
+            if (parent && parent->brush) return parent->brush;
+        }
+        return windowBrush_;
+    }
+
     bool PaintOwnerButton(const DRAWITEMSTRUCT* item) {
         if (!item) return false;
         const ControlSpec* control = FindControl(static_cast<int>(item->CtlID));
@@ -2595,15 +2844,16 @@ private:
         bool focused = enabled
             && (item->itemState & ODS_FOCUS)
             && !(item->itemState & ODS_NOFOCUSRECT);
+        COLORREF surrounding = ResolveControlSurroundingColor(*control, item->hwndItem);
         COLORREF background = control->background;
         COLORREF rowBackground = control->background;
         COLORREF foreground = control->foreground;
         COLORREF border = BlendColor(control->background, RGB(255, 255, 255), 18);
         if (!enabled) {
-            background = BlendColor(control->background, spec_.background, 55);
+            background = BlendColor(control->background, surrounding, 55);
             rowBackground = background;
-            foreground = BlendColor(control->foreground, spec_.background, 55);
-            border = BlendColor(border, spec_.background, 55);
+            foreground = BlendColor(control->foreground, surrounding, 55);
+            border = BlendColor(border, surrounding, 55);
         } else if (pressed) {
             background = BlendColor(control->background, RGB(0, 0, 0), 16);
             border = BlendColor(control->background, RGB(255, 255, 255), 24);
@@ -2659,7 +2909,7 @@ private:
             RECT textRect = item->rcItem; textRect.left = box.right + ScaleForDpi(8, dpi_);
             DrawTextW(item->hDC, control->text, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
         } else {
-            HBRUSH cornerBrush = CreateSolidBrush(spec_.background);
+            HBRUSH cornerBrush = CreateSolidBrush(surrounding);
             FillRect(item->hDC, &item->rcItem, cornerBrush);
             DeleteObject(cornerBrush);
             int itemWidth = static_cast<int>(item->rcItem.right - item->rcItem.left);
@@ -2705,6 +2955,249 @@ private:
         }
         if (oldFont) SelectObject(item->hDC, oldFont);
         return true;
+    }
+
+    bool PaintOwnerListBox(const DRAWITEMSTRUCT* item) {
+        if (!item || item->CtlType != ODT_LISTBOX) return false;
+        const ControlSpec* control = FindControl(static_cast<int>(item->CtlID));
+        RuntimeControl* runtime = FindRuntimeControl(static_cast<int>(item->CtlID));
+        if (!control || !runtime || !IsType(*control, L"ListBox")) return false;
+
+        HBRUSH backgroundBrush = CreateSolidBrush(control->background);
+        FillRect(item->hDC, &item->rcItem, backgroundBrush);
+        DeleteObject(backgroundBrush);
+
+        bool selected = item->itemID != static_cast<UINT>(-1) && (item->itemState & ODS_SELECTED);
+        bool enabled = IsWindowEnabled(item->hwndItem) != FALSE && !(item->itemState & ODS_DISABLED);
+        if (selected) {
+            RECT selectionRect = item->rcItem;
+            InflateRect(&selectionRect, -ScaleForDpi(2, dpi_), -ScaleForDpi(1, dpi_));
+            if (selectionRect.right > selectionRect.left && selectionRect.bottom > selectionRect.top) {
+                Gdiplus::Graphics graphics(item->hDC);
+                graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+                graphics.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+                Gdiplus::RectF bounds(
+                    static_cast<Gdiplus::REAL>(selectionRect.left) + 0.5f,
+                    static_cast<Gdiplus::REAL>(selectionRect.top) + 0.5f,
+                    std::max(0.0f, static_cast<Gdiplus::REAL>(selectionRect.right - selectionRect.left) - 1.0f),
+                    std::max(0.0f, static_cast<Gdiplus::REAL>(selectionRect.bottom - selectionRect.top) - 1.0f)
+                );
+                Gdiplus::GraphicsPath path;
+                AddRoundedRectanglePath(path, bounds, static_cast<float>(ScaleForDpi(control->listSelectionCornerRadius, dpi_)));
+                COLORREF start = enabled ? control->listSelectionStart : BlendColor(control->listSelectionStart, control->background, 55);
+                COLORREF end = enabled ? control->listSelectionEnd : BlendColor(control->listSelectionEnd, control->background, 55);
+                Gdiplus::PointF gradientStart(bounds.X, bounds.Y);
+                Gdiplus::PointF gradientEnd(bounds.GetRight(), bounds.Y);
+                Gdiplus::LinearGradientBrush selectionBrush(gradientStart, gradientEnd, ToGdiPlusColor(start), ToGdiPlusColor(end));
+                graphics.FillPath(&selectionBrush, &path);
+                COLORREF selectionBorder = enabled
+                    ? control->listSelectionBorder
+                    : BlendColor(control->listSelectionBorder, control->background, 55);
+                Gdiplus::Pen borderPen(ToGdiPlusColor(selectionBorder), static_cast<float>(std::max(1, ScaleForDpi(1, dpi_))));
+                graphics.DrawPath(&borderPen, &path);
+            }
+        }
+
+        if (item->itemID != static_cast<UINT>(-1)) {
+            int textLength = static_cast<int>(SendMessageW(item->hwndItem, LB_GETTEXTLEN, item->itemID, 0));
+            if (textLength >= 0) {
+                std::vector<wchar_t> text(static_cast<size_t>(textLength) + 1, L'\\0');
+                SendMessageW(item->hwndItem, LB_GETTEXT, item->itemID, reinterpret_cast<LPARAM>(text.data()));
+                HFONT oldFont = runtime->font ? reinterpret_cast<HFONT>(SelectObject(item->hDC, runtime->font)) : nullptr;
+                SetBkMode(item->hDC, TRANSPARENT);
+                SetTextColor(item->hDC, enabled ? control->foreground : BlendColor(control->foreground, control->background, 55));
+                RECT textRect = item->rcItem;
+                textRect.left += ScaleForDpi(10, dpi_);
+                textRect.right -= ScaleForDpi(8, dpi_);
+                DrawTextW(item->hDC, text.data(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                if (oldFont) SelectObject(item->hDC, oldFont);
+            }
+        }
+        return true;
+    }
+
+    void PaintGroupBox(HWND hwnd, HDC hdc, const ControlSpec& control, RuntimeControl& runtime) {
+        if (!hwnd || !hdc) return;
+        RECT clientRect = {};
+        GetClientRect(hwnd, &clientRect);
+        HBRUSH backgroundBrush = CreateSolidBrush(control.background);
+        FillRect(hdc, &clientRect, backgroundBrush);
+
+        HFONT oldFont = runtime.font ? reinterpret_cast<HFONT>(SelectObject(hdc, runtime.font)) : nullptr;
+        RECT titleRect = { 0, 0, 0, 0 };
+        DrawTextW(hdc, control.text, -1, &titleRect, DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
+        int horizontalPadding = ScaleForDpi(6, dpi_);
+        int outerPadding = ScaleForDpi(8, dpi_);
+        int titleHeight = std::max(ScaleForDpi(control.fontSize, dpi_), static_cast<int>(titleRect.bottom - titleRect.top));
+        int frameTop = std::max(1, titleHeight / 2);
+        int borderWidth = std::clamp(ScaleForDpi(control.listBorderWidth, dpi_), 0,
+            std::max(0, std::min(static_cast<int>(clientRect.right - clientRect.left), static_cast<int>(clientRect.bottom - clientRect.top)) / 2));
+        if (borderWidth > 0) {
+            RECT frameRect = clientRect;
+            frameRect.top += frameTop;
+            frameRect.right = std::max(frameRect.left, frameRect.right - 1);
+            frameRect.bottom = std::max(frameRect.top, frameRect.bottom - 1);
+            HPEN borderPen = CreatePen(PS_SOLID, borderWidth, control.listBorderColor);
+            HGDIOBJ oldPen = SelectObject(hdc, borderPen);
+            HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
+            Rectangle(hdc, frameRect.left, frameRect.top, frameRect.right, frameRect.bottom);
+            SelectObject(hdc, oldBrush);
+            SelectObject(hdc, oldPen);
+            DeleteObject(borderPen);
+        }
+
+        int clientWidth = std::max(0, static_cast<int>(clientRect.right - clientRect.left));
+        int titleWidth = std::min(clientWidth, static_cast<int>(titleRect.right - titleRect.left) + horizontalPadding * 2);
+        int titleLeft = outerPadding;
+        if (TextEquals(control.option1, L"center")) titleLeft = std::max(0, (clientWidth - titleWidth) / 2);
+        else if (TextEquals(control.option1, L"right")) titleLeft = std::max(0, clientWidth - titleWidth - outerPadding);
+        titleRect.left = titleLeft;
+        titleRect.top = 0;
+        titleRect.right = std::min(static_cast<int>(clientRect.right), titleLeft + titleWidth);
+        titleRect.bottom = std::min(static_cast<int>(clientRect.bottom), titleHeight);
+        if (control.text && control.text[0]) {
+            FillRect(hdc, &titleRect, backgroundBrush);
+            RECT textRect = titleRect;
+            textRect.left += horizontalPadding;
+            textRect.right -= horizontalPadding;
+            SetBkMode(hdc, TRANSPARENT);
+            SetTextColor(hdc, IsWindowEnabled(hwnd) ? control.foreground : BlendColor(control.foreground, control.background, 55));
+            DrawTextW(hdc, control.text, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+        }
+        if (oldFont) SelectObject(hdc, oldFont);
+        DeleteObject(backgroundBrush);
+    }
+
+    bool PaintOwnerComboBox(const DRAWITEMSTRUCT* item) {
+        if (!item || item->CtlType != ODT_COMBOBOX) return false;
+        const ControlSpec* control = FindControl(static_cast<int>(item->CtlID));
+        RuntimeControl* runtime = FindRuntimeControl(static_cast<int>(item->CtlID));
+        if (!control || !runtime || !IsType(*control, L"ComboBox") || (control->flags & CF_EDITABLE)) return false;
+
+        bool enabled = IsWindowEnabled(item->hwndItem) != FALSE && !(item->itemState & ODS_DISABLED);
+        bool collapsedSelection = (item->itemState & ODS_COMBOBOXEDIT) != 0;
+        bool selected = !collapsedSelection && item->itemID != static_cast<UINT>(-1) && (item->itemState & ODS_SELECTED);
+        HBRUSH backgroundBrush = CreateSolidBrush(control->background);
+        FillRect(item->hDC, &item->rcItem, backgroundBrush);
+        DeleteObject(backgroundBrush);
+
+        if (selected) {
+            RECT selectionRect = item->rcItem;
+            InflateRect(&selectionRect, -ScaleForDpi(2, dpi_), -ScaleForDpi(1, dpi_));
+            if (selectionRect.right > selectionRect.left && selectionRect.bottom > selectionRect.top) {
+                Gdiplus::Graphics graphics(item->hDC);
+                graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+                Gdiplus::RectF bounds(
+                    static_cast<Gdiplus::REAL>(selectionRect.left) + 0.5f,
+                    static_cast<Gdiplus::REAL>(selectionRect.top) + 0.5f,
+                    std::max(0.0f, static_cast<Gdiplus::REAL>(selectionRect.right - selectionRect.left) - 1.0f),
+                    std::max(0.0f, static_cast<Gdiplus::REAL>(selectionRect.bottom - selectionRect.top) - 1.0f)
+                );
+                Gdiplus::PointF gradientStart(bounds.X, bounds.Y);
+                Gdiplus::PointF gradientEnd(bounds.GetRight(), bounds.Y);
+                Gdiplus::LinearGradientBrush selectionBrush(
+                    gradientStart, gradientEnd,
+                    ToGdiPlusColor(enabled ? control->listSelectionStart : BlendColor(control->listSelectionStart, control->background, 55)),
+                    ToGdiPlusColor(enabled ? control->listSelectionEnd : BlendColor(control->listSelectionEnd, control->background, 55))
+                );
+                graphics.FillRectangle(&selectionBrush, bounds);
+            }
+        }
+
+        int index = item->itemID == static_cast<UINT>(-1)
+            ? static_cast<int>(SendMessageW(item->hwndItem, CB_GETCURSEL, 0, 0))
+            : static_cast<int>(item->itemID);
+        if (index >= 0) {
+            int textLength = static_cast<int>(SendMessageW(item->hwndItem, CB_GETLBTEXTLEN, index, 0));
+            if (textLength >= 0) {
+                std::vector<wchar_t> text(static_cast<size_t>(textLength) + 1, L'\\0');
+                SendMessageW(item->hwndItem, CB_GETLBTEXT, index, reinterpret_cast<LPARAM>(text.data()));
+                HFONT oldFont = runtime->font ? reinterpret_cast<HFONT>(SelectObject(item->hDC, runtime->font)) : nullptr;
+                SetBkMode(item->hDC, TRANSPARENT);
+                SetTextColor(item->hDC, enabled ? control->foreground : BlendColor(control->foreground, control->background, 55));
+                RECT textRect = item->rcItem;
+                textRect.left += ScaleForDpi(collapsedSelection ? 8 : 10, dpi_);
+                textRect.right -= ScaleForDpi(6, dpi_);
+                DrawTextW(item->hDC, text.data(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+                if (oldFont) SelectObject(item->hDC, oldFont);
+            }
+        }
+        return true;
+    }
+
+    void PaintCollapsedComboBox(HWND hwnd, HDC hdc, const ControlSpec& control) {
+        if (!hdc) return;
+        RECT clientRect = {};
+        GetClientRect(hwnd, &clientRect);
+        RECT collapsedRect = clientRect;
+        collapsedRect.bottom = std::min(
+            collapsedRect.bottom,
+            collapsedRect.top + ScaleForDpi(control.height, dpi_)
+        );
+        if (collapsedRect.right <= collapsedRect.left || collapsedRect.bottom <= collapsedRect.top) return;
+        int savedDc = SaveDC(hdc);
+        IntersectClipRect(hdc, collapsedRect.left, collapsedRect.top, collapsedRect.right, collapsedRect.bottom);
+        const ControlSpec* parent = control.parentId ? FindControl(control.parentId) : nullptr;
+        COLORREF surrounding = parent ? parent->background : spec_.background;
+        HBRUSH surroundingBrush = CreateSolidBrush(surrounding);
+        FillRect(hdc, &collapsedRect, surroundingBrush);
+        DeleteObject(surroundingBrush);
+
+        bool enabled = IsWindowEnabled(hwnd) != FALSE;
+        COLORREF background = enabled ? control.background : BlendColor(control.background, surrounding, 45);
+        COLORREF foreground = enabled ? control.foreground : BlendColor(control.foreground, background, 55);
+        COLORREF border = enabled ? control.listBorderColor : BlendColor(control.listBorderColor, background, 55);
+        int clientWidth = static_cast<int>(collapsedRect.right - collapsedRect.left);
+        int clientHeight = static_cast<int>(collapsedRect.bottom - collapsedRect.top);
+        int radius = std::clamp(ScaleForDpi(control.listSelectionCornerRadius, dpi_), 0,
+            std::max(0, std::min(clientWidth, clientHeight) / 2));
+        if (!DrawAntiAliasedRoundedRectangle(hdc, collapsedRect, radius, background, border, true)) {
+            HBRUSH backgroundBrush = CreateSolidBrush(background);
+            HPEN borderPen = CreatePen(PS_SOLID, std::max(1, ScaleForDpi(1, dpi_)), border);
+            HGDIOBJ oldBrush = SelectObject(hdc, backgroundBrush);
+            HGDIOBJ oldBorderPen = SelectObject(hdc, borderPen);
+            if (radius > 0) RoundRect(hdc, collapsedRect.left, collapsedRect.top, collapsedRect.right, collapsedRect.bottom, radius * 2, radius * 2);
+            else Rectangle(hdc, collapsedRect.left, collapsedRect.top, collapsedRect.right, collapsedRect.bottom);
+            SelectObject(hdc, oldBorderPen);
+            SelectObject(hdc, oldBrush);
+            DeleteObject(borderPen);
+            DeleteObject(backgroundBrush);
+        }
+
+        int buttonWidth = std::clamp(clientHeight, ScaleForDpi(24, dpi_), ScaleForDpi(36, dpi_));
+        RECT textRect = collapsedRect;
+        textRect.left += ScaleForDpi(8, dpi_);
+        textRect.right -= buttonWidth + ScaleForDpi(2, dpi_);
+        int selectedIndex = static_cast<int>(SendMessageW(hwnd, CB_GETCURSEL, 0, 0));
+        std::wstring selectedText = control.text ? control.text : L"";
+        if (selectedIndex >= 0) {
+            int textLength = static_cast<int>(SendMessageW(hwnd, CB_GETLBTEXTLEN, selectedIndex, 0));
+            if (textLength >= 0) {
+                std::vector<wchar_t> text(static_cast<size_t>(textLength) + 1, L'\\0');
+                SendMessageW(hwnd, CB_GETLBTEXT, selectedIndex, reinterpret_cast<LPARAM>(text.data()));
+                selectedText.assign(text.data());
+            }
+        }
+        RuntimeControl* runtime = FindRuntimeControl(control.id);
+        HFONT oldFont = runtime && runtime->font ? reinterpret_cast<HFONT>(SelectObject(hdc, runtime->font)) : nullptr;
+        SetBkMode(hdc, TRANSPARENT);
+        SetTextColor(hdc, foreground);
+        DrawTextW(hdc, selectedText.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+        if (oldFont) SelectObject(hdc, oldFont);
+
+        int centerX = collapsedRect.right - buttonWidth / 2;
+        int centerY = (collapsedRect.top + collapsedRect.bottom) / 2;
+        COLORREF arrowColor = enabled ? BlendColor(foreground, background, 28) : BlendColor(foreground, background, 55);
+        Gdiplus::Graphics arrowGraphics(hdc);
+        arrowGraphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+        Gdiplus::Pen arrowPen(ToGdiPlusColor(arrowColor), std::max(1.25f, static_cast<float>(ScaleForDpi(1, dpi_))));
+        Gdiplus::PointF arrowPoints[] = {
+            { static_cast<Gdiplus::REAL>(centerX - ScaleForDpi(4, dpi_)), static_cast<Gdiplus::REAL>(centerY - ScaleForDpi(2, dpi_)) },
+            { static_cast<Gdiplus::REAL>(centerX), static_cast<Gdiplus::REAL>(centerY + ScaleForDpi(2, dpi_)) },
+            { static_cast<Gdiplus::REAL>(centerX + ScaleForDpi(4, dpi_)), static_cast<Gdiplus::REAL>(centerY - ScaleForDpi(2, dpi_)) }
+        };
+        arrowGraphics.DrawLines(&arrowPen, arrowPoints, 3);
+        if (savedDc) RestoreDC(hdc, savedDc);
     }
 
     LRESULT PaintListViewHeader(const ControlSpec& control, NMCUSTOMDRAW* draw) {
@@ -2941,6 +3434,376 @@ private:
         return DefSubclassProc(hwnd, message, wParam, lParam);
     }
 
+    int GetListBoxPageSize(const ControlSpec& control, const RuntimeControl& runtime) const {
+        if (!runtime.frameHwnd) return 1;
+        RECT rect = {}; GetClientRect(runtime.frameHwnd, &rect);
+        int frameWidth = std::max(1, static_cast<int>(rect.right - rect.left));
+        int frameHeight = std::max(1, static_cast<int>(rect.bottom - rect.top));
+        int borderWidth = std::clamp(ScaleForDpi(control.listBorderWidth, dpi_), 0, std::min(frameWidth, frameHeight) / 2);
+        int contentPadding = std::clamp(ScaleForDpi(control.listContentPadding, dpi_), 0, std::min(frameWidth, frameHeight) / 2);
+        int contentInset = std::clamp(borderWidth + contentPadding, 0, std::min(frameWidth, frameHeight) / 2);
+        int contentHeight = std::max(1, frameHeight - contentInset * 2);
+        int itemHeight = std::max(1, ScaleForDpi(control.listItemHeight, dpi_));
+        return std::max(1, contentHeight / itemHeight);
+    }
+
+    bool ShouldShowListBoxScrollBar(const ControlSpec& control, const RuntimeControl& runtime) const {
+        if (!runtime.hwnd || control.listScrollBarVisibility == 2) return false;
+        if (control.listScrollBarVisibility == 1) return true;
+        int itemCount = std::max(0, static_cast<int>(SendMessageW(runtime.hwnd, LB_GETCOUNT, 0, 0)));
+        return itemCount > GetListBoxPageSize(control, runtime);
+    }
+
+    bool GetListBoxScrollBarRects(const ControlSpec& control, const RuntimeControl& runtime, RECT& track, RECT& thumb) const {
+        if (!runtime.frameHwnd || !runtime.hwnd || !ShouldShowListBoxScrollBar(control, runtime)) return false;
+        RECT rect = {}; GetClientRect(runtime.frameHwnd, &rect);
+        int frameWidth = std::max(1, static_cast<int>(rect.right - rect.left));
+        int frameHeight = std::max(1, static_cast<int>(rect.bottom - rect.top));
+        int borderWidth = std::clamp(ScaleForDpi(control.listBorderWidth, dpi_), 0, std::min(frameWidth, frameHeight) / 2);
+        int contentPadding = std::clamp(ScaleForDpi(control.listContentPadding, dpi_), 0, std::min(frameWidth, frameHeight) / 2);
+        int contentInset = std::clamp(borderWidth + contentPadding, 0, std::min(frameWidth, frameHeight) / 2);
+        int scrollBarWidth = std::clamp(ScaleForDpi(control.listScrollBarWidth, dpi_), 1, std::max(1, frameWidth - contentInset * 2));
+        track = { std::max(contentInset, frameWidth - contentInset - scrollBarWidth), contentInset,
+            std::max(contentInset + 1, frameWidth - contentInset), std::max(contentInset + 1, frameHeight - contentInset) };
+        int trackHeight = std::max(1, static_cast<int>(track.bottom - track.top));
+        int itemCount = std::max(0, static_cast<int>(SendMessageW(runtime.hwnd, LB_GETCOUNT, 0, 0)));
+        int pageSize = GetListBoxPageSize(control, runtime);
+        int minimumThumb = std::min(trackHeight, std::max(ScaleForDpi(18, dpi_), scrollBarWidth * 2));
+        int thumbHeight = itemCount <= pageSize || itemCount == 0
+            ? trackHeight
+            : std::max(minimumThumb, trackHeight * pageSize / itemCount);
+        thumbHeight = std::min(trackHeight, thumbHeight);
+        int maximumTopIndex = std::max(0, itemCount - pageSize);
+        int topIndex = std::clamp(static_cast<int>(SendMessageW(runtime.hwnd, LB_GETTOPINDEX, 0, 0)), 0, maximumTopIndex);
+        int travel = std::max(0, trackHeight - thumbHeight);
+        int thumbTop = track.top + (maximumTopIndex > 0 ? topIndex * travel / maximumTopIndex : 0);
+        thumb = { track.left, thumbTop, track.right, thumbTop + thumbHeight };
+        return true;
+    }
+
+    void SetListBoxScrollFromThumb(const ControlSpec& control, RuntimeControl& runtime, const RECT& track, const RECT& thumb, int desiredThumbTop) {
+        int itemCount = std::max(0, static_cast<int>(SendMessageW(runtime.hwnd, LB_GETCOUNT, 0, 0)));
+        int pageSize = GetListBoxPageSize(control, runtime);
+        int maximumTopIndex = std::max(0, itemCount - pageSize);
+        int travel = std::max(0, static_cast<int>((track.bottom - track.top) - (thumb.bottom - thumb.top)));
+        int clampedTop = std::clamp(desiredThumbTop, static_cast<int>(track.top), static_cast<int>(track.top) + travel);
+        int topIndex = travel > 0 ? (clampedTop - track.top) * maximumTopIndex / travel : 0;
+        int currentTopIndex = std::clamp(static_cast<int>(SendMessageW(runtime.hwnd, LB_GETTOPINDEX, 0, 0)), 0, maximumTopIndex);
+        if (topIndex == currentTopIndex) return;
+        SendMessageW(runtime.hwnd, LB_SETTOPINDEX, topIndex, 0);
+        InvalidateRect(runtime.frameHwnd, nullptr, FALSE);
+    }
+
+    void ScrollListBoxByWheel(const ControlSpec& control, RuntimeControl& runtime, WPARAM wParam) {
+        if (!runtime.hwnd) return;
+        int& remainder = listWheelDeltaRemainders_[control.id];
+        remainder += GET_WHEEL_DELTA_WPARAM(wParam);
+        int detents = remainder / WHEEL_DELTA;
+        remainder %= WHEEL_DELTA;
+        if (detents == 0) return;
+
+        UINT configuredLines = 3;
+        SystemParametersInfoW(SPI_GETWHEELSCROLLLINES, 0, &configuredLines, 0);
+        if (configuredLines == 0) return;
+        int pageSize = GetListBoxPageSize(control, runtime);
+        int itemsPerDetent = configuredLines == WHEEL_PAGESCROLL
+            ? pageSize
+            : std::max(1, static_cast<int>(configuredLines));
+        int itemCount = std::max(0, static_cast<int>(SendMessageW(runtime.hwnd, LB_GETCOUNT, 0, 0)));
+        int maximumTopIndex = std::max(0, itemCount - pageSize);
+        int currentTopIndex = std::clamp(static_cast<int>(SendMessageW(runtime.hwnd, LB_GETTOPINDEX, 0, 0)), 0, maximumTopIndex);
+        int nextTopIndex = std::clamp(currentTopIndex - detents * itemsPerDetent, 0, maximumTopIndex);
+        if (nextTopIndex == currentTopIndex) return;
+        SendMessageW(runtime.hwnd, LB_SETTOPINDEX, nextTopIndex, 0);
+        if (runtime.frameHwnd) InvalidateRect(runtime.frameHwnd, nullptr, FALSE);
+    }
+
+    void PaintListBoxScrollBar(HDC hdc, const ControlSpec& control, const RuntimeControl& runtime) {
+        RECT track = {}, thumb = {};
+        if (!GetListBoxScrollBarRects(control, runtime, track, thumb)) return;
+        int radius = std::max(1, static_cast<int>(track.right - track.left) / 2);
+        COLORREF trackColor = control.enabled ? control.listScrollBarTrack : BlendColor(control.listScrollBarTrack, control.background, 55);
+        COLORREF thumbColor = control.enabled ? control.listScrollBarThumb : BlendColor(control.listScrollBarThumb, control.background, 55);
+        DrawAntiAliasedRoundedRectangle(hdc, track, radius, trackColor, trackColor, true);
+        DrawAntiAliasedRoundedRectangle(hdc, thumb, radius, thumbColor, thumbColor, true);
+    }
+
+    void LayoutListBoxControl(const ControlSpec& control, RuntimeControl& runtime) {
+        if (!runtime.frameHwnd || !runtime.hwnd) return;
+        RECT rect = {}; GetClientRect(runtime.frameHwnd, &rect);
+        int frameWidth = std::max(1, static_cast<int>(rect.right - rect.left));
+        int frameHeight = std::max(1, static_cast<int>(rect.bottom - rect.top));
+        int borderWidth = std::clamp(ScaleForDpi(control.listBorderWidth, dpi_), 0, std::min(frameWidth, frameHeight) / 2);
+        int contentPadding = std::clamp(ScaleForDpi(control.listContentPadding, dpi_), 0, std::min(frameWidth, frameHeight) / 2);
+        int contentInset = std::clamp(borderWidth + contentPadding, 0, std::min(frameWidth, frameHeight) / 2);
+        int scrollBarSpace = ShouldShowListBoxScrollBar(control, runtime)
+            ? std::clamp(ScaleForDpi(control.listScrollBarWidth + 2, dpi_), 1, std::max(1, frameWidth - contentInset * 2))
+            : 0;
+        SetWindowPos(runtime.hwnd, nullptr, contentInset, contentInset,
+            std::max(1, frameWidth - contentInset * 2 - scrollBarSpace), std::max(1, frameHeight - contentInset * 2),
+            SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    void LayoutListViewControl(const ControlSpec& control, RuntimeControl& runtime) {
+        if (!runtime.frameHwnd || !runtime.hwnd) return;
+        RECT rect = {}; GetClientRect(runtime.frameHwnd, &rect);
+        int frameWidth = std::max(1, static_cast<int>(rect.right - rect.left));
+        int frameHeight = std::max(1, static_cast<int>(rect.bottom - rect.top));
+        int borderWidth = std::clamp(ScaleForDpi(control.listBorderWidth, dpi_), 0, std::min(frameWidth, frameHeight) / 2);
+        SetWindowPos(runtime.hwnd, nullptr, borderWidth, borderWidth,
+            std::max(1, frameWidth - borderWidth * 2), std::max(1, frameHeight - borderWidth * 2),
+            SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    static LRESULT CALLBACK ListViewFrameSubclassProc(
+        HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam,
+        UINT_PTR subclassId, DWORD_PTR referenceData
+    ) {
+        LingWindowBase* self = reinterpret_cast<LingWindowBase*>(referenceData);
+        if (!self) return DefSubclassProc(hwnd, message, wParam, lParam);
+        const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
+        RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
+        if (!control || !runtime) return DefSubclassProc(hwnd, message, wParam, lParam);
+        if (message == WM_ERASEBKGND) return 1;
+        if (message == WM_PAINT) {
+            PAINTSTRUCT paint = {};
+            HDC hdc = BeginPaint(hwnd, &paint);
+            if (hdc) {
+                RECT rect = {}; GetClientRect(hwnd, &rect);
+                int borderWidth = std::clamp(ScaleForDpi(control->listBorderWidth, self->dpi_), 0,
+                    std::min(static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top)) / 2);
+                HBRUSH borderBrush = CreateSolidBrush(control->listBorderColor);
+                FillRect(hdc, &rect, borderBrush);
+                DeleteObject(borderBrush);
+                if (borderWidth == 0 && runtime->brush) FillRect(hdc, &rect, runtime->brush);
+                EndPaint(hwnd, &paint);
+            }
+            return 0;
+        }
+        if (message == WM_SIZE) {
+            self->LayoutListViewControl(*control, *runtime);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
+        if (message == WM_NOTIFY || message == WM_COMMAND) {
+            return SendMessageW(self->hwnd_, message, wParam, lParam);
+        }
+        if (message == WM_ENABLE) {
+            EnableWindow(runtime->hwnd, IsWindowEnabled(hwnd));
+            InvalidateRect(hwnd, nullptr, FALSE);
+        } else if (message == WM_NCDESTROY) {
+            RemoveWindowSubclass(hwnd, ListViewFrameSubclassProc, subclassId);
+        }
+        return DefSubclassProc(hwnd, message, wParam, lParam);
+    }
+
+    void LayoutTreeViewControl(const ControlSpec& control, RuntimeControl& runtime) {
+        if (!runtime.frameHwnd || !runtime.hwnd) return;
+        RECT rect = {}; GetClientRect(runtime.frameHwnd, &rect);
+        int frameWidth = std::max(1, static_cast<int>(rect.right - rect.left));
+        int frameHeight = std::max(1, static_cast<int>(rect.bottom - rect.top));
+        int borderWidth = std::clamp(ScaleForDpi(control.treeBorderWidth, dpi_), 0, std::min(frameWidth, frameHeight) / 2);
+        int horizontalPadding = std::clamp(ScaleForDpi(control.treeNodePadding, dpi_), 0, std::max(0, frameWidth / 4));
+        int horizontalInset = std::clamp(borderWidth + horizontalPadding, 0, frameWidth / 2);
+        SetWindowPos(runtime.hwnd, nullptr, horizontalInset, borderWidth,
+            std::max(1, frameWidth - horizontalInset * 2), std::max(1, frameHeight - borderWidth * 2),
+            SWP_NOZORDER | SWP_NOACTIVATE);
+
+        int textHeight = std::max(ScaleForDpi(control.fontSize, dpi_), 8);
+        HDC hdc = GetDC(runtime.hwnd);
+        if (hdc) {
+            HFONT previous = runtime.font ? reinterpret_cast<HFONT>(SelectObject(hdc, runtime.font)) : nullptr;
+            TEXTMETRICW metrics = {};
+            if (GetTextMetricsW(hdc, &metrics)) textHeight = std::max(textHeight, static_cast<int>(metrics.tmHeight));
+            if (previous) SelectObject(hdc, previous);
+            ReleaseDC(runtime.hwnd, hdc);
+        }
+        int verticalPadding = ScaleForDpi(control.treeNodePadding, dpi_);
+        int nodeSpacing = ScaleForDpi(control.treeNodeSpacing, dpi_);
+        int itemHeight = std::max(1, textHeight + verticalPadding * 2 + nodeSpacing);
+        SendMessageW(runtime.hwnd, TVM_SETITEMHEIGHT, static_cast<WPARAM>(itemHeight), 0);
+        SendMessageW(runtime.hwnd, TVM_SETINDENT, static_cast<WPARAM>(std::max(ScaleForDpi(19, dpi_), ScaleForDpi(16 + control.treeNodePadding * 2, dpi_))), 0);
+    }
+
+    static LRESULT CALLBACK TreeViewFrameSubclassProc(
+        HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam,
+        UINT_PTR subclassId, DWORD_PTR referenceData
+    ) {
+        LingWindowBase* self = reinterpret_cast<LingWindowBase*>(referenceData);
+        if (!self) return DefSubclassProc(hwnd, message, wParam, lParam);
+        const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
+        RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
+        if (!control || !runtime) return DefSubclassProc(hwnd, message, wParam, lParam);
+        if (message == WM_ERASEBKGND) return 1;
+        if (message == WM_PAINT) {
+            PAINTSTRUCT paint = {};
+            HDC hdc = BeginPaint(hwnd, &paint);
+            if (hdc) {
+                RECT rect = {}; GetClientRect(hwnd, &rect);
+                int borderWidth = std::clamp(ScaleForDpi(control->treeBorderWidth, self->dpi_), 0,
+                    std::min(static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top)) / 2);
+                HBRUSH borderBrush = CreateSolidBrush(control->treeBorderColor);
+                FillRect(hdc, &rect, borderBrush);
+                DeleteObject(borderBrush);
+                RECT contentRect = rect;
+                InflateRect(&contentRect, -borderWidth, -borderWidth);
+                if (runtime->brush && contentRect.right > contentRect.left && contentRect.bottom > contentRect.top) {
+                    FillRect(hdc, &contentRect, runtime->brush);
+                }
+                EndPaint(hwnd, &paint);
+            }
+            return 0;
+        }
+        if (message == WM_SIZE) {
+            self->LayoutTreeViewControl(*control, *runtime);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
+        if (message == WM_NOTIFY || message == WM_COMMAND) {
+            return SendMessageW(self->hwnd_, message, wParam, lParam);
+        }
+        if (message == WM_ENABLE) {
+            EnableWindow(runtime->hwnd, IsWindowEnabled(hwnd));
+            InvalidateRect(hwnd, nullptr, FALSE);
+        } else if (message == WM_NCDESTROY) {
+            RemoveWindowSubclass(hwnd, TreeViewFrameSubclassProc, subclassId);
+        }
+        return DefSubclassProc(hwnd, message, wParam, lParam);
+    }
+
+    static LRESULT CALLBACK ListViewHeaderHeightSubclassProc(
+        HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam,
+        UINT_PTR subclassId, DWORD_PTR referenceData
+    ) {
+        LingWindowBase* self = reinterpret_cast<LingWindowBase*>(referenceData);
+        if (!self) return DefSubclassProc(hwnd, message, wParam, lParam);
+        const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
+        if (message == HDM_LAYOUT && control && lParam) {
+            LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+            HDLAYOUT* layout = reinterpret_cast<HDLAYOUT*>(lParam);
+            int height = ScaleForDpi(control->listHeaderHeight, self->dpi_);
+            if (layout->pwpos) layout->pwpos->cy = height;
+            if (layout->prc) layout->prc->top = height;
+            return result;
+        }
+        if (message == WM_NCDESTROY) RemoveWindowSubclass(hwnd, ListViewHeaderHeightSubclassProc, subclassId);
+        return DefSubclassProc(hwnd, message, wParam, lParam);
+    }
+
+    HIMAGELIST CreateListViewSizingImageList(const ControlSpec& control, HIMAGELIST source) {
+        int width = 1;
+        int sourceHeight = 1;
+        if (source) ImageList_GetIconSize(source, &width, &sourceHeight);
+        int height = ScaleForDpi(control.listItemHeight, dpi_);
+        int count = source ? ImageList_GetImageCount(source) : 0;
+        HIMAGELIST sizing = ImageList_Create(std::max(1, width), std::max(1, height), ILC_COLOR32 | ILC_MASK, std::max(1, count), 1);
+        if (!sizing) return source;
+        for (int index = 0; index < count; ++index) {
+            HICON icon = ImageList_GetIcon(source, index, ILD_TRANSPARENT);
+            if (icon) {
+                ImageList_AddIcon(sizing, icon);
+                DestroyIcon(icon);
+            }
+        }
+        listViewSizingImageLists_[control.id] = sizing;
+        return sizing;
+    }
+
+    static LRESULT CALLBACK ListBoxFrameSubclassProc(
+        HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam,
+        UINT_PTR subclassId, DWORD_PTR referenceData
+    ) {
+        LingWindowBase* self = reinterpret_cast<LingWindowBase*>(referenceData);
+        if (!self) return DefSubclassProc(hwnd, message, wParam, lParam);
+        const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
+        RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
+        if (!control || !runtime) return DefSubclassProc(hwnd, message, wParam, lParam);
+        if (message == WM_ERASEBKGND) return 1;
+        if (message == WM_PAINT) {
+            PAINTSTRUCT paint = {};
+            HDC hdc = BeginPaint(hwnd, &paint);
+            if (hdc) {
+                RECT rect = {}; GetClientRect(hwnd, &rect);
+                int borderWidth = std::clamp(ScaleForDpi(control->listBorderWidth, self->dpi_), 0,
+                    std::min(static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top)) / 2);
+                HBRUSH borderBrush = CreateSolidBrush(control->listBorderColor);
+                FillRect(hdc, &rect, borderBrush);
+                DeleteObject(borderBrush);
+                if (borderWidth == 0) {
+                    if (runtime->brush) FillRect(hdc, &rect, runtime->brush);
+                } else {
+                    RECT contentRect = rect;
+                    InflateRect(&contentRect, -borderWidth, -borderWidth);
+                    if (contentRect.right > contentRect.left && contentRect.bottom > contentRect.top && runtime->brush) {
+                        FillRect(hdc, &contentRect, runtime->brush);
+                    }
+                }
+                self->PaintListBoxScrollBar(hdc, *control, *runtime);
+                EndPaint(hwnd, &paint);
+            }
+            return 0;
+        }
+        if (message == WM_SIZE) {
+            self->LayoutListBoxControl(*control, *runtime);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
+        if (message == WM_MOUSEWHEEL) {
+            self->ScrollListBoxByWheel(*control, *runtime, wParam);
+            return 0;
+        }
+        if (message == WM_LBUTTONDOWN) {
+            RECT track = {}, thumb = {};
+            POINT point = { static_cast<short>(LOWORD(lParam)), static_cast<short>(HIWORD(lParam)) };
+            if (self->GetListBoxScrollBarRects(*control, *runtime, track, thumb) && PtInRect(&track, point)) {
+                SetFocus(runtime->hwnd);
+                if (PtInRect(&thumb, point)) {
+                    self->listScrollDragControlId_ = control->id;
+                    self->listScrollDragOffset_ = point.y - thumb.top;
+                    SetCapture(hwnd);
+                } else {
+                    int pageSize = self->GetListBoxPageSize(*control, *runtime);
+                    int topIndex = static_cast<int>(SendMessageW(runtime->hwnd, LB_GETTOPINDEX, 0, 0));
+                    SendMessageW(runtime->hwnd, LB_SETTOPINDEX, std::max(0, topIndex + (point.y < thumb.top ? -pageSize : pageSize)), 0);
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                }
+                return 0;
+            }
+        }
+        if (message == WM_MOUSEMOVE && self->listScrollDragControlId_ == control->id && GetCapture() == hwnd) {
+            RECT track = {}, thumb = {};
+            if (self->GetListBoxScrollBarRects(*control, *runtime, track, thumb)) {
+                int pointerY = static_cast<short>(HIWORD(lParam));
+                self->SetListBoxScrollFromThumb(*control, *runtime, track, thumb, pointerY - self->listScrollDragOffset_);
+            }
+            return 0;
+        }
+        if ((message == WM_LBUTTONUP || message == WM_CAPTURECHANGED || message == WM_CANCELMODE)
+            && self->listScrollDragControlId_ == control->id) {
+            self->listScrollDragControlId_ = 0;
+            self->listScrollDragOffset_ = 0;
+            if (message == WM_LBUTTONUP && GetCapture() == hwnd) ReleaseCapture();
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
+        if (message == WM_COMMAND || message == WM_DRAWITEM || message == WM_MEASUREITEM) {
+            return SendMessageW(self->hwnd_, message, wParam, lParam);
+        }
+        if (message == WM_CTLCOLORLISTBOX) {
+            HDC hdc = reinterpret_cast<HDC>(wParam);
+            SetTextColor(hdc, control->foreground);
+            SetBkColor(hdc, control->background);
+            return reinterpret_cast<LRESULT>(runtime->brush ? runtime->brush : self->windowBrush_);
+        }
+        if (message == WM_ENABLE) {
+            EnableWindow(runtime->hwnd, IsWindowEnabled(hwnd));
+            InvalidateRect(hwnd, nullptr, FALSE);
+        } else if (message == WM_NCDESTROY) {
+            RemoveWindowSubclass(hwnd, ListBoxFrameSubclassProc, subclassId);
+        }
+        return DefSubclassProc(hwnd, message, wParam, lParam);
+    }
+
     static LRESULT CALLBACK ControlSubclassProc(
         HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam,
         UINT_PTR subclassId, DWORD_PTR referenceData
@@ -2950,11 +3813,58 @@ private:
         const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
         RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
         if (control && runtime) {
+            if (IsType(*control, L"GroupBox") && (
+                message == WM_COMMAND
+                || message == WM_NOTIFY
+                || message == WM_DRAWITEM
+                || message == WM_MEASUREITEM
+                || message == WM_COMPAREITEM
+                || message == WM_DELETEITEM
+                || message == WM_HSCROLL
+                || message == WM_VSCROLL
+                || message == WM_CTLCOLORBTN
+                || message == WM_CTLCOLORSTATIC
+                || message == WM_CTLCOLOREDIT
+                || message == WM_CTLCOLORLISTBOX
+                || message == WM_CTLCOLORSCROLLBAR
+            )) {
+                return SendMessageW(self->hwnd_, message, wParam, lParam);
+            }
             if (message == WM_NOTIFY && IsType(*control, L"ListView")) {
                 NMHDR* header = reinterpret_cast<NMHDR*>(lParam);
                 if (header && header->code == NM_CUSTOMDRAW && header->hwndFrom == ListView_GetHeader(hwnd)) {
                     return self->PaintListViewHeader(*control, reinterpret_cast<NMCUSTOMDRAW*>(lParam));
                 }
+            }
+            if (message == WM_CTLCOLORLISTBOX) {
+                return SendMessageW(self->hwnd_, message, wParam, lParam);
+            }
+            if (IsType(*control, L"ListBox") && message == WM_MOUSEWHEEL) {
+                self->ScrollListBoxByWheel(*control, *runtime, wParam);
+                return 0;
+            }
+            if (IsType(*control, L"ListBox") && (
+                message == WM_KEYDOWN
+                || message == WM_VSCROLL
+                || message == WM_LBUTTONUP
+                || message == LB_ADDSTRING
+                || message == LB_INSERTSTRING
+                || message == LB_DELETESTRING
+                || message == LB_RESETCONTENT
+                || message == LB_SETTOPINDEX
+                || message == LB_SETITEMHEIGHT
+                || message == LB_SETCURSEL
+                || message == LB_SETSEL
+            )) {
+                LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                if (runtime->frameHwnd) {
+                    if (message == LB_ADDSTRING || message == LB_INSERTSTRING || message == LB_DELETESTRING
+                        || message == LB_RESETCONTENT || message == LB_SETITEMHEIGHT) {
+                        self->LayoutListBoxControl(*control, *runtime);
+                    }
+                    InvalidateRect(runtime->frameHwnd, nullptr, FALSE);
+                }
+                return result;
             }
             bool buttonControl = self->IsButtonControl(*control);
             bool ownerDraw = self->IsOwnerDrawControl(*control);
@@ -2994,6 +3904,35 @@ private:
                     ReleaseDC(hwnd, hdc);
                 }
                 return result;
+            }
+            if (IsType(*control, L"GroupBox")) {
+                if (message == WM_ERASEBKGND) return 1;
+                if (message == WM_PAINT) {
+                    PAINTSTRUCT paint = {};
+                    HDC hdc = BeginPaint(hwnd, &paint);
+                    self->PaintGroupBox(hwnd, hdc, *control, *runtime);
+                    EndPaint(hwnd, &paint);
+                    return 0;
+                }
+                if (message == WM_PRINTCLIENT) {
+                    self->PaintGroupBox(hwnd, reinterpret_cast<HDC>(wParam), *control, *runtime);
+                    return 0;
+                }
+            }
+            if (IsType(*control, L"ComboBox") && !(control->flags & CF_EDITABLE)) {
+                if (message == WM_ERASEBKGND) return 1;
+                if (message == WM_NCPAINT) return 0;
+                if (message == WM_PAINT) {
+                    PAINTSTRUCT paint = {};
+                    HDC hdc = BeginPaint(hwnd, &paint);
+                    self->PaintCollapsedComboBox(hwnd, hdc, *control);
+                    EndPaint(hwnd, &paint);
+                    return 0;
+                }
+                if (message == WM_PRINTCLIENT) {
+                    self->PaintCollapsedComboBox(hwnd, reinterpret_cast<HDC>(wParam), *control);
+                    return 0;
+                }
             }
             if (message == WM_MOUSEMOVE && !runtime->mouseInside) {
                 runtime->mouseInside = true;
@@ -3057,10 +3996,20 @@ private:
         const wchar_t* className = L"STATIC";
         const wchar_t* text = control.text;
         HWND parentHwnd = hwnd_;
+        int parentContentOffsetX = 0;
+        int parentContentOffsetY = 0;
         if (control.parentId > 0) {
             RuntimeControl* parent = FindRuntimeControl(control.parentId);
             if (!parent || !parent->hwnd) return false;
             parentHwnd = parent->hwnd;
+            const ControlSpec* parentSpec = FindControl(control.parentId);
+            if (parentSpec && IsType(*parentSpec, L"TabControl")) {
+                RuntimeTabPage* page = FindTabPage(parentSpec->id, control.containerSlot);
+                if (!page || !page->hwnd) return false;
+                parentHwnd = page->hwnd;
+                parentContentOffsetX = page->contentRect.left;
+                parentContentOffsetY = page->contentRect.top;
+            }
         }
 
         if (!control.enabled) style |= WS_DISABLED;
@@ -3102,20 +4051,22 @@ private:
             className = L"BUTTON";
             style |= WS_TABSTOP | BS_OWNERDRAW;
         } else if (IsType(control, L"GroupBox")) {
-            className = L"BUTTON";
-            style |= BS_GROUPBOX;
+            className = L"STATIC";
+            style |= SS_NOTIFY | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
+            exStyle |= WS_EX_CONTROLPARENT;
         } else if (IsType(control, L"ListBox")) {
             className = L"LISTBOX";
-            style |= WS_BORDER | WS_VSCROLL | LBS_NOTIFY;
+            style |= WS_TABSTOP | LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS;
             if (control.flags & CF_SORTED) style |= LBS_SORT;
             if (control.flags & CF_MULTIPLE) style |= LBS_EXTENDEDSEL;
-            exStyle = WS_EX_CLIENTEDGE;
+            exStyle = 0;
         } else if (IsType(control, L"ProgressBar")) {
             className = PROGRESS_CLASSW;
             text = L"";
         } else if (IsType(control, L"ComboBox")) {
             className = L"COMBOBOX";
             style |= (control.flags & CF_EDITABLE) ? CBS_DROPDOWN : CBS_DROPDOWNLIST;
+            if (!(control.flags & CF_EDITABLE)) style |= CBS_OWNERDRAWFIXED | CBS_HASSTRINGS;
             if (control.flags & CF_SORTED) style |= CBS_SORT;
             style |= WS_VSCROLL;
         } else if (IsType(control, L"ScrollBar")) {
@@ -3129,7 +4080,10 @@ private:
             style |= control.data && control.data[0] ? (SS_BITMAP | SS_CENTERIMAGE | SS_NOTIFY) : (SS_CENTER | SS_CENTERIMAGE | SS_NOTIFY | WS_BORDER);
         } else if (IsType(control, L"Grid")) {
             className = L"STATIC";
-            style |= SS_WHITERECT;
+            // SS_WHITERECT bypasses WM_CTLCOLORSTATIC and always paints a
+            // system-white rectangle. Keep the static control neutral so the
+            // shared control brush can paint the designer model background.
+            style |= SS_NOTIFY;
             if (control.flags & CF_SHOW_BORDER) style |= WS_BORDER;
         } else if (IsType(control, L"ListView")) {
             className = WC_LISTVIEWW;
@@ -3137,18 +4091,18 @@ private:
             else if (control.flags & CF_VIEW_SMALL_ICON) style |= LVS_SMALLICON;
             else if (control.flags & CF_VIEW_LIST) style |= LVS_LIST;
             else style |= LVS_REPORT;
-            style |= LVS_SHOWSELALWAYS | WS_BORDER;
+            style |= LVS_SHOWSELALWAYS;
             if (!(control.flags & CF_MULTIPLE)) style |= LVS_SINGLESEL;
-            exStyle = WS_EX_CLIENTEDGE;
+            exStyle = 0;
         } else if (IsType(control, L"TreeView")) {
             className = WC_TREEVIEWW;
-            style |= TVS_HASBUTTONS | WS_BORDER;
+            style |= TVS_HASBUTTONS | TVS_NONEVENHEIGHT;
             if (control.flags & CF_SHOW_LINES) style |= TVS_HASLINES | TVS_LINESATROOT;
             if (control.flags & CF_CHECKBOXES) style |= TVS_CHECKBOXES;
-            exStyle = WS_EX_CLIENTEDGE;
+            exStyle = 0;
         } else if (IsType(control, L"TabControl")) {
             className = WC_TABCONTROLW;
-            style |= WS_CLIPSIBLINGS;
+            style |= WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
         } else if (IsType(control, L"Header")) {
             className = WC_HEADERW;
             style |= HDS_BUTTONS | HDS_HORZ;
@@ -3201,8 +4155,8 @@ private:
             style |= ACS_CENTER | ACS_TRANSPARENT;
         }
 
-        int controlX = ScaleForDpi(control.x, dpi_);
-        int controlY = ScaleForDpi(control.y, dpi_);
+        int controlX = ScaleForDpi(control.x, dpi_) - parentContentOffsetX;
+        int controlY = ScaleForDpi(control.y, dpi_) - parentContentOffsetY;
         int controlWidth = ScaleForDpi(control.width, dpi_);
         int controlHeight = ScaleForDpi(control.height, dpi_);
         HWND frameHwnd = nullptr;
@@ -3211,7 +4165,11 @@ private:
         int childY = controlY;
         int childWidth = controlWidth;
         int childHeight = controlHeight;
-        if (IsType(control, L"TextBox")) {
+        if (IsType(control, L"ComboBox")) {
+            int dropDownHeight = std::max(control.height, _wtoi(control.option2));
+            childHeight = controlHeight + ScaleForDpi(dropDownHeight, dpi_);
+        }
+        if (IsType(control, L"TextBox") || IsType(control, L"ListBox") || IsType(control, L"ListView") || IsType(control, L"TreeView")) {
             DWORD frameStyle = WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | SS_NOTIFY;
             if (!control.enabled) frameStyle |= WS_DISABLED;
             frameHwnd = CreateWindowExW(
@@ -3260,12 +4218,20 @@ private:
             (control.flags & CF_CHECKED) ? BST_CHECKED : BST_UNCHECKED
         });
         SetWindowSubclass(child, ControlSubclassProc, static_cast<UINT_PTR>(control.id), reinterpret_cast<DWORD_PTR>(this));
-        if (frameHwnd) SetWindowSubclass(frameHwnd, TextBoxFrameSubclassProc, static_cast<UINT_PTR>(control.id), reinterpret_cast<DWORD_PTR>(this));
+        if (frameHwnd) {
+            SetWindowSubclass(frameHwnd,
+                IsType(control, L"ListBox") ? ListBoxFrameSubclassProc
+                    : IsType(control, L"ListView") ? ListViewFrameSubclassProc
+                    : IsType(control, L"TreeView") ? TreeViewFrameSubclassProc
+                    : TextBoxFrameSubclassProc,
+                static_cast<UINT_PTR>(control.id), reinterpret_cast<DWORD_PTR>(this));
+        }
         AttachTooltip(child, control);
         HIMAGELIST imageList = FindImageList(IsType(control, L"ListView") ? control.option2 : control.option1);
-        if (imageList) {
-            if (IsType(control, L"ListView")) ListView_SetImageList(child, imageList, LVSIL_SMALL);
-            else if (IsType(control, L"TreeView")) TreeView_SetImageList(child, imageList, TVSIL_NORMAL);
+        if (IsType(control, L"ListView")) {
+            ListView_SetImageList(child, CreateListViewSizingImageList(control, imageList), LVSIL_SMALL);
+        } else if (imageList) {
+            if (IsType(control, L"TreeView")) TreeView_SetImageList(child, imageList, TVSIL_NORMAL);
             else if (IsType(control, L"TabControl")) TabCtrl_SetImageList(child, imageList);
             else if (IsType(control, L"Header")) Header_SetImageList(child, imageList);
             else if (IsType(control, L"ComboBoxEx")) SendMessageW(child, CBEM_SETIMAGELIST, 0, reinterpret_cast<LPARAM>(imageList));
@@ -3277,6 +4243,26 @@ private:
             RuntimeControl& runtime = runtimeControls_.back();
             ApplyTextBoxFrameRegion(frameHwnd);
             LayoutTextBoxControl(control, runtime);
+            InvalidateRect(frameHwnd, nullptr, FALSE);
+        } else if (IsType(control, L"ListBox")) {
+            RuntimeControl& runtime = runtimeControls_.back();
+            SendMessageW(child, LB_SETITEMHEIGHT, 0, ScaleForDpi(control.listItemHeight, dpi_));
+            LayoutListBoxControl(control, runtime);
+            InvalidateRect(frameHwnd, nullptr, FALSE);
+        } else if (IsType(control, L"ListView")) {
+            RuntimeControl& runtime = runtimeControls_.back();
+            LayoutListViewControl(control, runtime);
+            HWND header = ListView_GetHeader(child);
+            if (header) {
+                SetWindowSubclass(header, ListViewHeaderHeightSubclassProc,
+                    static_cast<UINT_PTR>(control.id), reinterpret_cast<DWORD_PTR>(this));
+                SetWindowPos(child, nullptr, 0, 0, 0, 0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            }
+            InvalidateRect(frameHwnd, nullptr, FALSE);
+        } else if (IsType(control, L"TreeView")) {
+            RuntimeControl& runtime = runtimeControls_.back();
+            LayoutTreeViewControl(control, runtime);
             InvalidateRect(frameHwnd, nullptr, FALSE);
         }
         if ((IsType(control, L"CheckBox") || IsType(control, L"RadioButton") || IsType(control, L"Button")) && (control.flags & CF_CHECKED)) {
@@ -3292,6 +4278,10 @@ private:
             auto rows = DecodeControlRecords(control.data, 2);
             if (rows.empty() && control.text[0]) rows.push_back({ control.text, L"-1" });
             for (const auto& row : rows) SendMessageW(child, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(row[0].c_str()));
+            if (!(control.flags & CF_EDITABLE)) {
+                SendMessageW(child, CB_SETITEMHEIGHT, static_cast<WPARAM>(-1), std::max(16, controlHeight - ScaleForDpi(6, dpi_)));
+                SendMessageW(child, CB_SETITEMHEIGHT, 0, ScaleForDpi(control.listItemHeight, dpi_));
+            }
             SendMessageW(child, CB_SETCURSEL, control.selectedIndex, 0);
         } else if (IsType(control, L"SysLink") && control.data && control.data[0]) {
             std::wstring markup = L"<a href=\\\"";
@@ -3372,6 +4362,9 @@ private:
                 for (int columnIndex = 1; columnIndex < static_cast<int>(cells.size()); ++columnIndex) ListView_SetItemText(child, inserted, columnIndex, const_cast<wchar_t*>(cells[columnIndex].c_str()));
             }
         } else if (IsType(control, L"TreeView")) {
+            SendMessageW(child, TVM_SETBKCOLOR, 0, static_cast<LPARAM>(control.background));
+            SendMessageW(child, TVM_SETTEXTCOLOR, 0, static_cast<LPARAM>(control.foreground));
+            SendMessageW(child, TVM_SETLINECOLOR, 0, static_cast<LPARAM>(control.foreground));
             auto rows = DecodeControlRecords(control.data, 4);
             if (rows.empty() && control.text[0]) rows.push_back({ L"root", L"", control.text, L"-1" });
             std::map<std::wstring, HTREEITEM> insertedItems;
@@ -3392,6 +4385,28 @@ private:
                 TabCtrl_InsertItem(child, index, &item);
             }
             TabCtrl_SetCurSel(child, control.selectedIndex);
+            RECT pageRect = { 0, 0, controlWidth, controlHeight };
+            TabCtrl_AdjustRect(child, FALSE, &pageRect);
+            for (int index = 0; index < static_cast<int>(rows.size()); ++index) {
+                HWND page = CreateWindowExW(
+                    WS_EX_CONTROLPARENT,
+                    L"STATIC",
+                    L"",
+                    WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | SS_WHITERECT,
+                    pageRect.left,
+                    pageRect.top,
+                    std::max(0L, pageRect.right - pageRect.left),
+                    std::max(0L, pageRect.bottom - pageRect.top),
+                    child,
+                    nullptr,
+                    g_instance,
+                    nullptr
+                );
+                if (!page) continue;
+                SetWindowSubclass(page, TabPageSubclassProc,
+                    static_cast<UINT_PTR>(control.id * 1000 + index + 1), reinterpret_cast<DWORD_PTR>(this));
+                tabPages_.push_back({ control.id, rows[index][0], page, pageRect });
+            }
         } else if (IsType(control, L"StatusBar")) {
             auto rows = DecodeControlRecords(control.data, 2);
             if (rows.empty()) rows.push_back({ control.text, L"140" });
@@ -3506,9 +4521,12 @@ private:
             }
         }
         runtimeControls_.clear();
+        tabPages_.clear();
         toolbarCommandOwners_.clear(); toolbarCommandValues_.clear(); nextToolbarCommandId_ = 60000;
         for (auto& imageList : imageLists_) ImageList_Destroy(imageList.second);
         imageLists_.clear();
+        for (auto& imageList : listViewSizingImageLists_) ImageList_Destroy(imageList.second);
+        listViewSizingImageLists_.clear();
         for (HWND tooltip : tooltipWindows_) if (tooltip) DestroyWindow(tooltip);
         tooltipWindows_.clear();
     }
@@ -3689,7 +4707,9 @@ private:
             return 0;
         }
         case WM_DRAWITEM:
-            return PaintOwnerButton(reinterpret_cast<DRAWITEMSTRUCT*>(lParam)) ? TRUE : FALSE;
+            return (PaintOwnerListBox(reinterpret_cast<DRAWITEMSTRUCT*>(lParam))
+                || PaintOwnerComboBox(reinterpret_cast<DRAWITEMSTRUCT*>(lParam))
+                || PaintOwnerButton(reinterpret_cast<DRAWITEMSTRUCT*>(lParam))) ? TRUE : FALSE;
         case WM_NOTIFY: {
             NMHDR* header = reinterpret_cast<NMHDR*>(lParam);
             if (!header) return 0;
@@ -3765,7 +4785,8 @@ private:
         }
         case WM_CTLCOLORSTATIC:
         case WM_CTLCOLORBTN:
-        case WM_CTLCOLOREDIT: {
+        case WM_CTLCOLOREDIT:
+        case WM_CTLCOLORLISTBOX: {
             HDC hdc = reinterpret_cast<HDC>(wParam);
             HWND child = reinterpret_cast<HWND>(lParam);
             int controlId = GetDlgCtrlID(child);
@@ -3773,6 +4794,11 @@ private:
             RuntimeControl* runtime = FindRuntimeControl(controlId);
             if (control) {
                 SetTextColor(hdc, control->foreground);
+                if (message == WM_CTLCOLORSTATIC && control->backgroundTransparent && IsType(*control, L"Label")) {
+                    SetBkMode(hdc, TRANSPARENT);
+                    SetBkColor(hdc, ResolveControlSurroundingColor(*control, child));
+                    return reinterpret_cast<LRESULT>(ResolveControlSurroundingBrush(*control, child));
+                }
                 SetBkColor(hdc, control->background);
             }
             if (runtime && runtime->brush) return reinterpret_cast<LRESULT>(runtime->brush);
@@ -4765,7 +5791,7 @@ function generateControlArray(window: LingWindowModel, windowIndex: number, prog
         : control;
       return generateControlSpec(effectiveControl, id, parent ? controlIds.get(parent.id) || 0 : 0, parent, controlIds, window.background);
     })
-    .join(',\n') || '    { 0, 0, L"", L"", L"", 0, 0, 0, 0, 12, 0, RGB(0, 0, 0), RGB(0, 0, 0), true, L"", L"", L"", 500, L"", L"", L"", 0, 100, 0, 0, 0, L"" }';
+    .join(',\n') || '    { 0, 0, L"", L"", L"", 0, 0, 0, 0, 12, 0, 0, RGB(51, 65, 85), RGB(124, 58, 237), RGB(8, 145, 178), RGB(56, 189, 248), 4, 28, 28, 4, 0, 8, RGB(23, 32, 51), RGB(14, 116, 144), 0, RGB(100, 116, 139), 2, 3, RGB(0, 0, 0), false, RGB(0, 0, 0), true, L"", L"", L"", 500, L"", L"", L"", 0, 100, 0, 0, 0, L"" }';
 
   return `static ControlSpec g_controls_${windowIndex}[] = {
 ${controls}
@@ -4844,7 +5870,36 @@ function generateControlSpec(
   const [option1, option2] = getControlOptions(control, controlIds);
   const flags = generateControlFlags(control);
   const cornerRadius = control.type === 'Button' ? clampInteger(control.properties?.cornerRadius, 6, 0, 100) : 0;
-  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(control.content)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${int(control.fontSize)}, ${cornerRadius}, ${toColorRef(background)}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(events)}" }`;
+  const collectionControl = control.type === 'ListBox' || control.type === 'ComboBox' || control.type === 'ListView';
+  const groupBoxControl = control.type === 'GroupBox';
+  const borderControl = collectionControl || groupBoxControl;
+  const borderVisible = !groupBoxControl || control.properties?.showBorder !== false;
+  const listBorderWidth = borderControl && borderVisible ? clampInteger(control.properties?.borderWidth, 1, 0, 8) : 0;
+  const listBorderColor = controlColorProperty(control, 'borderColor', groupBoxControl || control.type === 'ListView' ? '#64748B' : '#334155');
+  const listSelectionStart = controlColorProperty(control, 'selectionStartColor', '#7C3AED');
+  const listSelectionEnd = controlColorProperty(control, 'selectionEndColor', '#0891B2');
+  const listSelectionBorder = controlColorProperty(control, 'selectionBorderColor', '#38BDF8');
+  const listSelectionCornerRadius = collectionControl ? clampInteger(control.properties?.selectionCornerRadius, 4, 0, 24) : 0;
+  const listItemHeight = collectionControl ? clampInteger(control.properties?.itemHeight, 28, 16, 96) : 28;
+  const listHeaderHeight = control.type === 'ListView' ? clampInteger(control.properties?.headerHeight, 28, 16, 96) : 28;
+  const listContentPadding = control.type === 'ListBox' ? clampInteger(control.properties?.contentPadding, 4, 0, 24) : 4;
+  const listScrollBarVisibility = control.type === 'ListBox'
+    ? control.properties?.scrollBarVisibility === 'visible' ? 1 : control.properties?.scrollBarVisibility === 'hidden' ? 2 : 0
+    : 0;
+  const listScrollBarWidth = control.type === 'ListBox' ? clampInteger(control.properties?.scrollBarWidth, 8, 4, 24) : 8;
+  const listScrollBarTrack = controlColorProperty(control, 'scrollBarTrackColor', '#172033');
+  const listScrollBarThumb = controlColorProperty(control, 'scrollBarThumbColor', '#0E7490');
+  const treeControl = control.type === 'TreeView';
+  const treeBorderWidth = treeControl ? clampInteger(control.properties?.borderWidth, 1, 0, 8) : 0;
+  const treeBorderColor = controlColorProperty(control, 'borderColor', '#64748B');
+  const treeNodeSpacing = treeControl ? clampInteger(control.properties?.nodeSpacing, 2, 0, 24) : 2;
+  const treeNodePadding = treeControl ? clampInteger(control.properties?.nodePadding, 3, 0, 24) : 3;
+  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(control.content)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${int(control.fontSize)}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(events)}" }`;
+}
+
+function controlColorProperty(control: LingControl, key: string, fallback: string): string {
+  const value = control.properties?.[key];
+  return typeof value === 'string' && /^#[0-9a-f]{6}$/iu.test(value) ? value : fallback;
 }
 
 function clampInteger(value: unknown, fallback: number, minimum: number, maximum: number): number {
@@ -4880,7 +5935,12 @@ function findWindowCreatedHandler(window: LingWindowModel, program: LingCppProgr
 }
 
 function getVisibleControls(window: LingWindowModel): LingControl[] {
-  return window.controls.filter(control => control.visibility === 'Visible');
+  return window.controls
+    .filter(control => getEffectiveControlState(window.controls, control.id).visible)
+    .map(control => ({
+      ...control,
+      isEnabled: getEffectiveControlState(window.controls, control.id).enabled
+    }));
 }
 
 function parseControlValue(control: LingControl): number {
@@ -5007,6 +6067,8 @@ function getControlOptions(control: LingControl, controlIds: Map<string, number>
     case 'TextBox': return [stringValue('textAlign'), stringValue('scrollBars')];
     case 'Label': return [stringValue('staticStyle'), stringValue('textAlign')];
     case 'RadioButton': return [stringValue('groupName'), ''];
+    case 'GroupBox': return [stringValue('titleAlign') || 'left', ''];
+    case 'ComboBox': return ['', String(clampInteger(properties.dropDownHeight, 160, 40, 600))];
     case 'ScrollBar':
     case 'FlatScrollBar':
     case 'Pager': return [stringValue('orientation'), ''];

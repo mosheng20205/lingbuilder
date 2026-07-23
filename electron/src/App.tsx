@@ -2700,7 +2700,11 @@ void DisplayStatus() {
   }, []);
 
   const handleClearLogs = useCallback((tab: string) => {
-    if (tab === 'output') {
+    if (tab === 'problems') {
+      setProblems([]);
+      setCompilerProblems([]);
+      setQualityProblems([]);
+    } else if (tab === 'output') {
       setBuildLogs([]);
     } else if (tab === 'debug_logs') {
       setDebugLogs([]);

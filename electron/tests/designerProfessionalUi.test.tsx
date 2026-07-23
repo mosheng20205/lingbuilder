@@ -8,6 +8,16 @@ test('designer window surface and hierarchy root select window properties', asyn
   assert.match(source, /点击窗口或控件节点即可选中/u);
 });
 
+test('designer layout hierarchy supports drag reparenting onto containers and the window root', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /draggable/u);
+  assert.match(source, /application\/x-lingbuilder-control-id/u);
+  assert.match(source, /canDropOnParent/u);
+  assert.match(source, /onReparentControl\(controlId, parentId(?:, containerSlot)?\)/u);
+  assert.match(source, /拖动控件到窗口或容器节点可更换父级/u);
+  assert.match(source, /WINDOW_ROOT_DROP_TARGET/u);
+});
+
 test('designer exposes the complete categorized window event registry instead of a Grid fallback', async () => {
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   assert.match(source, /selectedControlId === null \? \(\s*<WindowEvents/u);
@@ -122,12 +132,25 @@ test('designer exposes an ImageList resource editor and resource-backed control 
 test('designer uses structured collection editors instead of JSON array textareas', async () => {
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   assert.match(source, /StructuredCollectionEditor/u);
-  assert.match(source, /TreeNodeCollectionEditor/u);
+  assert.match(source, /<TreeViewCollectionDialog/u);
   assert.match(source, /<ListViewCollectionDialog/u);
   assert.match(source, /编辑列/u);
   assert.match(source, /编辑数据/u);
+  assert.match(source, /编辑节点/u);
   assert.doesNotMatch(source, /单元格（Tab 分隔）/u);
   assert.doesNotMatch(source, /请输入合法的 JSON 数组/u);
+});
+
+test('TreeView collection dialog manages roots, children, hierarchy and node order', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/TreeViewCollectionDialog.tsx'), 'utf8');
+  assert.match(source, /添加根节点/u);
+  assert.match(source, /添加子节点/u);
+  assert.match(source, /复制节点/u);
+  assert.match(source, /删除节点/u);
+  assert.match(source, /父节点/u);
+  assert.match(source, /moveTreeViewNode/u);
+  assert.match(source, /role="dialog"/u);
+  assert.match(source, /event\.key !== 'Escape'/u);
 });
 
 test('designer renders ListView columns and rows through a dedicated live preview', async () => {
@@ -138,6 +161,35 @@ test('designer renders ListView columns and rows through a dedicated live previe
   assert.match(previewSource, /model\.columns/u);
   assert.match(previewSource, /model\.rows/u);
   assert.match(previewSource, /model\.gridLines/u);
+  assert.match(previewSource, /model\.borderWidth/u);
+  assert.match(previewSource, /model\.headerHeight/u);
+  assert.match(previewSource, /model\.itemHeight/u);
+});
+
+test('designer renders TreeView nodes with a native-color live preview', async () => {
+  const designerSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(designerSource, /<TreeViewDesignerPreview control=\{control\}/u);
+  assert.match(designerSource, /control\.properties\?\.nodes/u);
+  assert.match(designerSource, /control\.background === 'transparent' \? '#1E1E24'/u);
+  assert.match(designerSource, /control\.properties\?\.checkBoxes/u);
+  assert.match(designerSource, /control\.properties\?\.borderWidth/u);
+  assert.match(designerSource, /control\.properties\?\.borderColor/u);
+  assert.match(designerSource, /control\.properties\?\.nodeSpacing/u);
+  assert.match(designerSource, /control\.properties\?\.nodePadding/u);
+});
+
+test('designer renders TabControl with a Win32-style tab strip and page surface', async () => {
+  const designerSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  const previewSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/TabControlDesignerPreview.tsx'), 'utf8');
+  assert.match(designerSource, /<TabControlDesignerPreview control=\{control\}/u);
+  assert.match(previewSource, /data-tab-control-preview="win32"/u);
+  assert.match(previewSource, /role="tablist"/u);
+  assert.match(previewSource, /role="tabpanel"/u);
+  assert.match(previewSource, /onSelectPage\?\.\(tab\.id\)/u);
+  assert.match(designerSource, /页面 HWND/u);
+  assert.match(designerSource, /onSelectTabPage\(node\.control\.id, page\.id\)/u);
+  assert.match(designerSource, /containerSlot: selectedPage\?\.id/u);
+  assert.match(designerSource, /isControlOnSelectedTab/u);
 });
 
 test('ListView collection dialog supports spreadsheet cells, batch paste and responsive row cards', async () => {
@@ -150,7 +202,11 @@ test('ListView collection dialog supports spreadsheet cells, batch paste and res
   assert.match(source, /md:hidden/u);
   assert.match(source, /行 ID 由系统自动维护/u);
   assert.match(source, /第 \$\{index \+ 1\} 列对齐方式/u);
+  assert.match(source, /function ColumnWidthInput/u);
+  assert.match(source, /nextDraft\.trim\(\) === ''/u);
+  assert.match(source, /onBlur=\{\(\) => commitDraft\(draft, true\)\}/u);
   assert.doesNotMatch(source, /value=\{column\.alignment\}\s+disabled/u);
+  assert.doesNotMatch(source, /width: Math\.max\(24, Number\(event\.target\.value\) \|\| 24\)/u);
 });
 
 test('designer exposes dedicated ToolTip and PropertySheet resource editors', async () => {
