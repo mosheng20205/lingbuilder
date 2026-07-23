@@ -2714,8 +2714,50 @@ private:
         return first;
     }
 
+    RuntimeTabPage* FindTabPageByHwnd(HWND hwnd) {
+        for (auto& page : tabPages_) if (page.hwnd == hwnd) return &page;
+        return nullptr;
+    }
+
+    COLORREF ResolveTabBackground(const ControlSpec& control) const {
+        return control.backgroundTransparent ? GetSysColor(COLOR_WINDOW) : control.background;
+    }
+
+    void PaintTabPage(HWND hwnd, HDC hdc) {
+        RuntimeTabPage* page = FindTabPageByHwnd(hwnd);
+        const ControlSpec* control = page ? FindControl(page->tabControlId) : nullptr;
+        RECT clientRect = {};
+        GetClientRect(hwnd, &clientRect);
+        HBRUSH brush = control && !control->backgroundTransparent
+            ? CreateSolidBrush(control->background)
+            : GetSysColorBrush(COLOR_WINDOW);
+        FillRect(hdc, &clientRect, brush);
+        if (control && !control->backgroundTransparent) DeleteObject(brush);
+        if (control) {
+            COLORREF border = BlendColor(ResolveTabBackground(*control), control->foreground, 18);
+            HPEN pen = CreatePen(PS_SOLID, 1, border);
+            HGDIOBJ oldPen = SelectObject(hdc, pen);
+            HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
+            Rectangle(hdc, clientRect.left, clientRect.top, clientRect.right, clientRect.bottom);
+            SelectObject(hdc, oldBrush);
+            SelectObject(hdc, oldPen);
+            DeleteObject(pen);
+        }
+    }
+
     static LRESULT CALLBACK TabPageSubclassProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR subclassId, DWORD_PTR referenceData) {
         LingWindowBase* self = reinterpret_cast<LingWindowBase*>(referenceData);
+        if (self && message == WM_ERASEBKGND) {
+            self->PaintTabPage(hwnd, reinterpret_cast<HDC>(wParam));
+            return 1;
+        }
+        if (self && message == WM_PAINT) {
+            PAINTSTRUCT paint = {};
+            HDC hdc = BeginPaint(hwnd, &paint);
+            self->PaintTabPage(hwnd, hdc);
+            EndPaint(hwnd, &paint);
+            return 0;
+        }
         if (self && (
             message == WM_COMMAND || message == WM_NOTIFY || message == WM_HSCROLL || message == WM_VSCROLL
             || message == WM_DRAWITEM || message == WM_MEASUREITEM || message == WM_COMPAREITEM || message == WM_DELETEITEM
@@ -2736,6 +2778,7 @@ private:
             if (page.tabControlId != tabControl.id) continue;
             ShowWindow(page.hwnd, page.slot == activeSlot ? SW_SHOW : SW_HIDE);
         }
+        InvalidateRect(tabRuntime->hwnd, nullptr, FALSE);
     }
 
     void WireCompositeControls() {
@@ -2811,7 +2854,9 @@ private:
     COLORREF ResolveControlSurroundingColor(const ControlSpec& control, HWND controlHwnd) const {
         HWND parentHwnd = controlHwnd ? GetParent(controlHwnd) : nullptr;
         for (const auto& page : tabPages_) {
-            if (page.hwnd == parentHwnd) return GetSysColor(COLOR_WINDOW);
+            if (page.hwnd != parentHwnd) continue;
+            const ControlSpec* tabControl = FindControl(page.tabControlId);
+            return tabControl ? ResolveTabBackground(*tabControl) : GetSysColor(COLOR_WINDOW);
         }
         if (control.parentId > 0) {
             const ControlSpec* parent = FindControl(control.parentId);
@@ -2823,13 +2868,95 @@ private:
     HBRUSH ResolveControlSurroundingBrush(const ControlSpec& control, HWND controlHwnd) const {
         HWND parentHwnd = controlHwnd ? GetParent(controlHwnd) : nullptr;
         for (const auto& page : tabPages_) {
-            if (page.hwnd == parentHwnd) return GetSysColorBrush(COLOR_WINDOW);
+            if (page.hwnd != parentHwnd) continue;
+            const ControlSpec* tabControl = FindControl(page.tabControlId);
+            if (!tabControl || tabControl->backgroundTransparent) return GetSysColorBrush(COLOR_WINDOW);
+            const RuntimeControl* tabRuntime = FindRuntimeControl(page.tabControlId);
+            return tabRuntime && tabRuntime->brush ? tabRuntime->brush : GetSysColorBrush(COLOR_WINDOW);
         }
         if (control.parentId > 0) {
             const RuntimeControl* parent = FindRuntimeControl(control.parentId);
             if (parent && parent->brush) return parent->brush;
         }
         return windowBrush_;
+    }
+
+    void PaintTabControl(HWND hwnd, HDC hdc, const ControlSpec& control, RuntimeControl& runtime) {
+        RECT clientRect = {};
+        GetClientRect(hwnd, &clientRect);
+        COLORREF pageBackground = ResolveTabBackground(control);
+        COLORREF headerBackground = BlendColor(pageBackground, RGB(0, 0, 0), 8);
+        COLORREF selectedBackground = BlendColor(pageBackground, RGB(255, 255, 255), 7);
+        COLORREF border = BlendColor(pageBackground, control.foreground, 18);
+        COLORREF inactiveForeground = BlendColor(control.foreground, pageBackground, 30);
+        COLORREF accent = RGB(245, 158, 11);
+        HBRUSH headerBrush = CreateSolidBrush(headerBackground);
+        FillRect(hdc, &clientRect, headerBrush);
+        DeleteObject(headerBrush);
+
+        int selectedIndex = TabCtrl_GetCurSel(hwnd);
+        POINT cursor = {};
+        GetCursorPos(&cursor);
+        ScreenToClient(hwnd, &cursor);
+        TCHITTESTINFO hit = { cursor, 0 };
+        int hoveredIndex = PtInRect(&clientRect, cursor) ? TabCtrl_HitTest(hwnd, &hit) : -1;
+        HFONT oldFont = runtime.font ? reinterpret_cast<HFONT>(SelectObject(hdc, runtime.font)) : nullptr;
+        SetBkMode(hdc, TRANSPARENT);
+        HIMAGELIST imageList = TabCtrl_GetImageList(hwnd);
+        int iconWidth = 0;
+        int iconHeight = 0;
+        if (imageList) ImageList_GetIconSize(imageList, &iconWidth, &iconHeight);
+
+        int itemCount = TabCtrl_GetItemCount(hwnd);
+        for (int index = 0; index < itemCount; ++index) {
+            RECT itemRect = {};
+            if (!TabCtrl_GetItemRect(hwnd, index, &itemRect)) continue;
+            bool selected = index == selectedIndex;
+            bool hovered = index == hoveredIndex && !selected;
+            COLORREF itemBackground = selected
+                ? selectedBackground
+                : hovered ? BlendColor(headerBackground, RGB(255, 255, 255), 5) : headerBackground;
+            HBRUSH itemBrush = CreateSolidBrush(itemBackground);
+            FillRect(hdc, &itemRect, itemBrush);
+            DeleteObject(itemBrush);
+            if (index > 0 && !selected) {
+                HPEN dividerPen = CreatePen(PS_SOLID, 1, border);
+                HGDIOBJ oldDivider = SelectObject(hdc, dividerPen);
+                MoveToEx(hdc, itemRect.left, itemRect.top + ScaleForDpi(7, dpi_), nullptr);
+                LineTo(hdc, itemRect.left, itemRect.bottom - ScaleForDpi(7, dpi_));
+                SelectObject(hdc, oldDivider);
+                DeleteObject(dividerPen);
+            }
+
+            wchar_t title[512] = {};
+            TCITEMW tabItem = {};
+            tabItem.mask = TCIF_TEXT | TCIF_IMAGE;
+            tabItem.pszText = title;
+            tabItem.cchTextMax = 512;
+            tabItem.iImage = -1;
+            TabCtrl_GetItem(hwnd, index, &tabItem);
+            int padding = ScaleForDpi(12, dpi_);
+            RECT textRect = itemRect;
+            textRect.left += padding;
+            textRect.right -= padding;
+            if (imageList && tabItem.iImage >= 0) {
+                int iconTop = itemRect.top + (itemRect.bottom - itemRect.top - iconHeight) / 2;
+                ImageList_Draw(imageList, tabItem.iImage, hdc, textRect.left, iconTop, ILD_TRANSPARENT);
+                textRect.left += iconWidth + ScaleForDpi(6, dpi_);
+            }
+            COLORREF textColor = IsWindowEnabled(hwnd)
+                ? (selected ? control.foreground : inactiveForeground)
+                : BlendColor(control.foreground, itemBackground, 55);
+            SetTextColor(hdc, textColor);
+            DrawTextW(hdc, title, -1, &textRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            if (selected) {
+                HBRUSH accentBrush = CreateSolidBrush(accent);
+                RECT accentRect = { itemRect.left + ScaleForDpi(8, dpi_), itemRect.bottom - ScaleForDpi(2, dpi_), itemRect.right - ScaleForDpi(8, dpi_), itemRect.bottom };
+                FillRect(hdc, &accentRect, accentBrush);
+                DeleteObject(accentBrush);
+            }
+        }
+        if (oldFont) SelectObject(hdc, oldFont);
     }
 
     bool PaintOwnerButton(const DRAWITEMSTRUCT* item) {
@@ -3919,6 +4046,28 @@ private:
                     return 0;
                 }
             }
+            if (IsType(*control, L"TabControl")) {
+                if (message == WM_ERASEBKGND) return 1;
+                if (message == WM_PAINT) {
+                    PAINTSTRUCT paint = {};
+                    HDC hdc = BeginPaint(hwnd, &paint);
+                    self->PaintTabControl(hwnd, hdc, *control, *runtime);
+                    EndPaint(hwnd, &paint);
+                    return 0;
+                }
+                if (message == WM_PRINTCLIENT) {
+                    self->PaintTabControl(hwnd, reinterpret_cast<HDC>(wParam), *control, *runtime);
+                    return 0;
+                }
+                if (message == WM_MOUSEMOVE || message == WM_MOUSELEAVE) InvalidateRect(hwnd, nullptr, FALSE);
+                if (message == WM_LBUTTONDOWN || message == WM_LBUTTONUP
+                    || message == WM_KEYDOWN || message == WM_KEYUP
+                    || message == WM_SETFOCUS || message == WM_KILLFOCUS) {
+                    LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    return result;
+                }
+            }
             if (IsType(*control, L"ComboBox") && !(control->flags & CF_EDITABLE)) {
                 if (message == WM_ERASEBKGND) return 1;
                 if (message == WM_NCPAINT) return 0;
@@ -4384,6 +4533,7 @@ private:
                 TCITEMW item = { static_cast<UINT>(TCIF_TEXT | (image >= 0 ? TCIF_IMAGE : 0)), 0, 0, const_cast<wchar_t*>(rows[index][1].c_str()), 0, image };
                 TabCtrl_InsertItem(child, index, &item);
             }
+            SendMessageW(child, TCM_SETPADDING, 0, MAKELPARAM(ScaleForDpi(12, dpi_), ScaleForDpi(4, dpi_)));
             TabCtrl_SetCurSel(child, control.selectedIndex);
             RECT pageRect = { 0, 0, controlWidth, controlHeight };
             TabCtrl_AdjustRect(child, FALSE, &pageRect);
@@ -4392,7 +4542,7 @@ private:
                     WS_EX_CONTROLPARENT,
                     L"STATIC",
                     L"",
-                    WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | SS_WHITERECT,
+                    WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | SS_NOTIFY,
                     pageRect.left,
                     pageRect.top,
                     std::max(0L, pageRect.right - pageRect.left),

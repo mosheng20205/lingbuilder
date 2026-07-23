@@ -574,7 +574,7 @@ test('圆角按钮使用实际父容器背景清理四角而不是固定使用�
   }).files.find(file => file.relativePath === 'main.cpp')!.content;
 
   assert.match(cpp, /COLORREF ResolveControlSurroundingColor\(const ControlSpec& control, HWND controlHwnd\) const/u);
-  assert.match(cpp, /if \(page\.hwnd == parentHwnd\) return GetSysColor\(COLOR_WINDOW\);/u);
+  assert.match(cpp, /return tabControl \? ResolveTabBackground\(\*tabControl\) : GetSysColor\(COLOR_WINDOW\);/u);
   assert.match(cpp, /COLORREF surrounding = ResolveControlSurroundingColor\(\*control, item->hwndItem\);/u);
   assert.match(cpp, /HBRUSH cornerBrush = CreateSolidBrush\(surrounding\);/u);
   assert.doesNotMatch(cpp, /HBRUSH cornerBrush = CreateSolidBrush\(spec_\.background\);/u);
@@ -631,11 +631,13 @@ test('ListView 设计器预览实时消费列、行、模式和网格线属性',
   assert.match(markup, /height:32px/u);
 });
 
-test('选项卡设计器预览显示标签头、选中页和原生浅色页面', () => {
+test('选项卡设计器预览使用控件文字颜色和背景颜色', () => {
   const tabControl = {
     ...createControl('tabs', undefined, 'TabControl'),
     width: 360,
     height: 240,
+    background: '#1e1e24',
+    foreground: '#ffffff',
     properties: {
       tabs: [
         { id: 'general', title: '常规' },
@@ -650,7 +652,11 @@ test('选项卡设计器预览显示标签头、选中页和原生浅色页面',
   assert.match(markup, />常规</u);
   assert.match(markup, /aria-selected="true"[^>]*>.*高级/u);
   assert.match(markup, /role="tabpanel" aria-label="高级"/u);
-  assert.match(markup, /bg-white/u);
+  assert.match(markup, /background-color:#1e1e24/u);
+  assert.match(markup, /color:#ffffff/u);
+  assert.match(markup, /inset 0 -2px #f59e0b/u);
+  assert.match(markup, /max-w-\[220px\]/u);
+  assert.doesNotMatch(markup, /bg-white/u);
 });
 
 test('选项卡页面槽位决定设计器子控件可见性并兼容旧的无槽位控件', () => {
@@ -931,7 +937,8 @@ test('标签页中的透明标签在 Win32 运行时继承实际父容器背景'
   assert.match(cpp, /HBRUSH ResolveControlSurroundingBrush\(const ControlSpec& control, HWND controlHwnd\) const/u);
   assert.match(cpp, /const RuntimeControl\* FindRuntimeControl\(int id\) const/u);
   assert.match(cpp, /const RuntimeControl\* parent = FindRuntimeControl\(control\.parentId\);/u);
-  assert.match(cpp, /if \(page\.hwnd == parentHwnd\) return GetSysColorBrush\(COLOR_WINDOW\);/u);
+  assert.match(cpp, /if \(!tabControl \|\| tabControl->backgroundTransparent\) return GetSysColorBrush\(COLOR_WINDOW\);/u);
+  assert.match(cpp, /return tabControl \? ResolveTabBackground\(\*tabControl\) : GetSysColor\(COLOR_WINDOW\);/u);
   assert.match(cpp, /message == WM_CTLCOLORSTATIC && control->backgroundTransparent && IsType\(\*control, L"Label"\)/u);
   assert.match(cpp, /SetBkMode\(hdc, TRANSPARENT\);/u);
   assert.match(cpp, /ResolveControlSurroundingBrush\(\*control, child\)/u);
@@ -1013,7 +1020,7 @@ test('高级控件生成真实 Win32 类、专属数据和多事件通知', () =
 });
 
 test('选项卡容器槽位、Rebar、Pager 和 UpDown 生成真实父子控件联动', () => {
-  const tab = { ...createControl('tabs', undefined, 'TabControl'), properties: { tabs: [{ id: 'general', title: '常规' }, { id: 'advanced', title: '高级' }], selectedIndex: 0 } };
+  const tab = { ...createControl('tabs', undefined, 'TabControl'), background: '#123456', foreground: '#fedcba', properties: { tabs: [{ id: 'general', title: '常规' }, { id: 'advanced', title: '高级' }], selectedIndex: 0 } };
   const tabChild = { ...createControl('tab-child', 'tabs', 'Button'), containerSlot: 'advanced' };
   const rebar = { ...createControl('rebar', undefined, 'ReBar'), properties: { bands: [{ id: 'main-band', title: '主工具栏', childControl: 'toolbar', width: 260 }] } };
   const toolbar = { ...createControl('toolbar', 'rebar', 'ToolBar'), properties: { buttons: [{ id: 101, title: '新建', style: 'button' }] } };
@@ -1036,6 +1043,16 @@ test('选项卡容器槽位、Rebar、Pager 和 UpDown 生成真实父子控件�
   assert.match(cpp, /ShowWindow\(page\.hwnd, page\.slot == activeSlot \? SW_SHOW : SW_HIDE\)/u);
   assert.match(cpp, /message == WM_DRAWITEM \|\| message == WM_MEASUREITEM/u);
   assert.match(cpp, /SendMessageW\(self->hwnd_, message, wParam, lParam\)/u);
+  assert.match(cpp, /PaintTabControl/u);
+  assert.match(cpp, /ResolveTabBackground/u);
+  assert.match(cpp, /PaintTabPage/u);
+  assert.match(cpp, /COLORREF accent = RGB\(245, 158, 11\);/u);
+  assert.match(cpp, /TCM_SETPADDING/u);
+  assert.doesNotMatch(cpp, /TCS_OWNERDRAWFIXED/u);
+  assert.doesNotMatch(cpp, /TCM_SETITEMSIZE/u);
+  assert.doesNotMatch(cpp, /PaintOwnerTab/u);
+  assert.match(cpp, /WS_CHILD \| WS_CLIPCHILDREN \| WS_CLIPSIBLINGS \| SS_NOTIFY/u);
+  assert.match(cpp, /L"TabControl"[^\n]+RGB\(18, 52, 86\), false, RGB\(254, 220, 186\)/u);
   assert.match(cpp, /L"advanced"/);
   assert.match(cpp, /RB_INSERTBANDW/);
   assert.match(cpp, /PGM_SETCHILD/);
