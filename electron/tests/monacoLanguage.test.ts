@@ -35,6 +35,20 @@ test('standalone Monaco optional workspace symbol API is capability-guarded', as
   assert.match(devScript, /exclusive: true/u);
 });
 
+test('Monaco reports the focused editor group through a current callback ref', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/MonacoCodeEditor.tsx'), 'utf8');
+  assert.match(source, /onFocusEditor\?: \(\) => void/u);
+  assert.match(source, /onDidFocusEditorText\?\.\(\(\) => onFocusEditorRef\.current\?\.\(\)\)/u);
+});
+
+test('Monaco C++ providers resolve live model paths without retaining the mount-time map', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/MonacoCodeEditor.tsx'), 'utf8');
+  assert.match(source, /cppFilePathRegistry\.bind\(owner, modelUri, context\.filePath\)/u);
+  assert.match(source, /cppFilePathRegistry\.release\(cppFilePathOwnerRef\.current\)/u);
+  assert.match(source, /cppFilePathRegistry\.resolve\(model\.uri\.toString\(\)\)/u);
+  assert.doesNotMatch(source, /const cppFilePaths = new Map/u);
+});
+
 test('LingCpp Monaco tokens distinguish enabled module commands and inline native C++', () => {
   const moduleContext: LingCppModuleContext = {
     availableModules: [],

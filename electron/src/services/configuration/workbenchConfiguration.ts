@@ -193,6 +193,15 @@ export interface WorkbenchConfigurationSnapshot {
   diagnostics: ConfigurationDiagnostic[];
 }
 
+export function getWorkbenchConfigurationMutationTarget(
+  snapshot: WorkbenchConfigurationSnapshot | null | undefined,
+  key: WorkbenchConfigurationKey,
+  fallback: ConfigurationTarget = 'user'
+): ConfigurationTarget {
+  const inspection = snapshot?.settings.find(item => item.metadata.key === key)?.inspection;
+  return inspection?.workspaceValue !== undefined ? 'workspace' : fallback;
+}
+
 export interface WorkbenchConfigurationServiceOptions {
   workspaceRoot: string;
   userSettingsPath: string;

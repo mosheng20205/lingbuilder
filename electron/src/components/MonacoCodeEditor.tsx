@@ -42,6 +42,7 @@ import {
   synchronizeMonacoModelValue
 } from '../services/textModel/monacoModelSync';
 import { applyLspRefactor, lspRangeToMonaco, markupToText, normalizeCompletionItems, normalizeLspLocations, previewLspRefactor, requestLsp } from '../services/lsp/lspClient';
+import { MonacoFilePathRegistry } from '../services/lsp/monacoFilePathRegistry';
 
 // Keep the primary editor fully local/offline. Every language used here can
 // share Monaco's core editor worker; no CDN or hidden machine state is needed.
@@ -68,7 +69,7 @@ export interface MonacoCodeEditorHandle {
   captureViewState: () => boolean;
 }
 
-interface MonacoCodeEditorProps {
+export interface MonacoCodeEditorProps {
   sourceCode: string;
   language: string;
   isDarkMode: boolean;
@@ -89,12 +90,13 @@ interface MonacoCodeEditorProps {
   modelIdentity?: TextModelIdentity;
   modelSurface?: string;
   onEditorStateChange?: (state: MonacoEditorState) => void;
+  onFocusEditor?: () => void;
 }
 
 let lingCppProvidersRegistered = false;
 let lingCppTokensProviderDisposable: { dispose: () => void } | undefined;
 let cppProvidersRegistered = false;
-const cppFilePaths = new Map<string, string>();
+const cppFilePathRegistry = new MonacoFilePathRegistry();
 let cppCodeActionCommandId: string | undefined;
 let lingCppDesignerProjectSnapshot: LingWindowProject | undefined;
 let lingCppFilePathSnapshot: string | undefined;
@@ -229,10 +231,14 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
   moduleContext: providedModuleContext,
   modelIdentity: providedModelIdentity,
   modelSurface = 'professional',
-  onEditorStateChange
+  onEditorStateChange,
+  onFocusEditor
 }: MonacoCodeEditorProps, ref) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
+  const cppFilePathOwnerRef = useRef<object>({});
+  const onFocusEditorRef = useRef(onFocusEditor);
+  onFocusEditorRef.current = onFocusEditor;
   const decorationIdsRef = useRef<string[]>([]);
   const debugDecorationIdsRef = useRef<string[]>([]);
   const coverageDecorationIdsRef = useRef<string[]>([]);
@@ -252,6 +258,8 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     surface: modelSurface,
     sourceCode,
     readOnly,
+    filePath,
+    language,
     onCursorPositionChange,
     onEditorStateChange
   });
@@ -263,6 +271,8 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     surface: modelSurface,
     sourceCode,
     readOnly,
+    filePath,
+    language,
     onCursorPositionChange,
     onEditorStateChange
   };
@@ -329,6 +339,23 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     });
   }, [captureBoundViewState, emitEditorState]);
 
+  const syncCppModelFilePath = useCallback((model: WorkbenchTextModel | null | undefined) => {
+    const owner = cppFilePathOwnerRef.current;
+    const context = activeContextRef.current;
+    const modelUri = model?.uri?.toString?.();
+    if (
+      !modelUri
+      || modelUri !== context.uri
+      || mapWorkbenchLanguageToMonaco(context.language) !== 'cpp'
+      || !context.filePath
+    ) {
+      cppFilePathRegistry.release(owner);
+      return false;
+    }
+    cppFilePathRegistry.bind(owner, modelUri, context.filePath);
+    return true;
+  }, []);
+
   const bindCurrentModel = useCallback(() => {
     const editor = editorRef.current;
     const model = editor?.getModel?.() as WorkbenchTextModel | null | undefined;
@@ -342,14 +369,14 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       || previousBoundContext?.modelId !== context.modelId
       || previousBoundContext?.surface !== context.surface;
 
-    const nativeHistoryContext = `${context.modelId}:${language}`;
+    const nativeHistoryContext = `${context.modelId}:${context.language}`;
     const syncResult = synchronizeMonacoModelValue(model, editor, context.sourceCode, {
       // LingCpp has one canonical per-file history shared with beginner mode.
       // A retained Monaco model must not create a second undo entry when it is
       // rebound to a canonical snapshot produced outside the Monaco surface.
-      authoritative: language === 'lingcpp',
+      authoritative: context.language === 'lingcpp',
       readOnly: context.readOnly,
-      resetNativeHistory: language === 'lingcpp'
+      resetNativeHistory: context.language === 'lingcpp'
         && nativeHistoryContextRef.current !== nativeHistoryContext
     });
     if (syncResult !== 'unavailable') nativeHistoryContextRef.current = nativeHistoryContext;
@@ -357,13 +384,14 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     if (!workbenchTextModelService.attachModelIfCurrent(context.token, model)) return false;
     adapterRef.current.bind(editor, model);
     boundContextRef.current = { ...context };
+    syncCppModelFilePath(model);
     if (shouldRestoreSavedView) {
       const savedState = workbenchTextModelService.getViewState(context.identity, context.surface);
       if (savedState) adapterRef.current.restoreViewState(savedState);
     }
     emitEditorState();
     return true;
-  }, [emitEditorState, language]);
+  }, [emitEditorState, syncCppModelFilePath]);
 
   useImperativeHandle(ref, () => ({
     undo: async () => {
@@ -405,8 +433,14 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       stateFrameRef.current = null;
     }
     captureBoundViewState();
+    cppFilePathRegistry.release(cppFilePathOwnerRef.current);
     boundContextRef.current = null;
   }, [captureBoundViewState, modelRecord.uri, modelSurface]);
+
+  useLayoutEffect(() => {
+    syncCppModelFilePath(editorRef.current?.getModel?.());
+    return () => cppFilePathRegistry.release(cppFilePathOwnerRef.current);
+  }, [filePath, language, modelRecord.uri, syncCppModelFilePath]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -421,6 +455,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       window.cancelAnimationFrame(stateFrameRef.current);
       stateFrameRef.current = null;
     }
+    cppFilePathRegistry.release(cppFilePathOwnerRef.current);
     boundContextRef.current = null;
   }, [captureBoundViewState]);
 
@@ -498,7 +533,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       const detail = (event as CustomEvent<{ filePath?: string; blockId?: string; line?: number }>).detail;
       if (!detail || !editorRef.current) return;
       if (filePath && detail.filePath && filePath !== detail.filePath) return;
-      const blocks = getLingCppEventBlockHighlights(sourceCode, designerProject, filePath);
+      const blocks = getLingCppEventBlockHighlights(sourceCode, designerProject, filePath, moduleContext);
       const block = detail.blockId ? blocks.find(item => item.blockId === detail.blockId) : undefined;
       const line = Math.max(1, block?.startLine || detail.line || 1);
       editorRef.current.revealLineInCenter(line);
@@ -525,7 +560,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       window.removeEventListener('lingcpp-reveal-block', handleRevealBlock);
       window.removeEventListener('lingcpp-format-document', handleFormatDocument);
     };
-  }, [sourceCode, designerProject, filePath, onRevealReadableBlock]);
+  }, [sourceCode, designerProject, filePath, moduleContext, onRevealReadableBlock]);
 
   const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
@@ -533,7 +568,6 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     injectLingCppEditorStyles();
     bindCurrentModel();
     window.dispatchEvent(new Event('lingbuilder-debug-breakpoints-request'));
-    if (filePath) cppFilePaths.set(editor.getModel()?.uri?.toString(), filePath);
     const editorDomNode = editor.getDomNode?.();
     const handleFontWheel = (event: WheelEvent) => {
       if (!onFontSizeChange || !(event.ctrlKey || event.metaKey)) return;
@@ -544,10 +578,12 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     editorDomNode?.addEventListener('wheel', handleFontWheel, { passive: false });
     editor.onDidDispose?.(() => {
       editorDomNode?.removeEventListener('wheel', handleFontWheel);
+      cppFilePathRegistry.release(cppFilePathOwnerRef.current);
     });
     editor.onDidChangeCursorSelection?.(scheduleStateUpdate);
     editor.onDidScrollChange?.(scheduleStateUpdate);
     editor.onDidChangeModelContent?.(scheduleStateUpdate);
+    editor.onDidFocusEditorText?.(() => onFocusEditorRef.current?.());
     editor.onMouseDown?.((event: any) => {
       if (!filePath || language !== 'lingcpp' || event.target?.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return;
       const line = event.target?.position?.lineNumber;
@@ -556,6 +592,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       }));
     });
     editor.onDidChangeModel?.(() => {
+      cppFilePathRegistry.release(cppFilePathOwnerRef.current);
       window.setTimeout(() => {
         bindCurrentModel();
         scheduleStateUpdate();
@@ -687,7 +724,8 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
           const bindings = getLingCppDesignerBindings(
             model.getValue(),
             lingCppDesignerProjectSnapshot,
-            lingCppFilePathSnapshot
+            lingCppFilePathSnapshot,
+            lingCppModuleContextSnapshot
           );
           return {
             lenses: bindings.map(binding => ({
@@ -712,7 +750,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
 
     if (!cppProvidersRegistered) {
       cppProvidersRegistered = true;
-      const pathFor = (model: any) => cppFilePaths.get(model.uri.toString());
+      const pathFor = (model: any) => cppFilePathRegistry.resolve(model.uri.toString());
       const cancellation = (token: any) => {
         const controller = new AbortController();
         token?.onCancellationRequested?.(() => controller.abort());
@@ -952,7 +990,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
 
     monaco.editor.setModelMarkers(model, 'lingcpp', markers);
 
-    const bindings = getLingCppDesignerBindings(sourceCode, designerProject, filePath);
+    const bindings = getLingCppDesignerBindings(sourceCode, designerProject, filePath, moduleContext);
     const bindingDecorations = bindings.map(binding => ({
       range: new monaco.Range(Math.max(1, binding.line), 1, Math.max(1, binding.line), 1),
       options: {
@@ -967,7 +1005,8 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       sourceCode,
       designerProject,
       filePath,
-      readingMode
+      readingMode,
+      moduleContext
     );
 
     const readingDecorations = readingMode === 'off' ? [] : buildReadingDecorations(
@@ -976,6 +1015,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       designerProject,
       filePath,
       readingMode,
+      moduleContext,
       focusedBlockId
     );
 
@@ -1115,10 +1155,11 @@ function buildReadingDecorations(
   designerProject: LingWindowProject | undefined,
   filePath: string | undefined,
   readingMode: LingCppReadingMode,
+  moduleContext: LingCppModuleContext | undefined,
   focusedBlockId?: string
 ): any[] {
-  const highlights = getLingCppEventBlockHighlights(sourceCode, designerProject, filePath);
-  const hints = getLingCppInlineHints(sourceCode, designerProject, filePath, readingMode);
+  const highlights = getLingCppEventBlockHighlights(sourceCode, designerProject, filePath, moduleContext);
+  const hints = getLingCppInlineHints(sourceCode, designerProject, filePath, readingMode, moduleContext);
   const lineCount = sourceCode.split(/\r?\n/).length;
   const decorations: any[] = [];
 
@@ -1181,9 +1222,15 @@ function buildStructureLabelDecorations(
   sourceCode: string,
   designerProject: LingWindowProject | undefined,
   filePath: string | undefined,
-  readingMode: LingCppReadingMode
+  readingMode: LingCppReadingMode,
+  moduleContext: LingCppModuleContext | undefined
 ): any[] {
-  const structuredRows = getLingCppStructuredReadingRows(sourceCode, designerProject, filePath);
+  const structuredRows = getLingCppStructuredReadingRows(
+    sourceCode,
+    designerProject,
+    filePath,
+    moduleContext
+  );
   const lineCount = sourceCode.split(/\r?\n/).length;
 
   return structuredRows.map(row => {

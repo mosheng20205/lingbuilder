@@ -11,14 +11,36 @@ import {
   getPrimaryWin32ControlEvent,
   getWin32ControlDefinition
 } from './win32ControlRegistry';
+import { getWindowEventDefinition } from './windowEventRegistry';
 
 export const WINDOW_DESIGNER_AUTOSAVE_KEY = 'lingbuilder.windowDesigner.autosave.v1';
 export const WINDOW_DESIGNER_PROJECT_UPDATED = 'window-designer:project-updated';
+export const WINDOW_DESIGNER_DIRTY_STATE_CHANGED = 'window-designer:dirty-state-changed';
+
+export const DESIGNER_TITLE_BAR_HEIGHT = 28;
+export const DESIGNER_MENU_BAR_HEIGHT = 24;
+export const DEFAULT_WINDOW_TITLE_BAR_BACKGROUND = '#2D2D30';
+export const DEFAULT_WINDOW_TITLE_BAR_FOREGROUND = '#CBD5E1';
+export const DEFAULT_WINDOW_CORNER_STYLE = 'rounded' as const;
+export const DEFAULT_WINDOW_ICON_STYLE = 'lingbuilder' as const;
 
 export interface PersistedWindowDesignerState {
   project: LingWindowProject;
   activeWindowId: string;
   selectedControlId: string | null;
+}
+
+export interface WindowDesignerDirtyStateDetail {
+  projectId: string;
+  isDirty: boolean;
+  state: PersistedWindowDesignerState;
+  source: 'designer';
+}
+
+export interface PrimaryDesignerEventBinding {
+  eventName: string;
+  handlerName: string;
+  menuEventKey?: string;
 }
 
 const EVENT_NAME_MAP: Record<string, string> = {
@@ -31,6 +53,7 @@ const EVENT_NAME_MAP: Record<string, string> = {
   MouseEnter: '鼠标移入',
   MouseLeave: '鼠标移出',
   MouseDown: '鼠标按下',
+  Select: '选择',
   Loaded: '加载完成',
   GotFocus: '获得焦点',
   LostFocus: '失去焦点'
@@ -61,17 +84,62 @@ const EPL_EVENT_SUFFIX_MAP: Record<string, string> = {
   MouseEnter: '鼠标移入',
   MouseLeave: '鼠标移出',
   MouseDown: '鼠标被按下',
+  Select: '被选择',
   Loaded: '创建完毕',
   GotFocus: '获得焦点',
   LostFocus: '失去焦点'
 };
 
 export function getEplEventSuffix(eventName: string): string {
-  return EPL_EVENT_SUFFIX_MAP[eventName] || EVENT_NAME_MAP[eventName] || eventName;
+  return getWindowEventDefinition(eventName)?.handlerSuffix || EPL_EVENT_SUFFIX_MAP[eventName] || EVENT_NAME_MAP[eventName] || eventName;
 }
 
 export function getPrimaryEventNameForType(type: LingControlType): string {
   return getPrimaryWin32ControlEvent(type)?.name || getEventsForType(type)[0]?.name || 'Loaded';
+}
+
+export function hasDesignerWindowMenu(window: Pick<LingWindowModel, 'menuItems'>): boolean {
+  return Boolean(window.menuItems?.split(',').some(item => item.trim()));
+}
+
+export function getDesignerWindowContentOffset(window: Pick<LingWindowModel, 'menuItems'>): number {
+  return DESIGNER_TITLE_BAR_HEIGHT + (hasDesignerWindowMenu(window) ? DESIGNER_MENU_BAR_HEIGHT : 0);
+}
+
+export function getPrimaryDesignerEventBinding(
+  control: LingControl,
+  window?: LingWindowModel
+): PrimaryDesignerEventBinding {
+  const eventName = getPrimaryEventNameForType(control.type);
+  const existingControlHandler = control.events?.[eventName]?.trim();
+
+  if (control.id === '__window_menu_bar__') {
+    return {
+      eventName: 'Select',
+      handlerName: window?.menuEvents?.Select?.trim()
+        || existingControlHandler
+        || `_${window?.className || control.name}_窗口菜单被选择`,
+      menuEventKey: 'Select'
+    };
+  }
+
+  const menuItemMatch = /^__window_menu_item_(\d+)__$/.exec(control.id);
+  if (menuItemMatch) {
+    const itemIndex = Number.parseInt(menuItemMatch[1], 10);
+    const menuEventKey = `Item_${itemIndex}`;
+    return {
+      eventName: 'Select',
+      handlerName: window?.menuEvents?.[menuEventKey]?.trim()
+        || control.events?.Select?.trim()
+        || `_${window?.className || '窗口'}_${control.name}_被选择`,
+      menuEventKey
+    };
+  }
+
+  return {
+    eventName,
+    handlerName: existingControlHandler || getEplEventHandlerName(control.name, eventName)
+  };
 }
 
 export function getEplEventHandlerName(controlName: string, eventName: string): string {
@@ -90,6 +158,7 @@ export function getEventsForType(type: LingControlType): LingDesignerEventInfo[]
   }
   switch (type as any) {
     case 'MenuBar':
+    case 'MenuItem':
       return [
         { name: 'Select', label: '菜单项被选择 (Select)', desc: '点击或选择该菜单的任意子菜单项时触发' }
       ];
@@ -159,6 +228,10 @@ export function createBlankWindow(index: number): LingWindowModel {
     width: 700,
     height: 420,
     background: '#1E1E24',
+    titleBarBackground: DEFAULT_WINDOW_TITLE_BAR_BACKGROUND,
+    titleBarForeground: DEFAULT_WINDOW_TITLE_BAR_FOREGROUND,
+    cornerStyle: DEFAULT_WINDOW_CORNER_STYLE,
+    iconStyle: DEFAULT_WINDOW_ICON_STYLE,
     description: '可通过拖拽控件、绑定中文事件并实时生成 C++ 类定义。',
     openPlacement: 'default',
     controls: [
@@ -518,9 +591,17 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       controlsChanged = true;
       return { ...control, properties: createDefaultControlProperties(control.type, control.content) };
     });
-    if (!controlsChanged) return window;
+    const appearanceChanged = !window.titleBarBackground || !window.titleBarForeground || !window.cornerStyle || !window.iconStyle;
+    if (!controlsChanged && !appearanceChanged) return window;
     projectChanged = true;
-    return { ...window, controls };
+    return {
+      ...window,
+      titleBarBackground: window.titleBarBackground || DEFAULT_WINDOW_TITLE_BAR_BACKGROUND,
+      titleBarForeground: window.titleBarForeground || DEFAULT_WINDOW_TITLE_BAR_FOREGROUND,
+      cornerStyle: window.cornerStyle || DEFAULT_WINDOW_CORNER_STYLE,
+      iconStyle: window.iconStyle || DEFAULT_WINDOW_ICON_STYLE,
+      controls
+    };
   });
   const project = projectChanged ? { ...sourceProject, schemaVersion: 2 as const, resources: sourceProject.resources || [], windows: normalizedWindows } : sourceProject;
   const activeWindowId = project.windows.some(window => window.id === state?.activeWindowId)
@@ -568,6 +649,17 @@ export function notifyWindowDesignerProjectUpdated(state: PersistedWindowDesigne
   }));
 }
 
+export function notifyWindowDesignerDirtyStateChanged(
+  detail: WindowDesignerDirtyStateDetail
+): WindowDesignerDirtyStateDetail {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent<WindowDesignerDirtyStateDetail>(WINDOW_DESIGNER_DIRTY_STATE_CHANGED, {
+      detail
+    }));
+  }
+  return detail;
+}
+
 export function saveWindowDesignerState(
   state: PersistedWindowDesignerState,
   options: { notify?: boolean } = {}
@@ -595,7 +687,7 @@ export function getLingWindowSourceFileName(windowFileName?: string, windowClass
 
 export function generateWindowXml(window: LingWindowModel): string {
   let xml = `<!-- 可视化中文界面布局结构定义 (${window.fileName}) -->\n`;
-  xml += `<主窗口 名称="${window.className}" 标题="${window.title}" 宽度="${window.width}" 高度="${window.height}" 背景颜色="${window.background}" 控件对齐="绝对坐标">\n`;
+  xml += `<主窗口 名称="${window.className}" 标题="${window.title}" 宽度="${window.width}" 高度="${window.height}" 背景颜色="${window.background}" 标题栏颜色="${window.titleBarBackground || DEFAULT_WINDOW_TITLE_BAR_BACKGROUND}" 标题文字颜色="${window.titleBarForeground || DEFAULT_WINDOW_TITLE_BAR_FOREGROUND}" 窗口圆角="${window.cornerStyle || DEFAULT_WINDOW_CORNER_STYLE}" 窗口图标="${window.iconStyle || DEFAULT_WINDOW_ICON_STYLE}" 控件对齐="绝对坐标">\n`;
   xml += `    <网格布局 容器边距="0">\n`;
 
   window.controls.forEach(control => {

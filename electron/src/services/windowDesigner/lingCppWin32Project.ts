@@ -13,6 +13,7 @@ import {
 import { InstalledModule } from '../modules/types';
 import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from '../modules/targetResolver';
 import { getWin32ControlDefinition, WIN32_CONTROL_DEFINITIONS } from './win32ControlRegistry';
+import { getWindowEventHandlerName } from './windowEventRegistry';
 
 export interface LingCppNativeProjectFile {
   relativePath: string;
@@ -59,9 +60,9 @@ export function generateLingCppNativeWin32Project(
   project: LingWindowProject,
   options: GenerateLingCppNativeWin32ProjectOptions = {}
 ): GeneratedLingCppNativeProject {
-  const selectedWindow = project.windows.find(window => window.id === options.activeWindowId) || project.windows[0];
   const sourceCode = options.lingCppSourceCode || '';
   const parseResult = parseLingCpp(sourceCode);
+  const selectedWindow = resolveNativeWindowForSource(project, options, parseResult.program);
   const enabledModules = options.enabledModules || [];
   const sourceFilePath = options.lingCppSourceFilePath || getLingWindowSourceFileName(selectedWindow.fileName, selectedWindow.className);
   const mainCppContent = generateMainCpp(project, selectedWindow, parseResult.ast, enabledModules);
@@ -78,11 +79,21 @@ export function generateLingCppNativeWin32Project(
     return [`窗口“${window.title}”中的控件“${control.name}”需要启用模块 ${definition.moduleId}；控件已保留，未静默降级。`];
   }));
   const resourceDiagnostics = validateDesignerResources(project);
+  const requestedWindow = project.windows.find(window => window.id === options.activeWindowId);
+  const sourceWindowSelectionDiagnostic = requestedWindow && requestedWindow.id !== selectedWindow.id
+    ? [`活动源码属于窗口“${selectedWindow.title}”，已忽略过期的设计器窗口“${requestedWindow.title}”。`]
+    : [];
+  const sourceClassNames = new Set(parseResult.program.classes.map(item => item.name));
+  const sourceClassMismatchDiagnostic = sourceCode.trim() && !sourceClassNames.has(selectedWindow.className)
+    ? [`当前源码未定义设计器窗口类“${selectedWindow.className}”；请同步窗口类名与 .lcpp 文件后再构建。`]
+    : [];
 
   return {
     selectedWindow,
     diagnostics: [
       ...parseResult.diagnostics.map(diagnostic => `第 ${diagnostic.line} 行：${diagnostic.message}`),
+      ...sourceWindowSelectionDiagnostic,
+      ...sourceClassMismatchDiagnostic,
       ...moduleTargetDiagnostics,
       ...missingControlModuleDiagnostics,
       ...resourceDiagnostics
@@ -120,6 +131,30 @@ export function generateLingCppNativeWin32Project(
       }
     ]
   };
+}
+
+function resolveNativeWindowForSource(
+  project: LingWindowProject,
+  options: GenerateLingCppNativeWin32ProjectOptions,
+  program: LingCppProgram
+): LingWindowModel {
+  const normalizedSourceName = options.lingCppSourceFilePath
+    ?.replace(/\\/g, '/')
+    .split('/')
+    .pop()
+    ?.toLocaleLowerCase();
+  if (normalizedSourceName) {
+    const fileMatchedWindow = project.windows.find(window =>
+      getLingWindowSourceFileName(window.fileName, window.className).toLocaleLowerCase() === normalizedSourceName
+    );
+    if (fileMatchedWindow) return fileMatchedWindow;
+  }
+
+  const classNames = new Set(program.classes.map(item => item.name));
+  const classMatchedWindows = project.windows.filter(window => classNames.has(window.className));
+  if (classMatchedWindows.length === 1) return classMatchedWindows[0];
+
+  return project.windows.find(window => window.id === options.activeWindowId) || project.windows[0];
 }
 
 function validateDesignerResources(project: LingWindowProject): string[] {
@@ -177,7 +212,7 @@ function generateMainCpp(
   const imageListSpecs = generateImageListSpecs(project);
   const propertySheetSpecs = generatePropertySheetSpecs(project);
   const windowSpecs = project.windows
-    .map((window, index) => generateWindowSpec(window, index))
+    .map((window, index) => generateWindowSpec(window, index, program))
     .join(',\n');
   const classDefinitions = project.windows
     .map((window, index) => generateWindowClass(window, index, program, enabledModules, project.resources || []))
@@ -209,6 +244,7 @@ ${moduleFeatureDefines}
 #include <windows.h>
 #include <commctrl.h>
 #include <commdlg.h>
+#include <shellapi.h>
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <richedit.h>
@@ -290,6 +326,61 @@ static bool DrawAntiAliasedRoundedRectangle(HDC hdc, const RECT& rect, int radiu
     return true;
 }
 
+typedef HRESULT (WINAPI* DwmSetWindowAttributeFunction)(HWND, DWORD, LPCVOID, DWORD);
+
+static DwmSetWindowAttributeFunction ResolveDwmSetWindowAttribute() {
+    static HMODULE module = LoadLibraryW(L"dwmapi.dll");
+    static DwmSetWindowAttributeFunction function = module
+        ? reinterpret_cast<DwmSetWindowAttributeFunction>(GetProcAddress(module, "DwmSetWindowAttribute"))
+        : nullptr;
+    return function;
+}
+
+static HICON CreateLingBuilderWindowIcon(int size) {
+    size = std::max(16, size);
+    BITMAPV5HEADER header = {};
+    header.bV5Size = sizeof(header);
+    header.bV5Width = size;
+    header.bV5Height = -size;
+    header.bV5Planes = 1;
+    header.bV5BitCount = 32;
+    header.bV5Compression = BI_BITFIELDS;
+    header.bV5RedMask = 0x00FF0000;
+    header.bV5GreenMask = 0x0000FF00;
+    header.bV5BlueMask = 0x000000FF;
+    header.bV5AlphaMask = 0xFF000000;
+    void* rawPixels = nullptr;
+    HDC screen = GetDC(nullptr);
+    HBITMAP color = CreateDIBSection(screen, reinterpret_cast<BITMAPINFO*>(&header), DIB_RGB_COLORS, &rawPixels, nullptr, 0);
+    if (screen) ReleaseDC(nullptr, screen);
+    if (!color || !rawPixels) { if (color) DeleteObject(color); return nullptr; }
+    auto* pixels = static_cast<std::uint32_t*>(rawPixels);
+    std::fill(pixels, pixels + size * size, 0u);
+    auto put = [pixels, size](int x, int y, std::uint32_t argb) {
+        if (x >= 0 && y >= 0 && x < size && y < size) pixels[y * size + x] = argb;
+    };
+    int left = std::max(2, size / 8);
+    int top = std::max(2, size / 7);
+    int right = size - left - 1;
+    int bottom = size - std::max(5, size / 4);
+    int stroke = std::max(2, size / 10);
+    for (int y = top; y <= bottom; ++y) for (int x = left; x <= right; ++x) {
+        bool border = x < left + stroke || x > right - stroke || y < top + stroke || y > bottom - stroke;
+        put(x, y, border ? 0xFFFFB000u : 0xFF1F2937u);
+    }
+    int center = size / 2;
+    for (int y = bottom + 1; y < std::min(size, bottom + 1 + stroke); ++y)
+        for (int x = center - stroke / 2; x <= center + stroke / 2; ++x) put(x, y, 0xFFFFB000u);
+    for (int y = std::min(size - 1, bottom + stroke); y < std::min(size, bottom + stroke * 2); ++y)
+        for (int x = center - size / 5; x <= center + size / 5; ++x) put(x, y, 0xFFFFB000u);
+    HBITMAP mask = CreateBitmap(size, size, 1, 1, nullptr);
+    ICONINFO info = { TRUE, 0, 0, mask, color };
+    HICON icon = CreateIconIndirect(&info);
+    if (mask) DeleteObject(mask);
+    DeleteObject(color);
+    return icon;
+}
+
 struct ControlSpec {
     int id;
     int parentId;
@@ -356,12 +447,17 @@ struct WindowSpec {
     int width;
     int height;
     COLORREF background;
+    COLORREF titleBarBackground;
+    COLORREF titleBarForeground;
+    int cornerPreference;
+    const wchar_t* iconStyle;
     const wchar_t* openPlacement;
     int openX;
     int openY;
     const ControlSpec* controls;
     int controlCount;
     const wchar_t* menuItems;
+    const wchar_t* events;
 };
 
 struct RuntimeControl {
@@ -438,6 +534,22 @@ static bool IsType(const ControlSpec& control, const wchar_t* type) {
 static std::wstring GetEventHandler(const ControlSpec& control, const wchar_t* eventName) {
     if (!control.events || !eventName) return L"";
     std::wstring source(control.events);
+    std::wstring prefix(eventName);
+    prefix += L"=";
+    size_t start = 0;
+    while (start < source.size()) {
+        size_t end = source.find(L'\\n', start);
+        std::wstring row = source.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start);
+        if (row.rfind(prefix, 0) == 0) return row.substr(prefix.size());
+        if (end == std::wstring::npos) break;
+        start = end + 1;
+    }
+    return L"";
+}
+
+static std::wstring GetWindowEventHandler(const WindowSpec& window, const wchar_t* eventName) {
+    if (!window.events || !eventName) return L"";
+    std::wstring source(window.events);
     std::wstring prefix(eventName);
     prefix += L"=";
     size_t start = 0;
@@ -736,6 +848,7 @@ public:
         );
 
         if (!hwnd_) return nullptr;
+        ApplyWindowAppearance();
         ShowWindow(hwnd_, showCommand);
         UpdateWindow(hwnd_);
         SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
@@ -754,6 +867,46 @@ public:
         DestroyControls(); hwnd_ = nullptr;
     }
 
+    static LingWindowBase* FromMessageWindow(HWND messageWindow) {
+        if (!messageWindow) return nullptr;
+        HWND root = GetAncestor(messageWindow, GA_ROOT);
+        if (!root) root = messageWindow;
+        return reinterpret_cast<LingWindowBase*>(GetWindowLongPtrW(root, GWLP_USERDATA));
+    }
+
+    bool PreTranslateKeyboardMessage(const MSG& message) {
+        const wchar_t* eventName = nullptr;
+        if (message.message == WM_KEYDOWN || message.message == WM_SYSKEYDOWN) eventName = L"KeyDown";
+        else if (message.message == WM_KEYUP || message.message == WM_SYSKEYUP) eventName = L"KeyUp";
+        else if (message.message == WM_CHAR || message.message == WM_SYSCHAR) eventName = L"TextInput";
+        if (!eventName || GetWindowEventHandler(spec_, eventName).empty()) return false;
+
+        eventKeyCode_ = static_cast<int>(message.wParam);
+        eventCtrlDown_ = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+        eventShiftDown_ = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+        eventAltDown_ = (GetKeyState(VK_MENU) & 0x8000) != 0;
+        eventCharacter_.clear();
+
+        if (message.message == WM_CHAR || message.message == WM_SYSCHAR) {
+            wchar_t character = static_cast<wchar_t>(message.wParam);
+            if (character >= 0xD800 && character <= 0xDBFF) {
+                pendingHighSurrogate_ = character;
+                return false;
+            }
+            if (pendingHighSurrogate_) {
+                if (character >= 0xDC00 && character <= 0xDFFF) eventCharacter_.push_back(pendingHighSurrogate_);
+                pendingHighSurrogate_ = 0;
+            }
+            eventCharacter_.push_back(character);
+        }
+
+        keyboardEventActive_ = true;
+        keyboardHandled_ = false;
+        DispatchWindowEvent(eventName);
+        keyboardEventActive_ = false;
+        return keyboardHandled_;
+    }
+
 protected:
     const WindowSpec& spec_;
     HWND hwnd_;
@@ -761,7 +914,32 @@ protected:
     std::vector<RuntimeControl> runtimeControls_;
     std::map<std::wstring, HIMAGELIST> imageLists_;
     HBRUSH windowBrush_;
+    HICON largeWindowIcon_ = nullptr;
+    HICON smallWindowIcon_ = nullptr;
+    bool ownsWindowIcons_ = false;
     UINT dpi_;
+    bool closingEventActive_ = false;
+    bool closingCancelled_ = false;
+    bool keyboardEventActive_ = false;
+    bool keyboardHandled_ = false;
+    bool closedDispatched_ = false;
+    bool active_ = false;
+    bool visible_ = false;
+    bool sizeBaselineReady_ = false;
+    bool moveBaselineReady_ = false;
+    bool windowStateBaselineReady_ = false;
+    int eventWidth_ = 0;
+    int eventHeight_ = 0;
+    int eventX_ = 0;
+    int eventY_ = 0;
+    int windowState_ = 0;
+    int eventKeyCode_ = 0;
+    bool eventCtrlDown_ = false;
+    bool eventShiftDown_ = false;
+    bool eventAltDown_ = false;
+    std::wstring eventCharacter_;
+    wchar_t pendingHighSurrogate_ = 0;
+    std::vector<std::wstring> droppedFiles_;
     HINTERNET wsSession_;
     HINTERNET wsConnect_;
     HINTERNET wsRequest_;
@@ -813,7 +991,14 @@ protected:
     std::map<int, std::unique_ptr<EdgeViewInstance>> edgeViews_;
     std::wstring edgeViewGlobalProxy_;
 
-    virtual void OnWindowCreated() {}
+    virtual void OnWindowCreated() { DispatchWindowEvent(L"Loaded"); }
+    virtual void DispatchWindowEvent(const wchar_t* eventName) {
+        std::wstring handler = GetWindowEventHandler(spec_, eventName);
+        if (handler.empty()) return;
+        std::wstring message = L"窗口事件未绑定到中文处理器：";
+        message += handler;
+        调试输出(message.c_str());
+    }
     virtual void DispatchDesignerResourceEvent(const wchar_t*, const wchar_t*) {}
 
     virtual void DispatchEdgeViewEvent(const wchar_t* handler, int instanceId, const wchar_t* eventName, const wchar_t* data) {
@@ -1875,6 +2060,36 @@ protected:
         return 窗口_打开(windowName, placement, x, y, hasCustomPosition);
     }
 
+    bool 窗口_取消关闭() {
+        if (!closingEventActive_) return false;
+        closingCancelled_ = true;
+        return true;
+    }
+    int 窗口_取事件宽度() const { return eventWidth_; }
+    int 窗口_取事件高度() const { return eventHeight_; }
+    int 窗口_取事件横坐标() const { return eventX_; }
+    int 窗口_取事件纵坐标() const { return eventY_; }
+    bool 窗口_取是否激活() const { return active_; }
+    bool 窗口_取是否可见() const { return hwnd_ && IsWindowVisible(hwnd_) != FALSE; }
+    int 窗口_取当前状态() const { return windowState_; }
+    int 窗口_取事件键码() const { return eventKeyCode_; }
+    const wchar_t* 窗口_取事件字符() const { return eventCharacter_.c_str(); }
+    bool 窗口_取Ctrl键状态() const { return eventCtrlDown_; }
+    bool 窗口_取Shift键状态() const { return eventShiftDown_; }
+    bool 窗口_取Alt键状态() const { return eventAltDown_; }
+    bool 窗口_标记按键已处理() {
+        if (!keyboardEventActive_) return false;
+        keyboardHandled_ = true;
+        return true;
+    }
+    int 窗口_取事件DPI() const { return static_cast<int>(dpi_); }
+    int 窗口_取拖入文件数量() const { return static_cast<int>(droppedFiles_.size()); }
+    const wchar_t* 窗口_取拖入文件(int index) const {
+        return index >= 0 && index < static_cast<int>(droppedFiles_.size())
+            ? droppedFiles_[static_cast<size_t>(index)].c_str()
+            : L"";
+    }
+
     bool 控件_设置文本(const wchar_t* controlName, const wchar_t* text) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); if (!runtime) return false;
         return SetWindowTextW(runtime->hwnd, text ? text : L"") == TRUE;
@@ -2451,6 +2666,108 @@ private:
         return true;
     }
 
+    LRESULT PaintListViewHeader(const ControlSpec& control, NMCUSTOMDRAW* draw) {
+        if (!draw) return CDRF_DODEFAULT;
+        if (draw->dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
+        if (draw->dwDrawStage == CDDS_POSTPAINT) {
+            RECT clientRect = {};
+            if (!GetClientRect(draw->hdr.hwndFrom, &clientRect)) return CDRF_DODEFAULT;
+            int paintedRight = clientRect.left;
+            int itemCount = Header_GetItemCount(draw->hdr.hwndFrom);
+            if (itemCount > 0) {
+                RECT lastItemRect = {};
+                if (Header_GetItemRect(draw->hdr.hwndFrom, itemCount - 1, &lastItemRect)) {
+                    paintedRight = (std::min)(clientRect.right, lastItemRect.right);
+                }
+            }
+            if (paintedRight < clientRect.right) {
+                COLORREF background = BlendColor(control.background, RGB(255, 255, 255), 12);
+                COLORREF border = BlendColor(control.background, RGB(255, 255, 255), 24);
+                RECT trailingRect = { paintedRight, clientRect.top, clientRect.right, clientRect.bottom };
+                HBRUSH brush = CreateSolidBrush(background);
+                FillRect(draw->hdc, &trailingRect, brush);
+                DeleteObject(brush);
+                HPEN borderPen = CreatePen(PS_SOLID, 1, border);
+                HGDIOBJ oldPen = SelectObject(draw->hdc, borderPen);
+                MoveToEx(draw->hdc, trailingRect.left, trailingRect.bottom - 1, nullptr);
+                LineTo(draw->hdc, trailingRect.right, trailingRect.bottom - 1);
+                SelectObject(draw->hdc, oldPen);
+                DeleteObject(borderPen);
+            }
+            return CDRF_DODEFAULT;
+        }
+        if (draw->dwDrawStage != CDDS_ITEMPREPAINT) return CDRF_DODEFAULT;
+        wchar_t text[512] = {};
+        HDITEMW item = {};
+        item.mask = HDI_TEXT | HDI_FORMAT;
+        item.pszText = text;
+        item.cchTextMax = 512;
+        Header_GetItem(draw->hdr.hwndFrom, static_cast<int>(draw->dwItemSpec), &item);
+        COLORREF background = BlendColor(control.background, RGB(255, 255, 255), 12);
+        COLORREF border = BlendColor(control.background, RGB(255, 255, 255), 24);
+        HBRUSH brush = CreateSolidBrush(background);
+        FillRect(draw->hdc, &draw->rc, brush);
+        DeleteObject(brush);
+        HPEN pen = CreatePen(PS_SOLID, 1, border);
+        HGDIOBJ oldPen = SelectObject(draw->hdc, pen);
+        MoveToEx(draw->hdc, draw->rc.right - 1, draw->rc.top, nullptr);
+        LineTo(draw->hdc, draw->rc.right - 1, draw->rc.bottom);
+        MoveToEx(draw->hdc, draw->rc.left, draw->rc.bottom - 1, nullptr);
+        LineTo(draw->hdc, draw->rc.right, draw->rc.bottom - 1);
+        SelectObject(draw->hdc, oldPen);
+        DeleteObject(pen);
+        RECT textRect = draw->rc;
+        int padding = ScaleForDpi(6, dpi_);
+        textRect.left += padding;
+        textRect.right -= padding;
+        SetBkMode(draw->hdc, TRANSPARENT);
+        SetTextColor(draw->hdc, control.foreground);
+        UINT format = DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX;
+        if (item.fmt & HDF_CENTER) format |= DT_CENTER;
+        else if (item.fmt & HDF_RIGHT) format |= DT_RIGHT;
+        else format |= DT_LEFT;
+        DrawTextW(draw->hdc, text, -1, &textRect, format);
+        return CDRF_SKIPDEFAULT;
+    }
+
+    void ApplyWindowAppearance() {
+        if (!hwnd_) return;
+        if (DwmSetWindowAttributeFunction setAttribute = ResolveDwmSetWindowAttribute()) {
+            BOOL dark = (GetRValue(spec_.titleBarBackground) * 299 + GetGValue(spec_.titleBarBackground) * 587 + GetBValue(spec_.titleBarBackground) * 114) < 128000;
+            const DWORD useImmersiveDarkMode = 20;
+            const DWORD cornerPreference = 33;
+            const DWORD captionColor = 35;
+            const DWORD textColor = 36;
+            setAttribute(hwnd_, useImmersiveDarkMode, &dark, sizeof(dark));
+            setAttribute(hwnd_, captionColor, &spec_.titleBarBackground, sizeof(spec_.titleBarBackground));
+            setAttribute(hwnd_, textColor, &spec_.titleBarForeground, sizeof(spec_.titleBarForeground));
+            if (spec_.cornerPreference >= 0) {
+                setAttribute(hwnd_, cornerPreference, &spec_.cornerPreference, sizeof(spec_.cornerPreference));
+            }
+        }
+        if (TextEquals(spec_.iconStyle, L"none")) return;
+        if (TextEquals(spec_.iconStyle, L"system")) {
+            largeWindowIcon_ = LoadIconW(nullptr, IDI_APPLICATION);
+            smallWindowIcon_ = largeWindowIcon_;
+        } else {
+            largeWindowIcon_ = CreateLingBuilderWindowIcon(GetSystemMetrics(SM_CXICON));
+            smallWindowIcon_ = CreateLingBuilderWindowIcon(GetSystemMetrics(SM_CXSMICON));
+            ownsWindowIcons_ = true;
+        }
+        if (largeWindowIcon_) SendMessageW(hwnd_, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(largeWindowIcon_));
+        if (smallWindowIcon_) SendMessageW(hwnd_, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(smallWindowIcon_));
+    }
+
+    void DestroyWindowIcons() {
+        if (ownsWindowIcons_) {
+            if (largeWindowIcon_) DestroyIcon(largeWindowIcon_);
+            if (smallWindowIcon_ && smallWindowIcon_ != largeWindowIcon_) DestroyIcon(smallWindowIcon_);
+        }
+        largeWindowIcon_ = nullptr;
+        smallWindowIcon_ = nullptr;
+        ownsWindowIcons_ = false;
+    }
+
     void CreateImageLists() {
         for (int index = 0; index < g_imageListCount; ++index) {
             const ImageListSpec& spec = g_imageLists[index];
@@ -2592,6 +2909,12 @@ private:
         const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
         RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
         if (control && runtime) {
+            if (message == WM_NOTIFY && IsType(*control, L"ListView")) {
+                NMHDR* header = reinterpret_cast<NMHDR*>(lParam);
+                if (header && header->code == NM_CUSTOMDRAW && header->hwndFrom == ListView_GetHeader(hwnd)) {
+                    return self->PaintListViewHeader(*control, reinterpret_cast<NMCUSTOMDRAW*>(lParam));
+                }
+            }
             bool buttonControl = self->IsButtonControl(*control);
             bool ownerDraw = self->IsOwnerDrawControl(*control);
             bool ownerDrawSelection = IsType(*control, L"CheckBox") || IsType(*control, L"RadioButton");
@@ -2980,13 +3303,24 @@ private:
             DWORD extended = LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER;
             if (control.flags & CF_GRID_LINES) extended |= LVS_EX_GRIDLINES;
             ListView_SetExtendedListViewStyle(child, extended);
-            auto columns = DecodeControlRecords(control.data, 3);
-            if (columns.empty()) columns.push_back({ L"内容", L"140", L"-1" });
+            ListView_SetBkColor(child, control.background);
+            ListView_SetTextBkColor(child, control.background);
+            ListView_SetTextColor(child, control.foreground);
+            auto columns = DecodeControlRecords(control.data, 4);
+            if (columns.empty()) columns.push_back({ L"内容", L"140", L"-1", L"left" });
+            bool alignFirstColumn = !columns.empty() && columns[0][3] != L"left";
+            if (alignFirstColumn) {
+                wchar_t emptyText[] = L"";
+                LVCOLUMNW placeholder = { LVCF_TEXT | LVCF_WIDTH | LVCF_FMT, LVCFMT_LEFT, 0, emptyText };
+                ListView_InsertColumn(child, 0, &placeholder);
+            }
             for (int index = 0; index < static_cast<int>(columns.size()); ++index) {
                 int image = _wtoi(columns[index][2].c_str());
-                LVCOLUMNW column = { static_cast<UINT>(LVCF_TEXT | LVCF_WIDTH | (image >= 0 ? LVCF_IMAGE : 0)), 0, ScaleForDpi(_wtoi(columns[index][1].c_str()), dpi_), const_cast<wchar_t*>(columns[index][0].c_str()), 0, 0, image };
-                ListView_InsertColumn(child, index, &column);
+                int format = columns[index][3] == L"center" ? LVCFMT_CENTER : columns[index][3] == L"right" ? LVCFMT_RIGHT : LVCFMT_LEFT;
+                LVCOLUMNW column = { static_cast<UINT>(LVCF_TEXT | LVCF_WIDTH | LVCF_FMT | (image >= 0 ? LVCF_IMAGE : 0)), format, ScaleForDpi(_wtoi(columns[index][1].c_str()), dpi_), const_cast<wchar_t*>(columns[index][0].c_str()), 0, 0, image };
+                ListView_InsertColumn(child, index + (alignFirstColumn ? 1 : 0), &column);
             }
+            if (alignFirstColumn) ListView_DeleteColumn(child, 0);
             auto rows = DecodeControlRecords(control.data2, 3);
             for (int rowIndex = 0; rowIndex < static_cast<int>(rows.size()); ++rowIndex) {
                 auto decodedCells = DecodeControlRecords(rows[rowIndex][1].c_str(), static_cast<int>(columns.size()));
@@ -3157,13 +3491,101 @@ private:
             ++g_openWindowCount;
             CreateImageLists();
             RebuildControls();
+            if (!GetWindowEventHandler(spec_, L"FileDropped").empty()) DragAcceptFiles(hwnd_, TRUE);
             OnWindowCreated();
             return 0;
+        case WM_CLOSE:
+            closingEventActive_ = true;
+            closingCancelled_ = false;
+            DispatchWindowEvent(L"Closing");
+            closingEventActive_ = false;
+            if (!closingCancelled_) DestroyWindow(hwnd_);
+            return 0;
+        case WM_SHOWWINDOW: {
+            bool nextVisible = wParam != FALSE;
+            if (visible_ != nextVisible) {
+                visible_ = nextVisible;
+                DispatchWindowEvent(L"VisibilityChanged");
+            }
+            break;
+        }
+        case WM_MOVE: {
+            int nextX = static_cast<int>(static_cast<short>(LOWORD(lParam)));
+            int nextY = static_cast<int>(static_cast<short>(HIWORD(lParam)));
+            bool changed = eventX_ != nextX || eventY_ != nextY;
+            eventX_ = nextX;
+            eventY_ = nextY;
+            if (moveBaselineReady_ && changed) DispatchWindowEvent(L"Moved");
+            moveBaselineReady_ = true;
+            return 0;
+        }
         case WM_SIZE:
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
             EdgeView_调整全部大小();
 #endif
+            {
+                int nextWidth = static_cast<int>(LOWORD(lParam));
+                int nextHeight = static_cast<int>(HIWORD(lParam));
+                int nextState = wParam == SIZE_MINIMIZED ? 1 : wParam == SIZE_MAXIMIZED ? 2 : 0;
+                bool sizeChanged = eventWidth_ != nextWidth || eventHeight_ != nextHeight;
+                bool stateChanged = windowState_ != nextState;
+                eventWidth_ = nextWidth;
+                eventHeight_ = nextHeight;
+                windowState_ = nextState;
+                if (sizeBaselineReady_ && sizeChanged) DispatchWindowEvent(L"SizeChanged");
+                if (windowStateBaselineReady_ && stateChanged) {
+                    DispatchWindowEvent(nextState == 1 ? L"Minimized" : nextState == 2 ? L"Maximized" : L"Restored");
+                }
+                sizeBaselineReady_ = true;
+                windowStateBaselineReady_ = true;
+            }
             return 0;
+        case WM_ACTIVATE: {
+            bool nextActive = LOWORD(wParam) != WA_INACTIVE;
+            if (active_ != nextActive) {
+                active_ = nextActive;
+                DispatchWindowEvent(nextActive ? L"Activated" : L"Deactivated");
+            }
+            return 0;
+        }
+        case WM_SETFOCUS:
+            DispatchWindowEvent(L"GotFocus");
+            return 0;
+        case WM_KILLFOCUS:
+            DispatchWindowEvent(L"LostFocus");
+            return 0;
+        case WM_DPICHANGED: {
+            dpi_ = HIWORD(wParam);
+            RECT* suggested = reinterpret_cast<RECT*>(lParam);
+            if (suggested) {
+                SetWindowPos(hwnd_, nullptr, suggested->left, suggested->top,
+                    suggested->right - suggested->left, suggested->bottom - suggested->top,
+                    SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            DestroyControls();
+            CreateImageLists();
+            RebuildControls();
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+            EdgeView_调整全部大小();
+#endif
+            DispatchWindowEvent(L"DpiChanged");
+            return 0;
+        }
+        case WM_DROPFILES: {
+            HDROP drop = reinterpret_cast<HDROP>(wParam);
+            droppedFiles_.clear();
+            UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+            for (UINT index = 0; index < count; ++index) {
+                UINT length = DragQueryFileW(drop, index, nullptr, 0);
+                std::wstring path(static_cast<size_t>(length + 1), L'\\0');
+                DragQueryFileW(drop, index, path.data(), length + 1);
+                path.resize(static_cast<size_t>(length));
+                droppedFiles_.push_back(path);
+            }
+            DragFinish(drop);
+            DispatchWindowEvent(L"FileDropped");
+            return 0;
+        }
         case WM_TIMER:
             if (wParam == 0x4C42) {
                 KillTimer(hwnd_, 0x4C42);
@@ -3323,7 +3745,12 @@ private:
             return 1;
         }
         case WM_DESTROY:
+            if (!closedDispatched_) {
+                closedDispatched_ = true;
+                DispatchWindowEvent(L"Closed");
+            }
             DestroyControls();
+            DestroyWindowIcons();
             if (windowBrush_) {
                 DeleteObject(windowBrush_);
                 windowBrush_ = nullptr;
@@ -3422,6 +3849,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     MSG message;
     while (GetMessageW(&message, nullptr, 0, 0)) {
         HWND navigationRoot = message.hwnd ? GetAncestor(message.hwnd, GA_ROOT) : startWindow;
+        LingWindowBase* messageOwner = LingWindowBase::FromMessageWindow(navigationRoot);
+        if (messageOwner && messageOwner->PreTranslateKeyboardMessage(message)) continue;
         if (navigationRoot && IsWindow(navigationRoot) && IsDialogMessageW(navigationRoot, &message)) continue;
         TranslateMessage(&message);
         DispatchMessageW(&message);
@@ -3834,6 +4263,9 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
   const dispatchCases = handlers
     .map(handler => `        if (handler == L"${escapeWideString(handler)}") { ${toCppIdentifier(handler)}(); return; }`)
     .join('\n') || '        (void)control; (void)eventName;';
+  const windowDispatchCases = allEventHandlers
+    .map(handler => `        if (handler == L"${escapeWideString(handler)}") { ${toCppIdentifier(handler)}(); return; }`)
+    .join('\n');
   const resourceDispatchCases = propertySheets.filter(resource => resource.appliedHandler?.trim())
     .map(resource => `        if (TextEquals(resourceId, L"${escapeWideString(resource.id)}") && TextEquals(eventName, L"Applied")) { ${toCppIdentifier(resource.appliedHandler!.trim())}(); return; }`)
     .join('\n');
@@ -3850,17 +4282,17 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
   const publicUserMethodBlock = publicUserMethods.length ? `\n${publicUserMethods.join('\n\n')}\n` : '';
   const protectedUserMethodBlock = protectedUserMethods.length ? `\n${protectedUserMethods.join('\n\n')}\n` : '';
   const privateMethods = [...eventMethods, ...privateUserMethods].join('\n\n') || '    // 当前窗口暂无绑定事件。';
-  const windowCreatedOverride = windowCreatedHandler
-    ? `    void OnWindowCreated() override {\n        ${toCppIdentifier(windowCreatedHandler)}();\n    }\n\n`
-    : '';
-
   return `class ${className} : public LingWindowBase {
 public:
     explicit ${className}(const WindowSpec& spec) : LingWindowBase(spec) {}
 ${publicUserMethodBlock}
 
 protected:
-${windowCreatedOverride}
+    void DispatchWindowEvent(const wchar_t* eventName) override {
+        std::wstring handler = GetWindowEventHandler(spec_, eventName);
+${windowDispatchCases || '        (void)handler;'}
+        LingWindowBase::DispatchWindowEvent(eventName);
+    }
     void DispatchDesignerResourceEvent(const wchar_t* resourceId, const wchar_t* eventName) override {
 ${resourceDispatchCases || '        (void)resourceId; (void)eventName;'}
     }
@@ -4285,9 +4717,9 @@ function generateControlArray(window: LingWindowModel, windowIndex: number, prog
       const effectiveControl = tooltipResource
         ? { ...control, properties: { ...(control.properties || {}), toolTip: tooltipResource.text, toolTipDelay: tooltipResource.initialDelay } }
         : control;
-      return generateControlSpec(effectiveControl, id, parent ? controlIds.get(parent.id) || 0 : 0, parent, controlIds);
+      return generateControlSpec(effectiveControl, id, parent ? controlIds.get(parent.id) || 0 : 0, parent, controlIds, window.background);
     })
-    .join(',\n') || '    { 0, 0, L"", L"", L"", 0, 0, 0, 0, 12, RGB(0, 0, 0), RGB(0, 0, 0), true, L"", L"", L"", 500, L"", L"", L"", 0, 100, 0, 0, 0, L"" }';
+    .join(',\n') || '    { 0, 0, L"", L"", L"", 0, 0, 0, 0, 12, 0, RGB(0, 0, 0), RGB(0, 0, 0), true, L"", L"", L"", 500, L"", L"", L"", 0, 100, 0, 0, 0, L"" }';
 
   return `static ControlSpec g_controls_${windowIndex}[] = {
 ${controls}
@@ -4310,13 +4742,30 @@ function generatePropertySheetSpecs(project: LingWindowProject): string {
     : 'static PropertySheetSpec g_propertySheets[] = { { L"", L"", L"" } };\nstatic const int g_propertySheetCount = 0;';
 }
 
-function generateWindowSpec(window: LingWindowModel, windowIndex: number): string {
+function generateWindowSpec(window: LingWindowModel, windowIndex: number, program: LingCppProgram): string {
   const menuItemsStr = (window as any).menuItems || '';
   const visibleCount = getVisibleControls(window).length + menuItemsStr.split(',').map((item: string) => item.trim()).filter(Boolean).length;
   const openPlacement = normalizeOpenWindowPlacement(window.openPlacement || 'default');
   const openX = openPlacement === 'custom' ? int(window.openX ?? 120) : 'CW_USEDEFAULT';
   const openY = openPlacement === 'custom' ? int(window.openY ?? 80) : 'CW_USEDEFAULT';
-  return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - TITLE_BAR_HEIGHT)}, ${toColorRef(window.background)}, L"${escapeWideString(openPlacement)}", ${openX}, ${openY}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}" }`;
+  const cornerPreference = window.cornerStyle === 'square'
+    ? 1
+    : window.cornerStyle === 'rounded' ? 2 : window.cornerStyle === 'small-rounded' ? 3 : -1;
+  const titleBarBackground = window.titleBarBackground || '#2D2D30';
+  const titleBarForeground = window.titleBarForeground || '#CBD5E1';
+  const iconStyle = window.iconStyle || 'lingbuilder';
+  const effectiveEvents = { ...(window.events || {}) };
+  if (!effectiveEvents.Loaded) {
+    const defaultLoaded = getWindowEventHandlerName(window.className, 'Loaded');
+    const legacyLoaded = `${window.className}_创建完毕`;
+    if (findLingCppMethod(program, defaultLoaded)) effectiveEvents.Loaded = defaultLoaded;
+    else if (findLingCppMethod(program, legacyLoaded)) effectiveEvents.Loaded = legacyLoaded;
+  }
+  const events = Object.entries(effectiveEvents)
+    .filter(([, handler]) => handler.trim())
+    .map(([eventName, handler]) => `${eventName}=${handler.trim()}`)
+    .join('\n');
+  return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - TITLE_BAR_HEIGHT)}, ${toColorRef(window.background)}, ${toColorRef(titleBarBackground)}, ${toColorRef(titleBarForeground)}, ${cornerPreference}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(openPlacement)}", ${openX}, ${openY}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", L"${escapeWideString(events)}" }`;
 }
 
 function generateControlSpec(
@@ -4324,13 +4773,16 @@ function generateControlSpec(
   id: number,
   parentId = 0,
   parent?: LingControl,
-  controlIds: Map<string, number> = new Map()
+  controlIds: Map<string, number> = new Map(),
+  windowBackground = '#1E1E24'
 ): string {
   const events = Object.entries(control.events || {})
     .filter(([, handler]) => handler.trim())
     .map(([eventName, handler]) => `${eventName}=${handler.trim()}`)
     .join('\n');
-  const background = control.background === 'transparent' ? '#1E1E24' : control.background;
+  const background = control.background === 'transparent'
+    ? control.type === 'ListView' ? '#0F172A' : windowBackground
+    : control.background;
   const x = parent ? control.x - parent.x : control.x;
   const y = parent ? control.y - parent.y : control.y;
   const minimum = numericControlProperty(control, 'minimum', 0);
@@ -4420,7 +4872,12 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
     const columns = records(properties.columns);
     const rows = records(properties.items);
     return [
-      encodeControlRecords(columns.map(column => [labelOf(column), String(numberOf(column.width, 140)), String(numberOf(column.image, -1))])),
+      encodeControlRecords(columns.map(column => {
+        const alignment = column.alignment === 'center' || column.alignment === 'right'
+          ? column.alignment
+          : 'left';
+        return [labelOf(column), String(numberOf(column.width, 140)), String(numberOf(column.image, -1)), alignment];
+      })),
       encodeControlRecords(rows.map((row, index) => {
         const cells = Array.isArray(row.cells) ? row.cells.map(cell => String(cell ?? '')) : [labelOf(row)];
         return [String(row.id ?? `row${index + 1}`), encodeControlFields(cells), String(numberOf(row.image, -1))];

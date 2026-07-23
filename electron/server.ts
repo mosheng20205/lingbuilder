@@ -1206,7 +1206,7 @@ app.post("/api/window-designer/native-preview", async (req, res) => {
   if (!project || !Array.isArray(project.windows) || project.windows.length === 0) {
     return res.status(400).json({
       ok: false,
-      error: "缂哄皯鏈夋晥鐨勭獥鍙ｈ璁″櫒椤圭洰妯″瀷"
+      error: "缺少有效的窗口设计器项目模型"
     });
   }
 
@@ -1235,7 +1235,7 @@ app.post("/api/window-designer/native-preview", async (req, res) => {
   } catch (error: any) {
     res.status(500).json({
       ok: false,
-      error: error?.message || "鍘熺敓 C++ 棰勮鐢熸垚澶辫触"
+      error: error?.message || "原生 C++ 预览生成失败"
     });
   }
 });
@@ -1251,7 +1251,7 @@ app.post("/api/window-designer/native-export", async (req, res) => {
   if (!project || !Array.isArray(project.windows) || project.windows.length === 0) {
     return res.status(400).json({
       ok: false,
-      error: "缂哄皯鏈夋晥鐨勭獥鍙ｈ璁″櫒椤圭洰妯″瀷"
+      error: "缺少有效的窗口设计器项目模型"
     });
   }
 
@@ -1297,7 +1297,7 @@ app.post("/api/window-designer/native-export", async (req, res) => {
   } catch (error: any) {
     res.status(500).json({
       ok: false,
-      error: error?.message || "鍘熺敓 C++ 宸ョ▼瀵煎嚭澶辫触"
+      error: error?.message || "原生 C++ 工程导出失败"
     });
   }
 });
@@ -2311,6 +2311,14 @@ app.get("/api/window-designer/files/watch", async (req, res) => {
         res.write(`event: file-change\ndata: ${JSON.stringify({ path: relativePath })}\n\n`);
       });
     });
+    const designerRelativePath = projectRef.designerPath.replace(/\\/g, "/");
+    const designerDirectory = path.dirname(path.join(getRepoWorkspaceRoot(), projectRef.designerPath));
+    const designerFileName = path.basename(projectRef.designerPath);
+    const designerWatcher = watchFiles(designerDirectory, { recursive: false }, (_eventType, fileName) => {
+      if (!fileName || path.basename(String(fileName)) !== designerFileName) return;
+      res.write(`event: file-change\ndata: ${JSON.stringify({ path: designerRelativePath })}\n\n`);
+    });
+    watchers.push(designerWatcher);
     const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 20_000);
     req.on("close", () => { clearInterval(heartbeat); watchers.forEach(watcher => watcher.close()); });
   } catch (error: any) {
@@ -2343,7 +2351,21 @@ app.get("/api/window-designer/files", async (req, res) => {
       ])
     );
     const designerProject = await solutionService.readDesignerProject(projectRef);
-    res.json({ ok: true, files, fileFormats, fileVersions, designerProject });
+    const designerRelativePath = projectRef.designerPath.replace(/\\/g, "/");
+    try {
+      const designerBytes = await fs.readFile(path.join(getRepoWorkspaceRoot(), projectRef.designerPath));
+      fileVersions[designerRelativePath] = createProjectFileVersion(designerBytes);
+    } catch (error: any) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    res.json({
+      ok: true,
+      files,
+      fileFormats,
+      fileVersions,
+      designerPath: designerRelativePath,
+      designerProject
+    });
   } catch (err: any) {
     const status = err instanceof TextFileFormatError ? 400 : 500;
     res.status(status).json({ ok: false, error: err.message });
@@ -2401,10 +2423,12 @@ app.post("/api/window-designer/files", async (req, res) => {
       });
     }
 
+    const designerRelativePath = projectRef.designerPath.replace(/\\/g, "/");
     if (project) pendingWrites.push({
-      relativePath: projectRef.designerPath.replace(/\\/g, "/"),
+      relativePath: designerRelativePath,
       targetPath: designerPath,
-      bytes: Buffer.from(JSON.stringify(project, null, 2), "utf8")
+      bytes: Buffer.from(JSON.stringify(project, null, 2), "utf8"),
+      expectedVersion: baseVersions?.[designerRelativePath]
     });
     await projectFilePersistenceService.writeAll(pendingWrites);
 
@@ -2418,20 +2442,45 @@ app.post("/api/window-designer/files", async (req, res) => {
         createProjectFileVersion(encodeTextFile(snapshot.content, snapshot.format))
       ])
     );
-    res.json({ ok: true, fileFormats: savedFileFormats, fileVersions });
+    try {
+      fileVersions[designerRelativePath] = createProjectFileVersion(await fs.readFile(designerPath));
+    } catch (error: any) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    res.json({
+      ok: true,
+      fileFormats: savedFileFormats,
+      fileVersions,
+      designerPath: designerRelativePath
+    });
   } catch (err: any) {
     if (err instanceof ProjectFileConflictError) {
       const solutionService = getSolutionService();
       const solution = await solutionService.getSolution();
       const projectRef = solutionService.getProject(solution, projectId);
       const snapshots = await solutionService.readProjectFileSnapshots(projectRef);
+      const designerRelativePath = projectRef.designerPath.replace(/\\/g, "/");
+      const designerProject = await solutionService.readDesignerProject(projectRef);
+      const conflictFileVersions = Object.fromEntries(Object.entries(snapshots).map(([key, value]) => [
+        key,
+        createProjectFileVersion(encodeTextFile(value.content, value.format))
+      ]));
+      try {
+        conflictFileVersions[designerRelativePath] = createProjectFileVersion(
+          await fs.readFile(path.join(getRepoWorkspaceRoot(), projectRef.designerPath))
+        );
+      } catch (error: any) {
+        if (error?.code !== "ENOENT") throw error;
+      }
       return res.status(409).json({
         ok: false,
         code: "PROJECT_FILE_CONFLICT",
         error: err.message,
         files: Object.fromEntries(Object.entries(snapshots).map(([key, value]) => [key, value.content])),
         fileFormats: Object.fromEntries(Object.entries(snapshots).map(([key, value]) => [key, value.format])),
-        fileVersions: Object.fromEntries(Object.entries(snapshots).map(([key, value]) => [key, createProjectFileVersion(encodeTextFile(value.content, value.format))]))
+        fileVersions: conflictFileVersions,
+        designerPath: designerRelativePath,
+        designerProject
       });
     }
     const status = err instanceof TextFileFormatError

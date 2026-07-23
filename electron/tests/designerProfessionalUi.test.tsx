@@ -8,10 +8,15 @@ test('designer window surface and hierarchy root select window properties', asyn
   assert.match(source, /点击窗口或控件节点即可选中/u);
 });
 
-test('designer exposes the selected window created event instead of the control empty state', async () => {
+test('designer exposes the complete categorized window event registry instead of a Grid fallback', async () => {
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   assert.match(source, /selectedControlId === null \? \(\s*<WindowEvents/u);
-  assert.match(source, /window\.events\?\.Loaded\?\.trim\(\) \|\| `_\$\{window\.className\}_创建完毕`/u);
+  assert.match(source, /WINDOW_EVENT_DEFINITIONS/u);
+  assert.match(source, /WINDOW_EVENT_CATEGORIES/u);
+  assert.match(source, /搜索窗口事件/u);
+  assert.match(source, /仅显示已绑定事件/u);
+  assert.match(source, /openEventCode\(definition\.name\)/u);
+  assert.doesNotMatch(source, /const windowEventTarget: LingControl/u);
 });
 
 test('designer state is isolated by project identity across unmounts and project switches', async () => {
@@ -24,6 +29,85 @@ test('designer state is isolated by project identity across unmounts and project
   assert.match(diffSource, /designer:\$\{textModelProjectId\}/u);
   assert.match(sidebarSource, /detail\.project\.id !== activeSolutionProjectId/u);
   assert.match(sidebarSource, /handleOpenDesignerWindow\(projectId, windowModel\)/u);
+});
+
+test('designer reports model-only edits as dirty without treating selection as a model edit', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /onProjectChange\?: \(state: PersistedWindowDesignerState\) => void/u);
+  assert.match(source, /onDirtyChange\?: \(detail: WindowDesignerDirtyStateDetail\) => void/u);
+  assert.match(source, /if \(previousProject === project\) return/u);
+  assert.match(source, /notifyWindowDesignerDirtyStateChanged\(detail\)/u);
+  assert.match(source, /suppressNextDirtySignalRef/u);
+  assert.match(source, /if \(publishingDesignerStateRef\.current\) return/u);
+});
+
+test('designer uses menu-aware content coordinates and keeps source identity read-only', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /getDesignerWindowContentOffset\(activeWindow\)/u);
+  assert.match(source, /top: `\$\{control\.y \+ contentOffset\}px`/u);
+  assert.match(source, /hasDesignerWindowMenu\(activeWindow\)/u);
+  assert.match(source, /<ReadOnlyTextField label="类名"/u);
+  assert.match(source, /<ReadOnlyTextField label="文件名"/u);
+  assert.match(source, /阻止单独重命名已绑定的 \.lcpp/u);
+  assert.doesNotMatch(source, /TextField label="类名".*onChange=\{value => onChange\(\{ className: value \}\)\}/u);
+});
+
+test('beginner editor navigation, variable form and guidance tools remain safe and reachable', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/DiffViewer.tsx'), 'utf8');
+
+  assert.match(source, /moveBeginnerEditorCaretToLine/u);
+  assert.match(source, /input\.setSelectionRange\(caret, caret\)/u);
+  assert.doesNotMatch(source, /input\.setSelectionRange\(start, end\)/u);
+  assert.doesNotMatch(source, /onBlur=\{event => commitNewMemberDraft/u);
+  assert.match(source, /onClick=\{commitNewMemberDraft\}/u);
+  assert.match(source, /aria-label="取消新增变量"/u);
+  assert.match(source, /onClick=\{\(\) => deleteStructuredRow\(row\)\}/u);
+  assert.match(source, /\{renderBeginnerSummaryStrip\(\)\}/u);
+  assert.match(source, /\{renderBeginnerPanel\(\)\}/u);
+  assert.match(source, /事件动作、代码解释与 5 步学习路径/u);
+});
+
+test('workbench keeps split-editor ownership and designer persistence in the shared save lifecycle', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/App.tsx'), 'utf8');
+
+  assert.match(source, /secondaryEditorRef/u);
+  assert.match(source, /activeEditorGroupRef/u);
+  assert.match(source, /updateEditorFileContent/u);
+  assert.match(source, /WINDOW_DESIGNER_DIRTY_STATE_CHANGED/u);
+  assert.match(source, /designerDirtyRef\.current/u);
+  assert.match(source, /designerProject: designerDirtyRef\.current/u);
+  assert.match(source, /getWorkbenchConfigurationMutationTarget/u);
+  assert.match(source, /const workbenchProblems = useMemo/u);
+  assert.equal((source.match(/problems=\{workbenchProblems\}/gu) || []).length, 2);
+  assert.match(source, /saveWorkspaceCoreRef\.current\('自动保存', false\)/u);
+  assert.doesNotMatch(source, /projectFilesReady, saveWorkspaceCore\]/u);
+  assert.match(source, /const pendingFileChangePaths = new Set<string>\(\)/u);
+  assert.match(source, /while \(!disposed && pendingFileChangePaths\.size > 0\)/u);
+  assert.match(source, /inFlightSaveSnapshotsRef\.current\.delete\(saveEchoSnapshotId\)/u);
+  assert.match(source, /updateTrackedFileVersion\(changedPath, nextVersion\)/u);
+  assert.match(source, /不能只重命名源码文件/u);
+});
+
+test('native import and source reveal wait for mode changes and publish compiler diagnostics', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/DiffViewer.tsx'), 'utf8');
+
+  assert.match(source, /latestSourceCodeRef\.current = result\.lcppSource/u);
+  assert.match(source, /await onExperienceModeChange\?\.\('professional'\)/u);
+  assert.match(source, /pendingNativeSourceReveal/u);
+  assert.match(source, /if \(switched === false\) setPendingNativeSourceReveal\(null\)/u);
+  assert.match(source, /editorExperienceMode !== 'beginner'/u);
+  assert.match(source, /if \(!row\) return/u);
+  assert.match(source, /lingbuilder-compiler-diagnostics/u);
+  assert.match(source, /aria-pressed=\{editorExperienceMode === 'beginner'\}/u);
+  assert.match(source, /aria-pressed=\{editorExperienceMode === 'professional'\}/u);
+  assert.match(source, /aria-pressed=\{editorExperienceMode === 'native'\}/u);
+});
+
+test('bottom panel keeps tabs horizontally reachable on narrow workbench widths', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/BottomPanel.tsx'), 'utf8');
+
+  assert.match(source, /flex min-w-0 flex-1 gap-1 h-full items-end overflow-x-auto/u);
+  assert.match(source, /className=\{`flex shrink-0 items-center/u);
 });
 test('RC editor exposes load, editable entries, save and conflict errors',async()=>{ const source=await fs.readFile(path.resolve(import.meta.dirname,'../src/components/RcResourcePanel.tsx'),'utf8'); assert.match(source,/C\+\+ RC 资源编辑器/u); assert.match(source,/\/api\/resources\/rc/u); assert.match(source,/打开其他 \.rc/u); assert.match(source,/保存/u); assert.match(source,/role="alert"/u); });
 
@@ -39,8 +123,34 @@ test('designer uses structured collection editors instead of JSON array textarea
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   assert.match(source, /StructuredCollectionEditor/u);
   assert.match(source, /TreeNodeCollectionEditor/u);
-  assert.match(source, /单元格（Tab 分隔）/u);
+  assert.match(source, /<ListViewCollectionDialog/u);
+  assert.match(source, /编辑列/u);
+  assert.match(source, /编辑数据/u);
+  assert.doesNotMatch(source, /单元格（Tab 分隔）/u);
   assert.doesNotMatch(source, /请输入合法的 JSON 数组/u);
+});
+
+test('designer renders ListView columns and rows through a dedicated live preview', async () => {
+  const designerSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  const previewSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/ListViewDesignerPreview.tsx'), 'utf8');
+  assert.match(designerSource, /<ListViewDesignerPreview control=\{control\}/u);
+  assert.match(previewSource, /data-list-view-preview="details"/u);
+  assert.match(previewSource, /model\.columns/u);
+  assert.match(previewSource, /model\.rows/u);
+  assert.match(previewSource, /model\.gridLines/u);
+});
+
+test('ListView collection dialog supports spreadsheet cells, batch paste and responsive row cards', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/ListViewCollectionDialog.tsx'), 'utf8');
+  assert.match(source, /data-list-view-cell/u);
+  assert.match(source, /event\.clipboardData\.getData\('text\/plain'\)/u);
+  assert.match(source, /批量粘贴/u);
+  assert.match(source, /替换全部行/u);
+  assert.match(source, /追加到末尾/u);
+  assert.match(source, /md:hidden/u);
+  assert.match(source, /行 ID 由系统自动维护/u);
+  assert.match(source, /第 \$\{index \+ 1\} 列对齐方式/u);
+  assert.doesNotMatch(source, /value=\{column\.alignment\}\s+disabled/u);
 });
 
 test('designer exposes dedicated ToolTip and PropertySheet resource editors', async () => {
@@ -50,4 +160,15 @@ test('designer exposes dedicated ToolTip and PropertySheet resource editors', as
   assert.match(source, /添加属性页/u);
   assert.match(source, /属性页_显示/u);
   assert.match(source, /属性页控件模板窗口/u);
+});
+
+test('designer exposes persisted native window appearance instead of fixed chrome', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /标题栏颜色/u);
+  assert.match(source, /标题文字颜色/u);
+  assert.match(source, /窗口圆角/u);
+  assert.match(source, /LingBuilder 内置图标/u);
+  assert.match(source, /activeWindow\.titleBarBackground/u);
+  assert.match(source, /activeWindow\.cornerStyle/u);
+  assert.doesNotMatch(source, /className="relative rounded-lg shadow-2xl/u);
 });

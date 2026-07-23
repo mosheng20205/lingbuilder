@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import type { LingWindowProject } from '../windowDesigner/types';
 
 export interface HotExitRecoveryData {
   schemaVersion: 1;
@@ -10,6 +11,7 @@ export interface HotExitRecoveryData {
   baseVersions?: Record<string, string>;
   openTabs?: string[];
   activeFilePath?: string;
+  designerProject?: LingWindowProject;
 }
 
 export class HotExitRecoveryService {
@@ -18,7 +20,11 @@ export class HotExitRecoveryService {
   async read(projectId: string): Promise<HotExitRecoveryData | null> {
     try {
       const parsed = JSON.parse(await fs.readFile(this.resolvePath(projectId), 'utf8'));
-      if (parsed?.schemaVersion !== 1 || parsed?.projectId !== projectId || typeof parsed?.files !== 'object') return null;
+      if (parsed?.schemaVersion !== 1
+        || parsed?.projectId !== projectId
+        || typeof parsed?.files !== 'object'
+        || (parsed?.designerProject !== undefined
+          && (!parsed.designerProject || !Array.isArray(parsed.designerProject.windows)))) return null;
       return parsed;
     } catch (error: any) {
       if (error?.code === 'ENOENT' || error instanceof SyntaxError) return null;

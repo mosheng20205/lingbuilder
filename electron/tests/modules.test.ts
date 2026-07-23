@@ -56,6 +56,59 @@ test('module service defaults ordinary projects to Win32 basic module only', asy
   );
 });
 
+test('Win32基础模块贡献窗口事件上下文命令和确定性绑定', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.win32.basic');
+  assert.ok(manifest);
+  assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
+  const commandNames = new Set(manifest.contributes?.commands?.map(command => command.name));
+  const bindingNames = new Set(manifest.bindings?.commands?.map(binding => binding.command));
+  ['窗口_取消关闭', '窗口_取事件宽度', '窗口_取事件字符', '窗口_标记按键已处理', '窗口_取事件DPI', '窗口_取拖入文件'].forEach(name => {
+    assert.ok(commandNames.has(name), `${name} 应提供中文补全`);
+    assert.ok(bindingNames.has(name), `${name} 应提供确定性 C++ binding`);
+  });
+
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.win32.basic',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const completions = getLingCppCompletions(
+    { source: '窗口_', line: 1, column: 4 },
+    { enabledModules: [module], availableModules: [module] }
+  );
+  assert.ok(completions.some(item => item.label === '窗口_取消关闭'));
+  assert.ok(completions.some(item => item.label === '窗口_取拖入文件'));
+
+  const parameterDiagnostics = getLingCppSemanticDiagnostics(
+    '类 MainWindow\n    事件 _MainWindow_关闭前(整数型 原因)\n    结束\n结束类',
+    { ...sampleProject, windows: [{ ...sampleProject.windows[0], events: { Closing: '_MainWindow_关闭前' } }] }
+  );
+  assert.ok(parameterDiagnostics.some(item => item.id.includes('lingcpp-window-event-parameters')));
+
+  const generated = generateLingCppNativeWin32Project({
+    ...sampleProject,
+    windows: [{ ...sampleProject.windows[0], events: { Closing: '_MainWindow_关闭前', FileDropped: '_MainWindow_文件被拖入' } }]
+  }, {
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_关闭前()',
+      '        窗口_取消关闭()',
+      '    结束',
+      '    事件 _MainWindow_文件被拖入()',
+      '        调试输出(窗口_取拖入文件(0))',
+      '    结束',
+      '结束类'
+    ].join('\n'),
+    enabledModules: [module]
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(mainCpp, /窗口_取消关闭\(\);/u);
+  assert.match(mainCpp, /调试输出\(窗口_取拖入文件\(0\)\);/u);
+});
+
 test('module project references stay isolated and unknown project writes are rejected', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-projects-'));
   await writeSolutionFixture(root, ['project-a', 'project-b']);

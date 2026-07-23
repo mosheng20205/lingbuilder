@@ -36,6 +36,11 @@ import {
 import { applyLingCppAstEdit } from './astEditService';
 import { LingWindowModel, LingWindowProject } from '../windowDesigner/types';
 import { LingCppModuleContext } from '../modules/types';
+import {
+  getWindowEventDefinition,
+  getWindowEventHandlerName,
+  WINDOW_EVENT_DEFINITIONS
+} from '../windowDesigner/windowEventRegistry';
 
 const KEYWORD = {
   package: LING_CPP_KEYWORDS[0],
@@ -186,11 +191,12 @@ export function getLingCppSemanticDiagnostics(
   filePath?: string,
   moduleContext?: LingCppModuleContext
 ): LingCppDiagnostic[] {
-  const diagnostics = [...parseLingCpp(source).diagnostics, ...getBlockDiagnostics(source)];
+  const parsed = parseLingCpp(source);
+  const diagnostics = [...parsed.diagnostics, ...getBlockDiagnostics(source)];
   diagnostics.push(...getModuleUsageDiagnostics(source, moduleContext));
 
   if (designerProject) {
-    getLingCppDesignerBindings(source, designerProject, filePath).forEach(hint => {
+    getLingCppDesignerBindings(source, designerProject, filePath, moduleContext).forEach(hint => {
       if (hint.status === 'bound' || hint.status === 'missing-source') return;
       diagnostics.push({
         id: `lingcpp-designer-${hint.status}-${hint.handlerName}-${hint.line}`,
@@ -199,6 +205,24 @@ export function getLingCppSemanticDiagnostics(
         message: hint.message,
         codeSnippet: hint.handlerName,
         suggestion: hint.suggestion
+      });
+    });
+
+    const currentWindows = selectDesignerWindows(designerProject, source, filePath);
+    const windowHandlers = new Set(currentWindows.flatMap(window => [
+      ...Object.values(window.events || {}),
+      getWindowEventHandlerName(window.className, 'Loaded'),
+      `${window.className}_创建完毕`
+    ].map(handler => normalizeIdentifier(handler)).filter(Boolean)));
+    parsed.program.classes.flatMap(cls => cls.methods).forEach(method => {
+      if (method.kind !== 'event' || method.parameters.length === 0 || !windowHandlers.has(normalizeIdentifier(method.name))) return;
+      diagnostics.push({
+        id: `lingcpp-window-event-parameters-${method.name}-${method.line}`,
+        line: method.line,
+        level: 'error',
+        message: `窗口事件 ${method.name} 必须使用无参数处理器。`,
+        codeSnippet: method.name,
+        suggestion: '删除事件参数，并使用“窗口_取事件…”上下文命令读取宽高、按键、DPI 或拖入文件。'
       });
     });
   }
@@ -213,7 +237,7 @@ export function buildLingCppLanguageContext(
   filePath?: string
 ): LingCppLanguageContext {
   const parsed = parseLingCpp(source);
-  const designerBindings = getLingCppDesignerBindings(source, designerProject, filePath);
+  const designerBindings = getLingCppDesignerBindings(source, designerProject, filePath, moduleContext);
   return {
     source,
     filePath,
@@ -386,7 +410,7 @@ export function getLingCppProblems(
     }));
 
   const designerProblems = designerProject
-    ? getLingCppDesignerBindings(source, designerProject, filePath)
+    ? getLingCppDesignerBindings(source, designerProject, filePath, moduleContext)
       .filter(binding => binding.status !== 'bound')
       .map(binding => ({
         id: `lingcpp-problem-${binding.status}-${binding.handlerName}-${binding.line}`,
@@ -424,10 +448,11 @@ export function getLingCppQuickActions(problemOrBinding: LingCppProblem | LingCp
 export function getLingCppStructureView(
   source: string,
   designerProject?: LingWindowProject,
-  filePath?: string
+  filePath?: string,
+  moduleContext?: LingCppModuleContext
 ): LingCppStructureNode[] {
   const parsed = parseLingCpp(source);
-  const bindings = getLingCppDesignerBindings(source, designerProject, filePath);
+  const bindings = getLingCppDesignerBindings(source, designerProject, filePath, moduleContext);
   const bindingByHandler = new Map(bindings.map(binding => [normalizeIdentifier(binding.handlerName), binding]));
   const nodes: LingCppStructureNode[] = [];
 
@@ -506,11 +531,12 @@ export function getLingCppStructureView(
 export function getLingCppStructuredReadingRows(
   source: string,
   designerProject?: LingWindowProject,
-  filePath?: string
+  filePath?: string,
+  moduleContext?: LingCppModuleContext
 ): LingCppStructuredReadingRow[] {
   const parsed = parseLingCpp(source);
   const rows: LingCppStructuredReadingRow[] = [];
-  const blocks = getLingCppReadableBlocks(source, designerProject, filePath);
+  const blocks = getLingCppReadableBlocks(source, designerProject, filePath, moduleContext);
   const blockByLine = new Map(blocks.map(block => [block.startLine, block]));
   const lines = splitLines(source);
 
@@ -629,7 +655,12 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
   const source = languageContext.source;
   const designerProject = languageContext.designerProject as LingWindowProject | undefined;
   const lines = splitLines(source);
-  const blocks = getLingCppReadableBlocks(source, designerProject, languageContext.filePath);
+  const blocks = getLingCppReadableBlocks(
+    source,
+    designerProject,
+    languageContext.filePath,
+    languageContext.moduleContext
+  );
   const blockByLine = new Map(blocks.map(block => [block.startLine, block]));
   const bindingByHandler = new Map(languageContext.designerBindings.map(binding => [normalizeIdentifier(binding.handlerName), binding]));
 
@@ -820,13 +851,14 @@ export function getReadableEventName(handlerName: string, designerProject?: Ling
 export function getLingCppReadableBlocks(
   source: string,
   designerProject?: LingWindowProject,
-  filePath?: string
+  filePath?: string,
+  moduleContext?: LingCppModuleContext
 ): LingCppReadableBlock[] {
   const parsed = parseLingCpp(source);
   const lines = splitLines(source);
   const classEnds = findClassEndLines(lines);
   const methodEnds = findMethodEndLines(lines);
-  const bindings = getLingCppDesignerBindings(source, designerProject, filePath);
+  const bindings = getLingCppDesignerBindings(source, designerProject, filePath, moduleContext);
   const bindingByHandler = new Map(bindings.map(binding => [normalizeIdentifier(binding.handlerName), binding]));
   const blocks: LingCppReadableBlock[] = [];
 
@@ -896,11 +928,12 @@ export function getLingCppInlineHints(
   source: string,
   designerProject?: LingWindowProject,
   filePath?: string,
-  mode: LingCppReadingMode = 'beginner'
+  mode: LingCppReadingMode = 'beginner',
+  moduleContext?: LingCppModuleContext
 ): LingCppInlineHint[] {
   if (mode === 'off') return [];
   const parsed = parseLingCpp(source);
-  const blocks = getLingCppReadableBlocks(source, designerProject, filePath);
+  const blocks = getLingCppReadableBlocks(source, designerProject, filePath, moduleContext);
   const hints: LingCppInlineHint[] = [];
 
   parsed.program.classes.forEach(cls => {
@@ -957,9 +990,10 @@ export function getLingCppInlineHints(
 export function getLingCppEventBlockHighlights(
   source: string,
   designerProject?: LingWindowProject,
-  filePath?: string
+  filePath?: string,
+  moduleContext?: LingCppModuleContext
 ): LingCppEventBlockHighlight[] {
-  return getLingCppReadableBlocks(source, designerProject, filePath)
+  return getLingCppReadableBlocks(source, designerProject, filePath, moduleContext)
     .filter(block => isEventReadableBlock(block.kind) || block.kind === 'constructor' || block.kind === 'destructor')
     .map(block => ({
       id: `highlight-${block.id}`,
@@ -1061,7 +1095,8 @@ export const lingCppLanguageService = {
 export function getLingCppDesignerBindings(
   source: string,
   designerProject?: LingWindowProject,
-  filePath?: string
+  filePath?: string,
+  moduleContext?: LingCppModuleContext
 ): LingCppDesignerBindingHint[] {
   if (!designerProject) return [];
 
@@ -1082,6 +1117,7 @@ export function getLingCppDesignerBindings(
   const sourceEventMap = new Map(sourceEvents.map(event => [normalizeIdentifier(event.handlerName), event]));
   const expectedBindings = collectDesignerEventBindings(currentWindows);
   const expectedMap = new Map(expectedBindings.map(binding => [normalizeIdentifier(binding.handlerName), binding]));
+  const moduleCallbackHandlers = collectModuleCallbackHandlerNames(source, moduleContext);
   const hints: LingCppDesignerBindingHint[] = [];
 
   sourceEvents.forEach(event => {
@@ -1119,6 +1155,8 @@ export function getLingCppDesignerBindings(
       hints.push(windowHint);
       return;
     }
+
+    if (moduleCallbackHandlers.has(normalizedHandler)) return;
 
     const inferredControlName = inferControlNameFromHandler(event.handlerName);
     const windowMatch = currentWindows.find(win => normalizeIdentifier(win.className) === normalizeIdentifier(event.className));
@@ -1236,6 +1274,8 @@ function problemSuggestionForBinding(binding: LingCppDesignerBindingHint): strin
 }
 
 function eventNameLabel(value: string): string {
+  const registered = getWindowEventDefinition(value);
+  if (registered) return registered.label;
   const raw = value.replace(/^_+/u, '');
   const parts = raw.split('_').filter(Boolean);
   const last = parts[parts.length - 1] || raw;
@@ -1259,19 +1299,22 @@ function eventNameLabel(value: string): string {
 function getDesignerCompletionItems(source: string, designerProject?: LingWindowProject): LingCppCompletionItem[] {
   if (!designerProject) return [];
   return selectDesignerWindows(designerProject, source).flatMap(win => {
-    const windowItems: LingCppCompletionItem[] = [{
-      label: `${win.title || win.className} 创建完毕事件`,
-      kind: 'event',
-      insertText: `事件 _${win.className}_创建完毕()\n    调试输出("窗口创建完毕")\n    $0`,
-      detail: '设计器窗口事件',
-      documentation: `窗口：${win.title || win.className}\n事件：创建完毕`,
-      aliases: ['WindowCreated', 'Created'],
-      pinyin: ['ckcjsj', 'csh'],
-      example: `事件 _${win.className}_创建完毕()`,
-      category: 'designer',
-      audienceText: '窗口创建完成后执行',
-      isSnippet: true
-    }];
+    const windowItems: LingCppCompletionItem[] = WINDOW_EVENT_DEFINITIONS.map(definition => {
+      const handlerName = win.events?.[definition.name]?.trim() || getWindowEventHandlerName(win.className, definition.name);
+      return {
+        label: `${win.title || win.className} ${definition.label}事件`,
+        kind: 'event',
+        insertText: `事件 ${handlerName}()\n    调试输出("窗口${definition.handlerSuffix}")\n    $0`,
+        detail: `设计器窗口事件 · ${definition.category}`,
+        documentation: `窗口：${win.title || win.className}\n事件：${definition.label} (${definition.name})\n${definition.description}`,
+        aliases: [definition.name, definition.label, definition.handlerSuffix, 'WindowEvent'],
+        pinyin: ['ckcjsj', 'cksj'],
+        example: `事件 ${handlerName}()`,
+        category: 'designer',
+        audienceText: definition.description,
+        isSnippet: true
+      };
+    });
 
     const controlItems = win.controls.flatMap(control => {
       const boundEvents = Object.entries(control.events || {});
@@ -1457,7 +1500,7 @@ function readableBlockKind(method: LingCppMethod, binding?: LingCppDesignerBindi
   if (method.kind === 'constructor') return 'constructor';
   if (method.kind === 'destructor') return 'destructor';
   if (method.kind !== 'event') return 'method';
-  if (binding?.eventName === 'Window') return 'window-event';
+  if (binding?.eventName === 'Window' || Boolean(binding?.eventName && getWindowEventDefinition(binding.eventName))) return 'window-event';
   if (binding?.controlId) return 'control-event';
   if (binding?.eventName?.startsWith('Item_')) return 'menu-event';
   const readable = getReadableEventName(method.name);
@@ -1551,6 +1594,13 @@ function findDesignerReadableName(handlerName: string, designerProject?: LingWin
       return { rawName: handlerName, subject, eventLabel, displayName: `${subject} · ${eventLabel}` };
     }
 
+    const windowEntry = Object.entries(win.events || {}).find(([, handler]) => normalizeIdentifier(handler) === normalized);
+    if (windowEntry) {
+      const eventLabel = eventNameLabel(windowEntry[0]);
+      const subject = win.title || win.className;
+      return { rawName: handlerName, subject, eventLabel, displayName: `${subject} · ${eventLabel}` };
+    }
+
     for (const control of win.controls) {
       const eventEntry = Object.entries(control.events || {}).find(([, handler]) => normalizeIdentifier(handler) === normalized);
       if (eventEntry) {
@@ -1571,12 +1621,17 @@ function findDesignerReadableName(handlerName: string, designerProject?: LingWin
 }
 
 function inferEventPartFromCompactName(value: string): string {
-  const knownEvents = ['创建完毕', '鍒涘缓瀹屾瘯', '被单击', '琚崟鍑', '单击', '鍗曞嚮', '被双击', '琚弻鍑', '被选中', '琚€変腑', 'Click', 'DoubleClick', 'Created'];
+  const knownEvents = [
+    ...WINDOW_EVENT_DEFINITIONS.flatMap(definition => [definition.name, definition.label, definition.handlerSuffix]),
+    '鍒涘缓瀹屾瘯', '被单击', '琚崟鍑', '单击', '鍗曞嚮', '被双击', '琚弻鍑', '被选中', '琚€変腑', 'Click', 'DoubleClick', 'Created'
+  ];
   return knownEvents.find(eventName => value.includes(eventName)) || value;
 }
 
 function readableEventLabel(value: string): string {
   const raw = value.replace(/^_+/u, '').replace(/\(\)\s*$/u, '');
+  const registered = WINDOW_EVENT_DEFINITIONS.find(definition => raw === definition.name || raw === definition.label || raw.includes(definition.handlerSuffix));
+  if (registered) return registered.label;
   if (/^(Click|被单击|单击|琚崟鍑|鍗曞嚮)$/u.test(raw) || raw.includes('被单击') || raw.includes('琚崟鍑')) return '单击事件';
   if (/^(DoubleClick|被双击|双击|琚弻鍑)$/u.test(raw) || raw.includes('被双击') || raw.includes('琚弻鍑')) return '双击事件';
   if (/^(Created|创建完毕|鍒涘缓瀹屾瘯|Window)$/u.test(raw) || raw.includes('创建完毕') || raw.includes('鍒涘缓瀹屾瘯')) return '创建完毕';
@@ -1667,6 +1722,126 @@ function containsCommandInvocation(line: string, commandName: string): boolean {
   return new RegExp(`${escaped}\\s*[（(]`, 'u').test(line);
 }
 
+function collectModuleCallbackHandlerNames(source: string, moduleContext?: LingCppModuleContext): Set<string> {
+  const handlers = new Set<string>();
+  getEnabledLingCppModuleContributions(moduleContext).forEach(module => {
+    (module.manifest.bindings?.commands || []).forEach(binding => {
+      const callbackParameterIndexes = (binding.parameters || [])
+        .map((parameter, index) => isModuleCallbackParameter(parameter.name, parameter.description) ? index : -1)
+        .filter(index => index >= 0);
+      if (callbackParameterIndexes.length === 0) return;
+
+      extractCommandInvocationArguments(source, binding.command).forEach(args => {
+        callbackParameterIndexes.forEach(index => {
+          const handlerName = parseStringLiteralArgument(args[index]);
+          if (handlerName) handlers.add(normalizeIdentifier(handlerName));
+        });
+      });
+    });
+  });
+  return handlers;
+}
+
+function isModuleCallbackParameter(name: string, description?: string): boolean {
+  return /(?:事件)?(?:处理器|回调)(?:名|名称)?|handler|callback/iu.test(`${name} ${description || ''}`);
+}
+
+function extractCommandInvocationArguments(source: string, commandName: string): string[][] {
+  if (!commandName) return [];
+  const escaped = commandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`${escaped}\\s*[（(]`, 'gu');
+  const invocations: string[][] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(source)) !== null) {
+    const openIndex = pattern.lastIndex - 1;
+    const closing = source[openIndex] === '（' ? '）' : ')';
+    let quote: '"' | '“' | null = null;
+    let escapedCharacter = false;
+    let depth = 1;
+    let endIndex = openIndex + 1;
+
+    for (; endIndex < source.length; endIndex += 1) {
+      const character = source[endIndex];
+      if (quote) {
+        if (escapedCharacter) {
+          escapedCharacter = false;
+          continue;
+        }
+        if (character === '\\' && quote === '"') {
+          escapedCharacter = true;
+          continue;
+        }
+        if ((quote === '"' && character === '"') || (quote === '“' && character === '”')) quote = null;
+        continue;
+      }
+      if (character === '"' || character === '“') {
+        quote = character;
+        continue;
+      }
+      if (character === source[openIndex]) depth += 1;
+      if (character === closing) {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+
+    if (depth !== 0) continue;
+    invocations.push(splitModuleCallArguments(source.slice(openIndex + 1, endIndex)));
+    pattern.lastIndex = endIndex + 1;
+  }
+  return invocations;
+}
+
+function splitModuleCallArguments(raw: string): string[] {
+  const args: string[] = [];
+  let current = '';
+  let quote: '"' | '“' | null = null;
+  let escapedCharacter = false;
+  let depth = 0;
+
+  for (const character of raw) {
+    if (quote) {
+      current += character;
+      if (escapedCharacter) {
+        escapedCharacter = false;
+      } else if (character === '\\' && quote === '"') {
+        escapedCharacter = true;
+      } else if ((quote === '"' && character === '"') || (quote === '“' && character === '”')) {
+        quote = null;
+      }
+      continue;
+    }
+    if (character === '"' || character === '“') {
+      quote = character;
+      current += character;
+      continue;
+    }
+    if (character === '(' || character === '（' || character === '[' || character === '【' || character === '{') depth += 1;
+    if (character === ')' || character === '）' || character === ']' || character === '】' || character === '}') depth = Math.max(0, depth - 1);
+    if ((character === ',' || character === '，') && depth === 0) {
+      args.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += character;
+  }
+  if (current.trim() || args.length > 0) args.push(current.trim());
+  return args;
+}
+
+function parseStringLiteralArgument(value?: string): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return trimmed.slice(1, -1).replace(/\\"/gu, '"').trim() || undefined;
+  }
+  if (trimmed.startsWith('“') && trimmed.endsWith('”')) {
+    return trimmed.slice(1, -1).trim() || undefined;
+  }
+  return undefined;
+}
+
 function selectDesignerWindows(project: LingWindowProject, source: string, filePath?: string): LingWindowModel[] {
   const associatedFile = extractAssociatedDesignerFile(source);
   if (associatedFile) {
@@ -1711,7 +1886,17 @@ function collectDesignerEventBindings(windows: LingWindowModel[]) {
         eventName,
         windowId: win.id
       }));
-      return [...controlBindings, ...menuBindings];
+      const windowBindings = Object.entries(win.events || {})
+        .filter(([, handlerName]) => handlerName.trim())
+        .map(([eventName, handlerName]) => ({
+          handlerName,
+          className: win.className,
+          controlName: win.title || win.className,
+          controlId: undefined,
+          eventName,
+          windowId: win.id
+        }));
+      return [...controlBindings, ...menuBindings, ...windowBindings];
     });
 }
 

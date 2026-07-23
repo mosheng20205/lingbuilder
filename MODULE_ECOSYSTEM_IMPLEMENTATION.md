@@ -11,6 +11,8 @@
 - `ModuleDesignerControlContribution` 可声明 `category`、`icon`、`properties`、`isContainer`、`isVisual`、`nativeAdapter` 和 `requiredLibraries`；字段保持 manifest v2 向后兼容。
 - 非可视 ToolTip、ImageList、PropertySheet 不进入普通控件工具箱；系统通用对话框通过高级模块中文命令和 bindings 暴露。
 - 高级模块的文件对话框会实际应用 `名称|模式` 筛选器，并通过 `系统对话框_状态` 区分成功、取消与错误；查找替换提供动作/文本读取命令，工具栏和状态栏提供最后命令 ID/分区索引，打印文本会创建真实打印文档。这些命令与 C++ runtime 必须继续由同一份 `contributes.commands`/`bindings.commands` 声明驱动。
+- `lingbuilder.win32.basic` 同源贡献窗口事件上下文命令：关闭取消、宽高/位置、激活/可见/窗口状态、按键与修饰键、按键处理、DPI 和拖入文件读取。Monaco 补全与 C++ runtime 不得维护两份命令清单。
+- 窗口事件处理器保持无参数；模块 binding 返回的文本指针指向窗口对象持有的事件快照，只能读取，不能在模块侧长期缓存。
 - 模块 manifest 校验会拒绝未知属性类型、重复控件、重复属性、重复事件、不含 `{controlName}` 的事件模板和不安全文件默认路径。
 
 - 模块清单已升级为 `schemaVersion: 2`；旧 `.lbmod` v1 不再作为兼容目标，安装预览会提示使用模块迁移工具重新打包。
@@ -28,6 +30,7 @@
 - 当前 F5 目标只接受精确 `windows-msvc-win32`。缺少该 target 时跳过原生依赖并返回中文诊断，不会回退到 `targets[0]`。
 - manifest 预览、目录校验、安装与打包会确认 `docs`、`examples`、`headers`、`sources`、`libs`、`runtimeFiles` 和 include 目录实际存在。
 - 命令 `insertText` 必须由签名参数生成并与 binding 参数数量一致；零参数命令生成 `命令()`，多参数按顺序生成 `$1` 到 `$N`。
+- binding 参数名称或说明包含“处理器 / 回调 / handler / callback”时，语言服务会把该参数中的字符串字面量识别为模块回调处理器名；只从当前项目已启用模块上下文读取，不把模块回调误判为缺少设计器控件。
 
 ## 当前实现范围
 
@@ -195,7 +198,7 @@ lingbuilder.module.json
 - `new_emoji.lib` 是 MSVC 导入库；如果只检测到 g++/clang++，F5 会返回“new_emoji 模块需要 MSVC/Visual Studio Build Tools”的中文诊断。
 - `.lcpp` 用户优先使用 `NE_创建窗口`、`NE_创建按钮`、`NE_创建文本` 等桥接命令；自动生成的 `NE_EU_*` 命令属于底层高级入口，参数仍按 new_emoji 的 UTF-8 字节指针和长度规则处理。
 - `NE_` 桥接层把 `wchar_t*` 转 UTF-8 时必须为 `WideCharToMultiByte` 的结尾 `\0` 预留空间，再传递不含结尾 `\0` 的字节长度；传给 new_emoji 控件的 UTF-8 字符串还必须存入桥接层持久池，不能把函数内临时缓冲区指针交给 DLL，否则 VS Debug CRT 可能读到 `0xDDDDDDDD` 已释放内存并触发访问冲突。
-- new_emoji 独立演示或 AI 自动生成示例不能在窗口创建完毕事件中调用 `结束` / `结束()`；该命令会销毁 LingBuilder 默认窗口，消息循环收到退出后表现为 exe 闪退。
+- new_emoji 独立演示或 AI 自动生成示例必须保留事件块末尾的结构标记 `结束`，但不能额外调用显式退出命令 `结束()`；后者会销毁 LingBuilder 默认窗口，消息循环收到退出后表现为 exe 闪退。
 - 纯 new_emoji 示例应由 new_emoji 自己负责生命周期：创建窗口和控件后调用 `NE_运行消息循环` 或底层 `EU_RunMessageLoop()`。如果继续复用 LingBuilder 默认 Win32 生成窗口，必须保证默认窗口不会立即销毁，也不能让空设计器窗口关闭后触发 `PostQuitMessage(0)`。
 - 报告 new_emoji exe 可运行前，必须确认 `new_emoji.dll` 已复制到 exe 同目录，并实际启动验证至少 3 秒仍在运行。
 

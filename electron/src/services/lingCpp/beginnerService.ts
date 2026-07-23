@@ -226,6 +226,9 @@ export function getCodeExplanation(source: string, line: number, _column = 1): C
     const handlerName = method?.name || current.replace(/^事件\s*/u, '').replace(/\(.*/u, '');
     return explain(line, '事件', `用户做了某个动作后会执行这里。当前事件处理器是：${handlerName || '未命名事件'}。`, '事件 _按钮1_被单击()\n    信息框("你点击了按钮", 64, "提示")');
   }
+  if (/^(?:如果结束|循环结束|结束类|结束)\s*$/u.test(current)) {
+    return explain(line, '结构结束', '这是代码块的结束标记，只负责结束当前判断、循环、子程序或类，不会退出程序。', '如果结束');
+  }
   if (startsAny(current, ['如果', '濡傛灉'])) {
     return explain(line, '如果', '如果用来做判断：条件成立就执行上方分支，否则执行“否则”分支。', '如果 (分数 > 60)\n    调试输出("通过")\n否则\n    调试输出("未通过")\n如果结束', '常见错误：写了“如果”后忘记补“如果结束”，或把“否则”放到“如果结束”后面。');
   }
@@ -238,7 +241,7 @@ export function getCodeExplanation(source: string, line: number, _column = 1): C
   if (/打开窗口|窗口_打开|载入窗口|载入新窗口/u.test(current)) {
     return explain(line, '打开窗口', '打开窗口会载入并显示设计器里已有的另一个窗口，第二个参数可以指定打开位置，例如居中、左上角或右下角。', '打开窗口("关于太空冒险客户端", "居中")', '常见错误：第一个参数填写目标窗口标题或类名，不是 .xml 文件名。');
   }
-  if (/结束|缁撴潫/u.test(current)) {
+  if (/^(?:结束|缁撴潫)\s*[（(]\s*[）)]\s*;?\s*$/u.test(current)) {
     return explain(line, '结束', '结束会关闭当前程序。新手建议只在“退出”按钮事件里使用。');
   }
   if (method?.kind === 'event') {
@@ -399,7 +402,7 @@ function parseActionStatement(text: string, line: number): LingCppActionBlock {
   if (/调试输出|璋冭瘯杈撳嚭/u.test(text)) {
     return { id: `action-${line}`, kind: 'debug-output', label: '调试输出', description: '写入运行日志', line, params: { text: quoted || '调试信息' }, sourceText: text };
   }
-  if (/结束|缁撴潫/u.test(text)) {
+  if (/^(?:结束|缁撴潫)\s*[（(]\s*[）)]\s*;?\s*$/u.test(text)) {
     return { id: `action-${line}`, kind: 'exit-program', label: '结束程序', description: '关闭当前程序', line, params: {}, sourceText: text };
   }
   if (/置文字|设置文字|文本/u.test(text)) {

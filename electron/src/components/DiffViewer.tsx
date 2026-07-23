@@ -115,7 +115,7 @@ interface DiffViewerProps {
   moduleContext?: LingCppModuleContext;
   activeWindowId?: string;
   editorExperienceMode?: EditorExperienceMode;
-  onExperienceModeChange?: (mode: EditorExperienceMode) => void;
+  onExperienceModeChange?: (mode: EditorExperienceMode) => void | boolean | Promise<void | boolean>;
   problems?: ProblemItem[];
   ignoredBeginnerTaskIds?: string[];
   onIgnoreBeginnerTask?: (taskId: string) => void;
@@ -1314,6 +1314,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [structureEditDraft, setStructureEditDraft] = useState<StructureEditDraft | null>(null);
   const [structureEditError, setStructureEditError] = useState<string | null>(null);
   const [newMemberDraft, setNewMemberDraft] = useState({ type: '文本型', name: '', initialValue: '', isStatic: false, isArray: false, note: '' });
+  const [showBeginnerTools, setShowBeginnerTools] = useState(false);
   const [newEventDraft, setNewEventDraft] = useState({ handlerName: '', parameters: '' });
   const [newFunctionDraft, setNewFunctionDraft] = useState({ returnType: '空', name: '', parameters: '' });
   const [newParameterDrafts, setNewParameterDrafts] = useState<Record<string, ParameterDraft>>({});
@@ -1343,6 +1344,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [nativeImportError, setNativeImportError] = useState<string | null>(null);
   const [showNativeImportPanel, setShowNativeImportPanel] = useState(false);
   const [structuredRevealLine, setStructuredRevealLine] = useState<number | null>(null);
+  const [pendingNativeSourceReveal, setPendingNativeSourceReveal] = useState<{ line: number; filePath?: string } | null>(null);
   const [beginnerCompletionState, setBeginnerCompletionState] = useState<BeginnerCompletionState | null>(null);
   const [beginnerJumpHighlight, setBeginnerJumpHighlight] = useState<BeginnerJumpHighlightState | null>(null);
   const [beginnerCodeDrafts, setBeginnerCodeDrafts] = useState<Record<string, string>>({});
@@ -1527,15 +1529,15 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   ]);
   const lingCppStructure = useMemo(
     () => activeFile?.language === 'lingcpp'
-      ? getLingCppStructureView(normalizedSourceCode, designerProject, activeFile?.path)
+      ? getLingCppStructureView(normalizedSourceCode, designerProject, activeFile?.path, moduleContext)
       : [],
-    [activeFile?.language, activeFile?.path, designerProject, normalizedSourceCode]
+    [activeFile?.language, activeFile?.path, designerProject, moduleContext, normalizedSourceCode]
   );
   const readableBlocks = useMemo(
     () => activeFile?.language === 'lingcpp'
-      ? getLingCppReadableBlocks(normalizedSourceCode, designerProject, activeFile?.path)
+      ? getLingCppReadableBlocks(normalizedSourceCode, designerProject, activeFile?.path, moduleContext)
       : [],
-    [activeFile?.language, activeFile?.path, designerProject, normalizedSourceCode]
+    [activeFile?.language, activeFile?.path, designerProject, moduleContext, normalizedSourceCode]
   );
   const lingCppLanguageContext = useMemo(
     () => activeFile?.language === 'lingcpp'
@@ -1739,6 +1741,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     || '界面可视化';
   const isLingCppBeginnerStructureMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner';
   const isLingCppNativeMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'native';
+
+  useEffect(() => {
+    if (!isLingCppBeginnerStructureMode) setShowBeginnerTools(false);
+  }, [isLingCppBeginnerStructureMode]);
 
   useEffect(() => {
     let surface: string | null = null;
@@ -2256,6 +2262,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       });
       const result = await response.json();
       const logs = Array.isArray(result.logs) ? result.logs : [];
+      const compilerDiagnostics = Array.isArray(result.compilerDiagnostics)
+        ? result.compilerDiagnostics
+        : [];
+      window.dispatchEvent(new CustomEvent('lingbuilder-compiler-diagnostics', {
+        detail: { diagnostics: compilerDiagnostics }
+      }));
       setNativePreviewState(previous => previous ? {
         ...previous,
         lastBuildLogs: logs,
@@ -2279,7 +2291,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     await window.lingBuilder.shell.openPath(targetPath);
   };
 
-  const applyNativeImportResult = (result: NativeCppImportResult) => {
+  const applyNativeImportResult = async (result: NativeCppImportResult) => {
+    if (textEditHistory.record(result.lcppSource)) {
+      setTextHistoryVersion(version => version + 1);
+    }
+    latestSourceCodeRef.current = result.lcppSource;
     onUpdateSourceContent?.(result.lcppSource);
     if (designerProject) {
       const nextWindows = Array.isArray(result.designerProjectPatch.windows) && result.designerProjectPatch.windows.length > 0
@@ -2296,7 +2312,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       });
     }
     setShowNativeImportPanel(false);
-    onExperienceModeChange?.('professional');
+    await onExperienceModeChange?.('professional');
   };
 
   const handleRunNativeImport = () => {
@@ -2314,15 +2330,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     }
   };
 
-  const revealNativeSourceLine = (line: number, preferStructure: boolean) => {
+  const revealNativeSourceLine = async (line: number, preferStructure: boolean) => {
     if (preferStructure) {
       setCursorPosition({ line, column: 1 });
       setStructuredRevealLine(line);
-      onExperienceModeChange?.('beginner');
+      const switched = await onExperienceModeChange?.('beginner');
+      if (switched === false) setStructuredRevealLine(null);
       return;
     }
-    onExperienceModeChange?.('professional');
-    window.dispatchEvent(new CustomEvent('lingcpp-reveal-line', { detail: { line } }));
+    setPendingNativeSourceReveal({ line, filePath: activeFile?.path });
+    const switched = await onExperienceModeChange?.('professional');
+    if (switched === false) setPendingNativeSourceReveal(null);
   };
 
   useEffect(() => {
@@ -2379,14 +2397,30 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   }, [activeFile?.path, activeWindowId, designerProject, isLingCppNativeMode, normalizedSourceCode]);
 
   useEffect(() => {
-    if (!structuredRevealLine) return;
+    if (!structuredRevealLine || editorExperienceMode !== 'beginner') return;
     const timer = window.setTimeout(() => {
       const row = document.querySelector<HTMLElement>(`[data-structured-line="${structuredRevealLine}"]`);
+      if (!row) return;
       scrollElementInsideBeginnerEditor(row, 'center');
       setStructuredRevealLine(null);
     }, 120);
     return () => window.clearTimeout(timer);
   }, [structuredRevealLine, editorExperienceMode]);
+
+  useEffect(() => {
+    if (!pendingNativeSourceReveal || editorExperienceMode !== 'professional') return;
+    const timers = [40, 160, 360].map((delay, index, delays) => window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('lingcpp-reveal-line', {
+        detail: {
+          line: pendingNativeSourceReveal.line,
+          column: 1,
+          filePath: pendingNativeSourceReveal.filePath
+        }
+      }));
+      if (index === delays.length - 1) setPendingNativeSourceReveal(null);
+    }, delay));
+    return () => timers.forEach(timer => window.clearTimeout(timer));
+  }, [editorExperienceMode, pendingNativeSourceReveal]);
 
   useEffect(() => {
     if (!pendingHandlerFocus) return;
@@ -3405,12 +3439,19 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     />
   );
 
-  const commitNewMemberDraft = (patch: Partial<typeof newMemberDraft> = {}) => {
-    const draft = { ...newMemberDraft, ...patch };
-    setNewMemberDraft(draft);
+  const resetNewMemberDraft = () => {
+    setNewMemberDraft({ type: '文本型', name: '', initialValue: '', isStatic: false, isArray: false, note: '' });
+    setStructureEditError(null);
+  };
+
+  const commitNewMemberDraft = () => {
+    const draft = newMemberDraft;
     const name = draft.name.trim();
     const type = draft.type.trim();
-    if (!name) return;
+    if (!name) {
+      setStructureEditError('新增成员需要填写名称。');
+      return;
+    }
     if (!type) {
       setStructureEditError('新增成员需要填写类型。');
       return;
@@ -3432,7 +3473,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         note: draft.note.trim() || undefined
       }
     }]);
-    if (applied) setNewMemberDraft({ type: '文本型', name: '', initialValue: '', isStatic: false, isArray: false, note: '' });
+    if (applied) resetNewMemberDraft();
   };
 
   const renderNewMemberInput = (
@@ -3450,16 +3491,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       autoComplete="off"
       disabled={!onUpdateSourceContent || !primaryLingCppClass}
       onChange={event => setNewMemberDraft(current => ({ ...current, [field]: event.target.value }))}
-      onBlur={event => commitNewMemberDraft({ [field]: event.currentTarget.value })}
       onKeyDown={event => {
-        if (event.key === 'Enter') event.currentTarget.blur();
         if (event.key === 'Escape') {
-          setNewMemberDraft({ type: '文本型', name: '', initialValue: '', isStatic: false, isArray: false, note: '' });
+          resetNewMemberDraft();
           event.currentTarget.blur();
         }
       }}
       className={`${directInputClasses(tone)} disabled:cursor-not-allowed disabled:opacity-40`}
-      title="输入名称后自动新增成员"
+      title="填写完整后点击“新增”写回源码"
     />
   );
 
@@ -3514,7 +3553,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           onChange={event => {
             const nextChecked = event.currentTarget.checked;
             setNewMemberDraft(current => ({ ...current, [field]: nextChecked }));
-            commitNewMemberDraft({ [field]: nextChecked });
           }}
         />
         <span className={`relative h-[var(--beginner-switch-height)] w-[var(--beginner-switch-width)] rounded-full transition-colors ${
@@ -4316,7 +4354,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         beginnerJumpHighlightTimerRef.current = null;
       }, 1200);
     };
-    const selectBeginnerEditorLine = (
+    const moveBeginnerEditorCaretToLine = (
       target: BeginnerCodeTarget,
       input: HTMLTextAreaElement,
       line: number,
@@ -4325,7 +4363,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const lines = input.value.split('\n');
       const targetLine = Math.max(1, Math.min(line, Math.max(1, lines.length)));
       const start = getBeginnerLineOffset(lines, targetLine);
-      const end = start + (lines[targetLine - 1]?.length || 0);
+      const lineText = lines[targetLine - 1] || '';
+      const caret = start + (lineText.match(/^\s*/u)?.[0].length || 0);
       const computedLineHeight = Number.parseFloat(window.getComputedStyle(input).lineHeight);
       const lineHeight = Number.isFinite(computedLineHeight) ? computedLineHeight : Math.max(18, editorFontSize * 1.65);
       const nextScrollTop = Math.max(0, (targetLine - 1) * lineHeight - input.clientHeight / 2 + lineHeight);
@@ -4334,7 +4373,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       input.focus();
       input.scrollTop = nextScrollTop;
       if (lineNumberColumn instanceof HTMLElement) lineNumberColumn.scrollTop = nextScrollTop;
-      input.setSelectionRange(start, end);
+      input.setSelectionRange(caret, caret);
       closeBeginnerCompletion(target);
       flashBeginnerJumpLine(codeTargetKey(target), targetLine, label);
     };
@@ -4351,12 +4390,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
       if (direction === 'outer-start') {
         const outerBlock = blocks.at(-1) || currentBlock;
-        selectBeginnerEditorLine(target, input, outerBlock.startLine, outerBlock.branches[0]?.text || '如果');
+        moveBeginnerEditorCaretToLine(target, input, outerBlock.startLine, outerBlock.branches[0]?.text || '如果');
         return true;
       }
 
       if (direction === 'end') {
-        selectBeginnerEditorLine(target, input, currentBlock.endLine, '如果结束');
+        moveBeginnerEditorCaretToLine(target, input, currentBlock.endLine, '如果结束');
         return true;
       }
 
@@ -4365,7 +4404,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
       if (direction === 'previous') {
         const branch = currentBeginnerBranch(currentBlock, currentLine);
-        selectBeginnerEditorLine(target, input, branch.line, branch.text || '如果');
+        moveBeginnerEditorCaretToLine(target, input, branch.line, branch.text || '如果');
         return true;
       }
 
@@ -4373,12 +4412,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         const nextAnchor = anchors.find(anchor => anchor.line > currentLine)
           || anchors.find(anchor => anchor.line === currentBlock.endLine)
           || anchors[0];
-        selectBeginnerEditorLine(target, input, nextAnchor.line, nextAnchor.label);
+        moveBeginnerEditorCaretToLine(target, input, nextAnchor.line, nextAnchor.label);
         return true;
       }
 
       const nextAnchor = anchors.find(anchor => anchor.line > currentLine) || anchors[0];
-      selectBeginnerEditorLine(target, input, nextAnchor.line, nextAnchor.label);
+      moveBeginnerEditorCaretToLine(target, input, nextAnchor.line, nextAnchor.label);
       return true;
     };
     const handleBeginnerCodeChange = (
@@ -5119,28 +5158,32 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const renderCodeTargetNoteInput = (
       target: BeginnerCodeTarget,
       value: string
-    ) => (
-      <input
-        key={`${codeTargetKey(target)}:note:${value}`}
-        defaultValue={value}
-        placeholder="备注"
-        readOnly={!onUpdateSourceContent}
-        onBlur={event => {
-          const nextValue = event.currentTarget.value.trim();
-          if (nextValue === value) return;
-          applyCodeTargetSignature(target, { note: nextValue });
-        }}
-        onKeyDown={event => {
-          if (event.key === 'Enter') event.currentTarget.blur();
-          if (event.key === 'Escape') {
-            event.currentTarget.value = value;
-            event.currentTarget.blur();
-          }
-        }}
-        className={directInputClasses('plain')}
-        title="备注会写入为声明上一行注释；留空会删除紧邻声明的备注注释"
-      />
-    );
+    ) => {
+      const editHint = '备注会写入为声明上一行注释；留空会删除紧邻声明的备注注释';
+      return (
+        <input
+          key={`${codeTargetKey(target)}:note:${value}`}
+          defaultValue={value}
+          placeholder="备注"
+          readOnly={!onUpdateSourceContent}
+          aria-label={`子程序备注${value ? `：${value}` : ''}`}
+          onBlur={event => {
+            const nextValue = event.currentTarget.value.trim();
+            if (nextValue === value) return;
+            applyCodeTargetSignature(target, { note: nextValue });
+          }}
+          onKeyDown={event => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+            if (event.key === 'Escape') {
+              event.currentTarget.value = value;
+              event.currentTarget.blur();
+            }
+          }}
+          className={directInputClasses('plain')}
+          title={value ? `${value}\n\n${editHint}` : editHint}
+        />
+      );
+    };
 
     const renderCodeTargetStaticSwitch = (
       target: BeginnerCodeTarget,
@@ -6191,7 +6234,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const compactEmptyCellClass = `h-[var(--beginner-table-row-height)] border px-[var(--beginner-table-cell-x)] align-middle text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] ${compactTableBorder} ${
       isDarkMode ? 'bg-[#15161b] text-slate-600' : 'bg-white text-slate-400'
     }`;
-    type CompactColumn = { label: string; className?: string };
+    type CompactColumn = { label: string; className?: string; style?: React.CSSProperties };
     const beginnerKnownMembers = new Set(memberRows.map(row => row.targetName || row.name).filter(Boolean));
     const beginnerKnownProcedures = new Set(codeTargets.map(target => target.method.name).filter(Boolean));
     const beginnerModuleCommands = new Set(getLingCppModuleCommandNames(moduleContext));
@@ -6320,7 +6363,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           <thead>
             <tr>
               {columns.map((column, columnIndex) => (
-                <th key={`${column.label}:${columnIndex}`} className={`${compactHeadCellClass} ${column.className || ''}`}>
+                <th
+                  key={`${column.label}:${columnIndex}`}
+                  className={`${compactHeadCellClass} ${column.className || ''}`}
+                  style={column.style}
+                >
                   {column.label}
                 </th>
               ))}
@@ -6379,6 +6426,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const accessValue = row?.access || target.method.access || '公开';
       const noteValue = row?.note || '';
       const selected = isActiveProcessTarget(target);
+      const noteColumnWidth = Math.min(420, Math.max(280, Array.from(noteValue).length * 14 + 28));
+      const processTableWidth = 438 + noteColumnWidth;
 
       return renderSourceShell(
         `${target.method.kind}-${target.method.name}-${target.method.line}`,
@@ -6391,7 +6440,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             { label: '返回值类型', className: 'w-[90px]' },
             { label: '静态', className: 'w-[54px]' },
             { label: '公开', className: 'w-[74px]' },
-            { label: '备 注', className: 'w-[140px]' }
+            { label: '备注', style: { width: noteColumnWidth } }
           ],
           [
             <tr
@@ -6419,7 +6468,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               <td className={compactCellClass}>{renderCodeTargetNoteInput(target, noteValue)}</td>
             </tr>
           ],
-          600
+          processTableWidth
         )
       );
     };
@@ -6465,7 +6514,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               { label: '类 型', className: 'w-[96px]' },
               { label: '静 态', className: 'w-[56px]' },
               { label: '数 组', className: 'w-[56px]' },
-              { label: '备 注', className: 'w-[140px]' }
+              { label: '备 注', className: 'w-[140px]' },
+              { label: '操 作', className: 'w-[88px]' }
             ],
             [
               ...rows.map(row => (
@@ -6475,6 +6525,22 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   <td className={compactCellClass}>{renderMemberBooleanSwitch(row, 'member-static', Boolean(row.isStatic), '切换程序集变量静态')}</td>
                   <td className={compactCellClass}>{renderMemberBooleanSwitch(row, 'member-array', Boolean(row.isArray), '切换程序集变量数组')}</td>
                   <td className={compactCellClass}>{renderDirectStructureInput(row, 'member-note', row.note || '', '备注', 'plain')}</td>
+                  <td className={compactCellClass}>
+                    <button
+                      type="button"
+                      onClick={() => deleteStructuredRow(row)}
+                      disabled={!onUpdateSourceContent || !row.editable || row.editKind !== 'member'}
+                      className={`inline-flex h-[var(--beginner-input-height)] w-full items-center justify-center gap-1 rounded border px-2 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                        isDarkMode
+                          ? 'border-rose-500/25 text-rose-300 hover:bg-rose-500/10'
+                          : 'border-rose-200 text-rose-700 hover:bg-rose-50'
+                      }`}
+                      title={`删除变量 ${row.targetName || row.name}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      删除
+                    </button>
+                  </td>
                 </tr>
               )),
               primaryLingCppClass ? (
@@ -6484,10 +6550,42 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   <td className={compactEmptyCellClass}>{renderNewMemberBooleanSwitch('isStatic', '新程序集变量 · 静态')}</td>
                   <td className={compactEmptyCellClass}>{renderNewMemberBooleanSwitch('isArray', '新程序集变量 · 数组')}</td>
                   <td className={compactCellClass}>{renderNewMemberInput('note', '备注', 'plain')}</td>
+                  <td className={compactCellClass}>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={commitNewMemberDraft}
+                        disabled={!onUpdateSourceContent || !newMemberDraft.name.trim() || !newMemberDraft.type.trim()}
+                        className={`inline-flex h-[var(--beginner-input-height)] flex-1 items-center justify-center gap-1 rounded border px-1.5 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                          isDarkMode
+                            ? 'border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/10'
+                            : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                        }`}
+                        title="确认新增变量"
+                      >
+                        <Check className="h-3 w-3" />
+                        新增
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetNewMemberDraft}
+                        disabled={!newMemberDraft.name && !newMemberDraft.note && !newMemberDraft.initialValue && !newMemberDraft.isStatic && !newMemberDraft.isArray && newMemberDraft.type === '文本型'}
+                        aria-label="取消新增变量"
+                        className={`inline-flex h-[var(--beginner-input-height)] w-7 items-center justify-center rounded border transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                          isDarkMode
+                            ? 'border-slate-600 text-slate-400 hover:bg-slate-700/50'
+                            : 'border-slate-200 text-slate-500 hover:bg-slate-100'
+                        }`}
+                        title="取消并清空新增变量表单"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ) : null
             ].filter(Boolean) as React.ReactNode[],
-            520
+            612
           )}
           </div>
         </section>
@@ -7353,7 +7451,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   };
 
   const renderBeginnerPanel = () => (
-    <aside className={`hidden xl:flex w-[360px] shrink-0 flex-col border-l ${
+    <aside className={`${
+      showBeginnerTools
+        ? 'fixed inset-y-0 right-0 z-50 flex w-[min(360px,calc(100vw-32px))] shadow-2xl'
+        : 'hidden'
+    } xl:static xl:z-auto xl:flex xl:w-[360px] xl:shadow-none shrink-0 flex-col border-l ${
       isDarkMode ? 'bg-[#18181f] border-[#2d2d34]' : 'bg-white border-slate-200'
     }`}>
       <div className={`h-9 px-3 flex items-center justify-between border-b ${
@@ -7364,20 +7466,30 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           <span className={`text-[11px] font-semibold ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>新手工作台</span>
           <span className="text-[10px] text-slate-500">{visibleBeginnerTasks.length}</span>
         </div>
-        <button
-          type="button"
-          onClick={() => onExperienceModeChange?.('professional')}
-          className={`rounded border px-2 py-1 text-[10px] font-semibold ${
-            isDarkMode ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          专业模式
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => onExperienceModeChange?.('professional')}
+            className={`rounded border px-2 py-1 text-[10px] font-semibold ${
+              isDarkMode ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            专业模式
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowBeginnerTools(false)}
+            aria-label="关闭新手工具"
+            className={`inline-flex h-6 w-6 items-center justify-center rounded xl:hidden ${
+              isDarkMode ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-slate-500 hover:bg-slate-100'
+            }`}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto p-3 space-y-3">
-        {renderBeginnerStructuredReadingSection()}
-
         <section className={`rounded border p-3 ${
           isDarkMode ? 'border-[#2d2d34] bg-[#202027]' : 'border-slate-200 bg-slate-50'
         }`}>
@@ -7524,21 +7636,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           </button>
           <button
             type="button"
-            onClick={() => {
-              if (activeBeginnerHandler) {
-                applyBeginnerAction('调试输出', createAction('debug-output', '调试输出', { text: '事件已触发' }));
-              }
-            }}
-            disabled={!activeBeginnerHandler}
-            className={`rounded border px-2.5 py-2 text-left disabled:opacity-50 ${
+            onClick={() => setShowBeginnerTools(true)}
+            className={`rounded border px-2.5 py-2 text-left ${
               isDarkMode ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200' : 'border-emerald-200 bg-emerald-50 text-emerald-800'
             }`}
           >
             <div className="flex items-center gap-1.5 text-[11px] font-semibold">
               <Wand2 className="h-3.5 w-3.5" />
-              <span>事件动作块</span>
+              <span>新手工具</span>
             </div>
-            <div className="mt-1 truncate text-[10px] opacity-80">{activeBeginnerHandler || '先选择一个事件处理器'}</div>
+            <div className="mt-1 truncate text-[10px] opacity-80">事件动作、代码解释与 5 步学习路径</div>
           </button>
         </div>
       </div>
@@ -7854,6 +7961,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                     <button
                       type="button"
                       onClick={() => onExperienceModeChange?.('beginner')}
+                      aria-pressed={editorExperienceMode === 'beginner'}
+                      aria-label="切换到新手编辑模式"
                       className={`px-2 py-0.5 text-[10px] rounded font-semibold ${
                         editorExperienceMode === 'beginner'
                           ? isDarkMode ? 'bg-emerald-500/20 text-emerald-300' : 'bg-emerald-100 text-emerald-700'
@@ -7865,6 +7974,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                     <button
                       type="button"
                       onClick={() => onExperienceModeChange?.('professional')}
+                      aria-pressed={editorExperienceMode === 'professional'}
+                      aria-label="切换到专业编辑模式"
                       className={`px-2 py-0.5 text-[10px] rounded font-semibold ${
                         editorExperienceMode === 'professional'
                           ? isDarkMode ? 'bg-cyan-500/20 text-cyan-300' : 'bg-cyan-100 text-cyan-700'
@@ -7876,6 +7987,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                     <button
                       type="button"
                       onClick={() => onExperienceModeChange?.('native')}
+                      aria-pressed={editorExperienceMode === 'native'}
+                      aria-label="切换到原生 C++ 预览模式"
                       className={`px-2 py-0.5 text-[10px] rounded font-semibold ${
                         editorExperienceMode === 'native'
                           ? isDarkMode ? 'bg-blue-500/20 text-blue-300' : 'bg-blue-100 text-blue-700'
@@ -7940,7 +8053,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
             <div className="flex-1 min-h-0 flex overflow-hidden">
               {isLingCppBeginnerStructureMode ? (
-                renderLingCppStructureTableEditor()
+                <>
+                  <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                    {renderBeginnerSummaryStrip()}
+                    {renderLingCppStructureTableEditor()}
+                  </div>
+                  {renderBeginnerPanel()}
+                </>
               ) : isLingCppNativeMode ? (
                 renderNativePreviewEditor()
               ) : (

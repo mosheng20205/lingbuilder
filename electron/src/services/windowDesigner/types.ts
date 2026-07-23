@@ -22,6 +22,9 @@ export type LingWindowOpenPlacement =
   | 'bottom-right'
   | 'custom';
 
+export type LingWindowCornerStyle = 'system' | 'rounded' | 'small-rounded' | 'square';
+export type LingWindowIconStyle = 'lingbuilder' | 'system' | 'none';
+
 export interface LingControl {
   id: string;
   /** 布局树中的父控件。控件坐标仍使用窗口绝对坐标，避免影响现有生成结果。 */
@@ -53,6 +56,11 @@ export interface LingWindowModel {
   width: number;
   height: number;
   background: string;
+  /** 原生非客户区外观；旧版 Windows 不支持的 DWM 属性会安全回退到系统样式。 */
+  titleBarBackground?: string;
+  titleBarForeground?: string;
+  cornerStyle?: LingWindowCornerStyle;
+  iconStyle?: LingWindowIconStyle;
   description: string;
   openPlacement?: LingWindowOpenPlacement;
   openX?: number;
@@ -61,7 +69,7 @@ export interface LingWindowModel {
   menuName?: string;
   menuItems?: string;
   menuEvents?: Record<string, string>;
-  /** 窗口自身事件；当前确定性生成链路支持 Loaded（创建完毕）。 */
+  /** 窗口自身事件；事件键由 windowEventRegistry 统一维护。 */
   events?: LingEventBinding;
 }
 

@@ -6,7 +6,8 @@ import path from 'node:path';
 
 import {
   WORKBENCH_CONFIGURATION_KEYS,
-  createWorkbenchConfigurationService
+  createWorkbenchConfigurationService,
+  getWorkbenchConfigurationMutationTarget
 } from '../src/services/configuration/workbenchConfiguration';
 import {
   ConfigurationPersistenceError,
@@ -87,6 +88,29 @@ test('workspace values override user values and snapshot exposes inspection, met
 
   fontSize.metadata.title = '被外部修改';
   assert.notEqual(service.snapshot().settings[0].metadata.title, '被外部修改');
+});
+
+test('quick experience-mode switches update the effective workspace target when it is pinned', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workbench-mode-target-'));
+  const workspaceRoot = path.join(root, 'workspace');
+  const userSettingsPath = path.join(root, 'profile', 'settings.json');
+  const service = createWorkbenchConfigurationService({ workspaceRoot, userSettingsPath });
+
+  await service.update('editor.experienceMode', 'professional', 'workspace');
+  assert.equal(
+    getWorkbenchConfigurationMutationTarget(service.snapshot(), 'editor.experienceMode'),
+    'workspace'
+  );
+
+  const userOnly = createWorkbenchConfigurationService({
+    workspaceRoot: path.join(root, 'user-only-workspace'),
+    userSettingsPath: path.join(root, 'user-only-profile', 'settings.json')
+  });
+  await userOnly.update('editor.experienceMode', 'native', 'user');
+  assert.equal(
+    getWorkbenchConfigurationMutationTarget(userOnly.snapshot(), 'editor.experienceMode'),
+    'user'
+  );
 });
 
 test('keyboard shortcut overrides accept only objects whose values are non-empty strings', async () => {

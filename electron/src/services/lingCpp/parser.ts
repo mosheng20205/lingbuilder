@@ -212,7 +212,7 @@ export function parseLingCpp(source: string): LingCppParseResult {
     }
 
     const methodMatch = trimmed.match(METHOD_RE);
-    if (methodMatch) {
+    if (methodMatch && isMethodDeclaration(trimmed, methodMatch[2])) {
       closeCurrentMethod(lineNumber - 1);
       const isStatic = Boolean(methodMatch[1]);
       const prefix = methodMatch[2];
@@ -453,6 +453,12 @@ function splitParameterDefault(part: string): { definition: string; defaultValue
   }
 
   return { definition: part.trim() };
+}
+
+function isMethodDeclaration(trimmed: string, prefix: string): boolean {
+  if (prefix === '构造' || prefix === '析构') return true;
+  const withoutStatic = trimmed.replace(/^静态\s+/u, '');
+  return new RegExp(`^${escapeRegexLiteral(prefix)}\\s+`, 'u').test(withoutStatic);
 }
 
 function normalizeMethodName(prefix: string, declaredName: string | undefined, className: string): string {

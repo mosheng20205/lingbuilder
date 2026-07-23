@@ -335,7 +335,7 @@ MCP 工具和 HTTP API 复用同一套 `AiBridgeService`，权限、路径校验
 
 使用 `yolo` 模式自动生成 `lingbuilder.new_emoji.ui` 示例时，必须避免生成“创建完毕后立刻结束”的代码：
 
-- 不要在 new_emoji 演示窗口的“创建完毕”事件末尾写 `结束` 或 `结束()`，否则 exe 会创建窗口后马上销毁并表现为闪退。
+- “创建完毕”事件仍要用独立一行 `结束` 作为结构收尾；不要额外写显式退出命令 `结束()`，否则 exe 会创建窗口后马上销毁并表现为闪退。
 - 纯 new_emoji 示例应在创建窗口、文本、按钮等控件后进入 `NE_运行消息循环` 或底层 `EU_RunMessageLoop()`。
 - 如果示例混用了 LingBuilder 默认 Win32 窗口和 new_emoji 自建窗口，必须明确主消息循环归属；不能让默认空窗口关闭后触发 `PostQuitMessage(0)`。
 - 返回 exe 路径前，必须确认 exe 同目录存在 `new_emoji.dll`，并实际启动 exe，等待至少 3 秒确认进程仍在运行。

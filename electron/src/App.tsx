@@ -64,7 +64,7 @@ import { computeDiff } from './utils/diff';
 import Sidebar from './components/Sidebar';
 import DiffViewer, { DiffViewerHandle } from './components/DiffViewer';
 import MonacoCodeEditor from './components/MonacoCodeEditor';
-import type { MonacoEditorState } from './components/MonacoCodeEditor';
+import type { MonacoCodeEditorHandle, MonacoEditorState } from './components/MonacoCodeEditor';
 import AiAssistant from './components/AiAssistant';
 import BottomPanel from './components/BottomPanel';
 import CommandPalette from './components/CommandPalette';
@@ -87,8 +87,13 @@ import {
 } from './services/files/types';
 import {
   getCurrentFileContent,
-  isEditorFileDirty
+  isEditorFileDirty,
+  updateEditorFileContent
 } from './services/files/editorFileState';
+import {
+  isWorkspaceSaveEcho,
+  type WorkspaceSaveEchoSnapshot
+} from './services/files/workspaceSaveEchoService';
 import {
   createCommandService,
   createKeybindingService,
@@ -107,6 +112,7 @@ import type {
   WorkbenchConfigurationKey,
   WorkbenchConfigurationSnapshot
 } from './services/configuration';
+import { getWorkbenchConfigurationMutationTarget } from './services/configuration';
 import {
   LEGACY_EDITOR_EXPERIENCE_MODE_KEY,
   LEGACY_EDITOR_FONT_SIZE_KEY,
@@ -126,8 +132,10 @@ import {
   readWindowDesignerState,
   saveWindowDesignerState,
   PersistedWindowDesignerState,
+  WINDOW_DESIGNER_DIRTY_STATE_CHANGED,
   WINDOW_DESIGNER_PROJECT_UPDATED
 } from './services/windowDesigner/windowDesignerService';
+import type { WindowDesignerDirtyStateDetail } from './services/windowDesigner/windowDesignerService';
 import { sourceControlService } from './services/lingCpp/sourceControlService';
 import { applyProjectFileDelete, applyProjectFileRename } from './services/workspace/projectFileState';
 import {
@@ -440,6 +448,9 @@ const getWorkbenchCommandKeybindings = (
 export default function App() {
   const [solution, setSolution] = useState<SolutionModel>(DEFAULT_SOLUTION);
   const [windowDesignerState, setWindowDesignerState] = useState<PersistedWindowDesignerState>(() => readWindowDesignerState());
+  const [designerDirty, setDesignerDirty] = useState(false);
+  const designerDirtyRef = useRef(false);
+  const designerSavedSnapshotRef = useRef(JSON.stringify(windowDesignerState.project));
   const activeSolutionProject = solution.projects.find(project => project.id === solution.startupProjectId) || solution.projects[0] || DEFAULT_SOLUTION.projects[0];
   const activeProjectId = activeSolutionProject.id;
   const textModelWorkspaceId = solution.id || DEFAULT_SOLUTION.id;
@@ -527,8 +538,17 @@ export default function App() {
   });
   const filesRef = useRef<CppFile[]>([]);
   const projectFileVersionsRef = useRef<Record<string, string>>({});
+  const inFlightSaveSnapshotsRef = useRef<Map<number, WorkspaceSaveEchoSnapshot>>(new Map());
+  const inFlightSaveSequenceRef = useRef(0);
   const activeFileRef = useRef<CppFile | null>(null);
   const diffViewerRef = useRef<DiffViewerHandle>(null);
+  const secondaryEditorRef = useRef<MonacoCodeEditorHandle>(null);
+  const activeEditorGroupRef = useRef<'primary' | 'secondary'>('primary');
+  const primaryEditorStateRef = useRef<MonacoEditorState>(createInactiveTextEditorStatus('loading'));
+  const secondaryEditorStateRef = useRef<MonacoEditorState>(createInactiveTextEditorStatus('loading'));
+  const saveWorkspaceCoreRef = useRef<(reason?: string, ownedByBuild?: boolean) => Promise<boolean>>(
+    async () => false
+  );
   const [editorState, setEditorState] = useState<MonacoEditorState>(() => createInactiveTextEditorStatus('loading'));
   useEffect(() => {
     filesRef.current = files;
@@ -540,7 +560,7 @@ export default function App() {
   useEffect(() => {
     if (!projectFilesReady || loadedProjectId !== activeProjectId) return;
     const dirtyFiles = files.filter(isEditorFileDirty);
-    if (dirtyFiles.length === 0) return;
+    if (dirtyFiles.length === 0 && !designerDirty) return;
     const timer = window.setTimeout(() => {
       const recoveryFiles = Object.fromEntries(filesRef.current.map(file => [file.path, getCurrentFileContent(file)]));
       const fileFormats = Object.fromEntries(filesRef.current.map(file => [file.path, getTextFileFormat(file)]));
@@ -553,12 +573,13 @@ export default function App() {
           fileFormats,
           baseVersions: projectFileVersionsRef.current,
           openTabs: openTabsRef.current,
-          activeFilePath: activeFileRef.current?.path
+          activeFilePath: activeFileRef.current?.path,
+          designerProject: designerDirtyRef.current ? readWindowDesignerState().project : undefined
         })
       });
     }, 750);
     return () => window.clearTimeout(timer);
-  }, [activeProjectId, files, loadedProjectId, projectFilesReady]);
+  }, [activeProjectId, designerDirty, files, loadedProjectId, projectFilesReady]);
 
   const focusLingCppHandler = useCallback((handlerName: string, filePath?: string) => {
     [80, 220, 480].forEach(delay => {
@@ -658,6 +679,7 @@ export default function App() {
 
     const latestFile = availableFiles.find(candidate => candidate.path === file.path) || file;
     setOpenTabs(prev => prev.includes(latestFile.path) ? prev : [...prev, latestFile.path]);
+    activeEditorGroupRef.current = 'primary';
     setEditorState(createInactiveTextEditorStatus('switching-file'));
     activeFileRef.current = latestFile;
     setActiveFile(latestFile);
@@ -699,18 +721,42 @@ export default function App() {
   }, [flushCurrentEditorDrafts, showEditorFlushFailure]);
 
   const updateEditorGroupFile = useCallback((filePath: string, content: string) => {
-    setFiles(previous => {
-      const next = previous.map(file => file.path === filePath
-        ? { ...file, translatedContent: content, isModified: content !== file.originalContent }
-        : file);
-      filesRef.current = next;
-      return next;
-    });
+    const update = updateEditorFileContent(filesRef.current, activeFileRef.current, filePath, content);
+    if (!update.updatedFile) return;
+    filesRef.current = update.files;
+    setFiles(update.files);
+    if (update.activeFile && update.activeFile !== activeFileRef.current) {
+      activeFileRef.current = update.activeFile;
+      setActiveFile(update.activeFile);
+    }
+  }, []);
+
+  const activateEditorGroup = useCallback((group: 'primary' | 'secondary') => {
+    activeEditorGroupRef.current = group;
+    setEditorState(group === 'secondary'
+      ? secondaryEditorStateRef.current
+      : primaryEditorStateRef.current);
+  }, []);
+
+  const publishPrimaryEditorState = useCallback((state: MonacoEditorState) => {
+    primaryEditorStateRef.current = state;
+    if (activeEditorGroupRef.current === 'primary') setEditorState(state);
+  }, []);
+
+  const publishSecondaryEditorState = useCallback((state: MonacoEditorState) => {
+    secondaryEditorStateRef.current = state;
+    if (activeEditorGroupRef.current === 'secondary') setEditorState(state);
   }, []);
 
   const splitActiveEditor = useCallback((orientation: 'horizontal' | 'vertical') => {
     setEditorGroupLayout(previous => splitEditorGroup(previous, activeFileRef.current?.path || activeFile.path, orientation));
   }, [activeFile.path]);
+
+  useEffect(() => {
+    if (editorGroupLayout.groups.length > 1 || activeEditorGroupRef.current !== 'secondary') return;
+    activeEditorGroupRef.current = 'primary';
+    setEditorState(primaryEditorStateRef.current);
+  }, [editorGroupLayout.groups.length]);
 
   const movePrimaryTabToSecondary = useCallback(async () => {
     const filePath = activeFileRef.current?.path; if (!filePath) return;
@@ -740,6 +786,10 @@ export default function App() {
   const [problems, setProblems] = useState<ProblemItem[]>([]);
   const [compilerProblems, setCompilerProblems] = useState<ProblemItem[]>([]);
   const [qualityProblems, setQualityProblems] = useState<ProblemItem[]>([]);
+  const workbenchProblems = useMemo(
+    () => [...compilerProblems, ...qualityProblems, ...problems],
+    [compilerProblems, problems, qualityProblems]
+  );
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [activeDropdown, setActiveDropdown] = useState<'file' | 'edit' | 'view' | 'project' | 'tools' | 'help' | null>(null);
   const [isMinimizedApp, setIsMinimizedApp] = useState(false);
@@ -839,6 +889,9 @@ export default function App() {
       const customEvent = event as CustomEvent<PersistedWindowDesignerState>;
       const nextState = customEvent.detail || readWindowDesignerState();
       setWindowDesignerState(nextState);
+      const nextDirty = JSON.stringify(nextState.project) !== designerSavedSnapshotRef.current;
+      designerDirtyRef.current = nextDirty;
+      setDesignerDirty(nextDirty);
       refreshModuleContext();
     };
 
@@ -846,11 +899,22 @@ export default function App() {
       refreshModuleContext();
     };
 
+    const handleDesignerDirtyStateChanged = (event: Event) => {
+      const detail = (event as CustomEvent<WindowDesignerDirtyStateDetail>).detail;
+      if (!detail || detail.projectId !== activeProjectIdRef.current) return;
+      const nextDirty = detail.isDirty
+        && JSON.stringify(detail.state.project) !== designerSavedSnapshotRef.current;
+      designerDirtyRef.current = nextDirty;
+      setDesignerDirty(nextDirty);
+    };
+
     window.addEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
+    window.addEventListener(WINDOW_DESIGNER_DIRTY_STATE_CHANGED, handleDesignerDirtyStateChanged);
     window.addEventListener('lingbuilder-modules-changed', handleModulesChanged);
     refreshModuleContext();
     return () => {
       window.removeEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
+      window.removeEventListener(WINDOW_DESIGNER_DIRTY_STATE_CHANGED, handleDesignerDirtyStateChanged);
       window.removeEventListener('lingbuilder-modules-changed', handleModulesChanged);
     };
   }, [refreshModuleContext]);
@@ -885,12 +949,16 @@ export default function App() {
   }, [activeFile.language, activeFile.originalContent, activeFile.path, activeFile.translatedContent, editorExperienceMode, moduleContext, windowDesignerState.project]);
 
   const setEditorExperienceMode = useCallback(async (mode: EditorExperienceMode): Promise<boolean> => {
-    return configurationMutationRef.current('editor.experienceMode', mode, 'user');
-  }, []);
+    const target = getWorkbenchConfigurationMutationTarget(
+      configurationSnapshot,
+      'editor.experienceMode'
+    );
+    return configurationMutationRef.current('editor.experienceMode', mode, target);
+  }, [configurationSnapshot]);
 
-  const handleEditorExperienceModeChange = useCallback(async (mode: EditorExperienceMode) => {
-    if (mode === editorExperienceMode) return;
-    await setEditorExperienceMode(mode);
+  const handleEditorExperienceModeChange = useCallback(async (mode: EditorExperienceMode): Promise<boolean> => {
+    if (mode === editorExperienceMode) return true;
+    return await setEditorExperienceMode(mode);
   }, [editorExperienceMode, setEditorExperienceMode]);
 
   const ignoreBeginnerTask = useCallback((taskId: string) => {
@@ -1718,6 +1786,22 @@ void DisplayStatus() {
       }
       const sourceFile = filesRef.current.find(candidate => candidate.path === file.path);
       if (!sourceFile) throw new Error(`当前项目中找不到文件：${file.path}`);
+      if (sourceFile.language === 'lingcpp') {
+        const sourceClassNames = new Set(
+          parseLingCpp(getCurrentFileContent(sourceFile)).program.classes.map(item => item.name)
+        );
+        const boundDesignerWindow = windowDesignerState.project.windows.find(window =>
+          getLingWindowSourceFileName(window.fileName, window.className).toLocaleLowerCase()
+            === sourceFile.name.toLocaleLowerCase()
+          || sourceClassNames.has(window.className)
+        );
+        if (boundDesignerWindow) {
+          throw new Error(
+            `“${sourceFile.name}”绑定设计器窗口“${boundDesignerWindow.title}”，不能只重命名源码文件。`
+            + '请先创建或迁移窗口；在统一重构命令落地前，工作台会阻止类名、设计文件名和 .lcpp 路径静默脱钩。'
+          );
+        }
+      }
 
       const response = await fetch('/api/window-designer/files/rename', {
         method: 'POST',
@@ -2177,6 +2261,9 @@ void DisplayStatus() {
         }
         if (!isCurrentLoad(projectId)) return;
         if (data?.designerProject) {
+          designerSavedSnapshotRef.current = JSON.stringify(data.designerProject);
+          designerDirtyRef.current = false;
+          setDesignerDirty(false);
           saveWindowDesignerState({
             project: data.designerProject,
             activeWindowId: data.designerProject.windows?.[0]?.id || 'main-window',
@@ -2209,10 +2296,17 @@ void DisplayStatus() {
           const recoveryResponse = await fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(projectId)}`);
           const recoveryPayload = await recoveryResponse.json().catch(() => ({}));
           const recovery = recoveryPayload?.recovery;
-          if (recovery?.files && window.confirm(`发现 ${new Date(recovery.savedAt).toLocaleString()} 的未保存编辑，是否恢复？\n\n恢复只会进入编辑器内存，不会立即覆盖磁盘。`)) {
-            nextFiles = nextFiles.map(file => typeof recovery.files[file.path] === 'string'
+          if ((recovery?.files || recovery?.designerProject) && window.confirm(`发现 ${new Date(recovery.savedAt).toLocaleString()} 的未保存编辑，是否恢复？\n\n恢复只会进入编辑器内存，不会立即覆盖磁盘。`)) {
+            nextFiles = nextFiles.map(file => typeof recovery.files?.[file.path] === 'string'
               ? { ...file, translatedContent: recovery.files[file.path], isModified: recovery.files[file.path] !== file.originalContent }
               : file);
+            if (recovery.designerProject) {
+              saveWindowDesignerState({
+                project: recovery.designerProject,
+                activeWindowId: recovery.designerProject.windows?.[0]?.id || 'main-window',
+                selectedControlId: recovery.designerProject.windows?.[0]?.controls?.[0]?.id || null
+              });
+            }
           } else if (recovery) {
             void fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
           }
@@ -2296,6 +2390,9 @@ void DisplayStatus() {
           ]);
         }
       } catch (e) {
+        const expectedCleanupAbort = cancelled
+          && (controller.signal.aborted || (e instanceof DOMException && e.name === 'AbortError'));
+        if (expectedCleanupAbort) return;
         console.error('Failed to load files from disk:', e);
         if (isCurrentLoad(activeProjectId)) {
           const message = timedOut
@@ -2325,33 +2422,216 @@ void DisplayStatus() {
   useEffect(() => {
     if (!projectFilesReady || loadedProjectId !== activeProjectId) return;
     const events = new EventSource(`/api/window-designer/files/watch?projectId=${encodeURIComponent(activeProjectId)}`);
-    let handling = false;
-    const handleFileChange = async (event: MessageEvent<string>) => {
-      if (handling) return;
-      handling = true;
+    const pendingFileChangePaths = new Set<string>();
+    let processingFileChanges = false;
+    let disposed = false;
+    let retryTimer: number | undefined;
+    let retryDelay = 250;
+
+    const updateTrackedFileVersion = (filePath: string, version?: string) => {
+      const nextVersions = { ...projectFileVersionsRef.current };
+      if (version) nextVersions[filePath] = version;
+      else delete nextVersions[filePath];
+      projectFileVersionsRef.current = nextVersions;
+    };
+
+    const isOwnSaveEcho = (
+      filePath: string,
+      content: string,
+      kind: 'source' | 'designer'
+    ): boolean => isWorkspaceSaveEcho(inFlightSaveSnapshotsRef.current.values(), {
+        projectId: activeProjectId,
+        filePath,
+        content,
+        kind
+      });
+
+    const applyExternalSourceFile = async (
+      changedPath: string,
+      payload: any,
+      nextVersion?: string
+    ) => {
+      const diskContent = payload.files?.[changedPath];
+      if (typeof diskContent === 'string' && isOwnSaveEcho(changedPath, diskContent, 'source')) {
+        if (nextVersion) updateTrackedFileVersion(changedPath, nextVersion);
+        return;
+      }
+      const localFile = filesRef.current.find(file => file.path === changedPath);
+      const deletedExternally = typeof diskContent !== 'string';
+      if (localFile && isEditorFileDirty(localFile)) {
+        const reload = window.confirm(
+          deletedExternally
+            ? `文件“${changedPath}”已被外部删除。\n\n“确定”从工作台移除；“取消”保留本地编辑并在保存时执行冲突保护。`
+            : `文件“${changedPath}”已被外部修改。\n\n“确定”重新载入磁盘版本；“取消”保留本地编辑。`
+        );
+        if (!reload) return;
+      }
+
+      if (deletedExternally) {
+        if (!localFile) {
+          updateTrackedFileVersion(changedPath);
+          return;
+        }
+        disposeWorkbenchTextModelsForSource(textModelIdentity(activeProjectId, changedPath));
+        const nextState = applyProjectFileDelete({
+          files: filesRef.current,
+          openTabs: openTabsRef.current,
+          activeFilePath: activeFileRef.current?.path || null
+        }, changedPath);
+        filesRef.current = nextState.files;
+        openTabsRef.current = nextState.openTabs;
+        setFiles(nextState.files);
+        setOpenTabs(nextState.openTabs);
+        const nextActiveFile = nextState.activeFilePath
+          ? nextState.files.find(file => file.path === nextState.activeFilePath)
+          : undefined;
+        if (nextActiveFile) {
+          activeFileRef.current = nextActiveFile;
+          setActiveFile(nextActiveFile);
+        }
+        updateTrackedFileVersion(changedPath);
+        if (!nextState.files.some(isEditorFileDirty) && !designerDirtyRef.current) {
+          void fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(activeProjectId)}`, {
+            method: 'DELETE'
+          });
+        }
+        return;
+      }
+
+      const format = readTextFileFormat(payload.fileFormats?.[changedPath]);
+      const previousFile = localFile || initialFiles.find(file => file.path === changedPath);
+      const reloadedFile: CppFile = {
+        ...previousFile,
+        path: changedPath,
+        name: changedPath.split('/').pop() || changedPath,
+        language: inferFileLanguage(changedPath),
+        encoding: format.encoding,
+        eol: format.eol,
+        savedEncoding: format.encoding,
+        savedEol: format.eol,
+        formatModified: false,
+        originalContent: diskContent,
+        translatedContent: diskContent,
+        strings: previousFile?.strings || [],
+        isModified: false
+      };
+      const nextFiles = localFile
+        ? filesRef.current.map(file => file.path === changedPath ? reloadedFile : file)
+        : [...filesRef.current, reloadedFile];
+      filesRef.current = nextFiles;
+      setFiles(nextFiles);
+      workbenchTextModelService.ensure(textModelIdentity(activeProjectId, changedPath));
+      if (activeFileRef.current?.path === changedPath) {
+        activeFileRef.current = reloadedFile;
+        setActiveFile(reloadedFile);
+      }
+      updateTrackedFileVersion(changedPath, nextVersion);
+      if (!nextFiles.some(isEditorFileDirty) && !designerDirtyRef.current) {
+        void fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(activeProjectId)}`, {
+          method: 'DELETE'
+        });
+      }
+    };
+
+    const scheduleRetry = () => {
+      if (disposed || retryTimer !== undefined) return;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined;
+        void drainFileChanges();
+      }, retryDelay);
+      retryDelay = Math.min(2_000, retryDelay * 2);
+    };
+
+    const drainFileChanges = async (): Promise<void> => {
+      if (disposed || processingFileChanges) return;
+      processingFileChanges = true;
+      try {
+        while (!disposed && pendingFileChangePaths.size > 0) {
+          const changedPaths = Array.from(pendingFileChangePaths);
+          pendingFileChangePaths.clear();
+          let response: Response;
+          let payload: any;
+          try {
+            response = await fetch(`/api/window-designer/files?projectId=${encodeURIComponent(activeProjectId)}`);
+            payload = await response.json().catch(() => ({}));
+            if (!response.ok || payload?.ok === false) {
+              throw new Error(payload?.error || '外部文件变更后无法重新读取项目快照。');
+            }
+            retryDelay = 250;
+          } catch {
+            changedPaths.forEach(filePath => pendingFileChangePaths.add(filePath));
+            scheduleRetry();
+            return;
+          }
+
+          const designerPath = activeSolutionProject.designerPath.replace(/\\/g, '/');
+          for (const changedPath of changedPaths) {
+            if (disposed) return;
+            const nextVersion = payload.fileVersions?.[changedPath] as string | undefined;
+            if (changedPath === designerPath) {
+              if (!nextVersion
+                || nextVersion === projectFileVersionsRef.current[changedPath]
+                || !payload.designerProject) continue;
+              const diskDesignerSnapshot = JSON.stringify(payload.designerProject);
+              if (isOwnSaveEcho(changedPath, diskDesignerSnapshot, 'designer')) {
+                updateTrackedFileVersion(changedPath, nextVersion);
+                continue;
+              }
+              if (designerDirtyRef.current) {
+                const reload = window.confirm(`窗口设计器文件“${changedPath}”已被外部修改。\n\n“确定”重新载入磁盘布局；“取消”保留本地布局并在保存时执行版本冲突保护。`);
+                if (!reload) continue;
+              }
+              designerSavedSnapshotRef.current = JSON.stringify(payload.designerProject);
+              designerDirtyRef.current = false;
+              setDesignerDirty(false);
+              updateTrackedFileVersion(changedPath, nextVersion);
+              const currentState = readWindowDesignerState();
+              const preferredWindowId = payload.designerProject.windows?.some((win: { id: string }) => win.id === currentState.activeWindowId)
+                ? currentState.activeWindowId
+                : payload.designerProject.windows?.[0]?.id || 'main-window';
+              saveWindowDesignerState({
+                project: payload.designerProject,
+                activeWindowId: preferredWindowId,
+                selectedControlId: null
+              });
+              continue;
+            }
+
+            const diskContent = payload.files?.[changedPath];
+            const localFile = filesRef.current.find(file => file.path === changedPath);
+            const unchanged = typeof diskContent === 'string'
+              ? !nextVersion || nextVersion === projectFileVersionsRef.current[changedPath]
+              : !localFile && projectFileVersionsRef.current[changedPath] === undefined;
+            if (unchanged) continue;
+            await applyExternalSourceFile(changedPath, payload, nextVersion);
+          }
+        }
+      } finally {
+        processingFileChanges = false;
+        if (!disposed && pendingFileChangePaths.size > 0 && retryTimer === undefined) {
+          void drainFileChanges();
+        }
+      }
+    };
+
+    const handleFileChange = (event: MessageEvent<string>) => {
       try {
         const changedPath = JSON.parse(event.data)?.path as string | undefined;
         if (!changedPath) return;
-        const response = await fetch(`/api/window-designer/files?projectId=${encodeURIComponent(activeProjectId)}`);
-        const payload = await response.json().catch(() => ({}));
-        const nextVersion = payload.fileVersions?.[changedPath];
-        if (!response.ok || !nextVersion || nextVersion === projectFileVersionsRef.current[changedPath]) return;
-        const localFile = filesRef.current.find(file => file.path === changedPath);
-        if (localFile && isEditorFileDirty(localFile)) {
-          const reload = window.confirm(`文件“${changedPath}”已被外部修改。\n\n“确定”重新载入磁盘版本；“取消”保留本地编辑。`);
-          projectFileVersionsRef.current[changedPath] = nextVersion;
-          if (!reload) return;
-          await fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(activeProjectId)}`, { method: 'DELETE' });
-        }
-        projectFileVersionsRef.current = payload.fileVersions || projectFileVersionsRef.current;
-        setProjectFileReloadToken(token => token + 1);
-      } finally {
-        handling = false;
+        pendingFileChangePaths.add(changedPath);
+        void drainFileChanges();
+      } catch {
+        // Ignore malformed watcher messages; a later valid event still refreshes the authoritative snapshot.
       }
     };
+
     events.addEventListener('file-change', handleFileChange as EventListener);
-    return () => events.close();
-  }, [activeProjectId, loadedProjectId, projectFilesReady]);
+    return () => {
+      disposed = true;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+      events.close();
+    };
+  }, [activeProjectId, activeSolutionProject.designerPath, loadedProjectId, projectFilesReady]);
 
   useEffect(() => {
     let intervalId: any;
@@ -2369,7 +2649,12 @@ void DisplayStatus() {
           const formatted = data.logs
             .map(line => line.trim())
             .filter(Boolean);
-          setDebugLogs(formatted);
+          setDebugLogs(previous => (
+            previous.length === formatted.length
+            && previous.every((line, index) => line === formatted[index])
+              ? previous
+              : formatted
+          ));
         }
       } catch (e) {
         // Polling errors can be ignored
@@ -2575,6 +2860,7 @@ void DisplayStatus() {
     ownedByBuild = false
   ): Promise<boolean> => {
     const requestOwner = captureProjectMutationOwner();
+    let saveEchoSnapshotId: number | undefined;
     if (!isCurrentProjectMutationOwner(requestOwner)) {
       appendEditorTransactionLog(`【${reason}】项目文件仍在载入，已取消本次保存。`);
       return false;
@@ -2597,6 +2883,7 @@ void DisplayStatus() {
       requireCurrentProjectMutationOwner(requestOwner);
 
       const designerProject = getCurrentWindowDesignerProject();
+      const savedDesignerSnapshot = JSON.stringify(designerProject);
       const projectId = requestOwner.projectId || designerProject.id || 'lingbuilder-ui-project';
       const savedStateByPath = new Map<string, { content: string; format: TextFileFormat }>();
       const projectFiles: Record<string, string> = {};
@@ -2607,6 +2894,13 @@ void DisplayStatus() {
         projectFiles[file.path] = content;
         projectFileFormats[file.path] = format;
         savedStateByPath.set(file.path, { content, format });
+      });
+      saveEchoSnapshotId = ++inFlightSaveSequenceRef.current;
+      inFlightSaveSnapshotsRef.current.set(saveEchoSnapshotId, {
+        projectId,
+        files: { ...projectFiles },
+        designerPath: activeSolutionProject.designerPath.replace(/\\/g, '/'),
+        designerSnapshot: savedDesignerSnapshot
       });
 
       const response = await fetch('/api/window-designer/files', {
@@ -2622,15 +2916,18 @@ void DisplayStatus() {
       });
       const payload = await response.json().catch(() => ({}));
       if (response.status === 409 && payload?.code === 'PROJECT_FILE_CONFLICT') {
-        projectFileVersionsRef.current = payload.fileVersions || {};
         const conflictingPaths = Object.keys(payload.files || {}).filter(filePath => {
           const local = flushState.files.find(file => file.path === filePath);
           return local && getCurrentFileContent(local) !== payload.files[filePath];
         });
+        if (payload.designerProject && savedDesignerSnapshot !== JSON.stringify(payload.designerProject)) {
+          conflictingPaths.push(payload.designerPath || activeSolutionProject.designerPath);
+        }
         const reloadDisk = window.confirm(
-          `检测到外部修改：${conflictingPaths.join('、') || '项目文件'}\n\n选择“确定”重新载入磁盘版本；选择“取消”保留本地编辑，下次保存将明确覆盖。`
+          `检测到外部修改：${conflictingPaths.join('、') || '项目文件'}\n\n选择“确定”重新载入磁盘版本；选择“取消”保留本地编辑并继续保留冲突保护。`
         );
         if (reloadDisk) {
+          projectFileVersionsRef.current = payload.fileVersions || {};
           void fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
           setProjectFileReloadToken(token => token + 1);
         }
@@ -2644,6 +2941,11 @@ void DisplayStatus() {
       }
       requireCurrentProjectMutationOwner(requestOwner);
       projectFileVersionsRef.current = payload.fileVersions || projectFileVersionsRef.current;
+      designerSavedSnapshotRef.current = savedDesignerSnapshot;
+      const currentDesignerSnapshot = JSON.stringify(readWindowDesignerState().project);
+      const nextDesignerDirty = currentDesignerSnapshot !== savedDesignerSnapshot;
+      designerDirtyRef.current = nextDesignerDirty;
+      setDesignerDirty(nextDesignerDirty);
       void fetch(`/api/window-designer/recovery?projectId=${encodeURIComponent(projectId)}`, { method: 'DELETE' });
 
       // Preserve edits made while the request was in flight. Only content that
@@ -2698,20 +3000,29 @@ void DisplayStatus() {
       appendEditorTransactionLog(`【${reason}错误】${message}`);
       return false;
     } finally {
+      if (saveEchoSnapshotId !== undefined) {
+        inFlightSaveSnapshotsRef.current.delete(saveEchoSnapshotId);
+      }
       setIsSaving(false);
       if (!ownedByBuild && editorOperationRef.current === 'save') {
         editorOperationRef.current = null;
       }
     }
   };
+  saveWorkspaceCoreRef.current = saveWorkspaceCore;
 
   const handleSaveWorkspace = (reason = '保存') => saveWorkspaceCore(reason, false);
 
   useEffect(() => {
-    if (autoSaveMode !== 'afterDelay' || !projectFilesReady || isSaving || !files.some(isEditorFileDirty)) return;
-    const timer = window.setTimeout(() => { void saveWorkspaceCore('自动保存', false); }, autoSaveDelay);
+    if (autoSaveMode !== 'afterDelay'
+      || !projectFilesReady
+      || isSaving
+      || (!files.some(isEditorFileDirty) && !designerDirty)) return;
+    const timer = window.setTimeout(() => {
+      void saveWorkspaceCoreRef.current('自动保存', false);
+    }, autoSaveDelay);
     return () => window.clearTimeout(timer);
-  }, [autoSaveDelay, autoSaveMode, files, isSaving, projectFilesReady, saveWorkspaceCore]);
+  }, [autoSaveDelay, autoSaveMode, designerDirty, files, isSaving, projectFilesReady]);
 
   const commitWorkspaceSearchEditorFiles = (
     diskFiles: Record<string, string>,
@@ -2841,7 +3152,7 @@ void DisplayStatus() {
       showEditorFlushFailure(flushState.diagnostics);
       return;
     }
-    if (flushState.files.some(isEditorFileDirty)) {
+    if (flushState.files.some(isEditorFileDirty) || designerDirtyRef.current) {
       const saved = await handleSaveWorkspace('跳转搜索结果前保存');
       if (!saved) return;
     }
@@ -2874,7 +3185,7 @@ void DisplayStatus() {
       return false;
     }
 
-    if (flushState.files.some(isEditorFileDirty)) {
+    if (flushState.files.some(isEditorFileDirty) || designerDirtyRef.current) {
       const saved = await handleSaveWorkspace('切换工作区前保存');
       if (!saved) return false;
     }
@@ -2906,7 +3217,8 @@ void DisplayStatus() {
     if (!newWindow) {
       const flushState = await flushCurrentEditorDrafts();
       if (!flushState.ok) return false;
-      if (flushState.files.some(isEditorFileDirty) && !await handleSaveWorkspace('切换工作区前保存')) return false;
+      if ((flushState.files.some(isEditorFileDirty) || designerDirtyRef.current)
+        && !await handleSaveWorkspace('切换工作区前保存')) return false;
     }
     const result = await workspaceApi.openPath(targetPath, newWindow);
     if (!result.ok) {
@@ -2945,9 +3257,12 @@ void DisplayStatus() {
   // Tool handlers for our LingBuilder IDE Custom Toolbar
   const handleToolbarAction = async (actionName: string): Promise<boolean> => {
     if (actionName === 'undo' || actionName === 'redo') {
+      const editorHandle = activeEditorGroupRef.current === 'secondary'
+        ? secondaryEditorRef.current
+        : diffViewerRef.current;
       const changed = actionName === 'undo'
-        ? await diffViewerRef.current?.undo()
-        : await diffViewerRef.current?.redo();
+        ? await editorHandle?.undo()
+        : await editorHandle?.redo();
       if (changed) return true;
       setBuildLogs(previous => [
         ...previous,
@@ -3069,7 +3384,7 @@ void DisplayStatus() {
       setCreateProjectError(message);
       return false;
     }
-    if (flushState.files.some(isEditorFileDirty)) {
+    if (flushState.files.some(isEditorFileDirty) || designerDirtyRef.current) {
       const saved = await handleSaveWorkspace('新建项目前保存');
       if (!saved) {
         setCreateProjectError('当前文件保存失败，已取消新建项目。');
@@ -3118,7 +3433,7 @@ void DisplayStatus() {
         appendEditorTransactionLog(`【切换项目错误】${flushState.diagnostics[0] || '新手代码提交失败，未切换项目。'}`);
         return;
       }
-      if (flushState.files.some(isEditorFileDirty)) {
+      if (flushState.files.some(isEditorFileDirty) || designerDirtyRef.current) {
         const saved = await handleSaveWorkspace('切换项目前保存');
         if (!saved) return;
       }
@@ -4688,7 +5003,11 @@ void DisplayStatus() {
             </>}
           </div>
           <div className={`flex-1 flex min-h-0 bg-[#141418] ${editorGroupLayout.orientation === 'horizontal' ? 'flex-row' : 'flex-col'}`}>
-            {projectFilesReady ? <div className="flex min-h-0 min-w-0 flex-1 flex-col"><DiffViewer
+            {projectFilesReady ? <div
+              className="flex min-h-0 min-w-0 flex-1 flex-col"
+              onFocusCapture={() => activateEditorGroup('primary')}
+              onMouseDownCapture={() => activateEditorGroup('primary')}
+            ><DiffViewer
               ref={diffViewerRef}
               diffResult={diffResult}
               strings={activeFile.strings}
@@ -4709,10 +5028,10 @@ void DisplayStatus() {
               activeWindowId={windowDesignerState.activeWindowId}
               textModelWorkspaceId={textModelWorkspaceId}
               textModelProjectId={loadedProjectId}
-              onEditorStateChange={setEditorState}
+              onEditorStateChange={publishPrimaryEditorState}
               editorExperienceMode={editorExperienceMode}
               onExperienceModeChange={handleEditorExperienceModeChange}
-              problems={[...compilerProblems, ...qualityProblems, ...problems]}
+              problems={workbenchProblems}
               ignoredBeginnerTaskIds={ignoredBeginnerTaskIds}
               onIgnoreBeginnerTask={ignoreBeginnerTask}
               onApplyWorkspaceEdit={handleApplyWorkspaceEdit}
@@ -4767,7 +5086,11 @@ void DisplayStatus() {
               const group = editorGroupLayout.groups[1];
               const selected = files.find(file => file.path === group.activePath) || files.find(file => file.path === group.tabs[0]);
               if (!selected) return null;
-              return <div className={`flex min-h-0 min-w-0 flex-1 flex-col border-[#303038] ${editorGroupLayout.orientation === 'horizontal' ? 'border-l' : 'border-t'}`}>
+              return <div
+                className={`flex min-h-0 min-w-0 flex-1 flex-col border-[#303038] ${editorGroupLayout.orientation === 'horizontal' ? 'border-l' : 'border-t'}`}
+                onFocusCapture={() => activateEditorGroup('secondary')}
+                onMouseDownCapture={() => activateEditorGroup('secondary')}
+              >
                 <div className="flex h-8 shrink-0 items-center overflow-x-auto bg-[#18181e]">
                   {group.tabs.map(tabPath => {
                     const file = files.find(item => item.path === tabPath); if (!file) return null;
@@ -4780,11 +5103,13 @@ void DisplayStatus() {
                 </div>
                 <div className="min-h-0 flex-1">
                   <MonacoCodeEditor
+                    ref={secondaryEditorRef}
                     sourceCode={getCurrentFileContent(selected)} language={selected.language} isDarkMode={isDarkMode}
                     readOnly={isSaving || isBuilding} onChange={value => updateEditorGroupFile(selected.path, value)}
                     editorFontSize={editorFontSize} onFontSizeChange={setEditorFontSize} filePath={selected.path}
                     modelIdentity={textModelIdentity(loadedProjectId, selected.path)} modelSurface="secondary"
                     moduleContext={moduleContext} designerProject={windowDesignerState.project}
+                    onEditorStateChange={publishSecondaryEditorState}
                   />
                 </div>
               </div>;
@@ -4839,7 +5164,7 @@ void DisplayStatus() {
           {showBottomPanel && (
             <BottomPanel
               strings={activeFile.strings}
-              problems={problems}
+              problems={workbenchProblems}
               buildLogs={buildLogs}
               debugLogs={debugLogs}
               onClearLogs={handleClearLogs}
@@ -4970,7 +5295,7 @@ void DisplayStatus() {
         isDarkMode={isDarkMode}
         activeFilePath={activeFile?.path}
         activeProjectId={activeProjectId}
-        hasUnsavedFiles={files.some(isEditorFileDirty)}
+        hasUnsavedFiles={files.some(isEditorFileDirty) || designerDirty}
         onClose={() => setWorkspaceSearchMode(null)}
         contextVersion={projectFileLoadGenerationRef.current}
         onQuery={handleWorkspaceSearchQuery}
@@ -5330,7 +5655,13 @@ void DisplayStatus() {
         </div>
         <div className="flex shrink-0 items-center gap-4 whitespace-nowrap text-slate-100">
           <EditorPositionStatus state={editorState} />
-          <div className="shrink-0">双击行编写中文</div>
+          <div className="shrink-0">
+            {editorExperienceMode === 'beginner'
+              ? '结构化中文编辑'
+              : editorExperienceMode === 'professional'
+                ? 'Monaco 专业编辑'
+                : '原生 C++ 预览'}
+          </div>
           <div className="shrink-0">空格: 4</div>
           <div className="shrink-0 hover:bg-[#1f8ad2] px-2 py-0.5 rounded cursor-pointer transition-colors">反馈支持</div>
         </div>

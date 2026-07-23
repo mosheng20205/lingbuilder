@@ -203,7 +203,7 @@ export default function BottomPanel({
       >
         
         {/* Left Side: Standard VS Panels Tabs */}
-        <div className="flex gap-1 h-full items-end overflow-x-auto scrollbar-none flex-nowrap shrink-0">
+        <div className="flex min-w-0 flex-1 gap-1 h-full items-end overflow-x-auto scrollbar-none flex-nowrap">
           {showCodeMapping && (
             <button
               onClick={() => onActiveTabChange('extracted')}
@@ -323,7 +323,7 @@ export default function BottomPanel({
             onClick={() => {
               copyLogsToClipboard(activeTab);
             }}
-            className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded border cursor-pointer transition-all ${
+            className={`flex shrink-0 items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded border cursor-pointer transition-all ${
               isDarkMode 
                 ? 'bg-emerald-950/25 border-emerald-500/30 text-emerald-400 hover:bg-emerald-900/30' 
                 : 'bg-emerald-50 border-emerald-300 text-emerald-700 hover:bg-emerald-100'
@@ -335,7 +335,7 @@ export default function BottomPanel({
         )}
 
         {/* Right Side: Visual Studio 2022 Debugging Toolbar Buttons */}
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-3">
           {/* Debug/Release Selectors (Standard Visual Studio) */}
           <div 
             className={`hidden lg:flex items-center gap-1.5 border rounded px-1.5 py-0.5 text-[10px] ${

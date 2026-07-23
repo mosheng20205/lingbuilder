@@ -282,6 +282,20 @@ test('parseLingCpp extracts classes, members and event handlers', () => {
   assert.equal(findLingCppMethod(result.program, '_游戏主窗体_创建完毕')?.statements[0]?.text.trim(), '调试输出("窗体创建完毕")');
 });
 
+test('parseLingCpp keeps 窗口_ commands inside the current event instead of treating them as method declarations', () => {
+  const parsed = parseLingCpp([
+    '类 主窗口',
+    '    事件 _主窗口_关闭前()',
+    '        窗口_取消关闭()',
+    '    结束',
+    '结束类'
+  ].join('\n'));
+  const event = parsed.program.classes[0]?.methods[0];
+  assert.equal(parsed.program.classes[0]?.methods.length, 1);
+  assert.equal(event?.name, '_主窗口_关闭前');
+  assert.equal(event?.statements[0]?.text.trim(), '窗口_取消关闭()');
+});
+
 test('parseLingCpp exposes stable AST and symbol index without breaking program compatibility', () => {
   const result = parseLingCpp(sampleSource);
   const kinds = new Set(result.ast.nodes.map(node => node.kind));
@@ -355,6 +369,31 @@ test('beginner action blocks parse supported event statements and create preview
   assert.equal(proposal.changes.length, 1);
   assert.ok(proposal.summary.includes(handlerName));
   assert.ok(proposal.changes[0].newText.includes('事件预览'));
+});
+
+test('beginner action preview treats only explicit 结束() as exiting the program', () => {
+  const source = [
+    '类 测试窗口 : 公开 窗体',
+    '公开:',
+    '    事件 _按钮1_被单击()',
+    '        如果 (真)',
+    '            调试输出("判断分支")',
+    '        如果结束',
+    '        循环',
+    '        循环结束',
+    '        结束()',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const blocks = getActionBlocksForEvent(source, '_按钮1_被单击');
+  const bySource = new Map(blocks.map(block => [block.sourceText, block]));
+
+  assert.equal(bySource.get('如果结束')?.kind, 'advanced-code');
+  assert.equal(bySource.get('循环结束')?.kind, 'advanced-code');
+  assert.equal(blocks.filter(block => block.kind === 'exit-program').length, 1);
+  assert.equal(bySource.get('结束()')?.kind, 'exit-program');
+  assert.equal(getCodeExplanation('如果结束', 1).title, '结构结束');
+  assert.equal(getCodeExplanation('结束()', 1).title, '结束');
 });
 
 test('beginner templates provide source and designer model together', () => {
@@ -603,6 +642,96 @@ test('LingCpp designer bindings produce bound and missing-source hints', () => {
   assert.equal(problems.find(problem => problem.actionKind === 'generate-event')?.locationKind, 'insertion');
   assert.equal(new Set(problems.map(problem => problem.id)).size, problems.length);
   assert.equal(problems.filter(problem => problem.codeSnippet === '_missing_handler').length, 1);
+});
+
+test('LingCpp designer diagnostics ignore handlers registered through enabled module callback bindings', () => {
+  const callbackModule: InstalledModule = {
+    isInstalled: true,
+    isEnabledForProject: true,
+    installPath: 'C:/modules/com.example.callbacks',
+    diagnostics: [],
+    manifest: {
+      schemaVersion: 2,
+      id: 'com.example.callbacks',
+      name: '测试回调模块',
+      version: '1.0.0',
+      category: '系统',
+      description: '验证模块回调处理器不会被误判为设计器控件事件。',
+      contributes: {
+        commands: [{
+          name: '自定义模块_订阅',
+          signature: '自定义模块_订阅(频道, 回调处理器名称)',
+          description: '订阅频道并把事件交给指定处理器。'
+        }]
+      },
+      bindings: {
+        commands: [{
+          command: '自定义模块_订阅',
+          runtimeName: 'CustomModuleSubscribe',
+          parameters: [
+            { name: '频道', type: 'wideString' },
+            { name: '回调处理器名称', type: 'wideString' }
+          ],
+          returnType: 'void'
+        }]
+      }
+    }
+  };
+  const source = [
+    '包 模块回调测试',
+    '类 游戏主窗体 : 公开 窗体',
+    '公开:',
+    '    文本型 关联设计文件 = "MainWindow.xml"',
+    '    构造()',
+    '        自定义模块_订阅("状态,更新", "数据通道_收到消息")',
+    '    结束',
+    '    事件 数据通道_收到消息()',
+    '        调试输出("已收到")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const moduleContext = { enabledModules: [callbackModule], availableModules: [callbackModule] };
+
+  const withoutModule = getLingCppDesignerBindings(source, sampleProject, 'src/MainWindow.lcpp');
+  const withModule = getLingCppDesignerBindings(source, sampleProject, 'src/MainWindow.lcpp', moduleContext);
+  const diagnostics = getLingCppSemanticDiagnostics(source, sampleProject, 'src/MainWindow.lcpp', moduleContext);
+  const problems = getLingCppProblems(source, sampleProject, 'src/MainWindow.lcpp', moduleContext);
+  const languageContext = buildLingCppLanguageContext(
+    source,
+    sampleProject,
+    moduleContext,
+    'src/MainWindow.lcpp'
+  );
+  const structuredRows = getLingCppStructuredRows(languageContext);
+  const readableBlocks = getLingCppReadableBlocks(
+    source,
+    sampleProject,
+    'src/MainWindow.lcpp',
+    moduleContext
+  );
+  const structure = getLingCppStructureView(
+    source,
+    sampleProject,
+    'src/MainWindow.lcpp',
+    moduleContext
+  );
+
+  assert.ok(withoutModule.some(hint => hint.handlerName === '数据通道_收到消息' && hint.status === 'missing-control'));
+  assert.equal(withModule.some(hint => hint.handlerName === '数据通道_收到消息'), false);
+  assert.equal(diagnostics.some(item => item.codeSnippet === '数据通道_收到消息'), false);
+  assert.equal(problems.some(item => item.codeSnippet === '数据通道_收到消息'), false);
+  assert.equal(
+    structuredRows.find(row => row.targetName === '数据通道_收到消息')?.status,
+    undefined
+  );
+  assert.equal(
+    readableBlocks.find(block => block.handlerName === '数据通道_收到消息')?.bindingStatus,
+    undefined
+  );
+  assert.equal(
+    structure.flatMap(node => node.children || []).find(node => node.name === '数据通道_收到消息')?.status,
+    undefined
+  );
 });
 
 test('LingCpp readable names and blocks summarize events for reading mode', () => {
@@ -1033,8 +1162,8 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
 
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
   assert.ok(mainCpp.includes('class 游戏主窗体 : public LingWindowBase'));
-  assert.ok(mainCpp.includes('void OnWindowCreated() override'));
-  assert.ok(mainCpp.includes('游戏主窗体_创建完毕();'));
+  assert.ok(mainCpp.includes('void DispatchWindowEvent(const wchar_t* eventName) override'));
+  assert.ok(mainCpp.includes('if (handler == L"_游戏主窗体_创建完毕") { 游戏主窗体_创建完毕(); return; }'));
   assert.ok(mainCpp.includes('void 按钮1_被单击()'));
   assert.ok(mainCpp.includes('信息框(L"开始运行", MB_OK | MB_ICONINFORMATION, L"提示");'));
   assert.ok(mainCpp.includes('if (信息框(L"确认退出？", MB_YESNO | MB_ICONQUESTION, L"退出确认") == IDYES) { 结束(); return; }'));

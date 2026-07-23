@@ -6,6 +6,7 @@ import { ClangdService, type ClangdProcess } from '../src/services/lsp/clangdSer
 import { JsonRpcConnection, type JsonRpcMessage } from '../src/services/lsp/jsonRpcConnection';
 import { lspRangeToMonaco, markupToText, normalizeCompletionItems, normalizeLspLocations, requestLsp } from '../src/services/lsp/lspClient';
 import { applyTextEdits, LspWorkspaceEditService } from '../src/services/lsp/lspWorkspaceEditService';
+import { MonacoFilePathRegistry } from '../src/services/lsp/monacoFilePathRegistry';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -73,6 +74,28 @@ test('LSP browser adapter maps positions, completions, hover markup, and locatio
     startLineNumber: 2, startColumn: 3, endLineNumber: 4, endColumn: 5
   });
   assert.deepEqual(normalizeLspLocations({ targetUri: 'file:///a.cpp', targetSelectionRange: { start: {}, end: {} } })[0].uri, 'file:///a.cpp');
+});
+
+test('Monaco clangd path registry follows A.cpp to B.cpp switches and file renames', () => {
+  const registry = new MonacoFilePathRegistry();
+  const primaryEditor = {};
+  const secondaryEditor = {};
+
+  registry.bind(primaryEditor, 'lingbuilder-model://workspace/project/src/A.cpp', 'src/A.cpp');
+  assert.equal(registry.resolve('lingbuilder-model://workspace/project/src/A.cpp'), 'src/A.cpp');
+
+  registry.bind(primaryEditor, 'lingbuilder-model://workspace/project/src/B.cpp', 'src/B.cpp');
+  assert.equal(registry.resolve('lingbuilder-model://workspace/project/src/A.cpp'), undefined);
+  assert.equal(registry.resolve('lingbuilder-model://workspace/project/src/B.cpp'), 'src/B.cpp');
+
+  registry.bind(primaryEditor, 'lingbuilder-model://workspace/project/src/B.cpp', 'src/Renamed.cpp');
+  assert.equal(registry.resolve('lingbuilder-model://workspace/project/src/B.cpp'), 'src/Renamed.cpp');
+
+  registry.bind(secondaryEditor, 'lingbuilder-model://workspace/project/src/B.cpp', 'src/Renamed.cpp');
+  registry.release(primaryEditor);
+  assert.equal(registry.resolve('lingbuilder-model://workspace/project/src/B.cpp'), 'src/Renamed.cpp');
+  registry.release(secondaryEditor);
+  assert.equal(registry.resolve('lingbuilder-model://workspace/project/src/B.cpp'), undefined);
 });
 
 test('LSP workspace edit previews and atomically applies cross-file UTF-16 edits', async t => {

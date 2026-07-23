@@ -1,15 +1,39 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import ListViewDesignerPreview from '../src/components/ListViewDesignerPreview';
+import ListViewCollectionDialog from '../src/components/ListViewCollectionDialog';
 import {
   buildControlHierarchy,
   getControlDescendantIds,
   normalizeControlHierarchy
 } from '../src/services/windowDesigner/controlHierarchy';
-import { generateWindowXml, normalizeWindowDesignerState } from '../src/services/windowDesigner/windowDesignerService';
+import {
+  getDesignerWindowContentOffset,
+  getEventsForType,
+  getPrimaryDesignerEventBinding,
+  getPrimaryEventNameForType,
+  generateWindowXml,
+  hasDesignerWindowMenu,
+  normalizeWindowDesignerState
+} from '../src/services/windowDesigner/windowDesignerService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { LingControl, LingWindowModel, LingWindowProject } from '../src/services/windowDesigner/types';
 import { WIN32_CONTROL_DEFINITIONS, createDefaultControlProperties } from '../src/services/windowDesigner/win32ControlRegistry';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
+import { getWindowEventHandlerName, WINDOW_EVENT_CATEGORIES, WINDOW_EVENT_DEFINITIONS } from '../src/services/windowDesigner/windowEventRegistry';
+import { createListViewPreviewModel } from '../src/services/windowDesigner/listViewPreviewModel';
+import {
+  appendListViewColumn,
+  applyListViewCellMatrix,
+  moveListViewColumn,
+  normalizeListViewColumns,
+  normalizeListViewRows,
+  parseListViewTabularText,
+  removeListViewColumn,
+  replaceListViewRowsFromMatrix
+} from '../src/services/windowDesigner/listViewCollectionModel';
 
 function createControl(id: string, parentId?: string, type: LingControl['type'] = 'Button'): LingControl {
   return {
@@ -29,6 +53,67 @@ function createControl(id: string, parentId?: string, type: LingControl['type'] 
     visibility: 'Visible'
   };
 }
+
+test('设计器标题区偏移只在真实菜单存在时增加菜单栏高度', () => {
+  const withoutMenu = { menuItems: undefined };
+  const withMenu = { menuItems: '文件, 编辑' };
+  const blankMenu = { menuItems: ' ,  ' };
+
+  assert.equal(hasDesignerWindowMenu(withoutMenu), false);
+  assert.equal(hasDesignerWindowMenu(blankMenu), false);
+  assert.equal(getDesignerWindowContentOffset(withoutMenu), 28);
+  assert.equal(getDesignerWindowContentOffset(blankMenu), 28);
+  assert.equal(hasDesignerWindowMenu(withMenu), true);
+  assert.equal(getDesignerWindowContentOffset(withMenu), 52);
+});
+
+test('双击默认事件保留自定义处理器且菜单项稳定使用 Select', () => {
+  const window: LingWindowModel = {
+    id: 'main',
+    fileName: '主窗口.xml',
+    className: '主窗口',
+    title: '主窗口',
+    width: 640,
+    height: 480,
+    background: '#202028',
+    description: '',
+    controls: [],
+    menuItems: '文件',
+    menuEvents: { Item_0: '_主窗口_打开自定义菜单' }
+  };
+  const button = {
+    ...createControl('confirm'),
+    name: '确认按钮',
+    events: { Click: '_确认按钮_保存自定义数据' }
+  };
+  const menuItem = {
+    ...createControl('__window_menu_item_0__'),
+    type: 'MenuItem' as LingControl['type'],
+    name: '文件',
+    events: { Select: '_不应覆盖窗口菜单绑定' }
+  };
+
+  assert.deepEqual(getPrimaryDesignerEventBinding(button, window), {
+    eventName: 'Click',
+    handlerName: '_确认按钮_保存自定义数据'
+  });
+  assert.equal(getPrimaryEventNameForType(menuItem.type), 'Select');
+  assert.equal(getEventsForType(menuItem.type)[0]?.name, 'Select');
+  assert.deepEqual(getPrimaryDesignerEventBinding(menuItem, window), {
+    eventName: 'Select',
+    handlerName: '_主窗口_打开自定义菜单',
+    menuEventKey: 'Item_0'
+  });
+});
+
+test('窗口事件注册表完整覆盖常用和高级事件', () => {
+  assert.equal(WINDOW_EVENT_DEFINITIONS.length, 18);
+  assert.equal(new Set(WINDOW_EVENT_DEFINITIONS.map(item => item.name)).size, 18);
+  assert.deepEqual(WINDOW_EVENT_CATEGORIES, ['生命周期', '布局与状态', '焦点与键盘', '系统与拖放']);
+  assert.equal(WINDOW_EVENT_DEFINITIONS.filter(item => item.batch === 'common').length, 8);
+  assert.equal(WINDOW_EVENT_DEFINITIONS.filter(item => item.batch === 'advanced').length, 10);
+  assert.equal(getWindowEventHandlerName('主窗口', 'FileDropped'), '_主窗口_文件被拖入');
+});
 
 test('布局组件树按 parentId 构建父子层级并保留原始顺序', () => {
   const controls = [
@@ -112,6 +197,130 @@ test('按钮圆角属性允许输入 0 到 100，并默认使用 6 像素', () =
   assert.equal(createDefaultControlProperties('Button').cornerRadius, 6);
 });
 
+test('ListView 设计器预览实时消费列、行、模式和网格线属性', () => {
+  const listView = {
+    ...createControl('records', undefined, 'ListView'),
+    properties: {
+      columns: [
+        { title: '序号', width: 80, image: -1, alignment: 'center' },
+        { title: '名称', width: 160, image: 2, alignment: 'right' }
+      ],
+      items: [
+        { id: '1', cells: ['1', 'LingBuilder'], image: 3 },
+        { id: '2', cells: ['2', '中文 IDE'], image: -1 }
+      ],
+      view: 'details',
+      gridLines: true,
+      multiple: true
+    }
+  } satisfies LingControl;
+
+  assert.deepEqual(createListViewPreviewModel(listView), {
+    mode: 'details',
+    gridLines: true,
+    multiple: true,
+    columns: [
+      { title: '序号', width: 80, image: -1, alignment: 'center' },
+      { title: '名称', width: 160, image: 2, alignment: 'right' }
+    ],
+    rows: [
+      { id: '1', cells: ['1', 'LingBuilder'], image: 3 },
+      { id: '2', cells: ['2', '中文 IDE'], image: -1 }
+    ]
+  });
+
+  const markup = renderToStaticMarkup(React.createElement(ListViewDesignerPreview, { control: listView }));
+  assert.match(markup, /data-list-view-preview="details"/u);
+  assert.match(markup, />序号</u);
+  assert.match(markup, />名称</u);
+  assert.match(markup, />LingBuilder</u);
+  assert.match(markup, />中文 IDE</u);
+});
+
+test('ListView 集合编辑模型保持列和每行单元格同步', () => {
+  const columns = normalizeListViewColumns([
+    { title: '序号', width: 80, image: -1, alignment: 'center' },
+    { title: '标题', width: 160, image: -1, alignment: 'right' }
+  ]);
+  assert.deepEqual(columns.map(column => column.alignment), ['center', 'right']);
+  const rows = normalizeListViewRows([
+    { id: 'row1', cells: ['1', '第一条'], image: -1 },
+    { id: 'row2', cells: ['2', '第二条'], image: -1 }
+  ]);
+
+  const appended = appendListViewColumn(columns, rows);
+  assert.deepEqual(appended.columns.map(column => column.title), ['序号', '标题', '列 3']);
+  assert.deepEqual(appended.rows.map(row => row.cells), [['1', '第一条', ''], ['2', '第二条', '']]);
+
+  const moved = moveListViewColumn(appended.columns, appended.rows, 2, 0);
+  assert.deepEqual(moved.columns.map(column => column.title), ['列 3', '序号', '标题']);
+  assert.deepEqual(moved.columns.map(column => column.alignment), ['left', 'center', 'right']);
+  assert.deepEqual(moved.rows.map(row => row.cells), [['', '1', '第一条'], ['', '2', '第二条']]);
+
+  const removed = removeListViewColumn(moved.columns, moved.rows, 1);
+  assert.deepEqual(removed.columns.map(column => column.title), ['列 3', '标题']);
+  assert.deepEqual(removed.columns.map(column => column.alignment), ['left', 'right']);
+  assert.deepEqual(removed.rows.map(row => row.cells), [['', '第一条'], ['', '第二条']]);
+
+  const legacyShortRows = normalizeListViewRows([{ id: 'row1', cells: ['唯一值'], image: -1 }]);
+  const movedLegacy = moveListViewColumn(columns, legacyShortRows, 1, 0);
+  assert.deepEqual(movedLegacy.rows[0].cells, ['', '唯一值'], '旧项目缺少的单元格应先补空再移动列');
+});
+
+test('ListView 表格粘贴支持 Excel TSV、追加行和替换数据', () => {
+  const matrix = parseListViewTabularText('1\t第一条\r\n2\t第二条\r\n');
+  assert.deepEqual(matrix, [['1', '第一条'], ['2', '第二条']]);
+  assert.deepEqual(parseListViewTabularText('3,\"标题,包含逗号\"\r\n'), [['3', '标题,包含逗号']]);
+
+  const existing = normalizeListViewRows([{ id: 'row1', cells: ['', ''], image: -1 }]);
+  const pasted = applyListViewCellMatrix(existing, 2, 0, 0, matrix);
+  assert.deepEqual(pasted.map(row => row.cells), [['1', '第一条'], ['2', '第二条']]);
+  assert.equal(new Set(pasted.map(row => row.id)).size, 2);
+
+  const replaced = replaceListViewRowsFromMatrix(pasted, 2, [['3', '第三条']]);
+  assert.deepEqual(replaced.map(row => row.cells), [['3', '第三条']]);
+  assert.equal(replaced[0].id, 'row1', '替换数据时应尽量保留已有内部行标识');
+});
+
+test('ListView 数据编辑窗口按真实列生成单元格且隐藏行 ID 输入', () => {
+  const markup = renderToStaticMarkup(React.createElement(ListViewCollectionDialog, {
+    kind: 'rows',
+    controlName: '数据列表',
+    columnsValue: [{ title: '序号', width: 80, image: -1 }, { title: '标题', width: 160, image: -1 }],
+    rowsValue: [{ id: 'internal-row-1', cells: ['1', '第一条'], image: -1 }],
+    showImages: false,
+    isDarkMode: true,
+    onChange: () => undefined,
+    onClose: () => undefined
+  }));
+
+  assert.match(markup, /编辑 ListView 数据/u);
+  assert.match(markup, /批量粘贴/u);
+  assert.match(markup, /第 1 行，序号/u);
+  assert.match(markup, /第 1 行，标题/u);
+  assert.match(markup, /value="第一条"/u);
+  assert.doesNotMatch(markup, /internal-row-1/u);
+
+  const columnMarkup = renderToStaticMarkup(React.createElement(ListViewCollectionDialog, {
+    kind: 'columns',
+    controlName: '数据列表',
+    columnsValue: [
+      { title: '序号', width: 80, image: -1, alignment: 'center' },
+      { title: '金额', width: 160, image: -1, alignment: 'right' }
+    ],
+    rowsValue: [],
+    showImages: false,
+    isDarkMode: true,
+    onChange: () => undefined,
+    onClose: () => undefined
+  }));
+  assert.match(columnMarkup, /第 1 列对齐方式/u);
+  assert.match(columnMarkup, /第 2 列对齐方式/u);
+  assert.match(columnMarkup, /<option value="center" selected="">居中<\/option>/u);
+  assert.match(columnMarkup, /<option value="right" selected="">右对齐<\/option>/u);
+  assert.doesNotMatch(columnMarkup, /第 1 列对齐方式" disabled/u);
+});
+
 test('无版本设计器项目迁移为 v2 并保留旧字段', () => {
   const legacyProject: LingWindowProject = {
     id: 'legacy', name: '旧项目', windows: [{
@@ -123,6 +332,58 @@ test('无版本设计器项目迁移为 v2 并保留旧字段', () => {
   assert.equal(state.project.schemaVersion, 2);
   assert.equal(state.project.windows[0].controls[0].content, '38');
   assert.equal(state.project.windows[0].controls[0].properties?.value, 38);
+  assert.equal(state.project.windows[0].titleBarBackground, '#2D2D30');
+  assert.equal(state.project.windows[0].titleBarForeground, '#CBD5E1');
+  assert.equal(state.project.windows[0].cornerStyle, 'rounded');
+  assert.equal(state.project.windows[0].iconStyle, 'lingbuilder');
+  assert.match(generateWindowXml(state.project.windows[0]), /标题栏颜色="#2D2D30"/u);
+  assert.match(generateWindowXml(state.project.windows[0]), /窗口圆角="rounded"/u);
+});
+
+test('窗口外观与 ListView 深色配色进入同一份 Win32 生成结果', () => {
+  const listView = {
+    ...createControl('list', undefined, 'ListView'),
+    background: 'transparent',
+    foreground: '#E2E8F0',
+    properties: {
+      columns: [{ title: '名称', width: 160, image: -1, alignment: 'left' }],
+      items: [{ id: 'row1', cells: ['LingBuilder'], image: -1 }],
+      view: 'details',
+      gridLines: true,
+      multiple: false,
+      imageListId: ''
+    }
+  } satisfies LingControl;
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'window-appearance',
+    name: '窗口外观',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '外观窗口', width: 640, height: 480,
+      background: '#1F2937', titleBarBackground: '#123456', titleBarForeground: '#FEDCBA',
+      cornerStyle: 'small-rounded', iconStyle: 'lingbuilder', description: '', controls: [listView]
+    }]
+  };
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /DwmSetWindowAttributeFunction/u);
+  assert.match(cpp, /const DWORD captionColor = 35/u);
+  assert.match(cpp, /const DWORD textColor = 36/u);
+  assert.doesNotMatch(cpp, /ApplyFallbackWindowRegion/u);
+  assert.doesNotMatch(cpp, /usesFallbackWindowRegion_/u);
+  assert.match(cpp, /CreateLingBuilderWindowIcon/u);
+  assert.match(cpp, /WM_SETICON/u);
+  assert.match(cpp, /RGB\(18, 52, 86\), RGB\(254, 220, 186\), 3, L"lingbuilder"/u);
+  assert.match(cpp, /L"ListView"[^\n]+RGB\(15, 23, 42\), RGB\(226, 232, 240\)/u);
+  assert.match(cpp, /ListView_SetBkColor\(child, control\.background\)/u);
+  assert.match(cpp, /ListView_SetTextBkColor\(child, control\.background\)/u);
+  assert.match(cpp, /ListView_SetTextColor\(child, control\.foreground\)/u);
+  assert.match(cpp, /PaintListViewHeader/u);
+  assert.match(cpp, /CDRF_NOTIFYPOSTPAINT/u);
+  assert.match(cpp, /Header_GetItemRect/u);
+  assert.match(cpp, /CDRF_SKIPDEFAULT/u);
 });
 
 test('窗口本身的空选择和虚拟菜单选择在规范化后保持不变', () => {
@@ -143,7 +404,7 @@ test('窗口本身的空选择和虚拟菜单选择在规范化后保持不变',
 
 test('高级控件生成真实 Win32 类、专属数据和多事件通知', () => {
   const controls: LingControl[] = [
-    { ...createControl('list', undefined, 'ListView'), properties: { columns: [{ title: '名称', width: 160 }, { title: '状态', width: 90 }], items: [{ id: 'row1', cells: ['服务', '运行中'], image: 0 }], view: 'details', gridLines: true, multiple: false, imageListId: 'main-icons' }, events: { SelectionChanged: '_列表_选择项被改变', DoubleClick: '_列表_被双击' } },
+    { ...createControl('list', undefined, 'ListView'), properties: { columns: [{ title: '名称', width: 160, alignment: 'center' }, { title: '状态', width: 90, alignment: 'right' }], items: [{ id: 'row1', cells: ['服务', '运行中'], image: 0 }], view: 'details', gridLines: true, multiple: false, imageListId: 'main-icons' }, events: { SelectionChanged: '_列表_选择项被改变', DoubleClick: '_列表_被双击' } },
     { ...createControl('tree', undefined, 'TreeView'), properties: { nodes: [{ id: 'root', title: '根节点', children: [{ id: 'child', title: '子节点' }] }], showLines: true, checkBoxes: true, imageListId: 'main-icons' }, events: { Expanded: '_树_节点被展开' } },
     { ...createControl('date', undefined, 'DateTimePicker'), properties: createDefaultControlProperties('DateTimePicker') }
   ];
@@ -163,6 +424,13 @@ test('高级控件生成真实 Win32 类、专属数据和多事件通知', () =
   assert.match(cpp, /DecodeControlRecords/);
   assert.match(cpp, /ListView_InsertColumn/);
   assert.match(cpp, /ListView_SetItemText/);
+  assert.match(cpp, /LVCF_FMT/);
+  assert.match(cpp, /LVCFMT_CENTER/);
+  assert.match(cpp, /LVCFMT_RIGHT/);
+  assert.match(cpp, /6:center/);
+  assert.match(cpp, /5:right/);
+  assert.match(cpp, /bool alignFirstColumn/u);
+  assert.match(cpp, /ListView_DeleteColumn\(child, 0\)/u);
   assert.match(cpp, /TreeView_InsertItem/);
   assert.match(cpp, /insertedItems\[row\[0\]\]/);
   assert.match(cpp, /ImageList_Create/);
@@ -317,4 +585,113 @@ test('窗口创建完毕事件支持自定义处理器绑定并进入生成结�
   });
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
   assert.match(cpp, /主窗口_初始化界面\(\);/u);
+});
+
+test('窗口第一批和第二批事件生成统一 Win32 分发与上下文运行时', () => {
+  const events = Object.fromEntries(WINDOW_EVENT_DEFINITIONS.map(definition => [
+    definition.name,
+    getWindowEventHandlerName('主窗口', definition.name)
+  ]));
+  const sourceEvents = WINDOW_EVENT_DEFINITIONS.map(definition => [
+    `    事件 ${events[definition.name]}()`,
+    `        调试输出("${definition.label}")`,
+    '    结束'
+  ].join('\n')).join('\n');
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'window-events-complete',
+    name: '完整窗口事件',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+      background: '#202028', description: '', controls: [], events
+    }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: `类 主窗口 : 公开 窗体\n${sourceEvents}\n结束类`
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /const wchar_t\* events;/u);
+  assert.match(cpp, /Closing=_主窗口_关闭前/u);
+  assert.match(cpp, /DispatchWindowEvent\(L"Closing"\)/u);
+  assert.match(cpp, /DispatchWindowEvent\(L"SizeChanged"\)/u);
+  assert.match(cpp, /DispatchWindowEvent\(nextState == 1 \? L"Minimized" : nextState == 2 \? L"Maximized" : L"Restored"\)/u);
+  assert.match(cpp, /PreTranslateKeyboardMessage/u);
+  assert.match(cpp, /messageOwner->PreTranslateKeyboardMessage\(message\)/u);
+  assert.match(cpp, /case WM_DPICHANGED/u);
+  assert.match(cpp, /case WM_DROPFILES/u);
+  assert.match(cpp, /DragAcceptFiles\(hwnd_, TRUE\)/u);
+  assert.match(cpp, /bool 窗口_取消关闭\(\)/u);
+  assert.match(cpp, /const wchar_t\* 窗口_取拖入文件\(int index\) const/u);
+  assert.match(cpp, /void 主窗口_文件被拖入\(\)/u);
+});
+
+test('原生生成优先按当前源码文件选择窗口并忽略过期设计器活动窗口', () => {
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'multi-window-source-selection',
+    name: '多窗口源码选择',
+    windows: [
+      {
+        id: 'main',
+        fileName: 'MainWindow.xml',
+        className: '主窗口',
+        title: '主窗口',
+        width: 640,
+        height: 480,
+        background: '#202028',
+        description: '',
+        controls: []
+      },
+      {
+        id: 'settings',
+        fileName: 'SettingsWindow.xml',
+        className: '设置窗口',
+        title: '设置窗口',
+        width: 520,
+        height: 360,
+        background: '#202028',
+        description: '',
+        controls: []
+      }
+    ]
+  };
+
+  const generated = generateLingCppNativeWin32Project(project, {
+    activeWindowId: 'main',
+    lingCppSourceFilePath: 'src/设置窗口.lcpp',
+    lingCppSourceCode: '类 设置窗口 : 公开 窗体\n结束类'
+  });
+
+  assert.equal(generated.selectedWindow.id, 'settings');
+  assert.ok(generated.diagnostics.some(item => /忽略过期的设计器窗口“主窗口”/u.test(item)));
+});
+
+test('原生生成明确报告当前源码与设计器窗口类不一致', () => {
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'source-class-mismatch',
+    name: '源码类校验',
+    windows: [{
+      id: 'main',
+      fileName: 'MainWindow.xml',
+      className: '主窗口',
+      title: '主窗口',
+      width: 640,
+      height: 480,
+      background: '#202028',
+      description: '',
+      controls: []
+    }]
+  };
+
+  const generated = generateLingCppNativeWin32Project(project, {
+    activeWindowId: 'main',
+    lingCppSourceFilePath: 'src/其他窗口.lcpp',
+    lingCppSourceCode: '类 其他窗口 : 公开 窗体\n结束类'
+  });
+
+  assert.ok(generated.diagnostics.some(item =>
+    /当前源码未定义设计器窗口类“主窗口”/u.test(item)
+  ));
 });

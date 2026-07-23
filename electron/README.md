@@ -158,7 +158,7 @@ MCP 模式使用 stdio JSON-RPC，暴露工具包括：
 
 new_emoji YOLO 示例约束：
 
-- 生成 `lingbuilder.new_emoji.ui` 演示时，不要在窗口“创建完毕”事件末尾写 `结束` / `结束()`，否则 exe 会创建后立即退出。
+- 生成 `lingbuilder.new_emoji.ui` 演示时，窗口“创建完毕”事件仍用独立一行 `结束` 作为结构收尾；不要额外写显式退出命令 `结束()`，否则 exe 会创建后立即退出。
 - 纯 new_emoji 示例应创建窗口和控件后进入 `NE_运行消息循环` 或底层 `EU_RunMessageLoop()`。
 - 返回 exe 路径前，必须确认 `new_emoji.dll` 位于 exe 同目录，并启动 exe 等待至少 3 秒确认仍在运行。
 

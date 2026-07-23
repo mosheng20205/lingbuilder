@@ -6,6 +6,75 @@ import test from 'node:test';
 
 import { createProjectFilePersistenceService, createProjectFileVersion, ProjectFileConflictError, type ProjectFilePersistenceFileSystem } from '../src/services/files/projectFilePersistenceService';
 import { HotExitRecoveryService } from '../src/services/files/hotExitRecoveryService';
+import {
+  isWorkspaceSaveEcho,
+  type WorkspaceSaveEchoSnapshot
+} from '../src/services/files/workspaceSaveEchoService';
+
+test('own save watcher echo preserves edits made while the request is in flight', () => {
+  const snapshot: WorkspaceSaveEchoSnapshot = {
+    projectId: 'demo',
+    files: { 'src/Main.lcpp': 'V1' },
+    designerPath: '.lingbuilder/window-designer.json',
+    designerSnapshot: '{"title":"V1"}'
+  };
+  const snapshots = new Map([[1, snapshot]]);
+  let localContent = 'V2';
+  let localDirty = true;
+  let confirmations = 0;
+  const diskContent = 'V1';
+
+  const ownEcho = isWorkspaceSaveEcho(snapshots.values(), {
+    projectId: 'demo',
+    filePath: 'src/Main.lcpp',
+    content: diskContent,
+    kind: 'source'
+  });
+  if (!ownEcho && localDirty) confirmations += 1;
+  if (!ownEcho) {
+    localContent = diskContent;
+    localDirty = false;
+  }
+
+  assert.equal(ownEcho, true);
+  assert.equal(confirmations, 0);
+  assert.equal(localContent, 'V2');
+  assert.equal(localDirty, true);
+  assert.equal(isWorkspaceSaveEcho(snapshots.values(), {
+    projectId: 'demo',
+    filePath: '.lingbuilder/window-designer.json',
+    content: '{"title":"V1"}',
+    kind: 'designer'
+  }), true);
+  assert.equal(isWorkspaceSaveEcho(snapshots.values(), {
+    projectId: 'another-project',
+    filePath: 'src/Main.lcpp',
+    content: 'V1',
+    kind: 'source'
+  }), false);
+});
+
+test('completed or failed saves cannot suppress a later real external rollback', () => {
+  const snapshots = new Map<number, WorkspaceSaveEchoSnapshot>([[1, {
+    projectId: 'demo',
+    files: { 'src/Main.lcpp': 'V1' },
+    designerPath: '.lingbuilder/window-designer.json',
+    designerSnapshot: '{"title":"V1"}'
+  }]]);
+  snapshots.delete(1);
+  assert.equal(isWorkspaceSaveEcho(snapshots.values(), {
+    projectId: 'demo',
+    filePath: 'src/Main.lcpp',
+    content: 'V1',
+    kind: 'source'
+  }), false);
+  assert.equal(isWorkspaceSaveEcho(snapshots.values(), {
+    projectId: 'demo',
+    filePath: '.lingbuilder/window-designer.json',
+    content: '{"title":"V1"}',
+    kind: 'designer'
+  }), false);
+});
 
 test('rejects stale versions without modifying files', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-persist-'));
@@ -59,8 +128,32 @@ test('hot exit recovery is atomic, restorable, discardable, and path-safe', asyn
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-recovery-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const service = new HotExitRecoveryService(root);
-  await service.write({ schemaVersion: 1, projectId: 'demo', savedAt: '2026-07-11T00:00:00.000Z', files: { 'src/Main.lcpp': '未保存' } });
-  assert.equal((await service.read('demo'))?.files['src/Main.lcpp'], '未保存');
+  const designerProject = {
+    schemaVersion: 2 as const,
+    id: 'demo',
+    name: '未保存设计器',
+    windows: [{
+      id: 'main',
+      fileName: '主窗口.xml',
+      className: '主窗口',
+      title: '未保存标题',
+      width: 640,
+      height: 480,
+      background: '#202028',
+      description: '',
+      controls: []
+    }]
+  };
+  await service.write({
+    schemaVersion: 1,
+    projectId: 'demo',
+    savedAt: '2026-07-11T00:00:00.000Z',
+    files: { 'src/Main.lcpp': '未保存' },
+    designerProject
+  });
+  const recovered = await service.read('demo');
+  assert.equal(recovered?.files['src/Main.lcpp'], '未保存');
+  assert.deepEqual(recovered?.designerProject, designerProject);
   assert.deepEqual((await fs.readdir(path.join(root, '.lingbuilder', 'recovery'))).filter(name => name.endsWith('.tmp')), []);
   await service.delete('demo');
   assert.equal(await service.read('demo'), null);

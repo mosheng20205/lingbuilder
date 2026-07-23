@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import type { CppFile } from '../src/types';
 import {
   getCurrentFileContent,
-  isEditorFileDirty
+  isEditorFileDirty,
+  updateEditorFileContent
 } from '../src/services/files/editorFileState';
 
 test('editor file content preserves an intentional empty document edit', () => {
@@ -28,6 +29,32 @@ test('clean template files fall back to original content and format-only changes
 
   assert.equal(getCurrentFileContent(file), '模板内容\n');
   assert.equal(isEditorFileDirty(file), true);
+});
+
+test('split editor changes keep the matching active-file snapshot synchronized', () => {
+  const active = createFile({ originalContent: '旧内容', translatedContent: '旧内容' });
+  const other = createFile({ path: 'src/other.lcpp', name: 'other.lcpp', originalContent: '其它' });
+
+  const result = updateEditorFileContent([active, other], active, active.path, '第二编辑组的新内容');
+
+  assert.equal(result.files[0].translatedContent, '第二编辑组的新内容');
+  assert.equal(result.activeFile?.translatedContent, '第二编辑组的新内容');
+  assert.equal(result.activeFile, result.files[0]);
+  assert.equal(result.activeFile?.isModified, true);
+});
+
+test('editing a secondary file does not replace a different primary active file', () => {
+  const active = createFile({ originalContent: '主文件' });
+  const secondary = createFile({
+    path: 'src/secondary.lcpp',
+    name: 'secondary.lcpp',
+    originalContent: '旧内容'
+  });
+
+  const result = updateEditorFileContent([active, secondary], active, secondary.path, '新内容');
+
+  assert.equal(result.activeFile, active);
+  assert.equal(result.files[1].translatedContent, '新内容');
 });
 
 function createFile(patch: Partial<CppFile>): CppFile {
