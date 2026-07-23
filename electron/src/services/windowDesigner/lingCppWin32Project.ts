@@ -662,7 +662,7 @@ enum ControlFlags : unsigned int {
     CF_ALIGN_RIGHT = 1u << 21, CF_VIEW_ICON = 1u << 22,
     CF_VIEW_SMALL_ICON = 1u << 23, CF_VIEW_LIST = 1u << 24,
     CF_SHOW_BORDER = 1u << 25, CF_MULTI_SELECT = 1u << 26,
-    CF_SHOW_LINES = 1u << 27
+    CF_SHOW_LINES = 1u << 27, CF_HIDE_TAB_HEADER = 1u << 28
 };
 
 struct WindowSpec {
@@ -2890,6 +2890,12 @@ private:
         COLORREF border = BlendColor(pageBackground, control.foreground, 18);
         COLORREF inactiveForeground = BlendColor(control.foreground, pageBackground, 30);
         COLORREF accent = RGB(245, 158, 11);
+        if (control.flags & CF_HIDE_TAB_HEADER) {
+            HBRUSH pageBrush = CreateSolidBrush(pageBackground);
+            FillRect(hdc, &clientRect, pageBrush);
+            DeleteObject(pageBrush);
+            return;
+        }
         HBRUSH headerBrush = CreateSolidBrush(headerBackground);
         FillRect(hdc, &clientRect, headerBrush);
         DeleteObject(headerBrush);
@@ -4536,7 +4542,7 @@ private:
             SendMessageW(child, TCM_SETPADDING, 0, MAKELPARAM(ScaleForDpi(12, dpi_), ScaleForDpi(4, dpi_)));
             TabCtrl_SetCurSel(child, control.selectedIndex);
             RECT pageRect = { 0, 0, controlWidth, controlHeight };
-            TabCtrl_AdjustRect(child, FALSE, &pageRect);
+            if (!(control.flags & CF_HIDE_TAB_HEADER)) TabCtrl_AdjustRect(child, FALSE, &pageRect);
             for (int index = 0; index < static_cast<int>(rows.size()); ++index) {
                 HWND page = CreateWindowExW(
                     WS_EX_CONTROLPARENT,
@@ -6190,7 +6196,8 @@ function generateControlFlags(control: LingControl): number {
     ['password', 1 << 3], ['readOnly', 1 << 4], ['numeric', 1 << 5],
     ['sorted', 1 << 6], ['multiple', 1 << 7], ['editable', 1 << 8],
     ['marquee', 1 << 9], ['gridLines', 1 << 10], ['checkBoxes', 1 << 11],
-    ['wordWrap', 1 << 12], ['autoPlay', 1 << 13], ['loop', 1 << 14]
+    ['wordWrap', 1 << 12], ['autoPlay', 1 << 13], ['loop', 1 << 14],
+    ['hideHeader', 1 << 28]
   ];
   let result = flags.reduce((sum, [key, flag]) => properties[key] === true ? sum | flag : sum, 0);
   if (properties.orientation === 'horizontal') result |= 1 << 15;

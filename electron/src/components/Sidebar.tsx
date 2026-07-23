@@ -31,8 +31,9 @@ import {
   SlidersHorizontal,
   CheckCircle,
   Monitor,
-  Package
-  , Link
+  Package,
+  GitBranch,
+  Link
 } from 'lucide-react';
 import { CppFile, ExtractedString, GlossaryTerm, SourceControlStatus } from '../types';
 import ModuleInspector from './ModuleInspector';
@@ -135,6 +136,7 @@ interface SidebarProps {
   onDeleteFile?: (file: CppFile) => boolean | Promise<boolean>;
   onRenameFile?: (file: CppFile, newName: string) => boolean | Promise<boolean>;
   sourceControlStatus?: SourceControlStatus | null;
+  onSourceControlChanged?: () => void;
   solution?: SolutionModel;
   activeProjectId?: string;
   onRefreshSolution?: () => void | Promise<unknown>;
@@ -167,6 +169,7 @@ export default function Sidebar({
   onDeleteFile,
   onRenameFile,
   sourceControlStatus = null,
+  onSourceControlChanged,
   solution,
   activeProjectId,
   onRefreshSolution,
@@ -182,8 +185,8 @@ export default function Sidebar({
   activeModuleHintId,
   onShowModuleHint
 }: SidebarProps) {
-  // Tabs: 'explorer' (解决方案), 'actions' (快捷工具), 'outline' (大纲视图)
-  const [activeTab, setActiveTab] = useState<'explorer' | 'actions' | 'outline'>('explorer');
+  // Activity views: solution explorer, tools, modules and Git changes.
+  const [activeTab, setActiveTab] = useState<'explorer' | 'actions' | 'outline' | 'git'>('explorer');
   const [isSolutionOpen, setIsSolutionOpen] = useState(true);
   const [expandedProjectIds, setExpandedProjectIds] = useState<Record<string, boolean>>({});
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: CppFile } | null>(null);
@@ -465,7 +468,7 @@ export default function Sidebar({
   };
 
   // Switch tab, and handle collapse/expand in VS style
-  const handleTabClick = (tab: 'explorer' | 'actions' | 'outline') => {
+  const handleTabClick = (tab: 'explorer' | 'actions' | 'outline' | 'git') => {
     if (showLeftSidebar && activeTab === tab) {
       // Collapse if clicking the already active tab
       if (setShowLeftSidebar) setShowLeftSidebar(false);
@@ -712,6 +715,15 @@ export default function Sidebar({
       </div>
     );
   };
+
+  useEffect(() => {
+    const openGitChanges = () => {
+      setActiveTab('git');
+      if (setShowLeftSidebar) setShowLeftSidebar(true);
+    };
+    window.addEventListener('lingbuilder-open-git-changes', openGitChanges);
+    return () => window.removeEventListener('lingbuilder-open-git-changes', openGitChanges);
+  }, [setShowLeftSidebar]);
 
   const renderWindowRow = (projectId: string, windowModel: LingWindowModel) => {
     const sourceName = getLingWindowSourceFileName(windowModel.fileName, windowModel.className);
@@ -1150,6 +1162,34 @@ export default function Sidebar({
               <div className="absolute left-0 top-1 bottom-1 w-[3px] bg-[#007ACC] rounded-r"></div>
             )}
           </button>
+
+          {/* Git Changes Tab Icon */}
+          <button
+            type="button"
+            onClick={() => handleTabClick('git')}
+            aria-label="打开 Git 更改"
+            aria-pressed={showLeftSidebar && activeTab === 'git'}
+            className={`w-10 h-10 rounded flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-colors relative group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#007ACC] ${
+              showLeftSidebar && activeTab === 'git'
+                ? isDarkMode ? 'bg-[#37373D] text-[#007ACC]' : 'bg-[#CCCCCC] text-[#007ACC]'
+                : isDarkMode ? 'text-[#888888] hover:text-white hover:bg-[#2D2D2D]' : 'text-slate-600 hover:text-black hover:bg-slate-300'
+            }`}
+            title="Git 更改"
+          >
+            <GitBranch className="w-5 h-5" aria-hidden="true" />
+            <span className="text-[9px] scale-90 font-semibold leading-none font-sans">Git更改</span>
+            {Boolean(sourceControlStatus?.files.length) && (
+              <span
+                className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-[#007ACC] px-0.5 text-center text-[8px] font-bold leading-3.5 text-white"
+                aria-label={`${sourceControlStatus?.files.length} 个 Git 更改`}
+              >
+                {sourceControlStatus!.files.length > 99 ? '99+' : sourceControlStatus!.files.length}
+              </span>
+            )}
+            {showLeftSidebar && activeTab === 'git' && (
+              <div className="absolute left-0 top-1 bottom-1 w-[3px] bg-[#007ACC] rounded-r" />
+            )}
+          </button>
         </div>
 
         {/* Bottom Help Icon in Activity Bar */}
@@ -1568,7 +1608,7 @@ export default function Sidebar({
                   <Wrench className="w-3.5 h-3.5 text-[#007ACC]" />
                   <span>工作台工具</span>
                 </h3>
-                <p className="text-[10px] text-slate-500 mt-1">源代码管理、项目服务、发布和本地化开发工具</p>
+                <p className="text-[10px] text-slate-500 mt-1">项目服务、发布和本地化开发工具</p>
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-4 pr-1">
@@ -1576,7 +1616,6 @@ export default function Sidebar({
                   <h4 id="workspace-services-title" className={`text-[10px] font-bold uppercase tracking-wider ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
                     工作区服务
                   </h4>
-                  <SourceControlPanel initialStatus={sourceControlStatus} isDarkMode={isDarkMode} />
                   <ExtensionHostPanel isDarkMode={isDarkMode} />
                   <DependencyPanel isDarkMode={isDarkMode} />
                   <RcResourcePanel isDarkMode={isDarkMode} />
@@ -1795,6 +1834,18 @@ export default function Sidebar({
                 onAddLog={(msg) => {
                   window.dispatchEvent(new CustomEvent('add-app-log', { detail: { message: msg } }));
                 }}
+              />
+            </div>
+          )}
+
+          {/* ================= TAB 4: GIT CHANGES ================= */}
+          {activeTab === 'git' && (
+            <div className="flex-1 min-h-0 overflow-hidden font-sans">
+              <SourceControlPanel
+                initialStatus={sourceControlStatus}
+                isDarkMode={isDarkMode}
+                variant="full"
+                onChanged={onSourceControlChanged}
               />
             </div>
           )}

@@ -3699,6 +3699,10 @@ void DisplayStatus() {
     solutionClean: () => handleSolutionBuildCommand('clean'),
     environmentCheck: handleEnvCheck,
     environmentRepair: () => { setShowEnvironmentRepairCenter(true); return true; },
+    openGitChanges: () => {
+      window.dispatchEvent(new CustomEvent('lingbuilder-open-git-changes'));
+      return true;
+    },
     toggleSidebar: toggleSidebarVisibility,
     togglePanel: toggleBottomPanelVisibility,
     toggleAiPanel: toggleAiPanelVisibility,
@@ -3910,6 +3914,16 @@ void DisplayStatus() {
         when: '!workbench.modalOpen',
         order: 31,
         handler: () => workbenchCommandHandlersRef.current.environmentRepair()
+      },
+      {
+        id: 'workbench.action.git.openChanges',
+        title: '打开 Git 更改',
+        aliases: ['Open Git Changes', 'Source Control'],
+        category: 'Git',
+        description: '打开 Git 更改视图，查看、暂存并提交当前工作区更改。',
+        when: '!workbench.modalOpen',
+        order: 32,
+        handler: () => workbenchCommandHandlersRef.current.openGitChanges()
       },
       {
         id: 'workbench.action.toggleSidebar',
@@ -4944,6 +4958,7 @@ void DisplayStatus() {
           onDeleteFile={handleDeleteFile}
           onRenameFile={handleRenameFile}
           sourceControlStatus={sourceControlStatus}
+          onSourceControlChanged={refreshSourceControlStatus}
           solution={solution}
           activeProjectId={activeProjectId}
           onRefreshSolution={refreshSolution}

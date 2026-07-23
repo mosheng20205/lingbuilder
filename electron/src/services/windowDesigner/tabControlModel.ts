@@ -27,6 +27,10 @@ export function getSelectedTabPage(control: LingControl): TabControlPage | undef
   return pages[Math.max(0, Math.min(pages.length - 1, requested))];
 }
 
+export function isTabControlHeaderHidden(control: LingControl): boolean {
+  return control.type === 'TabControl' && control.properties?.hideHeader === true;
+}
+
 export function getControlTabSlot(control: LingControl, tabControl: LingControl): string | undefined {
   const pages = getTabControlPages(tabControl);
   if (pages.length === 0) return undefined;

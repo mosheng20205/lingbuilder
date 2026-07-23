@@ -1,6 +1,6 @@
 import React from 'react';
 import type { LingControl } from '../services/windowDesigner/types';
-import { getSelectedTabPage, getTabControlPages } from '../services/windowDesigner/tabControlModel';
+import { getSelectedTabPage, getTabControlPages, isTabControlHeaderHidden } from '../services/windowDesigner/tabControlModel';
 
 export interface TabControlDesignerPreviewProps {
   control: LingControl;
@@ -31,6 +31,7 @@ export default function TabControlDesignerPreview({ control, onSelectPage }: Tab
   const inactiveForeground = mixHexColor(foreground, background, 30);
   const borderColor = mixHexColor(background, foreground, 18);
   const headerHeight = Math.max(28, fontSize + 14);
+  const hideHeader = isTabControlHeaderHidden(control);
 
   return (
     <div
@@ -44,41 +45,44 @@ export default function TabControlDesignerPreview({ control, onSelectPage }: Tab
         opacity: control.isEnabled ? 1 : 0.55
       }}
     >
-      <div
-        role="tablist"
-        className="relative z-10 flex shrink-0 items-stretch overflow-hidden"
-        style={{ height: `${headerHeight}px`, backgroundColor: headerBackground }}
-      >
-        {tabs.map((tab, index) => {
-          const selected = tab.id === selectedPage.id;
-          return (
-            <button
-              type="button"
-              key={tab.id}
-              role="tab"
-              aria-selected={selected}
-              className="pointer-events-auto relative flex min-w-0 max-w-[220px] shrink-0 items-center justify-center truncate border-0 px-3"
-              onMouseDown={event => event.stopPropagation()}
-              onClick={event => {
-                event.stopPropagation();
-                onSelectPage?.(tab.id);
-              }}
-              style={{
-                height: `${headerHeight}px`,
-                color: selected ? foreground : inactiveForeground,
-                backgroundColor: selected ? selectedBackground : headerBackground,
-                boxShadow: selected ? 'inset 0 -2px #f59e0b' : index > 0 ? `inset 1px 0 ${borderColor}` : undefined
-              }}
-            >
-              <span className="truncate">{tab.title}</span>
-            </button>
-          );
-        })}
-      </div>
+      {!hideHeader && (
+        <div
+          role="tablist"
+          className="relative z-10 flex shrink-0 items-stretch overflow-hidden"
+          style={{ height: `${headerHeight}px`, backgroundColor: headerBackground }}
+        >
+          {tabs.map((tab, index) => {
+            const selected = tab.id === selectedPage.id;
+            return (
+              <button
+                type="button"
+                key={tab.id}
+                role="tab"
+                aria-selected={selected}
+                className="pointer-events-auto relative flex min-w-0 max-w-[220px] shrink-0 items-center justify-center truncate border-0 px-3"
+                onMouseDown={event => event.stopPropagation()}
+                onClick={event => {
+                  event.stopPropagation();
+                  onSelectPage?.(tab.id);
+                }}
+                style={{
+                  height: `${headerHeight}px`,
+                  color: selected ? foreground : inactiveForeground,
+                  backgroundColor: selected ? selectedBackground : headerBackground,
+                  boxShadow: selected ? 'inset 0 -2px #f59e0b' : index > 0 ? `inset 1px 0 ${borderColor}` : undefined
+                }}
+              >
+                <span className="truncate">{tab.title}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div
         role="tabpanel"
         aria-label={selectedPage.title}
-        className="min-h-0 flex-1 border border-t-0"
+        data-tab-header-hidden={hideHeader ? 'true' : 'false'}
+        className={`min-h-0 flex-1 border ${hideHeader ? '' : 'border-t-0'}`}
         style={{ color: foreground, backgroundColor: background, borderColor }}
       />
     </div>

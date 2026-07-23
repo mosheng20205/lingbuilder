@@ -78,7 +78,7 @@ AI 修改窗口相关逻辑时必须：
 - 新增事件处理器时，应使用设计器期望的命名风格，例如 `按钮4_被单击`。
 - 不要把设计器布局逻辑写死到普通业务事件里，除非用户明确要求。
 - 窗口设计器项目当前为 `schemaVersion: 2`；控件通用布局仍使用明确字段，项目集合、范围、选中状态、日期、图片源、列、树节点和标签页等专属数据写入 `properties`，不能再把结构化数据拼成临时分隔字符串。
-- `TabControl` 的每个 `properties.tabs[].id` 都是稳定页面槽位；直接子控件必须用 `parentId` 指向选项卡，并用 `containerSlot` 指向所属标签页 ID。未写 `containerSlot` 的旧子控件只归入第一页。生成 Win32 时每页拥有独立页面 HWND，页面 HWND 必须把命令、通知、颜色及 owner-draw 绘制消息转发到主窗口；禁止把不同页面的子控件同时显示或改回仅靠 React 隐藏的模拟实现。
+- `TabControl` 的每个 `properties.tabs[].id` 都是稳定页面槽位；直接子控件必须用 `parentId` 指向选项卡，并用 `containerSlot` 指向所属标签页 ID。未写 `containerSlot` 的旧子控件只归入第一页。`properties.hideHeader` 是“隐藏表头”布尔字段，默认 `false`；为 `true` 时设计器和 Win32 F5/导出必须共同隐藏标签栏，并让当前页占满选项卡客户区。生成 Win32 时每页拥有独立页面 HWND，页面 HWND 必须把命令、通知、颜色及 owner-draw 绘制消息转发到主窗口；禁止把不同页面的子控件同时显示或改回仅靠 React 隐藏的模拟实现。
 - 普通项目默认只启用 `lingbuilder.win32.basic`。生成 ListView、TreeView、Tab、日期、滑块、工具栏、状态栏、RichEdit 等控件或系统通用对话框命令前，必须确认项目启用了 `lingbuilder.win32.common-controls`。
 - ToolTip、ImageList、PropertySheet 属于非普通画布控件/资源，不能当作普通静态文本控件生成。
 - ToolTip 通过项目行为资源绑定目标控件；PropertySheet 通过项目顶层资源定义页面并使用 `属性页_显示("资源ID")` 打开，应用动作由资源声明的中文处理器接收。属性页需要复合控件时，为页面选择一个设计器窗口模板，生成器会把模板的完整控件树创建为页面子 HWND；不要把 PropertySheet 拖成 STATIC 子控件。

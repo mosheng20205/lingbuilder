@@ -657,6 +657,23 @@ test('选项卡设计器预览使用控件文字颜色和背景颜色', () => {
   assert.match(markup, /inset 0 -2px #f59e0b/u);
   assert.match(markup, /max-w-\[220px\]/u);
   assert.doesNotMatch(markup, /bg-white/u);
+
+  const hiddenMarkup = renderToStaticMarkup(React.createElement(TabControlDesignerPreview, {
+    control: { ...tabControl, properties: { ...tabControl.properties, hideHeader: true } }
+  }));
+  assert.match(hiddenMarkup, /data-tab-header-hidden="true"/u);
+  assert.doesNotMatch(hiddenMarkup, /role="tablist"/u);
+  assert.doesNotMatch(hiddenMarkup, />常规</u);
+});
+
+test('选项卡注册隐藏表头属性且默认保持显示', () => {
+  const tabControl = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'TabControl');
+  const hideHeader = tabControl?.properties.find(property => property.key === 'hideHeader');
+  assert.ok(hideHeader);
+  assert.equal(hideHeader.label, '隐藏表头');
+  assert.equal(hideHeader.type, 'boolean');
+  assert.equal(hideHeader.defaultValue, false);
+  assert.equal(createDefaultControlProperties('TabControl').hideHeader, false);
 });
 
 test('选项卡页面槽位决定设计器子控件可见性并兼容旧的无槽位控件', () => {
@@ -1019,8 +1036,8 @@ test('高级控件生成真实 Win32 类、专属数据和多事件通知', () =
   assert.ok(generated.diagnostics.some(diagnostic => diagnostic.includes('lingbuilder.win32.common-controls') && diagnostic.includes('未静默降级')));
 });
 
-test('选项卡容器槽位、Rebar、Pager 和 UpDown 生成真实父子控件联动', () => {
-  const tab = { ...createControl('tabs', undefined, 'TabControl'), background: '#123456', foreground: '#fedcba', properties: { tabs: [{ id: 'general', title: '常规' }, { id: 'advanced', title: '高级' }], selectedIndex: 0 } };
+test('选项卡容器槽位、隐藏表头、Rebar、Pager 和 UpDown 生成真实父子控件联动', () => {
+  const tab = { ...createControl('tabs', undefined, 'TabControl'), background: '#123456', foreground: '#fedcba', properties: { tabs: [{ id: 'general', title: '常规' }, { id: 'advanced', title: '高级' }], selectedIndex: 0, hideHeader: true } };
   const tabChild = { ...createControl('tab-child', 'tabs', 'Button'), containerSlot: 'advanced' };
   const rebar = { ...createControl('rebar', undefined, 'ReBar'), properties: { bands: [{ id: 'main-band', title: '主工具栏', childControl: 'toolbar', width: 260 }] } };
   const toolbar = { ...createControl('toolbar', 'rebar', 'ToolBar'), properties: { buttons: [{ id: 101, title: '新建', style: 'button' }] } };
@@ -1037,13 +1054,15 @@ test('选项卡容器槽位、Rebar、Pager 和 UpDown 生成真实父子控件�
   const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.find(file => file.relativePath === 'main.cpp')!.content;
   assert.match(cpp, /UpdateTabChildren/);
   assert.match(cpp, /struct RuntimeTabPage/u);
-  assert.match(cpp, /TabCtrl_AdjustRect\(child, FALSE, &pageRect\)/u);
+  assert.match(cpp, /if \(!\(control\.flags & CF_HIDE_TAB_HEADER\)\) TabCtrl_AdjustRect\(child, FALSE, &pageRect\)/u);
   assert.match(cpp, /WS_EX_CONTROLPARENT/u);
   assert.match(cpp, /FindTabPage\(parentSpec->id, control\.containerSlot\)/u);
   assert.match(cpp, /ShowWindow\(page\.hwnd, page\.slot == activeSlot \? SW_SHOW : SW_HIDE\)/u);
   assert.match(cpp, /message == WM_DRAWITEM \|\| message == WM_MEASUREITEM/u);
   assert.match(cpp, /SendMessageW\(self->hwnd_, message, wParam, lParam\)/u);
   assert.match(cpp, /PaintTabControl/u);
+  assert.match(cpp, /CF_HIDE_TAB_HEADER = 1u << 28/u);
+  assert.match(cpp, /if \(control\.flags & CF_HIDE_TAB_HEADER\)/u);
   assert.match(cpp, /ResolveTabBackground/u);
   assert.match(cpp, /PaintTabPage/u);
   assert.match(cpp, /COLORREF accent = RGB\(245, 158, 11\);/u);
@@ -1053,6 +1072,7 @@ test('选项卡容器槽位、Rebar、Pager 和 UpDown 生成真实父子控件�
   assert.doesNotMatch(cpp, /PaintOwnerTab/u);
   assert.match(cpp, /WS_CHILD \| WS_CLIPCHILDREN \| WS_CLIPSIBLINGS \| SS_NOTIFY/u);
   assert.match(cpp, /L"TabControl"[^\n]+RGB\(18, 52, 86\), false, RGB\(254, 220, 186\)/u);
+  assert.match(cpp, /L"TabControl"[^\n]+268435456/u);
   assert.match(cpp, /L"advanced"/);
   assert.match(cpp, /RB_INSERTBANDW/);
   assert.match(cpp, /PGM_SETCHILD/);

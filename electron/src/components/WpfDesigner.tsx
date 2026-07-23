@@ -112,7 +112,8 @@ import {
   getControlTabSlot,
   getSelectedTabPage,
   getTabControlPages,
-  isControlOnSelectedTab
+  isControlOnSelectedTab,
+  isTabControlHeaderHidden
 } from '../services/windowDesigner/tabControlModel';
 
 type InspectorTab = 'properties' | 'events' | 'layout';
@@ -582,7 +583,7 @@ export default function WpfDesigner({
       if (controls === window.controls) return window;
       if (!target) return { ...window, controls };
       const inset = 12;
-      const topInset = target.type === 'TabControl' ? 36 : inset;
+      const topInset = target.type === 'TabControl' && !isTabControlHeaderHidden(target) ? 36 : inset;
       return {
         ...window,
         controls: controls.map(control => control.id === controlId ? {
@@ -735,7 +736,7 @@ export default function WpfDesigner({
     const newControl = {
       ...createdControl,
       x: selectedParent ? selectedParent.x + 12 : createdControl.x,
-      y: selectedParent ? selectedParent.y + (selectedParent.type === 'TabControl' ? 36 : 12) : createdControl.y,
+      y: selectedParent ? selectedParent.y + (selectedParent.type === 'TabControl' && !isTabControlHeaderHidden(selectedParent) ? 36 : 12) : createdControl.y,
       parentId: selectedParent?.id,
       containerSlot: selectedPage?.id
     };
