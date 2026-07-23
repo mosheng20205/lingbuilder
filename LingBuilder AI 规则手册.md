@@ -101,6 +101,11 @@ AI 必须遵守：
 - 使用 `new_emoji 原生界面库` 时，优先生成 `NE_` 中文桥接命令；不要默认生成 `NE_EU_*` 底层命令，除非用户明确要求高级 DLL 参数调用。
 - 已启用 `WebSocket 客户端模块`（模块 ID：`lingbuilder.websocket.client`）时，可使用 `WS_连接`、`WS_发送文本`、`WS_接收到调试输出`、`WS_接收文本`、`WS_关闭`。这些命令当前面向 Windows/MSVC WinHTTP 生成链路，地址应使用 `ws://` 或 `wss://`。
 - 已启用 `多线程模块`（模块 ID：`lingbuilder.threading`）时，可使用 `线程_启动延时输出`、`线程_等待全部`、`线程_活动数量`、`线程_硬件并发数` 和 `线程_休眠`。界面事件中调用 `线程_休眠` 或 `线程_等待全部` 会阻塞界面，AI 应优先把等待放在确实需要同步结果的位置。
+- LingBuilder 内置分类模块及命令事实来源为 `electron/src/services/modules/*LibraryModules.ts`，人类可读总表为根目录 `MODULE_ENCAPSULATION_CHECKLIST.md`。AI 只能根据当前项目实际启用模块使用文本、文件、系统、网络、数据库、图像等命令，不能因为模块是“内置”就假设项目已经启用。
+- `lingbuilder.database.sqlite` 需要可加载的 `sqlite3.dll`。未成功调用 `SQLite_加载运行库`/`SQLite_打开` 前，不得宣称数据库可用，也不得隐藏 DLL 缺失错误。
+- `lingbuilder.net.mail` 当前只支持不加密 SMTP，不支持 STARTTLS。AI 不得建议把真实邮箱密码交给该模块；生产邮件应等待 TLS 能力或使用经过审核的外部模块。
+- `lingbuilder.archive` 只允许 ZIP 创建、解压和列出三个固定 tar 流程，不得借此拼接任意 shell 参数。
+- `lingbuilder.advanced.memory`、`lingbuilder.advanced.hook`、`lingbuilder.advanced.process-memory`、`lingbuilder.advanced.com`、`lingbuilder.advanced.assembly`、`lingbuilder.advanced.driver` 均为高风险模块。AI 必须说明风险并取得用户明确意图后才能建议启用；不得将其加入普通项目模板或用它们绕过 AI Bridge 的执行权限。
 - 已启用 `EdgeView 浏览器模块`（模块 ID：`lingbuilder.edgeview`）时，可使用 `EdgeView_创建实例` 或 `EdgeView_创建区域` 创建多个浏览器；需要隔离登录态和缓存时，每个实例必须使用不同缓存目录。使用 `EdgeView_执行JS实例` 取得指定实例的 JSON 编码返回值；使用 `EdgeView_绑定事件` 把 `导航开始`、`导航完成`、`标题改变`、`网页消息` 回调到当前窗口已有的无参数中文事件/方法。AI 不得编造 DOM 同步回调语法，也不得把它降级为旧版 IE WebBrowser 控件。
 - EdgeView 全局代理使用 `EdgeView_设置全局代理`，只影响之后创建的实例；单实例代理使用 `EdgeView_创建实例代理` 或 `EdgeView_创建区域代理` 并覆盖全局设置。代理切换必须重建实例，AI 不得声称能在不重建 WebView2 Environment 的情况下热切换代理。
 - `new_emoji` 底层 `EU_` API 使用 UTF-8 字节指针和长度，AI 不应把普通中文字符串直接塞给底层 API。

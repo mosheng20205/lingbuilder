@@ -11,6 +11,11 @@ import {
   LingCppStatement
 } from '../lingCpp/types';
 import { InstalledModule } from '../modules/types';
+import { BUILTIN_LIBRARY_COMMON_RUNTIME, generateStandardLibraryRuntime } from './standardLibraryRuntime';
+import { generateSystemLibraryRuntime } from './systemLibraryRuntime';
+import { generateNetworkLibraryRuntime } from './networkLibraryRuntime';
+import { generateDataMediaRuntime } from './dataMediaRuntime';
+import { generatePlatformAdvancedRuntime } from './platformAdvancedRuntime';
 import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from '../modules/targetResolver';
 import { getWin32ControlDefinition, WIN32_CONTROL_DEFINITIONS } from './win32ControlRegistry';
 import { getWindowEventHandlerName } from './windowEventRegistry';
@@ -221,6 +226,16 @@ function generateMainCpp(
     .map((window, index) => `    case ${index}: return new ${toCppIdentifier(window.className)}(g_windows[${index}]);`)
     .join('\n');
   const moduleCppPreamble = generateModuleCppPreamble(enabledModules);
+  const builtinLibraryFragments = [
+    generateStandardLibraryRuntime(enabledModules),
+    generateSystemLibraryRuntime(enabledModules),
+    generateNetworkLibraryRuntime(enabledModules),
+    generateDataMediaRuntime(enabledModules),
+    generatePlatformAdvancedRuntime(enabledModules)
+  ].filter(Boolean);
+  const builtinLibraryRuntime = builtinLibraryFragments.length > 0
+    ? `${BUILTIN_LIBRARY_COMMON_RUNTIME}\n${builtinLibraryFragments.join('\n')}`
+    : '';
   const moduleFeatureDefines = enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview')
     ? '#ifndef LINGBUILDER_EDGEVIEW_MODULE\n#define LINGBUILDER_EDGEVIEW_MODULE\n#endif'
     : '';
@@ -242,6 +257,7 @@ ${moduleFeatureDefines}
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <winternl.h>
 #include <commctrl.h>
 #include <commdlg.h>
 #include <shellapi.h>
@@ -251,7 +267,14 @@ ${moduleFeatureDefines}
 #include <wincodec.h>
 #include <gdiplus.h>
 #include <winhttp.h>
+#include <wininet.h>
 #include <wincrypt.h>
+#include <bcrypt.h>
+#include <sql.h>
+#include <sqlext.h>
+#include <mmsystem.h>
+#include <oleacc.h>
+#include <intrin.h>
 #if defined(LINGBUILDER_EDGEVIEW_MODULE) && __has_include(<WebView2.h>)
 #include <WebView2.h>
 #include <WebView2EnvironmentOptions.h>
@@ -261,20 +284,29 @@ ${moduleFeatureDefines}
 #define LINGBUILDER_EDGEVIEW_AVAILABLE 0
 #endif
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
+#include <ctime>
 #include <cstring>
 #include <cwchar>
 #include <cwctype>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <random>
+#include <regex>
 #include <sstream>
 #include <map>
 #include <string>
 #include <thread>
 #include <mutex>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
@@ -290,8 +322,15 @@ ${moduleFeatureDefines}
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "winhttp.lib")
+#pragma comment(lib, "wininet.lib")
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "bcrypt.lib")
+#pragma comment(lib, "crypt32.lib")
+#pragma comment(lib, "odbc32.lib")
+#pragma comment(lib, "winmm.lib")
+#pragma comment(lib, "oleacc.lib")
+#pragma comment(lib, "oleaut32.lib")
 #pragma comment(linker, "/manifestdependency:\\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\\"")
 ${moduleCppPreamble}
 
@@ -791,6 +830,8 @@ static void ResolveWindowPlacement(
         y = workArea.bottom - windowHeight;
     }
 }
+
+${builtinLibraryRuntime}
 
 class LingWindowBase {
 public:
@@ -4456,7 +4497,7 @@ function translateStatement(statement: string, enabledModules: InstalledModule[]
 
   const returnValue = parseReturnValue(statement);
   if (returnValue !== undefined) {
-    return `return ${translateLingCppExpression(returnValue)};`;
+    return `return ${translateLingCppExpression(returnValue, enabledModules)};`;
   }
 
   if (/^返回\b/.test(statement)) {
@@ -4466,14 +4507,14 @@ function translateStatement(statement: string, enabledModules: InstalledModule[]
   const callStatement = parseCallStatement(statement);
   if (callStatement) {
     const binding = findModuleCommandBinding(callStatement.name, enabledModules);
-    if (binding) return `${toCppIdentifier(binding.runtimeName)}(${translateCallArguments(callStatement.argumentsText)});`;
+    if (binding) return `${toCppIdentifier(binding.runtimeName)}(${translateCallArguments(callStatement.argumentsText, enabledModules)});`;
     const looksLikeModuleCommand = enabledModules.some(module =>
       (module.manifest.contributes?.commands || []).some(command => command.name === callStatement.name)
     );
     if (looksLikeModuleCommand) {
       return `// 模块命令缺少 v2 binding，无法生成确定性 C++ 调用：${escapeCppComment(callStatement.name)}`;
     }
-    return `${toCppIdentifier(callStatement.name)}(${translateCallArguments(callStatement.argumentsText)});`;
+    return `${toCppIdentifier(callStatement.name)}(${translateCallArguments(callStatement.argumentsText, enabledModules)});`;
   }
 
   return `// 暂不支持的中文 C++ 语句：${escapeCppComment(statement)}`;
@@ -4581,9 +4622,9 @@ function parseCallStatement(statement: string): { name: string; argumentsText: s
   };
 }
 
-function translateCallArguments(raw: string): string {
+function translateCallArguments(raw: string, enabledModules: InstalledModule[] = []): string {
   return splitCallArguments(raw)
-    .map(translateLingCppExpression)
+    .map(argument => translateLingCppExpression(argument, enabledModules))
     .join(', ');
 }
 
@@ -4626,7 +4667,7 @@ function splitCallArguments(raw: string): string[] {
   return args;
 }
 
-function translateLingCppExpression(expression: string): string {
+function translateLingCppExpression(expression: string, enabledModules: InstalledModule[] = []): string {
   const trimmed = expression.trim();
   if (!trimmed) return '';
   if (/^L"/u.test(trimmed)) return trimmed;
@@ -4634,6 +4675,11 @@ function translateLingCppExpression(expression: string): string {
   if (quoted) return `L"${escapeWideString(quoted[1] || '')}"`;
   if (trimmed === '真') return 'true';
   if (trimmed === '假') return 'false';
+  const call = parseCallStatement(trimmed);
+  if (call) {
+    const binding = findModuleCommandBinding(call.name, enabledModules);
+    return `${toCppIdentifier(binding?.runtimeName || call.name)}(${translateCallArguments(call.argumentsText, enabledModules)})`;
+  }
   return trimmed;
 }
 

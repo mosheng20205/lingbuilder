@@ -1,5 +1,10 @@
 import { LingBuilderModuleManifest } from './types';
 import { getWin32ControlsForModule, Win32ControlModuleId } from '../windowDesigner/win32ControlRegistry';
+import { STANDARD_LIBRARY_MODULES } from './standardLibraryModules';
+import { SYSTEM_LIBRARY_MODULES } from './systemLibraryModules';
+import { NETWORK_LIBRARY_MODULES } from './networkLibraryModules';
+import { DATA_MEDIA_MODULES } from './dataMediaModules';
+import { PLATFORM_ADVANCED_MODULES } from './platformAdvancedModules';
 
 function createControlContributions(moduleId: Win32ControlModuleId) {
   return getWin32ControlsForModule(moduleId).map(definition => ({
@@ -29,7 +34,26 @@ function createControlTypes(moduleId: Win32ControlModuleId) {
   }));
 }
 
+function ensureBuiltinX64Target(manifest: LingBuilderModuleManifest): LingBuilderModuleManifest {
+  const targets = manifest.targets || [];
+  if (targets.some(target => target.id === 'windows-msvc-x64')) return manifest;
+  const win32Target = targets.find(target => target.id === 'windows-msvc-win32');
+  if (!win32Target) return manifest;
+  return {
+    ...manifest,
+    targets: [
+      ...targets,
+      { ...win32Target, id: 'windows-msvc-x64', arch: 'x64' }
+    ]
+  };
+}
+
 export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
+  ...STANDARD_LIBRARY_MODULES,
+  ...SYSTEM_LIBRARY_MODULES,
+  ...NETWORK_LIBRARY_MODULES,
+  ...DATA_MEDIA_MODULES,
+  ...PLATFORM_ADVANCED_MODULES,
   {
     schemaVersion: 2,
     id: 'lingbuilder.win32.basic',
@@ -701,4 +725,4 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       ]
     }
   }
-];
+].map(ensureBuiltinX64Target);

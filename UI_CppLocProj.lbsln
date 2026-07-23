@@ -36,6 +36,13 @@
       "type": "visual-cpp",
       "sourceRoot": "src/lingbuilder-4",
       "references": []
+    },
+    {
+      "id": "module-cli-smoke",
+      "name": "新增模块 CLI 冒烟测试",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-cli-smoke/src",
+      "references": []
     }
   ]
 }

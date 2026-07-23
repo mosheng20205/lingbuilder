@@ -217,6 +217,17 @@ lingbuilder.module.json
 - 两个服务端模块当前都是 Windows/MSVC 原型闭环，Win32 C++ 生成器在 `LingWindowBase` 内置基于 Winsock 的单连接同步服务端运行时；HTTP 链接 `ws2_32.lib`，WebSocket 服务端链接 `ws2_32.lib` 和 `advapi32.lib`。
 - 服务端监听默认绑定 `127.0.0.1`，适合作为本地调试、AI 示例和模块能力验证入口；后续如开放局域网监听、路由、多客户端或异步事件循环，必须先抽象受控服务层和清晰的权限提示。
 
+## 分类内置模块库（2026-07）
+
+- 参考精易模块的程序、窗口句柄、键盘鼠标、进程线程、配置、图片、网页、文本字节、文件目录、系统、杂类和组件分类，新增 51 个内置 v2 模块、287 条中文命令。
+- 当前 `BUILTIN_MODULES` 合计 58 个模块、389 条命令；正式清单位于根目录 `MODULE_ENCAPSULATION_CHECKLIST.md`。
+- 模块定义按领域拆到 `standardLibraryModules.ts`、`systemLibraryModules.ts`、`networkLibraryModules.ts`、`dataMediaModules.ts` 和 `platformAdvancedModules.ts`，不继续扩张单个 `builtinModules.ts`。
+- 对应 C++ 实现按领域拆到 `standardLibraryRuntime.ts`、`systemLibraryRuntime.ts`、`networkLibraryRuntime.ts`、`dataMediaRuntime.ts` 和 `platformAdvancedRuntime.ts`，生成器只注入当前项目已启用模块的运行时片段。
+- 新增表达式翻译支持嵌套模块调用，例如 `调试输出(文本_转大写("LingBuilder"))` 会把内层文本参数和 binding 一并确定性翻译为宽字符串 C++。
+- 内置纯系统模块统一补齐 `windows-msvc-win32` 与 `windows-msvc-x64` target；外部 `.lbmod` 仍必须显式提供各架构产物，不允许自动假设二进制兼容。
+- 高风险模块使用 `lingbuilder.advanced.*` 独立 ID，默认不启用；受控内存模块只访问自身登记内存，CPU 指令模块不执行用户机器码，驱动模块不负责安装或提权。
+- 双架构 smoke 工程位于 `.lingbuilder-build/standard-library-smoke-20260723/`，用于同时启用除 EdgeView 外的内置模块并执行 Visual Studio Release 编译。
+
 ## 后续扩展规则
 
 - 新增模块能力时，先扩展 `electron/src/services/modules/types.ts` 和校验器，再接 UI。

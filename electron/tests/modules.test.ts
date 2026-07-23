@@ -8,6 +8,11 @@ import { promisify } from 'node:util';
 
 import { getLingCppCompletions, getLingCppSemanticDiagnostics } from '../src/services/lingCpp/languageService';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
+import { STANDARD_LIBRARY_MODULES } from '../src/services/modules/standardLibraryModules';
+import { SYSTEM_LIBRARY_MODULES } from '../src/services/modules/systemLibraryModules';
+import { NETWORK_LIBRARY_MODULES } from '../src/services/modules/networkLibraryModules';
+import { DATA_MEDIA_MODULES } from '../src/services/modules/dataMediaModules';
+import { PLATFORM_ADVANCED_MODULES } from '../src/services/modules/platformAdvancedModules';
 import { validateModuleManifest } from '../src/services/modules/manifest';
 import { createModuleService } from '../src/services/modules/moduleService';
 import { createMarketIndex, validateModuleDirectory } from '../src/services/modules/moduleSdkService';
@@ -42,6 +47,180 @@ const sampleProject: LingWindowProject = {
 };
 
 const execFileAsync = promisify(execFile);
+
+test('标准库模块命令、binding、Win32/x64 target 保持完整对应', () => {
+  const expectedIds = [
+    'lingbuilder.std.text',
+    'lingbuilder.std.bytes',
+    'lingbuilder.std.encoding',
+    'lingbuilder.std.math',
+    'lingbuilder.std.datetime',
+    'lingbuilder.std.regex',
+    'lingbuilder.data.json',
+    'lingbuilder.data.xml'
+  ];
+  assert.deepEqual(STANDARD_LIBRARY_MODULES.map(module => module.id), expectedIds);
+
+  for (const manifest of STANDARD_LIBRARY_MODULES) {
+    assert.equal(validateModuleManifest(manifest).diagnostics.length, 0, `${manifest.id} manifest 应通过校验`);
+    const commandNames = manifest.contributes?.commands?.map(command => command.name) || [];
+    const bindingNames = manifest.bindings?.commands?.map(binding => binding.command) || [];
+    assert.deepEqual(bindingNames, commandNames, `${manifest.id} 的命令与 binding 必须逐项对应`);
+    assert.deepEqual(manifest.targets?.map(target => target.id), ['windows-msvc-win32', 'windows-msvc-x64']);
+    assert.ok(BUILTIN_MODULES.some(module => module.id === manifest.id));
+  }
+});
+
+test('标准库模块生成独立 C++ 运行时并翻译嵌套中文调用', () => {
+  const moduleIds = ['lingbuilder.win32.basic', 'lingbuilder.std.text', 'lingbuilder.std.encoding', 'lingbuilder.data.json'];
+  const enabledModules: InstalledModule[] = moduleIds.map(moduleId => {
+    const manifest = BUILTIN_MODULES.find(module => module.id === moduleId);
+    assert.ok(manifest, `缺少内置模块 ${moduleId}`);
+    return {
+      manifest,
+      installPath: `builtin://${moduleId}`,
+      isBuiltin: true,
+      isInstalled: true,
+      isEnabledForProject: true,
+      diagnostics: []
+    };
+  });
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        调试输出(文本_转大写("LingBuilder"))',
+      '        调试输出(编码_Base64解码("5L2g5aW9"))',
+      '        JSON_是否有效("{}")',
+      '    结束',
+      '结束类'
+    ].join('\n'),
+    enabledModules
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(mainCpp, /const wchar_t\* 文本_转大写\(const wchar_t\* text\)/u);
+  assert.match(mainCpp, /const wchar_t\* 编码_Base64解码\(const wchar_t\* text\)/u);
+  assert.match(mainCpp, /bool JSON_是否有效\(const wchar_t\* json\)/u);
+  assert.match(mainCpp, /调试输出\(文本_转大写\(L"LingBuilder"\)\);/u);
+  assert.match(mainCpp, /调试输出\(编码_Base64解码\(L"5L2g5aW9"\)\);/u);
+  assert.match(mainCpp, /JSON_是否有效\(L"\{\}"\);/u);
+});
+
+test('文件、配置、系统、进程、输入和窗口模块提供完整确定性绑定', () => {
+  assert.equal(SYSTEM_LIBRARY_MODULES.length, 13);
+  for (const manifest of SYSTEM_LIBRARY_MODULES) {
+    assert.equal(validateModuleManifest(manifest).diagnostics.length, 0, `${manifest.id} manifest 应通过校验`);
+    assert.deepEqual(
+      manifest.bindings?.commands?.map(binding => binding.command),
+      manifest.contributes?.commands?.map(command => command.name),
+      `${manifest.id} 的命令与 binding 必须逐项对应`
+    );
+    assert.ok(BUILTIN_MODULES.some(module => module.id === manifest.id));
+  }
+
+  const selectedIds = ['lingbuilder.fs.core', 'lingbuilder.config.ini', 'lingbuilder.system.info', 'lingbuilder.process', 'lingbuilder.input.mouse', 'lingbuilder.win32.window-utils'];
+  const enabledModules: InstalledModule[] = selectedIds.map(moduleId => ({
+    manifest: SYSTEM_LIBRARY_MODULES.find(module => module.id === moduleId)!,
+    installPath: `builtin://${moduleId}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }));
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        文件_写入文本("验证.txt", "中文")',
+      '        INI_写整数("设置.ini", "窗口", "宽度", 800)',
+      '        鼠标_移动(10, 20)',
+      '    结束',
+      '结束类'
+    ].join('\n'),
+    enabledModules
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(mainCpp, /bool 文件_写入文本\(const wchar_t\* path, const wchar_t\* content\)/u);
+  assert.match(mainCpp, /bool INI_写整数\(const wchar_t\* file/u);
+  assert.match(mainCpp, /const wchar_t\* 系统_取Windows版本\(\)/u);
+  assert.match(mainCpp, /int 程序_启动\(const wchar_t\* commandLine/u);
+  assert.match(mainCpp, /bool 鼠标_移动\(int x, int y\)/u);
+  assert.match(mainCpp, /bool 窗口_设置标题\(long long handle/u);
+  assert.match(mainCpp, /文件_写入文本\(L"验证\.txt", L"中文"\);/u);
+});
+
+test('网络基础模块提供请求、状态、错误和关闭闭环', () => {
+  assert.deepEqual(NETWORK_LIBRARY_MODULES.map(module => module.id), [
+    'lingbuilder.net.http-client', 'lingbuilder.net.tcp', 'lingbuilder.net.udp',
+    'lingbuilder.net.dns', 'lingbuilder.net.url', 'lingbuilder.net.cookie', 'lingbuilder.net.ftp'
+  ]);
+  for (const manifest of NETWORK_LIBRARY_MODULES) {
+    assert.equal(validateModuleManifest(manifest).diagnostics.length, 0, `${manifest.id} manifest 应通过校验`);
+    assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), manifest.contributes?.commands?.map(command => command.name));
+  }
+  const enabledModules: InstalledModule[] = NETWORK_LIBRARY_MODULES.map(manifest => ({
+    manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }));
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', '        HTTP客户端_GET("https://example.com")', '        TCP_关闭()', '        UDP_关闭()', '        FTP_关闭()', '    结束', '结束类'].join('\n'),
+    enabledModules
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(mainCpp, /bool HTTP客户端_请求\(const wchar_t\* method/u);
+  assert.match(mainCpp, /bool TCP_连接\(const wchar_t\* host/u);
+  assert.match(mainCpp, /bool UDP_绑定\(int port\)/u);
+  assert.match(mainCpp, /const wchar_t\* DNS_解析首个地址/u);
+  assert.match(mainCpp, /static LB_UrlParts LB_ParseUrl/u);
+  assert.match(mainCpp, /const wchar_t\* Cookie_设置/u);
+  assert.match(mainCpp, /bool FTP_连接\(const wchar_t\* host/u);
+  assert.match(mainCpp, /HTTP客户端_GET\(L"https:\/\/example\.com"\);/u);
+});
+
+test('数据、数据库、加密、图像和媒体模块提供可生成实现', () => {
+  assert.equal(DATA_MEDIA_MODULES.length, 11);
+  for (const manifest of DATA_MEDIA_MODULES) {
+    assert.equal(validateModuleManifest(manifest).diagnostics.length, 0, `${manifest.id} manifest 应通过校验`);
+    assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), manifest.contributes?.commands?.map(command => command.name));
+  }
+  const enabledModules: InstalledModule[] = DATA_MEDIA_MODULES.map(manifest => ({ manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', '        哈希_SHA256文本("LingBuilder")', '        ODBC_关闭()', '        SQLite_关闭()', '        图像_取宽度("图片.png")', '        音频_停止()', '    结束', '结束类'].join('\n'),
+    enabledModules
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(mainCpp, /const wchar_t\* CSV_取字段/u);
+  assert.match(mainCpp, /const wchar_t\* 哈希_SHA256文本/u);
+  assert.match(mainCpp, /const wchar_t\* 数据保护_加密文本/u);
+  assert.match(mainCpp, /bool ODBC_连接/u);
+  assert.match(mainCpp, /bool SQLite_加载运行库/u);
+  assert.match(mainCpp, /bool 图像_缩放/u);
+  assert.match(mainCpp, /bool 截图_主屏到PNG/u);
+  assert.match(mainCpp, /long long 位图_取像素ARGB/u);
+  assert.match(mainCpp, /int 图标_取数量/u);
+  assert.match(mainCpp, /bool 识图_模板匹配/u);
+  assert.match(mainCpp, /bool 音频_播放WAV/u);
+});
+
+test('平台扩展和高风险模块保持独立启用并具有确定性运行时', () => {
+  assert.equal(PLATFORM_ADVANCED_MODULES.length, 12);
+  for (const manifest of PLATFORM_ADVANCED_MODULES) {
+    assert.equal(validateModuleManifest(manifest).diagnostics.length, 0, `${manifest.id} manifest 应通过校验`);
+    assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), manifest.contributes?.commands?.map(command => command.name));
+  }
+  const enabledModules: InstalledModule[] = PLATFORM_ADVANCED_MODULES.map(manifest => ({ manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: ['类 MainWindow', '    事件 _MainWindow_创建完毕()', '        IPC_关闭()', '        键盘钩子_停止()', '        COM_关闭()', '    结束', '结束类'].join('\n'), enabledModules });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  ['压缩_ZIP创建', 'SMTP_发送普通邮件', 'IPC_创建管道服务端', '菜单_创建', '托盘_添加', '辅助_取名称', '内存_申请', '键盘钩子_启动', '进程内存_打开', 'COM_创建对象', 'CPU_取厂商', '设备_打开'].forEach(name => assert.ok(mainCpp.includes(name), `缺少 ${name} C++ 运行时`));
+});
+
+test('模块封装清单覆盖实际内置模块注册表', async () => {
+  const checklist = await fs.readFile(path.resolve('..', 'MODULE_ENCAPSULATION_CHECKLIST.md'), 'utf8');
+  assert.match(checklist, /58 个内置模块、389 条中文命令/u);
+  assert.match(checklist, /51 个模块、287 条命令/u);
+  for (const manifest of BUILTIN_MODULES) {
+    assert.ok(checklist.includes(`\`${manifest.id}\``), `封装清单缺少 ${manifest.id}`);
+  }
+});
 
 test('module service defaults ordinary projects to Win32 basic module only', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-defaults-'));
