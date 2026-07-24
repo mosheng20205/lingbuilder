@@ -8,7 +8,7 @@ export type LingControlType =
   | 'ListView' | 'TreeView' | 'TabControl' | 'Header' | 'ComboBoxEx' | 'SysLink'
   | 'DateTimePicker' | 'MonthCalendar' | 'TrackBar' | 'UpDown' | 'HotKey' | 'IPAddress'
   | 'ToolBar' | 'StatusBar' | 'ToolTip' | 'ReBar' | 'Pager' | 'RichEdit'
-  | 'Animation' | 'FlatScrollBar' | 'ImageList' | 'PropertySheet';
+  | 'Animation' | 'FlatScrollBar' | 'ImageList' | 'PropertySheet' | 'FileDialog';
 
 export interface LingEventBinding {
   [eventName: string]: string;
@@ -24,7 +24,7 @@ export type LingWindowOpenPlacement =
   | 'custom';
 
 export type LingWindowCornerStyle = 'system' | 'rounded' | 'small-rounded' | 'square';
-export type LingWindowIconStyle = 'lingbuilder' | 'system' | 'none';
+export type LingWindowIconStyle = 'lingbuilder' | 'system' | 'custom' | 'none';
 
 export interface LingControl {
   id: string;
@@ -67,6 +67,8 @@ export interface LingWindowModel {
   titleBarForeground?: string;
   cornerStyle?: LingWindowCornerStyle;
   iconStyle?: LingWindowIconStyle;
+  /** 自定义窗口图标的工作区相对路径；仅在 iconStyle 为 custom 时使用。 */
+  iconPath?: string;
   description: string;
   openPlacement?: LingWindowOpenPlacement;
   openX?: number;
@@ -74,6 +76,15 @@ export interface LingWindowModel {
   controls: LingControl[];
   menuName?: string;
   menuItems?: string;
+  /** 原生窗口菜单栏及其下拉菜单的背景颜色。 */
+  menuBackground?: string;
+  /** 原生窗口菜单栏及其下拉菜单的文字颜色。 */
+  menuForeground?: string;
+  menuFontFamily?: string;
+  menuFontSize?: number;
+  menuFontBold?: boolean;
+  menuFontItalic?: boolean;
+  menuFontUnderline?: boolean;
   menuEvents?: Record<string, string>;
   /** 窗口自身事件；事件键由 windowEventRegistry 统一维护。 */
   events?: LingEventBinding;
@@ -114,7 +125,30 @@ export interface LingPropertySheetResource {
   appliedHandler?: string;
 }
 
-export type LingDesignerResource = LingImageListResource | LingToolTipResource | LingPropertySheetResource;
+export interface LingFileDialogResource {
+  id: string;
+  type: 'FileDialog';
+  name: string;
+  /** 仅用于设计器画布内占位的水平坐标，不生成运行时控件。 */
+  designerX?: number;
+  /** 仅用于设计器画布内占位的垂直坐标，不生成运行时控件。 */
+  designerY?: number;
+  /** 组件所属窗口；按钮触发和窗口级拖放均限制在该窗口。 */
+  ownerWindowId: string;
+  /** 单击后自动打开对话框的现有控件。 */
+  triggerControlId: string;
+  /** 接收拖入文件的窗口或控件 ID。 */
+  dropTargetId: string;
+  title: string;
+  filter: string;
+  multiple: boolean;
+  allowDrop: boolean;
+  filesSelectedHandler?: string;
+  filesDroppedHandler?: string;
+  cancelledHandler?: string;
+}
+
+export type LingDesignerResource = LingImageListResource | LingToolTipResource | LingPropertySheetResource | LingFileDialogResource;
 
 export interface LingWindowProject {
   schemaVersion?: 2;

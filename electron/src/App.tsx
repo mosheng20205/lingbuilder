@@ -49,6 +49,7 @@ import {
 import {
   AppliedWorkspaceFile,
   BottomPanelTabType,
+  CommandHintContent,
   CppFile,
   ExtractedString,
   GlossaryTerm,
@@ -136,6 +137,10 @@ import {
   WINDOW_DESIGNER_PROJECT_UPDATED
 } from './services/windowDesigner/windowDesignerService';
 import type { WindowDesignerDirtyStateDetail } from './services/windowDesigner/windowDesignerService';
+import {
+  selectAndImportDesignerImage,
+  type DesignerImageImportResult
+} from './services/windowDesigner/designerAssetClient';
 import { sourceControlService } from './services/lingCpp/sourceControlService';
 import { applyProjectFileDelete, applyProjectFileRename } from './services/workspace/projectFileState';
 import {
@@ -1267,9 +1272,19 @@ export default function App() {
     configurationMutationRef.current('workbench.colorTheme', isDarkMode ? 'light' : 'dark', 'user')
   ), [isDarkMode]);
   const [moduleHint, setModuleHint] = useState<ModuleHintContent | null>(null);
+  const [commandHint, setCommandHint] = useState<CommandHintContent | null>(null);
 
   const handleShowModuleHint = useCallback((hint: ModuleHintContent) => {
+    setCommandHint(null);
     setModuleHint(hint);
+    setActiveTabInBottom('module_hint');
+    setShowBottomPanel(true);
+  }, []);
+
+  const handleShowCommandHint = useCallback((hint: CommandHintContent | null) => {
+    setCommandHint(hint);
+    if (!hint) return;
+    setModuleHint(null);
     setActiveTabInBottom('module_hint');
     setShowBottomPanel(true);
   }, []);
@@ -3657,7 +3672,7 @@ void DisplayStatus() {
     return true;
   }, []);
 
-  const workbenchCommandHandlersRef = useRef<Record<string, () => unknown | Promise<unknown>>>({});
+  const workbenchCommandHandlersRef = useRef<Record<string, (...args: unknown[]) => unknown | Promise<unknown>>>({});
   workbenchCommandHandlersRef.current = {
     showCommands: openCommandPalette,
     openSettings: openSettingsDialog,
@@ -3683,6 +3698,20 @@ void DisplayStatus() {
     toggleAiPanel: toggleAiPanelVisibility,
     toggleTheme: toggleWorkbenchTheme,
     createProject: openCreateSolutionProjectDialog,
+    addProjectResource: (requestedProjectId?: unknown) => {
+      const projectId = typeof requestedProjectId === 'string' && requestedProjectId.trim()
+        ? requestedProjectId.trim()
+        : activeProjectId || solution.startupProjectId || solution.projects[0]?.id;
+      return projectId
+        ? selectAndImportDesignerImage(projectId)
+        : Promise.resolve<DesignerImageImportResult>({ ok: false, error: '当前解决方案中没有可添加资源的项目。' });
+    },
+    copyProjectResourcePath: async (requestedPath?: unknown) => {
+      const relativePath = typeof requestedPath === 'string' ? requestedPath.trim() : '';
+      if (!relativePath) return false;
+      await navigator.clipboard.writeText(relativePath);
+      return true;
+    },
     diffEdit: () => showDiffViewMode('chinese'),
     diffSplit: () => showDiffViewMode('split'),
     diffUnified: () => showDiffViewMode('unified')
@@ -3820,6 +3849,27 @@ void DisplayStatus() {
         when: '!workbench.modalOpen',
         order: 12,
         handler: () => workbenchCommandHandlersRef.current.createProject()
+      },
+      {
+        id: 'workbench.action.project.addImageResource',
+        title: '项目：添加图片资源',
+        aliases: ['Add Image Resource', 'Add Project Resource', 'Import Image'],
+        category: '文件',
+        description: '选择本地图片并复制到当前项目的 assets 资源目录。',
+        when: 'workspace.open && !workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 13,
+        handler: (_context, projectId) => workbenchCommandHandlersRef.current.addProjectResource(projectId)
+      },
+      {
+        id: 'workbench.action.project.copyImageResourcePath',
+        title: '项目：复制图片资源相对路径',
+        aliases: ['Copy Image Resource Path', 'Copy Asset Path'],
+        category: '文件',
+        description: '复制图片资源在项目中的 assets 相对路径。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 14,
+        handler: (_context, relativePath) => workbenchCommandHandlersRef.current.copyProjectResourcePath(relativePath)
       },
       {
         id: 'workbench.action.build.run',
@@ -3992,6 +4042,30 @@ void DisplayStatus() {
         ...previous,
         `> [${new Date().toLocaleTimeString()}] 【命令错误】${error instanceof Error ? error.message : '命令执行失败。'}`
       ]);
+      return false;
+    }
+  }, []);
+
+  const handleAddProjectResource = useCallback(async (projectId: string): Promise<DesignerImageImportResult> => {
+    try {
+      return await commandServiceRef.current.executeCommand<DesignerImageImportResult>(
+        'workbench.action.project.addImageResource',
+        commandContextRef.current,
+        projectId
+      );
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : '添加图片资源失败。' };
+    }
+  }, []);
+
+  const handleCopyProjectResourcePath = useCallback(async (relativePath: string): Promise<boolean> => {
+    try {
+      return await commandServiceRef.current.executeCommand<boolean>(
+        'workbench.action.project.copyImageResourcePath',
+        commandContextRef.current,
+        relativePath
+      );
+    } catch {
       return false;
     }
   }, []);
@@ -4946,6 +5020,8 @@ void DisplayStatus() {
           onSolutionCommand={async (command, projectId) => { await handleSolutionBuildCommand(command, projectId); }}
           onOpenSolutionDirectory={handleOpenSolutionDirectory}
           onOpenProjectDirectory={handleOpenProjectDirectory}
+          onAddProjectResource={handleAddProjectResource}
+          onCopyProjectResourcePath={handleCopyProjectResourcePath}
           activeModuleHintId={moduleHint?.itemId}
           onShowModuleHint={handleShowModuleHint}
         />
@@ -5036,6 +5112,7 @@ void DisplayStatus() {
                 setActiveTabInBottom('problems');
                 setShowBottomPanel(true);
               }}
+              onShowCommandHint={handleShowCommandHint}
             /></div> : (
               <div
                 className={`flex min-h-0 flex-1 items-center justify-center p-6 ${isDarkMode ? 'bg-[#141418] text-slate-200' : 'bg-slate-50 text-slate-800'}`}
@@ -5171,6 +5248,7 @@ void DisplayStatus() {
               onActiveTabChange={setActiveTabInBottom}
               showCodeMapping={activeFile.language !== 'lingcpp'}
               moduleHint={moduleHint}
+              commandHint={commandHint}
               height={bottomHeight}
             />
           )}

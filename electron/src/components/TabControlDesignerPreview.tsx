@@ -84,7 +84,7 @@ export default function TabControlDesignerPreview({ control, onSelectPage }: Tab
         role="tabpanel"
         aria-label={selectedPage.title}
         data-tab-header-hidden={hideHeader ? 'true' : 'false'}
-        className={`min-h-0 flex-1 border ${hideHeader ? '' : 'border-t-0'}`}
+        className={hideHeader ? 'min-h-0 flex-1' : 'min-h-0 flex-1 border border-t-0'}
         style={{ color: foreground, backgroundColor: background, borderColor }}
       />
     </div>

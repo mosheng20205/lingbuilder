@@ -89,26 +89,6 @@ const TEXT_ALIGN: Win32ControlPropertyDefinition = {
   defaultValue: 'left',
   options: [option('left', '左对齐'), option('center', '居中'), option('right', '右对齐')]
 };
-const UPLOAD_PROPERTIES: Win32ControlPropertyDefinition[] = [
-  text('tip', '提示文字', '支持点击选择文件'),
-  text('triggerText', '选择按钮文字', '选择文件'),
-  text('submitText', '上传按钮文字', '开始上传'),
-  { key: 'initialFiles', label: '初始文件', type: 'stringList', defaultValue: [] },
-  bool('multiple', '允许多选', true),
-  bool('autoUpload', '自动上传'),
-  { key: 'styleMode', label: '上传样式', type: 'enum', defaultValue: '0', options: [option('0', '文件列表'), option('1', '头像'), option('2', '图片卡片'), option('3', '自定义卡片'), option('4', '图片列表'), option('5', '拖拽区域'), option('6', '手动上传')] },
-  bool('showFileList', '显示文件列表', true),
-  bool('showTip', '显示提示', true),
-  bool('showActions', '显示操作按钮', true),
-  bool('dropEnabled', '允许拖拽文件'),
-  number('limit', '文件数量上限', 0, 0, 1000),
-  number('maxSizeKb', '单文件上限 KB', 0, 0),
-  text('accept', '允许文件类型', '*.*')
-];
-const UPLOAD_EVENTS = [
-  event('FilesSelected', '文件已选择', '文件已选择', 'notify'),
-  event('UploadAction', '上传操作', '上传操作', 'notify')
-];
 
 function control(definition: Omit<Win32ControlDefinition, 'isVisual'>): Win32ControlDefinition {
   return { ...definition, isVisual: true };
@@ -132,9 +112,6 @@ export const WIN32_CONTROL_DEFINITIONS: Win32ControlDefinition[] = [
   control({ type: 'ProgressBar', label: '进度条', moduleId: 'lingbuilder.win32.basic', category: '基础', icon: 'Minus', nativeClass: 'msctls_progress32', nativeAdapter: 'progress', defaultProps: { content: '50', width: 300, height: 20 }, properties: [number('minimum', '最小值', 0), number('maximum', '最大值', 100), number('value', '当前值', 50), bool('marquee', '不确定进度')], events: [] }),
   control({ type: 'Grid', label: '网格容器', moduleId: 'lingbuilder.win32.basic', category: '容器', icon: 'LayoutGrid', nativeClass: 'STATIC', nativeAdapter: 'container', defaultProps: { content: '', width: 360, height: 220 }, properties: [bool('showBorder', '显示边框', true)], events: [event('Loaded', '创建完毕', '创建完毕', 'window')], isContainer: true }),
 
-  control({ type: 'Upload', label: '上传组件', moduleId: 'lingbuilder.win32.common-controls', category: '上传', icon: 'Upload', nativeClass: 'LingBuilderUploadHost', nativeAdapter: 'win32-upload', defaultProps: { content: '文件上传', width: 360, height: 180, background: '#172033' }, properties: UPLOAD_PROPERTIES, events: UPLOAD_EVENTS }),
-  control({ type: 'DragUpload', label: '拖拽上传组件', moduleId: 'lingbuilder.win32.common-controls', category: '上传', icon: 'FileUp', nativeClass: 'LingBuilderUploadHost', nativeAdapter: 'win32-drag-upload', defaultProps: { content: '拖拽文件到此处', width: 400, height: 220, background: '#1E1B4B' }, properties: UPLOAD_PROPERTIES.map(property => property.key === 'styleMode' ? { ...property, defaultValue: '5' } : property.key === 'dropEnabled' ? { ...property, defaultValue: true } : property), events: UPLOAD_EVENTS }),
-
   control({ type: 'ListView', label: '列表视图', moduleId: 'lingbuilder.win32.common-controls', category: '集合', icon: 'Table', nativeClass: 'SysListView32', nativeAdapter: 'listview', defaultProps: { content: '', width: 320, height: 180 }, properties: [{ key: 'columns', label: '列集合', type: 'columns', defaultValue: [] }, { key: 'items', label: '行项目', type: 'columns', defaultValue: [] }, { key: 'view', label: '视图模式', type: 'enum', defaultValue: 'details', options: [option('icon', '大图标'), option('smallIcon', '小图标'), option('list', '列表'), option('details', '详细信息')] }, bool('gridLines', '显示网格线', true), bool('multiple', '允许多选'), color('borderColor', '边框颜色', '#64748B'), number('borderWidth', '边框粗细', 1, 0, 8), number('headerHeight', '表头高度', 28, 16, 96), number('itemHeight', '表项高度', 28, 16, 96), text('imageListId', '图像列表 ID')], events: [event('SelectionChanged', '选择项被改变', '选择项被改变', 'notify'), event('DoubleClick', '被双击', '被双击', 'notify'), event('ColumnClick', '列被单击', '列被单击', 'notify')] }),
   control({ type: 'TreeView', label: '树形视图', moduleId: 'lingbuilder.win32.common-controls', category: '集合', icon: 'ListTree', nativeClass: 'SysTreeView32', nativeAdapter: 'treeview', defaultProps: { content: '', width: 260, height: 200 }, properties: [{ key: 'nodes', label: '节点集合', type: 'treeNodes', defaultValue: [] }, number('borderWidth', '边框线粗细', 1, 0, 8), color('borderColor', '边框线颜色', '#64748B'), number('nodeSpacing', '节点间距', 2, 0, 24), number('nodePadding', '节点内间距', 3, 0, 24), bool('showLines', '显示连接线', true), bool('checkBoxes', '显示复选框'), text('imageListId', '图像列表 ID')], events: [event('SelectionChanged', '选择节点被改变', '选择节点被改变', 'notify'), event('Expanded', '节点被展开', '节点被展开', 'notify'), event('Collapsed', '节点被折叠', '节点被折叠', 'notify'), event('DoubleClick', '被双击', '被双击', 'notify')] }),
   control({ type: 'TabControl', label: '选项卡', moduleId: 'lingbuilder.win32.common-controls', category: '容器', icon: 'PanelsTopLeft', nativeClass: 'SysTabControl32', nativeAdapter: 'tab', defaultProps: { content: '', width: 360, height: 240, background: '#FFFFFF', foreground: '#202020' }, properties: [{ key: 'tabs', label: '标签页', type: 'tabs', defaultValue: [{ id: 'page1', title: '标签页 1' }] }, number('selectedIndex', '当前页', 0, 0), bool('hideHeader', '隐藏表头'), text('imageListId', '图像列表 ID')], events: [event('SelectionChanged', '标签页被改变', '标签页被改变', 'notify')], isContainer: true }),
@@ -150,6 +127,7 @@ export const WIN32_CONTROL_DEFINITIONS: Win32ControlDefinition[] = [
   control({ type: 'ToolBar', label: '工具栏', moduleId: 'lingbuilder.win32.common-controls', category: '外壳', icon: 'PanelTop', nativeClass: 'ToolbarWindow32', nativeAdapter: 'toolbar', defaultProps: { content: '', width: 480, height: 34 }, properties: [{ key: 'buttons', label: '按钮集合', type: 'columns', defaultValue: [] }, text('imageListId', '图像列表 ID')], events: [event('Click', '按钮被单击', '工具栏按钮被单击', 'command')] }),
   control({ type: 'StatusBar', label: '状态栏', moduleId: 'lingbuilder.win32.common-controls', category: '外壳', icon: 'PanelBottom', nativeClass: 'msctls_statusbar32', nativeAdapter: 'statusbar', defaultProps: { content: '就绪', width: 480, height: 24 }, properties: [{ key: 'parts', label: '分区集合', type: 'columns', defaultValue: [] }], events: [event('DoubleClick', '分区被双击', '状态栏分区被双击', 'notify')] }),
   nonVisual({ type: 'ToolTip', label: '工具提示', moduleId: 'lingbuilder.win32.common-controls', category: '非可视', icon: 'MessageSquareText', nativeClass: 'tooltips_class32', nativeAdapter: 'tooltip', defaultProps: { content: '提示文字', width: 120, height: 30 }, properties: [{ key: 'targetControl', label: '目标控件', type: 'controlRef', defaultValue: '' }, number('initialDelay', '显示延迟', 500, 0)], events: [] }),
+  nonVisual({ type: 'FileDialog', label: '文件对话框', moduleId: 'lingbuilder.win32.common-controls', category: '非可视', icon: 'FolderOpen', nativeClass: 'IFileOpenDialog', nativeAdapter: 'file-dialog-resource', defaultProps: { content: '选择文件', width: 0, height: 0 }, properties: [text('title', '窗口标题', '选择文件'), text('filter', '文件类型', '所有文件|*.*'), bool('multiple', '允许多选'), bool('allowDrop', '允许拖拽')], events: [event('FilesSelected', '文件已选择', '文件已选择', 'notify'), event('FilesDropped', '文件被拖入', '文件被拖入', 'notify'), event('Cancelled', '选择被取消', '选择被取消', 'notify')] }),
   nonVisual({ type: 'ImageList', label: '图像列表资源', moduleId: 'lingbuilder.win32.common-controls', category: '非可视', icon: 'Images', nativeClass: 'HIMAGELIST', nativeAdapter: 'imagelist', defaultProps: { content: '', width: 0, height: 0 }, properties: [{ key: 'images', label: '图片集合', type: 'stringList', defaultValue: [] }, number('imageWidth', '图片宽度', 16, 1), number('imageHeight', '图片高度', 16, 1)], events: [] }),
   control({ type: 'ReBar', label: 'Rebar 容器', moduleId: 'lingbuilder.win32.common-controls', category: '容器', icon: 'Rows3', nativeClass: 'ReBarWindow32', nativeAdapter: 'rebar', defaultProps: { content: '', width: 480, height: 42 }, properties: [{ key: 'bands', label: '带区集合', type: 'columns', defaultValue: [] }], events: [], isContainer: true }),
   control({ type: 'Pager', label: '分页容器', moduleId: 'lingbuilder.win32.common-controls', category: '容器', icon: 'GalleryHorizontal', nativeClass: 'SysPager', nativeAdapter: 'pager', defaultProps: { content: '', width: 320, height: 120 }, properties: [enumProp('orientation', '方向', 'horizontal', ['horizontal', 'vertical'])], events: [event('Scroll', '被滚动', '被滚动', 'notify')], isContainer: true }),

@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { LingBuilderSolutionProject } from '../solution/solutionService';
 
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff']);
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.ico']);
 const MAX_IMAGE_BYTES = 50 * 1024 * 1024;
 
 export interface ImportedDesignerImage {
@@ -26,7 +26,7 @@ export class DesignerAssetService {
 
     const extension = path.extname(source).toLowerCase();
     if (!IMAGE_EXTENSIONS.has(extension)) {
-      throw new Error('仅支持 PNG、JPEG、BMP、GIF 和 TIFF 图片。');
+      throw new Error('仅支持 PNG、JPEG、BMP、GIF、TIFF 和 ICO 图片。');
     }
 
     const assetRoot = this.getProjectAssetRoot(project);
@@ -54,6 +54,25 @@ export class DesignerAssetService {
   async readImage(project: LingBuilderSolutionProject, relativePath: string): Promise<{ bytes: Buffer; mimeType: string }> {
     const resolved = await this.resolveProjectImage(project, relativePath);
     return { bytes: await fs.readFile(resolved), mimeType: imageMimeType(resolved) };
+  }
+
+  async listProjectImages(project: LingBuilderSolutionProject): Promise<ImportedDesignerImage[]> {
+    const assetRoot = this.getProjectAssetRoot(project);
+    const sourceRoot = this.resolveWorkspacePath(assetRoot);
+    if (!await exists(sourceRoot)) return [];
+    const files = await collectFiles(sourceRoot);
+    const images = await Promise.all(files
+      .filter(file => IMAGE_EXTENSIONS.has(path.extname(file).toLowerCase()))
+      .map(async file => {
+        const stat = await fs.stat(file);
+        const relativeWithinAssets = path.relative(sourceRoot, file).replace(/\\/gu, '/');
+        return {
+          relativePath: path.posix.join(assetRoot, relativeWithinAssets),
+          fileName: path.basename(file),
+          size: stat.size
+        };
+      }));
+    return images.sort((left, right) => left.relativePath.localeCompare(right.relativePath, 'zh-CN'));
   }
 
   async copyProjectAssets(project: LingBuilderSolutionProject, destinationRoots: string[]): Promise<string[]> {
@@ -135,6 +154,7 @@ function imageMimeType(filePath: string): string {
     case '.gif': return 'image/gif';
     case '.tif':
     case '.tiff': return 'image/tiff';
+    case '.ico': return 'image/x-icon';
     default: return 'application/octet-stream';
   }
 }

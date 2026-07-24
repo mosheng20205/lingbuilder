@@ -169,9 +169,18 @@ struct WindowSpec {
     int width;
     int height;
     COLORREF background;
+    const wchar_t* iconStyle;
+    const wchar_t* iconPath;
     const ControlSpec* controls;
     int controlCount;
     const wchar_t* menuItems;
+    COLORREF menuBackground;
+    COLORREF menuForeground;
+    const wchar_t* menuFontFamily;
+    int menuFontSize;
+    bool menuFontBold;
+    bool menuFontItalic;
+    bool menuFontUnderline;
 };
 
 struct RuntimeControl {
@@ -184,6 +193,11 @@ struct WindowState {
     const WindowSpec* spec;
     std::vector<RuntimeControl> runtimeControls;
     HBRUSH windowBrush;
+    HBRUSH menuBrush;
+    HFONT menuFont;
+    HICON largeIcon;
+    HICON smallIcon;
+    bool ownsIcons;
     UINT dpi;
 };
 
@@ -272,7 +286,9 @@ static RECT GetWindowRectForSpec(const WindowSpec& spec, UINT dpi) {
     return rect;
 }
 
-static HMENU CreateGeneratedMenu(int activeWindowIndex) {
+static HFONT CreateControlFont(const wchar_t* family, int cssPx, bool bold, bool italic, bool underline, UINT dpi);
+
+static HMENU CreateGeneratedMenu(int activeWindowIndex, HBRUSH& menuBrush, HFONT& menuFont, UINT dpi) {
     HMENU rootMenu = CreateMenu();
     HMENU windowsMenu = CreatePopupMenu();
     const WindowSpec& spec = g_windows[activeWindowIndex];
@@ -290,7 +306,7 @@ static HMENU CreateGeneratedMenu(int activeWindowIndex) {
                 item = item.substr(first, last - first + 1);
             }
             if (!item.empty()) {
-                AppendMenuW(windowsMenu, MF_STRING, 50000 + idx, item.c_str());
+                AppendMenuW(windowsMenu, MF_OWNERDRAW, 50000 + idx, reinterpret_cast<LPCWSTR>(static_cast<ULONG_PTR>(idx + 1)));
                 idx++;
             }
             if (nextPos == std::wstring::npos) break;
@@ -298,19 +314,124 @@ static HMENU CreateGeneratedMenu(int activeWindowIndex) {
         }
     } else {
         for (int i = 0; i < g_windowCount; ++i) {
-            UINT flags = MF_STRING;
+            UINT flags = MF_OWNERDRAW;
             if (i == activeWindowIndex) {
                 flags |= MF_CHECKED;
             }
-            AppendMenuW(windowsMenu, flags, MENU_WINDOW_BASE + i, g_windows[i].title);
+            AppendMenuW(windowsMenu, flags, MENU_WINDOW_BASE + i, reinterpret_cast<LPCWSTR>(static_cast<ULONG_PTR>(i + 1)));
         }
     }
     
-    AppendMenuW(rootMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(windowsMenu), L"窗口");
+    AppendMenuW(rootMenu, MF_POPUP | MF_OWNERDRAW, reinterpret_cast<UINT_PTR>(windowsMenu), reinterpret_cast<LPCWSTR>(L"窗口"));
+    menuFont = CreateControlFont(spec.menuFontFamily, spec.menuFontSize, spec.menuFontBold, spec.menuFontItalic, spec.menuFontUnderline, dpi);
+    menuBrush = CreateSolidBrush(spec.menuBackground);
+    if (menuBrush) {
+        MENUINFO menuInfo = {};
+        menuInfo.cbSize = sizeof(menuInfo);
+        menuInfo.fMask = MIM_BACKGROUND;
+        menuInfo.hbrBack = menuBrush;
+        SetMenuInfo(rootMenu, &menuInfo);
+        SetMenuInfo(windowsMenu, &menuInfo);
+    }
     return rootMenu;
 }
 
+static std::wstring GetGeneratedMenuItemText(const WindowState& state, UINT itemId) {
+    if (itemId >= 50000 && itemId < 50100) {
+        std::wstring items = state.spec->menuItems ? state.spec->menuItems : L"";
+        int target = static_cast<int>(itemId) - 50000;
+        int index = 0;
+        size_t pos = 0;
+        while (pos <= items.size()) {
+            size_t next = items.find(L',', pos);
+            std::wstring text = next == std::wstring::npos ? items.substr(pos) : items.substr(pos, next - pos);
+            size_t first = text.find_first_not_of(L" \\t\\r\\n");
+            size_t last = text.find_last_not_of(L" \\t\\r\\n");
+            text = first == std::wstring::npos ? L"" : text.substr(first, last - first + 1);
+            if (!text.empty() && index++ == target) return text;
+            if (next == std::wstring::npos) break;
+            pos = next + 1;
+        }
+        return L"";
+    }
+    if (itemId >= MENU_WINDOW_BASE && itemId < MENU_WINDOW_BASE + static_cast<UINT>(g_windowCount)) {
+        return g_windows[itemId - MENU_WINDOW_BASE].title;
+    }
+    return L"窗口";
+}
+
+static void PaintGeneratedMenuItem(const WindowState& state, DRAWITEMSTRUCT* item) {
+    if (!item || item->CtlType != ODT_MENU || !item->itemData || !state.menuBrush) return;
+    std::wstring text = GetGeneratedMenuItemText(state, item->itemID);
+    FillRect(item->hDC, &item->rcItem, state.menuBrush);
+    if ((item->itemState & (ODS_SELECTED | ODS_HOTLIGHT)) != 0) {
+        COLORREF base = state.spec->menuBackground;
+        HBRUSH hoverBrush = CreateSolidBrush(RGB(
+            std::min(255, static_cast<int>(GetRValue(base)) + 28),
+            std::min(255, static_cast<int>(GetGValue(base)) + 28),
+            std::min(255, static_cast<int>(GetBValue(base)) + 28)));
+        FillRect(item->hDC, &item->rcItem, hoverBrush);
+        DeleteObject(hoverBrush);
+    }
+    SetBkMode(item->hDC, TRANSPARENT);
+    SetTextColor(item->hDC, state.spec->menuForeground);
+    HGDIOBJ oldFont = state.menuFont ? SelectObject(item->hDC, state.menuFont) : nullptr;
+    RECT textRect = item->rcItem;
+    textRect.left += ScaleForDpi(8, state.dpi);
+    textRect.right -= ScaleForDpi(8, state.dpi);
+    DrawTextW(item->hDC, text.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    if (oldFont) SelectObject(item->hDC, oldFont);
+}
+
+static void PaintGeneratedMenuBar(HWND hwnd, const WindowState& state) {
+    HMENU menu = GetMenu(hwnd);
+    if (!menu || !state.menuBrush) return;
+    MENUBARINFO info = {};
+    info.cbSize = sizeof(info);
+    if (!GetMenuBarInfo(hwnd, OBJID_MENU, 0, &info)) return;
+    RECT windowRect = {};
+    if (!GetWindowRect(hwnd, &windowRect)) return;
+    RECT barRect = info.rcBar;
+    OffsetRect(&barRect, -windowRect.left, -windowRect.top);
+    POINT clientOrigin = { 0, 0 };
+    if (ClientToScreen(hwnd, &clientOrigin)) {
+        barRect.bottom = std::max(barRect.bottom, clientOrigin.y - windowRect.top);
+    }
+    HDC hdc = GetWindowDC(hwnd);
+    if (!hdc) return;
+    FillRect(hdc, &barRect, state.menuBrush);
+    int count = GetMenuItemCount(menu);
+    for (int position = 0; position < count; ++position) {
+        RECT itemRect = {};
+        if (!GetMenuItemRect(hwnd, menu, position, &itemRect)) continue;
+        OffsetRect(&itemRect, -windowRect.left, -windowRect.top);
+        DRAWITEMSTRUCT item = {};
+        item.CtlType = ODT_MENU;
+        item.itemID = static_cast<UINT>(-1);
+        item.itemState = (GetMenuState(menu, position, MF_BYPOSITION) & MF_HILITE) ? ODS_SELECTED : 0;
+        item.hDC = hdc;
+        item.rcItem = itemRect;
+        item.itemData = reinterpret_cast<ULONG_PTR>(L"窗口");
+        PaintGeneratedMenuItem(state, &item);
+    }
+    ReleaseDC(hwnd, hdc);
+}
+
 static HWND OpenGeneratedWindow(int windowIndex, int showCommand);
+
+static void ApplyGeneratedWindowIcon(HWND hwnd, WindowState& state) {
+    if (!hwnd || !state.spec || std::wcscmp(state.spec->iconStyle, L"none") == 0) return;
+    if (std::wcscmp(state.spec->iconStyle, L"custom") == 0 && state.spec->iconPath && state.spec->iconPath[0]) {
+        state.largeIcon = reinterpret_cast<HICON>(LoadImageW(nullptr, state.spec->iconPath, IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_LOADFROMFILE | LR_DEFAULTCOLOR));
+        state.smallIcon = reinterpret_cast<HICON>(LoadImageW(nullptr, state.spec->iconPath, IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_LOADFROMFILE | LR_DEFAULTCOLOR));
+        state.ownsIcons = true;
+    } else {
+        state.largeIcon = LoadIconW(nullptr, IDI_APPLICATION);
+        state.smallIcon = state.largeIcon;
+    }
+    if (state.largeIcon) SendMessageW(hwnd, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(state.largeIcon));
+    if (state.smallIcon) SendMessageW(hwnd, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(state.smallIcon));
+}
 
 static bool IsType(const ControlSpec& control, const wchar_t* type) {
     return std::wcscmp(control.type, type) == 0;
@@ -651,6 +772,37 @@ static LRESULT CALLBACK GeneratedWindowProc(HWND hwnd, UINT message, WPARAM wPar
         RebuildGeneratedControls(hwnd, *state);
         return 0;
 
+    case WM_NCPAINT: {
+        LRESULT result = DefWindowProcW(hwnd, message, wParam, lParam);
+        if (state) PaintGeneratedMenuBar(hwnd, *state);
+        return result;
+    }
+
+    case WM_NCACTIVATE: {
+        LRESULT result = DefWindowProcW(hwnd, message, wParam, lParam);
+        if (state) PaintGeneratedMenuBar(hwnd, *state);
+        return result;
+    }
+
+    case WM_MEASUREITEM: {
+        auto item = reinterpret_cast<MEASUREITEMSTRUCT*>(lParam);
+        if (state && item && item->CtlType == ODT_MENU && item->itemData) {
+            HDC hdc = GetDC(hwnd);
+            SIZE size = {};
+            std::wstring text = GetGeneratedMenuItemText(*state, item->itemID);
+            if (hdc) {
+                HGDIOBJ oldFont = state->menuFont ? SelectObject(hdc, state->menuFont) : nullptr;
+                GetTextExtentPoint32W(hdc, text.c_str(), static_cast<int>(text.size()), &size);
+                if (oldFont) SelectObject(hdc, oldFont);
+                ReleaseDC(hwnd, hdc);
+            }
+            item->itemWidth = static_cast<UINT>(size.cx + ScaleForDpi(16, state->dpi));
+            item->itemHeight = static_cast<UINT>(std::max(static_cast<int>(size.cy) + ScaleForDpi(6, state->dpi), GetSystemMetrics(SM_CYMENU)));
+            return TRUE;
+        }
+        break;
+    }
+
     case WM_COMMAND: {
         int controlId = LOWORD(wParam);
         if (controlId >= 50000 && controlId < 50100) {
@@ -695,7 +847,12 @@ static LRESULT CALLBACK GeneratedWindowProc(HWND hwnd, UINT message, WPARAM wPar
 
     case WM_DRAWITEM:
         if (state) {
-            PaintOwnerButton(reinterpret_cast<DRAWITEMSTRUCT*>(lParam), *state);
+            auto item = reinterpret_cast<DRAWITEMSTRUCT*>(lParam);
+            if (item && item->CtlType == ODT_MENU && item->itemData) {
+                PaintGeneratedMenuItem(*state, item);
+                return TRUE;
+            }
+            PaintOwnerButton(item, *state);
         }
         return TRUE;
 
@@ -769,6 +926,18 @@ static LRESULT CALLBACK GeneratedWindowProc(HWND hwnd, UINT message, WPARAM wPar
                 DeleteObject(state->windowBrush);
                 state->windowBrush = nullptr;
             }
+            if (state->menuBrush) {
+                DeleteObject(state->menuBrush);
+                state->menuBrush = nullptr;
+            }
+            if (state->menuFont) {
+                DeleteObject(state->menuFont);
+                state->menuFont = nullptr;
+            }
+            if (state->ownsIcons) {
+                if (state->largeIcon) DestroyIcon(state->largeIcon);
+                if (state->smallIcon && state->smallIcon != state->largeIcon) DestroyIcon(state->smallIcon);
+            }
         }
         --g_openWindowCount;
         if (g_openWindowCount <= 0) {
@@ -799,6 +968,11 @@ static HWND OpenGeneratedWindow(int windowIndex, int showCommand) {
     auto state = new WindowState();
     state->spec = &spec;
     state->windowBrush = nullptr;
+    state->menuBrush = nullptr;
+    state->menuFont = nullptr;
+    state->largeIcon = nullptr;
+    state->smallIcon = nullptr;
+    state->ownsIcons = false;
     state->dpi = dpi;
 
     HWND hwnd = CreateWindowExW(
@@ -811,17 +985,20 @@ static HWND OpenGeneratedWindow(int windowIndex, int showCommand) {
         rect.right - rect.left,
         rect.bottom - rect.top,
         nullptr,
-        CreateGeneratedMenu(spec.index),
+        CreateGeneratedMenu(spec.index, state->menuBrush, state->menuFont, state->dpi),
         g_instance,
         state
     );
 
     if (!hwnd) {
+        if (state->menuBrush) DeleteObject(state->menuBrush);
+        if (state->menuFont) DeleteObject(state->menuFont);
         delete state;
         return nullptr;
     }
 
     SetWindowTextW(hwnd, spec.title);
+    ApplyGeneratedWindowIcon(hwnd, *state);
     ShowWindow(hwnd, showCommand);
     UpdateWindow(hwnd);
     SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
@@ -952,7 +1129,22 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number): strin
     items.length;
 
   const menuItemsStr = (window as any).menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件';
-  return `    { ${windowIndex}, L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - TITLE_BAR_HEIGHT)}, ${toColorRef(window.background)}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}" }`;
+  const iconStyle = window.iconStyle || 'lingbuilder';
+  const normalizedIconPath = window.iconPath?.trim().replace(/\\/gu, '/') || '';
+  const iconPath = iconStyle === 'custom'
+    && normalizedIconPath.startsWith('assets/')
+    && normalizedIconPath.toLowerCase().endsWith('.ico')
+    && !normalizedIconPath.split('/').includes('..')
+    ? normalizedIconPath
+    : '';
+  const menuFont = normalizeControlFont({
+    fontFamily: window.menuFontFamily,
+    fontSize: window.menuFontSize ?? 11,
+    fontBold: window.menuFontBold,
+    fontItalic: window.menuFontItalic,
+    fontUnderline: window.menuFontUnderline
+  });
+  return `    { ${windowIndex}, L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - TITLE_BAR_HEIGHT)}, ${toColorRef(window.background)}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline} }`;
 }
 
 function generateControlSpec(control: LingControl, id: number, eventRules: EplRuntimeEventRuleMap): string {

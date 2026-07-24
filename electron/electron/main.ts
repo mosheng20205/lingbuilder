@@ -478,6 +478,23 @@ function registerIpcHandlers(): void {
       ? { canceled: true }
       : { canceled: false, filePath: result.filePaths[0] };
   });
+  ipcMain.handle('designer-assets:select-icon', async () => {
+    const owner = getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: '选择窗口图标',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Windows 图标', extensions: ['ico'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    };
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options);
+    return result.canceled || !result.filePaths[0]
+      ? { canceled: true }
+      : { canceled: false, filePath: result.filePaths[0] };
+  });
   ipcMain.handle('credentials:ai:get', () => readAiCredential());
   ipcMain.handle('credentials:ai:set', (_event, value: string) => writeAiCredential(typeof value === 'string' ? value.slice(0, 16_384) : ''));
   ipcMain.handle('credentials:ai:delete', () => writeAiCredential(''));

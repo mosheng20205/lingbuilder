@@ -521,6 +521,26 @@ test('LingCpp 设计器控件名称支持拼音补全和内容属性表达式', 
   assert.ok(tabMethod.some(item => item.insertText === '选项卡1.设置选择项($1)'));
 });
 
+test('LingCpp 图片框提供设置图片方法补全', () => {
+  const designerProject: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'image-control-completion',
+    name: '图片框补全',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口', width: 640, height: 480,
+      background: '#ffffff', description: '', controls: [{
+        id: 'preview-image', type: 'Image', name: '图片框1', content: '', width: 180, height: 140,
+        x: 20, y: 20, fontSize: 12, background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible',
+        properties: { imageSource: '', stretch: 'uniform' }
+      }]
+    }]
+  };
+  const source = '类 MainWindow : 公开 窗体\n    事件 _主窗口_创建完毕()\n    结束\n结束类';
+  const completions = getLingCppBilingualCompletions({ source, line: 2, column: 5, triggerText: '图片框1.设置' }, designerProject);
+
+  assert.ok(completions.some(item => item.insertText === '图片框1.设置图片("$1")'));
+});
+
 test('LingCpp 新手控件补全覆盖注册表中的全部控件事件和可用命令', () => {
   const controls = WIN32_CONTROL_DEFINITIONS.map((definition, index) => ({
     id: `control-${index}`,
@@ -983,7 +1003,8 @@ test('LingCpp designer bindings treat bare registered event names as window even
       height: 480,
       background: '#111111',
       description: 'MainWindow',
-      controls: []
+      controls: [],
+      events: { Loaded: '_MainWindow_创建完毕' }
     }]
   };
 
@@ -992,7 +1013,33 @@ test('LingCpp designer bindings treat bare registered event names as window even
 
   assert.ok(hints.some(hint => hint.status === 'bound' && hint.eventName === 'Window'));
   assert.equal(hints.some(hint => hint.status === 'missing-control'), false);
+  assert.equal(hints.some(hint => hint.status === 'missing-source' && hint.handlerName === '_MainWindow_创建完毕'), false);
   assert.equal(diagnostics.some(diagnostic => diagnostic.message.includes('控件不存在')), false);
+});
+
+test('LingCpp designer bindings recognize non-visual file dialog resource events', () => {
+  const source = `类 MainWindow
+    事件 _文件对话框1_文件已选择()
+        调试输出("已选择")
+    结束
+结束类`;
+  const project: LingWindowProject = {
+    id: 'file-dialog-binding-project',
+    name: '文件对话框绑定',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 480, background: '#111111', description: '', controls: []
+    }],
+    resources: [{
+      id: 'file-dialog-1', type: 'FileDialog', name: '文件对话框1', ownerWindowId: 'main-window',
+      triggerControlId: '', dropTargetId: '', title: '选择文件', filter: '所有文件|*.*',
+      multiple: false, allowDrop: false, filesSelectedHandler: '_文件对话框1_文件已选择'
+    }]
+  };
+
+  const hints = getLingCppDesignerBindings(source, project, 'src/MainWindow.lcpp');
+  assert.ok(hints.some(hint => hint.status === 'bound' && hint.controlId === 'file-dialog-1' && hint.eventName === 'FilesSelected'));
+  assert.equal(hints.some(hint => hint.status === 'missing-control'), false);
 });
 
 test('LingCpp designer bindings use associated designer file to isolate other windows', () => {
@@ -1532,6 +1579,32 @@ test('generateLingCppNativeWin32Project keeps wide string arguments inside arith
   assert.ok(mainCpp.includes('控件_设置数值(L"进度条1", 控件_取数值(L"进度条1")+10);'));
   assert.ok(mainCpp.includes('控件_设置数值(L"进度条1", 控件_取数值(L"进度条1")-10);'));
   assert.equal(mainCpp.includes('控件_取数值("进度条1")'), false);
+});
+
+test('generateLingCppNativeWin32Project translates ordinary conditions and rounds window dimensions', () => {
+  const source = `类 游戏主窗体 : 公开 窗体
+    事件 _按钮1_被单击()
+        如果 (文件对话框_取文件("文件对话框1", 0)!="")
+            控件_设置文本("按钮1", "已选择")
+        否则
+            控件_设置文本("按钮1", "未选择")
+        如果结束
+    结束
+结束类`;
+  const decimalProject: LingWindowProject = {
+    ...sampleProject,
+    windows: [{ ...sampleProject.windows[0], width: 640.6, height: 480.6 }]
+  };
+  const generated = generateLingCppNativeWin32Project(decimalProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  assert.ok(mainCpp.includes('if (文件对话框_取文件(L"文件对话框1", 0)!=L"") {'));
+  assert.ok(mainCpp.includes('} else {'));
+  assert.equal(mainCpp.includes('暂不支持的中文 C++ 语句：如果'), false);
+  assert.match(mainCpp, /L"太空冒险", 641, 453,/u);
 });
 
 test('generateLingCppNativeWin32Project does not translate block end into exit command', () => {

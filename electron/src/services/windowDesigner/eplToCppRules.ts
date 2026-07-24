@@ -29,8 +29,8 @@ export interface EplControlMemberAssignmentRule extends EplControlMemberRule {
 
 export interface EplControlMethodCallRule {
   controlName: string;
-  methodName: '设置选择项';
-  runtimeName: '控件_设置选择项';
+  methodName: '设置选择项' | '设置图片';
+  runtimeName: '控件_设置选择项' | '控件_设置图片';
   argumentsText: string;
 }
 
@@ -40,7 +40,7 @@ const EPL_DEBUG_OUTPUT_RE = /调试输出\s*[（(]\s*[“"]([^”"]*)[”"]\s*[�
 const CONTROL_NAME_PATTERN = '[\\w\\u4e00-\\u9fa5]+';
 const CONTROL_TEXT_MEMBER_RE = new RegExp(`^(${CONTROL_NAME_PATTERN})\\s*\\.\\s*(内容|文字)$`, 'u');
 const CONTROL_TEXT_ASSIGNMENT_RE = new RegExp(`^(${CONTROL_NAME_PATTERN})\\s*\\.\\s*(内容|文字)\\s*[=＝]\\s*(.+)$`, 'u');
-const CONTROL_SET_SELECTION_RE = new RegExp(`^(${CONTROL_NAME_PATTERN})\\s*\\.\\s*设置选择项\\s*[（(](.*)[）)]\\s*;?$`, 'u');
+const CONTROL_METHOD_RE = new RegExp(`^(${CONTROL_NAME_PATTERN})\\s*\\.\\s*(设置选择项|设置图片)\\s*[（(](.*)[）)]\\s*;?$`, 'u');
 
 export function parseEplControlMemberRule(expression: string): EplControlMemberRule | undefined {
   const match = expression.trim().match(CONTROL_TEXT_MEMBER_RE);
@@ -66,48 +66,60 @@ export function parseEplControlMemberAssignmentRule(statement: string): EplContr
 }
 
 export function parseEplControlMethodCallRule(expression: string): EplControlMethodCallRule | undefined {
-  const match = expression.trim().match(CONTROL_SET_SELECTION_RE);
-  if (!match?.[1] || !match[2]?.trim()) return undefined;
+  const match = expression.trim().match(CONTROL_METHOD_RE);
+  if (!match?.[1] || !match[2] || !match[3]?.trim()) return undefined;
+  const methodName = match[2] as EplControlMethodCallRule['methodName'];
   return {
     controlName: match[1],
-    methodName: '设置选择项',
-    runtimeName: '控件_设置选择项',
-    argumentsText: match[2].trim()
+    methodName,
+    runtimeName: methodName === '设置图片' ? '控件_设置图片' : '控件_设置选择项',
+    argumentsText: match[3].trim()
   };
 }
 
 export function splitEplBinaryExpression(expression: string): { left: string; operator: string; right: string } | undefined {
-  let depth = 0;
-  let quote: '"' | '“' | null = null;
+  const precedenceGroups = [
+    ['||'],
+    ['&&'],
+    ['==', '!=', '>=', '<=', '>', '<'],
+    ['+', '-'],
+    ['*', '/', '%']
+  ];
 
-  for (let index = expression.length - 1; index >= 0; index -= 1) {
-    const char = expression[index];
-    if (quote) {
-      if ((quote === '"' && char === '"') || (quote === '“' && char === '“')) quote = null;
-      continue;
-    }
-    if (char === '"') {
-      quote = '"';
-      continue;
-    }
-    if (char === '”') {
-      quote = '“';
-      continue;
-    }
-    if (char === ')' || char === '）') {
-      depth += 1;
-      continue;
-    }
-    if (char === '(' || char === '（') {
-      depth = Math.max(0, depth - 1);
-      continue;
-    }
-    if (depth !== 0 || (char !== '+' && char !== '-')) continue;
+  for (const operators of precedenceGroups) {
+    let depth = 0;
+    let quote: '"' | '“' | null = null;
+    for (let index = expression.length - 1; index >= 0; index -= 1) {
+      const char = expression[index];
+      if (quote) {
+        if ((quote === '"' && char === '"') || (quote === '“' && char === '“')) quote = null;
+        continue;
+      }
+      if (char === '"') {
+        quote = '"';
+        continue;
+      }
+      if (char === '”') {
+        quote = '“';
+        continue;
+      }
+      if (char === ')' || char === '）') {
+        depth += 1;
+        continue;
+      }
+      if (char === '(' || char === '（') {
+        depth = Math.max(0, depth - 1);
+        continue;
+      }
+      if (depth !== 0) continue;
 
-    const left = expression.slice(0, index).trim();
-    const right = expression.slice(index + 1).trim();
-    if (!left || !right || /[+\-*/%(（(]$/u.test(left)) continue;
-    return { left, operator: char, right };
+      const operator = operators.find(candidate => expression.startsWith(candidate, index));
+      if (!operator) continue;
+      const left = expression.slice(0, index).trim();
+      const right = expression.slice(index + operator.length).trim();
+      if (!left || !right || /[+\-*/%!=<>（(]$/u.test(left)) continue;
+      return { left, operator, right };
+    }
   }
 
   return undefined;

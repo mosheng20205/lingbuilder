@@ -33,7 +33,8 @@ import {
   Monitor,
   Package,
   GitBranch,
-  Link
+  Link,
+  Image as ImageIcon
 } from 'lucide-react';
 import { CppFile, ExtractedString, GlossaryTerm, SourceControlStatus } from '../types';
 import ModuleInspector from './ModuleInspector';
@@ -46,6 +47,12 @@ import {
   PersistedWindowDesignerState
 } from '../services/windowDesigner/windowDesignerService';
 import type { LingWindowModel } from '../services/windowDesigner/types';
+import {
+  getDesignerImagePreviewSource,
+  listDesignerImageResources,
+  type DesignerImageImportResult,
+  type DesignerImageResource
+} from '../services/windowDesigner/designerAssetClient';
 import type { InstalledModule, ModuleHintContent, ModuleTargetContribution } from '../services/modules/types';
 import { BUILTIN_MODULES } from '../services/modules/builtinModules';
 import type { SolutionModel, SolutionProject } from '../services/solution/solutionClient';
@@ -65,6 +72,8 @@ type ModuleContextMenu = { x: number; y: number; module: InstalledModule };
 type SolutionContextMenu =
   | { x: number; y: number; target: 'solution' }
   | { x: number; y: number; target: 'project'; project: SolutionProject };
+type ResourceContextMenu = { x: number; y: number; resource: DesignerImageResource };
+type ResourcePreview = { projectId: string; resource: DesignerImageResource };
 
 interface ModuleParameterDoc {
   name: string;
@@ -149,6 +158,8 @@ interface SidebarProps {
   onSolutionCommand?: (command: 'build' | 'clean' | 'rebuild', projectId?: string) => void | Promise<void>;
   onOpenSolutionDirectory?: () => void | Promise<void>;
   onOpenProjectDirectory?: (projectId: string) => void | Promise<void>;
+  onAddProjectResource?: (projectId: string) => Promise<DesignerImageImportResult>;
+  onCopyProjectResourcePath?: (relativePath: string) => Promise<boolean>;
   activeModuleHintId?: string;
   onShowModuleHint?: (hint: ModuleHintContent) => void;
 }
@@ -182,6 +193,8 @@ export default function Sidebar({
   onSolutionCommand,
   onOpenSolutionDirectory,
   onOpenProjectDirectory,
+  onAddProjectResource,
+  onCopyProjectResourcePath,
   activeModuleHintId,
   onShowModuleHint
 }: SidebarProps) {
@@ -193,6 +206,8 @@ export default function Sidebar({
   const [windowContextMenu, setWindowContextMenu] = useState<WindowContextMenu | null>(null);
   const [moduleContextMenu, setModuleContextMenu] = useState<ModuleContextMenu | null>(null);
   const [solutionContextMenu, setSolutionContextMenu] = useState<SolutionContextMenu | null>(null);
+  const [resourceContextMenu, setResourceContextMenu] = useState<ResourceContextMenu | null>(null);
+  const [resourcePreview, setResourcePreview] = useState<ResourcePreview | null>(null);
   const [moduleInfoDialog, setModuleInfoDialog] = useState<InstalledModule | null>(null);
   const [designerState, setDesignerState] = useState(() => readWindowDesignerState());
 
@@ -202,6 +217,7 @@ export default function Sidebar({
       setWindowContextMenu(null);
       setModuleContextMenu(null);
       setSolutionContextMenu(null);
+      setResourceContextMenu(null);
     };
     window.addEventListener('click', handleCloseMenu);
     return () => window.removeEventListener('click', handleCloseMenu);
@@ -222,6 +238,11 @@ export default function Sidebar({
   // States for Quick Actions panel
   const [isTranslating, setIsTranslating] = useState(false);
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
+  const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
+  const [resourceImportingProjectId, setResourceImportingProjectId] = useState<string | null>(null);
+  const [projectImageResources, setProjectImageResources] = useState<Record<string, DesignerImageResource[]>>({});
+  const [projectResourceStatus, setProjectResourceStatus] = useState<Record<string, 'loading' | 'ready' | 'error'>>({});
+  const [expandedResourceProjectIds, setExpandedResourceProjectIds] = useState<Record<string, boolean>>({});
   const [placeholderErrors, setPlaceholderErrors] = useState<{ line: number; msg: string; text: string }[]>([]);
   const [hasCheckedPlaceholders, setHasCheckedPlaceholders] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -481,6 +502,7 @@ export default function Sidebar({
 
   // Helper for triggering action success banner
   const triggerSuccess = (msg: string) => {
+    setActionErrorMessage(null);
     setActionSuccessMessage(msg);
     setTimeout(() => {
       setActionSuccessMessage(null);
@@ -714,6 +736,58 @@ export default function Sidebar({
         </div>
       </div>
     );
+  };
+
+  const triggerError = (msg: string) => {
+    setActionSuccessMessage(null);
+    setActionErrorMessage(msg);
+    setTimeout(() => {
+      setActionErrorMessage(null);
+    }, 6000);
+  };
+
+  const refreshProjectImageResources = useCallback(async (projectId: string): Promise<boolean> => {
+    setProjectResourceStatus(previous => ({ ...previous, [projectId]: 'loading' }));
+    try {
+      const resources = await listDesignerImageResources(projectId);
+      setProjectImageResources(previous => ({ ...previous, [projectId]: resources }));
+      setProjectResourceStatus(previous => ({ ...previous, [projectId]: 'ready' }));
+      return true;
+    } catch {
+      setProjectResourceStatus(previous => ({ ...previous, [projectId]: 'error' }));
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    for (const project of solution?.projects || []) {
+      void refreshProjectImageResources(project.id);
+    }
+  }, [refreshProjectImageResources, solution?.projects]);
+
+  const handleAddProjectResource = async (project: SolutionProject) => {
+    if (resourceImportingProjectId) return;
+    if (!onAddProjectResource) {
+      triggerError('当前工作台未提供项目资源导入命令。');
+      return;
+    }
+    setResourceImportingProjectId(project.id);
+    setActionErrorMessage(null);
+    try {
+      const result = await onAddProjectResource(project.id);
+      if (result.canceled) return;
+      if (!result.ok || !result.relativePath) {
+        triggerError(result.error || '图片复制到项目失败。');
+        return;
+      }
+      await refreshProjectImageResources(project.id);
+      setExpandedResourceProjectIds(previous => ({ ...previous, [project.id]: true }));
+      triggerSuccess(`已添加图片资源：${result.relativePath}`);
+    } catch (error) {
+      triggerError(error instanceof Error ? error.message : '添加图片资源失败。');
+    } finally {
+      setResourceImportingProjectId(null);
+    }
   };
 
   useEffect(() => {
@@ -989,6 +1063,17 @@ export default function Sidebar({
               <Plus className="w-3.5 h-3.5 text-emerald-500" />
               <span>新建项目</span>
             </div>
+            <div
+              className={resourceImportingProjectId ? `${menuItemClass} cursor-not-allowed opacity-50` : menuItemClass}
+              onClick={() => {
+                if (!resourceImportingProjectId) void handleAddProjectResource(project);
+              }}
+            >
+              {resourceImportingProjectId === project.id
+                ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-400" />
+                : <Plus className="w-3.5 h-3.5 text-sky-400" />}
+              <span>{resourceImportingProjectId === project.id ? '正在添加资源…' : '添加资源…'}</span>
+            </div>
             <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
             <div className={menuItemClass} onClick={() => void onOpenProjectDirectory?.(project.id)}>
               <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
@@ -1030,6 +1115,35 @@ export default function Sidebar({
             </div>
           </>
         )}
+      </div>
+    );
+  };
+
+  const renderResourceContextMenu = () => {
+    if (!resourceContextMenu) return null;
+    const resource = resourceContextMenu.resource;
+    return (
+      <div
+        style={{ top: `${resourceContextMenu.y}px`, left: `${resourceContextMenu.x}px` }}
+        className={`fixed z-[9999] min-w-[190px] py-1 rounded shadow-lg border text-xs select-none font-sans ${
+          isDarkMode
+            ? 'bg-[#252526] border-[#454545] text-slate-200'
+            : 'bg-white border-slate-250 text-slate-800'
+        }`}
+        onClick={() => setResourceContextMenu(null)}
+      >
+        <div
+          className="px-3 py-1.5 cursor-pointer transition-colors flex items-center gap-2 hover:bg-blue-500 hover:text-white"
+          onClick={() => {
+            void Promise.resolve(onCopyProjectResourcePath?.(resource.relativePath) ?? false).then(success => {
+              if (success) triggerSuccess(`已复制相对路径：${resource.relativePath}`);
+              else triggerError('复制图片资源相对路径失败。');
+            });
+          }}
+        >
+          <Copy className="w-3.5 h-3.5 text-sky-400" />
+          <span>复制相对路径</span>
+        </div>
       </div>
     );
   };
@@ -1213,13 +1327,13 @@ export default function Sidebar({
           
           {/* Action toast inside sidebar */}
           {actionSuccessMessage && (
-            <div className={`text-[11px] p-2.5 flex items-start gap-2 animate-fade-in shrink-0 font-sans border-b ${
+            <div role="status" className={`text-[11px] p-2.5 flex items-start gap-2 animate-fade-in shrink-0 font-sans border-b ${
               isDarkMode 
                 ? 'bg-[#1E3A1E] border-emerald-500/30 text-[#73C991]' 
                 : 'bg-emerald-50 border-emerald-200 text-emerald-800'
             }`}>
               <Check className="w-4 h-4 shrink-0 text-emerald-500 mt-0.5" />
-              <span>{actionSuccessMessage}</span>
+              <span className="min-w-0 break-all">{actionSuccessMessage}</span>
             </div>
           )}
 
@@ -1306,6 +1420,12 @@ export default function Sidebar({
                       {solutionProjects.map(project => {
                         const isStartupProject = project.id === (activeProjectId || solution?.startupProjectId);
                         const isProjectOpen = isStartupProject && expandedProjectIds[project.id] !== false;
+                        const imageResources = (projectImageResources[project.id] || []).filter(resource => includesSearch(
+                          resource.fileName,
+                          resource.relativePath
+                        ));
+                        const resourceStatus = projectResourceStatus[project.id];
+                        const isResourceGroupOpen = expandedResourceProjectIds[project.id] !== false;
                         return (
                         <div
                           key={project.id}
@@ -1500,6 +1620,77 @@ export default function Sidebar({
                               </div>
                             ) : (
                               designerWindows.map(windowModel => renderWindowRow(project.id, windowModel))
+                            )}
+                          </div>
+                        )}
+                      </div>}
+
+                      {/* Project image assets group */}
+                      {isProjectOpen && <div className="pl-2">
+                        <div
+                          onClick={() => {
+                            const nextOpen = !isResourceGroupOpen;
+                            setExpandedResourceProjectIds(previous => ({ ...previous, [project.id]: nextOpen }));
+                            if (nextOpen && resourceStatus === 'error') void refreshProjectImageResources(project.id);
+                          }}
+                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
+                            isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
+                          }`}
+                          title="查看项目 assets 目录中的全部图片资源"
+                        >
+                          {isResourceGroupOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                          <Folder className="w-4 h-4 text-cyan-500 fill-cyan-500/10" />
+                          <span className="truncate">图片资源 (assets)</span>
+                          <span className={`ml-auto text-[9px] px-1 rounded border ${
+                            isDarkMode ? 'border-cyan-500/20 text-cyan-300 bg-cyan-500/5' : 'border-cyan-200 text-cyan-700 bg-cyan-50'
+                          }`}>
+                            {(projectImageResources[project.id] || []).length}
+                          </span>
+                        </div>
+                        {isResourceGroupOpen && (
+                          <div className="mt-0.5 border-l border-slate-750/30 dark:border-slate-800 ml-3.5 pl-0.5">
+                            {resourceStatus === 'loading' ? (
+                              <div className="pl-6 flex items-center gap-1.5 text-slate-500 text-[10px] py-1.5 font-sans">
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                                <span>正在读取图片资源…</span>
+                              </div>
+                            ) : resourceStatus === 'error' ? (
+                              <button
+                                type="button"
+                                onClick={() => void refreshProjectImageResources(project.id)}
+                                className="pl-6 text-rose-400 hover:text-rose-300 text-[10px] py-1.5 font-sans"
+                              >
+                                读取失败，点击重试
+                              </button>
+                            ) : imageResources.length === 0 ? (
+                              <div className="pl-6 text-slate-500 text-[10px] py-1.5 font-sans">
+                                {normalizedFileSearch ? '未找到匹配图片' : '暂无图片，可右键项目添加资源'}
+                              </div>
+                            ) : (
+                              imageResources.map(resource => (
+                                <div
+                                  key={resource.relativePath}
+                                  onClick={() => setResourcePreview({ projectId: project.id, resource })}
+                                  onContextMenu={(event) => {
+                                    event.preventDefault();
+                                    event.stopPropagation();
+                                    setContextMenu(null);
+                                    setWindowContextMenu(null);
+                                    setModuleContextMenu(null);
+                                    setSolutionContextMenu(null);
+                                    setResourceContextMenu({ x: event.clientX, y: event.clientY, resource });
+                                  }}
+                                  className={`group w-full flex items-center gap-2 py-1.5 px-3 pl-7 text-[13px] cursor-pointer transition-colors font-sans ${
+                                    resourcePreview?.projectId === project.id && resourcePreview.resource.relativePath === resource.relativePath
+                                      ? isDarkMode ? 'bg-cyan-500/10 text-cyan-200' : 'bg-cyan-50 text-cyan-800'
+                                      : isDarkMode ? 'text-[#CCCCCC] hover:bg-[#2A2D2E] hover:text-white' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-950'
+                                  }`}
+                                  title={`${resource.relativePath}\n单击预览，右键复制相对路径`}
+                                >
+                                  <ImageIcon className="w-4 h-4 shrink-0 text-cyan-400" />
+                                  <span className="min-w-0 flex-1 truncate">{resource.fileName}</span>
+                                </div>
+                              ))
                             )}
                           </div>
                         )}
@@ -1837,6 +2028,26 @@ export default function Sidebar({
               />
             </div>
           )}
+          {resourceImportingProjectId && !actionSuccessMessage && !actionErrorMessage && (
+            <div role="status" className={`text-[11px] p-2.5 flex items-start gap-2 shrink-0 font-sans border-b ${
+              isDarkMode
+                ? 'bg-sky-950/30 border-sky-500/30 text-sky-300'
+                : 'bg-sky-50 border-sky-200 text-sky-800'
+            }`}>
+              <RefreshCw className="w-4 h-4 shrink-0 animate-spin mt-0.5" />
+              <span>正在选择并复制图片资源…</span>
+            </div>
+          )}
+          {actionErrorMessage && (
+            <div role="alert" className={`text-[11px] p-2.5 flex items-start gap-2 animate-fade-in shrink-0 font-sans border-b ${
+              isDarkMode
+                ? 'bg-rose-950/30 border-rose-500/30 text-rose-300'
+                : 'bg-rose-50 border-rose-200 text-rose-800'
+            }`}>
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span className="min-w-0 break-all">{actionErrorMessage}</span>
+            </div>
+          )}
 
           {/* ================= TAB 4: GIT CHANGES ================= */}
           {activeTab === 'git' && (
@@ -1855,7 +2066,20 @@ export default function Sidebar({
       {renderContextMenu()}
       {renderWindowContextMenu()}
       {renderSolutionContextMenu()}
+      {renderResourceContextMenu()}
       {renderModuleContextMenu()}
+      {resourcePreview && (
+        <ImageResourcePreviewDialog
+          preview={resourcePreview}
+          isDarkMode={isDarkMode}
+          onClose={() => setResourcePreview(null)}
+          onCopyPath={async relativePath => {
+            const success = await Promise.resolve(onCopyProjectResourcePath?.(relativePath) ?? false);
+            if (success) triggerSuccess(`已复制相对路径：${relativePath}`);
+            else triggerError('复制图片资源相对路径失败。');
+          }}
+        />
+      )}
       {moduleInfoDialog && (
         <ModuleInfoDialog
           module={moduleInfoDialog}
@@ -1865,6 +2089,118 @@ export default function Sidebar({
       )}
     </div>
   );
+}
+
+function ImageResourcePreviewDialog({
+  preview,
+  isDarkMode,
+  onClose,
+  onCopyPath
+}: {
+  preview: ResourcePreview;
+  isDarkMode: boolean;
+  onClose: () => void;
+  onCopyPath: (relativePath: string) => void | Promise<void>;
+}) {
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+  const { projectId, resource } = preview;
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/65 p-3 font-sans sm:p-6"
+      role="presentation"
+      onMouseDown={event => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={`图片资源预览：${resource.fileName}`}
+        className={`flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border shadow-2xl ${
+          isDarkMode ? 'border-slate-700 bg-[#1E1E24] text-slate-100' : 'border-slate-200 bg-white text-slate-900'
+        }`}
+      >
+        <header className={`flex items-center gap-3 border-b px-4 py-3 ${isDarkMode ? 'border-slate-700/80' : 'border-slate-200'}`}>
+          <ImageIcon className="h-5 w-5 shrink-0 text-cyan-400" />
+          <div className="min-w-0 flex-1">
+            <h2 className="truncate text-sm font-semibold">{resource.fileName}</h2>
+            <p className={`truncate text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>{resource.relativePath}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="关闭图片预览"
+            title="关闭 (Esc)"
+            className={`rounded-md p-1.5 transition-colors ${isDarkMode ? 'text-slate-400 hover:bg-white/10 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </header>
+
+        <div
+          className="relative flex min-h-56 flex-1 items-center justify-center overflow-auto p-5 sm:min-h-80"
+          style={{
+            backgroundColor: isDarkMode ? '#15151a' : '#f8fafc',
+            backgroundImage: 'linear-gradient(45deg, rgba(100,116,139,.12) 25%, transparent 25%), linear-gradient(-45deg, rgba(100,116,139,.12) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(100,116,139,.12) 75%), linear-gradient(-45deg, transparent 75%, rgba(100,116,139,.12) 75%)',
+            backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
+            backgroundSize: '16px 16px'
+          }}
+        >
+          {loadState === 'loading' && (
+            <div className="absolute flex items-center gap-2 rounded-md bg-black/45 px-3 py-2 text-xs text-slate-200">
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              <span>正在载入图片…</span>
+            </div>
+          )}
+          {loadState === 'error' && (
+            <div className="flex flex-col items-center gap-2 text-center text-sm text-rose-400" role="alert">
+              <AlertTriangle className="h-6 w-6" />
+              <span>图片无法预览，请确认资源文件没有损坏。</span>
+            </div>
+          )}
+          <img
+            src={getDesignerImagePreviewSource(projectId, resource.relativePath)}
+            alt={resource.fileName}
+            className={`max-h-[65vh] max-w-full object-contain ${loadState === 'error' ? 'hidden' : ''}`}
+            onLoad={event => {
+              setDimensions({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight });
+              setLoadState('ready');
+            }}
+            onError={() => setLoadState('error')}
+          />
+        </div>
+
+        <footer className={`flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-4 py-3 text-[11px] ${isDarkMode ? 'border-slate-700/80 text-slate-400' : 'border-slate-200 text-slate-500'}`}>
+          <span>{formatResourceFileSize(resource.size)}</span>
+          {dimensions && <span>{dimensions.width} × {dimensions.height} 像素</span>}
+          <button
+            type="button"
+            onClick={() => void onCopyPath(resource.relativePath)}
+            className="ml-auto flex items-center gap-1.5 rounded-md bg-cyan-500/10 px-2.5 py-1.5 font-medium text-cyan-400 transition-colors hover:bg-cyan-500/20"
+          >
+            <Copy className="h-3.5 w-3.5" />
+            <span>复制相对路径</span>
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function formatResourceFileSize(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function ModuleInterfaceTree({

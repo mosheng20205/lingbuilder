@@ -88,6 +88,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         },
         { name: '到整数', signature: '到整数(文本)', description: '把文本转换为整数；空文本或无法转换的内容返回 0。', insertText: '到整数("$1")', returnType: '整数型' },
         { name: '控件_设置文本', signature: '控件_设置文本(控件名, 文本)', description: '设置当前窗口中指定控件的文本。', insertText: '控件_设置文本("$1", "$2")', returnType: '逻辑型' },
+        { name: '控件_设置图片', signature: '控件_设置图片(控件名, 图片路径)', description: '设置图片框显示的本地图片；支持项目 assets 相对路径或本地完整路径，空路径清空图片。', insertText: '控件_设置图片("$1", "assets/$2")', returnType: '逻辑型' },
         { name: '控件_取文本', signature: '控件_取文本(控件名)', description: '读取指定控件的当前文本。', insertText: '控件_取文本("$1")', returnType: '文本型' },
         { name: '控件_设置启用', signature: '控件_设置启用(控件名, 启用)', description: '启用或禁用指定控件。', insertText: '控件_设置启用("$1", 真)', returnType: '逻辑型' },
         { name: '控件_设置可见', signature: '控件_设置可见(控件名, 可见)', description: '显示或隐藏指定控件。', insertText: '控件_设置可见("$1", 真)', returnType: '逻辑型' },
@@ -164,6 +165,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         },
         { command: '到整数', runtimeName: '到整数', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
         { command: '控件_设置文本', runtimeName: '控件_设置文本', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置图片', runtimeName: '控件_设置图片', parameters: [{ name: '控件名', type: 'wideString' }, { name: '图片路径', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_取文本', runtimeName: '控件_取文本', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
         { command: '控件_设置启用', runtimeName: '控件_设置启用', parameters: [{ name: '控件名', type: 'wideString' }, { name: '启用', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_设置可见', runtimeName: '控件_设置可见', parameters: [{ name: '控件名', type: 'wideString' }, { name: '可见', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
@@ -201,7 +203,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     name: 'Win32高级控件模块',
     version: '1.0.0',
     category: '界面',
-    description: '提供上传、拖拽上传、列表视图、树形视图、选项卡、日期、工具栏、状态栏、富文本和系统通用对话框等标准 Win32 控件。',
+    description: '提供非可视文件对话框、列表视图、树形视图、选项卡、日期、工具栏、状态栏、富文本和系统通用对话框等标准 Win32 能力。',
     author: 'LingBuilder',
     tags: ['内置', 'Win32', 'Common Controls', '富文本', '系统对话框'],
     contributes: {
@@ -233,11 +235,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: '选项卡_添加页', signature: '选项卡_添加页(控件名, 标题)', description: '向 TabControl 追加标签页。', insertText: '选项卡_添加页("$1", "$2")', returnType: '整数型' }
         ,{ name: '选项卡_设置隐藏表头', signature: '选项卡_设置隐藏表头(控件名, 隐藏)', description: '运行时隐藏或显示 TabControl 的标签表头，并重新布局当前页面。', insertText: '选项卡_设置隐藏表头("$1", 真)', returnType: '逻辑型' }
         ,{ name: '选项卡_取隐藏表头', signature: '选项卡_取隐藏表头(控件名)', description: '读取 TabControl 当前是否隐藏标签表头。', insertText: '选项卡_取隐藏表头("$1")', returnType: '逻辑型' }
-        ,{ name: '上传_打开文件选择', signature: '上传_打开文件选择(控件名)', description: '为原生上传控件打开支持多选和格式过滤的 Windows 文件选择器。', insertText: '上传_打开文件选择("$1")', returnType: '逻辑型' }
-        ,{ name: '上传_开始', signature: '上传_开始(控件名)', description: '触发上传控件的“执行上传”事件；文件传输逻辑由事件代码实现。', insertText: '上传_开始("$1")', returnType: '逻辑型' }
-        ,{ name: '上传_清空文件', signature: '上传_清空文件(控件名)', description: '清空上传控件当前保存的文件列表。', insertText: '上传_清空文件("$1")', returnType: '逻辑型' }
-        ,{ name: '上传_取文件数量', signature: '上传_取文件数量(控件名)', description: '返回上传控件当前文件数量。', insertText: '上传_取文件数量("$1")', returnType: '整数型' }
-        ,{ name: '上传_取文件', signature: '上传_取文件(控件名, 索引)', description: '返回上传控件指定索引的完整文件路径。', insertText: '上传_取文件("$1", 0)', returnType: '文本型' }
+        ,{ name: '文件对话框_打开', signature: '文件对话框_打开(组件名)', description: '打开设计器中配置的非可视文件对话框，并保存选择结果。', insertText: '文件对话框_打开("文件对话框1")', returnType: '逻辑型' }
+        ,{ name: '文件对话框_清空', signature: '文件对话框_清空(组件名)', description: '清空文件对话框组件最近选择或拖入的文件。', insertText: '文件对话框_清空("文件对话框1")', returnType: '逻辑型' }
+        ,{ name: '文件对话框_取文件数量', signature: '文件对话框_取文件数量(组件名)', description: '返回文件对话框组件最近选择或拖入的文件数量。', insertText: '文件对话框_取文件数量("文件对话框1")', returnType: '整数型' }
+        ,{ name: '文件对话框_取文件', signature: '文件对话框_取文件(组件名, 索引)', description: '返回文件对话框组件指定索引的完整文件路径。', insertText: '文件对话框_取文件("文件对话框1", 0)', returnType: '文本型' }
       ],
       types: createControlTypes('lingbuilder.win32.common-controls'),
       designerControls: createControlContributions('lingbuilder.win32.common-controls'),
@@ -248,7 +249,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     },
     targets: [{
       id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc',
-      libs: ['comctl32.lib', 'comdlg32.lib', 'ole32.lib', 'shell32.lib'],
+      libs: ['comctl32.lib', 'comdlg32.lib', 'ole32.lib', 'shell32.lib', 'shlwapi.lib'],
       defines: ['UNICODE', '_UNICODE', 'LINGBUILDER_WIN32_COMMON_CONTROLS']
     }],
     bindings: {
@@ -280,11 +281,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ command: '选项卡_添加页', runtimeName: '选项卡_添加页', parameters: [{ name: '控件名', type: 'wideString' }, { name: '标题', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
         ,{ command: '选项卡_设置隐藏表头', runtimeName: '选项卡_设置隐藏表头', parameters: [{ name: '控件名', type: 'wideString' }, { name: '隐藏', type: 'bool' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '选项卡_取隐藏表头', runtimeName: '选项卡_取隐藏表头', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '上传_打开文件选择', runtimeName: '上传_打开文件选择', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '上传_开始', runtimeName: '上传_开始', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '上传_清空文件', runtimeName: '上传_清空文件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '上传_取文件数量', runtimeName: '上传_取文件数量', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
-        ,{ command: '上传_取文件', runtimeName: '上传_取文件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '索引', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
+        ,{ command: '文件对话框_打开', runtimeName: '文件对话框_打开', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '文件对话框_清空', runtimeName: '文件对话框_清空', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '文件对话框_取文件数量', runtimeName: '文件对话框_取文件数量', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '文件对话框_取文件', runtimeName: '文件对话框_取文件', parameters: [{ name: '组件名', type: 'wideString' }, { name: '索引', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
       ]
     }
   },

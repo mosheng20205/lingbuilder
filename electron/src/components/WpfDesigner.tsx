@@ -72,6 +72,7 @@ import {
   LingControl,
   LingControlType,
   LingDesignerResource,
+  LingFileDialogResource,
   LingImageListResource,
   LingPropertySheetResource,
   LingToolTipResource,
@@ -88,7 +89,7 @@ import {
   Win32ControlPropertyDefinition,
   Win32ControlPropertyValue
 } from '../services/windowDesigner/win32ControlRegistry';
-import { CONTROL_FONT_FAMILY_OPTIONS, getControlFontCssStyle, normalizeControlFont } from '../services/windowDesigner/controlFont';
+import { CONTROL_FONT_FAMILY_OPTIONS, DEFAULT_CONTROL_FONT_FAMILY, getControlFontCssStyle, normalizeControlFont } from '../services/windowDesigner/controlFont';
 import {
   buildControlHierarchy,
   canReparentControls,
@@ -111,7 +112,7 @@ import {
   type ListViewEditableRow
 } from '../services/windowDesigner/listViewCollectionModel';
 import { flattenTreeViewNodes, normalizeTreeViewNodes } from '../services/windowDesigner/treeViewCollectionModel';
-import { getDesignerImagePreviewSource, selectAndImportDesignerImage } from '../services/windowDesigner/designerAssetClient';
+import { getDesignerImagePreviewSource, selectAndImportDesignerIcon, selectAndImportDesignerImage } from '../services/windowDesigner/designerAssetClient';
 import {
   isNewEmojiDesignerControlSupported,
   isNewEmojiDesignerEnabled
@@ -161,6 +162,7 @@ export interface WpfDesignerProps {
 
 const CONTROL_TYPES: (LingControlType | 'MenuBar')[] = [
   ...WIN32_CONTROL_DEFINITIONS.filter(definition => definition.isVisual !== false).map(definition => definition.type as LingControlType),
+  'FileDialog',
   'MenuBar'
 ];
 
@@ -179,6 +181,7 @@ const TYPE_ICONS: Partial<Record<LingControlType | 'MenuBar', React.ReactNode>> 
   ProgressBar: <Minus className="w-3.5 h-3.5 text-emerald-400" />,
   Upload: <Upload className="w-3.5 h-3.5 text-sky-400" />,
   DragUpload: <FileUp className="w-3.5 h-3.5 text-fuchsia-400" />,
+  FileDialog: <FolderOpen className="w-3.5 h-3.5 text-emerald-400" />,
   ComboBox: <List className="w-3.5 h-3.5 text-violet-400" />,
   Grid: <LayoutGrid className="w-3.5 h-3.5 text-slate-400" />,
   MenuBar: <Menu className="w-3.5 h-3.5 text-amber-400" />
@@ -241,7 +244,8 @@ export default function WpfDesigner({
   }, [activeWindowId]);
   const [selectedControlId, setSelectedControlId] = useState<string | null>(initialDesignerState.selectedControlId);
   const [selectedControlIds, setSelectedControlIds] = useState<string[]>(initialDesignerState.selectedControlId ? [initialDesignerState.selectedControlId] : []);
-  const selectOnlyControl = (id: string | null) => { setSelectedControlId(id); setSelectedControlIds(id && !id.startsWith('__window_') ? [id] : []); };
+  const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
+  const selectOnlyControl = (id: string | null) => { setSelectedControlId(id); setSelectedControlIds(id && !id.startsWith('__window_') ? [id] : []); setSelectedResourceId(null); };
   const designerHistoryRef = useRef(new DesignerHistory(initialDesignerState.project));
   const applyingHistoryRef = useRef(false);
   const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>('layout');
@@ -249,6 +253,9 @@ export default function WpfDesigner({
   const [controlContextMenu, setControlContextMenu] = useState<DesignerContextMenuState | null>(null);
   const [isNativeBuilding, setIsNativeBuilding] = useState(false);
   useEffect(() => { if (!selectedControlId || selectedControlId.startsWith('__window_')) { if (selectedControlIds.length) setSelectedControlIds([]); } else if (!selectedControlIds.includes(selectedControlId)) setSelectedControlIds([selectedControlId]); }, [selectedControlId]);
+  useEffect(() => {
+    if (selectedControlId !== null && selectedResourceId !== null) setSelectedResourceId(null);
+  }, [selectedControlId, selectedResourceId]);
 
   useEffect(() => {
     const handleDesignerProjectUpdated = (event: Event) => {
@@ -275,6 +282,8 @@ export default function WpfDesigner({
 
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [draggingResourceId, setDraggingResourceId] = useState<string | null>(null);
+  const [resourceDragOffset, setResourceDragOffset] = useState({ x: 0, y: 0 });
   const [resizeDirection, setResizeDirection] = useState<ResizeDirection>('se');
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [initialSize, setInitialSize] = useState({ width: 0, height: 0 });
@@ -293,6 +302,16 @@ export default function WpfDesigner({
   const activeWindow = useMemo(() => {
     return project.windows.find(window => window.id === activeWindowId) || project.windows[0];
   }, [activeWindowId, project.windows]);
+  const activeFileDialogs = useMemo(
+    () => (project.resources || []).filter((resource): resource is LingFileDialogResource => (
+      resource.type === 'FileDialog' && resource.ownerWindowId === activeWindow.id
+    )),
+    [activeWindow.id, project.resources]
+  );
+  const selectedFileDialog = useMemo(
+    () => activeFileDialogs.find(resource => resource.id === selectedResourceId) || null,
+    [activeFileDialogs, selectedResourceId]
+  );
   const designerPaintControls = useMemo(
     () => orderControlsForDesignerPainting(activeWindow.controls),
     [activeWindow.controls]
@@ -378,9 +397,13 @@ export default function WpfDesigner({
         width: activeWindow.width,
         height: 24,
         content: activeWindow.menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关联设计文件',
-        fontSize: 11,
-        background: '#ffffff',
-        foreground: '#000000',
+        fontSize: activeWindow.menuFontSize ?? 11,
+        fontFamily: activeWindow.menuFontFamily || DEFAULT_CONTROL_FONT_FAMILY,
+        fontBold: activeWindow.menuFontBold === true,
+        fontItalic: activeWindow.menuFontItalic === true,
+        fontUnderline: activeWindow.menuFontUnderline === true,
+        background: activeWindow.menuBackground || '#ffffff',
+        foreground: activeWindow.menuForeground || '#000000',
         isEnabled: true,
         visibility: 'Visible',
         events: activeWindow.menuEvents || {
@@ -542,6 +565,13 @@ export default function WpfDesigner({
         ...window,
         menuName: updatedFields.name !== undefined ? updatedFields.name : window.menuName,
         menuItems: updatedFields.content !== undefined ? updatedFields.content : window.menuItems,
+        menuBackground: updatedFields.background !== undefined ? updatedFields.background : window.menuBackground,
+        menuForeground: updatedFields.foreground !== undefined ? updatedFields.foreground : window.menuForeground,
+        menuFontFamily: updatedFields.fontFamily !== undefined ? updatedFields.fontFamily : window.menuFontFamily,
+        menuFontSize: updatedFields.fontSize !== undefined ? updatedFields.fontSize : window.menuFontSize,
+        menuFontBold: updatedFields.fontBold !== undefined ? updatedFields.fontBold : window.menuFontBold,
+        menuFontItalic: updatedFields.fontItalic !== undefined ? updatedFields.fontItalic : window.menuFontItalic,
+        menuFontUnderline: updatedFields.fontUnderline !== undefined ? updatedFields.fontUnderline : window.menuFontUnderline,
         menuEvents: updatedFields.events !== undefined ? { ...(window.menuEvents || {}), ...updatedFields.events } : window.menuEvents
       }));
       return;
@@ -762,6 +792,31 @@ export default function WpfDesigner({
       addLog(`> [${new Date().toLocaleTimeString()}] 【模块】${definition.label} 需要先启用 Win32高级控件模块。`);
       return;
     }
+    if (type === 'FileDialog') {
+      const existing = (project.resources || []).filter((resource): resource is LingFileDialogResource => resource.type === 'FileDialog');
+      let suffix = existing.length + 1;
+      while ((project.resources || []).some(resource => resource.id === `file-dialog-${suffix}`)) suffix += 1;
+      const resource: LingFileDialogResource = {
+        id: `file-dialog-${suffix}`,
+        type: 'FileDialog',
+        name: `文件对话框${suffix}`,
+        designerX: 15 + ((existing.filter(item => item.ownerWindowId === activeWindow.id).length % 4) * 145),
+        designerY: Math.max(0, activeWindow.height - windowContentOffset - 55),
+        ownerWindowId: activeWindow.id,
+        triggerControlId: '',
+        dropTargetId: activeWindow.id,
+        title: '选择文件',
+        filter: '所有文件|*.*',
+        multiple: false,
+        allowDrop: false
+      };
+      setProject(previous => ({ ...previous, resources: [...(previous.resources || []), resource] }));
+      selectOnlyControl(null);
+      setSelectedResourceId(resource.id);
+      setActiveInspectorTab('properties');
+      addLog(`> [${new Date().toLocaleTimeString()}] 【非可视组件】已添加${resource.name}；请绑定打开触发控件和拖放目标。`);
+      return;
+    }
     const typeIndex = activeWindow.controls.filter(control => control.type === type).length + 1;
     const selectedParent = activeWindow.controls.find(control => (
       control.id === selectedControlId && getWin32ControlDefinition(control.type)?.isContainer
@@ -897,6 +952,26 @@ export default function WpfDesigner({
     setInitialSize({ width: control.width, height: control.height });
     setInitialPos({ x: event.clientX, y: event.clientY });
     setInitialControlPos({ x: control.x, y: control.y });
+  };
+
+  const getFileDialogDesignerPosition = (resource: LingFileDialogResource, index: number) => ({
+    x: resource.designerX ?? 15 + ((index % 4) * 145),
+    y: resource.designerY ?? Math.max(0, activeWindow.height - windowContentOffset - 55 - (Math.floor(index / 4) * 50))
+  });
+
+  const handleFileDialogMouseDown = (event: React.MouseEvent, resource: LingFileDialogResource, index: number) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const position = getFileDialogDesignerPosition(resource, index);
+    setSelectedControlId(null);
+    setSelectedControlIds([]);
+    setSelectedResourceId(resource.id);
+    setActiveInspectorTab('properties');
+    setDraggingResourceId(resource.id);
+    setResourceDragOffset({
+      x: event.clientX - position.x * canvasScale,
+      y: event.clientY - position.y * canvasScale
+    });
   };
 
   const handleControlDoubleClick = (event: React.MouseEvent, control: LingControl) => {
@@ -1072,6 +1147,29 @@ export default function WpfDesigner({
     selectedControlId,
     windowContentOffset
   ]);
+
+  useEffect(() => {
+    if (!draggingResourceId) return;
+    const handleMouseMove = (event: MouseEvent) => {
+      const placeholderWidth = 135;
+      const placeholderHeight = 42;
+      const nextX = Math.max(0, Math.min(activeWindow.width - placeholderWidth, (event.clientX - resourceDragOffset.x) / canvasScale));
+      const nextY = Math.max(0, Math.min(activeWindow.height - windowContentOffset - placeholderHeight, (event.clientY - resourceDragOffset.y) / canvasScale));
+      setProject(previous => ({
+        ...previous,
+        resources: (previous.resources || []).map(resource => resource.id === draggingResourceId && resource.type === 'FileDialog'
+          ? { ...resource, designerX: Math.round(nextX / 5) * 5, designerY: Math.round(nextY / 5) * 5 }
+          : resource)
+      }));
+    };
+    const handleMouseUp = () => setDraggingResourceId(null);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [activeWindow.height, activeWindow.width, canvasScale, draggingResourceId, resourceDragOffset, windowContentOffset]);
 
   const handleBuildAndRunNative = useCallback(async () => {
     if (isNativeBuilding) {
@@ -1445,7 +1543,11 @@ export default function WpfDesigner({
               }}
             >
               <div className="flex items-center gap-1.5 text-[11px] font-sans font-medium min-w-0">
-                {(activeWindow.iconStyle || DEFAULT_WINDOW_ICON_STYLE) !== 'none' && <Monitor className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                {(activeWindow.iconStyle || DEFAULT_WINDOW_ICON_STYLE) === 'custom' && activeWindow.iconPath ? (
+                  <img src={getDesignerImagePreviewSource(projectId, activeWindow.iconPath)} alt="窗口图标" className="h-3.5 w-3.5 shrink-0 object-contain" />
+                ) : (activeWindow.iconStyle || DEFAULT_WINDOW_ICON_STYLE) !== 'none' ? (
+                  <Monitor className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                ) : null}
                 <span className="truncate">{activeWindow.title}</span>
               </div>
               <div className="flex items-center gap-1 opacity-60">
@@ -1471,9 +1573,20 @@ export default function WpfDesigner({
                   ? 'bg-[#1E1E1E] text-slate-300 border-slate-800/80 hover:bg-slate-800/60' 
                   : 'bg-white text-slate-800 border-slate-200 hover:bg-slate-100'
               } ${isWindowMenuInteractionActive ? 'ring-1 ring-amber-500 z-50 relative' : ''}`}
+              style={{
+                ...getControlFontCssStyle({
+                  fontFamily: activeWindow.menuFontFamily,
+                  fontSize: activeWindow.menuFontSize ?? 11,
+                  fontBold: activeWindow.menuFontBold,
+                  fontItalic: activeWindow.menuFontItalic,
+                  fontUnderline: activeWindow.menuFontUnderline
+                }),
+                backgroundColor: activeWindow.menuBackground || '#ffffff',
+                color: activeWindow.menuForeground || '#000000'
+              }}
             >
               <div className="relative">
-                <span className={`px-2 py-0.5 rounded transition-colors ${
+                <span style={{ color: activeWindow.menuForeground || '#000000' }} className={`px-2 py-0.5 rounded transition-colors ${
                   isDarkMode ? 'hover:bg-slate-700/50 text-slate-300' : 'hover:bg-slate-200 text-slate-850'
                 }`}>
                   窗口(W)
@@ -1496,6 +1609,10 @@ export default function WpfDesigner({
                     onDoubleClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
+                    }}
+                    style={{
+                      backgroundColor: activeWindow.menuBackground || '#ffffff',
+                      color: activeWindow.menuForeground || '#000000'
                     }}
                     className={`absolute left-0 top-5 w-48 flex flex-col py-1 border rounded shadow-lg z-[99] pointer-events-auto ${
                     isDarkMode 
@@ -1575,6 +1692,55 @@ export default function WpfDesigner({
                 control.type === 'TabControl' ? pageId => handleSelectTabPage(control.id, pageId) : undefined
               );
             })}
+            {activeFileDialogs.map((resource, index) => {
+              const position = getFileDialogDesignerPosition(resource, index);
+              const selected = selectedResourceId === resource.id;
+              return (
+                <div
+                  key={resource.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`文件对话框占位：${resource.name}`}
+                  aria-pressed={selected}
+                  onMouseDown={event => handleFileDialogMouseDown(event, resource, index)}
+                  onClick={event => {
+                    event.stopPropagation();
+                    setSelectedControlId(null);
+                    setSelectedControlIds([]);
+                    setSelectedResourceId(resource.id);
+                    setActiveInspectorTab('properties');
+                  }}
+                  onKeyDown={event => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    setSelectedControlId(null);
+                    setSelectedControlIds([]);
+                    setSelectedResourceId(resource.id);
+                    setActiveInspectorTab('properties');
+                  }}
+                  className={`absolute z-30 flex cursor-move items-center gap-2 rounded border border-dashed px-2 shadow-md select-none ${
+                    selected
+                      ? 'border-emerald-300 bg-emerald-500/25 ring-2 ring-emerald-400'
+                      : isDarkMode
+                        ? 'border-emerald-500/70 bg-[#12352d] hover:bg-emerald-500/20'
+                        : 'border-emerald-600 bg-emerald-50 hover:bg-emerald-100'
+                  }`}
+                  style={{
+                    left: `${position.x}px`,
+                    top: `${position.y + windowContentOffset}px`,
+                    width: '135px',
+                    height: '42px'
+                  }}
+                  title="设计期非可视组件：单击编辑属性，拖拽移动占位"
+                >
+                  <FolderOpen className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+                  <span className="min-w-0 leading-tight">
+                    <span className={`block truncate text-[10px] font-semibold ${isDarkMode ? 'text-emerald-100' : 'text-emerald-900'}`}>{resource.name}</span>
+                    <span className={`block text-[8px] ${isDarkMode ? 'text-emerald-300/75' : 'text-emerald-700'}`}>文件对话框 · 非可视</span>
+                  </span>
+                </div>
+              );
+            })}
             </div>
           </div>
         </div>
@@ -1617,7 +1783,23 @@ export default function WpfDesigner({
 
           <div className="flex-1 overflow-y-auto p-3 space-y-4">
             {activeInspectorTab === 'properties' && (
-              <>
+              selectedFileDialog ? (
+                <FileDialogProperties
+                  resource={selectedFileDialog}
+                  windows={project.windows}
+                  isDarkMode={isDarkMode}
+                  onChange={fields => setProject(previous => ({
+                    ...previous,
+                    resources: (previous.resources || []).map(resource => resource.id === selectedFileDialog.id && resource.type === 'FileDialog'
+                      ? { ...resource, ...fields }
+                      : resource)
+                  }))}
+                  onDelete={() => {
+                    setProject(previous => ({ ...previous, resources: (previous.resources || []).filter(resource => resource.id !== selectedFileDialog.id) }));
+                    setSelectedResourceId(null);
+                  }}
+                />
+              ) : <>
                 <ImageListResourceEditor
                   resources={(project.resources || []).filter((resource): resource is LingImageListResource => resource.type === 'ImageList')}
                   isDarkMode={isDarkMode}
@@ -1631,6 +1813,7 @@ export default function WpfDesigner({
                 />
                 {selectedControlId === null ? (
                   <WindowProperties
+                    projectId={projectId}
                     window={activeWindow}
                     isDarkMode={isDarkMode}
                     onChange={fields => updateActiveWindow(window => ({ ...window, ...fields }))}
@@ -1650,7 +1833,19 @@ export default function WpfDesigner({
             )}
 
             {activeInspectorTab === 'events' && (
-              selectedControlId === null ? (
+              selectedFileDialog ? (
+                <FileDialogEvents
+                  resource={selectedFileDialog}
+                  windowModel={activeWindow}
+                  isDarkMode={isDarkMode}
+                  onChange={fields => setProject(previous => ({
+                    ...previous,
+                    resources: (previous.resources || []).map(resource => resource.id === selectedFileDialog.id && resource.type === 'FileDialog'
+                      ? { ...resource, ...fields }
+                      : resource)
+                  }))}
+                />
+              ) : selectedControlId === null ? (
                 <WindowEvents
                   window={activeWindow}
                   isDarkMode={isDarkMode}
@@ -2662,20 +2857,45 @@ function PropertyRow({
 }
 
 function WindowProperties({
+  projectId,
   window,
   isDarkMode,
   onChange
 }: {
+  projectId: string;
   window: LingWindowModel;
   isDarkMode: boolean;
   onChange: (fields: Partial<LingWindowModel>) => void;
 }) {
+  const [isSelectingIcon, setIsSelectingIcon] = useState(false);
+  const [iconStatus, setIconStatus] = useState('');
   const openPlacement = window.openPlacement || 'default';
   const handleOpenPlacementChange = (value: LingWindowOpenPlacement) => {
     onChange({
       openPlacement: value,
       ...(value === 'custom' ? { openX: window.openX ?? 120, openY: window.openY ?? 80 } : {})
     });
+  };
+  const chooseCustomIcon = async () => {
+    setIsSelectingIcon(true);
+    setIconStatus('正在选择图标…');
+    try {
+      const result = await selectAndImportDesignerIcon(projectId);
+      if (result.canceled) {
+        setIconStatus('已取消选择。');
+        return;
+      }
+      if (!result.ok || !result.relativePath) {
+        setIconStatus(result.error || '窗口图标复制失败。');
+        return;
+      }
+      onChange({ iconStyle: 'custom', iconPath: result.relativePath });
+      setIconStatus(`已导入：${result.relativePath}`);
+    } catch (error) {
+      setIconStatus(error instanceof Error ? error.message : '窗口图标选择失败。');
+    } finally {
+      setIsSelectingIcon(false);
+    }
   };
 
   return (
@@ -2752,9 +2972,39 @@ function WindowProperties({
           >
             <option value="lingbuilder">LingBuilder 内置图标</option>
             <option value="system">系统应用图标</option>
+            <option value="custom">自定义图标</option>
             <option value="none">不显示图标</option>
           </select>
         </PropertyRow>
+        {(window.iconStyle || DEFAULT_WINDOW_ICON_STYLE) === 'custom' && (
+          <PropertyRow label="图标文件" isDarkMode={isDarkMode}>
+            <div className="min-w-0 space-y-1">
+              <div className="flex gap-1">
+                <input
+                  type="text"
+                  value={window.iconPath || ''}
+                  readOnly
+                  placeholder="请选择 .ico 图标"
+                  aria-label="自定义窗口图标路径"
+                  className={`min-w-0 flex-1 rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44] text-slate-300' : 'bg-slate-50 border-slate-300 text-slate-700'}`}
+                />
+                <button
+                  type="button"
+                  onClick={() => void chooseCustomIcon()}
+                  disabled={isSelectingIcon}
+                  title="选择 ICO 文件并复制到当前项目 assets 目录"
+                  aria-label="选择自定义窗口图标"
+                  className={`flex h-7 w-8 shrink-0 items-center justify-center rounded border transition-colors disabled:cursor-wait disabled:opacity-50 ${isDarkMode ? 'border-[#3c3c44] bg-[#24242b] text-amber-400 hover:bg-[#303038]' : 'border-slate-300 bg-white text-amber-600 hover:bg-slate-100'}`}
+                >
+                  <FolderOpen className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className={`text-[9px] leading-3 ${iconStatus.includes('失败') || iconStatus.includes('必须') ? 'text-red-400' : 'text-slate-500'}`}>
+                {iconStatus || '建议 ICO 内包含 16、32、48、256 像素尺寸，以兼顾标题栏和任务栏清晰度。'}
+              </div>
+            </div>
+          </PropertyRow>
+        )}
       </PropertyGroup>
       <PropertyGroup title="当前窗口 / 状态" isDarkMode={isDarkMode} defaultOpen={false}>
         <ReadOnlyTextField label="类名" value={window.className} isDarkMode={isDarkMode} />
@@ -2772,6 +3022,163 @@ function WindowProperties({
   );
 }
 
+const FILE_DIALOG_FILTER_PRESETS = [
+  { id: 'all', label: '所有文件', description: '不限制文件类型', filter: '所有文件|*.*' },
+  { id: 'image', label: '图片文件', description: 'PNG、JPG、BMP、GIF、WebP', filter: '图片文件|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp' },
+  { id: 'document', label: '文档文件', description: 'PDF、Word、Excel、文本', filter: '文档文件|*.pdf;*.doc;*.docx;*.xls;*.xlsx;*.txt' },
+  { id: 'audio', label: '音频文件', description: 'MP3、WAV、FLAC、AAC', filter: '音频文件|*.mp3;*.wav;*.flac;*.aac' },
+  { id: 'video', label: '视频文件', description: 'MP4、AVI、MOV、MKV', filter: '视频文件|*.mp4;*.avi;*.mov;*.mkv' },
+  { id: 'archive', label: '压缩包', description: 'ZIP、7Z、RAR', filter: '压缩包|*.zip;*.7z;*.rar' }
+] as const;
+
+function parseFileDialogFilter(filter: string) {
+  const parts = filter.split('|');
+  return {
+    label: parts[0]?.trim() || '自定义文件',
+    patterns: parts[1]?.trim() || '*.*'
+  };
+}
+
+function normalizeFileDialogExtensions(value: string) {
+  const patterns = value
+    .split(/[\s,;，；]+/u)
+    .map(item => item.trim())
+    .filter(Boolean)
+    .map(item => item === '*' || item === '*.*' ? '*.*' : item.startsWith('*.') ? item : item.startsWith('.') ? `*${item}` : `*.${item}`);
+  return patterns.length > 0 ? patterns.join(';') : '*.*';
+}
+
+function formatFileDialogExtensions(patterns: string) {
+  return patterns.split(';').map(item => item.trim() === '*.*' ? '*' : item.trim().replace(/^\*/u, '')).filter(Boolean).join(', ');
+}
+
+function FileDialogFilterEditor({ value, isDarkMode, onChange }: { value: string; isDarkMode: boolean; onChange: (value: string) => void }) {
+  const preset = FILE_DIALOG_FILTER_PRESETS.find(item => item.filter === value);
+  const parsed = parseFileDialogFilter(value);
+  const [extensionDraft, setExtensionDraft] = useState(() => formatFileDialogExtensions(parsed.patterns));
+  useEffect(() => setExtensionDraft(formatFileDialogExtensions(parsed.patterns)), [parsed.patterns]);
+  const inputClass = `w-full rounded border px-2 py-1.5 text-[10px] ${isDarkMode ? 'border-[#3c3c44] bg-[#1b1b20] text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`;
+  return (
+    <div className={`space-y-2 p-2 text-[10px] ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+      <label className="block space-y-1">
+        <span className="font-medium">文件类型</span>
+        <select
+          aria-label="文件对话框文件类型"
+          value={preset?.id || 'custom'}
+          onChange={event => {
+            const selected = FILE_DIALOG_FILTER_PRESETS.find(item => item.id === event.target.value);
+            onChange(selected?.filter || '自定义文件|*.*');
+          }}
+          className={inputClass}
+        >
+          {FILE_DIALOG_FILTER_PRESETS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+          <option value="custom">自定义…</option>
+        </select>
+      </label>
+      {preset ? (
+        <div className={`rounded border px-2 py-1.5 leading-4 ${isDarkMode ? 'border-emerald-500/20 bg-emerald-500/5 text-emerald-200/80' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
+          将只显示：{preset.description}
+        </div>
+      ) : (
+        <div className={`space-y-2 rounded border p-2 ${isDarkMode ? 'border-amber-500/25 bg-amber-500/5' : 'border-amber-200 bg-amber-50'}`}>
+          <label className="block space-y-1"><span>类型名称</span><input aria-label="自定义文件类型名称" value={parsed.label} onChange={event => onChange(`${event.target.value || '自定义文件'}|${parsed.patterns}`)} placeholder="例如：设计图" className={inputClass} /></label>
+          <label className="block space-y-1"><span>允许的扩展名</span><input aria-label="自定义文件扩展名" value={extensionDraft} onChange={event => setExtensionDraft(event.target.value)} onBlur={() => onChange(`${parsed.label}|${normalizeFileDialogExtensions(extensionDraft)}`)} placeholder=".png, .jpg, .webp" className={inputClass} /></label>
+          <div className="leading-4 text-slate-500">用逗号分隔，例如 <code>.png, .jpg</code>。</div>
+        </div>
+      )}
+      <details className={`rounded border ${isDarkMode ? 'border-[#34343d]' : 'border-slate-200'}`}>
+        <summary className="cursor-pointer px-2 py-1.5 text-slate-500">高级：原始筛选规则</summary>
+        <div className="space-y-1 border-t border-inherit p-2">
+          <input aria-label="文件对话框原始筛选规则" value={value} onChange={event => onChange(event.target.value)} className={inputClass} />
+          <div className="leading-4 text-slate-500">兼容格式：<code>图片|*.png;*.jpg</code>，通常无需手动修改。</div>
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function FileDialogProperties({
+  resource,
+  windows,
+  isDarkMode,
+  onChange,
+  onDelete
+}: {
+  resource: LingFileDialogResource;
+  windows: LingWindowModel[];
+  isDarkMode: boolean;
+  onChange: (fields: Partial<LingFileDialogResource>) => void;
+  onDelete: () => void;
+}) {
+  const ownerWindow = windows.find(window => window.id === resource.ownerWindowId) || windows[0];
+  const ownerControls = ownerWindow?.controls || [];
+  const triggerControls = ownerControls.filter(control => ['Button', 'Label', 'SysLink'].includes(control.type));
+  const inputClass = `w-full rounded border px-1.5 py-1 text-[10px] ${isDarkMode ? 'border-[#3c3c44] bg-[#1b1b20] text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`;
+  return (
+    <div className="space-y-3" aria-label={`文件对话框属性：${resource.name}`}>
+      <div className={`flex items-center gap-2 border-b pb-2 text-[11px] ${isDarkMode ? 'border-slate-800 text-slate-300' : 'border-slate-200 text-slate-700'}`}>
+        <FolderOpen className="h-4 w-4 text-emerald-500" />
+        <span className="font-semibold">文件对话框：{resource.name}</span>
+        <span className="ml-auto rounded border border-emerald-500/30 px-1.5 py-0.5 text-[8px] text-emerald-500">设计控件</span>
+      </div>
+      <PropertyGroup title="外观与位置" isDarkMode={isDarkMode}>
+        <PropertyRow label="名称" isDarkMode={isDarkMode}><input aria-label="文件对话框组件名称" value={resource.name} onChange={event => onChange({ name: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="左" isDarkMode={isDarkMode}><input aria-label="文件对话框左坐标" type="number" min={0} value={resource.designerX ?? 0} onChange={event => onChange({ designerX: Math.max(0, Number(event.target.value) || 0) })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="顶" isDarkMode={isDarkMode}><input aria-label="文件对话框顶坐标" type="number" min={0} value={resource.designerY ?? 0} onChange={event => onChange({ designerY: Math.max(0, Number(event.target.value) || 0) })} className={inputClass} /></PropertyRow>
+      </PropertyGroup>
+      <PropertyGroup title="文件选择" isDarkMode={isDarkMode}>
+        <PropertyRow label="所属窗口" isDarkMode={isDarkMode}><select aria-label="文件对话框所属窗口" value={resource.ownerWindowId} onChange={event => onChange({ ownerWindowId: event.target.value, triggerControlId: '', dropTargetId: event.target.value })} className={inputClass}>{windows.map(window => <option key={window.id} value={window.id}>{window.title}</option>)}</select></PropertyRow>
+        <PropertyRow label="打开控件" isDarkMode={isDarkMode}><select aria-label="文件对话框打开触发控件" value={resource.triggerControlId} onChange={event => onChange({ triggerControlId: event.target.value })} className={inputClass}><option value="">不自动绑定（代码打开）</option>{triggerControls.map(control => <option key={control.id} value={control.id}>{control.name}（{CONTROL_LABELS[control.type]}）</option>)}</select></PropertyRow>
+        <PropertyRow label="拖放目标" isDarkMode={isDarkMode}><select aria-label="文件对话框拖放目标" value={resource.dropTargetId} onChange={event => onChange({ dropTargetId: event.target.value, allowDrop: true })} className={inputClass}><option value={ownerWindow?.id || ''}>当前窗口</option>{ownerControls.map(control => <option key={control.id} value={control.id}>{control.name}（{CONTROL_LABELS[control.type]}）</option>)}</select></PropertyRow>
+        <PropertyRow label="标题" isDarkMode={isDarkMode}><input aria-label="文件对话框标题" value={resource.title} onChange={event => onChange({ title: event.target.value })} className={inputClass} /></PropertyRow>
+        <FileDialogFilterEditor value={resource.filter} isDarkMode={isDarkMode} onChange={filter => onChange({ filter })} />
+        <PropertyRow label="选项" isDarkMode={isDarkMode}><span className="flex flex-wrap gap-3 text-[10px]"><label className="flex items-center gap-1"><input type="checkbox" checked={resource.multiple} onChange={event => onChange({ multiple: event.target.checked })} />允许多选</label><label className="flex items-center gap-1"><input type="checkbox" checked={resource.allowDrop} onChange={event => onChange({ allowDrop: event.target.checked })} />允许拖放</label></span></PropertyRow>
+      </PropertyGroup>
+      <div className="text-[9px] leading-4 text-slate-500">运行时不绘制占位外观。代码可调用：文件对话框_打开(&quot;{resource.name}&quot;)。</div>
+      <button type="button" onClick={onDelete} className="flex w-full items-center justify-center gap-1 rounded border border-red-500/30 py-1.5 text-[10px] text-red-400 hover:bg-red-500/10"><Trash2 className="h-3 w-3" />删除文件对话框</button>
+    </div>
+  );
+}
+
+function FileDialogEvents({ resource, windowModel, isDarkMode, onChange }: { resource: LingFileDialogResource; windowModel: LingWindowModel; isDarkMode: boolean; onChange: (fields: Partial<LingFileDialogResource>) => void }) {
+  const definitions: Array<{ field: 'filesSelectedHandler' | 'filesDroppedHandler' | 'cancelledHandler'; eventName: string; label: string; description: string; suffix: string }> = [
+    { field: 'filesSelectedHandler', eventName: 'FilesSelected', label: '文件已选择', description: '用户在文件对话框中确认选择后触发。', suffix: '文件已选择' },
+    { field: 'filesDroppedHandler', eventName: 'FilesDropped', label: '文件被拖入', description: '文件被拖放到绑定目标后触发。', suffix: '文件被拖入' },
+    { field: 'cancelledHandler', eventName: 'Cancelled', label: '选择被取消', description: '用户取消文件选择后触发。', suffix: '选择被取消' }
+  ];
+  const openEventCode = (definition: typeof definitions[number]) => {
+    const current = resource[definition.field] || '';
+    const handlerName = current.trim() || `_${resource.name}_${definition.suffix}`;
+    onChange({ [definition.field]: handlerName });
+    const detail: OpenControlEventCodeDetail = {
+      controlId: resource.id,
+      controlName: resource.name,
+      controlContent: resource.title,
+      controlType: 'FileDialog',
+      eventName: definition.eventName,
+      handlerName,
+      windowFileName: windowModel.fileName,
+      windowClassName: windowModel.className,
+      windowTitle: windowModel.title
+    };
+    globalThis.window.dispatchEvent(new CustomEvent<OpenControlEventCodeDetail>('open-control-event-code', { detail }));
+  };
+  return (
+    <div className="space-y-3" aria-label={`文件对话框事件：${resource.name}`}>
+      <div className={`flex items-center gap-1.5 border-b pb-2 text-[11px] ${isDarkMode ? 'border-slate-800 text-slate-300' : 'border-slate-200 text-slate-700'}`}><Zap className="h-3.5 w-3.5 text-amber-500" /><span className="font-semibold">事件绑定：{resource.name}</span></div>
+      {definitions.map(definition => {
+        const current = resource[definition.field] || '';
+        const isBound = Boolean(current.trim());
+        const handlerName = current.trim() || `_${resource.name}_${definition.suffix}`;
+        return <button key={definition.eventName} type="button" onClick={() => openEventCode(definition)} aria-label={`${isBound ? '打开' : '创建并打开'}${definition.label}事件处理器 ${handlerName}`} className={`group w-full rounded border p-2.5 text-left ${isDarkMode ? 'border-slate-800/70 bg-slate-900/40 hover:border-amber-500/45' : 'border-slate-200 bg-white hover:border-amber-400'}`}>
+          <div className="flex items-start justify-between gap-2"><span><span className={`block text-[11px] font-semibold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{definition.label}</span><span className="mt-0.5 block text-[9.5px] text-slate-500">{definition.description}</span></span><span className={`shrink-0 rounded border px-1.5 py-0.5 text-[8px] ${isBound ? 'border-emerald-500/25 text-emerald-400' : 'border-amber-500/25 text-amber-500'}`}>{isBound ? '已绑定' : '未绑定'}</span></div>
+          <div className={`mt-2 flex min-h-7 items-center gap-2 rounded border px-2 py-1 ${isDarkMode ? 'border-[#2d2d34] bg-[#1b1b20]' : 'border-slate-200 bg-slate-50'}`}><FileCode className={`h-3.5 w-3.5 ${isBound ? 'text-emerald-400' : 'text-amber-500'}`} /><span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-slate-500">{handlerName}</span><span className="text-[9px] font-semibold text-slate-500">{isBound ? '打开代码' : '生成并打开'}</span></div>
+        </button>;
+      })}
+    </div>
+  );
+}
+
 function BehaviorResourceEditor({ resources, windows, isDarkMode, onChange }: { resources: LingDesignerResource[]; windows: LingWindowModel[]; isDarkMode: boolean; onChange: (resources: LingDesignerResource[]) => void }) {
   const controls = windows.flatMap(window => window.controls);
   const tooltips = resources.filter((resource): resource is LingToolTipResource => resource.type === 'ToolTip');
@@ -2780,7 +3187,7 @@ function BehaviorResourceEditor({ resources, windows, isDarkMode, onChange }: { 
   const remove = (id: string) => onChange(resources.filter(item => item.id !== id));
   const uniqueId = (prefix: string) => { let index = 1; while (resources.some(resource => resource.id === `${prefix}-${index}`)) index += 1; return `${prefix}-${index}`; };
   const inputClass = `w-full rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`;
-  return <PropertyGroup title={`项目 / 行为与属性页（${tooltips.length + sheets.length}）`} isDarkMode={isDarkMode} defaultOpen={false}>
+  return <PropertyGroup title={`项目 / 附加行为（${tooltips.length + sheets.length}）`} isDarkMode={isDarkMode} defaultOpen={false}>
     <div className="space-y-2 p-2">
       {tooltips.map(resource => <div key={resource.id} className={`space-y-1 rounded border p-2 ${isDarkMode ? 'border-[#34343d]' : 'border-slate-200'}`}>
         <div className="flex items-center gap-1"><span className="text-[10px] font-semibold text-cyan-500">ToolTip · {resource.name}</span><button type="button" onClick={() => remove(resource.id)} className="ml-auto text-red-400"><Trash2 className="h-3 w-3" /></button></div>

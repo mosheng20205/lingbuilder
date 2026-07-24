@@ -34,7 +34,7 @@ import {
   LingCppStructureNode
 } from './types';
 import { applyLingCppAstEdit } from './astEditService';
-import { LingWindowModel, LingWindowProject } from '../windowDesigner/types';
+import { LingDesignerResource, LingFileDialogResource, LingWindowModel, LingWindowProject } from '../windowDesigner/types';
 import { LingCppModuleContext } from '../modules/types';
 import {
   getWindowEventDefinition,
@@ -1177,7 +1177,7 @@ export function getLingCppDesignerBindings(
   ]));
   const fallbackDiagnosticLine = parsed.program.classes[0]?.line || 1;
   const sourceEventMap = new Map(sourceEvents.map(event => [normalizeIdentifier(event.handlerName), event]));
-  const expectedBindings = collectDesignerEventBindings(currentWindows);
+  const expectedBindings = collectDesignerEventBindings(currentWindows, designerProject.resources || []);
   const expectedMap = new Map(expectedBindings.map(binding => [normalizeIdentifier(binding.handlerName), binding]));
   const moduleCallbackHandlers = collectModuleCallbackHandlerNames(source, moduleContext);
   const hints: LingCppDesignerBindingHint[] = [];
@@ -1224,7 +1224,11 @@ export function getLingCppDesignerBindings(
     const windowMatch = currentWindows.find(win => normalizeIdentifier(win.className) === normalizeIdentifier(event.className));
     const controlExists = currentWindows.some(win =>
       win.controls.some(control => normalizeIdentifier(control.name) === normalizeIdentifier(inferredControlName))
-    );
+    ) || (designerProject.resources || []).some(resource => (
+      resource.type === 'FileDialog'
+      && currentWindows.some(win => win.id === resource.ownerWindowId)
+      && normalizeIdentifier(resource.name) === normalizeIdentifier(inferredControlName)
+    ));
 
     hints.push({
       status: controlExists || !inferredControlName ? 'unbound-source' : 'missing-control',
@@ -1242,6 +1246,15 @@ export function getLingCppDesignerBindings(
 
   expectedBindings.forEach(binding => {
     if (sourceEventMap.has(normalizeIdentifier(binding.handlerName))) return;
+    const windowEventDefinition = getWindowEventDefinition(binding.eventName || '');
+    if (windowEventDefinition && sourceEvents.some(event => {
+      const sourceWindow = findWindowEventMatch(event.handlerName, event.className, currentWindows);
+      if (!sourceWindow || sourceWindow.id !== binding.windowId) return false;
+      const normalizedHandler = normalizeIdentifier(event.handlerName);
+      return [windowEventDefinition.name, windowEventDefinition.label, windowEventDefinition.handlerSuffix]
+        .map(alias => normalizeIdentifier(alias))
+        .some(alias => normalizedHandler === alias || normalizedHandler.endsWith(`_${alias}`));
+    })) return;
     hints.push({
       status: 'missing-source',
       line: classInsertionLineByName.get(normalizeIdentifier(binding.className)) || fallbackDiagnosticLine,
@@ -1538,6 +1551,14 @@ function getDesignerControlCommandCompletions(
       command('取数值', '控件_取数值', '', '读取控件当前数值')
     );
   }
+  if (control.type === 'Image') {
+    commands.push({
+      methodName: '设置图片',
+      commandName: '控件_设置图片',
+      insertText: `${name}.设置图片("$1")`,
+      description: '从项目资源相对路径或本地完整路径加载图片；空路径会清空图片'
+    });
+  }
   if (['ListBox', 'ComboBox', 'ComboBoxEx', 'ListView', 'TabControl'].includes(control.type)) {
     commands.push(command('取选择项', '控件_取选择项', '', '读取当前选择项索引'));
   }
@@ -1560,15 +1581,6 @@ function getDesignerControlCommandCompletions(
       command('隐藏表头', '选项卡_设置隐藏表头', '真', '立即隐藏标签表头'),
       command('显示表头', '选项卡_设置隐藏表头', '假', '立即显示标签表头'),
       command('取隐藏表头', '选项卡_取隐藏表头', '', '读取标签表头是否隐藏')
-    );
-  }
-  if (control.type === 'Upload' || control.type === 'DragUpload') {
-    commands.push(
-      command('打开文件选择', '上传_打开文件选择', '', '打开文件选择器'),
-      command('开始上传', '上传_开始', '', '触发上传操作事件'),
-      command('清空文件', '上传_清空文件', '', '清空当前文件列表'),
-      command('取文件数量', '上传_取文件数量', '', '读取当前文件数量'),
-      command('取文件', '上传_取文件', '$1', '读取指定索引的文件路径')
     );
   }
   return commands;
@@ -2101,8 +2113,27 @@ function selectDesignerWindows(project: LingWindowProject, source: string, fileP
   });
 }
 
-function collectDesignerEventBindings(windows: LingWindowModel[]) {
-  return windows
+function collectDesignerEventBindings(windows: LingWindowModel[], resources: LingDesignerResource[] = []) {
+  const windowIds = new Set(windows.map(window => window.id));
+  const resourceBindings = resources
+    .filter((resource): resource is LingFileDialogResource => resource.type === 'FileDialog' && windowIds.has(resource.ownerWindowId))
+    .flatMap(resource => {
+      const ownerWindow = windows.find(window => window.id === resource.ownerWindowId);
+      if (!ownerWindow) return [];
+      return [
+        ['FilesSelected', resource.filesSelectedHandler],
+        ['FilesDropped', resource.filesDroppedHandler],
+        ['Cancelled', resource.cancelledHandler]
+      ].flatMap(([eventName, handlerName]) => handlerName?.trim() ? [{
+        handlerName: handlerName.trim(),
+        className: ownerWindow.className,
+        controlName: resource.name,
+        controlId: resource.id,
+        eventName,
+        windowId: ownerWindow.id
+      }] : []);
+    });
+  const windowBindings = windows
     .flatMap(win => {
       const controlBindings = win.controls.flatMap(control =>
         Object.entries(control.events || {}).map(([eventName, handlerName]) => ({
@@ -2134,6 +2165,7 @@ function collectDesignerEventBindings(windows: LingWindowModel[]) {
         }));
       return [...controlBindings, ...menuBindings, ...windowBindings];
     });
+  return [...windowBindings, ...resourceBindings];
 }
 
 function extractAssociatedDesignerFile(source: string): string | undefined {

@@ -589,6 +589,13 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
     : fallbackProject;
   let projectChanged = sourceProject.schemaVersion !== 2 || !Array.isArray(sourceProject.resources);
   const normalizedWindows = sourceProject.windows.map(window => {
+    const menuFont = normalizeControlFont({
+      fontFamily: window.menuFontFamily,
+      fontSize: window.menuFontSize ?? 11,
+      fontBold: window.menuFontBold,
+      fontItalic: window.menuFontItalic,
+      fontUnderline: window.menuFontUnderline
+    });
     const hierarchyControls = normalizeControlHierarchy(window.controls || []);
     let controlsChanged = hierarchyControls !== window.controls;
     const controls = hierarchyControls.map(control => {
@@ -612,13 +619,22 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
         properties
       };
     });
-    const appearanceChanged = !window.titleBarBackground || !window.titleBarForeground || !window.cornerStyle || !window.iconStyle;
+    const appearanceChanged = !window.titleBarBackground || !window.titleBarForeground || !window.cornerStyle || !window.iconStyle || !window.menuBackground || !window.menuForeground
+      || window.menuFontFamily !== menuFont.family || window.menuFontSize !== menuFont.size || window.menuFontBold !== menuFont.bold
+      || window.menuFontItalic !== menuFont.italic || window.menuFontUnderline !== menuFont.underline;
     if (!controlsChanged && !appearanceChanged) return window;
     projectChanged = true;
     return {
       ...window,
       titleBarBackground: window.titleBarBackground || DEFAULT_WINDOW_TITLE_BAR_BACKGROUND,
       titleBarForeground: window.titleBarForeground || DEFAULT_WINDOW_TITLE_BAR_FOREGROUND,
+      menuBackground: window.menuBackground || '#ffffff',
+      menuForeground: window.menuForeground || '#000000',
+      menuFontFamily: menuFont.family,
+      menuFontSize: menuFont.size,
+      menuFontBold: menuFont.bold,
+      menuFontItalic: menuFont.italic,
+      menuFontUnderline: menuFont.underline,
       cornerStyle: window.cornerStyle || DEFAULT_WINDOW_CORNER_STYLE,
       iconStyle: window.iconStyle || DEFAULT_WINDOW_ICON_STYLE,
       controls
@@ -708,7 +724,10 @@ export function getLingWindowSourceFileName(windowFileName?: string, windowClass
 
 export function generateWindowXml(window: LingWindowModel): string {
   let xml = `<!-- 可视化中文界面布局结构定义 (${window.fileName}) -->\n`;
-  xml += `<主窗口 名称="${window.className}" 标题="${window.title}" 宽度="${window.width}" 高度="${window.height}" 背景颜色="${window.background}" 标题栏颜色="${window.titleBarBackground || DEFAULT_WINDOW_TITLE_BAR_BACKGROUND}" 标题文字颜色="${window.titleBarForeground || DEFAULT_WINDOW_TITLE_BAR_FOREGROUND}" 窗口圆角="${window.cornerStyle || DEFAULT_WINDOW_CORNER_STYLE}" 窗口图标="${window.iconStyle || DEFAULT_WINDOW_ICON_STYLE}" 控件对齐="绝对坐标">\n`;
+  const iconPathAttr = window.iconStyle === 'custom' && window.iconPath
+    ? ` 窗口图标文件="${escapeXmlAttribute(window.iconPath)}"`
+    : '';
+  xml += `<主窗口 名称="${window.className}" 标题="${window.title}" 宽度="${window.width}" 高度="${window.height}" 背景颜色="${window.background}" 标题栏颜色="${window.titleBarBackground || DEFAULT_WINDOW_TITLE_BAR_BACKGROUND}" 标题文字颜色="${window.titleBarForeground || DEFAULT_WINDOW_TITLE_BAR_FOREGROUND}" 窗口圆角="${window.cornerStyle || DEFAULT_WINDOW_CORNER_STYLE}" 窗口图标="${window.iconStyle || DEFAULT_WINDOW_ICON_STYLE}"${iconPathAttr} 控件对齐="绝对坐标">\n`;
   xml += `    <网格布局 容器边距="0">\n`;
 
   window.controls.forEach(control => {

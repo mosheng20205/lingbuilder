@@ -1213,6 +1213,19 @@ app.post("/api/window-designer/assets/import", async (req, res) => {
   }
 });
 
+app.get("/api/window-designer/assets", async (req, res) => {
+  const projectId = String(req.query.projectId || "").trim();
+  if (!projectId) return res.status(400).json({ ok: false, error: "缺少 projectId。" });
+  try {
+    const solutionService = getSolutionService();
+    const projectRef = solutionService.getProject(await solutionService.getSolution(), projectId);
+    const resources = await designerAssetService.listProjectImages(projectRef);
+    res.json({ ok: true, resources });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "项目图片资源读取失败。" });
+  }
+});
+
 app.get("/api/window-designer/assets/content", async (req, res) => {
   const projectId = String(req.query.projectId || "");
   const imagePath = String(req.query.path || "");

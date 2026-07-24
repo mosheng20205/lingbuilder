@@ -106,6 +106,7 @@ test('beginner editor navigation, variable form and guidance tools remain safe a
   assert.match(source, /事件动作、代码解释与 5 步学习路径/u);
   assert.match(source, /className=\{`pointer-events-auto absolute z-20/u);
   assert.match(source, /onWheel=\{event => event\.stopPropagation\(\)\}/u);
+  assert.match(source, /const handleBeginnerCodeBlur[\s\S]*?closeBeginnerCompletion\(target\);[\s\S]*?closeBeginnerCommandHint\(target\);/u);
   assert.match(source, /const BEGINNER_CODE_OVERLAY_TOKEN_STYLE: React\.CSSProperties/u);
   assert.match(source, /fontWeight: 'inherit'/u);
   assert.match(source, /style=\{BEGINNER_CODE_OVERLAY_TOKEN_STYLE\}/u);
@@ -170,6 +171,29 @@ test('image source property exposes a desktop picker and project-relative previe
   assert.match(source, /selectAndImportDesignerImage\(projectId\)/u);
   assert.match(source, /getDesignerImagePreviewSource\(projectId, control\.properties\.imageSource\)/u);
   assert.match(source, /已复制到 \$\{result\.relativePath\}/u);
+});
+
+test('solution project context menu imports image resources through the command service', async () => {
+  const sidebarSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/Sidebar.tsx'), 'utf8');
+  const appSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/App.tsx'), 'utf8');
+
+  assert.match(sidebarSource, /'添加资源…'/u);
+  assert.match(sidebarSource, /handleAddProjectResource\(project\)/u);
+  assert.match(sidebarSource, /图片资源 \(assets\)/u);
+  assert.match(sidebarSource, /listDesignerImageResources\(projectId\)/u);
+  assert.match(sidebarSource, /复制相对路径/u);
+  assert.match(sidebarSource, /setResourcePreview\(\{ projectId: project\.id, resource \}\)/u);
+  assert.match(sidebarSource, /ImageResourcePreviewDialog/u);
+  assert.match(sidebarSource, /getDesignerImagePreviewSource\(projectId, resource\.relativePath\)/u);
+  assert.match(sidebarSource, /正在载入图片/u);
+  assert.match(sidebarSource, /图片无法预览/u);
+  assert.match(sidebarSource, /正在选择并复制图片资源/u);
+  assert.match(sidebarSource, /role="alert"/u);
+  assert.match(appSource, /workbench\.action\.project\.addImageResource/u);
+  assert.match(appSource, /workbench\.action\.project\.copyImageResourcePath/u);
+  assert.match(appSource, /selectAndImportDesignerImage\(projectId\)/u);
+  assert.match(appSource, /onAddProjectResource=\{handleAddProjectResource\}/u);
+  assert.match(appSource, /onCopyProjectResourcePath=\{handleCopyProjectResourcePath\}/u);
 });
 
 test('designer uses structured collection editors instead of JSON array textareas', async () => {
@@ -252,13 +276,35 @@ test('ListView collection dialog supports spreadsheet cells, batch paste and res
   assert.doesNotMatch(source, /width: Math\.max\(24, Number\(event\.target\.value\) \|\| 24\)/u);
 });
 
-test('designer exposes dedicated ToolTip and PropertySheet resource editors', async () => {
+test('designer exposes FileDialog as a selectable control with properties and events', async () => {
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   assert.match(source, /BehaviorResourceEditor/u);
   assert.match(source, /工具提示目标控件/u);
   assert.match(source, /添加属性页/u);
   assert.match(source, /属性页_显示/u);
   assert.match(source, /属性页控件模板窗口/u);
+  assert.match(source, /文件对话框打开触发控件/u);
+  assert.match(source, /文件对话框拖放目标/u);
+  assert.match(source, /FileDialogProperties/u);
+  assert.match(source, /FileDialogEvents/u);
+  assert.match(source, /项目 \/ 附加行为/u);
+  assert.doesNotMatch(source, /项目 \/ 非可视组件/u);
+  assert.match(source, /文件已选择/u);
+  assert.match(source, /文件被拖入/u);
+  assert.match(source, /选择被取消/u);
+  assert.match(source, /文件对话框占位/u);
+  assert.match(source, /设计期非可视组件：单击编辑属性，拖拽移动占位/u);
+  assert.match(source, /designerX/u);
+  assert.match(source, /designerY/u);
+  assert.match(source, /selectedResourceId/u);
+  assert.match(source, /selectedControlId !== null && selectedResourceId !== null/u);
+  assert.match(source, /dropTargetId: event\.target\.value, allowDrop: true/u);
+  assert.match(source, /FILE_DIALOG_FILTER_PRESETS/u);
+  assert.match(source, /文件类型/u);
+  assert.match(source, /图片文件/u);
+  assert.match(source, /自定义文件扩展名/u);
+  assert.match(source, /高级：原始筛选规则/u);
+  assert.match(source, /用逗号分隔/u);
 });
 
 test('designer exposes persisted native window appearance instead of fixed chrome', async () => {
@@ -267,6 +313,9 @@ test('designer exposes persisted native window appearance instead of fixed chrom
   assert.match(source, /标题文字颜色/u);
   assert.match(source, /窗口圆角/u);
   assert.match(source, /LingBuilder 内置图标/u);
+  assert.match(source, /自定义图标/u);
+  assert.match(source, /选择自定义窗口图标/u);
+  assert.match(source, /activeWindow\.iconPath/u);
   assert.match(source, /activeWindow\.titleBarBackground/u);
   assert.match(source, /activeWindow\.cornerStyle/u);
   assert.doesNotMatch(source, /className="relative rounded-lg shadow-2xl/u);

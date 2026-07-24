@@ -95,6 +95,9 @@ npm run package:win
 - 新建项目默认启用 `lingbuilder.win32.basic`；ListView、TreeView、Tab、日期、工具栏、状态栏、RichEdit 和系统通用对话框来自可选 `lingbuilder.win32.common-controls`。
 - 设计器项目保存为 `schemaVersion: 2`，控件专属数据位于 `properties`，旧无版本项目在读取时安全迁移。
 - 图片框“图片源”右侧按钮调用 Electron 原生文件对话框；选中的本地图片由 `src/services/windowDesigner/designerAssetService.ts` 复制到项目 `assets/`，模型只保存相对路径。受控预览 API、F5、原生导出及 AI Bridge 共用该服务；生成的 Visual Studio 工程会在构建后把图片复制到 exe 输出目录。
+- 解决方案资源管理器中右键项目并选择“添加资源…”也可导入图片；工作台命令会按所选项目自动复制到 `assets/`（默认项目）或 `assets/<projectId>/`（多项目）。项目树的“图片资源 (assets)”组会列出全部图片：单击图片可预览真实资源和尺寸，右键图片并选择“复制相对路径”即可获得可直接用于 `.lcpp` 的路径。
+- 普通 Win32 图片框可在 `.lcpp` 中调用 `图片框1.设置图片("assets/示例.png")` 动态换图，等价命令为 `控件_设置图片("图片框1", "assets/示例.png")`；也可传入 `文件对话框_取文件(...)` 返回的完整路径，传入空文本会清空图片。运行时继续使用设计器配置的填充方式。
+- 图片框即使初始没有配置图片源，也会以 Win32 `SS_BITMAP` 静态控件创建；因此可以在文件已选择或文件被拖入事件中直接调用 `.设置图片(...)`，不需要先在设计器中放置一张占位图片。
 - 高级模块未启用时，工具箱显示依赖状态但不能新增高级控件；项目已有高级控件不得被删除或静默替换。
 - 内置 `lingbuilder.edgeview` 模块支持多个 WebView2 实例、独立缓存目录、HWND/区域嵌入、JavaScript JSON 返回值和 `.lcpp` 事件回调。原生构建从 NuGet 缓存复制 WebView2 SDK 头文件与目标架构 Loader，不依赖 React 组件硬编码路径。
 
@@ -209,7 +212,7 @@ npm run module:new-emoji -- --install
 
 生成结果必须包含 Win32/x64 targets、`NE_` 中文桥接命令 bindings、桥接源码、文档和示例。验证可运行 exe 时仍需确认 exe 同目录存在 `new_emoji.dll`，并等待至少 3 秒确认进程仍在运行。
 
-项目启用 `lingbuilder.new_emoji.ui` 后，窗口设计器自动使用 new_emoji 原生后端。当前闭环为 9 类基础控件以及上传、拖拽上传共 11 类控件；上传属性与“文件已选择/上传操作”事件会确定性进入桥接和 C++ 生成。画布保留现有布局/属性编辑体验，F5 与原生导出生成真实 `NE_创建*` 调用。不支持的 Win32 高级控件会禁用并给出中文诊断，不会静默混入 Win32 控件。
+项目启用 `lingbuilder.new_emoji.ui` 后，窗口设计器自动使用 new_emoji 原生后端。当前新增设计器入口闭环为 9 类基础控件；旧项目中的上传、拖拽上传仍保留桥接兼容，但不再出现在普通 Win32 工具箱。普通 Win32 文件选择使用高级控件模块的非可视 `FileDialog` 资源，绑定现有按钮及窗口/控件拖放目标。画布保留现有布局/属性编辑体验，F5 与原生导出生成真实 `NE_创建*` 调用。不支持的 Win32 高级控件会禁用并给出中文诊断，不会静默混入 Win32 控件。
 # 高级原生调试
 
 底部“局部变量 / 监视 / 调用栈”的高级调试区支持按 PID 附加、打开工作区内 core/minidump、连接 gdb-remote，以及暂停态寄存器、内存和反汇编读取。需要安装 LLVM `lldb-dap`；远程目标需自行启动兼容的 gdb-server/lldb-server。

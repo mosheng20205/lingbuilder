@@ -175,7 +175,9 @@ test('图片选择资源复制到项目 assets 并可同步到构建与导出目
   try {
     const sourceDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-image-source-'));
     const source = path.join(sourceDirectory, '封面.png');
+    const iconSource = path.join(sourceDirectory, '应用.ico');
     await fs.writeFile(source, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    await fs.writeFile(iconSource, Buffer.from([0x00, 0x00, 0x01, 0x00]));
     const service = createDesignerAssetService(workspace);
     const projectRef = {
       id: 'demo', name: '演示', type: 'visual-cpp' as const,
@@ -185,12 +187,23 @@ test('图片选择资源复制到项目 assets 并可同步到构建与导出目
     const imported = await service.importImage(projectRef, source);
     assert.equal(imported.relativePath, 'assets/demo/封面.png');
     assert.deepEqual((await service.readImage(projectRef, imported.relativePath)).bytes, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const importedIcon = await service.importImage(projectRef, iconSource);
+    assert.equal(importedIcon.relativePath, 'assets/demo/应用.ico');
+    assert.equal((await service.readImage(projectRef, importedIcon.relativePath)).mimeType, 'image/x-icon');
+    const listedImages = await service.listProjectImages(projectRef);
+    assert.equal(listedImages.length, 2);
+    assert.deepEqual(
+      new Set(listedImages.map(image => image.relativePath)),
+      new Set(['assets/demo/封面.png', 'assets/demo/应用.ico'])
+    );
+    assert.ok(listedImages.every(image => image.size === 4));
 
     const buildDir = path.join(workspace, '.lingbuilder-build', 'demo', 'bin');
     const exportDir = path.join(workspace, 'generated', 'cpp', 'demo');
     await service.copyProjectAssets(projectRef, [buildDir, exportDir]);
     assert.deepEqual(await fs.readFile(path.join(buildDir, 'assets', 'demo', '封面.png')), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     assert.deepEqual(await fs.readFile(path.join(exportDir, 'assets', 'demo', '封面.png')), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    assert.deepEqual(await fs.readFile(path.join(buildDir, 'assets', 'demo', '应用.ico')), Buffer.from([0x00, 0x00, 0x01, 0x00]));
     assert.match(getDesignerImagePreviewSource('demo', imported.relativePath), /^\/api\/window-designer\/assets\/content\?/u);
     assert.equal(getDesignerImagePreviewSource('demo', 'https://example.com/cover.png'), 'https://example.com/cover.png');
 
@@ -591,7 +604,7 @@ test('分组框转发嵌套组合框的自绘、颜色和选择消息', () => {
   assert.match(forwardingBranch, /message == WM_MEASUREITEM/u);
   assert.match(forwardingBranch, /message == WM_CTLCOLORLISTBOX/u);
   assert.match(cpp, /return SendMessageW\(self->hwnd_, message, wParam, lParam\);/u);
-  assert.match(cpp, /PaintOwnerComboBox\(reinterpret_cast<DRAWITEMSTRUCT\*>\(lParam\)\)/u);
+  assert.match(cpp, /PaintOwnerComboBox\(item\)/u);
 });
 
 test('Win32 组合框分离收起高度和下拉高度并使用暗色自绘', () => {
@@ -707,18 +720,62 @@ test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件
   assert.ok(generated.diagnostics.some(item => item.includes('说明文本') && item.includes('仅支持字体名称和字号')));
 });
 
-test('上传与拖拽上传控件注册完整属性和事件', () => {
+test('Win32 工具箱移除上传外观控件并注册非可视文件对话框', () => {
   const upload = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'Upload');
   const dragUpload = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'DragUpload');
-  assert.ok(upload);
-  assert.ok(dragUpload);
-  assert.equal(upload.moduleId, 'lingbuilder.win32.common-controls');
-  assert.equal(upload.nativeAdapter, 'win32-upload');
-  assert.equal(dragUpload.moduleId, 'lingbuilder.win32.common-controls');
-  assert.equal(dragUpload.properties.find(property => property.key === 'dropEnabled')?.defaultValue, true);
-  assert.deepEqual(upload.events.map(event => event.name), ['FilesSelected', 'UploadAction']);
-  assert.ok(upload.properties.some(property => property.key === 'accept'));
-  assert.ok(upload.properties.some(property => property.key === 'maxSizeKb'));
+  const fileDialog = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'FileDialog');
+  assert.equal(upload, undefined);
+  assert.equal(dragUpload, undefined);
+  assert.ok(fileDialog);
+  assert.equal(fileDialog.isVisual, false);
+  assert.equal(fileDialog.moduleId, 'lingbuilder.win32.common-controls');
+  assert.equal(fileDialog.nativeAdapter, 'file-dialog-resource');
+  assert.deepEqual(fileDialog.events.map(event => event.name), ['FilesSelected', 'FilesDropped', 'Cancelled']);
+  assert.ok(fileDialog.properties.some(property => property.key === 'multiple'));
+  assert.ok(fileDialog.properties.some(property => property.key === 'allowDrop'));
+});
+
+test('非可视文件对话框绑定按钮和拖放目标并生成统一结果事件', () => {
+  const button = { ...createControl('choose', undefined, 'Button'), name: '选择附件按钮', events: { Click: '选择附件按钮_被单击' } };
+  const picture = { ...createControl('picture', undefined, 'Image'), name: '附件图片框' };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'file-dialog-resource',
+    name: '文件对话框资源',
+    resources: [{
+      id: 'file-dialog-1', type: 'FileDialog', name: '文件对话框1', ownerWindowId: 'main',
+      triggerControlId: 'choose', dropTargetId: 'picture', title: '选择附件', filter: '图片|*.png;*.jpg|所有文件|*.*',
+      multiple: true, allowDrop: true, filesSelectedHandler: '文件对话框1_文件已选择',
+      filesDroppedHandler: '文件对话框1_文件被拖入', cancelledHandler: '文件对话框1_选择被取消'
+    }],
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '文件选择', width: 640, height: 420, background: '#202028', description: '', controls: [button, picture] }]
+  };
+  const enabledModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({ manifest: BUILTIN_MODULES.find(module => module.id === id)!, installPath: 'builtin', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
+  const source = `类 主窗口 : 公开 窗体
+    事件 文件对话框1_文件已选择()
+        调试输出(文件对话框_取文件("文件对话框1", 0))
+    结束
+    事件 文件对话框1_文件被拖入()
+        调试输出(文件对话框_取文件数量("文件对话框1"))
+    结束
+    事件 文件对话框1_选择被取消()
+        调试输出("已取消")
+    结束
+结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /FileDialogSpec g_fileDialogs/);
+  assert.match(cpp, /L"file-dialog-1", L"文件对话框1", 0, 1001, 1002, true, true/u);
+  assert.match(cpp, /HandleFileDialogTrigger\(control->id\)/);
+  assert.match(cpp, /HandleFileDialogDrop\(dropPoint, droppedFiles_\)/);
+  assert.match(cpp, /PtInRect\(&bounds, dropPoint\)/);
+  assert.match(cpp, /UpdateFileDialogImageTarget\(dialog, accepted\)/);
+  assert.match(cpp, /UpdateFileDialogImageTarget\(spec, files\)/);
+  assert.match(cpp, /FOS_ALLOWMULTISELECT/);
+  assert.match(cpp, /FilesSelected/);
+  assert.match(cpp, /FilesDropped/);
+  assert.match(cpp, /文件对话框_取文件\(L"文件对话框1", 0\)/u);
+  assert.ok(!generated.diagnostics.some(diagnostic => diagnostic.includes('文件对话框')));
 });
 
 test('原生 Win32 上传控件生成文件选择、格式过滤、文件列表和拖放处理且不依赖 new_emoji', () => {
@@ -889,6 +946,8 @@ test('选项卡设计器预览使用控件文字颜色和背景颜色', () => {
     control: { ...tabControl, properties: { ...tabControl.properties, hideHeader: true } }
   }));
   assert.match(hiddenMarkup, /data-tab-header-hidden="true"/u);
+  assert.match(hiddenMarkup, /data-tab-header-hidden="true" class="min-h-0 flex-1"/u);
+  assert.doesNotMatch(hiddenMarkup, /data-tab-header-hidden="true" class="[^"]*\bborder\b/u);
   assert.doesNotMatch(hiddenMarkup, /role="tablist"/u);
   assert.doesNotMatch(hiddenMarkup, />常规</u);
 });
@@ -1105,6 +1164,11 @@ test('无版本设计器项目迁移为 v2 并保留旧字段', () => {
   assert.equal(state.project.windows[0].controls[0].properties?.value, 38);
   assert.equal(state.project.windows[0].titleBarBackground, '#2D2D30');
   assert.equal(state.project.windows[0].titleBarForeground, '#CBD5E1');
+  assert.equal(state.project.windows[0].menuBackground, '#ffffff');
+  assert.equal(state.project.windows[0].menuForeground, '#000000');
+  assert.equal(state.project.windows[0].menuFontFamily, 'Microsoft YaHei UI');
+  assert.equal(state.project.windows[0].menuFontSize, 11);
+  assert.equal(state.project.windows[0].menuFontBold, false);
   assert.equal(state.project.windows[0].cornerStyle, 'rounded');
   assert.equal(state.project.windows[0].iconStyle, 'lingbuilder');
   assert.match(generateWindowXml(state.project.windows[0]), /标题栏颜色="#2D2D30"/u);
@@ -1131,7 +1195,7 @@ test('窗口外观与 ListView 深色配色进入同一份 Win32 生成结果', 
     name: '窗口外观',
     windows: [{
       id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '外观窗口', width: 640, height: 480,
-      background: '#1F2937', titleBarBackground: '#123456', titleBarForeground: '#FEDCBA',
+      background: '#1F2937', titleBarBackground: '#123456', titleBarForeground: '#FEDCBA', menuBackground: '#4a148c', menuForeground: '#E2E8F0',
       cornerStyle: 'small-rounded', iconStyle: 'lingbuilder', description: '', controls: [listView]
     }]
   };
@@ -1147,6 +1211,17 @@ test('窗口外观与 ListView 深色配色进入同一份 Win32 生成结果', 
   assert.match(cpp, /CreateLingBuilderWindowIcon/u);
   assert.match(cpp, /WM_SETICON/u);
   assert.match(cpp, /RGB\(18, 52, 86\), RGB\(254, 220, 186\), 3, L"lingbuilder"/u);
+  assert.match(cpp, /MIM_BACKGROUND/u);
+  assert.match(cpp, /MF_POPUP \| MF_OWNERDRAW/u);
+  assert.match(cpp, /SetTextColor\(item->hDC, spec_\.menuForeground\)/u);
+  assert.match(cpp, /MF_OWNERDRAW, 50000 \+ index/u);
+  assert.match(cpp, /case WM_NCPAINT/u);
+  assert.match(cpp, /PaintMenuBarBackground/u);
+  assert.match(cpp, /ClientToScreen\(hwnd_, &clientOrigin\)/u);
+  assert.match(cpp, /barRect\.bottom = std::max\(barRect\.bottom, clientOrigin\.y - windowRect\.top\)/u);
+  assert.match(cpp, /L"", RGB\(74, 20, 140\), RGB\(226, 232, 240\), L"Microsoft YaHei UI", 11, false, false, false, L""/u);
+  assert.match(cpp, /SelectObject\(item->hDC, menuFont_\)/u);
+  assert.match(cpp, /SelectObject\(hdc, menuFont_\)/u);
   assert.match(cpp, /L"ListView"[^\n]+RGB\(15, 23, 42\), true, RGB\(226, 232, 240\)/u);
   assert.match(cpp, /ListView_SetBkColor\(child, control\.background\)/u);
   assert.match(cpp, /ListView_SetTextBkColor\(child, control\.background\)/u);
@@ -1155,6 +1230,30 @@ test('窗口外观与 ListView 深色配色进入同一份 Win32 生成结果', 
   assert.match(cpp, /CDRF_NOTIFYPOSTPAINT/u);
   assert.match(cpp, /Header_GetItemRect/u);
   assert.match(cpp, /CDRF_SKIPDEFAULT/u);
+});
+
+test('自定义 ICO 路径进入设计器结构与 Win32 大小图标加载链路', () => {
+  const window: LingWindowModel = {
+    id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '自定义图标窗口', width: 640, height: 480,
+    background: '#1F2937', iconStyle: 'custom', iconPath: 'assets/demo/应用.ico', description: '', controls: []
+  };
+  const project: LingWindowProject = { schemaVersion: 2, id: 'demo', name: '图标项目', windows: [window] };
+  const result = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' });
+  const cpp = result.files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.equal(result.diagnostics.some(message => message.includes('自定义图标必须')), false);
+  assert.match(generateWindowXml(window), /窗口图标="custom" 窗口图标文件="assets\/demo\/应用\.ico"/u);
+  assert.match(cpp, /L"custom", L"assets\/demo\/应用\.ico"/u);
+  assert.match(cpp, /LoadImageW\(nullptr, spec_\.iconPath, IMAGE_ICON/u);
+  assert.match(cpp, /SM_CXICON/u);
+  assert.match(cpp, /SM_CXSMICON/u);
+
+  const unsafeResult = generateLingCppNativeWin32Project({
+    ...project,
+    windows: [{ ...window, iconPath: 'C:\\Users\\demo\\应用.ico' }]
+  }, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' });
+  assert.ok(unsafeResult.diagnostics.some(message => message.includes('assets 目录内的相对 ICO 路径')));
+  assert.doesNotMatch(unsafeResult.files.find(file => file.relativePath === 'main.cpp')!.content, /C:\\\\Users/u);
 });
 
 test('标签页中的透明标签在 Win32 运行时继承实际父容器背景', () => {
@@ -1288,6 +1387,7 @@ test('高级控件生成真实 Win32 类、专属数据和多事件通知', () =
   assert.match(cpp, /WC_LISTVIEWW/);
   assert.match(cpp, /WC_TREEVIEWW/);
   assert.match(cpp, /DATETIMEPICK_CLASSW/);
+  assert.match(cpp, /HDS_BUTTONS \| HDS_HORZ \| CCS_NOPARENTALIGN \| CCS_NOMOVEY \| CCS_NORESIZE/u);
   assert.match(cpp, /SelectionChanged=_列表_选择项被改变\\nDoubleClick=_列表_被双击/);
   assert.match(cpp, /case WM_NOTIFY/);
   assert.match(cpp, /DecodeControlRecords/);
@@ -1353,7 +1453,13 @@ test('选项卡容器槽位、隐藏表头、Rebar、Pager 和 UpDown 生成真�
   assert.match(cpp, /if \(!runtimeControls_\.back\(\)\.hideTabHeader\) TabCtrl_AdjustRect\(child, FALSE, &pageRect\)/u);
   assert.match(cpp, /WS_EX_CONTROLPARENT/u);
   assert.match(cpp, /FindTabPage\(parentSpec->id, control\.containerSlot\)/u);
-  assert.match(cpp, /ShowWindow\(page\.hwnd, page\.slot == activeSlot \? SW_SHOW : SW_HIDE\)/u);
+  assert.match(cpp, /RuntimeTabPage\* activePage = nullptr/u);
+  assert.match(cpp, /else ShowWindow\(page\.hwnd, SW_HIDE\)/u);
+  assert.match(cpp, /SetWindowPos\(activePage->hwnd, HWND_TOP/u);
+  assert.match(cpp, /RDW_INVALIDATE \| RDW_ERASE \| RDW_FRAME \| RDW_ALLCHILDREN \| RDW_UPDATENOW/u);
+  assert.match(cpp, /TBSTYLE_FLAT \| TBSTYLE_TOOLTIPS \| CCS_NOPARENTALIGN \| CCS_NOMOVEY \| CCS_NORESIZE/u);
+  assert.match(cpp, /RBS_VARHEIGHT \| CCS_NODIVIDER \| CCS_NOPARENTALIGN \| CCS_NOMOVEY \| CCS_NORESIZE/u);
+  assert.match(cpp, /TB_AUTOSIZE[\s\S]{0,180}SetWindowPos\(child, nullptr, childX, childY, childWidth, childHeight/u);
   assert.match(cpp, /message == WM_DRAWITEM \|\| message == WM_MEASUREITEM/u);
   assert.match(cpp, /SendMessageW\(self->hwnd_, message, wParam, lParam\)/u);
   assert.match(cpp, /PaintTabControl/u);
@@ -1361,6 +1467,7 @@ test('选项卡容器槽位、隐藏表头、Rebar、Pager 和 UpDown 生成真�
   assert.match(cpp, /if \(runtime\.hideTabHeader\)/u);
   assert.match(cpp, /ResolveTabBackground/u);
   assert.match(cpp, /PaintTabPage/u);
+  assert.match(cpp, /if \(control && \(!tabRuntime \|\| !tabRuntime->hideTabHeader\)\)/u);
   assert.match(cpp, /COLORREF accent = RGB\(245, 158, 11\);/u);
   assert.match(cpp, /TCM_SETPADDING/u);
   assert.match(cpp, /UpdateTabHeaderMinimumWidth/u);
@@ -1500,6 +1607,29 @@ test('.lcpp 控件属性读写和集合命令通过模块 binding 确定性生�
   assert.match(cpp, /TabCtrl_AdjustRect\(runtime->hwnd, FALSE, &pageRect\)/u);
   assert.match(cpp, /const wchar_t\* name;/);
   assert.match(cpp, /return DefWindowProcW\(hwnd, message, wParam, lParam\);/);
+});
+
+test('.lcpp 图片框设置图片方法确定性生成 Win32 运行时调用', () => {
+  const image = { ...createControl('preview-image', undefined, 'Image'), name: '图片框1', properties: { imageSource: '', stretch: 'uniform' } };
+  const project: LingWindowProject = {
+    schemaVersion: 2, id: 'runtime-image-api', name: '图片运行时 API', resources: [],
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#202028', description: '', events: { Loaded: '_主窗口_创建完毕' }, controls: [image] }]
+  };
+  const enabledModules = ['lingbuilder.win32.basic'].map(id => ({ manifest: BUILTIN_MODULES.find(module => module.id === id)!, installPath: 'builtin', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
+  const source = `类 主窗口 : 公开 窗体
+    事件 _主窗口_创建完毕()
+        图片框1.设置图片("assets/示例.png")
+    结束
+结束类`;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /控件_设置图片\(L"图片框1", L"assets\/示例\.png"\)/u);
+  assert.match(cpp, /bool 控件_设置图片\(const wchar_t\* controlName, const std::wstring& imagePath\)/u);
+  assert.match(cpp, /LoadWicBitmap\(imagePath\.c_str\(\)/u);
+  assert.match(cpp, /STM_SETIMAGE, IMAGE_BITMAP/u);
+  assert.match(cpp, /style \|= SS_BITMAP \| SS_CENTERIMAGE \| SS_NOTIFY;/u);
+  assert.match(cpp, /if \(!control\.data \|\| !control\.data\[0\]\) style \|= WS_BORDER;/u);
+  assert.doesNotMatch(cpp, /style \|= control\.data && control\.data\[0\] \? \(SS_BITMAP/u);
 });
 
 test('窗口创建完毕事件支持自定义处理器绑定并进入生成结果', () => {

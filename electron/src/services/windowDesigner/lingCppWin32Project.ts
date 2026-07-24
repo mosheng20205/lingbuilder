@@ -1,4 +1,4 @@
-import { LingControl, LingDesignerResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
+import { LingControl, LingDesignerResource, LingFileDialogResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
 import { getLingWindowSourceFileName } from './windowDesignerService';
 import { findLingCppMethod, parseLingCpp } from '../lingCpp/parser';
 import {
@@ -113,6 +113,15 @@ export function generateLingCppNativeWin32Project(
       .filter(control => control.fontBold === true || control.fontItalic === true || control.fontUnderline === true)
       .map(control => `new_emoji 控件“${control.name}”已保留粗体/斜体/下划线属性，但当前 DLL 通用字体 API 仅支持字体名称和字号。`)
     : [];
+  const customIconDiagnostics = project.windows.flatMap(window => {
+    if (window.iconStyle !== 'custom') return [];
+    if (!window.iconPath?.trim()) return [`窗口“${window.title}”选择了自定义图标，但尚未指定 ICO 文件。`];
+    if (!getSafeCustomWindowIconPath(window)) return [`窗口“${window.title}”的自定义图标必须是项目 assets 目录内的相对 ICO 路径：${window.iconPath}`];
+    return [];
+  });
+  const legacyUploadDiagnostics = project.windows.flatMap(window => window.controls
+    .filter(control => control.type === 'Upload' || control.type === 'DragUpload')
+    .map(control => `窗口“${window.title}”仍包含已从 Win32 工具箱移除的旧上传控件“${control.name}”；当前继续兼容生成，请改用非可视“文件对话框”绑定现有按钮或拖放目标。`));
 
   return {
     selectedWindow,
@@ -124,6 +133,8 @@ export function generateLingCppNativeWin32Project(
       ...missingControlModuleDiagnostics,
       ...(usesNewEmojiDesigner ? getNewEmojiUnsupportedControlDiagnostics(selectedWindow) : []),
       ...newEmojiFontStyleDiagnostics,
+      ...customIconDiagnostics,
+      ...legacyUploadDiagnostics,
       ...resourceDiagnostics
     ],
     sourceMap,
@@ -289,6 +300,17 @@ function generateNewEmojiMainCpp(
   const darkWindow = isDarkBackground(window.background);
   const createWindow = darkWindow ? 'NE_创建深色窗口' : 'NE_创建窗口';
   const modulePreamble = generateModuleCppPreamble(enabledModules);
+  const iconPath = getSafeCustomWindowIconPath(window);
+  const iconSetup = window.iconStyle === 'none'
+    ? `    SendMessageW(g_newEmojiWindow, WM_SETICON, ICON_BIG, 0);\n    SendMessageW(g_newEmojiWindow, WM_SETICON, ICON_SMALL, 0);`
+    : window.iconStyle === 'system'
+      ? `    SendMessageW(g_newEmojiWindow, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(LoadIconW(nullptr, IDI_APPLICATION)));\n    SendMessageW(g_newEmojiWindow, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(LoadIconW(nullptr, IDI_APPLICATION)));`
+      : iconPath
+        ? `    HICON customLargeIcon = reinterpret_cast<HICON>(LoadImageW(nullptr, L"${escapeWideString(iconPath)}", IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_LOADFROMFILE | LR_DEFAULTCOLOR));\n    HICON customSmallIcon = reinterpret_cast<HICON>(LoadImageW(nullptr, L"${escapeWideString(iconPath)}", IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_LOADFROMFILE | LR_DEFAULTCOLOR));\n    if (customLargeIcon) SendMessageW(g_newEmojiWindow, WM_SETICON, ICON_BIG, reinterpret_cast<LPARAM>(customLargeIcon));\n    if (customSmallIcon) SendMessageW(g_newEmojiWindow, WM_SETICON, ICON_SMALL, reinterpret_cast<LPARAM>(customSmallIcon));`
+        : '';
+  const iconCleanup = iconPath
+    ? `    if (customLargeIcon) DestroyIcon(customLargeIcon);\n    if (customSmallIcon && customSmallIcon != customLargeIcon) DestroyIcon(customSmallIcon);`
+    : '';
 
   return `#ifndef UNICODE
 #define UNICODE
@@ -349,10 +371,13 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
         MessageBoxW(nullptr, L"new_emoji 原生窗口创建失败，请确认 new_emoji.dll 与 exe 位于同一目录。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
         return 2;
     }
+${iconSetup}
 ${createLines.join('\n')}
 ${createdBody}
     if (!g_newEmojiWindow) return 0;
-    return NE_运行消息循环();
+    int exitCode = NE_运行消息循环();
+${iconCleanup}
+    return exitCode;
 }
 `;
 }
@@ -387,6 +412,15 @@ function isDarkBackground(value: string): boolean {
   const green = (rgb >> 8) & 0xff;
   const blue = rgb & 0xff;
   return (red * 299 + green * 587 + blue * 114) / 1000 < 150;
+}
+
+function getSafeCustomWindowIconPath(window: LingWindowModel): string {
+  if (window.iconStyle !== 'custom') return '';
+  const normalized = window.iconPath?.trim().replace(/\\/gu, '/') || '';
+  if (!normalized.toLowerCase().endsWith('.ico')) return '';
+  if (!normalized.startsWith('assets/') || normalized.split('/').includes('..')) return '';
+  if (/^(?:[a-zA-Z]:\/|\/|\\\\)/u.test(normalized)) return '';
+  return normalized;
 }
 
 function resolveNativeWindowForSource(
@@ -441,6 +475,12 @@ function validateDesignerResources(project: LingWindowProject): string[] {
         if (page.sourceWindowId && !windowIds.has(page.sourceWindowId)) diagnostics.push(`属性页“${resource.name}”的页面“${page.title}”引用了不存在的模板窗口“${page.sourceWindowId}”。`);
         pageIds.add(page.id);
       }
+    } else if (resource.type === 'FileDialog') {
+      const owner = project.windows.find(window => window.id === resource.ownerWindowId);
+      if (!owner) diagnostics.push(`文件对话框“${resource.name}”引用了不存在的所属窗口“${resource.ownerWindowId}”。`);
+      if (resource.triggerControlId && !owner?.controls.some(control => control.id === resource.triggerControlId)) diagnostics.push(`文件对话框“${resource.name}”引用了不存在的打开触发控件“${resource.triggerControlId}”。`);
+      if (resource.dropTargetId && resource.dropTargetId !== resource.ownerWindowId && !owner?.controls.some(control => control.id === resource.dropTargetId)) diagnostics.push(`文件对话框“${resource.name}”引用了不存在的拖放目标“${resource.dropTargetId}”。`);
+      if (resource.allowDrop && !resource.dropTargetId) diagnostics.push(`文件对话框“${resource.name}”已允许拖拽，但尚未绑定拖放目标。`);
     }
   }
   for (const window of project.windows) {
@@ -467,6 +507,7 @@ function generateMainCpp(
     .join('\n\n');
   const imageListSpecs = generateImageListSpecs(project);
   const propertySheetSpecs = generatePropertySheetSpecs(project);
+  const fileDialogSpecs = generateFileDialogSpecs(project);
   const windowSpecs = project.windows
     .map((window, index) => generateWindowSpec(window, index, program))
     .join(',\n');
@@ -514,6 +555,7 @@ ${moduleFeatureDefines}
 #include <shellapi.h>
 #include <shlobj.h>
 #include <shobjidl.h>
+#include <shlwapi.h>
 #include <richedit.h>
 #include <wincodec.h>
 #include <gdiplus.h>
@@ -568,6 +610,7 @@ ${moduleFeatureDefines}
 #pragma comment(lib, "comdlg32.lib")
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "gdiplus.lib")
@@ -732,6 +775,11 @@ struct ImageListSpec {
 };
 
 struct PropertySheetSpec { const wchar_t* id; const wchar_t* title; const wchar_t* pages; };
+struct FileDialogSpec {
+    const wchar_t* id; const wchar_t* name; int ownerWindowIndex;
+    int triggerControlId; int dropTargetControlId; bool multiple; bool allowDrop;
+    const wchar_t* title; const wchar_t* filter;
+};
 struct PropertySheetPageContext {
     const wchar_t* title; const wchar_t* content; const wchar_t* resourceId;
     void* eventOwner; void (*applied)(void*, const wchar_t*);
@@ -764,12 +812,20 @@ struct WindowSpec {
     COLORREF titleBarForeground;
     int cornerPreference;
     const wchar_t* iconStyle;
+    const wchar_t* iconPath;
     const wchar_t* openPlacement;
     int openX;
     int openY;
     const ControlSpec* controls;
     int controlCount;
     const wchar_t* menuItems;
+    COLORREF menuBackground;
+    COLORREF menuForeground;
+    const wchar_t* menuFontFamily;
+    int menuFontSize;
+    bool menuFontBold;
+    bool menuFontItalic;
+    bool menuFontUnderline;
     const wchar_t* events;
 };
 
@@ -803,6 +859,7 @@ static LingWindowBase* CreateWindowObject(int windowIndex);
 
 ${imageListSpecs}
 ${propertySheetSpecs}
+${fileDialogSpecs}
 
 ${controlArrays}
 
@@ -1122,6 +1179,8 @@ public:
         : spec_(spec),
           hwnd_(nullptr),
           windowBrush_(nullptr),
+          menuBrush_(nullptr),
+          menuFont_(nullptr),
           dpi_(96),
           wsSession_(nullptr),
           wsConnect_(nullptr),
@@ -1139,6 +1198,10 @@ public:
         HTTP_关闭服务();
         WSS_关闭服务();
         EdgeView_关闭();
+        if (menuFont_) {
+            DeleteObject(menuFont_);
+            menuFont_ = nullptr;
+        }
         if (socketsStarted_) {
             WSACleanup();
             socketsStarted_ = false;
@@ -1240,6 +1303,8 @@ protected:
     std::map<std::wstring, HIMAGELIST> imageLists_;
     std::map<int, HIMAGELIST> listViewSizingImageLists_;
     HBRUSH windowBrush_;
+    HBRUSH menuBrush_;
+    HFONT menuFont_;
     HICON largeWindowIcon_ = nullptr;
     HICON smallWindowIcon_ = nullptr;
     bool ownsWindowIcons_ = false;
@@ -1269,6 +1334,7 @@ protected:
     std::wstring eventCharacter_;
     wchar_t pendingHighSurrogate_ = 0;
     std::vector<std::wstring> droppedFiles_;
+    std::map<std::wstring, std::vector<std::wstring>> fileDialogFiles_;
     HINTERNET wsSession_;
     HINTERNET wsConnect_;
     HINTERNET wsRequest_;
@@ -2048,6 +2114,149 @@ protected:
     std::wstring 保存文件(const wchar_t* title, const wchar_t* filter) { return 选择系统项目(title, filter, true, false); }
     std::wstring 选择文件夹(const wchar_t* title) { return 选择系统项目(title, nullptr, false, true); }
     int 系统对话框_状态() const { return lastDialogStatus_; }
+
+    const FileDialogSpec* FindFileDialog(const wchar_t* componentName) const {
+        if (!componentName) return nullptr;
+        for (int index = 0; index < g_fileDialogCount; ++index) {
+            const FileDialogSpec& dialog = g_fileDialogs[index];
+            if (dialog.ownerWindowIndex != spec_.index) continue;
+            if (TextEquals(dialog.name, componentName) || TextEquals(dialog.id, componentName)) return &dialog;
+        }
+        return nullptr;
+    }
+
+    bool OpenFileDialogResource(const FileDialogSpec& spec) {
+        lastDialogStatus_ = -1;
+        IFileOpenDialog* dialog = nullptr;
+        HRESULT result = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
+        if (FAILED(result) || !dialog) return false;
+        if (spec.title && spec.title[0]) dialog->SetTitle(spec.title);
+        FILEOPENDIALOGOPTIONS options = {};
+        dialog->GetOptions(&options);
+        dialog->SetOptions(options | FOS_FORCEFILESYSTEM | (spec.multiple ? FOS_ALLOWMULTISELECT : 0));
+        std::vector<std::wstring> filterParts;
+        if (spec.filter && spec.filter[0]) {
+            std::wstring source(spec.filter); size_t start = 0;
+            while (start <= source.size()) { size_t end = source.find(L'|', start); filterParts.push_back(source.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start)); if (end == std::wstring::npos) break; start = end + 1; }
+            if (filterParts.size() >= 2) {
+                std::vector<COMDLG_FILTERSPEC> filters;
+                for (size_t index = 0; index + 1 < filterParts.size(); index += 2) filters.push_back({ filterParts[index].c_str(), filterParts[index + 1].c_str() });
+                dialog->SetFileTypes(static_cast<UINT>(filters.size()), filters.data());
+                dialog->SetFileTypeIndex(1);
+            }
+        }
+        result = dialog->Show(hwnd_);
+        if (result == HRESULT_FROM_WIN32(ERROR_CANCELLED)) {
+            lastDialogStatus_ = 0;
+            dialog->Release();
+            DispatchDesignerResourceEvent(spec.id, L"Cancelled");
+            return false;
+        }
+        if (FAILED(result)) { dialog->Release(); return false; }
+        std::vector<std::wstring> files;
+        IShellItemArray* items = nullptr;
+        if (SUCCEEDED(dialog->GetResults(&items)) && items) {
+            DWORD count = 0; items->GetCount(&count);
+            for (DWORD index = 0; index < count; ++index) {
+                IShellItem* item = nullptr;
+                if (FAILED(items->GetItemAt(index, &item)) || !item) continue;
+                PWSTR path = nullptr;
+                if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path) { files.emplace_back(path); CoTaskMemFree(path); }
+                item->Release();
+            }
+            items->Release();
+        }
+        dialog->Release();
+        if (!spec.multiple && files.size() > 1) files.resize(1);
+        UpdateFileDialogImageTarget(spec, files);
+        fileDialogFiles_[spec.id] = std::move(files);
+        lastDialogStatus_ = 1;
+        DispatchDesignerResourceEvent(spec.id, L"FilesSelected");
+        return true;
+    }
+
+    bool 文件对话框_打开(const wchar_t* componentName) {
+        const FileDialogSpec* dialog = FindFileDialog(componentName);
+        if (!dialog) { lastDialogStatus_ = -1; return false; }
+        return OpenFileDialogResource(*dialog);
+    }
+    bool 文件对话框_清空(const wchar_t* componentName) {
+        const FileDialogSpec* dialog = FindFileDialog(componentName);
+        if (!dialog) return false;
+        fileDialogFiles_[dialog->id].clear();
+        return true;
+    }
+    int 文件对话框_取文件数量(const wchar_t* componentName) const {
+        const FileDialogSpec* dialog = FindFileDialog(componentName);
+        if (!dialog) return 0;
+        auto found = fileDialogFiles_.find(dialog->id);
+        return found == fileDialogFiles_.end() ? 0 : static_cast<int>(found->second.size());
+    }
+    const wchar_t* 文件对话框_取文件(const wchar_t* componentName, int index) const {
+        const FileDialogSpec* dialog = FindFileDialog(componentName);
+        if (!dialog) return L"";
+        auto found = fileDialogFiles_.find(dialog->id);
+        return found != fileDialogFiles_.end() && index >= 0 && index < static_cast<int>(found->second.size()) ? found->second[static_cast<size_t>(index)].c_str() : L"";
+    }
+    bool HandleFileDialogTrigger(int controlId) {
+        for (int index = 0; index < g_fileDialogCount; ++index) {
+            const FileDialogSpec& dialog = g_fileDialogs[index];
+            if (dialog.ownerWindowIndex == spec_.index && dialog.triggerControlId == controlId) return OpenFileDialogResource(dialog);
+        }
+        return false;
+    }
+    bool HasFileDialogDropTarget() const {
+        for (int index = 0; index < g_fileDialogCount; ++index) if (g_fileDialogs[index].ownerWindowIndex == spec_.index && g_fileDialogs[index].allowDrop) return true;
+        return false;
+    }
+    bool FileDialogAcceptsPath(const FileDialogSpec& dialog, const std::wstring& path) const {
+        if (!dialog.filter || !dialog.filter[0]) return true;
+        std::wstring source(dialog.filter); std::wstring patterns; size_t start = 0; int part = 0;
+        while (start <= source.size()) {
+            size_t end = source.find(L'|', start);
+            std::wstring value = source.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start);
+            if ((part % 2) == 1 && !value.empty()) { if (!patterns.empty()) patterns += L";"; patterns += value; }
+            if (end == std::wstring::npos) break;
+            start = end + 1; ++part;
+        }
+        return patterns.empty() || PathMatchSpecW(path.c_str(), patterns.c_str()) == TRUE;
+    }
+    void UpdateFileDialogImageTarget(const FileDialogSpec& dialog, const std::vector<std::wstring>& files) {
+        if (dialog.dropTargetControlId == 0 || files.empty()) return;
+        const ControlSpec* control = FindControl(dialog.dropTargetControlId);
+        RuntimeControl* runtime = FindRuntimeControl(dialog.dropTargetControlId);
+        if (!control || !runtime || !runtime->hwnd || !IsType(*control, L"Image")) return;
+        HBITMAP bitmap = LoadWicBitmap(files.front().c_str(), ScaleForDpi(control->width, dpi_), ScaleForDpi(control->height, dpi_), control->option1);
+        if (!bitmap) return;
+        HGDIOBJ previous = reinterpret_cast<HGDIOBJ>(SendMessageW(runtime->hwnd, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(bitmap)));
+        if (previous && previous != bitmap) DeleteObject(previous);
+        runtime->resource = bitmap;
+        runtime->iconResource = false;
+        InvalidateRect(runtime->hwnd, nullptr, TRUE);
+    }
+    bool HandleFileDialogDrop(POINT dropPoint, const std::vector<std::wstring>& files) {
+        for (int index = 0; index < g_fileDialogCount; ++index) {
+            const FileDialogSpec& dialog = g_fileDialogs[index];
+            if (dialog.ownerWindowIndex != spec_.index || !dialog.allowDrop) continue;
+            if (dialog.dropTargetControlId != 0) {
+                RuntimeControl* runtime = FindRuntimeControl(dialog.dropTargetControlId);
+                if (!runtime || !runtime->hwnd) continue;
+                RECT bounds = {}; GetWindowRect(runtime->hwnd, &bounds);
+                MapWindowPoints(HWND_DESKTOP, hwnd_, reinterpret_cast<POINT*>(&bounds), 2);
+                if (!PtInRect(&bounds, dropPoint)) continue;
+            }
+            std::vector<std::wstring> accepted;
+            for (const auto& path : files) if (FileDialogAcceptsPath(dialog, path)) accepted.push_back(path);
+            if (accepted.empty()) return true;
+            if (!dialog.multiple && accepted.size() > 1) accepted.resize(1);
+            UpdateFileDialogImageTarget(dialog, accepted);
+            fileDialogFiles_[dialog.id] = std::move(accepted);
+            lastDialogStatus_ = 1;
+            DispatchDesignerResourceEvent(dialog.id, L"FilesDropped");
+            return true;
+        }
+        return false;
+    }
     int 工具栏_最后命令() const { return lastToolbarCommand_; }
     int 状态栏_最后分区() const { return lastStatusPart_; }
     std::wstring 查找替换_动作() const { return lastFindAction_; }
@@ -2622,6 +2831,27 @@ protected:
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); if (!runtime) return false;
         return SetWindowTextW(runtime->hwnd, text.c_str()) == TRUE;
     }
+    bool 控件_设置图片(const wchar_t* controlName, const std::wstring& imagePath) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName);
+        const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr;
+        if (!runtime || !runtime->hwnd || !control || !IsType(*control, L"Image")) return false;
+        if (imagePath.empty()) {
+            HGDIOBJ previous = reinterpret_cast<HGDIOBJ>(SendMessageW(runtime->hwnd, STM_SETIMAGE, IMAGE_BITMAP, 0));
+            if (previous) DeleteObject(previous);
+            runtime->resource = nullptr;
+            runtime->iconResource = false;
+            InvalidateRect(runtime->hwnd, nullptr, TRUE);
+            return true;
+        }
+        HBITMAP bitmap = LoadWicBitmap(imagePath.c_str(), ScaleForDpi(control->width, dpi_), ScaleForDpi(control->height, dpi_), control->option1);
+        if (!bitmap) return false;
+        HGDIOBJ previous = reinterpret_cast<HGDIOBJ>(SendMessageW(runtime->hwnd, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(bitmap)));
+        if (previous && previous != bitmap) DeleteObject(previous);
+        runtime->resource = bitmap;
+        runtime->iconResource = false;
+        InvalidateRect(runtime->hwnd, nullptr, TRUE);
+        return true;
+    }
     std::wstring 控件_取文本(const wchar_t* controlName) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); if (!runtime) return L"";
         int length = GetWindowTextLengthW(runtime->hwnd); std::wstring value(static_cast<size_t>(length + 1), L'\\0');
@@ -2944,7 +3174,7 @@ private:
             std::wstring item = next == std::wstring::npos ? items.substr(pos) : items.substr(pos, next - pos);
             trim(item);
             if (!item.empty()) {
-                AppendMenuW(windowMenu, MF_STRING, 50000 + index, item.c_str());
+                AppendMenuW(windowMenu, MF_OWNERDRAW, 50000 + index, reinterpret_cast<LPCWSTR>(static_cast<ULONG_PTR>(index + 1)));
                 ++index;
             }
             if (next == std::wstring::npos) break;
@@ -2955,8 +3185,92 @@ private:
             DestroyMenu(root);
             return nullptr;
         }
-        AppendMenuW(root, MF_POPUP, reinterpret_cast<UINT_PTR>(windowMenu), L"窗口");
+        AppendMenuW(root, MF_POPUP | MF_OWNERDRAW, reinterpret_cast<UINT_PTR>(windowMenu), reinterpret_cast<LPCWSTR>(L"窗口"));
+        menuFont_ = CreateControlFont(spec_.menuFontFamily, spec_.menuFontSize, spec_.menuFontBold, spec_.menuFontItalic, spec_.menuFontUnderline, dpi_);
+        menuBrush_ = CreateSolidBrush(spec_.menuBackground);
+        if (menuBrush_) {
+            MENUINFO menuInfo = {};
+            menuInfo.cbSize = sizeof(menuInfo);
+            menuInfo.fMask = MIM_BACKGROUND;
+            menuInfo.hbrBack = menuBrush_;
+            SetMenuInfo(root, &menuInfo);
+            SetMenuInfo(windowMenu, &menuInfo);
+        }
         return root;
+    }
+
+    std::wstring GetOwnerDrawMenuText(UINT itemId) const {
+        if (itemId < 50000 || itemId >= 50100) return L"窗口";
+        std::wstring items = spec_.menuItems ? spec_.menuItems : L"";
+        int target = static_cast<int>(itemId) - 50000;
+        int index = 0;
+        size_t pos = 0;
+        while (pos <= items.size()) {
+            size_t next = items.find(L',', pos);
+            std::wstring text = next == std::wstring::npos ? items.substr(pos) : items.substr(pos, next - pos);
+            trim(text);
+            if (!text.empty() && index++ == target) return text;
+            if (next == std::wstring::npos) break;
+            pos = next + 1;
+        }
+        return L"";
+    }
+
+    void PaintMenuBarItem(DRAWITEMSTRUCT* item) {
+        if (!item || item->CtlType != ODT_MENU || !item->itemData || !menuBrush_) return;
+        std::wstring text = GetOwnerDrawMenuText(item->itemID);
+        FillRect(item->hDC, &item->rcItem, menuBrush_);
+        if ((item->itemState & (ODS_SELECTED | ODS_HOTLIGHT)) != 0) {
+            COLORREF base = spec_.menuBackground;
+            HBRUSH hoverBrush = CreateSolidBrush(RGB(
+                std::min(255, static_cast<int>(GetRValue(base)) + 28),
+                std::min(255, static_cast<int>(GetGValue(base)) + 28),
+                std::min(255, static_cast<int>(GetBValue(base)) + 28)));
+            FillRect(item->hDC, &item->rcItem, hoverBrush);
+            DeleteObject(hoverBrush);
+        }
+        SetBkMode(item->hDC, TRANSPARENT);
+        SetTextColor(item->hDC, spec_.menuForeground);
+        HGDIOBJ oldFont = menuFont_ ? SelectObject(item->hDC, menuFont_) : nullptr;
+        RECT textRect = item->rcItem;
+        textRect.left += ScaleForDpi(8, dpi_);
+        textRect.right -= ScaleForDpi(8, dpi_);
+        DrawTextW(item->hDC, text.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        if (oldFont) SelectObject(item->hDC, oldFont);
+    }
+
+    void PaintMenuBarBackground() {
+        HMENU menu = hwnd_ ? GetMenu(hwnd_) : nullptr;
+        if (!menu || !menuBrush_) return;
+        MENUBARINFO info = {};
+        info.cbSize = sizeof(info);
+        if (!GetMenuBarInfo(hwnd_, OBJID_MENU, 0, &info)) return;
+        RECT windowRect = {};
+        if (!GetWindowRect(hwnd_, &windowRect)) return;
+        RECT barRect = info.rcBar;
+        OffsetRect(&barRect, -windowRect.left, -windowRect.top);
+        POINT clientOrigin = { 0, 0 };
+        if (ClientToScreen(hwnd_, &clientOrigin)) {
+            barRect.bottom = std::max(barRect.bottom, clientOrigin.y - windowRect.top);
+        }
+        HDC hdc = GetWindowDC(hwnd_);
+        if (!hdc) return;
+        FillRect(hdc, &barRect, menuBrush_);
+        int count = GetMenuItemCount(menu);
+        for (int position = 0; position < count; ++position) {
+            RECT itemRect = {};
+            if (!GetMenuItemRect(hwnd_, menu, position, &itemRect)) continue;
+            OffsetRect(&itemRect, -windowRect.left, -windowRect.top);
+            DRAWITEMSTRUCT item = {};
+            item.CtlType = ODT_MENU;
+            item.itemID = static_cast<UINT>(-1);
+            item.itemState = (GetMenuState(menu, position, MF_BYPOSITION) & MF_HILITE) ? ODS_SELECTED : 0;
+            item.hDC = hdc;
+            item.rcItem = itemRect;
+            item.itemData = reinterpret_cast<ULONG_PTR>(L"窗口");
+            PaintMenuBarItem(&item);
+        }
+        ReleaseDC(hwnd_, hdc);
     }
 
     static void trim(std::wstring& value) {
@@ -3047,6 +3361,7 @@ private:
     void PaintTabPage(HWND hwnd, HDC hdc) {
         RuntimeTabPage* page = FindTabPageByHwnd(hwnd);
         const ControlSpec* control = page ? FindControl(page->tabControlId) : nullptr;
+        RuntimeControl* tabRuntime = page ? FindRuntimeControl(page->tabControlId) : nullptr;
         RECT clientRect = {};
         GetClientRect(hwnd, &clientRect);
         HBRUSH brush = control && !control->backgroundTransparent
@@ -3054,7 +3369,7 @@ private:
             : GetSysColorBrush(COLOR_WINDOW);
         FillRect(hdc, &clientRect, brush);
         if (control && !control->backgroundTransparent) DeleteObject(brush);
-        if (control) {
+        if (control && (!tabRuntime || !tabRuntime->hideTabHeader)) {
             COLORREF border = BlendColor(ResolveTabBackground(*control), control->foreground, 18);
             HPEN pen = CreatePen(PS_SOLID, 1, border);
             HGDIOBJ oldPen = SelectObject(hdc, pen);
@@ -3095,11 +3410,22 @@ private:
         auto tabs = DecodeControlRecords(tabControl.data, 3);
         int selectedIndex = TabCtrl_GetCurSel(tabRuntime->hwnd);
         std::wstring activeSlot = selectedIndex >= 0 && selectedIndex < static_cast<int>(tabs.size()) ? tabs[selectedIndex][0] : L"";
+        RuntimeTabPage* activePage = nullptr;
         for (auto& page : tabPages_) {
             if (page.tabControlId != tabControl.id) continue;
-            ShowWindow(page.hwnd, page.slot == activeSlot ? SW_SHOW : SW_HIDE);
+            if (page.slot == activeSlot) activePage = &page;
+            else ShowWindow(page.hwnd, SW_HIDE);
         }
-        InvalidateRect(tabRuntime->hwnd, nullptr, FALSE);
+        RedrawWindow(tabRuntime->hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW);
+        if (activePage) {
+            const RECT& rect = activePage->contentRect;
+            SetWindowPos(activePage->hwnd, HWND_TOP, rect.left, rect.top,
+                std::max(0L, rect.right - rect.left),
+                std::max(0L, rect.bottom - rect.top),
+                SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            RedrawWindow(activePage->hwnd, nullptr, nullptr,
+                RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
+        }
     }
 
     void WireCompositeControls() {
@@ -3773,6 +4099,10 @@ private:
         if (TextEquals(spec_.iconStyle, L"system")) {
             largeWindowIcon_ = LoadIconW(nullptr, IDI_APPLICATION);
             smallWindowIcon_ = largeWindowIcon_;
+        } else if (TextEquals(spec_.iconStyle, L"custom") && spec_.iconPath && spec_.iconPath[0]) {
+            largeWindowIcon_ = reinterpret_cast<HICON>(LoadImageW(nullptr, spec_.iconPath, IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_LOADFROMFILE | LR_DEFAULTCOLOR));
+            smallWindowIcon_ = reinterpret_cast<HICON>(LoadImageW(nullptr, spec_.iconPath, IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_LOADFROMFILE | LR_DEFAULTCOLOR));
+            ownsWindowIcons_ = true;
         } else {
             largeWindowIcon_ = CreateLingBuilderWindowIcon(GetSystemMetrics(SM_CXICON));
             smallWindowIcon_ = CreateLingBuilderWindowIcon(GetSystemMetrics(SM_CXSMICON));
@@ -4603,7 +4933,12 @@ private:
             style |= WS_BORDER | ((control.flags & CF_HORIZONTAL) ? WS_HSCROLL : WS_VSCROLL);
         } else if (IsType(control, L"Image")) {
             className = L"STATIC";
-            style |= control.data && control.data[0] ? (SS_BITMAP | SS_CENTERIMAGE | SS_NOTIFY) : (SS_CENTER | SS_CENTERIMAGE | SS_NOTIFY | WS_BORDER);
+            // Runtime image assignment uses STM_SETIMAGE with IMAGE_BITMAP, so
+            // even an initially empty image control must keep the SS_BITMAP
+            // type. Otherwise the path can load successfully while the STATIC
+            // control still paints as a text placeholder.
+            style |= SS_BITMAP | SS_CENTERIMAGE | SS_NOTIFY;
+            if (!control.data || !control.data[0]) style |= WS_BORDER;
         } else if (IsType(control, L"Grid")) {
             className = L"STATIC";
             // SS_WHITERECT bypasses WM_CTLCOLORSTATIC and always paints a
@@ -4636,7 +4971,10 @@ private:
             style |= WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
         } else if (IsType(control, L"Header")) {
             className = WC_HEADERW;
-            style |= HDS_BUTTONS | HDS_HORZ;
+            // Header controls otherwise apply the common-control top alignment
+            // behavior and can stretch into a full-width line at y=0 when their
+            // tab page is shown. Keep the designer's explicit bounds instead.
+            style |= HDS_BUTTONS | HDS_HORZ | CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE;
         } else if (IsType(control, L"ComboBoxEx")) {
             className = WC_COMBOBOXEXW;
             style |= CBS_DROPDOWNLIST;
@@ -4662,13 +5000,13 @@ private:
             className = WC_IPADDRESSW;
         } else if (IsType(control, L"ToolBar")) {
             className = TOOLBARCLASSNAMEW;
-            style |= TBSTYLE_FLAT | TBSTYLE_TOOLTIPS;
+            style |= TBSTYLE_FLAT | TBSTYLE_TOOLTIPS | CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE;
         } else if (IsType(control, L"StatusBar")) {
             className = STATUSCLASSNAMEW;
             style |= CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE;
         } else if (IsType(control, L"ReBar")) {
             className = REBARCLASSNAMEW;
-            style |= RBS_VARHEIGHT | CCS_NODIVIDER;
+            style |= RBS_VARHEIGHT | CCS_NODIVIDER | CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE;
         } else if (IsType(control, L"Pager")) {
             className = WC_PAGESCROLLERW;
             if (TextEquals(control.option1, L"vertical")) style |= PGS_VERT;
@@ -5015,6 +5353,9 @@ private:
                 SendMessageW(child, TB_ADDBUTTONSW, 1, reinterpret_cast<LPARAM>(&button));
             }
             SendMessageW(child, TB_AUTOSIZE, 0, 0);
+            SetWindowPos(child, nullptr, childX, childY, childWidth, childHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+        } else if (IsType(control, L"ReBar")) {
+            SetWindowPos(child, nullptr, childX, childY, childWidth, childHeight, SWP_NOZORDER | SWP_NOACTIVATE);
         } else if (IsType(control, L"Animation") && control.data && control.data[0]) {
             Animate_Open(child, control.data);
             if (control.flags & CF_AUTO_PLAY) Animate_Play(child, 0, -1, (control.flags & CF_LOOP) ? -1 : 1);
@@ -5085,12 +5426,40 @@ private:
             return 0;
         }
         switch (message) {
+        case WM_NCPAINT: {
+            LRESULT result = DefWindowProcW(hwnd_, message, wParam, lParam);
+            PaintMenuBarBackground();
+            return result;
+        }
+        case WM_NCACTIVATE: {
+            LRESULT result = DefWindowProcW(hwnd_, message, wParam, lParam);
+            PaintMenuBarBackground();
+            return result;
+        }
+        case WM_MEASUREITEM: {
+            MEASUREITEMSTRUCT* item = reinterpret_cast<MEASUREITEMSTRUCT*>(lParam);
+            if (item && item->CtlType == ODT_MENU && item->itemData) {
+                HDC hdc = GetDC(hwnd_);
+                SIZE size = {};
+                std::wstring text = GetOwnerDrawMenuText(item->itemID);
+                if (hdc) {
+                    HGDIOBJ oldFont = menuFont_ ? SelectObject(hdc, menuFont_) : nullptr;
+                    GetTextExtentPoint32W(hdc, text.c_str(), static_cast<int>(text.size()), &size);
+                    if (oldFont) SelectObject(hdc, oldFont);
+                    ReleaseDC(hwnd_, hdc);
+                }
+                item->itemWidth = static_cast<UINT>(size.cx + ScaleForDpi(16, dpi_));
+                item->itemHeight = static_cast<UINT>(std::max(static_cast<int>(size.cy) + ScaleForDpi(6, dpi_), GetSystemMetrics(SM_CYMENU)));
+                return TRUE;
+            }
+            break;
+        }
         case WM_CREATE: {
             windowBrush_ = CreateSolidBrush(spec_.background);
             ++g_openWindowCount;
             CreateImageLists();
             RebuildControls();
-            bool acceptsDroppedFiles = !GetWindowEventHandler(spec_, L"FileDropped").empty();
+            bool acceptsDroppedFiles = !GetWindowEventHandler(spec_, L"FileDropped").empty() || HasFileDialogDropTarget();
             for (int index = 0; !acceptsDroppedFiles && index < spec_.controlCount; ++index) {
                 acceptsDroppedFiles = IsUploadControl(spec_.controls[index]) && (spec_.controls[index].selectedIndex & 16);
             }
@@ -5198,6 +5567,7 @@ private:
                     return 0;
                 }
             }
+            if (HandleFileDialogDrop(dropPoint, droppedFiles_)) return 0;
             DispatchWindowEvent(L"FileDropped");
             return 0;
         }
@@ -5223,6 +5593,7 @@ private:
                 return 0;
             }
             if (!control) return 0;
+            if (notification == BN_CLICKED || notification == STN_CLICKED) HandleFileDialogTrigger(control->id);
             if (IsType(*control, L"CheckBox") && notification == BN_CLICKED) {
                 HWND child = reinterpret_cast<HWND>(lParam);
                 int currentState = static_cast<int>(SendMessageW(child, BM_GETCHECK, 0, 0));
@@ -5262,10 +5633,16 @@ private:
             }
             return 0;
         }
-        case WM_DRAWITEM:
-            return (PaintOwnerListBox(reinterpret_cast<DRAWITEMSTRUCT*>(lParam))
-                || PaintOwnerComboBox(reinterpret_cast<DRAWITEMSTRUCT*>(lParam))
-                || PaintOwnerButton(reinterpret_cast<DRAWITEMSTRUCT*>(lParam))) ? TRUE : FALSE;
+        case WM_DRAWITEM: {
+            DRAWITEMSTRUCT* item = reinterpret_cast<DRAWITEMSTRUCT*>(lParam);
+            if (item && item->CtlType == ODT_MENU && item->itemData) {
+                PaintMenuBarItem(item);
+                return TRUE;
+            }
+            return (PaintOwnerListBox(item)
+                || PaintOwnerComboBox(item)
+                || PaintOwnerButton(item)) ? TRUE : FALSE;
+        }
         case WM_NOTIFY: {
             NMHDR* header = reinterpret_cast<NMHDR*>(lParam);
             if (!header) return 0;
@@ -5377,6 +5754,14 @@ private:
             if (windowBrush_) {
                 DeleteObject(windowBrush_);
                 windowBrush_ = nullptr;
+            }
+            if (menuBrush_) {
+                DeleteObject(menuBrush_);
+                menuBrush_ = nullptr;
+            }
+            if (menuFont_) {
+                DeleteObject(menuFont_);
+                menuFont_ = nullptr;
             }
             --g_openWindowCount;
             if (g_openWindowCount <= 0) PostQuitMessage(0);
@@ -5876,7 +6261,11 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
   const sourceClass = findLingCppClassForWindow(program, window);
   const handlers = getWindowHandlers(window);
   const propertySheets = resources.filter((resource): resource is LingPropertySheetResource => resource.type === 'PropertySheet');
-  const resourceHandlers = propertySheets.filter(resource => resource.appliedHandler?.trim()).map(resource => resource.appliedHandler!.trim());
+  const fileDialogs = resources.filter((resource): resource is LingFileDialogResource => resource.type === 'FileDialog' && resource.ownerWindowId === window.id);
+  const resourceHandlers = [
+    ...propertySheets.filter(resource => resource.appliedHandler?.trim()).map(resource => resource.appliedHandler!.trim()),
+    ...fileDialogs.flatMap(resource => [resource.filesSelectedHandler, resource.filesDroppedHandler, resource.cancelledHandler].filter((handler): handler is string => Boolean(handler?.trim())).map(handler => handler.trim()))
+  ];
   const sourceEventHandlers = (sourceClass?.methods || []).filter(method => method.kind === 'event').map(method => method.name);
   const windowCreatedHandler = findWindowCreatedHandler(window, program);
   const allEventHandlers = [...new Set([...handlers, ...resourceHandlers, ...sourceEventHandlers])];
@@ -5891,6 +6280,11 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
     .join('\n');
   const resourceDispatchCases = propertySheets.filter(resource => resource.appliedHandler?.trim())
     .map(resource => `        if (TextEquals(resourceId, L"${escapeWideString(resource.id)}") && TextEquals(eventName, L"Applied")) { ${toCppIdentifier(resource.appliedHandler!.trim())}(); return; }`)
+    .concat(fileDialogs.flatMap(resource => [
+      resource.filesSelectedHandler?.trim() ? `        if (TextEquals(resourceId, L"${escapeWideString(resource.id)}") && TextEquals(eventName, L"FilesSelected")) { ${toCppIdentifier(resource.filesSelectedHandler.trim())}(); return; }` : '',
+      resource.filesDroppedHandler?.trim() ? `        if (TextEquals(resourceId, L"${escapeWideString(resource.id)}") && TextEquals(eventName, L"FilesDropped")) { ${toCppIdentifier(resource.filesDroppedHandler.trim())}(); return; }` : '',
+      resource.cancelledHandler?.trim() ? `        if (TextEquals(resourceId, L"${escapeWideString(resource.id)}") && TextEquals(eventName, L"Cancelled")) { ${toCppIdentifier(resource.cancelledHandler.trim())}(); return; }` : ''
+    ].filter(Boolean)))
     .join('\n');
   const eventMethods = methodHandlers
     .map(handler => generateHandlerMethod(handler, findLingCppMethod(program, handler), enabledModules));
@@ -6061,6 +6455,17 @@ function translateStatement(statement: string, enabledModules: InstalledModule[]
   }
   if (messageBox) {
     return `信息框(L"${escapeWideString(messageBox.text)}", ${messageBox.flags}, L"${escapeWideString(messageBox.title)}");`;
+  }
+
+  const ifCondition = parseIfCondition(statement);
+  if (ifCondition !== undefined) {
+    return `if (${translateLingCppExpression(ifCondition, enabledModules)}) {`;
+  }
+  if (/^否则\s*$/u.test(statement)) {
+    return '} else {';
+  }
+  if (/^如果结束\s*$/u.test(statement)) {
+    return '}';
   }
 
   const debugMatch = statement.match(/调试输出\s*[（(]\s*[“"]([^”"]*)[”"]\s*[）)]/u);
@@ -6267,6 +6672,10 @@ function translateLingCppExpression(expression: string, enabledModules: Installe
   if (quoted) return `L"${escapeWideString(quoted[1] || '')}"`;
   if (trimmed === '真') return 'true';
   if (trimmed === '假') return 'false';
+  const parenthesized = unwrapParenthesizedExpression(trimmed);
+  if (parenthesized !== undefined) {
+    return `(${translateLingCppExpression(parenthesized, enabledModules)})`;
+  }
   const binaryExpression = splitEplBinaryExpression(trimmed);
   if (binaryExpression) {
     return `${translateLingCppExpression(binaryExpression.left, enabledModules)}${binaryExpression.operator}${translateLingCppExpression(binaryExpression.right, enabledModules)}`;
@@ -6283,6 +6692,32 @@ function translateLingCppExpression(expression: string, enabledModules: Installe
     return `${toCppIdentifier(binding?.runtimeName || call.name)}(${translateCallArguments(call.argumentsText, enabledModules)})`;
   }
   return trimmed;
+}
+
+function parseIfCondition(statement: string): string | undefined {
+  const match = statement.match(/^如果\s*[（(](.*)[）)]\s*;?$/u);
+  return match?.[1]?.trim() || undefined;
+}
+
+function unwrapParenthesizedExpression(expression: string): string | undefined {
+  if (!/^[（(].*[）)]$/su.test(expression)) return undefined;
+  let depth = 0;
+  let quote: '"' | '“' | null = null;
+  for (let index = 0; index < expression.length; index += 1) {
+    const char = expression[index];
+    if (quote) {
+      if ((quote === '"' && char === '"') || (quote === '“' && char === '”')) quote = null;
+      continue;
+    }
+    if (char === '"' || char === '“') {
+      quote = char;
+      continue;
+    }
+    if (char === '(' || char === '（') depth += 1;
+    if (char === ')' || char === '）') depth -= 1;
+    if (depth === 0 && index < expression.length - 1) return undefined;
+  }
+  return depth === 0 ? expression.slice(1, -1).trim() : undefined;
 }
 
 function parseMessageBox(statement: string): { text: string; flags: string; title: string } | undefined {
@@ -6390,6 +6825,25 @@ function generatePropertySheetSpecs(project: LingWindowProject): string {
     : 'static PropertySheetSpec g_propertySheets[] = { { L"", L"", L"" } };\nstatic const int g_propertySheetCount = 0;';
 }
 
+function generateFileDialogSpecs(project: LingWindowProject): string {
+  const resources = (project.resources || []).filter((resource): resource is LingFileDialogResource => resource.type === 'FileDialog');
+  const rows = resources.map(resource => {
+    const ownerWindowIndex = project.windows.findIndex(window => window.id === resource.ownerWindowId);
+    const ownerWindow = project.windows[ownerWindowIndex];
+    const visibleControls = ownerWindow ? getVisibleControls(ownerWindow) : [];
+    const controlId = (id: string) => {
+      const index = visibleControls.findIndex(control => control.id === id);
+      return index >= 0 ? index + 1001 : 0;
+    };
+    const triggerControlId = controlId(resource.triggerControlId);
+    const dropTargetControlId = resource.dropTargetId === resource.ownerWindowId ? 0 : controlId(resource.dropTargetId);
+    return `    { L"${escapeWideString(resource.id)}", L"${escapeWideString(resource.name)}", ${ownerWindowIndex}, ${triggerControlId}, ${dropTargetControlId}, ${resource.multiple ? 'true' : 'false'}, ${resource.allowDrop ? 'true' : 'false'}, L"${escapeWideString(resource.title)}", L"${escapeWideString(resource.filter)}" }`;
+  });
+  return rows.length > 0
+    ? `static FileDialogSpec g_fileDialogs[] = {\n${rows.join(',\n')}\n};\nstatic const int g_fileDialogCount = ${rows.length};`
+    : 'static FileDialogSpec g_fileDialogs[] = { { L"", L"", -1, 0, 0, false, false, L"", L"" } };\nstatic const int g_fileDialogCount = 0;';
+}
+
 function generateWindowSpec(window: LingWindowModel, windowIndex: number, program: LingCppProgram): string {
   const menuItemsStr = (window as any).menuItems || '';
   const visibleCount = getVisibleControls(window).length + menuItemsStr.split(',').map((item: string) => item.trim()).filter(Boolean).length;
@@ -6402,6 +6856,14 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number, progra
   const titleBarBackground = window.titleBarBackground || '#2D2D30';
   const titleBarForeground = window.titleBarForeground || '#CBD5E1';
   const iconStyle = window.iconStyle || 'lingbuilder';
+  const iconPath = getSafeCustomWindowIconPath(window);
+  const menuFont = normalizeControlFont({
+    fontFamily: window.menuFontFamily,
+    fontSize: window.menuFontSize ?? 11,
+    fontBold: window.menuFontBold,
+    fontItalic: window.menuFontItalic,
+    fontUnderline: window.menuFontUnderline
+  });
   const effectiveEvents = { ...(window.events || {}) };
   if (!effectiveEvents.Loaded) {
     const defaultLoaded = getWindowEventHandlerName(window.className, 'Loaded');
@@ -6413,7 +6875,7 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number, progra
     .filter(([, handler]) => handler.trim())
     .map(([eventName, handler]) => `${eventName}=${handler.trim()}`)
     .join('\n');
-  return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - TITLE_BAR_HEIGHT)}, ${toColorRef(window.background)}, ${toColorRef(titleBarBackground)}, ${toColorRef(titleBarForeground)}, ${cornerPreference}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(openPlacement)}", ${openX}, ${openY}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", L"${escapeWideString(events)}" }`;
+  return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height - TITLE_BAR_HEIGHT))}, ${toColorRef(window.background)}, ${toColorRef(titleBarBackground)}, ${toColorRef(titleBarForeground)}, ${cornerPreference}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", L"${escapeWideString(openPlacement)}", ${openX}, ${openY}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline}, L"${escapeWideString(events)}" }`;
 }
 
 function generateControlSpec(

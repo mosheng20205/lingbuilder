@@ -17,7 +17,7 @@ import {
   Copy,
   Trash
 } from 'lucide-react';
-import { BottomPanelTabType, ExtractedString, ProblemItem } from '../types';
+import { BottomPanelTabType, CommandHintContent, ExtractedString, ProblemItem } from '../types';
 import type { ModuleHintContent } from '../services/modules/types';
 import TerminalPanel from './TerminalPanel';
 import DebugInspector from './DebugInspector';
@@ -40,6 +40,7 @@ interface BottomPanelProps {
   onActiveTabChange: (tab: BottomPanelTabType) => void;
   showCodeMapping: boolean;
   moduleHint: ModuleHintContent | null;
+  commandHint: CommandHintContent | null;
   height: number;
   onClearLogs?: (tab: string) => void;
 }
@@ -58,6 +59,7 @@ export default function BottomPanel({
   onActiveTabChange,
   showCodeMapping,
   moduleHint,
+  commandHint,
   height,
   onClearLogs
 }: BottomPanelProps) {
@@ -231,26 +233,24 @@ export default function BottomPanel({
             </button>
           )}
 
-          {moduleHint && (
-            <button
-              type="button"
-              onClick={() => onActiveTabChange('module_hint')}
-              className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
-                activeTab === 'module_hint'
-                  ? isDarkMode
-                    ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10'
-                    : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
-                  : isDarkMode
-                    ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
-                    : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
-              }`}
-              aria-label={`提示：${moduleHint.title}`}
-              title={`${moduleHint.kind} · ${moduleHint.title}`}
-            >
-              <Info className="w-3.5 h-3.5 text-sky-500" />
-              <span>提示</span>
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => onActiveTabChange('module_hint')}
+            className={`h-8 px-3 text-[11px] font-semibold relative cursor-pointer flex items-center gap-1.5 transition-colors border-t border-x whitespace-nowrap shrink-0 ${
+              activeTab === 'module_hint'
+                ? isDarkMode
+                  ? 'text-white bg-[#1E1E1E] border-[#2d2d30] border-b-transparent z-10'
+                  : 'text-slate-900 bg-white border-slate-300 border-b-transparent z-10'
+                : isDarkMode
+                  ? 'text-slate-400 hover:text-slate-200 bg-transparent border-transparent'
+                  : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
+            }`}
+            aria-label="提示"
+            title={commandHint?.signature || (moduleHint ? `${moduleHint.kind} · ${moduleHint.title}` : '查看命令和模块提示')}
+          >
+            <Info className="w-3.5 h-3.5 text-sky-500" />
+            <span>提示</span>
+          </button>
 
           <button
             onClick={() => onActiveTabChange('problems')}
@@ -533,7 +533,63 @@ export default function BottomPanel({
           </table>
         )}
 
-        {activeTab === 'module_hint' && moduleHint && (
+        {activeTab === 'module_hint' && commandHint && (
+          <section className="h-full overflow-auto p-4 font-sans select-text" aria-live="polite" aria-label="命令提示信息">
+            <div className={`mx-auto max-w-5xl overflow-hidden rounded border ${
+              isDarkMode ? 'border-slate-700/70 bg-[#18181c]' : 'border-slate-200 bg-slate-50'
+            }`}>
+              <div className={`flex min-w-0 items-start gap-3 border-b px-4 py-3 ${
+                isDarkMode ? 'border-slate-700/60 bg-[#202024]' : 'border-slate-200 bg-white'
+              }`}>
+                <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded ${
+                  isDarkMode ? 'bg-sky-500/15 text-sky-300' : 'bg-sky-100 text-sky-700'
+                }`}><Info className="h-4 w-4" /></div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <h2 className={`break-all font-mono text-sm font-semibold ${isDarkMode ? 'text-amber-200' : 'text-amber-700'}`}>
+                      {commandHint.signature}
+                    </h2>
+                    <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-semibold ${
+                      isDarkMode ? 'border-sky-500/25 bg-sky-500/10 text-sky-300' : 'border-sky-200 bg-sky-50 text-sky-700'
+                    }`}>{commandHint.returnType}</span>
+                  </div>
+                  <p className={`mt-1 text-xs leading-5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
+                    {commandHint.summary}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4 p-4">
+                <div className={`overflow-hidden rounded border ${isDarkMode ? 'border-slate-700/60' : 'border-slate-200'}`}>
+                  <div className={`grid grid-cols-[minmax(80px,120px)_minmax(70px,110px)_minmax(0,1fr)] border-b px-3 py-2 text-[10px] font-semibold ${
+                    isDarkMode ? 'border-slate-700/50 bg-white/[0.03] text-slate-400' : 'border-slate-200 bg-slate-100 text-slate-600'
+                  }`}>
+                    <span>参数名</span><span>类型</span><span>说明</span>
+                  </div>
+                  {(commandHint.parameters.length ? commandHint.parameters : [{ name: '无', type: '-', note: '这个命令没有参数。' }]).map(parameter => (
+                    <div key={`${commandHint.command}:${parameter.name}`} className={`grid grid-cols-[minmax(80px,120px)_minmax(70px,110px)_minmax(0,1fr)] border-b px-3 py-2 text-[11px] last:border-b-0 ${
+                      isDarkMode ? 'border-slate-700/50' : 'border-slate-200 bg-white'
+                    }`}>
+                      <span className={isDarkMode ? 'text-cyan-200' : 'text-cyan-700'}>{parameter.name}</span>
+                      <span className={isDarkMode ? 'text-emerald-300' : 'text-emerald-700'}>{parameter.type}</span>
+                      <span className={isDarkMode ? 'text-slate-300' : 'text-slate-700'}>{parameter.note}</span>
+                    </div>
+                  ))}
+                </div>
+                {commandHint.example && (
+                  <div>
+                    <div className={`mb-1 text-[10px] font-semibold uppercase tracking-wide ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>示例</div>
+                    <pre className={`overflow-x-auto rounded border px-3 py-2 font-mono text-[11px] leading-5 whitespace-pre-wrap break-all ${
+                      isDarkMode ? 'border-slate-700/60 bg-black/25 text-emerald-300' : 'border-slate-200 bg-white text-emerald-800'
+                    }`}>{commandHint.example}</pre>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === 'module_hint' && !commandHint && moduleHint && (
           <section
             className="h-full overflow-auto p-4 font-sans select-text"
             aria-live="polite"
@@ -617,6 +673,12 @@ export default function BottomPanel({
               </div>
             </div>
           </section>
+        )}
+
+        {activeTab === 'module_hint' && !commandHint && !moduleHint && (
+          <div className="flex h-full items-center justify-center px-6 text-center font-sans text-xs text-slate-400">
+            单击中文代码中的命令后，这里会显示命令说明、参数和示例。
+          </div>
         )}
 
         {activeTab === 'problems' && (

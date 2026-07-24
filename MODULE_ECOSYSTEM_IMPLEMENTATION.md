@@ -202,7 +202,7 @@ lingbuilder.module.json
 - new_emoji 独立演示或 AI 自动生成示例必须保留事件块末尾的结构标记 `结束`，但不能额外调用显式退出命令 `结束()`；后者会销毁 LingBuilder 默认窗口，消息循环收到退出后表现为 exe 闪退。
 - 纯 new_emoji 示例应由 new_emoji 自己负责生命周期：创建窗口和控件后调用 `NE_运行消息循环` 或底层 `EU_RunMessageLoop()`。如果继续复用 LingBuilder 默认 Win32 生成窗口，必须保证默认窗口不会立即销毁，也不能让空设计器窗口关闭后触发 `PostQuitMessage(0)`。
 - 报告 new_emoji exe 可运行前，必须确认 `new_emoji.dll` 已复制到 exe 同目录，并实际启动验证至少 3 秒仍在运行。
-- 项目启用 `lingbuilder.new_emoji.ui` 后，设计器和原生生成器会把基础 `Button`、`TextBox`、`Label`、`CheckBox`、`RadioButton`、`ListBox`、`Image`、`ProgressBar`、`Grid` 模型映射为 new_emoji 控件；现有基础布局无需重建。`Upload` / `DragUpload` 的控件归属与默认生成链路是 `lingbuilder.win32.common-controls`，普通项目不得因此依赖 new_emoji；显式选择 new_emoji 后端且同时启用高级控件模块时，可继续复用该模型的 `NE_` 上传适配。`generate-new-emoji-module.cjs` 必须持续生成稳定桥接，不能只添加补全。
+- 项目启用 `lingbuilder.new_emoji.ui` 后，设计器和原生生成器会把基础 `Button`、`TextBox`、`Label`、`CheckBox`、`RadioButton`、`ListBox`、`Image`、`ProgressBar`、`Grid` 模型映射为 new_emoji 控件；现有基础布局无需重建。普通 Win32 工具箱已移除固定外观的 `Upload` / `DragUpload`，改由 `lingbuilder.win32.common-controls` 贡献非可视 `FileDialog`，绑定现有按钮和窗口/控件拖放目标。旧上传控件与 new_emoji `NE_` 上传桥接仅作已有项目兼容，不再作为新增设计器控件入口。
 - new_emoji 后端不支持的控件必须在工具箱显示禁用原因，并在生成结果中产生中文诊断；不得为了“看起来可用”而回退生成 Win32 控件。上传事件已接入 callback API；继续新增其它控件事件时仍必须同时补设计器事件、桥接回调生命周期和生成器分发测试。
 
 ## WebSocket 客户端内置网络模块

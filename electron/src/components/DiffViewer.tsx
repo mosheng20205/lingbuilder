@@ -31,7 +31,7 @@ function getEditorTabClassName(isActive: boolean, isDarkMode: boolean) {
         : 'bg-slate-200/50 border-transparent text-slate-600 hover:text-slate-800'
   }`;
 }
-import { AppliedWorkspaceFile, DiffLine, DiffResult, ExtractedString, ProblemItem, WorkspaceEditProposal } from '../types';
+import { AppliedWorkspaceFile, CommandHintContent, DiffLine, DiffResult, ExtractedString, ProblemItem, WorkspaceEditProposal } from '../types';
 import WpfDesigner from './WpfDesigner';
 import MonacoCodeEditor, {
   MonacoContentChange,
@@ -45,7 +45,7 @@ import DiffViewModeSelector, {
 } from './DiffViewModeSelector';
 import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getLingCppReadableBlocks, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
 import { LingCppAccessModifier, LingCppAstEdit, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
-import { BeginnerCommandTokenAtCursor, getBeginnerCommandTokenAtCursor, getBeginnerCompletionContext, getBeginnerCompletionToken, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
+import { getBeginnerCommandTokenAtCursor, getBeginnerCompletionContext, getBeginnerCompletionToken, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
 import { BEGINNER_BUILTIN_VALUE_COMPLETIONS } from '../services/lingCpp/beginnerBuiltinValueCompletions';
 import { applyLingCppAstEdit } from '../services/lingCpp/astEditService';
 import { LingCppNativePreviewFile, LingWindowProject, NativeCppImportResult } from '../services/windowDesigner/types';
@@ -153,6 +153,7 @@ interface DiffViewerProps {
   onIgnoreBeginnerTask?: (taskId: string) => void;
   onApplyWorkspaceEdit?: (proposal: WorkspaceEditProposal, appliedFiles: AppliedWorkspaceFile[]) => void;
   onOpenProblemsPanel?: () => void;
+  onShowCommandHint?: (hint: CommandHintContent | null) => void;
   onDiffViewModeChange?: (mode: DiffViewMode) => void;
   textModelWorkspaceId?: string;
   textModelProjectId?: string;
@@ -290,27 +291,7 @@ interface BeginnerTypeCompletionState {
   maxListHeight: number;
 }
 
-interface BeginnerCommandHintParameter {
-  name: string;
-  type: string;
-  note: string;
-}
-
-interface BeginnerCommandHintInfo {
-  command: string;
-  signature: string;
-  returnType: string;
-  summary: string;
-  parameters: BeginnerCommandHintParameter[];
-  example: string;
-}
-
-interface BeginnerCommandHintState {
-  targetKey: string;
-  token: string;
-  info: BeginnerCommandHintInfo;
-  position: BeginnerCompletionPosition;
-}
+type BeginnerCommandHintInfo = CommandHintContent;
 
 // The beginner editor paints syntax colors over a transparent textarea. Token
 // decoration must not change glyph metrics, otherwise the native textarea caret
@@ -735,57 +716,6 @@ const getBeginnerCompletionPanelPosition = (
   };
 };
 
-const getBeginnerCommandHintPanelPosition = (
-  input: HTMLTextAreaElement,
-  token: BeginnerCommandTokenAtCursor,
-  estimatedPanelHeight: number
-): BeginnerCompletionPosition => {
-  const root = input.closest('[data-beginner-editor-root]');
-  if (!(root instanceof HTMLElement)) {
-    return { top: 34, left: 60, maxListHeight: 260, placement: 'below' };
-  }
-
-  const rootRect = root.getBoundingClientRect();
-  const inputRect = input.getBoundingClientRect();
-  const scrollRoot = input.closest('[data-beginner-structure-scroll]');
-  const boundaryRect = scrollRoot instanceof HTMLElement
-    ? scrollRoot.getBoundingClientRect()
-    : { top: 0, bottom: window.innerHeight };
-  const inputStyle = window.getComputedStyle(input);
-  const lineHeight = Number.parseFloat(inputStyle.lineHeight) || 20;
-  const paddingTop = Number.parseFloat(inputStyle.paddingTop) || 0;
-  const paddingLeft = Number.parseFloat(inputStyle.paddingLeft) || 0;
-  const fontSize = Number.parseFloat(inputStyle.fontSize) || 12;
-  const panelWidth = 420;
-  const panelGap = 8;
-  const panelHeight = clampNumber(estimatedPanelHeight, 132, 300);
-  const estimatedCharWidth = fontSize * 0.62;
-  const lineTopInRoot = inputRect.top - rootRect.top + paddingTop + token.lineIndex * lineHeight - input.scrollTop;
-  const lineTopInViewport = inputRect.top + paddingTop + token.lineIndex * lineHeight - input.scrollTop;
-  const lineBottomInRoot = lineTopInRoot + lineHeight;
-  const lineBottomInViewport = lineTopInViewport + lineHeight;
-  const spaceBelow = boundaryRect.bottom - lineBottomInViewport - panelGap;
-  const spaceAbove = lineTopInViewport - boundaryRect.top - panelGap;
-  const placement = spaceBelow < Math.min(170, panelHeight) && spaceAbove > spaceBelow
-    ? 'above'
-    : 'below';
-  const availableSpace = placement === 'below' ? spaceBelow : spaceAbove;
-  const maxPanelHeight = clampNumber(availableSpace - panelGap, 112, 300);
-  const actualPanelHeight = Math.min(panelHeight, maxPanelHeight);
-  const preferredLeft = inputRect.left - rootRect.left + paddingLeft + token.columnStart * estimatedCharWidth - input.scrollLeft;
-  const minLeft = 8;
-  const maxLeft = Math.max(minLeft, root.clientWidth - panelWidth - 8);
-
-  return {
-    top: Math.round(placement === 'above'
-      ? lineTopInRoot - actualPanelHeight - panelGap
-      : lineBottomInRoot + panelGap),
-    left: Math.round(clampNumber(preferredLeft, minLeft, maxLeft)),
-    maxListHeight: Math.round(maxPanelHeight),
-    placement
-  };
-};
-
 const filterBeginnerCodeCompletions = (
   token: string,
   includeAll = false,
@@ -1155,6 +1085,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   onIgnoreBeginnerTask,
   onApplyWorkspaceEdit,
   onOpenProblemsPanel,
+  onShowCommandHint,
   onDiffViewModeChange,
   textModelWorkspaceId = 'lingbuilder-renderer',
   textModelProjectId = 'default-project',
@@ -1257,7 +1188,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const beginnerCodeDraftsRef = useRef<Record<string, string>>({});
   const [beginnerContextMenu, setBeginnerContextMenu] = useState<BeginnerContextMenuState | null>(null);
   const [beginnerTypeCompletionState, setBeginnerTypeCompletionState] = useState<BeginnerTypeCompletionState | null>(null);
-  const [beginnerCommandHintState, setBeginnerCommandHintState] = useState<BeginnerCommandHintState | null>(null);
 
   useEffect(() => {
     const handleRevealLingCppLine = (event: Event) => {
@@ -1303,8 +1233,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     setBeginnerCodeDrafts({});
     setBeginnerContextMenu(null);
     setBeginnerTypeCompletionState(null);
-    setBeginnerCommandHintState(null);
-  }, [activeFile?.path]);
+    onShowCommandHint?.(null);
+  }, [activeFile?.path, onShowCommandHint]);
 
   useEffect(() => {
     setNativeImportResult(null);
@@ -4226,37 +4156,22 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const targetKey = codeTargetKey(target);
       setBeginnerCompletionState(current => current?.targetKey === targetKey ? null : current);
     };
-    const closeBeginnerCommandHint = (target?: BeginnerCodeTarget) => {
-      if (!target) {
-        setBeginnerCommandHintState(null);
-        return;
-      }
-      const targetKey = codeTargetKey(target);
-      setBeginnerCommandHintState(current => current?.targetKey === targetKey ? null : current);
-    };
     const updateBeginnerCommandHint = (
-      target: BeginnerCodeTarget,
+      _target: BeginnerCodeTarget,
       input: HTMLTextAreaElement
     ) => {
-      const targetKey = codeTargetKey(target);
       const token = getBeginnerCommandTokenAtCursor(input.value, input.selectionStart, beginnerCommandHintNames);
       if (!token) {
-        closeBeginnerCommandHint(target);
+        onShowCommandHint?.(null);
         return;
       }
 
       const info = beginnerCommandHints[token.token];
       if (!info) {
-        closeBeginnerCommandHint(target);
+        onShowCommandHint?.(null);
         return;
       }
-      const estimatedPanelHeight = 102 + Math.max(1, info.parameters.length) * 28 + (info.example ? 28 : 0);
-      setBeginnerCommandHintState({
-        targetKey,
-        token: token.token,
-        info,
-        position: getBeginnerCommandHintPanelPosition(input, token, estimatedPanelHeight)
-      });
+      onShowCommandHint?.(info);
     };
     const moveBeginnerCompletionSelection = (target: BeginnerCodeTarget, delta: number) => {
       const targetKey = codeTargetKey(target);
@@ -4378,7 +4293,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       currentBody: string,
       event: React.FocusEvent<HTMLTextAreaElement>
     ) => {
-      closeBeginnerCommandHint(target);
+      closeBeginnerCompletion(target);
       const applied = commitBeginnerCodeBody(
         target.className,
         target.method.name,
@@ -4505,69 +4420,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 }`}>{item.kind}</span>
               </button>
             ))}
-          </div>
-        </div>
-      );
-    };
-    const renderBeginnerCommandHintPanel = (target: BeginnerCodeTarget) => {
-      const targetKey = codeTargetKey(target);
-      const state = beginnerCommandHintState?.targetKey === targetKey ? beginnerCommandHintState : null;
-      const activeCompletion = beginnerCompletionState?.targetKey === targetKey ? beginnerCompletionState : null;
-      if (!state || (activeCompletion && activeCompletion.items.length > 0)) return null;
-
-      const contentMaxHeight = Math.max(86, state.position.maxListHeight - 32);
-      return (
-        <div
-          className={`pointer-events-auto absolute z-20 w-[420px] overflow-hidden rounded border text-[11px] shadow-2xl ${
-            isDarkMode ? 'border-cyan-500/25 bg-[#171a20] text-slate-200 shadow-black/40' : 'border-cyan-200 bg-white text-slate-800 shadow-slate-300/60'
-          } ${state.position.placement === 'above' ? 'origin-bottom-left' : 'origin-top-left'}`}
-          style={{ left: state.position.left, top: state.position.top, maxHeight: state.position.maxListHeight }}
-          onMouseDown={event => event.stopPropagation()}
-          onWheel={event => event.stopPropagation()}
-        >
-          <div className={`flex items-center justify-between gap-2 border-b px-2.5 py-1.5 ${
-            isDarkMode ? 'border-[#2b2f3a] bg-cyan-500/10' : 'border-cyan-100 bg-cyan-50'
-          }`}>
-            <span className={`font-semibold ${isDarkMode ? 'text-cyan-200' : 'text-cyan-700'}`}>命令提示</span>
-            <span className={`rounded px-1.5 py-0.5 text-[9px] ${
-              isDarkMode ? 'bg-[#242834] text-slate-300' : 'bg-white text-slate-600'
-            }`}>{state.info.returnType}</span>
-          </div>
-          <div className="overflow-auto px-2.5 py-2" style={{ maxHeight: contentMaxHeight }}>
-            <div className={`font-mono text-[12px] font-semibold ${
-              isDarkMode ? 'text-amber-200' : 'text-amber-700'
-            }`}>{state.info.signature}</div>
-            <div className={`mt-1.5 leading-5 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>
-              {state.info.summary}
-            </div>
-            <div className={`mt-2 overflow-hidden rounded border ${
-              isDarkMode ? 'border-[#303541]' : 'border-slate-200'
-            }`}>
-              <div className={`grid grid-cols-[88px_76px_minmax(0,1fr)] border-b px-2 py-1 text-[10px] font-semibold ${
-                isDarkMode ? 'border-[#303541] bg-[#1e222b] text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'
-              }`}>
-                <span>参数名</span>
-                <span>类型</span>
-                <span>说明</span>
-              </div>
-              {(state.info.parameters.length ? state.info.parameters : [{ name: '无', type: '-', note: '这个命令没有参数。' }]).map(parameter => (
-                <div
-                  key={`${state.token}:${parameter.name}`}
-                  className={`grid grid-cols-[88px_76px_minmax(0,1fr)] gap-0 border-b px-2 py-1 last:border-b-0 ${
-                    isDarkMode ? 'border-[#2a2f3a]' : 'border-slate-100'
-                  }`}
-                >
-                  <span className={isDarkMode ? 'text-cyan-200' : 'text-cyan-700'}>{parameter.name}</span>
-                  <span className={isDarkMode ? 'text-emerald-300' : 'text-emerald-700'}>{parameter.type}</span>
-                  <span className={`min-w-0 ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{parameter.note}</span>
-                </div>
-              ))}
-            </div>
-            <div className={`mt-2 rounded px-2 py-1.5 font-mono text-[10px] ${
-              isDarkMode ? 'bg-[#0d0f14] text-emerald-300' : 'bg-slate-50 text-emerald-700'
-            }`}>
-              {state.info.example}
-            </div>
           </div>
         </div>
       );
@@ -5620,7 +5472,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             />
           </div>
           {renderBeginnerCompletionPanel(target)}
-          {renderBeginnerCommandHintPanel(target)}
         </div>
       );
     };
@@ -6744,7 +6595,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             />
           </div>
           {renderBeginnerCompletionPanel(target)}
-          {renderBeginnerCommandHintPanel(target)}
         </section>
       );
     };

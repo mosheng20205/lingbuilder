@@ -72,6 +72,21 @@ export interface ProblemItem {
   locationKind?: 'source' | 'insertion';
 }
 
+export interface CommandHintParameter {
+  name: string;
+  type: string;
+  note: string;
+}
+
+export interface CommandHintContent {
+  command: string;
+  signature: string;
+  returnType: string;
+  summary: string;
+  parameters: CommandHintParameter[];
+  example: string;
+}
+
 export type BottomPanelTabType =
   | 'extracted'
   | 'module_hint'

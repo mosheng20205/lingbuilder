@@ -38,6 +38,7 @@ declare global {
       };
       designerAssets?: {
         selectImage: () => Promise<{ canceled: boolean; filePath?: string }>;
+        selectIcon: () => Promise<{ canceled: boolean; filePath?: string }>;
       };
       credentials?: {
         getAiApiKey: () => Promise<string>;
