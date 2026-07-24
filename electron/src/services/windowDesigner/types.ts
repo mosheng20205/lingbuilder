@@ -38,6 +38,11 @@ export interface LingControl {
   x: number;
   y: number;
   fontSize: number;
+  /** 字体名称及样式；旧项目缺失时确定性迁移为微软雅黑 UI 常规字体。 */
+  fontFamily?: string;
+  fontBold?: boolean;
+  fontItalic?: boolean;
+  fontUnderline?: boolean;
   background: string;
   foreground: string;
   isEnabled: boolean;

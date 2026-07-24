@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ListViewDesignerPreview from '../src/components/ListViewDesignerPreview';
 import TabControlDesignerPreview from '../src/components/TabControlDesignerPreview';
 import ListViewCollectionDialog from '../src/components/ListViewCollectionDialog';
+import TreeViewCollectionDialog from '../src/components/TreeViewCollectionDialog';
 import { parseStringListPropertyText } from '../src/components/WpfDesigner';
 import {
   buildControlHierarchy,
@@ -62,6 +63,7 @@ import {
   reparentTreeViewNode,
   updateTreeViewNode
 } from '../src/services/windowDesigner/treeViewCollectionModel';
+import { CONTROL_FONT_FAMILY_OPTIONS, DEFAULT_CONTROL_FONT_FAMILY, getControlFontCssStyle } from '../src/services/windowDesigner/controlFont';
 
 function createControl(id: string, parentId?: string, type: LingControl['type'] = 'Button'): LingControl {
   return {
@@ -81,6 +83,45 @@ function createControl(id: string, parentId?: string, type: LingControl['type'] 
     visibility: 'Visible'
   };
 }
+
+test('控件字体属性迁移、下拉选项、预览和 Win32 生成保持一致', () => {
+  const legacyControl = createControl('legacy-label', undefined, 'Label');
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'font-project',
+    name: '字体项目',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+      background: '#ffffff', description: '', controls: [legacyControl]
+    }]
+  };
+  const migrated = normalizeWindowDesignerState({ project, activeWindowId: 'main', selectedControlId: legacyControl.id });
+  const migratedControl = migrated.project.windows[0].controls[0];
+  assert.equal(migratedControl.fontFamily, DEFAULT_CONTROL_FONT_FAMILY);
+  assert.equal(migratedControl.fontBold, false);
+  assert.equal(migratedControl.fontItalic, false);
+  assert.equal(migratedControl.fontUnderline, false);
+  assert.ok(CONTROL_FONT_FAMILY_OPTIONS.some(option => option.value === 'Microsoft YaHei UI' && option.label === '微软雅黑 UI'));
+
+  const styledControl: LingControl = {
+    ...migratedControl,
+    fontFamily: 'KaiTi',
+    fontSize: 18,
+    fontBold: true,
+    fontItalic: true,
+    fontUnderline: true
+  };
+  assert.deepEqual(getControlFontCssStyle(styledControl), {
+    fontFamily: '"KaiTi", sans-serif', fontSize: '18px', fontWeight: 700, fontStyle: 'italic', textDecoration: 'underline'
+  });
+  const cpp = generateLingCppNativeWin32Project({ ...project, windows: [{ ...project.windows[0], controls: [styledControl] }] }, {
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /CreateControlFont\(const wchar_t\* family, int cssPx, bool bold, bool italic, bool underline/u);
+  assert.match(cpp, /bold \? FW_BOLD : FW_NORMAL/u);
+  assert.match(cpp, /italic \? TRUE : FALSE, underline \? TRUE : FALSE/u);
+  assert.match(cpp, /L"KaiTi", true, true, true/u);
+});
 
 test('图片选择资源复制到项目 assets 并可同步到构建与导出目录', async () => {
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-designer-assets-'));
@@ -553,7 +594,7 @@ test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件
       width: 720, height: 480, background: '#111827', description: '',
       controls: [
         { ...createControl('container', undefined, 'Grid'), x: 20, y: 20, width: 500, height: 300, isEnabled: false },
-        { ...createControl('label', 'container', 'Label'), name: '说明文本', content: '欢迎使用 👋', x: 40, y: 45 },
+        { ...createControl('label', 'container', 'Label'), name: '说明文本', content: '欢迎使用 👋', x: 40, y: 45, fontFamily: 'KaiTi', fontSize: 18, fontBold: true },
         { ...createControl('radio', 'container', 'RadioButton'), name: '主题选项', content: '深色主题', x: 40, y: 90, properties: { checked: true } },
         { ...createControl('list', 'container', 'ListBox'), name: '功能列表', content: '功能', x: 40, y: 130, properties: { items: ['新建项目', '打开项目'], selectedIndex: 1 } },
         { ...createControl('image', 'container', 'Image'), name: '封面图', content: '项目封面', x: 260, y: 130, properties: { imageSource: 'assets/cover.png', stretch: 'uniformToFill' } },
@@ -583,6 +624,7 @@ test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件
   assert.match(cpp, /NE_创建深色窗口\(L"new_emoji 主窗口"/);
   assert.match(cpp, /NE_创建容器\(/);
   assert.match(cpp, /NE_创建文本\([^\n]+欢迎使用 👋/);
+  assert.match(cpp, /NE_设置元素字体\(g_newEmojiWindow, ne_element_2, L"KaiTi", 18\)/u);
   assert.match(cpp, /NE_设置元素状态\(g_newEmojiWindow, ne_element_2, 1, 0/u);
   assert.match(cpp, /NE_创建单选框\([^\n]+L"深色主题", 1/);
   assert.match(cpp, /NE_创建列表框\([^\n]+L"功能", L"新建项目\|打开项目", 1/);
@@ -596,6 +638,7 @@ test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件
   assert.doesNotMatch(cpp, /不应生成的隐藏子控件/u);
   assert.doesNotMatch(cpp, /class LingWindowBase/);
   assert.ok(generated.diagnostics.some(item => item.includes('旧下拉框') && item.includes('暂不支持')));
+  assert.ok(generated.diagnostics.some(item => item.includes('说明文本') && item.includes('仅支持字体名称和字号')));
 });
 
 test('上传与拖拽上传控件注册完整属性和事件', () => {
@@ -851,12 +894,14 @@ test('ListView 集合编辑模型保持列和每行单元格同步', () => {
 
 test('TreeView 集合编辑模型支持子树增删复制、排序和换父级', () => {
   let nodes = normalizeTreeViewNodes([
-    { id: 'root', title: '根节点', children: [{ id: 'child', title: '子节点' }] },
+    { id: 'root', title: '根节点', expanded: true, children: [{ id: 'child', title: '子节点' }] },
     { id: 'second', title: '第二根节点' }
   ]);
   assert.deepEqual(flattenTreeViewNodes(nodes).map(item => [item.node.id, item.parentId, item.depth]), [
     ['root', undefined, 0], ['child', 'root', 1], ['second', undefined, 0]
   ]);
+  assert.equal(nodes[0].expanded, true);
+  assert.equal(nodes[0].children[0].expanded, false, '旧节点未声明展开状态时应默认折叠');
 
   const appended = appendTreeViewNode(nodes, 'child');
   nodes = updateTreeViewNode(appended.nodes, appended.nodeId, { title: '孙节点' });
@@ -876,6 +921,19 @@ test('TreeView 集合编辑模型支持子树增删复制、排序和换父级',
 
   nodes = deleteTreeViewNode(nodes, 'root');
   assert.equal(flattenTreeViewNodes(nodes).some(item => item.node.id === 'child'), false, '删除父节点必须同时删除整棵子树');
+});
+
+test('TreeView 节点编辑器显示并恢复默认展开属性', () => {
+  const markup = renderToStaticMarkup(React.createElement(TreeViewCollectionDialog, {
+    controlName: '树形视图1',
+    value: [{ id: 'root', title: '根节点', expanded: true, children: [{ id: 'child', title: '子节点' }] }],
+    showImages: false,
+    isDarkMode: true,
+    onChange: () => undefined,
+    onClose: () => undefined
+  }));
+  assert.match(markup, />默认展开节点</u);
+  assert.match(markup, /type="checkbox"[^>]*checked=""/u);
 });
 
 test('TreeView 注册边框与节点间距属性并提供稳定默认值', () => {
@@ -1150,7 +1208,7 @@ test('窗口本身的空选择和虚拟菜单选择在规范化后保持不变',
 test('高级控件生成真实 Win32 类、专属数据和多事件通知', () => {
   const controls: LingControl[] = [
     { ...createControl('list', undefined, 'ListView'), properties: { columns: [{ title: '名称', width: 160, alignment: 'center' }, { title: '状态', width: 90, alignment: 'right' }], items: [{ id: 'row1', cells: ['服务', '运行中'], image: 0 }], view: 'details', gridLines: true, multiple: false, borderColor: '#123456', borderWidth: 3, headerHeight: 34, itemHeight: 32, imageListId: 'main-icons' }, events: { SelectionChanged: '_列表_选择项被改变', DoubleClick: '_列表_被双击' } },
-    { ...createControl('tree', undefined, 'TreeView'), properties: { nodes: [{ id: 'root', title: '根节点', children: [{ id: 'child', title: '子节点' }] }], borderWidth: 3, borderColor: '#123456', nodeSpacing: 7, nodePadding: 5, showLines: true, checkBoxes: true, imageListId: 'main-icons' }, events: { Expanded: '_树_节点被展开' } },
+    { ...createControl('tree', undefined, 'TreeView'), properties: { nodes: [{ id: 'root', title: '根节点', expanded: true, children: [{ id: 'child', title: '子节点' }] }], borderWidth: 3, borderColor: '#123456', nodeSpacing: 7, nodePadding: 5, showLines: true, checkBoxes: true, imageListId: 'main-icons' }, events: { Expanded: '_树_节点被展开' } },
     { ...createControl('date', undefined, 'DateTimePicker'), properties: createDefaultControlProperties('DateTimePicker') }
   ];
   const project: LingWindowProject = {
@@ -1185,6 +1243,8 @@ test('高级控件生成真实 Win32 类、专属数据和多事件通知', () =
   assert.match(cpp, /ListView_DeleteColumn\(child, 0\)/u);
   assert.match(cpp, /TreeView_InsertItem/);
   assert.match(cpp, /insertedItems\[row\[0\]\]/);
+  assert.match(cpp, /TreeView_Expand\(child, inserted->second, TVE_EXPAND\)/);
+  assert.match(cpp, /4:root0:3:\u6839\u8282\u70b92:-11:1/u);
   assert.match(cpp, /TVM_SETBKCOLOR/);
   assert.match(cpp, /TVM_SETTEXTCOLOR/);
   assert.match(cpp, /TVM_SETLINECOLOR/);

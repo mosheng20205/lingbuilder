@@ -406,6 +406,7 @@ int NE_取最近上传动作();
 int NE_取最近上传文件索引();
 int NE_取最近上传进度值();
 void NE_设置元素状态(HWND hwnd, int elementId, int visible, int enabled, unsigned int background, unsigned int foreground);
+void NE_设置元素字体(HWND hwnd, int elementId, const wchar_t* fontFamily, int fontSize);
 void NE_设置窗口标题(HWND hwnd, const wchar_t* title);
 `;
 }
@@ -450,6 +451,7 @@ __declspec(dllimport) void __stdcall EU_SetElementText(HWND hwnd, int element_id
 __declspec(dllimport) void __stdcall EU_SetElementVisible(HWND hwnd, int element_id, int visible);
 __declspec(dllimport) void __stdcall EU_SetElementEnabled(HWND hwnd, int element_id, int enabled);
 __declspec(dllimport) void __stdcall EU_SetElementColor(HWND hwnd, int element_id, NEColor background, NEColor foreground);
+__declspec(dllimport) void __stdcall EU_SetElementFont(HWND hwnd, int element_id, const unsigned char* font_bytes, int font_len, int size);
 __declspec(dllimport) void __stdcall EU_SetWindowTitle(HWND hwnd, const unsigned char* bytes, int len);
 
 static std::vector<std::unique_ptr<std::string>>& NE_Utf8Pool() {
@@ -619,6 +621,12 @@ void NE_设置元素状态(HWND hwnd, int elementId, int visible, int enabled, u
     EU_SetElementVisible(hwnd, elementId, visible);
     EU_SetElementEnabled(hwnd, elementId, enabled);
     EU_SetElementColor(hwnd, elementId, background, foreground);
+}
+
+void NE_设置元素字体(HWND hwnd, int elementId, const wchar_t* fontFamily, int fontSize) {
+    if (!hwnd || elementId <= 0) return;
+    const std::string& fontBytes = NE_KeepUtf8(fontFamily && fontFamily[0] ? fontFamily : L"Microsoft YaHei UI");
+    EU_SetElementFont(hwnd, elementId, reinterpret_cast<const unsigned char*>(fontBytes.c_str()), static_cast<int>(fontBytes.size()), fontSize > 0 ? fontSize : 12);
 }
 
 void NE_设置窗口标题(HWND hwnd, const wchar_t* title) {

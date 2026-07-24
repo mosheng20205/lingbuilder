@@ -25,6 +25,7 @@ import {
   NEW_EMOJI_MODULE_ID
 } from './newEmojiDesignerAdapter';
 import { getEffectiveControlState } from './controlHierarchy';
+import { normalizeControlFont } from './controlFont';
 import {
   parseEplControlMemberAssignmentRule,
   parseEplControlMemberRule,
@@ -106,6 +107,11 @@ export function generateLingCppNativeWin32Project(
   const sourceClassMismatchDiagnostic = sourceCode.trim() && !sourceClassNames.has(selectedWindow.className)
     ? [`当前源码未定义设计器窗口类“${selectedWindow.className}”；请同步窗口类名与 .lcpp 文件后再构建。`]
     : [];
+  const newEmojiFontStyleDiagnostics = usesNewEmojiDesigner
+    ? selectedWindow.controls
+      .filter(control => control.fontBold === true || control.fontItalic === true || control.fontUnderline === true)
+      .map(control => `new_emoji 控件“${control.name}”已保留粗体/斜体/下划线属性，但当前 DLL 通用字体 API 仅支持字体名称和字号。`)
+    : [];
 
   return {
     selectedWindow,
@@ -116,6 +122,7 @@ export function generateLingCppNativeWin32Project(
       ...moduleTargetDiagnostics,
       ...missingControlModuleDiagnostics,
       ...(usesNewEmojiDesigner ? getNewEmojiUnsupportedControlDiagnostics(selectedWindow) : []),
+      ...newEmojiFontStyleDiagnostics,
       ...resourceDiagnostics
     ],
     sourceMap,
@@ -194,6 +201,7 @@ function generateNewEmojiMainCpp(
     const x = parent ? control.x - parent.x : control.x;
     const y = parent ? control.y - parent.y : control.y;
     const text = `L"${escapeWideString(control.content)}"`;
+    const font = normalizeControlFont(control);
     const checked = control.properties?.checked === true ? 1 : 0;
     const progress = parseControlValue(control);
     let call: string;
@@ -268,6 +276,7 @@ function generateNewEmojiMainCpp(
     return [
       `    int ${variable} = ${call};`,
       `    NE_设置元素状态(g_newEmojiWindow, ${variable}, 1, ${control.isEnabled ? 1 : 0}, ${toNewEmojiColor(control.background, 0x00000000)}, ${toNewEmojiColor(control.foreground, 0xfff8fafc)});`,
+      `    NE_设置元素字体(g_newEmojiWindow, ${variable}, L"${escapeWideString(font.family)}", ${font.size});`,
       ...extraLines
     ];
   });
@@ -651,6 +660,10 @@ struct ControlSpec {
     int width;
     int height;
     int fontSize;
+    const wchar_t* fontFamily;
+    bool fontBold;
+    bool fontItalic;
+    bool fontUnderline;
     int cornerRadius;
     int listBorderWidth;
     COLORREF listBorderColor;
@@ -804,12 +817,12 @@ static int ScaleForDpi(int value, UINT dpi) {
     return MulDiv(value, static_cast<int>(dpi ? dpi : 96), 96);
 }
 
-static HFONT CreateControlFont(int cssPx, UINT dpi) {
+static HFONT CreateControlFont(const wchar_t* family, int cssPx, bool bold, bool italic, bool underline, UINT dpi) {
     return CreateFontW(
         -MulDiv(cssPx, static_cast<int>(dpi ? dpi : 96), 96),
-        0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+        0, 0, 0, bold ? FW_BOLD : FW_NORMAL, italic ? TRUE : FALSE, underline ? TRUE : FALSE, FALSE, DEFAULT_CHARSET,
         OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-        DEFAULT_PITCH | FF_SWISS, L"Microsoft YaHei UI"
+        DEFAULT_PITCH | FF_SWISS, family && family[0] ? family : L"Microsoft YaHei UI"
     );
 }
 
@@ -4652,7 +4665,7 @@ private:
             return false;
         }
 
-        HFONT font = CreateControlFont(control.fontSize, dpi_);
+        HFONT font = CreateControlFont(control.fontFamily, control.fontSize, control.fontBold, control.fontItalic, control.fontUnderline, dpi_);
         HBRUSH brush = CreateSolidBrush(control.background);
         runtimeControls_.push_back({
             control.id,
@@ -4815,8 +4828,8 @@ private:
             SendMessageW(child, TVM_SETBKCOLOR, 0, static_cast<LPARAM>(control.background));
             SendMessageW(child, TVM_SETTEXTCOLOR, 0, static_cast<LPARAM>(control.foreground));
             SendMessageW(child, TVM_SETLINECOLOR, 0, static_cast<LPARAM>(control.foreground));
-            auto rows = DecodeControlRecords(control.data, 4);
-            if (rows.empty() && control.text[0]) rows.push_back({ L"root", L"", control.text, L"-1" });
+            auto rows = DecodeControlRecords(control.data, 5);
+            if (rows.empty() && control.text[0]) rows.push_back({ L"root", L"", control.text, L"-1", L"0" });
             std::map<std::wstring, HTREEITEM> insertedItems;
             for (const auto& row : rows) {
                 TVINSERTSTRUCTW item = {};
@@ -4825,6 +4838,10 @@ private:
                 int image = _wtoi(row[3].c_str());
                 item.item.mask = TVIF_TEXT | (image >= 0 ? TVIF_IMAGE | TVIF_SELECTEDIMAGE : 0); item.item.pszText = const_cast<wchar_t*>(row[2].c_str()); item.item.iImage = image; item.item.iSelectedImage = image;
                 insertedItems[row[0]] = TreeView_InsertItem(child, &item);
+            }
+            for (const auto& row : rows) {
+                auto inserted = insertedItems.find(row[0]);
+                if (row[4] == L"1" && inserted != insertedItems.end() && inserted->second) TreeView_Expand(child, inserted->second, TVE_EXPAND);
             }
         } else if (IsType(control, L"TabControl")) {
             auto rows = DecodeControlRecords(control.data, 3);
@@ -6388,7 +6405,8 @@ function generateControlSpec(
   const treeBorderColor = controlColorProperty(control, 'borderColor', '#64748B');
   const treeNodeSpacing = treeControl ? clampInteger(control.properties?.nodeSpacing, 2, 0, 24) : 2;
   const treeNodePadding = treeControl ? clampInteger(control.properties?.nodePadding, 3, 0, 24) : 3;
-  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(control.content)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${int(control.fontSize)}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listItemSpacing}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(events)}" }`;
+  const font = normalizeControlFont(control);
+  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(control.content)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${font.size}, L"${escapeWideString(font.family)}", ${font.bold ? 'true' : 'false'}, ${font.italic ? 'true' : 'false'}, ${font.underline ? 'true' : 'false'}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listItemSpacing}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(events)}" }`;
 }
 
 function controlColorProperty(control: LingControl, key: string, fallback: string): string {
@@ -6494,7 +6512,7 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
     const visit = (items: unknown, parentId = '') => {
       records(items).forEach((item, index) => {
         const id = String(item.id ?? `${parentId || 'root'}_${index + 1}`);
-        treeRows.push([id, parentId, labelOf(item), String(numberOf(item.image, -1))]);
+        treeRows.push([id, parentId, labelOf(item), String(numberOf(item.image, -1)), item.expanded === true ? '1' : '0']);
         visit(item.children, id);
       });
     };

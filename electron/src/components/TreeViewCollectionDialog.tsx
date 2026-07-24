@@ -190,6 +190,17 @@ export default function TreeViewCollectionDialog({ controlName, value, showImage
                   <span>显示标题</span>
                   <input value={selected.node.title} onChange={event => commit(updateTreeViewNode(nodes, selected.node.id, { title: event.target.value }))} className={inputClass} autoFocus />
                 </label>
+                <label className={`flex min-h-8 cursor-pointer items-center gap-2 rounded border px-2.5 text-xs ${
+                  isDarkMode ? 'border-[#484852] bg-[#19191e] text-slate-200' : 'border-slate-300 bg-white text-slate-700'
+                }`}>
+                  <input
+                    type="checkbox"
+                    checked={selected.node.expanded}
+                    onChange={event => commit(updateTreeViewNode(nodes, selected.node.id, { expanded: event.target.checked }))}
+                    className="h-3.5 w-3.5 accent-cyan-500"
+                  />
+                  <span>默认展开节点</span>
+                </label>
                 {showImages && (
                   <label className="block space-y-1 text-[11px] text-slate-500">
                     <span>图像索引（-1 表示无图像）</span>

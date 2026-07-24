@@ -1,6 +1,7 @@
 import React from 'react';
 import type { LingControl } from '../services/windowDesigner/types';
 import { createListViewPreviewModel } from '../services/windowDesigner/listViewPreviewModel';
+import { getControlFontCssStyle } from '../services/windowDesigner/controlFont';
 
 export interface ListViewDesignerPreviewProps {
   control: LingControl;
@@ -32,6 +33,7 @@ export default function ListViewDesignerPreview({ control }: ListViewDesignerPre
   const background = control.background === 'transparent' ? 'rgba(15, 23, 42, 0.9)' : control.background;
   const foreground = control.foreground || '#e2e8f0';
   const borderStyle = `${model.borderWidth}px solid ${model.borderColor}`;
+  const fontStyle = getControlFontCssStyle(control);
 
   if (model.mode !== 'details') {
     const iconMode = model.mode === 'icon';
@@ -42,7 +44,7 @@ export default function ListViewDesignerPreview({ control }: ListViewDesignerPre
         className={`h-full w-full overflow-hidden p-1 ${
           iconMode ? 'grid content-start grid-cols-[repeat(auto-fill,minmax(72px,1fr))] gap-1' : 'flex flex-col content-start gap-0.5'
         }`}
-        style={{ backgroundColor: background, color: foreground, fontSize: `${fontSize}px`, opacity: control.isEnabled ? 1 : 0.5, border: borderStyle }}
+        style={{ ...fontStyle, backgroundColor: background, color: foreground, fontSize: `${fontSize}px`, opacity: control.isEnabled ? 1 : 0.5, border: borderStyle }}
       >
         {model.rows.length > 0 ? model.rows.map(row => (
           <div
@@ -71,12 +73,12 @@ export default function ListViewDesignerPreview({ control }: ListViewDesignerPre
     <div
       data-list-view-preview="details"
       className="h-full w-full overflow-hidden"
-      style={{ backgroundColor: background, color: foreground, fontSize: `${fontSize}px`, opacity: control.isEnabled ? 1 : 0.5, border: borderStyle }}
+      style={{ ...fontStyle, backgroundColor: background, color: foreground, fontSize: `${fontSize}px`, opacity: control.isEnabled ? 1 : 0.5, border: borderStyle }}
     >
       <div style={{ width: `${Math.max(control.width, tableWidth)}px`, minWidth: '100%' }}>
         <div
           role="row"
-          className="grid bg-slate-500/25 font-semibold shadow-[inset_0_-1px_0_rgba(148,163,184,0.5)]"
+          className="grid bg-slate-500/25 shadow-[inset_0_-1px_0_rgba(148,163,184,0.5)]"
           style={{ gridTemplateColumns, height: `${model.headerHeight}px` }}
         >
           {model.columns.map((column, index) => (

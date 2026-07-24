@@ -1,6 +1,7 @@
 import React from 'react';
 import type { LingControl } from '../services/windowDesigner/types';
 import { getSelectedTabPage, getTabControlPages, isTabControlHeaderHidden } from '../services/windowDesigner/tabControlModel';
+import { getControlFontCssStyle } from '../services/windowDesigner/controlFont';
 
 export interface TabControlDesignerPreviewProps {
   control: LingControl;
@@ -32,6 +33,7 @@ export default function TabControlDesignerPreview({ control, onSelectPage }: Tab
   const borderColor = mixHexColor(background, foreground, 18);
   const headerHeight = Math.max(28, fontSize + 14);
   const hideHeader = isTabControlHeaderHidden(control);
+  const fontStyle = getControlFontCssStyle(control);
 
   return (
     <div
@@ -40,7 +42,7 @@ export default function TabControlDesignerPreview({ control, onSelectPage }: Tab
       style={{
         color: foreground,
         backgroundColor: background,
-        fontFamily: '"Segoe UI", "Microsoft YaHei UI", sans-serif',
+        ...fontStyle,
         fontSize: `${fontSize}px`,
         opacity: control.isEnabled ? 1 : 0.55
       }}

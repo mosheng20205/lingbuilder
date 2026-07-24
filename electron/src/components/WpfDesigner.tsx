@@ -86,6 +86,7 @@ import {
   Win32ControlPropertyDefinition,
   Win32ControlPropertyValue
 } from '../services/windowDesigner/win32ControlRegistry';
+import { CONTROL_FONT_FAMILY_OPTIONS, getControlFontCssStyle, normalizeControlFont } from '../services/windowDesigner/controlFont';
 import {
   buildControlHierarchy,
   canReparentControl,
@@ -1982,6 +1983,7 @@ function renderControl(
   const isCollapsed = !isEffectivelyVisible && ancestorsVisible;
   const isHiddenByAncestor = !ancestorsVisible;
   const definition = getWin32ControlDefinition(control.type);
+  const controlFontStyle = getControlFontCssStyle(control);
   const newEmojiSupported = isNewEmojiDesignerControlSupported(control.type);
   const hasSpecialPreview = ['Button', 'TextBox', 'Label', 'CheckBox', 'RadioButton', 'ListBox', 'ProgressBar', 'ComboBox', 'GroupBox', 'Image', 'ListView', 'TreeView', 'TabControl', 'Upload', 'DragUpload'].includes(control.type)
     || (useNewEmojiDesigner && !newEmojiSupported);
@@ -2043,15 +2045,19 @@ function renderControl(
         </>
       )}
 
-      <div className="w-full h-full relative select-none pointer-events-none">
+      <div className="w-full h-full relative select-none pointer-events-none" style={controlFontStyle}>
         {control.type === 'Button' && (
           <button
             disabled={!isEffectivelyEnabled}
-            className={`w-full h-full text-center text-xs font-semibold shadow flex items-center justify-center px-2 select-none border ${useNewEmojiDesigner ? 'border-fuchsia-300/35 shadow-[0_8px_24px_rgba(124,58,237,0.24)]' : 'border-transparent'}`}
+            className={`w-full h-full text-center text-xs shadow flex items-center justify-center px-2 select-none border ${useNewEmojiDesigner ? 'border-fuchsia-300/35 shadow-[0_8px_24px_rgba(124,58,237,0.24)]' : 'border-transparent'}`}
             style={{
               background: useNewEmojiDesigner ? `linear-gradient(135deg, ${control.background === 'transparent' ? '#7C3AED' : control.background}, #0891B2)` : control.background,
               color: control.foreground,
               fontSize: `${control.fontSize}px`,
+              fontFamily: controlFontStyle.fontFamily,
+              fontWeight: controlFontStyle.fontWeight,
+              fontStyle: controlFontStyle.fontStyle,
+              textDecoration: controlFontStyle.textDecoration,
               opacity: isEffectivelyEnabled ? 1 : 0.5,
               borderRadius: `${useNewEmojiDesigner ? Math.max(8, Math.min(control.height / 2, 12)) : Math.min(Math.max(Number(control.properties?.cornerRadius ?? 6), 0), Math.min(control.width, control.height) / 2)}px`
             }}
@@ -2084,7 +2090,7 @@ function renderControl(
               color: control.foreground,
               fontSize: `${control.fontSize}px`,
               backgroundColor: control.background,
-              fontWeight: control.fontSize > 14 ? 'bold' : 'normal',
+              fontWeight: controlFontStyle.fontWeight,
               justifyContent: control.properties?.textAlign === 'center' ? 'center' : control.properties?.textAlign === 'right' ? 'flex-end' : 'flex-start',
               textAlign: control.properties?.textAlign === 'center' ? 'center' : control.properties?.textAlign === 'right' ? 'right' : 'left'
             }}
@@ -2292,9 +2298,9 @@ function renderControl(
             >
               <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-center">
                 {dragEnabled ? <FileUp className="h-8 w-8 text-fuchsia-300" /> : <Upload className="h-7 w-7 text-sky-300" />}
-                <strong className="max-w-full truncate text-sm">{control.content}</strong>
+                <span className="max-w-full truncate text-sm">{control.content}</span>
                 <span className="max-w-full truncate text-[10px] text-slate-400">{tip}</span>
-                <span className="rounded bg-sky-500 px-3 py-1 text-[10px] font-semibold text-white">{String(control.properties?.triggerText || '选择文件')}</span>
+                <span className="rounded bg-sky-500 px-3 py-1 text-[10px] text-white">{String(control.properties?.triggerText || '选择文件')}</span>
               </div>
               <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2 text-[9px] text-slate-400">
                 <span>{multiple ? '允许多选' : '单文件'} · {String(control.properties?.accept || '*.*')}</span>
@@ -2380,6 +2386,7 @@ function renderControl(
 interface TreeViewPreviewNode {
   id: string;
   title: string;
+  expanded: boolean;
   children: TreeViewPreviewNode[];
 }
 
@@ -2392,6 +2399,7 @@ function TreeViewDesignerPreview({ control, isEnabled }: { control: LingControl;
       return [{
         id: String(record.id ?? `${path}-${index}`),
         title: String(record.title ?? record.label ?? record.name ?? record.text ?? record.id ?? ''),
+        expanded: record.expanded === true,
         children: normalizeNodes(record.children, `${path}-${index}`)
       }];
     });
@@ -2419,11 +2427,11 @@ function TreeViewDesignerPreview({ control, isEnabled }: { control: LingControl;
         {showLines && depth > 0 && (
           <span className="absolute bottom-1/2 top-0 border-l opacity-45" style={{ left: `${nodePadding + 11 + (depth - 1) * (18 + nodePadding)}px`, borderColor: control.foreground }} />
         )}
-        <span className="w-3 shrink-0 text-center text-[9px] opacity-70">{node.children.length > 0 ? '▾' : ''}</span>
+        <span className="w-3 shrink-0 text-center text-[9px] opacity-70">{node.children.length > 0 ? node.expanded ? '▾' : '▸' : ''}</span>
         {showCheckBoxes && <span className="h-3 w-3 shrink-0 border opacity-70" style={{ borderColor: control.foreground }} />}
         <span className="min-w-0 truncate">{node.title}</span>
       </div>
-      {node.children.length > 0 && renderNodes(node.children, depth + 1)}
+      {node.expanded && node.children.length > 0 && renderNodes(node.children, depth + 1)}
     </React.Fragment>
   ));
 
@@ -2813,6 +2821,20 @@ function ControlProperties({
               : { content: value })}
           />
         )}
+        <PropertyRow label="字体名称" isDarkMode={isDarkMode}>
+          <select
+            value={normalizeControlFont(control).family}
+            onChange={event => onChange({ fontFamily: event.target.value })}
+            className={`w-full rounded border px-2 py-1 text-xs focus:outline-none focus:border-amber-500 ${
+              isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44] text-slate-200' : 'bg-white border-slate-300 text-slate-800'
+            }`}
+            aria-label="字体名称"
+          >
+            {CONTROL_FONT_FAMILY_OPTIONS.map(fontFamily => (
+              <option key={fontFamily.value} value={fontFamily.value}>{fontFamily.label}</option>
+            ))}
+          </select>
+        </PropertyRow>
         <PropertyRow label="字体大小" isDarkMode={isDarkMode}>
           <div className="flex w-full items-center gap-2">
             <input
@@ -2825,6 +2847,25 @@ function ControlProperties({
               aria-label="字体大小"
             />
             <span className="w-10 text-right font-mono text-[10px] text-slate-500">{control.fontSize}px</span>
+          </div>
+        </PropertyRow>
+        <PropertyRow label="字体样式" isDarkMode={isDarkMode}>
+          <div className="flex w-full flex-wrap gap-x-3 gap-y-1 text-xs">
+            {([
+              ['fontBold', '粗体'],
+              ['fontItalic', '斜体'],
+              ['fontUnderline', '下划线']
+            ] as const).map(([key, label]) => (
+              <label key={key} className="flex cursor-pointer items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={control[key] === true}
+                  onChange={event => onChange({ [key]: event.target.checked })}
+                  className="accent-amber-500"
+                />
+                <span>{label}</span>
+              </label>
+            ))}
           </div>
         </PropertyRow>
         <ColorField

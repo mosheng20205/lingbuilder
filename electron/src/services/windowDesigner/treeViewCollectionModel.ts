@@ -4,6 +4,7 @@ export interface TreeViewEditableNode extends Record<string, unknown> {
   id: string;
   title: string;
   image: number;
+  expanded: boolean;
   children: TreeViewEditableNode[];
 }
 
@@ -39,6 +40,7 @@ export function normalizeTreeViewNodes(value: Win32ControlPropertyValue | undefi
           id: nextNodeId(usedIds, String(record.id ?? fallbackId)),
           title: String(record.title ?? record.text ?? record.label ?? record.name ?? '新节点'),
           image: Number.isFinite(Number(record.image)) ? Math.trunc(Number(record.image)) : -1,
+          expanded: record.expanded === true,
           children: normalize(record.children)
         }];
       })
@@ -84,7 +86,7 @@ export function updateTreeViewNode(nodes: TreeViewEditableNode[], nodeId: string
 export function appendTreeViewNode(nodes: TreeViewEditableNode[], parentId?: string): { nodes: TreeViewEditableNode[]; nodeId: string } {
   const usedIds = new Set(flattenTreeViewNodes(nodes).map(item => item.node.id));
   const nodeId = nextNodeId(usedIds, parentId ? 'child-node' : 'root-node');
-  const node: TreeViewEditableNode = { id: nodeId, title: parentId ? '新子节点' : '新根节点', image: -1, children: [] };
+  const node: TreeViewEditableNode = { id: nodeId, title: parentId ? '新子节点' : '新根节点', image: -1, expanded: false, children: [] };
   return {
     nodeId,
     nodes: parentId ? mapNode(nodes, parentId, parent => ({ ...parent, children: [...parent.children, node] })) : [...nodes, node]

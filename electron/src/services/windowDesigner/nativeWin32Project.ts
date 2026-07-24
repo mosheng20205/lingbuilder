@@ -4,6 +4,7 @@ import {
   getEplRuntimeEventRule,
   parseEplRuntimeEventRules
 } from './eplToCppRules';
+import { normalizeControlFont } from './controlFont';
 
 export interface NativeProjectFile {
   relativePath: string;
@@ -145,6 +146,10 @@ struct ControlSpec {
     int width;
     int height;
     int fontSize;
+    const wchar_t* fontFamily;
+    bool fontBold;
+    bool fontItalic;
+    bool fontUnderline;
     int cornerRadius;
     COLORREF background;
     COLORREF foreground;
@@ -329,23 +334,23 @@ static RuntimeControl* FindRuntimeControl(WindowState& state, int id) {
     return nullptr;
 }
 
-static HFONT CreateControlFont(int cssPx, UINT dpi) {
+static HFONT CreateControlFont(const wchar_t* family, int cssPx, bool bold, bool italic, bool underline, UINT dpi) {
     int height = -MulDiv(cssPx, static_cast<int>(dpi ? dpi : 96), 96);
     return CreateFontW(
         height,
         0,
         0,
         0,
-        FW_NORMAL,
-        FALSE,
-        FALSE,
+        bold ? FW_BOLD : FW_NORMAL,
+        italic ? TRUE : FALSE,
+        underline ? TRUE : FALSE,
         FALSE,
         DEFAULT_CHARSET,
         OUT_DEFAULT_PRECIS,
         CLIP_DEFAULT_PRECIS,
         CLEARTYPE_QUALITY,
         DEFAULT_PITCH | FF_SWISS,
-        L"Microsoft YaHei UI"
+        family && family[0] ? family : L"Microsoft YaHei UI"
     );
 }
 
@@ -478,7 +483,7 @@ static HWND CreateGeneratedControl(HWND hwnd, WindowState& state, const ControlS
         return nullptr;
     }
 
-    HFONT font = CreateControlFont(control.fontSize, state.dpi);
+    HFONT font = CreateControlFont(control.fontFamily, control.fontSize, control.fontBold, control.fontItalic, control.fontUnderline, state.dpi);
     HBRUSH brush = CreateSolidBrush(control.background);
     state.runtimeControls.push_back({ control.id, font, brush });
 
@@ -958,7 +963,8 @@ function generateControlSpec(control: LingControl, id: number, eventRules: EplRu
   const background = control.background === 'transparent' ? '#1E1E24' : control.background;
 
   const cornerRadius = control.type === 'Button' ? clampInteger(control.properties?.cornerRadius, 6, 0, 100) : 0;
-  return `    { ${id}, L"${control.type}", L"${escapeWideString(control.content)}", ${int(control.x)}, ${int(control.y)}, ${int(control.width)}, ${int(control.height)}, ${int(control.fontSize)}, ${cornerRadius}, ${toColorRef(background)}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, ${parseProgress(control)}, L"${escapeWideString(handler)}", L"${escapeWideString(messageBox?.text || '')}", L"${escapeWideString(messageBox?.title || '')}", ${messageBox?.cppFlagsExpression || 'MB_OK'}, L"${escapeWideString(debugText)}", ${eventRule?.closesWindowOnConfirm ? 'true' : 'false'} }`;
+  const font = normalizeControlFont(control);
+  return `    { ${id}, L"${control.type}", L"${escapeWideString(control.content)}", ${int(control.x)}, ${int(control.y)}, ${int(control.width)}, ${int(control.height)}, ${font.size}, L"${escapeWideString(font.family)}", ${font.bold ? 'true' : 'false'}, ${font.italic ? 'true' : 'false'}, ${font.underline ? 'true' : 'false'}, ${cornerRadius}, ${toColorRef(background)}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, ${parseProgress(control)}, L"${escapeWideString(handler)}", L"${escapeWideString(messageBox?.text || '')}", L"${escapeWideString(messageBox?.title || '')}", ${messageBox?.cppFlagsExpression || 'MB_OK'}, L"${escapeWideString(debugText)}", ${eventRule?.closesWindowOnConfirm ? 'true' : 'false'} }`;
 }
 
 function clampInteger(value: unknown, fallback: number, minimum: number, maximum: number): number {

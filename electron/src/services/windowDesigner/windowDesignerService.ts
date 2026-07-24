@@ -6,6 +6,7 @@ import {
   LingWindowProject
 } from './types';
 import { normalizeControlHierarchy } from './controlHierarchy';
+import { DEFAULT_CONTROL_FONT_FAMILY, normalizeControlFont } from './controlFont';
 import {
   createDefaultControlProperties,
   getPrimaryWin32ControlEvent,
@@ -211,6 +212,10 @@ export function createControl(type: LingControlType, index: number): LingControl
     x: 180 + Math.floor(Math.random() * 50),
     y: 150 + Math.floor(Math.random() * 50),
     fontSize: 12,
+    fontFamily: DEFAULT_CONTROL_FONT_FAMILY,
+    fontBold: false,
+    fontItalic: false,
+    fontUnderline: false,
     background: definition.defaultProps.background || 'transparent',
     foreground: definition.defaultProps.foreground || '#FFFFFF',
     isEnabled: true,
@@ -587,9 +592,25 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
     const hierarchyControls = normalizeControlHierarchy(window.controls || []);
     let controlsChanged = hierarchyControls !== window.controls;
     const controls = hierarchyControls.map(control => {
-      if (control.properties) return control;
+      const font = normalizeControlFont(control);
+      const properties = control.properties || createDefaultControlProperties(control.type, control.content);
+      const requiresMigration = !control.properties
+        || control.fontFamily !== font.family
+        || control.fontSize !== font.size
+        || control.fontBold !== font.bold
+        || control.fontItalic !== font.italic
+        || control.fontUnderline !== font.underline;
+      if (!requiresMigration) return control;
       controlsChanged = true;
-      return { ...control, properties: createDefaultControlProperties(control.type, control.content) };
+      return {
+        ...control,
+        fontFamily: font.family,
+        fontSize: font.size,
+        fontBold: font.bold,
+        fontItalic: font.italic,
+        fontUnderline: font.underline,
+        properties
+      };
     });
     const appearanceChanged = !window.titleBarBackground || !window.titleBarForeground || !window.cornerStyle || !window.iconStyle;
     if (!controlsChanged && !appearanceChanged) return window;
@@ -694,6 +715,8 @@ export function generateWindowXml(window: LingWindowModel): string {
     const visibilityAttr = control.visibility === 'Collapsed' ? ' 可见性="隐藏"' : '';
     const stateAttr = !control.isEnabled ? ' 启用状态="禁用"' : '';
     const styleAttr = control.background !== 'transparent' ? ` 背景色="${control.background}"` : '';
+    const font = normalizeControlFont(control);
+    const fontAttrs = ` 字体名称="${escapeXmlAttribute(font.family)}" 字体大小="${font.size}" 粗体="${font.bold ? '是' : '否'}" 斜体="${font.italic ? '是' : '否'}" 下划线="${font.underline ? '是' : '否'}"`;
     const parentAttr = control.parentId ? ` 父级控件="${control.parentId}"` : '';
     const eventAttrs = Object.entries(control.events || {})
       .filter(([, handler]) => handler.trim())
@@ -702,36 +725,36 @@ export function generateWindowXml(window: LingWindowModel): string {
 
     switch (control.type) {
       case 'Button':
-        xml += `        <中文按钮 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 字体大小="${control.fontSize}"${parentAttr}${styleAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
+        xml += `        <中文按钮 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}"${fontAttrs}${parentAttr}${styleAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
         break;
       case 'TextBox':
-        xml += `        <中文输入框 名称="${control.name}" 默认文本="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 字体大小="${control.fontSize}"${parentAttr}${styleAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
+        xml += `        <中文输入框 名称="${control.name}" 默认文本="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}"${fontAttrs}${parentAttr}${styleAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
         break;
       case 'Label':
-        xml += `        <中文标签 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 字体大小="${control.fontSize}" 字体颜色="${control.foreground}"${parentAttr}${visibilityAttr}${eventAttrs} />\n`;
+        xml += `        <中文标签 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}"${fontAttrs} 字体颜色="${control.foreground}"${parentAttr}${visibilityAttr}${eventAttrs} />\n`;
         break;
       case 'CheckBox':
-        xml += `        <中文复选框 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 默认选中="否" 字体大小="${control.fontSize}"${parentAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
+        xml += `        <中文复选框 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 默认选中="否"${fontAttrs}${parentAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
         break;
       case 'RadioButton':
-        xml += `        <中文单选框 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 默认选中="否" 字体大小="${control.fontSize}"${parentAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
+        xml += `        <中文单选框 名称="${control.name}" 内容="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 默认选中="否"${fontAttrs}${parentAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
         break;
       case 'ProgressBar':
-        xml += `        <中文进度条 名称="${control.name}" 当前值="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 进度条颜色="${control.foreground}"${parentAttr}${visibilityAttr}${eventAttrs} />\n`;
+        xml += `        <中文进度条 名称="${control.name}" 当前值="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}"${fontAttrs} 进度条颜色="${control.foreground}"${parentAttr}${visibilityAttr}${eventAttrs} />\n`;
         break;
       case 'ComboBox':
-        xml += `        <中文下拉框 名称="${control.name}" 默认选中项="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}"${parentAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
+        xml += `        <中文下拉框 名称="${control.name}" 默认选中项="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}"${fontAttrs}${parentAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
         break;
       case 'Image':
-        xml += `        <中文图片 名称="${control.name}" 图片源="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 填充模式="等比例拉伸"${parentAttr}${visibilityAttr}${eventAttrs} />\n`;
+        xml += `        <中文图片 名称="${control.name}" 图片源="${control.content}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 填充模式="等比例拉伸"${fontAttrs}${parentAttr}${visibilityAttr}${eventAttrs} />\n`;
         break;
       case 'Grid':
-        xml += `        <中文网格 名称="${control.name}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}"${parentAttr}${visibilityAttr}${eventAttrs} />\n`;
+        xml += `        <中文网格 名称="${control.name}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}"${fontAttrs}${parentAttr}${visibilityAttr}${eventAttrs} />\n`;
         break;
       default: {
         const definition = getWin32ControlDefinition(control.type);
         const properties = escapeXmlAttribute(JSON.stringify(control.properties || {}));
-        xml += `        <Win32控件 类型="${control.type}" 中文名称="${definition?.label || control.type}" 名称="${control.name}" 内容="${escapeXmlAttribute(control.content)}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}" 专属属性="${properties}"${parentAttr}${styleAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
+        xml += `        <Win32控件 类型="${control.type}" 中文名称="${definition?.label || control.type}" 名称="${control.name}" 内容="${escapeXmlAttribute(control.content)}" 宽度="${control.width}" 高度="${control.height}" 坐标="${control.x},${control.y}"${fontAttrs} 专属属性="${properties}"${parentAttr}${styleAttr}${visibilityAttr}${stateAttr}${eventAttrs} />\n`;
         break;
       }
     }
