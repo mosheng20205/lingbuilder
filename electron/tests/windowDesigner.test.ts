@@ -65,6 +65,24 @@ import {
 } from '../src/services/windowDesigner/treeViewCollectionModel';
 import { CONTROL_FONT_FAMILY_OPTIONS, DEFAULT_CONTROL_FONT_FAMILY, getControlFontCssStyle } from '../src/services/windowDesigner/controlFont';
 
+test('调试输出支持英文逗号分隔的任意数量异构参数', () => {
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'variadic-debug-output',
+    name: '多参数调试输出',
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#202028', description: '', controls: [] }]
+  };
+  const source = `类 主窗口
+    事件 创建完毕()
+        调试输出("当前选择项", 控件_取选择项("列表框_tab"), 真, 3)
+    结束
+结束类`;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /调试输出\(L"当前选择项", 控件_取选择项\(L"列表框_tab"\), true, 3\);/u);
+  assert.match(cpp, /template <typename\.\.\. Args> void 调试输出\(const Args&\.\.\. args\)/u);
+  assert.match(cpp, /if \(!first\) output \+= L", ";/u);
+});
+
 function createControl(id: string, parentId?: string, type: LingControl['type'] = 'Button'): LingControl {
   return {
     id,
@@ -1284,7 +1302,7 @@ test('选项卡容器槽位、隐藏表头、Rebar、Pager 和 UpDown 生成真�
   const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.find(file => file.relativePath === 'main.cpp')!.content;
   assert.match(cpp, /UpdateTabChildren/);
   assert.match(cpp, /struct RuntimeTabPage/u);
-  assert.match(cpp, /if \(!\(control\.flags & CF_HIDE_TAB_HEADER\)\) TabCtrl_AdjustRect\(child, FALSE, &pageRect\)/u);
+  assert.match(cpp, /if \(!runtimeControls_\.back\(\)\.hideTabHeader\) TabCtrl_AdjustRect\(child, FALSE, &pageRect\)/u);
   assert.match(cpp, /WS_EX_CONTROLPARENT/u);
   assert.match(cpp, /FindTabPage\(parentSpec->id, control\.containerSlot\)/u);
   assert.match(cpp, /ShowWindow\(page\.hwnd, page\.slot == activeSlot \? SW_SHOW : SW_HIDE\)/u);
@@ -1292,7 +1310,7 @@ test('选项卡容器槽位、隐藏表头、Rebar、Pager 和 UpDown 生成真�
   assert.match(cpp, /SendMessageW\(self->hwnd_, message, wParam, lParam\)/u);
   assert.match(cpp, /PaintTabControl/u);
   assert.match(cpp, /CF_HIDE_TAB_HEADER = 1u << 28/u);
-  assert.match(cpp, /if \(control\.flags & CF_HIDE_TAB_HEADER\)/u);
+  assert.match(cpp, /if \(runtime\.hideTabHeader\)/u);
   assert.match(cpp, /ResolveTabBackground/u);
   assert.match(cpp, /PaintTabPage/u);
   assert.match(cpp, /COLORREF accent = RGB\(245, 158, 11\);/u);
@@ -1415,6 +1433,8 @@ test('.lcpp 控件属性读写和集合命令通过模块 binding 确定性生�
         列表视图_添加行("数据列表", "服务\\t运行")
         树形框_添加节点("数据树", "", "根节点")
         选项卡_添加页("页面选项卡", "新增页")
+        选项卡_设置隐藏表头("页面选项卡", 真)
+        选项卡_取隐藏表头("页面选项卡")
     结束
 结束类`;
   const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.find(file => file.relativePath === 'main.cpp')!.content;
@@ -1426,6 +1446,10 @@ test('.lcpp 控件属性读写和集合命令通过模块 binding 确定性生�
   assert.match(cpp, /列表视图_添加行\(L"数据列表", L"服务/u);
   assert.match(cpp, /树形框_添加节点\(L"数据树", L"", L"根节点"\)/u);
   assert.match(cpp, /选项卡_添加页\(L"页面选项卡", L"新增页"\)/u);
+  assert.match(cpp, /选项卡_设置隐藏表头\(L"页面选项卡", true\)/u);
+  assert.match(cpp, /选项卡_取隐藏表头\(L"页面选项卡"\)/u);
+  assert.match(cpp, /runtime->hideTabHeader = hidden/u);
+  assert.match(cpp, /TabCtrl_AdjustRect\(runtime->hwnd, FALSE, &pageRect\)/u);
   assert.match(cpp, /const wchar_t\* name;/);
   assert.match(cpp, /return DefWindowProcW\(hwnd, message, wParam, lParam\);/);
 });

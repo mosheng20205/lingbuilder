@@ -14,11 +14,13 @@ import MonacoEditorWorker from 'monaco-editor/esm/vs/editor/editor.worker.js?wor
 import 'monaco-editor/esm/vs/basic-languages/cpp/cpp.contribution.js';
 import 'monaco-editor/esm/vs/basic-languages/ini/ini.contribution.js';
 import {
+  buildLingCppLanguageContext,
   formatLingCpp,
   getLingCppBilingualCompletions,
   getLingCppDesignerBindings,
   getLingCppEventBlockHighlights,
   getLingCppFoldingRanges,
+  getLingCppHover,
   getLingCppInlineHints,
   getLingCppSemanticDiagnostics,
   getLingCppStructuredReadingRows,
@@ -707,6 +709,32 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
           }));
 
           return { suggestions };
+        }
+      });
+
+      monaco.languages.registerHoverProvider('lingcpp', {
+        provideHover: (model: any, position: any) => {
+          const source = model.getValue();
+          const hover = getLingCppHover({
+            source,
+            line: position.lineNumber,
+            column: position.column
+          }, buildLingCppLanguageContext(
+            source,
+            lingCppDesignerProjectSnapshot,
+            lingCppModuleContextSnapshot,
+            lingCppFilePathSnapshot
+          ));
+          if (!hover) return null;
+          return {
+            range: hover.range ? {
+              startLineNumber: hover.range.startLine,
+              startColumn: hover.range.startColumn,
+              endLineNumber: hover.range.endLine,
+              endColumn: hover.range.endColumn
+            } : undefined,
+            contents: [{ value: hover.contents }]
+          };
         }
       });
 

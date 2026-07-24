@@ -296,15 +296,36 @@ function generateNewEmojiMainCpp(
 #define _UNICODE
 #endif
 #include <windows.h>
+#include <sstream>
 #include <string>
 #include "new_emoji_bridge.h"
 ${modulePreamble}
 
 static HWND g_newEmojiWindow = nullptr;
 
-static void 调试输出(const wchar_t* message) {
+static void 写入调试输出(const wchar_t* message) {
     OutputDebugStringW(message ? message : L"");
     OutputDebugStringW(L"\\r\\n");
+}
+
+static void 追加调试参数(std::wstring& output, bool value) { output += value ? L"真" : L"假"; }
+static void 追加调试参数(std::wstring& output, const wchar_t* value) { output += value ? value : L"(空)"; }
+static void 追加调试参数(std::wstring& output, const std::wstring& value) { output += value; }
+template <typename T> static void 追加调试参数(std::wstring& output, const T& value) {
+    std::wostringstream stream;
+    stream << value;
+    output += stream.str();
+}
+template <typename... Args> static void 调试输出(const Args&... args) {
+    std::wstring output;
+    bool first = true;
+    auto append = [&](const auto& value) {
+        if (!first) output += L", ";
+        first = false;
+        追加调试参数(output, value);
+    };
+    (append(args), ...);
+    写入调试输出(output.c_str());
 }
 
 static int 信息框(const wchar_t* text, UINT flags = MB_OK, const wchar_t* title = L"LingBuilder") {
@@ -761,6 +782,7 @@ struct RuntimeControl {
     bool iconResource;
     bool mouseInside;
     int checkState;
+    bool hideTabHeader;
     std::vector<std::wstring> uploadFiles;
 };
 
@@ -1496,7 +1518,7 @@ protected:
         RefreshUploadFileList(runtime);
     }
 
-    void 调试输出(const wchar_t* text) {
+    void 写入调试输出(const wchar_t* text) {
         if (!text || text[0] == 0) return;
         OutputDebugStringW(text);
         OutputDebugStringW(L"\\n");
@@ -1509,7 +1531,25 @@ protected:
         }
     }
 
-    void 调试输出(const std::wstring& text) { 调试输出(text.c_str()); }
+    static void 追加调试参数(std::wstring& output, bool value) { output += value ? L"真" : L"假"; }
+    static void 追加调试参数(std::wstring& output, const wchar_t* value) { output += value ? value : L"(空)"; }
+    static void 追加调试参数(std::wstring& output, const std::wstring& value) { output += value; }
+    template <typename T> static void 追加调试参数(std::wstring& output, const T& value) {
+        std::wostringstream stream;
+        stream << value;
+        output += stream.str();
+    }
+    template <typename... Args> void 调试输出(const Args&... args) {
+        std::wstring output;
+        bool first = true;
+        auto append = [&](const auto& value) {
+            if (!first) output += L", ";
+            first = false;
+            追加调试参数(output, value);
+        };
+        (append(args), ...);
+        写入调试输出(output.c_str());
+    }
 
     int 信息框(const wchar_t* text, UINT flags, const wchar_t* title) {
         return MessageBoxW(hwnd_, text, title && title[0] ? title : L"LingBuilder 中文 C++", flags);
@@ -2669,6 +2709,35 @@ protected:
         if (inserted >= 0) UpdateTabHeaderMinimumWidth(*control, *runtime);
         return inserted;
     }
+    bool 选项卡_设置隐藏表头(const wchar_t* controlName, bool hidden) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName);
+        const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr;
+        if (!runtime || !control || !IsType(*control, L"TabControl")) return false;
+        runtime->hideTabHeader = hidden;
+        RECT pageRect = {};
+        GetClientRect(runtime->hwnd, &pageRect);
+        if (!hidden) {
+            SendMessageW(runtime->hwnd, TCM_SETPADDING, 0, MAKELPARAM(TabHeaderHorizontalPadding(), TabHeaderVerticalPadding()));
+            UpdateTabHeaderMinimumWidth(*control, *runtime);
+            TabCtrl_AdjustRect(runtime->hwnd, FALSE, &pageRect);
+        }
+        for (auto& page : tabPages_) {
+            if (page.tabControlId != control->id) continue;
+            page.contentRect = pageRect;
+            SetWindowPos(page.hwnd, nullptr, pageRect.left, pageRect.top,
+                std::max(0L, pageRect.right - pageRect.left),
+                std::max(0L, pageRect.bottom - pageRect.top),
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        UpdateTabChildren(*control);
+        RedrawWindow(runtime->hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+        return true;
+    }
+    bool 选项卡_取隐藏表头(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName);
+        const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr;
+        return runtime && control && IsType(*control, L"TabControl") && runtime->hideTabHeader;
+    }
 
 private:
     bool EnsureSocketsStarted() {
@@ -3145,7 +3214,7 @@ private:
     int TabHeaderIconGap() const { return ScaleForDpi(6, dpi_); }
 
     void UpdateTabHeaderMinimumWidth(const ControlSpec& control, RuntimeControl& runtime) {
-        if (!runtime.hwnd || (control.flags & CF_HIDE_TAB_HEADER)) return;
+        if (!runtime.hwnd || runtime.hideTabHeader) return;
         HDC hdc = GetDC(runtime.hwnd);
         if (!hdc) return;
         HFONT oldFont = runtime.font ? reinterpret_cast<HFONT>(SelectObject(hdc, runtime.font)) : nullptr;
@@ -3183,7 +3252,7 @@ private:
         COLORREF selectedBackground = BlendColor(pageBackground, RGB(255, 255, 255), 7);
         COLORREF inactiveForeground = BlendColor(control.foreground, pageBackground, 30);
         COLORREF accent = RGB(245, 158, 11);
-        if (control.flags & CF_HIDE_TAB_HEADER) {
+        if (runtime.hideTabHeader) {
             HBRUSH pageBrush = CreateSolidBrush(pageBackground);
             FillRect(hdc, &clientRect, pageBrush);
             DeleteObject(pageBrush);
@@ -4676,7 +4745,8 @@ private:
             nullptr,
             false,
             false,
-            (control.flags & CF_CHECKED) ? BST_CHECKED : BST_UNCHECKED
+            (control.flags & CF_CHECKED) ? BST_CHECKED : BST_UNCHECKED,
+            (control.flags & CF_HIDE_TAB_HEADER) != 0
         });
         SetWindowSubclass(child, ControlSubclassProc, static_cast<UINT_PTR>(control.id), reinterpret_cast<DWORD_PTR>(this));
         if (frameHwnd) {
@@ -4855,7 +4925,7 @@ private:
             UpdateTabHeaderMinimumWidth(control, runtimeControls_.back());
             TabCtrl_SetCurSel(child, control.selectedIndex);
             RECT pageRect = { 0, 0, controlWidth, controlHeight };
-            if (!(control.flags & CF_HIDE_TAB_HEADER)) TabCtrl_AdjustRect(child, FALSE, &pageRect);
+            if (!runtimeControls_.back().hideTabHeader) TabCtrl_AdjustRect(child, FALSE, &pageRect);
             for (int index = 0; index < static_cast<int>(rows.size()); ++index) {
                 HWND page = CreateWindowExW(
                     WS_EX_CONTROLPARENT,

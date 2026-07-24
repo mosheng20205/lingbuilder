@@ -9,6 +9,7 @@ import { createModuleService } from '../modules/moduleService';
 import { describeLingCppModuleContextForAi } from '../modules/moduleContextAdapters';
 import { exportModuleNativeDependencies, materializeModuleNativeDependencies, ModuleNativeDependencyPlan } from '../modules/nativeDependencyService';
 import { createManagedProcessService } from '../tasks/managedProcessService';
+import { decodeCompilerOutput } from '../tasks/compilerOutputEncoding';
 import type { ManagedProcessService, ManagedProcessStopAllResult } from '../tasks/managedProcessService';
 import {
   createProjectBuildCoordinator,
@@ -1036,7 +1037,7 @@ async function compileWin32Preview(
       ? ['/d', '/c', `call ${quoteCmdArg(compiler.setupBatch)} >nul && ${compiler.command} ${commandArgs.map(quoteCmdArg).join(' ')}`]
       : commandArgs;
 
-    const compileResult = await execFileAsync(command, args, {
+    const compileResult = await execCompilerFileAsync(command, args, {
       cwd,
       timeout: 60000,
       windowsHide: true,
@@ -1045,7 +1046,7 @@ async function compileWin32Preview(
       , signal
     });
     const linkResult = linkArgs.length > 0
-      ? await execFileAsync(compiler.command, linkArgs, {
+      ? await execCompilerFileAsync(compiler.command, linkArgs, {
           cwd,
           timeout: 60000,
           windowsHide: true,
@@ -1141,7 +1142,7 @@ async function runMsvcCommand(compiler: AiBridgeCompilerInfo, commandArgs: strin
   const args = compiler.setupBatch
     ? ['/d', '/c', `call ${quoteCmdArg(compiler.setupBatch)} >nul && ${compiler.command} ${commandArgs.map(quoteCmdArg).join(' ')}`]
     : commandArgs;
-  return await execFileAsync(command, args, {
+  return await execCompilerFileAsync(command, args, {
     cwd,
     timeout: 60000,
     windowsHide: true,
@@ -1153,6 +1154,17 @@ async function runMsvcCommand(compiler: AiBridgeCompilerInfo, commandArgs: strin
 
 function quoteCmdArg(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
+}
+
+async function execCompilerFileAsync(command: string, args: string[], options: Record<string, unknown>): Promise<{ stdout: string; stderr: string }> {
+  try {
+    const result = await execFileAsync(command, args, { ...options, encoding: 'buffer' } as any);
+    return { stdout: decodeCompilerOutput(result.stdout), stderr: decodeCompilerOutput(result.stderr) };
+  } catch (error: any) {
+    error.stdout = decodeCompilerOutput(error.stdout);
+    error.stderr = decodeCompilerOutput(error.stderr);
+    throw error;
+  }
 }
 
 function isReadableExtension(filePath: string): boolean {

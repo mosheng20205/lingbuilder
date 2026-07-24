@@ -41,6 +41,7 @@ import {
   getWindowEventHandlerName,
   WINDOW_EVENT_DEFINITIONS
 } from '../windowDesigner/windowEventRegistry';
+import { getWin32ControlDefinition } from '../windowDesigner/win32ControlRegistry';
 
 const KEYWORD = {
   package: LING_CPP_KEYWORDS[0],
@@ -295,6 +296,37 @@ export function getLingCppHover(
   languageContext = buildLingCppLanguageContext(context.source)
 ): LingCppHover | undefined {
   const nodes = languageContext.symbolIndex.byLine[context.line] || [];
+  const structuralNode = nodes.find(item => item.kind !== 'program' && item.kind !== 'statement');
+  if (structuralNode) {
+    return {
+      line: context.line,
+      column: context.column,
+      range: structuralNode.range,
+      contents: hoverTextForAstNode(structuralNode)
+    };
+  }
+
+  const hoveredWord = getLingCppWordAtPosition(context.source, context.line, context.column);
+  if (hoveredWord) {
+    const completion = getLingCppCompletionItems({
+      ...context,
+      triggerText: hoveredWord.text
+    }, languageContext).find(item => item.label === hoveredWord.text);
+    if (completion) {
+      return {
+        line: context.line,
+        column: context.column,
+        range: {
+          startLine: context.line,
+          startColumn: hoveredWord.startColumn,
+          endLine: context.line,
+          endColumn: hoveredWord.endColumn
+        },
+        contents: formatLingCppCompletionHover(completion)
+      };
+    }
+  }
+
   const node = nodes.find(item => item.kind !== 'program' && item.kind !== 'statement') || nodes[0];
   if (!node) return undefined;
   return {
@@ -303,6 +335,36 @@ export function getLingCppHover(
     range: node.range,
     contents: hoverTextForAstNode(node)
   };
+}
+
+function getLingCppWordAtPosition(
+  source: string,
+  lineNumber: number,
+  columnNumber: number
+): { text: string; startColumn: number; endColumn: number } | undefined {
+  const line = splitLines(source)[lineNumber - 1];
+  if (line === undefined) return undefined;
+  const isWordCharacter = (value: string) => /[\p{L}\p{N}_]/u.test(value);
+  let offset = Math.max(0, Math.min(line.length, columnNumber - 1));
+  if (!isWordCharacter(line[offset] || '') && offset > 0 && isWordCharacter(line[offset - 1])) {
+    offset -= 1;
+  }
+  if (!isWordCharacter(line[offset] || '')) return undefined;
+  let start = offset;
+  let end = offset + 1;
+  while (start > 0 && isWordCharacter(line[start - 1])) start -= 1;
+  while (end < line.length && isWordCharacter(line[end])) end += 1;
+  return { text: line.slice(start, end), startColumn: start + 1, endColumn: end + 1 };
+}
+
+function formatLingCppCompletionHover(item: LingCppCompletionItem): string {
+  const signature = item.signature || (item.kind === 'function' ? item.insertText.replace(/\$\d+/gu, '参数') : item.label);
+  return [
+    `**${signature}**`,
+    item.documentation || item.audienceText || item.detail,
+    item.returnType ? `返回值：${item.returnType}` : '',
+    item.example ? `示例：\`${item.example}\`` : ''
+  ].filter(Boolean).join('\n\n');
 }
 
 function getCurrentSymbolCompletionItems(languageContext: LingCppLanguageContext): LingCppCompletionCatalogItem[] {
@@ -1317,16 +1379,14 @@ function getDesignerCompletionItems(source: string, designerProject?: LingWindow
     });
 
     const controlItems = win.controls.flatMap(control => {
-      const boundEvents = Object.entries(control.events || {});
-      const eventEntries = boundEvents.length > 0 ? boundEvents : [['Click', `_${control.name}_被单击`]];
-      return eventEntries.map(([eventName, handlerName]) => ({
-        label: `${control.name} ${eventNameLabel(eventName)}事件`,
+      return getDesignerControlEventEntries(control).map(({ eventName, eventLabel, handlerName }) => ({
+        label: `${control.name} ${eventLabel}事件`,
         kind: 'event' as const,
         insertText: `事件 ${handlerName}()\n    $0`,
         detail: `设计器控件：${control.name}`,
-        documentation: `控件：${control.name}\n事件：${eventNameLabel(eventName)}\n处理器：${handlerName}`,
-        aliases: [control.name, handlerName, eventName, 'Click', 'ButtonClick'],
-        pinyin: ['kjsj', 'dj', 'ansj'],
+        documentation: `控件：${control.name}\n事件：${eventLabel}\n处理器：${handlerName}`,
+        aliases: [control.name, handlerName, eventName, eventLabel, '控件事件'],
+        pinyin: ['kjsj'],
         example: `事件 ${handlerName}()`,
         category: 'designer' as const,
         audienceText: `用户操作 ${control.name} 后执行`,
@@ -1387,8 +1447,129 @@ function getDesignerControlCompletionItemsForWindow(win: LingWindowModel): LingC
         isSnippet: true
       }));
     }
+    getDesignerControlCommandCompletions(control).forEach(command => {
+      items.push(createLingCppCatalogItem({
+        label: `${control.name}.${command.methodName}`,
+        kind: 'function',
+        insertText: command.insertText,
+        detail: `${detail} · ${command.description}`,
+        documentation: `${command.description}\n将生成可确定性转换为 C++ 的命令：${command.commandName}。`,
+        aliases: [control.name, control.type, command.methodName, command.commandName],
+        category: 'designer',
+        source: 'designer',
+        sortRank: 10,
+        isSnippet: command.insertText.includes('$')
+      }));
+    });
+    getDesignerControlEventEntries(control).forEach(({ eventName, eventLabel, handlerName }) => {
+      items.push(createLingCppCatalogItem({
+        label: `${control.name}.${eventLabel}事件`,
+        kind: 'event',
+        insertText: `${handlerName}()`,
+        detail: `${detail} · ${eventLabel}事件处理器${control.events?.[eventName]?.trim() ? '' : '（尚未绑定）'}`,
+        documentation: `控件事件：${eventLabel} (${eventName})\n处理器：${handlerName}\n可在设计器事件面板绑定；候选可用于调用对应处理器。`,
+        aliases: [control.name, control.type, eventName, eventLabel, handlerName, '控件事件'],
+        category: 'designer',
+        source: 'designer',
+        sortRank: 11
+      }));
+    });
     return items;
   });
+}
+
+interface DesignerControlCommandCompletion {
+  methodName: string;
+  commandName: string;
+  insertText: string;
+  description: string;
+}
+
+function getDesignerControlEventEntries(control: LingWindowModel['controls'][number]) {
+  const definition = getWin32ControlDefinition(control.type);
+  const registered = (definition?.events || []).map(event => ({
+    eventName: event.name,
+    eventLabel: event.label,
+    handlerName: control.events?.[event.name]?.trim() || `_${control.name}_${event.handlerSuffix}`
+  }));
+  const registeredNames = new Set(registered.map(event => event.eventName));
+  const custom = Object.entries(control.events || {})
+    .filter(([eventName, handlerName]) => !registeredNames.has(eventName) && handlerName.trim())
+    .map(([eventName, handlerName]) => ({
+      eventName,
+      eventLabel: eventNameLabel(eventName),
+      handlerName: handlerName.trim()
+    }));
+  return [...registered, ...custom];
+}
+
+function getDesignerControlCommandCompletions(
+  control: LingWindowModel['controls'][number]
+): DesignerControlCommandCompletion[] {
+  const name = control.name.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"');
+  const command = (
+    methodName: string,
+    commandName: string,
+    argumentsText: string,
+    description: string
+  ): DesignerControlCommandCompletion => ({
+    methodName,
+    commandName,
+    insertText: `${commandName}("${name}"${argumentsText ? `, ${argumentsText}` : ''})`,
+    description
+  });
+  const commands = [
+    command('设置内容', '控件_设置文本', '"$1"', '设置控件显示文本'),
+    command('取内容', '控件_取文本', '', '读取控件当前文本'),
+    command('设置启用', '控件_设置启用', '真', '启用或禁用控件'),
+    command('设置可见', '控件_设置可见', '真', '显示或隐藏控件')
+  ];
+  if (['Button', 'CheckBox', 'RadioButton'].includes(control.type)) {
+    commands.push(
+      command('设置勾选', '控件_设置勾选', '真', '设置控件勾选或按下状态'),
+      command('取勾选', '控件_取勾选', '', '读取控件勾选或按下状态')
+    );
+  }
+  if (['ProgressBar', 'ScrollBar', 'TrackBar', 'UpDown', 'FlatScrollBar'].includes(control.type)) {
+    commands.push(
+      command('设置数值', '控件_设置数值', '$1', '设置控件当前数值'),
+      command('取数值', '控件_取数值', '', '读取控件当前数值')
+    );
+  }
+  if (['ListBox', 'ComboBox', 'ComboBoxEx', 'ListView', 'TabControl'].includes(control.type)) {
+    commands.push(command('取选择项', '控件_取选择项', '', '读取当前选择项索引'));
+  }
+  if (['ListBox', 'ComboBox', 'ComboBoxEx'].includes(control.type)) {
+    commands.push(command('添加项目', '控件_添加项目', '"$1"', '追加一个文本项目'));
+  }
+  if (['ListBox', 'ComboBox', 'ComboBoxEx', 'ListView', 'TreeView', 'TabControl'].includes(control.type)) {
+    commands.push(command('清空项目', '控件_清空项目', '', '清空控件中的项目'));
+  }
+  if (control.type === 'ListView') {
+    commands.push(command('添加行', '列表视图_添加行', '"$1"', '追加一行 Tab 分隔的单元格'));
+  }
+  if (control.type === 'TreeView') {
+    commands.push(command('添加节点', '树形框_添加节点', '"$1", "$2"', '向根级或指定父节点追加节点'));
+  }
+  if (control.type === 'TabControl') {
+    commands.push(
+      command('添加页', '选项卡_添加页', '"$1"', '追加一个标签页'),
+      command('设置隐藏表头', '选项卡_设置隐藏表头', '真', '运行时隐藏或显示标签表头'),
+      command('隐藏表头', '选项卡_设置隐藏表头', '真', '立即隐藏标签表头'),
+      command('显示表头', '选项卡_设置隐藏表头', '假', '立即显示标签表头'),
+      command('取隐藏表头', '选项卡_取隐藏表头', '', '读取标签表头是否隐藏')
+    );
+  }
+  if (control.type === 'Upload' || control.type === 'DragUpload') {
+    commands.push(
+      command('打开文件选择', '上传_打开文件选择', '', '打开文件选择器'),
+      command('开始上传', '上传_开始', '', '触发上传操作事件'),
+      command('清空文件', '上传_清空文件', '', '清空当前文件列表'),
+      command('取文件数量', '上传_取文件数量', '', '读取当前文件数量'),
+      command('取文件', '上传_取文件', '$1', '读取指定索引的文件路径')
+    );
+  }
+  return commands;
 }
 
 function getOpenWindowTargetCompletionItems(

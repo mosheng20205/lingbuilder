@@ -74,9 +74,9 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         },
         {
           name: '调试输出',
-          signature: '调试输出(内容)',
-          description: '向调试输出窗口和控制台输出文本。',
-          insertText: '调试输出("$1")',
+          signature: '调试输出(参数1, 参数2, ...)',
+          description: '向调试输出窗口和控制台输出任意数量的文本、整数、逻辑值等参数，参数使用英文逗号分隔。',
+          insertText: '调试输出("$1", $2)',
           returnType: '空'
         },
         {
@@ -153,7 +153,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           parameters: [{ name: '内容', type: 'wideString' }],
           returnType: 'void',
           encoding: 'wide',
-          example: '调试输出("按钮被单击")'
+          example: '调试输出("当前选择项", 控件_取选择项("列表框1"), 真)'
         },
         {
           command: '结束',
@@ -231,6 +231,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: '列表视图_添加行', signature: '列表视图_添加行(控件名, Tab分隔单元格)', description: '向 ListView 追加结构化行。', insertText: '列表视图_添加行("$1", "名称\\t状态")', returnType: '整数型' }
         ,{ name: '树形框_添加节点', signature: '树形框_添加节点(控件名, 父节点文字, 节点文字)', description: '向 TreeView 根级或指定父节点追加节点。', insertText: '树形框_添加节点("$1", "", "$2")', returnType: '逻辑型' }
         ,{ name: '选项卡_添加页', signature: '选项卡_添加页(控件名, 标题)', description: '向 TabControl 追加标签页。', insertText: '选项卡_添加页("$1", "$2")', returnType: '整数型' }
+        ,{ name: '选项卡_设置隐藏表头', signature: '选项卡_设置隐藏表头(控件名, 隐藏)', description: '运行时隐藏或显示 TabControl 的标签表头，并重新布局当前页面。', insertText: '选项卡_设置隐藏表头("$1", 真)', returnType: '逻辑型' }
+        ,{ name: '选项卡_取隐藏表头', signature: '选项卡_取隐藏表头(控件名)', description: '读取 TabControl 当前是否隐藏标签表头。', insertText: '选项卡_取隐藏表头("$1")', returnType: '逻辑型' }
         ,{ name: '上传_打开文件选择', signature: '上传_打开文件选择(控件名)', description: '为原生上传控件打开支持多选和格式过滤的 Windows 文件选择器。', insertText: '上传_打开文件选择("$1")', returnType: '逻辑型' }
         ,{ name: '上传_开始', signature: '上传_开始(控件名)', description: '触发上传控件的“执行上传”事件；文件传输逻辑由事件代码实现。', insertText: '上传_开始("$1")', returnType: '逻辑型' }
         ,{ name: '上传_清空文件', signature: '上传_清空文件(控件名)', description: '清空上传控件当前保存的文件列表。', insertText: '上传_清空文件("$1")', returnType: '逻辑型' }
@@ -276,6 +278,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ command: '列表视图_添加行', runtimeName: '列表视图_添加行', parameters: [{ name: '控件名', type: 'wideString' }, { name: 'Tab分隔单元格', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
         ,{ command: '树形框_添加节点', runtimeName: '树形框_添加节点', parameters: [{ name: '控件名', type: 'wideString' }, { name: '父节点文字', type: 'wideString' }, { name: '节点文字', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '选项卡_添加页', runtimeName: '选项卡_添加页', parameters: [{ name: '控件名', type: 'wideString' }, { name: '标题', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '选项卡_设置隐藏表头', runtimeName: '选项卡_设置隐藏表头', parameters: [{ name: '控件名', type: 'wideString' }, { name: '隐藏', type: 'bool' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '选项卡_取隐藏表头', runtimeName: '选项卡_取隐藏表头', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '上传_打开文件选择', runtimeName: '上传_打开文件选择', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '上传_开始', runtimeName: '上传_开始', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '上传_清空文件', runtimeName: '上传_清空文件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }

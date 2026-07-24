@@ -81,6 +81,7 @@ import {
   isEnvironmentRepairTarget
 } from "./src/services/tasks/environmentRepairService";
 import { mapCompilerDiagnostics, parseCompilerDiagnostics } from "./src/services/tasks/compilerDiagnosticService";
+import { decodeCompilerOutput } from "./src/services/tasks/compilerOutputEncoding";
 import { dependencyBuildBatches, IncrementalBuildService } from "./src/services/tasks/incrementalBuildService";
 import { PtyTerminalService } from "./src/services/terminal/ptyTerminalService";
 import { NativeDebugService } from "./src/services/debug/nativeDebugService";
@@ -2970,7 +2971,7 @@ async function compileWin32Preview(
       ? ["/d", "/c", `call ${quoteCmdArg(compiler.setupBatch)} >nul && ${compiler.command} ${commandArgs.map(quoteCmdArg).join(" ")}`]
       : commandArgs;
 
-    const compileResult = await execFileAsync(command, args, {
+    const compileResult = await execCompilerFileAsync(command, args, {
       cwd,
       timeout: 60000,
       windowsHide: true,
@@ -2979,7 +2980,7 @@ async function compileWin32Preview(
       , signal
     });
     const linkResult = linkArgs.length > 0
-      ? await execFileAsync(compiler.command, linkArgs, {
+      ? await execCompilerFileAsync(compiler.command, linkArgs, {
           cwd,
           timeout: 60000,
           windowsHide: true,
@@ -3078,7 +3079,7 @@ async function runMsvcCommand(compiler: CompilerInfo, commandArgs: string[], cwd
   const args = compiler.setupBatch
     ? ["/d", "/c", `call ${quoteCmdArg(compiler.setupBatch)} >nul && ${compiler.command} ${commandArgs.map(quoteCmdArg).join(" ")}`]
     : commandArgs;
-  return await execFileAsync(command, args, {
+  return await execCompilerFileAsync(command, args, {
     cwd,
     timeout: 60000,
     windowsHide: true,
@@ -3090,6 +3091,17 @@ async function runMsvcCommand(compiler: CompilerInfo, commandArgs: string[], cwd
 
 function quoteCmdArg(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
+}
+
+async function execCompilerFileAsync(command: string, args: string[], options: Record<string, unknown>): Promise<{ stdout: string; stderr: string }> {
+  try {
+    const result = await execFileAsync(command, args, { ...options, encoding: 'buffer' } as any);
+    return { stdout: decodeCompilerOutput(result.stdout), stderr: decodeCompilerOutput(result.stderr) };
+  } catch (error: any) {
+    error.stdout = decodeCompilerOutput(error.stdout);
+    error.stderr = decodeCompilerOutput(error.stderr);
+    throw error;
+  }
 }
 
 async function writeGeneratedProjectFiles(

@@ -49,7 +49,7 @@ export function getLingCppCompletionCatalog(contextKind: LingCppCompletionContex
 
   const common: LingCppCompletionCatalogItem[] = [
     catalogItem('信息框', 'function', '信息框("$1", 64, "提示")', '弹出一个提示框', ['MessageBox', 'msg', 'alert'], ['xxk', 'xinxikuang'], '信息框("你好", 64, "提示")', 'command', 30),
-    catalogItem('调试输出', 'function', '调试输出("$1")', '向输出面板写入调试文本', ['DebugOutput', 'debug', 'trace', 'log'], ['ts', 'sc', 'tssc'], '调试输出("按钮被单击")', 'command', 30),
+    catalogItem('调试输出', 'function', '调试输出("$1", $2)', '向输出面板写入任意数量参数，参数使用英文逗号分隔', ['DebugOutput', 'debug', 'trace', 'log'], ['ts', 'sc', 'tssc'], '调试输出("当前选择项", 控件_取选择项("列表框1"), 真)', 'command', 30),
     catalogItem('结束', 'function', '结束()', '结束当前程序', ['Exit', 'Quit', 'CloseApp'], ['js', 'tc'], '结束()', 'command', 30),
     catalogItem('修改控件文字', 'snippet', '$1.文字 = "$2"', '修改按钮、标签或输入框显示文字', ['SetText', 'Text'], ['xgwz', 'wz'], '按钮1.文字 = "确定"', 'snippet', 50, true),
     catalogItem('打开窗口', 'function', '打开窗口("$1")', '打开另一个窗口', ['OpenWindow', 'ShowWindow', '窗口_打开', '载入窗口', '载入新窗口'], ['dkck', 'ck', 'zrck'], '打开窗口("设置窗体")', 'command', 30),
@@ -122,6 +122,8 @@ export function getLingCppModuleCompletionItems(moduleContext?: LingCppModuleCon
       kind: 'function',
       insertText: command.insertText || command.signature || `${command.name}($1)`,
       detail: `${manifest.name} · ${command.signature || '命令'}`,
+      signature: command.signature,
+      returnType: command.returnType,
       documentation: command.description,
       category: 'module',
       source: 'module',

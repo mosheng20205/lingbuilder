@@ -12,6 +12,7 @@ import {
   getLingCppCompletionItems,
   getLingCppCompletionContextKind,
   getLingCppCompletions,
+  getLingCppDesignerControlCompletions,
   getLingCppDesignerBindings,
   getLingCppEventBlockHighlights,
   getLingCppFoldingRanges,
@@ -42,7 +43,9 @@ import {
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { importNativeCppToLingBuilder } from '../src/services/windowDesigner/nativeCppImportService';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
+import { WIN32_CONTROL_DEFINITIONS } from '../src/services/windowDesigner/win32ControlRegistry';
 import { InstalledModule } from '../src/services/modules/types';
+import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 
 const sampleSource = `包 太空冒险
 使用 Win32窗口
@@ -518,6 +521,48 @@ test('LingCpp 设计器控件名称支持拼音补全和内容属性表达式', 
   assert.ok(tabMethod.some(item => item.insertText === '选项卡1.设置选择项($1)'));
 });
 
+test('LingCpp 新手控件补全覆盖注册表中的全部控件事件和可用命令', () => {
+  const controls = WIN32_CONTROL_DEFINITIONS.map((definition, index) => ({
+    id: `control-${index}`,
+    type: definition.type,
+    name: `${definition.label}${index + 1}`,
+    content: '', width: 120, height: 32, x: 0, y: index * 36, fontSize: 12,
+    background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible' as const
+  }));
+  const designerProject = {
+    schemaVersion: 2 as const,
+    id: 'all-control-completions',
+    name: '全部控件补全',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 800, height: 600, background: '#ffffff', description: '', controls
+    }]
+  } as LingWindowProject;
+  const source = '类 MainWindow : 公开 窗体\n    事件 _主窗口_创建完毕()\n    结束\n结束类';
+  const completions = getLingCppDesignerControlCompletions(source, designerProject);
+  const labels = new Set(completions.map(item => item.label));
+
+  WIN32_CONTROL_DEFINITIONS.forEach((definition, index) => {
+    const controlName = `${definition.label}${index + 1}`;
+    assert.ok(labels.has(`${controlName}.设置启用`), `${definition.type} 应提供通用命令补全`);
+    assert.ok(labels.has(`${controlName}.设置可见`), `${definition.type} 应提供可见性命令补全`);
+    definition.events.forEach(event => {
+      assert.ok(labels.has(`${controlName}.${event.label}事件`), `${definition.type}.${event.name} 事件应进入新手补全`);
+    });
+  });
+
+  const tabName = `${WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'TabControl')?.label}${WIN32_CONTROL_DEFINITIONS.findIndex(definition => definition.type === 'TabControl') + 1}`;
+  assert.ok(labels.has(`${tabName}.标签页被改变事件`));
+  assert.ok(labels.has(`${tabName}.设置选择项`));
+  assert.ok(labels.has(`${tabName}.取选择项`));
+  assert.ok(labels.has(`${tabName}.添加页`));
+  assert.ok(labels.has(`${tabName}.清空项目`));
+  assert.ok(labels.has(`${tabName}.设置隐藏表头`));
+  assert.ok(labels.has(`${tabName}.隐藏表头`));
+  assert.ok(labels.has(`${tabName}.显示表头`));
+  assert.ok(labels.has(`${tabName}.取隐藏表头`));
+});
+
 test('LingCpp language context powers unified completions with symbols, designer and modules', () => {
   const context = buildLingCppLanguageContext(
     sampleSource,
@@ -566,6 +611,32 @@ test('LingCpp in-process language service facade exposes future LSP adapter shap
   assert.ok(lingCppLanguageService.getDocumentSymbols(sampleSource).some(symbol => symbol.kind === 'class'));
   assert.ok(lingCppLanguageService.getFoldingRanges(sampleSource).length > 0);
   assert.equal(lingCppLanguageService.formatDocument(sampleSource), formatLingCpp(sampleSource));
+});
+
+test('LingCpp hover displays module command signature documentation and return type', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.win32.common-controls');
+  assert.ok(manifest);
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.win32.common-controls',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const source = '选项卡_设置隐藏表头("选项卡1", 真)';
+  const context = buildLingCppLanguageContext(
+    source,
+    undefined,
+    { enabledModules: [module], availableModules: [module] }
+  );
+  const hover = getLingCppHover({ source, line: 1, column: 8 }, context);
+
+  assert.ok(hover);
+  assert.match(hover.contents, /选项卡_设置隐藏表头\(控件名, 隐藏\)/u);
+  assert.match(hover.contents, /运行时隐藏或显示 TabControl 的标签表头/u);
+  assert.match(hover.contents, /返回值：逻辑型/u);
+  assert.deepEqual(hover.range, { startLine: 1, startColumn: 1, endLine: 1, endColumn: 11 });
 });
 
 test('LingCpp language service emits outline symbols and folding ranges', () => {

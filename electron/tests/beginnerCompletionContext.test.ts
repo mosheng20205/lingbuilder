@@ -4,6 +4,17 @@ import {
   getBeginnerCompletionContext,
   shouldShowBeginnerCompletion
 } from '../src/services/lingCpp/beginnerCompletionContext';
+import { getBeginnerBuiltinValueCompletions } from '../src/services/lingCpp/beginnerBuiltinValueCompletions';
+
+test('新手编辑器用 z 和 j 精确补全真假逻辑值', () => {
+  const trueItems = getBeginnerBuiltinValueCompletions('z');
+  const falseItems = getBeginnerBuiltinValueCompletions('j');
+
+  assert.equal(trueItems[0]?.label, '真');
+  assert.equal(trueItems[0]?.insertText, '真');
+  assert.equal(falseItems[0]?.label, '假');
+  assert.equal(falseItems[0]?.insertText, '假');
+});
 
 test('新手编辑器允许在控件方法参数中使用拼音补全表达式命令', () => {
   const source = '选项卡1.设置选择项(dzs';

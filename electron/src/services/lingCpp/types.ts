@@ -251,6 +251,8 @@ export interface LingCppCompletionItem {
   kind: 'keyword' | 'type' | 'function' | 'event' | 'snippet';
   insertText: string;
   detail: string;
+  signature?: string;
+  returnType?: string;
   documentation?: string;
   isSnippet?: boolean;
   aliases?: string[];

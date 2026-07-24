@@ -179,7 +179,6 @@ import type { BuildArchitecture, BuildConfiguration, BuildMode } from './service
 import { closeEditorGroup, closeEditorGroupTab, moveEditorTab, restoreEditorGroupLayout, selectEditorGroupTab, splitEditorGroup, type EditorGroupLayout } from './services/editor/editorGroupLayout';
 import { getLingCppProblems } from './services/lingCpp/languageService';
 import { EditorExperienceMode, adaptProblemForBeginner } from './services/lingCpp/beginnerService';
-import { createWorkspaceEditChangeFromRewrite } from './services/lingCpp/aiEditService';
 import { findLingCppMethod, parseLingCpp } from './services/lingCpp/parser';
 import { InstalledModule, LingCppModuleContext, ModuleHintContent } from './services/modules/types';
 import {
@@ -341,6 +340,7 @@ const createLingCppControlEventBlock = (detail: Required<Pick<OpenControlEventCo
   }
 
   lines.push(`        调试输出("${controlName}${eventSuffix}")`);
+  lines.push('    结束');
   return lines.join('\n');
 };
 
@@ -2067,31 +2067,6 @@ void DisplayStatus() {
       }
 
       const nextContent = ensureLingCppControlEventHandler(currentContent, detail);
-      if (editorExperienceMode === 'beginner' && nextContent !== currentContent) {
-        const proposal: WorkspaceEditProposal = {
-          id: `designer-event-${Date.now()}`,
-          title: '生成事件函数预览',
-          summary: `为 ${handlerName} 生成事件函数`,
-          createdAt: new Date().toISOString(),
-          explanation: '设计器双击控件触发的本地 WorkspaceEdit。确认后才会写入 .lcpp。',
-          changes: [
-            createWorkspaceEditChangeFromRewrite(targetFile.path, currentContent, nextContent) as any
-          ]
-        };
-        const change = proposal.changes[0];
-        setPendingDesignerEventEdit({
-          proposal,
-          appliedFiles: [{ filePath: targetFile.path, sourceCode: nextContent }],
-          targetFilePath: targetFile.path,
-          handlerName,
-          controlName: detail.controlName,
-          eventName: detail.eventName,
-          windowTitle: detail.windowTitle,
-          newText: change?.newText || '',
-          owner: requestOwner
-        });
-        return;
-      }
       const updatedFile: CppFile = {
         ...targetFile,
         translatedContent: nextContent,
@@ -2105,7 +2080,7 @@ void DisplayStatus() {
       if (!selected) return;
       setBuildLogs(prev => [
         ...prev,
-        `> [${new Date().toLocaleTimeString()}] 【事件代码】已打开 ${targetFile.path} 并定位到 ${handlerName}。`
+        `> [${new Date().toLocaleTimeString()}] 【事件代码】已自动生成 ${handlerName}，打开 ${targetFile.path} 并完成定位。`
       ]);
       focusLingCppHandler(handlerName, updatedFile.path);
     };
@@ -2221,7 +2196,7 @@ void DisplayStatus() {
       window.removeEventListener('window-deleted', handleWindowDeleted);
       window.removeEventListener('window-duplicated', handleWindowDuplicated);
     };
-  }, [captureProjectMutationOwner, editorExperienceMode, flushCurrentEditorDrafts, focusLingCppHandler, handleApplyWorkspaceEdit, handleSelectFile, isCurrentProjectMutationOwner]);
+  }, [captureProjectMutationOwner, flushCurrentEditorDrafts, focusLingCppHandler, handleSelectFile, isCurrentProjectMutationOwner]);
 
 
   useEffect(() => {

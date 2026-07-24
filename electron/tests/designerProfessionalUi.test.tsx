@@ -35,6 +35,20 @@ test('designer exposes the complete categorized window event registry instead of
   assert.doesNotMatch(source, /const windowEventTarget: LingControl/u);
 });
 
+test('designer event cards open existing handlers or create missing bindings with one click', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  const appSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/App.tsx'), 'utf8');
+  assert.match(source, /function ControlEvents\(\{[\s\S]*?windowModel/u);
+  assert.match(source, /onClick=\{\(\) => openEventCode\(eventInfo\.name\)\}/u);
+  assert.match(source, /\[eventName\]: handlerName/u);
+  assert.match(source, /\{isBound \? '打开代码' : '生成并打开'\}/u);
+  assert.match(source, /onClick=\{\(\) => openEventCode\(definition\.name\)\}/u);
+  assert.doesNotMatch(source, /placeholder=\{`如: \$\{suggestedHandler\}`\}/u);
+  assert.doesNotMatch(appSource, /editorExperienceMode === 'beginner' && nextContent !== currentContent/u);
+  assert.match(appSource, /【事件代码】已自动生成 \$\{handlerName\}/u);
+  assert.match(appSource, /lines\.push\('    结束'\)/u);
+});
+
 test('designer state is isolated by project identity across unmounts and project switches', async () => {
   const designerSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   const diffSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/DiffViewer.tsx'), 'utf8');

@@ -46,6 +46,7 @@ import DiffViewModeSelector, {
 import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getLingCppReadableBlocks, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
 import { LingCppAccessModifier, LingCppAstEdit, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
 import { getBeginnerCompletionContext, getBeginnerCompletionToken, scanBeginnerCodePrefix, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
+import { BEGINNER_BUILTIN_VALUE_COMPLETIONS } from '../services/lingCpp/beginnerBuiltinValueCompletions';
 import { applyLingCppAstEdit } from '../services/lingCpp/astEditService';
 import { LingCppNativePreviewFile, LingWindowProject, NativeCppImportResult } from '../services/windowDesigner/types';
 import {
@@ -320,13 +321,13 @@ const BEGINNER_COMMAND_HINTS: Record<string, BeginnerCommandHintInfo> = {
   },
   调试输出: {
     command: '调试输出',
-    signature: '调试输出(文本)',
+    signature: '调试输出(参数1, 参数2, ...)',
     returnType: '空',
-    summary: '把一段文本写到调试输出窗口，用来观察程序运行到了哪里。',
+    summary: '把任意数量的文本、整数或逻辑值写到调试输出窗口，各参数使用英文逗号分隔。',
     parameters: [
-      { name: '文本', type: '文本型', note: '要输出的调试内容。' }
+      { name: '参数...', type: '任意可输出类型', note: '可连续传入多个参数，运行时按英文逗号和空格连接。' }
     ],
-    example: '调试输出("按钮被单击")'
+    example: '调试输出("当前选择项", 控件_取选择项("列表框1"), 真)'
   },
   输出调试文本: {
     command: '输出调试文本',
@@ -525,6 +526,7 @@ const getBeginnerTypeCompletionLayout = (
 };
 
 const BEGINNER_CODE_COMPLETIONS: BeginnerCodeCompletion[] = [
+  ...BEGINNER_BUILTIN_VALUE_COMPLETIONS,
   {
     label: '调试输出',
     detail: '输出一行调试文本',

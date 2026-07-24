@@ -11,6 +11,7 @@
 - `ModuleDesignerControlContribution` 可声明 `category`、`icon`、`properties`、`isContainer`、`isVisual`、`nativeAdapter` 和 `requiredLibraries`；字段保持 manifest v2 向后兼容。
 - 非可视 ToolTip、ImageList、PropertySheet 不进入普通控件工具箱；系统通用对话框通过高级模块中文命令和 bindings 暴露。
 - 高级模块的文件对话框会实际应用 `名称|模式` 筛选器，并通过 `系统对话框_状态` 区分成功、取消与错误；查找替换提供动作/文本读取命令，工具栏和状态栏提供最后命令 ID/分区索引，打印文本会创建真实打印文档。这些命令与 C++ runtime 必须继续由同一份 `contributes.commands`/`bindings.commands` 声明驱动。
+- `lingbuilder.win32.common-controls` 为 TabControl 提供 `选项卡_设置隐藏表头/取隐藏表头`，用于运行时切换表头并重排页面承载区；补全、binding 与生成运行时必须保持同源。设计器注册表中的结构/创建期属性不自动等同于运行时命令，只有具备确定性 C++ 实现的属性能力才能进入 `.lcpp` 控件命令补全。
 - `lingbuilder.win32.basic` 同源贡献窗口事件上下文命令：关闭取消、宽高/位置、激活/可见/窗口状态、按键与修饰键、按键处理、DPI 和拖入文件读取。Monaco 补全与 C++ runtime 不得维护两份命令清单。
 - 窗口事件处理器保持无参数；模块 binding 返回的文本指针指向窗口对象持有的事件快照，只能读取，不能在模块侧长期缓存。
 - 模块 manifest 校验会拒绝未知属性类型、重复控件、重复属性、重复事件、不含 `{controlName}` 的事件模板和不安全文件默认路径。

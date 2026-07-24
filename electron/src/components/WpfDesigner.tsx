@@ -1634,7 +1634,12 @@ export default function WpfDesigner({
                   onChange={events => updateActiveWindow(window => ({ ...window, events }))}
                 />
               ) : (
-                <ControlEvents control={selectedControl} isDarkMode={isDarkMode} onChange={updateSelectedControl} />
+                <ControlEvents
+                  control={selectedControl}
+                  windowModel={activeWindow}
+                  isDarkMode={isDarkMode}
+                  onChange={updateSelectedControl}
+                />
               )
             )}
 
@@ -3004,10 +3009,12 @@ function ControlProperties({
 
 function ControlEvents({
   control,
+  windowModel,
   isDarkMode,
   onChange
 }: {
   control: LingControl | null;
+  windowModel: LingWindowModel;
   isDarkMode: boolean;
   onChange: (fields: Partial<LingControl>) => void;
 }) {
@@ -3022,6 +3029,29 @@ function ControlEvents({
     );
   }
 
+  const openEventCode = (eventName: string) => {
+    const handlerName = control.events?.[eventName]?.trim() || getEplEventHandlerName(control.name, eventName);
+    onChange({
+      events: {
+        ...(control.events || {}),
+        [eventName]: handlerName
+      }
+    });
+
+    const detail: OpenControlEventCodeDetail = {
+      controlId: control.id,
+      controlName: control.name,
+      controlContent: control.content,
+      controlType: control.type,
+      eventName,
+      handlerName,
+      windowFileName: windowModel.fileName,
+      windowClassName: windowModel.className,
+      windowTitle: windowModel.title
+    };
+    globalThis.window.dispatchEvent(new CustomEvent<OpenControlEventCodeDetail>('open-control-event-code', { detail }));
+  };
+
   return (
     <div className="space-y-3">
       <div className={`text-[11px] border-b pb-1.5 flex items-center gap-1.5 ${isDarkMode ? 'text-slate-400 border-slate-800' : 'text-slate-600 border-slate-200'}`}>
@@ -3031,32 +3061,43 @@ function ControlEvents({
       {getEventsForType(control.type).map(eventInfo => {
         const currentHandler = control.events?.[eventInfo.name] || '';
         const suggestedHandler = getEplEventHandlerName(control.name, eventInfo.name);
+        const isBound = Boolean(currentHandler.trim());
+        const handlerName = currentHandler.trim() || suggestedHandler;
         return (
-          <div key={eventInfo.name} className={`space-y-1.5 p-2 rounded border ${
-            isDarkMode ? 'bg-slate-900/40 border-slate-800/60' : 'bg-white border-slate-200'
-          }`}>
-            <div className="flex items-center justify-between">
-              <span className={`text-[11px] font-semibold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{eventInfo.label}</span>
-              <span className="text-[8px] px-1 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded font-mono font-bold">Event</span>
+          <button
+            key={eventInfo.name}
+            type="button"
+            onClick={() => openEventCode(eventInfo.name)}
+            aria-label={`${isBound ? '打开' : '创建并打开'}${eventInfo.label}事件处理器 ${handlerName}`}
+            className={`group w-full cursor-pointer rounded border p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/70 ${
+              isDarkMode
+                ? 'border-slate-800/70 bg-slate-900/40 hover:border-amber-500/45 hover:bg-amber-500/[0.06]'
+                : 'border-slate-200 bg-white hover:border-amber-400 hover:bg-amber-50/60'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className={`text-[11px] font-semibold ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>{eventInfo.label}</div>
+                <div className="mt-0.5 text-[9.5px] leading-tight text-slate-500">{eventInfo.desc}</div>
+              </div>
+              <span className={`shrink-0 rounded border px-1.5 py-0.5 text-[8px] ${
+                isBound
+                  ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400'
+                  : 'border-amber-500/25 bg-amber-500/10 text-amber-500'
+              }`}>{isBound ? '已绑定' : '未绑定'}</span>
             </div>
-            <span className="text-[9.5px] text-slate-500 block leading-tight">{eventInfo.desc}</span>
-            <input
-              type="text"
-              placeholder={`如: ${suggestedHandler}`}
-              value={currentHandler}
-              onChange={event => {
-                onChange({
-                  events: {
-                    ...(control.events || {}),
-                    [eventInfo.name]: event.target.value
-                  }
-                });
-              }}
-              className={`w-full border rounded px-2.5 py-1 text-xs font-mono focus:outline-none focus:border-amber-500 ${
-                isDarkMode ? 'bg-[#1b1b20] border-[#2d2d34] text-slate-300' : 'bg-white border-slate-300 text-slate-800'
-              }`}
-            />
-          </div>
+            <div className={`mt-2 flex min-h-7 items-center gap-2 rounded border px-2 py-1 ${
+              isDarkMode ? 'border-[#2d2d34] bg-[#1b1b20]' : 'border-slate-200 bg-slate-50'
+            }`}>
+              <FileCode className={`h-3.5 w-3.5 shrink-0 transition-colors ${isBound ? 'text-emerald-400' : 'text-amber-500'}`} />
+              <span className={`min-w-0 flex-1 truncate font-mono text-[10.5px] ${
+                isBound ? isDarkMode ? 'text-emerald-300' : 'text-emerald-700' : 'text-slate-500'
+              }`}>{handlerName}</span>
+              <span className={`shrink-0 text-[9px] font-semibold transition-colors ${
+                isDarkMode ? 'text-slate-500 group-hover:text-amber-400' : 'text-slate-500 group-hover:text-amber-700'
+              }`}>{isBound ? '打开代码' : '生成并打开'}</span>
+            </div>
+          </button>
         );
       })}
     </div>
@@ -3386,11 +3427,18 @@ function WindowEvents({
             {items.map(definition => {
               const handler = eventValue(definition.name);
               const isBound = Boolean(handler.trim());
+              const handlerName = handler.trim() || getWindowEventHandlerName(window.className, definition.name);
               return (
-                <div
+                <button
                   key={definition.name}
-                  onDoubleClick={event => { event.preventDefault(); openEventCode(definition.name); }}
-                  className={`rounded border p-2 ${isDarkMode ? 'border-slate-800/70 bg-slate-900/40' : 'border-slate-200 bg-white'}`}
+                  type="button"
+                  onClick={() => openEventCode(definition.name)}
+                  aria-label={`${isBound ? '打开' : '创建并打开'}${definition.label}事件处理器 ${handlerName}`}
+                  className={`group w-full cursor-pointer rounded border p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/70 ${
+                    isDarkMode
+                      ? 'border-slate-800/70 bg-slate-900/40 hover:border-amber-500/45 hover:bg-amber-500/[0.06]'
+                      : 'border-slate-200 bg-white hover:border-amber-400 hover:bg-amber-50/60'
+                  }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -3403,31 +3451,18 @@ function WindowEvents({
                       isBound ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' : 'border-slate-500/20 text-slate-500'
                     }`}>{isBound ? '已绑定' : '未绑定'}</span>
                   </div>
-                  <div className="mt-1.5 flex gap-1">
-                    <input
-                      type="text"
-                      value={handler}
-                      placeholder={`如: ${getWindowEventHandlerName(window.className, definition.name)}`}
-                      onDoubleClick={event => event.stopPropagation()}
-                      onChange={event => updateBinding(definition.name, event.target.value)}
-                      aria-label={`${definition.label}处理器`}
-                      className={`min-w-0 flex-1 rounded border px-2 py-1 text-xs font-mono focus:border-amber-500 focus:outline-none ${
-                        isDarkMode ? 'border-[#2d2d34] bg-[#1b1b20] text-slate-300' : 'border-slate-300 bg-white text-slate-800'
-                      }`}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => openEventCode(definition.name)}
-                      title={`打开${definition.label}事件代码`}
-                      aria-label={`打开${definition.label}事件代码`}
-                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded border transition-colors ${
-                        isDarkMode ? 'border-slate-700 text-slate-400 hover:border-amber-500 hover:text-amber-400' : 'border-slate-300 text-slate-500 hover:border-amber-500 hover:text-amber-600'
-                      }`}
-                    >
-                      <FileCode className="h-3.5 w-3.5" />
-                    </button>
+                  <div className={`mt-2 flex min-h-7 items-center gap-2 rounded border px-2 py-1 ${
+                    isDarkMode ? 'border-[#2d2d34] bg-[#1b1b20]' : 'border-slate-200 bg-slate-50'
+                  }`}>
+                    <FileCode className={`h-3.5 w-3.5 shrink-0 ${isBound ? 'text-emerald-400' : 'text-amber-500'}`} />
+                    <span className={`min-w-0 flex-1 truncate font-mono text-[10.5px] ${
+                      isBound ? isDarkMode ? 'text-emerald-300' : 'text-emerald-700' : 'text-slate-500'
+                    }`}>{handlerName}</span>
+                    <span className={`shrink-0 text-[9px] font-semibold transition-colors ${
+                      isDarkMode ? 'text-slate-500 group-hover:text-amber-400' : 'text-slate-500 group-hover:text-amber-700'
+                    }`}>{isBound ? '打开代码' : '生成并打开'}</span>
                   </div>
-                </div>
+                </button>
               );
             })}
           </section>

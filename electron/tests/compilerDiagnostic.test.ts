@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mapCompilerDiagnostics, parseCompilerDiagnostics } from '../src/services/tasks/compilerDiagnosticService';
+import { decodeCompilerOutput } from '../src/services/tasks/compilerOutputEncoding';
+
+test('compiler output keeps UTF-8 and falls back to the Chinese Windows code page', () => {
+  assert.equal(decodeCompilerOutput(Buffer.from('中文错误', 'utf8')), '中文错误');
+  assert.equal(decodeCompilerOutput(Buffer.from([0xd6, 0xd0, 0xce, 0xc4, 0xb4, 0xed, 0xce, 0xf3])), '中文错误');
+});
 
 test('compiler diagnostics parse MSVC, GCC, Clang and linker formats with severity and codes', () => {
   const msvc = parseCompilerDiagnostics('C:\\build\\main.cpp(42,7): error C2065: identifier not found\nmain.cpp(9): warning C4100: unused');
