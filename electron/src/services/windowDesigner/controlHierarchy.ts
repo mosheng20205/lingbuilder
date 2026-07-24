@@ -140,6 +140,82 @@ export function reparentControl(
     : control);
 }
 
+function getTopLevelSelectedControlIds(controls: LingControl[], controlIds: string[]): string[] {
+  const selectedIds = new Set(controlIds.filter(id => controls.some(control => control.id === id)));
+  const controlsById = new Map(controls.map(control => [control.id, control]));
+
+  return controls
+    .filter(control => selectedIds.has(control.id))
+    .filter(control => {
+      const visited = new Set<string>();
+      let parentId = control.parentId;
+      while (parentId && !visited.has(parentId)) {
+        if (selectedIds.has(parentId)) return false;
+        visited.add(parentId);
+        parentId = controlsById.get(parentId)?.parentId;
+      }
+      return true;
+    })
+    .map(control => control.id);
+}
+
+function hasSameControlParent(
+  controls: LingControl[],
+  controlId: string,
+  parentId?: string,
+  containerSlot?: string
+): boolean {
+  const control = controls.find(item => item.id === controlId);
+  if (!control) return false;
+  const normalizedParentId = parentId?.trim() || undefined;
+  const targetParent = normalizedParentId ? controls.find(item => item.id === normalizedParentId) : undefined;
+  const normalizedSlot = targetParent?.type === 'TabControl' ? containerSlot?.trim() || undefined : undefined;
+  const currentParentId = control.parentId?.trim() || undefined;
+  const currentSlot = currentParentId && controls.find(item => item.id === currentParentId)?.type === 'TabControl'
+    ? control.containerSlot?.trim() || undefined
+    : undefined;
+  return currentParentId === normalizedParentId && currentSlot === normalizedSlot;
+}
+
+export function canReparentControls(
+  controls: LingControl[],
+  controlIds: string[],
+  parentId?: string,
+  containerSlot?: string
+): boolean {
+  const topLevelIds = getTopLevelSelectedControlIds(controls, controlIds);
+  if (topLevelIds.length === 0) return false;
+
+  let hasChange = false;
+  for (const controlId of topLevelIds) {
+    if (hasSameControlParent(controls, controlId, parentId, containerSlot)) continue;
+    if (!canReparentControl(controls, controlId, parentId, containerSlot)) return false;
+    hasChange = true;
+  }
+  return hasChange;
+}
+
+/**
+ * 批量移动只改变选区最外层控件的父级。若父控件和其后代同时被选中，
+ * 后代继续挂在原父控件下，避免一次拖拽意外打散已有布局结构。
+ */
+export function reparentControls(
+  controls: LingControl[],
+  controlIds: string[],
+  parentId?: string,
+  containerSlot?: string
+): LingControl[] {
+  if (!canReparentControls(controls, controlIds, parentId, containerSlot)) return controls;
+  const movableIds = new Set(getTopLevelSelectedControlIds(controls, controlIds));
+  const normalizedParentId = parentId?.trim() || undefined;
+  const targetParent = normalizedParentId ? controls.find(item => item.id === normalizedParentId) : undefined;
+  const normalizedSlot = targetParent?.type === 'TabControl' ? containerSlot?.trim() || undefined : undefined;
+
+  return controls.map(control => movableIds.has(control.id) && !hasSameControlParent(controls, control.id, parentId, containerSlot)
+    ? { ...control, parentId: normalizedParentId, containerSlot: normalizedSlot }
+    : control);
+}
+
 export function getEffectiveControlState(
   controls: LingControl[],
   controlId: string

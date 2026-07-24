@@ -40,6 +40,7 @@ import ModuleInspector from './ModuleInspector';
 import ListViewDesignerPreview from './ListViewDesignerPreview';
 import TabControlDesignerPreview from './TabControlDesignerPreview';
 import ListViewCollectionDialog, { type ListViewCollectionEditorKind } from './ListViewCollectionDialog';
+import MenuBarItemsDialog from './MenuBarItemsDialog';
 import TreeViewCollectionDialog from './TreeViewCollectionDialog';
 import {
   createBlankWindow,
@@ -80,6 +81,7 @@ import {
   LingWindowOpenPlacement,
   LingWindowProject
 } from '../services/windowDesigner/types';
+import { parseMenuBarItems } from '../services/windowDesigner/menuBarItemsModel';
 import {
   getWin32ControlDefinition,
   WIN32_CONTROL_DEFINITIONS,
@@ -89,12 +91,12 @@ import {
 import { CONTROL_FONT_FAMILY_OPTIONS, getControlFontCssStyle, normalizeControlFont } from '../services/windowDesigner/controlFont';
 import {
   buildControlHierarchy,
-  canReparentControl,
+  canReparentControls,
   getEffectiveControlState,
   getControlDescendantIds,
   LingControlHierarchyNode,
   orderControlsForDesignerPainting,
-  reparentControl
+  reparentControls
 } from '../services/windowDesigner/controlHierarchy';
 import { applyDesignerLayout, DesignerHistory, nudgeControls, updateControlWithDescendants, type DesignerLayoutOperation } from '../services/windowDesigner/designerOperations';
 import {
@@ -584,32 +586,53 @@ export default function WpfDesigner({
     selectOnlyControl(nextWindow.controls[0]?.id || null);
   };
 
-  const handleReparentControl = (controlId: string, parentId?: string, containerSlot?: string) => {
-    const source = activeWindow.controls.find(control => control.id === controlId);
+  const handleReparentControls = (controlIds: string[], parentId?: string, containerSlot?: string) => {
+    const uniqueControlIds = [...new Set(controlIds)].filter(id => activeWindow.controls.some(control => control.id === id));
+    const selectedSet = new Set(uniqueControlIds);
+    const topLevelIds = uniqueControlIds.filter(controlId => !uniqueControlIds.some(otherId => (
+      otherId !== controlId && selectedSet.has(otherId) && getControlDescendantIds(activeWindow.controls, otherId).has(controlId)
+    )));
+    const positionedIds = new Set(topLevelIds.flatMap(controlId => [
+      controlId,
+      ...getControlDescendantIds(activeWindow.controls, controlId)
+    ]));
+    const sources = activeWindow.controls.filter(control => topLevelIds.includes(control.id));
     const target = parentId ? activeWindow.controls.find(control => control.id === parentId) : undefined;
-    if (!source || (parentId && (!target || !getWin32ControlDefinition(target.type)?.isContainer))) return;
-    if (!canReparentControl(activeWindow.controls, controlId, parentId, containerSlot)) return;
+    if (!sources.length || (parentId && (!target || !getWin32ControlDefinition(target.type)?.isContainer))) return;
+    if (!canReparentControls(activeWindow.controls, uniqueControlIds, parentId, containerSlot)) return;
 
     updateActiveWindow(window => {
-      const controls = reparentControl(window.controls, controlId, parentId, containerSlot);
+      const controls = reparentControls(window.controls, uniqueControlIds, parentId, containerSlot);
       if (controls === window.controls) return window;
       if (!target) return { ...window, controls };
       const inset = 12;
       const topInset = target.type === 'TabControl' && !isTabControlHeaderHidden(target) ? 36 : inset;
+      const sourceLeft = Math.min(...sources.map(control => control.x));
+      const sourceTop = Math.min(...sources.map(control => control.y));
+      const sourceRight = Math.max(...sources.map(control => control.x + control.width));
+      const sourceBottom = Math.max(...sources.map(control => control.y + control.height));
+      const availableLeft = target.x + inset;
+      const availableTop = target.y + topInset;
+      const availableRight = Math.max(availableLeft, target.x + target.width - inset);
+      const availableBottom = Math.max(availableTop, target.y + target.height - inset);
+      const shiftX = Math.max(availableLeft - sourceLeft, Math.min(0, availableRight - sourceRight));
+      const shiftY = Math.max(availableTop - sourceTop, Math.min(0, availableBottom - sourceBottom));
       return {
         ...window,
-        controls: controls.map(control => control.id === controlId ? {
+        controls: controls.map(control => positionedIds.has(control.id) ? {
           ...control,
-          x: Math.max(target.x + inset, Math.min(control.x, target.x + target.width - control.width - inset)),
-          y: Math.max(target.y + topInset, Math.min(control.y, target.y + target.height - control.height - inset))
+          x: control.x + shiftX,
+          y: control.y + shiftY
         } : control)
       };
     });
-    selectOnlyControl(controlId);
+    setSelectedControlIds(uniqueControlIds);
+    setSelectedControlId(uniqueControlIds.at(-1) || null);
     const page = target?.type === 'TabControl'
       ? getTabControlPages(target).find(item => item.id === containerSlot)
       : undefined;
-    addLog(`> [${new Date().toLocaleTimeString()}] 【可视化设计】已将 ${source.name} 移到${page ? `${target?.name} / ${page.title}` : target ? `容器 ${target.name}` : '窗口根级'}。`);
+    const sourceLabel = uniqueControlIds.length > 1 ? `${uniqueControlIds.length} 个控件` : sources[0].name;
+    addLog(`> [${new Date().toLocaleTimeString()}] 【可视化设计】已将 ${sourceLabel} 移到${page ? `${target?.name} / ${page.title}` : target ? `容器 ${target.name}` : '窗口根级'}。`);
   };
 
   const handleSelectTabPage = (tabControlId: string, pageId: string) => {
@@ -1647,13 +1670,15 @@ export default function WpfDesigner({
               <LayoutHierarchy
                 window={activeWindow}
                 selectedControlId={selectedControlId}
+                selectedControlIds={selectedControlIds}
                 isDarkMode={isDarkMode}
-                onSelectControl={controlId => {
-                  selectOnlyControl(controlId);
-                  if (controlId === null) setActiveInspectorTab('properties');
+                onSelectControls={(controlIds, primaryControlId) => {
+                  setSelectedControlIds(controlIds);
+                  setSelectedControlId(primaryControlId);
+                  if (primaryControlId === null) setActiveInspectorTab('properties');
                 }}
                 onSelectTabPage={handleSelectTabPage}
-                onReparentControl={handleReparentControl}
+                onReparentControls={handleReparentControls}
               />
             )}
           </div>
@@ -1712,30 +1737,62 @@ export default function WpfDesigner({
 function LayoutHierarchy({
   window,
   selectedControlId,
+  selectedControlIds,
   isDarkMode,
-  onSelectControl,
+  onSelectControls,
   onSelectTabPage,
-  onReparentControl
+  onReparentControls
 }: {
   window: LingWindowModel;
   selectedControlId: string | null;
+  selectedControlIds: string[];
   isDarkMode: boolean;
-  onSelectControl: (controlId: string | null) => void;
+  onSelectControls: (controlIds: string[], primaryControlId: string | null) => void;
   onSelectTabPage: (tabControlId: string, pageId: string) => void;
-  onReparentControl: (controlId: string, parentId?: string, containerSlot?: string) => void;
+  onReparentControls: (controlIds: string[], parentId?: string, containerSlot?: string) => void;
 }) {
   const hierarchy = useMemo(() => buildControlHierarchy(window.controls), [window.controls]);
   const hierarchySignature = window.controls.map(control => `${control.id}:${control.parentId || ''}`).join('|');
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set([window.id]));
-  const [draggedControlId, setDraggedControlId] = useState<string | null>(null);
+  const [draggedControlIds, setDraggedControlIds] = useState<string[]>([]);
   const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [invalidDropTargetId, setInvalidDropTargetId] = useState<string | null>(null);
+  const [dragFeedback, setDragFeedback] = useState('');
+  const selectionAnchorRef = useRef<string | null>(selectedControlId);
   const menuItems = (window.menuItems || '').split(',').map(item => item.trim()).filter(Boolean);
+  const controlTreeOrder = useMemo(() => {
+    const orderedIds: string[] = [];
+    const appendNodes = (nodes: LingControlHierarchyNode[]) => {
+      nodes.forEach(node => {
+        orderedIds.push(node.control.id);
+        if (!expandedIds.has(node.control.id)) return;
+        const tabPages = node.control.type === 'TabControl' ? getTabControlPages(node.control) : [];
+        if (tabPages.length > 0) {
+          tabPages.forEach(page => {
+            const pageTreeId = `${node.control.id}:${page.id}`;
+            if (expandedIds.has(pageTreeId)) {
+              appendNodes(node.children.filter(child => getControlTabSlot(child.control, node.control) === page.id));
+            }
+          });
+        } else {
+          appendNodes(node.children);
+        }
+      });
+    };
+    appendNodes(hierarchy);
+    return orderedIds;
+  }, [expandedIds, hierarchy]);
 
   useEffect(() => {
     const parentIds = window.controls
       .filter(control => window.controls.some(item => item.parentId === control.id))
       .map(control => control.id);
-    setExpandedIds(previous => new Set([...previous, window.id, ...parentIds]));
+    const tabPageIds = window.controls.flatMap(control => control.type === 'TabControl'
+      ? getTabControlPages(control)
+        .filter(page => window.controls.some(child => child.parentId === control.id && getControlTabSlot(child, control) === page.id))
+        .map(page => `${control.id}:${page.id}`)
+      : []);
+    setExpandedIds(previous => new Set([...previous, window.id, ...parentIds, ...tabPageIds]));
   }, [hierarchySignature, window.id]);
 
   const toggleExpanded = (id: string) => {
@@ -1747,22 +1804,34 @@ function LayoutHierarchy({
     });
   };
 
-  const getRowClassName = (selected: boolean, isDropTarget = false) => `group flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 text-left text-[11px] transition-colors ${
+  const getRowClassName = (selected: boolean, isDropTarget = false, isInvalidDropTarget = false) => `group flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded px-1.5 text-left text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-sky-400 ${
     isDropTarget
       ? isDarkMode ? 'bg-emerald-900/70 text-emerald-100 ring-1 ring-inset ring-emerald-400' : 'bg-emerald-100 text-emerald-950 ring-1 ring-inset ring-emerald-500'
+      : isInvalidDropTarget
+      ? isDarkMode ? 'bg-red-950/70 text-red-100 ring-1 ring-inset ring-red-500' : 'bg-red-100 text-red-950 ring-1 ring-inset ring-red-500'
       : selected
       ? isDarkMode ? 'bg-[#094771] text-white' : 'bg-blue-100 text-blue-900'
       : isDarkMode ? 'text-slate-300 hover:bg-[#2a2d2e]' : 'text-slate-700 hover:bg-slate-100'
   }`;
 
-  const readDraggedControlId = (event: React.DragEvent) => (
-    draggedControlId
-    || event.dataTransfer.getData('application/x-lingbuilder-control-id')
-    || event.dataTransfer.getData('text/plain')
-  );
+  const readDraggedControlIds = (event: React.DragEvent) => {
+    if (draggedControlIds.length > 0) return draggedControlIds;
+    const serializedIds = event.dataTransfer.getData('application/x-lingbuilder-control-ids');
+    if (serializedIds) {
+      try {
+        const parsedIds = JSON.parse(serializedIds);
+        if (Array.isArray(parsedIds)) return parsedIds.filter((id): id is string => typeof id === 'string');
+      } catch {
+        // 兼容旧的单控件拖拽数据。
+      }
+    }
+    const controlId = event.dataTransfer.getData('application/x-lingbuilder-control-id')
+      || event.dataTransfer.getData('text/plain');
+    return controlId ? [controlId] : [];
+  };
 
-  const canDropOnParent = (controlId: string, parentId?: string, containerSlot?: string) => {
-    if (!canReparentControl(window.controls, controlId, parentId, containerSlot)) return false;
+  const canDropOnParent = (controlIds: string[], parentId?: string, containerSlot?: string) => {
+    if (!canReparentControls(window.controls, controlIds, parentId, containerSlot)) return false;
     if (!parentId) return true;
     const target = window.controls.find(control => control.id === parentId);
     return Boolean(target && getWin32ControlDefinition(target.type)?.isContainer);
@@ -1770,43 +1839,94 @@ function LayoutHierarchy({
 
   const handleDragStart = (event: React.DragEvent, controlId: string) => {
     event.stopPropagation();
+    const controlIds = selectedControlIds.includes(controlId) ? selectedControlIds : [controlId];
     event.dataTransfer.effectAllowed = 'move';
     event.dataTransfer.setData('application/x-lingbuilder-control-id', controlId);
+    event.dataTransfer.setData('application/x-lingbuilder-control-ids', JSON.stringify(controlIds));
     event.dataTransfer.setData('text/plain', controlId);
-    setDraggedControlId(controlId);
+    setDraggedControlIds(controlIds);
     setDropTargetId(null);
-    onSelectControl(controlId);
+    setInvalidDropTargetId(null);
+    setDragFeedback(`正在拖动 ${controlIds.length} 个控件`);
+    selectionAnchorRef.current = controlId;
+    onSelectControls(controlIds, controlId);
   };
 
   const handleDragOver = (event: React.DragEvent, parentId?: string, containerSlot?: string) => {
-    const controlId = readDraggedControlId(event);
-    if (!canDropOnParent(controlId, parentId, containerSlot)) return;
+    const controlIds = readDraggedControlIds(event);
+    const targetId = containerSlot ? `${parentId}:${containerSlot}` : parentId || WINDOW_ROOT_DROP_TARGET;
+    if (!canDropOnParent(controlIds, parentId, containerSlot)) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.dataTransfer.dropEffect = 'none';
+      setDropTargetId(null);
+      setInvalidDropTargetId(targetId);
+      setDragFeedback('不能移动到这里：目标位于选区内部，或父级没有变化');
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = 'move';
-    setDropTargetId(containerSlot ? `${parentId}:${containerSlot}` : parentId || WINDOW_ROOT_DROP_TARGET);
+    setDropTargetId(targetId);
+    setInvalidDropTargetId(null);
+    setDragFeedback(`松开可移动 ${controlIds.length} 个控件`);
   };
 
   const handleDragLeave = (event: React.DragEvent, targetId: string) => {
     const relatedTarget = event.relatedTarget;
     if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) return;
     setDropTargetId(previous => previous === targetId ? null : previous);
+    setInvalidDropTargetId(previous => previous === targetId ? null : previous);
   };
 
   const handleDrop = (event: React.DragEvent, parentId?: string, containerSlot?: string) => {
-    const controlId = readDraggedControlId(event);
-    if (!canDropOnParent(controlId, parentId, containerSlot)) return;
+    const controlIds = readDraggedControlIds(event);
+    if (!canDropOnParent(controlIds, parentId, containerSlot)) return;
     event.preventDefault();
     event.stopPropagation();
-    onReparentControl(controlId, parentId, containerSlot);
-    setExpandedIds(previous => new Set([...previous, parentId || window.id]));
-    setDraggedControlId(null);
+    onReparentControls(controlIds, parentId, containerSlot);
+    setExpandedIds(previous => new Set([
+      ...previous,
+      parentId || window.id,
+      ...(parentId && containerSlot ? [`${parentId}:${containerSlot}`] : [])
+    ]));
+    setDraggedControlIds([]);
     setDropTargetId(null);
+    setInvalidDropTargetId(null);
+    setDragFeedback(`已移动 ${controlIds.length} 个控件`);
   };
 
   const handleDragEnd = () => {
-    setDraggedControlId(null);
+    setDraggedControlIds([]);
     setDropTargetId(null);
+    setInvalidDropTargetId(null);
+    setDragFeedback('');
+  };
+
+  const handleControlSelection = (event: React.MouseEvent, controlId: string) => {
+    const toggleSelection = event.ctrlKey || event.metaKey;
+    const rangeSelection = event.shiftKey && selectionAnchorRef.current;
+
+    if (rangeSelection) {
+      const anchorIndex = controlTreeOrder.indexOf(selectionAnchorRef.current!);
+      const controlIndex = controlTreeOrder.indexOf(controlId);
+      if (anchorIndex >= 0 && controlIndex >= 0) {
+        const rangeIds = controlTreeOrder.slice(Math.min(anchorIndex, controlIndex), Math.max(anchorIndex, controlIndex) + 1);
+        const nextIds = toggleSelection ? [...new Set([...selectedControlIds, ...rangeIds])] : rangeIds;
+        onSelectControls(nextIds, controlId);
+        return;
+      }
+    }
+
+    selectionAnchorRef.current = controlId;
+    if (toggleSelection) {
+      const nextIds = selectedControlIds.includes(controlId)
+        ? selectedControlIds.filter(id => id !== controlId)
+        : [...selectedControlIds, controlId];
+      onSelectControls(nextIds, nextIds.includes(controlId) ? controlId : nextIds.at(-1) || null);
+      return;
+    }
+    onSelectControls([controlId], controlId);
   };
 
   const renderControlNode = (node: LingControlHierarchyNode, depth: number): React.ReactNode => {
@@ -1814,10 +1934,12 @@ function LayoutHierarchy({
     const selectedTabPage = node.control.type === 'TabControl' ? getSelectedTabPage(node.control) : undefined;
     const hasChildren = node.children.length > 0 || tabPages.length > 0;
     const expanded = expandedIds.has(node.control.id);
-    const selected = selectedControlId === node.control.id && node.control.type !== 'TabControl';
+    const selected = selectedControlIds.includes(node.control.id);
     const isContainer = Boolean(getWin32ControlDefinition(node.control.type)?.isContainer);
     const defaultDropSlot = node.control.type === 'TabControl' ? selectedTabPage?.id : undefined;
-    const isDropTarget = dropTargetId === (defaultDropSlot ? `${node.control.id}:${defaultDropSlot}` : node.control.id);
+    const nodeDropTargetId = defaultDropSlot ? `${node.control.id}:${defaultDropSlot}` : node.control.id;
+    const isDropTarget = dropTargetId === nodeDropTargetId;
+    const isInvalidDropTarget = invalidDropTargetId === nodeDropTargetId;
 
     return (
       <React.Fragment key={node.control.id}>
@@ -1825,10 +1947,10 @@ function LayoutHierarchy({
           role="treeitem"
           aria-expanded={hasChildren ? expanded : undefined}
           aria-selected={selected}
-          className={`flex min-w-0 items-center ${draggedControlId === node.control.id ? 'opacity-55' : ''}`}
+          className={`flex min-w-0 items-center ${draggedControlIds.includes(node.control.id) ? 'opacity-55' : ''}`}
           style={{ paddingLeft: `${depth * 16}px` }}
           onDragOver={event => isContainer && handleDragOver(event, node.control.id, defaultDropSlot)}
-          onDragLeave={event => isContainer && handleDragLeave(event, node.control.id)}
+          onDragLeave={event => isContainer && handleDragLeave(event, nodeDropTargetId)}
           onDrop={event => isContainer && handleDrop(event, node.control.id, defaultDropSlot)}
         >
           <button
@@ -1845,15 +1967,16 @@ function LayoutHierarchy({
           <button
             type="button"
             draggable
-            aria-grabbed={draggedControlId === node.control.id}
+            aria-grabbed={draggedControlIds.includes(node.control.id)}
             onDragStart={event => handleDragStart(event, node.control.id)}
             onDragEnd={handleDragEnd}
-            onClick={() => onSelectControl(node.control.id)}
-            className={`${getRowClassName(selected, isDropTarget)} cursor-grab active:cursor-grabbing`}
-            title={isContainer ? '拖动此控件，或将其他控件拖到这里更换父级' : '拖动到窗口或容器节点以更换父级'}
+            onClick={event => handleControlSelection(event, node.control.id)}
+            className={`${getRowClassName(selected, isDropTarget, isInvalidDropTarget)} cursor-grab active:cursor-grabbing`}
+            title={isContainer ? 'Ctrl 多选、Shift 连选；拖动选区或将其他控件拖到这里更换父级' : 'Ctrl 多选、Shift 连选；拖动选区到窗口或容器节点'}
           >
             <span className="shrink-0">{getControlIcon(node.control.type)}</span>
             <span className="min-w-0 flex-1 truncate">{node.control.name}</span>
+            {selected && selectedControlIds.length > 1 && <Check className="h-3 w-3 shrink-0 text-sky-300" aria-hidden="true" />}
             <span className="shrink-0 text-[9px] text-slate-500">{CONTROL_LABELS[node.control.type]}</span>
           </button>
         </div>
@@ -1861,10 +1984,12 @@ function LayoutHierarchy({
           const pageSelected = selectedControlId === node.control.id && selectedTabPage?.id === page.id;
           const pageDropTargetId = `${node.control.id}:${page.id}`;
           const pageChildren = node.children.filter(child => getControlTabSlot(child.control, node.control) === page.id);
+          const pageExpanded = expandedIds.has(pageDropTargetId);
           return (
             <React.Fragment key={page.id}>
               <div
                 role="treeitem"
+                aria-expanded={pageChildren.length > 0 ? pageExpanded : undefined}
                 aria-selected={pageSelected}
                 className="flex min-w-0 items-center"
                 style={{ paddingLeft: `${(depth + 1) * 16}px` }}
@@ -1872,11 +1997,21 @@ function LayoutHierarchy({
                 onDragLeave={event => handleDragLeave(event, pageDropTargetId)}
                 onDrop={event => handleDrop(event, node.control.id, page.id)}
               >
-                <span className="flex h-6 w-5 shrink-0 items-center justify-center text-slate-500">{pageChildren.length > 0 ? <ChevronDown className="h-3 w-3" /> : null}</span>
+                <button
+                  type="button"
+                  onClick={() => pageChildren.length > 0 && toggleExpanded(pageDropTargetId)}
+                  className={`flex h-6 w-5 shrink-0 items-center justify-center rounded text-slate-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-sky-400 ${
+                    pageChildren.length > 0 ? 'cursor-pointer hover:bg-slate-500/20' : 'cursor-default'
+                  }`}
+                  aria-label={pageChildren.length > 0 ? `${pageExpanded ? '折叠' : '展开'}${page.title}` : undefined}
+                  tabIndex={pageChildren.length > 0 ? 0 : -1}
+                >
+                  {pageChildren.length > 0 && (pageExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
+                </button>
                 <button
                   type="button"
                   onClick={() => onSelectTabPage(node.control.id, page.id)}
-                  className={getRowClassName(pageSelected, dropTargetId === pageDropTargetId)}
+                  className={getRowClassName(pageSelected, dropTargetId === pageDropTargetId, invalidDropTargetId === pageDropTargetId)}
                   title={`选择 ${page.title}；将控件拖到这里可移动到此页面`}
                 >
                   <LayoutGrid className="h-3.5 w-3.5 shrink-0 text-sky-400" />
@@ -1884,7 +2019,7 @@ function LayoutHierarchy({
                   <span className="shrink-0 text-[9px] text-slate-500">页面 HWND</span>
                 </button>
               </div>
-              {pageChildren.map(child => renderControlNode(child, depth + 2))}
+              {pageExpanded && pageChildren.map(child => renderControlNode(child, depth + 2))}
             </React.Fragment>
           );
         }) : node.children.map(child => renderControlNode(child, depth + 1)))}
@@ -1903,12 +2038,17 @@ function LayoutHierarchy({
         <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400">
           <ListTree className="h-3.5 w-3.5 text-amber-500" />
           <span>布局内容</span>
-          <span className="ml-auto rounded bg-slate-500/15 px-1.5 py-0.5 text-[9px] font-normal">{window.controls.length} 个控件</span>
+          <span className="ml-auto rounded bg-slate-500/15 px-1.5 py-0.5 text-[9px] font-normal">
+            {selectedControlIds.length > 1 ? `已选 ${selectedControlIds.length} / ` : ''}{window.controls.length} 个控件
+          </span>
         </div>
-        <p className="mt-1 text-[10px] leading-4 text-slate-500">点击窗口或控件节点即可选中；拖动控件到窗口或容器节点可更换父级。</p>
+        <p className="mt-1 text-[10px] leading-4 text-slate-500">Ctrl 多选、Shift 连选；按住任一已选控件拖到窗口或容器可整组选中项。</p>
+        <p aria-live="polite" className={`min-h-4 text-[10px] leading-4 ${invalidDropTargetId ? 'text-red-400' : dropTargetId ? 'text-emerald-400' : 'text-slate-500'}`}>
+          {dragFeedback || (selectedControlIds.length > 1 ? `已选择 ${selectedControlIds.length} 个控件，可按住其中任一项拖拽。` : '')}
+        </p>
       </div>
 
-      <div role="tree" aria-label={`${window.title}布局组件树`} className="max-h-[62vh] overflow-auto p-1.5">
+      <div role="tree" aria-multiselectable="true" aria-label={`${window.title}布局组件树`} className="max-h-[62vh] overflow-auto p-1.5">
         <div
           role="treeitem"
           aria-expanded={hasRootChildren ? rootExpanded : undefined}
@@ -1926,7 +2066,15 @@ function LayoutHierarchy({
           >
             {hasRootChildren && (rootExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
           </button>
-          <button type="button" onClick={() => onSelectControl(null)} className={getRowClassName(selectedControlId === null, dropTargetId === WINDOW_ROOT_DROP_TARGET)} title="将控件拖到这里可提升为窗口根级控件">
+          <button
+            type="button"
+            onClick={() => {
+              selectionAnchorRef.current = null;
+              onSelectControls([], null);
+            }}
+            className={getRowClassName(selectedControlId === null, dropTargetId === WINDOW_ROOT_DROP_TARGET, invalidDropTargetId === WINDOW_ROOT_DROP_TARGET)}
+            title="将已选控件拖到这里可提升为窗口根级控件"
+          >
             <Monitor className="h-3.5 w-3.5 shrink-0 text-amber-500" />
             <span className="min-w-0 flex-1 truncate font-semibold">{window.title}</span>
             <span className="shrink-0 text-[9px] text-slate-500">窗口</span>
@@ -1941,7 +2089,7 @@ function LayoutHierarchy({
                   <button type="button" onClick={() => toggleExpanded(menuNodeId)} className="flex h-6 w-5 shrink-0 items-center justify-center rounded hover:bg-slate-500/20">
                     {menuExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
                   </button>
-                  <button type="button" onClick={() => onSelectControl('__window_menu_bar__')} className={getRowClassName(selectedControlId === '__window_menu_bar__')}>
+                  <button type="button" onClick={() => onSelectControls([], '__window_menu_bar__')} className={getRowClassName(selectedControlId === '__window_menu_bar__')}>
                     {TYPE_ICONS.MenuBar}
                     <span className="min-w-0 flex-1 truncate">{window.menuName || '窗口菜单栏'}</span>
                     <span className="text-[9px] text-slate-500">菜单栏</span>
@@ -1952,7 +2100,7 @@ function LayoutHierarchy({
                   return (
                     <div key={itemId} role="treeitem" aria-selected={selectedControlId === itemId} className="flex min-w-0 items-center pl-8">
                       <span className="h-6 w-5 shrink-0" />
-                      <button type="button" onClick={() => onSelectControl(itemId)} className={getRowClassName(selectedControlId === itemId)}>
+                      <button type="button" onClick={() => onSelectControls([], itemId)} className={getRowClassName(selectedControlId === itemId)}>
                         <Menu className="h-3.5 w-3.5 shrink-0 text-amber-400" />
                         <span className="min-w-0 flex-1 truncate">{item}</span>
                         <span className="text-[9px] text-slate-500">菜单项</span>
@@ -2721,10 +2869,12 @@ function ControlProperties({
   onDelete: () => void;
 }) {
   const [listViewEditorKind, setListViewEditorKind] = useState<ListViewCollectionEditorKind | null>(null);
+  const [menuBarItemsEditorOpen, setMenuBarItemsEditorOpen] = useState(false);
   const [treeViewEditorOpen, setTreeViewEditorOpen] = useState(false);
 
   useEffect(() => {
     setListViewEditorKind(null);
+    setMenuBarItemsEditorOpen(false);
     setTreeViewEditorOpen(false);
   }, [control?.id]);
 
@@ -2816,7 +2966,22 @@ function ControlProperties({
           </span>
         </PropertyRow>
         <TextField label="中文名称" value={control.name} isDarkMode={isDarkMode} onChange={handleNameChange} />
-        {control.type !== 'Grid' && (
+        {control.type === ('MenuBar' as any) ? (
+          <PropertyRow label="显示内容" isDarkMode={isDarkMode}>
+            <button
+              type="button"
+              onClick={() => setMenuBarItemsEditorOpen(true)}
+              className={`flex w-full items-center justify-between rounded border px-2.5 py-1.5 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                isDarkMode
+                  ? 'border-[#3f3f49] bg-[#24242b] text-slate-200 hover:bg-[#303038]'
+                  : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+              }`}
+            >
+              <span>{parseMenuBarItems(control.content).length} 个菜单项</span>
+              <span className="font-semibold text-cyan-500">编辑菜单项</span>
+            </button>
+          </PropertyRow>
+        ) : control.type !== 'Grid' && (
           <TextField
             label={control.type === 'ProgressBar' ? '进度值' : control.type === 'Upload' || control.type === 'DragUpload' ? '上传标题' : '显示内容'}
             value={control.content}
@@ -2991,6 +3156,15 @@ function ControlProperties({
           isDarkMode={isDarkMode}
           onChange={updateListViewCollections}
           onClose={() => setListViewEditorKind(null)}
+        />
+      )}
+      {control.type === ('MenuBar' as any) && menuBarItemsEditorOpen && (
+        <MenuBarItemsDialog
+          controlName={control.name}
+          value={control.content}
+          isDarkMode={isDarkMode}
+          onSave={content => onChange({ content })}
+          onClose={() => setMenuBarItemsEditorOpen(false)}
         />
       )}
       {control.type === 'TreeView' && treeViewEditorOpen && (

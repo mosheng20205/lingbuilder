@@ -92,6 +92,35 @@ import {
   workbenchTextModelService
 } from '../services/textModel';
 
+let beginnerProcedureNameMeasureCanvas: HTMLCanvasElement | null = null;
+
+function measureBeginnerProcedureName(name: string, fontSize: number) {
+  if (typeof document === 'undefined') {
+    return Array.from(name).reduce((width, character) =>
+      width + (/^[\u0000-\u007f]$/u.test(character) ? fontSize * 0.72 : fontSize), 0);
+  }
+
+  beginnerProcedureNameMeasureCanvas ||= document.createElement('canvas');
+  const context = beginnerProcedureNameMeasureCanvas.getContext('2d');
+  if (!context) return Array.from(name).length * fontSize;
+  const fontFamily = window.getComputedStyle(document.body).fontFamily || 'sans-serif';
+  context.font = `700 ${fontSize}px ${fontFamily}`;
+  return context.measureText(name).width;
+}
+
+function measureRenderedInputText(input: HTMLInputElement) {
+  beginnerProcedureNameMeasureCanvas ||= document.createElement('canvas');
+  const context = beginnerProcedureNameMeasureCanvas.getContext('2d');
+  if (!context) return input.scrollWidth;
+  const style = window.getComputedStyle(input);
+  context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  return context.measureText(input.value).width +
+    Number.parseFloat(style.paddingLeft || '0') +
+    Number.parseFloat(style.paddingRight || '0') +
+    Number.parseFloat(style.borderLeftWidth || '0') +
+    Number.parseFloat(style.borderRightWidth || '0');
+}
+
 export interface DiffViewerHandle {
   flushPendingEdits: () => Promise<FlushPendingEditsResult>;
   undo: () => Promise<boolean>;
@@ -4956,15 +4985,38 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         setBeginnerTypeCompletionState(null);
         applyCodeTargetSignature(target, { returnType: item.label });
       };
+      const ensureProcedureNameIsVisible = (input: HTMLInputElement) => {
+        if (field !== 'name') return;
+        window.requestAnimationFrame(() => {
+          if (!input.isConnected) return;
+          const requiredInputWidth = Math.ceil(measureRenderedInputText(input) + 12);
+          const currentInputWidth = input.getBoundingClientRect().width;
+          const missingWidth = requiredInputWidth - currentInputWidth;
+          if (missingWidth <= 0) return;
+
+          const table = input.closest('table');
+          const wrapper = input.closest<HTMLElement>('[data-beginner-preserve-width="true"]');
+          const nameHeader = table?.querySelector<HTMLElement>('thead th:first-child');
+          if (!wrapper || !nameHeader) return;
+          const nextTableWidth = Math.ceil(wrapper.getBoundingClientRect().width + missingWidth);
+          const nextNameWidth = Math.ceil(nameHeader.getBoundingClientRect().width + missingWidth);
+          wrapper.style.width = `${nextTableWidth}px`;
+          wrapper.style.minWidth = `${nextTableWidth}px`;
+          nameHeader.style.width = `${nextNameWidth}px`;
+        });
+      };
 
       return (
         <div className="relative min-w-0" data-beginner-type-wrap={inputKey}>
           <input
             key={`${codeTargetKey(target)}:${field}:${value}`}
+            ref={input => {
+              if (input) ensureProcedureNameIsVisible(input);
+            }}
             defaultValue={value}
             placeholder={placeholder}
-            list={field === 'name' ? 'beginner-method-name-suggestions' : undefined}
             readOnly={!onUpdateSourceContent || !editable}
+            onInput={event => ensureProcedureNameIsVisible(event.currentTarget)}
             onChange={event => updateTypeCompletion(event.currentTarget)}
             onBlur={event => {
               window.setTimeout(() => {
@@ -5007,8 +5059,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 event.currentTarget.blur();
               }
             }}
-            className={`${directInputClasses(tone)} w-full`}
-            title={field === 'returnType' ? '支持中文、英文、拼音输入，例如 int、string、void' : undefined}
+            className={`${directInputClasses(tone)} w-full whitespace-nowrap`}
+            title={field === 'returnType' ? '支持中文、英文、拼音输入，例如 int、string、void' : value}
           />
           {typeCompletion && (
             <div className={`absolute left-0 z-[90] w-64 overflow-hidden rounded border text-[11px] shadow-xl ${
@@ -6283,9 +6335,19 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const renderInlineTable = (
       columns: CompactColumn[],
       rows: React.ReactNode[],
-      maxWidth: number
+      maxWidth: number,
+      preserveWidth = false
     ) => (
-      <div className="inline-block w-full max-w-full align-top" style={{ maxWidth: `calc(${maxWidth}px * var(--beginner-table-scale))` }}>
+      <div
+        data-beginner-preserve-width={preserveWidth ? 'true' : undefined}
+        className={`inline-block align-top ${preserveWidth ? 'max-w-none' : 'w-full max-w-full'}`}
+        style={preserveWidth
+          ? {
+              width: `${maxWidth}px`,
+              minWidth: `${maxWidth}px`
+            }
+          : { maxWidth: `calc(${maxWidth}px * var(--beginner-table-scale))` }}
+      >
         <table className={`w-full table-fixed border-collapse text-left font-sans text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] ${compactTableBorder}`}>
           <thead>
             <tr>
@@ -6345,6 +6407,19 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const getProcessBodyLineCount = (target: BeginnerCodeTarget) =>
       Math.max(1, (beginnerCodeDrafts[codeTargetKey(target)] ?? methodBodyText(target.method)).split('\n').length);
 
+    const getProcedureNameColumnWidth = (name: string) => {
+      const cellHorizontalPadding = Math.max(8, Math.round(beginnerTableFontSize * 0.75)) * 2;
+      const inputHorizontalPaddingAndEditingRoom = 24;
+      return Math.max(
+        220,
+        Math.ceil(
+          measureBeginnerProcedureName(name, beginnerProcedureFontSize) +
+          cellHorizontalPadding +
+          inputHorizontalPaddingAndEditingRoom
+        )
+      );
+    };
+
     const renderProcessHeader = (target: BeginnerCodeTarget, visualLine: number) => {
       const row = findStructuredRowForCodeTarget(target);
       const canEditName = target.method.kind === 'method' || target.method.kind === 'event';
@@ -6353,8 +6428,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const accessValue = row?.access || target.method.access || '公开';
       const noteValue = row?.note || '';
       const selected = isActiveProcessTarget(target);
+      const nameColumnWidth = getProcedureNameColumnWidth(target.method.name);
+      const returnTypeColumnWidth = Math.ceil(90 * beginnerTableScale);
+      const staticColumnWidth = Math.ceil(54 * beginnerTableScale);
+      const accessColumnWidth = Math.ceil(74 * beginnerTableScale);
       const noteColumnWidth = Math.min(420, Math.max(280, Array.from(noteValue).length * 14 + 28));
-      const processTableWidth = 438 + noteColumnWidth;
+      const processTableWidth = nameColumnWidth + returnTypeColumnWidth + staticColumnWidth + accessColumnWidth + noteColumnWidth;
 
       return renderSourceShell(
         `${target.method.kind}-${target.method.name}-${target.method.line}`,
@@ -6363,10 +6442,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         selected ? 'active' : 'plain',
         renderInlineTable(
           [
-            { label: '子程序名', className: 'w-[220px]' },
-            { label: '返回值类型', className: 'w-[90px]' },
-            { label: '静态', className: 'w-[54px]' },
-            { label: '公开', className: 'w-[74px]' },
+            { label: '子程序名', style: { width: nameColumnWidth } },
+            { label: '返回值类型', style: { width: returnTypeColumnWidth } },
+            { label: '静态', style: { width: staticColumnWidth } },
+            { label: '公开', style: { width: accessColumnWidth } },
             { label: '备注', style: { width: noteColumnWidth } }
           ],
           [
@@ -6395,7 +6474,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               <td className={compactCellClass}>{renderCodeTargetNoteInput(target, noteValue)}</td>
             </tr>
           ],
-          processTableWidth
+          processTableWidth,
+          true
         )
       );
     };

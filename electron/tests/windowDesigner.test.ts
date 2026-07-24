@@ -8,16 +8,19 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import ListViewDesignerPreview from '../src/components/ListViewDesignerPreview';
 import TabControlDesignerPreview from '../src/components/TabControlDesignerPreview';
 import ListViewCollectionDialog from '../src/components/ListViewCollectionDialog';
+import MenuBarItemsDialog from '../src/components/MenuBarItemsDialog';
 import TreeViewCollectionDialog from '../src/components/TreeViewCollectionDialog';
 import { parseStringListPropertyText } from '../src/components/WpfDesigner';
 import {
   buildControlHierarchy,
+  canReparentControls,
   canReparentControl,
   getEffectiveControlState,
   getControlDescendantIds,
   normalizeControlHierarchy,
   orderControlsForDesignerPainting,
-  reparentControl
+  reparentControl,
+  reparentControls
 } from '../src/services/windowDesigner/controlHierarchy';
 import {
   getDesignerWindowContentOffset,
@@ -64,6 +67,32 @@ import {
   updateTreeViewNode
 } from '../src/services/windowDesigner/treeViewCollectionModel';
 import { CONTROL_FONT_FAMILY_OPTIONS, DEFAULT_CONTROL_FONT_FAMILY, getControlFontCssStyle } from '../src/services/windowDesigner/controlFont';
+import {
+  parseMenuBarItems,
+  serializeMenuBarItems,
+  validateMenuBarItems
+} from '../src/services/windowDesigner/menuBarItemsModel';
+
+test('窗口菜单栏集合模型兼容旧的逗号存储格式', () => {
+  const items = parseMenuBarItems(' 文件, 编辑,  帮助 ');
+  assert.deepEqual(items, ['文件', '编辑', '帮助']);
+  assert.equal(serializeMenuBarItems(items), '文件, 编辑, 帮助');
+  assert.equal(validateMenuBarItems(items), null);
+  assert.match(validateMenuBarItems(['文件,导入']) || '', /英文逗号/u);
+});
+
+test('窗口菜单栏属性使用独立集合编辑弹窗', () => {
+  const markup = renderToStaticMarkup(React.createElement(MenuBarItemsDialog, {
+    controlName: '窗口菜单栏',
+    value: '文件, 编辑, 帮助',
+    isDarkMode: true,
+    onSave: () => undefined,
+    onClose: () => undefined
+  }));
+  assert.match(markup, /编辑菜单项/u);
+  assert.match(markup, /3 个菜单项/u);
+  assert.match(markup, /保存修改/u);
+});
 
 test('调试输出支持英文逗号分隔的任意数量异构参数', () => {
   const project: LingWindowProject = {
@@ -293,6 +322,25 @@ test('布局树拖拽换父级支持容器和窗口根级并拒绝循环层级',
   assert.equal(canReparentControl(controls, 'inner', 'inner'), false, '控件不能成为自己的父级');
   assert.equal(canReparentControl(controls, 'scroll', 'missing'), false, '目标父级必须存在');
   assert.equal(reparentControl(controls, 'outer', 'inner'), controls, '非法操作应保持原数组引用');
+});
+
+test('布局树批量拖拽保持多选控件的内部父子结构', () => {
+  const controls = [
+    createControl('source', undefined, 'Grid'),
+    createControl('parent', 'source', 'GroupBox'),
+    createControl('child', 'parent', 'Button'),
+    createControl('sibling', 'source', 'Label'),
+    createControl('target', undefined, 'Grid')
+  ];
+
+  assert.equal(canReparentControls(controls, ['parent', 'child', 'sibling'], 'target'), true);
+  const moved = reparentControls(controls, ['parent', 'child', 'sibling'], 'target');
+  assert.equal(moved.find(control => control.id === 'parent')?.parentId, 'target');
+  assert.equal(moved.find(control => control.id === 'sibling')?.parentId, 'target');
+  assert.equal(moved.find(control => control.id === 'child')?.parentId, 'parent', '选中的后代不应被打散到目标容器');
+
+  assert.equal(canReparentControls(controls, ['parent', 'target'], 'child'), false, '批量移动必须原子拒绝循环父级');
+  assert.equal(reparentControls(controls, ['parent', 'target'], 'child'), controls);
 });
 
 test('父容器的可见和启用状态由所有后代继承', () => {

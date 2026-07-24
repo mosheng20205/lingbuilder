@@ -11,17 +11,26 @@ test('designer window surface and hierarchy root select window properties', asyn
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   assert.match(source, /selectOnlyControl\(null\);\s*setActiveInspectorTab\('properties'\)/u);
   assert.match(source, /selectedControlId === null \? \(\s*<WindowProperties/u);
-  assert.match(source, /点击窗口或控件节点即可选中/u);
+  assert.match(source, /Ctrl 多选、Shift 连选/u);
 });
 
 test('designer layout hierarchy supports drag reparenting onto containers and the window root', async () => {
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   assert.match(source, /draggable/u);
-  assert.match(source, /application\/x-lingbuilder-control-id/u);
+  assert.match(source, /application\/x-lingbuilder-control-ids/u);
   assert.match(source, /canDropOnParent/u);
-  assert.match(source, /onReparentControl\(controlId, parentId(?:, containerSlot)?\)/u);
-  assert.match(source, /拖动控件到窗口或容器节点可更换父级/u);
+  assert.match(source, /onReparentControls\(controlIds, parentId, containerSlot\)/u);
+  assert.match(source, /Ctrl 多选、Shift 连选/u);
+  assert.match(source, /aria-multiselectable="true"/u);
   assert.match(source, /WINDOW_ROOT_DROP_TARGET/u);
+});
+
+test('designer tab page hierarchy nodes can independently collapse their controls', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /const pageExpanded = expandedIds\.has\(pageDropTargetId\)/u);
+  assert.match(source, /toggleExpanded\(pageDropTargetId\)/u);
+  assert.match(source, /aria-label=\{pageChildren\.length > 0 \? `\$\{pageExpanded \? '折叠' : '展开'\}\$\{page\.title\}`/u);
+  assert.match(source, /pageExpanded && pageChildren\.map/u);
 });
 
 test('designer exposes the complete categorized window event registry instead of a Grid fallback', async () => {
