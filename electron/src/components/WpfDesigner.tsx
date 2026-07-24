@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Check,
   CheckSquare,
   ChevronDown,
   ChevronRight,
   CircleDot,
+  Clapperboard,
   Copy,
   FileCode,
   FileText,
@@ -38,8 +39,12 @@ import {
 } from 'lucide-react';
 import ModuleInspector from './ModuleInspector';
 import ListViewDesignerPreview from './ListViewDesignerPreview';
+import HeaderDesignerPreview from './HeaderDesignerPreview';
 import TabControlDesignerPreview from './TabControlDesignerPreview';
+import UpDownDesignerPreview from './UpDownDesignerPreview';
 import ListViewCollectionDialog, { type ListViewCollectionEditorKind } from './ListViewCollectionDialog';
+import ToolbarButtonsDialog from './ToolbarButtonsDialog';
+import StatusBarPartsDialog from './StatusBarPartsDialog';
 import MenuBarItemsDialog from './MenuBarItemsDialog';
 import TreeViewCollectionDialog from './TreeViewCollectionDialog';
 import {
@@ -62,6 +67,9 @@ import {
   PersistedWindowDesignerState,
   WindowDesignerDirtyStateDetail
 } from '../services/windowDesigner/windowDesignerService';
+import { normalizeToolbarButtons } from '../services/windowDesigner/toolbarButtonCollectionModel';
+import { normalizeStatusBarParts } from '../services/windowDesigner/statusBarPartCollectionModel';
+import { captureDesignerHotKey } from '../services/windowDesigner/hotKeyProperty';
 import {
   notifyWindowDesignerBuildRunState,
   requestWindowDesignerBuildRun,
@@ -84,6 +92,7 @@ import {
 } from '../services/windowDesigner/types';
 import { parseMenuBarItems } from '../services/windowDesigner/menuBarItemsModel';
 import {
+  getCreatableWin32ControlDefinitions,
   getWin32ControlDefinition,
   WIN32_CONTROL_DEFINITIONS,
   Win32ControlPropertyDefinition,
@@ -99,7 +108,7 @@ import {
   orderControlsForDesignerPainting,
   reparentControls
 } from '../services/windowDesigner/controlHierarchy';
-import { applyDesignerLayout, DesignerHistory, nudgeControls, updateControlWithDescendants, type DesignerLayoutOperation } from '../services/windowDesigner/designerOperations';
+import { applyDesignerLayout, createNextRebarBand, DesignerHistory, nudgeControls, reconcileRebarBands, updateControlWithDescendants, type DesignerLayoutOperation } from '../services/windowDesigner/designerOperations';
 import {
   getWindowEventHandlerName,
   WINDOW_EVENT_CATEGORIES,
@@ -112,7 +121,7 @@ import {
   type ListViewEditableRow
 } from '../services/windowDesigner/listViewCollectionModel';
 import { flattenTreeViewNodes, normalizeTreeViewNodes } from '../services/windowDesigner/treeViewCollectionModel';
-import { getDesignerImagePreviewSource, selectAndImportDesignerIcon, selectAndImportDesignerImage } from '../services/windowDesigner/designerAssetClient';
+import { getDesignerImagePreviewSource, selectAndImportDesignerAnimation, selectAndImportDesignerGif, selectAndImportDesignerIcon, selectAndImportDesignerImage, selectAndImportDesignerVideo } from '../services/windowDesigner/designerAssetClient';
 import {
   isNewEmojiDesignerControlSupported,
   isNewEmojiDesignerEnabled
@@ -161,7 +170,7 @@ export interface WpfDesignerProps {
 }
 
 const CONTROL_TYPES: (LingControlType | 'MenuBar')[] = [
-  ...WIN32_CONTROL_DEFINITIONS.filter(definition => definition.isVisual !== false).map(definition => definition.type as LingControlType),
+  ...getCreatableWin32ControlDefinitions().filter(definition => definition.isVisual !== false).map(definition => definition.type as LingControlType),
   'FileDialog',
   'MenuBar'
 ];
@@ -171,6 +180,17 @@ const CONTROL_LABELS: Record<string, string> = Object.fromEntries([
   ['MenuBar', '窗口菜单栏']
 ]);
 
+const DEDICATED_CONTROL_PREVIEW_TYPES = new Set<LingControlType>([
+  'Button', 'TextBox', 'Label', 'SysLink', 'CheckBox', 'RadioButton', 'ListBox',
+  'ProgressBar', 'ComboBox', 'ComboBoxEx', 'GroupBox', 'Image', 'AnimatedImage',
+  'VideoPlayer', 'ListView', 'Header', 'TreeView', 'TabControl', 'StatusBar', 'ReBar',
+  'IPAddress', 'UpDown', 'Upload', 'DragUpload', 'RichEdit', 'ColorPicker'
+]);
+
+export function hasDedicatedControlPreview(type: LingControlType): boolean {
+  return DEDICATED_CONTROL_PREVIEW_TYPES.has(type);
+}
+
 const TYPE_ICONS: Partial<Record<LingControlType | 'MenuBar', React.ReactNode>> = {
   Button: <SquareDot className="w-3.5 h-3.5 text-blue-400" />,
   TextBox: <Keyboard className="w-3.5 h-3.5 text-teal-400" />,
@@ -178,6 +198,9 @@ const TYPE_ICONS: Partial<Record<LingControlType | 'MenuBar', React.ReactNode>> 
   CheckBox: <CheckSquare className="w-3.5 h-3.5 text-indigo-400" />,
   RadioButton: <CircleDot className="w-3.5 h-3.5 text-purple-400" />,
   Image: <Palette className="w-3.5 h-3.5 text-pink-400" />,
+  AnimatedImage: <Play className="w-3.5 h-3.5 text-fuchsia-400" />,
+  VideoPlayer: <Clapperboard className="w-3.5 h-3.5 text-rose-400" />,
+  ColorPicker: <Palette className="w-3.5 h-3.5 text-violet-400" />,
   ProgressBar: <Minus className="w-3.5 h-3.5 text-emerald-400" />,
   Upload: <Upload className="w-3.5 h-3.5 text-sky-400" />,
   DragUpload: <FileUp className="w-3.5 h-3.5 text-fuchsia-400" />,
@@ -248,7 +271,7 @@ export default function WpfDesigner({
   const selectOnlyControl = (id: string | null) => { setSelectedControlId(id); setSelectedControlIds(id && !id.startsWith('__window_') ? [id] : []); setSelectedResourceId(null); };
   const designerHistoryRef = useRef(new DesignerHistory(initialDesignerState.project));
   const applyingHistoryRef = useRef(false);
-  const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>('layout');
+  const [activeInspectorTab, setActiveInspectorTab] = useState<InspectorTab>('properties');
   const [isMenuDropdownOpen, setIsMenuDropdownOpen] = useState(false);
   const [controlContextMenu, setControlContextMenu] = useState<DesignerContextMenuState | null>(null);
   const [isNativeBuilding, setIsNativeBuilding] = useState(false);
@@ -605,7 +628,7 @@ export default function WpfDesigner({
     }
     updateActiveWindow(window => ({
       ...window,
-      controls: updateControlWithDescendants(window.controls, selectedControlId, updatedFields)
+      controls: reconcileRebarBands(updateControlWithDescendants(window.controls, selectedControlId, updatedFields))
     }));
   };
 
@@ -632,7 +655,7 @@ export default function WpfDesigner({
     if (!canReparentControls(activeWindow.controls, uniqueControlIds, parentId, containerSlot)) return;
 
     updateActiveWindow(window => {
-      const controls = reparentControls(window.controls, uniqueControlIds, parentId, containerSlot);
+      const controls = reconcileRebarBands(reparentControls(window.controls, uniqueControlIds, parentId, containerSlot));
       if (controls === window.controls) return window;
       if (!target) return { ...window, controls };
       const inset = 12;
@@ -677,6 +700,23 @@ export default function WpfDesigner({
         : control)
     }));
     selectOnlyControl(tabControlId);
+  };
+
+  const handleReorderRebarBand = (rebarId: string, fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return;
+    updateActiveWindow(window => ({
+      ...window,
+      controls: window.controls.map(control => {
+        if (control.id !== rebarId) return control;
+        const bands: Array<Record<string, unknown>> = Array.isArray(control.properties?.bands)
+          ? control.properties.bands.filter((band): band is Record<string, unknown> => Boolean(band) && typeof band === 'object').map(band => ({ ...band }))
+          : [];
+        if (fromIndex >= bands.length || toIndex >= bands.length) return control;
+        const [moved] = bands.splice(fromIndex, 1);
+        bands.splice(toIndex, 0, moved);
+        return { ...control, properties: { ...(control.properties || {}), bands } };
+      })
+    }));
   };
 
   const handleCanvasDoubleClick = (event: React.MouseEvent) => {
@@ -832,7 +872,7 @@ export default function WpfDesigner({
     };
     updateActiveWindow(window => ({
       ...window,
-      controls: [...window.controls, newControl]
+      controls: reconcileRebarBands([...window.controls, newControl])
     }));
     setSelectedControlId(newControl.id);
     setActiveInspectorTab('properties');
@@ -880,11 +920,11 @@ export default function WpfDesigner({
       : new Set([controlId]);
     updateActiveWindow(window => ({
       ...window,
-      controls: window.controls
+      controls: reconcileRebarBands(window.controls
         .filter(control => !idsToDelete.has(control.id))
         .map(control => idsToDelete.has(control.parentId || '')
           ? { ...control, parentId: undefined }
-          : control)
+          : control))
     }));
     setSelectedControlId(null);
     setSelectedControlIds([]);
@@ -928,12 +968,15 @@ export default function WpfDesigner({
     event.preventDefault();
     event.stopPropagation();
     selectOnlyControl(controlId);
+    setActiveInspectorTab('properties');
     setControlContextMenu({ x: event.clientX, y: event.clientY, controlId });
   };
 
   const handleMouseDown = (event: React.MouseEvent, control: LingControl, action: 'drag' | ResizeDirection) => {
     event.stopPropagation();
     event.preventDefault();
+    setSelectedResourceId(null);
+    setActiveInspectorTab('properties');
     if (event.shiftKey || event.ctrlKey || event.metaKey) { setSelectedControlIds(current => current.includes(control.id) ? current.filter(id => id !== control.id) : [...current, control.id]); setSelectedControlId(control.id); return; }
     if (!selectedControlIds.includes(control.id)) setSelectedControlIds([control.id]);
     setSelectedControlId(control.id);
@@ -1565,7 +1608,8 @@ export default function WpfDesigner({
               onContextMenu={(event) => openControlContextMenu(event, '__window_menu_bar__')}
               onClick={(e) => {
                 e.stopPropagation();
-                setSelectedControlId('__window_menu_bar__');
+                selectOnlyControl('__window_menu_bar__');
+                setActiveInspectorTab('properties');
                 setIsMenuDropdownOpen(prev => !prev);
               }}
               className={`h-6 px-3 flex items-center border-b select-none text-[10.5px] font-sans cursor-pointer transition-colors ${
@@ -1641,7 +1685,8 @@ export default function WpfDesigner({
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              setSelectedControlId(`__window_menu_item_${idx}__`);
+                              selectOnlyControl(`__window_menu_item_${idx}__`);
+                              setActiveInspectorTab('properties');
                             }}
                             onDoubleClick={(e) => {
                               e.preventDefault();
@@ -1689,7 +1734,8 @@ export default function WpfDesigner({
                 effectiveState.visible,
                 effectiveState.enabled,
                 ancestorsVisible && isControlOnSelectedTab(activeWindow.controls, control.id),
-                control.type === 'TabControl' ? pageId => handleSelectTabPage(control.id, pageId) : undefined
+                control.type === 'TabControl' ? pageId => handleSelectTabPage(control.id, pageId) : undefined,
+                control.type === 'ReBar' ? (fromIndex, toIndex) => handleReorderRebarBand(control.id, fromIndex, toIndex) : undefined
               );
             })}
             {activeFileDialogs.map((resource, index) => {
@@ -2326,14 +2372,15 @@ function renderControl(
   isEffectivelyVisible: boolean,
   isEffectivelyEnabled: boolean,
   ancestorsVisible: boolean,
-  onSelectTabPage?: (pageId: string) => void
+  onSelectTabPage?: (pageId: string) => void,
+  onReorderRebarBand?: (fromIndex: number, toIndex: number) => void
 ) {
   const isCollapsed = !isEffectivelyVisible && ancestorsVisible;
   const isHiddenByAncestor = !ancestorsVisible;
   const definition = getWin32ControlDefinition(control.type);
   const controlFontStyle = getControlFontCssStyle(control);
   const newEmojiSupported = isNewEmojiDesignerControlSupported(control.type);
-  const hasSpecialPreview = ['Button', 'TextBox', 'Label', 'CheckBox', 'RadioButton', 'ListBox', 'ProgressBar', 'ComboBox', 'GroupBox', 'Image', 'ListView', 'TreeView', 'TabControl', 'Upload', 'DragUpload'].includes(control.type)
+  const hasSpecialPreview = hasDedicatedControlPreview(control.type)
     || (useNewEmojiDesigner && !newEmojiSupported);
   const resizeHandles: Array<{
     direction: ResizeDirection;
@@ -2393,7 +2440,7 @@ function renderControl(
         </>
       )}
 
-      <div className="w-full h-full relative select-none pointer-events-none" style={controlFontStyle}>
+      <div className={`w-full h-full relative select-none ${control.type === 'ReBar' && isSelected ? 'pointer-events-auto' : 'pointer-events-none'}`} style={controlFontStyle}>
         {control.type === 'Button' && (
           <button
             disabled={!isEffectivelyEnabled}
@@ -2487,7 +2534,7 @@ function renderControl(
           </div>
         )}
 
-        {control.type === 'ComboBox' && (() => {
+        {(control.type === 'ComboBox' || control.type === 'ComboBoxEx') && (() => {
           const items = Array.isArray(control.properties?.items)
             ? control.properties.items.map(item => typeof item === 'string'
               ? item
@@ -2508,7 +2555,32 @@ function renderControl(
               <span style={{ color: control.foreground, fontSize: `${control.fontSize}px` }} className="truncate">
                 {selectedText}
               </span>
-              <svg aria-hidden="true" viewBox="0 0 12 8" className="h-2 w-3 shrink-0 text-slate-400">
+              <svg aria-hidden="true" viewBox="0 0 12 8" className="h-2 w-3 shrink-0" style={{ color: control.foreground }}>
+                <path d="M1 1.5 6 6.5l5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          );
+        })()}
+
+        {control.type === 'ColorPicker' && (() => {
+          const currentColor = typeof control.properties?.currentColor === 'string'
+            && /^#[0-9a-f]{6}$/iu.test(control.properties.currentColor)
+            ? control.properties.currentColor.toUpperCase()
+            : '#3B82F6';
+          return (
+            <div
+              aria-label="颜色选择器预览"
+              className="flex h-full w-full items-center gap-2 overflow-hidden rounded border border-slate-600 px-2 select-none"
+              style={{
+                backgroundColor: control.background === 'transparent' ? '#1E293B' : control.background,
+                color: control.foreground,
+                fontSize: `${control.fontSize}px`,
+                opacity: isEffectivelyEnabled ? 1 : 0.5
+              }}
+            >
+              <span className="h-[65%] min-h-3 w-7 shrink-0 rounded border border-white/30 shadow-inner" style={{ backgroundColor: currentColor }} />
+              {control.properties?.showColorText !== false && <span className="min-w-0 flex-1 truncate font-mono">{currentColor}</span>}
+              <svg aria-hidden="true" viewBox="0 0 12 8" className="h-2 w-3 shrink-0 opacity-70">
                 <path d="M1 1.5 6 6.5l5-5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
@@ -2634,6 +2706,110 @@ function renderControl(
           </div>
         )}
 
+        {control.type === 'RichEdit' && (
+          <div
+            className="h-full w-full overflow-hidden whitespace-pre-wrap rounded border border-slate-700 px-2 py-1 text-left select-none"
+            style={{
+              backgroundColor: control.background === 'transparent' ? 'transparent' : control.background,
+              color: control.foreground,
+              fontSize: `${control.fontSize}px`,
+              fontFamily: controlFontStyle.fontFamily,
+              fontWeight: controlFontStyle.fontWeight,
+              fontStyle: controlFontStyle.fontStyle,
+              textDecoration: controlFontStyle.textDecoration,
+              opacity: isEffectivelyEnabled ? 1 : 0.5
+            }}
+          >
+            {control.content}
+          </div>
+        )}
+
+        {control.type === 'VideoPlayer' && (
+          <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded border border-slate-700 bg-black text-slate-300">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(51,65,85,0.36),transparent_62%)]" />
+            <div className="z-10 flex max-w-full flex-col items-center gap-2 px-3 text-center">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10">
+                <Play className="h-5 w-5 fill-current" />
+              </span>
+              <span className="max-w-full truncate text-[10px] font-semibold">
+                {typeof control.properties?.videoSource === 'string' && control.properties.videoSource
+                  ? control.properties.videoSource.split(/[\\/]/u).pop()
+                  : '请选择 MP4 / WMV 视频'}
+              </span>
+              <span className="text-[8px] text-slate-500">Media Foundation · 音量 {String(control.properties?.volume ?? 100)}%</span>
+            </div>
+          </div>
+        )}
+
+        {control.type === 'AnimatedImage' && (
+          <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded border border-fuchsia-500/30 bg-fuchsia-950/20">
+            {typeof control.properties?.gifSource === 'string' && control.properties.gifSource ? (
+              <img
+                src={getDesignerImagePreviewSource(projectId, control.properties.gifSource)}
+                alt={control.content || '动态图像'}
+                className="h-full w-full"
+                style={{ objectFit: control.properties?.stretch === 'fill' ? 'fill' : control.properties?.stretch === 'uniformToFill' ? 'cover' : control.properties?.stretch === 'none' ? 'none' : 'contain' }}
+              />
+            ) : (
+              <>
+                <div className="absolute inset-0 bg-gradient-to-tr from-fuchsia-500 via-violet-500 to-cyan-500 opacity-15" />
+                <Play className="z-10 mr-1 h-4 w-4 text-fuchsia-300" />
+                <span className="z-10 max-w-full truncate px-1 text-[10px] font-semibold text-fuchsia-200">请设置 GIF 文件</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {control.type === 'SysLink' && (
+          <div
+            className="flex h-full w-full items-center overflow-hidden px-1 text-xs underline"
+            style={{
+              color: control.foreground,
+              fontSize: `${control.fontSize}px`,
+              backgroundColor: control.background === 'transparent' ? 'transparent' : control.background,
+              opacity: isEffectivelyEnabled ? 1 : 0.5
+            }}
+          >
+            <span className="truncate">{control.content}</span>
+          </div>
+        )}
+
+        {control.type === 'IPAddress' && (() => {
+          const configuredAddress = String(control.properties?.address || control.content || '127.0.0.1');
+          const fields = configuredAddress.split('.').slice(0, 4);
+          while (fields.length < 4) fields.push('0');
+          const borderWidth = Math.max(0, Math.min(8, Number(control.properties?.borderWidth ?? 1)));
+          const borderColor = String(control.properties?.borderColor ?? '#64748B');
+          const verticalAlign = control.properties?.verticalAlign === 'top' || control.properties?.verticalAlign === 'bottom'
+            ? control.properties.verticalAlign
+            : 'center';
+          return (
+            <div
+              className="flex h-full w-full min-w-0 overflow-hidden px-1 font-mono"
+              style={{
+                alignItems: verticalAlign === 'top' ? 'flex-start' : verticalAlign === 'bottom' ? 'flex-end' : 'center',
+                backgroundColor: control.background === 'transparent' ? 'transparent' : control.background,
+                borderColor,
+                borderStyle: borderWidth > 0 ? 'solid' : 'none',
+                borderWidth: `${borderWidth}px`,
+                boxSizing: 'border-box',
+                color: control.foreground,
+                fontSize: `${control.fontSize}px`,
+                opacity: isEffectivelyEnabled ? 1 : 0.5
+              }}
+            >
+              {fields.map((field, index) => (
+                <React.Fragment key={index}>
+                  <span className="min-w-0 flex-1 truncate text-center leading-tight">{field}</span>
+                  {index < fields.length - 1 && <span className="shrink-0 px-0.5 leading-tight">.</span>}
+                </React.Fragment>
+              ))}
+            </div>
+          );
+        })()}
+
+        {control.type === 'UpDown' && <UpDownDesignerPreview isEnabled={isEffectivelyEnabled} />}
+
         {(control.type === 'Upload' || control.type === 'DragUpload') && (() => {
           const dragEnabled = control.type === 'DragUpload' || control.properties?.dropEnabled === true;
           const multiple = control.properties?.multiple !== false;
@@ -2659,6 +2835,53 @@ function renderControl(
         })()}
 
         {control.type === 'ListView' && <ListViewDesignerPreview control={control} />}
+
+        {control.type === 'Header' && <HeaderDesignerPreview control={control} />}
+
+        {control.type === 'StatusBar' && (() => {
+          const configuredParts = Array.isArray(control.properties?.parts) ? control.properties.parts : [];
+          const textAlign = control.properties?.textAlign === 'center' || control.properties?.textAlign === 'right'
+            ? control.properties.textAlign
+            : 'left';
+          const parts = configuredParts.length > 0
+            ? configuredParts
+            : [{ title: control.content || '就绪', width: control.width }];
+          return (
+            <div
+              className="flex h-full w-full min-w-0 overflow-hidden border border-black/20"
+              style={{
+                backgroundColor: control.background === 'transparent' ? 'transparent' : control.background,
+                color: control.foreground,
+                fontSize: `${control.fontSize}px`,
+                opacity: isEffectivelyEnabled ? 1 : 0.5
+              }}
+            >
+              {parts.map((part, index) => {
+                const record = part && typeof part === 'object' ? part as Record<string, unknown> : {};
+                const title = String(record.title ?? record.label ?? (index === 0 ? control.content || '就绪' : ''));
+                const width = Math.max(1, Number(record.width) || 140);
+                return (
+                  <span
+                    key={`${index}-${title}`}
+                    className="flex min-w-0 items-center truncate border-r border-black/20 px-2 last:flex-1 last:border-r-0"
+                    style={{
+                      flexBasis: `${width}px`,
+                      flexGrow: index + 1 === parts.length ? 1 : 0,
+                      justifyContent: textAlign === 'center' ? 'center' : textAlign === 'right' ? 'flex-end' : 'flex-start',
+                      textAlign
+                    }}
+                  >
+                    {title}
+                  </span>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {control.type === 'ReBar' && (
+          <RebarDesignerPreview control={control} onReorder={onReorderRebarBand} interactive={isSelected} />
+        )}
 
         {control.type === 'TabControl' && <TabControlDesignerPreview control={control} onSelectPage={onSelectTabPage} />}
 
@@ -2706,7 +2929,7 @@ function renderControl(
 
         {!hasSpecialPreview && (
           <div
-            className={`flex h-full w-full overflow-hidden rounded border ${definition?.isContainer ? 'items-start border-dashed p-2' : 'items-center justify-center px-2'} border-sky-500/40 bg-sky-950/15 text-sky-200`}
+            className={`flex h-full w-full overflow-hidden rounded border ${definition?.isContainer ? 'items-start border-dashed p-2' : 'items-center justify-center px-2'} border-sky-500/40 ${control.background === 'transparent' ? 'bg-transparent' : 'bg-sky-950/15'} text-sky-200`}
             style={{ fontSize: `${control.fontSize}px`, backgroundColor: control.background === 'transparent' ? undefined : control.background, color: control.foreground }}
           >
             <span className="truncate">{control.content || definition?.label || control.type}</span>
@@ -2727,6 +2950,60 @@ function renderControl(
           ))}
         </>
       )}
+    </div>
+  );
+}
+
+function RebarDesignerPreview({
+  control,
+  interactive,
+  onReorder
+}: {
+  control: LingControl;
+  interactive: boolean;
+  onReorder?: (fromIndex: number, toIndex: number) => void;
+}) {
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const configured = Array.isArray(control.properties?.bands) ? control.properties.bands : [];
+  const showGrippers = control.properties?.showGrippers !== false && control.properties?.locked !== true;
+  const fixedHeight = control.properties?.fixedHeight === true;
+  const showBandBorders = control.properties?.showBandBorders === true;
+  return (
+    <div
+      className={`flex h-full w-full content-start overflow-hidden bg-slate-200/90 p-0.5 ${fixedHeight ? 'flex-nowrap' : 'flex-wrap'}`}
+      style={{ opacity: control.isEnabled ? 1 : 0.55 }}
+      aria-label={`${control.name} Rebar 带区预览`}
+    >
+      {configured.length === 0 ? (
+        <div className="flex h-full w-full items-center justify-center border border-dashed border-slate-500/60 px-2 text-[9px] text-slate-600">
+          将控件拖入 Rebar 后自动创建带区
+        </div>
+      ) : configured.map((rawBand, index) => {
+        const band = rawBand && typeof rawBand === 'object' ? rawBand as Record<string, unknown> : {};
+        const title = String(band.title ?? `带区 ${index + 1}`);
+        const width = Math.max(Number(band.minWidth) || 40, Number(band.width) || 120);
+        const height = fixedHeight ? control.height - 4 : Math.max(24, Math.min(control.height - 4, Number(band.height) || 28));
+        const breakLine = band.breakLine === true;
+        return (
+          <React.Fragment key={String(band.id ?? index)}>
+          {breakLine && index > 0 && <span className="h-0 basis-full" aria-hidden="true" />}
+          <div
+            draggable={interactive && control.properties?.locked !== true}
+            onMouseDown={event => event.stopPropagation()}
+            onDragStart={event => { event.stopPropagation(); setDraggedIndex(index); event.dataTransfer.effectAllowed = 'move'; }}
+            onDragOver={event => { if (interactive) { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; } }}
+            onDrop={event => { event.preventDefault(); event.stopPropagation(); if (draggedIndex !== null) onReorder?.(draggedIndex, index); setDraggedIndex(null); }}
+            onDragEnd={() => setDraggedIndex(null)}
+            className={`flex shrink-0 items-center overflow-hidden bg-gradient-to-b from-slate-50 to-slate-300 text-slate-800 ${showBandBorders ? 'border border-slate-500' : 'border-r border-slate-400/60'} ${draggedIndex === index ? 'opacity-45' : ''}`}
+            style={{ width: `${width}px`, height: `${height}px` }}
+            title={interactive ? (control.properties?.locked === true ? '带区已锁定' : '拖动可调整带区顺序') : title}
+          >
+            {showGrippers && <span className="mx-1 grid shrink-0 grid-cols-2 gap-[2px]" aria-hidden="true">{Array.from({ length: 6 }, (_, dot) => <i key={dot} className="h-[2px] w-[2px] rounded-full bg-slate-500" />)}</span>}
+            <span className="truncate px-1 text-[9px] font-semibold">{title}</span>
+          </div>
+          </React.Fragment>
+        );
+      })}
     </div>
   );
 }
@@ -3294,11 +3571,17 @@ function ControlProperties({
   onDelete: () => void;
 }) {
   const [listViewEditorKind, setListViewEditorKind] = useState<ListViewCollectionEditorKind | null>(null);
+  const [headerColumnsEditorOpen, setHeaderColumnsEditorOpen] = useState(false);
+  const [toolbarButtonsEditorOpen, setToolbarButtonsEditorOpen] = useState(false);
+  const [statusBarPartsEditorOpen, setStatusBarPartsEditorOpen] = useState(false);
   const [menuBarItemsEditorOpen, setMenuBarItemsEditorOpen] = useState(false);
   const [treeViewEditorOpen, setTreeViewEditorOpen] = useState(false);
 
   useEffect(() => {
     setListViewEditorKind(null);
+    setHeaderColumnsEditorOpen(false);
+    setToolbarButtonsEditorOpen(false);
+    setStatusBarPartsEditorOpen(false);
     setMenuBarItemsEditorOpen(false);
     setTreeViewEditorOpen(false);
   }, [control?.id]);
@@ -3340,8 +3623,17 @@ function ControlProperties({
   const listViewRows = control.type === 'ListView'
     ? normalizeListViewRows(control.properties?.items)
     : [];
+  const headerColumnCount = control.type === 'Header'
+    ? normalizeListViewColumns(control.properties?.columns).length
+    : 0;
   const treeViewNodeCount = control.type === 'TreeView'
     ? flattenTreeViewNodes(normalizeTreeViewNodes(control.properties?.nodes)).length
+    : 0;
+  const toolbarButtonCount = control.type === 'ToolBar'
+    ? normalizeToolbarButtons(control.properties?.buttons).length
+    : 0;
+  const statusBarPartCount = control.type === 'StatusBar'
+    ? normalizeStatusBarParts(control.properties?.parts).length
     : 0;
   const updateControlProperty = (key: string, value: Win32ControlPropertyValue) => {
     const properties = { ...(control.properties || {}), [key]: value };
@@ -3381,7 +3673,13 @@ function ControlProperties({
         <NumberField label="左距" value={control.x} min={0} isDarkMode={isDarkMode} onChange={value => onChange({ x: value })} />
         <NumberField label="顶距" value={control.y} min={0} isDarkMode={isDarkMode} onChange={value => onChange({ y: value })} />
         <NumberField label="宽度" value={control.width} min={20} isDarkMode={isDarkMode} onChange={value => onChange({ width: value })} />
-        <NumberField label="高度" value={control.height} min={15} isDarkMode={isDarkMode} onChange={value => onChange({ height: value })} />
+        <NumberField
+          label={control.type === 'MonthCalendar' ? '月历高度' : control.type === 'DateTimePicker' ? '选择框高度' : '高度'}
+          value={control.height}
+          min={control.type === 'MonthCalendar' ? 200 : 15}
+          isDarkMode={isDarkMode}
+          onChange={value => onChange({ height: value })}
+        />
       </PropertyGroup>
 
       <PropertyGroup title="控件 / 外观" isDarkMode={isDarkMode}>
@@ -3502,6 +3800,24 @@ function ControlProperties({
                 </PropertyRow>
               );
             }
+            if (control.type === 'Header' && property.key === 'columns') {
+              return (
+                <PropertyRow key={property.key} label={property.label} isDarkMode={isDarkMode}>
+                  <button
+                    type="button"
+                    onClick={() => setHeaderColumnsEditorOpen(true)}
+                    className={`flex w-full items-center justify-between rounded border px-2.5 py-1.5 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                      isDarkMode
+                        ? 'border-[#3f3f49] bg-[#24242b] text-slate-200 hover:bg-[#303038]'
+                        : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{headerColumnCount} 列</span>
+                    <span className="font-semibold text-cyan-500">编辑列</span>
+                  </button>
+                </PropertyRow>
+              );
+            }
             if (control.type === 'TreeView' && property.key === 'nodes') {
               return (
                 <PropertyRow key={property.key} label={property.label} isDarkMode={isDarkMode}>
@@ -3520,12 +3836,51 @@ function ControlProperties({
                 </PropertyRow>
               );
             }
+            if (control.type === 'ToolBar' && property.key === 'buttons') {
+              return (
+                <PropertyRow key={property.key} label={property.label} isDarkMode={isDarkMode}>
+                  <button
+                    type="button"
+                    onClick={() => setToolbarButtonsEditorOpen(true)}
+                    className={`flex w-full items-center justify-between rounded border px-2.5 py-1.5 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                      isDarkMode
+                        ? 'border-[#3f3f49] bg-[#24242b] text-slate-200 hover:bg-[#303038]'
+                        : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{toolbarButtonCount} 个按钮</span>
+                    <span className="font-semibold text-cyan-500">编辑按钮</span>
+                  </button>
+                </PropertyRow>
+              );
+            }
+            if (control.type === 'StatusBar' && property.key === 'parts') {
+              return (
+                <PropertyRow key={property.key} label={property.label} isDarkMode={isDarkMode}>
+                  <button
+                    type="button"
+                    onClick={() => setStatusBarPartsEditorOpen(true)}
+                    className={`flex w-full items-center justify-between rounded border px-2.5 py-1.5 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                      isDarkMode
+                        ? 'border-[#3f3f49] bg-[#24242b] text-slate-200 hover:bg-[#303038]'
+                        : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{statusBarPartCount} 个分区</span>
+                    <span className="font-semibold text-cyan-500">编辑分区</span>
+                  </button>
+                </PropertyRow>
+              );
+            }
             return (
               <ControlPropertyField
                 key={property.key}
                 definition={property}
+                controlType={control.type}
                 value={control.properties?.[property.key] ?? property.defaultValue}
-                controls={controls}
+                controls={control.type === 'ReBar' && property.key === 'bands'
+                  ? controls.filter(item => item.parentId === control.id)
+                  : controls}
                 imageLists={imageLists}
                 isDarkMode={isDarkMode}
                 projectId={projectId}
@@ -3581,6 +3936,38 @@ function ControlProperties({
           isDarkMode={isDarkMode}
           onChange={updateListViewCollections}
           onClose={() => setListViewEditorKind(null)}
+        />
+      )}
+      {control.type === 'Header' && headerColumnsEditorOpen && (
+        <ListViewCollectionDialog
+          kind="columns"
+          columnOwner="header"
+          controlName={control.name}
+          columnsValue={control.properties?.columns}
+          rowsValue={[]}
+          showImages={Boolean(control.properties?.imageListId)}
+          isDarkMode={isDarkMode}
+          onChange={columns => updateControlProperty('columns', columns)}
+          onClose={() => setHeaderColumnsEditorOpen(false)}
+        />
+      )}
+      {control.type === 'ToolBar' && toolbarButtonsEditorOpen && (
+        <ToolbarButtonsDialog
+          controlName={control.name}
+          value={control.properties?.buttons}
+          hasImageList={Boolean(control.properties?.imageListId)}
+          isDarkMode={isDarkMode}
+          onChange={buttons => updateControlProperty('buttons', buttons.map(button => ({ ...button })))}
+          onClose={() => setToolbarButtonsEditorOpen(false)}
+        />
+      )}
+      {control.type === 'StatusBar' && statusBarPartsEditorOpen && (
+        <StatusBarPartsDialog
+          controlName={control.name}
+          value={control.properties?.parts}
+          isDarkMode={isDarkMode}
+          onChange={parts => updateControlProperty('parts', parts.map(part => ({ ...part })))}
+          onClose={() => setStatusBarPartsEditorOpen(false)}
         />
       )}
       {control.type === ('MenuBar' as any) && menuBarItemsEditorOpen && (
@@ -3703,21 +4090,24 @@ function ControlEvents({
   );
 }
 
-type CollectionField = { key: string; label: string; kind?: 'number' | 'control' | 'style' };
+type CollectionField = { key: string; label: string; kind?: 'number' | 'control' | 'style' | 'alignment' | 'boolean' };
 
 function StructuredCollectionEditor({
   propertyKey,
+  controlType,
   value,
   controls,
   isDarkMode,
   onChange
 }: {
   propertyKey: string;
+  controlType: LingControl['type'];
   value: Win32ControlPropertyValue;
   controls: LingControl[];
   isDarkMode: boolean;
   onChange: (value: Win32ControlPropertyValue) => void;
 }) {
+  const [collectionStatus, setCollectionStatus] = useState('');
   const items = Array.isArray(value) ? value.map(item => typeof item === 'string' ? { title: item } : { ...(item as Record<string, unknown>) }) : [];
   const fields: CollectionField[] = propertyKey === 'tabs'
     ? [{ key: 'id', label: '页面 ID' }, { key: 'title', label: '标题' }, { key: 'image', label: '图片', kind: 'number' }]
@@ -3726,10 +4116,28 @@ function StructuredCollectionEditor({
       : propertyKey === 'parts'
         ? [{ key: 'title', label: '文字' }, { key: 'width', label: '宽度', kind: 'number' }]
         : propertyKey === 'bands'
-          ? [{ key: 'id', label: '带区 ID' }, { key: 'title', label: '文字' }, { key: 'childControl', label: '子控件', kind: 'control' }, { key: 'width', label: '宽度', kind: 'number' }]
-          : [{ key: 'title', label: '标题' }, { key: 'width', label: '宽度', kind: 'number' }, { key: 'image', label: '图片', kind: 'number' }];
-  const defaults = Object.fromEntries(fields.map(field => [field.key, field.kind === 'number' ? (field.key === 'image' ? -1 : field.key === 'width' ? 120 : items.length + 1) : field.kind === 'style' ? 'button' : '']));
+          ? [{ key: 'id', label: '带区 ID' }, { key: 'title', label: '文字' }, { key: 'childControl', label: '子控件', kind: 'control' }, { key: 'width', label: '宽度', kind: 'number' }, { key: 'minWidth', label: '最小宽度', kind: 'number' }, { key: 'height', label: '带区高度', kind: 'number' }, { key: 'breakLine', label: '另起一行', kind: 'boolean' }, { key: 'resizable', label: '允许调整宽度', kind: 'boolean' }]
+          : [
+              { key: 'title', label: '标题' },
+              { key: 'width', label: '宽度', kind: 'number' },
+              ...(controlType === 'Header' ? [{ key: 'alignment', label: '文字对齐', kind: 'alignment' as const }] : []),
+              { key: 'image', label: '图片', kind: 'number' }
+            ];
+  const defaults = Object.fromEntries(fields.map(field => [field.key,
+    field.kind === 'number'
+      ? (field.key === 'image' ? -1 : field.key === 'width' ? 120 : field.key === 'minWidth' ? 40 : field.key === 'height' ? 28 : items.length + 1)
+      : field.kind === 'boolean' ? field.key === 'resizable' : field.kind === 'style' ? 'button' : field.kind === 'alignment' ? 'left' : ''
+  ]));
   const commit = (next: Array<Record<string, unknown>>) => onChange(next);
+  const addItem = () => {
+    if (propertyKey !== 'bands') {
+      commit([...items, defaults]);
+      return;
+    }
+    const result = createNextRebarBand(items, controls);
+    setCollectionStatus(result.message);
+    if (result.band) commit([...items, result.band]);
+  };
   const inputClass = `w-full rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`;
   return (
     <div className="w-full space-y-1.5" aria-label={`${propertyKey} 结构化集合编辑器`}>
@@ -3742,9 +4150,15 @@ function StructuredCollectionEditor({
                 <select value={String(item[field.key] ?? '')} onChange={event => commit(items.map((current, row) => row === index ? { ...current, [field.key]: event.target.value } : current))} className={inputClass}>
                   <option value="">未绑定</option>{controls.map(control => <option key={control.id} value={control.id}>{control.name}</option>)}
                 </select>
+              ) : field.kind === 'boolean' ? (
+                <input type="checkbox" checked={item[field.key] === true} onChange={event => commit(items.map((current, row) => row === index ? { ...current, [field.key]: event.target.checked } : current))} className="h-3.5 w-3.5 accent-cyan-500" />
               ) : field.kind === 'style' ? (
                 <select value={String(item[field.key] ?? 'button')} onChange={event => commit(items.map((current, row) => row === index ? { ...current, [field.key]: event.target.value } : current))} className={inputClass}>
                   <option value="button">普通按钮</option><option value="check">切换按钮</option><option value="separator">分隔符</option><option value="dropdown">下拉按钮</option>
+                </select>
+              ) : field.kind === 'alignment' ? (
+                <select value={String(item[field.key] ?? 'left')} onChange={event => commit(items.map((current, row) => row === index ? { ...current, [field.key]: event.target.value } : current))} className={inputClass} aria-label={`第 ${index + 1} 列文字对齐`}>
+                  <option value="left">居左</option><option value="center">居中</option><option value="right">居右</option>
                 </select>
               ) : (
                 <input type={field.kind === 'number' ? 'number' : 'text'} value={String(item[field.key] ?? '')} onChange={event => {
@@ -3761,13 +4175,20 @@ function StructuredCollectionEditor({
           </div>
         </div>
       ))}
-      <button type="button" onClick={() => commit([...items, defaults])} className="w-full rounded border border-emerald-500/30 py-1 text-[10px] text-emerald-500">+ 添加项目</button>
+      {propertyKey === 'bands' && (
+        <div className={`rounded border px-2 py-1.5 text-[9px] leading-relaxed ${isDarkMode ? 'border-cyan-500/20 bg-cyan-500/[0.06] text-slate-400' : 'border-cyan-200 bg-cyan-50 text-slate-600'}`}>
+          用法：先选中 Rebar，再从工具箱添加工具栏等控件；开启“自动绑定子控件”时会立即创建带区。也可关闭自动绑定后，用下面按钮依次绑定尚未绑定的直接子控件。
+        </div>
+      )}
+      <button type="button" onClick={addItem} className="w-full rounded border border-emerald-500/30 py-1 text-[10px] text-emerald-500">{propertyKey === 'bands' ? '+ 绑定下一个子控件' : '+ 添加项目'}</button>
+      {collectionStatus && <div role="status" className="text-[9px] leading-relaxed text-amber-500">{collectionStatus}</div>}
     </div>
   );
 }
 
 function ControlPropertyField({
   definition,
+  controlType,
   value,
   controls,
   imageLists,
@@ -3777,6 +4198,7 @@ function ControlPropertyField({
 }: {
   key?: React.Key;
   definition: Win32ControlPropertyDefinition;
+  controlType: LingControl['type'];
   value: Win32ControlPropertyValue;
   controls: LingControl[];
   imageLists: LingImageListResource[];
@@ -3802,6 +4224,9 @@ function ControlPropertyField({
         onChange={onChange}
       />
     );
+  }
+  if (definition.type === 'hotkey') {
+    return <HotKeyField label={definition.label} value={String(value ?? '')} isDarkMode={isDarkMode} onChange={onChange} />;
   }
   if (definition.type === 'enum') {
     return (
@@ -3857,8 +4282,8 @@ function ControlPropertyField({
     };
     return (
       <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
-        <div className="space-y-1">
-          <div className="flex gap-1">
+        <div className="min-w-0 w-full space-y-1">
+          <div className="flex min-w-0 w-full gap-1">
             <input
               type="text"
               value={String(value ?? '')}
@@ -3874,6 +4299,127 @@ function ControlPropertyField({
               aria-label="选择本地图片"
               className={`flex h-7 w-8 shrink-0 items-center justify-center rounded border transition-colors disabled:cursor-wait disabled:opacity-50 ${isDarkMode ? 'border-[#3c3c44] bg-[#24242b] text-amber-400 hover:bg-[#303038]' : 'border-slate-300 bg-white text-amber-600 hover:bg-slate-100'}`}
             >
+              <FolderOpen className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {fileStatus && <div role="status" className={`text-[9px] leading-3 ${fileStatus.includes('失败') || fileStatus.includes('仅在') ? 'text-red-400' : 'text-slate-500'}`}>{fileStatus}</div>}
+        </div>
+      </PropertyRow>
+    );
+  }
+  if (definition.type === 'file' && definition.key === 'gifSource') {
+    const chooseGif = async () => {
+      setIsSelectingFile(true);
+      setFileStatus('正在选择 GIF 动态图像…');
+      try {
+        const result = await selectAndImportDesignerGif(projectId);
+        if (result.canceled) {
+          setFileStatus('已取消选择。');
+          return;
+        }
+        if (!result.ok || !result.relativePath) {
+          setFileStatus(result.error || 'GIF 复制失败。');
+          return;
+        }
+        onChange(result.relativePath);
+        setFileStatus(`已复制到 ${result.relativePath}`);
+      } catch (error) {
+        setFileStatus(error instanceof Error ? error.message : 'GIF 复制失败。');
+      } finally {
+        setIsSelectingFile(false);
+      }
+    };
+    return (
+      <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
+        <div className="min-w-0 w-full space-y-1">
+          <div className="flex min-w-0 w-full gap-1">
+            <input type="text" value={String(value ?? '')} onChange={event => onChange(event.target.value)} placeholder="assets/项目/动画.gif" className={`min-w-0 flex-1 rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
+            <button type="button" onClick={() => void chooseGif()} disabled={isSelectingFile} title="选择 GIF 并复制到项目 assets 目录" aria-label="选择 GIF 动态图像" className={`flex h-7 w-8 shrink-0 items-center justify-center rounded border transition-colors disabled:cursor-wait disabled:opacity-50 ${isDarkMode ? 'border-[#3c3c44] bg-[#24242b] text-fuchsia-400 hover:bg-[#303038]' : 'border-slate-300 bg-white text-fuchsia-600 hover:bg-slate-100'}`}>
+              <FolderOpen className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {fileStatus && <div role="status" className={`text-[9px] leading-3 ${fileStatus.includes('失败') || fileStatus.includes('仅在') || fileStatus.includes('仅支持') ? 'text-red-400' : 'text-slate-500'}`}>{fileStatus}</div>}
+        </div>
+      </PropertyRow>
+    );
+  }
+  if (definition.type === 'file' && definition.key === 'aviSource') {
+    const chooseAnimation = async () => {
+      setIsSelectingFile(true);
+      setFileStatus('正在选择 AVI 动画…');
+      try {
+        const result = await selectAndImportDesignerAnimation(projectId);
+        if (result.canceled) {
+          setFileStatus('已取消选择。');
+          return;
+        }
+        if (!result.ok || !result.relativePath) {
+          setFileStatus(result.error || 'AVI 动画复制失败。');
+          return;
+        }
+        onChange(result.relativePath);
+        setFileStatus(`已复制到 ${result.relativePath}`);
+      } catch (error) {
+        setFileStatus(error instanceof Error ? error.message : 'AVI 动画复制失败。');
+      } finally {
+        setIsSelectingFile(false);
+      }
+    };
+    return (
+      <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
+        <div className="min-w-0 w-full space-y-1">
+          <div className="flex min-w-0 w-full gap-1">
+            <input
+              type="text"
+              value={String(value ?? '')}
+              onChange={event => onChange(event.target.value)}
+              placeholder="assets/项目/动画.avi"
+              className={`min-w-0 flex-1 rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`}
+            />
+            <button
+              type="button"
+              onClick={() => void chooseAnimation()}
+              disabled={isSelectingFile}
+              title="选择本地 AVI 并复制到项目 assets 目录"
+              aria-label="选择本地 AVI 动画"
+              className={`flex h-7 w-8 shrink-0 items-center justify-center rounded border transition-colors disabled:cursor-wait disabled:opacity-50 ${isDarkMode ? 'border-[#3c3c44] bg-[#24242b] text-amber-400 hover:bg-[#303038]' : 'border-slate-300 bg-white text-amber-600 hover:bg-slate-100'}`}
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {fileStatus && <div role="status" className={`text-[9px] leading-3 ${fileStatus.includes('失败') || fileStatus.includes('仅在') ? 'text-red-400' : 'text-slate-500'}`}>{fileStatus}</div>}
+        </div>
+      </PropertyRow>
+    );
+  }
+  if (definition.type === 'file' && definition.key === 'videoSource') {
+    const chooseVideo = async () => {
+      setIsSelectingFile(true);
+      setFileStatus('正在选择视频…');
+      try {
+        const result = await selectAndImportDesignerVideo(projectId);
+        if (result.canceled) {
+          setFileStatus('已取消选择。');
+          return;
+        }
+        if (!result.ok || !result.relativePath) {
+          setFileStatus(result.error || '视频复制失败。');
+          return;
+        }
+        onChange(result.relativePath);
+        setFileStatus(`已复制到 ${result.relativePath}`);
+      } catch (error) {
+        setFileStatus(error instanceof Error ? error.message : '视频复制失败。');
+      } finally {
+        setIsSelectingFile(false);
+      }
+    };
+    return (
+      <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
+        <div className="space-y-1">
+          <div className="flex gap-1">
+            <input type="text" value={String(value ?? '')} onChange={event => onChange(event.target.value)} placeholder="assets/项目/视频.mp4" className={`min-w-0 flex-1 rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
+            <button type="button" onClick={() => void chooseVideo()} disabled={isSelectingFile} title="选择本地视频并复制到项目 assets 目录" aria-label="选择本地视频" className={`flex h-7 w-8 shrink-0 items-center justify-center rounded border transition-colors disabled:cursor-wait disabled:opacity-50 ${isDarkMode ? 'border-[#3c3c44] bg-[#24242b] text-amber-400 hover:bg-[#303038]' : 'border-slate-300 bg-white text-amber-600 hover:bg-slate-100'}`}>
               <FolderOpen className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -3902,7 +4448,7 @@ function ControlPropertyField({
   if (complex) {
     return (
       <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
-        <StructuredCollectionEditor propertyKey={definition.key} value={value} controls={controls} isDarkMode={isDarkMode} onChange={onChange} />
+        <StructuredCollectionEditor propertyKey={definition.key} controlType={controlType} value={value} controls={controls} isDarkMode={isDarkMode} onChange={onChange} />
       </PropertyRow>
     );
   }
@@ -4098,6 +4644,64 @@ function TextField({
           isDarkMode ? 'bg-[#24242b] border-[#3c3c44] text-slate-200' : 'bg-white border-slate-300 text-slate-800'
         }`}
       />
+    </PropertyRow>
+  );
+}
+
+function HotKeyField({
+  label,
+  value,
+  isDarkMode,
+  onChange
+}: {
+  label: string;
+  value: string;
+  isDarkMode: boolean;
+  onChange: (value: string) => void;
+}) {
+  const descriptionId = useId();
+  const [message, setMessage] = useState('');
+
+  return (
+    <PropertyRow label={label} isDarkMode={isDarkMode}>
+      <div className="min-w-0 w-full space-y-1">
+        <input
+          type="text"
+          readOnly
+          value={value}
+          placeholder="请按快捷键"
+          aria-label={label}
+          aria-describedby={descriptionId}
+          title="单击后按下组合键；Backspace/Delete 清空，Esc 取消"
+          onFocus={() => setMessage('请按下组合键；Backspace/Delete 清空。')}
+          onBlur={() => setMessage('')}
+          onKeyDown={event => {
+            const result = captureDesignerHotKey(event);
+            if (result.kind === 'pass') return;
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (result.kind === 'capture') {
+              onChange(result.value);
+              setMessage(`已设置 ${result.value}`);
+            } else if (result.kind === 'clear') {
+              onChange('');
+              setMessage('已清空默认热键。');
+            } else if (result.kind === 'cancel') {
+              event.currentTarget.blur();
+            } else if (result.kind === 'pending') {
+              setMessage('请继续按下字母、数字或 F1–F12。');
+            } else {
+              setMessage(result.message);
+            }
+          }}
+          onKeyUp={event => event.stopPropagation()}
+          className={`w-full cursor-default rounded border px-2 py-0.5 text-xs focus:outline-none focus:border-amber-500 ${
+            isDarkMode ? 'bg-[#24242b] border-[#3c3c44] text-slate-200' : 'bg-white border-slate-300 text-slate-800'
+          }`}
+        />
+        <div id={descriptionId} role="status" className="min-h-3 text-[9px] leading-3 text-slate-500">{message}</div>
+      </div>
     </PropertyRow>
   );
 }

@@ -212,6 +212,9 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '保存文件', signature: '保存文件(标题, 筛选器)', description: '显示 Windows 文件保存对话框并返回路径。', insertText: '保存文件("保存文件", "所有文件|*.*")', returnType: '文本型' },
         { name: '选择文件夹', signature: '选择文件夹(标题)', description: '显示 Windows 文件夹选择对话框并返回路径。', insertText: '选择文件夹("选择文件夹")', returnType: '文本型' },
         { name: '选择颜色', signature: '选择颜色(默认颜色)', description: '显示系统颜色对话框并返回 COLORREF 整数。', insertText: '选择颜色(0)', returnType: '整数型' },
+        { name: '颜色选择器_打开', signature: '颜色选择器_打开(控件名)', description: '打开指定颜色选择器的系统选色窗口；控件设置为不可视时仍可由按钮或其他事件调用。', insertText: '颜色选择器_打开("颜色选择器1")', returnType: '逻辑型' },
+        { name: '颜色选择器_置颜色', signature: '颜色选择器_置颜色(控件名, 颜色)', description: '设置颜色选择器当前 COLORREF 颜色，并在颜色变化时触发事件。', insertText: '颜色选择器_置颜色("颜色选择器1", 0)', returnType: '逻辑型' },
+        { name: '颜色选择器_取颜色', signature: '颜色选择器_取颜色(控件名)', description: '返回颜色选择器当前 COLORREF 整数。', insertText: '颜色选择器_取颜色("颜色选择器1")', returnType: '整数型' },
         { name: '选择字体', signature: '选择字体(默认字号)', description: '显示系统字体对话框并返回字体说明。', insertText: '选择字体(12)', returnType: '文本型' },
         { name: '查找文本', signature: '查找文本(默认文本)', description: '显示系统查找对话框。', insertText: '查找文本("$1")', returnType: '空' },
         { name: '替换文本', signature: '替换文本(查找内容, 替换内容)', description: '显示系统替换对话框。', insertText: '替换文本("$1", "$2")', returnType: '空' },
@@ -239,6 +242,12 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: '文件对话框_清空', signature: '文件对话框_清空(组件名)', description: '清空文件对话框组件最近选择或拖入的文件。', insertText: '文件对话框_清空("文件对话框1")', returnType: '逻辑型' }
         ,{ name: '文件对话框_取文件数量', signature: '文件对话框_取文件数量(组件名)', description: '返回文件对话框组件最近选择或拖入的文件数量。', insertText: '文件对话框_取文件数量("文件对话框1")', returnType: '整数型' }
         ,{ name: '文件对话框_取文件', signature: '文件对话框_取文件(组件名, 索引)', description: '返回文件对话框组件指定索引的完整文件路径。', insertText: '文件对话框_取文件("文件对话框1", 0)', returnType: '文本型' }
+        ,{ name: '视频播放器_设置文件', signature: '视频播放器_设置文件(控件名, 视频路径)', description: '切换视频播放器的本地媒体文件；支持 MP4、WMV 等 Media Foundation 可解码格式。', insertText: '视频播放器_设置文件("视频播放器1", "assets/$1.mp4")', returnType: '逻辑型' }
+        ,{ name: '视频播放器_播放', signature: '视频播放器_播放(控件名)', description: '播放或继续播放指定视频。', insertText: '视频播放器_播放("视频播放器1")', returnType: '逻辑型' }
+        ,{ name: '视频播放器_暂停', signature: '视频播放器_暂停(控件名)', description: '暂停指定视频。', insertText: '视频播放器_暂停("视频播放器1")', returnType: '逻辑型' }
+        ,{ name: '视频播放器_停止', signature: '视频播放器_停止(控件名)', description: '停止指定视频。', insertText: '视频播放器_停止("视频播放器1")', returnType: '逻辑型' }
+        ,{ name: '视频播放器_设置音量', signature: '视频播放器_设置音量(控件名, 音量)', description: '设置视频音量，范围 0～100。', insertText: '视频播放器_设置音量("视频播放器1", 100)', returnType: '逻辑型' }
+        ,{ name: '视频播放器_取状态', signature: '视频播放器_取状态(控件名)', description: '返回 Media Foundation 播放器状态；未创建时返回 -1。', insertText: '视频播放器_取状态("视频播放器1")', returnType: '整数型' }
       ],
       types: createControlTypes('lingbuilder.win32.common-controls'),
       designerControls: createControlContributions('lingbuilder.win32.common-controls'),
@@ -249,7 +258,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     },
     targets: [{
       id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc',
-      libs: ['comctl32.lib', 'comdlg32.lib', 'ole32.lib', 'shell32.lib', 'shlwapi.lib'],
+      libs: ['comctl32.lib', 'comdlg32.lib', 'ole32.lib', 'shell32.lib', 'shlwapi.lib', 'mfplat.lib', 'mfplay.lib', 'mfuuid.lib'],
       defines: ['UNICODE', '_UNICODE', 'LINGBUILDER_WIN32_COMMON_CONTROLS']
     }],
     bindings: {
@@ -258,6 +267,9 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '保存文件', runtimeName: '保存文件', parameters: [{ name: '标题', type: 'wideString' }, { name: '筛选器', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
         { command: '选择文件夹', runtimeName: '选择文件夹', parameters: [{ name: '标题', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
         { command: '选择颜色', runtimeName: '选择颜色', parameters: [{ name: '默认颜色', type: 'int' }], returnType: 'int' },
+        { command: '颜色选择器_打开', runtimeName: '颜色选择器_打开', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+        { command: '颜色选择器_置颜色', runtimeName: '颜色选择器_置颜色', parameters: [{ name: '控件名', type: 'wideString' }, { name: '颜色', type: 'int' }], returnType: 'bool', encoding: 'wide' },
+        { command: '颜色选择器_取颜色', runtimeName: '颜色选择器_取颜色', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
         { command: '选择字体', runtimeName: '选择字体', parameters: [{ name: '默认字号', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
         { command: '查找文本', runtimeName: '查找文本', parameters: [{ name: '默认文本', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
         { command: '替换文本', runtimeName: '替换文本', parameters: [{ name: '查找内容', type: 'wideString' }, { name: '替换内容', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
@@ -285,6 +297,12 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ command: '文件对话框_清空', runtimeName: '文件对话框_清空', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '文件对话框_取文件数量', runtimeName: '文件对话框_取文件数量', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
         ,{ command: '文件对话框_取文件', runtimeName: '文件对话框_取文件', parameters: [{ name: '组件名', type: 'wideString' }, { name: '索引', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
+        ,{ command: '视频播放器_设置文件', runtimeName: '视频播放器_设置文件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '视频路径', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '视频播放器_播放', runtimeName: '视频播放器_播放', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '视频播放器_暂停', runtimeName: '视频播放器_暂停', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '视频播放器_停止', runtimeName: '视频播放器_停止', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '视频播放器_设置音量', runtimeName: '视频播放器_设置音量', parameters: [{ name: '控件名', type: 'wideString' }, { name: '音量', type: 'int' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '视频播放器_取状态', runtimeName: '视频播放器_取状态', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
       ]
     }
   },

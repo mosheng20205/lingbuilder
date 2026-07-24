@@ -26,6 +26,7 @@ import {
 } from './newEmojiDesignerAdapter';
 import { getEffectiveControlState } from './controlHierarchy';
 import { normalizeControlFont } from './controlFont';
+import { reconcileRebarBands } from './designerOperations';
 import {
   parseEplControlMemberAssignmentRule,
   parseEplControlMemberRule,
@@ -557,6 +558,9 @@ ${moduleFeatureDefines}
 #include <shobjidl.h>
 #include <shlwapi.h>
 #include <richedit.h>
+#include <uxtheme.h>
+#include <mfapi.h>
+#include <mfplay.h>
 #include <wincodec.h>
 #include <gdiplus.h>
 #include <winhttp.h>
@@ -599,6 +603,7 @@ ${moduleFeatureDefines}
 #include <thread>
 #include <mutex>
 #include <memory>
+#include <new>
 #include <unordered_map>
 #include <vector>
 
@@ -625,6 +630,10 @@ ${moduleFeatureDefines}
 #pragma comment(lib, "winmm.lib")
 #pragma comment(lib, "oleacc.lib")
 #pragma comment(lib, "oleaut32.lib")
+#pragma comment(lib, "uxtheme.lib")
+#pragma comment(lib, "mfplat.lib")
+#pragma comment(lib, "mfplay.lib")
+#pragma comment(lib, "mfuuid.lib")
 #pragma comment(linker, "/manifestdependency:\\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\\"")
 ${moduleCppPreamble}
 
@@ -798,7 +807,8 @@ enum ControlFlags : unsigned int {
     CF_ALIGN_RIGHT = 1u << 21, CF_VIEW_ICON = 1u << 22,
     CF_VIEW_SMALL_ICON = 1u << 23, CF_VIEW_LIST = 1u << 24,
     CF_SHOW_BORDER = 1u << 25, CF_MULTI_SELECT = 1u << 26,
-    CF_SHOW_LINES = 1u << 27, CF_HIDE_TAB_HEADER = 1u << 28
+    CF_SHOW_LINES = 1u << 27, CF_HIDE_TAB_HEADER = 1u << 28,
+    CF_COLOR_HIDDEN = 1u << 29, CF_COLOR_TEXT = 1u << 30
 };
 
 struct WindowSpec {
@@ -831,6 +841,44 @@ struct WindowSpec {
     const wchar_t* events;
 };
 
+static constexpr UINT WM_LINGBUILDER_VIDEO_EVENT = WM_APP + 0x4B;
+static constexpr UINT WM_LINGBUILDER_LAYOUT_DATE_PICKER = WM_APP + 0x4C;
+
+class LingVideoPlayerCallback final : public IMFPMediaPlayerCallback {
+public:
+    LingVideoPlayerCallback(HWND notificationWindow, int controlId)
+        : notificationWindow_(notificationWindow), controlId_(controlId) {}
+
+    STDMETHODIMP QueryInterface(REFIID iid, void** object) override {
+        if (!object) return E_POINTER;
+        if (iid == IID_IUnknown || iid == __uuidof(IMFPMediaPlayerCallback)) {
+            *object = static_cast<IMFPMediaPlayerCallback*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *object = nullptr;
+        return E_NOINTERFACE;
+    }
+    STDMETHODIMP_(ULONG) AddRef() override { return ++references_; }
+    STDMETHODIMP_(ULONG) Release() override {
+        ULONG remaining = --references_;
+        if (!remaining) delete this;
+        return remaining;
+    }
+    void STDMETHODCALLTYPE OnMediaPlayerEvent(MFP_EVENT_HEADER* eventHeader) override {
+        if (!eventHeader || !notificationWindow_) return;
+        LPARAM eventCode = FAILED(eventHeader->hrEvent) ? 3
+            : eventHeader->eEventType == MFP_EVENT_TYPE_MEDIAITEM_SET ? 1
+            : eventHeader->eEventType == MFP_EVENT_TYPE_PLAYBACK_ENDED ? 2 : 0;
+        if (eventCode) PostMessageW(notificationWindow_, WM_LINGBUILDER_VIDEO_EVENT, static_cast<WPARAM>(controlId_), eventCode);
+    }
+
+private:
+    std::atomic<ULONG> references_{1};
+    HWND notificationWindow_;
+    int controlId_;
+};
+
 struct RuntimeControl {
     int id;
     HWND hwnd;
@@ -842,7 +890,18 @@ struct RuntimeControl {
     bool mouseInside;
     int checkState;
     bool hideTabHeader;
+    IMFPMediaPlayer* mediaPlayer;
+    LingVideoPlayerCallback* mediaCallback;
     std::vector<std::wstring> uploadFiles;
+    Gdiplus::Image* animatedImage = nullptr;
+    GUID animatedDimension = {};
+    UINT animatedFrame = 0;
+    UINT animatedFrameCount = 0;
+    std::vector<UINT> animatedFrameDelays;
+    UINT_PTR animatedTimer = 0;
+    bool animatedLoop = false;
+    COLORREF colorValue = RGB(59, 130, 246);
+    bool colorDialogOpen = false;
 };
 
 struct RuntimeTabPage {
@@ -851,6 +910,328 @@ struct RuntimeTabPage {
     HWND hwnd;
     RECT contentRect;
 };
+
+struct ModernColorPickerState {
+    HWND hwnd = nullptr;
+    HWND owner = nullptr;
+    HWND hexEdit = nullptr;
+    COLORREF current = RGB(59, 130, 246);
+    double hue = 215.0;
+    double saturation = 0.76;
+    double value = 0.96;
+    bool accepted = false;
+    bool draggingSpectrum = false;
+    bool draggingHue = false;
+    bool syncingText = false;
+    HFONT font = nullptr;
+    HBRUSH editBrush = nullptr;
+    std::vector<std::uint32_t> spectrumPixels;
+    int spectrumPixelWidth = 0;
+    int spectrumPixelHeight = 0;
+    double spectrumPixelHue = -1.0;
+};
+
+static int ModernColorScale(HWND hwnd, int value) {
+    UINT dpi = GetDpiForWindow(hwnd);
+    return MulDiv(value, dpi ? static_cast<int>(dpi) : 96, 96);
+}
+
+static COLORREF ModernHsvToColor(double hue, double saturation, double value) {
+    double chroma = value * saturation;
+    double section = std::fmod(std::max(0.0, hue), 360.0) / 60.0;
+    double x = chroma * (1.0 - std::fabs(std::fmod(section, 2.0) - 1.0));
+    double red = 0.0, green = 0.0, blue = 0.0;
+    if (section < 1.0) { red = chroma; green = x; }
+    else if (section < 2.0) { red = x; green = chroma; }
+    else if (section < 3.0) { green = chroma; blue = x; }
+    else if (section < 4.0) { green = x; blue = chroma; }
+    else if (section < 5.0) { red = x; blue = chroma; }
+    else { red = chroma; blue = x; }
+    double match = value - chroma;
+    return RGB(
+        static_cast<int>(std::round((red + match) * 255.0)),
+        static_cast<int>(std::round((green + match) * 255.0)),
+        static_cast<int>(std::round((blue + match) * 255.0))
+    );
+}
+
+static void ModernColorToHsv(COLORREF color, double& hue, double& saturation, double& value) {
+    double red = GetRValue(color) / 255.0;
+    double green = GetGValue(color) / 255.0;
+    double blue = GetBValue(color) / 255.0;
+    double maximum = std::max(red, std::max(green, blue));
+    double minimum = std::min(red, std::min(green, blue));
+    double delta = maximum - minimum;
+    value = maximum;
+    saturation = maximum <= 0.0 ? 0.0 : delta / maximum;
+    if (delta <= 0.0) hue = 0.0;
+    else if (maximum == red) hue = 60.0 * std::fmod((green - blue) / delta, 6.0);
+    else if (maximum == green) hue = 60.0 * (((blue - red) / delta) + 2.0);
+    else hue = 60.0 * (((red - green) / delta) + 4.0);
+    if (hue < 0.0) hue += 360.0;
+}
+
+static RECT ModernSpectrumRect(HWND hwnd) {
+    return { ModernColorScale(hwnd, 20), ModernColorScale(hwnd, 52), ModernColorScale(hwnd, 340), ModernColorScale(hwnd, 272) };
+}
+
+static RECT ModernHueRect(HWND hwnd) {
+    return { ModernColorScale(hwnd, 356), ModernColorScale(hwnd, 52), ModernColorScale(hwnd, 380), ModernColorScale(hwnd, 272) };
+}
+
+static void ModernSyncHexEdit(ModernColorPickerState& state) {
+    if (!state.hexEdit) return;
+    wchar_t text[16] = {};
+    swprintf_s(text, L"#%02X%02X%02X", GetRValue(state.current), GetGValue(state.current), GetBValue(state.current));
+    state.syncingText = true;
+    SetWindowTextW(state.hexEdit, text);
+    state.syncingText = false;
+}
+
+static void ModernCenterHexEdit(ModernColorPickerState& state) {
+    if (!state.hwnd || !state.hexEdit) return;
+    RECT field = { ModernColorScale(state.hwnd, 404), ModernColorScale(state.hwnd, 160), ModernColorScale(state.hwnd, 496), ModernColorScale(state.hwnd, 192) };
+    int editHeight = ModernColorScale(state.hwnd, 24);
+    HDC editDc = GetDC(state.hexEdit);
+    if (editDc) {
+        HFONT previousFont = state.font ? reinterpret_cast<HFONT>(SelectObject(editDc, state.font)) : nullptr;
+        TEXTMETRICW metrics = {};
+        if (GetTextMetricsW(editDc, &metrics)) editHeight = metrics.tmHeight + ModernColorScale(state.hwnd, 6);
+        if (previousFont) SelectObject(editDc, previousFont);
+        ReleaseDC(state.hexEdit, editDc);
+    }
+    int fieldHeight = field.bottom - field.top;
+    editHeight = std::clamp(editHeight, ModernColorScale(state.hwnd, 20), fieldHeight);
+    int horizontalPadding = ModernColorScale(state.hwnd, 4);
+    SetWindowPos(state.hexEdit, nullptr, field.left + horizontalPadding, field.top + (fieldHeight - editHeight) / 2,
+        (field.right - field.left) - horizontalPadding * 2, editHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+static bool ModernParseHexColor(const wchar_t* text, COLORREF& color) {
+    if (!text) return false;
+    const wchar_t* value = text[0] == L'#' ? text + 1 : text;
+    if (wcslen(value) != 6) return false;
+    wchar_t* end = nullptr;
+    unsigned long parsed = wcstoul(value, &end, 16);
+    if (!end || *end != L'\\0') return false;
+    color = RGB((parsed >> 16) & 0xFF, (parsed >> 8) & 0xFF, parsed & 0xFF);
+    return true;
+}
+
+static void ModernUpdateSpectrumFromPoint(ModernColorPickerState& state, int x, int y) {
+    RECT rect = ModernSpectrumRect(state.hwnd);
+    state.saturation = std::clamp((x - rect.left) / static_cast<double>(std::max(1L, rect.right - rect.left)), 0.0, 1.0);
+    state.value = 1.0 - std::clamp((y - rect.top) / static_cast<double>(std::max(1L, rect.bottom - rect.top)), 0.0, 1.0);
+    state.current = ModernHsvToColor(state.hue, state.saturation, state.value);
+    ModernSyncHexEdit(state);
+    InvalidateRect(state.hwnd, nullptr, FALSE);
+}
+
+static void ModernUpdateHueFromPoint(ModernColorPickerState& state, int y) {
+    RECT rect = ModernHueRect(state.hwnd);
+    state.hue = std::clamp((y - rect.top) / static_cast<double>(std::max(1L, rect.bottom - rect.top)), 0.0, 1.0) * 359.999;
+    state.current = ModernHsvToColor(state.hue, state.saturation, state.value);
+    ModernSyncHexEdit(state);
+    InvalidateRect(state.hwnd, nullptr, FALSE);
+}
+
+static void ModernPaintColorPicker(ModernColorPickerState& state, HDC hdc) {
+    RECT client = {}; GetClientRect(state.hwnd, &client);
+    HBRUSH background = CreateSolidBrush(RGB(15, 23, 42));
+    FillRect(hdc, &client, background); DeleteObject(background);
+    SetBkMode(hdc, TRANSPARENT);
+    SetTextColor(hdc, RGB(226, 232, 240));
+    HFONT previousFont = state.font ? reinterpret_cast<HFONT>(SelectObject(hdc, state.font)) : nullptr;
+    RECT heading = { ModernColorScale(state.hwnd, 20), ModernColorScale(state.hwnd, 16), ModernColorScale(state.hwnd, 500), ModernColorScale(state.hwnd, 42) };
+    DrawTextW(hdc, L"选择颜色", -1, &heading, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+
+    RECT spectrum = ModernSpectrumRect(state.hwnd);
+    int width = std::max(1L, spectrum.right - spectrum.left);
+    int height = std::max(1L, spectrum.bottom - spectrum.top);
+    if (state.spectrumPixelWidth != width || state.spectrumPixelHeight != height || state.spectrumPixelHue != state.hue) {
+        state.spectrumPixels.resize(static_cast<size_t>(width * height));
+        for (int y = 0; y < height; ++y) {
+            double brightness = 1.0 - y / static_cast<double>(std::max(1, height - 1));
+            for (int x = 0; x < width; ++x) {
+                COLORREF color = ModernHsvToColor(state.hue, x / static_cast<double>(std::max(1, width - 1)), brightness);
+                state.spectrumPixels[static_cast<size_t>(y * width + x)] = (static_cast<std::uint32_t>(GetRValue(color)) << 16)
+                    | (static_cast<std::uint32_t>(GetGValue(color)) << 8) | GetBValue(color);
+            }
+        }
+        state.spectrumPixelWidth = width;
+        state.spectrumPixelHeight = height;
+        state.spectrumPixelHue = state.hue;
+    }
+    BITMAPINFO bitmap = {}; bitmap.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bitmap.bmiHeader.biWidth = width; bitmap.bmiHeader.biHeight = -height;
+    bitmap.bmiHeader.biPlanes = 1; bitmap.bmiHeader.biBitCount = 32; bitmap.bmiHeader.biCompression = BI_RGB;
+    StretchDIBits(hdc, spectrum.left, spectrum.top, width, height, 0, 0, width, height, state.spectrumPixels.data(), &bitmap, DIB_RGB_COLORS, SRCCOPY);
+
+    RECT hue = ModernHueRect(state.hwnd);
+    for (int y = hue.top; y < hue.bottom; ++y) {
+        double value = (y - hue.top) / static_cast<double>(std::max(1L, hue.bottom - hue.top - 1));
+        HBRUSH hueBrush = CreateSolidBrush(ModernHsvToColor(value * 359.999, 1.0, 1.0));
+        RECT line = { hue.left, y, hue.right, y + 1 }; FillRect(hdc, &line, hueBrush); DeleteObject(hueBrush);
+    }
+
+    int markerX = spectrum.left + static_cast<int>(state.saturation * width);
+    int markerY = spectrum.top + static_cast<int>((1.0 - state.value) * height);
+    HPEN markerPen = CreatePen(PS_SOLID, ModernColorScale(state.hwnd, 2), RGB(255, 255, 255));
+    HGDIOBJ oldPen = SelectObject(hdc, markerPen); HGDIOBJ oldBrush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
+    Ellipse(hdc, markerX - ModernColorScale(state.hwnd, 6), markerY - ModernColorScale(state.hwnd, 6), markerX + ModernColorScale(state.hwnd, 6), markerY + ModernColorScale(state.hwnd, 6));
+    int hueY = hue.top + static_cast<int>((state.hue / 360.0) * (hue.bottom - hue.top));
+    Rectangle(hdc, hue.left - ModernColorScale(state.hwnd, 2), hueY - ModernColorScale(state.hwnd, 2), hue.right + ModernColorScale(state.hwnd, 2), hueY + ModernColorScale(state.hwnd, 3));
+    SelectObject(hdc, oldBrush); SelectObject(hdc, oldPen); DeleteObject(markerPen);
+
+    RECT preview = { ModernColorScale(state.hwnd, 404), ModernColorScale(state.hwnd, 52), ModernColorScale(state.hwnd, 496), ModernColorScale(state.hwnd, 136) };
+    HBRUSH previewBrush = CreateSolidBrush(state.current); FillRect(hdc, &preview, previewBrush); DeleteObject(previewBrush);
+    FrameRect(hdc, &preview, reinterpret_cast<HBRUSH>(GetStockObject(GRAY_BRUSH)));
+    RECT hexField = { ModernColorScale(state.hwnd, 404), ModernColorScale(state.hwnd, 160), ModernColorScale(state.hwnd, 496), ModernColorScale(state.hwnd, 192) };
+    HBRUSH hexFieldBrush = CreateSolidBrush(RGB(30, 41, 59)); FillRect(hdc, &hexField, hexFieldBrush); DeleteObject(hexFieldBrush);
+    RECT rgb = { ModernColorScale(state.hwnd, 404), ModernColorScale(state.hwnd, 208), ModernColorScale(state.hwnd, 506), ModernColorScale(state.hwnd, 270) };
+    wchar_t rgbText[96] = {}; swprintf_s(rgbText, L"红  %d\\n绿  %d\\n蓝  %d", GetRValue(state.current), GetGValue(state.current), GetBValue(state.current));
+    SetTextColor(hdc, RGB(148, 163, 184)); DrawTextW(hdc, rgbText, -1, &rgb, DT_LEFT | DT_TOP | DT_NOPREFIX);
+
+    static const COLORREF presets[] = { RGB(15,23,42), RGB(51,65,85), RGB(239,68,68), RGB(249,115,22), RGB(234,179,8), RGB(34,197,94), RGB(6,182,212), RGB(59,130,246), RGB(139,92,246), RGB(236,72,153), RGB(255,255,255) };
+    SetTextColor(hdc, RGB(203, 213, 225));
+    RECT presetLabel = { ModernColorScale(state.hwnd, 20), ModernColorScale(state.hwnd, 290), ModernColorScale(state.hwnd, 180), ModernColorScale(state.hwnd, 316) };
+    DrawTextW(hdc, L"常用颜色", -1, &presetLabel, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    for (int index = 0; index < static_cast<int>(std::size(presets)); ++index) {
+        int left = ModernColorScale(state.hwnd, 20 + index * 40);
+        RECT swatch = { left, ModernColorScale(state.hwnd, 322), left + ModernColorScale(state.hwnd, 30), ModernColorScale(state.hwnd, 352) };
+        HBRUSH brush = CreateSolidBrush(presets[index]); FillRect(hdc, &swatch, brush); DeleteObject(brush);
+        FrameRect(hdc, &swatch, reinterpret_cast<HBRUSH>(GetStockObject(GRAY_BRUSH)));
+    }
+
+    RECT cancel = { ModernColorScale(state.hwnd, 322), ModernColorScale(state.hwnd, 374), ModernColorScale(state.hwnd, 408), ModernColorScale(state.hwnd, 410) };
+    RECT confirm = { ModernColorScale(state.hwnd, 418), ModernColorScale(state.hwnd, 374), ModernColorScale(state.hwnd, 504), ModernColorScale(state.hwnd, 410) };
+    HBRUSH cancelBrush = CreateSolidBrush(RGB(30, 41, 59)); FillRect(hdc, &cancel, cancelBrush); DeleteObject(cancelBrush);
+    HBRUSH confirmBrush = CreateSolidBrush(RGB(37, 99, 235)); FillRect(hdc, &confirm, confirmBrush); DeleteObject(confirmBrush);
+    SetTextColor(hdc, RGB(226, 232, 240)); DrawTextW(hdc, L"取消", -1, &cancel, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    SetTextColor(hdc, RGB(255, 255, 255)); DrawTextW(hdc, L"确定", -1, &confirm, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    if (previousFont) SelectObject(hdc, previousFont);
+}
+
+static LRESULT CALLBACK ModernColorPickerWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    ModernColorPickerState* state = reinterpret_cast<ModernColorPickerState*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+    if (message == WM_NCCREATE) {
+        CREATESTRUCTW* create = reinterpret_cast<CREATESTRUCTW*>(lParam);
+        state = reinterpret_cast<ModernColorPickerState*>(create->lpCreateParams);
+        state->hwnd = hwnd; SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(state));
+    }
+    if (!state) return DefWindowProcW(hwnd, message, wParam, lParam);
+    switch (message) {
+    case WM_CREATE:
+        state->font = CreateFontW(-ModernColorScale(hwnd, 14), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei UI");
+        state->editBrush = CreateSolidBrush(RGB(30, 41, 59));
+        state->hexEdit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_CENTER | ES_AUTOHSCROLL,
+            ModernColorScale(hwnd, 404), ModernColorScale(hwnd, 160), ModernColorScale(hwnd, 92), ModernColorScale(hwnd, 24), hwnd, reinterpret_cast<HMENU>(7001), GetModuleHandleW(nullptr), nullptr);
+        if (state->font) SendMessageW(state->hexEdit, WM_SETFONT, reinterpret_cast<WPARAM>(state->font), TRUE);
+        ModernCenterHexEdit(*state); ModernSyncHexEdit(*state); return 0;
+    case WM_CTLCOLOREDIT: {
+        HDC editDc = reinterpret_cast<HDC>(wParam); SetTextColor(editDc, RGB(226, 232, 240)); SetBkColor(editDc, RGB(30, 41, 59));
+        return reinterpret_cast<LRESULT>(state->editBrush);
+    }
+    case WM_COMMAND:
+        if (LOWORD(wParam) == 7001 && HIWORD(wParam) == EN_CHANGE && !state->syncingText) {
+            wchar_t text[32] = {}; GetWindowTextW(state->hexEdit, text, 32); COLORREF parsed = 0;
+            if (ModernParseHexColor(text, parsed)) { state->current = parsed; ModernColorToHsv(parsed, state->hue, state->saturation, state->value); InvalidateRect(hwnd, nullptr, FALSE); }
+        }
+        return 0;
+    case WM_LBUTTONDOWN: {
+        POINT point = { static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))) };
+        RECT spectrum = ModernSpectrumRect(hwnd), hue = ModernHueRect(hwnd);
+        if (PtInRect(&spectrum, point)) { state->draggingSpectrum = true; SetCapture(hwnd); ModernUpdateSpectrumFromPoint(*state, point.x, point.y); }
+        else if (PtInRect(&hue, point)) { state->draggingHue = true; SetCapture(hwnd); ModernUpdateHueFromPoint(*state, point.y); }
+        else {
+            for (int index = 0; index < 11; ++index) {
+                int left = ModernColorScale(hwnd, 20 + index * 40);
+                RECT swatch = { left, ModernColorScale(hwnd, 322), left + ModernColorScale(hwnd, 30), ModernColorScale(hwnd, 352) };
+                if (PtInRect(&swatch, point)) {
+                    static const COLORREF presets[] = { RGB(15,23,42), RGB(51,65,85), RGB(239,68,68), RGB(249,115,22), RGB(234,179,8), RGB(34,197,94), RGB(6,182,212), RGB(59,130,246), RGB(139,92,246), RGB(236,72,153), RGB(255,255,255) };
+                    state->current = presets[index]; ModernColorToHsv(state->current, state->hue, state->saturation, state->value); ModernSyncHexEdit(*state); InvalidateRect(hwnd, nullptr, FALSE); return 0;
+                }
+            }
+            RECT cancel = { ModernColorScale(hwnd, 322), ModernColorScale(hwnd, 374), ModernColorScale(hwnd, 408), ModernColorScale(hwnd, 410) };
+            RECT confirm = { ModernColorScale(hwnd, 418), ModernColorScale(hwnd, 374), ModernColorScale(hwnd, 504), ModernColorScale(hwnd, 410) };
+            if (PtInRect(&cancel, point)) { state->accepted = false; DestroyWindow(hwnd); }
+            else if (PtInRect(&confirm, point)) { state->accepted = true; DestroyWindow(hwnd); }
+        }
+        return 0;
+    }
+    case WM_MOUSEMOVE:
+        if (state->draggingSpectrum) ModernUpdateSpectrumFromPoint(*state, static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam))));
+        else if (state->draggingHue) ModernUpdateHueFromPoint(*state, static_cast<int>(static_cast<short>(HIWORD(lParam))));
+        return 0;
+    case WM_LBUTTONUP:
+        state->draggingSpectrum = state->draggingHue = false; if (GetCapture() == hwnd) ReleaseCapture(); return 0;
+    case WM_KEYDOWN:
+        if (wParam == VK_RETURN) { state->accepted = true; DestroyWindow(hwnd); return 0; }
+        if (wParam == VK_ESCAPE) { state->accepted = false; DestroyWindow(hwnd); return 0; }
+        break;
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_PAINT: {
+        PAINTSTRUCT paint = {}; HDC hdc = BeginPaint(hwnd, &paint);
+        RECT client = {}; GetClientRect(hwnd, &client);
+        HDC bufferDc = CreateCompatibleDC(hdc);
+        HBITMAP bufferBitmap = bufferDc ? CreateCompatibleBitmap(hdc, std::max(1L, client.right - client.left), std::max(1L, client.bottom - client.top)) : nullptr;
+        if (bufferDc && bufferBitmap) {
+            HGDIOBJ previousBitmap = SelectObject(bufferDc, bufferBitmap);
+            ModernPaintColorPicker(*state, bufferDc);
+            BitBlt(hdc, 0, 0, client.right - client.left, client.bottom - client.top, bufferDc, 0, 0, SRCCOPY);
+            SelectObject(bufferDc, previousBitmap);
+        } else {
+            ModernPaintColorPicker(*state, hdc);
+        }
+        if (bufferBitmap) DeleteObject(bufferBitmap);
+        if (bufferDc) DeleteDC(bufferDc);
+        EndPaint(hwnd, &paint); return 0;
+    }
+    case WM_CLOSE:
+        state->accepted = false; DestroyWindow(hwnd); return 0;
+    case WM_DESTROY:
+        if (state->font) { DeleteObject(state->font); state->font = nullptr; }
+        if (state->editBrush) { DeleteObject(state->editBrush); state->editBrush = nullptr; }
+        return 0;
+    }
+    return DefWindowProcW(hwnd, message, wParam, lParam);
+}
+
+static bool ShowModernColorPickerDialog(HWND owner, const wchar_t* title, COLORREF initial, COLORREF& selected) {
+    static bool registered = false;
+    if (!registered) {
+        WNDCLASSEXW windowClass = { sizeof(WNDCLASSEXW) };
+        windowClass.lpfnWndProc = ModernColorPickerWindowProc; windowClass.hInstance = GetModuleHandleW(nullptr);
+        windowClass.hCursor = LoadCursorW(nullptr, IDC_ARROW); windowClass.lpszClassName = L"LingBuilderModernColorPicker";
+        registered = RegisterClassExW(&windowClass) != 0 || GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+    }
+    if (!registered) return false;
+    ModernColorPickerState state; state.owner = owner; state.current = initial;
+    ModernColorToHsv(initial, state.hue, state.saturation, state.value);
+    UINT dpi = owner ? GetDpiForWindow(owner) : 96;
+    int width = MulDiv(524, dpi ? static_cast<int>(dpi) : 96, 96);
+    int height = MulDiv(458, dpi ? static_cast<int>(dpi) : 96, 96);
+    RECT ownerRect = {}; if (owner) GetWindowRect(owner, &ownerRect);
+    int x = owner ? ownerRect.left + ((ownerRect.right - ownerRect.left) - width) / 2 : CW_USEDEFAULT;
+    int y = owner ? ownerRect.top + ((ownerRect.bottom - ownerRect.top) - height) / 2 : CW_USEDEFAULT;
+    HWND dialog = CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_CONTROLPARENT, L"LingBuilderModernColorPicker",
+        title && title[0] ? title : L"选择颜色", WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN,
+        x, y, width, height, owner, nullptr, GetModuleHandleW(nullptr), &state);
+    if (!dialog) return false;
+    if (auto dwm = ResolveDwmSetWindowAttribute()) { BOOL dark = TRUE; dwm(dialog, 20, &dark, sizeof(dark)); }
+    if (owner) EnableWindow(owner, FALSE);
+    ShowWindow(dialog, SW_SHOW); UpdateWindow(dialog); SetForegroundWindow(dialog);
+    MSG message = {};
+    while (IsWindow(dialog)) {
+        int messageResult = static_cast<int>(GetMessageW(&message, nullptr, 0, 0));
+        if (messageResult <= 0) { if (messageResult == 0) PostQuitMessage(static_cast<int>(message.wParam)); break; }
+        if (!IsDialogMessageW(dialog, &message)) { TranslateMessage(&message); DispatchMessageW(&message); }
+    }
+    if (owner && IsWindow(owner)) { EnableWindow(owner, TRUE); SetForegroundWindow(owner); }
+    if (state.accepted) selected = state.current;
+    return state.accepted;
+}
 
 static HINSTANCE g_instance = nullptr;
 static int g_openWindowCount = 0;
@@ -1073,6 +1454,37 @@ cleanup:
     if (frame) frame->Release();
     if (decoder) decoder->Release();
     if (factory) factory->Release();
+    return bitmap;
+}
+
+static HBITMAP RenderGdiPlusImage(Gdiplus::Image* image, int requestedWidth, int requestedHeight, const wchar_t* stretchMode, COLORREF background) {
+    if (!image || image->GetLastStatus() != Gdiplus::Ok || requestedWidth <= 0 || requestedHeight <= 0) return nullptr;
+    const UINT sourceWidth = image->GetWidth();
+    const UINT sourceHeight = image->GetHeight();
+    if (!sourceWidth || !sourceHeight) return nullptr;
+    Gdiplus::Bitmap canvas(requestedWidth, requestedHeight, PixelFormat32bppARGB);
+    Gdiplus::Graphics graphics(&canvas);
+    graphics.Clear(Gdiplus::Color(255, GetRValue(background), GetGValue(background), GetBValue(background)));
+    graphics.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+    float drawWidth = static_cast<float>(sourceWidth);
+    float drawHeight = static_cast<float>(sourceHeight);
+    if (!TextEquals(stretchMode, L"none")) {
+        const float scaleX = static_cast<float>(requestedWidth) / sourceWidth;
+        const float scaleY = static_cast<float>(requestedHeight) / sourceHeight;
+        if (TextEquals(stretchMode, L"fill")) {
+            drawWidth = static_cast<float>(requestedWidth);
+            drawHeight = static_cast<float>(requestedHeight);
+        } else {
+            const float scale = TextEquals(stretchMode, L"uniformToFill") ? std::max(scaleX, scaleY) : std::min(scaleX, scaleY);
+            drawWidth = sourceWidth * scale;
+            drawHeight = sourceHeight * scale;
+        }
+    }
+    const float drawX = (requestedWidth - drawWidth) / 2.0f;
+    const float drawY = (requestedHeight - drawHeight) / 2.0f;
+    graphics.DrawImage(image, Gdiplus::RectF(drawX, drawY, drawWidth, drawHeight));
+    HBITMAP bitmap = nullptr;
+    canvas.GetHBITMAP(Gdiplus::Color(255, GetRValue(background), GetGValue(background), GetBValue(background)), &bitmap);
     return bitmap;
 }
 
@@ -2268,16 +2680,54 @@ protected:
     std::wstring 查找替换_查找内容() const { return lastFindText_; }
     std::wstring 查找替换_替换内容() const { return lastReplaceText_; }
 
+    bool 颜色选择器_打开(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName);
+        const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr;
+        if (!runtime || !control || !IsType(*control, L"ColorPicker") || runtime->colorDialogOpen) return false;
+        runtime->colorDialogOpen = true;
+        DispatchLingEvent(*control, L"Opened");
+        COLORREF selected = runtime->colorValue;
+        bool confirmed = ShowModernColorPickerDialog(hwnd_, control->option1, runtime->colorValue, selected);
+        if (confirmed) {
+            COLORREF previous = runtime->colorValue;
+            runtime->colorValue = selected;
+            InvalidateRect(runtime->hwnd, nullptr, TRUE);
+            if (previous != runtime->colorValue) DispatchLingEvent(*control, L"ColorChanged");
+            DispatchLingEvent(*control, L"Confirmed");
+        } else {
+            DispatchLingEvent(*control, L"Cancelled");
+        }
+        runtime->colorDialogOpen = false;
+        DispatchLingEvent(*control, L"Closed");
+        return confirmed;
+    }
+
+    bool 颜色选择器_置颜色(const wchar_t* controlName, int color) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName);
+        const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr;
+        if (!runtime || !control || !IsType(*control, L"ColorPicker")) return false;
+        COLORREF next = static_cast<COLORREF>(color) & 0x00FFFFFFu;
+        if (runtime->colorValue == next) return true;
+        runtime->colorValue = next;
+        InvalidateRect(runtime->hwnd, nullptr, TRUE);
+        DispatchLingEvent(*control, L"ColorChanged");
+        return true;
+    }
+
+    int 颜色选择器_取颜色(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName);
+        const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr;
+        return runtime && control && IsType(*control, L"ColorPicker")
+            ? static_cast<int>(runtime->colorValue)
+            : -1;
+    }
+
     int 选择颜色(int defaultColor) {
         lastDialogStatus_ = 0;
-        static COLORREF customColors[16] = {};
-        CHOOSECOLORW dialog = {};
-        dialog.lStructSize = sizeof(dialog); dialog.hwndOwner = hwnd_;
-        dialog.rgbResult = static_cast<COLORREF>(defaultColor); dialog.lpCustColors = customColors;
-        dialog.Flags = CC_FULLOPEN | CC_RGBINIT;
-        if (!ChooseColorW(&dialog)) return defaultColor;
+        COLORREF selected = static_cast<COLORREF>(defaultColor) & 0x00FFFFFFu;
+        if (!ShowModernColorPickerDialog(hwnd_, L"选择颜色", selected, selected)) return defaultColor;
         lastDialogStatus_ = 1;
-        return static_cast<int>(dialog.rgbResult);
+        return static_cast<int>(selected);
     }
 
     std::wstring 选择字体(int defaultSize) {
@@ -2832,9 +3282,130 @@ protected:
         return end == value.c_str() ? 0 : static_cast<int>(converted);
     }
 
+    bool RenderAnimatedImage(RuntimeControl& runtime, const ControlSpec& control) {
+        if (!runtime.animatedImage || runtime.animatedFrame >= runtime.animatedFrameCount) return false;
+        if (runtime.animatedImage->SelectActiveFrame(&runtime.animatedDimension, runtime.animatedFrame) != Gdiplus::Ok) return false;
+        HBITMAP bitmap = RenderGdiPlusImage(runtime.animatedImage, ScaleForDpi(control.width, dpi_), ScaleForDpi(control.height, dpi_), control.option1, control.background);
+        if (!bitmap) return false;
+        HGDIOBJ previous = reinterpret_cast<HGDIOBJ>(SendMessageW(runtime.hwnd, STM_SETIMAGE, IMAGE_BITMAP, reinterpret_cast<LPARAM>(bitmap)));
+        if (previous && previous != bitmap) DeleteObject(previous);
+        runtime.resource = bitmap;
+        InvalidateRect(runtime.hwnd, nullptr, TRUE);
+        return true;
+    }
+
+    bool InitializeAnimatedImage(const ControlSpec& control, RuntimeControl& runtime) {
+        if (!control.data || !control.data[0]) return false;
+        Gdiplus::Image* image = new Gdiplus::Image(control.data);
+        if (!image || image->GetLastStatus() != Gdiplus::Ok) { delete image; return false; }
+        const UINT dimensionCount = image->GetFrameDimensionsCount();
+        if (!dimensionCount) { delete image; return false; }
+        std::vector<GUID> dimensions(dimensionCount);
+        if (image->GetFrameDimensionsList(dimensions.data(), dimensionCount) != Gdiplus::Ok) { delete image; return false; }
+        GUID dimension = dimensions[0];
+        for (const GUID& candidate : dimensions) if (candidate == Gdiplus::FrameDimensionTime) { dimension = candidate; break; }
+        const UINT frameCount = image->GetFrameCount(&dimension);
+        if (!frameCount) { delete image; return false; }
+        runtime.animatedImage = image;
+        runtime.animatedDimension = dimension;
+        runtime.animatedFrame = 0;
+        runtime.animatedFrameCount = frameCount;
+        runtime.animatedLoop = (control.flags & CF_LOOP) != 0;
+        runtime.animatedFrameDelays.assign(frameCount, 100);
+        const UINT propertySize = image->GetPropertyItemSize(0x5100);
+        if (propertySize >= sizeof(Gdiplus::PropertyItem)) {
+            std::vector<BYTE> propertyBuffer(propertySize);
+            auto* property = reinterpret_cast<Gdiplus::PropertyItem*>(propertyBuffer.data());
+            if (image->GetPropertyItem(0x5100, propertySize, property) == Gdiplus::Ok && property->value && property->length >= sizeof(UINT)) {
+                const auto* delays = static_cast<const UINT*>(property->value);
+                const UINT delayCount = std::min(frameCount, static_cast<UINT>(property->length / sizeof(UINT)));
+                for (UINT index = 0; index < delayCount; ++index) runtime.animatedFrameDelays[index] = std::max(20u, delays[index] * 10u);
+            }
+        }
+        if (!RenderAnimatedImage(runtime, control)) return false;
+        if ((control.flags & CF_AUTO_PLAY) && frameCount > 1) {
+            runtime.animatedTimer = 0x4C470000u + static_cast<UINT_PTR>(control.id);
+            SetTimer(hwnd_, runtime.animatedTimer, runtime.animatedFrameDelays[0], nullptr);
+        }
+        return true;
+    }
+
+    bool AdvanceAnimatedImage(UINT_PTR timerId) {
+        for (auto& runtime : runtimeControls_) {
+            if (!runtime.animatedImage || runtime.animatedTimer != timerId) continue;
+            const ControlSpec* control = FindControl(runtime.id);
+            if (!control) return true;
+            UINT nextFrame = runtime.animatedFrame + 1;
+            if (nextFrame >= runtime.animatedFrameCount) {
+                if (!runtime.animatedLoop) {
+                    KillTimer(hwnd_, runtime.animatedTimer);
+                    runtime.animatedTimer = 0;
+                    DispatchLingEvent(*control, L"Finished");
+                    return true;
+                }
+                nextFrame = 0;
+            }
+            runtime.animatedFrame = nextFrame;
+            RenderAnimatedImage(runtime, *control);
+            SetTimer(hwnd_, timerId, runtime.animatedFrameDelays[nextFrame], nullptr);
+            return true;
+        }
+        return false;
+    }
+
     bool 控件_设置文本(const wchar_t* controlName, const std::wstring& text) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); if (!runtime) return false;
         return SetWindowTextW(runtime->hwnd, text.c_str()) == TRUE;
+    }
+    bool InitializeVideoPlayer(RuntimeControl& runtime, const ControlSpec& control, const std::wstring& source, bool autoPlay) {
+        if (runtime.mediaPlayer) { runtime.mediaPlayer->Shutdown(); runtime.mediaPlayer->Release(); runtime.mediaPlayer = nullptr; }
+        if (runtime.mediaCallback) { runtime.mediaCallback->Release(); runtime.mediaCallback = nullptr; }
+        if (source.empty()) { InvalidateRect(runtime.hwnd, nullptr, TRUE); return true; }
+        wchar_t absolutePath[MAX_PATH] = {};
+        const wchar_t* mediaUrl = source.c_str();
+        if (GetFullPathNameW(source.c_str(), MAX_PATH, absolutePath, nullptr) > 0) mediaUrl = absolutePath;
+        auto* callback = new (std::nothrow) LingVideoPlayerCallback(hwnd_, control.id);
+        if (!callback) { PostMessageW(hwnd_, WM_LINGBUILDER_VIDEO_EVENT, static_cast<WPARAM>(control.id), 3); return false; }
+        IMFPMediaPlayer* player = nullptr;
+        HRESULT result = MFPCreateMediaPlayer(mediaUrl, autoPlay ? TRUE : FALSE, 0, callback, runtime.hwnd, &player);
+        if (FAILED(result) || !player) {
+            callback->Release();
+            PostMessageW(hwnd_, WM_LINGBUILDER_VIDEO_EVENT, static_cast<WPARAM>(control.id), 3);
+            return false;
+        }
+        runtime.mediaCallback = callback;
+        runtime.mediaPlayer = player;
+        player->SetVolume(static_cast<float>(std::max(0, std::min(100, control.value))) / 100.0f);
+        player->UpdateVideo();
+        return true;
+    }
+    bool 视频播放器_设置文件(const wchar_t* controlName, const std::wstring& videoPath) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName);
+        const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr;
+        return runtime && control && IsType(*control, L"VideoPlayer")
+            ? InitializeVideoPlayer(*runtime, *control, videoPath, false)
+            : false;
+    }
+    bool 视频播放器_播放(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName);
+        return runtime && runtime->mediaPlayer && SUCCEEDED(runtime->mediaPlayer->Play());
+    }
+    bool 视频播放器_暂停(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName);
+        return runtime && runtime->mediaPlayer && SUCCEEDED(runtime->mediaPlayer->Pause());
+    }
+    bool 视频播放器_停止(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName);
+        return runtime && runtime->mediaPlayer && SUCCEEDED(runtime->mediaPlayer->Stop());
+    }
+    bool 视频播放器_设置音量(const wchar_t* controlName, int volume) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName);
+        return runtime && runtime->mediaPlayer && SUCCEEDED(runtime->mediaPlayer->SetVolume(static_cast<float>(std::max(0, std::min(100, volume))) / 100.0f));
+    }
+    int 视频播放器_取状态(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName);
+        MFP_MEDIAPLAYER_STATE state = MFP_MEDIAPLAYER_STATE_EMPTY;
+        return runtime && runtime->mediaPlayer && SUCCEEDED(runtime->mediaPlayer->GetState(&state)) ? static_cast<int>(state) : -1;
     }
     bool 控件_设置图片(const wchar_t* controlName, const std::wstring& imagePath) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName);
@@ -3442,14 +4013,28 @@ private:
                 RuntimeControl* buddy = FindRuntimeControl(_wtoi(control.option1));
                 if (buddy && buddy->hwnd) SendMessageW(runtime->hwnd, UDM_SETBUDDY, reinterpret_cast<WPARAM>(buddy->hwnd), 0);
             } else if (IsType(control, L"ReBar")) {
-                auto bands = DecodeControlRecords(control.data, 4);
+                auto bands = DecodeControlRecords(control.data, 8);
                 for (const auto& band : bands) {
                     RuntimeControl* child = FindRuntimeControl(_wtoi(band[2].c_str()));
                     if (!child || !child->hwnd) continue;
                     REBARBANDINFOW info = {}; info.cbSize = sizeof(info);
                     info.fMask = RBBIM_TEXT | RBBIM_CHILD | RBBIM_CHILDSIZE | RBBIM_SIZE | RBBIM_STYLE;
-                    info.fStyle = RBBS_CHILDEDGE | RBBS_GRIPPERALWAYS; info.lpText = const_cast<wchar_t*>(band[1].c_str());
-                    info.hwndChild = child->frameHwnd ? child->frameHwnd : child->hwnd; info.cxMinChild = ScaleForDpi(40, dpi_); info.cyMinChild = ScaleForDpi(24, dpi_); info.cx = ScaleForDpi(_wtoi(band[3].c_str()), dpi_);
+                    auto rebarOptions = DecodeControlRecords(control.data2, 5);
+                    bool locked = !rebarOptions.empty() && rebarOptions[0][0] == L"1";
+                    bool showGrippers = (rebarOptions.empty() || rebarOptions[0][1] == L"1") && !locked;
+                    bool fixedHeight = !rebarOptions.empty() && rebarOptions[0][2] == L"1";
+                    bool resizable = band[7] != L"0";
+                    info.fStyle = RBBS_CHILDEDGE
+                        | (showGrippers ? RBBS_GRIPPERALWAYS : RBBS_NOGRIPPER)
+                        | (band[4] == L"1" ? RBBS_BREAK : 0)
+                        | (resizable ? 0 : RBBS_FIXEDSIZE);
+                    info.lpText = const_cast<wchar_t*>(band[1].c_str());
+                    info.hwndChild = child->frameHwnd ? child->frameHwnd : child->hwnd;
+                    info.cxMinChild = ScaleForDpi(std::max(1, _wtoi(band[5].c_str())), dpi_);
+                    info.cyMinChild = ScaleForDpi(std::max(1, _wtoi(band[6].c_str())), dpi_);
+                    info.cyChild = info.cyMinChild;
+                    info.cyMaxChild = fixedHeight ? info.cyMinChild : ScaleForDpi(std::max(_wtoi(band[6].c_str()), control.height), dpi_);
+                    info.cx = ScaleForDpi(std::max(_wtoi(band[3].c_str()), _wtoi(band[5].c_str())), dpi_);
                     SendMessageW(runtime->hwnd, RB_INSERTBANDW, static_cast<WPARAM>(-1), reinterpret_cast<LPARAM>(&info));
                 }
             } else if (IsType(control, L"Pager")) {
@@ -3539,6 +4124,75 @@ private:
             if (parent && parent->brush) return parent->brush;
         }
         return windowBrush_;
+    }
+
+    std::wstring FormatHotKeyDisplay(HWND hwnd) const {
+        WORD value = static_cast<WORD>(SendMessageW(hwnd, HKM_GETHOTKEY, 0, 0));
+        BYTE virtualKey = LOBYTE(value);
+        BYTE modifiers = HIBYTE(value);
+        if (!virtualKey) return L"无";
+
+        std::wstring result;
+        auto append = [&result](const wchar_t* part) {
+            if (!result.empty()) result += L" + ";
+            result += part;
+        };
+        if (modifiers & HOTKEYF_CONTROL) append(L"Ctrl");
+        if (modifiers & HOTKEYF_ALT) append(L"Alt");
+        if (modifiers & HOTKEYF_SHIFT) append(L"Shift");
+
+        wchar_t keyName[64] = {};
+        UINT scanCode = MapVirtualKeyW(virtualKey, MAPVK_VK_TO_VSC) << 16;
+        if (modifiers & HOTKEYF_EXT) scanCode |= 1u << 24;
+        if (GetKeyNameTextW(static_cast<LONG>(scanCode), keyName, static_cast<int>(std::size(keyName))) > 0) {
+            append(keyName);
+        } else {
+            wchar_t fallback[2] = { static_cast<wchar_t>(virtualKey), 0 };
+            append(fallback);
+        }
+        return result;
+    }
+
+    void PaintHotKeyControl(HWND hwnd, HDC providedHdc, const ControlSpec& control, RuntimeControl& runtime) {
+        PAINTSTRUCT paint = {};
+        HDC hdc = providedHdc ? providedHdc : BeginPaint(hwnd, &paint);
+        if (!hdc) return;
+
+        RECT rect = {};
+        GetClientRect(hwnd, &rect);
+        COLORREF background = control.backgroundTransparent
+            ? ResolveControlSurroundingColor(control, hwnd)
+            : control.background;
+        HBRUSH brush = control.backgroundTransparent
+            ? ResolveControlSurroundingBrush(control, hwnd)
+            : runtime.brush;
+        if (!brush) brush = windowBrush_;
+        FillRect(hdc, &rect, brush);
+
+        COLORREF foreground = IsWindowEnabled(hwnd)
+            ? control.foreground
+            : BlendColor(control.foreground, background, 55);
+        SetTextColor(hdc, foreground);
+        SetBkMode(hdc, TRANSPARENT);
+        HFONT oldFont = runtime.font ? static_cast<HFONT>(SelectObject(hdc, runtime.font)) : nullptr;
+        std::wstring text = FormatHotKeyDisplay(hwnd);
+        RECT textRect = rect;
+        textRect.left += ScaleForDpi(4, dpi_);
+        textRect.right -= ScaleForDpi(4, dpi_);
+        DrawTextW(hdc, text.c_str(), -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+        if (GetFocus() == hwnd) {
+            SIZE textSize = {};
+            TEXTMETRICW metrics = {};
+            GetTextExtentPoint32W(hdc, text.c_str(), static_cast<int>(text.size()), &textSize);
+            GetTextMetricsW(hdc, &metrics);
+            SetCaretPos(
+                std::min(textRect.right - 1, textRect.left + textSize.cx + ScaleForDpi(1, dpi_)),
+                std::max(0, static_cast<int>(rect.bottom - rect.top - metrics.tmHeight) / 2)
+            );
+        }
+        if (oldFont) SelectObject(hdc, oldFont);
+        if (!providedHdc) EndPaint(hwnd, &paint);
     }
 
     int TabHeaderHorizontalPadding() const { return ScaleForDpi(12, dpi_); }
@@ -3682,7 +4336,36 @@ private:
         SetBkMode(item->hDC, TRANSPARENT);
         SetTextColor(item->hDC, foreground);
 
-        if (IsType(*control, L"CheckBox") || IsType(*control, L"RadioButton")) {
+        if (IsType(*control, L"ColorPicker")) {
+            HBRUSH backgroundBrush = CreateSolidBrush(rowBackground);
+            FillRect(item->hDC, &item->rcItem, backgroundBrush);
+            DeleteObject(backgroundBrush);
+            HPEN borderPen = CreatePen(PS_SOLID, 1, border);
+            HGDIOBJ oldPen = SelectObject(item->hDC, borderPen);
+            HGDIOBJ oldBrush = SelectObject(item->hDC, GetStockObject(NULL_BRUSH));
+            Rectangle(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);
+            int inset = ScaleForDpi(5, dpi_);
+            int swatchWidth = std::min(ScaleForDpi(32, dpi_), std::max(ScaleForDpi(18, dpi_), static_cast<int>(item->rcItem.right - item->rcItem.left) / 4));
+            RECT swatch = { item->rcItem.left + inset, item->rcItem.top + inset, item->rcItem.left + inset + swatchWidth, item->rcItem.bottom - inset };
+            HBRUSH colorBrush = CreateSolidBrush(runtime->colorValue);
+            FillRect(item->hDC, &swatch, colorBrush);
+            FrameRect(item->hDC, &swatch, reinterpret_cast<HBRUSH>(GetStockObject(GRAY_BRUSH)));
+            DeleteObject(colorBrush);
+            RECT arrowRect = item->rcItem;
+            arrowRect.left = arrowRect.right - ScaleForDpi(22, dpi_);
+            DrawTextW(item->hDC, L"▼", -1, &arrowRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            if (control->flags & CF_COLOR_TEXT) {
+                wchar_t valueText[16] = {};
+                swprintf_s(valueText, L"#%02X%02X%02X", GetRValue(runtime->colorValue), GetGValue(runtime->colorValue), GetBValue(runtime->colorValue));
+                RECT textRect = item->rcItem;
+                textRect.left = swatch.right + ScaleForDpi(8, dpi_);
+                textRect.right = arrowRect.left;
+                DrawTextW(item->hDC, valueText, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            }
+            SelectObject(item->hDC, oldBrush);
+            SelectObject(item->hDC, oldPen);
+            DeleteObject(borderPen);
+        } else if (IsType(*control, L"CheckBox") || IsType(*control, L"RadioButton")) {
             HBRUSH backgroundBrush = CreateSolidBrush(rowBackground);
             FillRect(item->hDC, &item->rcItem, backgroundBrush);
             DeleteObject(backgroundBrush);
@@ -3889,6 +4572,42 @@ private:
         DeleteObject(backgroundBrush);
     }
 
+    void PaintTransparentSysLink(HWND hwnd, HDC hdc, const ControlSpec& control, RuntimeControl& runtime) {
+        if (!hwnd || !hdc) return;
+        RECT clientRect = {};
+        GetClientRect(hwnd, &clientRect);
+        FillRect(hdc, &clientRect, ResolveControlSurroundingBrush(control, hwnd));
+
+        int savedDc = SaveDC(hdc);
+        if (runtime.font) SelectObject(hdc, runtime.font);
+        SetBkMode(hdc, TRANSPARENT);
+        SetTextColor(hdc, control.enabled ? control.foreground : GetSysColor(COLOR_GRAYTEXT));
+
+        RECT textRect = clientRect;
+        textRect.left += ScaleForDpi(1, dpi_);
+        textRect.right -= ScaleForDpi(1, dpi_);
+        DrawTextW(hdc, control.text, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+
+        RECT measured = textRect;
+        DrawTextW(hdc, control.text, -1, &measured, DT_LEFT | DT_SINGLELINE | DT_CALCRECT | DT_NOPREFIX);
+        int textHeight = std::max(1, static_cast<int>(measured.bottom - measured.top));
+        int textTop = static_cast<int>(clientRect.top) + std::max(0, static_cast<int>(clientRect.bottom - clientRect.top) - textHeight) / 2;
+        int underlineRight = std::min(static_cast<int>(clientRect.right) - ScaleForDpi(1, dpi_), static_cast<int>(measured.right));
+        int underlineY = std::min(static_cast<int>(clientRect.bottom) - 1, textTop + textHeight);
+        HPEN underline = CreatePen(PS_SOLID, 1, control.enabled ? control.foreground : GetSysColor(COLOR_GRAYTEXT));
+        HPEN oldPen = reinterpret_cast<HPEN>(SelectObject(hdc, underline));
+        MoveToEx(hdc, textRect.left, underlineY, nullptr);
+        LineTo(hdc, underlineRight, underlineY);
+        SelectObject(hdc, oldPen);
+        DeleteObject(underline);
+
+        if (GetFocus() == hwnd) {
+            RECT focusRect = { textRect.left, textTop, underlineRight + 1, std::min(static_cast<int>(clientRect.bottom), underlineY + ScaleForDpi(2, dpi_)) };
+            DrawFocusRect(hdc, &focusRect);
+        }
+        RestoreDC(hdc, savedDc);
+    }
+
     bool PaintOwnerComboBox(const DRAWITEMSTRUCT* item) {
         if (!item || item->CtlType != ODT_COMBOBOX) return false;
         const ControlSpec* control = FindControl(static_cast<int>(item->CtlID));
@@ -3943,6 +4662,102 @@ private:
                 if (oldFont) SelectObject(item->hDC, oldFont);
             }
         }
+        return true;
+    }
+
+    bool PaintOwnerStatusBar(const DRAWITEMSTRUCT* item) {
+        if (!item) return false;
+        const ControlSpec* control = FindControl(static_cast<int>(item->CtlID));
+        RuntimeControl* runtime = control ? FindRuntimeControl(control->id) : nullptr;
+        if (!control || !runtime || !IsType(*control, L"StatusBar")) return false;
+
+        COLORREF background = control->backgroundTransparent
+            ? ResolveControlSurroundingColor(*control, runtime->hwnd)
+            : control->background;
+        COLORREF foreground = IsWindowEnabled(runtime->hwnd)
+            ? control->foreground
+            : BlendColor(control->foreground, background, 55);
+        HBRUSH backgroundBrush = CreateSolidBrush(background);
+        FillRect(item->hDC, &item->rcItem, backgroundBrush);
+        DeleteObject(backgroundBrush);
+
+        HPEN borderPen = CreatePen(PS_SOLID, 1, BlendColor(background, foreground, 22));
+        HGDIOBJ oldPen = SelectObject(item->hDC, borderPen);
+        MoveToEx(item->hDC, item->rcItem.right - 1, item->rcItem.top, nullptr);
+        LineTo(item->hDC, item->rcItem.right - 1, item->rcItem.bottom);
+        SelectObject(item->hDC, oldPen);
+        DeleteObject(borderPen);
+
+        auto rows = DecodeControlRecords(control->data, 2);
+        size_t partIndex = static_cast<size_t>(item->itemID);
+        const wchar_t* text = partIndex < rows.size() ? rows[partIndex][0].c_str() : control->text;
+        RECT textRect = item->rcItem;
+        textRect.left += ScaleForDpi(8, dpi_);
+        textRect.right -= ScaleForDpi(6, dpi_);
+        HFONT oldFont = runtime->font ? reinterpret_cast<HFONT>(SelectObject(item->hDC, runtime->font)) : nullptr;
+        SetBkMode(item->hDC, TRANSPARENT);
+        SetTextColor(item->hDC, foreground);
+        UINT textFormat = (control->flags & CF_ALIGN_CENTER) ? DT_CENTER
+            : (control->flags & CF_ALIGN_RIGHT) ? DT_RIGHT
+            : DT_LEFT;
+        DrawTextW(item->hDC, text ? text : L"", -1, &textRect, textFormat | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+        if (oldFont) SelectObject(item->hDC, oldFont);
+        return true;
+    }
+
+    bool PaintOwnerComboBoxEx(const ControlSpec& control, RuntimeControl& runtime, const DRAWITEMSTRUCT* item) {
+        if (!item || item->CtlType != ODT_COMBOBOX) return false;
+        bool collapsedSelection = (item->itemState & ODS_COMBOBOXEDIT) != 0;
+        bool selected = !collapsedSelection && item->itemID != static_cast<UINT>(-1)
+            && (item->itemState & ODS_SELECTED) != 0;
+        bool enabled = IsWindowEnabled(runtime.hwnd) != FALSE && (item->itemState & ODS_DISABLED) == 0;
+        COLORREF background = enabled ? control.background : BlendColor(control.background, spec_.background, 45);
+        COLORREF foreground = enabled ? control.foreground : BlendColor(control.foreground, background, 55);
+        COLORREF itemBackground = selected ? BlendColor(background, foreground, 18) : background;
+        HBRUSH backgroundBrush = CreateSolidBrush(itemBackground);
+        FillRect(item->hDC, &item->rcItem, backgroundBrush);
+        DeleteObject(backgroundBrush);
+
+        HWND combo = reinterpret_cast<HWND>(SendMessageW(runtime.hwnd, CBEM_GETCOMBOCONTROL, 0, 0));
+        int index = item->itemID == static_cast<UINT>(-1)
+            ? (combo ? static_cast<int>(SendMessageW(combo, CB_GETCURSEL, 0, 0)) : -1)
+            : static_cast<int>(item->itemID);
+        wchar_t text[1024] = {};
+        int image = -1;
+        int selectedImage = -1;
+        if (index >= 0) {
+            COMBOBOXEXITEMW info = {};
+            info.mask = CBEIF_TEXT | CBEIF_IMAGE | CBEIF_SELECTEDIMAGE;
+            info.iItem = index;
+            info.pszText = text;
+            info.cchTextMax = static_cast<int>(std::size(text));
+            if (SendMessageW(runtime.hwnd, CBEM_GETITEMW, 0, reinterpret_cast<LPARAM>(&info))) {
+                image = info.iImage;
+                selectedImage = info.iSelectedImage;
+            }
+        } else if (control.text) {
+            wcsncpy_s(text, control.text, _TRUNCATE);
+        }
+
+        RECT textRect = item->rcItem;
+        textRect.left += ScaleForDpi(8, dpi_);
+        HIMAGELIST imageList = reinterpret_cast<HIMAGELIST>(SendMessageW(runtime.hwnd, CBEM_GETIMAGELIST, 0, 0));
+        int drawImage = selected && selectedImage >= 0 ? selectedImage : image;
+        if (imageList && drawImage >= 0) {
+            int imageWidth = 0;
+            int imageHeight = 0;
+            ImageList_GetIconSize(imageList, &imageWidth, &imageHeight);
+            int imageY = item->rcItem.top + std::max(0L, (item->rcItem.bottom - item->rcItem.top - imageHeight) / 2);
+            ImageList_Draw(imageList, drawImage, item->hDC, textRect.left, imageY, enabled ? ILD_NORMAL : ILD_BLEND50);
+            textRect.left += imageWidth + ScaleForDpi(6, dpi_);
+        }
+        textRect.right -= ScaleForDpi(collapsedSelection ? 28 : 6, dpi_);
+        HFONT oldFont = runtime.font ? reinterpret_cast<HFONT>(SelectObject(item->hDC, runtime.font)) : nullptr;
+        SetBkMode(item->hDC, TRANSPARENT);
+        SetTextColor(item->hDC, foreground);
+        DrawTextW(item->hDC, text, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+        if (oldFont) SelectObject(item->hDC, oldFont);
+        if ((item->itemState & ODS_FOCUS) != 0) DrawFocusRect(item->hDC, &item->rcItem);
         return true;
     }
 
@@ -4021,7 +4836,7 @@ private:
         if (savedDc) RestoreDC(hdc, savedDc);
     }
 
-    LRESULT PaintListViewHeader(const ControlSpec& control, NMCUSTOMDRAW* draw) {
+    LRESULT PaintHeader(const ControlSpec& control, NMCUSTOMDRAW* draw, bool tintBackground) {
         if (!draw) return CDRF_DODEFAULT;
         if (draw->dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
         if (draw->dwDrawStage == CDDS_POSTPAINT) {
@@ -4036,7 +4851,9 @@ private:
                 }
             }
             if (paintedRight < clientRect.right) {
-                COLORREF background = BlendColor(control.background, RGB(255, 255, 255), 12);
+                COLORREF background = tintBackground
+                    ? BlendColor(control.background, RGB(255, 255, 255), 12)
+                    : control.background;
                 COLORREF border = BlendColor(control.background, RGB(255, 255, 255), 24);
                 RECT trailingRect = { paintedRight, clientRect.top, clientRect.right, clientRect.bottom };
                 HBRUSH brush = CreateSolidBrush(background);
@@ -4058,8 +4875,14 @@ private:
         item.pszText = text;
         item.cchTextMax = 512;
         Header_GetItem(draw->hdr.hwndFrom, static_cast<int>(draw->dwItemSpec), &item);
-        COLORREF background = BlendColor(control.background, RGB(255, 255, 255), 12);
-        COLORREF border = BlendColor(control.background, RGB(255, 255, 255), 24);
+        COLORREF background = tintBackground
+            ? BlendColor(control.background, RGB(255, 255, 255), 12)
+            : control.background;
+        bool pressed = (draw->uItemState & CDIS_SELECTED) != 0;
+        bool hot = (draw->uItemState & CDIS_HOT) != 0;
+        if (pressed) background = BlendColor(background, RGB(0, 0, 0), 18);
+        else if (hot) background = BlendColor(background, control.foreground, 10);
+        COLORREF border = BlendColor(background, control.foreground, 24);
         HBRUSH brush = CreateSolidBrush(background);
         FillRect(draw->hdc, &draw->rc, brush);
         DeleteObject(brush);
@@ -4075,14 +4898,194 @@ private:
         int padding = ScaleForDpi(6, dpi_);
         textRect.left += padding;
         textRect.right -= padding;
+        if (pressed) OffsetRect(&textRect, ScaleForDpi(1, dpi_), ScaleForDpi(1, dpi_));
+        RuntimeControl* runtime = FindRuntimeControl(control.id);
+        HFONT oldFont = runtime && runtime->font
+            ? reinterpret_cast<HFONT>(SelectObject(draw->hdc, runtime->font))
+            : nullptr;
         SetBkMode(draw->hdc, TRANSPARENT);
-        SetTextColor(draw->hdc, control.foreground);
+        COLORREF textColor = (draw->uItemState & CDIS_DISABLED)
+            ? BlendColor(control.foreground, background, 55)
+            : control.foreground;
+        SetTextColor(draw->hdc, textColor);
         UINT format = DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX;
         if (item.fmt & HDF_CENTER) format |= DT_CENTER;
         else if (item.fmt & HDF_RIGHT) format |= DT_RIGHT;
         else format |= DT_LEFT;
         DrawTextW(draw->hdc, text, -1, &textRect, format);
+        if (oldFont) SelectObject(draw->hdc, oldFont);
         return CDRF_SKIPDEFAULT;
+    }
+
+    LRESULT PaintListViewHeader(const ControlSpec& control, NMCUSTOMDRAW* draw) {
+        return PaintHeader(control, draw, true);
+    }
+
+    LRESULT PaintStandaloneHeader(const ControlSpec& control, NMCUSTOMDRAW* draw) {
+        return PaintHeader(control, draw, false);
+    }
+
+    LRESULT PaintToolBar(const ControlSpec& control, NMTBCUSTOMDRAW* draw) {
+        if (!draw) return CDRF_DODEFAULT;
+        if (draw->nmcd.dwDrawStage == CDDS_PREPAINT) {
+            return CDRF_NOTIFYITEMDRAW;
+        }
+        if (draw->nmcd.dwDrawStage != CDDS_ITEMPREPAINT) return CDRF_DODEFAULT;
+        COLORREF background = control.background;
+        COLORREF foreground = (draw->nmcd.uItemState & CDIS_DISABLED)
+            ? BlendColor(control.foreground, background, 55)
+            : control.foreground;
+        draw->clrText = foreground;
+        draw->clrTextHighlight = foreground;
+        draw->clrBtnFace = background;
+        draw->clrBtnHighlight = BlendColor(background, control.foreground, 12);
+        draw->clrHighlightHotTrack = BlendColor(background, control.foreground, 18);
+        draw->nStringBkMode = TRANSPARENT;
+        draw->nHLStringBkMode = TRANSPARENT;
+        SetBkMode(draw->nmcd.hdc, TRANSPARENT);
+        SetTextColor(draw->nmcd.hdc, foreground);
+        SetBkColor(draw->nmcd.hdc, background);
+        return CDRF_DODEFAULT | TBCDRF_USECDCOLORS;
+    }
+
+    void ApplyMonthCalendarColors(HWND calendar, const ControlSpec& control) {
+        if (!calendar) return;
+        SetWindowTheme(calendar, L"", L"");
+        SendMessageW(calendar, MCM_SETCOLOR, MCSC_BACKGROUND, static_cast<LPARAM>(control.background));
+        SendMessageW(calendar, MCM_SETCOLOR, MCSC_MONTHBK, static_cast<LPARAM>(control.background));
+        SendMessageW(calendar, MCM_SETCOLOR, MCSC_TEXT, static_cast<LPARAM>(control.foreground));
+        SendMessageW(calendar, MCM_SETCOLOR, MCSC_TITLEBK, static_cast<LPARAM>(control.background));
+        SendMessageW(calendar, MCM_SETCOLOR, MCSC_TITLETEXT, static_cast<LPARAM>(control.foreground));
+        SendMessageW(calendar, MCM_SETCOLOR, MCSC_TRAILINGTEXT, static_cast<LPARAM>(control.foreground));
+        InvalidateRect(calendar, nullptr, TRUE);
+    }
+
+    void ApplyDateTimePickerCalendarAppearance(HWND picker, const ControlSpec& control) {
+        if (!picker) return;
+        SendMessageW(picker, DTM_SETMCCOLOR, MCSC_BACKGROUND, static_cast<LPARAM>(control.background));
+        SendMessageW(picker, DTM_SETMCCOLOR, MCSC_MONTHBK, static_cast<LPARAM>(control.background));
+        SendMessageW(picker, DTM_SETMCCOLOR, MCSC_TEXT, static_cast<LPARAM>(control.foreground));
+        SendMessageW(picker, DTM_SETMCCOLOR, MCSC_TITLEBK, static_cast<LPARAM>(control.background));
+        SendMessageW(picker, DTM_SETMCCOLOR, MCSC_TITLETEXT, static_cast<LPARAM>(control.foreground));
+        SendMessageW(picker, DTM_SETMCCOLOR, MCSC_TRAILINGTEXT, static_cast<LPARAM>(control.foreground));
+        HWND calendar = reinterpret_cast<HWND>(SendMessageW(picker, DTM_GETMONTHCAL, 0, 0));
+        if (calendar) {
+            ApplyMonthCalendarColors(calendar, control);
+            RECT minimumRect = {};
+            SendMessageW(calendar, MCM_GETMINREQRECT, 0, reinterpret_cast<LPARAM>(&minimumRect));
+            int todayWidth = static_cast<int>(SendMessageW(calendar, MCM_GETMAXTODAYWIDTH, 0, 0));
+            int requestedHeight = ScaleForDpi(std::max(200, _wtoi(control.data2)), dpi_);
+            int calendarWidth = std::max(static_cast<int>(minimumRect.right), todayWidth);
+            int calendarHeight = std::max(
+                requestedHeight,
+                static_cast<int>(minimumRect.bottom));
+
+            HWND dropDown = GetParent(calendar);
+            if (!dropDown || dropDown == picker || dropDown == hwnd_) dropDown = calendar;
+            RECT dropDownRect = {};
+            RECT pickerRect = {};
+            GetWindowRect(dropDown, &dropDownRect);
+            GetWindowRect(picker, &pickerRect);
+
+            WINDOWINFO dropDownInfo = {};
+            dropDownInfo.cbSize = sizeof(dropDownInfo);
+            GetWindowInfo(dropDown, &dropDownInfo);
+            RECT requiredDropDown = { 0, 0, calendarWidth, calendarHeight };
+            InflateRect(&requiredDropDown, ScaleForDpi(3, dpi_), ScaleForDpi(3, dpi_));
+            AdjustWindowRectEx(&requiredDropDown, dropDownInfo.dwStyle, FALSE, dropDownInfo.dwExStyle);
+            int dropDownWidth = requiredDropDown.right - requiredDropDown.left;
+            int dropDownHeight = requiredDropDown.bottom - requiredDropDown.top;
+
+            MONITORINFO monitorInfo = {};
+            monitorInfo.cbSize = sizeof(monitorInfo);
+            GetMonitorInfoW(MonitorFromWindow(picker, MONITOR_DEFAULTTONEAREST), &monitorInfo);
+            int x = std::clamp(
+                static_cast<int>(dropDownRect.left),
+                static_cast<int>(monitorInfo.rcWork.left),
+                std::max(static_cast<int>(monitorInfo.rcWork.left), static_cast<int>(monitorInfo.rcWork.right) - dropDownWidth));
+            int y = pickerRect.bottom + dropDownHeight <= monitorInfo.rcWork.bottom
+                ? pickerRect.bottom
+                : pickerRect.top - dropDownHeight;
+            y = std::clamp(
+                y,
+                static_cast<int>(monitorInfo.rcWork.top),
+                std::max(static_cast<int>(monitorInfo.rcWork.top), static_cast<int>(monitorInfo.rcWork.bottom) - dropDownHeight));
+
+            SetWindowPos(dropDown, HWND_TOP, x, y, dropDownWidth, dropDownHeight,
+                SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+            if (dropDown != calendar) {
+                int padding = ScaleForDpi(3, dpi_);
+                SetWindowPos(calendar, nullptr, padding, padding, calendarWidth, calendarHeight,
+                    SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+            }
+            RedrawWindow(calendar, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW);
+        }
+    }
+
+    void PaintDateTimePicker(HWND hwnd, HDC hdc, const ControlSpec& control, RuntimeControl& runtime) {
+        if (!hdc) return;
+        RECT rect = {};
+        GetClientRect(hwnd, &rect);
+        bool enabled = IsWindowEnabled(hwnd) != FALSE;
+        COLORREF background = control.background;
+        COLORREF foreground = enabled
+            ? control.foreground
+            : BlendColor(control.foreground, background, 55);
+        COLORREF border = GetFocus() == hwnd
+            ? BlendColor(control.foreground, background, 18)
+            : BlendColor(control.foreground, background, 55);
+        HBRUSH backgroundBrush = CreateSolidBrush(background);
+        HBRUSH borderBrush = CreateSolidBrush(border);
+        FillRect(hdc, &rect, backgroundBrush);
+        FrameRect(hdc, &rect, borderBrush);
+
+        int minimumButtonWidth = ScaleForDpi(18, dpi_);
+        int buttonWidth = std::clamp(GetSystemMetrics(SM_CXVSCROLL), minimumButtonWidth,
+            std::max(minimumButtonWidth, static_cast<int>(rect.right - rect.left)));
+        RECT buttonRect = rect;
+        buttonRect.left = std::max(rect.left + 1, rect.right - buttonWidth);
+        InflateRect(&buttonRect, 0, -1);
+        COLORREF buttonBackground = runtime.mouseInside
+            ? BlendColor(background, foreground, 16)
+            : BlendColor(background, foreground, 8);
+        HBRUSH buttonBrush = CreateSolidBrush(buttonBackground);
+        FillRect(hdc, &buttonRect, buttonBrush);
+
+        int arrowHalfWidth = std::max(3, ScaleForDpi(4, dpi_));
+        int arrowHalfHeight = std::max(2, ScaleForDpi(2, dpi_));
+        int arrowCenterX = (buttonRect.left + buttonRect.right) / 2;
+        int arrowCenterY = (buttonRect.top + buttonRect.bottom) / 2;
+        POINT arrow[3] = {
+            { arrowCenterX - arrowHalfWidth, arrowCenterY - arrowHalfHeight },
+            { arrowCenterX + arrowHalfWidth, arrowCenterY - arrowHalfHeight },
+            { arrowCenterX, arrowCenterY + arrowHalfHeight }
+        };
+        HBRUSH arrowBrush = CreateSolidBrush(foreground);
+        HPEN arrowPen = CreatePen(PS_SOLID, 1, foreground);
+        HGDIOBJ oldBrush = SelectObject(hdc, arrowBrush);
+        HGDIOBJ oldPen = SelectObject(hdc, arrowPen);
+        Polygon(hdc, arrow, 3);
+        SelectObject(hdc, oldPen);
+        SelectObject(hdc, oldBrush);
+
+        wchar_t text[256] = {};
+        GetWindowTextW(hwnd, text, static_cast<int>(std::size(text)));
+        RECT textRect = rect;
+        textRect.left += ScaleForDpi(8, dpi_);
+        textRect.right = std::max(textRect.left, buttonRect.left - ScaleForDpi(5, dpi_));
+        HFONT oldFont = runtime.font
+            ? reinterpret_cast<HFONT>(SelectObject(hdc, runtime.font))
+            : nullptr;
+        SetBkMode(hdc, TRANSPARENT);
+        SetTextColor(hdc, foreground);
+        DrawTextW(hdc, text, -1, &textRect, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+        if (oldFont) SelectObject(hdc, oldFont);
+
+        DeleteObject(arrowPen);
+        DeleteObject(arrowBrush);
+        DeleteObject(buttonBrush);
+        DeleteObject(borderBrush);
+        DeleteObject(backgroundBrush);
     }
 
     void ApplyWindowAppearance() {
@@ -4630,6 +5633,167 @@ private:
         return DefSubclassProc(hwnd, message, wParam, lParam);
     }
 
+    void PaintIPAddressChrome(HWND hwnd, HDC hdc, const ControlSpec& control, const RuntimeControl& runtime) {
+        if (!hdc) return;
+        RECT clientRect = {};
+        GetClientRect(hwnd, &clientRect);
+        RECT fields[8] = {};
+        int fieldCount = 0;
+        for (HWND child = GetWindow(hwnd, GW_CHILD); child && fieldCount < 8; child = GetWindow(child, GW_HWNDNEXT)) {
+            wchar_t className[32] = {};
+            GetClassNameW(child, className, static_cast<int>(std::size(className)));
+            if (_wcsicmp(className, L"Edit") != 0 || !IsWindowVisible(child)) continue;
+            RECT fieldRect = {};
+            GetWindowRect(child, &fieldRect);
+            MapWindowPoints(nullptr, hwnd, reinterpret_cast<POINT*>(&fieldRect), 2);
+            RECT clippedRect = {};
+            if (IntersectRect(&clippedRect, &fieldRect, &clientRect)) fields[fieldCount++] = clippedRect;
+        }
+        std::sort(fields, fields + fieldCount, [](const RECT& left, const RECT& right) {
+            return left.left < right.left;
+        });
+
+        HRGN backgroundRegion = CreateRectRgnIndirect(&clientRect);
+        if (backgroundRegion) {
+            for (int index = 0; index < fieldCount; ++index) {
+                HRGN fieldRegion = CreateRectRgnIndirect(&fields[index]);
+                if (fieldRegion) {
+                    CombineRgn(backgroundRegion, backgroundRegion, fieldRegion, RGN_DIFF);
+                    DeleteObject(fieldRegion);
+                }
+            }
+            FillRgn(hdc, backgroundRegion, runtime.brush ? runtime.brush : windowBrush_);
+            DeleteObject(backgroundRegion);
+        }
+
+        int savedDc = SaveDC(hdc);
+        HFONT oldFont = runtime.font ? reinterpret_cast<HFONT>(SelectObject(hdc, runtime.font)) : nullptr;
+        SetBkMode(hdc, TRANSPARENT);
+        SetTextColor(hdc, control.foreground);
+        for (int index = 0; index + 1 < fieldCount; ++index) {
+            RECT separatorRect = {
+                fields[index].right,
+                fields[index].top,
+                fields[index + 1].left,
+                fields[index].bottom
+            };
+            if (separatorRect.right > separatorRect.left) {
+                DrawTextW(hdc, L".", 1, &separatorRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+            }
+        }
+        if (oldFont) SelectObject(hdc, oldFont);
+        if (savedDc) RestoreDC(hdc, savedDc);
+
+    }
+
+    void LayoutIPAddressFields(HWND hwnd, const ControlSpec& control, const RuntimeControl& runtime) {
+        RECT clientRect = {};
+        GetClientRect(hwnd, &clientRect);
+        int clientWidth = static_cast<int>(clientRect.right - clientRect.left);
+        int clientHeight = static_cast<int>(clientRect.bottom - clientRect.top);
+        int contentInset = runtime.frameHwnd
+            ? 0
+            : std::clamp(ScaleForDpi(control.listBorderWidth, dpi_), 0, std::min(clientWidth, clientHeight) / 2);
+        int availableHeight = std::max(1, clientHeight - contentInset * 2);
+        int textHeight = ScaleForDpi(std::max(1, control.fontSize), dpi_);
+        HDC hdc = GetDC(hwnd);
+        if (hdc) {
+            HFONT oldFont = runtime.font ? reinterpret_cast<HFONT>(SelectObject(hdc, runtime.font)) : nullptr;
+            TEXTMETRICW metrics = {};
+            if (GetTextMetricsW(hdc, &metrics)) textHeight = static_cast<int>(metrics.tmHeight);
+            if (oldFont) SelectObject(hdc, oldFont);
+            ReleaseDC(hwnd, hdc);
+        }
+        int fieldHeight = std::min(availableHeight, std::max(1, textHeight + ScaleForDpi(2, dpi_)));
+        int fieldY = contentInset;
+        if (TextEquals(control.option1, L"bottom")) fieldY = clientHeight - contentInset - fieldHeight;
+        else if (!TextEquals(control.option1, L"top")) fieldY = contentInset + (availableHeight - fieldHeight) / 2;
+
+        for (HWND child = GetWindow(hwnd, GW_CHILD); child; child = GetWindow(child, GW_HWNDNEXT)) {
+            wchar_t className[32] = {};
+            GetClassNameW(child, className, static_cast<int>(std::size(className)));
+            if (_wcsicmp(className, L"Edit") != 0) continue;
+            RECT fieldRect = {};
+            GetWindowRect(child, &fieldRect);
+            MapWindowPoints(nullptr, hwnd, reinterpret_cast<POINT*>(&fieldRect), 2);
+            int fieldLeft = std::max(contentInset, static_cast<int>(fieldRect.left));
+            int fieldRight = std::min(clientWidth - contentInset, static_cast<int>(fieldRect.right));
+            SetWindowPos(child, nullptr, fieldLeft, fieldY, std::max(1, fieldRight - fieldLeft), fieldHeight,
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
+        }
+        RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
+    }
+
+    void LayoutIPAddressControl(const ControlSpec& control, RuntimeControl& runtime) {
+        if (!runtime.frameHwnd || !runtime.hwnd) return;
+        RECT frameRect = {};
+        GetClientRect(runtime.frameHwnd, &frameRect);
+        int frameWidth = static_cast<int>(frameRect.right - frameRect.left);
+        int frameHeight = static_cast<int>(frameRect.bottom - frameRect.top);
+        int borderWidth = std::clamp(ScaleForDpi(control.listBorderWidth, dpi_), 0, std::min(frameWidth, frameHeight) / 2);
+        SetWindowPos(runtime.hwnd, nullptr, borderWidth, borderWidth,
+            std::max(1, frameWidth - borderWidth * 2), std::max(1, frameHeight - borderWidth * 2),
+            SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
+        LayoutIPAddressFields(runtime.hwnd, control, runtime);
+    }
+
+    static LRESULT CALLBACK IPAddressFrameSubclassProc(
+        HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam,
+        UINT_PTR subclassId, DWORD_PTR referenceData
+    ) {
+        LingWindowBase* self = reinterpret_cast<LingWindowBase*>(referenceData);
+        if (!self) return DefSubclassProc(hwnd, message, wParam, lParam);
+        const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
+        RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
+        if (!control || !runtime) return DefSubclassProc(hwnd, message, wParam, lParam);
+        if (message == WM_ERASEBKGND) return 1;
+        if (message == WM_PAINT) {
+            PAINTSTRUCT paint = {};
+            HDC hdc = BeginPaint(hwnd, &paint);
+            if (hdc) {
+                RECT rect = {};
+                GetClientRect(hwnd, &rect);
+                int borderWidth = std::clamp(ScaleForDpi(control->listBorderWidth, self->dpi_), 0,
+                    std::min(static_cast<int>(rect.right - rect.left), static_cast<int>(rect.bottom - rect.top)) / 2);
+                HBRUSH borderBrush = CreateSolidBrush(control->listBorderColor);
+                FillRect(hdc, &rect, borderWidth > 0 ? borderBrush : (runtime->brush ? runtime->brush : self->windowBrush_));
+                DeleteObject(borderBrush);
+                if (borderWidth > 0) {
+                    RECT contentRect = rect;
+                    InflateRect(&contentRect, -borderWidth, -borderWidth);
+                    if (contentRect.right > contentRect.left && contentRect.bottom > contentRect.top) {
+                        FillRect(hdc, &contentRect, runtime->brush ? runtime->brush : self->windowBrush_);
+                    }
+                }
+                EndPaint(hwnd, &paint);
+            }
+            return 0;
+        }
+        if (message == WM_SIZE) {
+            self->LayoutIPAddressControl(*control, *runtime);
+            InvalidateRect(hwnd, nullptr, FALSE);
+            return 0;
+        }
+        if (message == WM_LBUTTONDOWN) {
+            if (IsWindowEnabled(hwnd)) SetFocus(runtime->hwnd);
+            return 0;
+        }
+        if (message == WM_SETCURSOR) {
+            SetCursor(LoadCursorW(nullptr, IDC_IBEAM));
+            return TRUE;
+        }
+        if (message == WM_NOTIFY || message == WM_COMMAND) {
+            return SendMessageW(self->hwnd_, message, wParam, lParam);
+        }
+        if (message == WM_ENABLE) {
+            EnableWindow(runtime->hwnd, IsWindowEnabled(hwnd));
+            InvalidateRect(hwnd, nullptr, FALSE);
+        } else if (message == WM_NCDESTROY) {
+            RemoveWindowSubclass(hwnd, IPAddressFrameSubclassProc, subclassId);
+        }
+        return DefSubclassProc(hwnd, message, wParam, lParam);
+    }
+
     static LRESULT CALLBACK ControlSubclassProc(
         HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam,
         UINT_PTR subclassId, DWORD_PTR referenceData
@@ -4639,6 +5803,32 @@ private:
         const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
         RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
         if (control && runtime) {
+            if (IsType(*control, L"HotKey")) {
+                if (message == WM_ERASEBKGND) return 1;
+                if (message == WM_PAINT) {
+                    self->PaintHotKeyControl(hwnd, nullptr, *control, *runtime);
+                    return 0;
+                }
+                if (message == WM_PRINTCLIENT) {
+                    self->PaintHotKeyControl(hwnd, reinterpret_cast<HDC>(wParam), *control, *runtime);
+                    return 0;
+                }
+                if (message == HKM_SETHOTKEY || message == WM_KEYDOWN || message == WM_KEYUP
+                    || message == WM_SYSKEYDOWN || message == WM_SYSKEYUP || message == WM_SETFOCUS
+                    || message == WM_KILLFOCUS || message == WM_ENABLE || message == WM_SETFONT) {
+                    LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    return result;
+                }
+            }
+            if (IsType(*control, L"IPAddress")
+                && (message == WM_CTLCOLOREDIT || message == WM_CTLCOLORSTATIC)) {
+                HDC hdc = reinterpret_cast<HDC>(wParam);
+                SetTextColor(hdc, control->foreground);
+                SetBkColor(hdc, control->background);
+                SetBkMode(hdc, OPAQUE);
+                return reinterpret_cast<LRESULT>(runtime->brush ? runtime->brush : self->windowBrush_);
+            }
             if (self->IsUploadControl(*control)) {
                 if (message == WM_COMMAND && HIWORD(wParam) == BN_CLICKED) {
                     if (LOWORD(wParam) == 1) self->OpenUploadFileDialog(*control, *runtime);
@@ -4669,11 +5859,30 @@ private:
             )) {
                 return SendMessageW(self->hwnd_, message, wParam, lParam);
             }
+            if (message == WM_DRAWITEM) {
+                DRAWITEMSTRUCT* item = reinterpret_cast<DRAWITEMSTRUCT*>(lParam);
+                const ControlSpec* drawnControl = item ? self->FindControl(static_cast<int>(item->CtlID)) : nullptr;
+                if (drawnControl && IsType(*drawnControl, L"StatusBar")) {
+                    return SendMessageW(self->hwnd_, message, wParam, lParam);
+                }
+            }
             if (message == WM_NOTIFY && IsType(*control, L"ListView")) {
                 NMHDR* header = reinterpret_cast<NMHDR*>(lParam);
                 if (header && header->code == NM_CUSTOMDRAW && header->hwndFrom == ListView_GetHeader(hwnd)) {
                     return self->PaintListViewHeader(*control, reinterpret_cast<NMCUSTOMDRAW*>(lParam));
                 }
+            }
+            if (IsType(*control, L"ComboBoxEx") && message == WM_DRAWITEM) {
+                return self->PaintOwnerComboBoxEx(*control, *runtime, reinterpret_cast<DRAWITEMSTRUCT*>(lParam)) ? TRUE : FALSE;
+            }
+            if (IsType(*control, L"ComboBoxEx") && (
+                message == WM_CTLCOLORLISTBOX || message == WM_CTLCOLOREDIT || message == WM_CTLCOLORSTATIC
+            )) {
+                HDC hdc = reinterpret_cast<HDC>(wParam);
+                SetTextColor(hdc, control->foreground);
+                SetBkColor(hdc, control->background);
+                SetBkMode(hdc, OPAQUE);
+                return reinterpret_cast<LRESULT>(runtime->brush ? runtime->brush : self->windowBrush_);
             }
             if (message == WM_CTLCOLORLISTBOX) {
                 return SendMessageW(self->hwnd_, message, wParam, lParam);
@@ -4704,6 +5913,38 @@ private:
                     InvalidateRect(runtime->frameHwnd, nullptr, FALSE);
                 }
                 return result;
+            }
+            if (IsType(*control, L"DateTimePicker")) {
+                if (message == WM_ERASEBKGND) return 1;
+                if (message == WM_PAINT) {
+                    PAINTSTRUCT paint = {};
+                    HDC hdc = BeginPaint(hwnd, &paint);
+                    self->PaintDateTimePicker(hwnd, hdc, *control, *runtime);
+                    EndPaint(hwnd, &paint);
+                    return 0;
+                }
+                if (message == WM_PRINTCLIENT) {
+                    self->PaintDateTimePicker(hwnd, reinterpret_cast<HDC>(wParam), *control, *runtime);
+                    return 0;
+                }
+                if (message == WM_MOUSEMOVE && !runtime->mouseInside) {
+                    runtime->mouseInside = true;
+                    TRACKMOUSEEVENT tracking = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, hwnd, 0 };
+                    TrackMouseEvent(&tracking);
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                } else if (message == WM_MOUSELEAVE) {
+                    runtime->mouseInside = false;
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                }
+                if (message == DTM_SETSYSTEMTIME || message == DTM_SETFORMATW
+                    || message == WM_SETFONT || message == WM_ENABLE
+                    || message == WM_SETFOCUS || message == WM_KILLFOCUS
+                    || message == WM_LBUTTONDOWN || message == WM_LBUTTONUP
+                    || message == WM_KEYDOWN || message == WM_KEYUP) {
+                    LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                    return result;
+                }
             }
             bool buttonControl = self->IsButtonControl(*control);
             bool ownerDraw = self->IsOwnerDrawControl(*control);
@@ -4744,6 +5985,25 @@ private:
                 }
                 return result;
             }
+            if (IsType(*control, L"IPAddress") && message == WM_PAINT) {
+                LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                HDC hdc = GetDC(hwnd);
+                if (hdc) {
+                    self->PaintIPAddressChrome(hwnd, hdc, *control, *runtime);
+                    ReleaseDC(hwnd, hdc);
+                }
+                return result;
+            }
+            if (IsType(*control, L"IPAddress") && message == WM_PRINTCLIENT) {
+                LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                self->PaintIPAddressChrome(hwnd, reinterpret_cast<HDC>(wParam), *control, *runtime);
+                return result;
+            }
+            if (IsType(*control, L"IPAddress") && (message == WM_SIZE || message == WM_SETFONT)) {
+                LRESULT result = DefSubclassProc(hwnd, message, wParam, lParam);
+                self->LayoutIPAddressFields(hwnd, *control, *runtime);
+                return result;
+            }
             if (IsType(*control, L"GroupBox")) {
                 if (message == WM_ERASEBKGND) return 1;
                 if (message == WM_PAINT) {
@@ -4755,6 +6015,20 @@ private:
                 }
                 if (message == WM_PRINTCLIENT) {
                     self->PaintGroupBox(hwnd, reinterpret_cast<HDC>(wParam), *control, *runtime);
+                    return 0;
+                }
+            }
+            if (IsType(*control, L"SysLink") && control->backgroundTransparent) {
+                if (message == WM_ERASEBKGND) return 1;
+                if (message == WM_PAINT) {
+                    PAINTSTRUCT paint = {};
+                    HDC hdc = BeginPaint(hwnd, &paint);
+                    self->PaintTransparentSysLink(hwnd, hdc, *control, *runtime);
+                    EndPaint(hwnd, &paint);
+                    return 0;
+                }
+                if (message == WM_PRINTCLIENT) {
+                    self->PaintTransparentSysLink(hwnd, reinterpret_cast<HDC>(wParam), *control, *runtime);
                     return 0;
                 }
             }
@@ -4853,6 +6127,7 @@ private:
 
     bool CreateGeneratedControl(const ControlSpec& control) {
         DWORD style = WS_CHILD | WS_VISIBLE;
+        if (control.flags & CF_COLOR_HIDDEN) style &= ~WS_VISIBLE;
         DWORD exStyle = 0;
         const wchar_t* className = L"STATIC";
         const wchar_t* text = control.text;
@@ -4874,10 +6149,11 @@ private:
         }
 
         if (!control.enabled) style |= WS_DISABLED;
-        if (IsType(control, L"Button")) {
+        if (IsType(control, L"Button") || IsType(control, L"ColorPicker")) {
             className = L"BUTTON";
             style |= WS_TABSTOP;
-            if (!(control.flags & (CF_BUTTON_TOGGLE | CF_BUTTON_SPLIT | CF_BUTTON_COMMAND_LINK))) style |= BS_OWNERDRAW;
+            if (IsType(control, L"ColorPicker")) style |= BS_OWNERDRAW;
+            else if (!(control.flags & (CF_BUTTON_TOGGLE | CF_BUTTON_SPLIT | CF_BUTTON_COMMAND_LINK))) style |= BS_OWNERDRAW;
             else if (control.flags & CF_BUTTON_DEFAULT) style |= BS_DEFPUSHBUTTON;
             else if (control.flags & CF_BUTTON_TOGGLE) style |= BS_AUTOCHECKBOX | BS_PUSHLIKE;
             else if (control.flags & CF_BUTTON_SPLIT) style |= BS_SPLITBUTTON;
@@ -4936,7 +6212,7 @@ private:
         } else if (IsType(control, L"FlatScrollBar")) {
             className = L"STATIC";
             style |= WS_BORDER | ((control.flags & CF_HORIZONTAL) ? WS_HSCROLL : WS_VSCROLL);
-        } else if (IsType(control, L"Image")) {
+        } else if (IsType(control, L"Image") || IsType(control, L"AnimatedImage")) {
             className = L"STATIC";
             // Runtime image assignment uses STM_SETIMAGE with IMAGE_BITMAP, so
             // even an initially empty image control must keep the SS_BITMAP
@@ -4979,12 +6255,13 @@ private:
             // Header controls otherwise apply the common-control top alignment
             // behavior and can stretch into a full-width line at y=0 when their
             // tab page is shown. Keep the designer's explicit bounds instead.
-            style |= HDS_BUTTONS | HDS_HORZ | CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE;
+            style |= HDS_BUTTONS | HDS_HOTTRACK | HDS_HORZ | CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE;
         } else if (IsType(control, L"ComboBoxEx")) {
             className = WC_COMBOBOXEXW;
             style |= CBS_DROPDOWNLIST;
         } else if (IsType(control, L"SysLink")) {
             className = WC_LINK;
+            if (control.backgroundTransparent) style |= LWS_TRANSPARENT;
         } else if (IsType(control, L"DateTimePicker")) {
             className = DATETIMEPICK_CLASSW;
             if (TextEquals(control.option1, L"longDate")) style |= DTS_LONGDATEFORMAT;
@@ -5005,13 +6282,20 @@ private:
             className = WC_IPADDRESSW;
         } else if (IsType(control, L"ToolBar")) {
             className = TOOLBARCLASSNAMEW;
-            style |= TBSTYLE_FLAT | TBSTYLE_TOOLTIPS | CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE;
+            style |= TBSTYLE_FLAT | TBSTYLE_TOOLTIPS | CCS_NODIVIDER | CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE;
         } else if (IsType(control, L"StatusBar")) {
             className = STATUSCLASSNAMEW;
             style |= CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE;
         } else if (IsType(control, L"ReBar")) {
             className = REBARCLASSNAMEW;
-            style |= RBS_VARHEIGHT | CCS_NODIVIDER | CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE;
+            auto rebarOptions = DecodeControlRecords(control.data2, 5);
+            bool locked = !rebarOptions.empty() && rebarOptions[0][0] == L"1";
+            bool fixedHeight = !rebarOptions.empty() && rebarOptions[0][2] == L"1";
+            bool showBandBorders = !rebarOptions.empty() && rebarOptions[0][3] == L"1";
+            style |= CCS_NODIVIDER | CCS_NOPARENTALIGN | CCS_NOMOVEY | CCS_NORESIZE;
+            if (!fixedHeight) style |= RBS_VARHEIGHT;
+            if (locked) style |= RBS_FIXEDORDER;
+            if (showBandBorders) style |= RBS_BANDBORDERS;
         } else if (IsType(control, L"Pager")) {
             className = WC_PAGESCROLLERW;
             if (TextEquals(control.option1, L"vertical")) style |= PGS_VERT;
@@ -5024,9 +6308,10 @@ private:
             if (control.flags & CF_READ_ONLY) style |= ES_READONLY;
             if (!(control.flags & CF_WORD_WRAP)) style |= ES_AUTOHSCROLL | WS_HSCROLL;
             exStyle = WS_EX_CLIENTEDGE;
-        } else if (IsType(control, L"Animation")) {
-            className = ANIMATE_CLASSW;
-            style |= ACS_CENTER | ACS_TRANSPARENT;
+        } else if (IsType(control, L"Animation") || IsType(control, L"VideoPlayer")) {
+            className = L"STATIC";
+            text = L"";
+            style |= SS_NOTIFY | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
         }
 
         int controlX = ScaleForDpi(control.x, dpi_) - parentContentOffsetX;
@@ -5039,11 +6324,12 @@ private:
         int childY = controlY;
         int childWidth = controlWidth;
         int childHeight = controlHeight;
-        if (IsType(control, L"ComboBox")) {
+        if (IsType(control, L"ComboBox") || IsType(control, L"ComboBoxEx")) {
             int dropDownHeight = std::max(control.height, _wtoi(control.option2));
             childHeight = controlHeight + ScaleForDpi(dropDownHeight, dpi_);
         }
-        if (IsType(control, L"TextBox") || IsType(control, L"ListBox") || IsType(control, L"ListView") || IsType(control, L"TreeView")) {
+        if (IsType(control, L"TextBox") || IsType(control, L"ListBox") || IsType(control, L"ListView")
+            || IsType(control, L"TreeView") || IsType(control, L"IPAddress")) {
             DWORD frameStyle = WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS | SS_NOTIFY;
             if (!control.enabled) frameStyle |= WS_DISABLED;
             frameHwnd = CreateWindowExW(
@@ -5090,14 +6376,18 @@ private:
             false,
             false,
             (control.flags & CF_CHECKED) ? BST_CHECKED : BST_UNCHECKED,
-            (control.flags & CF_HIDE_TAB_HEADER) != 0
+            (control.flags & CF_HIDE_TAB_HEADER) != 0,
+            nullptr,
+            nullptr
         });
+        if (IsType(control, L"ColorPicker")) runtimeControls_.back().colorValue = static_cast<COLORREF>(control.value) & 0x00FFFFFFu;
         SetWindowSubclass(child, ControlSubclassProc, static_cast<UINT_PTR>(control.id), reinterpret_cast<DWORD_PTR>(this));
         if (frameHwnd) {
             SetWindowSubclass(frameHwnd,
                 IsType(control, L"ListBox") ? ListBoxFrameSubclassProc
                     : IsType(control, L"ListView") ? ListViewFrameSubclassProc
                     : IsType(control, L"TreeView") ? TreeViewFrameSubclassProc
+                    : IsType(control, L"IPAddress") ? IPAddressFrameSubclassProc
                     : TextBoxFrameSubclassProc,
                 static_cast<UINT_PTR>(control.id), reinterpret_cast<DWORD_PTR>(this));
         }
@@ -5164,17 +6454,26 @@ private:
             std::wstring markup = L"<a href=\\\"";
             markup += control.data; markup += L"\\\">"; markup += control.text; markup += L"</a>";
             SetWindowTextW(child, markup.c_str());
-        } else if (IsType(control, L"IPAddress") && control.data && control.data[0]) {
-            unsigned int a = 0, b = 0, c = 0, d = 0;
-            if (swscanf_s(control.data, L"%u.%u.%u.%u", &a, &b, &c, &d) == 4) {
-                SendMessageW(child, IPM_SETADDRESS, 0, MAKEIPADDRESS(a, b, c, d));
+        } else if (IsType(control, L"IPAddress")) {
+            RuntimeControl& runtime = runtimeControls_.back();
+            LayoutIPAddressControl(control, runtime);
+            InvalidateRect(frameHwnd, nullptr, FALSE);
+            if (control.data && control.data[0]) {
+                unsigned int a = 0, b = 0, c = 0, d = 0;
+                if (swscanf_s(control.data, L"%u.%u.%u.%u", &a, &b, &c, &d) == 4) {
+                    SendMessageW(child, IPM_SETADDRESS, 0, MAKEIPADDRESS(a, b, c, d));
+                }
             }
+            LayoutIPAddressFields(child, control, runtime);
         } else if (IsType(control, L"DateTimePicker") && TextEquals(control.option1, L"custom") && control.option2 && control.option2[0]) {
             SendMessageW(child, DTM_SETFORMATW, 0, reinterpret_cast<LPARAM>(control.option2));
             SYSTEMTIME date = {}; if (ParseIsoDate(control.data, date)) SendMessageW(child, DTM_SETSYSTEMTIME, GDT_VALID, reinterpret_cast<LPARAM>(&date));
+            ApplyDateTimePickerCalendarAppearance(child, control);
         } else if (IsType(control, L"DateTimePicker")) {
             SYSTEMTIME date = {}; if (ParseIsoDate(control.data, date)) SendMessageW(child, DTM_SETSYSTEMTIME, GDT_VALID, reinterpret_cast<LPARAM>(&date));
+            ApplyDateTimePickerCalendarAppearance(child, control);
         } else if (IsType(control, L"MonthCalendar")) {
+            ApplyMonthCalendarColors(child, control);
             SYSTEMTIME date = {}; if (ParseIsoDate(control.data, date)) {
                 if (control.flags & CF_MULTI_SELECT) { SYSTEMTIME range[2] = { date, date }; SendMessageW(child, MCM_SETSELRANGE, 0, reinterpret_cast<LPARAM>(range)); }
                 else SendMessageW(child, MCM_SETCURSEL, 0, reinterpret_cast<LPARAM>(&date));
@@ -5297,7 +6596,13 @@ private:
             int edge = 0;
             for (size_t index = 0; index < rows.size(); ++index) { edge += _wtoi(rows[index][1].c_str()); edges[index] = index + 1 == rows.size() ? -1 : ScaleForDpi(edge, dpi_); }
             SendMessageW(child, SB_SETPARTS, static_cast<WPARAM>(edges.size()), reinterpret_cast<LPARAM>(edges.data()));
-            for (size_t index = 0; index < rows.size(); ++index) SendMessageW(child, SB_SETTEXTW, index, reinterpret_cast<LPARAM>(rows[index][0].c_str()));
+            COLORREF statusBackground = control.backgroundTransparent
+                ? ResolveControlSurroundingColor(control, child)
+                : control.background;
+            SendMessageW(child, SB_SETBKCOLOR, 0, static_cast<LPARAM>(statusBackground));
+            for (size_t index = 0; index < rows.size(); ++index) {
+                SendMessageW(child, SB_SETTEXTW, static_cast<WPARAM>(index) | SBT_OWNERDRAW, static_cast<LPARAM>(index));
+            }
         } else if (IsType(control, L"RichEdit")) {
             SendMessageW(child, EM_SETEVENTMASK, 0, ENM_CHANGE | ENM_SELCHANGE);
             if (control.data && control.data[0]) {
@@ -5311,6 +6616,19 @@ private:
                     SendMessageW(child, EM_STREAMIN, SF_RTF, reinterpret_cast<LPARAM>(&stream));
                 }
             }
+            COLORREF richEditBackground = control.backgroundTransparent
+                ? ResolveControlSurroundingColor(control, child)
+                : control.background;
+            SendMessageW(child, EM_SETBKGNDCOLOR, FALSE, static_cast<LPARAM>(richEditBackground));
+            CHARFORMAT2W richEditFormat = {};
+            richEditFormat.cbSize = sizeof(richEditFormat);
+            richEditFormat.dwMask = CFM_COLOR;
+            richEditFormat.crTextColor = control.foreground;
+            SendMessageW(child, EM_SETCHARFORMAT, SCF_ALL, reinterpret_cast<LPARAM>(&richEditFormat));
+            SendMessageW(child, EM_SETCHARFORMAT, SCF_DEFAULT, reinterpret_cast<LPARAM>(&richEditFormat));
+        } else if (IsType(control, L"AnimatedImage") && control.data && control.data[0]) {
+            RuntimeControl* runtime = FindRuntimeControl(control.id);
+            if (runtime) InitializeAnimatedImage(control, *runtime);
         } else if (IsType(control, L"Image") && control.data && control.data[0]) {
             HBITMAP bitmap = LoadWicBitmap(control.data, ScaleForDpi(control.width, dpi_), ScaleForDpi(control.height, dpi_), control.option1);
             if (bitmap) {
@@ -5331,9 +6649,16 @@ private:
                 RuntimeControl* runtime = FindRuntimeControl(control.id); if (runtime) { runtime->resource = icon; runtime->iconResource = true; }
             }
         } else if (IsType(control, L"Header")) {
-            auto rows = DecodeControlRecords(control.data, 3);
+            auto rows = DecodeControlRecords(control.data, 4);
             for (int index = 0; index < static_cast<int>(rows.size()); ++index) {
-                HDITEMW item = {}; int image = _wtoi(rows[index][2].c_str()); item.mask = HDI_TEXT | HDI_WIDTH | (image >= 0 ? HDI_IMAGE : 0); item.cxy = ScaleForDpi(_wtoi(rows[index][1].c_str()), dpi_); item.pszText = const_cast<wchar_t*>(rows[index][0].c_str()); item.iImage = image;
+                HDITEMW item = {};
+                int image = _wtoi(rows[index][2].c_str());
+                item.mask = HDI_TEXT | HDI_WIDTH | HDI_FORMAT | (image >= 0 ? HDI_IMAGE : 0);
+                item.cxy = ScaleForDpi(_wtoi(rows[index][1].c_str()), dpi_);
+                item.pszText = const_cast<wchar_t*>(rows[index][0].c_str());
+                item.iImage = image;
+                item.fmt = rows[index][3] == L"center" ? HDF_CENTER : rows[index][3] == L"right" ? HDF_RIGHT : HDF_LEFT;
+                if (image >= 0) item.fmt |= HDF_IMAGE;
                 Header_InsertItem(child, index, &item);
             }
         } else if (IsType(control, L"ComboBoxEx")) {
@@ -5344,6 +6669,8 @@ private:
             }
             SendMessageW(child, CB_SETCURSEL, control.selectedIndex, 0);
         } else if (IsType(control, L"ToolBar")) {
+            SetWindowTheme(child, L"", L"");
+            SendMessageW(child, CCM_SETBKCOLOR, 0, static_cast<LPARAM>(control.background));
             SendMessageW(child, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
             auto rows = DecodeControlRecords(control.data, 4);
             if (rows.empty() && control.text[0]) rows.push_back({ L"1", control.text, L"-1", L"button" });
@@ -5361,9 +6688,8 @@ private:
             SetWindowPos(child, nullptr, childX, childY, childWidth, childHeight, SWP_NOZORDER | SWP_NOACTIVATE);
         } else if (IsType(control, L"ReBar")) {
             SetWindowPos(child, nullptr, childX, childY, childWidth, childHeight, SWP_NOZORDER | SWP_NOACTIVATE);
-        } else if (IsType(control, L"Animation") && control.data && control.data[0]) {
-            Animate_Open(child, control.data);
-            if (control.flags & CF_AUTO_PLAY) Animate_Play(child, 0, -1, (control.flags & CF_LOOP) ? -1 : 1);
+        } else if ((IsType(control, L"Animation") || IsType(control, L"VideoPlayer")) && control.data && control.data[0]) {
+            InitializeVideoPlayer(runtimeControls_.back(), control, control.data, (control.flags & CF_AUTO_PLAY) != 0);
         }
         return true;
     }
@@ -5399,12 +6725,17 @@ private:
         for (auto& control : runtimeControls_) {
             const ControlSpec* spec = FindControl(control.id);
             if (spec && IsType(*spec, L"FlatScrollBar") && control.hwnd) UninitializeFlatSB(control.hwnd);
+            if (control.mediaPlayer) { control.mediaPlayer->Shutdown(); control.mediaPlayer->Release(); control.mediaPlayer = nullptr; }
+            if (control.mediaCallback) { control.mediaCallback->Release(); control.mediaCallback = nullptr; }
             if (control.font) DeleteObject(control.font);
             if (control.brush) DeleteObject(control.brush);
             if (control.resource) {
                 if (control.iconResource) DestroyIcon(reinterpret_cast<HICON>(control.resource));
                 else DeleteObject(control.resource);
             }
+            if (control.animatedTimer) KillTimer(hwnd_, control.animatedTimer);
+            delete control.animatedImage;
+            control.animatedImage = nullptr;
         }
         runtimeControls_.clear();
         tabPages_.clear();
@@ -5431,6 +6762,41 @@ private:
             return 0;
         }
         switch (message) {
+        case WM_LINGBUILDER_LAYOUT_DATE_PICKER: {
+            const ControlSpec* control = FindControl(static_cast<int>(wParam));
+            RuntimeControl* runtime = control ? FindRuntimeControl(control->id) : nullptr;
+            if (control && runtime && IsType(*control, L"DateTimePicker")) {
+                ApplyDateTimePickerCalendarAppearance(runtime->hwnd, *control);
+            }
+            return 0;
+        }
+        case WM_LINGBUILDER_VIDEO_EVENT: {
+            const ControlSpec* control = FindControl(static_cast<int>(wParam));
+            RuntimeControl* runtime = control ? FindRuntimeControl(control->id) : nullptr;
+            if (!control || !runtime || (!IsType(*control, L"Animation") && !IsType(*control, L"VideoPlayer"))) return 0;
+            const bool animation = IsType(*control, L"Animation");
+            if (lParam == 1) {
+                if (!animation) DispatchLingEvent(*control, L"MediaOpened");
+            }
+            else if (lParam == 2) {
+                if (animation) DispatchLingEvent(*control, L"Finished");
+                else DispatchLingEvent(*control, L"PlaybackEnded");
+                if ((control->flags & CF_LOOP) && runtime->mediaPlayer) {
+                    PROPVARIANT position = {};
+                    position.vt = VT_I8;
+                    position.hVal.QuadPart = 0;
+                    if (SUCCEEDED(runtime->mediaPlayer->SetPosition(MFP_POSITIONTYPE_100NS, &position))) runtime->mediaPlayer->Play();
+                }
+            } else if (lParam == 3) {
+                if (animation) {
+                    SetWindowTextW(runtime->hwnd, L"AVI 播放失败");
+                    OutputDebugStringW(L"LingBuilder：动画控件无法播放 AVI，请检查文件是否损坏或系统是否具备对应解码器。\\n");
+                } else {
+                    DispatchLingEvent(*control, L"Error");
+                }
+            }
+            return 0;
+        }
         case WM_NCPAINT: {
             LRESULT result = DefWindowProcW(hwnd_, message, wParam, lParam);
             PaintMenuBarBackground();
@@ -5577,6 +6943,7 @@ private:
             return 0;
         }
         case WM_TIMER:
+            if (AdvanceAnimatedImage(static_cast<UINT_PTR>(wParam))) return 0;
             if (wParam == 0x4C42) {
                 KillTimer(hwnd_, 0x4C42);
                 SetWindowPos(hwnd_, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
@@ -5615,7 +6982,9 @@ private:
                 DispatchLingEvent(*control, nextState == BST_CHECKED ? L"Checked" : L"Unchecked");
             } else if (IsType(*control, L"RadioButton") && notification == BN_CLICKED) {
                 SelectRadioControl(*control, reinterpret_cast<HWND>(lParam));
-            } else if ((IsType(*control, L"Button") || IsType(*control, L"Label") || IsType(*control, L"SysLink")) && (notification == BN_CLICKED || notification == STN_CLICKED)) {
+            } else if (IsType(*control, L"ColorPicker") && notification == BN_CLICKED) {
+                颜色选择器_打开(control->name);
+            } else if ((IsType(*control, L"Button") || IsType(*control, L"Label") || IsType(*control, L"Image") || IsType(*control, L"AnimatedImage") || IsType(*control, L"SysLink")) && (notification == BN_CLICKED || notification == STN_CLICKED)) {
                 DispatchLingEvent(*control, L"Click");
             } else if ((IsType(*control, L"TextBox") || IsType(*control, L"RichEdit")) && notification == EN_CHANGE) {
                 DispatchLingEvent(*control, L"TextChanged");
@@ -5646,6 +7015,7 @@ private:
             }
             return (PaintOwnerListBox(item)
                 || PaintOwnerComboBox(item)
+                || PaintOwnerStatusBar(item)
                 || PaintOwnerButton(item)) ? TRUE : FALSE;
         }
         case WM_NOTIFY: {
@@ -5653,7 +7023,14 @@ private:
             if (!header) return 0;
             const ControlSpec* control = FindControl(static_cast<int>(header->idFrom));
             if (!control) return 0;
-            if ((IsType(*control, L"ListView") && header->code == LVN_ITEMCHANGED) ||
+            if (IsType(*control, L"Header") && header->code == NM_CUSTOMDRAW) {
+                return PaintStandaloneHeader(*control, reinterpret_cast<NMCUSTOMDRAW*>(lParam));
+            } else if (IsType(*control, L"ToolBar") && header->code == NM_CUSTOMDRAW) {
+                return PaintToolBar(*control, reinterpret_cast<NMTBCUSTOMDRAW*>(lParam));
+            } else if (IsType(*control, L"DateTimePicker") && header->code == DTN_DROPDOWN) {
+                ApplyDateTimePickerCalendarAppearance(header->hwndFrom, *control);
+                PostMessageW(hwnd_, WM_LINGBUILDER_LAYOUT_DATE_PICKER, static_cast<WPARAM>(control->id), 0);
+            } else if ((IsType(*control, L"ListView") && header->code == LVN_ITEMCHANGED) ||
                 (IsType(*control, L"TreeView") && header->code == TVN_SELCHANGEDW) ||
                 (IsType(*control, L"TabControl") && header->code == TCN_SELCHANGE)) {
                 if (IsType(*control, L"TabControl")) UpdateTabChildren(*control);
@@ -5675,6 +7052,11 @@ private:
                        (IsType(*control, L"IPAddress") && header->code == IPN_FIELDCHANGED)) {
                 DispatchLingEvent(*control, L"ValueChanged");
             } else if (IsType(*control, L"SysLink") && (header->code == NM_CLICK || header->code == NM_RETURN)) {
+                NMLINK* link = reinterpret_cast<NMLINK*>(lParam);
+                const wchar_t* target = link && link->item.szUrl[0] ? link->item.szUrl : control->data;
+                if (target && target[0]) {
+                    ShellExecuteW(hwnd_, L"open", target, nullptr, nullptr, SW_SHOWNORMAL);
+                }
                 DispatchLingEvent(*control, L"Click");
             } else if (IsType(*control, L"RichEdit") && header->code == EN_SELCHANGE) {
                 DispatchLingEvent(*control, L"SelectionChanged");
@@ -5693,6 +7075,14 @@ private:
                 }
             } else if (IsType(*control, L"Pager") && header->code == PGN_SCROLL) {
                 DispatchLingEvent(*control, L"Scroll");
+            } else if (IsType(*control, L"ReBar") && header->code == RBN_BEGINDRAG) {
+                DispatchLingEvent(*control, L"BandDragStarted");
+            } else if (IsType(*control, L"ReBar") && header->code == RBN_ENDDRAG) {
+                DispatchLingEvent(*control, L"BandDragEnded");
+            } else if (IsType(*control, L"ReBar") && header->code == RBN_HEIGHTCHANGE) {
+                DispatchLingEvent(*control, L"HeightChanged");
+            } else if (IsType(*control, L"ReBar") && header->code == RBN_LAYOUTCHANGED) {
+                DispatchLingEvent(*control, L"LayoutChanged");
             }
             return 0;
         }
@@ -5732,7 +7122,11 @@ private:
             RuntimeControl* runtime = FindRuntimeControl(controlId);
             if (control) {
                 SetTextColor(hdc, control->foreground);
-                if (message == WM_CTLCOLORSTATIC && control->backgroundTransparent && IsType(*control, L"Label")) {
+                const bool usesTransparentParent = control->backgroundTransparent && (
+                    (message == WM_CTLCOLORSTATIC && (IsType(*control, L"Label") || IsType(*control, L"SysLink")))
+                    || ((message == WM_CTLCOLOREDIT || message == WM_CTLCOLORSTATIC) && IsType(*control, L"HotKey"))
+                );
+                if (usesTransparentParent) {
                     SetBkMode(hdc, TRANSPARENT);
                     SetBkColor(hdc, ResolveControlSurroundingColor(*control, child));
                     return reinterpret_cast<LRESULT>(ResolveControlSurroundingBrush(*control, child));
@@ -5838,6 +7232,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     Gdiplus::GdiplusStartupInput gdiplusInput;
     ULONG_PTR gdiplusToken = 0;
     Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusInput, nullptr);
+    HRESULT mediaFoundationResult = MFStartup(MF_VERSION);
 
     INITCOMMONCONTROLSEX controls = {};
     controls.dwSize = sizeof(INITCOMMONCONTROLSEX);
@@ -5856,7 +7251,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     windowClass.hbrBackground = nullptr;
     windowClass.lpszClassName = GENERATED_WINDOW_CLASS;
 
-    if (!RegisterClassExW(&windowClass)) { if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken); CoUninitialize(); return 0; }
+    if (!RegisterClassExW(&windowClass)) { if (SUCCEEDED(mediaFoundationResult)) MFShutdown(); if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken); CoUninitialize(); return 0; }
     HWND startWindow = OpenGeneratedWindow(g_startWindowIndex, showCommand);
 
     MSG message;
@@ -5868,6 +7263,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
         TranslateMessage(&message);
         DispatchMessageW(&message);
     }
+    if (SUCCEEDED(mediaFoundationResult)) MFShutdown();
     if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
     CoUninitialize();
     return static_cast<int>(message.wParam);
@@ -6766,7 +8162,7 @@ function toMessageBoxFlagsExpression(flagCode: number): string {
 }
 
 function generateControlArray(window: LingWindowModel, windowIndex: number, program: LingCppProgram, resources: LingDesignerResource[]): string {
-  const visibleControls = [...getVisibleControls(window)];
+  const visibleControls = [...reconcileRebarBands(getRuntimeControls(window))];
   const controlIds = new Map(visibleControls.map((control, index) => [control.id, index + 1001]));
   const items = ((window as any).menuItems || '')
     .split(',')
@@ -6835,7 +8231,7 @@ function generateFileDialogSpecs(project: LingWindowProject): string {
   const rows = resources.map(resource => {
     const ownerWindowIndex = project.windows.findIndex(window => window.id === resource.ownerWindowId);
     const ownerWindow = project.windows[ownerWindowIndex];
-    const visibleControls = ownerWindow ? getVisibleControls(ownerWindow) : [];
+    const visibleControls = ownerWindow ? getRuntimeControls(ownerWindow) : [];
     const controlId = (id: string) => {
       const index = visibleControls.findIndex(control => control.id === id);
       return index >= 0 ? index + 1001 : 0;
@@ -6851,7 +8247,7 @@ function generateFileDialogSpecs(project: LingWindowProject): string {
 
 function generateWindowSpec(window: LingWindowModel, windowIndex: number, program: LingCppProgram): string {
   const menuItemsStr = (window as any).menuItems || '';
-  const visibleCount = getVisibleControls(window).length + menuItemsStr.split(',').map((item: string) => item.trim()).filter(Boolean).length;
+  const visibleCount = getRuntimeControls(window).length + menuItemsStr.split(',').map((item: string) => item.trim()).filter(Boolean).length;
   const openPlacement = normalizeOpenWindowPlacement(window.openPlacement || 'default');
   const openX = openPlacement === 'custom' ? int(window.openX ?? 120) : 'CW_USEDEFAULT';
   const openY = openPlacement === 'custom' ? int(window.openY ?? 80) : 'CW_USEDEFAULT';
@@ -6903,7 +8299,13 @@ function generateControlSpec(
   const uploadControl = control.type === 'Upload' || control.type === 'DragUpload';
   const minimum = numericControlProperty(control, uploadControl ? 'limit' : 'minimum', 0);
   const maximum = numericControlProperty(control, uploadControl ? 'maxSizeKb' : 'maximum', uploadControl ? 0 : 100);
-  const value = uploadControl ? numericControlProperty(control, 'styleMode', control.type === 'DragUpload' ? 5 : 0) : parseControlValue(control);
+  const value = uploadControl
+    ? numericControlProperty(control, 'styleMode', control.type === 'DragUpload' ? 5 : 0)
+    : control.type === 'VideoPlayer'
+      ? clampInteger(control.properties?.volume, 100, 0, 100)
+      : control.type === 'ColorPicker'
+        ? colorRefInteger(controlColorProperty(control, 'currentColor', '#3B82F6'))
+      : parseControlValue(control);
   const selectedIndex = control.type === 'TrackBar'
     ? numericControlProperty(control, 'tickFrequency', 1)
     : uploadControl
@@ -6922,12 +8324,13 @@ function generateControlSpec(
   const cornerRadius = control.type === 'Button' ? clampInteger(control.properties?.cornerRadius, 6, 0, 100) : 0;
   const collectionControl = control.type === 'ListBox' || control.type === 'ComboBox' || control.type === 'ListView';
   const groupBoxControl = control.type === 'GroupBox';
-  const borderControl = collectionControl || groupBoxControl;
+  const ipAddressControl = control.type === 'IPAddress';
+  const borderControl = collectionControl || groupBoxControl || ipAddressControl;
   const borderVisible = groupBoxControl || control.type === 'ListBox'
     ? control.properties?.showBorder !== false
     : true;
   const listBorderWidth = borderControl && borderVisible ? clampInteger(control.properties?.borderWidth, 1, 0, 8) : 0;
-  const listBorderColor = controlColorProperty(control, 'borderColor', groupBoxControl || control.type === 'ListView' ? '#64748B' : '#334155');
+  const listBorderColor = controlColorProperty(control, 'borderColor', groupBoxControl || control.type === 'ListView' || ipAddressControl ? '#64748B' : '#334155');
   const listSelectionStart = controlColorProperty(control, 'selectionStartColor', '#7C3AED');
   const listSelectionEnd = controlColorProperty(control, 'selectionEndColor', '#0891B2');
   const listSelectionBorder = controlColorProperty(control, 'selectionBorderColor', '#38BDF8');
@@ -6988,13 +8391,20 @@ function findWindowCreatedHandler(window: LingWindowModel, program: LingCppProgr
   return candidates.find(candidate => Boolean(findLingCppMethod(program, candidate)));
 }
 
-function getVisibleControls(window: LingWindowModel): LingControl[] {
+function getRuntimeControls(window: LingWindowModel): LingControl[] {
   return window.controls
-    .filter(control => getEffectiveControlState(window.controls, control.id).visible)
-    .map(control => ({
-      ...control,
-      isEnabled: getEffectiveControlState(window.controls, control.id).enabled
-    }));
+    .filter(control => {
+      const state = getEffectiveControlState(window.controls, control.id);
+      return state.visible || control.type === 'ColorPicker';
+    })
+    .map(control => {
+      const state = getEffectiveControlState(window.controls, control.id);
+      return {
+        ...control,
+        visibility: state.visible ? 'Visible' as const : 'Collapsed' as const,
+        isEnabled: state.enabled
+      };
+    });
 }
 
 function parseControlValue(control: LingControl): number {
@@ -7024,6 +8434,10 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
 
   if (control.type === 'TextBox') {
     return ['', typeof properties.verticalAlign === 'string' ? properties.verticalAlign : 'center'];
+  }
+  if (control.type === 'DateTimePicker') {
+    const value = typeof properties.value === 'string' ? properties.value : '';
+    return [value, String(clampInteger(properties.calendarHeight, 300, 200, 10000))];
   }
   if (control.type === 'Upload' || control.type === 'DragUpload') {
     const initialFiles = Array.isArray(properties.initialFiles) ? properties.initialFiles.map(path => [String(path)]) : [];
@@ -7065,7 +8479,12 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
     return [encodeControlRecords(records(properties.tabs).map((tab, index) => [String(tab.id ?? `page${index + 1}`), labelOf(tab), String(numberOf(tab.image, -1))])), ''];
   }
   if (control.type === 'Header') {
-    return [encodeControlRecords(records(properties.columns).map(column => [labelOf(column), String(numberOf(column.width, 120)), String(numberOf(column.image, -1))])), ''];
+    return [encodeControlRecords(records(properties.columns).map(column => {
+      const alignment = column.alignment === 'center' || column.alignment === 'right'
+        ? column.alignment
+        : 'left';
+      return [labelOf(column), String(numberOf(column.width, 120)), String(numberOf(column.image, -1)), alignment];
+    })), ''];
   }
   if (control.type === 'ToolBar') {
     return [encodeControlRecords(records(properties.buttons).map((button, index) => [String(button.id ?? index + 1), labelOf(button), String(numberOf(button.image, -1)), String(button.style ?? 'button')])), ''];
@@ -7074,12 +8493,30 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
     return [encodeControlRecords(records(properties.parts).map(part => [labelOf(part), String(numberOf(part.width, 140))])), ''];
   }
   if (control.type === 'ReBar') {
-    return [encodeControlRecords(records(properties.bands).map((band, index) => [String(band.id ?? index + 1), labelOf(band), String(controlIds.get(String(band.childControl ?? '')) || ''), String(numberOf(band.width, 200))])), ''];
+    return [
+      encodeControlRecords(records(properties.bands).map((band, index) => [
+        String(band.id ?? index + 1),
+        labelOf(band),
+        String(controlIds.get(String(band.childControl ?? '')) || ''),
+        String(numberOf(band.width, 200)),
+        band.breakLine === true ? '1' : '0',
+        String(numberOf(band.minWidth, 40)),
+        String(numberOf(band.height, 28)),
+        band.resizable === false ? '0' : '1'
+      ])),
+      encodeControlRecords([[
+        properties.locked === true ? '1' : '0',
+        properties.showGrippers === false ? '0' : '1',
+        properties.fixedHeight === true ? '1' : '0',
+        properties.showBandBorders === true ? '1' : '0',
+        properties.autoBindChildren === false ? '0' : '1'
+      ]])
+    ];
   }
   if (control.type === 'RichEdit') {
     return [typeof properties.rtfText === 'string' ? properties.rtfText : '', ''];
   }
-  const scalar = properties.imageSource ?? properties.aviSource ?? properties.url ?? properties.address ?? properties.hotKey
+  const scalar = properties.imageSource ?? properties.gifSource ?? properties.aviSource ?? properties.videoSource ?? properties.url ?? properties.address ?? properties.hotKey
     ?? (typeof properties.value === 'string' ? properties.value : undefined);
   return [typeof scalar === 'string' ? scalar : '', ''];
 }
@@ -7116,7 +8553,9 @@ function generateControlFlags(control: LingControl): number {
   if (properties.showBorder === true) result |= 1 << 25;
   if (properties.multiSelect === true) result |= 1 << 26;
   if (properties.showLines === true) result |= 1 << 27;
-  return result;
+  if (control.type === 'ColorPicker' && control.visibility === 'Collapsed') result |= 1 << 29;
+  if (control.type === 'ColorPicker' && properties.showColorText !== false) result |= 1 << 30;
+  return result >>> 0;
 }
 
 function getControlOptions(control: LingControl, controlIds: Map<string, number>): [string, string] {
@@ -7132,14 +8571,17 @@ function getControlOptions(control: LingControl, controlIds: Map<string, number>
     case 'ScrollBar':
     case 'FlatScrollBar':
     case 'Pager': return [stringValue('orientation'), ''];
-    case 'Image': return [stringValue('stretch'), ''];
+    case 'Image':
+    case 'AnimatedImage': return [stringValue('stretch'), ''];
     case 'ListView': return [stringValue('view'), stringValue('imageListId')];
     case 'TreeView':
     case 'TabControl':
     case 'Header':
-    case 'ComboBoxEx':
     case 'ToolBar': return [stringValue('imageListId'), ''];
+    case 'ComboBoxEx': return [stringValue('imageListId'), String(clampInteger(properties.dropDownHeight, 160, 40, 600))];
     case 'DateTimePicker': return [stringValue('format'), stringValue('customFormat')];
+    case 'ColorPicker': return [stringValue('dialogTitle') || '请选择颜色', ''];
+    case 'IPAddress': return [stringValue('verticalAlign') || 'center', ''];
     case 'RichEdit': return [stringValue('scrollBars'), ''];
     case 'Upload':
     case 'DragUpload': return [stringValue('tip'), encodeControlRecords([[stringValue('triggerText') || '选择文件', stringValue('submitText') || '上传']])];
@@ -7155,6 +8597,15 @@ function toColorRef(hex: string): string {
   const g = Number.parseInt(normalized.slice(2, 4), 16);
   const b = Number.parseInt(normalized.slice(4, 6), 16);
   return `RGB(${r}, ${g}, ${b})`;
+}
+
+function colorRefInteger(hex: string): number {
+  const normalized = hex.trim().replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(normalized)) return 0;
+  const red = Number.parseInt(normalized.slice(0, 2), 16);
+  const green = Number.parseInt(normalized.slice(2, 4), 16);
+  const blue = Number.parseInt(normalized.slice(4, 6), 16);
+  return red | (green << 8) | (blue << 16);
 }
 
 function toCppIdentifier(value: string): string {

@@ -581,6 +581,10 @@ test('LingCpp 新手控件补全覆盖注册表中的全部控件事件和可用
   assert.ok(labels.has(`${tabName}.隐藏表头`));
   assert.ok(labels.has(`${tabName}.显示表头`));
   assert.ok(labels.has(`${tabName}.取隐藏表头`));
+  const colorPickerName = `${WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'ColorPicker')?.label}${WIN32_CONTROL_DEFINITIONS.findIndex(definition => definition.type === 'ColorPicker') + 1}`;
+  assert.ok(labels.has(`${colorPickerName}.打开选择窗口`));
+  assert.ok(labels.has(`${colorPickerName}.设置颜色`));
+  assert.ok(labels.has(`${colorPickerName}.取颜色`));
 });
 
 test('LingCpp language context powers unified completions with symbols, designer and modules', () => {

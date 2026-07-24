@@ -478,6 +478,57 @@ function registerIpcHandlers(): void {
       ? { canceled: true }
       : { canceled: false, filePath: result.filePaths[0] };
   });
+  ipcMain.handle('designer-assets:select-gif', async () => {
+    const owner = getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: '选择 GIF 动态图像',
+      properties: ['openFile'],
+      filters: [
+        { name: 'GIF 动态图像', extensions: ['gif'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    };
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options);
+    return result.canceled || !result.filePaths[0]
+      ? { canceled: true }
+      : { canceled: false, filePath: result.filePaths[0] };
+  });
+  ipcMain.handle('designer-assets:select-animation', async () => {
+    const owner = getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: '选择 AVI 动画',
+      properties: ['openFile'],
+      filters: [
+        { name: 'AVI 动画', extensions: ['avi'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    };
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options);
+    return result.canceled || !result.filePaths[0]
+      ? { canceled: true }
+      : { canceled: false, filePath: result.filePaths[0] };
+  });
+  ipcMain.handle('designer-assets:select-video', async () => {
+    const owner = getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: '选择视频文件',
+      properties: ['openFile'],
+      filters: [
+        { name: '支持的视频', extensions: ['mp4', 'wmv', 'avi', 'mov', 'm4v'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    };
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options);
+    return result.canceled || !result.filePaths[0]
+      ? { canceled: true }
+      : { canceled: false, filePath: result.filePaths[0] };
+  });
   ipcMain.handle('designer-assets:select-icon', async () => {
     const owner = getFocusedWindow();
     const options: Electron.OpenDialogOptions = {

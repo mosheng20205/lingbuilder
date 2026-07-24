@@ -1559,6 +1559,23 @@ function getDesignerControlCommandCompletions(
       description: '从项目资源相对路径或本地完整路径加载图片；空路径会清空图片'
     });
   }
+  if (control.type === 'VideoPlayer') {
+    commands.push(
+      command('设置文件', '视频播放器_设置文件', '"$1"', '切换 MP4、WMV 等本地视频文件'),
+      command('播放', '视频播放器_播放', '', '播放或继续播放视频'),
+      command('暂停', '视频播放器_暂停', '', '暂停视频'),
+      command('停止', '视频播放器_停止', '', '停止视频'),
+      command('设置音量', '视频播放器_设置音量', '100', '设置 0～100 的播放音量'),
+      command('取状态', '视频播放器_取状态', '', '读取 Media Foundation 播放状态')
+    );
+  }
+  if (control.type === 'ColorPicker') {
+    commands.push(
+      command('打开选择窗口', '颜色选择器_打开', '', '打开 LingBuilder 现代原生颜色选择窗口；控件不可视时仍可调用'),
+      command('设置颜色', '颜色选择器_置颜色', '$1', '设置当前 COLORREF 颜色'),
+      command('取颜色', '颜色选择器_取颜色', '', '读取当前 COLORREF 颜色')
+    );
+  }
   if (['ListBox', 'ComboBox', 'ComboBoxEx', 'ListView', 'TabControl'].includes(control.type)) {
     commands.push(command('取选择项', '控件_取选择项', '', '读取当前选择项索引'));
   }

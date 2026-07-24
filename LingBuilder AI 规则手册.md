@@ -58,6 +58,7 @@ AI 应优先使用项目已有关键字和命令。常见关键字和命令包�
 - 已启用 new_emoji 原生界面库模块时，可使用 `NE_创建窗口`、`NE_创建深色窗口`、`NE_创建文本`、`NE_创建按钮`、`NE_创建编辑框`、`NE_创建复选框`、`NE_创建单选框`、`NE_创建列表框`、`NE_创建图片`、`NE_创建进度条`、`NE_运行消息循环` 等桥接命令。
 - 普通 Win32 工具箱不再提供固定外观的 `Upload` / `DragUpload` 控件。文件选择统一使用内置 `lingbuilder.win32.common-controls` 的 `FileDialog` 设计控件：绑定所属窗口、打开触发控件和拖放目标，使用 `IFileOpenDialog` 与 `WM_DROPFILES`，不生成运行时视觉控件；设计期必须像普通控件一样在窗口画布内显示可拖拽占位，单击后独立显示属性，选中普通控件时必须解除它的选中状态。事件页显示 `FilesSelected`、`FilesDropped`、`Cancelled`，不得把它放入“项目 / 非可视组件”集合。同一对话框可同时使用按钮打开触发器和图片框拖放目标；选择拖放目标后自动启用拖放，拖入或对话框选择图片后将第一张有效图片刷新到绑定图片框。中文代码通过 `文件对话框_打开`、`文件对话框_清空`、`文件对话框_取文件数量`、`文件对话框_取文件` 读取同一份选择/拖入结果。旧项目中的 `Upload` / `DragUpload` 只保留兼容生成与迁移诊断，AI 不得继续新建。
 - 文件对话框的普通属性面板必须优先显示“文件类型”预设（所有、图片、文档、音频、视频、压缩包）。自定义时使用类型名称和逗号分隔的扩展名；`label|*.ext;*.ext` 原始规则只放在折叠高级项，AI 不得要求普通用户手写该格式。
+- Win32 高级模块提供可拖到画布的 `ColorPicker`“颜色选择器”。可视时点击控件自身打开 LingBuilder 暗色原生选色窗口，窗口由导出 C++ 自绘 HSV 色谱、色相条、HEX/RGB、常用预设和确认/取消，不得回退为旧式 `ChooseColorW`；设为不可视后仍是可按名称调用的运行时逻辑组件，按钮、菜单或其他事件可调用 `颜色选择器_打开("颜色选择器1")`。使用 `颜色选择器_置颜色/取颜色` 读写 COLORREF，并在 `ColorChanged`、`Opened`、`Confirmed`、`Cancelled`、`Closed` 对应中文事件中处理结果。AI 不得因为控件不可视就把它从生成结果删除，也不得把它错误改造成 `FileDialog` 一样的纯资源模型。
 - 常见类型：`整数型`、`文本型`、`逻辑型`、`空`
 
 AI 不能因为自己熟悉英文 C++ 就强行替换中文 DSL。需要原生 C++ 时，应使用项目已有的“原生 C++”嵌入规则或说明需要进入 C++ 文件修改。
@@ -65,6 +66,9 @@ AI 不能因为自己熟悉英文 C++ 就强行替换中文 DSL。需要原生 C
 ## 4. 窗口设计器绑定规则
 
 窗口设计器模型提供控件布局、控件属性和事件绑定名；`.lcpp` 文件提供事件代码逻辑。生成和运行行为应以 `.lcpp` 中的事件代码为准，设计器只提供布局和绑定关系。
+
+- Rebar 已从工具箱和新建入口移除，只保留旧项目兼容。AI 不得在新项目或新布局中创建 Rebar，应直接使用 ToolBar；读取旧项目时仍须保留其模型和生成行为，不能静默删除。
+- 兼容旧 Rebar 时，其直接子控件在 `properties.autoBindChildren` 未关闭时必须自动形成带区，孙级控件不能误绑定。带区顺序与 `properties.bands` 一致；每个带区可保存 `width`、`minWidth`、`height`、`breakLine`、`resizable`，容器可保存 `locked`、`showGrippers`、`fixedHeight`、`showBandBorders`。事件名固定为 `BandDragStarted`、`BandDragEnded`、`HeightChanged`、`LayoutChanged`。
 
 - 设计器中的控件背景色、前景色、字体名称、字号、粗体、斜体、下划线、尺寸和状态也是确定性原生生成输入；AI 不得建议依靠仅在 React 预览中生效的样式模拟运行结果。字体名称必须从设计器安全下拉列表选择，旧项目缺失字体字段时使用 `Microsoft YaHei UI` 常规字体。普通 Win32 F5/导出必须完整消费字体字段；new_emoji 当前通用 DLL API 只保证字体名称和字号，粗体、斜体、下划线必须保留模型并输出明确诊断，不能静默宣称已在运行时生效。
 - `parentId` 表示真实容器层级，控件坐标以窗口绝对坐标持久化但移动父容器时全部后代必须同步平移以保持相对位置；父级不可见或禁用时，所有后代分别继承不可见或禁用的有效状态。设计器、Win32 与 new_emoji 生成链路必须共用该语义，不能把隐藏父级的子控件降级成窗口根控件。
@@ -83,8 +87,11 @@ AI 修改窗口相关逻辑时必须：
 - 图片框本地图片必须先通过设计器“图片源”选择器或解决方案项目右键“添加资源…”导入链路复制到项目 `assets/`（多项目使用 `assets/<projectId>/`）；项目树“图片资源 (assets)”组可枚举图片，右键图片可复制 `assets/...` 相对路径。`properties.imageSource` 只保存工作区相对路径，不能写入开发机绝对路径。F5、原生导出和 AI Bridge 导出/构建必须携带这些资源，并由 Visual Studio post-build 复制到 exe 输出目录；`http/https` 地址目前只允许设计器预览，AI 不得承诺原生 exe 会联网加载。
 - 普通 Win32 图片框支持运行时 `图片框1.设置图片("assets/示例.png")`，确定性映射为 `控件_设置图片("图片框1", "assets/示例.png")`。项目固定资源优先使用设计器导入后得到的 `assets/...` 相对路径；文件对话框返回的本地完整路径可直接作为动态图片路径。传入空文本会清空图片。不得使用 `.内容` 或 `控件_设置文本` 伪装图片加载，也不得为网络 URL 承诺原生运行时加载。
 - 图片框无需预设占位图片即可在运行时调用 `.设置图片(...)`；生成器会为初始为空的 Image 控件保留 `SS_BITMAP` 类型。AI 不得建议用户为了动态换图而先在设计器中硬编码一张初始图片。
+- GIF 动画应使用 Win32 基础工具箱的“动态图像控件”（类型 `AnimatedImage`），资源路径写入 `properties.gifSource`，并通过属性选择器复制到项目 `assets/`。`properties.stretch` 控制填充方式，`autoPlay` 与 `loop` 控制自动播放和循环；非循环播放结束后分发 `Finished` /“播放完毕”事件。普通 `Image` 图片框只负责静态图片，不得把 GIF 首帧静态显示冒充动画；`Animation` 控件只用于 AVI，原生 F5/导出使用 Media Foundation 播放系统可解码的 AVI，而不是受老式编码限制的 `SysAnimate32`，继续消费 `properties.aviSource`、`autoPlay`、`loop` 并分发 `Finished` 事件。
+- 生成器写入 C++ 字符串常量的诊断或调试文本时，换行必须保留为 C++ `\\n` 转义序列，不能把模板中的真实换行写入引号内部；动画控件播放失败日志同样遵守该规则，避免生成工程触发 MSVC C2001/C1075。
 - `TabControl` 的每个 `properties.tabs[].id` 都是稳定页面槽位；直接子控件必须用 `parentId` 指向选项卡，并用 `containerSlot` 指向所属标签页 ID。未写 `containerSlot` 的旧子控件只归入第一页。`properties.hideHeader` 是“隐藏表头”布尔字段，默认 `false`；为 `true` 时设计器和 Win32 F5/导出必须共同隐藏标签栏，并让当前页占满选项卡客户区。生成 Win32 时每页拥有独立页面 HWND，页面 HWND 必须把命令、通知、颜色及 owner-draw 绘制消息转发到主窗口；表头宽度必须使用实际字体、图像列表和 DPI 内边距测量，150% 等高 DPI 下不能因自绘区域与原生项目宽度不一致而提前省略完整标题；禁止把不同页面的子控件同时显示或改回仅靠 React 隐藏的模拟实现。
 - 普通项目默认只启用 `lingbuilder.win32.basic`。生成 ListView、TreeView、Tab、日期、滑块、工具栏、状态栏、RichEdit 等控件或系统通用对话框命令前，必须确认项目启用了 `lingbuilder.win32.common-controls`。
+- 工具栏背景色使用公共控件正式支持的 `CCM_SETBKCOLOR`，文字色和交互状态通过 `NM_CUSTOMDRAW` / `NMTBCUSTOMDRAW` 消费设计器模型；不得生成 Windows SDK 中不存在的 `TB_SETBKCOLOR` 或 `TB_SETTEXTCOLOR`，也不得为绕过编译错误直接丢弃工具栏配色。
 - 所有 LingCpp 中文补全项（含已启用模块贡献的命令、类型和代码片段）必须由统一补全目录自动生成全拼、拼音首字母及保留 `_` 分段的中拼混合检索键；例如 `控件_设置选择项` 必须能由 `kj`、`kongjian`、`控件_sz` 命中，`到整数` 必须能由 `dzs` 命中。新手编辑器与 Monaco 必须消费同一组检索别名，不得在 React 组件内为单个命令硬编码拼音。
 - 新手正文中的逻辑字面量必须支持短检索：`z` / `zhen` / `true` 补全为 `真`，`j` / `jia` / `false` 补全为 `假`；该规则来自可测试的 LingCpp 字面量补全目录，适用于控件布尔参数和普通逻辑表达式。
 - 新手编辑器必须允许在函数和控件方法的参数表达式中继续触发统一命令补全，例如输入 `选项卡1.设置选择项(dzs` 时应提示 `到整数`；字符串和注释内部仍不得弹出普通命令候选。补全上下文判断应由可测试的 LingCpp service/helper 维护，不能散落为 React 组件中的特殊命令判断。
@@ -142,6 +149,7 @@ LingBuilder 的目标是把中文源码和设计器模型确定性生成真实 C
 - 普通单行编辑框不得回退到 `WS_EX_CLIENTEDGE` 亮色立体边框，也不得在 EDIT 本体上用 `WM_NCCALCSIZE` / `WM_NCPAINT` 修改客户区或绘制外框。Win32 运行时必须由独立圆角 frame 唯一绘制暗色背景、普通/聚焦细边框，内层无边框原生 EDIT 只负责输入，从而保留输入法、选择、剪贴板和密码行为。
 - 编辑框支持 `verticalAlign` 专属属性：`top`、`center`、`bottom`，默认 `center`。设计器预览和 Win32 单行 EDIT 必须消费同一属性；Win32 应根据真实字体度量布置内层 EDIT，多行编辑框继续铺满内容区，不得强制套用单行几何。
 - 非编辑组合框的 `height` 只定义收起状态的可见高度，`properties.dropDownHeight` 独立定义展开列表高度。Win32 运行时可以保留完整下拉窗口区域，但收起态的背景、边框、文字和箭头只能按 `height` 裁剪绘制，不能让隐藏下拉区域的边框穿出分组框或覆盖相邻控件。
+- 增强组合框（`ComboBoxEx`）同样使用 `properties.dropDownHeight`（40–600，默认 160）定义展开列表高度；其收起项、下拉项目和下拉空白区必须确定性消费设计器的 `background`、`foreground` 与图像列表，不能回退成系统白底黑字，也不能把控件自身 `height` 当作展开高度。
 - 分组框的 Win32 宿主使用可承载子控件的自绘 `STATIC` 容器并启用 `WS_EX_CONTROLPARENT`，边框和标题只由 LingBuilder 绘制；不得重新叠加 `BUTTON + BS_GROUPBOX` 的系统主题绘制，否则后续重绘可能留下穿出分组框的单像素边框残影。分组框仍必须转发子控件命令、通知、颜色和 owner-draw 消息。
 - 列表框的项目必须写入设计器模型 `properties.items`，属性面板按每行一个项目编辑；表项高度写入 `properties.itemHeight`（默认 28，范围 16–96），项目区域相对边框的统一内边距写入 `properties.contentPadding`（默认 4，范围 0–24）。滚动条外观写入 `properties.scrollBarVisibility`（`auto`、`visible`、`hidden`）、`scrollBarWidth`、`scrollBarTrackColor`、`scrollBarThumbColor`；隐藏只隐藏视觉滚动条，溢出内容仍须支持鼠标滚轮和键盘滚动。边框和选中外观分别写入 `properties.borderWidth`、`borderColor`、`selectionStartColor`、`selectionEndColor`、`selectionBorderColor`、`selectionCornerRadius`。原生 Win32 列表框必须消费同一组模型字段，通过 `LB_SETITEMHEIGHT`、独立边框承载层、`LBS_OWNERDRAWFIXED` 和 GDI+ 渐变圆角绘制保持 F5/导出与设计器一致，不能回退为系统 `WS_VSCROLL`、系统行高、白底、立体边框或系统蓝色矩形选中条；自绘滚动条必须自行处理 `WM_MOUSEWHEEL`，并避免在顶部索引未变化时重复布局或重绘选中项。
 - `.lcpp` 允许使用注册表中的窗口事件短名，例如 `事件 创建完毕()`；语言服务必须把这种写法识别为当前类的窗口事件，不能按控件事件报告“控件不存在”。生成 C++ 模板里的空字符必须保留为可见转义 `L'\\0'`，不得向源码写入真实 NUL 字节。
@@ -230,6 +238,13 @@ LingBuilder 可以通过本地 AI Bridge 让外部 AI 客户端连接工作区�
 
 ## 10. 回答风格
 
+### 视频播放器控件
+
+- `VideoPlayer` 的界面名称为“视频播放器”，属于 `lingbuilder.win32.common-controls`，原生实现使用 Windows Media Foundation `IMFPMediaPlayer`，支持 MP4、WMV 等系统可解码媒体格式。
+- 视频文件路径写入设计器模型 `properties.videoSource`；项目文件应优先导入到 `assets/`，不要把开发机绝对路径硬编码到生成的 `main.cpp`。
+- 可用属性为 `autoPlay`、`loop`、`volume`（0～100）；可绑定事件为 `MediaOpened`、`PlaybackEnded`、`Error`。
+- 运行时使用 `视频播放器_设置文件`、`视频播放器_播放`、`视频播放器_暂停`、`视频播放器_停止`、`视频播放器_设置音量`、`视频播放器_取状态`。AI 不得用 React `<video>` 或隐藏宿主逻辑代替导出 exe 中的 Media Foundation 播放行为。
+
 AI 面向中文 IDE 用户，默认使用简洁中文回答。解释代码时应说明“改了什么、为什么、影响什么”。涉及模型限制、语法不确定或生成器尚不支持的能力时，要直接说明，不要假装已经支持。
 
 ## 11. 网页访问模块规则
@@ -302,6 +317,13 @@ AI 生成网络服务端示例前应确认项目已启用对应模块；不要�
 - 自动生成的 `.lcpp` 事件处理器必须包含独立一行 `结束` 作为块结束标记，再接 `结束类`；不得生成缺少结构结束标记的事件块。
 - AI 修改或重命名事件处理器时，必须把设计器模型绑定与 `.lcpp` AST 视为一个原子修改；不得让用户靠自由文本输入维持两边一致，也不得只改其中一处。
 
+# 超链接控件原生导航（2026-07-24）
+
+- Win32 `SysLink` 控件的“链接地址”保存在设计器模型 `properties.url`，F5 和导出工程必须把该地址写入原生链接标记；不得只在 React 设计器预览中模拟链接。
+- 用户鼠标单击链接或聚焦后按回车时，原生运行时应使用 Windows 默认关联程序打开链接，并继续分发控件的 `Click` 中文事件；没有绑定 `Click` 事件也不影响默认导航。
+- AI 修改超链接目标时只修改设计器模型中的链接地址，不得把 `ShellExecuteW` 调用或具体 URL 硬编码到生成后的 `main.cpp`。
+- 超链接背景设为 `transparent`（界面中的窗口颜色跟随）时，设计器预览和 Win32 原生控件必须显示实际父级背景：根级跟随当前主/副窗口，普通容器跟随最近的不透明父容器，选项卡页跟随对应页面背景。原生生成必须启用 `LWS_TRANSPARENT`、复用统一父级背景解析，并在 Windows 主题仍擦除白底时由统一 `SysLink` 绘制路径明确填充父级画刷后绘制链接文字；不能创建黑色或白色占位背景覆盖父级。
+
 # 按钮圆角属性（2026-07-12）
 
 - 设计器按钮的圆角属性键为 `cornerRadius`，界面名称为“圆角大小”，合法范围 0～100，默认值 6；0 表示直角。
@@ -317,6 +339,11 @@ AI 生成网络服务端示例前应确认项目已启用对应模块；不要�
 - LingBuilder 内置窗口图标由生成的 C++ 资源数据确定性创建并同时设置大、小窗口图标，不依赖本机临时文件；自定义 ICO 通过统一设计器资源导入链路复制并随 F5、导出、Visual Studio post-build 和 AI Bridge 构建携带，运行时分别按系统大、小图标尺寸加载；`none` 表示不主动设置图标。
 - 窗口是否允许拖拽调整大小和是否允许最大化是两个独立设计器字段，旧项目均默认允许。生成 Win32 C++ 时，禁止调整大小必须移除 `WS_THICKFRAME`，禁止最大化必须移除 `WS_MAXIMIZEBOX`；窗口尺寸计算与实际创建必须使用同一份最终窗口样式，不能只在 React 预览中隐藏按钮或拦截鼠标。
 - ListView 的 `background: "transparent"` 在原生 Win32 中安全解析为与设计器一致的深色不透明表面 `#0F172A`，因为系统 ListView 不支持设计器 CSS 式透明混合。生成器必须同时设置列表背景、文字背景、文字颜色并绘制表头，包括最后一个真实列头之后的空白表头区域；不能只在 React 预览中改色。
+- 独立 Header（表头）控件的 `background`、`foreground` 和字体必须由 Win32 `NM_CUSTOMDRAW` 确定性绘制，背景使用设计器选择的精确颜色，并覆盖最后一列后的空白区域；自绘必须保留悬停和按下视觉状态。位于选项卡页面或其他容器中时必须通过父级通知转发保持同样效果，不能退回系统白底黑字。表头点击只负责产生 `ColumnClick` /“列被单击”事件，没有事件绑定时不得虚构业务动作。
+- Header 的 `properties.columns[]` 每列支持 `alignment: "left" | "center" | "right"`，分别表示居左、居中、居右；未配置时默认为 `left`。设计器预览与 Win32 生成必须共同消费该字段，原生映射为 `HDF_LEFT/HDF_CENTER/HDF_RIGHT`，不能只在属性面板保存。
+- 状态栏的 `background`、`foreground`、字体和 `properties.textAlign` 必须由设计器预览与 Win32 F5/导出共同消费。`textAlign` 只允许 `left`（居左，旧项目默认）、`center`（居中）、`right`（居右），并统一应用于全部状态栏分区；原生分区通过 owner-draw 绘制文字和分隔线，背景通过 `SB_SETBKCOLOR` 同步。`background: "transparent"` 表示跟随实际窗口、选项卡页或最近不透明父容器背景，不得回退到设计器蓝色占位底或系统白底黑字。AI 应修改状态栏设计器模型，不能要求用户手改生成后的 `main.cpp`。
+- 富文本框的 `foreground` 与 `background` 必须进入设计器预览和 Win32 F5/导出。原生 RichEdit 的文字颜色使用 `EM_SETCHARFORMAT`，背景使用 `EM_SETBKGNDCOLOR`；`background: "transparent"` 表示解析并跟随实际父容器背景，不代表 RichEdit 支持 CSS 式半透明，也不能退回系统白底。AI 应修改富文本框设计器模型，不能要求用户手改生成后的 `main.cpp`。
+- 日期时间选择器和月历的 `background`、`foreground` 与字体必须进入 Win32 F5/导出结果。月历需在关闭控件视觉主题后用 `MCM_SETCOLOR` 同步月面、标题及相邻月份文字；日期时间选择器主体使用保留原生选择、键盘和下拉交互的确定性绘制，下拉月历在 `DTN_DROPDOWN` 时应用同一颜色。AI 只应修改设计器模型字段，不得建议用户手改生成后的 `main.cpp`。
 - ListView 外观字段统一写入设计器模型：`properties.borderColor` 默认 `#64748B`，`borderWidth` 默认 1、范围 0–8，`headerHeight` 默认 28、范围 16–96，`itemHeight` 默认 28、范围 16–96。设计器预览和 Win32 F5/导出必须共同消费这些字段；原生生成需保留自定义边框、表头高度和表项高度，不能回退到 `WS_EX_CLIENTEDGE`、系统固定表头或系统固定行高。
 
 # 系统内置 AI、账号与点数边界（2026-07-12）

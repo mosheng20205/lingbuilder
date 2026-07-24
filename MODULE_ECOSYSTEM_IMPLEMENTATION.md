@@ -1,5 +1,7 @@
 # LingBuilder 模块生态实现说明
 
+> 2026-07-24 补充：内置 `lingbuilder.win32.common-controls` 已注册 `VideoPlayer` /“视频播放器”控件。该控件的 Media Foundation 依赖声明为 `mfplat.lib`、`mfplay.lib`、`mfuuid.lib`，中文播放命令同时存在于 `contributes.commands` 与 `bindings.commands`；设计器、语言服务和 C++ 生成器必须继续从同一模块清单消费这些定义。
+
 本文记录当前仓库已经落地的模块系统实现，供后续开发者和 Agent 继续扩展时参考。模块系统的目标不是做展示页，而是让“项目引用模块 -> Monaco 中文代码能力 -> 设计器控件 -> C++ 生成/构建”形成同一套数据闭环。
 
 ## 2026-07 v2 模块 SDK 重构状态
@@ -7,11 +9,14 @@
 ### Win32 标准控件注册表（2026-07）
 
 - 新增统一 `electron/src/services/windowDesigner/win32ControlRegistry.ts`，基础/高级模块清单、设计器工具箱、专属属性、事件和原生适配器均从该注册表读取。
-- 默认 `lingbuilder.win32.basic` 覆盖基础输入、列表、组合、分组、滚动、图片、进度和网格容器；可选 `lingbuilder.win32.common-controls` 覆盖 ListView、TreeView、Tab、日期、滑块、工具栏、状态栏、RichEdit 等系统标准控件。
+- Win32 基础模块注册 `AnimatedImage`“动态图像控件”，以项目内 `properties.gifSource` 为唯一 GIF 资源来源；设计器预览与 LingCpp Win32 生成器共同消费自动播放、循环、填充方式和播放完毕事件。它不复用仅支持 AVI 的 `SysAnimate32` 控件。
+- 默认 `lingbuilder.win32.basic` 覆盖基础输入、列表、组合、分组框、滚动、图片和进度；可选 `lingbuilder.win32.common-controls` 覆盖 ListView、TreeView、Tab、日期、滑块、工具栏、状态栏、RichEdit 等系统标准控件。旧 `Grid` 网格容器和 `Pager` 分页容器仅保留项目读取与原生生成兼容，不再进入工具箱或内置模块新增控件贡献，普通父级容器统一使用分组框。
 - `ModuleDesignerControlContribution` 可声明 `category`、`icon`、`properties`、`isContainer`、`isVisual`、`nativeAdapter` 和 `requiredLibraries`；字段保持 manifest v2 向后兼容。
 - 非可视 ToolTip、ImageList、PropertySheet 不进入普通控件工具箱；系统通用对话框通过高级模块中文命令和 bindings 暴露。
 - 高级模块的文件对话框会实际应用 `名称|模式` 筛选器，并通过 `系统对话框_状态` 区分成功、取消与错误；查找替换提供动作/文本读取命令，工具栏和状态栏提供最后命令 ID/分区索引，打印文本会创建真实打印文档。这些命令与 C++ runtime 必须继续由同一份 `contributes.commands`/`bindings.commands` 声明驱动。
+- `lingbuilder.win32.common-controls` 贡献可拖放的 `ColorPicker`“颜色选择器”。可视时它以 owner-draw 按钮显示当前色块和可选十六进制文本，点击后打开 LingBuilder 自绘暗色弹窗；设置为不可视时仍必须进入生成运行时控件表，可由任意事件调用 `颜色选择器_打开(控件名)`。弹窗提供 HSV 色谱、色相条、HEX/RGB、预设色与确认/取消，不再使用旧式 `ChooseColorW`。当前颜色使用 COLORREF，通过 `颜色选择器_置颜色/取颜色` 确定性读写，并统一分发打开、改变、确认、取消和关闭事件。
 - `lingbuilder.win32.common-controls` 为 TabControl 提供 `选项卡_设置隐藏表头/取隐藏表头`，用于运行时切换表头并重排页面承载区；补全、binding 与生成运行时必须保持同源。设计器注册表中的结构/创建期属性不自动等同于运行时命令，只有具备确定性 C++ 实现的属性能力才能进入 `.lcpp` 控件命令补全。
+- `lingbuilder.win32.common-controls` 的独立 Header 列模型支持逐列 `alignment`（`left/center/right`）；设计器列编辑、预览和 C++ `HDF_LEFT/HDF_CENTER/HDF_RIGHT` 必须保持同源，旧列数据默认左对齐。
 - `lingbuilder.win32.basic` 同源贡献窗口事件上下文命令：关闭取消、宽高/位置、激活/可见/窗口状态、按键与修饰键、按键处理、DPI 和拖入文件读取。Monaco 补全与 C++ runtime 不得维护两份命令清单。
 - 窗口事件处理器保持无参数；模块 binding 返回的文本指针指向窗口对象持有的事件快照，只能读取，不能在模块侧长期缓存。
 - 模块 manifest 校验会拒绝未知属性类型、重复控件、重复属性、重复事件、不含 `{controlName}` 的事件模板和不安全文件默认路径。
@@ -202,7 +207,7 @@ lingbuilder.module.json
 - new_emoji 独立演示或 AI 自动生成示例必须保留事件块末尾的结构标记 `结束`，但不能额外调用显式退出命令 `结束()`；后者会销毁 LingBuilder 默认窗口，消息循环收到退出后表现为 exe 闪退。
 - 纯 new_emoji 示例应由 new_emoji 自己负责生命周期：创建窗口和控件后调用 `NE_运行消息循环` 或底层 `EU_RunMessageLoop()`。如果继续复用 LingBuilder 默认 Win32 生成窗口，必须保证默认窗口不会立即销毁，也不能让空设计器窗口关闭后触发 `PostQuitMessage(0)`。
 - 报告 new_emoji exe 可运行前，必须确认 `new_emoji.dll` 已复制到 exe 同目录，并实际启动验证至少 3 秒仍在运行。
-- 项目启用 `lingbuilder.new_emoji.ui` 后，设计器和原生生成器会把基础 `Button`、`TextBox`、`Label`、`CheckBox`、`RadioButton`、`ListBox`、`Image`、`ProgressBar`、`Grid` 模型映射为 new_emoji 控件；现有基础布局无需重建。普通 Win32 工具箱已移除固定外观的 `Upload` / `DragUpload`，改由 `lingbuilder.win32.common-controls` 贡献非可视 `FileDialog`，绑定现有按钮和窗口/控件拖放目标。旧上传控件与 new_emoji `NE_` 上传桥接仅作已有项目兼容，不再作为新增设计器控件入口。
+- 项目启用 `lingbuilder.new_emoji.ui` 后，设计器和原生生成器会把基础 `Button`、`TextBox`、`Label`、`CheckBox`、`RadioButton`、`ListBox`、`Image`、`ProgressBar` 模型映射为 new_emoji 控件；旧项目中的 `Grid` 模型仍可兼容映射为 new_emoji 容器，但不再提供新增入口。普通 Win32 工具箱已移除固定外观的 `Upload` / `DragUpload`，改由 `lingbuilder.win32.common-controls` 贡献非可视 `FileDialog`，绑定现有按钮和窗口/控件拖放目标。旧上传控件与 new_emoji `NE_` 上传桥接仅作已有项目兼容，不再作为新增设计器控件入口。
 - new_emoji 后端不支持的控件必须在工具箱显示禁用原因，并在生成结果中产生中文诊断；不得为了“看起来可用”而回退生成 Win32 控件。上传事件已接入 callback API；继续新增其它控件事件时仍必须同时补设计器事件、桥接回调生命周期和生成器分发测试。
 
 ## WebSocket 客户端内置网络模块

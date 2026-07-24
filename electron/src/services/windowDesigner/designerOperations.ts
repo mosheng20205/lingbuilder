@@ -1,6 +1,77 @@
 import { getControlDescendantIds } from './controlHierarchy';
 import type { LingControl, LingWindowModel, LingWindowProject } from './types';
 
+type RebarBand = Record<string, unknown>;
+
+export type RebarBandCreationResult = {
+  band?: RebarBand;
+  message: string;
+};
+
+export function createNextRebarBand(
+  configuredBands: unknown,
+  directChildren: LingControl[]
+): RebarBandCreationResult {
+  const bands = Array.isArray(configuredBands)
+    ? configuredBands.filter((band): band is RebarBand => Boolean(band) && typeof band === 'object')
+    : [];
+  const boundIds = new Set(bands.map(band => String(band.childControl ?? '')).filter(Boolean));
+  const child = directChildren.find(control => !boundIds.has(control.id));
+  if (!child) {
+    return {
+      message: directChildren.length === 0
+        ? '请先选中 Rebar，再从工具箱添加工具栏或其他控件；它会自动成为 Rebar 的直接子控件和带区。'
+        : '当前 Rebar 的直接子控件都已经绑定到带区。'
+    };
+  }
+  return {
+    band: {
+      id: `band-${child.id}`,
+      title: child.name,
+      childControl: child.id,
+      width: Math.max(40, Math.round(child.width)),
+      minWidth: 40,
+      height: Math.max(24, Math.round(child.height)),
+      breakLine: false,
+      resizable: true
+    },
+    message: `已把“${child.name}”绑定为新带区。`
+  };
+}
+
+/**
+ * Keeps Rebar band bindings aligned with its direct children. Existing band
+ * settings and order are preserved; newly parented children receive a usable
+ * band automatically unless the Rebar explicitly disables automatic binding.
+ */
+export function reconcileRebarBands(controls: LingControl[]): LingControl[] {
+  const controlsById = new Map(controls.map(control => [control.id, control]));
+  let changed = false;
+  const next = controls.map(control => {
+    if (control.type !== 'ReBar') return control;
+    const directChildren = controls.filter(child => child.parentId === control.id);
+    const directChildIds = new Set(directChildren.map(child => child.id));
+    const configured = Array.isArray(control.properties?.bands)
+      ? control.properties.bands.filter((band): band is RebarBand => Boolean(band) && typeof band === 'object')
+      : [];
+    const valid = configured.filter(band => {
+      const childId = String(band.childControl ?? '');
+      return childId.length > 0 && directChildIds.has(childId) && controlsById.has(childId);
+    });
+    const bound = new Set(valid.map(band => String(band.childControl)));
+    const bands = control.properties?.autoBindChildren === false
+      ? valid
+      : [
+          ...valid,
+          ...directChildren.filter(child => !bound.has(child.id)).map(child => createNextRebarBand(valid, [child]).band!)
+        ];
+    if (JSON.stringify(bands) === JSON.stringify(configured)) return control;
+    changed = true;
+    return { ...control, properties: { ...(control.properties || {}), bands } };
+  });
+  return changed ? next : controls;
+}
+
 export type DesignerLayoutOperation = 'align-left' | 'align-right' | 'align-top' | 'align-bottom' | 'align-hcenter' | 'align-vcenter' | 'distribute-horizontal' | 'distribute-vertical' | 'same-width' | 'same-height';
 
 function applyControlChangesWithDescendants(

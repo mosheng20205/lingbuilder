@@ -38,6 +38,9 @@ declare global {
       };
       designerAssets?: {
         selectImage: () => Promise<{ canceled: boolean; filePath?: string }>;
+        selectGif: () => Promise<{ canceled: boolean; filePath?: string }>;
+        selectAnimation: () => Promise<{ canceled: boolean; filePath?: string }>;
+        selectVideo: () => Promise<{ canceled: boolean; filePath?: string }>;
         selectIcon: () => Promise<{ canceled: boolean; filePath?: string }>;
       };
       credentials?: {

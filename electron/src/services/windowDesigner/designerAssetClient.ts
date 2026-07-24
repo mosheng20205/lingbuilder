@@ -43,6 +43,52 @@ export async function selectAndImportDesignerImage(projectId: string): Promise<D
   return result;
 }
 
+export async function selectAndImportDesignerAnimation(projectId: string): Promise<DesignerImageImportResult> {
+  const selection = await window.lingBuilder?.designerAssets?.selectAnimation();
+  if (!selection) return { ok: false, error: '本地 AVI 选择仅在 LingBuilder 桌面版中可用。' };
+  if (selection.canceled || !selection.filePath) return { ok: false, canceled: true };
+
+  const response = await fetch('/api/window-designer/assets/import-animation', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, sourcePath: selection.filePath })
+  });
+  const result = await response.json() as DesignerImageImportResult;
+  if (!response.ok || !result.ok) return { ok: false, error: result.error || 'AVI 动画复制到项目失败。' };
+  return result;
+}
+
+export async function selectAndImportDesignerGif(projectId: string): Promise<DesignerImageImportResult> {
+  const selection = await window.lingBuilder?.designerAssets?.selectGif();
+  if (!selection) return { ok: false, error: '本地 GIF 选择仅在 LingBuilder 桌面版中可用。' };
+  if (selection.canceled || !selection.filePath) return { ok: false, canceled: true };
+
+  const response = await fetch('/api/window-designer/assets/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, sourcePath: selection.filePath })
+  });
+  const result = await response.json() as DesignerImageImportResult;
+  if (!response.ok || !result.ok) return { ok: false, error: result.error || 'GIF 复制到项目失败。' };
+  if (!result.relativePath?.toLowerCase().endsWith('.gif')) return { ok: false, error: '动态图像控件仅支持 GIF 文件。' };
+  return result;
+}
+
+export async function selectAndImportDesignerVideo(projectId: string): Promise<DesignerImageImportResult> {
+  const selection = await window.lingBuilder?.designerAssets?.selectVideo();
+  if (!selection) return { ok: false, error: '本地视频选择仅在 LingBuilder 桌面版中可用。' };
+  if (selection.canceled || !selection.filePath) return { ok: false, canceled: true };
+
+  const response = await fetch('/api/window-designer/assets/import-video', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, sourcePath: selection.filePath })
+  });
+  const result = await response.json() as DesignerImageImportResult;
+  if (!response.ok || !result.ok) return { ok: false, error: result.error || '视频复制到项目失败。' };
+  return result;
+}
+
 export async function selectAndImportDesignerIcon(projectId: string): Promise<DesignerImageImportResult> {
   const selection = await window.lingBuilder?.designerAssets?.selectIcon();
   if (!selection) return { ok: false, error: '本地窗口图标选择仅在 LingBuilder 桌面版中可用。' };

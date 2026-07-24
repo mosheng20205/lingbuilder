@@ -31,6 +31,7 @@ export type ListViewCollectionEditorKind = 'columns' | 'rows';
 
 export interface ListViewCollectionDialogProps {
   kind: ListViewCollectionEditorKind;
+  columnOwner?: 'listView' | 'header';
   controlName: string;
   columnsValue: Win32ControlPropertyValue | undefined;
   rowsValue: Win32ControlPropertyValue | undefined;
@@ -102,6 +103,7 @@ function ColumnWidthInput({ columnIndex, value, className, onCommit }: ColumnWid
 
 export default function ListViewCollectionDialog({
   kind,
+  columnOwner = 'listView',
   controlName,
   columnsValue,
   rowsValue,
@@ -247,9 +249,12 @@ export default function ListViewCollectionDialog({
     setShowBatchPaste(false);
   };
 
-  const title = kind === 'columns' ? '编辑 ListView 列' : '编辑 ListView 数据';
+  const isHeaderColumns = kind === 'columns' && columnOwner === 'header';
+  const title = kind === 'columns'
+    ? isHeaderColumns ? '编辑表头列' : '编辑 ListView 列'
+    : '编辑 ListView 数据';
   const description = kind === 'columns'
-    ? '列顺序、宽度和对齐会立即同步到设计画布与生成的原生程序。'
+    ? `${isHeaderColumns ? '表头' : '列表'}列顺序、宽度和对齐会立即同步到设计画布与生成的原生程序。`
     : '每个输入框对应一个真实单元格。Tab 横向移动，Enter 纵向移动；可直接粘贴 Excel 的多行多列区域。';
 
   const renderRowActions = (index: number) => (
@@ -283,7 +288,7 @@ export default function ListViewCollectionDialog({
             <h2 id="list-view-collection-title" className="truncate text-sm font-bold sm:text-base">{title} · {controlName}</h2>
             <p id="list-view-collection-description" className={`mt-1 text-[11px] leading-4 sm:text-xs ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{description}</p>
           </div>
-          <button ref={firstButtonRef} type="button" onClick={onClose} aria-label="关闭 ListView 集合编辑器" className={iconButton}><X className="h-4 w-4" /></button>
+          <button ref={firstButtonRef} type="button" onClick={onClose} aria-label={isHeaderColumns ? '关闭表头列编辑器' : '关闭 ListView 集合编辑器'} className={iconButton}><X className="h-4 w-4" /></button>
         </header>
 
         <div className={`flex shrink-0 flex-wrap items-center gap-2 border-b px-3 py-2 sm:px-5 ${isDarkMode ? 'border-[#35353e]' : 'border-slate-200'}`}>
@@ -295,7 +300,7 @@ export default function ListViewCollectionDialog({
               <button type="button" disabled={columns.length === 0} aria-expanded={showBatchPaste} onClick={() => setShowBatchPaste(value => !value)} className={secondaryButton}><ClipboardPaste className="h-3.5 w-3.5" />批量粘贴</button>
             </>
           )}
-          <span className={`ml-auto text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{columns.length} 列 · {rows.length} 行</span>
+          <span className={`ml-auto text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{isHeaderColumns ? `${columns.length} 列` : `${columns.length} 列 · ${rows.length} 行`}</span>
         </div>
 
         {kind === 'rows' && showBatchPaste && (
@@ -323,7 +328,7 @@ export default function ListViewCollectionDialog({
               <div className={`flex min-h-48 flex-col items-center justify-center rounded border border-dashed p-6 text-center ${isDarkMode ? 'border-slate-700 text-slate-500' : 'border-slate-300 text-slate-500'}`}>
                 <Columns3 className="mb-2 h-7 w-7" />
                 <p className="text-sm font-semibold">还没有列</p>
-                <p className="mt-1 text-xs">先新增列，再编辑对应的行数据。</p>
+                <p className="mt-1 text-xs">{isHeaderColumns ? '新增列后，可集中设置标题、宽度、对齐方式和图片编号。' : '先新增列，再编辑对应的行数据。'}</p>
                 <button type="button" onClick={addColumn} className={`${secondaryButton} mt-3`}><Plus className="h-3.5 w-3.5" />新增第一列</button>
               </div>
             ) : (
@@ -411,7 +416,7 @@ export default function ListViewCollectionDialog({
         </main>
 
         <footer className={`flex min-h-11 shrink-0 items-center gap-2 border-t px-3 py-2 sm:px-5 ${isDarkMode ? 'border-[#3d3d46] bg-[#202026]' : 'border-slate-200 bg-white'}`}>
-          <span role="status" aria-live="polite" className={`min-w-0 flex-1 truncate text-[10px] sm:text-xs ${notice ? 'text-emerald-500' : isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>{notice || '更改会立即同步到中间设计画布；行 ID 由系统自动维护。'}</span>
+          <span role="status" aria-live="polite" className={`min-w-0 flex-1 truncate text-[10px] sm:text-xs ${notice ? 'text-emerald-500' : isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>{notice || (isHeaderColumns ? '更改会立即同步到中间设计画布和原生表头。' : '更改会立即同步到中间设计画布；行 ID 由系统自动维护。')}</span>
           <button type="button" onClick={onClose} className={`${secondaryButton} shrink-0`}>完成</button>
         </footer>
       </div>

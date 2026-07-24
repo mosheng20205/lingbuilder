@@ -1,6 +1,20 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import fs from 'node:fs/promises'; import path from 'node:path';
 test('designer UI exposes multi-select, align/distribute, undo/redo and keyboard nudge',async()=>{ const source=await fs.readFile(path.resolve(import.meta.dirname,'../src/components/WpfDesigner.tsx'),'utf8'); assert.match(source,/selectedControlIds/u); assert.match(source,/event\.shiftKey \|\| event\.ctrlKey/u); assert.match(source,/align-left/u); assert.match(source,/distribute-horizontal/u); assert.match(source,/撤销设计操作/u); assert.match(source,/ArrowLeft/u); assert.match(source,/nudgeSelection/u); });
 
+test('designer hotkey property captures supported key combinations without triggering workbench shortcuts', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /definition\.type === 'hotkey'/u);
+  assert.match(source, /captureDesignerHotKey\(event\)/u);
+  assert.match(source, /event\.preventDefault\(\);\s*event\.stopPropagation\(\)/u);
+  assert.match(source, /Backspace\/Delete 清空/u);
+  assert.match(source, /readOnly/u);
+});
+
+test('generic designer preview does not retain its placeholder fill for transparent controls', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /control\.background === 'transparent' \? 'bg-transparent' : 'bg-sky-950\/15'/u);
+});
+
 test('text box preview applies horizontal text alignment in real time', async () => {
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   assert.match(source, /justifyContent: control\.properties\?\.textAlign === 'center'/u);
@@ -201,11 +215,26 @@ test('designer uses structured collection editors instead of JSON array textarea
   assert.match(source, /StructuredCollectionEditor/u);
   assert.match(source, /<TreeViewCollectionDialog/u);
   assert.match(source, /<ListViewCollectionDialog/u);
+  assert.match(source, /<ToolbarButtonsDialog/u);
   assert.match(source, /编辑列/u);
   assert.match(source, /编辑数据/u);
   assert.match(source, /编辑节点/u);
+  assert.match(source, /编辑按钮/u);
   assert.doesNotMatch(source, /单元格（Tab 分隔）/u);
   assert.doesNotMatch(source, /请输入合法的 JSON 数组/u);
+});
+
+test('Toolbar button collection uses a dedicated responsive dialog instead of inline property cards', async () => {
+  const designerSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  const dialogSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/ToolbarButtonsDialog.tsx'), 'utf8');
+  assert.match(designerSource, /toolbarButtonCount/u);
+  assert.match(designerSource, /setToolbarButtonsEditorOpen\(true\)/u);
+  assert.match(designerSource, /\{toolbarButtonCount\} 个按钮/u);
+  assert.match(dialogSource, /编辑工具栏按钮/u);
+  assert.match(dialogSource, /新增第一个按钮/u);
+  assert.match(dialogSource, /复制第/u);
+  assert.match(dialogSource, /md:hidden/u);
+  assert.match(dialogSource, /event\.key !== 'Escape'/u);
 });
 
 test('TreeView collection dialog manages roots, children, hierarchy and node order', async () => {
@@ -276,6 +305,18 @@ test('ListView collection dialog supports spreadsheet cells, batch paste and res
   assert.doesNotMatch(source, /width: Math\.max\(24, Number\(event\.target\.value\) \|\| 24\)/u);
 });
 
+test('Header column collection reuses the responsive column dialog instead of inline property cards', async () => {
+  const designerSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  const dialogSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/ListViewCollectionDialog.tsx'), 'utf8');
+  assert.match(designerSource, /headerColumnCount/u);
+  assert.match(designerSource, /setHeaderColumnsEditorOpen\(true\)/u);
+  assert.match(designerSource, /columnOwner="header"/u);
+  assert.match(designerSource, /\{headerColumnCount\} 列/u);
+  assert.match(dialogSource, /编辑表头列/u);
+  assert.match(dialogSource, /关闭表头列编辑器/u);
+  assert.match(dialogSource, /更改会立即同步到中间设计画布和原生表头/u);
+});
+
 test('designer exposes FileDialog as a selectable control with properties and events', async () => {
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   assert.match(source, /BehaviorResourceEditor/u);
@@ -305,6 +346,10 @@ test('designer exposes FileDialog as a selectable control with properties and ev
   assert.match(source, /自定义文件扩展名/u);
   assert.match(source, /高级：原始筛选规则/u);
   assert.match(source, /用逗号分隔/u);
+  assert.match(source, /selectAndImportDesignerAnimation/u);
+  assert.match(source, /选择本地 AVI 动画/u);
+  assert.match(source, /min-w-0 w-full space-y-1/u);
+  assert.match(source, /flex min-w-0 w-full gap-1/u);
 });
 
 test('designer exposes persisted native window appearance instead of fixed chrome', async () => {

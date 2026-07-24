@@ -6,11 +6,14 @@ import path from 'node:path';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ListViewDesignerPreview from '../src/components/ListViewDesignerPreview';
+import HeaderDesignerPreview from '../src/components/HeaderDesignerPreview';
 import TabControlDesignerPreview from '../src/components/TabControlDesignerPreview';
 import ListViewCollectionDialog from '../src/components/ListViewCollectionDialog';
+import ToolbarButtonsDialog from '../src/components/ToolbarButtonsDialog';
+import StatusBarPartsDialog from '../src/components/StatusBarPartsDialog';
 import MenuBarItemsDialog from '../src/components/MenuBarItemsDialog';
 import TreeViewCollectionDialog from '../src/components/TreeViewCollectionDialog';
-import { parseStringListPropertyText } from '../src/components/WpfDesigner';
+import { hasDedicatedControlPreview, parseStringListPropertyText } from '../src/components/WpfDesigner';
 import {
   buildControlHierarchy,
   canReparentControls,
@@ -33,7 +36,8 @@ import {
 } from '../src/services/windowDesigner/windowDesignerService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { LingControl, LingWindowModel, LingWindowProject } from '../src/services/windowDesigner/types';
-import { WIN32_CONTROL_DEFINITIONS, createDefaultControlProperties } from '../src/services/windowDesigner/win32ControlRegistry';
+import { WIN32_CONTROL_DEFINITIONS, createDefaultControlProperties, getCreatableWin32ControlDefinitions, getWin32ControlsForModule } from '../src/services/windowDesigner/win32ControlRegistry';
+import { captureDesignerHotKey } from '../src/services/windowDesigner/hotKeyProperty';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import type { InstalledModule } from '../src/services/modules/types';
 import { getWindowEventHandlerName, WINDOW_EVENT_CATEGORIES, WINDOW_EVENT_DEFINITIONS } from '../src/services/windowDesigner/windowEventRegistry';
@@ -50,6 +54,20 @@ import {
   removeListViewColumn,
   replaceListViewRowsFromMatrix
 } from '../src/services/windowDesigner/listViewCollectionModel';
+import {
+  appendToolbarButton,
+  duplicateToolbarButton,
+  moveToolbarButton,
+  normalizeToolbarButtons,
+  removeToolbarButton
+} from '../src/services/windowDesigner/toolbarButtonCollectionModel';
+import {
+  appendStatusBarPart,
+  duplicateStatusBarPart,
+  moveStatusBarPart,
+  normalizeStatusBarParts,
+  removeStatusBarPart
+} from '../src/services/windowDesigner/statusBarPartCollectionModel';
 import {
   getControlTabSlot,
   getSelectedTabPage,
@@ -72,6 +90,79 @@ import {
   serializeMenuBarItems,
   validateMenuBarItems
 } from '../src/services/windowDesigner/menuBarItemsModel';
+
+test('工具栏按钮集合模型支持规范化、新增、复制、排序和删除', () => {
+  const normalized = normalizeToolbarButtons([
+    { id: 8, title: '保存', image: -1, style: 'button' },
+    { id: '9', title: '选项', image: 2, style: 'dropdown' },
+    { id: 10, title: '', image: -1, style: 'unknown' }
+  ]);
+  assert.deepEqual(normalized.map(button => [button.id, button.title, button.image, button.style]), [
+    [8, '保存', -1, 'button'],
+    [9, '选项', 2, 'dropdown'],
+    [10, '', -1, 'button']
+  ]);
+  const appended = appendToolbarButton(normalized);
+  assert.equal(appended.at(-1)?.id, 1);
+  const duplicated = duplicateToolbarButton(appended, 0);
+  assert.equal(duplicated[1].title, '保存 副本');
+  assert.equal(new Set(duplicated.map(button => button.id)).size, duplicated.length);
+  assert.equal(moveToolbarButton(duplicated, 1, 0)[0].title, '保存 副本');
+  assert.equal(removeToolbarButton(duplicated, 1).length, duplicated.length - 1);
+});
+
+test('工具栏按钮弹窗显示完整字段、操作和窄屏布局', () => {
+  const markup = renderToStaticMarkup(React.createElement(ToolbarButtonsDialog, {
+    controlName: '主工具栏',
+    value: [{ id: 1, title: '新建', image: -1, style: 'button' }],
+    hasImageList: true,
+    isDarkMode: true,
+    onChange: () => undefined,
+    onClose: () => undefined
+  }));
+  assert.match(markup, /编辑工具栏按钮/u);
+  assert.match(markup, /新增按钮/u);
+  assert.match(markup, /命令 ID/u);
+  assert.match(markup, /图片编号/u);
+  assert.match(markup, /普通按钮/u);
+  assert.match(markup, /复制第 1 个工具栏按钮/u);
+  assert.match(markup, /md:hidden/u);
+  assert.match(markup, /工具栏_最后命令\(\)/u);
+});
+
+test('状态栏分区集合模型支持规范化、新增、复制、排序和删除', () => {
+  const normalized = normalizeStatusBarParts([
+    { title: '就绪', width: 120 },
+    { label: '行 1，列 1', width: '180' }
+  ]);
+  assert.deepEqual(normalized, [
+    { title: '就绪', width: 120 },
+    { title: '行 1，列 1', width: 180 }
+  ]);
+  assert.deepEqual(normalizeStatusBarParts(['UTF-8']), [{ title: 'UTF-8', width: 120 }]);
+  const appended = appendStatusBarPart(normalized);
+  assert.equal(appended.at(-1)?.title, '分区 3');
+  const duplicated = duplicateStatusBarPart(appended, 0);
+  assert.equal(duplicated[1].title, '就绪 副本');
+  assert.equal(moveStatusBarPart(duplicated, 1, 0)[0].title, '就绪 副本');
+  assert.equal(removeStatusBarPart(duplicated, 1).length, duplicated.length - 1);
+});
+
+test('状态栏分区弹窗显示完整字段、操作和窄屏布局', () => {
+  const markup = renderToStaticMarkup(React.createElement(StatusBarPartsDialog, {
+    controlName: '主状态栏',
+    value: [{ title: '就绪', width: 120 }],
+    isDarkMode: true,
+    onChange: () => undefined,
+    onClose: () => undefined
+  }));
+  assert.match(markup, /编辑状态栏分区/u);
+  assert.match(markup, /新增分区/u);
+  assert.match(markup, /文字/u);
+  assert.match(markup, /宽度/u);
+  assert.match(markup, /复制第 1 个状态栏分区/u);
+  assert.match(markup, /md:hidden/u);
+});
 
 test('窗口菜单栏集合模型兼容旧的逗号存储格式', () => {
   const items = parseMenuBarItems(' 文件, 编辑,  帮助 ');
@@ -170,14 +261,101 @@ test('控件字体属性迁移、下拉选项、预览和 Win32 生成保持一�
   assert.match(cpp, /L"KaiTi", true, true, true/u);
 });
 
+test('IP 地址框在设计器和原生运行时应用颜色、垂直对齐与边框', () => {
+  const definition = WIN32_CONTROL_DEFINITIONS.find(item => item.type === 'IPAddress');
+  assert.ok(definition);
+  const properties = new Map(definition.properties.map(property => [property.key, property]));
+  assert.deepEqual(properties.get('verticalAlign')?.options?.map(option => [option.value, option.label]), [
+    ['top', '顶部对齐'], ['center', '居中'], ['bottom', '底部对齐']
+  ]);
+  assert.equal(properties.get('verticalAlign')?.defaultValue, 'center');
+  assert.deepEqual(
+    [properties.get('borderWidth')?.defaultValue, properties.get('borderWidth')?.min, properties.get('borderWidth')?.max],
+    [1, 0, 8]
+  );
+  assert.equal(properties.get('borderColor')?.defaultValue, '#64748B');
+  assert.deepEqual(createDefaultControlProperties('IPAddress'), {
+    address: '127.0.0.1', verticalAlign: 'center', borderWidth: 1, borderColor: '#64748B', toolTip: '', toolTipDelay: 500
+  });
+  const ipAddress = {
+    ...createControl('ip-address', undefined, 'IPAddress'),
+    content: '192.168.1.8',
+    background: '#123456',
+    foreground: '#FEDCBA',
+    properties: { address: '192.168.1.8', verticalAlign: 'bottom', borderWidth: 3, borderColor: '#0EA5E9' }
+  } satisfies LingControl;
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'ip-address-colors',
+    name: 'IP 地址框颜色',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+      background: '#ffffff', description: '', controls: [ipAddress]
+    }]
+  };
+
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /L"IPAddress"[^\n]+RGB\(18, 52, 86\), false, RGB\(254, 220, 186\)/u);
+  assert.match(cpp, /IsType\(\*control, L"IPAddress"\)[\s\S]+message == WM_CTLCOLOREDIT/u);
+  assert.match(cpp, /SetTextColor\(hdc, control->foreground\);[\s\S]+SetBkColor\(hdc, control->background\);/u);
+  assert.match(cpp, /void PaintIPAddressChrome\(HWND hwnd, HDC hdc/u);
+  assert.match(cpp, /CombineRgn\(backgroundRegion, backgroundRegion, fieldRegion, RGN_DIFF\)/u);
+  assert.match(cpp, /DrawTextW\(hdc, L"\.", 1, &separatorRect/u);
+  assert.match(cpp, /L"IPAddress"[^\n]+3, RGB\(14, 165, 233\)[^\n]+L"bottom"/u);
+  assert.match(cpp, /void LayoutIPAddressFields\(HWND hwnd/u);
+  assert.match(cpp, /TextEquals\(control.option1, L"bottom"\)/u);
+  assert.match(cpp, /void LayoutIPAddressControl\(const ControlSpec& control, RuntimeControl& runtime\)/u);
+  assert.match(cpp, /static LRESULT CALLBACK IPAddressFrameSubclassProc/u);
+  assert.match(cpp, /CreateSolidBrush\(control->listBorderColor\)/u);
+  assert.match(cpp, /InflateRect\(&contentRect, -borderWidth, -borderWidth\)/u);
+  assert.match(cpp, /IsType\(control, L"IPAddress"\) \? IPAddressFrameSubclassProc/u);
+  assert.match(cpp, /LayoutIPAddressControl\(control, runtime\)/u);
+  assert.match(cpp, /message == WM_SIZE \|\| message == WM_SETFONT/u);
+  assert.match(cpp, /self->PaintIPAddressChrome\(hwnd, hdc, \*control, \*runtime\)/u);
+});
+
+test('超链接控件点击或按回车时打开已配置的链接并继续分发事件', () => {
+  const hyperlink = {
+    ...createControl('hyperlink', undefined, 'SysLink'),
+    content: '打开官网',
+    properties: { url: 'https://lingbuilder.example/docs' },
+    events: { Click: '_hyperlink_被单击' }
+  } satisfies LingControl;
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'hyperlink-navigation',
+    name: '超链接导航',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+      background: '#ffffff', description: '', controls: [hyperlink]
+    }]
+  };
+
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /L"SysLink"[^\n]+L"https:\/\/lingbuilder\.example\/docs"/u);
+  assert.match(cpp, /header->code == NM_CLICK \|\| header->code == NM_RETURN/u);
+  assert.match(cpp, /link && link->item\.szUrl\[0\] \? link->item\.szUrl : control->data/u);
+  assert.match(cpp, /ShellExecuteW\(hwnd_, L"open", target, nullptr, nullptr, SW_SHOWNORMAL\);/u);
+  const hyperlinkHandler = cpp.indexOf('header->code == NM_CLICK || header->code == NM_RETURN');
+  assert.ok(cpp.indexOf('ShellExecuteW(hwnd_, L"open", target', hyperlinkHandler) < cpp.indexOf('DispatchLingEvent(*control, L"Click");', hyperlinkHandler));
+});
+
 test('图片选择资源复制到项目 assets 并可同步到构建与导出目录', async () => {
   const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-designer-assets-'));
   try {
     const sourceDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-image-source-'));
     const source = path.join(sourceDirectory, '封面.png');
     const iconSource = path.join(sourceDirectory, '应用.ico');
+    const animationSource = path.join(sourceDirectory, '加载动画.avi');
     await fs.writeFile(source, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     await fs.writeFile(iconSource, Buffer.from([0x00, 0x00, 0x01, 0x00]));
+    await fs.writeFile(animationSource, Buffer.from('RIFF-AVI '));
     const service = createDesignerAssetService(workspace);
     const projectRef = {
       id: 'demo', name: '演示', type: 'visual-cpp' as const,
@@ -190,6 +368,9 @@ test('图片选择资源复制到项目 assets 并可同步到构建与导出目
     const importedIcon = await service.importImage(projectRef, iconSource);
     assert.equal(importedIcon.relativePath, 'assets/demo/应用.ico');
     assert.equal((await service.readImage(projectRef, importedIcon.relativePath)).mimeType, 'image/x-icon');
+    const importedAnimation = await service.importAnimation(projectRef, animationSource);
+    assert.equal(importedAnimation.relativePath, 'assets/demo/加载动画.avi');
+    await assert.rejects(() => service.importAnimation(projectRef, source), /仅支持 AVI/u);
     const listedImages = await service.listProjectImages(projectRef);
     assert.equal(listedImages.length, 2);
     assert.deepEqual(
@@ -204,6 +385,7 @@ test('图片选择资源复制到项目 assets 并可同步到构建与导出目
     assert.deepEqual(await fs.readFile(path.join(buildDir, 'assets', 'demo', '封面.png')), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     assert.deepEqual(await fs.readFile(path.join(exportDir, 'assets', 'demo', '封面.png')), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
     assert.deepEqual(await fs.readFile(path.join(buildDir, 'assets', 'demo', '应用.ico')), Buffer.from([0x00, 0x00, 0x01, 0x00]));
+    assert.deepEqual(await fs.readFile(path.join(buildDir, 'assets', 'demo', '加载动画.avi')), Buffer.from('RIFF-AVI '));
     assert.match(getDesignerImagePreviewSource('demo', imported.relativePath), /^\/api\/window-designer\/assets\/content\?/u);
     assert.equal(getDesignerImagePreviewSource('demo', 'https://example.com/cover.png'), 'https://example.com/cover.png');
 
@@ -403,7 +585,7 @@ test('布局 XML 保留父级控件标识供工程迁移和检查', () => {
 test('Win32 控件注册表与基础/高级模块贡献保持一致', () => {
   const allRegisteredTypes = WIN32_CONTROL_DEFINITIONS.map(definition => definition.type);
   const registeredTypes = WIN32_CONTROL_DEFINITIONS
-    .filter(definition => definition.moduleId === 'lingbuilder.win32.basic' || definition.moduleId === 'lingbuilder.win32.common-controls')
+    .filter(definition => !definition.legacyOnly && (definition.moduleId === 'lingbuilder.win32.basic' || definition.moduleId === 'lingbuilder.win32.common-controls'))
     .map(definition => definition.type);
   assert.equal(new Set(allRegisteredTypes).size, allRegisteredTypes.length, '控件 type 必须唯一');
   const contributedTypes = BUILTIN_MODULES
@@ -416,6 +598,53 @@ test('Win32 控件注册表与基础/高级模块贡献保持一致', () => {
     assert.equal(new Set(definition.events.map(event => event.name)).size, definition.events.length, `${definition.type} 事件不能重复`);
     assert.equal(new Set(definition.properties.map(property => property.key)).size, definition.properties.length, `${definition.type} 属性不能重复`);
   });
+  const legacyGrid = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'Grid');
+  assert.equal(legacyGrid?.legacyOnly, true, '网格容器只允许旧项目继续读取，不能再作为模块新增控件贡献');
+  assert.ok(!contributedTypes.includes('Grid'));
+  const legacyPager = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'Pager');
+  assert.equal(legacyPager?.legacyOnly, true, '分页容器只允许旧项目继续读取，不能再作为模块新增控件贡献');
+  assert.ok(!contributedTypes.includes('Pager'));
+});
+
+test('动态图像控件使用项目 GIF 资源并按帧延时生成 Win32 播放运行时', () => {
+  const definition = WIN32_CONTROL_DEFINITIONS.find(item => item.type === 'AnimatedImage');
+  assert.ok(definition);
+  assert.equal(definition.label, '动态图像控件');
+  assert.equal(definition.moduleId, 'lingbuilder.win32.basic');
+  assert.equal(hasDedicatedControlPreview('AnimatedImage'), true, '专属 GIF 预览存在时不得再渲染通用控件占位框');
+  assert.deepEqual(
+    ['gifSource', 'stretch', 'autoPlay', 'loop'].map(key => [key, definition.properties.find(property => property.key === key)?.defaultValue]),
+    [['gifSource', ''], ['stretch', 'uniform'], ['autoPlay', true], ['loop', true]]
+  );
+
+  const animatedImage = {
+    ...createControl('animated-logo', undefined, 'AnimatedImage'),
+    name: '动态徽标',
+    width: 180,
+    height: 140,
+    background: '#112233',
+    properties: { gifSource: 'assets/demo/loading.gif', stretch: 'uniformToFill', autoPlay: true, loop: false },
+    events: { Finished: '_动态徽标_播放完毕' }
+  } satisfies LingControl;
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'animated-image-project',
+    name: 'GIF 播放测试',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+      background: '#ffffff', description: '', controls: [animatedImage]
+    }]
+  };
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n事件 _动态徽标_播放完毕()\n结束\n结束类'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /L"AnimatedImage"[^\r\n]+L"assets\/demo\/loading\.gif"/u);
+  assert.match(cpp, /InitializeAnimatedImage\(const ControlSpec& control, RuntimeControl& runtime\)/u);
+  assert.match(cpp, /GetPropertyItemSize\(0x5100\)/u);
+  assert.match(cpp, /runtime\.animatedFrameDelays\[index\] = std::max\(20u, delays\[index\] \* 10u\)/u);
+  assert.match(cpp, /AdvanceAnimatedImage\(static_cast<UINT_PTR>\(wParam\)\)/u);
+  assert.match(cpp, /DispatchLingEvent\(\*control, L"Finished"\)/u);
 });
 
 test('项目集合编辑器允许用回车继续输入下一项', () => {
@@ -663,6 +892,63 @@ test('Win32 组合框分离收起高度和下拉高度并使用暗色自绘', ()
   assert.match(cpp, /L"ComboBox"[^\n]+L"", L"180", 0, 100/u);
 });
 
+test('Win32 增强组合框应用模型颜色并允许设置下拉列表高度', () => {
+  const definition = WIN32_CONTROL_DEFINITIONS.find(item => item.type === 'ComboBoxEx');
+  assert.ok(definition);
+  const properties = new Map(definition.properties.map(property => [property.key, property]));
+  assert.equal(properties.get('dropDownHeight')?.defaultValue, 160);
+  assert.equal(properties.get('dropDownHeight')?.min, 40);
+  assert.equal(properties.get('dropDownHeight')?.max, 600);
+
+  const legacyCombo = {
+    ...createControl('legacy-enhanced-combo', undefined, 'ComboBoxEx'),
+    properties: { items: ['旧项目'], selectedIndex: 0, imageListId: '' }
+  } satisfies LingControl;
+  const migrated = normalizeWindowDesignerState({
+    project: {
+      schemaVersion: 2,
+      id: 'legacy-enhanced-combo',
+      name: '旧增强组合框',
+      windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#1F2937', description: '', controls: [legacyCombo] }]
+    },
+    activeWindowId: 'main'
+  });
+  assert.equal(migrated.project.windows[0].controls[0].properties?.dropDownHeight, 160);
+
+  const combo = {
+    ...createControl('enhanced-combo', undefined, 'ComboBoxEx'),
+    background: '#112233',
+    foreground: '#DDEEFF',
+    properties: {
+      ...createDefaultControlProperties('ComboBoxEx'),
+      items: ['第一项', '第二项'],
+      selectedIndex: 1,
+      dropDownHeight: 260
+    }
+  } satisfies LingControl;
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'enhanced-combo-appearance',
+    name: '增强组合框外观',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+      background: '#1F2937', description: '', controls: [combo]
+    }]
+  };
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /L"ComboBoxEx"[^\n]+RGB\(17, 34, 51\), false, RGB\(221, 238, 255\)[^\n]+L"", L"260"/u);
+  assert.match(cpp, /IsType\(control, L"ComboBox"\) \|\| IsType\(control, L"ComboBoxEx"\)/u);
+  assert.match(cpp, /PaintOwnerComboBoxEx/u);
+  assert.match(cpp, /CBEM_GETCOMBOCONTROL/u);
+  assert.match(cpp, /CBEM_GETIMAGELIST/u);
+  assert.match(cpp, /message == WM_CTLCOLORLISTBOX \|\| message == WM_CTLCOLOREDIT \|\| message == WM_CTLCOLORSTATIC/u);
+  assert.match(cpp, /SetTextColor\(hdc, control->foreground\)/u);
+  assert.match(cpp, /SetBkColor\(hdc, control->background\)/u);
+});
+
 test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件', () => {
   const project: LingWindowProject = {
     schemaVersion: 2,
@@ -735,6 +1021,15 @@ test('Win32 工具箱移除上传外观控件并注册非可视文件对话框',
   assert.ok(fileDialog.properties.some(property => property.key === 'allowDrop'));
 });
 
+test('Rebar 从新建入口移除但保留旧项目兼容定义', () => {
+  const legacyRebar = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'ReBar');
+  assert.ok(legacyRebar);
+  assert.equal(legacyRebar.legacyOnly, true);
+  assert.equal(legacyRebar.isContainer, true);
+  assert.equal(getCreatableWin32ControlDefinitions().some(definition => definition.type === 'ReBar'), false);
+  assert.equal(getWin32ControlsForModule('lingbuilder.win32.common-controls').some(definition => definition.type === 'ReBar'), false);
+});
+
 test('非可视文件对话框绑定按钮和拖放目标并生成统一结果事件', () => {
   const button = { ...createControl('choose', undefined, 'Button'), name: '选择附件按钮', events: { Click: '选择附件按钮_被单击' } };
   const picture = { ...createControl('picture', undefined, 'Image'), name: '附件图片框' };
@@ -776,6 +1071,83 @@ test('非可视文件对话框绑定按钮和拖放目标并生成统一结果�
   assert.match(cpp, /FilesDropped/);
   assert.match(cpp, /文件对话框_取文件\(L"文件对话框1", 0\)/u);
   assert.ok(!generated.diagnostics.some(diagnostic => diagnostic.includes('文件对话框')));
+});
+
+test('视频播放器注册 Media Foundation 属性、命令和原生播放生命周期', () => {
+  const definition = WIN32_CONTROL_DEFINITIONS.find(item => item.type === 'VideoPlayer');
+  assert.ok(definition);
+  assert.equal(definition.nativeAdapter, 'media-foundation-video');
+  assert.deepEqual(definition.events.map(event => event.name), ['MediaOpened', 'PlaybackEnded', 'Error']);
+  assert.deepEqual(definition.requiredLibraries, ['mfplat.lib', 'mfplay.lib', 'mfuuid.lib']);
+  assert.equal(createDefaultControlProperties('VideoPlayer').volume, 100);
+
+  const video = {
+    ...createControl('video', undefined, 'VideoPlayer'),
+    name: '视频播放器1',
+    properties: { videoSource: 'assets/demo.mp4', autoPlay: true, loop: true, volume: 72 },
+    events: { MediaOpened: '视频播放器1_媒体已打开', PlaybackEnded: '视频播放器1_播放完毕', Error: '视频播放器1_播放错误' }
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'video-player-project',
+    name: '视频播放器项目',
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '视频播放', width: 760, height: 520, background: '#202028', description: '', controls: [video] }]
+  };
+  const enabledModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({ manifest: BUILTIN_MODULES.find(module => module.id === id)!, installPath: 'builtin', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
+  const source = `类 主窗口 : 公开 窗体
+    事件 视频播放器1_媒体已打开()
+        视频播放器_设置音量("视频播放器1", 80)
+    结束
+    事件 视频播放器1_播放完毕()
+        调试输出("播放完毕")
+    结束
+    事件 视频播放器1_播放错误()
+        调试输出("视频播放失败")
+    结束
+结束类`;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /#include <mfplay\.h>/);
+  assert.match(cpp, /#pragma comment\(lib, "mfplay\.lib"\)/);
+  assert.match(cpp, /MFPCreateMediaPlayer\(mediaUrl/);
+  assert.match(cpp, /L"assets\/demo\.mp4"/);
+  assert.match(cpp, /视频播放器_设置音量\(L"视频播放器1", 80\)/u);
+  assert.match(cpp, /DispatchLingEvent\(\*control, L"PlaybackEnded"\)/);
+  assert.match(cpp, /MFStartup\(MF_VERSION\)/);
+  assert.match(cpp, /MFShutdown\(\)/);
+});
+
+test('动画控件使用 Media Foundation 播放现代编码 AVI 并保留完成与循环语义', () => {
+  const definition = WIN32_CONTROL_DEFINITIONS.find(item => item.type === 'Animation');
+  assert.ok(definition);
+  assert.equal(definition.nativeAdapter, 'media-foundation-animation');
+  assert.equal(definition.nativeClass, 'STATIC');
+  assert.deepEqual(definition.requiredLibraries, ['mfplat.lib', 'mfplay.lib', 'mfuuid.lib']);
+
+  const animation = {
+    ...createControl('animation', undefined, 'Animation'),
+    name: '动画控件1',
+    properties: { aviSource: 'assets/demo-h264.avi', autoPlay: true, loop: true },
+    events: { Finished: '动画控件1_播放完毕' }
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'animation-project',
+    name: '动画项目',
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '动画播放', width: 640, height: 480, background: '#202028', description: '', controls: [animation] }]
+  };
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n    事件 动画控件1_播放完毕()\n        调试输出("播放完毕")\n    结束\n结束类'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /L"Animation"[^\n]+L"assets\/demo-h264\.avi"[^\n]+24576/u);
+  assert.match(cpp, /IsType\(control, L"Animation"\) \|\| IsType\(control, L"VideoPlayer"\)/u);
+  assert.match(cpp, /InitializeVideoPlayer\(runtimeControls_\.back\(\), control, control\.data/u);
+  assert.doesNotMatch(cpp, /Animate_Open\(child, control\.data\)/u);
+  assert.match(cpp, /if \(animation\) DispatchLingEvent\(\*control, L"Finished"\)/u);
+  assert.match(cpp, /SetPosition\(MFP_POSITIONTYPE_100NS/u);
+  assert.match(cpp, /AVI 播放失败/u);
+  assert.match(cpp, /OutputDebugStringW\(L"LingBuilder：动画控件无法播放 AVI，请检查文件是否损坏或系统是否具备对应解码器。\\n"\);/u);
+  assert.doesNotMatch(cpp, /OutputDebugStringW\(L"[^"\r\n]*[\r\n]+[^"\r\n]*"\);/u);
 });
 
 test('原生 Win32 上传控件生成文件选择、格式过滤、文件列表和拖放处理且不依赖 new_emoji', () => {
@@ -913,6 +1285,24 @@ test('ListView 设计器预览实时消费列、行、模式和网格线属性',
   assert.match(markup, /border:3px solid #123456/u);
   assert.match(markup, /height:34px/u);
   assert.match(markup, /height:32px/u);
+});
+
+test('Header 每列文字对齐同步到设计器预览', () => {
+  const header = {
+    ...createControl('header-preview', undefined, 'Header'),
+    properties: {
+      columns: [
+        { title: '左列', width: 80, image: -1, alignment: 'left' },
+        { title: '中列', width: 90, image: -1, alignment: 'center' },
+        { title: '右列', width: 100, image: -1, alignment: 'right' }
+      ],
+      imageListId: ''
+    }
+  } satisfies LingControl;
+  const markup = renderToStaticMarkup(React.createElement(HeaderDesignerPreview, { control: header }));
+  assert.match(markup, /justify-start text-left/u);
+  assert.match(markup, /justify-center text-center/u);
+  assert.match(markup, /justify-end text-right/u);
 });
 
 test('选项卡设计器预览使用控件文字颜色和背景颜色', () => {
@@ -1149,6 +1539,22 @@ test('ListView 数据编辑窗口按真实列生成单元格且隐藏行 ID 输�
   assert.match(columnMarkup, /<option value="center" selected="">居中<\/option>/u);
   assert.match(columnMarkup, /<option value="right" selected="">右对齐<\/option>/u);
   assert.doesNotMatch(columnMarkup, /第 1 列对齐方式" disabled/u);
+
+  const headerColumnMarkup = renderToStaticMarkup(React.createElement(ListViewCollectionDialog, {
+    kind: 'columns',
+    columnOwner: 'header',
+    controlName: '主表头',
+    columnsValue: [{ title: '标题', width: 120, image: -1, alignment: 'left' }],
+    rowsValue: [],
+    showImages: false,
+    isDarkMode: true,
+    onChange: () => undefined,
+    onClose: () => undefined
+  }));
+  assert.match(headerColumnMarkup, /编辑表头列/u);
+  assert.match(headerColumnMarkup, /主表头/u);
+  assert.match(headerColumnMarkup, />1 列</u);
+  assert.doesNotMatch(headerColumnMarkup, /1 列 · 0 行/u);
 });
 
 test('无版本设计器项目迁移为 v2 并保留旧字段', () => {
@@ -1324,8 +1730,73 @@ test('标签页中的透明标签在 Win32 运行时继承实际父容器背景'
   assert.match(cpp, /const RuntimeControl\* parent = FindRuntimeControl\(control\.parentId\);/u);
   assert.match(cpp, /if \(!tabControl \|\| tabControl->backgroundTransparent\) return GetSysColorBrush\(COLOR_WINDOW\);/u);
   assert.match(cpp, /return tabControl \? ResolveTabBackground\(\*tabControl\) : GetSysColor\(COLOR_WINDOW\);/u);
-  assert.match(cpp, /message == WM_CTLCOLORSTATIC && control->backgroundTransparent && IsType\(\*control, L"Label"\)/u);
+  assert.match(cpp, /message == WM_CTLCOLORSTATIC && control->backgroundTransparent/u);
+  assert.match(cpp, /IsType\(\*control, L"Label"\) \|\| IsType\(\*control, L"SysLink"\)/u);
   assert.match(cpp, /SetBkMode\(hdc, TRANSPARENT\);/u);
+  assert.match(cpp, /ResolveControlSurroundingBrush\(\*control, child\)/u);
+});
+
+test('副窗口和嵌套容器中的透明超链接跟随实际父级背景', () => {
+  const rootLink = {
+    ...createControl('root-link', undefined, 'SysLink'),
+    name: '副窗口链接',
+    content: '打开帮助',
+    background: 'transparent',
+    properties: { url: 'https://lingbuilder.example/help' }
+  } satisfies LingControl;
+  const container = {
+    ...createControl('container', undefined, 'Grid'),
+    name: '链接容器',
+    background: '#334455'
+  } satisfies LingControl;
+  const nestedLink = {
+    ...createControl('nested-link', 'container', 'SysLink'),
+    name: '容器链接',
+    content: '容器链接',
+    background: 'transparent',
+    properties: { url: 'https://lingbuilder.example/container' }
+  } satisfies LingControl;
+  const tabs = {
+    ...createControl('tabs', undefined, 'TabControl'),
+    name: '链接选项卡',
+    background: '#112233',
+    properties: { tabs: [{ id: 'page1', title: '链接页' }], selectedIndex: 0 }
+  } satisfies LingControl;
+  const tabLink = {
+    ...createControl('tab-link', 'tabs', 'SysLink'),
+    name: '选项卡链接',
+    content: '选项卡链接',
+    background: 'transparent',
+    containerSlot: 'page1',
+    properties: { url: 'https://lingbuilder.example/tab' }
+  } satisfies LingControl;
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'transparent-syslink',
+    name: '透明超链接',
+    windows: [
+      { id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#1E1E24', description: '', controls: [] },
+      { id: 'secondary', fileName: 'SecondaryWindow.xml', className: '副窗口', title: '副窗口', width: 560, height: 420, background: '#556677', description: '', controls: [rootLink, container, nestedLink, tabs, tabLink] }
+    ]
+  };
+
+  const cpp = generateLingCppNativeWin32Project(project, {
+    activeWindowId: 'secondary',
+    lingCppSourceCode: '类 副窗口 : 公开 窗体\n结束类',
+    lingCppSourceFilePath: 'src/SecondaryWindow.lcpp'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /L"SysLink", L"副窗口链接", L"打开帮助"[^\n]+RGB\(85, 102, 119\), true/u);
+  assert.match(cpp, /if \(control\.backgroundTransparent\) style \|= LWS_TRANSPARENT;/u);
+  assert.match(cpp, /void PaintTransparentSysLink\(HWND hwnd, HDC hdc, const ControlSpec& control, RuntimeControl& runtime\)/u);
+  assert.match(cpp, /FillRect\(hdc, &clientRect, ResolveControlSurroundingBrush\(control, hwnd\)\);/u);
+  assert.match(cpp, /IsType\(\*control, L"SysLink"\) && control->backgroundTransparent/u);
+  assert.match(cpp, /self->PaintTransparentSysLink\(hwnd, hdc, \*control, \*runtime\);/u);
+  assert.match(cpp, /self->PaintTransparentSysLink\(hwnd, reinterpret_cast<HDC>\(wParam\), \*control, \*runtime\);/u);
+  assert.match(cpp, /IsType\(\*control, L"Label"\) \|\| IsType\(\*control, L"SysLink"\)/u);
+  assert.match(cpp, /return spec_\.background;/u);
+  assert.match(cpp, /if \(!parent->backgroundTransparent\) return parent->background;/u);
+  assert.match(cpp, /return tabControl \? ResolveTabBackground\(\*tabControl\) : GetSysColor\(COLOR_WINDOW\);/u);
   assert.match(cpp, /ResolveControlSurroundingBrush\(\*control, child\)/u);
 });
 
@@ -1401,7 +1872,9 @@ test('高级控件生成真实 Win32 类、专属数据和多事件通知', () =
   const controls: LingControl[] = [
     { ...createControl('list', undefined, 'ListView'), properties: { columns: [{ title: '名称', width: 160, alignment: 'center' }, { title: '状态', width: 90, alignment: 'right' }], items: [{ id: 'row1', cells: ['服务', '运行中'], image: 0 }], view: 'details', gridLines: true, multiple: false, borderColor: '#123456', borderWidth: 3, headerHeight: 34, itemHeight: 32, imageListId: 'main-icons' }, events: { SelectionChanged: '_列表_选择项被改变', DoubleClick: '_列表_被双击' } },
     { ...createControl('tree', undefined, 'TreeView'), properties: { nodes: [{ id: 'root', title: '根节点', expanded: true, children: [{ id: 'child', title: '子节点' }] }], borderWidth: 3, borderColor: '#123456', nodeSpacing: 7, nodePadding: 5, showLines: true, checkBoxes: true, imageListId: 'main-icons' }, events: { Expanded: '_树_节点被展开' } },
-    { ...createControl('date', undefined, 'DateTimePicker'), properties: createDefaultControlProperties('DateTimePicker') }
+    { ...createControl('header', undefined, 'Header'), background: '#111111', foreground: '#FFFFFF', properties: { columns: [{ title: '编号', width: 120, image: -1, alignment: 'left' }, { title: '名称', width: 160, image: -1, alignment: 'center' }, { title: '状态', width: 100, image: -1, alignment: 'right' }], imageListId: '' } },
+    { ...createControl('date', undefined, 'DateTimePicker'), background: '#123456', foreground: '#FEDCBA', properties: createDefaultControlProperties('DateTimePicker') },
+    { ...createControl('calendar', undefined, 'MonthCalendar'), background: '#102030', foreground: '#E0D0C0', properties: createDefaultControlProperties('MonthCalendar') }
   ];
   const project: LingWindowProject = {
     schemaVersion: 2, id: 'advanced', name: '高级控件', resources: [{ id: 'main-icons', type: 'ImageList', name: '主图标', imageWidth: 20, imageHeight: 20, images: ['assets/ok.png'] }], windows: [{
@@ -1414,7 +1887,39 @@ test('高级控件生成真实 Win32 类、专属数据和多事件通知', () =
   assert.match(cpp, /WC_LISTVIEWW/);
   assert.match(cpp, /WC_TREEVIEWW/);
   assert.match(cpp, /DATETIMEPICK_CLASSW/);
-  assert.match(cpp, /HDS_BUTTONS \| HDS_HORZ \| CCS_NOPARENTALIGN \| CCS_NOMOVEY \| CCS_NORESIZE/u);
+  assert.match(cpp, /MONTHCAL_CLASSW/);
+  assert.match(cpp, /HDS_BUTTONS \| HDS_HOTTRACK \| HDS_HORZ \| CCS_NOPARENTALIGN \| CCS_NOMOVEY \| CCS_NORESIZE/u);
+  assert.match(cpp, /L"Header"[^\n]+RGB\(17, 17, 17\), false, RGB\(255, 255, 255\)/u);
+  assert.match(cpp, /DecodeControlRecords\(control.data, 4\)/u);
+  assert.match(cpp, /rows\[index\]\[3\] == L"center" \? HDF_CENTER : rows\[index\]\[3\] == L"right" \? HDF_RIGHT : HDF_LEFT/u);
+  assert.match(cpp, /6:center/u);
+  assert.match(cpp, /5:right/u);
+  assert.match(cpp, /LRESULT PaintStandaloneHeader/u);
+  assert.match(cpp, /PaintHeader\(control, draw, false\)/u);
+  assert.match(cpp, /IsType\(\*control, L"Header"\) && header->code == NM_CUSTOMDRAW/u);
+  assert.match(cpp, /draw->uItemState & CDIS_SELECTED/u);
+  assert.match(cpp, /draw->uItemState & CDIS_HOT/u);
+  assert.match(cpp, /OffsetRect\(&textRect, ScaleForDpi\(1, dpi_\), ScaleForDpi\(1, dpi_\)\)/u);
+  assert.match(cpp, /SetTextColor\(draw->hdc, textColor\)/u);
+  assert.match(cpp, /L"DateTimePicker"[^\n]+RGB\(18, 52, 86\), false, RGB\(254, 220, 186\)/u);
+  assert.match(cpp, /L"MonthCalendar"[^\n]+RGB\(16, 32, 48\), false, RGB\(224, 208, 192\)/u);
+  assert.match(cpp, /void ApplyMonthCalendarColors\(HWND calendar, const ControlSpec& control\)/u);
+  assert.match(cpp, /SetWindowTheme\(calendar, L"", L""\)/u);
+  assert.match(cpp, /MCM_SETCOLOR, MCSC_MONTHBK, static_cast<LPARAM>\(control.background\)/u);
+  assert.match(cpp, /MCM_SETCOLOR, MCSC_TITLETEXT, static_cast<LPARAM>\(control.foreground\)/u);
+  assert.match(cpp, /void PaintDateTimePicker\(HWND hwnd, HDC hdc, const ControlSpec& control, RuntimeControl& runtime\)/u);
+  assert.match(cpp, /DrawTextW\(hdc, text, -1, &textRect, DT_LEFT \| DT_VCENTER \| DT_SINGLELINE \| DT_END_ELLIPSIS \| DT_NOPREFIX\)/u);
+  assert.match(cpp, /IsType\(\*control, L"DateTimePicker"\) && header->code == DTN_DROPDOWN/u);
+  assert.match(cpp, /ApplyDateTimePickerCalendarAppearance\(header->hwndFrom, \*control\)/u);
+  assert.match(cpp, /PostMessageW\(hwnd_, WM_LINGBUILDER_LAYOUT_DATE_PICKER, static_cast<WPARAM>\(control->id\), 0\)/u);
+  assert.match(cpp, /MCM_GETMINREQRECT/u);
+  assert.match(cpp, /MCM_GETMAXTODAYWIDTH/u);
+  assert.match(cpp, /HWND dropDown = GetParent\(calendar\)/u);
+  assert.match(cpp, /GetWindowInfo\(dropDown, &dropDownInfo\)/u);
+  assert.match(cpp, /AdjustWindowRectEx\(&requiredDropDown, dropDownInfo\.dwStyle, FALSE, dropDownInfo\.dwExStyle\)/u);
+  assert.match(cpp, /std::clamp\(\s*static_cast<int>\(dropDownRect\.left\)/u);
+  assert.match(cpp, /SetWindowPos\(dropDown, HWND_TOP, x, y, dropDownWidth, dropDownHeight,/u);
+  assert.match(cpp, /SetWindowPos\(calendar, nullptr, padding, padding, calendarWidth, calendarHeight,/u);
   assert.match(cpp, /SelectionChanged=_列表_选择项被改变\\nDoubleClick=_列表_被双击/);
   assert.match(cpp, /case WM_NOTIFY/);
   assert.match(cpp, /DecodeControlRecords/);
@@ -1459,10 +1964,66 @@ test('高级控件生成真实 Win32 类、专属数据和多事件通知', () =
   assert.ok(generated.diagnostics.some(diagnostic => diagnostic.includes('lingbuilder.win32.common-controls') && diagnostic.includes('未静默降级')));
 });
 
+test('日期选择器和月历提供不会裁切内容的可调高度', () => {
+  const picker = WIN32_CONTROL_DEFINITIONS.find(item => item.type === 'DateTimePicker');
+  const calendar = WIN32_CONTROL_DEFINITIONS.find(item => item.type === 'MonthCalendar');
+  assert.ok(picker);
+  assert.ok(calendar);
+  assert.equal(picker.defaultProps.height, 40);
+  assert.equal(calendar.defaultProps.width, 300);
+  assert.equal(calendar.defaultProps.height, 300);
+  const calendarHeight = picker.properties.find(property => property.key === 'calendarHeight');
+  assert.equal(calendarHeight?.label, '下拉月历高度');
+  assert.equal(calendarHeight?.defaultValue, 300);
+  assert.equal(calendarHeight?.min, 200);
+  assert.equal(calendarHeight?.max, undefined);
+
+  const date = {
+    ...createControl('date-height', undefined, 'DateTimePicker'),
+    properties: { ...createDefaultControlProperties('DateTimePicker'), calendarHeight: 1200 }
+  } satisfies LingControl;
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'date-height',
+    name: '日期高度',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+      background: '#1F2937', description: '', controls: [date]
+    }]
+  };
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /L"DateTimePicker"[^\n]+L"1200"/u);
+  assert.match(cpp, /requestedHeight = ScaleForDpi\(std::max\(200, _wtoi\(control\.data2\)\), dpi_\)/u);
+  assert.match(cpp, /case WM_LINGBUILDER_LAYOUT_DATE_PICKER/u);
+  assert.match(cpp, /ApplyDateTimePickerCalendarAppearance\(runtime->hwnd, \*control\)/u);
+
+  const legacyState = normalizeWindowDesignerState({
+    project: {
+      schemaVersion: 2,
+      id: 'legacy-date-size',
+      name: '旧日期尺寸',
+      windows: [{
+        id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+        background: '#1F2937', description: '', controls: [
+          { ...createControl('legacy-picker', undefined, 'DateTimePicker'), width: 180, height: 30, properties: { value: '', format: 'shortDate', customFormat: '' } },
+          { ...createControl('legacy-calendar', undefined, 'MonthCalendar'), width: 250, height: 190, properties: { value: '', multiSelect: false } }
+        ]
+      }]
+    },
+    activeWindowId: 'main'
+  });
+  const [migratedPicker, migratedCalendar] = legacyState.project.windows[0].controls;
+  assert.equal(migratedPicker.height, 40);
+  assert.equal(migratedPicker.properties?.calendarHeight, 300);
+  assert.deepEqual([migratedCalendar.width, migratedCalendar.height], [300, 300]);
+});
+
 test('选项卡容器槽位、隐藏表头、Rebar、Pager 和 UpDown 生成真实父子控件联动', () => {
   const tab = { ...createControl('tabs', undefined, 'TabControl'), background: '#123456', foreground: '#fedcba', properties: { tabs: [{ id: 'general', title: '常规' }, { id: 'advanced', title: '高级' }], selectedIndex: 0, hideHeader: true } };
   const tabChild = { ...createControl('tab-child', 'tabs', 'Button'), containerSlot: 'advanced' };
-  const rebar = { ...createControl('rebar', undefined, 'ReBar'), properties: { bands: [{ id: 'main-band', title: '主工具栏', childControl: 'toolbar', width: 260 }] } };
+  const rebar = { ...createControl('rebar', undefined, 'ReBar'), properties: { autoBindChildren: true, locked: true, showGrippers: false, fixedHeight: true, showBandBorders: true, bands: [{ id: 'main-band', title: '主工具栏', childControl: 'toolbar', width: 260, minWidth: 80, height: 30, breakLine: true, resizable: false }] }, events: { BandDragStarted: '_Rebar_带区开始拖动', BandDragEnded: '_Rebar_带区结束拖动', HeightChanged: '_Rebar_高度被改变', LayoutChanged: '_Rebar_布局被改变' } };
   const toolbar = { ...createControl('toolbar', 'rebar', 'ToolBar'), properties: { buttons: [{ id: 101, title: '新建', style: 'button' }] } };
   const pager = createControl('pager', undefined, 'Pager');
   const pagerChild = createControl('pager-child', 'pager', 'Button');
@@ -1484,8 +2045,9 @@ test('选项卡容器槽位、隐藏表头、Rebar、Pager 和 UpDown 生成真�
   assert.match(cpp, /else ShowWindow\(page\.hwnd, SW_HIDE\)/u);
   assert.match(cpp, /SetWindowPos\(activePage->hwnd, HWND_TOP/u);
   assert.match(cpp, /RDW_INVALIDATE \| RDW_ERASE \| RDW_FRAME \| RDW_ALLCHILDREN \| RDW_UPDATENOW/u);
-  assert.match(cpp, /TBSTYLE_FLAT \| TBSTYLE_TOOLTIPS \| CCS_NOPARENTALIGN \| CCS_NOMOVEY \| CCS_NORESIZE/u);
-  assert.match(cpp, /RBS_VARHEIGHT \| CCS_NODIVIDER \| CCS_NOPARENTALIGN \| CCS_NOMOVEY \| CCS_NORESIZE/u);
+  assert.match(cpp, /TBSTYLE_FLAT \| TBSTYLE_TOOLTIPS \| (?:CCS_NODIVIDER \| )?CCS_NOPARENTALIGN \| CCS_NOMOVEY \| CCS_NORESIZE/u);
+  assert.match(cpp, /style \|= CCS_NODIVIDER \| CCS_NOPARENTALIGN \| CCS_NOMOVEY \| CCS_NORESIZE/u);
+  assert.match(cpp, /if \(!fixedHeight\) style \|= RBS_VARHEIGHT/u);
   assert.match(cpp, /TB_AUTOSIZE[\s\S]{0,180}SetWindowPos\(child, nullptr, childX, childY, childWidth, childHeight/u);
   assert.match(cpp, /message == WM_DRAWITEM \|\| message == WM_MEASUREITEM/u);
   assert.match(cpp, /SendMessageW\(self->hwnd_, message, wParam, lParam\)/u);
@@ -1515,8 +2077,61 @@ test('选项卡容器槽位、隐藏表头、Rebar、Pager 和 UpDown 生成真�
   assert.match(cpp, /L"TabControl"[^\n]+268435456/u);
   assert.match(cpp, /L"advanced"/);
   assert.match(cpp, /RB_INSERTBANDW/);
+  assert.match(cpp, /RBBS_NOGRIPPER/u);
+  assert.match(cpp, /RBBS_BREAK/u);
+  assert.match(cpp, /RBBS_FIXEDSIZE/u);
+  assert.match(cpp, /RBS_FIXEDORDER/u);
+  assert.match(cpp, /RBS_BANDBORDERS/u);
+  assert.match(cpp, /RBN_BEGINDRAG/u);
+  assert.match(cpp, /RBN_ENDDRAG/u);
+  assert.match(cpp, /RBN_HEIGHTCHANGE/u);
+  assert.match(cpp, /RBN_LAYOUTCHANGED/u);
+  assert.match(cpp, /BandDragStarted=_Rebar_带区开始拖动/u);
   assert.match(cpp, /PGM_SETCHILD/);
   assert.match(cpp, /UDM_SETBUDDY/);
+});
+
+test('旧项目分页容器不再允许新增但保留中文属性和原生生成兼容', () => {
+  const pagerDefinition = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'Pager');
+  assert.ok(pagerDefinition);
+  assert.equal(pagerDefinition.legacyOnly, true);
+  const orientation = pagerDefinition.properties.find(property => property.key === 'orientation');
+  assert.deepEqual(orientation?.options, [
+    { value: 'horizontal', label: '水平' },
+    { value: 'vertical', label: '垂直' }
+  ]);
+  assert.equal(createDefaultControlProperties('Pager').orientation, 'horizontal');
+
+  const verticalPager = {
+    ...createControl('vertical-pager', undefined, 'Pager'),
+    properties: { orientation: 'vertical' }
+  } satisfies LingControl;
+  const child = { ...createControl('pager-child', 'vertical-pager', 'Button'), height: 320 };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'vertical-pager',
+    name: '垂直分页容器',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+      background: '#202028', description: '', controls: [verticalPager, child]
+    }]
+  };
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /L"Pager"[^\n]+L"vertical"/u);
+  assert.match(cpp, /if \(TextEquals\(control\.option1, L"vertical"\)\) style \|= PGS_VERT/u);
+  assert.match(cpp, /PGM_SETCHILD/u);
+  assert.match(cpp, /PGN_CALCSIZE/u);
+  assert.match(cpp, /PGN_SCROLL/u);
+});
+
+test('UpDown 在设计器中使用可识别的上下按钮预览', async () => {
+  assert.equal(hasDedicatedControlPreview('UpDown'), true);
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/UpDownDesignerPreview.tsx'), 'utf8');
+  assert.match(source, /aria-label="数值调节器预览"/u);
+  assert.match(source, /M1 5 5 1l4 4Z/u);
+  assert.match(source, /m1 1 4 4 4-4Z/u);
 });
 
 test('图像列表资源拒绝重复 ID、不安全路径和失效控件引用', () => {
@@ -1551,21 +2166,61 @@ test('系统对话框、查找替换、工具栏命令和真实文本打印保�
   assert.match(cpp, /页面设置_左边距/u);
 });
 
-test('外壳控件使用独立工具栏命令、状态栏分区、Pager 尺寸和 RichEdit RTF 流', () => {
-  const toolbar = { ...createControl('toolbar', undefined, 'ToolBar'), properties: { buttons: [{ id: 701, title: '保存', style: 'button', image: -1 }] } };
-  const status = { ...createControl('status', undefined, 'StatusBar'), properties: { parts: [{ title: '就绪', width: 120 }, { title: 'UTF-8', width: 80 }] } };
+test('外壳控件使用独立工具栏命令、可着色对齐状态栏分区、Pager 尺寸和 RichEdit RTF 流', () => {
+  const toolbar = { ...createControl('toolbar', undefined, 'ToolBar'), background: '#111111', foreground: '#FFFFFF', properties: { buttons: [{ id: 701, title: '保存', style: 'button', image: -1 }] } };
+  const richDefinition = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'RichEdit');
+  assert.deepEqual(richDefinition?.properties.find(property => property.key === 'scrollBars')?.options, [
+    { value: 'none', label: '无' },
+    { value: 'horizontal', label: '水平' },
+    { value: 'vertical', label: '垂直' },
+    { value: 'both', label: '水平和垂直' }
+  ]);
+  const statusDefinition = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'StatusBar');
+  assert.ok(statusDefinition);
+  const statusTextAlign = statusDefinition.properties.find(property => property.key === 'textAlign');
+  assert.deepEqual(statusTextAlign, {
+    key: 'textAlign',
+    label: '文字对齐方式',
+    type: 'enum',
+    defaultValue: 'left',
+    options: [
+      { value: 'left', label: '居左' },
+      { value: 'center', label: '居中' },
+      { value: 'right', label: '居右' }
+    ]
+  });
+  const status = { ...createControl('status', undefined, 'StatusBar'), background: 'transparent', foreground: '#AABBCC', properties: { textAlign: 'center', parts: [{ title: '就绪', width: 120 }, { title: 'UTF-8', width: 80 }] } };
   const pager = createControl('pager', undefined, 'Pager');
   const pagerChild = createControl('pager-child', 'pager', 'Button');
-  const rich = { ...createControl('rich', undefined, 'RichEdit'), properties: { multiline: true, wordWrap: true, readOnly: false, scrollBars: 'vertical', rtfText: '{\\rtf1\\ansi\\b 加粗\\b0}', toolTip: '富文本提示', toolTipDelay: 250 } };
+  const rich = { ...createControl('rich', undefined, 'RichEdit'), background: 'transparent', foreground: '#12AB34', properties: { multiline: true, wordWrap: true, readOnly: false, scrollBars: 'vertical', rtfText: '{\\rtf1\\ansi\\b 加粗\\b0}', toolTip: '富文本提示', toolTipDelay: 250 } };
   const project: LingWindowProject = { schemaVersion: 2, id: 'shell-controls', name: '外壳控件', resources: [], windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 800, height: 600, background: '#202028', description: '', controls: [toolbar, status, pager, pagerChild, rich] }] };
   const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.find(file => file.relativePath === 'main.cpp')!.content;
   assert.match(cpp, /toolbarCommandOwners_/);
   assert.match(cpp, /toolbarCommandValues_/);
+  assert.match(cpp, /TBSTYLE_FLAT \| TBSTYLE_TOOLTIPS \| CCS_NODIVIDER \| CCS_NOPARENTALIGN \| CCS_NOMOVEY \| CCS_NORESIZE/u);
+  assert.match(cpp, /SetWindowTheme\(child, L"", L""\);[\s\S]{0,220}CCM_SETBKCOLOR[\s\S]{0,180}control\.background/u);
+  assert.doesNotMatch(cpp, /TB_SETBKCOLOR|TB_SETTEXTCOLOR/u);
+  assert.match(cpp, /LRESULT PaintToolBar\([\s\S]+NMTBCUSTOMDRAW[\s\S]+TBCDRF_USECDCOLORS/u);
+  assert.match(cpp, /IsType\(\*control, L"ToolBar"\) && header->code == NM_CUSTOMDRAW[\s\S]+PaintToolBar/u);
+  assert.match(cpp, /L"ToolBar", L"toolbar"[^\n]+RGB\(17, 17, 17\), false, RGB\(255, 255, 255\)/u);
   assert.match(cpp, /状态栏_最后分区/u);
   assert.match(cpp, /NMMOUSE/);
+  assert.match(cpp, /SB_SETBKCOLOR/);
+  assert.match(cpp, /SBT_OWNERDRAW/);
+  assert.match(cpp, /PaintOwnerStatusBar/);
+  assert.match(cpp, /RGB\(170, 187, 204\)/);
+  assert.match(cpp, /ResolveControlSurroundingColor\(control, child\)/);
+  assert.match(cpp, /\(control->flags & CF_ALIGN_CENTER\) \? DT_CENTER/);
+  assert.match(cpp, /L"StatusBar", L"status".*1048576/u);
   assert.match(cpp, /PGN_CALCSIZE/);
   assert.match(cpp, /EM_STREAMIN/);
   assert.match(cpp, /StreamRichEditData/);
+  assert.match(cpp, /EM_SETBKGNDCOLOR/);
+  assert.match(cpp, /control\.backgroundTransparent[\s\S]{0,120}ResolveControlSurroundingColor\(control, child\)/);
+  assert.match(cpp, /CHARFORMAT2W richEditFormat/);
+  assert.match(cpp, /EM_SETCHARFORMAT, SCF_ALL/);
+  assert.match(cpp, /EM_SETCHARFORMAT, SCF_DEFAULT/);
+  assert.match(cpp, /L"RichEdit", L"rich"[^\n]+RGB\(18, 171, 52\)/u);
   assert.match(cpp, /TTM_SETDELAYTIME/);
   assert.match(cpp, /L"\{\\\\rtf1/u);
 });
@@ -1780,4 +2435,126 @@ test('原生生成明确报告当前源码与设计器窗口类不一致', () =>
   assert.ok(generated.diagnostics.some(item =>
     /当前源码未定义设计器窗口类“主窗口”/u.test(item)
   ));
+});
+
+test('热键属性捕获与 Win32 默认热键格式保持一致', () => {
+  const hotKeyDefinition = WIN32_CONTROL_DEFINITIONS
+    .find(definition => definition.type === 'HotKey')
+    ?.properties.find(property => property.key === 'hotKey');
+  assert.equal(hotKeyDefinition?.type, 'hotkey');
+
+  assert.deepEqual(captureDesignerHotKey({
+    key: 'K', code: 'KeyK', ctrlKey: true, altKey: true, shiftKey: true, metaKey: false
+  }), { kind: 'capture', value: 'Ctrl+Alt+Shift+K' });
+  assert.deepEqual(captureDesignerHotKey({
+    key: 'F12', code: 'F12', ctrlKey: false, altKey: false, shiftKey: false, metaKey: false
+  }), { kind: 'capture', value: 'F12' });
+  assert.deepEqual(captureDesignerHotKey({
+    key: '!', code: 'Digit1', ctrlKey: true, altKey: false, shiftKey: true, metaKey: false
+  }), { kind: 'capture', value: 'Ctrl+Shift+1' });
+  assert.deepEqual(captureDesignerHotKey({
+    key: 'Delete', code: 'Delete', ctrlKey: false, altKey: false, shiftKey: false, metaKey: false
+  }), { kind: 'clear' });
+  assert.equal(captureDesignerHotKey({
+    key: 'Enter', code: 'Enter', ctrlKey: true, altKey: false, shiftKey: false, metaKey: false
+  }).kind, 'unsupported');
+});
+
+test('热键输入框的文字色和透明背景进入 Win32 父容器绘制链路', () => {
+  const group = { ...createControl('group', undefined, 'GroupBox'), background: '#445566' };
+  const hotKey = {
+    ...createControl('hotkey', 'group', 'HotKey'),
+    foreground: '#12AB34',
+    background: 'transparent',
+    properties: { hotKey: 'Ctrl+K' }
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'transparent-hotkey',
+    name: '透明热键',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口',
+      width: 640, height: 480, background: '#202028', description: '', controls: [group, hotKey]
+    }]
+  };
+
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /L"HotKey"[^\n]+true, RGB\(18, 171, 52\)/u);
+  assert.match(cpp, /\(message == WM_CTLCOLOREDIT \|\| message == WM_CTLCOLORSTATIC\) && IsType\(\*control, L"HotKey"\)/u);
+  assert.match(cpp, /SetTextColor\(hdc, control->foreground\)/u);
+  assert.match(cpp, /SetBkColor\(hdc, ResolveControlSurroundingColor\(\*control, child\)\)/u);
+  assert.match(cpp, /ResolveControlSurroundingBrush\(\*control, child\)/u);
+  assert.match(cpp, /std::wstring FormatHotKeyDisplay\(HWND hwnd\) const/u);
+  assert.match(cpp, /SendMessageW\(hwnd, HKM_GETHOTKEY, 0, 0\)/u);
+  assert.match(cpp, /void PaintHotKeyControl\(HWND hwnd, HDC providedHdc/u);
+  assert.match(cpp, /control\.backgroundTransparent\s*\? ResolveControlSurroundingColor\(control, hwnd\)/u);
+  assert.match(cpp, /SetTextColor\(hdc, foreground\)/u);
+  assert.match(cpp, /std::max\(0, static_cast<int>\(rect\.bottom - rect\.top - metrics\.tmHeight\) \/ 2\)/u);
+  assert.match(cpp, /IsType\(\*control, L"HotKey"\)[\s\S]+message == WM_PAINT[\s\S]+PaintHotKeyControl/u);
+});
+
+test('颜色选择器支持可视入口和隐藏后由其他事件按名称打开', () => {
+  const definition = WIN32_CONTROL_DEFINITIONS.find(item => item.type === 'ColorPicker');
+  assert.ok(definition);
+  assert.equal(definition.moduleId, 'lingbuilder.win32.common-controls');
+  assert.equal(definition.isVisual, true);
+  assert.equal(definition.properties.find(property => property.key === 'currentColor')?.type, 'color');
+  assert.deepEqual(definition.events.map(event => event.name), ['ColorChanged', 'Opened', 'Confirmed', 'Cancelled', 'Closed']);
+  assert.equal(hasDedicatedControlPreview('ColorPicker'), true);
+
+  const picker = {
+    ...createControl('颜色选择器1', undefined, 'ColorPicker'),
+    visibility: 'Collapsed' as const,
+    properties: {
+      ...createDefaultControlProperties('ColorPicker'),
+      currentColor: '#3366CC',
+      dialogTitle: '选择主题颜色',
+      showColorText: true,
+    },
+    events: { ColorChanged: '_颜色选择器1_颜色被改变' }
+  } satisfies LingControl;
+  const button = {
+    ...createControl('选择颜色按钮', undefined, 'Button'),
+    events: { Click: '_选择颜色按钮_被单击' }
+  } satisfies LingControl;
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'color-picker',
+    name: '颜色选择器测试',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口',
+      width: 640, height: 480, background: '#202028', description: '', controls: [picker, button]
+    }]
+  };
+  const source = `类 主窗口 : 公开 窗体
+    事件 _选择颜色按钮_被单击()
+        颜色选择器_打开("颜色选择器1")
+    结束
+    事件 _颜色选择器1_颜色被改变()
+        调试输出(颜色选择器_取颜色("颜色选择器1"))
+    结束
+结束类`;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source })
+    .files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /L"ColorPicker", L"颜色选择器1"/u);
+  assert.match(cpp, /L"选择主题颜色"/u);
+  assert.match(cpp, /CF_COLOR_HIDDEN = 1u << 29/u);
+  assert.match(cpp, /DWORD style = WS_CHILD \| WS_VISIBLE;[\s\S]{0,100}if \(control\.flags & CF_COLOR_HIDDEN\) style &= ~WS_VISIBLE/u);
+  assert.match(cpp, /bool 颜色选择器_打开\(const wchar_t\* controlName\)/u);
+  assert.match(cpp, /ShowModernColorPickerDialog\(hwnd_, control->option1, runtime->colorValue, selected\)/u);
+  assert.match(cpp, /ModernPaintColorPicker/u);
+  assert.match(cpp, /case WM_ERASEBKGND:\s*return 1;/u);
+  assert.match(cpp, /CreateCompatibleBitmap\(hdc,[\s\S]{0,300}BitBlt\(hdc,/u);
+  assert.match(cpp, /ModernCenterHexEdit\(\*state\)/u);
+  assert.match(cpp, /WS_POPUP \| WS_CAPTION \| WS_SYSMENU \| WS_CLIPCHILDREN/u);
+  assert.match(cpp, /DispatchLingEvent\(\*control, L"ColorChanged"\)/u);
+  assert.match(cpp, /颜色选择器_打开\(L"颜色选择器1"\);/u);
+  assert.match(cpp, /调试输出\(颜色选择器_取颜色\(L"颜色选择器1"\)\);/u);
+
+  const row = cpp.split('\n').find(line => line.includes('L"ColorPicker", L"颜色选择器1"')) || '';
+  assert.match(row, /, 1610612736, L"ColorChanged=/u);
 });

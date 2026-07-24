@@ -1213,6 +1213,36 @@ app.post("/api/window-designer/assets/import", async (req, res) => {
   }
 });
 
+app.post("/api/window-designer/assets/import-animation", async (req, res) => {
+  const { projectId, sourcePath } = req.body as { projectId?: string; sourcePath?: string };
+  if (!isNonEmptyString(projectId) || !isNonEmptyString(sourcePath)) {
+    return res.status(400).json({ ok: false, error: "缺少 projectId 或 AVI 动画源路径。" });
+  }
+  try {
+    const solutionService = getSolutionService();
+    const projectRef = solutionService.getProject(await solutionService.getSolution(), projectId.trim());
+    const imported = await designerAssetService.importAnimation(projectRef, sourcePath);
+    res.json({ ok: true, ...imported });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "AVI 动画复制到项目失败。" });
+  }
+});
+
+app.post("/api/window-designer/assets/import-video", async (req, res) => {
+  const { projectId, sourcePath } = req.body as { projectId?: string; sourcePath?: string };
+  if (!isNonEmptyString(projectId) || !isNonEmptyString(sourcePath)) {
+    return res.status(400).json({ ok: false, error: "缺少 projectId 或视频源路径。" });
+  }
+  try {
+    const solutionService = getSolutionService();
+    const projectRef = solutionService.getProject(await solutionService.getSolution(), projectId.trim());
+    const imported = await designerAssetService.importVideo(projectRef, sourcePath);
+    res.json({ ok: true, ...imported });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "视频复制到项目失败。" });
+  }
+});
+
 app.get("/api/window-designer/assets", async (req, res) => {
   const projectId = String(req.query.projectId || "").trim();
   if (!projectId) return res.status(400).json({ ok: false, error: "缺少 projectId。" });

@@ -35,6 +35,9 @@ contextBridge.exposeInMainWorld('lingBuilder', {
   },
   designerAssets: {
     selectImage: () => ipcRenderer.invoke('designer-assets:select-image'),
+    selectGif: () => ipcRenderer.invoke('designer-assets:select-gif'),
+    selectAnimation: () => ipcRenderer.invoke('designer-assets:select-animation'),
+    selectVideo: () => ipcRenderer.invoke('designer-assets:select-video'),
     selectIcon: () => ipcRenderer.invoke('designer-assets:select-icon'),
   },
   credentials: {

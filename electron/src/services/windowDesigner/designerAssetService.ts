@@ -4,6 +4,9 @@ import type { LingBuilderSolutionProject } from '../solution/solutionService';
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.ico']);
 const MAX_IMAGE_BYTES = 50 * 1024 * 1024;
+const MAX_ANIMATION_BYTES = 200 * 1024 * 1024;
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.wmv', '.avi', '.mov', '.m4v']);
+const MAX_VIDEO_BYTES = 2 * 1024 * 1024 * 1024;
 
 export interface ImportedDesignerImage {
   relativePath: string;
@@ -35,6 +38,68 @@ export class DesignerAssetService {
 
     const parsed = path.parse(source);
     const baseName = sanitizeFileBase(parsed.name) || 'image';
+    let fileName = `${baseName}${extension}`;
+    let target = path.join(assetDirectory, fileName);
+    let suffix = 2;
+    while (await exists(target)) {
+      if (await filesEqual(source, target)) {
+        return { relativePath: path.posix.join(assetRoot, fileName), fileName, size: sourceStat.size };
+      }
+      fileName = `${baseName}-${suffix}${extension}`;
+      target = path.join(assetDirectory, fileName);
+      suffix += 1;
+    }
+
+    await fs.copyFile(source, target, fs.constants.COPYFILE_EXCL);
+    return { relativePath: path.posix.join(assetRoot, fileName), fileName, size: sourceStat.size };
+  }
+
+  async importAnimation(project: LingBuilderSolutionProject, sourcePath: string): Promise<ImportedDesignerImage> {
+    const source = await fs.realpath(String(sourcePath || ''));
+    const sourceStat = await fs.stat(source);
+    if (!sourceStat.isFile()) throw new Error('选择的动画源不是普通文件。');
+    if (sourceStat.size > MAX_ANIMATION_BYTES) throw new Error('AVI 动画文件超过 200MB 限制。');
+
+    const extension = path.extname(source).toLowerCase();
+    if (extension !== '.avi') throw new Error('动画控件当前仅支持 AVI 文件。');
+
+    const assetRoot = this.getProjectAssetRoot(project);
+    const assetDirectory = this.resolveWorkspacePath(assetRoot);
+    await fs.mkdir(assetDirectory, { recursive: true });
+
+    const parsed = path.parse(source);
+    const baseName = sanitizeFileBase(parsed.name) || 'animation';
+    let fileName = `${baseName}${extension}`;
+    let target = path.join(assetDirectory, fileName);
+    let suffix = 2;
+    while (await exists(target)) {
+      if (await filesEqual(source, target)) {
+        return { relativePath: path.posix.join(assetRoot, fileName), fileName, size: sourceStat.size };
+      }
+      fileName = `${baseName}-${suffix}${extension}`;
+      target = path.join(assetDirectory, fileName);
+      suffix += 1;
+    }
+
+    await fs.copyFile(source, target, fs.constants.COPYFILE_EXCL);
+    return { relativePath: path.posix.join(assetRoot, fileName), fileName, size: sourceStat.size };
+  }
+
+  async importVideo(project: LingBuilderSolutionProject, sourcePath: string): Promise<ImportedDesignerImage> {
+    const source = await fs.realpath(String(sourcePath || ''));
+    const sourceStat = await fs.stat(source);
+    if (!sourceStat.isFile()) throw new Error('选择的视频源不是普通文件。');
+    if (sourceStat.size > MAX_VIDEO_BYTES) throw new Error('视频文件超过 2GB 限制。');
+
+    const extension = path.extname(source).toLowerCase();
+    if (!VIDEO_EXTENSIONS.has(extension)) throw new Error('仅支持 MP4、WMV、AVI、MOV 和 M4V 视频。');
+
+    const assetRoot = this.getProjectAssetRoot(project);
+    const assetDirectory = this.resolveWorkspacePath(assetRoot);
+    await fs.mkdir(assetDirectory, { recursive: true });
+
+    const parsed = path.parse(source);
+    const baseName = sanitizeFileBase(parsed.name) || 'video';
     let fileName = `${baseName}${extension}`;
     let target = path.join(assetDirectory, fileName);
     let suffix = 2;

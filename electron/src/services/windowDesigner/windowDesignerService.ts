@@ -603,7 +603,17 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
     const controls = hierarchyControls.map(control => {
       const font = normalizeControlFont(control);
       const properties = control.properties || createDefaultControlProperties(control.type, control.content);
+      const missingComboBoxExDropDownHeight = control.type === 'ComboBoxEx'
+        && !Number.isFinite(Number(properties.dropDownHeight));
+      const missingDateTimePickerCalendarHeight = control.type === 'DateTimePicker'
+        && !Number.isFinite(Number(properties.calendarHeight));
+      const usesLegacyDateTimePickerHeight = control.type === 'DateTimePicker' && control.height === 30;
+      const usesLegacyMonthCalendarSize = control.type === 'MonthCalendar' && control.width === 250 && control.height === 190;
       const requiresMigration = !control.properties
+        || missingComboBoxExDropDownHeight
+        || missingDateTimePickerCalendarHeight
+        || usesLegacyDateTimePickerHeight
+        || usesLegacyMonthCalendarSize
         || control.fontFamily !== font.family
         || control.fontSize !== font.size
         || control.fontBold !== font.bold
@@ -618,7 +628,13 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
         fontBold: font.bold,
         fontItalic: font.italic,
         fontUnderline: font.underline,
-        properties
+        width: usesLegacyMonthCalendarSize ? 300 : control.width,
+        height: usesLegacyDateTimePickerHeight || usesLegacyMonthCalendarSize ? (control.type === 'DateTimePicker' ? 40 : 300) : control.height,
+        properties: {
+          ...properties,
+          ...(missingComboBoxExDropDownHeight ? { dropDownHeight: 160 } : {}),
+          ...(missingDateTimePickerCalendarHeight ? { calendarHeight: 300 } : {})
+        }
       };
     });
     const appearanceChanged = !window.titleBarBackground || !window.titleBarForeground || !window.cornerStyle || !window.iconStyle || !window.menuBackground || !window.menuForeground

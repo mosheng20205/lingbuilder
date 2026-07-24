@@ -3,12 +3,12 @@ import type { Win32ControlPropertyValue } from './win32ControlRegistry';
 export type LingControlType =
   | 'Button' | 'TextBox' | 'Label' | 'CheckBox' | 'RadioButton'
   | 'ListBox' | 'ComboBox' | 'GroupBox' | 'ScrollBar'
-  | 'Image' | 'ProgressBar' | 'Grid'
+  | 'Image' | 'AnimatedImage' | 'ProgressBar' | 'Grid'
   | 'Upload' | 'DragUpload'
   | 'ListView' | 'TreeView' | 'TabControl' | 'Header' | 'ComboBoxEx' | 'SysLink'
   | 'DateTimePicker' | 'MonthCalendar' | 'TrackBar' | 'UpDown' | 'HotKey' | 'IPAddress'
   | 'ToolBar' | 'StatusBar' | 'ToolTip' | 'ReBar' | 'Pager' | 'RichEdit'
-  | 'Animation' | 'FlatScrollBar' | 'ImageList' | 'PropertySheet' | 'FileDialog';
+  | 'Animation' | 'VideoPlayer' | 'ColorPicker' | 'FlatScrollBar' | 'ImageList' | 'PropertySheet' | 'FileDialog';
 
 export interface LingEventBinding {
   [eventName: string]: string;
