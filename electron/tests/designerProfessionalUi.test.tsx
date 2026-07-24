@@ -95,6 +95,12 @@ test('beginner editor navigation, variable form and guidance tools remain safe a
   assert.match(source, /\{renderBeginnerSummaryStrip\(\)\}/u);
   assert.match(source, /\{renderBeginnerPanel\(\)\}/u);
   assert.match(source, /事件动作、代码解释与 5 步学习路径/u);
+  assert.match(source, /className=\{`pointer-events-auto absolute z-20/u);
+  assert.match(source, /onWheel=\{event => event\.stopPropagation\(\)\}/u);
+  assert.match(source, /const BEGINNER_CODE_OVERLAY_TOKEN_STYLE: React\.CSSProperties/u);
+  assert.match(source, /fontWeight: 'inherit'/u);
+  assert.match(source, /style=\{BEGINNER_CODE_OVERLAY_TOKEN_STYLE\}/u);
+  assert.doesNotMatch(source, /'module-command':[^\n]*font-bold/u);
 });
 
 test('workbench keeps split-editor ownership and designer persistence in the shared save lifecycle', async () => {

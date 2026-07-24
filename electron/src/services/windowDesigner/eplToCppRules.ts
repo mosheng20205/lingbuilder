@@ -76,6 +76,43 @@ export function parseEplControlMethodCallRule(expression: string): EplControlMet
   };
 }
 
+export function splitEplBinaryExpression(expression: string): { left: string; operator: string; right: string } | undefined {
+  let depth = 0;
+  let quote: '"' | '“' | null = null;
+
+  for (let index = expression.length - 1; index >= 0; index -= 1) {
+    const char = expression[index];
+    if (quote) {
+      if ((quote === '"' && char === '"') || (quote === '“' && char === '“')) quote = null;
+      continue;
+    }
+    if (char === '"') {
+      quote = '"';
+      continue;
+    }
+    if (char === '”') {
+      quote = '“';
+      continue;
+    }
+    if (char === ')' || char === '）') {
+      depth += 1;
+      continue;
+    }
+    if (char === '(' || char === '（') {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth !== 0 || (char !== '+' && char !== '-')) continue;
+
+    const left = expression.slice(0, index).trim();
+    const right = expression.slice(index + 1).trim();
+    if (!left || !right || /[+\-*/%(（(]$/u.test(left)) continue;
+    return { left, operator: char, right };
+  }
+
+  return undefined;
+}
+
 export function parseEplRuntimeEventRules(sourceCode: string | undefined): EplRuntimeEventRuleMap {
   if (!sourceCode?.trim()) {
     return {};

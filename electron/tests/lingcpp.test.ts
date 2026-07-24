@@ -1515,6 +1515,25 @@ test('generateLingCppNativeWin32Project emits function methods, calls, return va
   assert.equal(mainCpp.includes('// 暂不支持的中文 C++ 语句：@'), false);
 });
 
+test('generateLingCppNativeWin32Project keeps wide string arguments inside arithmetic expressions', () => {
+  const source = `类 游戏主窗体 : 公开 窗体
+公开:
+    事件 _按钮1_被单击()
+        控件_设置数值("进度条1", 控件_取数值("进度条1")+10)
+        控件_设置数值("进度条1", 控件_取数值("进度条1")-10)
+    结束
+结束类`;
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  assert.ok(mainCpp.includes('控件_设置数值(L"进度条1", 控件_取数值(L"进度条1")+10);'));
+  assert.ok(mainCpp.includes('控件_设置数值(L"进度条1", 控件_取数值(L"进度条1")-10);'));
+  assert.equal(mainCpp.includes('控件_取数值("进度条1")'), false);
+});
+
 test('generateLingCppNativeWin32Project does not translate block end into exit command', () => {
   const source = `包 示例
 类 游戏主窗体 : 窗口

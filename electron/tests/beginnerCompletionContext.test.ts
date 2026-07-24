@@ -1,10 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  getBeginnerCommandTokenAtCursor,
   getBeginnerCompletionContext,
   shouldShowBeginnerCompletion
 } from '../src/services/lingCpp/beginnerCompletionContext';
 import { getBeginnerBuiltinValueCompletions } from '../src/services/lingCpp/beginnerBuiltinValueCompletions';
+
+test('新手编辑器单击模块命令和点语法控件命令时能够识别提示目标', () => {
+  const availableCommands = new Set([
+    '选项卡_设置隐藏表头',
+    '选项卡_tab.设置选择项'
+  ]);
+  const source = [
+    '选项卡_设置隐藏表头("选项卡1", 真)',
+    '选项卡_tab.设置选择项(0)'
+  ].join('\n');
+
+  const moduleCursor = source.indexOf('隐藏表头') + 2;
+  const controlCursor = source.indexOf('设置选择项') + 2;
+  assert.equal(getBeginnerCommandTokenAtCursor(source, moduleCursor, availableCommands)?.token, '选项卡_设置隐藏表头');
+  assert.equal(getBeginnerCommandTokenAtCursor(source, controlCursor, availableCommands)?.token, '选项卡_tab.设置选择项');
+});
+
+test('新手命令提示不会把字符串或注释中的同名文本识别为命令', () => {
+  const availableCommands = new Set(['选项卡_设置隐藏表头']);
+  const stringSource = '调试输出("选项卡_设置隐藏表头")';
+  const commentSource = '// 选项卡_设置隐藏表头("选项卡1", 真)';
+
+  assert.equal(getBeginnerCommandTokenAtCursor(stringSource, stringSource.indexOf('隐藏表头'), availableCommands), null);
+  assert.equal(getBeginnerCommandTokenAtCursor(commentSource, commentSource.indexOf('隐藏表头'), availableCommands), null);
+});
 
 test('新手编辑器用 z 和 j 精确补全真假逻辑值', () => {
   const trueItems = getBeginnerBuiltinValueCompletions('z');

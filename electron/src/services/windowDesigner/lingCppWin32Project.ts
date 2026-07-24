@@ -29,7 +29,8 @@ import { normalizeControlFont } from './controlFont';
 import {
   parseEplControlMemberAssignmentRule,
   parseEplControlMemberRule,
-  parseEplControlMethodCallRule
+  parseEplControlMethodCallRule,
+  splitEplBinaryExpression
 } from './eplToCppRules';
 
 export interface LingCppNativeProjectFile {
@@ -6266,6 +6267,10 @@ function translateLingCppExpression(expression: string, enabledModules: Installe
   if (quoted) return `L"${escapeWideString(quoted[1] || '')}"`;
   if (trimmed === '真') return 'true';
   if (trimmed === '假') return 'false';
+  const binaryExpression = splitEplBinaryExpression(trimmed);
+  if (binaryExpression) {
+    return `${translateLingCppExpression(binaryExpression.left, enabledModules)}${binaryExpression.operator}${translateLingCppExpression(binaryExpression.right, enabledModules)}`;
+  }
   const controlTextProperty = parseEplControlMemberRule(trimmed);
   if (controlTextProperty) return `${controlTextProperty.getterRuntimeName}(L"${escapeWideString(controlTextProperty.controlName)}")`;
   const controlMethodCall = parseEplControlMethodCallRule(trimmed);

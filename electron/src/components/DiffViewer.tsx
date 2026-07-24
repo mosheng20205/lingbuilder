@@ -45,7 +45,7 @@ import DiffViewModeSelector, {
 } from './DiffViewModeSelector';
 import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getLingCppReadableBlocks, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
 import { LingCppAccessModifier, LingCppAstEdit, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
-import { getBeginnerCompletionContext, getBeginnerCompletionToken, scanBeginnerCodePrefix, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
+import { BeginnerCommandTokenAtCursor, getBeginnerCommandTokenAtCursor, getBeginnerCompletionContext, getBeginnerCompletionToken, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
 import { BEGINNER_BUILTIN_VALUE_COMPLETIONS } from '../services/lingCpp/beginnerBuiltinValueCompletions';
 import { applyLingCppAstEdit } from '../services/lingCpp/astEditService';
 import { LingCppNativePreviewFile, LingWindowProject, NativeCppImportResult } from '../services/windowDesigner/types';
@@ -283,11 +283,16 @@ interface BeginnerCommandHintState {
   position: BeginnerCompletionPosition;
 }
 
-interface BeginnerCommandTokenAtCursor {
-  token: string;
-  lineIndex: number;
-  columnStart: number;
-}
+// The beginner editor paints syntax colors over a transparent textarea. Token
+// decoration must not change glyph metrics, otherwise the native textarea caret
+// drifts away from the visible code as weighted Chinese glyphs accumulate.
+const BEGINNER_CODE_OVERLAY_TOKEN_STYLE: React.CSSProperties = {
+  fontFamily: 'inherit',
+  fontSize: 'inherit',
+  fontWeight: 'inherit',
+  fontStyle: 'inherit',
+  letterSpacing: 'inherit'
+};
 
 type BeginnerIfBranchKind = 'if' | 'elseif' | 'else';
 
@@ -699,38 +704,6 @@ const getBeginnerCompletionPanelPosition = (
     maxListHeight: Math.round(maxListHeight),
     placement
   };
-};
-
-const getBeginnerCommandTokenAtCursor = (
-  value: string,
-  cursor: number
-): BeginnerCommandTokenAtCursor | null => {
-  const safeCursor = Math.max(0, Math.min(cursor, value.length));
-  const previousNewline = safeCursor > 0 ? value.lastIndexOf('\n', safeCursor - 1) : -1;
-  const lineStart = previousNewline + 1;
-  const nextNewline = value.indexOf('\n', safeCursor);
-  const lineEnd = nextNewline >= 0 ? nextNewline : value.length;
-  const line = value.slice(lineStart, lineEnd);
-  const column = safeCursor - lineStart;
-  const tokenPattern = /[a-zA-Z0-9_@\u4e00-\u9fa5]+/gu;
-
-  for (const match of line.matchAll(tokenPattern)) {
-    const columnStart = match.index ?? 0;
-    const token = match[0];
-    const columnEnd = columnStart + token.length;
-    if (column < columnStart || column > columnEnd || !BEGINNER_COMMAND_HINTS[token]) continue;
-
-    const prefixSyntax = scanBeginnerCodePrefix(line.slice(0, columnStart));
-    if (prefixSyntax.isInsideString || prefixSyntax.isInsideComment) return null;
-
-    return {
-      token,
-      lineIndex: value.slice(0, lineStart).split('\n').length - 1,
-      columnStart
-    };
-  }
-
-  return null;
 };
 
 const getBeginnerCommandHintPanelPosition = (
@@ -1559,8 +1532,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     })),
     [moduleContext]
   );
+  const beginnerDesignerControlCompletionCatalog = useMemo(
+    () => getLingCppDesignerControlCompletions(normalizedSourceCode, designerProject),
+    [designerProject, normalizedSourceCode]
+  );
   const beginnerDesignerControlCompletions = useMemo(
-    () => getLingCppDesignerControlCompletions(normalizedSourceCode, designerProject).map(item => {
+    () => beginnerDesignerControlCompletionCatalog.map(item => {
       const snippet = normalizeSnippetPlaceholders(item.insertText);
       return {
         label: item.label,
@@ -1572,7 +1549,22 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         selectLength: snippet.selectLength
       };
     }),
-    [designerProject, normalizedSourceCode]
+    [beginnerDesignerControlCompletionCatalog]
+  );
+  const beginnerDesignerCommandHints = useMemo(
+    () => Object.fromEntries(beginnerDesignerControlCompletionCatalog
+      .filter(item => item.signature)
+      .map(item => [item.label, {
+        command: item.label,
+        signature: item.signature || `${item.label}()`,
+        returnType: item.returnType || '空',
+        summary: item.documentation || item.detail,
+        parameters: item.label.endsWith('.设置选择项')
+          ? [{ name: '索引', type: '整数型', note: '从 0 开始的目标选择项索引。' }]
+          : [],
+        example: normalizeSnippetPlaceholders(item.insertText).text
+      }])) as Record<string, BeginnerCommandHintInfo>,
+    [beginnerDesignerControlCompletionCatalog]
   );
   const beginnerModuleCommandHints = useMemo(
     () => {
@@ -1589,8 +1581,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     [moduleContext]
   );
   const beginnerCommandHints = useMemo(
-    () => ({ ...BEGINNER_COMMAND_HINTS, ...beginnerModuleCommandHints }),
-    [beginnerModuleCommandHints]
+    () => ({ ...BEGINNER_COMMAND_HINTS, ...beginnerModuleCommandHints, ...beginnerDesignerCommandHints }),
+    [beginnerDesignerCommandHints, beginnerModuleCommandHints]
+  );
+  const beginnerCommandHintNames = useMemo(
+    () => new Set(Object.keys(beginnerCommandHints)),
+    [beginnerCommandHints]
   );
   const structuredReadingRows = useMemo(
     () => lingCppLanguageContext
@@ -4214,7 +4210,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       input: HTMLTextAreaElement
     ) => {
       const targetKey = codeTargetKey(target);
-      const token = getBeginnerCommandTokenAtCursor(input.value, input.selectionStart);
+      const token = getBeginnerCommandTokenAtCursor(input.value, input.selectionStart, beginnerCommandHintNames);
       if (!token) {
         closeBeginnerCommandHint(target);
         return;
@@ -4493,10 +4489,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const contentMaxHeight = Math.max(86, state.position.maxListHeight - 32);
       return (
         <div
-          className={`pointer-events-none absolute z-20 w-[420px] overflow-hidden rounded border text-[11px] shadow-2xl ${
+          className={`pointer-events-auto absolute z-20 w-[420px] overflow-hidden rounded border text-[11px] shadow-2xl ${
             isDarkMode ? 'border-cyan-500/25 bg-[#171a20] text-slate-200 shadow-black/40' : 'border-cyan-200 bg-white text-slate-800 shadow-slate-300/60'
           } ${state.position.placement === 'above' ? 'origin-bottom-left' : 'origin-top-left'}`}
           style={{ left: state.position.left, top: state.position.top, maxHeight: state.position.maxListHeight }}
+          onMouseDown={event => event.stopPropagation()}
+          onWheel={event => event.stopPropagation()}
         >
           <div className={`flex items-center justify-between gap-2 border-b px-2.5 py-1.5 ${
             isDarkMode ? 'border-[#2b2f3a] bg-cyan-500/10' : 'border-cyan-100 bg-cyan-50'
@@ -6195,19 +6193,28 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         keyword: isDarkMode ? 'text-[#4ea5ff]' : 'text-blue-700',
         type: isDarkMode ? 'text-[#2bd4c6]' : 'text-teal-700',
         literal: isDarkMode ? 'text-[#b5cea8]' : 'text-emerald-700',
-        'module-command': isDarkMode ? 'font-bold text-[#22d3ee]' : 'font-bold text-[#006a7a]',
+        'module-command': isDarkMode ? 'text-[#22d3ee]' : 'text-[#006a7a]',
         member: isDarkMode ? 'text-amber-200' : 'text-amber-800',
         procedure: isDarkMode ? 'text-cyan-200' : 'text-cyan-800',
         operator: isDarkMode ? 'text-slate-400' : 'text-slate-500',
-        'native-marker': isDarkMode ? 'font-bold text-[#c586c0]' : 'font-bold text-[#7a1fa2]',
-        'native-keyword': isDarkMode ? 'font-semibold text-[#569cd6]' : 'font-semibold text-blue-700',
+        'native-marker': isDarkMode ? 'text-[#c586c0]' : 'text-[#7a1fa2]',
+        'native-keyword': isDarkMode ? 'text-[#569cd6]' : 'text-blue-700',
         'native-type': isDarkMode ? 'text-[#4ec9b0]' : 'text-teal-700',
         'native-namespace': isDarkMode ? 'text-[#4fc1ff]' : 'text-blue-700',
         'native-function': isDarkMode ? 'text-[#dcdcaa]' : 'text-[#795e26]',
         'native-variable': isDarkMode ? 'text-[#9cdcfe]' : 'text-[#001080]',
         identifier: isDarkMode ? 'text-slate-100' : 'text-slate-900'
       }[kind];
-      return <span key={index} data-lingcpp-token={kind} className={className}>{token}</span>;
+      return (
+        <span
+          key={index}
+          data-lingcpp-token={kind}
+          className={className}
+          style={BEGINNER_CODE_OVERLAY_TOKEN_STYLE}
+        >
+          {token}
+        </span>
+      );
     };
 
     const renderBeginnerCodeLine = (line: string) => {

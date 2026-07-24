@@ -1439,6 +1439,8 @@ function getDesignerControlCompletionItemsForWindow(win: LingWindowModel): LingC
         kind: 'snippet',
         insertText: `${control.name}.设置选择项($1)`,
         detail: `${detail} · 按从 0 开始的索引切换选择项`,
+        signature: `${control.name}.设置选择项(索引)`,
+        returnType: '逻辑型',
         documentation: `设置设计器控件“${control.name}”的选择项；等价于 控件_设置选择项("${control.name}", 索引)。`,
         aliases: [control.name, '设置选择项', '切换选项卡', '选择页面'],
         category: 'designer',

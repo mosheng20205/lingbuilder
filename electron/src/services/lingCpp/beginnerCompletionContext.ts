@@ -9,6 +9,12 @@ export interface BeginnerCompletionContext {
   isWindowPlacementContext: boolean;
 }
 
+export interface BeginnerCommandTokenAtCursor {
+  token: string;
+  lineIndex: number;
+  columnStart: number;
+}
+
 export function scanBeginnerCodePrefix(text: string) {
   let isInsideDoubleString = false;
   let isInsideChineseString = false;
@@ -92,4 +98,37 @@ export function shouldShowBeginnerCompletion(context: BeginnerCompletionContext,
 
 export function getBeginnerCompletionToken(value: string, cursor: number): string {
   return getBeginnerCompletionContext(value, cursor).token;
+}
+
+export function getBeginnerCommandTokenAtCursor(
+  value: string,
+  cursor: number,
+  availableCommands: ReadonlySet<string>
+): BeginnerCommandTokenAtCursor | null {
+  const safeCursor = Math.max(0, Math.min(cursor, value.length));
+  const previousNewline = safeCursor > 0 ? value.lastIndexOf('\n', safeCursor - 1) : -1;
+  const lineStart = previousNewline + 1;
+  const nextNewline = value.indexOf('\n', safeCursor);
+  const lineEnd = nextNewline >= 0 ? nextNewline : value.length;
+  const line = value.slice(lineStart, lineEnd);
+  const column = safeCursor - lineStart;
+  const tokenPattern = /[a-zA-Z0-9_@.．\u4e00-\u9fa5]+/gu;
+
+  for (const match of line.matchAll(tokenPattern)) {
+    const columnStart = match.index ?? 0;
+    const token = match[0];
+    const columnEnd = columnStart + token.length;
+    if (column < columnStart || column > columnEnd || !availableCommands.has(token)) continue;
+
+    const prefixSyntax = scanBeginnerCodePrefix(line.slice(0, columnStart));
+    if (prefixSyntax.isInsideString || prefixSyntax.isInsideComment) return null;
+
+    return {
+      token,
+      lineIndex: value.slice(0, lineStart).split('\n').length - 1,
+      columnStart
+    };
+  }
+
+  return null;
 }
