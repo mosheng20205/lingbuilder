@@ -50,6 +50,13 @@
       "type": "visual-cpp",
       "sourceRoot": "src/newemoji",
       "references": []
+    },
+    {
+      "id": "upload-drag-cli-test",
+      "name": "上传与拖拽上传 CLI 测试",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/upload-drag-cli-test/src",
+      "references": []
     }
   ]
 }

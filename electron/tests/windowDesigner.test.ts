@@ -230,8 +230,11 @@ test('布局 XML 保留父级控件标识供工程迁移和检查', () => {
 });
 
 test('Win32 控件注册表与基础/高级模块贡献保持一致', () => {
-  const registeredTypes = WIN32_CONTROL_DEFINITIONS.map(definition => definition.type);
-  assert.equal(new Set(registeredTypes).size, registeredTypes.length, '控件 type 必须唯一');
+  const allRegisteredTypes = WIN32_CONTROL_DEFINITIONS.map(definition => definition.type);
+  const registeredTypes = WIN32_CONTROL_DEFINITIONS
+    .filter(definition => definition.moduleId === 'lingbuilder.win32.basic' || definition.moduleId === 'lingbuilder.win32.common-controls')
+    .map(definition => definition.type);
+  assert.equal(new Set(allRegisteredTypes).size, allRegisteredTypes.length, '控件 type 必须唯一');
   const contributedTypes = BUILTIN_MODULES
     .filter(module => module.id === 'lingbuilder.win32.basic' || module.id === 'lingbuilder.win32.common-controls')
     .flatMap(module => module.contributes?.designerControls || [])
@@ -491,6 +494,8 @@ test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件
         { ...createControl('radio', 'container', 'RadioButton'), name: '主题选项', content: '深色主题', x: 40, y: 90, properties: { checked: true } },
         { ...createControl('list', 'container', 'ListBox'), name: '功能列表', content: '功能', x: 40, y: 130, properties: { items: ['新建项目', '打开项目'], selectedIndex: 1 } },
         { ...createControl('image', 'container', 'Image'), name: '封面图', content: '项目封面', x: 260, y: 130, properties: { imageSource: 'assets/cover.png', stretch: 'uniformToFill' } },
+        { ...createControl('upload', 'container', 'Upload'), name: '文件上传', content: '上传附件', x: 40, y: 190, properties: { tip: '选择资料', initialFiles: ['readme.txt'], multiple: false, autoUpload: true, styleMode: '6', showFileList: true, showTip: true, showActions: true, dropEnabled: false, limit: 2, maxSizeKb: 2048, accept: '.txt' }, events: { FilesSelected: '_文件上传_文件已选择', UploadAction: '_文件上传_上传操作' } },
+        { ...createControl('drag-upload', 'container', 'DragUpload'), name: '拖拽上传', content: '拖入图片', x: 260, y: 190, properties: { tip: '拖入图片文件', initialFiles: [], multiple: true, styleMode: '5', dropEnabled: true, accept: '.png;.jpg' } },
         { ...createControl('unsupported', undefined, 'ComboBox'), name: '旧下拉框', x: 40, y: 140 },
         { ...createControl('hidden-container', undefined, 'Grid'), visibility: 'Collapsed' },
         { ...createControl('hidden-label', 'hidden-container', 'Label'), content: '不应生成的隐藏子控件' }
@@ -506,7 +511,7 @@ test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件
     installPath: 'C:/modules/lingbuilder.new_emoji.ui', isInstalled: true, isEnabledForProject: true, diagnostics: []
   };
   const generated = generateLingCppNativeWin32Project(project, {
-    lingCppSourceCode: '类 MainWindow\n    事件 创建完毕()\n        调试输出("new_emoji 已创建")\n    结束\n结束类',
+    lingCppSourceCode: '类 MainWindow\n    事件 创建完毕()\n        调试输出("new_emoji 已创建")\n    结束\n    事件 _文件上传_文件已选择()\n        调试输出(NE_取最近上传选择文件())\n    结束\n    事件 _文件上传_上传操作()\n        调试输出("上传动作")\n    结束\n结束类',
     enabledModules: [newEmojiModule]
   });
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
@@ -519,10 +524,52 @@ test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件
   assert.match(cpp, /NE_创建单选框\([^\n]+L"深色主题", 1/);
   assert.match(cpp, /NE_创建列表框\([^\n]+L"功能", L"新建项目\|打开项目", 1/);
   assert.match(cpp, /NE_创建图片\([^\n]+L"assets\/cover\.png", L"项目封面", 1/);
+  assert.match(cpp, /NE_创建上传\([^\n]+L"上传附件", L"选择资料", L"readme\.txt"/u);
+  assert.match(cpp, /NE_设置上传选项\([^\n]+, 0, 1, 6, 1, 1, 1, 0, 2, 2048, L"\.txt"/u);
+  assert.match(cpp, /NE_设置上传选项\([^\n]+, 1, 0, 5, 1, 1, 1, 1/u);
+  assert.match(cpp, /static void __stdcall LB_UploadSelect_/u);
+  assert.match(cpp, /NE_设置上传事件\([^\n]+LB_UploadSelect_[^\n]+LB_UploadAction_/u);
   assert.match(cpp, /NE_运行消息循环\(\)/);
   assert.doesNotMatch(cpp, /不应生成的隐藏子控件/u);
   assert.doesNotMatch(cpp, /class LingWindowBase/);
   assert.ok(generated.diagnostics.some(item => item.includes('旧下拉框') && item.includes('暂不支持')));
+});
+
+test('上传与拖拽上传控件注册完整属性和事件', () => {
+  const upload = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'Upload');
+  const dragUpload = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'DragUpload');
+  assert.ok(upload);
+  assert.ok(dragUpload);
+  assert.equal(upload.moduleId, 'lingbuilder.win32.common-controls');
+  assert.equal(upload.nativeAdapter, 'win32-upload');
+  assert.equal(dragUpload.moduleId, 'lingbuilder.win32.common-controls');
+  assert.equal(dragUpload.properties.find(property => property.key === 'dropEnabled')?.defaultValue, true);
+  assert.deepEqual(upload.events.map(event => event.name), ['FilesSelected', 'UploadAction']);
+  assert.ok(upload.properties.some(property => property.key === 'accept'));
+  assert.ok(upload.properties.some(property => property.key === 'maxSizeKb'));
+});
+
+test('原生 Win32 上传控件生成文件选择、格式过滤、文件列表和拖放处理且不依赖 new_emoji', () => {
+  const upload = { ...createControl('upload', undefined, 'Upload'), name: '附件上传', width: 360, height: 220, properties: { multiple: true, accept: '.pdf,.doc,.xls,.zip,.png,.jpg,.jgp', showFileList: true, showTip: true, showActions: true, limit: 12, maxSizeKb: 20480 }, events: { FilesSelected: '附件上传_文件已选择', UploadAction: '附件上传_上传操作' } };
+  const dragUpload = { ...createControl('drag-upload', undefined, 'DragUpload'), name: '拖拽附件', x: 380, width: 360, height: 220, properties: { multiple: true, accept: '.pdf,.doc,.xls,.zip,.png,.jpg,.jgp', showFileList: true, showTip: true, showActions: true, dropEnabled: true }, events: { FilesSelected: '拖拽附件_文件已选择', UploadAction: '拖拽附件_上传操作' } };
+  const project: LingWindowProject = { schemaVersion: 2, id: 'native-upload', name: '原生上传', windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '原生上传', width: 780, height: 520, background: '#202028', description: '', controls: [upload, dragUpload] }] };
+  const enabledModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({ manifest: BUILTIN_MODULES.find(module => module.id === id)!, installPath: 'builtin', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
+  const source = `类 主窗口 : 公开 窗体
+    事件 附件上传_文件已选择()
+        调试输出(上传_取文件("附件上传", 0))
+    结束
+    事件 附件上传_上传操作()
+        调试输出("开始上传")
+    结束
+结束类`;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /CLSID_FileOpenDialog/);
+  assert.match(cpp, /FOS_ALLOWMULTISELECT/);
+  assert.match(cpp, /WM_DROPFILES/);
+  assert.match(cpp, /IsUploadControl/);
+  assert.match(cpp, /上传_取文件\(L"附件上传", 0\)/u);
+  assert.match(cpp, /L"\.pdf,\.doc,\.xls,\.zip,\.png,\.jpg,\.jgp"/u);
+  assert.doesNotMatch(cpp, /new_emoji_bridge|NE_创建上传|new_emoji\.dll/u);
 });
 
 test('编辑框垂直对齐默认居中并提供顶部、居中、底部选项', () => {
@@ -534,6 +581,14 @@ test('编辑框垂直对齐默认居中并提供顶部、居中、底部选项',
   assert.equal(verticalAlign.defaultValue, 'center');
   assert.deepEqual(verticalAlign.options?.map(option => option.value), ['top', 'center', 'bottom']);
   assert.equal(createDefaultControlProperties('TextBox').verticalAlign, 'center');
+
+  const textAlign = textBox.properties.find(property => property.key === 'textAlign');
+  assert.ok(textAlign);
+  assert.deepEqual(textAlign.options, [
+    { value: 'left', label: '左对齐' },
+    { value: 'center', label: '居中' },
+    { value: 'right', label: '右对齐' }
+  ]);
 });
 
 test('按钮圆角属性允许输入 0 到 100，并默认使用 6 像素', () => {
@@ -1160,16 +1215,18 @@ test('ToolTip 与 PropertySheet 作为非可视资源生成附加行为和顶层
 
 test('.lcpp 控件属性读写和集合命令通过模块 binding 确定性生成', () => {
   const button = { ...createControl('save-button', undefined, 'Button'), name: '保存按钮' };
+  const pageIndexInput = { ...createControl('page-index', undefined, 'TextBox'), name: '编辑框_表头', content: '0' };
   const list = { ...createControl('data-list', undefined, 'ListView'), name: '数据列表', properties: { columns: [{ title: '名称' }, { title: '状态' }], items: [] } };
   const tree = { ...createControl('data-tree', undefined, 'TreeView'), name: '数据树', properties: { nodes: [] } };
   const tab = { ...createControl('pages', undefined, 'TabControl'), name: '页面选项卡', properties: { tabs: [] } };
-  const project: LingWindowProject = { schemaVersion: 2, id: 'runtime-api', name: '运行属性 API', resources: [], windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#202028', description: '', events: { Loaded: '_主窗口_创建完毕' }, controls: [button, list, tree, tab] }] };
+  const project: LingWindowProject = { schemaVersion: 2, id: 'runtime-api', name: '运行属性 API', resources: [], windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480, background: '#202028', description: '', events: { Loaded: '_主窗口_创建完毕' }, controls: [button, pageIndexInput, list, tree, tab] }] };
   const enabledModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({ manifest: BUILTIN_MODULES.find(module => module.id === id)!, installPath: 'builtin', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
   const source = `类 主窗口 : 公开 窗体
     事件 _主窗口_创建完毕()
         控件_设置文本("保存按钮", "立即保存")
+        编辑框_表头.内容 = "1"
         控件_设置启用("保存按钮", 真)
-        控件_设置选择项("数据列表", 0)
+        页面选项卡.设置选择项(到整数(编辑框_表头.内容))
         列表视图_添加行("数据列表", "服务\\t运行")
         树形框_添加节点("数据树", "", "根节点")
         选项卡_添加页("页面选项卡", "新增页")
@@ -1177,7 +1234,10 @@ test('.lcpp 控件属性读写和集合命令通过模块 binding 确定性生�
 结束类`;
   const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.find(file => file.relativePath === 'main.cpp')!.content;
   assert.match(cpp, /控件_设置文本\(L"保存按钮", L"立即保存"\)/u);
+  assert.match(cpp, /控件_设置文本\(L"编辑框_表头", L"1"\)/u);
   assert.match(cpp, /控件_设置启用\(L"保存按钮", true\)/u);
+  assert.match(cpp, /控件_设置选择项\(L"页面选项卡", 到整数\(控件_取文本\(L"编辑框_表头"\)\)\)/u);
+  assert.match(cpp, /int 到整数\(const std::wstring& value\) const/u);
   assert.match(cpp, /列表视图_添加行\(L"数据列表", L"服务/u);
   assert.match(cpp, /树形框_添加节点\(L"数据树", L"", L"根节点"\)/u);
   assert.match(cpp, /选项卡_添加页\(L"页面选项卡", L"新增页"\)/u);

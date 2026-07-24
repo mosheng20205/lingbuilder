@@ -25,6 +25,11 @@ import {
   NEW_EMOJI_MODULE_ID
 } from './newEmojiDesignerAdapter';
 import { getEffectiveControlState } from './controlHierarchy';
+import {
+  parseEplControlMemberAssignmentRule,
+  parseEplControlMemberRule,
+  parseEplControlMethodCallRule
+} from './eplToCppRules';
 
 export interface LingCppNativeProjectFile {
   relativePath: string;
@@ -163,6 +168,25 @@ function generateNewEmojiMainCpp(
       isEnabled: getEffectiveControlState(window.controls, control.id).enabled
     })));
   const variables = new Map(controls.map((control, index) => [control.id, `ne_element_${index + 1}`]));
+  const uploadCallbacks = new Map<string, { select?: string; action?: string }>();
+  const uploadCallbackBlocks: string[] = [];
+  controls.forEach((control, index) => {
+    if (control.type !== 'Upload' && control.type !== 'DragUpload') return;
+    const selectHandler = control.events?.FilesSelected?.trim();
+    const actionHandler = control.events?.UploadAction?.trim();
+    const selectMethod = selectHandler ? findLingCppMethod(program, selectHandler) : undefined;
+    const actionMethod = actionHandler ? findLingCppMethod(program, actionHandler) : undefined;
+    const callbacks: { select?: string; action?: string } = {};
+    if (selectMethod) {
+      callbacks.select = `LB_UploadSelect_${index + 1}`;
+      uploadCallbackBlocks.push(`static void __stdcall ${callbacks.select}(int, const unsigned char*, int) {\n${translateMethodStatements(selectMethod, enabledModules).replace(/^ {8}/gmu, '    ')}\n}`);
+    }
+    if (actionMethod) {
+      callbacks.action = `LB_UploadAction_${index + 1}`;
+      uploadCallbackBlocks.push(`static void __stdcall ${callbacks.action}(int, int, int, int) {\n${translateMethodStatements(actionMethod, enabledModules).replace(/^ {8}/gmu, '    ')}\n}`);
+    }
+    uploadCallbacks.set(control.id, callbacks);
+  });
   const createLines = controls.flatMap(control => {
     const variable = variables.get(control.id)!;
     const parent = control.parentId ? window.controls.find(item => item.id === control.parentId) : undefined;
@@ -173,6 +197,7 @@ function generateNewEmojiMainCpp(
     const checked = control.properties?.checked === true ? 1 : 0;
     const progress = parseControlValue(control);
     let call: string;
+    const extraLines: string[] = [];
     switch (control.type) {
       case 'Button':
         call = `NE_创建按钮(g_newEmojiWindow, ${parentVariable}, L"", ${text}, ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)})`;
@@ -213,12 +238,37 @@ function generateNewEmojiMainCpp(
       case 'Grid':
         call = `NE_创建容器(g_newEmojiWindow, ${parentVariable}, ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)})`;
         break;
+      case 'Upload':
+      case 'DragUpload': {
+        const tip = String(control.properties?.tip || (control.type === 'DragUpload' ? '将文件拖到此处，或点击选择文件' : '支持点击选择文件'));
+        const initialFiles = Array.isArray(control.properties?.initialFiles)
+          ? control.properties.initialFiles.map(item => String(item)).join('|')
+          : '';
+        const multiple = control.properties?.multiple === false ? 0 : 1;
+        const autoUpload = control.properties?.autoUpload === true ? 1 : 0;
+        const styleMode = numericControlProperty(control, 'styleMode', control.type === 'DragUpload' ? 5 : 0);
+        const showFileList = control.properties?.showFileList === false ? 0 : 1;
+        const showTip = control.properties?.showTip === false ? 0 : 1;
+        const showActions = control.properties?.showActions === false ? 0 : 1;
+        const dropEnabled = control.type === 'DragUpload' || control.properties?.dropEnabled === true ? 1 : 0;
+        const limit = numericControlProperty(control, 'limit', 0);
+        const maxSizeKb = numericControlProperty(control, 'maxSizeKb', 0);
+        const accept = String(control.properties?.accept || '*.*');
+        call = `NE_创建上传(g_newEmojiWindow, ${parentVariable}, ${text}, L"${escapeWideString(tip)}", L"${escapeWideString(initialFiles)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)})`;
+        extraLines.push(`    NE_设置上传选项(g_newEmojiWindow, ${variable}, ${multiple}, ${autoUpload}, ${styleMode}, ${showFileList}, ${showTip}, ${showActions}, ${dropEnabled}, ${limit}, ${maxSizeKb}, L"${escapeWideString(accept)}");`);
+        const callbacks = uploadCallbacks.get(control.id);
+        if (callbacks?.select || callbacks?.action) {
+          extraLines.push(`    NE_设置上传事件(g_newEmojiWindow, ${variable}, ${callbacks.select || 'nullptr'}, ${callbacks.action || 'nullptr'});`);
+        }
+        break;
+      }
       default:
         return [];
     }
     return [
       `    int ${variable} = ${call};`,
-      `    NE_设置元素状态(g_newEmojiWindow, ${variable}, 1, ${control.isEnabled ? 1 : 0}, ${toNewEmojiColor(control.background, 0x00000000)}, ${toNewEmojiColor(control.foreground, 0xfff8fafc)});`
+      `    NE_设置元素状态(g_newEmojiWindow, ${variable}, 1, ${control.isEnabled ? 1 : 0}, ${toNewEmojiColor(control.background, 0x00000000)}, ${toNewEmojiColor(control.foreground, 0xfff8fafc)});`,
+      ...extraLines
     ];
   });
   const createdHandler = findWindowCreatedHandler(window, program);
@@ -258,6 +308,8 @@ static void 结束() {
         g_newEmojiWindow = nullptr;
     }
 }
+
+${uploadCallbackBlocks.join('\n\n')}
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     SetProcessDPIAware();
@@ -695,6 +747,7 @@ struct RuntimeControl {
     bool iconResource;
     bool mouseInside;
     int checkState;
+    std::vector<std::wstring> uploadFiles;
 };
 
 struct RuntimeTabPage {
@@ -1257,6 +1310,178 @@ protected:
         MessageBoxW(hwnd_, message.c_str(), L"LingBuilder 中文 C++", MB_OK | MB_ICONINFORMATION);
     }
 
+    bool IsUploadControl(const ControlSpec& control) const {
+        return IsType(control, L"Upload") || IsType(control, L"DragUpload");
+    }
+
+    void RefreshUploadFileList(RuntimeControl& runtime) {
+        HWND list = GetDlgItem(runtime.hwnd, 2);
+        if (!list) return;
+        SendMessageW(list, LB_RESETCONTENT, 0, 0);
+        for (const auto& path : runtime.uploadFiles) {
+            size_t separator = path.find_last_of(L"\\\\/");
+            const wchar_t* name = separator == std::wstring::npos ? path.c_str() : path.c_str() + separator + 1;
+            SendMessageW(list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name));
+        }
+    }
+
+    bool UploadFileMatches(const ControlSpec& control, const std::wstring& path) const {
+        std::wstring accept = control.data2 ? control.data2 : L"*.*";
+        if (accept.empty() || accept == L"*" || accept == L"*.*") return true;
+        std::wstring lowerPath = path;
+        std::transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(), [](wchar_t value) { return static_cast<wchar_t>(towlower(value)); });
+        size_t start = 0;
+        while (start <= accept.size()) {
+            size_t end = accept.find_first_of(L",;|", start);
+            std::wstring token = accept.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start);
+            while (!token.empty() && iswspace(token.front())) token.erase(token.begin());
+            while (!token.empty() && iswspace(token.back())) token.pop_back();
+            std::transform(token.begin(), token.end(), token.begin(), [](wchar_t value) { return static_cast<wchar_t>(towlower(value)); });
+            if (token == L"*" || token == L"*.*") return true;
+            if (token.rfind(L"*.", 0) == 0) token.erase(token.begin());
+            if (!token.empty() && token.front() != L'.' && token.find(L'/') == std::wstring::npos) token.insert(token.begin(), L'.');
+            if (!token.empty() && token.front() == L'.' && lowerPath.size() >= token.size()
+                && lowerPath.compare(lowerPath.size() - token.size(), token.size(), token) == 0) return true;
+            start = end == std::wstring::npos ? accept.size() + 1 : end + 1;
+        }
+        return false;
+    }
+
+    bool AddUploadFiles(const ControlSpec& control, RuntimeControl& runtime, const std::vector<std::wstring>& files) {
+        bool changed = false;
+        for (const auto& path : files) {
+            if (path.empty() || !UploadFileMatches(control, path)) continue;
+            if (control.maximum > 0) {
+                WIN32_FILE_ATTRIBUTE_DATA info = {};
+                if (GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &info)) {
+                    ULARGE_INTEGER size = {}; size.HighPart = info.nFileSizeHigh; size.LowPart = info.nFileSizeLow;
+                    if (size.QuadPart > static_cast<ULONGLONG>(control.maximum) * 1024ull) continue;
+                }
+            }
+            if (!(control.flags & CF_MULTIPLE)) runtime.uploadFiles.clear();
+            if (std::find(runtime.uploadFiles.begin(), runtime.uploadFiles.end(), path) == runtime.uploadFiles.end()) {
+                if (control.minimum > 0 && static_cast<int>(runtime.uploadFiles.size()) >= control.minimum) break;
+                runtime.uploadFiles.push_back(path);
+                changed = true;
+            }
+            if (!(control.flags & CF_MULTIPLE)) break;
+        }
+        if (!changed) return false;
+        RefreshUploadFileList(runtime);
+        DispatchLingEvent(control, L"FilesSelected");
+        if (control.selectedIndex & 1) DispatchLingEvent(control, L"UploadAction");
+        return true;
+    }
+
+    bool OpenUploadFileDialog(const ControlSpec& control, RuntimeControl& runtime) {
+        HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        IFileOpenDialog* dialog = nullptr;
+        HRESULT result = CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog));
+        if (FAILED(result) || !dialog) { if (SUCCEEDED(initialized)) CoUninitialize(); return false; }
+        FILEOPENDIALOGOPTIONS options = FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST;
+        if (control.flags & CF_MULTIPLE) options |= FOS_ALLOWMULTISELECT;
+        dialog->SetOptions(options);
+        std::wstring accept = control.data2 && control.data2[0] ? control.data2 : L"*.*";
+        std::wstring pattern;
+        size_t patternStart = 0;
+        while (patternStart <= accept.size()) {
+            size_t patternEnd = accept.find_first_of(L",;|", patternStart);
+            std::wstring token = accept.substr(patternStart, patternEnd == std::wstring::npos ? std::wstring::npos : patternEnd - patternStart);
+            while (!token.empty() && iswspace(token.front())) token.erase(token.begin());
+            while (!token.empty() && iswspace(token.back())) token.pop_back();
+            if (!token.empty()) {
+                if (token.front() == L'.') token.insert(token.begin(), L'*');
+                if (!pattern.empty()) pattern += L';';
+                pattern += token;
+            }
+            patternStart = patternEnd == std::wstring::npos ? accept.size() + 1 : patternEnd + 1;
+        }
+        if (pattern.empty()) pattern = L"*.*";
+        COMDLG_FILTERSPEC filters[] = {{ L"允许的文件", pattern.c_str() }, { L"所有文件", L"*.*" }};
+        dialog->SetFileTypes(2, filters);
+        result = dialog->Show(hwnd_);
+        std::vector<std::wstring> files;
+        if (SUCCEEDED(result)) {
+            IShellItemArray* items = nullptr;
+            if (SUCCEEDED(dialog->GetResults(&items)) && items) {
+                DWORD count = 0; items->GetCount(&count);
+                for (DWORD index = 0; index < count; ++index) {
+                    IShellItem* item = nullptr; PWSTR path = nullptr;
+                    if (SUCCEEDED(items->GetItemAt(index, &item)) && item && SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path) {
+                        files.emplace_back(path); CoTaskMemFree(path);
+                    }
+                    if (item) item->Release();
+                }
+                items->Release();
+            }
+        }
+        dialog->Release();
+        if (SUCCEEDED(initialized)) CoUninitialize();
+        return AddUploadFiles(control, runtime, files);
+    }
+
+    bool 上传_打开文件选择(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr;
+        return runtime && control && IsUploadControl(*control) ? OpenUploadFileDialog(*control, *runtime) : false;
+    }
+    bool 上传_开始(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr;
+        if (!runtime || !control || !IsUploadControl(*control)) return false;
+        DispatchLingEvent(*control, L"UploadAction"); return true;
+    }
+    bool 上传_清空文件(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr;
+        if (!runtime || !control || !IsUploadControl(*control)) return false;
+        runtime->uploadFiles.clear(); RefreshUploadFileList(*runtime); return true;
+    }
+    int 上传_取文件数量(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr;
+        return runtime && control && IsUploadControl(*control) ? static_cast<int>(runtime->uploadFiles.size()) : 0;
+    }
+    std::wstring 上传_取文件(const wchar_t* controlName, int index) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr;
+        return runtime && control && IsUploadControl(*control) && index >= 0 && index < static_cast<int>(runtime->uploadFiles.size()) ? runtime->uploadFiles[static_cast<size_t>(index)] : L"";
+    }
+
+    void InitializeUploadControl(const ControlSpec& control, RuntimeControl& runtime) {
+        auto labels = DecodeControlRecords(control.option2, 2);
+        const wchar_t* triggerText = !labels.empty() && !labels[0][0].empty() ? labels[0][0].c_str() : L"选择文件";
+        const wchar_t* submitText = !labels.empty() && !labels[0][1].empty() ? labels[0][1].c_str() : L"上传";
+        int padding = ScaleForDpi(10, dpi_);
+        int buttonHeight = ScaleForDpi(32, dpi_);
+        int width = ScaleForDpi(control.width, dpi_);
+        int height = ScaleForDpi(control.height, dpi_);
+        int cursorY = padding;
+        if (control.selectedIndex & 4) {
+            HWND tip = CreateWindowExW(0, L"STATIC", control.option1 && control.option1[0] ? control.option1 : (IsType(control, L"DragUpload") ? L"将文件拖到这里，或点击选择文件" : L"支持点击选择文件"),
+                WS_CHILD | WS_VISIBLE | SS_LEFT, padding, cursorY, std::max(20, width - padding * 2), ScaleForDpi(38, dpi_), runtime.hwnd, reinterpret_cast<HMENU>(4), g_instance, nullptr);
+            if (tip && runtime.font) SendMessageW(tip, WM_SETFONT, reinterpret_cast<WPARAM>(runtime.font), TRUE);
+            cursorY += ScaleForDpi(42, dpi_);
+        }
+        HWND trigger = CreateWindowExW(0, L"BUTTON", triggerText, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+            padding, cursorY, std::min(ScaleForDpi(130, dpi_), std::max(20, width - padding * 2)), buttonHeight,
+            runtime.hwnd, reinterpret_cast<HMENU>(1), g_instance, nullptr);
+        if (trigger && runtime.font) SendMessageW(trigger, WM_SETFONT, reinterpret_cast<WPARAM>(runtime.font), TRUE);
+        cursorY += buttonHeight + padding;
+        int actionSpace = (control.selectedIndex & 8) ? buttonHeight + padding : 0;
+        if (control.selectedIndex & 2) {
+            HWND list = CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | LBS_NOINTEGRALHEIGHT,
+                padding, cursorY, std::max(20, width - padding * 2), std::max(28, height - cursorY - actionSpace - padding),
+                runtime.hwnd, reinterpret_cast<HMENU>(2), g_instance, nullptr);
+            if (list && runtime.font) SendMessageW(list, WM_SETFONT, reinterpret_cast<WPARAM>(runtime.font), TRUE);
+        }
+        if (control.selectedIndex & 8) {
+            HWND submit = CreateWindowExW(0, L"BUTTON", submitText, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+                std::max(padding, width - padding - ScaleForDpi(130, dpi_)), std::max(cursorY, height - padding - buttonHeight),
+                std::min(ScaleForDpi(130, dpi_), std::max(20, width - padding * 2)), buttonHeight,
+                runtime.hwnd, reinterpret_cast<HMENU>(3), g_instance, nullptr);
+            if (submit && runtime.font) SendMessageW(submit, WM_SETFONT, reinterpret_cast<WPARAM>(runtime.font), TRUE);
+        }
+        auto initialFiles = DecodeControlRecords(control.data, 1);
+        for (const auto& row : initialFiles) if (!row.empty() && !row[0].empty()) runtime.uploadFiles.push_back(row[0]);
+        RefreshUploadFileList(runtime);
+    }
+
     void 调试输出(const wchar_t* text) {
         if (!text || text[0] == 0) return;
         OutputDebugStringW(text);
@@ -1269,6 +1494,8 @@ protected:
             std::fflush(stdout);
         }
     }
+
+    void 调试输出(const std::wstring& text) { 调试输出(text.c_str()); }
 
     int 信息框(const wchar_t* text, UINT flags, const wchar_t* title) {
         return MessageBoxW(hwnd_, text, title && title[0] ? title : L"LingBuilder 中文 C++", flags);
@@ -2329,9 +2556,16 @@ protected:
             : L"";
     }
 
-    bool 控件_设置文本(const wchar_t* controlName, const wchar_t* text) {
+    int 到整数(const std::wstring& value) const {
+        if (value.empty()) return 0;
+        wchar_t* end = nullptr;
+        long converted = wcstol(value.c_str(), &end, 10);
+        return end == value.c_str() ? 0 : static_cast<int>(converted);
+    }
+
+    bool 控件_设置文本(const wchar_t* controlName, const std::wstring& text) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); if (!runtime) return false;
-        return SetWindowTextW(runtime->hwnd, text ? text : L"") == TRUE;
+        return SetWindowTextW(runtime->hwnd, text.c_str()) == TRUE;
     }
     std::wstring 控件_取文本(const wchar_t* controlName) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); if (!runtime) return L"";
@@ -3946,6 +4180,19 @@ private:
         const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
         RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
         if (control && runtime) {
+            if (self->IsUploadControl(*control)) {
+                if (message == WM_COMMAND && HIWORD(wParam) == BN_CLICKED) {
+                    if (LOWORD(wParam) == 1) self->OpenUploadFileDialog(*control, *runtime);
+                    else if (LOWORD(wParam) == 3) self->DispatchLingEvent(*control, L"UploadAction");
+                    return 0;
+                }
+                if (message == WM_CTLCOLORSTATIC || message == WM_CTLCOLORLISTBOX) {
+                    HDC hdc = reinterpret_cast<HDC>(wParam);
+                    SetTextColor(hdc, control->foreground); SetBkColor(hdc, control->background);
+                    return reinterpret_cast<LRESULT>(runtime->brush ? runtime->brush : self->windowBrush_);
+                }
+                if (message == WM_NCDESTROY) RemoveWindowSubclass(hwnd, ControlSubclassProc, subclassId);
+            }
             if (IsType(*control, L"GroupBox") && (
                 message == WM_COMMAND
                 || message == WM_NOTIFY
@@ -4240,6 +4487,11 @@ private:
             // shared control brush can paint the designer model background.
             style |= SS_NOTIFY;
             if (control.flags & CF_SHOW_BORDER) style |= WS_BORDER;
+        } else if (IsUploadControl(control)) {
+            className = L"STATIC";
+            text = L"";
+            style |= SS_NOTIFY | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
+            exStyle |= WS_EX_CONTROLPARENT | WS_EX_CLIENTEDGE;
         } else if (IsType(control, L"ListView")) {
             className = WC_LISTVIEWW;
             if (control.flags & CF_VIEW_ICON) style |= LVS_ICON;
@@ -4393,7 +4645,9 @@ private:
             else if (IsType(control, L"ToolBar")) SendMessageW(child, TB_SETIMAGELIST, 0, reinterpret_cast<LPARAM>(imageList));
         }
         if (font) SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-        if (IsType(control, L"TextBox")) {
+        if (IsUploadControl(control)) {
+            InitializeUploadControl(control, runtimeControls_.back());
+        } else if (IsType(control, L"TextBox")) {
             SendMessageW(child, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(ScaleForDpi(10, dpi_), ScaleForDpi(10, dpi_)));
             RuntimeControl& runtime = runtimeControls_.back();
             ApplyTextBoxFrameRegion(frameHwnd);
@@ -4701,14 +4955,19 @@ private:
             return 0;
         }
         switch (message) {
-        case WM_CREATE:
+        case WM_CREATE: {
             windowBrush_ = CreateSolidBrush(spec_.background);
             ++g_openWindowCount;
             CreateImageLists();
             RebuildControls();
-            if (!GetWindowEventHandler(spec_, L"FileDropped").empty()) DragAcceptFiles(hwnd_, TRUE);
+            bool acceptsDroppedFiles = !GetWindowEventHandler(spec_, L"FileDropped").empty();
+            for (int index = 0; !acceptsDroppedFiles && index < spec_.controlCount; ++index) {
+                acceptsDroppedFiles = IsUploadControl(spec_.controls[index]) && (spec_.controls[index].selectedIndex & 16);
+            }
+            if (acceptsDroppedFiles) DragAcceptFiles(hwnd_, TRUE);
             OnWindowCreated();
             return 0;
+        }
         case WM_CLOSE:
             closingEventActive_ = true;
             closingCancelled_ = false;
@@ -4788,6 +5047,7 @@ private:
         }
         case WM_DROPFILES: {
             HDROP drop = reinterpret_cast<HDROP>(wParam);
+            POINT dropPoint = {}; DragQueryPoint(drop, &dropPoint);
             droppedFiles_.clear();
             UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
             for (UINT index = 0; index < count; ++index) {
@@ -4798,6 +5058,16 @@ private:
                 droppedFiles_.push_back(path);
             }
             DragFinish(drop);
+            for (auto& runtime : runtimeControls_) {
+                const ControlSpec* control = FindControl(runtime.id);
+                if (!control || !IsUploadControl(*control) || !(control->selectedIndex & 16)) continue;
+                RECT bounds = {}; GetWindowRect(runtime.hwnd, &bounds);
+                MapWindowPoints(HWND_DESKTOP, hwnd_, reinterpret_cast<POINT*>(&bounds), 2);
+                if (PtInRect(&bounds, dropPoint)) {
+                    AddUploadFiles(*control, runtime, droppedFiles_);
+                    return 0;
+                }
+            }
             DispatchWindowEvent(L"FileDropped");
             return 0;
         }
@@ -5673,6 +5943,16 @@ function translateStatement(statement: string, enabledModules: InstalledModule[]
     return formatOpenWindowCall(openWindowCommand);
   }
 
+  const controlTextAssignment = parseEplControlMemberAssignmentRule(statement);
+  if (controlTextAssignment) {
+    return `${controlTextAssignment.setterRuntimeName}(L"${escapeWideString(controlTextAssignment.controlName)}", ${translateLingCppExpression(controlTextAssignment.valueExpression, enabledModules)});`;
+  }
+
+  const controlMethodCall = parseEplControlMethodCallRule(statement);
+  if (controlMethodCall) {
+    return `${controlMethodCall.runtimeName}(L"${escapeWideString(controlMethodCall.controlName)}", ${translateCallArguments(controlMethodCall.argumentsText, enabledModules)});`;
+  }
+
   if (/^结束\s*[（(]?\s*[）)]?/.test(statement)) {
     return '结束();';
   }
@@ -5857,6 +6137,12 @@ function translateLingCppExpression(expression: string, enabledModules: Installe
   if (quoted) return `L"${escapeWideString(quoted[1] || '')}"`;
   if (trimmed === '真') return 'true';
   if (trimmed === '假') return 'false';
+  const controlTextProperty = parseEplControlMemberRule(trimmed);
+  if (controlTextProperty) return `${controlTextProperty.getterRuntimeName}(L"${escapeWideString(controlTextProperty.controlName)}")`;
+  const controlMethodCall = parseEplControlMethodCallRule(trimmed);
+  if (controlMethodCall) {
+    return `${controlMethodCall.runtimeName}(L"${escapeWideString(controlMethodCall.controlName)}", ${translateCallArguments(controlMethodCall.argumentsText, enabledModules)})`;
+  }
   const call = parseCallStatement(trimmed);
   if (call) {
     const binding = findModuleCommandBinding(call.name, enabledModules);
@@ -6013,12 +6299,19 @@ function generateControlSpec(
     : control.background;
   const x = parent ? control.x - parent.x : control.x;
   const y = parent ? control.y - parent.y : control.y;
-  const minimum = numericControlProperty(control, 'minimum', 0);
-  const maximum = numericControlProperty(control, 'maximum', 100);
-  const value = parseControlValue(control);
+  const uploadControl = control.type === 'Upload' || control.type === 'DragUpload';
+  const minimum = numericControlProperty(control, uploadControl ? 'limit' : 'minimum', 0);
+  const maximum = numericControlProperty(control, uploadControl ? 'maxSizeKb' : 'maximum', uploadControl ? 0 : 100);
+  const value = uploadControl ? numericControlProperty(control, 'styleMode', control.type === 'DragUpload' ? 5 : 0) : parseControlValue(control);
   const selectedIndex = control.type === 'TrackBar'
     ? numericControlProperty(control, 'tickFrequency', 1)
-    : numericControlProperty(control, 'selectedIndex', 0);
+    : uploadControl
+      ? (control.properties?.autoUpload === true ? 1 : 0)
+        | (control.properties?.showFileList === false ? 0 : 2)
+        | (control.properties?.showTip === false ? 0 : 4)
+        | (control.properties?.showActions === false ? 0 : 8)
+        | (control.type === 'DragUpload' || control.properties?.dropEnabled === true ? 16 : 0)
+      : numericControlProperty(control, 'selectedIndex', 0);
   const [data, data2] = serializeControlData(control, controlIds);
   const tooltip = typeof control.properties?.toolTip === 'string' ? control.properties.toolTip : '';
   const tooltipDelay = numericControlProperty(control, 'toolTipDelay', 500);
@@ -6112,7 +6405,8 @@ function parseControlValue(control: LingControl): number {
 
 function numericControlProperty(control: LingControl, key: string, fallback: number): number {
   const value = control.properties?.[key];
-  return typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : fallback;
+  const numeric = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : Number.NaN;
+  return Number.isFinite(numeric) ? Math.trunc(numeric) : fallback;
 }
 
 function serializeControlData(control: LingControl, controlIds: Map<string, number>): [string, string] {
@@ -6125,6 +6419,10 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
 
   if (control.type === 'TextBox') {
     return ['', typeof properties.verticalAlign === 'string' ? properties.verticalAlign : 'center'];
+  }
+  if (control.type === 'Upload' || control.type === 'DragUpload') {
+    const initialFiles = Array.isArray(properties.initialFiles) ? properties.initialFiles.map(path => [String(path)]) : [];
+    return [encodeControlRecords(initialFiles), typeof properties.accept === 'string' ? properties.accept : '*.*'];
   }
 
   if (control.type === 'ListBox' || control.type === 'ComboBox' || control.type === 'ComboBoxEx') {
@@ -6238,6 +6536,8 @@ function getControlOptions(control: LingControl, controlIds: Map<string, number>
     case 'ToolBar': return [stringValue('imageListId'), ''];
     case 'DateTimePicker': return [stringValue('format'), stringValue('customFormat')];
     case 'RichEdit': return [stringValue('scrollBars'), ''];
+    case 'Upload':
+    case 'DragUpload': return [stringValue('tip'), encodeControlRecords([[stringValue('triggerText') || '选择文件', stringValue('submitText') || '上传']])];
     case 'UpDown': return [String(controlIds.get(stringValue('buddyControl')) || ''), ''];
     default: return ['', ''];
   }

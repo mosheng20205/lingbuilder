@@ -444,6 +444,16 @@ export class AiBridgeService {
     const sourceDir = path.join(buildDir, 'src');
     const binDir = path.join(buildDir, 'bin');
     const objDir = path.join(buildDir, 'obj');
+    // These directories contain only reproducible build products. Recreate
+    // them so disabled modules cannot leave stale DLLs, libs or sources in a
+    // later build (for example after switching away from new_emoji).
+    await Promise.all([
+      fs.rm(binDir, { recursive: true, force: true }),
+      fs.rm(objDir, { recursive: true, force: true }),
+      fs.rm(path.join(buildDir, 'modules'), { recursive: true, force: true }),
+      fs.rm(path.join(sourceDir, 'modules'), { recursive: true, force: true }),
+      fs.rm(path.join(exportDir, 'modules'), { recursive: true, force: true })
+    ]);
     await Promise.all([
       fs.mkdir(sourceDir, { recursive: true }),
       fs.mkdir(binDir, { recursive: true }),

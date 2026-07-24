@@ -437,6 +437,30 @@ function registerIpcHandlers(): void {
     return await shell.openPath(targetPath);
   });
   ipcMain.handle('docs:open-module-manual', async () => shell.openPath(moduleManualPath()));
+  ipcMain.handle('modules:import-package', async (_event, sourcePath: string) => {
+    try {
+      if (!activeWorkspace) throw new Error('当前没有已打开的工作区。');
+      const source = await fs.realpath(String(sourcePath || ''));
+      const stat = await fs.stat(source);
+      if (!stat.isFile()) throw new Error('拖入目标不是文件。');
+      if (!source.toLowerCase().endsWith('.lbmod')) throw new Error('只能导入 .lbmod 模块包。');
+      if (stat.size > 100 * 1024 * 1024) throw new Error('模块包超过 100MB 限制。');
+      const packageDir = path.join(path.resolve(activeWorkspace), '.lingbuilder', 'module-packages');
+      await fs.mkdir(packageDir, { recursive: true });
+      const parsed = path.parse(source);
+      let target = path.join(packageDir, `${parsed.name}${parsed.ext}`);
+      try {
+        await fs.access(target);
+        target = path.join(packageDir, `${parsed.name}-${Date.now()}${parsed.ext}`);
+      } catch {
+        // 目标不存在时保留原文件名。
+      }
+      await fs.copyFile(source, target);
+      return { ok: true, relativePath: path.relative(activeWorkspace, target).replace(/\\/gu, '/') };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
   ipcMain.handle('credentials:ai:get', () => readAiCredential());
   ipcMain.handle('credentials:ai:set', (_event, value: string) => writeAiCredential(typeof value === 'string' ? value.slice(0, 16_384) : ''));
   ipcMain.handle('credentials:ai:delete', () => writeAiCredential(''));

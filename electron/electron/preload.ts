@@ -30,6 +30,9 @@ contextBridge.exposeInMainWorld('lingBuilder', {
   docs: {
     openModuleManual: () => ipcRenderer.invoke('docs:open-module-manual'),
   },
+  modules: {
+    importPackage: (sourcePath: string) => ipcRenderer.invoke('modules:import-package', sourcePath),
+  },
   credentials: {
     getAiApiKey: () => ipcRenderer.invoke('credentials:ai:get'),
     setAiApiKey: (value: string) => ipcRenderer.invoke('credentials:ai:set', value),

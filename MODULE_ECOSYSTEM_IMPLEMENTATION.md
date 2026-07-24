@@ -173,7 +173,7 @@
 
 - 左侧活动栏“模块”页：进入完整模块管理器。
 - 解决方案资源管理器项目节点下“模块”组：显示当前项目启用模块，并提供“配置项目所使用模块”按钮。
-- `.lbmod` 可拖入模块页，也可手动填写本机路径后点击“预览安装”。
+- `.lbmod` 可拖入模块页，也可手动填写工作区相对路径后点击“预览安装”。桌面版拖入工作区外模块包时，主进程会校验 `.lbmod`、普通文件和 100MB 上限，复制到 `.lingbuilder/module-packages` 后再走同一预览确认流程；网页版仍只接受工作区内路径。
 - 安装预览必须显示模块名、版本、SHA256、文件数量、升级状态和安全检查结果；用户确认后才安装。
 
 ## 与 Monaco 和生成器的关系
@@ -201,8 +201,8 @@ lingbuilder.module.json
 - new_emoji 独立演示或 AI 自动生成示例必须保留事件块末尾的结构标记 `结束`，但不能额外调用显式退出命令 `结束()`；后者会销毁 LingBuilder 默认窗口，消息循环收到退出后表现为 exe 闪退。
 - 纯 new_emoji 示例应由 new_emoji 自己负责生命周期：创建窗口和控件后调用 `NE_运行消息循环` 或底层 `EU_RunMessageLoop()`。如果继续复用 LingBuilder 默认 Win32 生成窗口，必须保证默认窗口不会立即销毁，也不能让空设计器窗口关闭后触发 `PostQuitMessage(0)`。
 - 报告 new_emoji exe 可运行前，必须确认 `new_emoji.dll` 已复制到 exe 同目录，并实际启动验证至少 3 秒仍在运行。
-- 项目启用 `lingbuilder.new_emoji.ui` 后，设计器和原生生成器会把基础 `Button`、`TextBox`、`Label`、`CheckBox`、`RadioButton`、`ListBox`、`Image`、`ProgressBar`、`Grid` 模型映射为 new_emoji 控件；现有基础布局无需重建。`generate-new-emoji-module.cjs` 必须持续生成对应的 `designerControls` 与 `NE_创建编辑框/复选框/单选框/列表框/图片/进度条` 高层桥接，不能只添加补全。列表框使用 `items/selectedIndex` 属性，图片使用 `imageSource/stretch` 属性。
-- new_emoji 后端不支持的控件必须在工具箱显示禁用原因，并在生成结果中产生中文诊断；不得为了“看起来可用”而回退生成 Win32 控件。当前第一阶段仍未把控件单击/改变等事件完整接到 new_emoji callback API，新增事件时必须同时补设计器事件、桥接回调生命周期和生成器分发测试。
+- 项目启用 `lingbuilder.new_emoji.ui` 后，设计器和原生生成器会把基础 `Button`、`TextBox`、`Label`、`CheckBox`、`RadioButton`、`ListBox`、`Image`、`ProgressBar`、`Grid` 模型映射为 new_emoji 控件；现有基础布局无需重建。`Upload` / `DragUpload` 的控件归属与默认生成链路是 `lingbuilder.win32.common-controls`，普通项目不得因此依赖 new_emoji；显式选择 new_emoji 后端且同时启用高级控件模块时，可继续复用该模型的 `NE_` 上传适配。`generate-new-emoji-module.cjs` 必须持续生成稳定桥接，不能只添加补全。
+- new_emoji 后端不支持的控件必须在工具箱显示禁用原因，并在生成结果中产生中文诊断；不得为了“看起来可用”而回退生成 Win32 控件。上传事件已接入 callback API；继续新增其它控件事件时仍必须同时补设计器事件、桥接回调生命周期和生成器分发测试。
 
 ## WebSocket 客户端内置网络模块
 

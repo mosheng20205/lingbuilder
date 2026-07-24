@@ -1,4 +1,4 @@
-export type Win32ControlModuleId = 'lingbuilder.win32.basic' | 'lingbuilder.win32.common-controls';
+export type Win32ControlModuleId = 'lingbuilder.win32.basic' | 'lingbuilder.win32.common-controls' | 'lingbuilder.new_emoji.ui';
 
 export type Win32ControlPropertyType =
   | 'text'
@@ -38,7 +38,7 @@ export interface Win32ControlDefinition {
   type: string;
   label: string;
   moduleId: Win32ControlModuleId;
-  category: '基础' | '输入' | '集合' | '导航' | '日期' | '外壳' | '容器' | '媒体' | '非可视';
+  category: '基础' | '输入' | '集合' | '导航' | '日期' | '外壳' | '容器' | '媒体' | '上传' | '非可视';
   icon: string;
   nativeClass: string;
   nativeAdapter: string;
@@ -82,6 +82,33 @@ const COMMON_FOCUS_EVENTS = [
 ];
 const ITEMS: Win32ControlPropertyDefinition = { key: 'items', label: '项目集合', type: 'stringList', defaultValue: [] };
 const IMAGE_SOURCE: Win32ControlPropertyDefinition = { key: 'imageSource', label: '图片源', type: 'file', defaultValue: '' };
+const TEXT_ALIGN: Win32ControlPropertyDefinition = {
+  key: 'textAlign',
+  label: '文本对齐',
+  type: 'enum',
+  defaultValue: 'left',
+  options: [option('left', '左对齐'), option('center', '居中'), option('right', '右对齐')]
+};
+const UPLOAD_PROPERTIES: Win32ControlPropertyDefinition[] = [
+  text('tip', '提示文字', '支持点击选择文件'),
+  text('triggerText', '选择按钮文字', '选择文件'),
+  text('submitText', '上传按钮文字', '开始上传'),
+  { key: 'initialFiles', label: '初始文件', type: 'stringList', defaultValue: [] },
+  bool('multiple', '允许多选', true),
+  bool('autoUpload', '自动上传'),
+  { key: 'styleMode', label: '上传样式', type: 'enum', defaultValue: '0', options: [option('0', '文件列表'), option('1', '头像'), option('2', '图片卡片'), option('3', '自定义卡片'), option('4', '图片列表'), option('5', '拖拽区域'), option('6', '手动上传')] },
+  bool('showFileList', '显示文件列表', true),
+  bool('showTip', '显示提示', true),
+  bool('showActions', '显示操作按钮', true),
+  bool('dropEnabled', '允许拖拽文件'),
+  number('limit', '文件数量上限', 0, 0, 1000),
+  number('maxSizeKb', '单文件上限 KB', 0, 0),
+  text('accept', '允许文件类型', '*.*')
+];
+const UPLOAD_EVENTS = [
+  event('FilesSelected', '文件已选择', '文件已选择', 'notify'),
+  event('UploadAction', '上传操作', '上传操作', 'notify')
+];
 
 function control(definition: Omit<Win32ControlDefinition, 'isVisual'>): Win32ControlDefinition {
   return { ...definition, isVisual: true };
@@ -93,8 +120,8 @@ function nonVisual(definition: Omit<Win32ControlDefinition, 'isVisual'>): Win32C
 
 export const WIN32_CONTROL_DEFINITIONS: Win32ControlDefinition[] = [
   control({ type: 'Button', label: '按钮', moduleId: 'lingbuilder.win32.basic', category: '基础', icon: 'SquareDot', nativeClass: 'BUTTON', nativeAdapter: 'button', defaultProps: { content: '新按钮', width: 120, height: 35, background: '#007ACC' }, properties: [enumProp('buttonStyle', '按钮样式', 'push', ['push', 'default', 'toggle', 'split', 'commandLink']), number('cornerRadius', '圆角大小', 6, 0, 100), bool('checked', '按下状态')], events: [event('Click', '被单击', '被单击', 'command'), ...COMMON_MOUSE_EVENTS, ...COMMON_FOCUS_EVENTS] }),
-  control({ type: 'TextBox', label: '编辑框', moduleId: 'lingbuilder.win32.basic', category: '输入', icon: 'Keyboard', nativeClass: 'EDIT', nativeAdapter: 'edit', defaultProps: { content: '请输入内容...', width: 160, height: 34, background: '#2D2D30' }, properties: [bool('multiline', '多行'), bool('password', '密码输入'), bool('readOnly', '只读'), bool('numeric', '仅数字'), enumProp('textAlign', '文本对齐', 'left', ['left', 'center', 'right']), { key: 'verticalAlign', label: '垂直对齐', type: 'enum', defaultValue: 'center', options: [option('top', '顶部'), option('center', '居中'), option('bottom', '底部')] }, enumProp('scrollBars', '滚动条', 'none', ['none', 'horizontal', 'vertical', 'both'])], events: [event('TextChanged', '内容被改变', '内容被改变', 'command'), ...COMMON_FOCUS_EVENTS] }),
-  control({ type: 'Label', label: '标签/静态控件', moduleId: 'lingbuilder.win32.basic', category: '基础', icon: 'Type', nativeClass: 'STATIC', nativeAdapter: 'static', defaultProps: { content: '新文本标签', width: 180, height: 32 }, properties: [enumProp('staticStyle', '静态样式', 'text', ['text', 'bitmap', 'icon', 'frame']), enumProp('textAlign', '文本对齐', 'left', ['left', 'center', 'right']), IMAGE_SOURCE], events: [...COMMON_MOUSE_EVENTS] }),
+  control({ type: 'TextBox', label: '编辑框', moduleId: 'lingbuilder.win32.basic', category: '输入', icon: 'Keyboard', nativeClass: 'EDIT', nativeAdapter: 'edit', defaultProps: { content: '请输入内容...', width: 160, height: 34, background: '#2D2D30' }, properties: [bool('multiline', '多行'), bool('password', '密码输入'), bool('readOnly', '只读'), bool('numeric', '仅数字'), TEXT_ALIGN, { key: 'verticalAlign', label: '垂直对齐', type: 'enum', defaultValue: 'center', options: [option('top', '顶部'), option('center', '居中'), option('bottom', '底部')] }, enumProp('scrollBars', '滚动条', 'none', ['none', 'horizontal', 'vertical', 'both'])], events: [event('TextChanged', '内容被改变', '内容被改变', 'command'), ...COMMON_FOCUS_EVENTS] }),
+  control({ type: 'Label', label: '标签/静态控件', moduleId: 'lingbuilder.win32.basic', category: '基础', icon: 'Type', nativeClass: 'STATIC', nativeAdapter: 'static', defaultProps: { content: '新文本标签', width: 180, height: 32 }, properties: [enumProp('staticStyle', '静态样式', 'text', ['text', 'bitmap', 'icon', 'frame']), TEXT_ALIGN, IMAGE_SOURCE], events: [...COMMON_MOUSE_EVENTS] }),
   control({ type: 'CheckBox', label: '复选框', moduleId: 'lingbuilder.win32.basic', category: '输入', icon: 'CheckSquare', nativeClass: 'BUTTON', nativeAdapter: 'checkbox', defaultProps: { content: '选项复选框', width: 150, height: 24 }, properties: [bool('checked', '默认选中'), bool('threeState', '三态模式')], events: [event('Checked', '被选中', '被选中', 'command'), event('Unchecked', '被取消选中', '被取消选中', 'command')] }),
   control({ type: 'RadioButton', label: '单选框', moduleId: 'lingbuilder.win32.basic', category: '输入', icon: 'CircleDot', nativeClass: 'BUTTON', nativeAdapter: 'radio', defaultProps: { content: '单选选项', width: 150, height: 24 }, properties: [bool('checked', '默认选中'), text('groupName', '分组名称')], events: [event('Checked', '被选中', '被选中', 'command'), event('Unchecked', '被取消选中', '被取消选中', 'command')] }),
   control({ type: 'ListBox', label: '列表框', moduleId: 'lingbuilder.win32.basic', category: '集合', icon: 'List', nativeClass: 'LISTBOX', nativeAdapter: 'listbox', defaultProps: { content: '', width: 180, height: 120, background: '#0F172A' }, properties: [ITEMS, number('selectedIndex', '默认选中项', 0, -1), bool('sorted', '自动排序'), bool('multiple', '允许多选'), number('itemHeight', '表项高度', 28, 16, 96), number('contentPadding', '内容内边距', 4, 0, 24), { key: 'scrollBarVisibility', label: '滚动条显示', type: 'enum', defaultValue: 'auto', options: [option('auto', '自动'), option('visible', '始终显示'), option('hidden', '隐藏')] }, number('scrollBarWidth', '滚动条粗细', 8, 4, 24), color('scrollBarTrackColor', '滚动条轨道颜色', '#172033'), color('scrollBarThumbColor', '滚动条滑块颜色', '#0E7490'), number('borderWidth', '边框粗细', 1, 0, 8), color('borderColor', '边框颜色', '#334155'), color('selectionStartColor', '选中起始颜色', '#7C3AED'), color('selectionEndColor', '选中结束颜色', '#0891B2'), color('selectionBorderColor', '选中边框颜色', '#38BDF8'), number('selectionCornerRadius', '选中圆角', 4, 0, 24)], events: [event('SelectionChanged', '选择项被改变', '选择项被改变', 'command'), event('DoubleClick', '被双击', '被双击', 'command')] }),
@@ -104,6 +131,9 @@ export const WIN32_CONTROL_DEFINITIONS: Win32ControlDefinition[] = [
   control({ type: 'Image', label: '图片框', moduleId: 'lingbuilder.win32.basic', category: '媒体', icon: 'Image', nativeClass: 'STATIC', nativeAdapter: 'image', defaultProps: { content: '', width: 180, height: 140 }, properties: [IMAGE_SOURCE, enumProp('stretch', '填充方式', 'uniform', ['none', 'fill', 'uniform', 'uniformToFill'])], events: [...COMMON_MOUSE_EVENTS] }),
   control({ type: 'ProgressBar', label: '进度条', moduleId: 'lingbuilder.win32.basic', category: '基础', icon: 'Minus', nativeClass: 'msctls_progress32', nativeAdapter: 'progress', defaultProps: { content: '50', width: 300, height: 20 }, properties: [number('minimum', '最小值', 0), number('maximum', '最大值', 100), number('value', '当前值', 50), bool('marquee', '不确定进度')], events: [] }),
   control({ type: 'Grid', label: '网格容器', moduleId: 'lingbuilder.win32.basic', category: '容器', icon: 'LayoutGrid', nativeClass: 'STATIC', nativeAdapter: 'container', defaultProps: { content: '', width: 360, height: 220 }, properties: [bool('showBorder', '显示边框', true)], events: [event('Loaded', '创建完毕', '创建完毕', 'window')], isContainer: true }),
+
+  control({ type: 'Upload', label: '上传组件', moduleId: 'lingbuilder.win32.common-controls', category: '上传', icon: 'Upload', nativeClass: 'LingBuilderUploadHost', nativeAdapter: 'win32-upload', defaultProps: { content: '文件上传', width: 360, height: 180, background: '#172033' }, properties: UPLOAD_PROPERTIES, events: UPLOAD_EVENTS }),
+  control({ type: 'DragUpload', label: '拖拽上传组件', moduleId: 'lingbuilder.win32.common-controls', category: '上传', icon: 'FileUp', nativeClass: 'LingBuilderUploadHost', nativeAdapter: 'win32-drag-upload', defaultProps: { content: '拖拽文件到此处', width: 400, height: 220, background: '#1E1B4B' }, properties: UPLOAD_PROPERTIES.map(property => property.key === 'styleMode' ? { ...property, defaultValue: '5' } : property.key === 'dropEnabled' ? { ...property, defaultValue: true } : property), events: UPLOAD_EVENTS }),
 
   control({ type: 'ListView', label: '列表视图', moduleId: 'lingbuilder.win32.common-controls', category: '集合', icon: 'Table', nativeClass: 'SysListView32', nativeAdapter: 'listview', defaultProps: { content: '', width: 320, height: 180 }, properties: [{ key: 'columns', label: '列集合', type: 'columns', defaultValue: [] }, { key: 'items', label: '行项目', type: 'columns', defaultValue: [] }, { key: 'view', label: '视图模式', type: 'enum', defaultValue: 'details', options: [option('icon', '大图标'), option('smallIcon', '小图标'), option('list', '列表'), option('details', '详细信息')] }, bool('gridLines', '显示网格线', true), bool('multiple', '允许多选'), color('borderColor', '边框颜色', '#64748B'), number('borderWidth', '边框粗细', 1, 0, 8), number('headerHeight', '表头高度', 28, 16, 96), number('itemHeight', '表项高度', 28, 16, 96), text('imageListId', '图像列表 ID')], events: [event('SelectionChanged', '选择项被改变', '选择项被改变', 'notify'), event('DoubleClick', '被双击', '被双击', 'notify'), event('ColumnClick', '列被单击', '列被单击', 'notify')] }),
   control({ type: 'TreeView', label: '树形视图', moduleId: 'lingbuilder.win32.common-controls', category: '集合', icon: 'ListTree', nativeClass: 'SysTreeView32', nativeAdapter: 'treeview', defaultProps: { content: '', width: 260, height: 200 }, properties: [{ key: 'nodes', label: '节点集合', type: 'treeNodes', defaultValue: [] }, number('borderWidth', '边框线粗细', 1, 0, 8), color('borderColor', '边框线颜色', '#64748B'), number('nodeSpacing', '节点间距', 2, 0, 24), number('nodePadding', '节点内间距', 3, 0, 24), bool('showLines', '显示连接线', true), bool('checkBoxes', '显示复选框'), text('imageListId', '图像列表 ID')], events: [event('SelectionChanged', '选择节点被改变', '选择节点被改变', 'notify'), event('Expanded', '节点被展开', '节点被展开', 'notify'), event('Collapsed', '节点被折叠', '节点被折叠', 'notify'), event('DoubleClick', '被双击', '被双击', 'notify')] }),

@@ -8,6 +8,7 @@ import {
   Copy,
   FileCode,
   FileText,
+  FileUp,
   HelpCircle,
   Keyboard,
   Layers,
@@ -26,6 +27,7 @@ import {
   Terminal,
   Trash2,
   Type,
+  Upload,
   Wrench,
   X,
   Zap,
@@ -169,6 +171,8 @@ const TYPE_ICONS: Partial<Record<LingControlType | 'MenuBar', React.ReactNode>> 
   RadioButton: <CircleDot className="w-3.5 h-3.5 text-purple-400" />,
   Image: <Palette className="w-3.5 h-3.5 text-pink-400" />,
   ProgressBar: <Minus className="w-3.5 h-3.5 text-emerald-400" />,
+  Upload: <Upload className="w-3.5 h-3.5 text-sky-400" />,
+  DragUpload: <FileUp className="w-3.5 h-3.5 text-fuchsia-400" />,
   ComboBox: <List className="w-3.5 h-3.5 text-violet-400" />,
   Grid: <LayoutGrid className="w-3.5 h-3.5 text-slate-400" />,
   MenuBar: <Menu className="w-3.5 h-3.5 text-amber-400" />
@@ -1969,7 +1973,7 @@ function renderControl(
   const isHiddenByAncestor = !ancestorsVisible;
   const definition = getWin32ControlDefinition(control.type);
   const newEmojiSupported = isNewEmojiDesignerControlSupported(control.type);
-  const hasSpecialPreview = ['Button', 'TextBox', 'Label', 'CheckBox', 'RadioButton', 'ListBox', 'ProgressBar', 'ComboBox', 'GroupBox', 'Image', 'ListView', 'TreeView', 'TabControl'].includes(control.type)
+  const hasSpecialPreview = ['Button', 'TextBox', 'Label', 'CheckBox', 'RadioButton', 'ListBox', 'ProgressBar', 'ComboBox', 'GroupBox', 'Image', 'ListView', 'TreeView', 'TabControl', 'Upload', 'DragUpload'].includes(control.type)
     || (useNewEmojiDesigner && !newEmojiSupported);
   const resizeHandles: Array<{
     direction: ResizeDirection;
@@ -2048,8 +2052,16 @@ function renderControl(
 
         {control.type === 'TextBox' && (
           <div
-            className={`w-full h-full rounded border px-2 py-1 flex justify-start text-xs select-none ${useNewEmojiDesigner ? 'border-fuchsia-300/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]' : 'border-slate-700'}`}
-            style={{ backgroundColor: useNewEmojiDesigner && control.background === 'transparent' ? 'rgba(15,23,42,0.82)' : control.background, color: control.foreground, fontSize: `${control.fontSize}px`, opacity: isEffectivelyEnabled ? 1 : 0.5, alignItems: control.properties?.verticalAlign === 'top' ? 'flex-start' : control.properties?.verticalAlign === 'bottom' ? 'flex-end' : 'center' }}
+            className={`w-full h-full rounded border px-2 py-1 flex text-xs select-none ${useNewEmojiDesigner ? 'border-fuchsia-300/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]' : 'border-slate-700'}`}
+            style={{
+              backgroundColor: useNewEmojiDesigner && control.background === 'transparent' ? 'rgba(15,23,42,0.82)' : control.background,
+              color: control.foreground,
+              fontSize: `${control.fontSize}px`,
+              opacity: isEffectivelyEnabled ? 1 : 0.5,
+              alignItems: control.properties?.verticalAlign === 'top' ? 'flex-start' : control.properties?.verticalAlign === 'bottom' ? 'flex-end' : 'center',
+              justifyContent: control.properties?.textAlign === 'center' ? 'center' : control.properties?.textAlign === 'right' ? 'flex-end' : 'flex-start',
+              textAlign: control.properties?.textAlign === 'center' ? 'center' : control.properties?.textAlign === 'right' ? 'right' : 'left'
+            }}
           >
             {control.content}
           </div>
@@ -2057,8 +2069,15 @@ function renderControl(
 
         {control.type === 'Label' && (
           <div
-            className="w-full h-full flex items-center justify-start text-xs leading-normal select-none overflow-hidden"
-            style={{ color: control.foreground, fontSize: `${control.fontSize}px`, backgroundColor: control.background, fontWeight: control.fontSize > 14 ? 'bold' : 'normal' }}
+            className="w-full h-full flex items-center text-xs leading-normal select-none overflow-hidden"
+            style={{
+              color: control.foreground,
+              fontSize: `${control.fontSize}px`,
+              backgroundColor: control.background,
+              fontWeight: control.fontSize > 14 ? 'bold' : 'normal',
+              justifyContent: control.properties?.textAlign === 'center' ? 'center' : control.properties?.textAlign === 'right' ? 'flex-end' : 'flex-start',
+              textAlign: control.properties?.textAlign === 'center' ? 'center' : control.properties?.textAlign === 'right' ? 'right' : 'left'
+            }}
           >
             {control.content}
           </div>
@@ -2246,6 +2265,30 @@ function renderControl(
             )}
           </div>
         )}
+
+        {(control.type === 'Upload' || control.type === 'DragUpload') && (() => {
+          const dragEnabled = control.type === 'DragUpload' || control.properties?.dropEnabled === true;
+          const multiple = control.properties?.multiple !== false;
+          const tip = String(control.properties?.tip || (dragEnabled ? '将文件拖到此处，或点击选择文件' : '点击选择本地文件'));
+          const initialFiles = Array.isArray(control.properties?.initialFiles) ? control.properties.initialFiles : [];
+          return (
+            <div
+              className={`flex h-full w-full flex-col overflow-hidden rounded-xl border p-3 ${dragEnabled ? 'border-dashed border-fuchsia-400/70 bg-fuchsia-950/20' : 'border-sky-400/45 bg-slate-950/55'} shadow-[0_12px_34px_rgba(14,165,233,0.12)]`}
+              style={{ color: control.foreground, opacity: isEffectivelyEnabled ? 1 : 0.5 }}
+            >
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-center">
+                {dragEnabled ? <FileUp className="h-8 w-8 text-fuchsia-300" /> : <Upload className="h-7 w-7 text-sky-300" />}
+                <strong className="max-w-full truncate text-sm">{control.content}</strong>
+                <span className="max-w-full truncate text-[10px] text-slate-400">{tip}</span>
+                <span className="rounded bg-sky-500 px-3 py-1 text-[10px] font-semibold text-white">{String(control.properties?.triggerText || '选择文件')}</span>
+              </div>
+              <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2 text-[9px] text-slate-400">
+                <span>{multiple ? '允许多选' : '单文件'} · {String(control.properties?.accept || '*.*')}</span>
+                <span>{initialFiles.length ? `${initialFiles.length} 个初始文件` : dragEnabled ? '已启用拖放' : '点击选择'}</span>
+              </div>
+            </div>
+          );
+        })()}
 
         {control.type === 'ListView' && <ListViewDesignerPreview control={control} />}
 
@@ -2746,7 +2789,7 @@ function ControlProperties({
         <TextField label="中文名称" value={control.name} isDarkMode={isDarkMode} onChange={handleNameChange} />
         {control.type !== 'Grid' && (
           <TextField
-            label={control.type === 'ProgressBar' ? '进度值' : '显示内容'}
+            label={control.type === 'ProgressBar' ? '进度值' : control.type === 'Upload' || control.type === 'DragUpload' ? '上传标题' : '显示内容'}
             value={control.content}
             isDarkMode={isDarkMode}
             onChange={value => onChange(control.type === 'ProgressBar'

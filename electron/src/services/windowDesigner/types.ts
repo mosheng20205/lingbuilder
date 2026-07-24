@@ -4,6 +4,7 @@ export type LingControlType =
   | 'Button' | 'TextBox' | 'Label' | 'CheckBox' | 'RadioButton'
   | 'ListBox' | 'ComboBox' | 'GroupBox' | 'ScrollBar'
   | 'Image' | 'ProgressBar' | 'Grid'
+  | 'Upload' | 'DragUpload'
   | 'ListView' | 'TreeView' | 'TabControl' | 'Header' | 'ComboBoxEx' | 'SysLink'
   | 'DateTimePicker' | 'MonthCalendar' | 'TrackBar' | 'UpDown' | 'HotKey' | 'IPAddress'
   | 'ToolBar' | 'StatusBar' | 'ToolTip' | 'ReBar' | 'Pager' | 'RichEdit'

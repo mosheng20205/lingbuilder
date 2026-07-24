@@ -16,9 +16,65 @@ export interface EplRuntimeEventRule {
 
 export type EplRuntimeEventRuleMap = Record<string, EplRuntimeEventRule>;
 
+export interface EplControlMemberRule {
+  controlName: string;
+  memberName: '内容';
+  getterRuntimeName: '控件_取文本';
+  setterRuntimeName: '控件_设置文本';
+}
+
+export interface EplControlMemberAssignmentRule extends EplControlMemberRule {
+  valueExpression: string;
+}
+
+export interface EplControlMethodCallRule {
+  controlName: string;
+  methodName: '设置选择项';
+  runtimeName: '控件_设置选择项';
+  argumentsText: string;
+}
+
 const EPL_SUBPROGRAM_RE = /^\.子程序\s+([^,\s\r\n]+)[^\r\n]*(?:\r?\n|$)/gm;
 const EPL_MESSAGE_BOX_RE = /信息框\s*[（(]\s*[“"]([^”"]*)[”"]\s*[,，]\s*(\d+)\s*[,，]\s*[“"]([^”"]*)[”"]\s*[）)]/u;
 const EPL_DEBUG_OUTPUT_RE = /调试输出\s*[（(]\s*[“"]([^”"]*)[”"]\s*[）)]/gu;
+const CONTROL_NAME_PATTERN = '[\\w\\u4e00-\\u9fa5]+';
+const CONTROL_TEXT_MEMBER_RE = new RegExp(`^(${CONTROL_NAME_PATTERN})\\s*\\.\\s*(内容|文字)$`, 'u');
+const CONTROL_TEXT_ASSIGNMENT_RE = new RegExp(`^(${CONTROL_NAME_PATTERN})\\s*\\.\\s*(内容|文字)\\s*[=＝]\\s*(.+)$`, 'u');
+const CONTROL_SET_SELECTION_RE = new RegExp(`^(${CONTROL_NAME_PATTERN})\\s*\\.\\s*设置选择项\\s*[（(](.*)[）)]\\s*;?$`, 'u');
+
+export function parseEplControlMemberRule(expression: string): EplControlMemberRule | undefined {
+  const match = expression.trim().match(CONTROL_TEXT_MEMBER_RE);
+  if (!match?.[1]) return undefined;
+  return {
+    controlName: match[1],
+    memberName: '内容',
+    getterRuntimeName: '控件_取文本',
+    setterRuntimeName: '控件_设置文本'
+  };
+}
+
+export function parseEplControlMemberAssignmentRule(statement: string): EplControlMemberAssignmentRule | undefined {
+  const match = statement.trim().match(CONTROL_TEXT_ASSIGNMENT_RE);
+  if (!match?.[1] || !match[3]?.trim()) return undefined;
+  return {
+    controlName: match[1],
+    memberName: '内容',
+    getterRuntimeName: '控件_取文本',
+    setterRuntimeName: '控件_设置文本',
+    valueExpression: match[3].trim()
+  };
+}
+
+export function parseEplControlMethodCallRule(expression: string): EplControlMethodCallRule | undefined {
+  const match = expression.trim().match(CONTROL_SET_SELECTION_RE);
+  if (!match?.[1] || !match[2]?.trim()) return undefined;
+  return {
+    controlName: match[1],
+    methodName: '设置选择项',
+    runtimeName: '控件_设置选择项',
+    argumentsText: match[2].trim()
+  };
+}
 
 export function parseEplRuntimeEventRules(sourceCode: string | undefined): EplRuntimeEventRuleMap {
   if (!sourceCode?.trim()) {

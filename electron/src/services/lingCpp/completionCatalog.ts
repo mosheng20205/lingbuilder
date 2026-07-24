@@ -5,6 +5,7 @@ import {
   LingCppCompletionItem
 } from './types';
 import { InstalledModule, LingCppModuleContext } from '../modules/types';
+import { buildChineseCompletionSearchAliases } from './completionSearchAliases';
 
 const KEYWORD = {
   public: LING_CPP_KEYWORDS[3],
@@ -159,7 +160,13 @@ export function getEnabledLingCppModuleContributions(moduleContext?: LingCppModu
 export function createLingCppCatalogItem(
   item: LingCppCompletionItem & Pick<LingCppCompletionCatalogItem, 'source' | 'sortRank'>
 ): LingCppCompletionCatalogItem {
-  return item;
+  return {
+    ...item,
+    pinyin: Array.from(new Set([
+      ...(item.pinyin || []),
+      ...buildChineseCompletionSearchAliases(item.label)
+    ]))
+  };
 }
 
 export function rankLingCppCompletionItems(

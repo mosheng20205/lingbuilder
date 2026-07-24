@@ -1,6 +1,12 @@
 import test from 'node:test'; import assert from 'node:assert/strict'; import fs from 'node:fs/promises'; import path from 'node:path';
 test('designer UI exposes multi-select, align/distribute, undo/redo and keyboard nudge',async()=>{ const source=await fs.readFile(path.resolve(import.meta.dirname,'../src/components/WpfDesigner.tsx'),'utf8'); assert.match(source,/selectedControlIds/u); assert.match(source,/event\.shiftKey \|\| event\.ctrlKey/u); assert.match(source,/align-left/u); assert.match(source,/distribute-horizontal/u); assert.match(source,/撤销设计操作/u); assert.match(source,/ArrowLeft/u); assert.match(source,/nudgeSelection/u); });
 
+test('text box preview applies horizontal text alignment in real time', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /justifyContent: control\.properties\?\.textAlign === 'center'/u);
+  assert.match(source, /textAlign: control\.properties\?\.textAlign === 'center'/u);
+});
+
 test('designer window surface and hierarchy root select window properties', async () => {
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   assert.match(source, /selectOnlyControl\(null\);\s*setActiveInspectorTab\('properties'\)/u);

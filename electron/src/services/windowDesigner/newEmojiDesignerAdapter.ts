@@ -11,7 +11,9 @@ export const NEW_EMOJI_SUPPORTED_CONTROL_TYPES = new Set<LingControlType>([
   'ListBox',
   'Image',
   'ProgressBar',
-  'Grid'
+  'Grid',
+  'Upload',
+  'DragUpload'
 ]);
 
 export function isNewEmojiDesignerEnabled(moduleIds: Iterable<string>): boolean {
@@ -39,6 +41,8 @@ export function getNewEmojiElementKind(control: LingControl): string {
     case 'Image': return 'image';
     case 'ProgressBar': return 'progress';
     case 'Grid': return 'container';
+    case 'Upload': return 'upload';
+    case 'DragUpload': return 'drag-upload';
     default: return 'unsupported';
   }
 }

@@ -1,0 +1,34 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "upload-drag-cli-test",
+    "name": "上传与拖拽上传 CLI 测试",
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "上传拖拽测试窗体.xml",
+        "className": "上传拖拽测试窗体",
+        "title": "LingBuilder 上传组件与拖拽上传测试",
+        "width": 1180,
+        "height": 700,
+        "background": "#111827",
+        "titleBarBackground": "#0F172A",
+        "titleBarForeground": "#F8FAFC",
+        "cornerStyle": "rounded",
+        "iconStyle": "lingbuilder",
+        "description": "CLI 创建的上传组件与拖拽上传组件多格式测试窗口",
+        "controls": [
+          { "id": "title_label", "type": "Label", "name": "测试标题", "content": "上传组件 / 拖拽上传组件多格式测试", "width": 720, "height": 42, "x": 20, "y": 16, "fontSize": 20, "background": "transparent", "foreground": "#F8FAFC", "isEnabled": true, "visibility": "Visible", "properties": { "staticStyle": "text", "textAlign": "left" } },
+          { "id": "format_label", "type": "Label", "name": "格式说明", "content": "允许格式：PDF、DOC、XLS、ZIP、PNG、JPG，并兼容 JGP；单文件最大 20 MB", "width": 720, "height": 32, "x": 20, "y": 56, "fontSize": 13, "background": "transparent", "foreground": "#94A3B8", "isEnabled": true, "visibility": "Visible", "properties": { "staticStyle": "text", "textAlign": "left" } },
+          { "id": "normal_upload", "type": "Upload", "name": "普通上传", "content": "点击选择文件上传", "width": 350, "height": 280, "x": 20, "y": 100, "fontSize": 14, "background": "#172033", "foreground": "#E2E8F0", "isEnabled": true, "visibility": "Visible", "properties": { "tip": "点击选择一个或多个测试文件", "triggerText": "选择文件", "submitText": "模拟上传", "initialFiles": [], "multiple": true, "autoUpload": false, "styleMode": "0", "showFileList": true, "showTip": true, "showActions": true, "dropEnabled": false, "limit": 12, "maxSizeKb": 20480, "accept": ".pdf,.doc,.xls,.zip,.png,.jpg,.jgp" }, "events": { "FilesSelected": "普通上传_文件已选择", "UploadAction": "普通上传_上传操作" } },
+          { "id": "drag_upload", "type": "DragUpload", "name": "拖拽上传", "content": "拖拽文件到这里", "width": 350, "height": 280, "x": 400, "y": 100, "fontSize": 14, "background": "#1E1B4B", "foreground": "#F5F3FF", "isEnabled": true, "visibility": "Visible", "properties": { "tip": "把测试文件拖入此区域，也可以点击选择", "triggerText": "浏览文件", "submitText": "模拟上传", "initialFiles": [], "multiple": true, "autoUpload": false, "styleMode": "5", "showFileList": true, "showTip": true, "showActions": true, "dropEnabled": true, "limit": 12, "maxSizeKb": 20480, "accept": ".pdf,.doc,.xls,.zip,.png,.jpg,.jgp" }, "events": { "FilesSelected": "拖拽上传_文件已选择", "UploadAction": "拖拽上传_上传操作" } },
+          { "id": "result_label", "type": "Label", "name": "结果说明", "content": "测试方法：左侧点击选择；右侧从资源管理器拖入。文件列表出现且上传按钮可触发即通过。", "width": 720, "height": 40, "x": 20, "y": 400, "fontSize": 13, "background": "transparent", "foreground": "#67E8F9", "isEnabled": true, "visibility": "Visible", "properties": { "staticStyle": "text", "textAlign": "left" } }
+        ]
+      }
+    ],
+    "resources": []
+  },
+  "activeWindowId": "main-window",
+  "lingCppSourceFilePath": "examples/upload-drag-cli-test/src/上传拖拽测试窗体.lcpp",
+  "lingCppSourceCode": "包 上传拖拽测试\n使用 Win32窗口基础模块\n使用 Win32高级控件模块\n\n类 上传拖拽测试窗体 : 窗口\n公开\n  构造()\n  结束\n\n  事件 普通上传_文件已选择()\n    调试输出(\"普通上传组件：文件选择回调已触发\")\n    调试输出(上传_取文件(\"普通上传\", 0))\n  结束\n\n  事件 普通上传_上传操作()\n    调试输出(\"普通上传组件：由原生 Win32 上传事件执行\")\n  结束\n\n  事件 拖拽上传_文件已选择()\n    调试输出(\"拖拽上传组件：文件拖入或选择回调已触发\")\n    调试输出(上传_取文件(\"拖拽上传\", 0))\n  结束\n\n  事件 拖拽上传_上传操作()\n    调试输出(\"拖拽上传组件：由原生 Win32 上传事件执行\")\n  结束\n结束类\n"
+}

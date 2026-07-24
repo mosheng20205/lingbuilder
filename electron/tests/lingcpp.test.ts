@@ -490,6 +490,34 @@ test('LingCpp designer bindings produce bound and missing-source hints', () => {
 
 */
 
+test('LingCpp 设计器控件名称支持拼音补全和内容属性表达式', () => {
+  const designerProject: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'designer-control-completion',
+    name: '控件补全',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口', width: 640, height: 480,
+      background: '#ffffff', description: '', controls: [{
+        id: 'header-input', type: 'TextBox', name: '编辑框_表头', content: '0', width: 160, height: 32,
+        x: 20, y: 20, fontSize: 12, background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible'
+      }, {
+        id: 'main-tabs', type: 'TabControl', name: '选项卡1', content: '', width: 320, height: 220,
+        x: 20, y: 80, fontSize: 12, background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible',
+        properties: { tabs: [{ id: 'page1', title: '第一页' }] }
+      }]
+    }]
+  };
+  const source = '类 MainWindow : 公开 窗体\n    事件 _按钮1_被单击()\n    结束\n结束类';
+  const byInitials = getLingCppBilingualCompletions({ source, line: 2, column: 5, triggerText: 'bjk' }, designerProject);
+  const byProperty = getLingCppBilingualCompletions({ source, line: 2, column: 5, triggerText: '编辑框_表头.内' }, designerProject);
+  const tabMethod = getLingCppBilingualCompletions({ source, line: 2, column: 5, triggerText: '选项卡1.设置' }, designerProject);
+
+  assert.ok(byInitials.some(item => item.label === '编辑框_表头' && item.category === 'designer'));
+  assert.ok(byInitials.some(item => item.label === '编辑框_表头.内容'));
+  assert.ok(byProperty.some(item => item.insertText === '编辑框_表头.内容'));
+  assert.ok(tabMethod.some(item => item.insertText === '选项卡1.设置选择项($1)'));
+});
+
 test('LingCpp language context powers unified completions with symbols, designer and modules', () => {
   const context = buildLingCppLanguageContext(
     sampleSource,

@@ -418,17 +418,28 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     }
   };
 
-  const onDropPackage = (event: React.DragEvent<HTMLDivElement>) => {
+  const onDropPackage = async (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     const file = event.dataTransfer.files?.[0] as File & { path?: string };
     const nextPath = file?.path || file?.name || '';
     if (nextPath) {
       if (!isAllowedWorkspacePath(nextPath, '.lingbuilder/module-packages')) {
-        setStatusText('请先把模块包复制到工作区 .lingbuilder/module-packages，再填写相对路径预览。');
+        if (!file?.path || !window.lingBuilder?.modules?.importPackage) {
+          setStatusText('网页版只能预览工作区 .lingbuilder/module-packages 下的模块包；桌面版可直接拖入本机 .lbmod。');
+          return;
+        }
+        setStatusText('正在把模块包安全复制到当前工作区…');
+        const imported = await window.lingBuilder.modules.importPackage(file.path);
+        if (!imported.ok || !imported.relativePath) {
+          setStatusText(`模块包导入失败：${imported.error || '未返回工作区路径'}`);
+          return;
+        }
+        setPackagePath(imported.relativePath);
+        await previewPackage(imported.relativePath);
         return;
       }
       setPackagePath(nextPath);
-      previewPackage(nextPath);
+      await previewPackage(nextPath);
     }
   };
 
@@ -436,7 +447,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     <div
       className={`h-full min-w-0 flex flex-col overflow-hidden ${isDarkMode ? 'bg-[#1e1e1e] text-slate-200' : 'bg-slate-50 text-slate-900'}`}
       onDragOver={event => event.preventDefault()}
-      onDrop={onDropPackage}
+      onDrop={event => { void onDropPackage(event); }}
     >
       <div className={`min-w-0 border-b px-3 py-3 ${isDarkMode ? 'border-white/10 bg-[#252526]' : 'border-slate-200 bg-white'}`}>
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">

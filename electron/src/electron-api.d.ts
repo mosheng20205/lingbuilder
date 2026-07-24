@@ -33,6 +33,9 @@ declare global {
       docs?: {
         openModuleManual: () => Promise<string>;
       };
+      modules?: {
+        importPackage: (sourcePath: string) => Promise<{ ok: boolean; relativePath?: string; error?: string }>;
+      };
       credentials?: {
         getAiApiKey: () => Promise<string>;
         setAiApiKey: (value: string) => Promise<void>;

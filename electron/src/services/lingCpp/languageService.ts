@@ -1334,7 +1334,60 @@ function getDesignerCompletionItems(source: string, designerProject?: LingWindow
       }));
     });
 
-    return [...windowItems, ...controlItems];
+    return [...windowItems, ...getDesignerControlCompletionItemsForWindow(win), ...controlItems];
+  });
+}
+
+export function getLingCppDesignerControlCompletions(
+  source: string,
+  designerProject?: LingWindowProject
+): LingCppCompletionItem[] {
+  if (!designerProject) return [];
+  return selectDesignerWindows(designerProject, source).flatMap(getDesignerControlCompletionItemsForWindow);
+}
+
+function getDesignerControlCompletionItemsForWindow(win: LingWindowModel): LingCppCompletionCatalogItem[] {
+  return win.controls.flatMap(control => {
+    const detail = `设计器控件 · ${control.type}`;
+    const items: LingCppCompletionCatalogItem[] = [
+      createLingCppCatalogItem({
+        label: control.name,
+        kind: 'type',
+        insertText: control.name,
+        detail,
+        documentation: `窗口：${win.title || win.className}\n控件：${control.name}\n类型：${control.type}`,
+        aliases: [control.type, '控件', '组件'],
+        category: 'designer',
+        source: 'designer',
+        sortRank: 10
+      }),
+      createLingCppCatalogItem({
+        label: `${control.name}.内容`,
+        kind: 'snippet',
+        insertText: `${control.name}.内容`,
+        detail: `${detail} · 读取当前文本`,
+        documentation: `读取设计器控件“${control.name}”的当前文本；等价于 控件_取文本("${control.name}")。`,
+        aliases: [control.name, `${control.name}.文字`, '内容', '文字', '取文本'],
+        category: 'designer',
+        source: 'designer',
+        sortRank: 10
+      })
+    ];
+    if (['ListBox', 'ComboBox', 'ComboBoxEx', 'ListView', 'TabControl'].includes(control.type)) {
+      items.push(createLingCppCatalogItem({
+        label: `${control.name}.设置选择项`,
+        kind: 'snippet',
+        insertText: `${control.name}.设置选择项($1)`,
+        detail: `${detail} · 按从 0 开始的索引切换选择项`,
+        documentation: `设置设计器控件“${control.name}”的选择项；等价于 控件_设置选择项("${control.name}", 索引)。`,
+        aliases: [control.name, '设置选择项', '切换选项卡', '选择页面'],
+        category: 'designer',
+        source: 'designer',
+        sortRank: 10,
+        isSnippet: true
+      }));
+    }
+    return items;
   });
 }
 

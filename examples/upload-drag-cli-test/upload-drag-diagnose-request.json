@@ -1,0 +1,27 @@
+{
+  "filePath": "examples/upload-drag-cli-test/src/上传拖拽测试窗体.lcpp",
+  "projectId": "upload-drag-cli-test",
+  "sourceCode": "包 上传拖拽测试\n使用 Win32窗口基础模块\n使用 Win32高级控件模块\n\n类 上传拖拽测试窗体 : 窗口\n公开\n  构造()\n  结束\n\n  事件 普通上传_文件已选择()\n    调试输出(\"普通上传组件：文件选择回调已触发\")\n    调试输出(上传_取文件(\"普通上传\", 0))\n  结束\n\n  事件 普通上传_上传操作()\n    调试输出(\"普通上传组件：由原生 Win32 上传事件执行\")\n  结束\n\n  事件 拖拽上传_文件已选择()\n    调试输出(\"拖拽上传组件：文件拖入或选择回调已触发\")\n    调试输出(上传_取文件(\"拖拽上传\", 0))\n  结束\n\n  事件 拖拽上传_上传操作()\n    调试输出(\"拖拽上传组件：由原生 Win32 上传事件执行\")\n  结束\n结束类\n",
+  "designerProject": {
+    "schemaVersion": 2,
+    "id": "upload-drag-cli-test",
+    "name": "上传与拖拽上传 CLI 测试",
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "上传拖拽测试窗体.xml",
+        "className": "上传拖拽测试窗体",
+        "title": "LingBuilder 上传组件与拖拽上传测试",
+        "width": 1180,
+        "height": 700,
+        "background": "#111827",
+        "description": "CLI 创建的上传组件与拖拽上传组件多格式测试窗口",
+        "controls": [
+          { "id": "normal_upload", "type": "Upload", "name": "普通上传", "content": "点击选择文件上传", "width": 520, "height": 470, "x": 30, "y": 112, "fontSize": 14, "background": "#172033", "foreground": "#E2E8F0", "isEnabled": true, "visibility": "Visible", "properties": { "multiple": true, "styleMode": "0", "dropEnabled": false, "accept": ".pdf,.doc,.xls,.zip,.png,.jpg,.jgp" }, "events": { "FilesSelected": "普通上传_文件已选择", "UploadAction": "普通上传_上传操作" } },
+          { "id": "drag_upload", "type": "DragUpload", "name": "拖拽上传", "content": "拖拽文件到这里", "width": 550, "height": 470, "x": 590, "y": 112, "fontSize": 14, "background": "#1E1B4B", "foreground": "#F5F3FF", "isEnabled": true, "visibility": "Visible", "properties": { "multiple": true, "styleMode": "5", "dropEnabled": true, "accept": ".pdf,.doc,.xls,.zip,.png,.jpg,.jgp" }, "events": { "FilesSelected": "拖拽上传_文件已选择", "UploadAction": "拖拽上传_上传操作" } }
+        ]
+      }
+    ],
+    "resources": []
+  }
+}

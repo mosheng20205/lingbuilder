@@ -495,6 +495,42 @@ test('module context adapters feed beginner IDE and AI assistant context', () =>
   assert.ok(aiSummary.includes('SQL'));
 });
 
+test('中文模块命令支持拼音首字母、全拼和中文拼音混合补全', () => {
+  const manifest = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic');
+  assert.ok(manifest);
+  const basicModule: InstalledModule = {
+    manifest,
+    installPath: `builtin://${manifest.id}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const moduleContext = { enabledModules: [basicModule], availableModules: [basicModule] };
+  const beginnerCompletion = getBeginnerModuleCodeCompletions(moduleContext)
+    .find(item => item.label === '控件_设置选择项');
+
+  assert.ok(beginnerCompletion);
+  assert.ok(beginnerCompletion.aliases.some(alias => alias.startsWith('kj_')));
+  assert.ok(beginnerCompletion.aliases.some(alias => alias.startsWith('控件_sz')));
+  assert.ok(beginnerCompletion.aliases.some(alias => alias.startsWith('kongjian_shezhi')));
+  assert.ok(getLingCppCompletions(
+    { source: '', line: 1, column: 3, triggerText: 'kj' },
+    moduleContext
+  ).some(item => item.label === '控件_设置选择项'));
+  assert.ok(getLingCppCompletions(
+    { source: '', line: 1, column: 6, triggerText: '控件_sz' },
+    moduleContext
+  ).some(item => item.label === '控件_设置选择项'));
+  const integerCompletion = getBeginnerModuleCodeCompletions(moduleContext)
+    .find(item => item.label === '到整数');
+  assert.ok(integerCompletion?.aliases.includes('dzs'));
+  assert.ok(getLingCppCompletions(
+    { source: '', line: 1, column: 4, triggerText: 'dzs' },
+    moduleContext
+  ).some(item => item.label === '到整数'));
+});
+
 test('generateLingCppNativeWin32Project emits module dependency report', () => {
   const module: InstalledModule = {
     ...createTestModule(),
@@ -940,7 +976,7 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
   assert.deepEqual(
     manifest.contributes.designerControls.map((control: { type: string }) => control.type),
-    ['Button', 'TextBox', 'Label', 'CheckBox', 'RadioButton', 'ListBox', 'Image', 'ProgressBar', 'Grid']
+    ['Button', 'TextBox', 'Label', 'CheckBox', 'RadioButton', 'ListBox', 'Image', 'ProgressBar', 'Grid', 'Upload', 'DragUpload']
   );
   const highLevelNames = [
     'NE_创建窗口',
@@ -957,6 +993,16 @@ test('generated new_emoji bridge completions match binding parameter counts', as
     'NE_创建列表框',
     'NE_创建图片',
     'NE_创建进度条',
+    'NE_创建上传',
+    'NE_设置上传选项',
+    'NE_打开上传文件选择',
+    'NE_开始上传',
+    'NE_清空上传文件',
+    'NE_取上传文件数量',
+    'NE_取最近上传选择文件',
+    'NE_取最近上传动作',
+    'NE_取最近上传文件索引',
+    'NE_取最近上传进度值',
     'NE_设置窗口标题'
   ];
   for (const name of highLevelNames) {
@@ -971,6 +1017,15 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   }
   const runLoop = manifest.contributes.commands.find((item: { name: string }) => item.name === 'NE_运行消息循环');
   assert.equal(runLoop.insertText, 'NE_运行消息循环()');
+  const uploadOptions = manifest.bindings.commands.find((item: { command: string }) => item.command === 'NE_设置上传选项');
+  assert.deepEqual(
+    uploadOptions.parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]),
+    [
+      ['窗口句柄', 'handle'], ['元素ID', 'int'], ['允许多选', 'bool'], ['自动上传', 'bool'],
+      ['样式', 'int'], ['显示文件列表', 'bool'], ['显示提示', 'bool'], ['显示操作', 'bool'],
+      ['允许拖拽', 'bool'], ['文件数量上限', 'int'], ['单文件上限KB', 'int'], ['允许文件类型', 'wideString']
+    ]
+  );
 });
 
 test('exportVisualStudioProject writes sln and vcxproj with module dependencies', async () => {

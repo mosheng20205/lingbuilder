@@ -43,8 +43,9 @@ import DiffViewModeSelector, {
   DIFF_VIEW_MODE_CHANGE_EVENT,
   type DiffViewMode
 } from './DiffViewModeSelector';
-import { buildLingCppLanguageContext, getLingCppReadableBlocks, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
+import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getLingCppReadableBlocks, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
 import { LingCppAccessModifier, LingCppAstEdit, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
+import { getBeginnerCompletionContext, getBeginnerCompletionToken, scanBeginnerCodePrefix, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
 import { applyLingCppAstEdit } from '../services/lingCpp/astEditService';
 import { LingCppNativePreviewFile, LingWindowProject, NativeCppImportResult } from '../services/windowDesigner/types';
 import {
@@ -71,7 +72,8 @@ import { getLingCppModuleCommandNames } from '../services/lingCpp/monacoTokens';
 import { LingCppModuleContext } from '../services/modules/types';
 import {
   getBeginnerModuleCodeCompletions,
-  getBeginnerModuleCommandHints
+  getBeginnerModuleCommandHints,
+  normalizeSnippetPlaceholders
 } from '../services/modules/moduleContextAdapters';
 import {
   applyPendingBeginnerCodeDrafts,
@@ -228,17 +230,6 @@ interface BeginnerCompletionPosition {
   left: number;
   maxListHeight: number;
   placement: 'above' | 'below';
-}
-
-interface BeginnerCompletionContext {
-  token: string;
-  isBlankLine: boolean;
-  isCommandStart: boolean;
-  isInsideString: boolean;
-  isInsideComment: boolean;
-  parenDepth: number;
-  isWindowTargetContext: boolean;
-  isWindowPlacementContext: boolean;
 }
 
 interface BeginnerContextMenuState {
@@ -619,95 +610,6 @@ const BEGINNER_WINDOW_PLACEMENT_COMPLETIONS: BeginnerCodeCompletion[] = [
   { label: '右下角', detail: '贴近屏幕工作区右下角显示', insertText: '右下角', aliases: ['yxj', 'rightbottom', 'bottom-right', '右下'], kind: '位置' },
   { label: '自定义坐标', detail: '继续填写屏幕左距和顶距，例如 120, 80', insertText: '自定义坐标', aliases: ['zdy', 'custom', 'xy', '坐标'], kind: '位置' }
 ];
-
-const scanBeginnerCodePrefix = (text: string) => {
-  let isInsideDoubleString = false;
-  let isInsideChineseString = false;
-  let isEscaped = false;
-  let isInsideComment = false;
-  let parenDepth = 0;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    const next = text[index + 1];
-
-    if (!isInsideDoubleString && !isInsideChineseString && char === '/' && next === '/') {
-      isInsideComment = true;
-      break;
-    }
-
-    if (isInsideDoubleString) {
-      if (isEscaped) {
-        isEscaped = false;
-        continue;
-      }
-      if (char === '\\') {
-        isEscaped = true;
-        continue;
-      }
-      if (char === '"') isInsideDoubleString = false;
-      continue;
-    }
-
-    if (isInsideChineseString) {
-      if (char === '”') isInsideChineseString = false;
-      continue;
-    }
-
-    if (char === '"') {
-      isInsideDoubleString = true;
-      continue;
-    }
-    if (char === '“') {
-      isInsideChineseString = true;
-      continue;
-    }
-    if (char === '(' || char === '（') {
-      parenDepth += 1;
-      continue;
-    }
-    if ((char === ')' || char === '）') && parenDepth > 0) {
-      parenDepth -= 1;
-    }
-  }
-
-  return {
-    isInsideString: isInsideDoubleString || isInsideChineseString,
-    isInsideComment,
-    parenDepth
-  };
-};
-
-const getBeginnerCompletionContext = (value: string, cursor: number): BeginnerCompletionContext => {
-  const safeCursor = Math.max(0, Math.min(cursor, value.length));
-  const lineStart = value.lastIndexOf('\n', Math.max(0, safeCursor - 1)) + 1;
-  const linePrefix = value.slice(lineStart, safeCursor);
-  const token = linePrefix.match(/[a-zA-Z0-9_@\u4e00-\u9fa5]+$/u)?.[0] || '';
-  const beforeToken = linePrefix.slice(0, linePrefix.length - token.length);
-  const syntax = scanBeginnerCodePrefix(linePrefix);
-  const isWindowTargetContext = /(?:^|\s)(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*["“][^"”\n]*$/u.test(linePrefix);
-  const isWindowPlacementContext = /(?:^|\s)(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*(?:L)?["“][^"”\n]*["”]\s*[,，]\s*(?:(?:L)?["“][^"”\n]*|[\w\u4e00-\u9fa5-]*)$/u.test(linePrefix);
-
-  return {
-    token,
-    isBlankLine: linePrefix.trim().length === 0,
-    isCommandStart: beforeToken.trim().length === 0,
-    isWindowTargetContext,
-    isWindowPlacementContext,
-    ...syntax
-  };
-};
-
-const shouldShowBeginnerCompletion = (context: BeginnerCompletionContext, includeAll: boolean) => {
-  if (context.isWindowTargetContext || context.isWindowPlacementContext) return true;
-  if (context.isInsideString || context.isInsideComment || context.parenDepth > 0) return false;
-  if (includeAll) return context.isBlankLine || context.isCommandStart;
-  return context.isCommandStart && context.token.length > 0;
-};
-
-const getBeginnerCompletionToken = (value: string, cursor: number) => {
-  return getBeginnerCompletionContext(value, cursor).token;
-};
 
 const clampNumber = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
@@ -1654,6 +1556,21 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       selectLength: item.selectLength
     })),
     [moduleContext]
+  );
+  const beginnerDesignerControlCompletions = useMemo(
+    () => getLingCppDesignerControlCompletions(normalizedSourceCode, designerProject).map(item => {
+      const snippet = normalizeSnippetPlaceholders(item.insertText);
+      return {
+        label: item.label,
+        detail: item.detail,
+        insertText: snippet.text,
+        aliases: [item.label, ...(item.aliases || []), ...(item.pinyin || [])],
+        kind: (item.label === item.insertText ? '变量' : '代码') as BeginnerCodeCompletion['kind'],
+        cursorOffset: snippet.cursorOffset,
+        selectLength: snippet.selectLength
+      };
+    }),
+    [designerProject, normalizedSourceCode]
   );
   const beginnerModuleCommandHints = useMemo(
     () => {
@@ -4203,6 +4120,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       new Map([
         ...BEGINNER_CODE_COMPLETIONS,
         ...beginnerModuleCodeCompletions,
+        ...beginnerDesignerControlCompletions,
         ...memberRows.map(row => ({
           label: row.targetName || row.name,
           detail: `${row.type || '对象'} 变量`,
