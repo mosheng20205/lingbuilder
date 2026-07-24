@@ -216,12 +216,27 @@ test('designer uses structured collection editors instead of JSON array textarea
   assert.match(source, /<TreeViewCollectionDialog/u);
   assert.match(source, /<ListViewCollectionDialog/u);
   assert.match(source, /<ToolbarButtonsDialog/u);
+  assert.match(source, /<TabControlPagesDialog/u);
   assert.match(source, /编辑列/u);
   assert.match(source, /编辑数据/u);
   assert.match(source, /编辑节点/u);
   assert.match(source, /编辑按钮/u);
+  assert.match(source, /编辑标签页/u);
   assert.doesNotMatch(source, /单元格（Tab 分隔）/u);
   assert.doesNotMatch(source, /请输入合法的 JSON 数组/u);
+});
+
+test('TabControl pages use a dedicated responsive dialog instead of inline property cards', async () => {
+  const designerSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  const dialogSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/TabControlPagesDialog.tsx'), 'utf8');
+  assert.match(designerSource, /tabPageCount/u);
+  assert.match(designerSource, /setTabPagesEditorOpen\(true\)/u);
+  assert.match(designerSource, /\{tabPageCount\} 个标签页/u);
+  assert.match(dialogSource, /编辑标签页/u);
+  assert.match(dialogSource, /新增第一个标签页/u);
+  assert.match(dialogSource, /复制第/u);
+  assert.match(dialogSource, /md:hidden/u);
+  assert.match(dialogSource, /event\.key !== 'Escape'/u);
 });
 
 test('Toolbar button collection uses a dedicated responsive dialog instead of inline property cards', async () => {
@@ -350,6 +365,19 @@ test('designer exposes FileDialog as a selectable control with properties and ev
   assert.match(source, /选择本地 AVI 动画/u);
   assert.match(source, /min-w-0 w-full space-y-1/u);
   assert.match(source, /flex min-w-0 w-full gap-1/u);
+});
+
+test('designer exposes ContextMenu and PopupMenu as editable non-visual controls', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /'ContextMenu'/u);
+  assert.match(source, /'PopupMenu'/u);
+  assert.match(source, /MenuResourceProperties/u);
+  assert.match(source, /MenuResourceEvents/u);
+  assert.match(source, /上下文菜单右键目标/u);
+  assert.match(source, /新增菜单项/u);
+  assert.match(source, /新增分隔线/u);
+  assert.match(source, /上下文菜单_显示/u);
+  assert.match(source, /弹出菜单_在坐标显示/u);
 });
 
 test('designer exposes persisted native window appearance instead of fixed chrome', async () => {

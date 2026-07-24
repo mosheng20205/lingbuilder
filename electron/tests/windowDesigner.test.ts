@@ -11,9 +11,10 @@ import TabControlDesignerPreview from '../src/components/TabControlDesignerPrevi
 import ListViewCollectionDialog from '../src/components/ListViewCollectionDialog';
 import ToolbarButtonsDialog from '../src/components/ToolbarButtonsDialog';
 import StatusBarPartsDialog from '../src/components/StatusBarPartsDialog';
+import TabControlPagesDialog from '../src/components/TabControlPagesDialog';
 import MenuBarItemsDialog from '../src/components/MenuBarItemsDialog';
 import TreeViewCollectionDialog from '../src/components/TreeViewCollectionDialog';
-import { hasDedicatedControlPreview, parseStringListPropertyText } from '../src/components/WpfDesigner';
+import { CREATABLE_DESIGNER_CONTROL_TYPES, hasDedicatedControlPreview, parseStringListPropertyText } from '../src/components/WpfDesigner';
 import {
   buildControlHierarchy,
   canReparentControls,
@@ -69,10 +70,15 @@ import {
   removeStatusBarPart
 } from '../src/services/windowDesigner/statusBarPartCollectionModel';
 import {
+  appendTabControlPage,
+  duplicateTabControlPage,
   getControlTabSlot,
   getSelectedTabPage,
   getTabControlPages,
-  isControlOnSelectedTab
+  isControlOnSelectedTab,
+  moveTabControlPage,
+  normalizeTabControlPages,
+  removeTabControlPage
 } from '../src/services/windowDesigner/tabControlModel';
 import {
   appendTreeViewNode,
@@ -164,12 +170,55 @@ test('状态栏分区弹窗显示完整字段、操作和窄屏布局', () => {
   assert.match(markup, /md:hidden/u);
 });
 
+test('选项卡标签页集合模型支持规范化、新增、复制、排序和安全删除', () => {
+  const normalized = normalizeTabControlPages([
+    { id: 'general', title: '常规', image: -1 },
+    { id: 'advanced', label: '高级', image: '2' }
+  ]);
+  assert.deepEqual(normalized, [
+    { id: 'general', title: '常规', image: -1 },
+    { id: 'advanced', title: '高级', image: 2 }
+  ]);
+  const appended = appendTabControlPage(normalized);
+  assert.equal(appended.at(-1)?.id, 'page1');
+  const duplicated = duplicateTabControlPage(appended, 0);
+  assert.equal(duplicated[1].title, '常规 副本');
+  assert.equal(new Set(duplicated.map(page => page.id)).size, duplicated.length);
+  assert.equal(moveTabControlPage(duplicated, 1, 0)[0].title, '常规 副本');
+  assert.equal(removeTabControlPage(duplicated, 1).length, duplicated.length - 1);
+  assert.equal(removeTabControlPage([normalized[0]], 0).length, 1);
+});
+
+test('选项卡标签页弹窗显示完整字段、操作和窄屏布局', () => {
+  const markup = renderToStaticMarkup(React.createElement(TabControlPagesDialog, {
+    controlName: '主选项卡',
+    value: [{ id: 'general', title: '常规', image: -1 }],
+    hasImageList: true,
+    isDarkMode: true,
+    onChange: () => undefined,
+    onClose: () => undefined
+  }));
+  assert.match(markup, /编辑标签页/u);
+  assert.match(markup, /新增标签页/u);
+  assert.match(markup, /页面 ID/u);
+  assert.match(markup, /图片编号/u);
+  assert.match(markup, /复制第 1 个标签页/u);
+  assert.match(markup, /md:hidden/u);
+  assert.match(markup, /至少保留一个标签页/u);
+  assert.match(markup, /aria-label="删除第 1 个标签页"[^>]*disabled/u);
+});
+
 test('窗口菜单栏集合模型兼容旧的逗号存储格式', () => {
   const items = parseMenuBarItems(' 文件, 编辑,  帮助 ');
   assert.deepEqual(items, ['文件', '编辑', '帮助']);
   assert.equal(serializeMenuBarItems(items), '文件, 编辑, 帮助');
   assert.equal(validateMenuBarItems(items), null);
   assert.match(validateMenuBarItems(['文件,导入']) || '', /英文逗号/u);
+});
+
+test('窗口菜单栏只保留旧项目兼容，不再提供新增入口', () => {
+  assert.equal(CREATABLE_DESIGNER_CONTROL_TYPES.map(String).includes('MenuBar'), false);
+  assert.ok(CREATABLE_DESIGNER_CONTROL_TYPES.includes('ToolBar'));
 });
 
 test('窗口菜单栏属性使用独立集合编辑弹窗', () => {
@@ -1071,6 +1120,54 @@ test('非可视文件对话框绑定按钮和拖放目标并生成统一结果�
   assert.match(cpp, /FilesDropped/);
   assert.match(cpp, /文件对话框_取文件\(L"文件对话框1", 0\)/u);
   assert.ok(!generated.diagnostics.some(diagnostic => diagnostic.includes('文件对话框')));
+});
+
+test('上下文菜单与弹出菜单作为非可视资源生成右键绑定、主动显示命令和项目事件', () => {
+  const button = { ...createControl('menu-target', undefined, 'Button'), name: '菜单按钮' };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'menu-resource-project',
+    name: '菜单资源项目',
+    resources: [
+      {
+        id: 'context-menu-1', type: 'ContextMenu', name: '上下文菜单1', ownerWindowId: 'main', targetControlId: 'menu-target',
+        items: [
+          { id: 'open', label: '打开', enabled: true, selectedHandler: '上下文菜单1_打开被选择' },
+          { id: 'separator-1', label: '', separator: true },
+          { id: 'locked', label: '锁定', enabled: false, checked: true }
+        ]
+      },
+      {
+        id: 'popup-menu-1', type: 'PopupMenu', name: '弹出菜单1', ownerWindowId: 'main', targetControlId: '',
+        items: [{ id: 'refresh', label: '刷新', enabled: true, selectedHandler: '弹出菜单1_刷新被选择' }]
+      }
+    ],
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '菜单', width: 640, height: 420, background: '#202028', description: '', controls: [button] }]
+  };
+  const enabledModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({ manifest: BUILTIN_MODULES.find(module => module.id === id)!, installPath: 'builtin', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
+  const source = `类 主窗口 : 公开 窗体
+    事件 上下文菜单1_打开被选择()
+        调试输出(菜单_取最后项目("上下文菜单1"))
+    结束
+    事件 弹出菜单1_刷新被选择()
+        弹出菜单_在坐标显示("弹出菜单1", 20, 30)
+    结束
+结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /MenuResourceSpec g_menuResources/);
+  assert.match(cpp, /L"context-menu-1", L"上下文菜单1", 0, 1001, true/u);
+  assert.match(cpp, /L"popup-menu-1", L"弹出菜单1", 0, 0, false/u);
+  assert.match(cpp, /case WM_CONTEXTMENU/);
+  assert.match(cpp, /message == WM_CONTEXTMENU && self->HandleContextMenu\(hwnd, lParam\)/);
+  assert.match(cpp, /WM_CTLCOLORSCROLLBAR \|\| message == WM_CONTEXTMENU/);
+  assert.match(cpp, /TrackPopupMenuEx\(menu, TPM_RETURNCMD \| TPM_RIGHTBUTTON/);
+  assert.match(cpp, /AppendMenuW\(menu, MF_SEPARATOR/);
+  assert.match(cpp, /上下文菜单_显示/);
+  assert.match(cpp, /弹出菜单_在坐标显示\(L"弹出菜单1", 20, 30\)/u);
+  assert.match(cpp, /菜单_取最后项目\(L"上下文菜单1"\)/u);
+  assert.match(cpp, /TextEquals\(eventName, L"open"\).*上下文菜单1_打开被选择/u);
+  assert.ok(!generated.diagnostics.some(diagnostic => diagnostic.includes('菜单“')));
 });
 
 test('视频播放器注册 Media Foundation 属性、命令和原生播放生命周期', () => {

@@ -34,7 +34,7 @@ import {
   LingCppStructureNode
 } from './types';
 import { applyLingCppAstEdit } from './astEditService';
-import { LingDesignerResource, LingFileDialogResource, LingWindowModel, LingWindowProject } from '../windowDesigner/types';
+import { LingDesignerResource, LingFileDialogResource, LingMenuResource, LingWindowModel, LingWindowProject } from '../windowDesigner/types';
 import { LingCppModuleContext } from '../modules/types';
 import {
   getWindowEventDefinition,
@@ -2150,6 +2150,20 @@ function collectDesignerEventBindings(windows: LingWindowModel[], resources: Lin
         windowId: ownerWindow.id
       }] : []);
     });
+  const menuResourceBindings = resources
+    .filter((resource): resource is LingMenuResource => (resource.type === 'ContextMenu' || resource.type === 'PopupMenu') && windowIds.has(resource.ownerWindowId))
+    .flatMap(resource => {
+      const ownerWindow = windows.find(window => window.id === resource.ownerWindowId);
+      if (!ownerWindow) return [];
+      return resource.items.flatMap(item => item.selectedHandler?.trim() ? [{
+        handlerName: item.selectedHandler.trim(),
+        className: ownerWindow.className,
+        controlName: `${resource.name}.${item.label}`,
+        controlId: `${resource.id}:${item.id}`,
+        eventName: 'ItemSelected',
+        windowId: ownerWindow.id
+      }] : []);
+    });
   const windowBindings = windows
     .flatMap(win => {
       const controlBindings = win.controls.flatMap(control =>
@@ -2182,7 +2196,7 @@ function collectDesignerEventBindings(windows: LingWindowModel[], resources: Lin
         }));
       return [...controlBindings, ...menuBindings, ...windowBindings];
     });
-  return [...windowBindings, ...resourceBindings];
+  return [...windowBindings, ...resourceBindings, ...menuResourceBindings];
 }
 
 function extractAssociatedDesignerFile(source: string): string | undefined {

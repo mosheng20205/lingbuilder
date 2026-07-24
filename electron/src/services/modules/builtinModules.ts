@@ -242,6 +242,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: '文件对话框_清空', signature: '文件对话框_清空(组件名)', description: '清空文件对话框组件最近选择或拖入的文件。', insertText: '文件对话框_清空("文件对话框1")', returnType: '逻辑型' }
         ,{ name: '文件对话框_取文件数量', signature: '文件对话框_取文件数量(组件名)', description: '返回文件对话框组件最近选择或拖入的文件数量。', insertText: '文件对话框_取文件数量("文件对话框1")', returnType: '整数型' }
         ,{ name: '文件对话框_取文件', signature: '文件对话框_取文件(组件名, 索引)', description: '返回文件对话框组件指定索引的完整文件路径。', insertText: '文件对话框_取文件("文件对话框1", 0)', returnType: '文本型' }
+        ,{ name: '上下文菜单_显示', signature: '上下文菜单_显示(组件名)', description: '在鼠标位置主动显示上下文菜单；绑定目标右键时无需手动调用。', insertText: '上下文菜单_显示("上下文菜单1")', returnType: '逻辑型' }
+        ,{ name: '弹出菜单_显示', signature: '弹出菜单_显示(组件名)', description: '在当前鼠标位置显示弹出菜单。', insertText: '弹出菜单_显示("弹出菜单1")', returnType: '逻辑型' }
+        ,{ name: '弹出菜单_在坐标显示', signature: '弹出菜单_在坐标显示(组件名, 横坐标, 纵坐标)', description: '在窗口客户区指定坐标显示弹出菜单。', insertText: '弹出菜单_在坐标显示("弹出菜单1", 20, 20)', returnType: '逻辑型' }
+        ,{ name: '菜单_取最后项目', signature: '菜单_取最后项目(组件名)', description: '返回指定上下文菜单或弹出菜单最近选择的稳定菜单项 ID。', insertText: '菜单_取最后项目("弹出菜单1")', returnType: '文本型' }
         ,{ name: '视频播放器_设置文件', signature: '视频播放器_设置文件(控件名, 视频路径)', description: '切换视频播放器的本地媒体文件；支持 MP4、WMV 等 Media Foundation 可解码格式。', insertText: '视频播放器_设置文件("视频播放器1", "assets/$1.mp4")', returnType: '逻辑型' }
         ,{ name: '视频播放器_播放', signature: '视频播放器_播放(控件名)', description: '播放或继续播放指定视频。', insertText: '视频播放器_播放("视频播放器1")', returnType: '逻辑型' }
         ,{ name: '视频播放器_暂停', signature: '视频播放器_暂停(控件名)', description: '暂停指定视频。', insertText: '视频播放器_暂停("视频播放器1")', returnType: '逻辑型' }
@@ -297,6 +301,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ command: '文件对话框_清空', runtimeName: '文件对话框_清空', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '文件对话框_取文件数量', runtimeName: '文件对话框_取文件数量', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
         ,{ command: '文件对话框_取文件', runtimeName: '文件对话框_取文件', parameters: [{ name: '组件名', type: 'wideString' }, { name: '索引', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
+        ,{ command: '上下文菜单_显示', runtimeName: '上下文菜单_显示', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '弹出菜单_显示', runtimeName: '弹出菜单_显示', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '弹出菜单_在坐标显示', runtimeName: '弹出菜单_在坐标显示', parameters: [{ name: '组件名', type: 'wideString' }, { name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '菜单_取最后项目', runtimeName: '菜单_取最后项目', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' }
         ,{ command: '视频播放器_设置文件', runtimeName: '视频播放器_设置文件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '视频路径', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '视频播放器_播放', runtimeName: '视频播放器_播放', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '视频播放器_暂停', runtimeName: '视频播放器_暂停', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }

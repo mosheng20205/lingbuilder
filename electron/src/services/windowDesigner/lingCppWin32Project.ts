@@ -1,4 +1,4 @@
-import { LingControl, LingDesignerResource, LingFileDialogResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
+import { LingControl, LingDesignerResource, LingFileDialogResource, LingMenuResource, LingPropertySheetResource, LingToolTipResource, LingWindowModel, LingWindowProject } from './types';
 import { getLingWindowSourceFileName } from './windowDesignerService';
 import { findLingCppMethod, parseLingCpp } from '../lingCpp/parser';
 import {
@@ -482,6 +482,17 @@ function validateDesignerResources(project: LingWindowProject): string[] {
       if (resource.triggerControlId && !owner?.controls.some(control => control.id === resource.triggerControlId)) diagnostics.push(`文件对话框“${resource.name}”引用了不存在的打开触发控件“${resource.triggerControlId}”。`);
       if (resource.dropTargetId && resource.dropTargetId !== resource.ownerWindowId && !owner?.controls.some(control => control.id === resource.dropTargetId)) diagnostics.push(`文件对话框“${resource.name}”引用了不存在的拖放目标“${resource.dropTargetId}”。`);
       if (resource.allowDrop && !resource.dropTargetId) diagnostics.push(`文件对话框“${resource.name}”已允许拖拽，但尚未绑定拖放目标。`);
+    } else if (resource.type === 'ContextMenu' || resource.type === 'PopupMenu') {
+      const owner = project.windows.find(window => window.id === resource.ownerWindowId);
+      if (!owner) diagnostics.push(`${resource.type === 'ContextMenu' ? '上下文菜单' : '弹出菜单'}“${resource.name}”引用了不存在的所属窗口“${resource.ownerWindowId}”。`);
+      if (resource.type === 'ContextMenu' && resource.targetControlId !== resource.ownerWindowId && !owner?.controls.some(control => control.id === resource.targetControlId)) diagnostics.push(`上下文菜单“${resource.name}”引用了不存在的右键目标“${resource.targetControlId}”。`);
+      if (!Array.isArray(resource.items) || resource.items.length === 0) diagnostics.push(`${resource.type === 'ContextMenu' ? '上下文菜单' : '弹出菜单'}“${resource.name}”至少需要一个菜单项。`);
+      const itemIds = new Set<string>();
+      for (const item of resource.items || []) {
+        if (!item.id?.trim() || itemIds.has(item.id)) diagnostics.push(`菜单“${resource.name}”包含空白或重复的菜单项 ID“${item.id || ''}”。`);
+        if (!item.separator && !item.label?.trim()) diagnostics.push(`菜单“${resource.name}”包含没有显示文字的普通菜单项。`);
+        itemIds.add(item.id);
+      }
     }
   }
   for (const window of project.windows) {
@@ -509,6 +520,7 @@ function generateMainCpp(
   const imageListSpecs = generateImageListSpecs(project);
   const propertySheetSpecs = generatePropertySheetSpecs(project);
   const fileDialogSpecs = generateFileDialogSpecs(project);
+  const menuResourceSpecs = generateMenuResourceSpecs(project);
   const windowSpecs = project.windows
     .map((window, index) => generateWindowSpec(window, index, program))
     .join(',\n');
@@ -788,6 +800,10 @@ struct FileDialogSpec {
     const wchar_t* id; const wchar_t* name; int ownerWindowIndex;
     int triggerControlId; int dropTargetControlId; bool multiple; bool allowDrop;
     const wchar_t* title; const wchar_t* filter;
+};
+struct MenuResourceSpec {
+    const wchar_t* id; const wchar_t* name; int ownerWindowIndex;
+    int targetControlId; bool contextMenu; const wchar_t* items;
 };
 struct PropertySheetPageContext {
     const wchar_t* title; const wchar_t* content; const wchar_t* resourceId;
@@ -1243,6 +1259,7 @@ static LingWindowBase* CreateWindowObject(int windowIndex);
 ${imageListSpecs}
 ${propertySheetSpecs}
 ${fileDialogSpecs}
+${menuResourceSpecs}
 
 ${controlArrays}
 
@@ -1752,6 +1769,7 @@ protected:
     wchar_t pendingHighSurrogate_ = 0;
     std::vector<std::wstring> droppedFiles_;
     std::map<std::wstring, std::vector<std::wstring>> fileDialogFiles_;
+    std::map<std::wstring, std::wstring> lastMenuItems_;
     HINTERNET wsSession_;
     HINTERNET wsConnect_;
     HINTERNET wsRequest_;
@@ -2671,6 +2689,79 @@ protected:
             lastDialogStatus_ = 1;
             DispatchDesignerResourceEvent(dialog.id, L"FilesDropped");
             return true;
+        }
+        return false;
+    }
+    const MenuResourceSpec* FindMenuResource(const wchar_t* componentName) const {
+        if (!componentName) return nullptr;
+        for (int index = 0; index < g_menuResourceCount; ++index) {
+            const MenuResourceSpec& menu = g_menuResources[index];
+            if (menu.ownerWindowIndex != spec_.index) continue;
+            if (TextEquals(menu.name, componentName) || TextEquals(menu.id, componentName)) return &menu;
+        }
+        return nullptr;
+    }
+    bool ShowMenuResource(const MenuResourceSpec& spec, POINT screenPoint) {
+        auto rows = DecodeControlRecords(spec.items, 6);
+        HMENU menu = CreatePopupMenu();
+        if (!menu) return false;
+        std::map<UINT, std::wstring> itemIds;
+        UINT nextCommand = 62000;
+        for (const auto& row : rows) {
+            if (row.size() < 6) continue;
+            bool separator = row[2] == L"1";
+            if (separator) { AppendMenuW(menu, MF_SEPARATOR, 0, nullptr); continue; }
+            UINT flags = MF_STRING;
+            if (row[3] != L"1") flags |= MF_GRAYED;
+            if (row[4] == L"1") flags |= MF_CHECKED;
+            UINT command = nextCommand++;
+            AppendMenuW(menu, flags, command, row[1].c_str());
+            itemIds.emplace(command, row[0]);
+        }
+        SetForegroundWindow(hwnd_);
+        UINT selected = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, screenPoint.x, screenPoint.y, hwnd_, nullptr);
+        DestroyMenu(menu);
+        auto found = itemIds.find(selected);
+        if (found == itemIds.end()) return false;
+        lastMenuItems_[spec.id] = found->second;
+        DispatchDesignerResourceEvent(spec.id, found->second.c_str());
+        return true;
+    }
+    bool ShowMenuAtCursor(const MenuResourceSpec& spec) {
+        POINT point = {}; GetCursorPos(&point);
+        return ShowMenuResource(spec, point);
+    }
+    bool 上下文菜单_显示(const wchar_t* componentName) {
+        const MenuResourceSpec* menu = FindMenuResource(componentName);
+        return menu && menu->contextMenu ? ShowMenuAtCursor(*menu) : false;
+    }
+    bool 弹出菜单_显示(const wchar_t* componentName) {
+        const MenuResourceSpec* menu = FindMenuResource(componentName);
+        return menu && !menu->contextMenu ? ShowMenuAtCursor(*menu) : false;
+    }
+    bool 弹出菜单_在坐标显示(const wchar_t* componentName, int x, int y) {
+        const MenuResourceSpec* menu = FindMenuResource(componentName);
+        if (!menu || menu->contextMenu) return false;
+        POINT point = { x, y }; ClientToScreen(hwnd_, &point);
+        return ShowMenuResource(*menu, point);
+    }
+    const wchar_t* 菜单_取最后项目(const wchar_t* componentName) const {
+        const MenuResourceSpec* menu = FindMenuResource(componentName);
+        if (!menu) return L"";
+        auto found = lastMenuItems_.find(menu->id);
+        return found == lastMenuItems_.end() ? L"" : found->second.c_str();
+    }
+    bool HandleContextMenu(HWND source, LPARAM coordinates) {
+        int targetControlId = !source || source == hwnd_ ? 0 : GetDlgCtrlID(source);
+        for (int index = 0; index < g_menuResourceCount; ++index) {
+            const MenuResourceSpec& menu = g_menuResources[index];
+            if (!menu.contextMenu || menu.ownerWindowIndex != spec_.index || menu.targetControlId != targetControlId) continue;
+            POINT point = { static_cast<short>(LOWORD(coordinates)), static_cast<short>(HIWORD(coordinates)) };
+            if (point.x == -1 && point.y == -1) {
+                RECT bounds = {}; GetWindowRect(source && source != hwnd_ ? source : hwnd_, &bounds);
+                point = { bounds.left + 8, bounds.top + 24 };
+            }
+            return ShowMenuResource(menu, point);
         }
         return false;
     }
@@ -3974,7 +4065,7 @@ private:
             message == WM_COMMAND || message == WM_NOTIFY || message == WM_HSCROLL || message == WM_VSCROLL
             || message == WM_DRAWITEM || message == WM_MEASUREITEM || message == WM_COMPAREITEM || message == WM_DELETEITEM
             || message == WM_CTLCOLORSTATIC || message == WM_CTLCOLOREDIT || message == WM_CTLCOLORBTN
-            || message == WM_CTLCOLORLISTBOX || message == WM_CTLCOLORSCROLLBAR
+            || message == WM_CTLCOLORLISTBOX || message == WM_CTLCOLORSCROLLBAR || message == WM_CONTEXTMENU
         )) return SendMessageW(self->hwnd_, message, wParam, lParam);
         if (message == WM_NCDESTROY) RemoveWindowSubclass(hwnd, TabPageSubclassProc, subclassId);
         return DefSubclassProc(hwnd, message, wParam, lParam);
@@ -5803,6 +5894,7 @@ private:
         const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
         RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
         if (control && runtime) {
+            if (message == WM_CONTEXTMENU && self->HandleContextMenu(hwnd, lParam)) return 0;
             if (IsType(*control, L"HotKey")) {
                 if (message == WM_ERASEBKGND) return 1;
                 if (message == WM_PAINT) {
@@ -6942,6 +7034,9 @@ private:
             DispatchWindowEvent(L"FileDropped");
             return 0;
         }
+        case WM_CONTEXTMENU:
+            if (HandleContextMenu(reinterpret_cast<HWND>(wParam), lParam)) return 0;
+            break;
         case WM_TIMER:
             if (AdvanceAnimatedImage(static_cast<UINT_PTR>(wParam))) return 0;
             if (wParam == 0x4C42) {
@@ -7663,9 +7758,11 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
   const handlers = getWindowHandlers(window);
   const propertySheets = resources.filter((resource): resource is LingPropertySheetResource => resource.type === 'PropertySheet');
   const fileDialogs = resources.filter((resource): resource is LingFileDialogResource => resource.type === 'FileDialog' && resource.ownerWindowId === window.id);
+  const menuResources = resources.filter((resource): resource is LingMenuResource => (resource.type === 'ContextMenu' || resource.type === 'PopupMenu') && resource.ownerWindowId === window.id);
   const resourceHandlers = [
     ...propertySheets.filter(resource => resource.appliedHandler?.trim()).map(resource => resource.appliedHandler!.trim()),
-    ...fileDialogs.flatMap(resource => [resource.filesSelectedHandler, resource.filesDroppedHandler, resource.cancelledHandler].filter((handler): handler is string => Boolean(handler?.trim())).map(handler => handler.trim()))
+    ...fileDialogs.flatMap(resource => [resource.filesSelectedHandler, resource.filesDroppedHandler, resource.cancelledHandler].filter((handler): handler is string => Boolean(handler?.trim())).map(handler => handler.trim())),
+    ...menuResources.flatMap(resource => resource.items.map(item => item.selectedHandler).filter((handler): handler is string => Boolean(handler?.trim())).map(handler => handler.trim()))
   ];
   const sourceEventHandlers = (sourceClass?.methods || []).filter(method => method.kind === 'event').map(method => method.name);
   const windowCreatedHandler = findWindowCreatedHandler(window, program);
@@ -7686,6 +7783,9 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
       resource.filesDroppedHandler?.trim() ? `        if (TextEquals(resourceId, L"${escapeWideString(resource.id)}") && TextEquals(eventName, L"FilesDropped")) { ${toCppIdentifier(resource.filesDroppedHandler.trim())}(); return; }` : '',
       resource.cancelledHandler?.trim() ? `        if (TextEquals(resourceId, L"${escapeWideString(resource.id)}") && TextEquals(eventName, L"Cancelled")) { ${toCppIdentifier(resource.cancelledHandler.trim())}(); return; }` : ''
     ].filter(Boolean)))
+    .concat(menuResources.flatMap(resource => resource.items.flatMap(item => item.selectedHandler?.trim()
+      ? [`        if (TextEquals(resourceId, L"${escapeWideString(resource.id)}") && TextEquals(eventName, L"${escapeWideString(item.id)}")) { ${toCppIdentifier(item.selectedHandler.trim())}(); return; }`]
+      : [])))
     .join('\n');
   const eventMethods = methodHandlers
     .map(handler => generateHandlerMethod(handler, findLingCppMethod(program, handler), enabledModules));
@@ -8243,6 +8343,31 @@ function generateFileDialogSpecs(project: LingWindowProject): string {
   return rows.length > 0
     ? `static FileDialogSpec g_fileDialogs[] = {\n${rows.join(',\n')}\n};\nstatic const int g_fileDialogCount = ${rows.length};`
     : 'static FileDialogSpec g_fileDialogs[] = { { L"", L"", -1, 0, 0, false, false, L"", L"" } };\nstatic const int g_fileDialogCount = 0;';
+}
+
+function generateMenuResourceSpecs(project: LingWindowProject): string {
+  const resources = (project.resources || []).filter((resource): resource is LingMenuResource => resource.type === 'ContextMenu' || resource.type === 'PopupMenu');
+  const rows = resources.map(resource => {
+    const ownerWindowIndex = project.windows.findIndex(window => window.id === resource.ownerWindowId);
+    const ownerWindow = project.windows[ownerWindowIndex];
+    const visibleControls = ownerWindow ? getRuntimeControls(ownerWindow) : [];
+    const targetIndex = resource.targetControlId === resource.ownerWindowId
+      ? -1
+      : visibleControls.findIndex(control => control.id === resource.targetControlId);
+    const targetControlId = targetIndex >= 0 ? targetIndex + 1001 : 0;
+    const items = encodeControlRecords((resource.items || []).map(item => [
+      item.id,
+      item.label || '',
+      item.separator ? '1' : '0',
+      item.enabled === false ? '0' : '1',
+      item.checked ? '1' : '0',
+      item.selectedHandler || ''
+    ]));
+    return `    { L"${escapeWideString(resource.id)}", L"${escapeWideString(resource.name)}", ${ownerWindowIndex}, ${targetControlId}, ${resource.type === 'ContextMenu' ? 'true' : 'false'}, L"${escapeWideString(items)}" }`;
+  });
+  return rows.length > 0
+    ? `static MenuResourceSpec g_menuResources[] = {\n${rows.join(',\n')}\n};\nstatic const int g_menuResourceCount = ${rows.length};`
+    : 'static MenuResourceSpec g_menuResources[] = { { L"", L"", -1, 0, false, L"" } };\nstatic const int g_menuResourceCount = 0;';
 }
 
 function generateWindowSpec(window: LingWindowModel, windowIndex: number, program: LingCppProgram): string {

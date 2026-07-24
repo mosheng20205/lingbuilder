@@ -10,7 +10,7 @@
 
 - 新增统一 `electron/src/services/windowDesigner/win32ControlRegistry.ts`，基础/高级模块清单、设计器工具箱、专属属性、事件和原生适配器均从该注册表读取。
 - Win32 基础模块注册 `AnimatedImage`“动态图像控件”，以项目内 `properties.gifSource` 为唯一 GIF 资源来源；设计器预览与 LingCpp Win32 生成器共同消费自动播放、循环、填充方式和播放完毕事件。它不复用仅支持 AVI 的 `SysAnimate32` 控件。
-- 默认 `lingbuilder.win32.basic` 覆盖基础输入、列表、组合、分组框、滚动、图片和进度；可选 `lingbuilder.win32.common-controls` 覆盖 ListView、TreeView、Tab、日期、滑块、工具栏、状态栏、RichEdit 等系统标准控件。旧 `Grid` 网格容器和 `Pager` 分页容器仅保留项目读取与原生生成兼容，不再进入工具箱或内置模块新增控件贡献，普通父级容器统一使用分组框。
+- 默认 `lingbuilder.win32.basic` 覆盖基础输入、列表、组合、分组框、滚动、图片和进度；可选 `lingbuilder.win32.common-controls` 覆盖 ListView、TreeView、Tab、日期、滑块、工具栏、状态栏、RichEdit 等系统标准控件。旧 `Grid` 网格容器、`Pager` 分页容器和窗口级 `MenuBar` 仅保留项目读取与原生生成兼容，不再进入工具箱或新增入口；普通父级容器统一使用分组框，常规窗口操作入口统一使用 `ToolBar`。
 - `ModuleDesignerControlContribution` 可声明 `category`、`icon`、`properties`、`isContainer`、`isVisual`、`nativeAdapter` 和 `requiredLibraries`；字段保持 manifest v2 向后兼容。
 - 非可视 ToolTip、ImageList、PropertySheet 不进入普通控件工具箱；系统通用对话框通过高级模块中文命令和 bindings 暴露。
 - 高级模块的文件对话框会实际应用 `名称|模式` 筛选器，并通过 `系统对话框_状态` 区分成功、取消与错误；查找替换提供动作/文本读取命令，工具栏和状态栏提供最后命令 ID/分区索引，打印文本会创建真实打印文档。这些命令与 C++ runtime 必须继续由同一份 `contributes.commands`/`bindings.commands` 声明驱动。

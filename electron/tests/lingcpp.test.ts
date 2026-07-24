@@ -1046,6 +1046,30 @@ test('LingCpp designer bindings recognize non-visual file dialog resource events
   assert.equal(hints.some(hint => hint.status === 'missing-control'), false);
 });
 
+test('LingCpp designer bindings recognize non-visual menu item events by stable item id', () => {
+  const source = `类 MainWindow
+    事件 _上下文菜单1_打开被选择()
+        调试输出("打开")
+    结束
+结束类`;
+  const project: LingWindowProject = {
+    id: 'menu-binding-project',
+    name: '菜单绑定',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 480, background: '#111111', description: '', controls: []
+    }],
+    resources: [{
+      id: 'context-menu-1', type: 'ContextMenu', name: '上下文菜单1', ownerWindowId: 'main-window', targetControlId: 'main-window',
+      items: [{ id: 'open', label: '打开', enabled: true, selectedHandler: '_上下文菜单1_打开被选择' }]
+    }]
+  };
+
+  const hints = getLingCppDesignerBindings(source, project, 'src/MainWindow.lcpp');
+  assert.ok(hints.some(hint => hint.status === 'bound' && hint.controlId === 'context-menu-1:open' && hint.eventName === 'ItemSelected'));
+  assert.equal(hints.some(hint => hint.status === 'missing-control'), false);
+});
+
 test('LingCpp designer bindings use associated designer file to isolate other windows', () => {
   const source = [
     `${LING_CPP_KEYWORDS[0]} Demo`,

@@ -8,7 +8,8 @@ export type LingControlType =
   | 'ListView' | 'TreeView' | 'TabControl' | 'Header' | 'ComboBoxEx' | 'SysLink'
   | 'DateTimePicker' | 'MonthCalendar' | 'TrackBar' | 'UpDown' | 'HotKey' | 'IPAddress'
   | 'ToolBar' | 'StatusBar' | 'ToolTip' | 'ReBar' | 'Pager' | 'RichEdit'
-  | 'Animation' | 'VideoPlayer' | 'ColorPicker' | 'FlatScrollBar' | 'ImageList' | 'PropertySheet' | 'FileDialog';
+  | 'Animation' | 'VideoPlayer' | 'ColorPicker' | 'FlatScrollBar' | 'ImageList' | 'PropertySheet' | 'FileDialog'
+  | 'ContextMenu' | 'PopupMenu';
 
 export interface LingEventBinding {
   [eventName: string]: string;
@@ -152,7 +153,29 @@ export interface LingFileDialogResource {
   cancelledHandler?: string;
 }
 
-export type LingDesignerResource = LingImageListResource | LingToolTipResource | LingPropertySheetResource | LingFileDialogResource;
+export interface LingMenuResourceItem {
+  /** 稳定项目 ID；显示文字改变后事件绑定仍保持不变。 */
+  id: string;
+  label: string;
+  separator?: boolean;
+  enabled?: boolean;
+  checked?: boolean;
+  selectedHandler?: string;
+}
+
+export interface LingMenuResource {
+  id: string;
+  type: 'ContextMenu' | 'PopupMenu';
+  name: string;
+  designerX?: number;
+  designerY?: number;
+  ownerWindowId: string;
+  /** ContextMenu 的自动右键目标；窗口本身使用 ownerWindowId。PopupMenu 可留空。 */
+  targetControlId: string;
+  items: LingMenuResourceItem[];
+}
+
+export type LingDesignerResource = LingImageListResource | LingToolTipResource | LingPropertySheetResource | LingFileDialogResource | LingMenuResource;
 
 export interface LingWindowProject {
   schemaVersion?: 2;

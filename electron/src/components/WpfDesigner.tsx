@@ -45,6 +45,7 @@ import UpDownDesignerPreview from './UpDownDesignerPreview';
 import ListViewCollectionDialog, { type ListViewCollectionEditorKind } from './ListViewCollectionDialog';
 import ToolbarButtonsDialog from './ToolbarButtonsDialog';
 import StatusBarPartsDialog from './StatusBarPartsDialog';
+import TabControlPagesDialog from './TabControlPagesDialog';
 import MenuBarItemsDialog from './MenuBarItemsDialog';
 import TreeViewCollectionDialog from './TreeViewCollectionDialog';
 import {
@@ -82,6 +83,8 @@ import {
   LingDesignerResource,
   LingFileDialogResource,
   LingImageListResource,
+  LingMenuResource,
+  LingMenuResourceItem,
   LingPropertySheetResource,
   LingToolTipResource,
   LingWindowModel,
@@ -131,7 +134,10 @@ import {
   getSelectedTabPage,
   getTabControlPages,
   isControlOnSelectedTab,
-  isTabControlHeaderHidden
+  isTabControlHeaderHidden,
+  normalizeTabControlPages,
+  type TabControlPage,
+  type TabControlPageMutation
 } from '../services/windowDesigner/tabControlModel';
 
 type InspectorTab = 'properties' | 'events' | 'layout';
@@ -169,10 +175,11 @@ export interface WpfDesignerProps {
   onDirtyChange?: (detail: WindowDesignerDirtyStateDetail) => void;
 }
 
-const CONTROL_TYPES: (LingControlType | 'MenuBar')[] = [
+export const CREATABLE_DESIGNER_CONTROL_TYPES: LingControlType[] = [
   ...getCreatableWin32ControlDefinitions().filter(definition => definition.isVisual !== false).map(definition => definition.type as LingControlType),
   'FileDialog',
-  'MenuBar'
+  'ContextMenu',
+  'PopupMenu'
 ];
 
 const CONTROL_LABELS: Record<string, string> = Object.fromEntries([
@@ -205,6 +212,8 @@ const TYPE_ICONS: Partial<Record<LingControlType | 'MenuBar', React.ReactNode>> 
   Upload: <Upload className="w-3.5 h-3.5 text-sky-400" />,
   DragUpload: <FileUp className="w-3.5 h-3.5 text-fuchsia-400" />,
   FileDialog: <FolderOpen className="w-3.5 h-3.5 text-emerald-400" />,
+  ContextMenu: <Menu className="w-3.5 h-3.5 text-amber-400" />,
+  PopupMenu: <Menu className="w-3.5 h-3.5 text-orange-400" />,
   ComboBox: <List className="w-3.5 h-3.5 text-violet-400" />,
   Grid: <LayoutGrid className="w-3.5 h-3.5 text-slate-400" />,
   MenuBar: <Menu className="w-3.5 h-3.5 text-amber-400" />
@@ -334,6 +343,16 @@ export default function WpfDesigner({
   const selectedFileDialog = useMemo(
     () => activeFileDialogs.find(resource => resource.id === selectedResourceId) || null,
     [activeFileDialogs, selectedResourceId]
+  );
+  const activeMenuResources = useMemo(
+    () => (project.resources || []).filter((resource): resource is LingMenuResource => (
+      (resource.type === 'ContextMenu' || resource.type === 'PopupMenu') && resource.ownerWindowId === activeWindow.id
+    )),
+    [activeWindow.id, project.resources]
+  );
+  const selectedMenuResource = useMemo(
+    () => activeMenuResources.find(resource => resource.id === selectedResourceId) || null,
+    [activeMenuResources, selectedResourceId]
   );
   const designerPaintControls = useMemo(
     () => orderControlsForDesignerPainting(activeWindow.controls),
@@ -639,6 +658,38 @@ export default function WpfDesigner({
     selectOnlyControl(nextWindow.controls[0]?.id || null);
   };
 
+  const updateTabControlPages = (controlId: string, pages: TabControlPage[], mutation?: TabControlPageMutation) => {
+    updateActiveWindow(window => {
+      const tabControl = window.controls.find(control => control.id === controlId && control.type === 'TabControl');
+      if (!tabControl) return window;
+      const selectedPageId = getSelectedTabPage(tabControl)?.id;
+      const remappedSelectedPageId = mutation?.type === 'rename' && selectedPageId === mutation.previousId
+        ? mutation.nextId
+        : mutation?.type === 'remove' && selectedPageId === mutation.removedId
+          ? mutation.fallbackId
+          : selectedPageId;
+      const selectedIndex = Math.max(0, pages.findIndex(page => page.id === remappedSelectedPageId));
+      const legacyFallbackPageId = getTabControlPages(tabControl)[0]?.id;
+      const controls = window.controls.map(control => {
+        if (control.id === controlId) {
+          return {
+            ...control,
+            properties: { ...(control.properties || {}), tabs: pages.map(page => ({ ...page })), selectedIndex }
+          };
+        }
+        if (control.parentId !== controlId) return control;
+        const currentSlot = control.containerSlot || legacyFallbackPageId;
+        const nextSlot = mutation?.type === 'rename' && currentSlot === mutation.previousId
+          ? mutation.nextId
+          : mutation?.type === 'remove' && currentSlot === mutation.removedId
+            ? mutation.fallbackId
+            : currentSlot;
+        return nextSlot && nextSlot !== control.containerSlot ? { ...control, containerSlot: nextSlot } : control;
+      });
+      return { ...window, controls };
+    });
+  };
+
   const handleReparentControls = (controlIds: string[], parentId?: string, containerSlot?: string) => {
     const uniqueControlIds = [...new Set(controlIds)].filter(id => activeWindow.controls.some(control => control.id === id));
     const selectedSet = new Set(uniqueControlIds);
@@ -811,22 +862,8 @@ export default function WpfDesigner({
     window.dispatchEvent(new CustomEvent('window-duplicated', { detail: clonedWindow }));
   };
 
-  const handleAddControl = (type: LingControlType | 'MenuBar') => {
+  const handleAddControl = (type: LingControlType) => {
     if (!activeWindow) return;
-    if (type === 'MenuBar') {
-      updateActiveWindow(window => ({
-        ...window,
-        menuName: window.menuName || '窗口菜单栏',
-        menuItems: window.menuItems || '关于太空冒险客户端, 太空冒险安全账户登录, 关于太空冒险客户端',
-        menuEvents: window.menuEvents || {
-          'Select': `_${window.className}_窗口菜单被选择`
-        }
-      }));
-      setSelectedControlId('__window_menu_bar__');
-      setActiveInspectorTab('properties');
-      addLog(`> [${new Date().toLocaleTimeString()}] 【可视化设计】已在 ${activeWindow.fileName} 启用并选中窗口菜单栏。`);
-      return;
-    }
     const definition = getWin32ControlDefinition(type);
     if (definition && !enabledDesignerModules.has(definition.moduleId)) {
       addLog(`> [${new Date().toLocaleTimeString()}] 【模块】${definition.label} 需要先启用 Win32高级控件模块。`);
@@ -855,6 +892,32 @@ export default function WpfDesigner({
       setSelectedResourceId(resource.id);
       setActiveInspectorTab('properties');
       addLog(`> [${new Date().toLocaleTimeString()}] 【非可视组件】已添加${resource.name}；请绑定打开触发控件和拖放目标。`);
+      return;
+    }
+    if (type === 'ContextMenu' || type === 'PopupMenu') {
+      const existing = (project.resources || []).filter((resource): resource is LingMenuResource => resource.type === type);
+      const prefix = type === 'ContextMenu' ? 'context-menu' : 'popup-menu';
+      const label = type === 'ContextMenu' ? '上下文菜单' : '弹出菜单';
+      let suffix = existing.length + 1;
+      while ((project.resources || []).some(resource => resource.id === `${prefix}-${suffix}`)) suffix += 1;
+      const resource: LingMenuResource = {
+        id: `${prefix}-${suffix}`,
+        type,
+        name: `${label}${suffix}`,
+        designerX: 15 + (((activeFileDialogs.length + activeMenuResources.length) % 4) * 145),
+        designerY: Math.max(0, activeWindow.height - windowContentOffset - 55),
+        ownerWindowId: activeWindow.id,
+        targetControlId: type === 'ContextMenu' ? activeWindow.id : '',
+        items: [
+          { id: 'item-1', label: '菜单项 1', enabled: true },
+          { id: 'item-2', label: '菜单项 2', enabled: true }
+        ]
+      };
+      setProject(previous => ({ ...previous, resources: [...(previous.resources || []), resource] }));
+      selectOnlyControl(null);
+      setSelectedResourceId(resource.id);
+      setActiveInspectorTab('properties');
+      addLog(`> [${new Date().toLocaleTimeString()}] 【非可视组件】已添加${resource.name}。`);
       return;
     }
     const typeIndex = activeWindow.controls.filter(control => control.type === type).length + 1;
@@ -1002,10 +1065,30 @@ export default function WpfDesigner({
     y: resource.designerY ?? Math.max(0, activeWindow.height - windowContentOffset - 55 - (Math.floor(index / 4) * 50))
   });
 
+  const getMenuResourceDesignerPosition = (resource: LingMenuResource, index: number) => ({
+    x: resource.designerX ?? 15 + (((activeFileDialogs.length + index) % 4) * 145),
+    y: resource.designerY ?? Math.max(0, activeWindow.height - windowContentOffset - 55 - (Math.floor((activeFileDialogs.length + index) / 4) * 50))
+  });
+
   const handleFileDialogMouseDown = (event: React.MouseEvent, resource: LingFileDialogResource, index: number) => {
     event.preventDefault();
     event.stopPropagation();
     const position = getFileDialogDesignerPosition(resource, index);
+    setSelectedControlId(null);
+    setSelectedControlIds([]);
+    setSelectedResourceId(resource.id);
+    setActiveInspectorTab('properties');
+    setDraggingResourceId(resource.id);
+    setResourceDragOffset({
+      x: event.clientX - position.x * canvasScale,
+      y: event.clientY - position.y * canvasScale
+    });
+  };
+
+  const handleMenuResourceMouseDown = (event: React.MouseEvent, resource: LingMenuResource, index: number) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const position = getMenuResourceDesignerPosition(resource, index);
     setSelectedControlId(null);
     setSelectedControlIds([]);
     setSelectedResourceId(resource.id);
@@ -1200,7 +1283,7 @@ export default function WpfDesigner({
       const nextY = Math.max(0, Math.min(activeWindow.height - windowContentOffset - placeholderHeight, (event.clientY - resourceDragOffset.y) / canvasScale));
       setProject(previous => ({
         ...previous,
-        resources: (previous.resources || []).map(resource => resource.id === draggingResourceId && resource.type === 'FileDialog'
+        resources: (previous.resources || []).map(resource => resource.id === draggingResourceId && (resource.type === 'FileDialog' || resource.type === 'ContextMenu' || resource.type === 'PopupMenu')
           ? { ...resource, designerX: Math.round(nextX / 5) * 5, designerY: Math.round(nextY / 5) * 5 }
           : resource)
       }));
@@ -1432,11 +1515,11 @@ export default function WpfDesigner({
               点击控件即可添加到当前窗口，随后可在画布中拖拽、改尺寸、绑定中文事件。
             </p>
             <div className="grid grid-cols-1 gap-1">
-              {CONTROL_TYPES.map(type => (
+              {CREATABLE_DESIGNER_CONTROL_TYPES.map(type => (
                 (() => {
-                  const definition = type === 'MenuBar' ? undefined : getWin32ControlDefinition(type);
+                  const definition = getWin32ControlDefinition(type);
                   const moduleEnabled = !definition || enabledDesignerModules.has(definition.moduleId);
-                  const backendSupported = type === 'MenuBar' ? !useNewEmojiDesigner : !useNewEmojiDesigner || isNewEmojiDesignerControlSupported(type);
+                  const backendSupported = !useNewEmojiDesigner || isNewEmojiDesignerControlSupported(type);
                   const enabled = moduleEnabled && backendSupported;
                   const disabledReason = !moduleEnabled
                     ? `需要启用 ${definition?.moduleId}`
@@ -1458,7 +1541,7 @@ export default function WpfDesigner({
                 >
                   {getControlIcon(type)}
                   <span className="min-w-0 flex-1 truncate">{CONTROL_LABELS[type]} ({type})</span>
-                  {useNewEmojiDesigner && backendSupported && type !== 'MenuBar' && <span className="text-[8px] text-fuchsia-300">NE</span>}
+                  {useNewEmojiDesigner && backendSupported && <span className="text-[8px] text-fuchsia-300">NE</span>}
                   {definition?.moduleId === 'lingbuilder.win32.common-controls' && <span className="text-[8px] text-violet-400">高级</span>}
                 </button>
                   );
@@ -1787,6 +1870,51 @@ export default function WpfDesigner({
                 </div>
               );
             })}
+            {activeMenuResources.map((resource, index) => {
+              const position = getMenuResourceDesignerPosition(resource, index);
+              const selected = selectedResourceId === resource.id;
+              const isContext = resource.type === 'ContextMenu';
+              return (
+                <div
+                  key={resource.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${isContext ? '上下文菜单' : '弹出菜单'}占位：${resource.name}`}
+                  aria-pressed={selected}
+                  onMouseDown={event => handleMenuResourceMouseDown(event, resource, index)}
+                  onClick={event => {
+                    event.stopPropagation();
+                    setSelectedControlId(null);
+                    setSelectedControlIds([]);
+                    setSelectedResourceId(resource.id);
+                    setActiveInspectorTab('properties');
+                  }}
+                  onKeyDown={event => {
+                    if (event.key !== 'Enter' && event.key !== ' ') return;
+                    event.preventDefault();
+                    setSelectedControlId(null);
+                    setSelectedControlIds([]);
+                    setSelectedResourceId(resource.id);
+                    setActiveInspectorTab('properties');
+                  }}
+                  className={`absolute z-30 flex cursor-move items-center gap-2 rounded border border-dashed px-2 shadow-md select-none ${
+                    selected
+                      ? 'border-amber-300 bg-amber-500/25 ring-2 ring-amber-400'
+                      : isDarkMode
+                        ? 'border-amber-500/70 bg-[#3a2c12] hover:bg-amber-500/20'
+                        : 'border-amber-600 bg-amber-50 hover:bg-amber-100'
+                  }`}
+                  style={{ left: `${position.x}px`, top: `${position.y + windowContentOffset}px`, width: '135px', height: '42px' }}
+                  title="设计期非可视菜单：单击编辑属性，拖拽移动占位"
+                >
+                  <Menu className="h-4 w-4 shrink-0 text-amber-400" aria-hidden="true" />
+                  <span className="min-w-0 leading-tight">
+                    <span className={`block truncate text-[10px] font-semibold ${isDarkMode ? 'text-amber-100' : 'text-amber-900'}`}>{resource.name}</span>
+                    <span className={`block text-[8px] ${isDarkMode ? 'text-amber-300/75' : 'text-amber-700'}`}>{isContext ? '上下文菜单' : '弹出菜单'} · 非可视</span>
+                  </span>
+                </div>
+              );
+            })}
             </div>
           </div>
         </div>
@@ -1845,6 +1973,22 @@ export default function WpfDesigner({
                     setSelectedResourceId(null);
                   }}
                 />
+              ) : selectedMenuResource ? (
+                <MenuResourceProperties
+                  resource={selectedMenuResource}
+                  windows={project.windows}
+                  isDarkMode={isDarkMode}
+                  onChange={fields => setProject(previous => ({
+                    ...previous,
+                    resources: (previous.resources || []).map(resource => resource.id === selectedMenuResource.id && (resource.type === 'ContextMenu' || resource.type === 'PopupMenu')
+                      ? { ...resource, ...fields }
+                      : resource)
+                  }))}
+                  onDelete={() => {
+                    setProject(previous => ({ ...previous, resources: (previous.resources || []).filter(resource => resource.id !== selectedMenuResource.id) }));
+                    setSelectedResourceId(null);
+                  }}
+                />
               ) : <>
                 <ImageListResourceEditor
                   resources={(project.resources || []).filter((resource): resource is LingImageListResource => resource.type === 'ImageList')}
@@ -1872,6 +2016,7 @@ export default function WpfDesigner({
                     imageLists={(project.resources || []).filter((resource): resource is LingImageListResource => resource.type === 'ImageList')}
                     isDarkMode={isDarkMode}
                     onChange={updateSelectedControl}
+                    onTabPagesChange={updateTabControlPages}
                     onDelete={handleDeleteControl}
                   />
                 )}
@@ -1888,6 +2033,18 @@ export default function WpfDesigner({
                     ...previous,
                     resources: (previous.resources || []).map(resource => resource.id === selectedFileDialog.id && resource.type === 'FileDialog'
                       ? { ...resource, ...fields }
+                      : resource)
+                  }))}
+                />
+              ) : selectedMenuResource ? (
+                <MenuResourceEvents
+                  resource={selectedMenuResource}
+                  windowModel={activeWindow}
+                  isDarkMode={isDarkMode}
+                  onChange={items => setProject(previous => ({
+                    ...previous,
+                    resources: (previous.resources || []).map(resource => resource.id === selectedMenuResource.id && (resource.type === 'ContextMenu' || resource.type === 'PopupMenu')
+                      ? { ...resource, items }
                       : resource)
                   }))}
                 />
@@ -3474,6 +3631,96 @@ function FileDialogEvents({ resource, windowModel, isDarkMode, onChange }: { res
   );
 }
 
+function createMenuResourceItem(items: LingMenuResourceItem[]): LingMenuResourceItem {
+  let suffix = items.length + 1;
+  while (items.some(item => item.id === `item-${suffix}`)) suffix += 1;
+  return { id: `item-${suffix}`, label: `菜单项 ${suffix}`, enabled: true };
+}
+
+function MenuResourceProperties({ resource, windows, isDarkMode, onChange, onDelete }: {
+  resource: LingMenuResource;
+  windows: LingWindowModel[];
+  isDarkMode: boolean;
+  onChange: (fields: Partial<LingMenuResource>) => void;
+  onDelete: () => void;
+}) {
+  const ownerWindow = windows.find(window => window.id === resource.ownerWindowId) || windows[0];
+  const inputClass = `w-full rounded border px-1.5 py-1 text-[10px] ${isDarkMode ? 'border-[#3c3c44] bg-[#1b1b20] text-slate-200' : 'border-slate-300 bg-white text-slate-800'}`;
+  const updateItem = (index: number, fields: Partial<LingMenuResourceItem>) => onChange({
+    items: resource.items.map((item, row) => row === index ? { ...item, ...fields } : item)
+  });
+  return (
+    <div className="space-y-3" aria-label={`${resource.type === 'ContextMenu' ? '上下文菜单' : '弹出菜单'}属性：${resource.name}`}>
+      <div className={`flex items-center gap-2 border-b pb-2 text-[11px] ${isDarkMode ? 'border-slate-800 text-slate-300' : 'border-slate-200 text-slate-700'}`}>
+        <Menu className="h-4 w-4 text-amber-500" />
+        <span className="font-semibold">{resource.type === 'ContextMenu' ? '上下文菜单' : '弹出菜单'}：{resource.name}</span>
+        <span className="ml-auto rounded border border-amber-500/30 px-1.5 py-0.5 text-[8px] text-amber-500">非可视</span>
+      </div>
+      <PropertyGroup title="组件" isDarkMode={isDarkMode}>
+        <PropertyRow label="名称" isDarkMode={isDarkMode}><input aria-label="菜单组件名称" value={resource.name} onChange={event => onChange({ name: event.target.value })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="左" isDarkMode={isDarkMode}><input aria-label="菜单占位左坐标" type="number" min={0} value={resource.designerX ?? 0} onChange={event => onChange({ designerX: Math.max(0, Number(event.target.value) || 0) })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="顶" isDarkMode={isDarkMode}><input aria-label="菜单占位顶坐标" type="number" min={0} value={resource.designerY ?? 0} onChange={event => onChange({ designerY: Math.max(0, Number(event.target.value) || 0) })} className={inputClass} /></PropertyRow>
+        <PropertyRow label="所属窗口" isDarkMode={isDarkMode}><select aria-label="菜单所属窗口" value={resource.ownerWindowId} onChange={event => onChange({ ownerWindowId: event.target.value, targetControlId: resource.type === 'ContextMenu' ? event.target.value : '' })} className={inputClass}>{windows.map(window => <option key={window.id} value={window.id}>{window.title}</option>)}</select></PropertyRow>
+        {resource.type === 'ContextMenu' && <PropertyRow label="右键目标" isDarkMode={isDarkMode}><select aria-label="上下文菜单右键目标" value={resource.targetControlId || ownerWindow?.id || ''} onChange={event => onChange({ targetControlId: event.target.value })} className={inputClass}><option value={ownerWindow?.id || ''}>当前窗口</option>{(ownerWindow?.controls || []).map(control => <option key={control.id} value={control.id}>{control.name}（{CONTROL_LABELS[control.type]}）</option>)}</select></PropertyRow>}
+      </PropertyGroup>
+      <PropertyGroup title={`菜单项（${resource.items.length}）`} isDarkMode={isDarkMode}>
+        <div className="space-y-2 p-2">
+          {resource.items.map((item, index) => <div key={item.id} className={`space-y-1 rounded border p-2 ${isDarkMode ? 'border-[#34343d]' : 'border-slate-200'}`}>
+            <div className="flex items-center gap-1">
+              <input aria-label={`第 ${index + 1} 个菜单项文字`} value={item.label} disabled={item.separator} onChange={event => updateItem(index, { label: event.target.value })} className={inputClass} />
+              <button type="button" aria-label={`删除第 ${index + 1} 个菜单项`} onClick={() => onChange({ items: resource.items.filter((_, row) => row !== index) })} className="shrink-0 rounded p-1 text-red-400 hover:bg-red-500/10"><Trash2 className="h-3.5 w-3.5" /></button>
+            </div>
+            <div className="flex flex-wrap gap-3 text-[9px] text-slate-500">
+              <label className="flex items-center gap-1"><input type="checkbox" checked={item.separator === true} onChange={event => updateItem(index, { separator: event.target.checked, label: event.target.checked ? '' : (item.label || `菜单项 ${index + 1}`) })} />分隔线</label>
+              <label className="flex items-center gap-1"><input type="checkbox" checked={item.enabled !== false} disabled={item.separator} onChange={event => updateItem(index, { enabled: event.target.checked })} />启用</label>
+              <label className="flex items-center gap-1"><input type="checkbox" checked={item.checked === true} disabled={item.separator} onChange={event => updateItem(index, { checked: event.target.checked })} />勾选</label>
+              <span className="font-mono">{item.id}</span>
+            </div>
+          </div>)}
+          <div className="flex gap-2">
+            <button type="button" onClick={() => onChange({ items: [...resource.items, createMenuResourceItem(resource.items)] })} className="flex-1 rounded border border-amber-500/30 py-1.5 text-[10px] text-amber-500 hover:bg-amber-500/10"><Plus className="mr-1 inline h-3 w-3" />新增菜单项</button>
+            <button type="button" onClick={() => onChange({ items: [...resource.items, { ...createMenuResourceItem(resource.items), label: '', separator: true }] })} className="flex-1 rounded border border-slate-500/30 py-1.5 text-[10px] text-slate-500">新增分隔线</button>
+          </div>
+        </div>
+      </PropertyGroup>
+      <div className="text-[9px] leading-4 text-slate-500">运行时不绘制占位。{resource.type === 'ContextMenu' ? '绑定目标收到右键消息时自动弹出，也可调用“上下文菜单_显示”。' : '请通过“弹出菜单_显示”或“弹出菜单_在坐标显示”主动触发。'}</div>
+      <button type="button" onClick={onDelete} className="flex w-full items-center justify-center gap-1 rounded border border-red-500/30 py-1.5 text-[10px] text-red-400 hover:bg-red-500/10"><Trash2 className="h-3 w-3" />删除菜单组件</button>
+    </div>
+  );
+}
+
+function MenuResourceEvents({ resource, windowModel, isDarkMode, onChange }: {
+  resource: LingMenuResource;
+  windowModel: LingWindowModel;
+  isDarkMode: boolean;
+  onChange: (items: LingMenuResourceItem[]) => void;
+}) {
+  const openEventCode = (item: LingMenuResourceItem, index: number) => {
+    if (item.separator) return;
+    const handlerName = item.selectedHandler?.trim() || `_${resource.name}_${item.label || `菜单项${index + 1}`}_被选择`;
+    onChange(resource.items.map(current => current.id === item.id ? { ...current, selectedHandler: handlerName } : current));
+    const detail: OpenControlEventCodeDetail = {
+      controlId: `${resource.id}:${item.id}`,
+      controlName: `${resource.name}.${item.label}`,
+      controlContent: item.label,
+      controlType: resource.type,
+      eventName: 'ItemSelected',
+      handlerName,
+      windowFileName: windowModel.fileName,
+      windowClassName: windowModel.className,
+      windowTitle: windowModel.title
+    };
+    globalThis.window.dispatchEvent(new CustomEvent<OpenControlEventCodeDetail>('open-control-event-code', { detail }));
+  };
+  return <div className="space-y-2" aria-label={`菜单项事件：${resource.name}`}>
+    <div className={`flex items-center gap-1.5 border-b pb-2 text-[11px] ${isDarkMode ? 'border-slate-800 text-slate-300' : 'border-slate-200 text-slate-700'}`}><Zap className="h-3.5 w-3.5 text-amber-500" /><span className="font-semibold">菜单项事件：{resource.name}</span></div>
+    {resource.items.filter(item => !item.separator).map((item, index) => {
+      const handlerName = item.selectedHandler?.trim() || `_${resource.name}_${item.label || `菜单项${index + 1}`}_被选择`;
+      return <button key={item.id} type="button" onClick={() => openEventCode(item, index)} className={`w-full rounded border p-2.5 text-left ${isDarkMode ? 'border-slate-800/70 bg-slate-900/40 hover:border-amber-500/45' : 'border-slate-200 bg-white hover:border-amber-400'}`}><span className="block text-[11px] font-semibold">{item.label}</span><span className="mt-1 block truncate font-mono text-[9.5px] text-slate-500">{handlerName}</span></button>;
+    })}
+  </div>;
+}
+
 function BehaviorResourceEditor({ resources, windows, isDarkMode, onChange }: { resources: LingDesignerResource[]; windows: LingWindowModel[]; isDarkMode: boolean; onChange: (resources: LingDesignerResource[]) => void }) {
   const controls = windows.flatMap(window => window.controls);
   const tooltips = resources.filter((resource): resource is LingToolTipResource => resource.type === 'ToolTip');
@@ -3560,6 +3807,7 @@ function ControlProperties({
   imageLists,
   isDarkMode,
   onChange,
+  onTabPagesChange,
   onDelete
 }: {
   projectId: string;
@@ -3568,12 +3816,14 @@ function ControlProperties({
   imageLists: LingImageListResource[];
   isDarkMode: boolean;
   onChange: (fields: Partial<LingControl>) => void;
+  onTabPagesChange: (controlId: string, pages: TabControlPage[], mutation?: TabControlPageMutation) => void;
   onDelete: () => void;
 }) {
   const [listViewEditorKind, setListViewEditorKind] = useState<ListViewCollectionEditorKind | null>(null);
   const [headerColumnsEditorOpen, setHeaderColumnsEditorOpen] = useState(false);
   const [toolbarButtonsEditorOpen, setToolbarButtonsEditorOpen] = useState(false);
   const [statusBarPartsEditorOpen, setStatusBarPartsEditorOpen] = useState(false);
+  const [tabPagesEditorOpen, setTabPagesEditorOpen] = useState(false);
   const [menuBarItemsEditorOpen, setMenuBarItemsEditorOpen] = useState(false);
   const [treeViewEditorOpen, setTreeViewEditorOpen] = useState(false);
 
@@ -3582,6 +3832,7 @@ function ControlProperties({
     setHeaderColumnsEditorOpen(false);
     setToolbarButtonsEditorOpen(false);
     setStatusBarPartsEditorOpen(false);
+    setTabPagesEditorOpen(false);
     setMenuBarItemsEditorOpen(false);
     setTreeViewEditorOpen(false);
   }, [control?.id]);
@@ -3634,6 +3885,9 @@ function ControlProperties({
     : 0;
   const statusBarPartCount = control.type === 'StatusBar'
     ? normalizeStatusBarParts(control.properties?.parts).length
+    : 0;
+  const tabPageCount = control.type === 'TabControl'
+    ? normalizeTabControlPages(control.properties?.tabs).length
     : 0;
   const updateControlProperty = (key: string, value: Win32ControlPropertyValue) => {
     const properties = { ...(control.properties || {}), [key]: value };
@@ -3872,6 +4126,24 @@ function ControlProperties({
                 </PropertyRow>
               );
             }
+            if (control.type === 'TabControl' && property.key === 'tabs') {
+              return (
+                <PropertyRow key={property.key} label={property.label} isDarkMode={isDarkMode}>
+                  <button
+                    type="button"
+                    onClick={() => setTabPagesEditorOpen(true)}
+                    className={`flex w-full items-center justify-between rounded border px-2.5 py-1.5 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                      isDarkMode
+                        ? 'border-[#3f3f49] bg-[#24242b] text-slate-200 hover:bg-[#303038]'
+                        : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{tabPageCount} 个标签页</span>
+                    <span className="font-semibold text-cyan-500">编辑标签页</span>
+                  </button>
+                </PropertyRow>
+              );
+            }
             return (
               <ControlPropertyField
                 key={property.key}
@@ -3968,6 +4240,16 @@ function ControlProperties({
           isDarkMode={isDarkMode}
           onChange={parts => updateControlProperty('parts', parts.map(part => ({ ...part })))}
           onClose={() => setStatusBarPartsEditorOpen(false)}
+        />
+      )}
+      {control.type === 'TabControl' && tabPagesEditorOpen && (
+        <TabControlPagesDialog
+          controlName={control.name}
+          value={control.properties?.tabs}
+          hasImageList={Boolean(control.properties?.imageListId)}
+          isDarkMode={isDarkMode}
+          onChange={(pages, mutation) => onTabPagesChange(control.id, pages, mutation)}
+          onClose={() => setTabPagesEditorOpen(false)}
         />
       )}
       {control.type === ('MenuBar' as any) && menuBarItemsEditorOpen && (
