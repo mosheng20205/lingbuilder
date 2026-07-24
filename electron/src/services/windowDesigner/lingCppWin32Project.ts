@@ -659,6 +659,7 @@ struct ControlSpec {
     COLORREF listSelectionBorder;
     int listSelectionCornerRadius;
     int listItemHeight;
+    int listItemSpacing;
     int listHeaderHeight;
     int listContentPadding;
     int listScrollBarVisibility;
@@ -2650,7 +2651,10 @@ protected:
     }
     int 选项卡_添加页(const wchar_t* controlName, const wchar_t* title) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"TabControl")) return -1;
-        TCITEMW item = {}; item.mask = TCIF_TEXT; item.pszText = const_cast<wchar_t*>(title ? title : L""); int index = TabCtrl_GetItemCount(runtime->hwnd); return TabCtrl_InsertItem(runtime->hwnd, index, &item);
+        TCITEMW item = {}; item.mask = TCIF_TEXT; item.pszText = const_cast<wchar_t*>(title ? title : L""); int index = TabCtrl_GetItemCount(runtime->hwnd);
+        int inserted = TabCtrl_InsertItem(runtime->hwnd, index, &item);
+        if (inserted >= 0) UpdateTabHeaderMinimumWidth(*control, *runtime);
+        return inserted;
     }
 
 private:
@@ -3094,7 +3098,11 @@ private:
         }
         if (control.parentId > 0) {
             const ControlSpec* parent = FindControl(control.parentId);
-            if (parent) return parent->background;
+            if (parent) {
+                if (!parent->backgroundTransparent) return parent->background;
+                const RuntimeControl* parentRuntime = FindRuntimeControl(parent->id);
+                return ResolveControlSurroundingColor(*parent, parentRuntime ? parentRuntime->hwnd : nullptr);
+            }
         }
         return spec_.background;
     }
@@ -3110,9 +3118,48 @@ private:
         }
         if (control.parentId > 0) {
             const RuntimeControl* parent = FindRuntimeControl(control.parentId);
+            const ControlSpec* parentSpec = FindControl(control.parentId);
+            if (parentSpec && parentSpec->backgroundTransparent) {
+                return ResolveControlSurroundingBrush(*parentSpec, parent ? parent->hwnd : nullptr);
+            }
             if (parent && parent->brush) return parent->brush;
         }
         return windowBrush_;
+    }
+
+    int TabHeaderHorizontalPadding() const { return ScaleForDpi(12, dpi_); }
+    int TabHeaderVerticalPadding() const { return ScaleForDpi(4, dpi_); }
+    int TabHeaderIconGap() const { return ScaleForDpi(6, dpi_); }
+
+    void UpdateTabHeaderMinimumWidth(const ControlSpec& control, RuntimeControl& runtime) {
+        if (!runtime.hwnd || (control.flags & CF_HIDE_TAB_HEADER)) return;
+        HDC hdc = GetDC(runtime.hwnd);
+        if (!hdc) return;
+        HFONT oldFont = runtime.font ? reinterpret_cast<HFONT>(SelectObject(hdc, runtime.font)) : nullptr;
+        HIMAGELIST imageList = TabCtrl_GetImageList(runtime.hwnd);
+        int iconWidth = 0;
+        int iconHeight = 0;
+        if (imageList) ImageList_GetIconSize(imageList, &iconWidth, &iconHeight);
+        int minimumWidth = ScaleForDpi(48, dpi_);
+        int itemCount = TabCtrl_GetItemCount(runtime.hwnd);
+        for (int index = 0; index < itemCount; ++index) {
+            wchar_t title[512] = {};
+            TCITEMW item = {};
+            item.mask = TCIF_TEXT | TCIF_IMAGE;
+            item.pszText = title;
+            item.cchTextMax = 512;
+            item.iImage = -1;
+            if (!TabCtrl_GetItem(runtime.hwnd, index, &item)) continue;
+            SIZE textSize = {};
+            GetTextExtentPoint32W(hdc, title, static_cast<int>(std::wcslen(title)), &textSize);
+            int desiredWidth = textSize.cx + TabHeaderHorizontalPadding() * 2;
+            if (imageList && item.iImage >= 0) desiredWidth += iconWidth + TabHeaderIconGap();
+            minimumWidth = std::max(minimumWidth, desiredWidth);
+        }
+        if (oldFont) SelectObject(hdc, oldFont);
+        ReleaseDC(runtime.hwnd, hdc);
+        SendMessageW(runtime.hwnd, TCM_SETMINTABWIDTH, 0, minimumWidth);
+        InvalidateRect(runtime.hwnd, nullptr, FALSE);
     }
 
     void PaintTabControl(HWND hwnd, HDC hdc, const ControlSpec& control, RuntimeControl& runtime) {
@@ -3121,7 +3168,6 @@ private:
         COLORREF pageBackground = ResolveTabBackground(control);
         COLORREF headerBackground = BlendColor(pageBackground, RGB(0, 0, 0), 8);
         COLORREF selectedBackground = BlendColor(pageBackground, RGB(255, 255, 255), 7);
-        COLORREF border = BlendColor(pageBackground, control.foreground, 18);
         COLORREF inactiveForeground = BlendColor(control.foreground, pageBackground, 30);
         COLORREF accent = RGB(245, 158, 11);
         if (control.flags & CF_HIDE_TAB_HEADER) {
@@ -3159,15 +3205,6 @@ private:
             HBRUSH itemBrush = CreateSolidBrush(itemBackground);
             FillRect(hdc, &itemRect, itemBrush);
             DeleteObject(itemBrush);
-            if (index > 0 && !selected) {
-                HPEN dividerPen = CreatePen(PS_SOLID, 1, border);
-                HGDIOBJ oldDivider = SelectObject(hdc, dividerPen);
-                MoveToEx(hdc, itemRect.left, itemRect.top + ScaleForDpi(7, dpi_), nullptr);
-                LineTo(hdc, itemRect.left, itemRect.bottom - ScaleForDpi(7, dpi_));
-                SelectObject(hdc, oldDivider);
-                DeleteObject(dividerPen);
-            }
-
             wchar_t title[512] = {};
             TCITEMW tabItem = {};
             tabItem.mask = TCIF_TEXT | TCIF_IMAGE;
@@ -3175,14 +3212,14 @@ private:
             tabItem.cchTextMax = 512;
             tabItem.iImage = -1;
             TabCtrl_GetItem(hwnd, index, &tabItem);
-            int padding = ScaleForDpi(12, dpi_);
+            int padding = TabHeaderHorizontalPadding();
             RECT textRect = itemRect;
             textRect.left += padding;
             textRect.right -= padding;
             if (imageList && tabItem.iImage >= 0) {
                 int iconTop = itemRect.top + (itemRect.bottom - itemRect.top - iconHeight) / 2;
                 ImageList_Draw(imageList, tabItem.iImage, hdc, textRect.left, iconTop, ILD_TRANSPARENT);
-                textRect.left += iconWidth + ScaleForDpi(6, dpi_);
+                textRect.left += iconWidth + TabHeaderIconGap();
             }
             COLORREF textColor = IsWindowEnabled(hwnd)
                 ? (selected ? control.foreground : inactiveForeground)
@@ -3213,12 +3250,12 @@ private:
             && !(item->itemState & ODS_NOFOCUSRECT);
         COLORREF surrounding = ResolveControlSurroundingColor(*control, item->hwndItem);
         COLORREF background = control->background;
-        COLORREF rowBackground = control->background;
+        COLORREF rowBackground = control->backgroundTransparent ? surrounding : control->background;
         COLORREF foreground = control->foreground;
         COLORREF border = BlendColor(control->background, RGB(255, 255, 255), 18);
         if (!enabled) {
             background = BlendColor(control->background, surrounding, 55);
-            rowBackground = background;
+            if (!control->backgroundTransparent) rowBackground = background;
             foreground = BlendColor(control->foreground, surrounding, 55);
             border = BlendColor(border, surrounding, 55);
         } else if (pressed) {
@@ -3338,6 +3375,9 @@ private:
         bool enabled = IsWindowEnabled(item->hwndItem) != FALSE && !(item->itemState & ODS_DISABLED);
         if (selected) {
             RECT selectionRect = item->rcItem;
+            int itemSpacing = std::max(0, ScaleForDpi(control->listItemSpacing, dpi_));
+            selectionRect.top += itemSpacing / 2;
+            selectionRect.bottom -= itemSpacing - itemSpacing / 2;
             InflateRect(&selectionRect, -ScaleForDpi(2, dpi_), -ScaleForDpi(1, dpi_));
             if (selectionRect.right > selectionRect.left && selectionRect.bottom > selectionRect.top) {
                 Gdiplus::Graphics graphics(item->hDC);
@@ -3811,7 +3851,8 @@ private:
         int contentInset = std::clamp(borderWidth + contentPadding, 0, std::min(frameWidth, frameHeight) / 2);
         int contentHeight = std::max(1, frameHeight - contentInset * 2);
         int itemHeight = std::max(1, ScaleForDpi(control.listItemHeight, dpi_));
-        return std::max(1, contentHeight / itemHeight);
+        int itemSpacing = std::max(0, ScaleForDpi(control.listItemSpacing, dpi_));
+        return std::max(1, contentHeight / std::max(1, itemHeight + itemSpacing));
     }
 
     bool ShouldShowListBoxScrollBar(const ControlSpec& control, const RuntimeControl& runtime) const {
@@ -4655,7 +4696,7 @@ private:
             InvalidateRect(frameHwnd, nullptr, FALSE);
         } else if (IsType(control, L"ListBox")) {
             RuntimeControl& runtime = runtimeControls_.back();
-            SendMessageW(child, LB_SETITEMHEIGHT, 0, ScaleForDpi(control.listItemHeight, dpi_));
+            SendMessageW(child, LB_SETITEMHEIGHT, 0, ScaleForDpi(control.listItemHeight + control.listItemSpacing, dpi_));
             LayoutListBoxControl(control, runtime);
             InvalidateRect(frameHwnd, nullptr, FALSE);
         } else if (IsType(control, L"ListView")) {
@@ -4788,12 +4829,13 @@ private:
         } else if (IsType(control, L"TabControl")) {
             auto rows = DecodeControlRecords(control.data, 3);
             if (rows.empty()) rows.push_back({ L"page1", L"标签页 1", L"-1" });
+            SendMessageW(child, TCM_SETPADDING, 0, MAKELPARAM(TabHeaderHorizontalPadding(), TabHeaderVerticalPadding()));
             for (int index = 0; index < static_cast<int>(rows.size()); ++index) {
                 int image = _wtoi(rows[index][2].c_str());
                 TCITEMW item = { static_cast<UINT>(TCIF_TEXT | (image >= 0 ? TCIF_IMAGE : 0)), 0, 0, const_cast<wchar_t*>(rows[index][1].c_str()), 0, image };
                 TabCtrl_InsertItem(child, index, &item);
             }
-            SendMessageW(child, TCM_SETPADDING, 0, MAKELPARAM(ScaleForDpi(12, dpi_), ScaleForDpi(4, dpi_)));
+            UpdateTabHeaderMinimumWidth(control, runtimeControls_.back());
             TabCtrl_SetCurSel(child, control.selectedIndex);
             RECT pageRect = { 0, 0, controlWidth, controlHeight };
             if (!(control.flags & CF_HIDE_TAB_HEADER)) TabCtrl_AdjustRect(child, FALSE, &pageRect);
@@ -6322,7 +6364,9 @@ function generateControlSpec(
   const collectionControl = control.type === 'ListBox' || control.type === 'ComboBox' || control.type === 'ListView';
   const groupBoxControl = control.type === 'GroupBox';
   const borderControl = collectionControl || groupBoxControl;
-  const borderVisible = !groupBoxControl || control.properties?.showBorder !== false;
+  const borderVisible = groupBoxControl || control.type === 'ListBox'
+    ? control.properties?.showBorder !== false
+    : true;
   const listBorderWidth = borderControl && borderVisible ? clampInteger(control.properties?.borderWidth, 1, 0, 8) : 0;
   const listBorderColor = controlColorProperty(control, 'borderColor', groupBoxControl || control.type === 'ListView' ? '#64748B' : '#334155');
   const listSelectionStart = controlColorProperty(control, 'selectionStartColor', '#7C3AED');
@@ -6330,6 +6374,7 @@ function generateControlSpec(
   const listSelectionBorder = controlColorProperty(control, 'selectionBorderColor', '#38BDF8');
   const listSelectionCornerRadius = collectionControl ? clampInteger(control.properties?.selectionCornerRadius, 4, 0, 24) : 0;
   const listItemHeight = collectionControl ? clampInteger(control.properties?.itemHeight, 28, 16, 96) : 28;
+  const listItemSpacing = control.type === 'ListBox' ? clampInteger(control.properties?.itemSpacing, 0, 0, 24) : 0;
   const listHeaderHeight = control.type === 'ListView' ? clampInteger(control.properties?.headerHeight, 28, 16, 96) : 28;
   const listContentPadding = control.type === 'ListBox' ? clampInteger(control.properties?.contentPadding, 4, 0, 24) : 4;
   const listScrollBarVisibility = control.type === 'ListBox'
@@ -6343,7 +6388,7 @@ function generateControlSpec(
   const treeBorderColor = controlColorProperty(control, 'borderColor', '#64748B');
   const treeNodeSpacing = treeControl ? clampInteger(control.properties?.nodeSpacing, 2, 0, 24) : 2;
   const treeNodePadding = treeControl ? clampInteger(control.properties?.nodePadding, 3, 0, 24) : 3;
-  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(control.content)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${int(control.fontSize)}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(events)}" }`;
+  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(control.content)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${int(control.fontSize)}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listItemSpacing}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(events)}" }`;
 }
 
 function controlColorProperty(control: LingControl, key: string, fallback: string): string {

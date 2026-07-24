@@ -17,6 +17,7 @@ export interface VisualStudioProjectExportOptions {
   projectId: string;
   generatedFiles: LingCppNativeProjectFile[];
   enabledModules: InstalledModule[];
+  contentFiles?: string[];
 }
 
 const WINDOWS_GUID = '8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942';
@@ -30,7 +31,8 @@ export async function exportVisualStudioProject(
   const projectPath = path.join(options.projectDir, `${projectName}.vcxproj`);
   const filtersPath = path.join(options.projectDir, `${projectName}.vcxproj.filters`);
   const sourceFiles = getSourceFiles(options.generatedFiles, options.enabledModules);
-  const noneFiles = getNoneFiles(options.generatedFiles);
+  const contentFiles = unique((options.contentFiles || []).map(normalizeSlash));
+  const noneFiles = unique([...getNoneFiles(options.generatedFiles), ...contentFiles]);
   const includeDirs = getModuleIncludeDirs(options.enabledModules, 'windows-msvc-win32');
   const includeDirsX64 = getModuleIncludeDirs(options.enabledModules, 'windows-msvc-x64');
   const libFiles = getModuleLibFiles(options.enabledModules, 'windows-msvc-win32');
@@ -51,7 +53,8 @@ export async function exportVisualStudioProject(
       libFiles,
       libFilesX64,
       runtimeFiles,
-      runtimeFilesX64
+      runtimeFilesX64,
+      contentFiles
     }), 'utf8'),
     fs.writeFile(filtersPath, generateFilters(sourceFiles, noneFiles), 'utf8')
   ]);
@@ -163,6 +166,7 @@ function generateVcxproj(options: {
   libFilesX64: string[];
   runtimeFiles: string[];
   runtimeFilesX64: string[];
+  contentFiles: string[];
 }): string {
   const includeDirectories = options.includeDirs.map(toWindowsPath).join(';');
   const additionalIncludeDirectories = includeDirectories
@@ -178,8 +182,8 @@ function generateVcxproj(options: {
     ? `${xmlEscape(options.includeDirsX64.map(toWindowsPath).join(';'))};%(AdditionalIncludeDirectories)`
     : '%(AdditionalIncludeDirectories)';
   const additionalDependenciesX64 = ['user32.lib', 'gdi32.lib', 'comctl32.lib', ...options.libFilesX64.map(toWindowsPath)].join(';');
-  const postBuild = generatePostBuildCommand(options.runtimeFiles);
-  const postBuildX64 = generatePostBuildCommand(options.runtimeFilesX64);
+  const postBuild = generatePostBuildCommand(options.runtimeFiles, options.contentFiles);
+  const postBuildX64 = generatePostBuildCommand(options.runtimeFilesX64, options.contentFiles);
 
   return `<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
@@ -305,11 +309,19 @@ function generateFilterItems(kind: 'ClCompile' | 'None', files: string[], filter
   return `  <ItemGroup>\n${items}\n  </ItemGroup>\n`;
 }
 
-function generatePostBuildCommand(runtimeFiles: string[]): string {
-  if (runtimeFiles.length === 0) return '';
-  const commands = runtimeFiles
-    .map(file => `if exist "$(ProjectDir)${toWindowsPath(file)}" copy /Y "$(ProjectDir)${toWindowsPath(file)}" "$(OutDir)"`)
-    .join('\r\n');
+function generatePostBuildCommand(runtimeFiles: string[], contentFiles: string[]): string {
+  const runtimeCommands = runtimeFiles
+    .map(file => `if exist "$(ProjectDir)${toWindowsPath(file)}" copy /Y "$(ProjectDir)${toWindowsPath(file)}" "$(OutDir)"`);
+  const contentCommands = contentFiles.flatMap(file => {
+    const windowsFile = toWindowsPath(file);
+    const destinationDirectory = path.win32.dirname(windowsFile);
+    return [
+      `if not exist "$(OutDir)${destinationDirectory}" mkdir "$(OutDir)${destinationDirectory}"`,
+      `if exist "$(ProjectDir)${windowsFile}" copy /Y "$(ProjectDir)${windowsFile}" "$(OutDir)${windowsFile}"`
+    ];
+  });
+  const commands = [...runtimeCommands, ...contentCommands].join('\r\n');
+  if (!commands) return '';
   return `
     <PostBuildEvent>
       <Command>${xmlEscape(commands)}</Command>

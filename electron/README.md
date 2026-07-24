@@ -92,6 +92,7 @@ npm run package:win
 - 控件唯一目录位于 `src/services/windowDesigner/win32ControlRegistry.ts`，不得再在 React、模块清单和 C++ 生成器分别维护名称/事件清单。
 - 新建项目默认启用 `lingbuilder.win32.basic`；ListView、TreeView、Tab、日期、工具栏、状态栏、RichEdit 和系统通用对话框来自可选 `lingbuilder.win32.common-controls`。
 - 设计器项目保存为 `schemaVersion: 2`，控件专属数据位于 `properties`，旧无版本项目在读取时安全迁移。
+- 图片框“图片源”右侧按钮调用 Electron 原生文件对话框；选中的本地图片由 `src/services/windowDesigner/designerAssetService.ts` 复制到项目 `assets/`，模型只保存相对路径。受控预览 API、F5、原生导出及 AI Bridge 共用该服务；生成的 Visual Studio 工程会在构建后把图片复制到 exe 输出目录。
 - 高级模块未启用时，工具箱显示依赖状态但不能新增高级控件；项目已有高级控件不得被删除或静默替换。
 - 内置 `lingbuilder.edgeview` 模块支持多个 WebView2 实例、独立缓存目录、HWND/区域嵌入、JavaScript JSON 返回值和 `.lcpp` 事件回调。原生构建从 NuGet 缓存复制 WebView2 SDK 头文件与目标架构 Loader，不依赖 React 组件硬编码路径。
 

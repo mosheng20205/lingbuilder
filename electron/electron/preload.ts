@@ -33,6 +33,9 @@ contextBridge.exposeInMainWorld('lingBuilder', {
   modules: {
     importPackage: (sourcePath: string) => ipcRenderer.invoke('modules:import-package', sourcePath),
   },
+  designerAssets: {
+    selectImage: () => ipcRenderer.invoke('designer-assets:select-image'),
+  },
   credentials: {
     getAiApiKey: () => ipcRenderer.invoke('credentials:ai:get'),
     setAiApiKey: (value: string) => ipcRenderer.invoke('credentials:ai:set', value),

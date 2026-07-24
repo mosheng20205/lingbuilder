@@ -8,6 +8,7 @@ import {
   Copy,
   FileCode,
   FileText,
+  FolderOpen,
   FileUp,
   HelpCircle,
   Keyboard,
@@ -91,6 +92,7 @@ import {
   getEffectiveControlState,
   getControlDescendantIds,
   LingControlHierarchyNode,
+  orderControlsForDesignerPainting,
   reparentControl
 } from '../services/windowDesigner/controlHierarchy';
 import { applyDesignerLayout, DesignerHistory, nudgeControls, updateControlWithDescendants, type DesignerLayoutOperation } from '../services/windowDesigner/designerOperations';
@@ -106,6 +108,7 @@ import {
   type ListViewEditableRow
 } from '../services/windowDesigner/listViewCollectionModel';
 import { flattenTreeViewNodes, normalizeTreeViewNodes } from '../services/windowDesigner/treeViewCollectionModel';
+import { getDesignerImagePreviewSource, selectAndImportDesignerImage } from '../services/windowDesigner/designerAssetClient';
 import {
   isNewEmojiDesignerControlSupported,
   isNewEmojiDesignerEnabled
@@ -287,6 +290,10 @@ export default function WpfDesigner({
   const activeWindow = useMemo(() => {
     return project.windows.find(window => window.id === activeWindowId) || project.windows[0];
   }, [activeWindowId, project.windows]);
+  const designerPaintControls = useMemo(
+    () => orderControlsForDesignerPainting(activeWindow.controls),
+    [activeWindow.controls]
+  );
   const windowContentOffset = getDesignerWindowContentOffset(activeWindow);
   const useNewEmojiDesigner = isNewEmojiDesignerEnabled(enabledDesignerModules);
 
@@ -1524,12 +1531,13 @@ export default function WpfDesigner({
               </div>
             </div>}
 
-            {activeWindow.controls.map(control => {
+            {designerPaintControls.map(control => {
               const effectiveState = getEffectiveControlState(activeWindow.controls, control.id);
               const ancestorsVisible = !control.parentId
                 || getEffectiveControlState(activeWindow.controls, control.parentId).visible;
               return renderControl(
                 control,
+                projectId,
                 selectedControlIds.includes(control.id),
                 handleMouseDown,
                 setSelectedControlId,
@@ -1605,6 +1613,7 @@ export default function WpfDesigner({
                   />
                 ) : (
                   <ControlProperties
+                    projectId={projectId}
                     control={selectedControl}
                     controls={activeWindow.controls}
                     imageLists={(project.resources || []).filter((resource): resource is LingImageListResource => resource.type === 'ImageList')}
@@ -1957,6 +1966,7 @@ function LayoutHierarchy({
 
 function renderControl(
   control: LingControl,
+  projectId: string,
   isSelected: boolean,
   handleMouseDown: (event: React.MouseEvent, control: LingControl, action: 'drag' | ResizeDirection) => void,
   setSelectedControlId: (id: string) => void,
@@ -2159,20 +2169,22 @@ function renderControl(
             : [];
           const sortedItems = control.properties?.sorted === true ? [...items].sort((left, right) => left.localeCompare(right, 'zh-CN')) : items;
           const selectedIndex = typeof control.properties?.selectedIndex === 'number' ? control.properties.selectedIndex : (sortedItems.length > 0 ? 0 : -1);
-          const borderWidth = Math.max(0, Math.min(8, Number(control.properties?.borderWidth ?? 1)));
+          const showBorder = control.properties?.showBorder !== false;
+          const borderWidth = showBorder ? Math.max(0, Math.min(8, Number(control.properties?.borderWidth ?? 1))) : 0;
           const borderColor = String(control.properties?.borderColor ?? '#334155');
           const selectionStartColor = String(control.properties?.selectionStartColor ?? '#7C3AED');
           const selectionEndColor = String(control.properties?.selectionEndColor ?? '#0891B2');
           const selectionBorderColor = String(control.properties?.selectionBorderColor ?? '#38BDF8');
           const selectionCornerRadius = Math.max(0, Math.min(24, Number(control.properties?.selectionCornerRadius ?? 4)));
           const itemHeight = Math.max(16, Math.min(96, Number(control.properties?.itemHeight ?? 28)));
+          const itemSpacing = Math.max(0, Math.min(24, Number(control.properties?.itemSpacing ?? 0)));
           const contentPadding = Math.max(0, Math.min(24, Number(control.properties?.contentPadding ?? 4)));
           const scrollBarVisibility = String(control.properties?.scrollBarVisibility ?? 'auto');
           const scrollBarWidth = Math.max(4, Math.min(24, Number(control.properties?.scrollBarWidth ?? 8)));
           const scrollBarTrackColor = String(control.properties?.scrollBarTrackColor ?? '#172033');
           const scrollBarThumbColor = String(control.properties?.scrollBarThumbColor ?? '#0E7490');
           const availableHeight = Math.max(1, control.height - borderWidth * 2 - contentPadding * 2);
-          const contentHeight = sortedItems.length * itemHeight;
+          const contentHeight = sortedItems.length * itemHeight + Math.max(0, sortedItems.length - 1) * itemSpacing;
           const showScrollBar = scrollBarVisibility === 'visible'
             || (scrollBarVisibility !== 'hidden' && contentHeight > availableHeight);
           const scrollThumbHeight = Math.max(scrollBarWidth * 2, Math.min(availableHeight, availableHeight * Math.min(1, availableHeight / Math.max(1, contentHeight))));
@@ -2205,12 +2217,14 @@ function renderControl(
                     className="flex shrink-0 items-center truncate border px-2"
                     style={index === selectedIndex ? {
                       height: `${itemHeight}px`,
+                      marginBottom: index < sortedItems.length - 1 ? `${itemSpacing}px` : undefined,
                       backgroundImage: `linear-gradient(90deg, ${selectionStartColor}, ${selectionEndColor})`,
                       borderColor: selectionBorderColor,
                       borderRadius: `${selectionCornerRadius}px`,
                       color: control.foreground
                     } : {
                       height: `${itemHeight}px`,
+                      marginBottom: index < sortedItems.length - 1 ? `${itemSpacing}px` : undefined,
                       borderColor: 'transparent',
                       borderRadius: `${selectionCornerRadius}px`,
                       color: control.foreground
@@ -2252,7 +2266,7 @@ function renderControl(
           <div className={`w-full h-full border rounded flex items-center justify-center overflow-hidden relative ${useNewEmojiDesigner ? 'border-fuchsia-400/30 bg-slate-950/70 shadow-[0_10px_28px_rgba(124,58,237,0.14)]' : 'border-indigo-500/20 bg-indigo-950/20'}`}>
             {typeof control.properties?.imageSource === 'string' && control.properties.imageSource ? (
               <img
-                src={control.properties.imageSource}
+                src={getDesignerImagePreviewSource(projectId, control.properties.imageSource)}
                 alt={control.content || '图片'}
                 className="h-full w-full"
                 style={{ objectFit: control.properties?.stretch === 'fill' ? 'fill' : control.properties?.stretch === 'uniformToFill' ? 'cover' : control.properties?.stretch === 'none' ? 'none' : 'contain' }}
@@ -2677,6 +2691,7 @@ function ImageListResourceEditor({
 }
 
 function ControlProperties({
+  projectId,
   control,
   controls,
   imageLists,
@@ -2684,6 +2699,7 @@ function ControlProperties({
   onChange,
   onDelete
 }: {
+  projectId: string;
   control: LingControl | null;
   controls: LingControl[];
   imageLists: LingImageListResource[];
@@ -2876,6 +2892,7 @@ function ControlProperties({
                 controls={controls}
                 imageLists={imageLists}
                 isDarkMode={isDarkMode}
+                projectId={projectId}
                 onChange={value => updateControlProperty(property.key, value)}
               />
             );
@@ -3074,6 +3091,7 @@ function ControlPropertyField({
   controls,
   imageLists,
   isDarkMode,
+  projectId,
   onChange
 }: {
   key?: React.Key;
@@ -3082,18 +3100,26 @@ function ControlPropertyField({
   controls: LingControl[];
   imageLists: LingImageListResource[];
   isDarkMode: boolean;
+  projectId: string;
   onChange: (value: Win32ControlPropertyValue) => void;
 }) {
   const complex = ['columns', 'tabs'].includes(definition.type);
+  const [fileStatus, setFileStatus] = useState('');
+  const [isSelectingFile, setIsSelectingFile] = useState(false);
 
   if (definition.type === 'boolean') {
     return <PropertyRow label={definition.label} isDarkMode={isDarkMode}><input type="checkbox" checked={Boolean(value)} onChange={event => onChange(event.target.checked)} className="h-4 w-4 accent-amber-500" /></PropertyRow>;
   }
   if (definition.type === 'number') {
     return (
-      <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
-        <input type="number" value={typeof value === 'number' ? value : 0} min={definition.min} max={definition.max} onChange={event => onChange(Number(event.target.value))} className={`w-full rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
-      </PropertyRow>
+      <NumberField
+        label={definition.label}
+        value={typeof value === 'number' ? value : 0}
+        min={definition.min}
+        max={definition.max}
+        isDarkMode={isDarkMode}
+        onChange={onChange}
+      />
     );
   }
   if (definition.type === 'enum') {
@@ -3123,6 +3149,55 @@ function ControlPropertyField({
           <option value="">未绑定</option>
           {controls.map(control => <option key={control.id} value={control.id}>{control.name}</option>)}
         </select>
+      </PropertyRow>
+    );
+  }
+  if (definition.type === 'file' && definition.key === 'imageSource') {
+    const chooseImage = async () => {
+      setIsSelectingFile(true);
+      setFileStatus('正在选择图片…');
+      try {
+        const result = await selectAndImportDesignerImage(projectId);
+        if (result.canceled) {
+          setFileStatus('已取消选择。');
+          return;
+        }
+        if (!result.ok || !result.relativePath) {
+          setFileStatus(result.error || '图片复制失败。');
+          return;
+        }
+        onChange(result.relativePath);
+        setFileStatus(`已复制到 ${result.relativePath}`);
+      } catch (error) {
+        setFileStatus(error instanceof Error ? error.message : '图片复制失败。');
+      } finally {
+        setIsSelectingFile(false);
+      }
+    };
+    return (
+      <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
+        <div className="space-y-1">
+          <div className="flex gap-1">
+            <input
+              type="text"
+              value={String(value ?? '')}
+              onChange={event => onChange(event.target.value)}
+              placeholder="assets/项目/图片.png"
+              className={`min-w-0 flex-1 rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`}
+            />
+            <button
+              type="button"
+              onClick={() => void chooseImage()}
+              disabled={isSelectingFile}
+              title="选择本地图片并复制到项目 assets 目录"
+              aria-label="选择本地图片"
+              className={`flex h-7 w-8 shrink-0 items-center justify-center rounded border transition-colors disabled:cursor-wait disabled:opacity-50 ${isDarkMode ? 'border-[#3c3c44] bg-[#24242b] text-amber-400 hover:bg-[#303038]' : 'border-slate-300 bg-white text-amber-600 hover:bg-slate-100'}`}
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          {fileStatus && <div role="status" className={`text-[9px] leading-3 ${fileStatus.includes('失败') || fileStatus.includes('仅在') ? 'text-red-400' : 'text-slate-500'}`}>{fileStatus}</div>}
+        </div>
       </PropertyRow>
     );
   }
@@ -3381,21 +3456,69 @@ function NumberField({
   label,
   value,
   min,
+  max,
   isDarkMode,
   onChange
 }: {
   label: string;
   value: number;
-  min: number;
+  min?: number;
+  max?: number;
   isDarkMode: boolean;
   onChange: (value: number) => void;
 }) {
+  const [draftValue, setDraftValue] = useState(String(value));
+  const isEditingRef = useRef(false);
+
+  useEffect(() => {
+    if (!isEditingRef.current) {
+      setDraftValue(String(value));
+    }
+  }, [value]);
+
+  const clampValue = (nextValue: number) => Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min ?? Number.NEGATIVE_INFINITY, nextValue));
+  const commitDraftValue = (draft: string) => {
+    const parsedValue = Number.parseInt(draft, 10);
+    const nextValue = clampValue(Number.isFinite(parsedValue) ? parsedValue : value);
+    setDraftValue(String(nextValue));
+    if (nextValue !== value) {
+      onChange(nextValue);
+    }
+  };
+
   return (
     <PropertyRow label={label} isDarkMode={isDarkMode}>
       <input
         type="number"
-        value={value}
-        onChange={event => onChange(Math.max(min, parseInt(event.target.value, 10) || min))}
+        min={min}
+        max={max}
+        step={1}
+        value={draftValue}
+        aria-label={label}
+        onFocus={() => {
+          isEditingRef.current = true;
+        }}
+        onChange={event => {
+          const nextDraftValue = event.target.value;
+          setDraftValue(nextDraftValue);
+          const parsedValue = Number.parseInt(nextDraftValue, 10);
+          if (
+            Number.isFinite(parsedValue)
+            && (min === undefined || parsedValue >= min)
+            && (max === undefined || parsedValue <= max)
+          ) {
+            onChange(parsedValue);
+          }
+        }}
+        onBlur={() => {
+          isEditingRef.current = false;
+          commitDraftValue(draftValue);
+        }}
+        onKeyDown={event => {
+          if (event.key === 'Enter') {
+            event.currentTarget.blur();
+          }
+        }}
         className={`w-full rounded border px-2 py-0.5 text-xs focus:outline-none focus:border-amber-500 ${
           isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44] text-slate-200' : 'bg-white border-slate-300 text-slate-800'
         }`}

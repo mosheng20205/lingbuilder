@@ -36,6 +36,9 @@ declare global {
       modules?: {
         importPackage: (sourcePath: string) => Promise<{ ok: boolean; relativePath?: string; error?: string }>;
       };
+      designerAssets?: {
+        selectImage: () => Promise<{ canceled: boolean; filePath?: string }>;
+      };
       credentials?: {
         getAiApiKey: () => Promise<string>;
         setAiApiKey: (value: string) => Promise<void>;

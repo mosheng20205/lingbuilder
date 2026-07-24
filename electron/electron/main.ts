@@ -461,6 +461,23 @@ function registerIpcHandlers(): void {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
+  ipcMain.handle('designer-assets:select-image', async () => {
+    const owner = getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: '选择图片资源',
+      properties: ['openFile'],
+      filters: [
+        { name: '支持的图片', extensions: ['png', 'jpg', 'jpeg', 'bmp', 'gif', 'tif', 'tiff'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    };
+    const result = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options);
+    return result.canceled || !result.filePaths[0]
+      ? { canceled: true }
+      : { canceled: false, filePath: result.filePaths[0] };
+  });
   ipcMain.handle('credentials:ai:get', () => readAiCredential());
   ipcMain.handle('credentials:ai:set', (_event, value: string) => writeAiCredential(typeof value === 'string' ? value.slice(0, 16_384) : ''));
   ipcMain.handle('credentials:ai:delete', () => writeAiCredential(''));

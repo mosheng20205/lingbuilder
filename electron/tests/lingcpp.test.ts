@@ -1248,6 +1248,7 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
   assert.ok(mainCpp.includes('bool hovered = enabled && !pressed && runtime->mouseInside'));
   assert.ok(mainCpp.includes('&& (item->itemState & ODS_FOCUS)'));
   assert.ok(mainCpp.includes('&& !(item->itemState & ODS_NOFOCUSRECT)'));
+  assert.ok(mainCpp.includes('COLORREF rowBackground = control->backgroundTransparent ? surrounding : control->background'));
   assert.ok(mainCpp.includes('HBRUSH backgroundBrush = CreateSolidBrush(rowBackground)'));
   assert.ok(mainCpp.includes('(hovered || focused) ? RGB(125, 211, 252)'));
   assert.ok(mainCpp.includes('focused && !IsType(*control, L"CheckBox") && !IsType(*control, L"RadioButton")'));

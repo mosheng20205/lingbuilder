@@ -59,6 +59,27 @@ export function buildControlHierarchy(controls: LingControl[]): LingControlHiera
   return roots;
 }
 
+/**
+ * 设计画布使用同一个绝对定位层渲染所有控件，因此父容器必须先于其后代绘制。
+ * 保留同一层级的原始顺序，避免修改用户已有的兄弟控件叠放关系。
+ */
+export function orderControlsForDesignerPainting(controls: LingControl[]): LingControl[] {
+  const normalizedControls = normalizeControlHierarchy(controls);
+  const pendingIds = new Set(normalizedControls.map(control => control.id));
+  const ordered: LingControl[] = [];
+
+  // 稳定拓扑排序：仅把仍未绘制父级的控件延后，其余控件沿用项目数组顺序。
+  while (pendingIds.size > 0) {
+    const next = normalizedControls.find(control => pendingIds.has(control.id)
+      && (!control.parentId || !pendingIds.has(control.parentId)));
+    if (!next) break; // normalizeControlHierarchy 已消除循环，此处只是防御性降级。
+    pendingIds.delete(next.id);
+    ordered.push(next);
+  }
+
+  return ordered.length === normalizedControls.length ? ordered : normalizedControls;
+}
+
 export function getControlDescendantIds(controls: LingControl[], controlId: string): Set<string> {
   const childrenByParent = new Map<string, string[]>();
   normalizeControlHierarchy(controls).forEach(control => {

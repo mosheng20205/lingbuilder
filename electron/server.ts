@@ -63,6 +63,7 @@ import { QualityService } from "./src/services/quality/qualityService";
 import { ExtensionService } from "./src/services/extensions/extensionService";
 import { DependencyService } from "./src/services/dependencies/dependencyService";
 import { RcResourceService } from "./src/services/windowDesigner/rcResourceService";
+import { createDesignerAssetService } from "./src/services/windowDesigner/designerAssetService";
 import { PerformanceService } from "./src/services/performance/performanceService";
 import { PublishingService } from "./src/services/publishing/publishingService";
 import { WorkspaceIndexService } from "./src/services/ai/workspaceIndexService";
@@ -152,6 +153,7 @@ const qualityService = new QualityService(serverRuntimeConfig.workspaceRoot, TSX
 const extensionService = new ExtensionService(serverRuntimeConfig.workspaceRoot);
 const dependencyService = new DependencyService(serverRuntimeConfig.workspaceRoot);
 const rcResourceService = new RcResourceService(serverRuntimeConfig.workspaceRoot);
+const designerAssetService = createDesignerAssetService(serverRuntimeConfig.workspaceRoot);
 const performanceService = new PerformanceService(serverRuntimeConfig.workspaceRoot);
 const publishingService = new PublishingService(serverRuntimeConfig.workspaceRoot);
 const workspaceIndexService = new WorkspaceIndexService(serverRuntimeConfig.workspaceRoot);
@@ -1195,6 +1197,37 @@ app.post("/api/modules/developer/market-index", async (req, res) => {
   }
 });
 
+app.post("/api/window-designer/assets/import", async (req, res) => {
+  const { projectId, sourcePath } = req.body as { projectId?: string; sourcePath?: string };
+  if (!isNonEmptyString(projectId) || !isNonEmptyString(sourcePath)) {
+    return res.status(400).json({ ok: false, error: "缺少 projectId 或图片源路径。" });
+  }
+  try {
+    const solutionService = getSolutionService();
+    const projectRef = solutionService.getProject(await solutionService.getSolution(), projectId.trim());
+    const imported = await designerAssetService.importImage(projectRef, sourcePath);
+    res.json({ ok: true, ...imported });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "图片复制到项目失败。" });
+  }
+});
+
+app.get("/api/window-designer/assets/content", async (req, res) => {
+  const projectId = String(req.query.projectId || "");
+  const imagePath = String(req.query.path || "");
+  if (!projectId || !imagePath) return res.status(400).send("缺少图片资源参数。");
+  try {
+    const solutionService = getSolutionService();
+    const projectRef = solutionService.getProject(await solutionService.getSolution(), projectId);
+    const image = await designerAssetService.readImage(projectRef, imagePath);
+    res.setHeader("Content-Type", image.mimeType);
+    res.setHeader("Cache-Control", "no-store");
+    res.send(image.bytes);
+  } catch (error: any) {
+    res.status(404).send(error?.message || "图片资源不存在。");
+  }
+});
+
 app.post("/api/window-designer/native-preview", async (req, res) => {
   const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath } = req.body as {
     project?: LingWindowProject;
@@ -1266,12 +1299,16 @@ app.post("/api/window-designer/native-export", async (req, res) => {
     const exportDir = path.join(getRepoWorkspaceRoot(), "generated", "cpp", sanitizeFilename(project.id || "window-preview"));
     await fs.mkdir(exportDir, { recursive: true });
     await writeGeneratedProjectFiles(exportDir, generatedProject.files);
+    const solutionService = getSolutionService();
+    const projectRef = solutionService.getProject(await solutionService.getSolution(), project.id || "lingbuilder-ui-project");
+    const copiedAssets = await designerAssetService.copyProjectAssets(projectRef, [exportDir]);
     const moduleExportDiagnostics = await exportModuleNativeDependencies(enabledModules, exportDir);
     const visualStudioProject = await exportVisualStudioProject({
       projectDir: exportDir,
       projectId: project.id || "window-preview",
       generatedFiles: generatedProject.files,
-      enabledModules
+      enabledModules,
+      contentFiles: copiedAssets.map(file => normalizeFilePath(path.relative(exportDir, file)))
     });
 
     res.json({
@@ -1290,6 +1327,7 @@ app.post("/api/window-designer/native-export", async (req, res) => {
         `原生 C++ 工程目录：${exportDir}`,
         `Visual Studio 解决方案：${visualStudioProject.solutionPath}`,
         `当前窗口：${generatedProject.selectedWindow.title}`,
+        copiedAssets.length ? `已复制 ${copiedAssets.length} 个项目图片资源。` : "当前项目没有需要复制的图片资源。",
         ...generatedProject.diagnostics,
         ...moduleExportDiagnostics
       ]
@@ -1661,6 +1699,14 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         fs.writeFile(exportPath, file.content, "utf8")
       ]);
     }));
+    const assetProjectRef = getSolutionService().getProject(await getSolutionService().getSolution(), projectId);
+    const copiedAssets = await designerAssetService.copyProjectAssets(assetProjectRef, [buildDir, binDir, exportDir]);
+    const buildContentFiles = copiedAssets
+      .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
+      .map(file => normalizeFilePath(path.relative(buildDir, file)));
+    const exportContentFiles = copiedAssets
+      .filter(file => file.startsWith(`${path.resolve(exportDir)}${path.sep}`))
+      .map(file => normalizeFilePath(path.relative(exportDir, file)));
     const moduleNativePlan = await materializeModuleNativeDependencies(enabledModules, {
       buildDir,
       sourceDir,
@@ -1675,13 +1721,15 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         ...file,
         relativePath: normalizeFilePath(path.join("src", file.relativePath))
       })),
-      enabledModules
+      enabledModules,
+      contentFiles: buildContentFiles
     });
     const exportVisualStudioProjectResult = await exportVisualStudioProject({
       projectDir: exportDir,
       projectId,
       generatedFiles: generatedProject.files,
-      enabledModules
+      enabledModules,
+      contentFiles: exportContentFiles
     });
 
     if (buildLease.isCancelled()) {
@@ -2032,6 +2080,14 @@ async function runControlledWindowDesignerBuild(options: {
       fs.writeFile(exportPath, file.content, "utf8")
     ]);
   }));
+  const assetProjectRef = getSolutionService().getProject(await getSolutionService().getSolution(), projectId);
+  const copiedAssets = await designerAssetService.copyProjectAssets(assetProjectRef, [buildDir, binDir, exportDir]);
+  const buildContentFiles = copiedAssets
+    .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
+    .map(file => normalizeFilePath(path.relative(buildDir, file)));
+  const exportContentFiles = copiedAssets
+    .filter(file => file.startsWith(`${path.resolve(exportDir)}${path.sep}`))
+    .map(file => normalizeFilePath(path.relative(exportDir, file)));
   const moduleNativePlan = await materializeModuleNativeDependencies(enabledModules, {
     buildDir,
     sourceDir,
@@ -2046,13 +2102,15 @@ async function runControlledWindowDesignerBuild(options: {
       ...file,
       relativePath: normalizeFilePath(path.join("src", file.relativePath))
     })),
-    enabledModules
+    enabledModules,
+    contentFiles: buildContentFiles
   });
   const exportVisualStudioProjectResult = await exportVisualStudioProject({
     projectDir: exportDir,
     projectId,
     generatedFiles: generatedProject.files,
-    enabledModules
+    enabledModules,
+    contentFiles: exportContentFiles
   });
 
   const incrementalKey = `${projectId}:${buildConfiguration.mode}:${buildConfiguration.architecture}`;

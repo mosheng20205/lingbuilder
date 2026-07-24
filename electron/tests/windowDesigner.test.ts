@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ListViewDesignerPreview from '../src/components/ListViewDesignerPreview';
@@ -12,6 +15,7 @@ import {
   getEffectiveControlState,
   getControlDescendantIds,
   normalizeControlHierarchy,
+  orderControlsForDesignerPainting,
   reparentControl
 } from '../src/services/windowDesigner/controlHierarchy';
 import {
@@ -30,6 +34,8 @@ import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import type { InstalledModule } from '../src/services/modules/types';
 import { getWindowEventHandlerName, WINDOW_EVENT_CATEGORIES, WINDOW_EVENT_DEFINITIONS } from '../src/services/windowDesigner/windowEventRegistry';
 import { createListViewPreviewModel } from '../src/services/windowDesigner/listViewPreviewModel';
+import { createDesignerAssetService } from '../src/services/windowDesigner/designerAssetService';
+import { getDesignerImagePreviewSource } from '../src/services/windowDesigner/designerAssetClient';
 import {
   appendListViewColumn,
   applyListViewCellMatrix,
@@ -75,6 +81,36 @@ function createControl(id: string, parentId?: string, type: LingControl['type'] 
     visibility: 'Visible'
   };
 }
+
+test('图片选择资源复制到项目 assets 并可同步到构建与导出目录', async () => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-designer-assets-'));
+  try {
+    const sourceDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-image-source-'));
+    const source = path.join(sourceDirectory, '封面.png');
+    await fs.writeFile(source, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const service = createDesignerAssetService(workspace);
+    const projectRef = {
+      id: 'demo', name: '演示', type: 'visual-cpp' as const,
+      sourceRoot: 'src/demo', configRoot: 'config/demo', designerPath: '.lingbuilder/projects/demo/window-designer.json'
+    };
+
+    const imported = await service.importImage(projectRef, source);
+    assert.equal(imported.relativePath, 'assets/demo/封面.png');
+    assert.deepEqual((await service.readImage(projectRef, imported.relativePath)).bytes, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+    const buildDir = path.join(workspace, '.lingbuilder-build', 'demo', 'bin');
+    const exportDir = path.join(workspace, 'generated', 'cpp', 'demo');
+    await service.copyProjectAssets(projectRef, [buildDir, exportDir]);
+    assert.deepEqual(await fs.readFile(path.join(buildDir, 'assets', 'demo', '封面.png')), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    assert.deepEqual(await fs.readFile(path.join(exportDir, 'assets', 'demo', '封面.png')), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    assert.match(getDesignerImagePreviewSource('demo', imported.relativePath), /^\/api\/window-designer\/assets\/content\?/u);
+    assert.equal(getDesignerImagePreviewSource('demo', 'https://example.com/cover.png'), 'https://example.com/cover.png');
+
+    await fs.rm(sourceDirectory, { recursive: true, force: true });
+  } finally {
+    await fs.rm(workspace, { recursive: true, force: true });
+  }
+});
 
 test('设计器标题区偏移只在真实菜单存在时增加菜单栏高度', () => {
   const withoutMenu = { menuItems: undefined };
@@ -150,6 +186,21 @@ test('布局组件树按 parentId 构建父子层级并保留原始顺序', () =
   assert.deepEqual(tree[0].children.map(node => node.control.id), ['input', 'button']);
   assert.deepEqual([...getControlDescendantIds(controls, 'group')], ['input', 'button']);
   assert.equal(normalizeControlHierarchy(controls), controls, '合法层级应保持引用稳定，避免自动保存重复通知');
+});
+
+test('设计画布始终先绘制父容器再绘制嵌套选项卡', () => {
+  const controls = [
+    { ...createControl('inner-tab', 'outer-tab', 'TabControl'), containerSlot: 'page1' },
+    createControl('root-button'),
+    createControl('outer-tab', undefined, 'TabControl'),
+    createControl('inner-label', 'inner-tab', 'Label'),
+    createControl('outer-label', 'outer-tab', 'Label')
+  ];
+
+  assert.deepEqual(
+    orderControlsForDesignerPainting(controls).map(control => control.id),
+    ['root-button', 'outer-tab', 'inner-tab', 'inner-label', 'outer-label']
+  );
 });
 
 test('无效父级和循环父级会安全降级到窗口根级', () => {
@@ -258,15 +309,17 @@ test('Win32 列表框使用设计器边框和渐变圆角选中样式', () => {
   assert.ok(listBoxDefinition);
   const listBoxProperties = new Map(listBoxDefinition.properties.map(property => [property.key, property.defaultValue]));
   assert.deepEqual(
-    ['itemHeight', 'contentPadding', 'scrollBarVisibility', 'scrollBarWidth', 'scrollBarTrackColor', 'scrollBarThumbColor', 'borderWidth', 'borderColor', 'selectionStartColor', 'selectionEndColor', 'selectionBorderColor', 'selectionCornerRadius']
+    ['itemHeight', 'itemSpacing', 'contentPadding', 'scrollBarVisibility', 'scrollBarWidth', 'scrollBarTrackColor', 'scrollBarThumbColor', 'showBorder', 'borderWidth', 'borderColor', 'selectionStartColor', 'selectionEndColor', 'selectionBorderColor', 'selectionCornerRadius']
       .map(key => [key, listBoxProperties.get(key)]),
     [
       ['itemHeight', 28],
+      ['itemSpacing', 0],
       ['contentPadding', 4],
       ['scrollBarVisibility', 'auto'],
       ['scrollBarWidth', 8],
       ['scrollBarTrackColor', '#172033'],
       ['scrollBarThumbColor', '#0E7490'],
+      ['showBorder', true],
       ['borderWidth', 1],
       ['borderColor', '#334155'],
       ['selectionStartColor', '#7C3AED'],
@@ -284,9 +337,9 @@ test('Win32 列表框使用设计器边框和渐变圆角选中样式', () => {
     background: '#0F172A',
     foreground: '#E2E8F0',
     properties: {
-      items: ['第一项', '第二项'], selectedIndex: 0, sorted: false, multiple: false, itemHeight: 32, contentPadding: 6,
+      items: ['第一项', '第二项'], selectedIndex: 0, sorted: false, multiple: false, itemHeight: 32, itemSpacing: 5, contentPadding: 6,
       scrollBarVisibility: 'visible', scrollBarWidth: 12, scrollBarTrackColor: '#111827', scrollBarThumbColor: '#06B6D4',
-      borderWidth: 3, borderColor: '#475569', selectionStartColor: '#6D28D9',
+      showBorder: true, borderWidth: 3, borderColor: '#475569', selectionStartColor: '#6D28D9',
       selectionEndColor: '#0E7490', selectionBorderColor: '#67E8F9', selectionCornerRadius: 7
     }
   } satisfies LingControl;
@@ -303,7 +356,7 @@ test('Win32 列表框使用设计器边框和渐变圆角选中样式', () => {
     lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
   }).files.find(file => file.relativePath === 'main.cpp')!.content;
 
-  assert.match(cpp, /L"ListBox"[^\n]+, 3, RGB\(71, 85, 105\), RGB\(109, 40, 217\), RGB\(14, 116, 144\), RGB\(103, 232, 249\), 7, 32, 28, 6, 1, 12, RGB\(17, 24, 39\), RGB\(6, 182, 212\)[^\n]+RGB\(15, 23, 42\), (?:true|false), RGB\(226, 232, 240\)/u);
+  assert.match(cpp, /L"ListBox"[^\n]+, 3, RGB\(71, 85, 105\), RGB\(109, 40, 217\), RGB\(14, 116, 144\), RGB\(103, 232, 249\), 7, 32, 5, 28, 6, 1, 12, RGB\(17, 24, 39\), RGB\(6, 182, 212\)[^\n]+RGB\(15, 23, 42\), (?:true|false), RGB\(226, 232, 240\)/u);
   assert.match(cpp, /LBS_OWNERDRAWFIXED \| LBS_HASSTRINGS/u);
   assert.doesNotMatch(cpp, /WS_TABSTOP \| WS_VSCROLL \| LBS_NOTIFY/u);
   assert.match(cpp, /ListBoxFrameSubclassProc/u);
@@ -314,7 +367,8 @@ test('Win32 列表框使用设计器边框和渐变圆角选中样式', () => {
   assert.match(cpp, /if \(message == WM_CTLCOLORLISTBOX\)[^}]+SendMessageW\(self->hwnd_, message, wParam, lParam\)/u);
   assert.match(cpp, /SetTextColor\(hdc, control->foreground\)/u);
   assert.match(cpp, /SetBkColor\(hdc, control->background\)/u);
-  assert.match(cpp, /LB_SETITEMHEIGHT, 0, ScaleForDpi\(control\.listItemHeight, dpi_\)/u);
+  assert.match(cpp, /LB_SETITEMHEIGHT, 0, ScaleForDpi\(control\.listItemHeight \+ control\.listItemSpacing, dpi_\)/u);
+  assert.match(cpp, /ScaleForDpi\(control->listItemSpacing, dpi_\)/u);
   assert.match(cpp, /ScaleForDpi\(control\.listContentPadding, dpi_\)/u);
   assert.match(cpp, /ShouldShowListBoxScrollBar/u);
   assert.match(cpp, /PaintListBoxScrollBar/u);
@@ -327,6 +381,15 @@ test('Win32 列表框使用设计器边框和渐变圆角选中样式', () => {
   assert.match(cpp, /LB_SETTOPINDEX/u);
   assert.match(cpp, /L'\\0'/u);
   assert.equal(cpp.includes('\0'), false, '生成的 C++ 源码不能包含 NUL 字节');
+
+  const borderlessCpp = generateLingCppNativeWin32Project({
+    ...project,
+    windows: [{ ...project.windows[0], controls: [{
+      ...listBox,
+      properties: { ...listBox.properties, showBorder: false }
+    }] }]
+  }, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(borderlessCpp, /L"ListBox"[^\n]+, 0, RGB\(71, 85, 105\)/u);
 });
 
 test('Win32 分组框沿用文字颜色并支持标题对齐和边框外观', () => {
@@ -1016,6 +1079,58 @@ test('标签页中的透明标签在 Win32 运行时继承实际父容器背景'
   assert.match(cpp, /ResolveControlSurroundingBrush\(\*control, child\)/u);
 });
 
+test('透明复选框和单选框的 Win32 自绘背景继承实际父容器', () => {
+  const tabControl = {
+    ...createControl('tabs', undefined, 'TabControl'),
+    name: '选项卡1',
+    width: 360,
+    height: 240,
+    background: '#112233',
+    properties: { tabs: [{ id: 'page1', title: '标签页 1' }], selectedIndex: 0 }
+  } satisfies LingControl;
+  const transparentCheckBox = {
+    ...createControl('check', 'tabs', 'CheckBox'),
+    name: '透明复选框',
+    content: '透明复选框',
+    background: 'transparent',
+    containerSlot: 'page1'
+  } satisfies LingControl;
+  const transparentRadioButton = {
+    ...createControl('radio', 'tabs', 'RadioButton'),
+    name: '透明单选框',
+    content: '透明单选框',
+    background: 'transparent',
+    containerSlot: 'page1'
+  } satisfies LingControl;
+  const solidCheckBox = {
+    ...createControl('solid-check', 'tabs', 'CheckBox'),
+    name: '实色复选框',
+    content: '实色复选框',
+    background: '#445566',
+    containerSlot: 'page1'
+  } satisfies LingControl;
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'transparent-selection-controls',
+    name: '透明选择控件',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '透明选择控件', width: 640, height: 480,
+      background: '#1E1E24', description: '', controls: [tabControl, transparentCheckBox, transparentRadioButton, solidCheckBox]
+    }]
+  };
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /L"CheckBox", L"透明复选框", L"透明复选框"[^\n]+true, RGB/u);
+  assert.match(cpp, /L"RadioButton", L"透明单选框", L"透明单选框"[^\n]+true, RGB/u);
+  assert.match(cpp, /L"CheckBox", L"实色复选框", L"实色复选框"[^\n]+RGB\(68, 85, 102\), false, RGB/u);
+  assert.match(cpp, /COLORREF rowBackground = control->backgroundTransparent \? surrounding : control->background;/u);
+  assert.match(cpp, /if \(!control->backgroundTransparent\) rowBackground = background;/u);
+  assert.match(cpp, /return ResolveControlSurroundingColor\(\*parent, parentRuntime \? parentRuntime->hwnd : nullptr\);/u);
+  assert.match(cpp, /return ResolveControlSurroundingBrush\(\*parentSpec, parent \? parent->hwnd : nullptr\);/u);
+});
+
 test('窗口本身的空选择和虚拟菜单选择在规范化后保持不变', () => {
   const project: LingWindowProject = {
     schemaVersion: 2,
@@ -1059,7 +1174,7 @@ test('高级控件生成真实 Win32 类、专属数据和多事件通知', () =
   assert.match(cpp, /LVCFMT_RIGHT/);
   assert.match(cpp, /6:center/);
   assert.match(cpp, /5:right/);
-  assert.match(cpp, /L"ListView"[^\n]+, 3, RGB\(18, 52, 86\)[^\n]+, 32, 34, 4[^\n]+RGB\(15, 23, 42\), true, RGB/u);
+  assert.match(cpp, /L"ListView"[^\n]+, 3, RGB\(18, 52, 86\)[^\n]+, 32, 0, 34, 4[^\n]+RGB\(15, 23, 42\), true, RGB/u);
   assert.match(cpp, /ListViewFrameSubclassProc/u);
   assert.match(cpp, /LayoutListViewControl/u);
   assert.match(cpp, /ListViewHeaderHeightSubclassProc/u);
@@ -1122,9 +1237,19 @@ test('选项卡容器槽位、隐藏表头、Rebar、Pager 和 UpDown 生成真�
   assert.match(cpp, /PaintTabPage/u);
   assert.match(cpp, /COLORREF accent = RGB\(245, 158, 11\);/u);
   assert.match(cpp, /TCM_SETPADDING/u);
+  assert.match(cpp, /UpdateTabHeaderMinimumWidth/u);
+  assert.match(cpp, /GetTextExtentPoint32W/u);
+  assert.match(cpp, /TCM_SETMINTABWIDTH/u);
+  assert.match(cpp, /textSize\.cx \+ TabHeaderHorizontalPadding\(\) \* 2/u);
+  assert.match(cpp, /if \(inserted >= 0\) UpdateTabHeaderMinimumWidth\(\*control, \*runtime\)/u);
+  assert.ok(
+    cpp.indexOf('TCM_SETPADDING') < cpp.indexOf('TabCtrl_InsertItem(child, index, &item)'),
+    '应先应用 DPI 内边距，再插入标签并测量最终最小宽度'
+  );
   assert.doesNotMatch(cpp, /TCS_OWNERDRAWFIXED/u);
   assert.doesNotMatch(cpp, /TCM_SETITEMSIZE/u);
   assert.doesNotMatch(cpp, /PaintOwnerTab/u);
+  assert.doesNotMatch(cpp, /dividerPen/u, '标签页之间不应绘制竖向分隔线');
   assert.match(cpp, /WS_CHILD \| WS_CLIPCHILDREN \| WS_CLIPSIBLINGS \| SS_NOTIFY/u);
   assert.match(cpp, /L"TabControl"[^\n]+RGB\(18, 52, 86\), false, RGB\(254, 220, 186\)/u);
   assert.match(cpp, /L"TabControl"[^\n]+268435456/u);

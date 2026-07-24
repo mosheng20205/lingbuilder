@@ -135,6 +135,14 @@ test('designer exposes an ImageList resource editor and resource-backed control 
   assert.match(source, /不使用图像列表/u);
 });
 
+test('image source property exposes a desktop picker and project-relative preview', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /aria-label="选择本地图片"/u);
+  assert.match(source, /selectAndImportDesignerImage\(projectId\)/u);
+  assert.match(source, /getDesignerImagePreviewSource\(projectId, control\.properties\.imageSource\)/u);
+  assert.match(source, /已复制到 \$\{result\.relativePath\}/u);
+});
+
 test('designer uses structured collection editors instead of JSON array textareas', async () => {
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   assert.match(source, /StructuredCollectionEditor/u);

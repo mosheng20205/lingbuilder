@@ -27,7 +27,9 @@ import { decodeTextFile, encodeTextFile } from '../files/textFileService';
 import type { TextFileFormat } from '../files/types';
 import { generateLingCppNativeWin32Project } from '../windowDesigner/lingCppWin32Project';
 import { exportVisualStudioProject } from '../windowDesigner/visualStudioProjectExporter';
+import { createDesignerAssetService } from '../windowDesigner/designerAssetService';
 import { LingWindowProject } from '../windowDesigner/types';
+import { createSolutionService, DEFAULT_PROJECT_ID, type LingBuilderSolutionProject } from '../solution/solutionService';
 import { AiBridgePermissionService } from './permissionService';
 import {
   AiBridgeBuildRunRequest,
@@ -125,6 +127,8 @@ export class AiBridgeService {
   private readonly workspaceRoot: string;
   private readonly pathPolicy: WorkspacePathPolicy;
   private readonly moduleService;
+  private readonly solutionService;
+  private readonly designerAssetService;
   private readonly managedProcessService: AiBridgeProcessManager;
   private readonly projectBuildCoordinator: ProjectBuildCoordinator;
   private readonly projectBuildSessionService: ProjectBuildSessionService;
@@ -141,6 +145,8 @@ export class AiBridgeService {
     this.pathPolicy = new WorkspacePathPolicy(this.workspaceRoot);
     this.permissions = new AiBridgePermissionService(this.pathPolicy, options.permission);
     this.moduleService = createModuleService(this.workspaceRoot);
+    this.solutionService = createSolutionService(this.workspaceRoot);
+    this.designerAssetService = createDesignerAssetService(this.workspaceRoot);
     this.managedProcessService = dependencies.managedProcessService ?? createManagedProcessService();
     this.projectBuildCoordinator = dependencies.projectBuildCoordinator ?? createProjectBuildCoordinator();
     this.projectBuildSessionService = createProjectBuildSessionService(
@@ -339,12 +345,15 @@ export class AiBridgeService {
         await fs.mkdir(path.dirname(targetPath), { recursive: true });
         await fs.writeFile(targetPath, file.content, 'utf8');
       }));
+      const projectRef = await this.resolveAssetProject(request.project);
+      const copiedAssets = await this.designerAssetService.copyProjectAssets(projectRef, [exportDir]);
       const moduleDiagnostics = await exportModuleNativeDependencies(preview.enabledModules, exportDir);
       const visualStudioProject = await exportVisualStudioProject({
         projectDir: exportDir,
         projectId: request.project.id || 'window-preview',
         generatedFiles: preview.files,
-        enabledModules: preview.enabledModules
+        enabledModules: preview.enabledModules,
+        contentFiles: copiedAssets.map(file => normalizeFilePath(path.relative(exportDir, file)))
       });
       await this.permissions.audit({ operation: 'write', action: 'native.export', ok: true, target: exportDir });
       return {
@@ -480,6 +489,15 @@ export class AiBridgeService {
       ]);
     }));
 
+    const projectRef = await this.resolveAssetProject(request.project);
+    const copiedAssets = await this.designerAssetService.copyProjectAssets(projectRef, [buildDir, binDir, exportDir]);
+    const buildContentFiles = copiedAssets
+      .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
+      .map(file => normalizeFilePath(path.relative(buildDir, file)));
+    const exportContentFiles = copiedAssets
+      .filter(file => file.startsWith(`${path.resolve(exportDir)}${path.sep}`))
+      .map(file => normalizeFilePath(path.relative(exportDir, file)));
+
     const moduleNativePlan = await materializeModuleNativeDependencies(enabledModules, {
       buildDir,
       sourceDir,
@@ -493,13 +511,15 @@ export class AiBridgeService {
         ...file,
         relativePath: normalizeFilePath(path.join('src', file.relativePath))
       })),
-      enabledModules
+      enabledModules,
+      contentFiles: buildContentFiles
     });
     const exportVisualStudioProjectResult = await exportVisualStudioProject({
       projectDir: exportDir,
       projectId,
       generatedFiles: generatedProject.files,
-      enabledModules
+      enabledModules,
+      contentFiles: exportContentFiles
     });
     if (buildLease.isCancelled()) {
       return await this.createCancelledBuildResult(
@@ -653,6 +673,23 @@ export class AiBridgeService {
       sourceMap: generatedProject.sourceMap,
       logs
     };
+  }
+
+  private async resolveAssetProject(project: LingWindowProject): Promise<LingBuilderSolutionProject> {
+    try {
+      return this.solutionService.getProject(await this.solutionService.getSolution(), project.id);
+    } catch {
+      const projectId = String(project.id || 'window-preview');
+      return {
+        id: projectId,
+        name: project.name || projectId,
+        type: 'visual-cpp',
+        sourceRoot: `src/${projectId}`,
+        configRoot: `config/${projectId}`,
+        designerPath: `.lingbuilder/projects/${projectId}/window-designer.json`,
+        isDefault: projectId === DEFAULT_PROJECT_ID
+      };
+    }
   }
 
   private async createCancelledBuildResult(
