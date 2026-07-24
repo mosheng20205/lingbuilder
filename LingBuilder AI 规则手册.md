@@ -315,6 +315,7 @@ AI 生成网络服务端示例前应确认项目已启用对应模块；不要�
 - `cornerStyle` 只允许 `system`、`rounded`、`small-rounded`、`square`；`iconStyle` 只允许 `lingbuilder`、`system`、`custom`、`none`。`custom` 必须同时设置工作区内项目 `assets/` 下的相对 `.ico` 路径 `iconPath`，禁止保存开发机绝对路径。旧项目缺失字段时迁移为暗色标题栏、圆角和 LingBuilder 内置图标。
 - F5 和导出的 Win32 工程通过动态 DWM 属性设置标题栏背景、标题文字和圆角；旧版 Windows 不支持对应 DWM 属性时保持系统标题栏和系统边框，不能承诺完全一致的非客户区颜色。禁止使用 `SetWindowRgn` 模拟窗口圆角，因为整数区域裁剪会产生明显锯齿；不支持 DWM 抗锯齿圆角时必须干净回退为系统边框。
 - LingBuilder 内置窗口图标由生成的 C++ 资源数据确定性创建并同时设置大、小窗口图标，不依赖本机临时文件；自定义 ICO 通过统一设计器资源导入链路复制并随 F5、导出、Visual Studio post-build 和 AI Bridge 构建携带，运行时分别按系统大、小图标尺寸加载；`none` 表示不主动设置图标。
+- 窗口是否允许拖拽调整大小和是否允许最大化是两个独立设计器字段，旧项目均默认允许。生成 Win32 C++ 时，禁止调整大小必须移除 `WS_THICKFRAME`，禁止最大化必须移除 `WS_MAXIMIZEBOX`；窗口尺寸计算与实际创建必须使用同一份最终窗口样式，不能只在 React 预览中隐藏按钮或拦截鼠标。
 - ListView 的 `background: "transparent"` 在原生 Win32 中安全解析为与设计器一致的深色不透明表面 `#0F172A`，因为系统 ListView 不支持设计器 CSS 式透明混合。生成器必须同时设置列表背景、文字背景、文字颜色并绘制表头，包括最后一个真实列头之后的空白表头区域；不能只在 React 预览中改色。
 - ListView 外观字段统一写入设计器模型：`properties.borderColor` 默认 `#64748B`，`borderWidth` 默认 1、范围 0–8，`headerHeight` 默认 28、范围 16–96，`itemHeight` 默认 28、范围 16–96。设计器预览和 Win32 F5/导出必须共同消费这些字段；原生生成需保留自定义边框、表头高度和表项高度，不能回退到 `WS_EX_CLIENTEDGE`、系统固定表头或系统固定行高。
 

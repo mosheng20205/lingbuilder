@@ -816,6 +816,8 @@ struct WindowSpec {
     const wchar_t* openPlacement;
     int openX;
     int openY;
+    bool resizable;
+    bool maximizable;
     const ControlSpec* controls;
     int controlCount;
     const wchar_t* menuItems;
@@ -1210,9 +1212,12 @@ public:
 
     HWND Open(int showCommand, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false) {
         dpi_ = GetSystemDpiValue();
+        DWORD windowStyle = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
+        if (!spec_.resizable) windowStyle &= ~WS_THICKFRAME;
+        if (!spec_.maximizable) windowStyle &= ~WS_MAXIMIZEBOX;
         RECT rect = { 0, 0, ScaleForDpi(spec_.width, dpi_), ScaleForDpi(spec_.height, dpi_) };
         BOOL hasMenu = spec_.menuItems && spec_.menuItems[0] ? TRUE : FALSE;
-        AdjustWindowRectEx(&rect, WS_OVERLAPPEDWINDOW, hasMenu, 0);
+        AdjustWindowRectEx(&rect, windowStyle, hasMenu, 0);
         int windowWidth = rect.right - rect.left;
         int windowHeight = rect.bottom - rect.top;
         int windowX = CW_USEDEFAULT;
@@ -1223,7 +1228,7 @@ public:
             0,
             GENERATED_WINDOW_CLASS,
             spec_.title,
-            WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+            windowStyle,
             windowX,
             windowY,
             windowWidth,
@@ -6875,7 +6880,7 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number, progra
     .filter(([, handler]) => handler.trim())
     .map(([eventName, handler]) => `${eventName}=${handler.trim()}`)
     .join('\n');
-  return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height - TITLE_BAR_HEIGHT))}, ${toColorRef(window.background)}, ${toColorRef(titleBarBackground)}, ${toColorRef(titleBarForeground)}, ${cornerPreference}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", L"${escapeWideString(openPlacement)}", ${openX}, ${openY}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline}, L"${escapeWideString(events)}" }`;
+  return `    { ${windowIndex}, L"${escapeWideString(window.className)}", L"${escapeWideString(window.title)}", ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height - TITLE_BAR_HEIGHT))}, ${toColorRef(window.background)}, ${toColorRef(titleBarBackground)}, ${toColorRef(titleBarForeground)}, ${cornerPreference}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", L"${escapeWideString(openPlacement)}", ${openX}, ${openY}, ${window.resizable !== false}, ${window.maximizable !== false}, g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline}, L"${escapeWideString(events)}" }`;
 }
 
 function generateControlSpec(

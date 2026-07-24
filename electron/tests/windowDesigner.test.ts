@@ -1171,8 +1171,35 @@ test('无版本设计器项目迁移为 v2 并保留旧字段', () => {
   assert.equal(state.project.windows[0].menuFontBold, false);
   assert.equal(state.project.windows[0].cornerStyle, 'rounded');
   assert.equal(state.project.windows[0].iconStyle, 'lingbuilder');
+  assert.equal(state.project.windows[0].resizable, true);
+  assert.equal(state.project.windows[0].maximizable, true);
   assert.match(generateWindowXml(state.project.windows[0]), /标题栏颜色="#2D2D30"/u);
   assert.match(generateWindowXml(state.project.windows[0]), /窗口圆角="rounded"/u);
+  assert.match(generateWindowXml(state.project.windows[0]), /禁止拖拽调整大小="否"/u);
+  assert.match(generateWindowXml(state.project.windows[0]), /禁止窗口最大化="否"/u);
+});
+
+test('窗口大小与最大化限制进入布局 XML 和 Win32 样式', () => {
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'fixed-window',
+    name: '固定窗口',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '固定窗口', width: 640, height: 480,
+      background: '#202028', description: '', resizable: false, maximizable: false, controls: []
+    }]
+  };
+  const window = project.windows[0];
+  const xml = generateWindowXml(window);
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(xml, /禁止拖拽调整大小="是"/u);
+  assert.match(xml, /禁止窗口最大化="是"/u);
+  assert.match(cpp, /if \(!spec_\.resizable\) windowStyle &= ~WS_THICKFRAME;/u);
+  assert.match(cpp, /if \(!spec_\.maximizable\) windowStyle &= ~WS_MAXIMIZEBOX;/u);
+  assert.match(cpp, /CW_USEDEFAULT, CW_USEDEFAULT, false, false, g_controls_0/u);
 });
 
 test('窗口外观与 ListView 深色配色进入同一份 Win32 生成结果', () => {

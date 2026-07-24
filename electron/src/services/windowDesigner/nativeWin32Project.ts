@@ -181,6 +181,8 @@ struct WindowSpec {
     bool menuFontBold;
     bool menuFontItalic;
     bool menuFontUnderline;
+    bool resizable;
+    bool maximizable;
 };
 
 struct RuntimeControl {
@@ -282,7 +284,10 @@ static RECT GetWindowRectForSpec(const WindowSpec& spec, UINT dpi) {
         ScaleForDpi(spec.width, dpi),
         ScaleForDpi(spec.height, dpi)
     };
-    AdjustWindowRectEx(&rect, WS_OVERLAPPEDWINDOW, TRUE, 0);
+    DWORD windowStyle = WS_OVERLAPPEDWINDOW;
+    if (!spec.resizable) windowStyle &= ~WS_THICKFRAME;
+    if (!spec.maximizable) windowStyle &= ~WS_MAXIMIZEBOX;
+    AdjustWindowRectEx(&rect, windowStyle, TRUE, 0);
     return rect;
 }
 
@@ -964,6 +969,9 @@ static HWND OpenGeneratedWindow(int windowIndex, int showCommand) {
     const WindowSpec& spec = g_windows[windowIndex];
     UINT dpi = GetSystemDpiValue();
     RECT rect = GetWindowRectForSpec(spec, dpi);
+    DWORD windowStyle = WS_OVERLAPPEDWINDOW;
+    if (!spec.resizable) windowStyle &= ~WS_THICKFRAME;
+    if (!spec.maximizable) windowStyle &= ~WS_MAXIMIZEBOX;
 
     auto state = new WindowState();
     state->spec = &spec;
@@ -979,7 +987,7 @@ static HWND OpenGeneratedWindow(int windowIndex, int showCommand) {
         0,
         GENERATED_WINDOW_CLASS,
         spec.title,
-        WS_OVERLAPPEDWINDOW,
+        windowStyle,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
         rect.right - rect.left,
@@ -1144,7 +1152,7 @@ function generateWindowSpec(window: LingWindowModel, windowIndex: number): strin
     fontItalic: window.menuFontItalic,
     fontUnderline: window.menuFontUnderline
   });
-  return `    { ${windowIndex}, L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - TITLE_BAR_HEIGHT)}, ${toColorRef(window.background)}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline} }`;
+  return `    { ${windowIndex}, L"${escapeWideString(window.title)}", ${Math.max(360, window.width)}, ${Math.max(220, window.height - TITLE_BAR_HEIGHT)}, ${toColorRef(window.background)}, L"${escapeWideString(iconStyle)}", L"${escapeWideString(iconPath)}", g_controls_${windowIndex}, ${visibleCount}, L"${escapeWideString(menuItemsStr)}", ${toColorRef(window.menuBackground || '#ffffff')}, ${toColorRef(window.menuForeground || '#000000')}, L"${escapeWideString(menuFont.family)}", ${menuFont.size}, ${menuFont.bold}, ${menuFont.italic}, ${menuFont.underline}, ${window.resizable !== false}, ${window.maximizable !== false} }`;
 }
 
 function generateControlSpec(control: LingControl, id: number, eventRules: EplRuntimeEventRuleMap): string {

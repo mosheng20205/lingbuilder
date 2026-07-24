@@ -239,6 +239,8 @@ export function createBlankWindow(index: number): LingWindowModel {
     iconStyle: DEFAULT_WINDOW_ICON_STYLE,
     description: '可通过拖拽控件、绑定中文事件并实时生成 C++ 类定义。',
     openPlacement: 'default',
+    resizable: true,
+    maximizable: true,
     controls: [
       {
         id: `lbl_custom_${index}`,
@@ -620,6 +622,7 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       };
     });
     const appearanceChanged = !window.titleBarBackground || !window.titleBarForeground || !window.cornerStyle || !window.iconStyle || !window.menuBackground || !window.menuForeground
+      || typeof window.resizable !== 'boolean' || typeof window.maximizable !== 'boolean'
       || window.menuFontFamily !== menuFont.family || window.menuFontSize !== menuFont.size || window.menuFontBold !== menuFont.bold
       || window.menuFontItalic !== menuFont.italic || window.menuFontUnderline !== menuFont.underline;
     if (!controlsChanged && !appearanceChanged) return window;
@@ -637,6 +640,8 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       menuFontUnderline: menuFont.underline,
       cornerStyle: window.cornerStyle || DEFAULT_WINDOW_CORNER_STYLE,
       iconStyle: window.iconStyle || DEFAULT_WINDOW_ICON_STYLE,
+      resizable: window.resizable !== false,
+      maximizable: window.maximizable !== false,
       controls
     };
   });
@@ -727,7 +732,7 @@ export function generateWindowXml(window: LingWindowModel): string {
   const iconPathAttr = window.iconStyle === 'custom' && window.iconPath
     ? ` 窗口图标文件="${escapeXmlAttribute(window.iconPath)}"`
     : '';
-  xml += `<主窗口 名称="${window.className}" 标题="${window.title}" 宽度="${window.width}" 高度="${window.height}" 背景颜色="${window.background}" 标题栏颜色="${window.titleBarBackground || DEFAULT_WINDOW_TITLE_BAR_BACKGROUND}" 标题文字颜色="${window.titleBarForeground || DEFAULT_WINDOW_TITLE_BAR_FOREGROUND}" 窗口圆角="${window.cornerStyle || DEFAULT_WINDOW_CORNER_STYLE}" 窗口图标="${window.iconStyle || DEFAULT_WINDOW_ICON_STYLE}"${iconPathAttr} 控件对齐="绝对坐标">\n`;
+  xml += `<主窗口 名称="${window.className}" 标题="${window.title}" 宽度="${window.width}" 高度="${window.height}" 背景颜色="${window.background}" 标题栏颜色="${window.titleBarBackground || DEFAULT_WINDOW_TITLE_BAR_BACKGROUND}" 标题文字颜色="${window.titleBarForeground || DEFAULT_WINDOW_TITLE_BAR_FOREGROUND}" 窗口圆角="${window.cornerStyle || DEFAULT_WINDOW_CORNER_STYLE}" 窗口图标="${window.iconStyle || DEFAULT_WINDOW_ICON_STYLE}"${iconPathAttr} 禁止拖拽调整大小="${window.resizable === false ? '是' : '否'}" 禁止窗口最大化="${window.maximizable === false ? '是' : '否'}" 控件对齐="绝对坐标">\n`;
   xml += `    <网格布局 容器边距="0">\n`;
 
   window.controls.forEach(control => {

@@ -73,6 +73,10 @@ export interface LingWindowModel {
   openPlacement?: LingWindowOpenPlacement;
   openX?: number;
   openY?: number;
+  /** 是否允许用户拖拽原生窗口边框调整大小；旧项目默认允许。 */
+  resizable?: boolean;
+  /** 是否允许用户通过标题栏按钮或系统菜单最大化窗口；旧项目默认允许。 */
+  maximizable?: boolean;
   controls: LingControl[];
   menuName?: string;
   menuItems?: string;

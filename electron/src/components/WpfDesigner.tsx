@@ -1552,7 +1552,7 @@ export default function WpfDesigner({
               </div>
               <div className="flex items-center gap-1 opacity-60">
                 <Minus className="w-3 h-3" />
-                <Maximize2 className="w-3 h-3" />
+                <Maximize2 className={`w-3 h-3 ${activeWindow.maximizable === false ? 'opacity-25' : ''}`} />
                 <X className="w-3 h-3" />
               </div>
             </div>
@@ -3007,6 +3007,24 @@ function WindowProperties({
         )}
       </PropertyGroup>
       <PropertyGroup title="当前窗口 / 状态" isDarkMode={isDarkMode} defaultOpen={false}>
+        <PropertyRow label="禁止拖拽调整大小" isDarkMode={isDarkMode}>
+          <input
+            type="checkbox"
+            checked={window.resizable === false}
+            onChange={event => onChange({ resizable: !event.target.checked })}
+            aria-label="禁止拖拽窗口大小"
+            className="h-4 w-4 accent-amber-500"
+          />
+        </PropertyRow>
+        <PropertyRow label="禁止窗口最大化" isDarkMode={isDarkMode}>
+          <input
+            type="checkbox"
+            checked={window.maximizable === false}
+            onChange={event => onChange({ maximizable: !event.target.checked })}
+            aria-label="禁止窗口最大化"
+            className="h-4 w-4 accent-amber-500"
+          />
+        </PropertyRow>
         <ReadOnlyTextField label="类名" value={window.className} isDarkMode={isDarkMode} />
         <ReadOnlyTextField label="文件名" value={window.fileName} isDarkMode={isDarkMode} />
         <div
