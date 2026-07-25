@@ -17,6 +17,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, getArgumentValue, resolveWorkspaceDropTarget } from './workspaceService';
 import { CloudAccountService } from './cloudAccountService';
+import { openPathWithExplorerFallback, selectShellWorkspaceRoot } from './shellPathService';
 
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:3001/';
 const SERVER_READY_PREFIX = 'LINGBUILDER_SERVER_READY ';
@@ -44,6 +45,14 @@ const rendererConfirmedClose = new WeakSet<BrowserWindow>();
 
 function getFocusedWindow() {
   return BrowserWindow.getFocusedWindow() || mainWindow;
+}
+
+function getShellWorkspaceRoot(): string {
+  return selectShellWorkspaceRoot({
+    rendererWorkspaceRoot: rendererReadyInfo?.workspaceRoot,
+    configuredWorkspaceRoot: process.env.LINGBUILDER_WORKSPACE_ROOT,
+    activeWorkspace
+  });
 }
 
 function repoRoot(): string {
@@ -428,13 +437,44 @@ function registerIpcHandlers(): void {
     window.close();
   });
   ipcMain.handle('shell:open-path', async (_event, targetPath: string) => targetPath ? shell.openPath(targetPath) : 'missing-path');
+  ipcMain.handle('shell:reveal-workspace-path', async (_event, targetPath: string) => {
+    try {
+      if (!String(targetPath || '').trim()) return '没有可定位的路径。';
+      const shellWorkspaceRoot = getShellWorkspaceRoot();
+      const trustedWorkspaceCandidates = [
+        shellWorkspaceRoot,
+        activeWorkspace,
+        rendererReadyInfo?.workspaceRoot,
+        process.env.LINGBUILDER_WORKSPACE_ROOT
+      ].filter((candidate): candidate is string => Boolean(candidate));
+      if (trustedWorkspaceCandidates.length === 0) return '当前没有已打开的工作区。';
+      const requestedTarget = String(targetPath).trim();
+      const [trustedWorkspaceRoots, resolvedTarget] = await Promise.all([
+        Promise.all(trustedWorkspaceCandidates.map(candidate => fs.realpath(candidate))),
+        fs.realpath(path.isAbsolute(requestedTarget)
+          ? requestedTarget
+          : path.resolve(shellWorkspaceRoot, requestedTarget))
+      ]);
+      const isInsideTrustedWorkspace = trustedWorkspaceRoots.some(workspaceRoot => {
+        const relativeTarget = path.relative(workspaceRoot, resolvedTarget);
+        return !relativeTarget.startsWith('..') && !path.isAbsolute(relativeTarget);
+      });
+      if (!isInsideTrustedWorkspace) {
+        return '目标路径超出当前工作区。';
+      }
+      return await openPathWithExplorerFallback(resolvedTarget, shell);
+    } catch (error) {
+      return `路径不存在或无法打开：${error instanceof Error ? error.message : String(error)}`;
+    }
+  });
   ipcMain.handle('shell:open-workspace-path', async (_event, relativePath = '.') => {
-    if (!activeWorkspace) return '当前没有已打开的工作区。';
-    const workspaceRoot = path.resolve(activeWorkspace);
+    const selectedWorkspaceRoot = getShellWorkspaceRoot();
+    if (!selectedWorkspaceRoot) return '当前没有已打开的工作区。';
+    const workspaceRoot = path.resolve(selectedWorkspaceRoot);
     const targetPath = path.resolve(workspaceRoot, relativePath || '.');
     const relativeTarget = path.relative(workspaceRoot, targetPath);
     if (relativeTarget.startsWith('..') || path.isAbsolute(relativeTarget)) return '目标目录超出当前工作区。';
-    return await shell.openPath(targetPath);
+    return await openPathWithExplorerFallback(targetPath, shell);
   });
   ipcMain.handle('docs:open-module-manual', async () => shell.openPath(moduleManualPath()));
   ipcMain.handle('modules:import-package', async (_event, sourcePath: string) => {

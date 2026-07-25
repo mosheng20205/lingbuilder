@@ -26,6 +26,13 @@ import { formatProblemsForClipboard } from '../services/problems/problemClipboar
 
 type LogContextMenuTab = 'problems' | 'output' | 'debug_logs';
 
+function extractLocalPathFromLogLine(line: string): string | null {
+  const match = line.match(/(?:[A-Za-z]:[\\/]|\\\\)[^\r\n]+/u);
+  if (!match) return null;
+  const targetPath = match[0].trim().replace(/[。；;,，]+$/u, '');
+  return targetPath || null;
+}
+
 interface BottomPanelProps {
   strings: ExtractedString[];
   problems: ProblemItem[];
@@ -64,6 +71,7 @@ export default function BottomPanel({
   onClearLogs
 }: BottomPanelProps) {
   const [filterType, setFilterType] = useState<'all' | 'string' | 'comment'>('all');
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const logViewportRef = useRef<HTMLDivElement | null>(null);
   const [copyNotice, setCopyNotice] = useState<{ message: string; tone: 'success' | 'error' } | null>(null);
   const [contextMenu, setContextMenu] = useState<{
@@ -71,7 +79,8 @@ export default function BottomPanel({
     x: number;
     y: number;
     tabType: LogContextMenuTab | null;
-  }>({ show: false, x: 0, y: 0, tabType: null });
+    lineText: string | null;
+  }>({ show: false, x: 0, y: 0, tabType: null, lineText: null });
 
   useEffect(() => {
     const handleClose = () => {
@@ -124,16 +133,45 @@ export default function BottomPanel({
       .catch(() => setCopyNotice({ message: '复制失败，请重试', tone: 'error' }));
   };
 
-  const handleContextMenu = (e: React.MouseEvent, tabType: LogContextMenuTab) => {
+  const copyLineToClipboard = (lineText: string) => {
+    navigator.clipboard.writeText(lineText)
+      .then(() => setCopyNotice({ message: '已复制当前行到剪贴板', tone: 'success' }))
+      .catch(() => setCopyNotice({ message: '复制失败，请重试', tone: 'error' }));
+  };
+
+  const revealLogPath = async (lineText: string) => {
+    const targetPath = extractLocalPathFromLogLine(lineText);
+    if (!targetPath) return;
+    const revealWorkspacePath = window.lingBuilder?.shell?.revealWorkspacePath;
+    if (!revealWorkspacePath) {
+      setCopyNotice({ message: '请在 LingBuilder 桌面版中打开生成目录', tone: 'error' });
+      return;
+    }
+    try {
+      const error = await revealWorkspacePath(targetPath);
+      setCopyNotice(error
+        ? { message: error, tone: 'error' }
+        : { message: '已在文件资源管理器中定位', tone: 'success' });
+    } catch {
+      setCopyNotice({ message: '无法在文件资源管理器中定位该路径', tone: 'error' });
+    }
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, tabType: LogContextMenuTab, lineText: string | null = null) => {
     e.preventDefault();
-    const rect = e.currentTarget.getBoundingClientRect();
+    e.stopPropagation();
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (!rect) return;
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    const menuWidth = 160;
+    const menuHeight = tabType === 'problems' ? 76 : 112;
     setContextMenu({
       show: true,
-      x: Math.min(x, rect.width - 150),
-      y: Math.min(y, rect.height - 80),
-      tabType
+      x: Math.max(4, Math.min(x, rect.width - menuWidth - 4)),
+      y: Math.max(4, Math.min(y, rect.height - menuHeight - 4)),
+      tabType,
+      lineText
     });
   };
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -178,6 +216,7 @@ export default function BottomPanel({
 
   return (
     <div 
+      ref={panelRef}
       id="vs-bottom-tabs" 
       className={`flex flex-col font-sans overflow-hidden shrink-0 select-none border-t relative ${
         isDarkMode 
@@ -785,11 +824,22 @@ export default function BottomPanel({
                   className = 'text-sky-600 font-semibold';
                 }
 
-                return (
-                  <div key={idx} className={`${className} whitespace-pre-wrap break-all leading-normal`}>
-                    {log}
-                  </div>
-                );
+                return log.split(/\r?\n/u).map((line, lineIndex) => {
+                  const linePath = extractLocalPathFromLogLine(line);
+                  return (
+                    <div
+                      key={`${idx}:${lineIndex}`}
+                      onContextMenu={(event) => handleContextMenu(event, 'output', line)}
+                      onDoubleClick={linePath ? () => void revealLogPath(linePath) : undefined}
+                      title={linePath ? '双击在文件资源管理器中定位' : undefined}
+                      className={`${className} min-h-[1lh] whitespace-pre-wrap break-all leading-normal ${
+                        linePath ? 'cursor-pointer hover:underline underline-offset-2' : ''
+                      }`}
+                    >
+                      {line || '\u00a0'}
+                    </div>
+                  );
+                });
               })
             )}
           </div>
@@ -810,11 +860,15 @@ export default function BottomPanel({
                 💡 暂无运行时调试日志。当您在运行的程序中触发中文事件（如单击按钮或选择菜单）时，这里将实时输出“调试输出”数据。
               </div>
             ) : (
-              debugLogs.map((log, idx) => (
-                <div key={idx} className="text-amber-500 whitespace-pre-wrap break-all leading-normal">
-                  {log}
+              debugLogs.flatMap((log, idx) => log.split(/\r?\n/u).map((line, lineIndex) => (
+                <div
+                  key={`${idx}:${lineIndex}`}
+                  onContextMenu={(event) => handleContextMenu(event, 'debug_logs', line)}
+                  className="min-h-[1lh] text-amber-500 whitespace-pre-wrap break-all leading-normal"
+                >
+                  {line || '\u00a0'}
                 </div>
-              ))
+              )))
             )}
           </div>
         )}
@@ -826,35 +880,62 @@ export default function BottomPanel({
       {contextMenu.show && (
         <div
           style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
-          className={`absolute z-[999] w-36 py-1 border rounded shadow-xl font-sans text-xs select-none ${
+          role="menu"
+          aria-label="日志操作"
+          className={`absolute z-[999] w-40 py-1 border rounded shadow-xl font-sans text-xs select-none ${
             isDarkMode 
               ? 'bg-[#252526] border-[#3c3c3c] text-slate-200 shadow-black/50' 
               : 'bg-white border-slate-200 text-slate-800 shadow-slate-300'
           }`}
           onClick={(e) => e.stopPropagation()}
         >
-          <div
+          {contextMenu.tabType !== 'problems' && (
+            <button
+              type="button"
+              role="menuitem"
+              disabled={contextMenu.lineText === null}
+              onClick={() => {
+                if (contextMenu.lineText !== null) {
+                  copyLineToClipboard(contextMenu.lineText);
+                }
+                setContextMenu(prev => ({ ...prev, show: false }));
+              }}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors ${
+                contextMenu.lineText === null
+                  ? 'cursor-not-allowed opacity-40'
+                  : 'cursor-pointer hover:bg-[#007ACC] hover:text-white'
+              }`}
+            >
+              <Copy className="w-3.5 h-3.5 text-slate-400" />
+              <span>复制行</span>
+            </button>
+          )}
+          <button
+            type="button"
+            role="menuitem"
             onClick={() => {
               if (contextMenu.tabType) {
                 copyLogsToClipboard(contextMenu.tabType);
               }
               setContextMenu(prev => ({ ...prev, show: false }));
             }}
-            className={`px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors ${
+            className={`flex w-full px-3 py-1.5 items-center gap-2 text-left cursor-pointer transition-colors ${
               isDarkMode ? 'hover:bg-[#007ACC] hover:text-white' : 'hover:bg-[#007ACC] hover:text-white'
             }`}
           >
             <Copy className="w-3.5 h-3.5 text-slate-400" />
             <span>复制全部</span>
-          </div>
-          <div
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             onClick={() => {
               if (contextMenu.tabType && onClearLogs) {
                 onClearLogs(contextMenu.tabType);
               }
               setContextMenu(prev => ({ ...prev, show: false }));
             }}
-            className={`px-3 py-1.5 flex items-center gap-2 cursor-pointer transition-colors border-t ${
+            className={`flex w-full px-3 py-1.5 items-center gap-2 text-left cursor-pointer transition-colors border-t ${
               isDarkMode 
                 ? 'border-slate-800/80 hover:bg-[#007ACC] hover:text-white' 
                 : 'border-slate-100 hover:bg-[#007ACC] hover:text-white'
@@ -862,7 +943,7 @@ export default function BottomPanel({
           >
             <Trash className="w-3.5 h-3.5 text-rose-500" />
             <span>{contextMenu.tabType === 'problems' ? '清空错误列表' : '清空日志'}</span>
-          </div>
+          </button>
         </div>
       )}
     </div>

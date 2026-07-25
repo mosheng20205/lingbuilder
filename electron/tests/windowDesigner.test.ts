@@ -14,7 +14,13 @@ import StatusBarPartsDialog from '../src/components/StatusBarPartsDialog';
 import TabControlPagesDialog from '../src/components/TabControlPagesDialog';
 import MenuBarItemsDialog from '../src/components/MenuBarItemsDialog';
 import TreeViewCollectionDialog from '../src/components/TreeViewCollectionDialog';
-import { CREATABLE_DESIGNER_CONTROL_TYPES, hasDedicatedControlPreview, parseStringListPropertyText } from '../src/components/WpfDesigner';
+import {
+  CREATABLE_DESIGNER_CONTROL_TYPES,
+  StatusBarDesignerPreview,
+  TrackBarDesignerPreview,
+  hasDedicatedControlPreview,
+  parseStringListPropertyText
+} from '../src/components/WpfDesigner';
 import {
   buildControlHierarchy,
   canReparentControls,
@@ -152,6 +158,32 @@ test('状态栏分区集合模型支持规范化、新增、复制、排序和�
   assert.equal(duplicated[1].title, '就绪 副本');
   assert.equal(moveStatusBarPart(duplicated, 1, 0)[0].title, '就绪 副本');
   assert.equal(removeStatusBarPart(duplicated, 1).length, duplicated.length - 1);
+});
+
+test('滑块和状态栏使用贴近 Win32 运行时的专用设计器预览', () => {
+  const trackBar = {
+    ...createControl('track-preview', undefined, 'TrackBar'),
+    properties: { minimum: 0, maximum: 100, value: 50, tickFrequency: 10 }
+  };
+  const trackMarkup = renderToStaticMarkup(React.createElement(TrackBarDesignerPreview, { control: trackBar, isEnabled: true }));
+  assert.equal(hasDedicatedControlPreview('TrackBar'), true);
+  assert.match(trackMarkup, /滑块预览，当前值 50/u);
+  assert.equal((trackMarkup.match(/top-\[58%\]/gu) || []).length, 11, '0 到 100、间隔 10 应显示 11 个刻度');
+  assert.match(trackMarkup, /\* 0\.5/u, '滑块位置应由当前值映射到轨道中点');
+
+  const statusBar = {
+    ...createControl('status-preview', undefined, 'StatusBar'),
+    foreground: '#FFFFFF',
+    properties: {
+      textAlign: 'center',
+      parts: [{ title: '状态111', width: 120 }, { title: '状态222', width: 120 }, { title: '状态333', width: 120 }]
+    }
+  };
+  const statusMarkup = renderToStaticMarkup(React.createElement(StatusBarDesignerPreview, { control: statusBar, isEnabled: true }));
+  assert.match(statusMarkup, /状态栏预览，共 3 个分区/u);
+  assert.match(statusMarkup, /flex-basis:120px/u);
+  assert.match(statusMarkup, /flex-basis:0/u, 'Win32 的最后一个状态栏分区使用 -1，应填满剩余宽度而不是保留固定宽度');
+  assert.match(statusMarkup, /rgba\(255, 255, 255, 0\.22\)/u, '设计器分隔线应与原生 owner-draw 的前景色混合规则一致');
 });
 
 test('状态栏分区弹窗显示完整字段、操作和窄屏布局', () => {

@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('lingBuilder', {
   },
   shell: {
     openPath: (targetPath: string) => ipcRenderer.invoke('shell:open-path', targetPath),
+    revealWorkspacePath: (targetPath: string) => ipcRenderer.invoke('shell:reveal-workspace-path', targetPath),
     openWorkspacePath: (relativePath = '.') => ipcRenderer.invoke('shell:open-workspace-path', relativePath),
   },
   workspace: {

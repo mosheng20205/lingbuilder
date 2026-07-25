@@ -191,7 +191,7 @@ const DEDICATED_CONTROL_PREVIEW_TYPES = new Set<LingControlType>([
   'Button', 'TextBox', 'Label', 'SysLink', 'CheckBox', 'RadioButton', 'ListBox',
   'ProgressBar', 'ComboBox', 'ComboBoxEx', 'GroupBox', 'Image', 'AnimatedImage',
   'VideoPlayer', 'ListView', 'Header', 'TreeView', 'TabControl', 'StatusBar', 'ReBar',
-  'IPAddress', 'UpDown', 'Upload', 'DragUpload', 'RichEdit', 'ColorPicker'
+  'IPAddress', 'TrackBar', 'UpDown', 'Upload', 'DragUpload', 'RichEdit', 'ColorPicker'
 ]);
 
 export function hasDedicatedControlPreview(type: LingControlType): boolean {
@@ -2863,6 +2863,10 @@ function renderControl(
           </div>
         )}
 
+        {control.type === 'TrackBar' && (
+          <TrackBarDesignerPreview control={control} isEnabled={isEffectivelyEnabled} />
+        )}
+
         {control.type === 'RichEdit' && (
           <div
             className="h-full w-full overflow-hidden whitespace-pre-wrap rounded border border-slate-700 px-2 py-1 text-left select-none"
@@ -2995,46 +2999,9 @@ function renderControl(
 
         {control.type === 'Header' && <HeaderDesignerPreview control={control} />}
 
-        {control.type === 'StatusBar' && (() => {
-          const configuredParts = Array.isArray(control.properties?.parts) ? control.properties.parts : [];
-          const textAlign = control.properties?.textAlign === 'center' || control.properties?.textAlign === 'right'
-            ? control.properties.textAlign
-            : 'left';
-          const parts = configuredParts.length > 0
-            ? configuredParts
-            : [{ title: control.content || '就绪', width: control.width }];
-          return (
-            <div
-              className="flex h-full w-full min-w-0 overflow-hidden border border-black/20"
-              style={{
-                backgroundColor: control.background === 'transparent' ? 'transparent' : control.background,
-                color: control.foreground,
-                fontSize: `${control.fontSize}px`,
-                opacity: isEffectivelyEnabled ? 1 : 0.5
-              }}
-            >
-              {parts.map((part, index) => {
-                const record = part && typeof part === 'object' ? part as Record<string, unknown> : {};
-                const title = String(record.title ?? record.label ?? (index === 0 ? control.content || '就绪' : ''));
-                const width = Math.max(1, Number(record.width) || 140);
-                return (
-                  <span
-                    key={`${index}-${title}`}
-                    className="flex min-w-0 items-center truncate border-r border-black/20 px-2 last:flex-1 last:border-r-0"
-                    style={{
-                      flexBasis: `${width}px`,
-                      flexGrow: index + 1 === parts.length ? 1 : 0,
-                      justifyContent: textAlign === 'center' ? 'center' : textAlign === 'right' ? 'flex-end' : 'flex-start',
-                      textAlign
-                    }}
-                  >
-                    {title}
-                  </span>
-                );
-              })}
-            </div>
-          );
-        })()}
+        {control.type === 'StatusBar' && (
+          <StatusBarDesignerPreview control={control} isEnabled={isEffectivelyEnabled} />
+        )}
 
         {control.type === 'ReBar' && (
           <RebarDesignerPreview control={control} onReorder={onReorderRebarBand} interactive={isSelected} />
@@ -3107,6 +3074,92 @@ function renderControl(
           ))}
         </>
       )}
+    </div>
+  );
+}
+
+export function TrackBarDesignerPreview({ control, isEnabled }: { control: LingControl; isEnabled: boolean }) {
+  const minimum = Number.isFinite(Number(control.properties?.minimum)) ? Number(control.properties?.minimum) : 0;
+  const maximumCandidate = Number.isFinite(Number(control.properties?.maximum)) ? Number(control.properties?.maximum) : 100;
+  const maximum = Math.max(minimum, maximumCandidate);
+  const valueCandidate = Number.isFinite(Number(control.properties?.value)) ? Number(control.properties?.value) : minimum;
+  const value = Math.min(maximum, Math.max(minimum, valueCandidate));
+  const range = maximum - minimum;
+  const position = range > 0 ? ((value - minimum) / range) * 100 : 0;
+  const frequency = Math.max(1, Math.trunc(Number(control.properties?.tickFrequency) || 1));
+  const regularTickCount = range > 0 ? Math.min(100, Math.floor(range / frequency) + 1) : 1;
+  const tickValues = Array.from({ length: regularTickCount }, (_, index) => minimum + index * frequency);
+  if (range > 0 && tickValues[tickValues.length - 1] !== maximum) tickValues.push(maximum);
+  const ticks = tickValues.map(tickValue => range > 0 ? ((tickValue - minimum) / range) * 100 : 0);
+
+  return (
+    <div
+      aria-label={`滑块预览，当前值 ${value}`}
+      className="relative h-full w-full overflow-hidden"
+      style={{
+        backgroundColor: control.background === 'transparent' ? 'transparent' : control.background,
+        opacity: isEnabled ? 1 : 0.5
+      }}
+    >
+      <div className="absolute left-[5px] right-[5px] top-[38%] h-[4px] -translate-y-1/2 border border-slate-400/60 bg-slate-100/75 shadow-[inset_0_1px_1px_rgba(15,23,42,0.45)]" />
+      {ticks.map((left, index) => (
+        <span
+          aria-hidden="true"
+          className="absolute top-[58%] h-[3px] w-px -translate-x-1/2 bg-slate-400/70"
+          key={`${left}-${index}`}
+          style={{ left: `calc(5px + (100% - 10px) * ${left / 100})` }}
+        />
+      ))}
+      <span
+        aria-hidden="true"
+        className="absolute top-[38%] h-[17px] w-[10px] -translate-x-1/2 -translate-y-1/2 rounded-[1px] border border-sky-200/70 bg-sky-600 shadow-[0_1px_2px_rgba(0,0,0,0.55)]"
+        style={{ left: `calc(5px + (100% - 10px) * ${position / 100})` }}
+      />
+    </div>
+  );
+}
+
+export function StatusBarDesignerPreview({ control, isEnabled }: { control: LingControl; isEnabled: boolean }) {
+  const configuredParts = normalizeStatusBarParts(control.properties?.parts);
+  const textAlign = control.properties?.textAlign === 'center' || control.properties?.textAlign === 'right'
+    ? control.properties.textAlign
+    : 'left';
+  const parts = configuredParts.length > 0
+    ? configuredParts
+    : [{ title: control.content || '就绪', width: control.width }];
+  const background = control.background === 'transparent' ? 'transparent' : control.background;
+  const foregroundMatch = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/iu.exec(control.foreground);
+  const separatorColor = foregroundMatch
+    ? `rgba(${Number.parseInt(foregroundMatch[1], 16)}, ${Number.parseInt(foregroundMatch[2], 16)}, ${Number.parseInt(foregroundMatch[3], 16)}, 0.22)`
+    : `color-mix(in srgb, ${control.foreground} 22%, transparent)`;
+
+  return (
+    <div
+      aria-label={`状态栏预览，共 ${parts.length} 个分区`}
+      className="flex h-full w-full min-w-0 overflow-hidden border"
+      style={{
+        backgroundColor: background,
+        borderColor: separatorColor,
+        color: control.foreground,
+        fontSize: `${control.fontSize}px`,
+        opacity: isEnabled ? 1 : 0.5
+      }}
+    >
+      {parts.map((part, index) => (
+        <span
+          key={`${index}-${part.title}`}
+          className="flex min-w-0 shrink-0 items-center truncate border-r px-2 last:flex-1 last:border-r-0"
+          style={{
+            borderColor: separatorColor,
+            flexBasis: index + 1 === parts.length ? 0 : `${part.width}px`,
+            flexGrow: index + 1 === parts.length ? 1 : 0,
+            justifyContent: textAlign === 'center' ? 'center' : textAlign === 'right' ? 'flex-end' : 'flex-start',
+            textAlign
+          }}
+        >
+          {part.title}
+        </span>
+      ))}
     </div>
   );
 }
