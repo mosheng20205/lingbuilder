@@ -47,6 +47,7 @@ import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getL
 import { LingCppAccessModifier, LingCppAstEdit, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
 import { getBeginnerCommandTokenAtCursor, getBeginnerCompletionContext, getBeginnerCompletionToken, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
 import { BEGINNER_BUILTIN_VALUE_COMPLETIONS } from '../services/lingCpp/beginnerBuiltinValueCompletions';
+import { toggleBeginnerLineComment } from '../services/lingCpp/beginnerLineComment';
 import { applyLingCppAstEdit } from '../services/lingCpp/astEditService';
 import { LingCppNativePreviewFile, LingWindowProject, NativeCppImportResult } from '../services/windowDesigner/types';
 import {
@@ -4334,6 +4335,22 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       if ((event.ctrlKey || event.metaKey) && event.key === ' ') {
         event.preventDefault();
         updateBeginnerCompletion(target, input, true);
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && (event.key === '/' || event.code === 'Slash')) {
+        event.preventDefault();
+        closeBeginnerCompletion(target);
+        const result = toggleBeginnerLineComment(input.value, input.selectionStart, input.selectionEnd);
+        if (result.value === input.value) return;
+        input.value = result.value;
+        updateBeginnerCodeDraft(target, result.value);
+        window.requestAnimationFrame(() => {
+          input.focus();
+          input.setSelectionRange(result.selectionStart, result.selectionEnd);
+          captureBeginnerTextareaView(input);
+          updateBeginnerCommandHint(target, input);
+        });
         return;
       }
 

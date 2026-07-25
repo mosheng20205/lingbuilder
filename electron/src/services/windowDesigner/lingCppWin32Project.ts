@@ -2742,7 +2742,7 @@ protected:
     bool 弹出菜单_在坐标显示(const wchar_t* componentName, int x, int y) {
         const MenuResourceSpec* menu = FindMenuResource(componentName);
         if (!menu || menu->contextMenu) return false;
-        POINT point = { x, y }; ClientToScreen(hwnd_, &point);
+        POINT point = { x, y };
         return ShowMenuResource(*menu, point);
     }
     const wchar_t* 菜单_取最后项目(const wchar_t* componentName) const {
@@ -3371,6 +3371,16 @@ protected:
         wchar_t* end = nullptr;
         long converted = wcstol(value.c_str(), &end, 10);
         return end == value.c_str() ? 0 : static_cast<int>(converted);
+    }
+
+    int 取鼠标水平位置() const {
+        POINT point = {};
+        return GetCursorPos(&point) ? point.x : 0;
+    }
+
+    int 取鼠标垂直位置() const {
+        POINT point = {};
+        return GetCursorPos(&point) ? point.y : 0;
     }
 
     bool RenderAnimatedImage(RuntimeControl& runtime, const ControlSpec& control) {

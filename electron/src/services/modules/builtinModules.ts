@@ -87,6 +87,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           returnType: '空'
         },
         { name: '到整数', signature: '到整数(文本)', description: '把文本转换为整数；空文本或无法转换的内容返回 0。', insertText: '到整数("$1")', returnType: '整数型' },
+        { name: '取鼠标水平位置', signature: '取鼠标水平位置()', description: '返回鼠标指针当前相对于屏幕左边的水平位置，单位为像素点。初级命令。', insertText: '取鼠标水平位置()', returnType: '整数型' },
+        { name: '取鼠标垂直位置', signature: '取鼠标垂直位置()', description: '返回鼠标指针当前相对于屏幕顶边的垂直位置，单位为像素点。初级命令。', insertText: '取鼠标垂直位置()', returnType: '整数型' },
         { name: '控件_设置文本', signature: '控件_设置文本(控件名, 文本)', description: '设置当前窗口中指定控件的文本。', insertText: '控件_设置文本("$1", "$2")', returnType: '逻辑型' },
         { name: '控件_设置图片', signature: '控件_设置图片(控件名, 图片路径)', description: '设置图片框显示的本地图片；支持项目 assets 相对路径或本地完整路径，空路径清空图片。', insertText: '控件_设置图片("$1", "assets/$2")', returnType: '逻辑型' },
         { name: '控件_取文本', signature: '控件_取文本(控件名)', description: '读取指定控件的当前文本。', insertText: '控件_取文本("$1")', returnType: '文本型' },
@@ -164,6 +166,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           example: '结束()'
         },
         { command: '到整数', runtimeName: '到整数', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+        { command: '取鼠标水平位置', runtimeName: '取鼠标水平位置', parameters: [], returnType: 'int' },
+        { command: '取鼠标垂直位置', runtimeName: '取鼠标垂直位置', parameters: [], returnType: 'int' },
         { command: '控件_设置文本', runtimeName: '控件_设置文本', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_设置图片', runtimeName: '控件_设置图片', parameters: [{ name: '控件名', type: 'wideString' }, { name: '图片路径', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_取文本', runtimeName: '控件_取文本', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
@@ -244,7 +248,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: '文件对话框_取文件', signature: '文件对话框_取文件(组件名, 索引)', description: '返回文件对话框组件指定索引的完整文件路径。', insertText: '文件对话框_取文件("文件对话框1", 0)', returnType: '文本型' }
         ,{ name: '上下文菜单_显示', signature: '上下文菜单_显示(组件名)', description: '在鼠标位置主动显示上下文菜单；绑定目标右键时无需手动调用。', insertText: '上下文菜单_显示("上下文菜单1")', returnType: '逻辑型' }
         ,{ name: '弹出菜单_显示', signature: '弹出菜单_显示(组件名)', description: '在当前鼠标位置显示弹出菜单。', insertText: '弹出菜单_显示("弹出菜单1")', returnType: '逻辑型' }
-        ,{ name: '弹出菜单_在坐标显示', signature: '弹出菜单_在坐标显示(组件名, 横坐标, 纵坐标)', description: '在窗口客户区指定坐标显示弹出菜单。', insertText: '弹出菜单_在坐标显示("弹出菜单1", 20, 20)', returnType: '逻辑型' }
+        ,{ name: '弹出菜单_在坐标显示', signature: '弹出菜单_在坐标显示(组件名, 横坐标, 纵坐标)', description: '在指定的屏幕像素坐标显示弹出菜单。', insertText: '弹出菜单_在坐标显示("弹出菜单1", 取鼠标水平位置(), 取鼠标垂直位置())', returnType: '逻辑型' }
         ,{ name: '菜单_取最后项目', signature: '菜单_取最后项目(组件名)', description: '返回指定上下文菜单或弹出菜单最近选择的稳定菜单项 ID。', insertText: '菜单_取最后项目("弹出菜单1")', returnType: '文本型' }
         ,{ name: '视频播放器_设置文件', signature: '视频播放器_设置文件(控件名, 视频路径)', description: '切换视频播放器的本地媒体文件；支持 MP4、WMV 等 Media Foundation 可解码格式。', insertText: '视频播放器_设置文件("视频播放器1", "assets/$1.mp4")', returnType: '逻辑型' }
         ,{ name: '视频播放器_播放', signature: '视频播放器_播放(控件名)', description: '播放或继续播放指定视频。', insertText: '视频播放器_播放("视频播放器1")', returnType: '逻辑型' }

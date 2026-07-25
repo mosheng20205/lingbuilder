@@ -1150,7 +1150,7 @@ test('上下文菜单与弹出菜单作为非可视资源生成右键绑定、�
         调试输出(菜单_取最后项目("上下文菜单1"))
     结束
     事件 弹出菜单1_刷新被选择()
-        弹出菜单_在坐标显示("弹出菜单1", 20, 30)
+        弹出菜单_在坐标显示("弹出菜单1", 取鼠标水平位置(), 取鼠标垂直位置())
     结束
 结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules });
@@ -1164,7 +1164,11 @@ test('上下文菜单与弹出菜单作为非可视资源生成右键绑定、�
   assert.match(cpp, /TrackPopupMenuEx\(menu, TPM_RETURNCMD \| TPM_RIGHTBUTTON/);
   assert.match(cpp, /AppendMenuW\(menu, MF_SEPARATOR/);
   assert.match(cpp, /上下文菜单_显示/);
-  assert.match(cpp, /弹出菜单_在坐标显示\(L"弹出菜单1", 20, 30\)/u);
+  assert.match(cpp, /int 取鼠标水平位置\(\) const/u);
+  assert.match(cpp, /int 取鼠标垂直位置\(\) const/u);
+  assert.match(cpp, /弹出菜单_在坐标显示\(L"弹出菜单1", 取鼠标水平位置\(\), 取鼠标垂直位置\(\)\)/u);
+  assert.match(cpp, /POINT point = \{ x, y \};\s+return ShowMenuResource\(\*menu, point\);/u);
+  assert.doesNotMatch(cpp, /POINT point = \{ x, y \}; ClientToScreen\(hwnd_, &point\);/u);
   assert.match(cpp, /菜单_取最后项目\(L"上下文菜单1"\)/u);
   assert.match(cpp, /TextEquals\(eventName, L"open"\).*上下文菜单1_打开被选择/u);
   assert.ok(!generated.diagnostics.some(diagnostic => diagnostic.includes('菜单“')));

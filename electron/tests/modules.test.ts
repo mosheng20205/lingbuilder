@@ -149,6 +149,23 @@ test('文件、配置、系统、进程、输入和窗口模块提供完整确�
   assert.match(mainCpp, /文件_写入文本\(L"验证\.txt", L"中文"\);/u);
 });
 
+test('Win32 基础模块全局提供初级鼠标屏幕位置命令', () => {
+  const manifest = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!;
+  const horizontal = manifest.contributes?.commands?.find(command => command.name === '取鼠标水平位置');
+  const vertical = manifest.contributes?.commands?.find(command => command.name === '取鼠标垂直位置');
+  assert.equal(horizontal?.signature, '取鼠标水平位置()');
+  assert.match(horizontal?.description || '', /屏幕左边.*像素点.*初级命令/u);
+  assert.equal(vertical?.signature, '取鼠标垂直位置()');
+  assert.match(vertical?.description || '', /屏幕顶边.*像素点.*初级命令/u);
+  assert.deepEqual(
+    manifest.bindings?.commands?.filter(binding => binding.command.startsWith('取鼠标')).map(binding => [binding.command, binding.parameters, binding.returnType]),
+    [
+      ['取鼠标水平位置', [], 'int'],
+      ['取鼠标垂直位置', [], 'int']
+    ]
+  );
+});
+
 test('网络基础模块提供请求、状态、错误和关闭闭环', () => {
   assert.deepEqual(NETWORK_LIBRARY_MODULES.map(module => module.id), [
     'lingbuilder.net.http-client', 'lingbuilder.net.tcp', 'lingbuilder.net.udp',
