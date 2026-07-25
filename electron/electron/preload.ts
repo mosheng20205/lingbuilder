@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     openPath: (targetPath: string, newWindow = false) => ipcRenderer.invoke('workspace:open-path', targetPath, newWindow),
     listRecent: () => ipcRenderer.invoke('workspace:list-recent'),
     forgetRecent: (workspacePath: string) => ipcRenderer.invoke('workspace:forget-recent', workspacePath),
+    closeCurrent: () => ipcRenderer.invoke('workspace:close-current'),
   },
   docs: {
     openModuleManual: () => ipcRenderer.invoke('docs:open-module-manual'),

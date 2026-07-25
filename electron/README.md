@@ -78,7 +78,7 @@ npm run package:win
 - `package:win` 会先从微软官方地址下载并校验 WebView2 Evergreen Bootstrapper，再冻结到 NSIS 资源；安装阶段仅在注册表未检测到 WebView2 Runtime 时补装，失败不会阻止 LingBuilder 本体安装，可稍后从“工具 → 环境修复中心”重试。
 - 安装版主进程先启动不可见的独立本地服务，显式传入工作区、renderer 静态目录、规则手册、`127.0.0.1` 随机端口和随机会话 token，收到 ready 信息后才加载窗口。
 - renderer 仍使用相对 `/api/*`，Electron 会自动注入本地会话 token；普通 IDE 服务拒绝 `0.0.0.0`，默认不挂载 `/api/ai-bridge/*`。
-- 首次运行会把版本化示例的缺失文件复制到“文档/LingBuilder/示例工作区”，不会覆盖已有文件；以后从 `userData/workspace-state.json` 恢复最近工作区。工具栏“打开”使用原生目录选择器并重启本地服务。
+- 首次运行会在“文档/LingBuilder/起始工作区”创建干净的“未命名解决方案 / 新建项目”，只复制安装包内置模块等必要资源，不会携带开发仓库项目；以后从安装版专用的 `userData/workspace-state.packaged.json` 恢复最近工作区，开发版继续使用独立的 `workspace-state.json`。文件菜单、命令面板、解决方案根节点右键菜单和载入失败页均可“关闭当前解决方案”，该操作保留原磁盘文件并切换到新的空白工作区。工具栏“打开”使用原生目录选择器并重启本地服务。
 - 规则手册、模块手册、renderer、server 和默认工作区模板均作为打包资源携带，不依赖安装目录或启动时的 `cwd`。
 
 ## 设计约定

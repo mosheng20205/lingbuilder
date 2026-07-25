@@ -20,6 +20,49 @@ test('workspace service prefers --workspace and remembers it', async () => {
   assert.equal(getArgumentValue(['app', '--workspace=E:\\项目'], '--workspace'), 'E:\\项目');
 });
 
+test('packaged workspace history is isolated from legacy development history', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-profile-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const userDataPath = path.join(root, 'UserData');
+  const developmentWorkspace = path.join(root, 'repository');
+  await fs.mkdir(developmentWorkspace, { recursive: true });
+  await fs.mkdir(userDataPath, { recursive: true });
+  await fs.writeFile(path.join(userDataPath, 'workspace-state.json'), JSON.stringify({
+    schemaVersion: 2,
+    lastWorkspace: developmentWorkspace,
+    recentWorkspaces: [developmentWorkspace]
+  }));
+
+  const packaged = new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe'],
+    documentsPath: path.join(root, 'Documents'),
+    userDataPath,
+    profile: 'packaged'
+  });
+  const initial = await packaged.resolveInitialWorkspace();
+  assert.notEqual(initial, developmentWorkspace);
+  assert.equal(initial, path.join(root, 'Documents', 'LingBuilder', '起始工作区'));
+  assert.deepEqual(await packaged.listRecentWorkspaces(), [initial]);
+  assert.ok(await exists(path.join(userDataPath, 'workspace-state.packaged.json')));
+});
+
+test('closing a solution can allocate a fresh workspace without deleting the old one', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-fresh-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const service = new DesktopWorkspaceService({
+    argv: ['LingBuilder.exe'],
+    documentsPath: path.join(root, 'Documents'),
+    userDataPath: path.join(root, 'UserData'),
+    profile: 'packaged'
+  });
+  const first = await service.createFreshWorkspace();
+  const second = await service.createFreshWorkspace();
+  assert.equal(path.basename(first), '新建工作区');
+  assert.equal(path.basename(second), '新建工作区 2');
+  assert.ok(await exists(first));
+  assert.ok(await exists(second));
+});
+
 test('workspace service accepts a .lbsln through the explicit --workspace argument', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-arg-entry-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
@@ -39,7 +82,7 @@ test('workspace seed copies missing files and never overwrites user changes', as
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workspace-seed-'));
   const source = path.join(root, 'seed');
   const documents = path.join(root, 'Documents');
-  const target = path.join(documents, 'LingBuilder', '示例工作区');
+  const target = path.join(documents, 'LingBuilder', '起始工作区');
   await fs.mkdir(path.join(source, 'src'), { recursive: true });
   await fs.writeFile(path.join(source, 'src', 'Main.lcpp'), '初始内容', 'utf8');
 
@@ -116,3 +159,12 @@ test('new workspace windows use an isolated process with an explicit workspace a
   const development = buildWorkspaceWindowLaunch({ packaged: false, executablePath: 'electron.exe', mainEntryPath: 'dist/main.cjs', workspacePath: 'C:\\项目' });
   assert.equal(development.args[0], path.resolve('dist/main.cjs'));
 });
+
+async function exists(filePath: string): Promise<boolean> {
+  try {
+    await fs.stat(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}

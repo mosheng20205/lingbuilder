@@ -108,22 +108,6 @@
     ],
     "extraResources": [
       {
-        "from": "../src",
-        "to": "default-workspace/src"
-      },
-      {
-        "from": "../config",
-        "to": "default-workspace/config"
-      },
-      {
-        "from": "../.lingbuilder/window-designer.json",
-        "to": "default-workspace/.lingbuilder/window-designer.json"
-      },
-      {
-        "from": "../.lingbuilder/project-modules.json",
-        "to": "default-workspace/.lingbuilder/project-modules.json"
-      },
-      {
         "from": "../.lingbuilder/modules",
         "to": "default-workspace/.lingbuilder/modules"
       },

@@ -3226,6 +3226,34 @@ void DisplayStatus() {
     return true;
   };
 
+  const handleCloseCurrentSolution = async (): Promise<boolean> => {
+    const workspaceApi = window.lingBuilder?.workspace;
+    if (!workspaceApi?.closeCurrent) {
+      appendEditorTransactionLog('【关闭解决方案错误】当前运行环境不支持关闭解决方案。');
+      return false;
+    }
+    if (editorOperationRef.current) {
+      appendEditorTransactionLog(`【关闭解决方案】已有${getEditorOperationLabel(editorOperationRef.current)}任务正在进行，请稍后再试。`);
+      return false;
+    }
+    const flushState = await flushCurrentEditorDrafts();
+    if (!flushState.ok) {
+      appendEditorTransactionLog(`【关闭解决方案错误】${flushState.diagnostics[0] || '当前编辑内容无法安全提交。'}`);
+      return false;
+    }
+    if ((flushState.files.some(isEditorFileDirty) || designerDirtyRef.current)
+      && !await handleSaveWorkspace('关闭解决方案前保存')) return false;
+    if (!window.confirm(`确定关闭解决方案“${solution.name}”吗？\n\n工作区文件不会被删除，LingBuilder 将打开一个新的空白工作区。`)) {
+      return false;
+    }
+    const result = await workspaceApi.closeCurrent();
+    if (!result.ok) {
+      appendEditorTransactionLog(`【关闭解决方案错误】${result.error || '无法切换到空白工作区。'}`);
+      return false;
+    }
+    return true;
+  };
+
   useEffect(() => {
     const workspaceApi = window.lingBuilder?.workspace;
     if (!workspaceApi) return;
@@ -3679,6 +3707,7 @@ void DisplayStatus() {
     findInFiles: () => openWorkspaceSearch('search'),
     replaceInFiles: () => openWorkspaceSearch('replace'),
     openWorkspace: handleOpenWorkspace,
+    closeSolution: handleCloseCurrentSolution,
     save: () => handleSaveWorkspace(),
     undo: () => handleToolbarAction('undo'),
     redo: () => handleToolbarAction('redo'),
@@ -3783,6 +3812,17 @@ void DisplayStatus() {
         handler: () => workbenchCommandHandlersRef.current.openWorkspace()
       },
       {
+        id: 'workbench.action.files.closeSolution',
+        title: '关闭当前解决方案',
+        aliases: ['Close Solution', 'Close Workspace'],
+        category: '文件',
+        description: '关闭当前解决方案并打开新的空白工作区，不删除原工作区文件。',
+        when: 'workspace.open && !workbench.modalOpen',
+        enabled: context => !context['operation.saving'] && !context['operation.building'] && !context['operation.busy'],
+        order: 11,
+        handler: () => workbenchCommandHandlersRef.current.closeSolution()
+      },
+      {
         id: 'workbench.action.files.save',
         title: '保存工作区',
         aliases: ['Save', 'Save Workspace'],
@@ -3790,7 +3830,7 @@ void DisplayStatus() {
         keybindings: bindings('workbench.action.files.save', WORKBENCH_DEFAULT_KEYBINDINGS['workbench.action.files.save']),
         when: 'workspace.open && !workbench.modalOpen',
         enabled: context => !context['operation.saving'] && !context['operation.building'] && !context['operation.busy'],
-        order: 11,
+        order: 12,
         handler: () => workbenchCommandHandlersRef.current.save()
       },
       {
@@ -4354,6 +4394,9 @@ void DisplayStatus() {
                   </button>
                   <button onClick={() => { void window.lingBuilder?.workspace?.openNewWindow(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     在新窗口打开工作区…
+                  </button>
+                  <button onClick={() => { void executeWorkbenchCommand('workbench.action.files.closeSolution'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    关闭当前解决方案
                   </button>
                   {recentWorkspaces.length > 0 && <>
                     <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
@@ -5018,6 +5061,7 @@ void DisplayStatus() {
           onConfigureExternalProject={handleConfigureExternalProject}
           onDeleteProject={handleDeleteSolutionProject}
           onSolutionCommand={async (command, projectId) => { await handleSolutionBuildCommand(command, projectId); }}
+          onCloseSolution={() => { void executeWorkbenchCommand('workbench.action.files.closeSolution'); }}
           onOpenSolutionDirectory={handleOpenSolutionDirectory}
           onOpenProjectDirectory={handleOpenProjectDirectory}
           onAddProjectResource={handleAddProjectResource}
@@ -5133,6 +5177,7 @@ void DisplayStatus() {
                       : projectFileLoadState.error || '无法读取项目文件，请重试或切换到其他项目。'}
                   </p>
                   {projectFileEditorAvailability === 'error' && (
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
                     <button
                       type="button"
                       onClick={() => {
@@ -5140,7 +5185,7 @@ void DisplayStatus() {
                         setEditorState(createInactiveTextEditorStatus('loading-project'));
                         setProjectFileReloadToken(token => token + 1);
                       }}
-                      className={`mt-4 inline-flex items-center gap-2 rounded border px-3 py-1.5 text-xs font-medium ${
+                      className={`inline-flex items-center gap-2 rounded border px-3 py-1.5 text-xs font-medium ${
                         isDarkMode
                           ? 'border-blue-500/50 bg-blue-500/10 text-blue-200 hover:bg-blue-500/20'
                           : 'border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100'
@@ -5149,6 +5194,18 @@ void DisplayStatus() {
                       <RefreshCw className="h-3.5 w-3.5" />
                       重试载入
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => void executeWorkbenchCommand('workbench.action.files.closeSolution')}
+                      className={`inline-flex items-center gap-2 rounded border px-3 py-1.5 text-xs font-medium ${
+                        isDarkMode
+                          ? 'border-slate-500/50 bg-slate-500/10 text-slate-200 hover:bg-slate-500/20'
+                          : 'border-slate-300 bg-slate-50 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      关闭此解决方案
+                    </button>
+                    </div>
                   )}
                 </div>
               </div>

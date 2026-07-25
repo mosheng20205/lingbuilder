@@ -63,6 +63,7 @@ export class SolutionService {
     }
 
     const migrated = this.createDefaultSolution();
+    await this.materializeProject(migrated.projects[0], createDesignerProject(DEFAULT_PROJECT_ID, '新建项目'));
     await this.writeSolution(migrated);
     return migrated;
   }
@@ -286,13 +287,13 @@ export class SolutionService {
     return {
       schemaVersion: 2,
       id: DEFAULT_SOLUTION_ID,
-      name: 'UI_CppLocProj',
+      name: '未命名解决方案',
       startupProjectId: DEFAULT_PROJECT_ID,
       startupProjectIds: [DEFAULT_PROJECT_ID],
       projects: [
         {
           id: DEFAULT_PROJECT_ID,
-          name: 'GameClient',
+          name: '新建项目',
           type: 'visual-cpp',
           sourceRoot: 'src',
           configRoot: 'config',

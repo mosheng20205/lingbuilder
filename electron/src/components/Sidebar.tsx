@@ -156,6 +156,7 @@ interface SidebarProps {
   onConfigureExternalProject?: (projectId: string) => void | Promise<void>;
   onDeleteProject?: (projectId: string, deleteFiles: boolean) => void | Promise<void>;
   onSolutionCommand?: (command: 'build' | 'clean' | 'rebuild', projectId?: string) => void | Promise<void>;
+  onCloseSolution?: () => void | Promise<void>;
   onOpenSolutionDirectory?: () => void | Promise<void>;
   onOpenProjectDirectory?: (projectId: string) => void | Promise<void>;
   onAddProjectResource?: (projectId: string) => Promise<DesignerImageImportResult>;
@@ -191,6 +192,7 @@ export default function Sidebar({
   onConfigureExternalProject,
   onDeleteProject,
   onSolutionCommand,
+  onCloseSolution,
   onOpenSolutionDirectory,
   onOpenProjectDirectory,
   onAddProjectResource,
@@ -1035,6 +1037,10 @@ export default function Sidebar({
             <div className={menuItemClass} onClick={() => void onOpenSolutionDirectory?.()}>
               <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
               <span>打开解决方案所在目录</span>
+            </div>
+            <div className={menuItemClass} onClick={() => void onCloseSolution?.()}>
+              <FolderMinus className="w-3.5 h-3.5 text-amber-400" />
+              <span>关闭解决方案</span>
             </div>
             <div className={menuItemClass} onClick={() => void onRefreshSolution?.()}>
               <RotateCcw className="w-3.5 h-3.5 text-slate-400" />

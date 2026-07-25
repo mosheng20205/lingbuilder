@@ -30,6 +30,7 @@ declare global {
         openPath: (targetPath: string, newWindow?: boolean) => Promise<{ ok: boolean; canceled: boolean; workspacePath?: string; error?: string; newWindow?: boolean }>;
         listRecent: () => Promise<string[]>;
         forgetRecent: (workspacePath: string) => Promise<void>;
+        closeCurrent: () => Promise<{ ok: boolean; workspacePath?: string; error?: string }>;
       };
       docs?: {
         openModuleManual: () => Promise<string>;

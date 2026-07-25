@@ -601,6 +601,20 @@ function registerIpcHandlers(): void {
   ipcMain.handle('workspace:get-current', () => activeWorkspace);
   ipcMain.handle('workspace:list-recent', () => workspaceService.listRecentWorkspaces());
   ipcMain.handle('workspace:forget-recent', (_event, workspacePath: string) => workspaceService.forgetWorkspace(workspacePath));
+  ipcMain.handle('workspace:close-current', async () => {
+    if (!app.isPackaged) {
+      return { ok: false, error: '开发模式不能在进程内关闭解决方案，请重新运行 npm run dev。' };
+    }
+    const previousWorkspace = activeWorkspace;
+    try {
+      const freshWorkspace = await workspaceService.createFreshWorkspace();
+      await switchWorkspace(freshWorkspace);
+      await workspaceService.forgetWorkspace(previousWorkspace);
+      return { ok: true, workspacePath: activeWorkspace };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
   ipcMain.handle('workspace:open-path', async (_event, targetPath: string, newWindow = false) => {
     try {
       const workspacePath = await resolveWorkspaceDropTarget(targetPath);
@@ -681,7 +695,8 @@ app.whenReady().then(async () => {
     documentsPath: smokeDocumentsPath || app.getPath('documents'),
     userDataPath: app.getPath('userData'),
     defaultWorkspaceSource: defaultWorkspaceSource(),
-    seedVersion: app.getVersion()
+    seedVersion: app.getVersion(),
+    profile: app.isPackaged ? 'packaged' : 'development'
   });
   activeWorkspace = await workspaceService.resolveInitialWorkspace(
     app.isPackaged ? undefined : (process.env.LINGBUILDER_WORKSPACE_ROOT || repoRoot())

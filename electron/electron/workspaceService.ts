@@ -2,7 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 export interface WorkspaceState {
-  schemaVersion: 2;
+  schemaVersion: 3;
+  profile: 'development' | 'packaged';
   lastWorkspace: string;
   recentWorkspaces: string[];
   window?: { x: number; y: number; width: number; height: number; maximized: boolean };
@@ -14,13 +15,19 @@ export interface DesktopWorkspaceServiceOptions {
   userDataPath: string;
   defaultWorkspaceSource?: string;
   seedVersion?: string;
+  profile?: WorkspaceState['profile'];
 }
 
 export class DesktopWorkspaceService {
   private readonly statePath: string;
+  private readonly profile: WorkspaceState['profile'];
 
   constructor(private readonly options: DesktopWorkspaceServiceOptions) {
-    this.statePath = path.join(options.userDataPath, 'workspace-state.json');
+    this.profile = options.profile || 'development';
+    this.statePath = path.join(
+      options.userDataPath,
+      this.profile === 'packaged' ? 'workspace-state.packaged.json' : 'workspace-state.json'
+    );
   }
 
   async resolveInitialWorkspace(fallbackWorkspace?: string): Promise<string> {
@@ -53,7 +60,8 @@ export class DesktopWorkspaceService {
     await fs.mkdir(path.dirname(this.statePath), { recursive: true });
     const previous = await this.readState();
     await this.writeState({
-      schemaVersion: 2,
+      schemaVersion: 3,
+      profile: this.profile,
       lastWorkspace: resolved,
       recentWorkspaces: [resolved, ...(previous?.recentWorkspaces || []).filter(item => !samePath(item, resolved))].slice(0, 10),
       window: previous?.window
@@ -74,11 +82,33 @@ export class DesktopWorkspaceService {
     const state = await this.readState();
     if (!state) return;
     state.recentWorkspaces = state.recentWorkspaces.filter(item => !samePath(item, workspacePath));
+    if (samePath(state.lastWorkspace, workspacePath)) state.lastWorkspace = '';
     await this.writeState(state);
   }
 
+  async createFreshWorkspace(): Promise<string> {
+    const parent = path.join(this.options.documentsPath, 'LingBuilder');
+    await fs.mkdir(parent, { recursive: true });
+    let suffix = 1;
+    let target = path.join(parent, '新建工作区');
+    while (await pathExists(target)) {
+      suffix += 1;
+      target = path.join(parent, `新建工作区 ${suffix}`);
+    }
+    await fs.mkdir(target, { recursive: true });
+    if (this.options.defaultWorkspaceSource && await isDirectory(this.options.defaultWorkspaceSource)) {
+      await copyMissingFiles(this.options.defaultWorkspaceSource, target);
+    }
+    return target;
+  }
+
   async rememberWindowState(windowState: WorkspaceState['window']): Promise<void> {
-    const state = await this.readState() || { schemaVersion: 2, lastWorkspace: '', recentWorkspaces: [] };
+    const state = await this.readState() || {
+      schemaVersion: 3,
+      profile: this.profile,
+      lastWorkspace: '',
+      recentWorkspaces: []
+    };
     state.window = windowState;
     await this.writeState(state);
   }
@@ -94,7 +124,7 @@ export class DesktopWorkspaceService {
   }
 
   async seedDefaultWorkspace(): Promise<string> {
-    const target = path.join(this.options.documentsPath, 'LingBuilder', '示例工作区');
+    const target = path.join(this.options.documentsPath, 'LingBuilder', '起始工作区');
     await fs.mkdir(target, { recursive: true });
     if (this.options.defaultWorkspaceSource && await isDirectory(this.options.defaultWorkspaceSource)) {
       await copyMissingFiles(this.options.defaultWorkspaceSource, target);
@@ -113,11 +143,18 @@ export class DesktopWorkspaceService {
   private async readState(): Promise<WorkspaceState | undefined> {
     try {
       const parsed = JSON.parse(await fs.readFile(this.statePath, 'utf8')) as {
-        schemaVersion?: number; lastWorkspace?: unknown; recentWorkspaces?: unknown; window?: WorkspaceState['window'];
+        schemaVersion?: number;
+        profile?: unknown;
+        lastWorkspace?: unknown;
+        recentWorkspaces?: unknown;
+        window?: WorkspaceState['window'];
       };
-      if ((parsed.schemaVersion !== 1 && parsed.schemaVersion !== 2) || typeof parsed.lastWorkspace !== 'string') return undefined;
+      if (![1, 2, 3].includes(parsed.schemaVersion || 0) || typeof parsed.lastWorkspace !== 'string') return undefined;
+      if (parsed.schemaVersion === 3 && parsed.profile !== this.profile) return undefined;
+      if (parsed.schemaVersion !== 3 && this.profile !== 'development') return undefined;
       return {
-        schemaVersion: 2,
+        schemaVersion: 3,
+        profile: this.profile,
         lastWorkspace: parsed.lastWorkspace,
         recentWorkspaces: Array.isArray(parsed.recentWorkspaces)
           ? parsed.recentWorkspaces.filter((item: unknown): item is string => typeof item === 'string')

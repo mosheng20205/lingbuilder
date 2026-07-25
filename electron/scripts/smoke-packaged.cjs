@@ -20,7 +20,7 @@ async function main() {
 
   try {
     const first = await launchSmoke('first', documentsRoot, userDataRoot);
-    const expectedWorkspace = path.join(documentsRoot, 'LingBuilder', '示例工作区');
+    const expectedWorkspace = path.join(documentsRoot, 'LingBuilder', '起始工作区');
     assertSmokeResult(first, expectedWorkspace);
 
     const preservedFile = path.join(expectedWorkspace, 'config', 'config.ini');
@@ -30,7 +30,7 @@ async function main() {
     const second = await launchSmoke('second', documentsRoot, userDataRoot);
     assertSmokeResult(second, expectedWorkspace);
     if (await fs.readFile(preservedFile, 'utf8') !== preservedContent) {
-      throw new Error('第二次启动覆盖了用户修改的示例工作区文件。');
+      throw new Error('第二次启动覆盖了用户修改的起始工作区文件。');
     }
 
     await assertNoPackagedProcesses();

@@ -18,9 +18,12 @@ test('solution service creates a default solution for an empty workspace', async
   assert.equal(solution.startupProjectId, DEFAULT_PROJECT_ID);
   assert.equal(solution.projects.length, 1);
   assert.equal(solution.projects[0].id, DEFAULT_PROJECT_ID);
+  assert.equal(solution.name, '未命名解决方案');
+  assert.equal(solution.projects[0].name, '新建项目');
   assert.equal(solution.projects[0].sourceRoot, 'src');
   assert.ok(await exists(path.join(root, '.lingbuilder', 'solution.json')));
-  const entryPath = path.join(root, 'UI_CppLocProj.lbsln');
+  assert.ok(await exists(path.join(root, 'src', 'MainWindow.lcpp')));
+  const entryPath = path.join(root, '未命名解决方案.lbsln');
   assert.ok(await exists(entryPath));
   const entry = JSON.parse(await fs.readFile(entryPath, 'utf8'));
   assert.equal(entry.kind, 'lingbuilder-solution');
@@ -43,12 +46,12 @@ test('solution references persist, dependencies build first, cycles are rejected
   await service.createProject({ name: 'App', projectId: 'app' });
   let solution = await service.updateProject('app', { references: ['core'] });
   assert.deepEqual(service.getBuildOrder(solution, ['app']).map(project => project.id), ['core', 'app']);
-  let entry = JSON.parse(await fs.readFile(path.join(root, 'UI_CppLocProj.lbsln'), 'utf8'));
+  let entry = JSON.parse(await fs.readFile(path.join(root, '未命名解决方案.lbsln'), 'utf8'));
   assert.deepEqual(entry.projects.find((project: { id: string }) => project.id === 'app').references, ['core']);
   await assert.rejects(service.updateProject('core', { references: ['app'] }), /循环/u);
   solution = (await service.deleteProject('core', { deleteFiles: false })).solution;
   assert.deepEqual(solution.projects.find(project => project.id === 'app')?.references, []);
-  entry = JSON.parse(await fs.readFile(path.join(root, 'UI_CppLocProj.lbsln'), 'utf8'));
+  entry = JSON.parse(await fs.readFile(path.join(root, '未命名解决方案.lbsln'), 'utf8'));
   assert.equal(entry.projects.some((project: { id: string }) => project.id === 'core'), false);
 });
 
