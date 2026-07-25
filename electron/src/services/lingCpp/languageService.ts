@@ -9,6 +9,7 @@ import {
 } from './completionCatalog';
 import {
   LingCppAstNode,
+  LingCppClass,
   LingCppCompletionCatalogItem,
   LingCppCompletionContext,
   LingCppCompletionContextKind,
@@ -195,6 +196,7 @@ export function getLingCppSemanticDiagnostics(
   const parsed = parseLingCpp(source);
   const diagnostics = [...parsed.diagnostics, ...getBlockDiagnostics(source)];
   diagnostics.push(...getModuleUsageDiagnostics(source, moduleContext));
+  diagnostics.push(...getVariableDiagnostics(parsed.program.classes, moduleContext));
 
   if (designerProject) {
     getLingCppDesignerBindings(source, designerProject, filePath, moduleContext).forEach(hint => {
@@ -272,7 +274,7 @@ export function getLingCppCompletionItems(
   languageContext = buildLingCppLanguageContext(context.source)
 ): LingCppCompletionItem[] {
   const contextKind = getLingCppCompletionContextKind(context.source, context.line, context.column);
-  const symbolItems = getCurrentSymbolCompletionItems(languageContext);
+  const symbolItems = getCurrentSymbolCompletionItems(languageContext, context.line);
   const designerProject = languageContext.designerProject as LingWindowProject | undefined;
   const windowPlacementItems = getOpenWindowPlacementCompletionItems(context);
   if (windowPlacementItems) {
@@ -367,10 +369,15 @@ function formatLingCppCompletionHover(item: LingCppCompletionItem): string {
   ].filter(Boolean).join('\n\n');
 }
 
-function getCurrentSymbolCompletionItems(languageContext: LingCppLanguageContext): LingCppCompletionCatalogItem[] {
+function getCurrentSymbolCompletionItems(languageContext: LingCppLanguageContext, line: number): LingCppCompletionCatalogItem[] {
+  const activeMethodNode = [
+    ...languageContext.symbolIndex.methods,
+    ...languageContext.symbolIndex.events
+  ].find(node => line >= node.range.startLine && line <= node.range.endLine);
   const nodes = [
     ...languageContext.symbolIndex.classes,
     ...languageContext.symbolIndex.members,
+    ...languageContext.symbolIndex.locals.filter(node => activeMethodNode && node.parentId === activeMethodNode.id),
     ...languageContext.symbolIndex.methods,
     ...languageContext.symbolIndex.events
   ];
@@ -391,7 +398,7 @@ function getCurrentSymbolCompletionItems(languageContext: LingCppLanguageContext
 
 function completionKindForAstNode(node: LingCppAstNode): LingCppCompletionItem['kind'] {
   if (node.kind === 'class') return 'type';
-  if (node.kind === 'member') return 'type';
+  if (node.kind === 'member' || node.kind === 'local') return 'type';
   if (node.kind === 'event') return 'event';
   if (node.kind === 'method' || node.kind === 'constructor' || node.kind === 'destructor') return 'function';
   return 'keyword';
@@ -400,6 +407,7 @@ function completionKindForAstNode(node: LingCppAstNode): LingCppCompletionItem['
 function symbolDetailForAstNode(node: LingCppAstNode): string {
   if (node.kind === 'class') return node.type ? `当前源码类 · 继承 ${node.type}` : '当前源码类';
   if (node.kind === 'member') return `当前成员 · ${node.type || '未标注类型'}`;
+  if (node.kind === 'local') return `当前子程序局部变量 · ${node.type || '未标注类型'}`;
   if (node.kind === 'event') return '当前事件处理器';
   if (node.kind === 'method' || node.kind === 'constructor' || node.kind === 'destructor') return `当前方法 · ${node.returnType || '空'}`;
   return '当前源码符号';
@@ -410,6 +418,7 @@ function hoverTextForAstNode(node: LingCppAstNode): string {
   if (node.kind === 'use') return `使用：${node.name}`;
   if (node.kind === 'class') return node.type ? `类：${node.name}\n基础类：${node.type}` : `类：${node.name}`;
   if (node.kind === 'member') return `成员：${node.name}\n类型：${node.type || '未标注'}\n访问：${node.access || '私有'}`;
+  if (node.kind === 'local') return `局部变量：${node.name}\n类型：${node.type || '未标注'}\n作用域：当前子程序`;
   if (node.kind === 'event') return `事件处理器：${node.name}`;
   if (node.kind === 'constructor') return `构造函数：${node.name}`;
   if (node.kind === 'destructor') return `析构函数：${node.name}`;
@@ -661,6 +670,23 @@ export function getLingCppStructuredReadingRows(
     cls.methods.forEach(method => {
       const block = blockByLine.get(method.line);
       const sourceNote = noteBeforeLine(lines, method.line);
+      (method.locals || []).forEach(local => {
+        rows.push({
+          id: `reading-local-${method.name}-${local.name}-${local.line}`,
+          group: 'local',
+          name: local.name,
+          type: local.type,
+          value: [local.isArray ? '数组' : '', local.initialValue || ''].filter(Boolean).join(' · '),
+          note: `仅在 ${method.name} 内有效`,
+          line: local.line,
+          blockId: block?.id,
+          className: cls.name,
+          methodName: method.name,
+          targetName: local.name,
+          initialValue: local.initialValue,
+          isArray: local.isArray
+        });
+      });
       if (method.kind === 'event') {
         rows.push({
           id: `reading-event-${method.name}-${method.line}`,
@@ -814,6 +840,25 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
       const binding = bindingByHandler.get(normalizeIdentifier(method.name));
       const parameterText = formatParameterList(method.parameters);
       const sourceNote = noteBeforeLine(lines, method.line);
+      (method.locals || []).forEach(local => {
+        rows.push({
+          id: `structured-local-${method.name}-${local.name}-${local.line}`,
+          group: 'local',
+          name: local.name,
+          type: local.type,
+          value: [local.isArray ? '数组' : '', local.initialValue ? `初始值 ${local.initialValue}` : ''].filter(Boolean).join(' · '),
+          note: `局部作用域：${method.name}`,
+          line: local.line,
+          blockId: block?.id,
+          editable: true,
+          editKind: 'local',
+          className: cls.name,
+          methodName: method.name,
+          targetName: local.name,
+          initialValue: local.initialValue,
+          isArray: local.isArray
+        });
+      });
       if (method.kind === 'event') {
         rows.push({
           id: `structured-event-${method.name}-${method.line}`,
@@ -1723,11 +1768,12 @@ function groupOrder(group: LingCppStructuredReadingRow['group']): number {
     package: 0,
     class: 1,
     member: 2,
-    method: 3,
-    constructor: 3,
-    event: 4,
-    parameter: 5,
-    note: 6
+    local: 3,
+    method: 4,
+    constructor: 4,
+    event: 5,
+    parameter: 6,
+    note: 7
   };
   return order[group] ?? 99;
 }
@@ -1953,6 +1999,105 @@ function getBlockDiagnostics(source: string): LingCppDiagnostic[] {
   });
 
   return diagnostics;
+}
+
+function getVariableDiagnostics(classes: LingCppClass[], moduleContext?: LingCppModuleContext): LingCppDiagnostic[] {
+  const diagnostics: LingCppDiagnostic[] = [];
+  classes.forEach(cls => {
+    const memberTypes = new Map(cls.members.map(member => [normalizeIdentifier(member.name), member.type]));
+    cls.methods.forEach(method => {
+      const baseScopeTypes = new Map(memberTypes);
+      method.parameters.forEach(parameter => baseScopeTypes.set(normalizeIdentifier(parameter.name), parameter.type));
+      const orderedLocals = [...(method.locals || [])].sort((left, right) => left.line - right.line);
+      const initializerScopeTypes = new Map(baseScopeTypes);
+      orderedLocals.forEach(local => {
+        if (local.initialValue) {
+          const actualType = inferLingCppExpressionType(local.initialValue, initializerScopeTypes, moduleContext);
+          if (actualType && !areLingCppTypesCompatible(local.type, actualType)) {
+            diagnostics.push({
+              id: `lingcpp-local-initializer-type-${method.name}-${local.name}-${local.line}`,
+              line: local.line,
+              level: 'error',
+              message: `局部变量 ${local.name} 的类型是 ${local.type}，不能使用 ${actualType} 初始化。`,
+              codeSnippet: local.initialValue,
+              suggestion: `请改用 ${local.type} 值，或修改局部变量类型。`
+            });
+          }
+        }
+        initializerScopeTypes.set(normalizeIdentifier(local.name), local.type);
+      });
+
+      method.statements.forEach(statement => {
+        const scopeTypes = new Map(baseScopeTypes);
+        orderedLocals
+          .filter(local => local.line < statement.line)
+          .forEach(local => scopeTypes.set(normalizeIdentifier(local.name), local.type));
+        const assignment = statement.text.trim().match(/^([\w\u4e00-\u9fa5]+)\s*[=＝](?!=)\s*(.+?)\s*;?$/u);
+        if (!assignment) return;
+        const targetName = assignment[1] || '';
+        const targetType = scopeTypes.get(normalizeIdentifier(targetName));
+        if (!targetType) {
+          diagnostics.push({
+            id: `lingcpp-undeclared-variable-${method.name}-${targetName}-${statement.line}`,
+            line: statement.line,
+            level: 'error',
+            message: `变量 ${targetName} 尚未声明。`,
+            codeSnippet: statement.text,
+            suggestion: `请在 ${method.name} 的局部变量表中新增 ${targetName}，或在程序集变量表中声明它。`
+          });
+          return;
+        }
+        const actualType = inferLingCppExpressionType(assignment[2] || '', scopeTypes, moduleContext);
+        if (actualType && !areLingCppTypesCompatible(targetType, actualType)) {
+          diagnostics.push({
+            id: `lingcpp-assignment-type-${method.name}-${targetName}-${statement.line}`,
+            line: statement.line,
+            level: 'error',
+            message: `不能把 ${actualType} 赋值给 ${targetType} 变量 ${targetName}。`,
+            codeSnippet: statement.text,
+            suggestion: `请调整 ${targetName} 的类型或赋值表达式。`
+          });
+        }
+      });
+    });
+  });
+  return diagnostics;
+}
+
+function inferLingCppExpressionType(
+  expression: string,
+  scopeTypes: Map<string, string>,
+  moduleContext?: LingCppModuleContext
+): string | undefined {
+  const value = expression.trim();
+  if (/^(?:L)?["“].*["”]$/su.test(value)) return '文本型';
+  if (/^(真|假)$/u.test(value)) return '逻辑型';
+  if (/^-?\d+$/u.test(value)) return '整数型';
+  if (/^-?\d+\.\d+$/u.test(value)) return '小数型';
+  const identifierType = scopeTypes.get(normalizeIdentifier(value));
+  if (identifierType) return identifierType;
+  const call = value.match(/^([\w\u4e00-\u9fa5]+)\s*[（(]/u);
+  if (!call) return undefined;
+  const commandName = call[1] || '';
+  for (const module of moduleContext?.enabledModules || []) {
+    const contribution = (module.manifest.contributes?.commands || []).find(command => command.name === commandName);
+    if (contribution?.returnType) return contribution.returnType;
+  }
+  return undefined;
+}
+
+function areLingCppTypesCompatible(expected: string, actual: string): boolean {
+  const category = (type: string) => {
+    if (/文本|字符串/u.test(type)) return 'text';
+    if (/字节集/u.test(type)) return 'bytes';
+    if (/逻辑|布尔/u.test(type)) return 'bool';
+    if (/小数|双精度/u.test(type)) return 'decimal';
+    if (/整数|长整数|字节/u.test(type)) return 'integer';
+    return normalizeIdentifier(type);
+  };
+  const expectedCategory = category(expected);
+  const actualCategory = category(actual);
+  return expectedCategory === actualCategory || (expectedCategory === 'decimal' && actualCategory === 'integer');
 }
 
 function getModuleUsageDiagnostics(source: string, moduleContext?: LingCppModuleContext): LingCppDiagnostic[] {

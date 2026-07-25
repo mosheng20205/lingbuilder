@@ -27,6 +27,7 @@ const groupLabel: Record<LingCppStructuredReadingRow['group'], string> = {
   package: '入口',
   class: '类',
   member: '变量',
+  local: '局部变量',
   method: '过程',
   constructor: '初始化',
   event: '事件',

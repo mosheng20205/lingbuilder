@@ -20,3 +20,36 @@ LingBuilder/bin/
 LingBuilder/obj/
 google/
 assets/.aistudio/
+本地磁盘/
+.qoder/
+
+# CEF3 SDK 和模块二进制
+.lingbuilder/cef3-sdk/
+.lingbuilder/module-packages/
+.lingbuilder/module-build/
+.lingbuilder/module-snapshots/
+.lingbuilder/modules/
+
+# Electron 构建产物
+electron/release-final/
+electron/release-20260725/
+
+# 大型媒体和模型文件
+videos/lingbuilder-douyin-promo/renders/
+videos/lingbuilder-douyin-promo/.media/models/
+videos/lingbuilder-douyin-promo/.media/audio/voice-backup-kokoro/
+videos/lingbuilder-douyin-promo/.hyperframes/backup/
+assets/lingbuilder-4/*.mp4
+assets/lingbuilder-4/*.avi
+
+# 导出压缩包
+exports/
+output/
+
+# 生成的大型 zip
+generated/cpp/*/Visual Studio*.zip
+
+# 大型二进制产物
+*.pdb
+main.obj
+vc140.pdb

@@ -47,7 +47,16 @@ export interface LingCppMethod {
   line: number;
   endLine?: number;
   parameters: LingCppParameter[];
+  locals?: LingCppLocalVariable[];
   statements: LingCppStatement[];
+}
+
+export interface LingCppLocalVariable {
+  name: string;
+  type: string;
+  line: number;
+  initialValue?: string;
+  isArray?: boolean;
 }
 
 export interface LingCppParameter {
@@ -81,6 +90,7 @@ export type LingCppAstNodeKind =
   | 'method'
   | 'event'
   | 'parameter'
+  | 'local'
   | 'statement'
   | 'comment'
   | 'designer';
@@ -105,6 +115,7 @@ export interface LingCppSymbolIndex {
   declarations: LingCppAstNode[];
   classes: LingCppAstNode[];
   members: LingCppAstNode[];
+  locals: LingCppAstNode[];
   methods: LingCppAstNode[];
   events: LingCppAstNode[];
   byName: Record<string, LingCppAstNode[]>;
@@ -428,7 +439,7 @@ export type LingCppCompletionContextKind =
 
 export interface LingCppStructuredReadingRow {
   id: string;
-  group: 'declaration' | 'package' | 'class' | 'member' | 'method' | 'constructor' | 'event' | 'parameter' | 'note';
+  group: 'declaration' | 'package' | 'class' | 'member' | 'local' | 'method' | 'constructor' | 'event' | 'parameter' | 'note';
   name: string;
   type?: string;
   value?: string;
@@ -437,8 +448,9 @@ export interface LingCppStructuredReadingRow {
   blockId?: string;
   status?: LingCppDesignerBindingStatus;
   editable?: boolean;
-  editKind?: 'package' | 'class' | 'member' | 'method' | 'event' | 'missing-event' | 'note';
+  editKind?: 'package' | 'class' | 'member' | 'local' | 'method' | 'event' | 'missing-event' | 'note';
   className?: string;
+  methodName?: string;
   targetName?: string;
   access?: LingCppAccessModifier;
   initialValue?: string;
@@ -467,6 +479,9 @@ export type LingCppAstEdit =
   | { kind: 'add-member'; className?: string; member: { name: string; type: string; access?: LingCppAccessModifier; initialValue?: string; isStatic?: boolean; isArray?: boolean; note?: string } }
   | { kind: 'update-member'; className?: string; memberName: string; newName?: string; type?: string; access?: LingCppAccessModifier; initialValue?: string; isStatic?: boolean; isArray?: boolean; note?: string }
   | { kind: 'delete-member'; className?: string; memberName: string }
+  | { kind: 'add-local'; className?: string; methodName: string; local: { name: string; type: string; initialValue?: string; isArray?: boolean } }
+  | { kind: 'update-local'; className?: string; methodName: string; localName: string; newName?: string; type?: string; initialValue?: string; isArray?: boolean }
+  | { kind: 'delete-local'; className?: string; methodName: string; localName: string }
   | { kind: 'add-event'; className?: string; event: { handlerName: string; access?: LingCppAccessModifier; parameters?: LingCppParameter[]; note?: string } }
   | { kind: 'update-event'; className?: string; handlerName: string; newHandlerName?: string; access?: LingCppAccessModifier; parameters?: LingCppParameter[]; note?: string }
   | { kind: 'delete-event'; className?: string; handlerName: string }

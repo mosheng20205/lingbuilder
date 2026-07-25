@@ -1,0 +1,60 @@
+{
+  "projectId": "lingbuilder-ui-project",
+  "files": {
+    "src/MainWindow.lcpp": "类 MainWindow\n    事件 创建完毕()\n        调试输出(\"窗口创建完毕\")\n    结束\n结束类\n",
+    "config/config.ini": "[project]\nname=新建项目\nid=lingbuilder-ui-project\n"
+  },
+  "fileFormats": {
+    "src/MainWindow.lcpp": {
+      "encoding": "utf8",
+      "eol": "lf"
+    },
+    "config/config.ini": {
+      "encoding": "utf8",
+      "eol": "lf"
+    }
+  },
+  "baseVersions": {
+    "src/MainWindow.lcpp": "sha256:10ac9bbc111ffc18dddead44ac9992450ce382640bcfd0100a762df340da304a:105",
+    "config/config.ini": "sha256:b9b91754a70adc33ad4e041ce9d42a2439980bcce60c68488cee0ebc368c7b64:54",
+    ".lingbuilder/window-designer.json": "sha256:51d803ba67fd16062ae31f2ff66f2079d2809d4a152164c2ee1e23563e107dc6:376"
+  },
+  "openTabs": [
+    "src/MainWindow.lcpp"
+  ],
+  "activeFilePath": "src/MainWindow.lcpp",
+  "designerProject": {
+    "id": "lingbuilder-ui-project",
+    "name": "新建项目",
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "MainWindow.xml",
+        "className": "MainWindow",
+        "title": "新建项目主窗口",
+        "width": 900,
+        "height": 560,
+        "background": "#1f2937",
+        "description": "新建项目 默认主窗口",
+        "controls": [],
+        "titleBarBackground": "#2D2D30",
+        "titleBarForeground": "#CBD5E1",
+        "menuBackground": "#ffffff",
+        "menuForeground": "#000000",
+        "menuFontFamily": "Microsoft YaHei UI",
+        "menuFontSize": 11,
+        "menuFontBold": false,
+        "menuFontItalic": false,
+        "menuFontUnderline": false,
+        "cornerStyle": "rounded",
+        "iconStyle": "lingbuilder",
+        "resizable": true,
+        "maximizable": true
+      }
+    ],
+    "schemaVersion": 2,
+    "resources": []
+  },
+  "schemaVersion": 1,
+  "savedAt": "2026-07-25T17:29:51.513Z"
+}

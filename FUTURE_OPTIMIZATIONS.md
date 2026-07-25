@@ -1,5 +1,13 @@
 # LingBuilder 后期优化事项
 
+- 已完成（2026-07-26）：CEF3 内核 SDK 离线模块包（方案 A）落地：新增纯资产载体模块 `lingbuilder.cef3.sdk`（无命令/控件、无需为项目启用），打包脚本 `electron/scripts/generate-cef3-sdk-module.cjs`（`npm run module:cef3-sdk -- --install`）把 CEF 官方包的 `include/Release/Resources` 与预编译 /MD `libcef_dll_wrapper.lib` 打成 `cef3-sdk-x64.lbmod`（实测 184MB，版本号自动读 `cef_version.h`）；`findCef3SdkRoot` 新增候选 `.lingbuilder/modules/lingbuilder.cef3.sdk/sdk` 并从 `layout.buildDir` 反推工作区根目录；`.lbmod` 包上限从 100MB 放宽到 1GB。已验证：正式安装链路（preview→install）通过；挡住其它 SDK 路径后仅凭模块 SDK 全新构建成功且 exe 多进程运行；`tests/modules.test.ts` 34/34。后续：开发者中心/市场 UI 需验证大包上传体验；32 位 SDK 包未制作；内核升级时需用新官方包重新打包。
+
+- 已完成（2026-07-26）：CEF3 浏览器真实运行闭环落地（CEF 150.0.14+chromium-150.0.7871.129 x64）：`cef3-cli-test` 示例 exe 启动后两个 CefBrowser 控件真实渲染百度与必应。本次修复：① `nativeDependencyService.ts` 支持 CEF 官方二进制发行包布局，首次构建自动用 CMake 编译 `libcef_dll_wrapper.lib`；编译前自动把 `project(cef)` patch 为 `project(cef LANGUAGES CXX)`（部分 VS 2022 自带 CMake 3.31 在启用 C 语言时于 `find_program(CMAKE_LINKER)` 阶段 0xC0000409 崩溃，wrapper 纯 C++ 只需 CXX），并传 `-DCEF_RUNTIME_LIBRARY_FLAG=/MD` 对齐 LingBuilder 编译链动态 CRT（CEF 默认 /MT 会链接报 LNK2038），产物目录 `build_wrapper_<架构>_md/`；② 运行时复制清单补全 `v8_context_snapshot.bin`（缺失导致渲染进程无法启动、浏览器白屏）与 GPU/软渲染 DLL（d3dcompiler_47、dxcompiler、dxil、libEGL、libGLESv2、vk_swiftshader、vulkan-1）；③ 生成器 CEF 150 API 适配：`SetAsChild` 改用 `CefRect`、移除已删除的 `CefBrowserSettings.mute_audio`/`user_agent`（静音改为创建后 `GetHost()->SetAudioMuted(true)`，UA 改为全局 `CefSettings.user_agent`）、`friend class LingCefClient` 解决 protected 回调访问、模板反斜杠转义（TS 模板中 C++ `\\` 字面量需写四反斜杠）。后续优化：wrapper 自动编译链路（execFile 直接调 CMake）尚未在干净环境实测首次全自动编译；32 位 minimal 包未验证；F5 IDE 内链路与 VS 导出工程的 CEF3 行为一致性待回归。
+
+- 已修复（2026-07-26）：标准库 C++ 运行时的十六进制字符解析辅助函数 `LB_HexDigit` 移入所有内置运行时片段共享的公共区；项目只启用“编码转换模块”或“JSON 数据模块”、未启用“字节与十六进制模块”时，F5/导出不再因生成代码调用未声明辅助函数而触发 MSVC C3861。新增独立模块组合回归测试，确保辅助函数先定义且只生成一次。
+
+- 已完成（2026-07-25）：新增内置 `CEF3浏览器模块`（模块 ID：`lingbuilder.cef3.browser`），按 v2 manifest 提供设计器控件高级贡献：项目启用后控件工具箱自动新增 `CEF3浏览器 (CefBrowser)` 可视控件，可在任意窗口添加多个实例，属性面板支持打开地址 `url`、缓存目录 `cacheDir`、User-Agent、JavaScript/图片/WebGL 开关、静音与代理模式；18 条 `CEF3_*` 中文命令同时进入 `contributes.commands`、`bindings.commands` 和确定性 C++ 运行时（多实例映射、导航、JS、事件回调、`CefExecuteProcess`/`CefShutdown`、WM_SIZE 自适应）。构建链路从 `CEF3_SDK_ROOT`、工作区 `.lingbuilder/cef3-sdk` 或 `C:\cef3-sdk` 受控发现 CEF3 SDK 并复制头文件、Win32/x64 `.lib` 与 `libcef.dll`/`chrome_elf.dll`/资源；缺少 SDK 时给出中文诊断。后续优化：CEF3 为单进程框架，同一 exe 全部控件共享缓存（以第一个控件 `cacheDir` 作为全局 `cache_path`），每实例会话隔离、下载/权限/新窗口事件和缓存清理列入后续增强；需要会话隔离时建议使用 `lingbuilder.edgeview`。
+
 - 已修复（2026-07-25）：安装版工作区恢复状态与开发版状态分文件保存，首次安装或升级不再继承开发仓库的 `UI_CppLocProj` / `GameClient` 解决方案；安装包默认工作区也不再直接打包仓库根目录的 `src`、`config` 和设计器项目状态，而是在用户文档目录新的“起始工作区”中确定性创建“未命名解决方案 / 新建项目”，避免继续复用旧安装版的“示例工作区”残留。工作台新增“关闭当前解决方案”命令、文件菜单入口、解决方案树右键入口和载入失败页入口；关闭只切换到新的空白工作区并从最近记录移除旧工作区，不删除用户磁盘文件。
 
 - 已完成（2026-07-25）：底部“输出窗口 - 编译与生成”中的本地生成路径支持双击跳转文件资源管理器；`bin` 等目录直接打开，`.sln` 等文件在其所在目录中选中。渲染层只识别日志里的 Windows 本地路径，Electron 主进程会解析真实路径并限制在当前桌面工作区或本地构建服务的可信工作区内；开发模式即使历史桌面工作区与构建服务根目录不同，也不会误报越界。路径不存在、真实越界或打开失败时返回中文提示。
@@ -250,10 +258,11 @@
 
 - 中文代码转 C++ 规则集中在 `src/services/windowDesigner/eplToCppRules.ts`。
 - 当前优先支持事件子程序中的 `信息框`、`调试输出`、确认退出等最小闭环。
+- 已完成（2026-07-26）：`.lcpp` 方法、事件和构造块支持 `局部 类型 名称 [= 初始值]` 及数组局部变量；解析器将局部声明写入方法 AST 和符号索引，语言服务按当前子程序隔离补全，并诊断重复名称、声明前使用、未声明赋值及已知类型不兼容。新手模式按子程序显示可增删改的“局部变量”表，正文结构编辑会保留声明。Win32 生成器会输出程序集成员、局部 C++ 声明和普通赋值，模块命令返回类型及模块贡献 `cppType` 可直接参与赋值生成；`网页_访问_对象` 的 `字节集` 返回值可保存为 `std::vector<unsigned char>`。
 
 ### 后期目标
 
-- 扩展变量、条件、循环、字符串拼接、控件属性读写、窗口打开/关闭等规则。
+- 继续扩展局部块作用域、复合赋值、条件、循环、字符串拼接、控件属性读写、窗口打开/关闭等规则。
 - 输出中间表示 IR，再由 Win32 / Qt / wxWidgets 等后端生成不同 C++ UI 代码。
 - 为每条中文语法规则补充单元测试，保证中文编辑器内容和运行 exe 行为一致。
 

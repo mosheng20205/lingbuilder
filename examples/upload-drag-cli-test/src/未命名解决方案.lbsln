@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "lingbuilder-solution",
+  "name": "未命名解决方案",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "lingbuilder-ui-project",
+  "startupProjectIds": [
+    "lingbuilder-ui-project"
+  ],
+  "projects": [
+    {
+      "id": "lingbuilder-ui-project",
+      "name": "新建项目",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    }
+  ]
+}

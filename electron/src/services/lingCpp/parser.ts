@@ -5,6 +5,7 @@ import {
   LingCppAstNodeKind,
   LingCppClass,
   LingCppDiagnostic,
+  LingCppLocalVariable,
   LingCppMember,
   LingCppMethod,
   LingCppParameter,
@@ -33,7 +34,8 @@ export const LING_CPP_KEYWORDS = [
   '循环',
   '循环结束',
   '结束类',
-  '静态'
+  '静态',
+  '局部'
 ];
 
 export const LING_CPP_COMMANDS = [
@@ -57,6 +59,8 @@ export const LING_CPP_TYPES = [
   '逻辑型',
   '小数型',
   '双精度小数型',
+  '字节集',
+  '对象',
   '窗口',
   '按钮',
   '编辑框',
@@ -74,6 +78,9 @@ const METHOD_RE = new RegExp(
 );
 const MEMBER_RE = new RegExp(
   `^(静态\\s+)?(${LING_CPP_TYPES.map(escapeRegexLiteral).join('|')})\\s+([\\w\\u4e00-\\u9fa5]+)(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.+))?$`
+);
+const LOCAL_RE = new RegExp(
+  `^(?:局部\\s+)?(${LING_CPP_TYPES.map(escapeRegexLiteral).join('|')})\\s+([\\w\\u4e00-\\u9fa5]+)(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.+))?$`
 );
 
 export function parseLingCpp(source: string): LingCppParseResult {
@@ -225,6 +232,7 @@ export function parseLingCpp(source: string): LingCppParseResult {
         kind: methodKind(prefix),
         line: lineNumber,
         parameters: parseParameters(methodMatch[4] || ''),
+        locals: [],
         statements: []
       };
       currentClass.methods.push(method);
@@ -242,6 +250,25 @@ export function parseLingCpp(source: string): LingCppParseResult {
           detail: '参数'
         }), currentMethodNode);
       });
+      return;
+    }
+
+    const localMatch = currentMethod ? trimmed.match(LOCAL_RE) : null;
+    if (localMatch && currentMethod && currentMethodNode) {
+      const local: LingCppLocalVariable = {
+        type: localMatch[1],
+        name: localMatch[2],
+        line: lineNumber,
+        initialValue: localMatch[4]?.trim(),
+        isArray: Boolean(localMatch[3])
+      };
+      (currentMethod.locals ||= []).push(local);
+      pushNode(createAstNode('local', local.name, lineNumber, line, currentMethodNode.id, {
+        type: local.type,
+        value: local.initialValue,
+        isArray: local.isArray,
+        detail: [local.type, local.isArray ? '数组' : '', local.initialValue ? `= ${local.initialValue}` : ''].filter(Boolean).join(' ')
+      }), currentMethodNode);
       return;
     }
 
@@ -295,6 +322,16 @@ export function parseLingCpp(source: string): LingCppParseResult {
     if (!cls.methods.some(method => method.kind === 'constructor')) {
       diagnostics.push(createDiagnostic('info', cls.line, `类 ${cls.name}`, `类 ${cls.name} 未声明构造函数。`, '可添加 `公开: 构造()` 初始化窗口状态。'));
     }
+    cls.methods.forEach(method => {
+      const declaredNames = new Set(method.parameters.map(parameter => normalizeIdentifier(parameter.name)));
+      (method.locals || []).forEach(local => {
+        const normalized = normalizeIdentifier(local.name);
+        if (declaredNames.has(normalized)) {
+          diagnostics.push(createDiagnostic('error', local.line, lines[local.line - 1] || local.name, `局部变量 ${local.name} 与同一子程序中的参数或变量重名。`, '请为局部变量使用唯一名称。'));
+        }
+        declaredNames.add(normalized);
+      });
+    });
   });
 
   const symbolIndex = buildLingCppSymbolIndex(astNodes);
@@ -336,6 +373,7 @@ export function buildLingCppSymbolIndex(nodes: LingCppAstNode[]): LingCppSymbolI
     declarations: [],
     classes: [],
     members: [],
+    locals: [],
     methods: [],
     events: [],
     byName: {},
@@ -346,6 +384,7 @@ export function buildLingCppSymbolIndex(nodes: LingCppAstNode[]): LingCppSymbolI
     if (node.kind === 'package' || node.kind === 'use' || node.kind === 'designer') index.declarations.push(node);
     if (node.kind === 'class') index.classes.push(node);
     if (node.kind === 'member') index.members.push(node);
+    if (node.kind === 'local') index.locals.push(node);
     if (node.kind === 'constructor' || node.kind === 'destructor' || node.kind === 'method') index.methods.push(node);
     if (node.kind === 'event') index.events.push(node);
     const normalizedName = normalizeIdentifier(node.name);

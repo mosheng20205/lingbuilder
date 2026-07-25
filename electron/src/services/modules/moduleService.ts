@@ -25,7 +25,8 @@ const MODULE_SOURCES_FILE = 'module-sources.json';
 const MODULE_HISTORY_FILE = 'module-history.json';
 const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
 const BASIC_MODULE_ID = 'lingbuilder.win32.basic';
-const MAX_PACKAGE_BYTES = 100 * 1024 * 1024;
+// CEF3 内核 SDK 等大型二进制资产模块包可达数百 MB，上限放宽到 1GB。
+const MAX_PACKAGE_BYTES = 1024 * 1024 * 1024;
 
 const previewCache = new Map<string, ModuleInstallPreview>();
 
@@ -135,7 +136,7 @@ export class ModuleService {
     const stat = await fs.stat(normalizedPackagePath);
     const diagnostics: string[] = [];
     if (!stat.isFile()) diagnostics.push('模块包路径不是文件。');
-    if (stat.size > MAX_PACKAGE_BYTES) diagnostics.push('模块包超过 100MB 限制。');
+    if (stat.size > MAX_PACKAGE_BYTES) diagnostics.push('模块包超过 1GB 限制。');
     if (!normalizedPackagePath.toLowerCase().endsWith('.lbmod')) diagnostics.push('模块包扩展名必须是 .lbmod。');
 
     const previewId = `preview-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;

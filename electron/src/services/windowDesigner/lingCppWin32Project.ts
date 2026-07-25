@@ -4,6 +4,7 @@ import { findLingCppMethod, parseLingCpp } from '../lingCpp/parser';
 import {
   LingCppAst,
   LingCppClass,
+  LingCppMember,
   LingCppMethod,
   LingCppNativeSourceMapEntry,
   LingCppParameter,
@@ -541,9 +542,14 @@ function generateMainCpp(
   const builtinLibraryRuntime = builtinLibraryFragments.length > 0
     ? `${BUILTIN_LIBRARY_COMMON_RUNTIME}\n${builtinLibraryFragments.join('\n')}`
     : '';
-  const moduleFeatureDefines = enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview')
-    ? '#ifndef LINGBUILDER_EDGEVIEW_MODULE\n#define LINGBUILDER_EDGEVIEW_MODULE\n#endif'
-    : '';
+  const moduleFeatureDefines = [
+    enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview')
+      ? '#ifndef LINGBUILDER_EDGEVIEW_MODULE\n#define LINGBUILDER_EDGEVIEW_MODULE\n#endif'
+      : '',
+    enabledModules.some(module => module.manifest.id === 'lingbuilder.cef3.browser')
+      ? '#ifndef LINGBUILDER_CEF3_MODULE\n#define LINGBUILDER_CEF3_MODULE\n#endif'
+      : ''
+  ].filter(Boolean).join('\n');
 
   return `#ifndef UNICODE
 #define UNICODE
@@ -591,6 +597,17 @@ ${moduleFeatureDefines}
 #define LINGBUILDER_EDGEVIEW_AVAILABLE 1
 #else
 #define LINGBUILDER_EDGEVIEW_AVAILABLE 0
+#endif
+#if defined(LINGBUILDER_CEF3_MODULE) && __has_include(<include/cef_app.h>)
+#include <include/cef_app.h>
+#include <include/cef_browser.h>
+#include <include/cef_client.h>
+#include <include/cef_command_line.h>
+#include <include/cef_parser.h>
+#include <include/wrapper/cef_helpers.h>
+#define LINGBUILDER_CEF3_AVAILABLE 1
+#else
+#define LINGBUILDER_CEF3_AVAILABLE 0
 #endif
 #include <algorithm>
 #include <array>
@@ -859,6 +876,7 @@ struct WindowSpec {
 
 static constexpr UINT WM_LINGBUILDER_VIDEO_EVENT = WM_APP + 0x4B;
 static constexpr UINT WM_LINGBUILDER_LAYOUT_DATE_PICKER = WM_APP + 0x4C;
+static constexpr UINT WM_LINGBUILDER_THREAD_UI_UPDATE = WM_APP + 0x4D;
 
 class LingVideoPlayerCallback final : public IMFPMediaPlayerCallback {
 public:
@@ -1255,6 +1273,10 @@ static const wchar_t* GENERATED_WINDOW_CLASS = L"LingBuilderChineseCppWindowClas
 
 class LingWindowBase;
 static LingWindowBase* CreateWindowObject(int windowIndex);
+#if LINGBUILDER_CEF3_AVAILABLE
+class LingCefClient;
+CefRefPtr<CefClient> LingCreateCefClient(LingWindowBase* owner, int controlId);
+#endif
 
 ${imageListSpecs}
 ${propertySheetSpecs}
@@ -1800,6 +1822,21 @@ protected:
     std::mutex threadTasksMutex_;
     std::atomic<int> activeThreadTasks_{0};
     std::atomic<int> nextThreadTaskId_{1};
+    struct ThreadUiUpdate { int kind; std::wstring controlName; std::wstring text; };
+    std::vector<ThreadUiUpdate> threadUiQueue_;
+    std::mutex threadUiMutex_;
+    struct BatchProgress {
+        std::atomic<int> completed{0};
+        std::atomic<int> threadsDone{0};
+        int totalTasks = 0;
+        int totalThreads = 0;
+        int lastLvSample = 0;
+        std::wstring lvName;
+        std::wstring logName;
+        std::wstring stName;
+        bool active = false;
+    };
+    std::unique_ptr<BatchProgress> batchProgress_;
     struct EdgeViewInstance {
         int id = 0;
         HWND host = nullptr;
@@ -1821,7 +1858,35 @@ protected:
     std::map<int, std::unique_ptr<EdgeViewInstance>> edgeViews_;
     std::wstring edgeViewGlobalProxy_;
 
-    virtual void OnWindowCreated() { DispatchWindowEvent(L"Loaded"); }
+    struct CefBrowserInstance {
+        int controlId = 0;
+        HWND host = nullptr;
+        std::wstring url;
+        std::wstring cacheDirectory;
+        std::wstring proxyServer;
+        std::wstring userAgent;
+        std::wstring lastEvent;
+        std::wstring lastEventData;
+        std::wstring currentTitle;
+        std::wstring currentUrl;
+        bool enableJs = true;
+        bool enableDevTools = true;
+        bool loadImages = true;
+        bool enableWebGL = false;
+        bool muteAudio = false;
+        bool created = false;
+        bool canGoBack = false;
+        bool canGoForward = false;
+        bool isLoading = false;
+        std::map<std::wstring, std::wstring> handlers;
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefRefPtr<CefBrowser> browser;
+#endif
+    };
+    std::map<int, std::unique_ptr<CefBrowserInstance>> cefBrowsers_;
+    bool cefInitialized_ = false;
+
+    virtual void OnWindowCreated() { CEF3_创建(nullptr); DispatchWindowEvent(L"Loaded"); }
     virtual void DispatchWindowEvent(const wchar_t* eventName) {
         std::wstring handler = GetWindowEventHandler(spec_, eventName);
         if (handler.empty()) return;
@@ -2501,6 +2566,364 @@ protected:
     void EdgeView_调整全部大小() {}
 #endif
 
+    // ================= CEF3 浏览器模块运行时 =================
+    CefBrowserInstance* CEF3_查找实例(const wchar_t* controlName) {
+        if (!controlName) return nullptr;
+        for (auto& item : cefBrowsers_) {
+            const ControlSpec* control = FindControl(item.second->controlId);
+            if (control && TextEquals(control->name, controlName)) return item.second.get();
+        }
+        return nullptr;
+    }
+
+    CefBrowserInstance* CEF3_确保实例(int controlId) {
+        auto found = cefBrowsers_.find(controlId);
+        if (found != cefBrowsers_.end()) return found->second.get();
+        auto instance = std::make_unique<CefBrowserInstance>();
+        instance->controlId = controlId;
+        CefBrowserInstance* raw = instance.get();
+        cefBrowsers_[controlId] = std::move(instance);
+        return raw;
+    }
+
+    int CEF3_初始化() {
+#if LINGBUILDER_CEF3_AVAILABLE
+        if (cefInitialized_) return 1;
+        wchar_t modulePath[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
+        std::wstring resourcesDir = modulePath;
+        size_t lastSlash = resourcesDir.find_last_of(L"\\\\/");
+        if (lastSlash != std::wstring::npos) resourcesDir = resourcesDir.substr(0, lastSlash);
+        std::wstring cachePath;
+        for (int i = 0; i < spec_.controlCount && cachePath.empty(); ++i) {
+            const ControlSpec& control = spec_.controls[i];
+            if (!IsType(control, L"CefBrowser") || !control.data2 || !control.data2[0]) continue;
+            auto records = DecodeControlRecords(control.data2, 4);
+            if (!records.empty() && !records[0].empty() && !records[0][0].empty()) cachePath = records[0][0];
+        }
+        if (cachePath.empty()) cachePath = L".cef3\\\\cache";
+        wchar_t absoluteCache[MAX_PATH] = {};
+        if (GetFullPathNameW(cachePath.c_str(), MAX_PATH, absoluteCache, nullptr) > 0) cachePath = absoluteCache;
+        CreateDirectoryW(cachePath.c_str(), nullptr);
+        std::wstring globalUserAgent;
+        for (int i = 0; i < spec_.controlCount && globalUserAgent.empty(); ++i) {
+            const ControlSpec& control = spec_.controls[i];
+            if (!IsType(control, L"CefBrowser") || !control.data2 || !control.data2[0]) continue;
+            auto records = DecodeControlRecords(control.data2, 4);
+            if (!records.empty() && records[0].size() > 1 && !records[0][1].empty()) globalUserAgent = records[0][1];
+        }
+        CefMainArgs mainArgs(GetModuleHandleW(nullptr));
+        CefSettings settings = {};
+        settings.size = sizeof(settings);
+        settings.no_sandbox = true;
+        settings.multi_threaded_message_loop = true;
+        settings.windowless_rendering_enabled = false;
+        CefString(&settings.cache_path).FromWString(cachePath);
+        CefString(&settings.resources_dir_path).FromWString(resourcesDir);
+        CefString(&settings.locales_dir_path).FromWString(resourcesDir + L"\\\\locales");
+        if (!globalUserAgent.empty()) CefString(&settings.user_agent).FromWString(globalUserAgent);
+        CefString(&settings.browser_subprocess_path).FromWString(std::wstring(modulePath));
+        cefInitialized_ = CefInitialize(mainArgs, settings, nullptr, nullptr);
+        if (!cefInitialized_) 调试输出(L"CEF3 初始化失败：请确认 exe 同目录存在 libcef.dll 和资源文件。");
+        return cefInitialized_ ? 1 : 0;
+#else
+        调试输出(L"CEF3 不可用：构建环境缺少 CEF3 SDK 头文件，请恢复 Chromium Embedded Framework SDK。");
+        return 0;
+#endif
+    }
+
+    int CEF3_创建(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        if (!CEF3_初始化()) return 0;
+        int created = 0;
+        for (int i = 0; i < spec_.controlCount; ++i) {
+            const ControlSpec& control = spec_.controls[i];
+            if (!IsType(control, L"CefBrowser")) continue;
+            if (controlName && controlName[0] && !TextEquals(control.name, controlName)) continue;
+            if (CEF3_创建单个(control)) ++created;
+        }
+        return created > 0 ? 1 : 0;
+#else
+        (void)controlName;
+        调试输出(L"CEF3 不可用：构建环境缺少 CEF3 SDK。");
+        return 0;
+#endif
+    }
+
+#if LINGBUILDER_CEF3_AVAILABLE
+    int CEF3_创建单个(const ControlSpec& control) {
+        RuntimeControl* runtime = FindRuntimeControl(control.id);
+        if (!runtime || !runtime->hwnd || !IsWindow(runtime->hwnd)) return 0;
+        CefBrowserInstance* instance = CEF3_确保实例(control.id);
+        if (instance->created && instance->browser) return 1;
+        instance->host = runtime->hwnd;
+        if (instance->url.empty() && control.data && control.data[0]) instance->url = control.data;
+        RECT bounds = {};
+        GetClientRect(instance->host, &bounds);
+        CefRect cefBounds(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
+        CefWindowInfo windowInfo = {};
+        windowInfo.SetAsChild(instance->host, cefBounds);
+        CefBrowserSettings browserSettings = {};
+        browserSettings.size = sizeof(browserSettings);
+        if (!instance->enableJs) browserSettings.javascript = STATE_DISABLED;
+        if (!instance->loadImages) browserSettings.image_loading = STATE_DISABLED;
+        if (!instance->enableWebGL) browserSettings.webgl = STATE_DISABLED;
+        CefRefPtr<CefClient> client = LingCreateCefClient(this, control.id);
+        std::wstring url = instance->url.empty() ? L"about:blank" : instance->url;
+        instance->currentUrl = url;
+        instance->created = true;
+        bool requested = CefBrowserHost::CreateBrowser(windowInfo, client, url, browserSettings, nullptr, nullptr);
+        if (!requested) { 调试输出(L"CEF3 创建浏览器请求失败。"); instance->created = false; return 0; }
+        return 1;
+    }
+#else
+    int CEF3_创建单个(const ControlSpec&) { return 0; }
+#endif
+
+    int CEF3_导航(const wchar_t* controlName, const wchar_t* address) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance) { 调试输出(L"CEF3 导航失败：找不到浏览器控件。"); return 0; }
+        if (!instance->created || !instance->browser) {
+            const ControlSpec* control = FindControl(instance->controlId);
+            if (control) { instance->url = address ? address : L""; return CEF3_创建单个(*control); }
+            return 0;
+        }
+        if (!address || !address[0]) return 0;
+        instance->browser->GetMainFrame()->LoadURL(address);
+        instance->currentUrl = address;
+        return 1;
+#else
+        (void)controlName; (void)address; return 0;
+#endif
+    }
+
+    std::wstring CEF3_执行JS(const wchar_t* controlName, const wchar_t* script) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance || !instance->created || !instance->browser || !script) return L"";
+        std::wstring wrapped = L"(function(){ try { var __r = (";
+        wrapped += script;
+        wrapped += L"); return (__r === undefined ? '' : String(__r)); } catch(e) { return 'JS错误: ' + e.message; } })();";
+        instance->browser->GetMainFrame()->ExecuteJavaScript(wrapped, instance->currentUrl, 0);
+        return L"";
+#else
+        (void)controlName; (void)script; return L"";
+#endif
+    }
+
+    int CEF3_后退(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance || !instance->browser || !instance->browser->CanGoBack()) return 0;
+        instance->browser->GoBack(); return 1;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_前进(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance || !instance->browser || !instance->browser->CanGoForward()) return 0;
+        instance->browser->GoForward(); return 1;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    void CEF3_刷新(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (instance && instance->browser) instance->browser->Reload();
+#else
+        (void)controlName;
+#endif
+    }
+
+    void CEF3_停止(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (instance && instance->browser) instance->browser->StopLoad();
+#else
+        (void)controlName;
+#endif
+    }
+
+    std::wstring CEF3_取标题(const wchar_t* controlName) {
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance ? instance->currentTitle : L"";
+    }
+
+    std::wstring CEF3_取地址(const wchar_t* controlName) {
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance ? instance->currentUrl : L"";
+    }
+
+    int CEF3_设置缓存目录(const wchar_t* controlName, const wchar_t* directory) {
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance) return 0;
+        if (instance->created) { 调试输出(L"CEF3 设置缓存目录需在创建前调用。"); return 0; }
+        instance->cacheDirectory = directory ? directory : L"";
+        return 1;
+    }
+
+    int CEF3_设置代理(const wchar_t* controlName, const wchar_t* proxy) {
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance) return 0;
+        if (instance->created) { 调试输出(L"CEF3 设置代理需在创建前调用。"); return 0; }
+        instance->proxyServer = proxy ? proxy : L"";
+        return 1;
+    }
+
+    void CEF3_关闭(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        for (auto it = cefBrowsers_.begin(); it != cefBrowsers_.end();) {
+            const ControlSpec* control = FindControl(it->second->controlId);
+            bool match = !controlName || !controlName[0] || (control && TextEquals(control->name, controlName));
+            if (match) {
+                if (it->second->browser) it->second->browser->GetHost()->CloseBrowser(true);
+                it = cefBrowsers_.erase(it);
+            } else ++it;
+        }
+#else
+        (void)controlName;
+#endif
+    }
+
+    std::wstring CEF3_取最近事件(const wchar_t* controlName) {
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance ? instance->lastEvent : L"";
+    }
+
+    std::wstring CEF3_取事件数据(const wchar_t* controlName) {
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance ? instance->lastEventData : L"";
+    }
+
+    int CEF3_绑定事件(const wchar_t* controlName, const wchar_t* eventName, const wchar_t* handler) {
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance || !eventName || !handler) return 0;
+        instance->handlers[eventName] = handler;
+        return 1;
+    }
+
+    int CEF3_是否可后退(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance && instance->browser && instance->browser->CanGoBack() ? 1 : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_是否可前进(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance && instance->browser && instance->browser->CanGoForward() ? 1 : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3_是否加载中(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance && instance->browser && instance->browser->IsLoading() ? 1 : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    void CEF3_记录事件(CefBrowserInstance& instance, const wchar_t* name, const wchar_t* data) {
+        instance.lastEvent = name ? name : L"";
+        instance.lastEventData = data ? data : L"";
+        auto handler = instance.handlers.find(instance.lastEvent);
+        if (handler != instance.handlers.end()) DispatchCefBrowserEvent(handler->second.c_str(), instance.controlId, instance.lastEvent.c_str(), instance.lastEventData.c_str());
+    }
+
+    virtual void DispatchCefBrowserEvent(const wchar_t* handler, int controlId, const wchar_t* eventName, const wchar_t* data) {
+        std::wstring message = L"CEF3 事件未绑定到中文处理器：";
+        message += handler ? handler : L"";
+        message += L" / ";
+        message += eventName ? eventName : L"";
+        调试输出(message.c_str());
+        (void)controlId; (void)data;
+    }
+
+    void CEF3_调整全部大小() {
+#if LINGBUILDER_CEF3_AVAILABLE
+        for (auto& item : cefBrowsers_) {
+            if (!item.second->created || !item.second->host) continue;
+            RECT bounds = {};
+            GetClientRect(item.second->host, &bounds);
+            HWND browserHwnd = item.second->browser ? item.second->browser->GetHost()->GetWindowHandle() : nullptr;
+            if (browserHwnd && IsWindow(browserHwnd)) SetWindowPos(browserHwnd, nullptr, 0, 0, bounds.right, bounds.bottom, SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+#endif
+    }
+
+    void CEF3_关闭全部() {
+#if LINGBUILDER_CEF3_AVAILABLE
+        for (auto& item : cefBrowsers_) {
+            if (item.second->browser) item.second->browser->GetHost()->CloseBrowser(true);
+        }
+        cefBrowsers_.clear();
+#endif
+    }
+
+#if LINGBUILDER_CEF3_AVAILABLE
+    friend class LingCefClient;
+#endif
+    void CEF3_通知加载状态(int controlId, bool isLoading, bool canGoBack, bool canGoForward) {
+        auto found = cefBrowsers_.find(controlId);
+        if (found == cefBrowsers_.end()) return;
+        CefBrowserInstance& instance = *found->second;
+        bool wasLoading = instance.isLoading;
+        instance.isLoading = isLoading;
+        instance.canGoBack = canGoBack;
+        instance.canGoForward = canGoForward;
+        if (isLoading && !wasLoading) CEF3_记录事件(instance, L"开始加载", instance.currentUrl.c_str());
+    }
+
+    void CEF3_通知加载完成(int controlId, bool success, const wchar_t* url) {
+        auto found = cefBrowsers_.find(controlId);
+        if (found == cefBrowsers_.end()) return;
+        CefBrowserInstance& instance = *found->second;
+        if (url && url[0]) instance.currentUrl = url;
+        CEF3_记录事件(instance, success ? L"加载完成" : L"加载失败", instance.currentUrl.c_str());
+    }
+
+    void CEF3_通知标题(int controlId, const wchar_t* title) {
+        auto found = cefBrowsers_.find(controlId);
+        if (found == cefBrowsers_.end()) return;
+        CefBrowserInstance& instance = *found->second;
+        instance.currentTitle = title ? title : L"";
+        CEF3_记录事件(instance, L"标题被改变", instance.currentTitle.c_str());
+    }
+
+    void CEF3_通知地址(int controlId, const wchar_t* url) {
+        auto found = cefBrowsers_.find(controlId);
+        if (found == cefBrowsers_.end()) return;
+        CefBrowserInstance& instance = *found->second;
+        instance.currentUrl = url ? url : L"";
+        CEF3_记录事件(instance, L"地址被改变", instance.currentUrl.c_str());
+    }
+
+    void CEF3_通知关闭(int controlId) {
+        cefBrowsers_.erase(controlId);
+    }
+
+#if LINGBUILDER_CEF3_AVAILABLE
+    void CEF3_通知已创建(int controlId, CefRefPtr<CefBrowser> browser) {
+        auto found = cefBrowsers_.find(controlId);
+        if (found == cefBrowsers_.end()) return;
+        found->second->browser = browser;
+        if (found->second->muteAudio && browser && browser->GetHost()) browser->GetHost()->SetAudioMuted(true);
+        CEF3_调整全部大小();
+    }
+#endif
+
     std::wstring 选择系统项目(const wchar_t* title, const wchar_t* filter, bool save, bool folder) {
         lastDialogStatus_ = -1;
         IFileDialog* dialog = nullptr;
@@ -2979,6 +3402,104 @@ protected:
 
     void 线程_休眠(int milliseconds) {
         std::this_thread::sleep_for(std::chrono::milliseconds((std::max)(0, milliseconds)));
+    }
+
+    int 线程_启动延时设置文本(const wchar_t* controlName, const wchar_t* text, int delayMs) {
+        const int taskId = nextThreadTaskId_.fetch_add(1);
+        const std::wstring name = controlName ? controlName : L"";
+        const std::wstring content = text ? text : L"";
+        const int safeDelayMs = (std::max)(0, delayMs);
+        activeThreadTasks_.fetch_add(1);
+        try {
+            std::lock_guard<std::mutex> lock(threadTasksMutex_);
+            threadTasks_.emplace_back([this, name, content, safeDelayMs]() {
+                std::this_thread::sleep_for(std::chrono::milliseconds(safeDelayMs));
+                { std::lock_guard<std::mutex> uiLock(threadUiMutex_); threadUiQueue_.push_back({ 0, name, content }); }
+                if (hwnd_) PostMessageW(hwnd_, WM_LINGBUILDER_THREAD_UI_UPDATE, 0, 0);
+                activeThreadTasks_.fetch_sub(1);
+            });
+        } catch (...) { activeThreadTasks_.fetch_sub(1); return 0; }
+        return taskId;
+    }
+
+    int 线程_启动延时添加行(const wchar_t* controlName, const wchar_t* tabSeparatedCells, int delayMs) {
+        const int taskId = nextThreadTaskId_.fetch_add(1);
+        const std::wstring name = controlName ? controlName : L"";
+        const std::wstring content = tabSeparatedCells ? tabSeparatedCells : L"";
+        const int safeDelayMs = (std::max)(0, delayMs);
+        activeThreadTasks_.fetch_add(1);
+        try {
+            std::lock_guard<std::mutex> lock(threadTasksMutex_);
+            threadTasks_.emplace_back([this, name, content, safeDelayMs]() {
+                std::this_thread::sleep_for(std::chrono::milliseconds(safeDelayMs));
+                { std::lock_guard<std::mutex> uiLock(threadUiMutex_); threadUiQueue_.push_back({ 1, name, content }); }
+                if (hwnd_) PostMessageW(hwnd_, WM_LINGBUILDER_THREAD_UI_UPDATE, 0, 0);
+                activeThreadTasks_.fetch_sub(1);
+            });
+        } catch (...) { activeThreadTasks_.fetch_sub(1); return 0; }
+        return taskId;
+    }
+
+    int 线程_启动延时添加项目(const wchar_t* controlName, const wchar_t* text, int delayMs) {
+        const int taskId = nextThreadTaskId_.fetch_add(1);
+        const std::wstring name = controlName ? controlName : L"";
+        const std::wstring content = text ? text : L"";
+        const int safeDelayMs = (std::max)(0, delayMs);
+        activeThreadTasks_.fetch_add(1);
+        try {
+            std::lock_guard<std::mutex> lock(threadTasksMutex_);
+            threadTasks_.emplace_back([this, name, content, safeDelayMs]() {
+                std::this_thread::sleep_for(std::chrono::milliseconds(safeDelayMs));
+                { std::lock_guard<std::mutex> uiLock(threadUiMutex_); threadUiQueue_.push_back({ 2, name, content }); }
+                if (hwnd_) PostMessageW(hwnd_, WM_LINGBUILDER_THREAD_UI_UPDATE, 0, 0);
+                activeThreadTasks_.fetch_sub(1);
+            });
+        } catch (...) { activeThreadTasks_.fetch_sub(1); return 0; }
+        return taskId;
+    }
+
+    void 线程_批量启动(const wchar_t* taskCountControl, const wchar_t* threadCountControl, const wchar_t* listViewName, const wchar_t* logListName, const wchar_t* statusLabelName) {
+        int taskCount = 20;
+        int threadCount = 4;
+        std::wstring taskText = 控件_取文本(taskCountControl);
+        std::wstring threadText = 控件_取文本(threadCountControl);
+        if (!taskText.empty()) { int parsed = _wtoi(taskText.c_str()); if (parsed > 0) taskCount = parsed; }
+        if (!threadText.empty()) { int parsed = _wtoi(threadText.c_str()); if (parsed > 0) threadCount = parsed; }
+        if (taskCount > 100000) taskCount = 100000;
+        if (threadCount > 64) threadCount = 64;
+        batchProgress_ = std::make_unique<BatchProgress>();
+        batchProgress_->totalTasks = taskCount;
+        batchProgress_->totalThreads = threadCount;
+        batchProgress_->lvName = listViewName ? listViewName : L"";
+        batchProgress_->logName = logListName ? logListName : L"";
+        batchProgress_->stName = statusLabelName ? statusLabelName : L"";
+        batchProgress_->active = true;
+        batchProgress_->completed.store(0);
+        batchProgress_->threadsDone.store(0);
+        batchProgress_->lastLvSample = 0;
+        控件_添加项目(batchProgress_->logName.c_str(), (L"[配置] 任务数=" + std::to_wstring(taskCount) + L" 线程数=" + std::to_wstring(threadCount)).c_str());
+        if (hwnd_) SetTimer(hwnd_, 0x4C44, 80, nullptr);
+        const int totalTasks = taskCount;
+        const int totalThreads = threadCount;
+        const int tasksPerThread = (totalTasks + totalThreads - 1) / totalThreads;
+        for (int t = 0; t < totalThreads; ++t) {
+            const int threadIndex = t + 1;
+            const int startTask = t * tasksPerThread + 1;
+            const int endTask = (std::min)((t + 1) * tasksPerThread, totalTasks);
+            if (startTask > totalTasks) break;
+            activeThreadTasks_.fetch_add(1);
+            try {
+                std::lock_guard<std::mutex> lock(threadTasksMutex_);
+                threadTasks_.emplace_back([this, threadIndex, startTask, endTask]() {
+                    for (int i = startTask; i <= endTask; ++i) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(1 + (i * 7 + threadIndex * 13) % 5));
+                        batchProgress_->completed.fetch_add(1);
+                    }
+                    batchProgress_->threadsDone.fetch_add(1);
+                    activeThreadTasks_.fetch_sub(1);
+                });
+            } catch (...) { activeThreadTasks_.fetch_sub(1); batchProgress_->threadsDone.fetch_add(1); }
+        }
     }
 
     int WS_连接(const wchar_t* url) {
@@ -6792,6 +7313,24 @@ private:
             SetWindowPos(child, nullptr, childX, childY, childWidth, childHeight, SWP_NOZORDER | SWP_NOACTIVATE);
         } else if ((IsType(control, L"Animation") || IsType(control, L"VideoPlayer")) && control.data && control.data[0]) {
             InitializeVideoPlayer(runtimeControls_.back(), control, control.data, (control.flags & CF_AUTO_PLAY) != 0);
+        } else if (IsType(control, L"CefBrowser")) {
+            CefBrowserInstance* instance = CEF3_确保实例(control.id);
+            instance->host = child;
+            if (control.data && control.data[0]) instance->url = control.data;
+            if (control.data2 && control.data2[0]) {
+                auto records = DecodeControlRecords(control.data2, 4);
+                if (!records.empty()) {
+                    const auto& fields = records[0];
+                    if (fields.size() > 0 && !fields[0].empty()) instance->cacheDirectory = fields[0];
+                    if (fields.size() > 1 && !fields[1].empty()) instance->userAgent = fields[1];
+                    if (fields.size() > 3 && !fields[3].empty() && fields[2] == L"custom") instance->proxyServer = fields[3];
+                }
+            }
+            instance->enableJs = (control.value & 1) != 0;
+            instance->loadImages = (control.value & 2) != 0;
+            instance->enableWebGL = (control.value & 4) != 0;
+            instance->muteAudio = (control.value & 8) != 0;
+            instance->enableDevTools = (control.value & 16) != 0;
         }
         return true;
     }
@@ -6864,6 +7403,16 @@ private:
             return 0;
         }
         switch (message) {
+        case WM_LINGBUILDER_THREAD_UI_UPDATE: {
+            std::vector<ThreadUiUpdate> updates;
+            { std::lock_guard<std::mutex> uiLock(threadUiMutex_); updates.swap(threadUiQueue_); }
+            for (auto& update : updates) {
+                if (update.kind == 0) 控件_设置文本(update.controlName.c_str(), update.text);
+                else if (update.kind == 1) 列表视图_添加行(update.controlName.c_str(), update.text.c_str());
+                else if (update.kind == 2) 控件_添加项目(update.controlName.c_str(), update.text.c_str());
+            }
+            return 0;
+        }
         case WM_LINGBUILDER_LAYOUT_DATE_PICKER: {
             const ControlSpec* control = FindControl(static_cast<int>(wParam));
             RuntimeControl* runtime = control ? FindRuntimeControl(control->id) : nullptr;
@@ -6969,6 +7518,7 @@ private:
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
             EdgeView_调整全部大小();
 #endif
+            CEF3_调整全部大小();
             {
                 int nextWidth = static_cast<int>(LOWORD(lParam));
                 int nextHeight = static_cast<int>(HIWORD(lParam));
@@ -7014,6 +7564,7 @@ private:
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
             EdgeView_调整全部大小();
 #endif
+            CEF3_调整全部大小();
             DispatchWindowEvent(L"DpiChanged");
             return 0;
         }
@@ -7049,6 +7600,42 @@ private:
             break;
         case WM_TIMER:
             if (AdvanceAnimatedImage(static_cast<UINT_PTR>(wParam))) return 0;
+            if (wParam == 0x4C44) {
+                if (!batchProgress_ || !batchProgress_->active) { KillTimer(hwnd_, 0x4C44); return 0; }
+                const int completed = batchProgress_->completed.load();
+                const int threadsDone = batchProgress_->threadsDone.load();
+                const int totalTasks = batchProgress_->totalTasks;
+                const int totalThreads = batchProgress_->totalThreads;
+                std::wstring status = L"进度：" + std::to_wstring(completed) + L"/" + std::to_wstring(totalTasks) + L"  线程完成：" + std::to_wstring(threadsDone) + L"/" + std::to_wstring(totalThreads);
+                控件_设置文本(batchProgress_->stName.c_str(), status);
+                const int sampleInterval = (std::max)(1, totalTasks / 200);
+                int lastSample = batchProgress_->lastLvSample;
+                int nextSample = (completed / sampleInterval) * sampleInterval;
+                if (nextSample > lastSample) {
+                    static const wchar_t* taskTypes[] = { L"数据采集", L"文件读取", L"网络请求", L"缓存写入", L"日志归档", L"数据解析", L"图片下载", L"压缩打包", L"索引构建", L"消息推送" };
+                    RuntimeControl* rc = FindRuntimeControlByName(batchProgress_->lvName.c_str());
+                    HWND lvHwnd = rc ? rc->hwnd : nullptr;
+                    if (lvHwnd) SendMessageW(lvHwnd, WM_SETREDRAW, FALSE, 0);
+                    for (int s = lastSample + sampleInterval; s <= nextSample && s <= totalTasks; s += sampleInterval) {
+                        int threadIdx = (s * totalThreads / totalTasks) + 1;
+                        const wchar_t* taskType = taskTypes[s % 10];
+                        std::wstring row = L"任务" + std::to_wstring(s) + L"\t线程" + std::to_wstring(threadIdx) + L"\t" + taskType + L"\t完成";
+                        列表视图_添加行(batchProgress_->lvName.c_str(), row.c_str());
+                    }
+                    if (lvHwnd) { SendMessageW(lvHwnd, WM_SETREDRAW, TRUE, 0); InvalidateRect(lvHwnd, nullptr, TRUE); }
+                    batchProgress_->lastLvSample = nextSample;
+                    std::wstring log = L"[进度] 已完成 " + std::to_wstring(completed) + L"/" + std::to_wstring(totalTasks) + L" (" + std::to_wstring(completed * 100 / totalTasks) + L"%)";
+                    控件_添加项目(batchProgress_->logName.c_str(), log.c_str());
+                }
+                if (threadsDone >= totalThreads && completed >= totalTasks) {
+                    控件_设置文本(batchProgress_->stName.c_str(), (L"全部 " + std::to_wstring(totalTasks) + L" 个任务完成！" + std::to_wstring(totalThreads) + L" 个线程已安全回收").c_str());
+                    控件_添加项目(batchProgress_->logName.c_str(), (L"[完成] " + std::to_wstring(totalTasks) + L"个任务全部完成，" + std::to_wstring(totalThreads) + L"个线程已安全回收").c_str());
+                    列表视图_添加行(batchProgress_->lvName.c_str(), (L"汇总\t全部线程\t" + std::to_wstring(totalTasks) + L"个任务\t已完成").c_str());
+                    batchProgress_->active = false;
+                    KillTimer(hwnd_, 0x4C44);
+                }
+                return 0;
+            }
             if (wParam == 0x4C42) {
                 KillTimer(hwnd_, 0x4C42);
                 SetWindowPos(hwnd_, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
@@ -7253,6 +7840,7 @@ private:
                 closedDispatched_ = true;
                 DispatchWindowEvent(L"Closed");
             }
+            CEF3_关闭全部();
             DestroyControls();
             DestroyWindowIcons();
             if (windowBrush_) {
@@ -7294,6 +7882,62 @@ public:
     }
 };
 
+#if LINGBUILDER_CEF3_AVAILABLE
+class LingCefClient final : public CefClient, public CefLoadHandler, public CefDisplayHandler, public CefLifeSpanHandler {
+public:
+    LingCefClient(LingWindowBase* owner, int controlId) : owner_(owner), controlId_(controlId) {}
+
+    CefRefPtr<CefLoadHandler> GetLoadHandler() override { return this; }
+    CefRefPtr<CefDisplayHandler> GetDisplayHandler() override { return this; }
+    CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
+
+    void OnLoadingStateChange(CefRefPtr<CefBrowser> browser, bool isLoading, bool canGoBack, bool canGoForward) override {
+        if (owner_) owner_->CEF3_通知加载状态(controlId_, isLoading, canGoBack, canGoForward);
+        (void)browser;
+    }
+    void OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int httpStatusCode) override {
+        if (owner_ && frame && frame->IsMain()) {
+            std::wstring url = frame->GetURL().ToWString();
+            owner_->CEF3_通知加载完成(controlId_, httpStatusCode >= 200 && httpStatusCode < 400, url.c_str());
+        }
+        (void)browser;
+    }
+    void OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, ErrorCode errorCode, const CefString& errorText, const CefString& failedUrl) override {
+        if (owner_ && frame && frame->IsMain() && errorCode != ERR_ABORTED) {
+            std::wstring message = errorText.ToWString();
+            message += L" / ";
+            message += failedUrl.ToWString();
+            owner_->CEF3_通知加载完成(controlId_, false, message.c_str());
+        }
+        (void)browser;
+    }
+    void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) override {
+        if (owner_) owner_->CEF3_通知标题(controlId_, title.ToWString().c_str());
+        (void)browser;
+    }
+    void OnAddressChange(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString& url) override {
+        if (owner_ && frame && frame->IsMain()) owner_->CEF3_通知地址(controlId_, url.ToWString().c_str());
+        (void)browser;
+    }
+    void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
+        if (owner_) owner_->CEF3_通知已创建(controlId_, browser);
+    }
+    void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
+        if (owner_) owner_->CEF3_通知关闭(controlId_);
+        (void)browser;
+    }
+
+private:
+    IMPLEMENT_REFCOUNTING(LingCefClient);
+    LingWindowBase* owner_;
+    int controlId_;
+};
+
+CefRefPtr<CefClient> LingCreateCefClient(LingWindowBase* owner, int controlId) {
+    return new LingCefClient(owner, controlId);
+}
+#endif
+
 ${classDefinitions}
 
 static LingWindowBase* CreateWindowObject(int windowIndex) {
@@ -7331,6 +7975,11 @@ static HWND OpenGeneratedWindowByName(const wchar_t* windowName, int showCommand
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
+#if LINGBUILDER_CEF3_AVAILABLE
+    CefMainArgs cefMainArgs(instance);
+    int cefExitCode = CefExecuteProcess(cefMainArgs, nullptr, nullptr);
+    if (cefExitCode >= 0) return cefExitCode;
+#endif
     g_instance = instance;
     EnableDpiAwareness();
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -7370,6 +8019,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     }
     if (SUCCEEDED(mediaFoundationResult)) MFShutdown();
     if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
+#if LINGBUILDER_CEF3_AVAILABLE
+    CefShutdown();
+#endif
     CoUninitialize();
     return static_cast<int>(message.wParam);
 }
@@ -7807,15 +8459,20 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
   const publicUserMethods = userMethods.filter(method => method.access === '公开').map(method => generateUserMethod(method, enabledModules));
   const protectedUserMethods = userMethods.filter(method => method.access === '保护').map(method => generateUserMethod(method, enabledModules));
   const privateUserMethods = userMethods.filter(method => method.access !== '公开' && method.access !== '保护').map(method => generateUserMethod(method, enabledModules));
+  const publicMembers = (sourceClass?.members || []).filter(member => member.access === '公开').map(member => generateMemberDeclaration(member, enabledModules));
+  const protectedMembers = (sourceClass?.members || []).filter(member => member.access === '保护').map(member => generateMemberDeclaration(member, enabledModules));
+  const privateMembers = (sourceClass?.members || []).filter(member => member.access !== '公开' && member.access !== '保护').map(member => generateMemberDeclaration(member, enabledModules));
   const publicUserMethodBlock = publicUserMethods.length ? `\n${publicUserMethods.join('\n\n')}\n` : '';
   const protectedUserMethodBlock = protectedUserMethods.length ? `\n${protectedUserMethods.join('\n\n')}\n` : '';
   const privateMethods = [...eventMethods, ...privateUserMethods].join('\n\n') || '    // 当前窗口暂无绑定事件。';
   return `class ${className} : public LingWindowBase {
 public:
     explicit ${className}(const WindowSpec& spec) : LingWindowBase(spec) {}
+${publicMembers.join('\n')}
 ${publicUserMethodBlock}
 
 protected:
+${protectedMembers.join('\n')}
     void DispatchWindowEvent(const wchar_t* eventName) override {
         std::wstring handler = GetWindowEventHandler(spec_, eventName);
 ${windowDispatchCases || '        (void)handler;'}
@@ -7834,9 +8491,15 @@ ${dispatchCases}
 ${edgeDispatchCases || '        (void)callback;'}
         LingWindowBase::DispatchEdgeViewEvent(handler, instanceId, eventName, data);
     }
+    void DispatchCefBrowserEvent(const wchar_t* handler, int controlId, const wchar_t* eventName, const wchar_t* data) override {
+        std::wstring callback = handler ? handler : L"";
+${edgeDispatchCases || '        (void)callback;'}
+        LingWindowBase::DispatchCefBrowserEvent(handler, controlId, eventName, data);
+    }
 ${protectedUserMethodBlock}
 
 private:
+${privateMembers.join('\n')}
 ${privateMethods}
 };`;
 }
@@ -7849,7 +8512,7 @@ function findLingCppClassForWindow(program: LingCppProgram, window: LingWindowMo
 
 function generateHandlerMethod(handler: string, method: LingCppMethod | undefined, enabledModules: InstalledModule[]): string {
   const body = method
-    ? translateMethodStatements(method, enabledModules)
+    ? [generateLocalDeclarations(method, enabledModules), translateMethodStatements(method, enabledModules)].filter(Boolean).join('\n')
     : `        调试输出(L"未找到 ${escapeWideString(handler)} 的中文 C++ 事件实现。");`;
   return `    void ${toCppIdentifier(handler)}() {
 ${body || '        // 空事件处理器。'}
@@ -7857,9 +8520,9 @@ ${body || '        // 空事件处理器。'}
 }
 
 function generateUserMethod(method: LingCppMethod, enabledModules: InstalledModule[]): string {
-  const returnType = toCppType(method.returnType, 'return');
-  const parameters = formatCppParameters(method.parameters);
-  const body = translateMethodStatements(method, enabledModules);
+  const returnType = toCppType(method.returnType, 'return', enabledModules);
+  const parameters = formatCppParameters(method.parameters, enabledModules);
+  const body = [generateLocalDeclarations(method, enabledModules), translateMethodStatements(method, enabledModules)].filter(Boolean).join('\n');
   const fallbackReturn = defaultReturnStatement(returnType);
   const staticPrefix = method.isStatic ? 'static ' : '';
   const bodyWithFallback = [
@@ -7872,13 +8535,13 @@ ${bodyWithFallback}
     }`;
 }
 
-function formatCppParameters(parameters: LingCppParameter[]): string {
+function formatCppParameters(parameters: LingCppParameter[], enabledModules: InstalledModule[]): string {
   return parameters
-    .map(parameter => `${toCppType(parameter.type, 'parameter')} ${toCppIdentifier(parameter.name)}`)
+    .map(parameter => `${toCppType(parameter.type, 'parameter', enabledModules)} ${toCppIdentifier(parameter.name)}`)
     .join(', ');
 }
 
-function toCppType(type: string, position: 'parameter' | 'return'): string {
+function toCppType(type: string, position: 'parameter' | 'return' | 'variable', enabledModules: InstalledModule[] = []): string {
   const normalized = type.trim();
   if (!normalized || normalized === '空') return position === 'return' ? 'void' : 'void*';
   if (/^(文本型|文本|字符串|字符串型)$/u.test(normalized)) return 'std::wstring';
@@ -7887,16 +8550,43 @@ function toCppType(type: string, position: 'parameter' | 'return'): string {
   if (/^(小数型|小数|双精度|双精度型)$/u.test(normalized)) return 'double';
   if (/^(逻辑型|逻辑|布尔型|布尔)$/u.test(normalized)) return 'bool';
   if (/^(字节型|字节)$/u.test(normalized)) return 'unsigned char';
+  if (/^字节集$/u.test(normalized)) return 'std::vector<unsigned char>';
+  for (const module of enabledModules) {
+    const contributedType = (module.manifest.contributes?.types || []).find(item => item.name === normalized);
+    if (contributedType?.cppType) return contributedType.cppType;
+  }
   if (/控件|窗体/u.test(normalized) || WIN32_CONTROL_DEFINITIONS.some(definition => (
     normalized === definition.label || normalized === definition.label.split('/')[0] || normalized === definition.type
   ))) return 'HWND';
   return 'void*';
 }
 
+function generateMemberDeclaration(member: LingCppMember, enabledModules: InstalledModule[]): string {
+  return `    ${formatCppVariableDeclaration(member, enabledModules, member.isStatic ? 'inline static ' : '')}`;
+}
+
+function generateLocalDeclarations(method: LingCppMethod, enabledModules: InstalledModule[]): string {
+  return (method.locals || []).map(local => `        ${formatCppVariableDeclaration(local, enabledModules)}`).join('\n');
+}
+
+function formatCppVariableDeclaration(
+  variable: { name: string; type: string; initialValue?: string; isArray?: boolean },
+  enabledModules: InstalledModule[],
+  prefix = ''
+): string {
+  const itemType = toCppType(variable.type, 'variable', enabledModules);
+  const cppType = variable.isArray ? `std::vector<${itemType}>` : itemType;
+  const initializer = variable.initialValue?.trim()
+    ? ` = ${translateLingCppExpression(variable.initialValue, enabledModules)}`
+    : '{}';
+  return `${prefix}${cppType} ${toCppIdentifier(variable.name)}${initializer};`;
+}
+
 function defaultReturnStatement(returnType: string): string {
   if (returnType === 'void') return '';
   if (returnType === 'bool') return 'return false;';
   if (returnType === 'std::wstring') return 'return L"";';
+  if (returnType.startsWith('std::vector<')) return 'return {};';
   if (returnType.endsWith('*')) return 'return nullptr;';
   if (returnType === 'double' || returnType === 'float') return 'return 0.0;';
   return 'return 0;';
@@ -8010,6 +8700,11 @@ function translateStatement(statement: string, enabledModules: InstalledModule[]
 
   if (/^返回\b/.test(statement)) {
     return 'return;';
+  }
+
+  const variableAssignment = statement.match(/^([\w\u4e00-\u9fa5]+)\s*[=＝](?!=)\s*(.+?)\s*;?$/u);
+  if (variableAssignment) {
+    return `${toCppIdentifier(variableAssignment[1] || '')} = ${translateLingCppExpression(variableAssignment[2] || '', enabledModules)};`;
   }
 
   const callStatement = parseCallStatement(statement);
@@ -8179,8 +8874,8 @@ function translateLingCppExpression(expression: string, enabledModules: Installe
   const trimmed = expression.trim();
   if (!trimmed) return '';
   if (/^L"/u.test(trimmed)) return trimmed;
-  const quoted = trimmed.match(/^["“]([^"”]*)["”]$/u);
-  if (quoted) return `L"${escapeWideString(quoted[1] || '')}"`;
+  const quoted = trimmed.match(/^[""]([^""]*)[""]$/u);
+  if (quoted) return `L"${escapeWideString(interpretLingCppStringEscapes(quoted[1] || ''))}"`;
   if (trimmed === '真') return 'true';
   if (trimmed === '假') return 'false';
   const parenthesized = unwrapParenthesizedExpression(trimmed);
@@ -8440,6 +9135,12 @@ function generateControlSpec(
       ? clampInteger(control.properties?.volume, 100, 0, 100)
       : control.type === 'ColorPicker'
         ? colorRefInteger(controlColorProperty(control, 'currentColor', '#3B82F6'))
+      : control.type === 'CefBrowser'
+        ? (control.properties?.enableJs !== false ? 1 : 0)
+          | (control.properties?.loadImages !== false ? 2 : 0)
+          | (control.properties?.enableWebGL === true ? 4 : 0)
+          | (control.properties?.muteAudio === true ? 8 : 0)
+          | (control.properties?.enableDevTools !== false ? 16 : 0)
       : parseControlValue(control);
   const selectedIndex = control.type === 'TrackBar'
     ? numericControlProperty(control, 'tickFrequency', 1)
@@ -8651,6 +9352,14 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
   if (control.type === 'RichEdit') {
     return [typeof properties.rtfText === 'string' ? properties.rtfText : '', ''];
   }
+  if (control.type === 'CefBrowser') {
+    const url = typeof properties.url === 'string' ? properties.url : '';
+    const cacheDir = typeof properties.cacheDir === 'string' ? properties.cacheDir : '';
+    const userAgent = typeof properties.userAgent === 'string' ? properties.userAgent : '';
+    const proxyMode = typeof properties.proxyMode === 'string' ? properties.proxyMode : 'system';
+    const proxyServer = typeof properties.proxyServer === 'string' ? properties.proxyServer : '';
+    return [url, encodeControlFields([cacheDir, userAgent, proxyMode, proxyServer])];
+  }
   const scalar = properties.imageSource ?? properties.gifSource ?? properties.aviSource ?? properties.videoSource ?? properties.url ?? properties.address ?? properties.hotKey
     ?? (typeof properties.value === 'string' ? properties.value : undefined);
   return [typeof scalar === 'string' ? scalar : '', ''];
@@ -8757,6 +9466,14 @@ function toCppDefineIdentifier(value: string): string {
 
 function escapeRegexLiteral(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function interpretLingCppStringEscapes(value: string): string {
+  return value
+    .replace(/\\t/g, '\t')
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\\\/g, '\\');
 }
 
 function escapeWideString(value: string): string {

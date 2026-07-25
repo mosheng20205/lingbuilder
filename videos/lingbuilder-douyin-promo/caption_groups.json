@@ -1,0 +1,526 @@
+{
+  "total_duration_s": 58.416,
+  "width": 1080,
+  "height": 1920,
+  "groups": [
+    {
+      "id": "caption-group-0",
+      "frame": 1,
+      "start": 0,
+      "end": 4.175,
+      "text": "灵码 LingBuilder。 中文写代码， 生成",
+      "words": [
+        {
+          "id": "caption-word-0-0",
+          "text": "灵码",
+          "start": 0,
+          "end": 0.903
+        },
+        {
+          "id": "caption-word-0-1",
+          "text": "LingBuilder。",
+          "start": 0.903,
+          "end": 1.835
+        },
+        {
+          "id": "caption-word-0-2",
+          "text": "中文写代码，",
+          "start": 1.835,
+          "end": 3.592
+        },
+        {
+          "id": "caption-word-0-3",
+          "text": "生成",
+          "start": 3.592,
+          "end": 4.175
+        }
+      ]
+    },
+    {
+      "id": "caption-group-1",
+      "frame": 1,
+      "start": 4.175,
+      "end": 5.46,
+      "text": "真实 C++。",
+      "words": [
+        {
+          "id": "caption-word-1-0",
+          "text": "真实",
+          "start": 4.175,
+          "end": 4.757
+        },
+        {
+          "id": "caption-word-1-1",
+          "text": "C++。",
+          "start": 4.757,
+          "end": 5.34
+        }
+      ]
+    },
+    {
+      "id": "caption-group-2",
+      "frame": 2,
+      "start": 5.976,
+      "end": 9.518,
+      "text": "从菜单 到诊断， 从项目模板 到错误提示，",
+      "words": [
+        {
+          "id": "caption-word-2-0",
+          "text": "从菜单",
+          "start": 5.976,
+          "end": 6.569
+        },
+        {
+          "id": "caption-word-2-1",
+          "text": "到诊断，",
+          "start": 6.569,
+          "end": 7.162
+        },
+        {
+          "id": "caption-word-2-2",
+          "text": "从项目模板",
+          "start": 7.162,
+          "end": 8.53
+        },
+        {
+          "id": "caption-word-2-3",
+          "text": "到错误提示，",
+          "start": 8.53,
+          "end": 9.518
+        }
+      ]
+    },
+    {
+      "id": "caption-group-3",
+      "frame": 2,
+      "start": 9.518,
+      "end": 11.776,
+      "text": "全中文 贯穿 开发流程。",
+      "words": [
+        {
+          "id": "caption-word-3-0",
+          "text": "全中文",
+          "start": 9.518,
+          "end": 10.47
+        },
+        {
+          "id": "caption-word-3-1",
+          "text": "贯穿",
+          "start": 10.47,
+          "end": 10.866
+        },
+        {
+          "id": "caption-word-3-2",
+          "text": "开发流程。",
+          "start": 10.866,
+          "end": 11.656
+        }
+      ]
+    },
+    {
+      "id": "caption-group-4",
+      "frame": 3,
+      "start": 12.312,
+      "end": 15.819,
+      "text": "中文代码 经过 本地确定性规则， 生成",
+      "words": [
+        {
+          "id": "caption-word-4-0",
+          "text": "中文代码",
+          "start": 12.312,
+          "end": 13.135
+        },
+        {
+          "id": "caption-word-4-1",
+          "text": "经过",
+          "start": 13.135,
+          "end": 13.547
+        },
+        {
+          "id": "caption-word-4-2",
+          "text": "本地确定性规则，",
+          "start": 13.547,
+          "end": 14.987
+        },
+        {
+          "id": "caption-word-4-3",
+          "text": "生成",
+          "start": 14.987,
+          "end": 15.819
+        }
+      ]
+    },
+    {
+      "id": "caption-group-5",
+      "frame": 3,
+      "start": 15.819,
+      "end": 18.889,
+      "text": "可阅读、 可复制、 可迁移的 真实",
+      "words": [
+        {
+          "id": "caption-word-5-0",
+          "text": "可阅读、",
+          "start": 15.819,
+          "end": 16.437
+        },
+        {
+          "id": "caption-word-5-1",
+          "text": "可复制、",
+          "start": 16.437,
+          "end": 17.314
+        },
+        {
+          "id": "caption-word-5-2",
+          "text": "可迁移的",
+          "start": 17.314,
+          "end": 18.477
+        },
+        {
+          "id": "caption-word-5-3",
+          "text": "真实",
+          "start": 18.477,
+          "end": 18.889
+        }
+      ]
+    },
+    {
+      "id": "caption-group-6",
+      "frame": 3,
+      "start": 18.889,
+      "end": 19.832,
+      "text": "C++ 工程。",
+      "words": [
+        {
+          "id": "caption-word-6-0",
+          "text": "C++ 工程。",
+          "start": 18.889,
+          "end": 19.712
+        }
+      ]
+    },
+    {
+      "id": "caption-group-7",
+      "frame": 4,
+      "start": 20.328,
+      "end": 24.918,
+      "text": "拖入控件、 调整属性、 绑定事件， 可视化完成",
+      "words": [
+        {
+          "id": "caption-word-7-0",
+          "text": "拖入控件、",
+          "start": 20.328,
+          "end": 21.215
+        },
+        {
+          "id": "caption-word-7-1",
+          "text": "调整属性、",
+          "start": 21.215,
+          "end": 22.642
+        },
+        {
+          "id": "caption-word-7-2",
+          "text": "绑定事件，",
+          "start": 22.642,
+          "end": 23.809
+        },
+        {
+          "id": "caption-word-7-3",
+          "text": "可视化完成",
+          "start": 23.809,
+          "end": 24.918
+        }
+      ]
+    },
+    {
+      "id": "caption-group-8",
+      "frame": 4,
+      "start": 24.918,
+      "end": 26.368,
+      "text": "原生 Win32 窗口。",
+      "words": [
+        {
+          "id": "caption-word-8-0",
+          "text": "原生",
+          "start": 24.918,
+          "end": 25.361
+        },
+        {
+          "id": "caption-word-8-1",
+          "text": "Win32 窗口。",
+          "start": 25.361,
+          "end": 26.248
+        }
+      ]
+    },
+    {
+      "id": "caption-group-9",
+      "frame": 5,
+      "start": 26.832,
+      "end": 30.426,
+      "text": "按下 F5， 完成 真实编译、 调试",
+      "words": [
+        {
+          "id": "caption-word-9-0",
+          "text": "按下 F5，",
+          "start": 26.832,
+          "end": 27.743
+        },
+        {
+          "id": "caption-word-9-1",
+          "text": "完成",
+          "start": 27.743,
+          "end": 28.619
+        },
+        {
+          "id": "caption-word-9-2",
+          "text": "真实编译、",
+          "start": 28.619,
+          "end": 29.89
+        },
+        {
+          "id": "caption-word-9-3",
+          "text": "调试",
+          "start": 29.89,
+          "end": 30.426
+        }
+      ]
+    },
+    {
+      "id": "caption-group-10",
+      "frame": 5,
+      "start": 30.426,
+      "end": 31.832,
+      "text": "与 EXE 运行。",
+      "words": [
+        {
+          "id": "caption-word-10-0",
+          "text": "与 EXE 运行。",
+          "start": 30.426,
+          "end": 31.712
+        }
+      ]
+    },
+    {
+      "id": "caption-group-11",
+      "frame": 6,
+      "start": 32.328,
+      "end": 35.861,
+      "text": "AI 能写、 能修， 也会先给出 Diff， 由你",
+      "words": [
+        {
+          "id": "caption-word-11-0",
+          "text": "AI 能写、",
+          "start": 32.328,
+          "end": 33.027
+        },
+        {
+          "id": "caption-word-11-1",
+          "text": "能修，",
+          "start": 33.027,
+          "end": 33.703
+        },
+        {
+          "id": "caption-word-11-2",
+          "text": "也会先给出 Diff，",
+          "start": 33.703,
+          "end": 35.425
+        },
+        {
+          "id": "caption-word-11-3",
+          "text": "由你",
+          "start": 35.425,
+          "end": 35.861
+        }
+      ]
+    },
+    {
+      "id": "caption-group-12",
+      "frame": 6,
+      "start": 35.861,
+      "end": 38.048,
+      "text": "审查确认后 再应用。",
+      "words": [
+        {
+          "id": "caption-word-12-0",
+          "text": "审查确认后",
+          "start": 35.861,
+          "end": 37.273
+        },
+        {
+          "id": "caption-word-12-1",
+          "text": "再应用。",
+          "start": 37.273,
+          "end": 37.928
+        }
+      ]
+    },
+    {
+      "id": "caption-group-13",
+      "frame": 7,
+      "start": 38.52,
+      "end": 42.736,
+      "text": "原生 C++ 能力 可以封装成 lbmod 模块， 安装、",
+      "words": [
+        {
+          "id": "caption-word-13-0",
+          "text": "原生 C++ 能力",
+          "start": 38.52,
+          "end": 39.877
+        },
+        {
+          "id": "caption-word-13-1",
+          "text": "可以封装成",
+          "start": 39.877,
+          "end": 41.009
+        },
+        {
+          "id": "caption-word-13-2",
+          "text": "lbmod 模块，",
+          "start": 41.009,
+          "end": 42.004
+        },
+        {
+          "id": "caption-word-13-3",
+          "text": "安装、",
+          "start": 42.004,
+          "end": 42.736
+        }
+      ]
+    },
+    {
+      "id": "caption-group-14",
+      "frame": 7,
+      "start": 42.736,
+      "end": 44.96,
+      "text": "启用、 复用 更简单。",
+      "words": [
+        {
+          "id": "caption-word-14-0",
+          "text": "启用、",
+          "start": 42.736,
+          "end": 43.429
+        },
+        {
+          "id": "caption-word-14-1",
+          "text": "复用",
+          "start": 43.429,
+          "end": 44.161
+        },
+        {
+          "id": "caption-word-14-2",
+          "text": "更简单。",
+          "start": 44.161,
+          "end": 44.84
+        }
+      ]
+    },
+    {
+      "id": "caption-group-15",
+      "frame": 8,
+      "start": 45.456,
+      "end": 48.478,
+      "text": "Monaco、 Git、 终端、 调试和测试，",
+      "words": [
+        {
+          "id": "caption-word-15-0",
+          "text": "Monaco、",
+          "start": 45.456,
+          "end": 45.948
+        },
+        {
+          "id": "caption-word-15-1",
+          "text": "Git、",
+          "start": 45.948,
+          "end": 46.494
+        },
+        {
+          "id": "caption-word-15-2",
+          "text": "终端、",
+          "start": 46.494,
+          "end": 47.272
+        },
+        {
+          "id": "caption-word-15-3",
+          "text": "调试和测试，",
+          "start": 47.272,
+          "end": 48.478
+        }
+      ]
+    },
+    {
+      "id": "caption-group-16",
+      "frame": 8,
+      "start": 48.478,
+      "end": 51.776,
+      "text": "汇聚成 一套完整的 中文开发工作台。",
+      "words": [
+        {
+          "id": "caption-word-16-0",
+          "text": "汇聚成",
+          "start": 48.478,
+          "end": 49.386
+        },
+        {
+          "id": "caption-word-16-1",
+          "text": "一套完整的",
+          "start": 49.386,
+          "end": 50.332
+        },
+        {
+          "id": "caption-word-16-2",
+          "text": "中文开发工作台。",
+          "start": 50.332,
+          "end": 51.656
+        }
+      ]
+    },
+    {
+      "id": "caption-group-17",
+      "frame": 9,
+      "start": 52.296,
+      "end": 57.105,
+      "text": "想用中文 开发 Windows 软件？ 访问 Gitee， 体验灵码",
+      "words": [
+        {
+          "id": "caption-word-17-0",
+          "text": "想用中文",
+          "start": 52.296,
+          "end": 53.185
+        },
+        {
+          "id": "caption-word-17-1",
+          "text": "开发 Windows 软件？",
+          "start": 53.185,
+          "end": 54.607
+        },
+        {
+          "id": "caption-word-17-2",
+          "text": "访问 Gitee，",
+          "start": 54.607,
+          "end": 55.936
+        },
+        {
+          "id": "caption-word-17-3",
+          "text": "体验灵码",
+          "start": 55.936,
+          "end": 57.105
+        }
+      ]
+    },
+    {
+      "id": "caption-group-18",
+      "frame": 9,
+      "start": 57.105,
+      "end": 57.936,
+      "text": "LingBuilder。",
+      "words": [
+        {
+          "id": "caption-word-18-0",
+          "text": "LingBuilder。",
+          "start": 57.105,
+          "end": 57.816
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1340 @@
+{
+  "model": "small",
+  "frames": [
+    {
+      "frame": 1,
+      "language": "zh",
+      "text": "零碼,零Builder中文寫代碼,生成真實的C++工程",
+      "words": [
+        {
+          "text": "零",
+          "start": 0.0,
+          "end": 0.36,
+          "probability": 0.5208
+        },
+        {
+          "text": "碼,",
+          "start": 0.36,
+          "end": 0.58,
+          "probability": 0.7751
+        },
+        {
+          "text": "零",
+          "start": 0.9,
+          "end": 1.08,
+          "probability": 0.8153
+        },
+        {
+          "text": "Bu",
+          "start": 1.08,
+          "end": 1.26,
+          "probability": 0.2727
+        },
+        {
+          "text": "ild",
+          "start": 1.26,
+          "end": 1.4,
+          "probability": 0.9704
+        },
+        {
+          "text": "er",
+          "start": 1.4,
+          "end": 1.54,
+          "probability": 0.9864
+        },
+        {
+          "text": "中",
+          "start": 1.54,
+          "end": 2.28,
+          "probability": 0.3811
+        },
+        {
+          "text": "文",
+          "start": 2.28,
+          "end": 2.5,
+          "probability": 0.9999
+        },
+        {
+          "text": "寫",
+          "start": 2.5,
+          "end": 2.7,
+          "probability": 0.9902
+        },
+        {
+          "text": "代",
+          "start": 2.7,
+          "end": 2.84,
+          "probability": 0.9743
+        },
+        {
+          "text": "碼,",
+          "start": 2.84,
+          "end": 3.2,
+          "probability": 0.9983
+        },
+        {
+          "text": "生",
+          "start": 3.5,
+          "end": 3.58,
+          "probability": 0.8892
+        },
+        {
+          "text": "成",
+          "start": 3.58,
+          "end": 3.78,
+          "probability": 0.9844
+        },
+        {
+          "text": "真",
+          "start": 3.78,
+          "end": 4.0,
+          "probability": 0.9851
+        },
+        {
+          "text": "實",
+          "start": 4.0,
+          "end": 4.22,
+          "probability": 0.8389
+        },
+        {
+          "text": "的",
+          "start": 4.22,
+          "end": 4.36,
+          "probability": 0.9951
+        },
+        {
+          "text": "C",
+          "start": 4.36,
+          "end": 4.54,
+          "probability": 0.4091
+        },
+        {
+          "text": "++",
+          "start": 4.54,
+          "end": 4.82,
+          "probability": 0.6774
+        },
+        {
+          "text": "工",
+          "start": 4.82,
+          "end": 5.1,
+          "probability": 0.9517
+        },
+        {
+          "text": "程",
+          "start": 5.1,
+          "end": 5.34,
+          "probability": 0.9998
+        }
+      ]
+    },
+    {
+      "frame": 2,
+      "language": "zh",
+      "text": "從菜單到枕段,從項目模板到錯誤提示,全中文貫穿開發流程。",
+      "words": [
+        {
+          "text": "從",
+          "start": 0.0,
+          "end": 0.34,
+          "probability": 0.5295
+        },
+        {
+          "text": "菜",
+          "start": 0.34,
+          "end": 0.52,
+          "probability": 0.9765
+        },
+        {
+          "text": "單",
+          "start": 0.52,
+          "end": 0.66,
+          "probability": 0.9955
+        },
+        {
+          "text": "到",
+          "start": 0.66,
+          "end": 0.84,
+          "probability": 0.9876
+        },
+        {
+          "text": "枕",
+          "start": 0.84,
+          "end": 1.06,
+          "probability": 0.7059
+        },
+        {
+          "text": "段,",
+          "start": 1.06,
+          "end": 1.26,
+          "probability": 0.9099
+        },
+        {
+          "text": "從",
+          "start": 1.64,
+          "end": 1.78,
+          "probability": 0.9615
+        },
+        {
+          "text": "項",
+          "start": 1.78,
+          "end": 1.98,
+          "probability": 0.9914
+        },
+        {
+          "text": "目",
+          "start": 1.98,
+          "end": 2.16,
+          "probability": 0.9994
+        },
+        {
+          "text": "模",
+          "start": 2.16,
+          "end": 2.3,
+          "probability": 0.8306
+        },
+        {
+          "text": "板",
+          "start": 2.3,
+          "end": 2.56,
+          "probability": 0.8935
+        },
+        {
+          "text": "到",
+          "start": 2.56,
+          "end": 2.82,
+          "probability": 0.8692
+        },
+        {
+          "text": "錯",
+          "start": 2.82,
+          "end": 3.04,
+          "probability": 0.9949
+        },
+        {
+          "text": "誤",
+          "start": 3.04,
+          "end": 3.2,
+          "probability": 0.9993
+        },
+        {
+          "text": "提",
+          "start": 3.2,
+          "end": 3.36,
+          "probability": 0.9504
+        },
+        {
+          "text": "示,",
+          "start": 3.36,
+          "end": 3.64,
+          "probability": 0.9829
+        },
+        {
+          "text": "全",
+          "start": 4.0,
+          "end": 4.18,
+          "probability": 0.9504
+        },
+        {
+          "text": "中",
+          "start": 4.18,
+          "end": 4.36,
+          "probability": 0.9957
+        },
+        {
+          "text": "文",
+          "start": 4.36,
+          "end": 4.54,
+          "probability": 0.9994
+        },
+        {
+          "text": "貫",
+          "start": 4.54,
+          "end": 4.7,
+          "probability": 0.8159
+        },
+        {
+          "text": "穿",
+          "start": 4.7,
+          "end": 4.92,
+          "probability": 0.9697
+        },
+        {
+          "text": "開",
+          "start": 4.92,
+          "end": 5.1,
+          "probability": 0.9913
+        },
+        {
+          "text": "發",
+          "start": 5.1,
+          "end": 5.28,
+          "probability": 0.9977
+        },
+        {
+          "text": "流",
+          "start": 5.28,
+          "end": 5.44,
+          "probability": 0.9958
+        },
+        {
+          "text": "程。",
+          "start": 5.44,
+          "end": 5.68,
+          "probability": 0.9991
+        }
+      ]
+    },
+    {
+      "frame": 3,
+      "language": "zh",
+      "text": "中文代碼經過本地確定性規則,生成可閱讀、可複製、可遷移的真實C++工程。",
+      "words": [
+        {
+          "text": "中",
+          "start": 0.0,
+          "end": 0.3,
+          "probability": 0.8967
+        },
+        {
+          "text": "文",
+          "start": 0.3,
+          "end": 0.46,
+          "probability": 0.9992
+        },
+        {
+          "text": "代",
+          "start": 0.46,
+          "end": 0.62,
+          "probability": 0.9852
+        },
+        {
+          "text": "碼",
+          "start": 0.62,
+          "end": 0.92,
+          "probability": 0.9136
+        },
+        {
+          "text": "經",
+          "start": 0.92,
+          "end": 1.16,
+          "probability": 0.5901
+        },
+        {
+          "text": "過",
+          "start": 1.16,
+          "end": 1.36,
+          "probability": 0.9973
+        },
+        {
+          "text": "本",
+          "start": 1.36,
+          "end": 1.5,
+          "probability": 0.9982
+        },
+        {
+          "text": "地",
+          "start": 1.5,
+          "end": 1.7,
+          "probability": 0.9987
+        },
+        {
+          "text": "確",
+          "start": 1.7,
+          "end": 1.96,
+          "probability": 0.9412
+        },
+        {
+          "text": "定",
+          "start": 1.96,
+          "end": 2.12,
+          "probability": 0.9991
+        },
+        {
+          "text": "性",
+          "start": 2.12,
+          "end": 2.28,
+          "probability": 0.9991
+        },
+        {
+          "text": "規",
+          "start": 2.28,
+          "end": 2.48,
+          "probability": 0.9971
+        },
+        {
+          "text": "則,",
+          "start": 2.48,
+          "end": 2.78,
+          "probability": 0.9992
+        },
+        {
+          "text": "生",
+          "start": 3.2,
+          "end": 3.3,
+          "probability": 0.7116
+        },
+        {
+          "text": "成",
+          "start": 3.3,
+          "end": 3.5,
+          "probability": 0.9463
+        },
+        {
+          "text": "可",
+          "start": 3.5,
+          "end": 3.7,
+          "probability": 0.9776
+        },
+        {
+          "text": "閱",
+          "start": 3.7,
+          "end": 3.9,
+          "probability": 0.9887
+        },
+        {
+          "text": "讀、",
+          "start": 3.9,
+          "end": 4.24,
+          "probability": 0.9999
+        },
+        {
+          "text": "可",
+          "start": 4.5,
+          "end": 4.64,
+          "probability": 0.9978
+        },
+        {
+          "text": "複",
+          "start": 4.64,
+          "end": 4.82,
+          "probability": 0.9473
+        },
+        {
+          "text": "製、",
+          "start": 4.82,
+          "end": 5.08,
+          "probability": 0.9962
+        },
+        {
+          "text": "可",
+          "start": 5.42,
+          "end": 5.54,
+          "probability": 0.9966
+        },
+        {
+          "text": "遷",
+          "start": 5.54,
+          "end": 5.78,
+          "probability": 0.8833
+        },
+        {
+          "text": "移",
+          "start": 5.78,
+          "end": 5.92,
+          "probability": 0.973
+        },
+        {
+          "text": "的",
+          "start": 5.92,
+          "end": 6.06,
+          "probability": 0.9951
+        },
+        {
+          "text": "真",
+          "start": 6.06,
+          "end": 6.24,
+          "probability": 0.9659
+        },
+        {
+          "text": "實",
+          "start": 6.24,
+          "end": 6.42,
+          "probability": 0.9774
+        },
+        {
+          "text": "C",
+          "start": 6.42,
+          "end": 6.62,
+          "probability": 0.2928
+        },
+        {
+          "text": "++",
+          "start": 6.62,
+          "end": 6.88,
+          "probability": 0.6096
+        },
+        {
+          "text": "工",
+          "start": 6.88,
+          "end": 7.18,
+          "probability": 0.9494
+        },
+        {
+          "text": "程。",
+          "start": 7.18,
+          "end": 7.4,
+          "probability": 0.9999
+        }
+      ]
+    },
+    {
+      "frame": 4,
+      "language": "zh",
+      "text": "拖入空間、調整屬性、綁定事件,可是話完成原聲WIN32窗口",
+      "words": [
+        {
+          "text": "拖",
+          "start": 0.0,
+          "end": 0.3,
+          "probability": 0.7896
+        },
+        {
+          "text": "入",
+          "start": 0.3,
+          "end": 0.46,
+          "probability": 0.9919
+        },
+        {
+          "text": "空",
+          "start": 0.46,
+          "end": 0.62,
+          "probability": 0.6646
+        },
+        {
+          "text": "間、",
+          "start": 0.62,
+          "end": 0.9,
+          "probability": 0.8309
+        },
+        {
+          "text": "調",
+          "start": 1.16,
+          "end": 1.32,
+          "probability": 0.9747
+        },
+        {
+          "text": "整",
+          "start": 1.32,
+          "end": 1.5,
+          "probability": 0.9998
+        },
+        {
+          "text": "屬",
+          "start": 1.5,
+          "end": 1.68,
+          "probability": 0.991
+        },
+        {
+          "text": "性、",
+          "start": 1.68,
+          "end": 1.96,
+          "probability": 0.9993
+        },
+        {
+          "text": "綁",
+          "start": 2.24,
+          "end": 2.36,
+          "probability": 0.9842
+        },
+        {
+          "text": "定",
+          "start": 2.36,
+          "end": 2.54,
+          "probability": 0.9874
+        },
+        {
+          "text": "事",
+          "start": 2.54,
+          "end": 2.76,
+          "probability": 0.6756
+        },
+        {
+          "text": "件,",
+          "start": 2.76,
+          "end": 3.04,
+          "probability": 0.9997
+        },
+        {
+          "text": "可是",
+          "start": 3.32,
+          "end": 3.52,
+          "probability": 0.8767
+        },
+        {
+          "text": "話",
+          "start": 3.52,
+          "end": 3.84,
+          "probability": 0.8579
+        },
+        {
+          "text": "完成",
+          "start": 3.84,
+          "end": 4.1,
+          "probability": 0.9904
+        },
+        {
+          "text": "原",
+          "start": 4.1,
+          "end": 4.42,
+          "probability": 0.9528
+        },
+        {
+          "text": "聲",
+          "start": 4.42,
+          "end": 4.62,
+          "probability": 0.501
+        },
+        {
+          "text": "W",
+          "start": 4.62,
+          "end": 4.82,
+          "probability": 0.6161
+        },
+        {
+          "text": "IN",
+          "start": 4.82,
+          "end": 4.9,
+          "probability": 0.5121
+        },
+        {
+          "text": "32",
+          "start": 4.9,
+          "end": 5.32,
+          "probability": 0.902
+        },
+        {
+          "text": "窗",
+          "start": 5.32,
+          "end": 5.68,
+          "probability": 0.9788
+        },
+        {
+          "text": "口",
+          "start": 5.68,
+          "end": 5.92,
+          "probability": 0.9929
+        }
+      ]
+    },
+    {
+      "frame": 5,
+      "language": "zh",
+      "text": "按下F5,完成真实编译,调试与可执行程序运行。",
+      "words": [
+        {
+          "text": "按",
+          "start": 0.0,
+          "end": 0.32,
+          "probability": 0.9807
+        },
+        {
+          "text": "下",
+          "start": 0.32,
+          "end": 0.5,
+          "probability": 0.9835
+        },
+        {
+          "text": "F",
+          "start": 0.5,
+          "end": 0.78,
+          "probability": 0.7061
+        },
+        {
+          "text": "5,",
+          "start": 0.78,
+          "end": 1.04,
+          "probability": 0.9885
+        },
+        {
+          "text": "完成",
+          "start": 1.38,
+          "end": 1.6,
+          "probability": 0.9878
+        },
+        {
+          "text": "真",
+          "start": 1.6,
+          "end": 1.9,
+          "probability": 0.9695
+        },
+        {
+          "text": "实",
+          "start": 1.9,
+          "end": 2.1,
+          "probability": 0.7192
+        },
+        {
+          "text": "编",
+          "start": 2.1,
+          "end": 2.28,
+          "probability": 0.8933
+        },
+        {
+          "text": "译,",
+          "start": 2.28,
+          "end": 2.58,
+          "probability": 0.8857
+        },
+        {
+          "text": "调",
+          "start": 2.78,
+          "end": 2.98,
+          "probability": 0.8606
+        },
+        {
+          "text": "试",
+          "start": 2.98,
+          "end": 3.3,
+          "probability": 0.6812
+        },
+        {
+          "text": "与",
+          "start": 3.3,
+          "end": 3.54,
+          "probability": 0.8411
+        },
+        {
+          "text": "可",
+          "start": 3.54,
+          "end": 3.7,
+          "probability": 0.998
+        },
+        {
+          "text": "执",
+          "start": 3.7,
+          "end": 3.84,
+          "probability": 0.9555
+        },
+        {
+          "text": "行",
+          "start": 3.84,
+          "end": 4.06,
+          "probability": 0.9975
+        },
+        {
+          "text": "程",
+          "start": 4.06,
+          "end": 4.24,
+          "probability": 0.9886
+        },
+        {
+          "text": "序",
+          "start": 4.24,
+          "end": 4.48,
+          "probability": 0.9995
+        },
+        {
+          "text": "运",
+          "start": 4.48,
+          "end": 4.64,
+          "probability": 0.9995
+        },
+        {
+          "text": "行。",
+          "start": 4.64,
+          "end": 4.88,
+          "probability": 0.9984
+        }
+      ]
+    },
+    {
+      "frame": 6,
+      "language": "zh",
+      "text": "DI能写、能修,也会先给出差异对比,由你审查确认后再应用。",
+      "words": [
+        {
+          "text": "DI",
+          "start": 0.0,
+          "end": 0.4,
+          "probability": 0.3308
+        },
+        {
+          "text": "能",
+          "start": 0.4,
+          "end": 0.7,
+          "probability": 0.7973
+        },
+        {
+          "text": "写、",
+          "start": 0.7,
+          "end": 1.02,
+          "probability": 0.8149
+        },
+        {
+          "text": "能",
+          "start": 1.26,
+          "end": 1.42,
+          "probability": 0.9825
+        },
+        {
+          "text": "修,",
+          "start": 1.42,
+          "end": 1.74,
+          "probability": 0.9965
+        },
+        {
+          "text": "也",
+          "start": 2.02,
+          "end": 2.12,
+          "probability": 0.949
+        },
+        {
+          "text": "会",
+          "start": 2.12,
+          "end": 2.26,
+          "probability": 0.8146
+        },
+        {
+          "text": "先",
+          "start": 2.26,
+          "end": 2.42,
+          "probability": 0.9983
+        },
+        {
+          "text": "给",
+          "start": 2.42,
+          "end": 2.58,
+          "probability": 0.9977
+        },
+        {
+          "text": "出",
+          "start": 2.58,
+          "end": 2.78,
+          "probability": 0.9822
+        },
+        {
+          "text": "差",
+          "start": 2.78,
+          "end": 3.0,
+          "probability": 0.8834
+        },
+        {
+          "text": "异",
+          "start": 3.0,
+          "end": 3.14,
+          "probability": 0.934
+        },
+        {
+          "text": "对",
+          "start": 3.14,
+          "end": 3.28,
+          "probability": 0.9696
+        },
+        {
+          "text": "比,",
+          "start": 3.28,
+          "end": 3.54,
+          "probability": 0.9991
+        },
+        {
+          "text": "由",
+          "start": 3.86,
+          "end": 4.02,
+          "probability": 0.94
+        },
+        {
+          "text": "你",
+          "start": 4.02,
+          "end": 4.12,
+          "probability": 0.9951
+        },
+        {
+          "text": "审",
+          "start": 4.12,
+          "end": 4.32,
+          "probability": 0.9912
+        },
+        {
+          "text": "查",
+          "start": 4.32,
+          "end": 4.52,
+          "probability": 0.9982
+        },
+        {
+          "text": "确",
+          "start": 4.52,
+          "end": 4.72,
+          "probability": 0.9973
+        },
+        {
+          "text": "认",
+          "start": 4.72,
+          "end": 4.9,
+          "probability": 0.9985
+        },
+        {
+          "text": "后",
+          "start": 4.9,
+          "end": 5.06,
+          "probability": 0.982
+        },
+        {
+          "text": "再",
+          "start": 5.06,
+          "end": 5.22,
+          "probability": 0.982
+        },
+        {
+          "text": "应",
+          "start": 5.22,
+          "end": 5.4,
+          "probability": 0.9839
+        },
+        {
+          "text": "用。",
+          "start": 5.4,
+          "end": 5.6,
+          "probability": 0.9994
+        }
+      ]
+    },
+    {
+      "frame": 7,
+      "language": "zh",
+      "text": "原生C++能力可以封装成LBMOD模块,安装,启用,附用更简单。",
+      "words": [
+        {
+          "text": "原",
+          "start": 0.0,
+          "end": 0.32,
+          "probability": 0.9889
+        },
+        {
+          "text": "生",
+          "start": 0.32,
+          "end": 0.5,
+          "probability": 0.9253
+        },
+        {
+          "text": "C",
+          "start": 0.5,
+          "end": 0.7,
+          "probability": 0.6657
+        },
+        {
+          "text": "++",
+          "start": 0.7,
+          "end": 0.96,
+          "probability": 0.7063
+        },
+        {
+          "text": "能",
+          "start": 0.96,
+          "end": 1.24,
+          "probability": 0.9877
+        },
+        {
+          "text": "力",
+          "start": 1.24,
+          "end": 1.5,
+          "probability": 0.9985
+        },
+        {
+          "text": "可以",
+          "start": 1.5,
+          "end": 1.82,
+          "probability": 0.7664
+        },
+        {
+          "text": "封",
+          "start": 1.82,
+          "end": 2.02,
+          "probability": 0.9563
+        },
+        {
+          "text": "装",
+          "start": 2.02,
+          "end": 2.26,
+          "probability": 0.737
+        },
+        {
+          "text": "成",
+          "start": 2.26,
+          "end": 2.44,
+          "probability": 0.9928
+        },
+        {
+          "text": "L",
+          "start": 2.44,
+          "end": 2.74,
+          "probability": 0.8736
+        },
+        {
+          "text": "B",
+          "start": 2.74,
+          "end": 2.98,
+          "probability": 0.7113
+        },
+        {
+          "text": "M",
+          "start": 2.98,
+          "end": 3.14,
+          "probability": 0.2391
+        },
+        {
+          "text": "OD",
+          "start": 3.14,
+          "end": 3.3,
+          "probability": 0.935
+        },
+        {
+          "text": "模",
+          "start": 3.3,
+          "end": 3.48,
+          "probability": 0.9332
+        },
+        {
+          "text": "块,",
+          "start": 3.48,
+          "end": 3.76,
+          "probability": 0.8462
+        },
+        {
+          "text": "安",
+          "start": 4.04,
+          "end": 4.26,
+          "probability": 0.9291
+        },
+        {
+          "text": "装,",
+          "start": 4.26,
+          "end": 4.54,
+          "probability": 0.9919
+        },
+        {
+          "text": "启",
+          "start": 4.78,
+          "end": 4.98,
+          "probability": 0.8175
+        },
+        {
+          "text": "用,",
+          "start": 4.98,
+          "end": 5.18,
+          "probability": 0.9821
+        },
+        {
+          "text": "附",
+          "start": 5.46,
+          "end": 5.58,
+          "probability": 0.7792
+        },
+        {
+          "text": "用",
+          "start": 5.58,
+          "end": 5.74,
+          "probability": 0.9931
+        },
+        {
+          "text": "更",
+          "start": 5.74,
+          "end": 5.92,
+          "probability": 0.9963
+        },
+        {
+          "text": "简",
+          "start": 5.92,
+          "end": 6.14,
+          "probability": 0.9957
+        },
+        {
+          "text": "单。",
+          "start": 6.14,
+          "end": 6.32,
+          "probability": 0.9997
+        }
+      ]
+    },
+    {
+      "frame": 8,
+      "language": "zh",
+      "text": "Monaco, Git,中端,调试和测试,会去成一套完整的中文开发工作台。",
+      "words": [
+        {
+          "text": "Mon",
+          "start": 0.0,
+          "end": 0.34,
+          "probability": 0.541
+        },
+        {
+          "text": "aco,",
+          "start": 0.34,
+          "end": 0.68,
+          "probability": 0.5143
+        },
+        {
+          "text": "Git,",
+          "start": 0.98,
+          "end": 1.22,
+          "probability": 0.821
+        },
+        {
+          "text": "中",
+          "start": 1.62,
+          "end": 1.8,
+          "probability": 0.7336
+        },
+        {
+          "text": "端,",
+          "start": 1.8,
+          "end": 2.08,
+          "probability": 0.9974
+        },
+        {
+          "text": "调",
+          "start": 2.34,
+          "end": 2.5,
+          "probability": 0.6722
+        },
+        {
+          "text": "试",
+          "start": 2.5,
+          "end": 2.72,
+          "probability": 0.751
+        },
+        {
+          "text": "和",
+          "start": 2.72,
+          "end": 2.86,
+          "probability": 0.956
+        },
+        {
+          "text": "测",
+          "start": 2.86,
+          "end": 3.04,
+          "probability": 0.9987
+        },
+        {
+          "text": "试,",
+          "start": 3.04,
+          "end": 3.4,
+          "probability": 0.9996
+        },
+        {
+          "text": "会",
+          "start": 3.74,
+          "end": 3.88,
+          "probability": 0.5096
+        },
+        {
+          "text": "去",
+          "start": 3.88,
+          "end": 4.04,
+          "probability": 0.6121
+        },
+        {
+          "text": "成",
+          "start": 4.04,
+          "end": 4.18,
+          "probability": 0.8941
+        },
+        {
+          "text": "一",
+          "start": 4.18,
+          "end": 4.34,
+          "probability": 0.8566
+        },
+        {
+          "text": "套",
+          "start": 4.34,
+          "end": 4.5,
+          "probability": 0.9992
+        },
+        {
+          "text": "完",
+          "start": 4.5,
+          "end": 4.7,
+          "probability": 0.9957
+        },
+        {
+          "text": "整",
+          "start": 4.7,
+          "end": 4.88,
+          "probability": 0.9999
+        },
+        {
+          "text": "的",
+          "start": 4.88,
+          "end": 5.0,
+          "probability": 0.9975
+        },
+        {
+          "text": "中",
+          "start": 5.0,
+          "end": 5.16,
+          "probability": 0.9985
+        },
+        {
+          "text": "文",
+          "start": 5.16,
+          "end": 5.32,
+          "probability": 0.9997
+        },
+        {
+          "text": "开",
+          "start": 5.32,
+          "end": 5.5,
+          "probability": 0.9901
+        },
+        {
+          "text": "发",
+          "start": 5.5,
+          "end": 5.66,
+          "probability": 0.9958
+        },
+        {
+          "text": "工作",
+          "start": 5.66,
+          "end": 5.88,
+          "probability": 0.9677
+        },
+        {
+          "text": "台。",
+          "start": 5.88,
+          "end": 6.2,
+          "probability": 0.9983
+        }
+      ]
+    },
+    {
+      "frame": 9,
+      "language": "zh",
+      "text": "想用中文开发Windows软件访问该替,体验灵马灵Builder",
+      "words": [
+        {
+          "text": "想",
+          "start": 0.0,
+          "end": 0.36,
+          "probability": 0.8901
+        },
+        {
+          "text": "用",
+          "start": 0.36,
+          "end": 0.56,
+          "probability": 0.9937
+        },
+        {
+          "text": "中",
+          "start": 0.56,
+          "end": 0.74,
+          "probability": 0.9961
+        },
+        {
+          "text": "文",
+          "start": 0.74,
+          "end": 0.88,
+          "probability": 0.9992
+        },
+        {
+          "text": "开",
+          "start": 0.88,
+          "end": 1.06,
+          "probability": 0.5722
+        },
+        {
+          "text": "发",
+          "start": 1.06,
+          "end": 1.32,
+          "probability": 0.9937
+        },
+        {
+          "text": "Wind",
+          "start": 1.32,
+          "end": 1.66,
+          "probability": 0.8037
+        },
+        {
+          "text": "ows",
+          "start": 1.66,
+          "end": 1.92,
+          "probability": 0.9777
+        },
+        {
+          "text": "软",
+          "start": 1.92,
+          "end": 2.12,
+          "probability": 0.9357
+        },
+        {
+          "text": "件",
+          "start": 2.12,
+          "end": 2.36,
+          "probability": 0.9996
+        },
+        {
+          "text": "访",
+          "start": 2.8,
+          "end": 3.2,
+          "probability": 0.6029
+        },
+        {
+          "text": "问",
+          "start": 3.2,
+          "end": 3.44,
+          "probability": 0.9986
+        },
+        {
+          "text": "该",
+          "start": 3.44,
+          "end": 3.74,
+          "probability": 0.2561
+        },
+        {
+          "text": "替,",
+          "start": 3.74,
+          "end": 4.02,
+          "probability": 0.5732
+        },
+        {
+          "text": "体",
+          "start": 4.3,
+          "end": 4.44,
+          "probability": 0.9688
+        },
+        {
+          "text": "验",
+          "start": 4.44,
+          "end": 4.6,
+          "probability": 0.9991
+        },
+        {
+          "text": "灵",
+          "start": 4.6,
+          "end": 4.74,
+          "probability": 0.5721
+        },
+        {
+          "text": "马",
+          "start": 4.74,
+          "end": 4.92,
+          "probability": 0.8664
+        },
+        {
+          "text": "灵",
+          "start": 4.92,
+          "end": 5.14,
+          "probability": 0.6483
+        },
+        {
+          "text": "Bu",
+          "start": 5.14,
+          "end": 5.3,
+          "probability": 0.7169
+        },
+        {
+          "text": "ild",
+          "start": 5.3,
+          "end": 5.42,
+          "probability": 0.9875
+        },
+        {
+          "text": "er",
+          "start": 5.42,
+          "end": 5.52,
+          "probability": 0.9969
+        }
+      ]
+    }
+  ]
+}

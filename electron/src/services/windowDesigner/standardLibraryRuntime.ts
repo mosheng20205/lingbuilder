@@ -34,6 +34,13 @@ static std::wstring LB_Utf8ToWide(const std::string& value) {
     return result;
 }
 
+static int LB_HexDigit(wchar_t value) {
+    if (value >= L'0' && value <= L'9') return value - L'0';
+    if (value >= L'a' && value <= L'f') return value - L'a' + 10;
+    if (value >= L'A' && value <= L'F') return value - L'A' + 10;
+    return -1;
+}
+
 static void LB_ReplaceAll(std::wstring& value, const std::wstring& from, const std::wstring& to) {
     if (from.empty()) return;
     size_t position = 0;
@@ -99,13 +106,6 @@ const wchar_t* 文本_转小写(const wchar_t* text) {
 `;
 
 const BYTES_RUNTIME = String.raw`
-static int LB_HexDigit(wchar_t value) {
-    if (value >= L'0' && value <= L'9') return value - L'0';
-    if (value >= L'a' && value <= L'f') return value - L'a' + 10;
-    if (value >= L'A' && value <= L'F') return value - L'A' + 10;
-    return -1;
-}
-
 bool 字节_十六进制是否有效(const wchar_t* hex) {
     const std::wstring value = LB_Wide(hex);
     if (value.size() % 2 != 0) return false;

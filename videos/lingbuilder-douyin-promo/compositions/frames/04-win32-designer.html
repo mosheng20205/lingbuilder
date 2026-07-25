@@ -1,0 +1,36 @@
+<template>
+  <style>
+    #root{position:absolute;inset:0;width:1080px;height:1920px;overflow:hidden;container-type:size;color:#F8FAFC;box-sizing:border-box}
+    .f04-ground{position:absolute;inset:0;background:#03060B}
+    .f04-visual{position:absolute;left:0;top:0;width:1080px;height:1604px;overflow:hidden;background:#03060B}
+    .f04-backdrop{position:absolute;inset:-32px;background-image:url("assets/lingbuilder-04-win32-designer.png");background-position:center;background-size:cover;filter:blur(28px) brightness(.34) saturate(1.18);opacity:.9}
+    .f04-poster{position:absolute;left:88px;top:0;width:904px;height:1604px;object-fit:contain;object-position:center top;will-change:transform,filter}
+    .f04-rail{position:absolute;left:68px;top:0;width:3px;height:1604px;background:#0087FF;transform-origin:top;opacity:.92}
+    .f04-focus{position:absolute;border:2px solid rgba(33,212,253,.92);border-radius:18px;box-shadow:0 0 0 1px rgba(0,135,255,.22);opacity:0;box-sizing:border-box}
+    .f04-focus-a{left:36px;top:270px;width:1006px;height:760px}
+    .f04-focus-b{left:250px;top:930px;width:580px;height:500px;border-color:rgba(137,92,255,.92)}
+    .f04-caption-ground{position:absolute;left:0;right:0;bottom:0;height:316px;background:#07101D;border-top:2px solid #0087FF}
+  </style>
+  <div data-hf-id="hf-czbw" id="root" data-composition-id="04-win32-designer" data-width="1080" data-height="1920" data-duration="6.904">
+    <div data-hf-id="hf-hbwl" id="f04-ground" class="clip f04-ground" data-start="0" data-duration="6.904" data-track-index="0"></div>
+    <section data-hf-id="hf-m4ic" id="f04-visual" class="clip f04-visual" data-start="0" data-duration="6.904" data-track-index="1">
+      <div data-hf-id="hf-y20x" class="f04-backdrop"></div>
+      <img data-hf-id="hf-mt7s" class="f04-poster" src="assets/lingbuilder-04-win32-designer.png" alt="">
+      <div data-hf-id="hf-li7j" class="f04-rail"></div>
+      <div data-hf-id="hf-7hdi" class="f04-focus f04-focus-a"></div>
+      <div data-hf-id="hf-3j9h" class="f04-focus f04-focus-b"></div>
+    </section>
+    <div data-hf-id="hf-bsl3" id="f04-caption-ground" class="clip f04-caption-ground" data-start="0" data-duration="6.904" data-track-index="2"></div>
+  </div>
+  <script>
+    window.__timelines=window.__timelines||{};
+    const tl=gsap.timeline({paused:true});
+    const poster=document.querySelector(".f04-poster");
+    tl.fromTo(poster,{scale:1.018,y:0,filter:"brightness(.86)"},{scale:1.0,y:-7,filter:"brightness(1)",duration:6.504,ease:"power3.inOut"},0);
+    tl.fromTo(".f04-rail",{scaleY:0},{scaleY:1,duration:.65,ease:"power3.out"},.08);
+    tl.fromTo(".f04-focus-a",{opacity:0,scale:.985},{opacity:.9,scale:1,duration:.38,ease:"power3.out"},2.650);
+    tl.to(".f04-focus-a",{opacity:.16,duration:.32,ease:"power3.inOut"},6.200);
+    tl.fromTo(".f04-focus-b",{opacity:0,scale:.985},{opacity:.92,scale:1,duration:.42,ease:"power3.out"},6.200);
+    window.__timelines["04-win32-designer"]=tl;
+  </script>
+</template>

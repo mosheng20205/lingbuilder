@@ -1,0 +1,29 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "cef3-cli-test",
+    "name": "CEF3 多浏览器 CLI 测试",
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "CEF3测试窗体.xml",
+        "className": "CEF3测试窗体",
+        "title": "LingBuilder CEF3 多浏览器测试",
+        "width": 1180,
+        "height": 640,
+        "background": "#111827",
+        "description": "两个 CEF3 浏览器控件并排加载不同网页。",
+        "events": { "Loaded": "_CEF3测试窗体_创建完毕" },
+        "controls": [
+          { "id": "browser1", "type": "CefBrowser", "name": "浏览器1", "content": "", "width": 560, "height": 560, "x": 10, "y": 10, "background": "#FFFFFF", "foreground": "#000000", "isEnabled": true, "visibility": "Visible", "properties": { "url": "https://www.baidu.com", "cacheDir": ".cef3/cache-1", "enableJs": true, "loadImages": true, "enableDevTools": true } },
+          { "id": "browser2", "type": "CefBrowser", "name": "浏览器2", "content": "", "width": 560, "height": 560, "x": 590, "y": 10, "background": "#FFFFFF", "foreground": "#000000", "isEnabled": true, "visibility": "Visible", "properties": { "url": "https://www.bing.com", "cacheDir": ".cef3/cache-2", "enableJs": true, "loadImages": true, "enableDevTools": true } }
+        ]
+      }
+    ],
+    "resources": []
+  },
+  "activeWindowId": "main-window",
+  "lingCppSourceFilePath": "examples/cef3-cli-test/src/CEF3测试窗体.lcpp",
+  "run": false,
+  "approved": true
+}

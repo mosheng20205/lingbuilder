@@ -2,6 +2,10 @@
 
 > 2026-07-24 补充：内置 `lingbuilder.win32.common-controls` 已注册 `VideoPlayer` /“视频播放器”控件。该控件的 Media Foundation 依赖声明为 `mfplat.lib`、`mfplay.lib`、`mfuuid.lib`，中文播放命令同时存在于 `contributes.commands` 与 `bindings.commands`；设计器、语言服务和 C++ 生成器必须继续从同一模块清单消费这些定义。
 
+> 2026-07-25 补充：新增内置 `lingbuilder.cef3.browser`（CEF3浏览器模块），按 v2 `contributes.designerControls` 注册 `CefBrowser` /“CEF3浏览器”可视控件（`nativeAdapter: cef3-browser`，依赖 `libcef.lib`、`libcef_dll_wrapper.lib`）。控件支持多实例、属性面板 `url`/`cacheDir`/`userAgent`/JavaScript/图片/WebGL/代理配置，18 条 `CEF3_*` 中文命令同时存在于 `contributes.commands` 与 `bindings.commands`；设计器、语言服务和 C++ 生成器从同一模块清单消费这些定义。CEF3 SDK 由 `nativeDependencyService.ts` 从 `CEF3_SDK_ROOT`、工作区 `.lingbuilder/cef3-sdk` 或 `C:\cef3-sdk` 受控发现复制；CEF3 为单进程框架，同 exe 全部控件共享缓存（以第一个控件 `cacheDir` 作为全局 `cache_path`），需要会话隔离时使用 `lingbuilder.edgeview`。
+
+> 2026-07-26 补充：新增 CEF3 内核 SDK 离线载体模块 `lingbuilder.cef3.sdk`（x64），这是首个“纯二进制资产模块”参考实现：v2 manifest 只有基础字段（无 commands/designerControls/targets），安装到 `.lingbuilder/modules/lingbuilder.cef3.sdk/` 即生效，无需为项目启用；`findCef3SdkRoot` 新增该路径候选。打包脚本为 `electron/scripts/generate-cef3-sdk-module.cjs`（`npm run module:cef3-sdk -- --install`），把 CEF 官方包 `include/Release/Resources` 与预编译 /MD `libcef_dll_wrapper.lib` 打成 `cef3-sdk-x64.lbmod`（实测 184MB，版本自动读 `cef_version.h`）；为此 `moduleService.ts` 的 `.lbmod` 包上限从 100MB 放宽到 1GB。用户安装该模块后构建 CEF3 项目免下载 SDK、免 CMake 编译。
+
 本文记录当前仓库已经落地的模块系统实现，供后续开发者和 Agent 继续扩展时参考。模块系统的目标不是做展示页，而是让“项目引用模块 -> Monaco 中文代码能力 -> 设计器控件 -> C++ 生成/构建”形成同一套数据闭环。
 
 ## 2026-07 v2 模块 SDK 重构状态

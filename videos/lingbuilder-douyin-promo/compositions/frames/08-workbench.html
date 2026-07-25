@@ -1,0 +1,36 @@
+<template>
+  <style>
+    #root{position:absolute;inset:0;width:1080px;height:1920px;overflow:hidden;container-type:size;color:#F8FAFC;box-sizing:border-box}
+    .f08-ground{position:absolute;inset:0;background:#03060B}
+    .f08-visual{position:absolute;left:0;top:0;width:1080px;height:1604px;overflow:hidden;background:#03060B}
+    .f08-backdrop{position:absolute;inset:-32px;background-image:url("assets/lingbuilder-08-workbench.png");background-position:center;background-size:cover;filter:blur(28px) brightness(.34) saturate(1.18);opacity:.9}
+    .f08-poster{position:absolute;left:88px;top:0;width:904px;height:1604px;object-fit:contain;object-position:center top;will-change:transform,filter}
+    .f08-rail{position:absolute;left:68px;top:0;width:3px;height:1604px;background:#0087FF;transform-origin:top;opacity:.92}
+    .f08-focus{position:absolute;border:2px solid rgba(33,212,253,.92);border-radius:18px;box-shadow:0 0 0 1px rgba(0,135,255,.22);opacity:0;box-sizing:border-box}
+    .f08-focus-a{left:38px;top:190px;width:1000px;height:760px}
+    .f08-focus-b{left:44px;top:920px;width:990px;height:570px;border-color:rgba(137,92,255,.92)}
+    .f08-caption-ground{position:absolute;left:0;right:0;bottom:0;height:316px;background:#07101D;border-top:2px solid #0087FF}
+  </style>
+  <div data-hf-id="hf-l1yu" id="root" data-composition-id="08-workbench" data-width="1080" data-height="1920" data-duration="7.44">
+    <div data-hf-id="hf-cfov" id="f08-ground" class="clip f08-ground" data-start="0" data-duration="7.44" data-track-index="0"></div>
+    <section data-hf-id="hf-6n80" id="f08-visual" class="clip f08-visual" data-start="0" data-duration="7.44" data-track-index="1">
+      <div data-hf-id="hf-ty71" class="f08-backdrop"></div>
+      <img data-hf-id="hf-6qey" class="f08-poster" src="assets/lingbuilder-08-workbench.png" alt="">
+      <div data-hf-id="hf-ls4z" class="f08-rail"></div>
+      <div data-hf-id="hf-7z3i" class="f08-focus f08-focus-a"></div>
+      <div data-hf-id="hf-40zh" class="f08-focus f08-focus-b"></div>
+    </section>
+    <div data-hf-id="hf-cugv" id="f08-caption-ground" class="clip f08-caption-ground" data-start="0" data-duration="7.44" data-track-index="2"></div>
+  </div>
+  <script>
+    window.__timelines=window.__timelines||{};
+    const tl=gsap.timeline({paused:true});
+    const poster=document.querySelector(".f08-poster");
+    tl.fromTo(poster,{scale:1.018,y:0,filter:"brightness(.86)"},{scale:1.0,y:-7,filter:"brightness(1)",duration:6.84,ease:"power3.inOut"},0);
+    tl.fromTo(".f08-rail",{scaleY:0},{scaleY:1,duration:.65,ease:"power3.out"},.08);
+    tl.fromTo(".f08-focus-a",{opacity:0,scale:.985},{opacity:.9,scale:1,duration:.38,ease:"power3.out"},2.850);
+    tl.to(".f08-focus-a",{opacity:.16,duration:.32,ease:"power3.inOut"},6.400);
+    tl.fromTo(".f08-focus-b",{opacity:0,scale:.985},{opacity:.92,scale:1,duration:.42,ease:"power3.out"},6.400);
+    window.__timelines["08-workbench"]=tl;
+  </script>
+</template>

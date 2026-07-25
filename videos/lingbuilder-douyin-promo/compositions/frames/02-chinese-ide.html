@@ -1,0 +1,36 @@
+<template>
+  <style>
+    #root{position:absolute;inset:0;width:1080px;height:1920px;overflow:hidden;container-type:size;color:#F8FAFC;box-sizing:border-box}
+    .f02-ground{position:absolute;inset:0;background:#03060B}
+    .f02-visual{position:absolute;left:0;top:0;width:1080px;height:1604px;overflow:hidden;background:#03060B}
+    .f02-backdrop{position:absolute;inset:-32px;background-image:url("assets/lingbuilder-02-chinese-ide.png");background-position:center;background-size:cover;filter:blur(28px) brightness(.34) saturate(1.18);opacity:.9}
+    .f02-poster{position:absolute;left:88px;top:0;width:904px;height:1604px;object-fit:contain;object-position:center top;will-change:transform,filter}
+    .f02-rail{position:absolute;left:68px;top:0;width:3px;height:1604px;background:#0087FF;transform-origin:top;opacity:.92}
+    .f02-focus{position:absolute;border:2px solid rgba(33,212,253,.92);border-radius:18px;box-shadow:0 0 0 1px rgba(0,135,255,.22);opacity:0;box-sizing:border-box}
+    .f02-focus-a{left:52px;top:60px;width:900px;height:300px}
+    .f02-focus-b{left:38px;top:420px;width:1004px;height:1040px;border-color:rgba(137,92,255,.92)}
+    .f02-caption-ground{position:absolute;left:0;right:0;bottom:0;height:316px;background:#07101D;border-top:2px solid #0087FF}
+  </style>
+  <div data-hf-id="hf-h69x" id="root" data-composition-id="02-chinese-ide" data-width="1080" data-height="1920" data-duration="6.836">
+    <div data-hf-id="hf-4j2r" id="f02-ground" class="clip f02-ground" data-start="0" data-duration="6.836" data-track-index="0"></div>
+    <section data-hf-id="hf-kzai" id="f02-visual" class="clip f02-visual" data-start="0" data-duration="6.836" data-track-index="1">
+      <div data-hf-id="hf-qsaz" class="f02-backdrop"></div>
+      <img data-hf-id="hf-axcr" class="f02-poster" src="assets/lingbuilder-02-chinese-ide.png" alt="">
+      <div data-hf-id="hf-eqox" class="f02-rail"></div>
+      <div data-hf-id="hf-uh2a" class="f02-focus f02-focus-a"></div>
+      <div data-hf-id="hf-qiy9" class="f02-focus f02-focus-b"></div>
+    </section>
+    <div data-hf-id="hf-d6o9" id="f02-caption-ground" class="clip f02-caption-ground" data-start="0" data-duration="6.836" data-track-index="2"></div>
+  </div>
+  <script>
+    window.__timelines=window.__timelines||{};
+    const tl=gsap.timeline({paused:true});
+    const poster=document.querySelector(".f02-poster");
+    tl.fromTo(poster,{scale:1.018,y:0,filter:"brightness(.86)"},{scale:1.0,y:-7,filter:"brightness(1)",duration:6.336,ease:"power3.inOut"},0);
+    tl.fromTo(".f02-rail",{scaleY:0},{scaleY:1,duration:.65,ease:"power3.out"},.08);
+    tl.fromTo(".f02-focus-a",{opacity:0,scale:.985},{opacity:.9,scale:1,duration:.38,ease:"power3.out"},1.850);
+    tl.to(".f02-focus-a",{opacity:.16,duration:.32,ease:"power3.inOut"},6.400);
+    tl.fromTo(".f02-focus-b",{opacity:0,scale:.985},{opacity:.92,scale:1,duration:.42,ease:"power3.out"},6.400);
+    window.__timelines["02-chinese-ide"]=tl;
+  </script>
+</template>

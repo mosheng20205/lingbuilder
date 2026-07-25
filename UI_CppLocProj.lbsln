@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "lingbuilder-4",
+  "startupProjectId": "upload-drag-cli-test",
   "startupProjectIds": [
-    "lingbuilder-4"
+    "upload-drag-cli-test"
   ],
   "projects": [
     {

@@ -1,0 +1,598 @@
+{
+  "tts_provider": "edge-tts",
+  "voice_id": "zh-CN-XiaoxiaoNeural",
+  "bgm": null,
+  "bgm_pending": false,
+  "bgm_provider": null,
+  "bgm_pid": null,
+  "bgm_log": null,
+  "bgm_mode": null,
+  "bgm_target_duration_s": null,
+  "bgm_seed_duration_s": null,
+  "bgm_loop_count": null,
+  "voices": [
+    {
+      "id": "01",
+      "path": "assets/voice/01.wav",
+      "duration_s": 5.976,
+      "words": [
+        {
+          "text": "灵码",
+          "start": 0.0,
+          "end": 0.903
+        },
+        {
+          "text": "LingBuilder。",
+          "start": 0.903,
+          "end": 1.835
+        },
+        {
+          "text": "中文写代码，",
+          "start": 1.835,
+          "end": 3.592
+        },
+        {
+          "text": "生成",
+          "start": 3.592,
+          "end": 4.175
+        },
+        {
+          "text": "真实",
+          "start": 4.175,
+          "end": 4.757
+        },
+        {
+          "text": "C++。",
+          "start": 4.757,
+          "end": 5.34
+        }
+      ]
+    },
+    {
+      "id": "02",
+      "path": "assets/voice/02.wav",
+      "duration_s": 6.336,
+      "words": [
+        {
+          "text": "从菜单",
+          "start": 0.0,
+          "end": 0.593
+        },
+        {
+          "text": "到诊断，",
+          "start": 0.593,
+          "end": 1.186
+        },
+        {
+          "text": "从项目模板",
+          "start": 1.186,
+          "end": 2.554
+        },
+        {
+          "text": "到错误提示，",
+          "start": 2.554,
+          "end": 3.542
+        },
+        {
+          "text": "全中文",
+          "start": 3.542,
+          "end": 4.494
+        },
+        {
+          "text": "贯穿",
+          "start": 4.494,
+          "end": 4.89
+        },
+        {
+          "text": "开发流程。",
+          "start": 4.89,
+          "end": 5.68
+        }
+      ]
+    },
+    {
+      "id": "03",
+      "path": "assets/voice/03.wav",
+      "duration_s": 8.016,
+      "words": [
+        {
+          "text": "中文代码",
+          "start": 0.0,
+          "end": 0.823
+        },
+        {
+          "text": "经过",
+          "start": 0.823,
+          "end": 1.235
+        },
+        {
+          "text": "本地确定性规则，",
+          "start": 1.235,
+          "end": 2.675
+        },
+        {
+          "text": "生成",
+          "start": 2.675,
+          "end": 3.507
+        },
+        {
+          "text": "可阅读、",
+          "start": 3.507,
+          "end": 4.125
+        },
+        {
+          "text": "可复制、",
+          "start": 4.125,
+          "end": 5.002
+        },
+        {
+          "text": "可迁移的",
+          "start": 5.002,
+          "end": 6.165
+        },
+        {
+          "text": "真实",
+          "start": 6.165,
+          "end": 6.577
+        },
+        {
+          "text": "C++ 工程。",
+          "start": 6.577,
+          "end": 7.4
+        }
+      ]
+    },
+    {
+      "id": "04",
+      "path": "assets/voice/04.wav",
+      "duration_s": 6.504,
+      "words": [
+        {
+          "text": "拖入控件、",
+          "start": 0.0,
+          "end": 0.887
+        },
+        {
+          "text": "调整属性、",
+          "start": 0.887,
+          "end": 2.314
+        },
+        {
+          "text": "绑定事件，",
+          "start": 2.314,
+          "end": 3.481
+        },
+        {
+          "text": "可视化完成",
+          "start": 3.481,
+          "end": 4.59
+        },
+        {
+          "text": "原生",
+          "start": 4.59,
+          "end": 5.033
+        },
+        {
+          "text": "Win32 窗口。",
+          "start": 5.033,
+          "end": 5.92
+        }
+      ]
+    },
+    {
+      "id": "05",
+      "path": "assets/voice/05.wav",
+      "duration_s": 5.496,
+      "words": [
+        {
+          "text": "按下 F5，",
+          "start": 0.0,
+          "end": 0.911
+        },
+        {
+          "text": "完成",
+          "start": 0.911,
+          "end": 1.787
+        },
+        {
+          "text": "真实编译、",
+          "start": 1.787,
+          "end": 3.058
+        },
+        {
+          "text": "调试",
+          "start": 3.058,
+          "end": 3.594
+        },
+        {
+          "text": "与 EXE 运行。",
+          "start": 3.594,
+          "end": 4.88
+        }
+      ]
+    },
+    {
+      "id": "06",
+      "path": "assets/voice/06.wav",
+      "duration_s": 6.192,
+      "words": [
+        {
+          "text": "AI 能写、",
+          "start": 0.0,
+          "end": 0.699
+        },
+        {
+          "text": "能修，",
+          "start": 0.699,
+          "end": 1.375
+        },
+        {
+          "text": "也会先给出 Diff，",
+          "start": 1.375,
+          "end": 3.097
+        },
+        {
+          "text": "由你",
+          "start": 3.097,
+          "end": 3.533
+        },
+        {
+          "text": "审查确认后",
+          "start": 3.533,
+          "end": 4.945
+        },
+        {
+          "text": "再应用。",
+          "start": 4.945,
+          "end": 5.6
+        }
+      ]
+    },
+    {
+      "id": "07",
+      "path": "assets/voice/07.wav",
+      "duration_s": 6.936,
+      "words": [
+        {
+          "text": "原生 C++ 能力",
+          "start": 0.0,
+          "end": 1.357
+        },
+        {
+          "text": "可以封装成",
+          "start": 1.357,
+          "end": 2.489
+        },
+        {
+          "text": "lbmod 模块，",
+          "start": 2.489,
+          "end": 3.484
+        },
+        {
+          "text": "安装、",
+          "start": 3.484,
+          "end": 4.216
+        },
+        {
+          "text": "启用、",
+          "start": 4.216,
+          "end": 4.909
+        },
+        {
+          "text": "复用",
+          "start": 4.909,
+          "end": 5.641
+        },
+        {
+          "text": "更简单。",
+          "start": 5.641,
+          "end": 6.32
+        }
+      ]
+    },
+    {
+      "id": "08",
+      "path": "assets/voice/08.wav",
+      "duration_s": 6.84,
+      "words": [
+        {
+          "text": "Monaco、",
+          "start": 0.0,
+          "end": 0.492
+        },
+        {
+          "text": "Git、",
+          "start": 0.492,
+          "end": 1.038
+        },
+        {
+          "text": "终端、",
+          "start": 1.038,
+          "end": 1.816
+        },
+        {
+          "text": "调试和测试，",
+          "start": 1.816,
+          "end": 3.022
+        },
+        {
+          "text": "汇聚成",
+          "start": 3.022,
+          "end": 3.93
+        },
+        {
+          "text": "一套完整的",
+          "start": 3.93,
+          "end": 4.876
+        },
+        {
+          "text": "中文开发工作台。",
+          "start": 4.876,
+          "end": 6.2
+        }
+      ]
+    },
+    {
+      "id": "09",
+      "path": "assets/voice/09.wav",
+      "duration_s": 6.12,
+      "words": [
+        {
+          "text": "想用中文",
+          "start": 0.0,
+          "end": 0.889
+        },
+        {
+          "text": "开发 Windows 软件？",
+          "start": 0.889,
+          "end": 2.311
+        },
+        {
+          "text": "访问 Gitee，",
+          "start": 2.311,
+          "end": 3.64
+        },
+        {
+          "text": "体验灵码",
+          "start": 3.64,
+          "end": 4.809
+        },
+        {
+          "text": "LingBuilder。",
+          "start": 4.809,
+          "end": 5.52
+        }
+      ]
+    }
+  ],
+  "sfx": [
+    {
+      "id": "01",
+      "name": "impact-bass-1",
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "id": "01",
+      "name": "whoosh-short",
+      "file": "assets/sfx/whoosh-short.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "id": "02",
+      "name": "whoosh-short",
+      "file": "assets/sfx/whoosh-short.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "id": "02",
+      "name": "click-soft",
+      "file": "assets/sfx/click-soft.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "id": "03",
+      "name": "typing",
+      "file": "assets/sfx/typing.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 1.5,
+      "volume": 0.35
+    },
+    {
+      "id": "03",
+      "name": "whoosh-short",
+      "file": "assets/sfx/whoosh-short.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "id": "03",
+      "name": "chime",
+      "file": "assets/sfx/chime.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 2.5,
+      "volume": 0.35
+    },
+    {
+      "id": "04",
+      "name": "click-soft",
+      "file": "assets/sfx/click-soft.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "id": "04",
+      "name": "whoosh-short",
+      "file": "assets/sfx/whoosh-short.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "id": "04",
+      "name": "chime",
+      "file": "assets/sfx/chime.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 2.5,
+      "volume": 0.35
+    },
+    {
+      "id": "05",
+      "name": "click-soft",
+      "file": "assets/sfx/click-soft.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "id": "05",
+      "name": "typing",
+      "file": "assets/sfx/typing.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 1.5,
+      "volume": 0.35
+    },
+    {
+      "id": "05",
+      "name": "chime",
+      "file": "assets/sfx/chime.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 2.5,
+      "volume": 0.35
+    },
+    {
+      "id": "06",
+      "name": "typing",
+      "file": "assets/sfx/typing.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 1.5,
+      "volume": 0.35
+    },
+    {
+      "id": "06",
+      "name": "whoosh-short",
+      "file": "assets/sfx/whoosh-short.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "id": "06",
+      "name": "click-soft",
+      "file": "assets/sfx/click-soft.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 0.37,
+      "volume": 0.35
+    },
+    {
+      "id": "07",
+      "name": "whoosh-short",
+      "file": "assets/sfx/whoosh-short.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "id": "07",
+      "name": "impact-bass-1",
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "id": "07",
+      "name": "chime",
+      "file": "assets/sfx/chime.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 2.5,
+      "volume": 0.35
+    },
+    {
+      "id": "08",
+      "name": "whoosh-short",
+      "file": "assets/sfx/whoosh-short.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "id": "08",
+      "name": "typing",
+      "file": "assets/sfx/typing.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 1.5,
+      "volume": 0.35
+    },
+    {
+      "id": "08",
+      "name": "chime",
+      "file": "assets/sfx/chime.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 2.5,
+      "volume": 0.35
+    },
+    {
+      "id": "09",
+      "name": "impact-bass-1",
+      "file": "assets/sfx/impact-bass-1.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 2.12,
+      "volume": 0.35
+    },
+    {
+      "id": "09",
+      "name": "whoosh-short",
+      "file": "assets/sfx/whoosh-short.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 0.57,
+      "volume": 0.35
+    },
+    {
+      "id": "09",
+      "name": "chime",
+      "file": "assets/sfx/chime.mp3",
+      "source": "local",
+      "offset_s": 0,
+      "duration_s": 2.5,
+      "volume": 0.35
+    }
+  ],
+  "total_duration_s": 58.416,
+  "voice_rate": "+3%",
+  "voice_pitch": "-2Hz"
+}

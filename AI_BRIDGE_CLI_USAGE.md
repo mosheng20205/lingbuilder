@@ -331,7 +331,13 @@ MCP 工具和 HTTP API 复用同一套 `AiBridgeService`，权限、路径校验
 
 验收时应同时确认：预览 exe 持续运行；两个 `msedgewebview2.exe` 主进程的 `--user-data-dir` 分别指向不同缓存目录；`run.log` 包含两个实例的 JS 返回值，以及导航完成和网页消息处理器日志。示例源码位于 `examples/edgeview-cli-test/src/EdgeView测试窗体.lcpp`。
 
-## 5.2 new_emoji YOLO 构建注意事项
+## 5.2 CEF3 多浏览器 CLI 测试项目
+
+仓库内 `cef3-cli-test` 项目用于验证 `lingbuilder.cef3.browser`。与 EdgeView 纯代码创建不同，CEF3 浏览器是设计器控件：通过 `native.export` / `build.run` 请求传入含多个 `CefBrowser` 控件的窗口模型、`.lcpp` 源码和项目 ID 后，CLI 会自动读取项目模块上下文、从 `CEF3_SDK_ROOT`、工作区 `.lingbuilder/cef3-sdk` 或 `C:\cef3-sdk` 受控发现 CEF3 SDK（支持官方二进制发行包布局，首次构建自动用 CMake 以 `/MD` 编译 `libcef_dll_wrapper.lib`）、复制匹配架构的 `libcef.dll`/`chrome_elf.dll`/`v8_context_snapshot.bin`/GPU DLL/资源并生成 Visual Studio 工程。
+
+验收时应同时确认：预览 exe 持续运行；exe 同目录存在 `libcef.dll`、`v8_context_snapshot.bin` 与 CEF 资源文件（`v8_context_snapshot.bin` 缺失会导致渲染进程无法启动、浏览器白屏）；启动后出现多个同名子进程（Chromium 多进程架构）；两个浏览器控件分别加载不同地址（2026-07-26 已用 CEF 150.0.14 x64 真实验证百度/必应渲染）；`run.log` 包含 `加载完成` 与 `标题被改变` 事件回调日志。CEF3 为单实例框架，同一 exe 全部控件共享缓存（以第一个控件 `cacheDir` 作为全局 `cache_path`）；需要每实例会话隔离时改用 `lingbuilder.edgeview`。缺少 CEF3 SDK 时构建给出中文诊断并优雅降级（exe 可运行但浏览器区域为空白占位）。示例源码位于 `examples/cef3-cli-test/src/CEF3测试窗体.lcpp`。
+
+## 5.3 new_emoji YOLO 构建注意事项
 
 使用 `yolo` 模式自动生成 `lingbuilder.new_emoji.ui` 示例时，必须避免生成“创建完毕后立刻结束”的代码：
 

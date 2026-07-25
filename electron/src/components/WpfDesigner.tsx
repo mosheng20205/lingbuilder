@@ -11,6 +11,7 @@ import {
   FileText,
   FolderOpen,
   FileUp,
+  Globe,
   HelpCircle,
   Keyboard,
   Layers,
@@ -191,7 +192,7 @@ const DEDICATED_CONTROL_PREVIEW_TYPES = new Set<LingControlType>([
   'Button', 'TextBox', 'Label', 'SysLink', 'CheckBox', 'RadioButton', 'ListBox',
   'ProgressBar', 'ComboBox', 'ComboBoxEx', 'GroupBox', 'Image', 'AnimatedImage',
   'VideoPlayer', 'ListView', 'Header', 'TreeView', 'TabControl', 'StatusBar', 'ReBar',
-  'IPAddress', 'TrackBar', 'UpDown', 'Upload', 'DragUpload', 'RichEdit', 'ColorPicker'
+  'IPAddress', 'TrackBar', 'UpDown', 'Upload', 'DragUpload', 'RichEdit', 'ColorPicker', 'CefBrowser'
 ]);
 
 export function hasDedicatedControlPreview(type: LingControlType): boolean {
@@ -215,6 +216,7 @@ const TYPE_ICONS: Partial<Record<LingControlType | 'MenuBar', React.ReactNode>> 
   ContextMenu: <Menu className="w-3.5 h-3.5 text-amber-400" />,
   PopupMenu: <Menu className="w-3.5 h-3.5 text-orange-400" />,
   ComboBox: <List className="w-3.5 h-3.5 text-violet-400" />,
+  CefBrowser: <Globe className="w-3.5 h-3.5 text-sky-400" />,
   Grid: <LayoutGrid className="w-3.5 h-3.5 text-slate-400" />,
   MenuBar: <Menu className="w-3.5 h-3.5 text-amber-400" />
 } as any;
@@ -2898,6 +2900,27 @@ function renderControl(
                   : '请选择 MP4 / WMV 视频'}
               </span>
               <span className="text-[8px] text-slate-500">Media Foundation · 音量 {String(control.properties?.volume ?? 100)}%</span>
+            </div>
+          </div>
+        )}
+
+        {control.type === 'CefBrowser' && (
+          <div className="flex h-full w-full flex-col overflow-hidden rounded border border-sky-500/40 bg-white">
+            <div className="flex items-center gap-1 border-b border-slate-200 bg-slate-100 px-1.5 py-1">
+              <span className="h-2 w-2 shrink-0 rounded-full bg-red-400" />
+              <span className="h-2 w-2 shrink-0 rounded-full bg-amber-400" />
+              <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
+              <span className="ml-1 flex h-4 min-w-0 flex-1 items-center gap-1 rounded bg-white px-1.5 text-[8px] text-slate-500 border border-slate-200">
+                <Globe className="h-2.5 w-2.5 shrink-0 text-sky-500" />
+                <span className="truncate">{typeof control.properties?.url === 'string' && control.properties.url ? control.properties.url : 'about:blank'}</span>
+              </span>
+            </div>
+            <div className="flex min-h-0 flex-1 items-center justify-center bg-slate-50">
+              <div className="flex flex-col items-center gap-1 px-2 text-center">
+                <Globe className="h-6 w-6 text-sky-400" />
+                <span className="max-w-full truncate text-[9px] font-semibold text-slate-500">{control.name}</span>
+                <span className="text-[8px] text-slate-400">CEF3 · Chromium</span>
+              </div>
             </div>
           </div>
         )}

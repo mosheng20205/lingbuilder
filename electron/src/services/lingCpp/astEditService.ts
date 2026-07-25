@@ -6,6 +6,7 @@ import {
   LingCppAccessModifier,
   LingCppClass,
   LingCppDiagnostic,
+  LingCppLocalVariable,
   LingCppMember,
   LingCppMethod,
   LingCppParameter
@@ -89,6 +90,37 @@ function applyEditToLines(lines: string[], classes: LingCppClass[], edit: LingCp
     const member = resolveMember(cls, edit.memberName);
     if (!member) throw new Error(`未找到成员变量：${edit.memberName}`);
     next.splice(lineIndex(member.line), 1);
+    return next;
+  }
+
+  if (edit.kind === 'add-local') {
+    const method = resolveMethod(cls, edit.methodName);
+    if (!method) throw new Error(`未找到子程序：${edit.methodName}`);
+    insertLocal(next, method, edit.local);
+    return next;
+  }
+
+  if (edit.kind === 'update-local') {
+    const method = resolveMethod(cls, edit.methodName);
+    if (!method) throw new Error(`未找到子程序：${edit.methodName}`);
+    const local = resolveLocal(method, edit.localName);
+    if (!local) throw new Error(`未找到局部变量：${edit.localName}`);
+    const index = lineIndex(local.line);
+    next[index] = formatLocalDeclaration(next[index] || '', {
+      name: edit.newName || local.name,
+      type: edit.type || local.type,
+      initialValue: edit.initialValue ?? local.initialValue,
+      isArray: edit.isArray ?? local.isArray ?? false
+    });
+    return next;
+  }
+
+  if (edit.kind === 'delete-local') {
+    const method = resolveMethod(cls, edit.methodName);
+    if (!method) throw new Error(`未找到子程序：${edit.methodName}`);
+    const local = resolveLocal(method, edit.localName);
+    if (!local) throw new Error(`未找到局部变量：${edit.localName}`);
+    next.splice(lineIndex(local.line), 1);
     return next;
   }
 
@@ -185,6 +217,19 @@ function insertEvent(
   lines.splice(insertAt, 0, ...nextLines);
 }
 
+function insertLocal(
+  lines: string[],
+  method: LingCppMethod,
+  local: { name: string; type: string; initialValue?: string; isArray?: boolean }
+): void {
+  const locals = method.locals || [];
+  const insertAt = locals.length > 0
+    ? lineIndex(Math.max(...locals.map(item => item.line)) + 1)
+    : lineIndex(method.line + 1);
+  const indent = inferMethodBodyIndent(lines, method);
+  lines.splice(insertAt, 0, formatLocalDeclaration(`${indent}局部 ${local.type} ${local.name}`, local));
+}
+
 function insertMethod(
   lines: string[],
   cls: LingCppClass,
@@ -251,7 +296,11 @@ function removeMethodBlock(lines: string[], method: LingCppMethod): void {
 }
 
 function replaceMethodBody(lines: string[], method: LingCppMethod, bodyLines: string[]): void {
-  const start = lineIndex(method.line) + 1;
+  const locals = method.locals || [];
+  const declarationEndLine = locals.length > 0
+    ? Math.max(...locals.map(local => local.line))
+    : method.line;
+  const start = lineIndex(declarationEndLine) + 1;
   const end = lineIndex(method.endLine || method.statements.at(-1)?.line || method.line);
   const deleteCount = Math.max(0, end - start + 1);
   const bodyIndent = inferMethodBodyIndent(lines, method);
@@ -284,6 +333,11 @@ function resolveMethod(cls: LingCppClass, methodName: string, kind?: LingCppMeth
   return cls.methods.find(method => normalizeIdentifier(method.name) === normalized && (!kind || method.kind === kind));
 }
 
+function resolveLocal(method: LingCppMethod, localName: string): LingCppLocalVariable | undefined {
+  const normalized = normalizeIdentifier(localName);
+  return (method.locals || []).find(local => normalizeIdentifier(local.name) === normalized);
+}
+
 function findMemberInsertIndex(cls: LingCppClass): number {
   const memberLines = cls.members.map(member => member.line);
   if (memberLines.length > 0) return lineIndex(Math.max(...memberLines) + 1);
@@ -308,6 +362,18 @@ function formatMemberDeclaration(
   const staticPrefix = member.isStatic ? '静态 ' : '';
   const arraySuffix = member.isArray ? '[]' : '';
   return `${indent}${staticPrefix}${member.type.trim()} ${member.name.trim()}${arraySuffix}${initialValue}`;
+}
+
+function formatLocalDeclaration(
+  originalLine: string,
+  local: { name: string; type: string; initialValue?: string; isArray?: boolean }
+): string {
+  const indent = indentOf(originalLine);
+  const initialValue = typeof local.initialValue === 'string' && local.initialValue.trim()
+    ? ` = ${local.initialValue.trim()}`
+    : '';
+  const arraySuffix = local.isArray ? '[]' : '';
+  return `${indent}局部 ${local.type.trim()} ${local.name.trim()}${arraySuffix}${initialValue}`;
 }
 
 function formatEventDeclaration(originalLine: string, handlerName: string, parameters: LingCppParameter[]): string {

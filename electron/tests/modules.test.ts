@@ -106,6 +106,33 @@ test('标准库模块生成独立 C++ 运行时并翻译嵌套中文调用', () 
   assert.match(mainCpp, /JSON_是否有效\(L"\{\}"\);/u);
 });
 
+test('编码与 JSON 标准库运行时不依赖字节模块提供十六进制辅助函数', () => {
+  for (const moduleId of ['lingbuilder.std.encoding', 'lingbuilder.data.json']) {
+    const enabledModules: InstalledModule[] = ['lingbuilder.win32.basic', moduleId].map(enabledModuleId => {
+      const manifest = BUILTIN_MODULES.find(module => module.id === enabledModuleId);
+      assert.ok(manifest, `缺少内置模块 ${enabledModuleId}`);
+      return {
+        manifest,
+        installPath: `builtin://${enabledModuleId}`,
+        isBuiltin: true,
+        isInstalled: true,
+        isEnabledForProject: true,
+        diagnostics: []
+      };
+    });
+    const generated = generateLingCppNativeWin32Project(sampleProject, { enabledModules });
+    const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+    const helperDefinition = 'static int LB_HexDigit(wchar_t value)';
+    const helperDefinitionIndex = mainCpp.indexOf(helperDefinition);
+    const helperUseIndex = mainCpp.indexOf('LB_HexDigit(', helperDefinitionIndex + helperDefinition.length);
+
+    assert.ok(helperDefinitionIndex >= 0, `${moduleId} 应生成共享的 LB_HexDigit 定义`);
+    assert.ok(helperUseIndex > helperDefinitionIndex, `${moduleId} 应在使用 LB_HexDigit 前生成定义`);
+    assert.equal(mainCpp.split(helperDefinition).length - 1, 1, `${moduleId} 只能生成一次 LB_HexDigit 定义`);
+    assert.ok(!enabledModules.some(module => module.manifest.id === 'lingbuilder.std.bytes'));
+  }
+});
+
 test('文件、配置、系统、进程、输入和窗口模块提供完整确定性绑定', () => {
   assert.equal(SYSTEM_LIBRARY_MODULES.length, 13);
   for (const manifest of SYSTEM_LIBRARY_MODULES) {

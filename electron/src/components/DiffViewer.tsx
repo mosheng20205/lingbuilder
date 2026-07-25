@@ -44,7 +44,7 @@ import DiffViewModeSelector, {
   type DiffViewMode
 } from './DiffViewModeSelector';
 import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getLingCppReadableBlocks, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
-import { LingCppAccessModifier, LingCppAstEdit, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
+import { LingCppAccessModifier, LingCppAstEdit, LingCppLocalVariable, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
 import { getBeginnerCommandTokenAtCursor, getBeginnerCompletionContext, getBeginnerCompletionToken, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
 import { BEGINNER_BUILTIN_VALUE_COMPLETIONS } from '../services/lingCpp/beginnerBuiltinValueCompletions';
 import { toggleBeginnerLineComment } from '../services/lingCpp/beginnerLineComment';
@@ -212,6 +212,13 @@ type ParameterDraft = {
   type: string;
   name: string;
   defaultValue: string;
+};
+
+type LocalVariableDraft = {
+  type: string;
+  name: string;
+  initialValue: string;
+  isArray: boolean;
 };
 
 interface NativePreviewState {
@@ -1156,6 +1163,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [newEventDraft, setNewEventDraft] = useState({ handlerName: '', parameters: '' });
   const [newFunctionDraft, setNewFunctionDraft] = useState({ returnType: '空', name: '', parameters: '' });
   const [newParameterDrafts, setNewParameterDrafts] = useState<Record<string, ParameterDraft>>({});
+  const [newLocalVariableDrafts, setNewLocalVariableDrafts] = useState<Record<string, LocalVariableDraft>>({});
   const [functionCallDrafts, setFunctionCallDrafts] = useState<Record<string, Record<string, string>>>({});
   const [sourceScroll, setSourceScroll] = useState({ top: 0, left: 0 });
   const [pendingHandlerFocus, setPendingHandlerFocus] = useState<{ handlerName: string; filePath?: string } | null>(null);
@@ -2990,7 +2998,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       });
       return;
     }
-    if (row.editKind === 'note') return;
+    if (row.editKind === 'note' || row.editKind === 'local') return;
     setStructureEditDraft({
       mode: row.editKind,
       rowId: row.id,
@@ -3746,6 +3754,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       package: '入口',
       class: '类',
       member: '成员声明',
+      local: '局部变量',
       method: '方法',
       constructor: '初始化',
       event: '事件处理器',
@@ -4002,6 +4011,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       package: '入口',
       class: '类',
       member: '成员声明',
+      local: '局部变量',
       method: '方法',
       constructor: '初始化',
       event: '事件处理器',
@@ -4046,7 +4056,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       || codeTargets[0];
     const codeTargetKey = (target: BeginnerCodeTarget) =>
       createBeginnerCodeDraftKey(target.className, target.method.kind, target.method.name);
-    const commonLingCppTypes = ['文本型', '整数型', '逻辑型', '小数型', '长整数型', '按钮', '标签', '编辑框', '复选框', '窗体', '对象'];
+    const commonLingCppTypes = ['文本型', '整数型', '逻辑型', '小数型', '长整数型', '字节集', '按钮', '标签', '编辑框', '复选框', '窗体', '对象'];
     const memberNameSuggestions = Array.from(new Set([
       ...memberRows.map(row => row.targetName || row.name),
       '标题',
@@ -4110,6 +4120,19 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       ].map(item => [`${item.label}:${item.insertText}`, item]))
         .values()
     );
+    const getBeginnerCodeCompletionItems = (target: BeginnerCodeTarget) => Array.from(
+      new Map([
+        ...beginnerCodeCompletionItems,
+        ...(target.method.locals || []).map(local => ({
+          label: local.name,
+          detail: `${local.type} 局部变量 · ${target.method.name}`,
+          insertText: local.name,
+          aliases: [local.name, local.type, '局部变量'],
+          kind: '变量' as BeginnerCodeCompletion['kind']
+        }))
+      ].map(item => [`${item.label}:${item.insertText}`, item]))
+        .values()
+    );
     const updateBeginnerCodeDraft = (target: BeginnerCodeTarget, nextValue: string) => {
       const targetKey = codeTargetKey(target);
       const nextDrafts = { ...beginnerCodeDraftsRef.current, [targetKey]: nextValue };
@@ -4140,7 +4163,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         ? windowTargetCompletionItems
         : context.isWindowPlacementContext
           ? BEGINNER_WINDOW_PLACEMENT_COMPLETIONS
-          : beginnerCodeCompletionItems;
+          : getBeginnerCodeCompletionItems(target);
       const items = filterBeginnerCodeCompletions(token, includeAll || context.isWindowTargetContext || context.isWindowPlacementContext, sourceItems);
       if (items.length === 0) {
         setBeginnerCompletionState(current => current?.targetKey === targetKey ? null : current);
@@ -4617,6 +4640,103 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           note: '新手模式右键新增的变量'
         }
       }]);
+    };
+    const localDraftForTarget = (target: BeginnerCodeTarget): LocalVariableDraft => ({
+      type: '文本型',
+      name: '',
+      initialValue: '',
+      isArray: false,
+      ...(newLocalVariableDrafts[codeTargetKey(target)] || {})
+    });
+    const updateNewLocalDraft = (target: BeginnerCodeTarget, patch: Partial<LocalVariableDraft>) => {
+      const key = codeTargetKey(target);
+      setNewLocalVariableDrafts(current => ({
+        ...current,
+        [key]: { type: '文本型', name: '', initialValue: '', isArray: false, ...(current[key] || {}), ...patch }
+      }));
+    };
+    const clearNewLocalDraft = (target: BeginnerCodeTarget) => {
+      const key = codeTargetKey(target);
+      setNewLocalVariableDrafts(current => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+    };
+    const commitNewLocalVariable = (target: BeginnerCodeTarget, draftOverride?: Partial<LocalVariableDraft>) => {
+      const draft = { ...localDraftForTarget(target), ...(draftOverride || {}) };
+      const name = draft.name.trim();
+      const type = draft.type.trim();
+      if (!name || !type) {
+        setStructureEditError('新增局部变量需要填写变量名和类型。');
+        return false;
+      }
+      const usedNames = new Set([
+        ...target.method.parameters.map(parameter => parameter.name),
+        ...(target.method.locals || []).map(local => local.name)
+      ].map(normalizeIdentifier));
+      if (usedNames.has(normalizeIdentifier(name))) {
+        setStructureEditError(`局部变量 ${name} 与现有参数或局部变量重名。`);
+        return false;
+      }
+      const applied = applyStructureAstEdits([{
+        kind: 'add-local',
+        className: target.className,
+        methodName: target.method.name,
+        local: {
+          name,
+          type,
+          initialValue: draft.initialValue.trim() || undefined,
+          isArray: draft.isArray
+        }
+      }], target.method.line);
+      if (applied) clearNewLocalDraft(target);
+      return applied;
+    };
+    const createBeginnerLocal = (target?: BeginnerCodeTarget) => {
+      if (!target) {
+        setStructureEditError('请先选择要添加局部变量的事件或子程序。');
+        return;
+      }
+      const name = uniqueBeginnerName('局部变量', [
+        ...target.method.parameters.map(parameter => parameter.name),
+        ...(target.method.locals || []).map(local => local.name)
+      ]);
+      commitNewLocalVariable(target, { name, type: '文本型', initialValue: '""' });
+    };
+    const updateLocalVariable = (
+      target: BeginnerCodeTarget,
+      local: LingCppLocalVariable,
+      patch: { newName?: string; type?: string; initialValue?: string; isArray?: boolean }
+    ) => {
+      const nextName = patch.newName?.trim();
+      const nextType = patch.type?.trim();
+      if (patch.newName !== undefined && !nextName) {
+        setStructureEditError('局部变量名不能为空。');
+        return false;
+      }
+      if (patch.type !== undefined && !nextType) {
+        setStructureEditError('局部变量类型不能为空。');
+        return false;
+      }
+      return applyStructureAstEdits([{
+        kind: 'update-local',
+        className: target.className,
+        methodName: target.method.name,
+        localName: local.name,
+        newName: nextName,
+        type: nextType,
+        initialValue: patch.initialValue,
+        isArray: patch.isArray
+      }], local.line);
+    };
+    const deleteLocalVariable = (target: BeginnerCodeTarget, local: LingCppLocalVariable) => {
+      applyStructureAstEdits([{
+        kind: 'delete-local',
+        className: target.className,
+        methodName: target.method.name,
+        localName: local.name
+      }], local.line);
     };
     const deleteBeginnerCodeTarget = (target?: BeginnerCodeTarget) => {
       if (!target) return;
@@ -6550,6 +6670,123 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       );
     };
 
+    const renderLocalVariableInput = (
+      target: BeginnerCodeTarget,
+      local: LingCppLocalVariable,
+      field: 'name' | 'type' | 'initialValue',
+      value: string,
+      placeholder: string,
+      tone: StructureInputTone
+    ) => (
+      <input
+        key={`${codeTargetKey(target)}:${local.line}:${local.name}:${field}:${value}`}
+        defaultValue={value}
+        placeholder={placeholder}
+        readOnly={!onUpdateSourceContent}
+        onBlur={event => {
+          const nextValue = event.currentTarget.value.trim();
+          if (nextValue === value) return;
+          if (field === 'name') updateLocalVariable(target, local, { newName: nextValue });
+          if (field === 'type') updateLocalVariable(target, local, { type: nextValue });
+          if (field === 'initialValue') updateLocalVariable(target, local, { initialValue: nextValue });
+        }}
+        onKeyDown={event => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+          if (event.key === 'Escape') {
+            event.currentTarget.value = value;
+            event.currentTarget.blur();
+          }
+        }}
+        className={directInputClasses(tone)}
+      />
+    );
+
+    const renderLocalVariableCanvas = (target: BeginnerCodeTarget, visualLine: number) => {
+      const locals = target.method.locals || [];
+      const draft = localDraftForTarget(target);
+      const sourceLine = locals[0]?.line || target.method.line + 1;
+      return renderSourceShell(
+        `${target.method.kind}-${target.method.name}-locals`,
+        visualLine,
+        sourceLine,
+        'plain',
+        <div className="min-w-0">
+          <div className={`border-b px-2 py-1 text-[10px] font-semibold ${tableHeadChrome}`}>局部变量 · 仅在当前子程序内有效</div>
+          {renderInlineTable(
+            [
+              { label: '局部变量', className: 'w-[140px]' },
+              { label: '类 型', className: 'w-[110px]' },
+              { label: '数 组', className: 'w-[56px]' },
+              { label: '初始值', className: 'w-[180px]' },
+              { label: '操 作', className: 'w-[88px]' }
+            ],
+            [
+              ...locals.map(local => (
+                <tr key={`${codeTargetKey(target)}:local:${local.line}:${local.name}`} className={isDarkMode ? 'bg-[#18191f]' : 'bg-white'}>
+                  <td className={compactCellClass}>{renderLocalVariableInput(target, local, 'name', local.name, '变量名', 'variable')}</td>
+                  <td className={compactCellClass}>{renderLocalVariableInput(target, local, 'type', local.type, '类型', 'type')}</td>
+                  <td className={compactCellClass}>
+                    <label className="inline-flex h-[var(--beginner-input-height)] w-full cursor-pointer items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(local.isArray)}
+                        disabled={!onUpdateSourceContent}
+                        onChange={event => updateLocalVariable(target, local, { isArray: event.currentTarget.checked })}
+                        className="h-3.5 w-3.5 accent-cyan-500"
+                        aria-label={`切换局部变量 ${local.name} 数组状态`}
+                      />
+                    </label>
+                  </td>
+                  <td className={compactCellClass}>{renderLocalVariableInput(target, local, 'initialValue', local.initialValue || '', '可留空', 'value')}</td>
+                  <td className={compactCellClass}>
+                    <button
+                      type="button"
+                      onClick={() => deleteLocalVariable(target, local)}
+                      disabled={!onUpdateSourceContent}
+                      className={`inline-flex h-[var(--beginner-input-height)] w-full items-center justify-center gap-1 rounded border px-2 text-[10px] font-semibold ${
+                        isDarkMode ? 'border-rose-500/25 text-rose-300 hover:bg-rose-500/10' : 'border-rose-200 text-rose-700 hover:bg-rose-50'
+                      }`}
+                    >
+                      <Trash2 className="h-3 w-3" />删除
+                    </button>
+                  </td>
+                </tr>
+              )),
+              <tr key={`${codeTargetKey(target)}:new-local`} className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
+                <td className={compactCellClass}>
+                  <input value={draft.name} onChange={event => updateNewLocalDraft(target, { name: event.currentTarget.value })} placeholder="输入变量名" className={directInputClasses('variable')} />
+                </td>
+                <td className={compactCellClass}>
+                  <input value={draft.type} onChange={event => updateNewLocalDraft(target, { type: event.currentTarget.value })} placeholder="类型" className={directInputClasses('type')} />
+                </td>
+                <td className={compactCellClass}>
+                  <label className="inline-flex h-[var(--beginner-input-height)] w-full cursor-pointer items-center justify-center">
+                    <input type="checkbox" checked={draft.isArray} onChange={event => updateNewLocalDraft(target, { isArray: event.currentTarget.checked })} className="h-3.5 w-3.5 accent-cyan-500" aria-label="新局部变量 · 数组" />
+                  </label>
+                </td>
+                <td className={compactCellClass}>
+                  <input value={draft.initialValue} onChange={event => updateNewLocalDraft(target, { initialValue: event.currentTarget.value })} placeholder="可留空" className={directInputClasses('value')} />
+                </td>
+                <td className={compactCellClass}>
+                  <button
+                    type="button"
+                    onClick={() => commitNewLocalVariable(target)}
+                    disabled={!onUpdateSourceContent || !draft.name.trim() || !draft.type.trim()}
+                    className={`inline-flex h-[var(--beginner-input-height)] w-full items-center justify-center gap-1 rounded border px-2 text-[10px] font-semibold disabled:opacity-35 ${
+                      isDarkMode ? 'border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/10' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                    }`}
+                  >
+                    <Check className="h-3 w-3" />新增
+                  </button>
+                </td>
+              </tr>
+            ],
+            574
+          )}
+        </div>
+      );
+    };
+
     const renderContinuousCodeBody = (target: BeginnerCodeTarget, firstVisualLine: number) => {
       const bodyText = methodBodyText(target.method);
       const targetKey = codeTargetKey(target);
@@ -6697,6 +6934,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           nextVisualLine += Math.max(1, target.method.parameters.length);
         }
 
+        processCanvases.push(renderLocalVariableCanvas(target, nextVisualLine));
+        nextVisualLine += Math.max(1, (target.method.locals || []).length + 1);
+
         processCanvases.push(renderContinuousCodeBody(target, nextVisualLine));
         nextVisualLine += getProcessBodyLineCount(target);
       }
@@ -6761,7 +7001,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           onContextMenu={event => event.preventDefault()}
         >
           {renderContextMenuButton('新建子程序', createBeginnerFunction, <Plus className="h-3.5 w-3.5" />)}
-          {renderContextMenuButton('新建变量', createBeginnerMember, <Plus className="h-3.5 w-3.5" />)}
+          {renderContextMenuButton('新建程序集变量', createBeginnerMember, <Plus className="h-3.5 w-3.5" />)}
+          {renderContextMenuButton('新建局部变量', () => createBeginnerLocal(contextTarget), <Plus className="h-3.5 w-3.5" />, false, !contextTarget)}
           <div className={`my-1 border-t ${canvasBorder}`} />
           {renderContextMenuButton('展开全部子程序', expandAllBeginnerProcesses, <ChevronDown className="h-3.5 w-3.5" />, false, allProcessTargets.length === 0)}
           {renderContextMenuButton('折叠全部子程序', collapseAllBeginnerProcesses, <ChevronRight className="h-3.5 w-3.5" />, false, allProcessTargets.length === 0)}
@@ -7613,6 +7854,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       package: '包声明',
       class: '类声明',
       member: '成员声明',
+      local: '局部变量',
       method: '方法声明',
       constructor: '构造函数',
       event: '事件处理器',

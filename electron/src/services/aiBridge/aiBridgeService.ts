@@ -99,6 +99,8 @@ export type AiBridgeCompilerInfo = {
   kind: 'msvc' | 'g++' | 'clang++';
   command: string;
   setupBatch?: string;
+  /** MSVC 目标架构；CEF3 等原生模块需要 x64 与对应 SDK 匹配。 */
+  arch?: 'win32' | 'x64';
 };
 
 export interface AiBridgeCompileResult {
@@ -499,11 +501,14 @@ export class AiBridgeService {
       .filter(file => file.startsWith(`${path.resolve(exportDir)}${path.sep}`))
       .map(file => normalizeFilePath(path.relative(exportDir, file)));
 
+    const compiler = await this.compilerDetector();
+    const preferredTargetId = compiler?.arch === 'x64' ? 'windows-msvc-x64' : 'windows-msvc-win32';
     const moduleNativePlan = await materializeModuleNativeDependencies(enabledModules, {
       buildDir,
       sourceDir,
       binDir,
-      exportDir
+      exportDir,
+      preferredTargetId
     });
     const buildVisualStudioProject = await exportVisualStudioProject({
       projectDir: buildDir,
@@ -530,7 +535,6 @@ export class AiBridgeService {
         buildDir
       );
     }
-    const compiler = await this.compilerDetector();
     const baseLogs = [
       ...preBuildLogs,
       `AI Bridge 已生成 Win32 C++ 工程：${buildDir}`,
@@ -879,14 +883,15 @@ export class AiBridgeService {
 async function detectCompiler(): Promise<AiBridgeCompilerInfo | null> {
   try {
     await execFileAsync('where.exe', ['cl'], { timeout: 4000, windowsHide: true });
-    return { kind: 'msvc', command: 'cl' };
+    return { kind: 'msvc', command: 'cl', arch: 'x64' };
   } catch {
     // MSVC may be installed but not loaded into the current shell.
   }
 
   const msvcSetupBatch = await findMsvcSetupBatch();
   if (msvcSetupBatch && await canUseMsvcSetupBatch(msvcSetupBatch)) {
-    return { kind: 'msvc', command: 'cl', setupBatch: msvcSetupBatch };
+    const arch = /vcvars64|amd64/i.test(msvcSetupBatch) ? 'x64' : /vcvars32|x86/i.test(msvcSetupBatch) ? 'win32' : 'x64';
+    return { kind: 'msvc', command: 'cl', setupBatch: msvcSetupBatch, arch };
   }
 
   const candidates: AiBridgeCompilerInfo[] = [
@@ -937,8 +942,8 @@ async function findMsvcSetupBatch(): Promise<string | null> {
 
   for (const installPath of installPaths) {
     const candidates = [
-      path.join(installPath, 'VC', 'Auxiliary', 'Build', 'vcvars32.bat'),
       path.join(installPath, 'VC', 'Auxiliary', 'Build', 'vcvars64.bat'),
+      path.join(installPath, 'VC', 'Auxiliary', 'Build', 'vcvars32.bat'),
       path.join(installPath, 'Common7', 'Tools', 'VsDevCmd.bat')
     ];
 
@@ -986,16 +991,18 @@ async function compileWin32Preview(
   }
 
   const objectPath = path.join(objDir, 'main.obj');
+  const useDynamicCrt = modulePlan?.requiresDynamicCrt === true;
   if (compiler.kind === 'msvc' && moduleSources.length > 0) {
-    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, signal);
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, useDynamicCrt, signal);
   }
 
   const commandArgs = compiler.kind === 'msvc'
     ? [
         '/nologo',
         '/EHsc',
-        '/std:c++17',
+        useDynamicCrt ? '/std:c++20' : '/std:c++17',
         '/utf-8',
+        ...(useDynamicCrt ? ['/MD'] : []),
         '/DUNICODE',
         '/D_UNICODE',
         ...includeArgs,
@@ -1087,6 +1094,7 @@ async function compileMsvcPreviewWithModules(
   includeArgs: string[],
   moduleSources: string[],
   moduleLibs: string[],
+  useDynamicCrt: boolean,
   signal?: AbortSignal
 ): Promise<{ ok: boolean; logs: string[] }> {
   const sources = [sourcePath, ...moduleSources];
@@ -1094,8 +1102,9 @@ async function compileMsvcPreviewWithModules(
   const compileCommands = sources.map((source, index) => [
     '/nologo',
     '/EHsc',
-    '/std:c++17',
+    useDynamicCrt ? '/std:c++20' : '/std:c++17',
     '/utf-8',
+    ...(useDynamicCrt ? ['/MD'] : []),
     '/DUNICODE',
     '/D_UNICODE',
     ...includeArgs,

@@ -390,6 +390,67 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   },
   {
     schemaVersion: 2,
+    id: 'lingbuilder.cef3.browser',
+    name: 'CEF3浏览器模块',
+    version: '1.0.0',
+    category: '界面',
+    description: '基于 Chromium Embedded Framework 3，提供设计器 CEF3 浏览器控件和中文命令接口；支持多实例、独立缓存目录、代理、JavaScript 执行和导航事件回调。',
+    author: 'LingBuilder',
+    tags: ['内置', 'CEF3', 'Chromium', '浏览器', 'JavaScript'],
+    contributes: {
+      designerControls: createControlContributions('lingbuilder.cef3.browser'),
+      commands: [
+        { name: 'CEF3_导航', signature: 'CEF3_导航(控件名, 地址)', description: '让指定 CEF3 浏览器控件导航到 HTTP/HTTPS 地址或本地文件地址。', insertText: 'CEF3_导航("$1", "https://www.baidu.com")', returnType: '整数型' },
+        { name: 'CEF3_执行JS', signature: 'CEF3_执行JS(控件名, 脚本)', description: '在指定 CEF3 浏览器控件中执行 JavaScript 并等待结果，返回 JSON 编码结果文本。', insertText: 'CEF3_执行JS("$1", "document.title")', returnType: '文本型' },
+        { name: 'CEF3_后退', signature: 'CEF3_后退(控件名)', description: '指定 CEF3 浏览器控件可以后退时返回上一页，成功返回 1。', insertText: 'CEF3_后退("$1")', returnType: '整数型' },
+        { name: 'CEF3_前进', signature: 'CEF3_前进(控件名)', description: '指定 CEF3 浏览器控件可以前进时进入下一页，成功返回 1。', insertText: 'CEF3_前进("$1")', returnType: '整数型' },
+        { name: 'CEF3_刷新', signature: 'CEF3_刷新(控件名)', description: '刷新指定 CEF3 浏览器控件的当前网页。', insertText: 'CEF3_刷新("$1")', returnType: '空' },
+        { name: 'CEF3_停止', signature: 'CEF3_停止(控件名)', description: '停止指定 CEF3 浏览器控件的当前导航。', insertText: 'CEF3_停止("$1")', returnType: '空' },
+        { name: 'CEF3_取标题', signature: 'CEF3_取标题(控件名)', description: '返回指定 CEF3 浏览器控件当前网页标题。', insertText: 'CEF3_取标题("$1")', returnType: '文本型' },
+        { name: 'CEF3_取地址', signature: 'CEF3_取地址(控件名)', description: '返回指定 CEF3 浏览器控件当前网页地址。', insertText: 'CEF3_取地址("$1")', returnType: '文本型' },
+        { name: 'CEF3_设置缓存目录', signature: 'CEF3_设置缓存目录(控件名, 目录)', description: '设置指定 CEF3 浏览器控件的缓存目录；不同缓存目录拥有独立 Cookie、LocalStorage 和会话。需在创建前设置。', insertText: 'CEF3_设置缓存目录("$1", ".cef3/cache-2")', returnType: '整数型' },
+        { name: 'CEF3_设置代理', signature: 'CEF3_设置代理(控件名, 代理地址)', description: '为指定 CEF3 浏览器控件设置 HTTP/HTTPS/SOCKS5 代理；空文本恢复直连。需在创建前设置。', insertText: 'CEF3_设置代理("$1", "http://127.0.0.1:7890")', returnType: '整数型' },
+        { name: 'CEF3_创建', signature: 'CEF3_创建(控件名)', description: '使用属性面板配置的地址、缓存目录和代理参数初始化指定 CEF3 浏览器控件；传空控件名时初始化当前窗口全部 CEF3 控件。成功返回 1。', insertText: 'CEF3_创建("$1")', returnType: '整数型' },
+        { name: 'CEF3_关闭', signature: 'CEF3_关闭(控件名)', description: '关闭指定 CEF3 浏览器控件并释放 Chromium 资源。', insertText: 'CEF3_关闭("$1")', returnType: '空' },
+        { name: 'CEF3_取最近事件', signature: 'CEF3_取最近事件(控件名)', description: '返回指定 CEF3 浏览器控件最近事件名：开始加载、加载完成、加载失败、标题被改变或地址被改变。', insertText: 'CEF3_取最近事件("$1")', returnType: '文本型' },
+        { name: 'CEF3_取事件数据', signature: 'CEF3_取事件数据(控件名)', description: '返回指定 CEF3 浏览器控件最近事件携带的地址、标题或错误信息。', insertText: 'CEF3_取事件数据("$1")', returnType: '文本型' },
+        { name: 'CEF3_绑定事件', signature: 'CEF3_绑定事件(控件名, 事件名, 处理器名)', description: '把开始加载、加载完成、加载失败、标题被改变或地址被改变事件回调到当前窗口的无参数中文事件/方法。', insertText: 'CEF3_绑定事件("$1", "加载完成", "$1_加载完成")', returnType: '整数型' },
+        { name: 'CEF3_是否可后退', signature: 'CEF3_是否可后退(控件名)', description: '指定 CEF3 浏览器控件可以后退时返回 1。', insertText: 'CEF3_是否可后退("$1")', returnType: '整数型' },
+        { name: 'CEF3_是否可前进', signature: 'CEF3_是否可前进(控件名)', description: '指定 CEF3 浏览器控件可以前进时返回 1。', insertText: 'CEF3_是否可前进("$1")', returnType: '整数型' },
+        { name: 'CEF3_是否加载中', signature: 'CEF3_是否加载中(控件名)', description: '指定 CEF3 浏览器控件正在加载网页时返回 1。', insertText: 'CEF3_是否加载中("$1")', returnType: '整数型' }
+      ],
+      types: [{ name: 'CEF3浏览器', description: '嵌入 Win32 窗口的 Chromium Embedded Framework 3 浏览器控件。', cppType: 'CefRefPtr<CefBrowser>' }],
+      snippets: [{ label: 'CEF3 浏览器导航与 JS 返回值', insertText: 'CEF3_导航("浏览器1", "https://www.baidu.com")\n调试输出(CEF3_执行JS("浏览器1", "document.title"))\n调试输出(CEF3_取最近事件("浏览器1"))', description: '在 CEF3 浏览器控件中导航，并读取网页标题与最近事件。' }],
+      docs: [{ title: 'CEF3 模块说明', path: 'README.md' }],
+      examples: [{ title: '双浏览器示例', path: 'examples/双浏览器示例.lcpp', description: '在同一窗口创建两个独立缓存目录的 CEF3 浏览器控件。' }]
+    },
+    targets: [
+      { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/cef_app.h'], libs: ['modules/lingbuilder.cef3.browser/lib/Win32/libcef.lib', 'modules/lingbuilder.cef3.browser/lib/Win32/libcef_dll_wrapper.lib'], runtimeFiles: ['bin/Win32/libcef.dll', 'bin/Win32/chrome_elf.dll'], defines: ['LINGBUILDER_CEF3_MODULE'] },
+      { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/cef_app.h'], libs: ['modules/lingbuilder.cef3.browser/lib/x64/libcef.lib', 'modules/lingbuilder.cef3.browser/lib/x64/libcef_dll_wrapper.lib'], runtimeFiles: ['bin/x64/libcef.dll', 'bin/x64/chrome_elf.dll'], defines: ['LINGBUILDER_CEF3_MODULE'] }
+    ],
+    bindings: { commands: [
+      { command: 'CEF3_导航', runtimeName: 'CEF3_导航', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_导航("浏览器1", "https://www.baidu.com")' },
+      { command: 'CEF3_执行JS', runtimeName: 'CEF3_执行JS', parameters: [{ name: '控件名', type: 'wideString' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide', example: 'CEF3_执行JS("浏览器1", "document.title")' },
+      { command: 'CEF3_后退', runtimeName: 'CEF3_后退', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_前进', runtimeName: 'CEF3_前进', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_刷新', runtimeName: 'CEF3_刷新', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
+      { command: 'CEF3_停止', runtimeName: 'CEF3_停止', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
+      { command: 'CEF3_取标题', runtimeName: 'CEF3_取标题', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3_取地址', runtimeName: 'CEF3_取地址', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3_设置缓存目录', runtimeName: 'CEF3_设置缓存目录', parameters: [{ name: '控件名', type: 'wideString' }, { name: '目录', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_设置代理', runtimeName: 'CEF3_设置代理', parameters: [{ name: '控件名', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_创建', runtimeName: 'CEF3_创建', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_关闭', runtimeName: 'CEF3_关闭', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
+      { command: 'CEF3_取最近事件', runtimeName: 'CEF3_取最近事件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3_取事件数据', runtimeName: 'CEF3_取事件数据', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3_绑定事件', runtimeName: 'CEF3_绑定事件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '事件名', type: 'wideString', description: '事件名 / 回调 handler' }, { name: '处理器名', type: 'wideString', description: '当前窗口中的无参数事件/方法名 / 回调 handler' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否可后退', runtimeName: 'CEF3_是否可后退', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否可前进', runtimeName: 'CEF3_是否可前进', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否加载中', runtimeName: 'CEF3_是否加载中', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+    ] }
+  },
+  {
+    schemaVersion: 2,
     id: 'lingbuilder.threading',
     name: '多线程模块',
     version: '1.0.0',
@@ -403,7 +464,11 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '线程_等待全部', signature: '线程_等待全部()', description: '等待当前窗口启动的全部后台任务结束并回收线程。', insertText: '线程_等待全部()', returnType: '空' },
         { name: '线程_活动数量', signature: '线程_活动数量()', description: '返回当前仍在执行的后台任务数量。', insertText: '线程_活动数量()', returnType: '整数型' },
         { name: '线程_硬件并发数', signature: '线程_硬件并发数()', description: '返回 C++ 运行时建议的并行线程数量。', insertText: '线程_硬件并发数()', returnType: '整数型' },
-        { name: '线程_休眠', signature: '线程_休眠(毫秒)', description: '让当前线程休眠指定毫秒；界面线程中使用会暂停界面响应。', insertText: '线程_休眠(100)', returnType: '空' }
+        { name: '线程_休眠', signature: '线程_休眠(毫秒)', description: '让当前线程休眠指定毫秒；界面线程中使用会暂停界面响应。', insertText: '线程_休眠(100)', returnType: '空' },
+        { name: '线程_启动延时设置文本', signature: '线程_启动延时设置文本(控件名, 文本, 延时毫秒)', description: '启动后台线程，延时后线程安全地设置指定控件的显示文本。', insertText: '线程_启动延时设置文本("$1", "完成", 1000)', returnType: '整数型' },
+        { name: '线程_启动延时添加行', signature: '线程_启动延时添加行(控件名, Tab分隔单元格, 延时毫秒)', description: '启动后台线程，延时后线程安全地向列表视图追加一行。', insertText: '线程_启动延时添加行("$1", "内容\\t状态", 500)', returnType: '整数型' },
+        { name: '线程_启动延时添加项目', signature: '线程_启动延时添加项目(控件名, 文本, 延时毫秒)', description: '启动后台线程，延时后线程安全地向列表框追加一条日志。', insertText: '线程_启动延时添加项目("$1", "日志内容", 500)', returnType: '整数型' },
+        { name: '线程_批量启动', signature: '线程_批量启动(任务数控件, 线程数控件, 列表视图, 日志列表, 状态标签)', description: '读取输入框中的任务数和线程数，动态创建多线程并行执行任务，实时更新列表视图和日志。', insertText: '线程_批量启动("任务数输入", "线程数输入", "任务列表", "日志列表", "状态标签")', returnType: '空' }
       ],
       types: [
         { name: '线程任务', description: '由多线程模块管理的后台任务编号。', cppType: 'int' }
@@ -422,7 +487,11 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '线程_等待全部', runtimeName: '线程_等待全部', parameters: [], returnType: 'void', example: '线程_等待全部()' },
         { command: '线程_活动数量', runtimeName: '线程_活动数量', parameters: [], returnType: 'int', example: '线程_活动数量()' },
         { command: '线程_硬件并发数', runtimeName: '线程_硬件并发数', parameters: [], returnType: 'int', example: '线程_硬件并发数()' },
-        { command: '线程_休眠', runtimeName: '线程_休眠', parameters: [{ name: '毫秒', type: 'int' }], returnType: 'void', example: '线程_休眠(100)' }
+        { command: '线程_休眠', runtimeName: '线程_休眠', parameters: [{ name: '毫秒', type: 'int' }], returnType: 'void', example: '线程_休眠(100)' },
+        { command: '线程_启动延时设置文本', runtimeName: '线程_启动延时设置文本', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }, { name: '延时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide', example: '线程_启动延时设置文本("状态标签", "完成", 1000)' },
+        { command: '线程_启动延时添加行', runtimeName: '线程_启动延时添加行', parameters: [{ name: '控件名', type: 'wideString' }, { name: 'Tab分隔单元格', type: 'wideString' }, { name: '延时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide', example: '线程_启动延时添加行("列表1", "任务\\t完成", 500)' },
+        { command: '线程_启动延时添加项目', runtimeName: '线程_启动延时添加项目', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }, { name: '延时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide', example: '线程_启动延时添加项目("日志列表", "任务完成", 500)' },
+        { command: '线程_批量启动', runtimeName: '线程_批量启动', parameters: [{ name: '任务数控件', type: 'wideString' }, { name: '线程数控件', type: 'wideString' }, { name: '列表视图', type: 'wideString' }, { name: '日志列表', type: 'wideString' }, { name: '状态标签', type: 'wideString' }], returnType: 'void', encoding: 'wide', example: '线程_批量启动("任务数输入", "线程数输入", "任务列表", "日志列表", "状态标签")' }
       ]
     }
   },

@@ -1,0 +1,17 @@
+{
+  "id": "lingbuilder-ui-project",
+  "name": "新建项目",
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "MainWindow",
+      "title": "新建项目主窗口",
+      "width": 900,
+      "height": 560,
+      "background": "#1f2937",
+      "description": "新建项目 默认主窗口",
+      "controls": []
+    }
+  ]
+}

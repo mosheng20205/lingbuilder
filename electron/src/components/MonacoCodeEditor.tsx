@@ -1323,6 +1323,7 @@ function structureTextForGroup(group: LingCppStructuredReadingRow['group']): str
     package: '入口',
     class: '类',
     member: '成员',
+    local: '局部变量',
     method: '方法',
     constructor: '初始化',
     event: '事件',

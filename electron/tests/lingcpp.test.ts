@@ -263,6 +263,45 @@ const completionModule: InstalledModule = {
   }
 };
 
+const byteResponseModule: InstalledModule = {
+  isInstalled: true,
+  isEnabledForProject: true,
+  installPath: 'C:/modules/com.example.byte-response',
+  diagnostics: [],
+  manifest: {
+    schemaVersion: 2,
+    id: 'com.example.byte-response',
+    name: '测试网页访问模块',
+    version: '1.0.0',
+    category: '网络',
+    description: '用于验证模块返回值可以写入局部字节集变量。',
+    contributes: {
+      commands: [{
+        name: '网页_访问_对象',
+        signature: '网页_访问_对象(网址, 访问方式)',
+        description: '返回网页响应字节。',
+        returnType: '字节集'
+      }],
+      types: [{
+        name: '字节集',
+        description: '原始字节数据。',
+        cppType: 'std::vector<unsigned char>'
+      }]
+    },
+    bindings: {
+      commands: [{
+        command: '网页_访问_对象',
+        runtimeName: 'LB_WebRequestObject',
+        parameters: [
+          { name: '网址', type: 'wideString' },
+          { name: '访问方式', type: 'int' }
+        ],
+        returnType: 'raw'
+      }]
+    }
+  }
+};
+
 test('parseLingCpp extracts classes, members and event handlers', () => {
   const result = parseLingCpp(sampleSource);
 
@@ -283,6 +322,100 @@ test('parseLingCpp extracts classes, members and event handlers', () => {
   assert.equal(findLingCppMethod(result.program, '_按钮1_被单击')?.kind, 'event');
   assert.equal(findLingCppMethod(result.program, '按钮2_被单击')?.name, '_按钮2_被单击');
   assert.equal(findLingCppMethod(result.program, '_游戏主窗体_创建完毕')?.statements[0]?.text.trim(), '调试输出("窗体创建完毕")');
+});
+
+test('LingCpp parses scoped local variables and diagnoses undeclared or incompatible assignments', () => {
+  const source = [
+    '类 MainWindow : 公开 窗体',
+    '    事件 _按钮1_被单击()',
+    '        局部 文本型 url = "http://127.0.0.1:8981/api"',
+    '        局部 字节集 ret',
+    '        ret = 网页_访问_对象(url, 1)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const parsed = parseLingCpp(source);
+  const method = parsed.program.classes[0]?.methods[0];
+
+  assert.deepEqual(method?.locals?.map(local => ({
+    name: local.name,
+    type: local.type,
+    initialValue: local.initialValue
+  })), [
+    { name: 'url', type: '文本型', initialValue: '"http://127.0.0.1:8981/api"' },
+    { name: 'ret', type: '字节集', initialValue: undefined }
+  ]);
+  assert.deepEqual(method?.statements.map(statement => statement.text.trim()), [
+    'ret = 网页_访问_对象(url, 1)'
+  ]);
+  assert.equal(parsed.symbolIndex.locals.length, 2);
+  const localRows = getLingCppStructuredRows(buildLingCppLanguageContext(source))
+    .filter(row => row.group === 'local');
+  assert.deepEqual(localRows.map(row => ({ name: row.name, methodName: row.methodName })), [
+    { name: 'url', methodName: '_按钮1_被单击' },
+    { name: 'ret', methodName: '_按钮1_被单击' }
+  ]);
+
+  const validDiagnostics = getLingCppSemanticDiagnostics(
+    source,
+    undefined,
+    undefined,
+    { enabledModules: [byteResponseModule], availableModules: [byteResponseModule] }
+  );
+  assert.equal(validDiagnostics.some(diagnostic => diagnostic.id.includes('undeclared-variable')), false);
+  assert.equal(validDiagnostics.some(diagnostic => diagnostic.id.includes('assignment-type')), false);
+
+  const invalidSource = source
+    .replace('        局部 字节集 ret\n', '')
+    .replace('ret = 网页_访问_对象(url, 1)', 'ret = "类型也不匹配"');
+  const invalidDiagnostics = getLingCppSemanticDiagnostics(invalidSource);
+  assert.ok(invalidDiagnostics.some(diagnostic => diagnostic.id.includes('undeclared-variable') && diagnostic.message.includes('ret')));
+
+  const wrongTypeSource = source.replace('局部 字节集 ret', '局部 整数型 ret');
+  const wrongTypeDiagnostics = getLingCppSemanticDiagnostics(
+    wrongTypeSource,
+    undefined,
+    undefined,
+    { enabledModules: [byteResponseModule], availableModules: [byteResponseModule] }
+  );
+  assert.ok(wrongTypeDiagnostics.some(diagnostic => diagnostic.id.includes('assignment-type') && diagnostic.message.includes('字节集')));
+
+  const useBeforeDeclarationSource = source.replace(
+    '        局部 字节集 ret\n        ret = 网页_访问_对象(url, 1)',
+    '        ret = 网页_访问_对象(url, 1)\n        局部 字节集 ret'
+  );
+  const useBeforeDeclarationDiagnostics = getLingCppSemanticDiagnostics(
+    useBeforeDeclarationSource,
+    undefined,
+    undefined,
+    { enabledModules: [byteResponseModule], availableModules: [byteResponseModule] }
+  );
+  assert.ok(useBeforeDeclarationDiagnostics.some(diagnostic => diagnostic.id.includes('undeclared-variable') && diagnostic.message.includes('ret')));
+});
+
+test('LingCpp completion only exposes locals from the current method', () => {
+  const source = [
+    '类 MainWindow : 公开 窗体',
+    '    事件 第一个事件()',
+    '        局部 文本型 仅第一个可见',
+    '        调试输出(仅第一个可见)',
+    '    结束',
+    '    事件 第二个事件()',
+    '        局部 文本型 仅第二个可见',
+    '        调试输出(仅第二个可见)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const languageContext = buildLingCppLanguageContext(source);
+  const firstLabels = getLingCppCompletionItems({ source, line: 4, column: 18, triggerText: '' }, languageContext)
+    .map(item => item.label);
+  const secondLabels = getLingCppCompletionItems({ source, line: 8, column: 18, triggerText: '' }, languageContext)
+    .map(item => item.label);
+
+  assert.ok(firstLabels.includes('仅第一个可见'));
+  assert.equal(firstLabels.includes('仅第二个可见'), false);
+  assert.ok(secondLabels.includes('仅第二个可见'));
+  assert.equal(secondLabels.includes('仅第一个可见'), false);
 });
 
 test('parseLingCpp keeps 窗口_ commands inside the current event instead of treating them as method declarations', () => {
@@ -1359,6 +1492,63 @@ test('LingCpp AST edit service adds and deletes members and events for structure
   assert.equal(removedMethod.sourceCode.includes('临时子程序'), false);
 });
 
+test('LingCpp AST edit service adds, updates and deletes method-scoped local variables', () => {
+  const added = applyLingCppAstEdit(sampleSource, {
+    kind: 'add-local',
+    className: '游戏主窗体',
+    methodName: '_按钮1_被单击',
+    local: {
+      name: 'url',
+      type: '文本型',
+      initialValue: '"http://127.0.0.1:8981/api"'
+    }
+  });
+  assert.equal(added.success, true);
+  assert.ok(added.sourceCode.includes('        局部 文本型 url = "http://127.0.0.1:8981/api"'));
+  assert.equal(findLingCppMethod(parseLingCpp(added.sourceCode).program, '_按钮1_被单击')?.locals?.[0]?.name, 'url');
+
+  const updated = applyLingCppAstEdit(added.sourceCode, {
+    kind: 'update-local',
+    className: '游戏主窗体',
+    methodName: '_按钮1_被单击',
+    localName: 'url',
+    newName: '请求地址',
+    type: '文本型',
+    initialValue: '"https://example.com"',
+    isArray: false
+  });
+  assert.equal(updated.success, true);
+  assert.ok(updated.sourceCode.includes('局部 文本型 请求地址 = "https://example.com"'));
+
+  const preserved = applyLingCppAstEdit(updated.sourceCode, {
+    kind: 'update-method-body',
+    className: '游戏主窗体',
+    methodName: '_按钮1_被单击',
+    bodyLines: ['调试输出(请求地址)']
+  });
+  assert.equal(preserved.success, true);
+  assert.ok(preserved.sourceCode.includes('局部 文本型 请求地址 = "https://example.com"'));
+  assert.ok(preserved.sourceCode.includes('        调试输出(请求地址)'));
+
+  const removed = applyLingCppAstEdit(preserved.sourceCode, {
+    kind: 'delete-local',
+    className: '游戏主窗体',
+    methodName: '_按钮1_被单击',
+    localName: '请求地址'
+  });
+  assert.equal(removed.success, true);
+  assert.equal(removed.sourceCode.includes('局部 文本型 请求地址'), false);
+});
+
+test('beginner editor exposes a method-scoped local variable table', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src', 'components', 'DiffViewer.tsx'), 'utf8');
+  assert.match(source, /局部变量 · 仅在当前子程序内有效/u);
+  assert.match(source, /kind: 'add-local'/u);
+  assert.match(source, /kind: 'update-local'/u);
+  assert.match(source, /kind: 'delete-local'/u);
+  assert.match(source, /getBeginnerCodeCompletionItems\(target\)/u);
+});
+
 test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wiring', () => {
   const generated = generateLingCppNativeWin32Project(sampleProject, {
     activeWindowId: 'window-1',
@@ -1471,6 +1661,32 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
 
   const layoutJson = generated.files.find(file => file.relativePath === 'layout.json')?.content || '';
   assert.equal(JSON.parse(layoutJson).id, 'sample-project');
+});
+
+test('generateLingCppNativeWin32Project emits members, locals and module return assignments as C++', () => {
+  const source = [
+    '类 游戏主窗体 : 公开 窗体',
+    '私有:',
+    '    文本型 apiBase = "http://127.0.0.1:8981"',
+    '    事件 _按钮1_被单击()',
+    '        局部 文本型 url = "http://127.0.0.1:8981/api"',
+    '        局部 字节集 ret',
+    '        ret = 网页_访问_对象(url, 1)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source,
+    enabledModules: [byteResponseModule]
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  assert.ok(mainCpp.includes('std::wstring apiBase = L"http://127.0.0.1:8981";'));
+  assert.ok(mainCpp.includes('std::wstring url = L"http://127.0.0.1:8981/api";'));
+  assert.ok(mainCpp.includes('std::vector<unsigned char> ret{};'));
+  assert.ok(mainCpp.includes('ret = LB_WebRequestObject(url, 1);'));
+  assert.equal(mainCpp.includes('暂不支持的中文 C++ 语句：ret ='), false);
 });
 
 test('generateLingCppNativeWin32Project paints Grid with the designer background brush', () => {

@@ -1,0 +1,39 @@
+<template>
+  <style>
+    #root{position:absolute;inset:0;width:1080px;height:1920px;overflow:hidden;container-type:size;color:#F8FAFC;box-sizing:border-box}
+    .f09-ground{position:absolute;inset:0;background:#07101D}
+    .f09-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(0,135,255,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(0,135,255,.08) 1px,transparent 1px);background-size:72px 72px}
+    .f09-stage{position:absolute;left:0;top:0;width:1080px;height:1604px;padding:160px 84px 90px;display:flex;flex-direction:column;align-items:center;text-align:center;box-sizing:border-box}
+    .f09-kicker{font-size:24px;line-height:1.2;letter-spacing:.18em;color:#21D4FD;margin-bottom:54px}
+    .f09-title{font-size:82px;line-height:1.18;font-weight:700;letter-spacing:-.04em}
+    .f09-title strong{color:#168FFF}
+    .f09-sub{font-size:34px;line-height:1.45;color:#B7C7DA;margin-top:28px}
+    .f09-repo{width:100%;margin-top:112px;padding:54px 42px;border:2px solid #168FFF;border-radius:24px;background:#091424;text-align:left;box-sizing:border-box}
+    .f09-repo-label{font-size:24px;line-height:1.2;letter-spacing:.12em;color:#21D4FD;margin-bottom:28px}
+    .f09-repo-url{font-size:38px;line-height:1.5;font-weight:700;color:#F8FAFC;overflow-wrap:anywhere}
+    .f09-cta{margin-top:56px;padding:24px 46px;border-radius:999px;background:#168FFF;font-size:32px;font-weight:700}
+    .f09-caption-ground{position:absolute;left:0;right:0;bottom:0;height:316px;background:#03060B;border-top:2px solid #168FFF}
+  </style>
+  <div data-hf-id="hf-qy3k" id="root" data-composition-id="09-cta" data-width="1080" data-height="1920" data-duration="6.12">
+    <div data-hf-id="hf-bvrj" id="f09-ground" class="clip f09-ground" data-start="0" data-duration="6.12" data-track-index="0"><div data-hf-id="hf-qczk" class="f09-grid"></div></div>
+    <section data-hf-id="hf-78qw" id="f09-stage" class="clip f09-stage" data-start="0" data-duration="6.12" data-track-index="1">
+      <div data-hf-id="hf-b5ap" class="f09-kicker">✱ LINGBUILDER · OPEN SOURCE</div>
+      <div data-hf-id="hf-9xeh" class="f09-title">中文写代码<br data-hf-id="hf-x5px"><strong data-hf-id="hf-23tr">生成真实 C++</strong></div>
+      <div data-hf-id="hf-n1hi" class="f09-sub">面向中文开发者的集成开发环境</div>
+      <div data-hf-id="hf-5ezw" class="f09-repo"><div data-hf-id="hf-v76a" class="f09-repo-label">GITEE · 开源仓库</div><div data-hf-id="hf-nboe" class="f09-repo-url">https://gitee.com/<br data-hf-id="hf-rsrt">MoSheng2020/LingBuilder</div></div>
+      <div data-hf-id="hf-65dr" class="f09-cta">访问 LingBuilder 项目</div>
+    </section>
+    <div data-hf-id="hf-7a2n" id="f09-caption-ground" class="clip f09-caption-ground" data-start="0" data-duration="6.12" data-track-index="2"></div>
+  </div>
+  <script>
+    window.__timelines=window.__timelines||{};
+    const tl=gsap.timeline({paused:true});
+    tl.fromTo(".f09-kicker",{opacity:0,y:18},{opacity:1,y:0,duration:.45,ease:"power3.out"},.1);
+    tl.fromTo(".f09-title",{opacity:0,y:30},{opacity:1,y:0,duration:.65,ease:"power3.out"},.55);
+    tl.fromTo(".f09-sub",{opacity:0,y:20},{opacity:1,y:0,duration:.45,ease:"power3.out"},1.35);
+    tl.fromTo(".f09-repo",{opacity:0,scale:.97},{opacity:1,scale:1,duration:.6,ease:"power3.out"},2.4);
+    tl.fromTo(".f09-repo-url",{opacity:.3},{opacity:1,duration:.75,ease:"power3.inOut"},3.25);
+    tl.fromTo(".f09-cta",{opacity:0,y:18},{opacity:1,y:0,duration:.5,ease:"power3.out"},5.8);
+    window.__timelines["09-cta"]=tl;
+  </script>
+</template>
