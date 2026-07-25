@@ -1161,6 +1161,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [pendingHandlerFocus, setPendingHandlerFocus] = useState<{ handlerName: string; filePath?: string } | null>(null);
   const [expandedBeginnerEventTargetKey, setExpandedBeginnerEventTargetKey] = useState<string | null>(null);
   const [expandedBeginnerFunctionTargetKey, setExpandedBeginnerFunctionTargetKey] = useState<string | null>(null);
+  const [collapsedBeginnerProcessTargetKeys, setCollapsedBeginnerProcessTargetKeys] = useState<string[]>([]);
   const [selectedFunctionTemplateKey, setSelectedFunctionTemplateKey] = useState<string | null>(null);
   const [nativePreviewState, setNativePreviewState] = useState<NativePreviewState | null>(null);
   const nativePreviewStateRef = useRef<NativePreviewState | null>(null);
@@ -1189,6 +1190,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const beginnerCodeDraftsRef = useRef<Record<string, string>>({});
   const [beginnerContextMenu, setBeginnerContextMenu] = useState<BeginnerContextMenuState | null>(null);
   const [beginnerTypeCompletionState, setBeginnerTypeCompletionState] = useState<BeginnerTypeCompletionState | null>(null);
+
+  useEffect(() => {
+    setCollapsedBeginnerProcessTargetKeys([]);
+  }, [sourceModelOwnerKey]);
 
   useEffect(() => {
     const handleRevealLingCppLine = (event: Event) => {
@@ -4494,6 +4499,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       if (applied) {
         setExpandedBeginnerEventTargetKey(current => current === previousKey ? nextKey : current);
         setExpandedBeginnerFunctionTargetKey(current => current === previousKey ? nextKey : current);
+        setCollapsedBeginnerProcessTargetKeys(current =>
+          current.includes(previousKey)
+            ? Array.from(new Set(current.map(key => key === previousKey ? nextKey : key)))
+            : current
+        );
         setSelectedFunctionTemplateKey(current => current === previousKey ? nextKey : current);
       }
       if (applied && nextName && nextName !== target.method.name) {
@@ -4622,10 +4632,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         : { kind: 'delete-method', className: target.className, methodName: target.method.name };
       const applied = applyStructureAstEdits([edit], target.method.line);
       if (applied) {
+        const targetKey = codeTargetKey(target);
         setSelectedBeginnerCodeTarget(null);
         setSelectedBeginnerHandler(null);
         setExpandedBeginnerEventTargetKey(null);
         setExpandedBeginnerFunctionTargetKey(null);
+        setCollapsedBeginnerProcessTargetKeys(current => current.filter(key => key !== targetKey));
       }
     };
     const appendBeginnerSnippet = (target: BeginnerCodeTarget | undefined, snippet: string) => {
@@ -6062,6 +6074,22 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const gutterBg = isDarkMode ? 'bg-[#111217] text-slate-500' : 'bg-slate-50 text-slate-400';
     const allProcessTargets = [...codeTargets].sort((left, right) => left.method.line - right.method.line);
     const activeCanvasTarget = activeCodeTarget || allProcessTargets[0];
+    const isBeginnerProcessCollapsed = (target: BeginnerCodeTarget) =>
+      collapsedBeginnerProcessTargetKeys.includes(codeTargetKey(target));
+    const toggleBeginnerProcessCollapsed = (target: BeginnerCodeTarget) => {
+      const targetKey = codeTargetKey(target);
+      setCollapsedBeginnerProcessTargetKeys(current =>
+        current.includes(targetKey)
+          ? current.filter(key => key !== targetKey)
+          : [...current, targetKey]
+      );
+    };
+    const collapseAllBeginnerProcesses = () => {
+      setCollapsedBeginnerProcessTargetKeys(allProcessTargets.map(codeTargetKey));
+    };
+    const expandAllBeginnerProcesses = () => {
+      setCollapsedBeginnerProcessTargetKeys([]);
+    };
     const compactTableBorder = isDarkMode ? 'border-[#33343b]' : 'border-slate-300';
     const compactHeadCellClass = `h-[var(--beginner-table-row-height)] border px-[var(--beginner-table-cell-x)] text-[length:var(--beginner-table-head-font-size)] font-semibold leading-[var(--beginner-table-line-height)] ${compactTableBorder} ${
       isDarkMode ? 'bg-[#202127] text-slate-300' : 'bg-slate-100 text-slate-700'
@@ -6168,7 +6196,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       visualLine: number,
       sourceLine: number,
       tone: 'plain' | 'active' | 'warning',
-      children: React.ReactNode
+      children: React.ReactNode,
+      fold?: {
+        collapsed: boolean;
+        onToggle: () => void;
+      }
     ) => (
       <section
         id={sectionDomId(id)}
@@ -6181,14 +6213,33 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               : canvasBg
         }`}
       >
-        <button
-          type="button"
-          onClick={() => revealLingCppLine(sourceLine)}
-          className={`border-r px-2 py-2 text-right font-mono text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] tabular-nums ${canvasBorder} ${gutterBg}`}
-          title={`定位到源码第 ${sourceLine} 行`}
-        >
-          {sourceLine}
-        </button>
+        <div className={`relative border-r ${canvasBorder} ${gutterBg}`}>
+          <button
+            type="button"
+            onClick={() => revealLingCppLine(sourceLine)}
+            className="h-full w-full px-2 py-2 text-right font-mono text-[length:var(--beginner-table-font-size)] leading-[var(--beginner-table-line-height)] tabular-nums"
+            title={`定位到源码第 ${sourceLine} 行`}
+          >
+            {sourceLine}
+          </button>
+          {fold && (
+            <button
+              type="button"
+              aria-expanded={!fold.collapsed}
+              aria-label={fold.collapsed ? '展开当前子程序' : '折叠当前子程序'}
+              onClick={event => {
+                event.stopPropagation();
+                fold.onToggle();
+              }}
+              className={`absolute left-1 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded transition-colors ${
+                isDarkMode ? 'text-slate-500 hover:bg-slate-700/60 hover:text-cyan-200' : 'text-slate-400 hover:bg-slate-200 hover:text-cyan-700'
+              }`}
+              title={fold.collapsed ? '展开当前子程序' : '折叠当前子程序'}
+            >
+              {fold.collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+          )}
+        </div>
         <div className="min-w-0 px-3 py-2">{children}</div>
       </section>
     );
@@ -6302,6 +6353,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const accessColumnWidth = Math.ceil(74 * beginnerTableScale);
       const noteColumnWidth = Math.min(420, Math.max(280, Array.from(noteValue).length * 14 + 28));
       const processTableWidth = nameColumnWidth + returnTypeColumnWidth + staticColumnWidth + accessColumnWidth + noteColumnWidth;
+      const collapsed = isBeginnerProcessCollapsed(target);
 
       return renderSourceShell(
         `${target.method.kind}-${target.method.name}-${target.method.line}`,
@@ -6344,7 +6396,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           ],
           processTableWidth,
           true
-        )
+        ),
+        {
+          collapsed,
+          onToggle: () => toggleBeginnerProcessCollapsed(target)
+        }
       );
     };
 
@@ -6634,14 +6690,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       processCanvases.push(renderProcessHeader(target, nextVisualLine));
       nextVisualLine += 1;
 
-      const parameterCanvas = renderParameterCanvas(target, nextVisualLine);
-      if (parameterCanvas) {
-        processCanvases.push(parameterCanvas);
-        nextVisualLine += Math.max(1, target.method.parameters.length);
-      }
+      if (!isBeginnerProcessCollapsed(target)) {
+        const parameterCanvas = renderParameterCanvas(target, nextVisualLine);
+        if (parameterCanvas) {
+          processCanvases.push(parameterCanvas);
+          nextVisualLine += Math.max(1, target.method.parameters.length);
+        }
 
-      processCanvases.push(renderContinuousCodeBody(target, nextVisualLine));
-      nextVisualLine += getProcessBodyLineCount(target);
+        processCanvases.push(renderContinuousCodeBody(target, nextVisualLine));
+        nextVisualLine += getProcessBodyLineCount(target);
+      }
 
       if (index < allProcessTargets.length - 1) {
         processCanvases.push(renderBlankSourceLine(nextVisualLine));
@@ -6684,17 +6742,38 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const renderBeginnerContextMenu = () => {
       if (!beginnerContextMenu) return null;
       const canDeleteTarget = Boolean(contextTarget && contextTarget.method.kind !== 'constructor');
+      const menuOnBottomHalf = beginnerContextMenu.y > window.innerHeight / 2;
+      const verticalInset = menuOnBottomHalf
+        ? Math.max(8, window.innerHeight - beginnerContextMenu.y)
+        : Math.max(8, beginnerContextMenu.y);
       return (
         <div
-          className={`fixed z-50 w-[190px] overflow-hidden rounded border py-1 shadow-2xl ${
+          className={`fixed z-50 w-[190px] overflow-x-hidden overflow-y-auto rounded border py-1 shadow-2xl ${
             isDarkMode ? 'border-[#343746] bg-[#191b22] shadow-black/40' : 'border-slate-200 bg-white shadow-slate-300/60'
           }`}
-          style={{ left: beginnerContextMenu.x, top: beginnerContextMenu.y }}
+          style={{
+            left: Math.max(8, Math.min(beginnerContextMenu.x, window.innerWidth - 198)),
+            top: menuOnBottomHalf ? undefined : verticalInset,
+            bottom: menuOnBottomHalf ? verticalInset : undefined,
+            maxHeight: `calc(100vh - ${verticalInset + 8}px)`
+          }}
           onClick={event => event.stopPropagation()}
           onContextMenu={event => event.preventDefault()}
         >
           {renderContextMenuButton('新建子程序', createBeginnerFunction, <Plus className="h-3.5 w-3.5" />)}
           {renderContextMenuButton('新建变量', createBeginnerMember, <Plus className="h-3.5 w-3.5" />)}
+          <div className={`my-1 border-t ${canvasBorder}`} />
+          {renderContextMenuButton('展开全部子程序', expandAllBeginnerProcesses, <ChevronDown className="h-3.5 w-3.5" />, false, allProcessTargets.length === 0)}
+          {renderContextMenuButton('折叠全部子程序', collapseAllBeginnerProcesses, <ChevronRight className="h-3.5 w-3.5" />, false, allProcessTargets.length === 0)}
+          {renderContextMenuButton(
+            contextTarget && isBeginnerProcessCollapsed(contextTarget) ? '展开当前子程序' : '折叠当前子程序',
+            () => contextTarget && toggleBeginnerProcessCollapsed(contextTarget),
+            contextTarget && isBeginnerProcessCollapsed(contextTarget)
+              ? <ChevronDown className="h-3.5 w-3.5" />
+              : <ChevronRight className="h-3.5 w-3.5" />,
+            false,
+            !contextTarget
+          )}
           <div className={`my-1 border-t ${canvasBorder}`} />
           {renderContextMenuButton('插入调试输出', () => appendBeginnerSnippet(contextTarget, '调试输出("")'), <Code className="h-3.5 w-3.5" />, false, !contextTarget)}
           {renderContextMenuButton('插入信息框', () => appendBeginnerSnippet(contextTarget, '信息框("提示内容", 64, "提示")'), <Lightbulb className="h-3.5 w-3.5" />, false, !contextTarget)}
