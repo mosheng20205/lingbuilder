@@ -820,6 +820,7 @@ test('EdgeView 模块贡献可创建、可拖动的设计器浏览器占位', ()
   assert.equal(definition.nativeAdapter, 'edgeview-browser');
   assert.equal(definition.isVisual, true);
   assert.equal(hasDedicatedControlPreview('EdgeBrowser'), true);
+  assert.equal(hasDedicatedControlPreview('FBroBrowser'), true);
   assert.ok(CREATABLE_DESIGNER_CONTROL_TYPES.includes('EdgeBrowser'));
   const manifest = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.edgeview');
   const contribution = manifest?.contributes?.designerControls?.find(control => control.type === 'EdgeBrowser');

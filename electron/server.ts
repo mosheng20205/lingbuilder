@@ -141,6 +141,24 @@ import {
 
 dotenv.config({ quiet: true });
 
+let fbroRuntimeVipKey = String(process.env.LINGBUILDER_FBRO_VIP_KEY || '').trim().slice(0, 4096);
+delete process.env.LINGBUILDER_FBRO_VIP_KEY;
+const utilityParentPort = (process as typeof process & {
+  parentPort?: { on: (event: 'message', listener: (message: { data?: unknown }) => void) => void };
+}).parentPort;
+utilityParentPort?.on('message', message => {
+  const data = message.data as { type?: unknown; value?: unknown } | undefined;
+  if (data?.type !== 'lingbuilder:fbro-vip-key') return;
+  fbroRuntimeVipKey = typeof data.value === 'string' ? data.value.trim().slice(0, 4096) : '';
+});
+
+function createFbroRuntimeEnvironment(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    ...(fbroRuntimeVipKey ? { LINGBUILDER_FBRO_VIP_KEY: fbroRuntimeVipKey } : {})
+  };
+}
+
 const serverRuntimeConfig = resolveServerRuntimeConfig(process.env);
 // This process is already running as an Electron utility process. Ensure that
 // any later process.execPath probe starts Electron in Node mode instead of
@@ -1826,6 +1844,20 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       exportDir
       , preferredTargetId: getModuleTargetId(buildConfiguration)
     });
+    if (moduleNativePlan.blockingDiagnostics.length > 0) {
+      return res.status(200).json({
+        ok: false,
+        stage: "native-dependencies",
+        error: moduleNativePlan.blockingDiagnostics.join("\n"),
+        buildDir,
+        sourceDir,
+        binDir,
+        objDir,
+        exportDir,
+        sourceMap: generatedProject.sourceMap,
+        logs: [...preBuildLogs, ...generatedProject.diagnostics, ...moduleNativePlan.diagnostics, "原生依赖未准备完整，已阻止编译和运行。"]
+      });
+    }
     const buildVisualStudioProject = await exportVisualStudioProject({
       projectDir: buildDir,
       projectId,
@@ -1836,7 +1868,8 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       enabledModules,
       contentFiles: buildContentFiles,
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
-      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
+      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+      fbroRuntimeFromBuildBin: true
     });
     const exportVisualStudioProjectResult = await exportVisualStudioProject({
       projectDir: exportDir,
@@ -1938,6 +1971,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         const logFile = path.join(buildDir, "run.log");
         const started = await managedProcessService.start(projectId, exePath, {
           cwd: binDir,
+          env: createFbroRuntimeEnvironment(),
           detached: false,
           windowsHide: false,
           logFilePath: logFile
@@ -2215,6 +2249,20 @@ async function runControlledWindowDesignerBuild(options: {
     exportDir,
     preferredTargetId: getModuleTargetId(buildConfiguration)
   });
+  if (moduleNativePlan.blockingDiagnostics.length > 0) {
+    return {
+      ok: false,
+      stage: "native-dependencies",
+      error: moduleNativePlan.blockingDiagnostics.join("\n"),
+      buildDir,
+      sourceDir,
+      binDir,
+      objDir,
+      exportDir,
+      sourceMap: generatedProject.sourceMap,
+      logs: [...preBuildLogs, ...generatedProject.diagnostics, ...moduleNativePlan.diagnostics, "原生依赖未准备完整，已阻止编译和运行。"]
+    };
+  }
   const buildVisualStudioProject = await exportVisualStudioProject({
     projectDir: buildDir,
     projectId,
@@ -2225,7 +2273,8 @@ async function runControlledWindowDesignerBuild(options: {
     enabledModules,
     contentFiles: buildContentFiles,
     requiredCppStandard: moduleNativePlan.requiredCppStandard,
-    requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
+    requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+    fbroRuntimeFromBuildBin: true
   });
   const exportVisualStudioProjectResult = await exportVisualStudioProject({
     projectDir: exportDir,
@@ -2352,6 +2401,7 @@ async function runControlledWindowDesignerBuild(options: {
       const logFile = path.join(buildDir, "run.log");
       const started = await managedProcessService.start(projectId, exePath, {
         cwd: binDir,
+        env: createFbroRuntimeEnvironment(),
         detached: false,
         windowsHide: false,
         logFilePath: logFile

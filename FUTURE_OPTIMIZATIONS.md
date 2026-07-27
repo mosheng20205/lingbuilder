@@ -1,5 +1,13 @@
 # LingBuilder 后期优化事项
 
+- 已修复（2026-07-28）：FBro F5 偶发白屏与窗口“未响应”的启动竞态。桥接层过去会因 `OnContextInitialized` 与 Win32 窗口创建的先后顺序不同，随机从宿主主线程或 CEF UI 线程调用 `FBroHsCreate`；现在所有就绪后的创建统一通过 `CefPostTask(TID_UI, ...)` 串行投递到 CEF UI 线程。每控件 profile 同时改为 `.fbro-global-cache` 的直接子目录，旧的相对/嵌套目录会稳定映射，根目录外的绝对路径会隔离回退，避免 CEF 报 `cache_path`、`root_cache_path` 或 `Cannot create profile` 后降级。真实 `fbro` Debug 程序连续 8 秒保持响应、百度脚本成功执行、正常关闭且无缓存/profile 错误；错误 VIP 端到端测试继续通过。
+
+- 已修复（2026-07-28）：FBro 浏览器控件在窗口设计器中拖动或八向缩放时持续闪烁。控件交互改为通过 `requestAnimationFrame` 合并鼠标移动，只更新设计器瞬时预览；松开主鼠标键、窗口失焦或页面隐藏时才把最终坐标/尺寸一次性提交到项目模型，避免每个像素变化都触发持久化、脏状态通知和完整项目重绘。FBro 预览同时增加布局/绘制隔离，降低大面积白色浏览器占位区的重绘影响；后续若引入真实设计期原生 HWND 预览，仍应继续采用“交互预览与项目提交分离”的模型。
+
+- 已完成（2026-07-28）：FBro VIP Key 用户自助配置、安全注入和错误授权端到端验证。设置中心新增“浏览器凭据”，每位开发者可保存、替换和清除自己的 Key；主进程使用 Electron `safeStorage` 加密到当前 Windows 用户凭据目录，preload 只公开配置状态和写/删操作，不提供明文读取接口。本地服务接收后从全局环境删除，并只在 F5/原生运行子进程中注入；AI Bridge 在下一次启动时带入。Key 不进入项目、设计器、源码、日志、AI 上下文或设置同步包；环境变量继续作为无人值守及导出 VS 工程的后备入口。真实 MSVC x64 自动测试已确认错误 Key 返回 FBro 原始授权错误且不泄漏 Key；测试退出改为 `FBroShutdown(FALSE)` 后等待 `OnBeforeClose`，避免强制终止产生 `0x80000003`。
+
+- 已完成（2026-07-27）：FBro CEF 135.0.21 x64 独立模块闭环。内置 `lingbuilder.fbro.browser` 在媒体工具箱贡献可拖放的 `FBroBrowser`，每实例创建独立宿主 `HWND` 和 profile；基础导航、脚本提交、Cookie、代理、User-Agent、结构化指纹与浏览器事件通过预编译 `LingBuilderFbroBridge.dll` 的 C ABI 进入确定性 C++。`lingbuilder.fbro.sdk` 保存桥接层、官方头/库和 78 项（389,770,453 字节）运行时，F5/AI Bridge/VS 导出共用 SHA-256 增量物化、临时文件替换及目录保留。模块固定 MSVC x64，并在生成前阻断 CEF3、其它 `libcef.dll`、版本错配及 SDK 损坏。真实 VS Release x64 工程已编译，exe 与 3 个子进程运行 3 秒稳定。后续保留同步 JavaScript 返回值、完整缓存清理、高级 WebSocket/资源拦截、100 次压力测试，以及正式分发前的 FBro 重新打包许可确认。
+
 - 已完成（2026-07-27）：原生 UI 后端命令契约接口化。新增 `NativeUiBackendCommandContract` 注册表，普通 Win32、new_emoji 以及后续 UI 库统一按“后端 ID + 模块 binding”声明命令支持能力；窗口模型的 `designerBackend` 不再是封闭二选一类型。new_emoji 已适配信息框、调试、退出、鼠标位置、窗口状态，以及控件文本/图片/启用/可见/勾选/数值/选择/集合等通用 Win32 基础命令，并复用标准库、文件系统、网络、数据媒体和平台运行时；依赖 `LingWindowBase`、专属 HWND 或普通 Win32 消息上下文的命令会在生成 C++ 前给出中文阻断诊断。未注册命令契约或未注册布局生成器的新后端也会阻断，禁止静默回退为 Win32。回归测试覆盖契约注册、字符串/注释过滤、可移植命令实现、不可移植命令阻断和 1500+ new_emoji binding 到真实导出头文件的全量衔接；MSVC x64 构建及 exe 运行 3 秒验证通过。
 
 - 已修复（2026-07-27）：new_emoji 设计器中的控件 `.内容` 过去沿用普通 Win32 翻译结果，却没有在独立 new_emoji 运行时提供 `控件_取文本` / `控件_设置文本`，会让 `编辑框1.内容` 生成后触发 MSVC C3861。new_emoji C++ 生成器现在维护稳定中文控件名到元素 ID 的映射，并通过 `EU_GetElementText` / `EU_SetElementText` 完成 UTF-8 与宽文本转换；读取、赋值、嵌套表达式和信息框参数均复用同一确定性 `.内容` 语义。新增生成源码回归测试覆盖 getter、setter、元素注册和真实底层 API 调用。
@@ -547,3 +555,4 @@
 - 已完成：云端商品、永久/期限报价、订单、权益、24 小时限免、支付回调幂等、退款撤销、管理员赠送/撤销和访问审计模型；金额使用 bigint 分，时间统一 UTC。
 - 已完成：Ed25519 Permit、购买最长 72 小时离线缓存、限免截止约束、时钟回拨检测，以及安装/启用/编辑/F5/预览/导出/AI Bridge 守卫。
 - 未完成：微信/支付宝目前是带签名的外部网关适配器，不是两家官方 SDK 的商户直连；管理后台退款发起和限免独立使用人数报表仍需补齐。正式生产前还必须配置真实网关 URL、Webhook 密钥与稳定 Permit PEM 密钥，并完成支付沙箱回放。
+- 已修复（2026-07-28）：FBro F5 空白窗口。原生依赖服务现在可从 `.lingbuilder-build/<project>/x64/Debug` 等深层目录正确定位工作区 SDK；SDK/桥接/运行时缺失或损坏会作为阻断诊断停止 F5 和 AI Bridge，不再编译并启动空白占位控件。修正 FBro 缓存根目录的 C++ 路径分隔符转义，避免把缓存路径拼成 `程序.exe\.fbro-*` 后引发 GPU/网络子进程失败。F5 中间 VS 工程从已校验 `bin` 物化，便携导出工程携带 78 项完整 runtime 和增量脚本。真实 MSVC x64 测试已收到浏览器创建与 `https://example.com` 加载完成事件，错误 VIP Key 同时返回明确授权错误且未泄露 Key。

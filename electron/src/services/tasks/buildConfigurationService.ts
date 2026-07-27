@@ -12,7 +12,8 @@ export interface ModuleCompatibleBuildConfiguration {
 }
 
 const MODULE_ARCHITECTURE_REQUIREMENTS: Readonly<Record<string, BuildArchitecture>> = {
-  'lingbuilder.cef3.browser': 'x64'
+  'lingbuilder.cef3.browser': 'x64',
+  'lingbuilder.fbro.browser': 'x64'
 };
 
 export class BuildConfigurationService {
@@ -55,7 +56,7 @@ export function resolveModuleCompatibleBuildConfiguration(
   return {
     configuration: { ...configuration, architecture },
     changed: true,
-    messages: [`CEF3 浏览器模块随附的 CEF 150 SDK 仅支持 x64，构建架构已自动从 ${configuration.architecture} 切换为 ${architecture}。`]
+    messages: [`${moduleIds.includes('lingbuilder.fbro.browser') ? 'FBro' : 'CEF3'} 浏览器模块仅支持 x64，构建架构已自动从 ${configuration.architecture} 切换为 ${architecture}。`]
   };
 }
 

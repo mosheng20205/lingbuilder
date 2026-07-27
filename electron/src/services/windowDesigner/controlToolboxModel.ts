@@ -19,7 +19,7 @@ export type ControlToolboxExpansionState = Record<ControlToolboxGroupId, boolean
 export const CONTROL_TOOLBOX_GROUP_DEFINITIONS: readonly ControlToolboxGroupDefinition[] = [
   { id: 'basic', label: '基础控件', description: '常用 Win32 输入、显示和布局控件' },
   { id: 'advanced', label: '高级控件', description: '系统通用控件和非可视行为组件' },
-  { id: 'browser', label: '浏览器控件', description: 'Edge WebView2 与 CEF3 浏览器控件' },
+  { id: 'browser', label: '浏览器控件', description: 'Edge WebView2、CEF3 与 FBro 指纹浏览器控件' },
   { id: 'new-emoji', label: 'New_Emoji 控件', description: 'New_Emoji 原生设计后端支持的控件' }
 ] as const;
 
@@ -35,6 +35,7 @@ const GROUP_BY_MODULE_ID: Record<string, ControlToolboxGroupId> = {
   'lingbuilder.win32.common-controls': 'advanced',
   'lingbuilder.edgeview': 'browser',
   'lingbuilder.cef3.browser': 'browser',
+  'lingbuilder.fbro.browser': 'browser',
   'lingbuilder.new_emoji.ui': 'new-emoji'
 };
 

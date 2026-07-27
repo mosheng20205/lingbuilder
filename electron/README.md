@@ -1,5 +1,11 @@
 # LingBuilder Electron
 
+> 2026-07-28：修复 FBro F5 偶发白屏和窗口未响应。桥接层现在将所有 `FBroHsCreate` 统一投递到 CEF UI 线程，消除初始化完成顺序导致的跨线程创建竞态；每控件 profile 使用 `.fbro-global-cache` 的直接隔离子目录，旧相对/嵌套路径由桥接层稳定映射，根目录外绝对路径安全回退。`npm run test:fbro-invalid-vip` 现在也会拒绝任何 `cache_path` 或 `Cannot create profile` 日志。当前 `fbro` Debug 程序实测连续 8 秒响应、5 个子进程稳定、百度页面脚本成功执行并正常关闭。
+
+> 2026-07-28：FBro VIP Key 改为由每位 IDE 用户自行配置。“设置 → 浏览器凭据”提供保存、替换、清除与状态显示，使用 Electron `safeStorage` 写入当前 Windows 用户的加密凭据目录；renderer 只能读取“是否配置/来源”，不能取回现有明文。Key 仅在 F5、原生运行和新启动的 AI Bridge 子进程中通过临时环境注入，不进入项目、设计器模型、源码、日志、AI 上下文或设置同步包。`LINGBUILDER_FBRO_VIP_KEY` 继续作为无人值守和脱离 IDE 运行导出工程时的兼容后备。可运行 `npm run test:fbro-invalid-vip` 自动编译并启动真实 MSVC x64 程序；测试用假 Key 只存在于子进程环境，必须看到“FBro VIP 授权码校验失败”且不得输出 Key。退出使用 C++ SDK 的 `FBroShutdown(FALSE)` 并等待浏览器关闭回调，不能强制结束测试进程。
+
+> 2026-07-27：新增内置 `lingbuilder.fbro.browser`。启用后工具箱“媒体”分类显示 `FBro指纹浏览器 (FBroBrowser)`，可像 CEF3 控件一样拖入可视化窗口并绑定事件；每实例生成独立宿主 `HWND` 与 profile。用户工程只链接 `LingBuilderFbroBridge` C ABI，模块固定 MSVC x64 并与 CEF3/其它 `libcef.dll` 互斥。开发机运行 `npm run module:fbro-sdk -- --install` 可从官方 FBro 目录生成 `lingbuilder.fbro.sdk`；首次 F5 按 SHA-256 清单物化 CEF 135.0.21 的 78 项运行时（389,770,453 字节），后续只更新新增、缺失或损坏文件，VS 导出携带完整运行时和同一增量脚本。发布命令通过 `verify:fbro-release` / `verify:fbro-installer` 校验源 SDK、解包目录和安装包。正式随 IDE 分发前仍须确认官方重新打包许可。
+
 > 2026-07-27：new_emoji 模块完成 92 控件属性/事件全量运行时封装。生成清单现含 698/698 属性与 902/902 事件映射；C++ 生成器应用结构化 Setter、表格复合配置、按钮经过/按下颜色和聚合鼠标/焦点/值变化回调。Upload 使用 `FilesSelected` / `UploadAction`。修改上游控件目录或导出后必须运行 `npm run module:new-emoji -- --install` 并保持模块完整性测试通过。
 
 > 2026-07-24：IDE 与 AI Bridge 的受控 C++ 构建统一按原始字节读取编译器输出，优先严格 UTF-8、失败时回退 GB18030，避免中文 MSVC 诊断和路径出现 `��`。LingCpp `调试输出` 支持英文逗号分隔的任意数量参数。
@@ -379,3 +385,4 @@ Visual C++ 项目使用固定的 `<sourceRoot>/项目数据类型.lcpp` 保存�
 设计器右键菜单通过 `MenuService` 解析，菜单项只调用 `CommandService` 命令。内置、已启用 `.lbmod` 和 Extension Host 插件可向 `designer/control/context`、`designer/canvas/context` 或 `designer/resource/context` 贡献菜单和子菜单。插件访问设计器需声明 `designer.read`；返回声明式编辑时还需 `designer.write`，并经过修订号、字段白名单、引用、数量和大小校验后作为一次原子撤销事务应用。
 
 复制、剪切、粘贴使用带 `LINGBUILDER_DESIGNER_CONTROLS:` 前缀的版本化 JSON 剪贴板。`DesignerContainerLayoutRegistry` 为窗口、GroupBox、Grid、Pager、TabControl 和 ReBar 注册内置适配，并向模块开放 absolute/flow/stack/grid/dock/slots/single/custom 布局描述。粘贴时只重新适配复制子树的顶层节点，内部父子关系、相对位置、插槽和引用保持不变。
+> 2026-07-28：修复 FBro F5 空白窗口。SDK 查找现在从任意深度构建目录向上识别 `.lingbuilder-build`，缺失/损坏依赖会在编译前阻断，不再启动空白占位程序；同时修正生成 C++ 的 Windows 路径分隔符转义，避免 CEF 缓存目录落到 `程序.exe` 下。F5 中间 VS 工程复用已校验 `bin`，便携 VS 导出携带完整 78 项 runtime 和增量脚本。真实 MSVC x64 冒烟测试已确认创建事件、网页加载完成事件、错误 VIP 中文诊断及无 Key 泄漏。

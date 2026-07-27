@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "ne",
+  "startupProjectId": "fbro",
   "startupProjectIds": [
-    "ne"
+    "fbro"
   ],
   "projects": [
     {
@@ -91,6 +91,13 @@
       "name": "NE测试",
       "type": "visual-cpp",
       "sourceRoot": "src/ne",
+      "references": []
+    },
+    {
+      "id": "fbro",
+      "name": "测试FBro浏览器",
+      "type": "visual-cpp",
+      "sourceRoot": "src/fbro",
       "references": []
     }
   ]

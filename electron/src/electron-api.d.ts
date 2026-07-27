@@ -155,6 +155,9 @@ declare global {
         getAiApiKey: () => Promise<string>;
         setAiApiKey: (value: string) => Promise<void>;
         deleteAiApiKey: () => Promise<void>;
+        getFbroVipKeyStatus: () => Promise<{ configured: boolean; source: 'secure-storage' | 'environment' | 'none' }>;
+        setFbroVipKey: (value: string) => Promise<{ configured: boolean; source: 'secure-storage' | 'environment' | 'none' }>;
+        deleteFbroVipKey: () => Promise<{ configured: boolean; source: 'secure-storage' | 'environment' | 'none' }>;
       };
       cloudAccount?: {
         register: (value: { email: string; password: string }) => Promise<{ ok: boolean; verificationRequired: boolean }>;

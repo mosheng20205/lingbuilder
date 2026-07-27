@@ -108,6 +108,7 @@ export class ModuleService {
     if (target.diagnostics.length > 0) throw new Error(`模块校验未通过，不能启用：${target.diagnostics.join('；')}`);
 
     const refs = await this.readProjectModules(projectId);
+    assertNoModuleCompatibilityConflicts(modules, [...refs.enabledModuleIds, moduleId]);
     if (!refs.enabledModuleIds.includes(moduleId)) refs.enabledModuleIds.push(moduleId);
     refs.pinnedVersions[moduleId] = target.manifest.version;
     await this.writeProjectModules(projectId, refs);
@@ -150,6 +151,7 @@ export class ModuleService {
       nextRefs.pinnedVersions[moduleId] = module.manifest.version;
       addedModuleIds.push(moduleId);
     }
+    assertNoModuleCompatibilityConflicts(modules, nextRefs.enabledModuleIds);
     return {
       projectId,
       targetPath: this.projectModulesPath(projectId),
@@ -502,6 +504,19 @@ export class ModuleService {
 
   private historyPath(): string {
     return path.join(this.lingBuilderDir(), MODULE_HISTORY_FILE);
+  }
+}
+
+function assertNoModuleCompatibilityConflicts(modules: InstalledModule[], enabledModuleIds: readonly string[]): void {
+  const enabled = new Set(enabledModuleIds);
+  const byId = new Map(modules.map(module => [module.manifest.id, module]));
+  for (const moduleId of enabled) {
+    const module = byId.get(moduleId);
+    for (const conflict of module?.manifest.compatibility?.conflicts || []) {
+      if (!enabled.has(conflict.moduleId)) continue;
+      const other = byId.get(conflict.moduleId);
+      throw new Error(`模块不兼容：${module.manifest.name} 与 ${other?.manifest.name || conflict.moduleId} 不能在同一项目中启用。${conflict.reason}`);
+    }
   }
 }
 

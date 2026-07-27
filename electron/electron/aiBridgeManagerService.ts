@@ -70,6 +70,7 @@ export class AiBridgeManagerService {
   private process: ChildProcess | null = null;
   private token = '';
   private moduleAccessState = '';
+  private fbroVipKey = '';
   private listeners = new Set<(snapshot: ManagedAiBridgeSnapshot) => void>();
   private stopExpected = false;
   private snapshotValue: ManagedAiBridgeSnapshot = emptySnapshot();
@@ -83,6 +84,10 @@ export class AiBridgeManagerService {
   revealToken(): string {
     if (this.snapshotValue.state !== 'running' || !this.token) throw new Error('AI Bridge 尚未运行，当前没有可用 Token。');
     return this.token;
+  }
+
+  setFbroVipKey(value: string): void {
+    this.fbroVipKey = String(value || '').trim().slice(0, 4096);
   }
 
   subscribe(listener: (snapshot: ManagedAiBridgeSnapshot) => void): () => void {
@@ -109,14 +114,21 @@ export class AiBridgeManagerService {
     };
     this.emit();
 
+    const childEnvironment = {
+      ...(this.options.environment || process.env),
+      ELECTRON_RUN_AS_NODE: '1',
+      LINGBUILDER_AI_BRIDGE_TOKEN: token,
+      LINGBUILDER_MODULE_ACCESS_STATE: this.moduleAccessState,
+      ...(this.fbroVipKey ? { LINGBUILDER_FBRO_VIP_KEY: this.fbroVipKey } : {})
+    };
     const child = this.options.spawnProcess?.(
       this.options.runtimeExecutable,
       [this.options.cliEntryPath, 'ai-server', '--workspace', workspaceRoot, '--host', '127.0.0.1', '--port', String(port), '--permission', permission],
-      { cwd: workspaceRoot, env: { ...(this.options.environment || process.env), ELECTRON_RUN_AS_NODE: '1', LINGBUILDER_AI_BRIDGE_TOKEN: token, LINGBUILDER_MODULE_ACCESS_STATE: this.moduleAccessState }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }
+      { cwd: workspaceRoot, env: childEnvironment, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }
     ) || spawn(
       this.options.runtimeExecutable,
       [this.options.cliEntryPath, 'ai-server', '--workspace', workspaceRoot, '--host', '127.0.0.1', '--port', String(port), '--permission', permission],
-      { cwd: workspaceRoot, env: { ...(this.options.environment || process.env), ELECTRON_RUN_AS_NODE: '1', LINGBUILDER_AI_BRIDGE_TOKEN: token, LINGBUILDER_MODULE_ACCESS_STATE: this.moduleAccessState }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }
+      { cwd: workspaceRoot, env: childEnvironment, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }
     );
     this.process = child;
     this.snapshotValue.pid = child.pid ?? null;

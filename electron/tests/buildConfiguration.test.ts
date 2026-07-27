@@ -34,6 +34,15 @@ test('CEF3 module automatically selects and persists its supported x64 architect
   assert.equal((await service.ensureCompatibleWithModules(['lingbuilder.cef3.browser'])).changed, false);
 });
 
+test('FBro module automatically selects the MSVC x64 target', () => {
+  const resolved = resolveModuleCompatibleBuildConfiguration(
+    { schemaVersion: 1, mode: 'Release', architecture: 'Win32' },
+    ['lingbuilder.win32.basic', 'lingbuilder.fbro.browser']
+  );
+  assert.deepEqual(resolved.configuration, { schemaVersion: 1, mode: 'Release', architecture: 'x64' });
+  assert.match(resolved.messages[0], /FBro.*x64/u);
+});
+
 test('build configuration changes compiler flags, output paths, and module target IDs', () => {
   const debug = { schemaVersion: 1, mode: 'Debug', architecture: 'Win32' } as const;
   const release = { schemaVersion: 1, mode: 'Release', architecture: 'x64' } as const;

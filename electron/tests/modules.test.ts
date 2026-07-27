@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -25,9 +26,10 @@ import {
   getBeginnerModuleCommandHints
 } from '../src/services/modules/moduleContextAdapters';
 import { InstalledModule } from '../src/services/modules/types';
-import { materializeModuleNativeDependencies } from '../src/services/modules/nativeDependencyService';
+import { inferWorkspaceRootFromBuildDir, materializeModuleNativeDependencies } from '../src/services/modules/nativeDependencyService';
 import { generateLingCppNativeWin32Project } from '../src/services/windowDesigner/lingCppWin32Project';
 import { LingWindowProject } from '../src/services/windowDesigner/types';
+import { createControlToolboxGroups } from '../src/services/windowDesigner/controlToolboxModel';
 import { exportVisualStudioProject } from '../src/services/windowDesigner/visualStudioProjectExporter';
 
 const sampleProject: LingWindowProject = {
@@ -1200,6 +1202,7 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
   assert.ok(CEF3_BROWSER_EVENTS.length >= 90);
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_取事件字段'));
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_设置事件结果'));
+  assert.ok(manifest.compatibility?.conflicts?.some(item => item.moduleId === 'lingbuilder.fbro.browser'));
 
   const module: InstalledModule = {
     manifest,
@@ -1231,6 +1234,147 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
     assert.ok(cpp.includes(`L"${event.name}"`), `生成运行时缺少 CEF3 事件：${event.name}`);
   }
   assert.match(cpp, /CEF3_取事件字段/);
+});
+
+test('FBro module contributes a toolbox designer control and C ABI generated runtime', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  assert.ok(manifest);
+  assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
+  assert.deepEqual(manifest.targets?.map(target => target.id), ['windows-msvc-x64']);
+  assert.ok(manifest.compatibility?.conflicts?.some(item => item.moduleId === 'lingbuilder.cef3.browser'));
+  const designer = manifest.contributes?.designerControls?.find(control => control.type === 'FBroBrowser');
+  assert.equal(designer?.label, 'FBro指纹浏览器');
+  assert.equal(designer?.nativeAdapter, 'fbro-browser');
+  assert.deepEqual(designer?.events?.map(event => event.name), ['Created', 'LoadEnd', 'AddressChanged', 'TitleChanged', 'Closed', 'Error']);
+  const browserGroup = createControlToolboxGroups(['Button', 'FBroBrowser'], false).find(group => group.id === 'browser');
+  assert.deepEqual(browserGroup?.controlTypes, ['FBroBrowser']);
+
+  const module: InstalledModule = {
+    manifest, installPath: 'builtin://lingbuilder.fbro.browser', isBuiltin: true,
+    isInstalled: true, isEnabledForProject: true, diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'fbro-1', type: 'FBroBrowser', name: 'FBro浏览器1', content: '', x: 12, y: 20,
+        width: 480, height: 320, background: '#ffffff', foreground: '#000000', fontSize: 14,
+        isEnabled: true, visibility: 'Visible',
+        properties: { url: 'https://example.com', cacheDir: '', fingerprintProfile: '{"seed":42}' },
+        events: { Created: 'FBro浏览器1_创建完成', LoadEnd: 'FBro浏览器1_加载完成' }
+      }]
+    }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    enabledModules: [module],
+    lingCppSourceCode: '类 MainWindow\n    事件 FBro浏览器1_创建完成()\n        FBro_导航("FBro浏览器1", "https://example.com")\n    结束\n结束类'
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /#include <LingBuilderFbroBridge\.h>/u);
+  assert.match(cpp, /IsType\(control, L"FBroBrowser"\)/u);
+  assert.match(cpp, /LB_FBro_Create/u);
+  assert.match(cpp, /WM_LINGBUILDER_FBRO_EVENT/u);
+  assert.match(cpp, /\.fbro-global-cache\/profile-fbro-1/u);
+  assert.doesNotMatch(cpp, /CefRefPtr<FBro/u);
+});
+
+test('FBro bridge serializes browser creation onto the CEF UI thread and contains profiles under root cache', async () => {
+  const bridgeSource = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8');
+  assert.match(bridgeSource, /CefPostTask\(TID_UI, new BridgeBrowserStartTask\(handle\)\)/u);
+  assert.match(bridgeSource, /ResolveProfileDirectory/u);
+  assert.match(bridgeSource, /normalized_root \/ \(L"profile-"/u);
+  assert.doesNotMatch(bridgeSource, /g_browsers\.emplace\(handle, std::move\(state\)\);\s*StartBrowser\(\*raw\)/u);
+});
+
+test('FBro bridge reports invalid VIP authorization without exposing the supplied key', async () => {
+  const bridgeSource = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8');
+  assert.match(bridgeSource, /FBroHsOnlineLicenseControl_GetError/u);
+  assert.match(bridgeSource, /FBro VIP 授权码校验失败/u);
+  assert.match(bridgeSource, /SecureZeroMemory\(vip_key/u);
+  assert.match(bridgeSource, /g_license_error\.replace/u);
+  assert.match(bridgeSource, /g_close_condition\.wait_for/u);
+  assert.match(bridgeSource, /FBroShutdown\(FALSE\)/u);
+});
+
+test('FBro SDK discovery resolves the workspace above deeply nested build configurations', () => {
+  const workspace = path.resolve('C:/workspace/lingbuilder');
+  const buildDir = path.join(workspace, '.lingbuilder-build', 'fbro', 'x64', 'Debug');
+  assert.equal(inferWorkspaceRootFromBuildDir(buildDir), workspace);
+});
+
+test('FBro native dependency materializer preserves directories and only repairs changed files', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-fbro-sdk-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const sdk = path.join(root, 'sdk');
+  const runtimeFiles = new Map([
+    ['libcef.dll', Buffer.from('cef-runtime')],
+    ['locales/zh-CN.pak', Buffer.from('zh-cn-runtime')]
+  ]);
+  await writeFixture(path.join(sdk, 'include', 'LingBuilderFbroBridge.h'), '#pragma once\n');
+  await writeFixture(path.join(sdk, 'lib', 'x64', 'LingBuilderFbroBridge.lib'), 'bridge-lib');
+  await writeFixture(path.join(sdk, 'bridge', 'x64', 'LingBuilderFbroBridge.dll'), 'bridge-dll');
+  const files = [];
+  for (const [relative, content] of runtimeFiles) {
+    const target = path.join(sdk, 'runtime', 'x64', ...relative.split('/'));
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, content);
+    files.push({ path: relative, size: content.length, sha256: crypto.createHash('sha256').update(content).digest('hex') });
+  }
+  await fs.writeFile(path.join(sdk, 'runtime-manifest.json'), JSON.stringify({
+    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '1.0.0', files
+  }), 'utf8');
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  assert.ok(manifest);
+  const module: InstalledModule = { manifest, installPath: 'builtin://lingbuilder.fbro.browser', isBuiltin: true, isInstalled: true, diagnostics: [] };
+  const previous = process.env.FBRO_SDK_ROOT;
+  process.env.FBRO_SDK_ROOT = sdk;
+  try {
+    const layout = {
+      buildDir: path.join(root, 'build'), sourceDir: path.join(root, 'source'),
+      binDir: path.join(root, 'bin'), exportDir: path.join(root, 'export'),
+      preferredTargetId: 'windows-msvc-x64'
+    };
+    const first = await materializeModuleNativeDependencies([module], layout);
+    assert.deepEqual(first.diagnostics, []);
+    assert.equal((await fs.readFile(path.join(layout.binDir, 'locales', 'zh-CN.pak'))).toString(), 'zh-cn-runtime');
+    assert.equal((await fs.readFile(path.join(layout.exportDir, 'modules', 'lingbuilder.fbro.browser', 'runtime', 'x64', 'locales', 'zh-CN.pak'))).toString(), 'zh-cn-runtime');
+    assert.ok(await exists(path.join(layout.buildDir, 'modules', 'lingbuilder.fbro.browser', 'materialize-fbro-runtime.ps1')));
+    assert.ok(await exists(path.join(layout.exportDir, 'modules', 'lingbuilder.fbro.browser', 'materialize-fbro-runtime.ps1')));
+    const cefPath = path.join(layout.binDir, 'libcef.dll');
+    const firstMtime = (await fs.stat(cefPath)).mtimeMs;
+    await new Promise(resolve => setTimeout(resolve, 25));
+    const second = await materializeModuleNativeDependencies([module], layout);
+    assert.deepEqual(second.diagnostics, []);
+    assert.equal((await fs.stat(cefPath)).mtimeMs, firstMtime);
+    await fs.writeFile(cefPath, 'broken-runtime');
+    const repaired = await materializeModuleNativeDependencies([module], layout);
+    assert.deepEqual(repaired.diagnostics, []);
+    assert.equal((await fs.readFile(cefPath)).toString(), 'cef-runtime');
+    assert.ok(await exists(path.join(layout.binDir, '.lingbuilder-fbro-runtime.json')));
+  } finally {
+    if (previous === undefined) delete process.env.FBRO_SDK_ROOT;
+    else process.env.FBRO_SDK_ROOT = previous;
+  }
+});
+
+test('FBro and CEF3 are blocked before native dependencies are materialized', async () => {
+  const ids = ['lingbuilder.fbro.browser', 'lingbuilder.cef3.browser'];
+  const modules = ids.map(id => {
+    const manifest = BUILTIN_MODULES.find(item => item.id === id);
+    assert.ok(manifest);
+    return { manifest, installPath: `builtin://${id}`, isBuiltin: true, isInstalled: true, diagnostics: [] } as InstalledModule;
+  });
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-fbro-conflict-'));
+  try {
+    const plan = await materializeModuleNativeDependencies(modules, {
+      buildDir: path.join(root, 'build'), sourceDir: path.join(root, 'source'),
+      binDir: path.join(root, 'bin'), exportDir: path.join(root, 'export'), preferredTargetId: 'windows-msvc-x64'
+    });
+    assert.match(plan.diagnostics.join('\n'), /CEF 135.*CEF 150/u);
+    assert.match(plan.blockingDiagnostics.join('\n'), /CEF 135.*CEF 150/u);
+    assert.equal(plan.runtimeFiles.length, 0);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
 test('generated new_emoji bridge completions match binding parameter counts', async () => {
@@ -1369,6 +1513,37 @@ test('exportVisualStudioProject writes sln and vcxproj with module dependencies'
   assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\lib\\Win32\\new_emoji\.lib/);
   assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\lib\\x64\\new_emoji\.lib/);
   assert.match(vcxproj, /new_emoji\.dll/);
+});
+
+test('exportVisualStudioProject selects the correct FBro runtime source for F5 and portable exports', async () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  assert.ok(manifest);
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.fbro.browser',
+    isBuiltin: true,
+    isInstalled: true,
+    diagnostics: []
+  };
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-vs-fbro-'));
+  const build = await exportVisualStudioProject({
+    projectDir: path.join(root, 'build'),
+    projectId: 'fbro-build',
+    generatedFiles: [{ relativePath: 'src/main.cpp', content: '' }],
+    enabledModules: [module],
+    fbroRuntimeFromBuildBin: true
+  });
+  const portable = await exportVisualStudioProject({
+    projectDir: path.join(root, 'portable'),
+    projectId: 'fbro-portable',
+    generatedFiles: [{ relativePath: 'main.cpp', content: '' }],
+    enabledModules: [module]
+  });
+  const buildProject = await fs.readFile(build.projectPath, 'utf8');
+  const portableProject = await fs.readFile(portable.projectPath, 'utf8');
+  assert.match(buildProject, /-RuntimeRoot &quot;\$\(ProjectDir\)bin&quot;/u);
+  assert.doesNotMatch(portableProject, /-RuntimeRoot/u);
+  assert.match(portableProject, /materialize-fbro-runtime\.ps1/u);
 });
 
 test('exportVisualStudioProject applies native module C++20 and dynamic CRT requirements', async () => {

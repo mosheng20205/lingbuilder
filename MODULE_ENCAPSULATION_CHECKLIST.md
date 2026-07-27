@@ -112,6 +112,7 @@ SQLite 模块不会静默假装数据库可用：项目需要提供 `sqlite3.dll
 | 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 25 |
 | 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 24 |
 | 已有 | `lingbuilder.cef3.browser` | CEF3浏览器模块 | 18 |
+| 已有 | `lingbuilder.fbro.browser` | FBro指纹浏览器模块（CEF 135 x64/C ABI） | 20 |
 | 已有 | `lingbuilder.threading` | 多线程模块 | 5 |
 | 已有 | `lingbuilder.websocket.client` | WebSocket 客户端模块 | 5 |
 | 已有 | `lingbuilder.http.server` | HTTP 服务端模块 | 5 |

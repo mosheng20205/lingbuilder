@@ -73,6 +73,9 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     getAiApiKey: () => ipcRenderer.invoke('credentials:ai:get'),
     setAiApiKey: (value: string) => ipcRenderer.invoke('credentials:ai:set', value),
     deleteAiApiKey: () => ipcRenderer.invoke('credentials:ai:delete'),
+    getFbroVipKeyStatus: () => ipcRenderer.invoke('credentials:fbro-vip:status'),
+    setFbroVipKey: (value: string) => ipcRenderer.invoke('credentials:fbro-vip:set', value),
+    deleteFbroVipKey: () => ipcRenderer.invoke('credentials:fbro-vip:delete'),
   },
   cloudAccount: {
     register: (value: { email: string; password: string }) => ipcRenderer.invoke('cloud-account:register', value),

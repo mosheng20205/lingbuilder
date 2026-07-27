@@ -1,5 +1,16 @@
 # LingBuilder AI 规则手册
 
+## FBro 浏览器生成规则
+
+- FBro 模块 ID 固定为 `lingbuilder.fbro.browser`，设计器控件类型为 `FBroBrowser`。AI 可以把它放入可视化窗口，但必须让每个实例保留独立宿主 `HWND`、控件 ID 和 profile/cache 目录。
+- FBro 只支持 Windows、MSVC、x64；启用它时应切换并锁定 x64。它与 `lingbuilder.cef3.browser` 以及任何携带其它版本 `libcef.dll` 的模块互斥，不得建议用户绕过生成前诊断或把两个 CEF 运行时复制到同一 exe 目录。
+- 生成程序只能调用 `LingBuilderFbroBridge` C ABI；不得让用户项目直接持有 `CefRefPtr`、FBro C++ 对象、STL ABI 或桥接层分配的裸指针。
+- 指纹配置使用结构化 JSON。每位 IDE 用户在“设置 → 浏览器凭据”中自行保存 VIP Key，主进程必须用 Electron `safeStorage` 加密；renderer 只能读取配置状态，不得回读现有明文。F5、原生运行和新启动的 AI Bridge 仅通过受控子进程环境临时注入，`LINGBUILDER_FBRO_VIP_KEY` 只作为无人值守/导出工程的兼容后备。不得保存到 `.lcpp`、设计器模型、项目文件、模块包、日志、AI 上下文、同步包或安装包。无 Key 时允许基础浏览器运行；错误 Key 必须返回脱敏的中文授权失败诊断，不得回显 Key。
+- FBro 生成程序正常退出时必须先请求关闭各浏览器，调用 C++ SDK 的 `FBroShutdown(FALSE)`，等待 `OnBeforeClose` 后再释放桥接对象；不得用强制结束进程替代关闭协议。
+- FBro 的 SDK/运行时由统一原生依赖服务物化；AI Bridge 构建与导出不得另写复制旁路，也不得压平 `locales/` 等目录。
+- SDK、桥接 DLL、导入库、运行时清单或哈希校验失败时必须在生成/编译前阻断，不能把缺少 `LingBuilderFbroBridge.h` 的 `__has_include` 降级结果当作可运行浏览器。工作区根目录必须从 `.lingbuilder-build` 标记目录定位，不能假定构建配置只有固定层级；可复制 VS 导出必须包含完整 FBro runtime 与增量脚本。
+- FBro 浏览器只能由桥接层在 CEF UI 线程创建，已就绪实例必须通过 `CefPostTask(TID_UI, ...)` 投递，不能从生成窗口的 Win32 主线程直接调用 `FBroHsCreate`。每控件 profile 必须映射为 `.fbro-global-cache` 的直接子目录；不得生成会触发 `cache_path`、`root_cache_path` 或 `Cannot create profile` 的兄弟目录/多层目录后接受内存模式降级。
+
 ## new_emoji 控件属性与事件规则
 
 - AI 生成 new_emoji 窗口时，可以使用模块目录公开的全部属性和事件；当前 92 个控件共 698 个属性、902 个事件均具有确定性运行时映射。

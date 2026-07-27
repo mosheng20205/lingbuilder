@@ -414,3 +414,26 @@ test('designer toolbox exposes searchable accessible control groups', async () =
   assert.match(source, /没有找到/u);
   assert.doesNotMatch(source, />高级<\/span>/u);
 });
+
+test('designer pointer interactions cannot remain active after the primary mouse button is released', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /window\.addEventListener\('mouseup', handlePointerFinished\)/u);
+  assert.match(source, /window\.addEventListener\('blur', handlePointerFinished\)/u);
+  assert.match(source, /\(event\.buttons & 1\) === 0/u);
+  assert.match(source, /initialControlPos\.y \+ \(event\.clientY - initialPos\.y\) \/ canvasScale/u);
+  assert.doesNotMatch(source, /setDragOffset/u);
+});
+
+test('designer control resize previews at animation-frame cadence and commits the project only on finish', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  const pointerMoveStart = source.indexOf('const handleMouseMove = (event: MouseEvent) => {', source.indexOf('const handlePointerFinished'));
+  const pointerMoveEnd = source.indexOf("if (!draggingResourceId) return;", pointerMoveStart);
+  const pointerMoveSource = source.slice(pointerMoveStart, pointerMoveEnd);
+  assert.ok(pointerMoveStart >= 0 && pointerMoveEnd > pointerMoveStart);
+  assert.match(pointerMoveSource, /scheduleControlInteractionPreview/u);
+  assert.doesNotMatch(pointerMoveSource, /updateSelectedControl\(/u);
+  assert.match(source, /window\.requestAnimationFrame/u);
+  assert.match(source, /const finishPointerInteraction = useCallback/u);
+  assert.match(source, /controls: reconcileRebarBands\(updateControlWithDescendants\(window\.controls, preview\.controlId, preview\.fields\)\)/u);
+  assert.match(source, /style=\{\{ contain: 'layout paint' \}\}/u);
+});

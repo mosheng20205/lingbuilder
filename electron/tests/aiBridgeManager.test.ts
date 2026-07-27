@@ -29,6 +29,7 @@ test('IDE-managed AI Bridge controls lifecycle, redacts token, and refreshes sha
     return new Response(JSON.stringify({ activeClients: 1, clients: [{ id: 'client-1', connectedAt: '2026-07-26T00:00:00Z', lastActiveAt: '2026-07-26T00:00:01Z', userAgent: 'test-client' }], recentActivity: [] }), { status: 200, headers: { 'content-type': 'application/json' } });
   }) as typeof fetch;
   const manager = new AiBridgeManagerService({ runtimeExecutable: 'electron.exe', cliEntryPath, spawnProcess: fakeSpawn, fetcher });
+  manager.setFbroVipKey('developer-owned-fbro-key');
   const started = await manager.start({ workspaceRoot, port: 17860, permission: 'preview', lifecycle: 'workspace', token: 'managed-test-secret-token-value' });
   assert.equal(started.state, 'running');
   assert.equal(started.activeClients, 1);
@@ -38,6 +39,7 @@ test('IDE-managed AI Bridge controls lifecycle, redacts token, and refreshes sha
   assert.deepEqual(invocations[0].args.slice(-2), ['--permission', 'preview']);
   assert.equal(invocations[0].args.includes('managed-test-secret-token-value'), false);
   assert.equal(invocations[0].options.env?.LINGBUILDER_AI_BRIDGE_TOKEN, 'managed-test-secret-token-value');
+  assert.equal(invocations[0].options.env?.LINGBUILDER_FBRO_VIP_KEY, 'developer-owned-fbro-key');
   const stopped = await manager.stop();
   assert.equal(stopped.state, 'stopped');
   assert.throws(() => manager.revealToken(), /尚未运行/u);

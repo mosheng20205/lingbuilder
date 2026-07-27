@@ -118,9 +118,37 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
   validatePathArray(contributes?.examples?.map((example: any) => example?.path), 'examples.path', diagnostics);
   validateTargets(raw.targets, diagnostics);
   validateBindings(raw.bindings, contributes?.commands || [], raw.targets || [], diagnostics);
+  validateCompatibility(raw.compatibility, raw.id, diagnostics);
 
   if (diagnostics.length > 0) return { diagnostics };
   return { manifest: raw as LingBuilderModuleManifest, diagnostics };
+}
+
+function validateCompatibility(compatibility: unknown, moduleId: string, diagnostics: string[]): void {
+  if (compatibility === undefined) return;
+  if (!compatibility || typeof compatibility !== 'object') {
+    diagnostics.push('compatibility 必须是对象。');
+    return;
+  }
+  const conflicts = (compatibility as any).conflicts;
+  if (conflicts === undefined) return;
+  if (!Array.isArray(conflicts)) {
+    diagnostics.push('compatibility.conflicts 必须是数组。');
+    return;
+  }
+  const seen = new Set<string>();
+  conflicts.forEach((conflict: any, index: number) => {
+    if (typeof conflict?.moduleId !== 'string' || !MODULE_ID_RE.test(conflict.moduleId)) {
+      diagnostics.push(`compatibility.conflicts[${index}].moduleId 不是有效模块 ID。`);
+      return;
+    }
+    if (conflict.moduleId === moduleId) diagnostics.push(`模块不能与自身冲突：${moduleId}`);
+    if (seen.has(conflict.moduleId)) diagnostics.push(`重复的模块冲突声明：${conflict.moduleId}`);
+    seen.add(conflict.moduleId);
+    if (typeof conflict?.reason !== 'string' || !conflict.reason.trim()) {
+      diagnostics.push(`compatibility.conflicts[${index}].reason 必须是非空中文说明。`);
+    }
+  });
 }
 
 function validateMenuContributions(menus: unknown, submenus: unknown, diagnostics: string[]): void {

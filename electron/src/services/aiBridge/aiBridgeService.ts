@@ -143,6 +143,7 @@ export class AiBridgeService {
   private readonly compilerDetector: () => Promise<AiBridgeCompilerInfo | null>;
   private readonly compilerRunner: NonNullable<AiBridgeServiceDependencies['compileWin32Preview']>;
   private readonly assertModuleAccess: NonNullable<AiBridgeServiceDependencies['assertModuleAccess']>;
+  private readonly fbroVipKey: string;
   private runAdmissionClosed = false;
   private shuttingDown = false;
 
@@ -165,6 +166,8 @@ export class AiBridgeService {
     this.compilerDetector = dependencies.detectCompiler ?? detectCompiler;
     this.compilerRunner = dependencies.compileWin32Preview ?? compileWin32Preview;
     this.assertModuleAccess = dependencies.assertModuleAccess ?? (() => undefined);
+    this.fbroVipKey = String(process.env.LINGBUILDER_FBRO_VIP_KEY || '').trim().slice(0, 4096);
+    delete process.env.LINGBUILDER_FBRO_VIP_KEY;
   }
 
   health(): AiBridgeHealth {
@@ -601,6 +604,22 @@ export class AiBridgeService {
       exportDir,
       preferredTargetId
     });
+    if (moduleNativePlan.blockingDiagnostics.length > 0) {
+      const result = {
+        ok: false,
+        stage: 'native-dependencies',
+        error: moduleNativePlan.blockingDiagnostics.join('\n'),
+        buildDir,
+        sourceDir,
+        binDir,
+        objDir,
+        exportDir,
+        sourceMap: generatedProject.sourceMap,
+        logs: [...preBuildLogs, ...generatedProject.diagnostics, ...moduleNativePlan.diagnostics, '原生依赖未准备完整，已阻止编译和运行。']
+      };
+      await this.permissions.audit({ operation: 'execute', action: 'build.run', ok: false, target: buildDir, details: result.stage });
+      return result;
+    }
     const buildVisualStudioProject = await exportVisualStudioProject({
       projectDir: buildDir,
       projectId,
@@ -611,7 +630,8 @@ export class AiBridgeService {
       enabledModules,
       contentFiles: buildContentFiles,
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
-      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
+      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
+      fbroRuntimeFromBuildBin: true
     });
     const exportVisualStudioProjectResult = await exportVisualStudioProject({
       projectDir: exportDir,
@@ -709,6 +729,10 @@ export class AiBridgeService {
         const logFile = path.join(buildDir, 'run.log');
         const started = await this.managedProcessService.start(managedProjectId, exePath, {
           cwd: binDir,
+          env: {
+            ...process.env,
+            ...(this.fbroVipKey ? { LINGBUILDER_FBRO_VIP_KEY: this.fbroVipKey } : {})
+          },
           detached: false,
           windowsHide: false,
           logFilePath: logFile

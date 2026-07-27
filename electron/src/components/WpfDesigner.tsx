@@ -11,6 +11,7 @@ import {
   FileText,
   FolderOpen,
   FileUp,
+  Fingerprint,
   Globe,
   HelpCircle,
   Keyboard,
@@ -165,6 +166,12 @@ import {
 
 type InspectorTab = 'properties' | 'events' | 'layout';
 type ResizeDirection = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+interface DesignerControlInteractionPreview {
+  windowId: string;
+  controlId: string;
+  fields: Partial<Pick<LingControl, 'x' | 'y' | 'width' | 'height'>>;
+}
 type DesignerZoomMode = 'fit' | 'manual';
 const WINDOW_ROOT_DROP_TARGET = '__layout_window_root__';
 const LINGBUILDER_WINDOW_ICON_PREVIEW = new URL('../../../image/lingbuilder-ide-icon-v2.png', import.meta.url).href;
@@ -221,7 +228,7 @@ const DEDICATED_CONTROL_PREVIEW_TYPES = new Set<LingControlType>([
   'Button', 'TextBox', 'Label', 'SysLink', 'CheckBox', 'RadioButton', 'ListBox',
   'ProgressBar', 'ComboBox', 'ComboBoxEx', 'GroupBox', 'Image', 'AnimatedImage',
   'VideoPlayer', 'ListView', 'Header', 'TreeView', 'TabControl', 'StatusBar', 'ReBar',
-  'IPAddress', 'TrackBar', 'UpDown', 'Upload', 'DragUpload', 'RichEdit', 'ColorPicker', 'EdgeBrowser', 'CefBrowser'
+  'IPAddress', 'TrackBar', 'UpDown', 'Upload', 'DragUpload', 'RichEdit', 'ColorPicker', 'EdgeBrowser', 'CefBrowser', 'FBroBrowser'
 ]);
 
 export function hasDedicatedControlPreview(type: LingControlType): boolean {
@@ -246,6 +253,7 @@ const TYPE_ICONS: Partial<Record<LingControlType | 'MenuBar', React.ReactNode>> 
   PopupMenu: <Menu className="w-3.5 h-3.5 text-orange-400" />,
   ComboBox: <List className="w-3.5 h-3.5 text-violet-400" />,
   CefBrowser: <Globe className="w-3.5 h-3.5 text-sky-400" />,
+  FBroBrowser: <Fingerprint className="w-3.5 h-3.5 text-amber-400" />,
   EdgeBrowser: <Globe className="w-3.5 h-3.5 text-emerald-400" />,
   Grid: <LayoutGrid className="w-3.5 h-3.5 text-slate-400" />,
   MenuBar: <Menu className="w-3.5 h-3.5 text-amber-400" />
@@ -403,10 +411,13 @@ export default function WpfDesigner({
   const [draggingResourceId, setDraggingResourceId] = useState<string | null>(null);
   const [resourceDragOffset, setResourceDragOffset] = useState({ x: 0, y: 0 });
   const [resizeDirection, setResizeDirection] = useState<ResizeDirection>('se');
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [initialSize, setInitialSize] = useState({ width: 0, height: 0 });
   const [initialPos, setInitialPos] = useState({ x: 0, y: 0 });
   const [initialControlPos, setInitialControlPos] = useState({ x: 0, y: 0 });
+  const [controlInteractionPreview, setControlInteractionPreview] = useState<DesignerControlInteractionPreview | null>(null);
+  const controlInteractionPreviewRef = useRef<DesignerControlInteractionPreview | null>(null);
+  const pendingControlInteractionPreviewRef = useRef<DesignerControlInteractionPreview | null>(null);
+  const controlInteractionFrameRef = useRef<number | null>(null);
   const [inspectorWidth, setInspectorWidth] = useState(300);
   const [controlToolboxSearch, setControlToolboxSearch] = useState('');
   const [expandedControlToolboxGroups, setExpandedControlToolboxGroups] = useState(
@@ -448,8 +459,17 @@ export default function WpfDesigner({
     [activeMenuResources, selectedResourceId]
   );
   const designerPaintControls = useMemo(
-    () => orderControlsForDesignerPainting(activeWindow.controls),
-    [activeWindow.controls]
+    () => {
+      const previewControls = controlInteractionPreview?.windowId === activeWindow.id
+        ? reconcileRebarBands(updateControlWithDescendants(
+            activeWindow.controls,
+            controlInteractionPreview.controlId,
+            controlInteractionPreview.fields
+          ))
+        : activeWindow.controls;
+      return orderControlsForDesignerPainting(previewControls);
+    },
+    [activeWindow.controls, activeWindow.id, controlInteractionPreview]
   );
   const windowContentOffset = getDesignerWindowContentOffset(activeWindow);
   const newEmojiModuleEnabled = isNewEmojiDesignerEnabled(enabledDesignerModules);
@@ -953,6 +973,51 @@ export default function WpfDesigner({
       controls: reconcileRebarBands(updateControlWithDescendants(window.controls, selectedControlId, updatedFields))
     }));
   };
+
+  const scheduleControlInteractionPreview = useCallback((preview: DesignerControlInteractionPreview) => {
+    controlInteractionPreviewRef.current = preview;
+    pendingControlInteractionPreviewRef.current = preview;
+    if (controlInteractionFrameRef.current !== null) return;
+    controlInteractionFrameRef.current = window.requestAnimationFrame(() => {
+      controlInteractionFrameRef.current = null;
+      const pending = pendingControlInteractionPreviewRef.current;
+      pendingControlInteractionPreviewRef.current = null;
+      if (pending) setControlInteractionPreview(pending);
+    });
+  }, []);
+
+  const finishPointerInteraction = useCallback(() => {
+    const preview = controlInteractionPreviewRef.current;
+    controlInteractionPreviewRef.current = null;
+    pendingControlInteractionPreviewRef.current = null;
+    if (controlInteractionFrameRef.current !== null) {
+      window.cancelAnimationFrame(controlInteractionFrameRef.current);
+      controlInteractionFrameRef.current = null;
+    }
+    setControlInteractionPreview(null);
+    setIsDragging(false);
+    setIsResizing(false);
+    setDraggingResourceId(null);
+    setResizeDirection('se');
+
+    if (!preview) return;
+    setProject(previous => ({
+      ...previous,
+      windows: previous.windows.map(window => window.id === preview.windowId
+        ? {
+            ...window,
+            controls: reconcileRebarBands(updateControlWithDescendants(window.controls, preview.controlId, preview.fields))
+          }
+        : window)
+    }));
+  }, []);
+
+  useEffect(() => () => {
+    if (controlInteractionFrameRef.current !== null) {
+      window.cancelAnimationFrame(controlInteractionFrameRef.current);
+      controlInteractionFrameRef.current = null;
+    }
+  }, []);
 
   const handleSelectWindow = (windowId: string) => {
     const nextWindow = project.windows.find(window => window.id === windowId);
@@ -1534,6 +1599,7 @@ export default function WpfDesigner({
   };
 
   const handleMouseDown = (event: React.MouseEvent, control: LingControl, action: 'drag' | ResizeDirection) => {
+    if (event.button !== 0) return;
     event.stopPropagation();
     event.preventDefault();
     setSelectedResourceId(null);
@@ -1547,12 +1613,18 @@ export default function WpfDesigner({
       return;
     }
 
+    controlInteractionPreviewRef.current = null;
+    pendingControlInteractionPreviewRef.current = null;
+    if (controlInteractionFrameRef.current !== null) {
+      window.cancelAnimationFrame(controlInteractionFrameRef.current);
+      controlInteractionFrameRef.current = null;
+    }
+    setControlInteractionPreview(null);
+
     if (action === 'drag') {
       setIsDragging(true);
-      setDragOffset({
-        x: event.clientX - control.x * canvasScale,
-        y: event.clientY - control.y * canvasScale
-      });
+      setInitialPos({ x: event.clientX, y: event.clientY });
+      setInitialControlPos({ x: control.x, y: control.y });
       return;
     }
 
@@ -1841,18 +1913,41 @@ export default function WpfDesigner({
   }, [project, selectedControlId, selectedControlIds, activeWindowId]);
 
   useEffect(() => {
+    const handlePointerFinished = () => finishPointerInteraction();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') finishPointerInteraction();
+    };
+    window.addEventListener('mouseup', handlePointerFinished);
+    window.addEventListener('blur', handlePointerFinished);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('mouseup', handlePointerFinished);
+      window.removeEventListener('blur', handlePointerFinished);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [finishPointerInteraction]);
+
+  useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
       if (!activeWindow || !selectedControlId || !selectedControl) return;
+      if ((event.buttons & 1) === 0) {
+        finishPointerInteraction();
+        return;
+      }
 
       if (isDragging) {
         const maxX = Math.max(0, activeWindow.width - selectedControl.width);
         const maxY = Math.max(0, activeWindow.height - windowContentOffset - selectedControl.height);
-        const nextX = Math.max(0, Math.min(maxX, (event.clientX - dragOffset.x) / canvasScale));
-        const nextY = Math.max(0, Math.min(maxY, (event.clientY - dragOffset.y) / canvasScale));
+        const nextX = Math.max(0, Math.min(maxX, initialControlPos.x + (event.clientX - initialPos.x) / canvasScale));
+        const nextY = Math.max(0, Math.min(maxY, initialControlPos.y + (event.clientY - initialPos.y) / canvasScale));
 
-        updateSelectedControl({
-          x: Math.round(nextX / 5) * 5,
-          y: Math.round(nextY / 5) * 5
+        scheduleControlInteractionPreview({
+          windowId: activeWindow.id,
+          controlId: selectedControlId,
+          fields: {
+            x: Math.round(nextX / 5) * 5,
+            y: Math.round(nextY / 5) * 5
+          }
         });
       }
 
@@ -1892,40 +1987,37 @@ export default function WpfDesigner({
           nextHeight = Math.max(minHeight, originalBottom - nextY);
         }
 
-        updateSelectedControl({
-          x: Math.round(nextX / 5) * 5,
-          y: Math.round(nextY / 5) * 5,
-          width: Math.round(nextWidth / 5) * 5,
-          height: Math.round(nextHeight / 5) * 5
+        scheduleControlInteractionPreview({
+          windowId: activeWindow.id,
+          controlId: selectedControlId,
+          fields: {
+            x: Math.round(nextX / 5) * 5,
+            y: Math.round(nextY / 5) * 5,
+            width: Math.round(nextWidth / 5) * 5,
+            height: Math.round(nextHeight / 5) * 5
+          }
         });
       }
     };
 
-    const handleMouseUp = () => {
-      setIsDragging(false);
-      setIsResizing(false);
-      setResizeDirection('se');
-    };
-
     if (isDragging || isResizing) {
       window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
     }
 
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [
     activeWindow,
     canvasScale,
-    dragOffset,
+    finishPointerInteraction,
     initialPos,
     initialControlPos,
     initialSize,
     isDragging,
     isResizing,
     resizeDirection,
+    scheduleControlInteractionPreview,
     selectedControl,
     selectedControlId,
     windowContentOffset
@@ -1945,12 +2037,9 @@ export default function WpfDesigner({
           : resource)
       }));
     };
-    const handleMouseUp = () => setDraggingResourceId(null);
     window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
     };
   }, [activeWindow.height, activeWindow.width, canvasScale, draggingResourceId, resourceDragOffset, windowContentOffset]);
 
@@ -3683,6 +3772,27 @@ function renderControl(
                 <Globe className="h-6 w-6 text-sky-400" />
                 <span className="max-w-full truncate text-[9px] font-semibold text-slate-500">{control.name}</span>
                 <span className="text-[8px] text-slate-400">CEF3 · Chromium</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {control.type === 'FBroBrowser' && (
+          <div
+            className="flex h-full w-full flex-col overflow-hidden rounded border border-amber-500/45 bg-white"
+            style={{ contain: 'layout paint' }}
+          >
+            <div className="flex items-center gap-1 border-b border-amber-200 bg-amber-50 px-1.5 py-1">
+              <Fingerprint className="h-3 w-3 shrink-0 text-amber-500" />
+              <span className="ml-1 flex h-4 min-w-0 flex-1 items-center rounded border border-amber-200 bg-white px-1.5 text-[8px] text-slate-500">
+                <span className="truncate">{typeof control.properties?.url === 'string' && control.properties.url ? control.properties.url : 'about:blank'}</span>
+              </span>
+            </div>
+            <div className="flex min-h-0 flex-1 items-center justify-center bg-gradient-to-br from-amber-50 to-slate-50">
+              <div className="flex flex-col items-center gap-1 px-2 text-center">
+                <Fingerprint className="h-7 w-7 text-amber-500" />
+                <span className="max-w-full truncate text-[9px] font-semibold text-slate-600">{control.name}</span>
+                <span className="text-[8px] text-slate-400">FBro · CEF 135 · x64</span>
               </div>
             </div>
           </div>

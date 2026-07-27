@@ -1,5 +1,11 @@
 # LingBuilder 模块生态实现说明
 
+> 2026-07-28 补充：FBro 浏览器创建必须统一投递到 CEF UI 线程。`LB_FBro_CreateEx` 只登记 C ABI 句柄和宿主 `HWND`，CEF 已就绪时使用 `CefPostTask(TID_UI, ...)` 创建；初始化尚未完成时由 `OnContextInitialized` 在同一线程启动待创建实例，禁止根据启动时序随机在 Win32 主线程直接调用 `FBroHsCreate`。每实例 `CefRequestContext` 的 profile 必须是全局 `.fbro-global-cache` 的直接子目录；旧相对路径、嵌套路径和根目录外绝对路径由桥接层稳定映射到隔离子目录，避免 Chromium 拒绝 profile 后静默降级。原生测试必须同时验证窗口响应、页面加载以及日志中不存在 `cache_path`、`root_cache_path`、`Cannot create profile`。
+
+> 2026-07-28 补充：FBro VIP Key 属于 IDE 用户凭据，不属于项目或模块配置。“设置 → 浏览器凭据”通过 Electron `safeStorage` 保存到当前 Windows 用户目录，renderer 只接收配置状态而不接收已保存明文；本地服务收到 Key 后立即从自身全局环境移除，只在启动 FBro 生成程序时构造专用子进程环境。AI Bridge 由主进程在新启动时注入，已运行实例需停止后重启。环境变量仅保留为无人值守和导出工程兼容入口。桥接层会保存并脱敏 FBro SDK 的授权失败信息；正常退出必须执行 `FBroShutdown(FALSE)` 并等待 `OnBeforeClose`，自动测试禁止直接强杀进程。
+
+> 2026-07-27 补充：新增内置 `lingbuilder.fbro.browser` 与只读二进制资产模块 `lingbuilder.fbro.sdk`。启用浏览器模块后，工具箱“媒体”分类显示 `FBro指纹浏览器 (FBroBrowser)`，可像 CEF3 一样拖入任意可视化窗口；每个实例生成独立宿主 `HWND`、profile/cache 目录及事件投递。生成程序只链接预编译 `LingBuilderFbroBridge.dll` 的稳定 C ABI，不跨 DLL 暴露 STL、`CefRefPtr` 或 FBro 对象。该模块只支持 `windows-msvc-x64`，并通过 manifest `compatibility.conflicts` 与 `lingbuilder.cef3.browser` 双向互斥；生成前还会拒绝其它 `libcef.dll`。F5、原生构建、AI Bridge 和 Visual Studio 导出复用 `nativeDependencyService.ts` 的同一 SHA-256 物化链路，首次复制 CEF 135.0.21 的 78 项运行时，后续只修复缺失或损坏项并保留 `locales/` 等相对目录。
+
 > 2026-07-27 补充：原生 UI 模块的后端命令能力统一通过 `electron/src/services/windowDesigner/uiBackendCommandContract.ts` 中的 `NativeUiBackendCommandContract` 注册。契约按模块 v2 `bindings.commands` 判断支持范围；普通 Win32 与 new_emoji 是首批实现，后续 Qt、wxWidgets 或其它 UI 库必须注册独立后端 ID 和命令契约，并补齐原生布局生成器后才能开放构建。后端不兼容命令、未知契约和缺失布局生成器必须在生成 C++ 前阻断，禁止静默回退为 Win32 或等到编译器报告未定义标识符。后端无关模块运行时可复用；依赖 `LingWindowBase`、专属 HWND/消息上下文的模块必须显式标为不支持或提供该后端适配层。
 
 > 2026-07-27 补充：new_emoji 设计器生成程序必须在控件创建和窗口“创建完毕”处理器执行完成后、进入 `NE_运行消息循环` 前调用 `NE_显示并激活窗口`。该桥接负责恢复、刷新、临时提升层级后立即取消置顶，并请求前台、激活与焦点；受 Windows 前台锁限制时临时用 `AttachThreadInput` 连接当前线程与原前台线程，完成后必须立即分离。该流程解决 IDE/F5 后台启动时只有任务栏按钮而窗口被压在 IDE 后方的问题；不得通过修改用户 `.lcpp` 或让窗口永久置顶规避。
@@ -316,3 +322,4 @@ npm run build
 v2 manifest 可在 `contributes.menus[]` 和 `contributes.submenus[]` 中向稳定 `MenuId` 贡献声明式菜单。每个菜单项必须且只能声明 `command` 或 `submenu`，可附带 `when`、`group`、`order` 和最多 32KB 的 JSON `arguments`。模块菜单只能调用 IDE 已注册的受控命令，不能执行 renderer 脚本。
 
 容器型 `contributes.designerControls[]` 可声明 `layout`，其 `mode` 为 `absolute | flow | stack | grid | dock | slots | single | custom`，并可声明坐标空间、方向、插槽、容量和子控件类型限制。旧 `isContainer: true` 控件缺少 `layout` 时临时按窗口绝对坐标兼容并输出迁移诊断；新容器必须显式声明布局，否则不得作为可跨容器粘贴的正式控件发布。
+> 2026-07-28 补充：FBro SDK 查找必须从任意深度的 `.lingbuilder-build/<project>/<arch>/<mode>` 向上定位工作区，不能用固定两级父目录推导。缺少 SDK、桥接文件、清单或运行时校验失败属于 `blockingDiagnostics`，F5、原生构建和 AI Bridge 必须在编译前停止，禁止依靠 `__has_include` 编译空白占位浏览器后仍报告成功。F5 中间 VS 工程从已校验的 `bin` 增量物化运行时；`generated/cpp` 可复制工程必须携带 78 项完整 runtime、清单和脚本。生成的 C++ 必须用 `L"\\\\/"` 同时识别 Windows 反斜杠和正斜杠，否则缓存根目录会被错误拼到 exe 文件名之后并导致 CEF 子进程失败。

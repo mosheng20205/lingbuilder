@@ -9,7 +9,7 @@ export type LingControlType =
   | 'DateTimePicker' | 'MonthCalendar' | 'TrackBar' | 'UpDown' | 'HotKey' | 'IPAddress'
   | 'ToolBar' | 'StatusBar' | 'ToolTip' | 'ReBar' | 'Pager' | 'RichEdit'
   | 'Animation' | 'VideoPlayer' | 'ColorPicker' | 'FlatScrollBar' | 'ImageList' | 'PropertySheet' | 'FileDialog'
-  | 'ContextMenu' | 'PopupMenu' | 'EdgeBrowser' | 'CefBrowser';
+  | 'ContextMenu' | 'PopupMenu' | 'EdgeBrowser' | 'CefBrowser' | 'FBroBrowser';
 
 export interface LingEventBinding {
   [eventName: string]: string;

@@ -207,6 +207,12 @@ async function inspectInstalledCli() {
 function credentialPath(): string { return path.join(app.getPath('userData'), 'credentials', 'ai-api-key.bin'); }
 async function readAiCredential(): Promise<string> { try { if (!safeStorage.isEncryptionAvailable()) return ''; const encrypted = await fs.readFile(credentialPath()); return safeStorage.decryptString(encrypted); } catch { return ''; } }
 async function writeAiCredential(value: string): Promise<void> { if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统不支持安全凭据存储。'); const file = credentialPath(); await fs.mkdir(path.dirname(file), { recursive: true }); if (!value) { await fs.rm(file, { force: true }); return; } const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(value)); await fs.rename(temporary, file); }
+const startupFbroVipKey = String(process.env.LINGBUILDER_FBRO_VIP_KEY || '').trim();
+function fbroVipCredentialPath(): string { return path.join(app.getPath('userData'), 'credentials', 'fbro-vip-key.bin'); }
+async function readFbroVipCredential(): Promise<string> { try { if (!safeStorage.isEncryptionAvailable()) return ''; return safeStorage.decryptString(await fs.readFile(fbroVipCredentialPath())).trim(); } catch { return ''; } }
+async function writeFbroVipCredential(value: string): Promise<void> { if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统不支持安全凭据存储。'); const file = fbroVipCredentialPath(); await fs.mkdir(path.dirname(file), { recursive: true }); if (!value) { await fs.rm(file, { force: true }); return; } const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(value)); await fs.rename(temporary, file); }
+async function resolveFbroVipCredential(): Promise<{ value: string; source: 'secure-storage' | 'environment' | 'none' }> { const stored = await readFbroVipCredential(); if (stored) return { value: stored, source: 'secure-storage' }; if (startupFbroVipKey) return { value: startupFbroVipKey, source: 'environment' }; return { value: '', source: 'none' }; }
+function publishFbroVipCredential(value: string): void { rendererServer?.postMessage({ type: 'lingbuilder:fbro-vip-key', value }); aiBridgeManager?.setFbroVipKey(value); }
 function cloudRefreshPath(): string { return path.join(app.getPath('userData'), 'credentials', 'cloud-refresh-token.bin'); }
 async function readCloudRefresh(): Promise<string> { try { if (!safeStorage.isEncryptionAvailable()) return ''; return safeStorage.decryptString(await fs.readFile(cloudRefreshPath())); } catch { return ''; } }
 async function writeCloudRefresh(value: string): Promise<void> { if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统不支持安全账号凭据存储。'); const file = cloudRefreshPath(); await fs.mkdir(path.dirname(file), { recursive: true }); if (!value) { await fs.rm(file, { force: true }); return; } const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(value)); await fs.rename(temporary, file); }
@@ -218,6 +224,7 @@ const cloudAccountService = new CloudAccountService(process.env.LINGBUILDER_CLOU
 async function startPackagedRendererServer(workspaceRoot: string): Promise<ServerReadyInfo> {
   await stopRendererServer();
   rendererSessionToken = crypto.randomBytes(32).toString('hex');
+  const fbroVipCredential = await resolveFbroVipCredential();
 
   const child = utilityProcess.fork(serverEntryPath(), [], {
     cwd: workspaceRoot,
@@ -235,7 +242,8 @@ async function startPackagedRendererServer(workspaceRoot: string): Promise<Serve
       LINGBUILDER_SESSION_TOKEN: rendererSessionToken,
       LINGBUILDER_DEV_NO_AUTH: 'false',
       LINGBUILDER_AI_BRIDGE_ENABLED: 'false',
-      LINGBUILDER_SERVER_AUTOSTART: 'true'
+      LINGBUILDER_SERVER_AUTOSTART: 'true',
+      ...(fbroVipCredential.value ? { LINGBUILDER_FBRO_VIP_KEY: fbroVipCredential.value } : {})
     }
   });
   rendererServer = child;
@@ -906,6 +914,9 @@ function registerIpcHandlers(): void {
   ipcMain.handle('credentials:ai:get', () => readAiCredential());
   ipcMain.handle('credentials:ai:set', (_event, value: string) => writeAiCredential(typeof value === 'string' ? value.slice(0, 16_384) : ''));
   ipcMain.handle('credentials:ai:delete', () => writeAiCredential(''));
+  ipcMain.handle('credentials:fbro-vip:status', async () => { const credential = await resolveFbroVipCredential(); return { configured: Boolean(credential.value), source: credential.source }; });
+  ipcMain.handle('credentials:fbro-vip:set', async (_event, value: string) => { const normalized = typeof value === 'string' ? value.trim() : ''; if (!normalized) throw new Error('FBro VIP Key 不能为空。'); if (normalized.length > 4096) throw new Error('FBro VIP Key 长度不能超过 4096 个字符。'); await writeFbroVipCredential(normalized); publishFbroVipCredential(normalized); return { configured: true, source: 'secure-storage' as const }; });
+  ipcMain.handle('credentials:fbro-vip:delete', async () => { await writeFbroVipCredential(''); publishFbroVipCredential(startupFbroVipKey); return { configured: Boolean(startupFbroVipKey), source: startupFbroVipKey ? 'environment' as const : 'none' as const }; });
   ipcMain.handle('cloud-account:register', (_event, value: any) => cloudAccountService.register(String(value?.email || ''), String(value?.password || '')));
   ipcMain.handle('cloud-account:verify-email', (_event, token: string) => cloudAccountService.verifyEmail(String(token || '')));
   ipcMain.handle('cloud-account:login', (_event, value: any) => cloudAccountService.login(String(value?.email || ''), String(value?.password || '')));
@@ -1044,6 +1055,7 @@ app.whenReady().then(async () => {
     cliEntryPath: cliEntryPath(),
     environment: process.env
   });
+  aiBridgeManager.setFbroVipKey((await resolveFbroVipCredential()).value);
   aiBridgeManager.subscribe(snapshot => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('ai-bridge:status-changed', snapshot);
   });

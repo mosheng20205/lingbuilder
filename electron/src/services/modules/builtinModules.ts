@@ -424,6 +424,9 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     description: '基于 Chromium Embedded Framework 3，提供设计器浏览器控件、中文命令和完整 CefClient 浏览器事件体系。',
     author: 'LingBuilder',
     tags: ['内置', 'CEF3', 'Chromium', '浏览器', 'JavaScript'],
+    compatibility: {
+      conflicts: [{ moduleId: 'lingbuilder.fbro.browser', reason: 'LingBuilder CEF3 使用 CEF 150，而 FBro 固定使用 CEF 135；同一进程不能加载两个 ABI 不兼容的 libcef.dll。' }]
+    },
     contributes: {
       designerControls: createControlContributions('lingbuilder.cef3.browser'),
       commands: [
@@ -480,6 +483,74 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'CEF3_是否可后退', runtimeName: 'CEF3_是否可后退', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_是否可前进', runtimeName: 'CEF3_是否可前进', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_是否加载中', runtimeName: 'CEF3_是否加载中', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+    ] }
+  },
+  {
+    schemaVersion: 2,
+    id: 'lingbuilder.fbro.browser',
+    name: 'FBro指纹浏览器模块',
+    version: '1.0.0',
+    category: '界面',
+    description: '通过隔离的 C ABI 桥接层使用 FBro/FBrowser CEF 135 x64，提供设计器浏览器控件、基础浏览器控制和结构化指纹配置。',
+    author: 'LingBuilder',
+    tags: ['内置', 'FBro', 'FBrowser', '指纹浏览器', 'CEF135', 'x64'],
+    compatibility: {
+      conflicts: [{ moduleId: 'lingbuilder.cef3.browser', reason: 'FBro 固定使用 CEF 135，而 LingBuilder CEF3 模块使用 CEF 150；同一进程不能加载两个 ABI 不兼容的 libcef.dll。' }]
+    },
+    contributes: {
+      designerControls: createControlContributions('lingbuilder.fbro.browser'),
+      commands: [
+        { name: 'FBro_创建', signature: 'FBro_创建(控件名)', description: '使用设计器属性创建指定 FBro 浏览器；空控件名创建当前窗口全部 FBro 控件。', insertText: 'FBro_创建("$1")', returnType: '整数型' },
+        { name: 'FBro_关闭', signature: 'FBro_关闭(控件名)', description: '关闭指定 FBro 浏览器并释放实例。', insertText: 'FBro_关闭("$1")', returnType: '空' },
+        { name: 'FBro_导航', signature: 'FBro_导航(控件名, 地址)', description: '让指定 FBro 浏览器导航到目标地址。', insertText: 'FBro_导航("$1", "https://www.baidu.com")', returnType: '整数型' },
+        { name: 'FBro_刷新', signature: 'FBro_刷新(控件名)', description: '刷新指定 FBro 浏览器。', insertText: 'FBro_刷新("$1")', returnType: '空' },
+        { name: 'FBro_后退', signature: 'FBro_后退(控件名)', description: '浏览器可以后退时返回上一页。', insertText: 'FBro_后退("$1")', returnType: '整数型' },
+        { name: 'FBro_前进', signature: 'FBro_前进(控件名)', description: '浏览器可以前进时进入下一页。', insertText: 'FBro_前进("$1")', returnType: '整数型' },
+        { name: 'FBro_停止', signature: 'FBro_停止(控件名)', description: '停止指定浏览器当前导航。', insertText: 'FBro_停止("$1")', returnType: '空' },
+        { name: 'FBro_执行JS', signature: 'FBro_执行JS(控件名, 脚本)', description: '通过桥接层执行 JavaScript，返回 UTF-16 结果或中文错误。', insertText: 'FBro_执行JS("$1", "document.title")', returnType: '文本型' },
+        { name: 'FBro_取标题', signature: 'FBro_取标题(控件名)', description: '返回最近一次标题事件记录的网页标题。', insertText: 'FBro_取标题("$1")', returnType: '文本型' },
+        { name: 'FBro_取地址', signature: 'FBro_取地址(控件名)', description: '返回指定浏览器当前地址。', insertText: 'FBro_取地址("$1")', returnType: '文本型' },
+        { name: 'FBro_设置代理', signature: 'FBro_设置代理(控件名, 代理地址)', description: '设置创建前使用的代理地址；空文本表示直连。', insertText: 'FBro_设置代理("$1", "$2")', returnType: '整数型' },
+        { name: 'FBro_设置缓存目录', signature: 'FBro_设置缓存目录(控件名, 目录)', description: '设置创建前使用的独立缓存目录。', insertText: 'FBro_设置缓存目录("$1", "$2")', returnType: '整数型' },
+        { name: 'FBro_设置UserAgent', signature: 'FBro_设置UserAgent(控件名, UserAgent)', description: '设置创建前使用的 User-Agent。', insertText: 'FBro_设置UserAgent("$1", "$2")', returnType: '整数型' },
+        { name: 'FBro_取Cookie', signature: 'FBro_取Cookie(控件名, 地址)', description: '异步读取指定地址 Cookie；首版返回桥接层最近快照。', insertText: 'FBro_取Cookie("$1", "$2")', returnType: '文本型' },
+        { name: 'FBro_清空Cookie', signature: 'FBro_清空Cookie(控件名, 地址)', description: '删除指定地址的 Cookie。', insertText: 'FBro_清空Cookie("$1", "$2")', returnType: '整数型' },
+        { name: 'FBro指纹_应用配置', signature: 'FBro指纹_应用配置(控件名, JSON)', description: '应用结构化指纹 JSON；未配置 VIP 授权时返回 0 并记录中文错误。', insertText: 'FBro指纹_应用配置("$1", "$2")', returnType: '整数型' },
+        { name: 'FBro指纹_取调用次数', signature: 'FBro指纹_取调用次数(控件名)', description: '返回 FBro VIP 指纹调用次数。', insertText: 'FBro指纹_取调用次数("$1")', returnType: '文本型' },
+        { name: 'FBro指纹_清空调用次数', signature: 'FBro指纹_清空调用次数(控件名)', description: '清空指定浏览器的指纹调用次数。', insertText: 'FBro指纹_清空调用次数("$1")', returnType: '整数型' },
+        { name: 'FBro_取最近事件', signature: 'FBro_取最近事件(控件名)', description: '返回最近 FBro 浏览器事件名。', insertText: 'FBro_取最近事件("$1")', returnType: '文本型' },
+        { name: 'FBro_取最近错误', signature: 'FBro_取最近错误(控件名)', description: '返回桥接层最近中文错误。', insertText: 'FBro_取最近错误("$1")', returnType: '文本型' }
+      ],
+      types: [{ name: 'FBro浏览器', description: '由 LingBuilderFbroBridge 管理的不透明 FBro 浏览器句柄。', cppType: 'LB_FBRO_HANDLE' }],
+      snippets: [{ label: 'FBro 指纹浏览器基础操作', insertText: 'FBro_创建("FBro浏览器1")\nFBro_导航("FBro浏览器1", "https://www.baidu.com")\n调试输出(FBro_取地址("FBro浏览器1"))', description: '创建 FBro 控件并导航。' }]
+    },
+    targets: [{
+      id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc',
+      includeDirs: ['include'], headers: ['include/LingBuilderFbroBridge.h'],
+      libs: ['modules/lingbuilder.fbro.browser/lib/x64/LingBuilderFbroBridge.lib'],
+      runtimeFiles: ['bin/x64/LingBuilderFbroBridge.dll'], defines: ['LINGBUILDER_FBRO_MODULE']
+    }],
+    bindings: { commands: [
+      { command: 'FBro_创建', runtimeName: 'FBro_创建', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_关闭', runtimeName: 'FBro_关闭', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
+      { command: 'FBro_导航', runtimeName: 'FBro_导航', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_刷新', runtimeName: 'FBro_刷新', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
+      { command: 'FBro_后退', runtimeName: 'FBro_后退', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_前进', runtimeName: 'FBro_前进', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_停止', runtimeName: 'FBro_停止', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
+      { command: 'FBro_执行JS', runtimeName: 'FBro_执行JS', parameters: [{ name: '控件名', type: 'wideString' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_取标题', runtimeName: 'FBro_取标题', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_取地址', runtimeName: 'FBro_取地址', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_设置代理', runtimeName: 'FBro_设置代理', parameters: [{ name: '控件名', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_设置缓存目录', runtimeName: 'FBro_设置缓存目录', parameters: [{ name: '控件名', type: 'wideString' }, { name: '目录', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_设置UserAgent', runtimeName: 'FBro_设置UserAgent', parameters: [{ name: '控件名', type: 'wideString' }, { name: 'UserAgent', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_取Cookie', runtimeName: 'FBro_取Cookie', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_清空Cookie', runtimeName: 'FBro_清空Cookie', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro指纹_应用配置', runtimeName: 'FBro指纹_应用配置', parameters: [{ name: '控件名', type: 'wideString' }, { name: 'JSON', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro指纹_取调用次数', runtimeName: 'FBro指纹_取调用次数', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro指纹_清空调用次数', runtimeName: 'FBro指纹_清空调用次数', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_取最近事件', runtimeName: 'FBro_取最近事件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_取最近错误', runtimeName: 'FBro_取最近错误', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' }
     ] }
   },
   {

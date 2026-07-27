@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Keyboard, RotateCcw, Search, Settings, X } from 'lucide-react';
+import { Eye, EyeOff, KeyRound, Keyboard, RotateCcw, Search, Settings, ShieldCheck, Trash2, X } from 'lucide-react';
 
 import type { RegisteredCommand } from '../services/commands';
 import {
@@ -28,7 +28,7 @@ interface SettingsDialogProps {
   onReload: () => Promise<void>;
 }
 
-const CATEGORIES = ['编辑器', '工作台', '键盘快捷键'] as const;
+const CATEGORIES = ['编辑器', '工作台', '浏览器凭据', '键盘快捷键'] as const;
 type SettingsCategory = typeof CATEGORIES[number];
 
 export default function SettingsDialog({
@@ -203,17 +203,23 @@ export default function SettingsDialog({
             <h2 id={titleId} className="text-sm font-semibold">设置</h2>
             <p className={`text-[11px] ${muted}`}>用户设置适用于所有工作区；工作区设置优先级更高。</p>
           </div>
-          <label htmlFor="settings-target" className={`text-[11px] ${muted}`}>保存到</label>
-          <select
-            id="settings-target"
-            value={target}
-            onChange={event => changeTarget(event.target.value as ConfigurationTarget)}
-            disabled={busyKey !== null}
-            className={`h-8 rounded border px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${field}`}
-          >
-            <option value="user">用户</option>
-            <option value="workspace">当前工作区</option>
-          </select>
+          {category === '浏览器凭据' ? (
+            <span className={`inline-flex h-8 items-center gap-1.5 rounded border px-2 text-[11px] ${field}`}><ShieldCheck className="h-3.5 w-3.5 text-emerald-500" />当前 Windows 用户</span>
+          ) : (
+            <>
+              <label htmlFor="settings-target" className={`text-[11px] ${muted}`}>保存到</label>
+              <select
+                id="settings-target"
+                value={target}
+                onChange={event => changeTarget(event.target.value as ConfigurationTarget)}
+                disabled={busyKey !== null}
+                className={`h-8 rounded border px-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${field}`}
+              >
+                <option value="user">用户</option>
+                <option value="workspace">当前工作区</option>
+              </select>
+            </>
+          )}
           <button type="button" onClick={requestClose} aria-label="关闭设置" className={`rounded p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${isDarkMode ? 'hover:bg-[#3a3a3a]' : 'hover:bg-slate-200'}`}>
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -227,7 +233,7 @@ export default function SettingsDialog({
             id="settings-search"
             value={query}
             onChange={event => setQuery(event.target.value)}
-            placeholder="搜索设置、命令或快捷键"
+            placeholder="搜索设置、命令或快捷键、浏览器凭据"
             className={`h-9 min-w-0 flex-1 rounded border px-3 text-xs outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${field}`}
           />
           <select
@@ -250,7 +256,7 @@ export default function SettingsDialog({
                 aria-current={category === item ? 'page' : undefined}
                 className={`mb-1 flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${category === item ? isDarkMode ? 'bg-[#094771] text-white' : 'bg-sky-100 text-sky-950' : isDarkMode ? 'hover:bg-[#303030]' : 'hover:bg-slate-200'}`}
               >
-                {item === '键盘快捷键' ? <Keyboard className="h-4 w-4" aria-hidden="true" /> : <Settings className="h-4 w-4" aria-hidden="true" />}
+                {item === '键盘快捷键' ? <Keyboard className="h-4 w-4" aria-hidden="true" /> : item === '浏览器凭据' ? <KeyRound className="h-4 w-4" aria-hidden="true" /> : <Settings className="h-4 w-4" aria-hidden="true" />}
                 {item}
               </button>
             ))}
@@ -270,7 +276,7 @@ export default function SettingsDialog({
               </div>
             ))}
 
-            {!loading && category !== '键盘快捷键' && (
+            {!loading && category !== '键盘快捷键' && category !== '浏览器凭据' && (
               <div className="space-y-3">
                 {visibleSettings.length === 0 ? (
                   <div className={`py-12 text-center text-xs ${muted}`}>没有匹配的设置。</div>
@@ -289,6 +295,10 @@ export default function SettingsDialog({
                   </React.Fragment>
                 ))}
               </div>
+            )}
+
+            {!loading && category === '浏览器凭据' && (
+              <FbroVipCredentialSetting isDarkMode={isDarkMode} fieldClass={field} mutedClass={muted} />
             )}
 
             {!loading && category === '键盘快捷键' && (
@@ -343,6 +353,91 @@ export default function SettingsDialog({
         </footer>
       </div>
     </div>
+  );
+}
+
+function FbroVipCredentialSetting({ isDarkMode, fieldClass, mutedClass }: { isDarkMode: boolean; fieldClass: string; mutedClass: string }) {
+  const [status, setStatus] = useState<{ configured: boolean; source: 'secure-storage' | 'environment' | 'none' } | null>(null);
+  const [draft, setDraft] = useState('');
+  const [showValue, setShowValue] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('正在读取 FBro VIP Key 状态…');
+  const credentials = window.lingBuilder?.credentials;
+
+  const refresh = async () => {
+    if (!credentials?.getFbroVipKeyStatus) {
+      setStatus({ configured: false, source: 'none' });
+      setMessage('当前运行方式不支持系统安全凭据；请在 Electron 桌面版中设置。');
+      return;
+    }
+    try {
+      const next = await credentials.getFbroVipKeyStatus();
+      setStatus(next);
+      setMessage(next.configured
+        ? next.source === 'secure-storage' ? '已为当前 Windows 用户配置安全凭据。' : '当前使用启动环境提供的 VIP Key。'
+        : '尚未配置；基础浏览器仍可使用，VIP 指纹命令会返回明确诊断。');
+    } catch (error) {
+      setMessage(`读取凭据状态失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+
+  useEffect(() => { void refresh(); }, []);
+
+  const save = async () => {
+    const value = draft.trim();
+    if (!value || !credentials?.setFbroVipKey) return;
+    setBusy(true);
+    try {
+      const next = await credentials.setFbroVipKey(value);
+      setStatus(next);
+      setDraft('');
+      setShowValue(false);
+      setMessage('FBro VIP Key 已加密保存；下一次 F5/运行立即使用，已经运行的 AI Bridge 需停止后重新启动。');
+    } catch (error) {
+      setMessage(`保存 FBro VIP Key 失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!credentials?.deleteFbroVipKey || !window.confirm('确定清除当前用户保存的 FBro VIP Key 吗？项目文件不会受到影响。')) return;
+    setBusy(true);
+    try {
+      const next = await credentials.deleteFbroVipKey();
+      setStatus(next);
+      setDraft('');
+      setMessage(next.configured ? '用户凭据已清除，已恢复使用启动环境中的 VIP Key。' : '当前用户的 FBro VIP Key 已清除。');
+    } catch (error) {
+      setMessage(`清除 FBro VIP Key 失败：${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section aria-labelledby="fbro-vip-key-heading" className={`overflow-hidden rounded-lg border ${isDarkMode ? 'border-[#3c3c3c] bg-[#1e1e1e]' : 'border-slate-200 bg-slate-50'}`}>
+      <div className="flex items-start gap-3 border-b border-inherit p-4">
+        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${isDarkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-100 text-emerald-700'}`}><KeyRound className="h-4.5 w-4.5" /></span>
+        <div className="min-w-0 flex-1">
+          <h3 id="fbro-vip-key-heading" className="text-sm font-semibold">FBro VIP Key</h3>
+          <p className={`mt-1 text-[11px] leading-5 ${mutedClass}`}>由使用本 IDE 的开发者自行设置。Key 使用系统安全凭据加密，只在启动 FBro 程序时临时注入，不写入项目、源码、日志、AI 上下文或设置同步包。</p>
+        </div>
+        <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-medium ${status?.configured ? isDarkMode ? 'bg-emerald-500/10 text-emerald-300' : 'bg-emerald-100 text-emerald-700' : isDarkMode ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-100 text-amber-800'}`}>{status?.configured ? '已配置' : '未配置'}</span>
+      </div>
+      <div className="space-y-3 p-4">
+        <label htmlFor="fbro-vip-key-input" className="block text-xs font-medium">设置新的 VIP Key</label>
+        <div className="flex gap-2">
+          <div className="relative min-w-0 flex-1">
+            <input id="fbro-vip-key-input" type={showValue ? 'text' : 'password'} autoComplete="new-password" maxLength={4096} value={draft} onChange={event => setDraft(event.target.value)} placeholder="输入 Key；已保存的值不会明文回显" className={`h-9 w-full rounded border px-3 pr-9 text-xs outline-none focus-visible:ring-2 focus-visible:ring-sky-500 ${fieldClass}`} />
+            <button type="button" onClick={() => setShowValue(value => !value)} aria-label={showValue ? '隐藏正在输入的 VIP Key' : '显示正在输入的 VIP Key'} className="absolute right-1 top-1 rounded p-1.5 text-slate-500 hover:text-sky-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500">{showValue ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button>
+          </div>
+          <button type="button" disabled={busy || !draft.trim()} onClick={() => void save()} className="rounded bg-sky-700 px-4 text-xs font-medium text-white hover:bg-sky-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300 disabled:cursor-not-allowed disabled:opacity-50">保存</button>
+          <button type="button" disabled={busy || status?.source !== 'secure-storage'} onClick={() => void remove()} className={`inline-flex items-center gap-1.5 rounded border px-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 disabled:cursor-not-allowed disabled:opacity-40 ${fieldClass}`}><Trash2 className="h-3.5 w-3.5" />清除</button>
+        </div>
+        <p role="status" aria-live="polite" className={`text-[11px] ${message.includes('失败') || message.includes('不支持') ? isDarkMode ? 'text-rose-300' : 'text-rose-700' : mutedClass}`}>{message}</p>
+      </div>
+    </section>
   );
 }
 

@@ -228,6 +228,15 @@ export interface ModulePublishContribution {
   signature?: string;
 }
 
+export interface ModuleConflictContribution {
+  moduleId: string;
+  reason: string;
+}
+
+export interface ModuleCompatibilityContribution {
+  conflicts?: ModuleConflictContribution[];
+}
+
 export interface LingBuilderModuleManifest {
   schemaVersion: 2;
   id: string;
@@ -254,6 +263,7 @@ export interface LingBuilderModuleManifest {
   bindings?: ModuleBindingsContribution;
   designer?: ModuleDesignerCatalogContribution;
   publish?: ModulePublishContribution;
+  compatibility?: ModuleCompatibilityContribution;
 }
 
 export interface InstalledModule {

@@ -20,6 +20,8 @@ export interface VisualStudioProjectExportOptions {
   contentFiles?: string[];
   requiredCppStandard?: 17 | 20;
   requiresDynamicCrt?: boolean;
+  /** F5 中间工程从已经校验过的 bin 目录物化 FBro；可复制导出工程则使用模块自带 runtime。 */
+  fbroRuntimeFromBuildBin?: boolean;
 }
 
 const WINDOWS_GUID = '8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942';
@@ -41,6 +43,7 @@ export async function exportVisualStudioProject(
   const libFilesX64 = getModuleLibFiles(options.enabledModules, 'windows-msvc-x64');
   const runtimeFiles = getModuleRuntimeFiles(options.enabledModules, 'windows-msvc-win32');
   const runtimeFilesX64 = getModuleRuntimeFiles(options.enabledModules, 'windows-msvc-x64');
+  const hasFbro = options.enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser');
 
   await fs.mkdir(options.projectDir, { recursive: true });
   await Promise.all([
@@ -56,6 +59,8 @@ export async function exportVisualStudioProject(
       libFilesX64,
       runtimeFiles,
       runtimeFilesX64,
+      hasFbro,
+      fbroRuntimeFromBuildBin: options.fbroRuntimeFromBuildBin,
       contentFiles,
       requiredCppStandard: options.requiredCppStandard,
       requiresDynamicCrt: options.requiresDynamicCrt
@@ -170,6 +175,8 @@ function generateVcxproj(options: {
   libFilesX64: string[];
   runtimeFiles: string[];
   runtimeFilesX64: string[];
+  hasFbro: boolean;
+  fbroRuntimeFromBuildBin?: boolean;
   contentFiles: string[];
   requiredCppStandard?: 17 | 20;
   requiresDynamicCrt?: boolean;
@@ -189,7 +196,12 @@ function generateVcxproj(options: {
     : '%(AdditionalIncludeDirectories)';
   const additionalDependenciesX64 = ['user32.lib', 'gdi32.lib', 'comctl32.lib', ...options.libFilesX64.map(toWindowsPath)].join(';');
   const postBuild = generatePostBuildCommand(options.runtimeFiles, options.contentFiles);
-  const postBuildX64 = generatePostBuildCommand(options.runtimeFilesX64, options.contentFiles);
+  const postBuildX64 = generatePostBuildCommand(
+    options.runtimeFilesX64,
+    options.contentFiles,
+    options.hasFbro,
+    options.fbroRuntimeFromBuildBin
+  );
   const languageStandard = options.requiredCppStandard === 20 ? 'stdcpp20' : 'stdcpp17';
   const runtimeLibrary = options.requiresDynamicCrt
     ? '\n      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>'
@@ -255,6 +267,9 @@ function generateVcxproj(options: {
     <OutDir>$(ProjectDir)$(Platform)\\$(Configuration)\\bin\\</OutDir>
     <IntDir>$(ProjectDir)obj\\$(Platform)\\$(Configuration)\\</IntDir>
   </PropertyGroup>
+  ${options.hasFbro ? `<Target Name="ValidateFbroArchitecture" BeforeTargets="PrepareForBuild" Condition="'$(Platform)'!='x64'">
+    <Error Text="FBro 浏览器仅支持 Windows MSVC x64，请切换到 x64 配置。" />
+  </Target>` : ''}
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -330,7 +345,12 @@ function generateFilterItems(kind: 'ClCompile' | 'None', files: string[], filter
   return `  <ItemGroup>\n${items}\n  </ItemGroup>\n`;
 }
 
-function generatePostBuildCommand(runtimeFiles: string[], contentFiles: string[]): string {
+function generatePostBuildCommand(
+  runtimeFiles: string[],
+  contentFiles: string[],
+  materializeFbro = false,
+  fbroRuntimeFromBuildBin = false
+): string {
   const runtimeCommands = runtimeFiles
     .map(file => `if exist "$(ProjectDir)${toWindowsPath(file)}" copy /Y "$(ProjectDir)${toWindowsPath(file)}" "$(OutDir)"`);
   const contentCommands = contentFiles.flatMap(file => {
@@ -341,7 +361,10 @@ function generatePostBuildCommand(runtimeFiles: string[], contentFiles: string[]
       `if exist "$(ProjectDir)${windowsFile}" copy /Y "$(ProjectDir)${windowsFile}" "$(OutDir)${windowsFile}"`
     ];
   });
-  const commands = [...runtimeCommands, ...contentCommands].join('\r\n');
+  const fbroCommands = materializeFbro
+    ? [`powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)modules\\lingbuilder.fbro.browser\\materialize-fbro-runtime.ps1" -Destination "$(TargetDir)."${fbroRuntimeFromBuildBin ? ' -RuntimeRoot "$(ProjectDir)bin"' : ''}`]
+    : [];
+  const commands = [...runtimeCommands, ...contentCommands, ...fbroCommands].join('\r\n');
   if (!commands) return '';
   return `
     <PostBuildEvent>

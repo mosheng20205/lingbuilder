@@ -288,6 +288,7 @@ module.exports = {
   collectDirectoryInventory,
   compareInventories,
   crc32File,
+  findSevenZip,
   parseSevenZipListing,
   resolveInstallerPath,
   verifyInstallerArchive,

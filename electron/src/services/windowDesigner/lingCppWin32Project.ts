@@ -132,6 +132,9 @@ export function generateLingCppNativeWin32Project(
     .map(module => getUnsupportedModuleTargetDiagnostic(module))
     .filter((diagnostic): diagnostic is string => Boolean(diagnostic));
   const enabledModuleIds = new Set(enabledModules.map(module => module.manifest.id));
+  const moduleConflictDiagnostics = enabledModules.flatMap(module => (module.manifest.compatibility?.conflicts || [])
+    .filter(conflict => enabledModuleIds.has(conflict.moduleId))
+    .map(conflict => `${module.manifest.name} 与 ${conflict.moduleId} 不能同时启用：${conflict.reason}`));
   const missingControlModuleDiagnostics = project.windows.flatMap(window => window.controls.flatMap(control => {
     const definition = getWin32ControlDefinition(control.type);
     if (!definition || definition.moduleId === 'lingbuilder.win32.basic' || enabledModuleIds.has(definition.moduleId)) return [];
@@ -170,6 +173,7 @@ export function generateLingCppNativeWin32Project(
       ...backendGeneratorDiagnostics,
       ...sourceWindowSelectionDiagnostic,
       ...sourceClassMismatchDiagnostic,
+      ...moduleConflictDiagnostics,
       ...moduleTargetDiagnostics,
       ...missingControlModuleDiagnostics,
       ...(usesNewEmojiDesigner ? getNewEmojiUnsupportedControlDiagnostics(selectedWindow) : []),
@@ -178,7 +182,7 @@ export function generateLingCppNativeWin32Project(
       ...legacyUploadDiagnostics,
       ...resourceDiagnostics
     ],
-    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics],
+    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics],
     sourceMap,
     files: [
       {
@@ -1349,6 +1353,9 @@ function generateMainCpp(
       : '',
     enabledModules.some(module => module.manifest.id === 'lingbuilder.cef3.browser')
       ? '#ifndef LINGBUILDER_CEF3_MODULE\n#define LINGBUILDER_CEF3_MODULE\n#endif'
+      : '',
+    enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser')
+      ? '#ifndef LINGBUILDER_FBRO_MODULE\n#define LINGBUILDER_FBRO_MODULE\n#endif'
       : ''
   ].filter(Boolean).join('\n');
   const cef3EventIdCases = CEF3_BROWSER_EVENTS.map(event =>
@@ -1421,6 +1428,13 @@ ${moduleFeatureDefines}
 #define LINGBUILDER_CEF3_AVAILABLE 1
 #else
 #define LINGBUILDER_CEF3_AVAILABLE 0
+#endif
+#if defined(LINGBUILDER_FBRO_MODULE) && __has_include(<LingBuilderFbroBridge.h>)
+#include <LingBuilderFbroBridge.h>
+#define LINGBUILDER_FBRO_AVAILABLE 1
+#else
+#define LINGBUILDER_FBRO_AVAILABLE 0
+using LB_FBRO_HANDLE = UINT_PTR;
 #endif
 #include <algorithm>
 #include <array>
@@ -1723,6 +1737,7 @@ static constexpr UINT WM_LINGBUILDER_LAYOUT_DATE_PICKER = WM_APP + 0x4C;
 static constexpr UINT WM_LINGBUILDER_THREAD_UI_UPDATE = WM_APP + 0x4D;
 static constexpr UINT WM_LINGBUILDER_CEF_EVENT = WM_APP + 0x4E;
 static constexpr UINT WM_LINGBUILDER_WEB_ASYNC_COMPLETE = WM_APP + 0x4F;
+static constexpr UINT WM_LINGBUILDER_FBRO_EVENT = WM_APP + 0x50;
 
 struct LingCefEventPacket {
     int controlId = 0;
@@ -1732,6 +1747,12 @@ struct LingCefEventPacket {
     int action = 0; // 0=默认，1=允许/继续，2=拒绝/取消，3=已处理
     std::wstring resultText;
     bool synchronous = false;
+};
+
+struct LingFbroEventPacket {
+    LB_FBRO_HANDLE handle = 0;
+    int eventCode = 0;
+    std::wstring data;
 };
 
 class LingVideoPlayerCallback final : public IMFPMediaPlayerCallback {
@@ -2525,6 +2546,7 @@ ${functionLibraryMethods}
         HTTP_关闭服务();
         WSS_关闭服务();
         EdgeView_关闭();
+        FBro_关闭全部();
         if (menuFont_) {
             DeleteObject(menuFont_);
             menuFont_ = nullptr;
@@ -2781,7 +2803,22 @@ protected:
     std::map<int, std::unique_ptr<CefBrowserInstance>> cefBrowsers_;
     bool cefInitialized_ = false;
 
-    virtual void OnWindowCreated() { EdgeView_创建控件(nullptr); CEF3_创建(nullptr); DispatchWindowEvent(L"Loaded"); }
+    struct FbroBrowserInstance {
+        int controlId = 0;
+        HWND host = nullptr;
+        LB_FBRO_HANDLE handle = 0;
+        std::wstring url;
+        std::wstring profileDirectory;
+        std::wstring userAgent;
+        std::wstring proxyServer;
+        std::wstring fingerprintJson;
+        std::wstring lastEvent;
+        std::wstring lastError;
+    };
+    std::map<int, std::unique_ptr<FbroBrowserInstance>> fbroBrowsers_;
+    bool fbroInitialized_ = false;
+
+    virtual void OnWindowCreated() { EdgeView_创建控件(nullptr); CEF3_创建(nullptr); FBro_创建(nullptr); DispatchWindowEvent(L"Loaded"); }
     virtual void DispatchWindowEvent(const wchar_t* eventName) {
         std::wstring handler = GetWindowEventHandler(spec_, eventName);
         if (handler.empty()) return;
@@ -3772,6 +3809,255 @@ ${edgeViewEventIdCases}
 #else
     void EdgeView_调整全部大小() {}
 #endif
+
+    // ================= FBro 指纹浏览器模块运行时 =================
+    FbroBrowserInstance* FBro_查找实例(const wchar_t* controlName) {
+        if (!controlName) return nullptr;
+        for (auto& item : fbroBrowsers_) {
+            const ControlSpec* control = FindControl(item.second->controlId);
+            if (control && TextEquals(control->name, controlName)) return item.second.get();
+        }
+        return nullptr;
+    }
+
+    FbroBrowserInstance* FBro_确保实例(int controlId) {
+        auto found = fbroBrowsers_.find(controlId);
+        if (found != fbroBrowsers_.end()) return found->second.get();
+        auto instance = std::make_unique<FbroBrowserInstance>();
+        instance->controlId = controlId;
+        FbroBrowserInstance* raw = instance.get();
+        fbroBrowsers_[controlId] = std::move(instance);
+        return raw;
+    }
+
+    int FBro_初始化() {
+#if LINGBUILDER_FBRO_AVAILABLE
+        if (fbroInitialized_) return 1;
+        wchar_t modulePath[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
+        std::wstring runtimeDirectory = modulePath;
+        const size_t slash = runtimeDirectory.find_last_of(L"\\\\/");
+        if (slash != std::wstring::npos) runtimeDirectory.resize(slash);
+        const int result = LB_FBro_Initialize(runtimeDirectory.c_str());
+        fbroInitialized_ = result > 0;
+        if (!fbroInitialized_) 调试输出(L"FBro 初始化失败：请确认 CEF 135 x64 运行时与 LingBuilderFbroBridge.dll 完整。 ");
+        return fbroInitialized_ ? 1 : 0;
+#else
+        调试输出(L"FBro 不可用：缺少 LingBuilderFbroBridge.h，或当前目标不是 Windows MSVC x64。");
+        return 0;
+#endif
+    }
+
+#if LINGBUILDER_FBRO_AVAILABLE
+    static void __stdcall FBro_桥接事件(LB_FBRO_HANDLE handle, int eventCode, const wchar_t* data, void* userData) {
+        auto* self = static_cast<LingWindowBase*>(userData);
+        if (!self || !self->hwnd_ || !IsWindow(self->hwnd_)) return;
+        auto* packet = new LingFbroEventPacket();
+        packet->handle = handle;
+        packet->eventCode = eventCode;
+        packet->data = data ? data : L"";
+        if (!PostMessageW(self->hwnd_, WM_LINGBUILDER_FBRO_EVENT, 0, reinterpret_cast<LPARAM>(packet))) delete packet;
+    }
+#endif
+
+    int FBro_创建(const wchar_t* controlName) {
+        bool hasTarget = false;
+        for (int i = 0; i < spec_.controlCount; ++i) {
+            const ControlSpec& control = spec_.controls[i];
+            if (!IsType(control, L"FBroBrowser")) continue;
+            if (controlName && controlName[0] && !TextEquals(control.name, controlName)) continue;
+            hasTarget = true;
+        }
+        if (!hasTarget || !FBro_初始化()) return 0;
+#if LINGBUILDER_FBRO_AVAILABLE
+        int created = 0;
+        for (int i = 0; i < spec_.controlCount; ++i) {
+            const ControlSpec& control = spec_.controls[i];
+            if (!IsType(control, L"FBroBrowser")) continue;
+            if (controlName && controlName[0] && !TextEquals(control.name, controlName)) continue;
+            RuntimeControl* runtime = FindRuntimeControl(control.id);
+            FbroBrowserInstance* instance = FBro_确保实例(control.id);
+            if (!runtime || !runtime->hwnd || instance->handle) continue;
+            instance->host = runtime->hwnd;
+            if (instance->url.empty()) instance->url = control.data && control.data[0] ? control.data : L"about:blank";
+            instance->handle = LB_FBro_CreateEx(instance->host, instance->url.c_str(), instance->profileDirectory.c_str(),
+                instance->userAgent.c_str(), static_cast<unsigned int>(control.value), FBro_桥接事件, this);
+            if (!instance->handle) {
+                instance->lastError = L"创建 FBro 浏览器句柄失败";
+                continue;
+            }
+            if (!instance->proxyServer.empty()) LB_FBro_SetProxy(instance->handle, instance->proxyServer.c_str(), L"", L"");
+            if (!instance->fingerprintJson.empty()) LB_FBro_ApplyFingerprintJson(instance->handle, instance->fingerprintJson.c_str());
+            ++created;
+        }
+        return created > 0 ? 1 : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int FBro_导航(const wchar_t* controlName, const wchar_t* address) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_Navigate(instance->handle, address) : 0;
+#else
+        (void)controlName; (void)address; return 0;
+#endif
+    }
+    int FBro_后退(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_GoBack(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_前进(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_GoForward(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    void FBro_刷新(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); if (instance && instance->handle) LB_FBro_Reload(instance->handle);
+#else
+        (void)controlName;
+#endif
+    }
+    void FBro_停止(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); if (instance && instance->handle) LB_FBro_Stop(instance->handle);
+#else
+        (void)controlName;
+#endif
+    }
+    std::wstring FBro_执行JS(const wchar_t* controlName, const wchar_t* script) {
+        wchar_t result[8192] = {};
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (instance && instance->handle && LB_FBro_ExecuteJs(instance->handle, script, result, 8192) > 0) return result;
+#else
+        (void)controlName; (void)script;
+#endif
+        return L"FBro JavaScript 执行失败";
+    }
+    std::wstring FBro_取标题(const wchar_t* controlName) { return FBro_读取文本(controlName, 1); }
+    std::wstring FBro_取地址(const wchar_t* controlName) { return FBro_读取文本(controlName, 2); }
+    std::wstring FBro_取最近事件(const wchar_t* controlName) { return FBro_读取文本(controlName, 3); }
+    std::wstring FBro_取最近错误(const wchar_t* controlName) { return FBro_读取文本(controlName, 4); }
+    std::wstring FBro_读取文本(const wchar_t* controlName, int kind) {
+        wchar_t result[8192] = {};
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance || !instance->handle) return L"";
+        if (kind == 1) LB_FBro_GetTitle(instance->handle, result, 8192);
+        else if (kind == 2) LB_FBro_GetUrl(instance->handle, result, 8192);
+        else if (kind == 3) LB_FBro_GetLastEvent(instance->handle, result, 8192);
+        else LB_FBro_GetLastError(instance->handle, result, 8192);
+#else
+        (void)controlName; (void)kind;
+#endif
+        return result;
+    }
+    int FBro_设置代理(const wchar_t* controlName, const wchar_t* proxy) {
+        auto* instance = FBro_查找实例(controlName); if (!instance) return 0;
+        instance->proxyServer = proxy ? proxy : L"";
+#if LINGBUILDER_FBRO_AVAILABLE
+        return instance->handle ? LB_FBro_SetProxy(instance->handle, instance->proxyServer.c_str(), L"", L"") : 1;
+#else
+        return 0;
+#endif
+    }
+    int FBro_设置缓存目录(const wchar_t* controlName, const wchar_t* directory) {
+        auto* instance = FBro_查找实例(controlName); if (!instance || instance->handle) return 0;
+        instance->profileDirectory = directory ? directory : L""; return 1;
+    }
+    int FBro_设置UserAgent(const wchar_t* controlName, const wchar_t* userAgent) {
+        auto* instance = FBro_查找实例(controlName); if (!instance) return 0;
+        instance->userAgent = userAgent ? userAgent : L"";
+#if LINGBUILDER_FBRO_AVAILABLE
+        return instance->handle ? LB_FBro_SetUserAgent(instance->handle, instance->userAgent.c_str()) : 1;
+#else
+        return 0;
+#endif
+    }
+    std::wstring FBro_取Cookie(const wchar_t* controlName, const wchar_t* address) {
+        wchar_t result[16384] = {};
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (instance && instance->handle) LB_FBro_GetCookies(instance->handle, address, result, 16384);
+#else
+        (void)controlName; (void)address;
+#endif
+        return result;
+    }
+    int FBro_清空Cookie(const wchar_t* controlName, const wchar_t* address) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_ClearCookies(instance->handle, address) : 0;
+#else
+        (void)controlName; (void)address; return 0;
+#endif
+    }
+    int FBro指纹_应用配置(const wchar_t* controlName, const wchar_t* json) {
+        auto* instance = FBro_查找实例(controlName); if (!instance) return 0;
+        instance->fingerprintJson = json ? json : L"";
+#if LINGBUILDER_FBRO_AVAILABLE
+        const int result = instance->handle ? LB_FBro_ApplyFingerprintJson(instance->handle, instance->fingerprintJson.c_str()) : 1;
+        if (result == -4) instance->lastError = L"未配置 FBro VIP Key；请在 LingBuilder 设置 → 浏览器凭据中配置";
+        return result > 0 ? 1 : 0;
+#else
+        return 0;
+#endif
+    }
+    std::wstring FBro指纹_取调用次数(const wchar_t* controlName) {
+        wchar_t result[4096] = {};
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); if (instance && instance->handle) LB_FBro_GetFingerprintCallCount(instance->handle, result, 4096);
+#else
+        (void)controlName;
+#endif
+        return result;
+    }
+    int FBro指纹_清空调用次数(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle && LB_FBro_ClearFingerprintCallCount(instance->handle) > 0 ? 1 : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    void FBro_关闭(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); if (instance && instance->handle) LB_FBro_Close(instance->handle);
+#else
+        (void)controlName;
+#endif
+    }
+    void FBro_调整全部大小() {
+#if LINGBUILDER_FBRO_AVAILABLE
+        for (auto& item : fbroBrowsers_) if (item.second->handle) LB_FBro_Resize(item.second->handle);
+#endif
+    }
+    void FBro_关闭全部() {
+#if LINGBUILDER_FBRO_AVAILABLE
+        for (auto& item : fbroBrowsers_) if (item.second->handle) LB_FBro_Close(item.second->handle);
+#endif
+        fbroBrowsers_.clear();
+    }
+    void FBro_处理事件包(const LingFbroEventPacket& packet) {
+        for (auto& item : fbroBrowsers_) {
+            FbroBrowserInstance& instance = *item.second;
+            if (instance.handle != packet.handle) continue;
+            const ControlSpec* control = FindControl(instance.controlId);
+            if (!control) return;
+            const wchar_t* eventName = packet.eventCode == 1 ? L"Created" : packet.eventCode == 2 ? L"LoadEnd" :
+                packet.eventCode == 3 ? L"AddressChanged" : packet.eventCode == 4 ? L"TitleChanged" :
+                packet.eventCode == 5 ? L"Closed" : L"Error";
+            instance.lastEvent = eventName;
+            if (packet.eventCode == 6) instance.lastError = packet.data;
+            DispatchLingEvent(*control, eventName);
+            return;
+        }
+    }
 
     // ================= CEF3 浏览器模块运行时 =================
     CefBrowserInstance* CEF3_查找实例(const wchar_t* controlName) {
@@ -8764,6 +9050,20 @@ private:
             instance->enableWebGL = (control.value & 4) != 0;
             instance->muteAudio = (control.value & 8) != 0;
             instance->enableDevTools = (control.value & 16) != 0;
+        } else if (IsType(control, L"FBroBrowser")) {
+            FbroBrowserInstance* instance = FBro_确保实例(control.id);
+            instance->host = child;
+            instance->url = control.data && control.data[0] ? control.data : L"about:blank";
+            if (control.data2 && control.data2[0]) {
+                auto records = DecodeControlRecords(control.data2, 5);
+                if (!records.empty()) {
+                    const auto& fields = records[0];
+                    if (fields.size() > 0) instance->profileDirectory = fields[0];
+                    if (fields.size() > 1) instance->userAgent = fields[1];
+                    if (fields.size() > 3 && fields[2] == L"custom") instance->proxyServer = fields[3];
+                    if (fields.size() > 4) instance->fingerprintJson = fields[4];
+                }
+            }
         }
         return true;
     }
@@ -8873,6 +9173,11 @@ private:
             if (!packet->synchronous) delete packet;
             return 0;
         }
+        case WM_LINGBUILDER_FBRO_EVENT: {
+            std::unique_ptr<LingFbroEventPacket> packet(reinterpret_cast<LingFbroEventPacket*>(lParam));
+            if (packet) FBro_处理事件包(*packet);
+            return 0;
+        }
         case WM_LINGBUILDER_LAYOUT_DATE_PICKER: {
             const ControlSpec* control = FindControl(static_cast<int>(wParam));
             RuntimeControl* runtime = control ? FindRuntimeControl(control->id) : nullptr;
@@ -8979,6 +9284,7 @@ private:
             EdgeView_调整全部大小();
 #endif
             CEF3_调整全部大小();
+            FBro_调整全部大小();
             {
                 int nextWidth = static_cast<int>(LOWORD(lParam));
                 int nextHeight = static_cast<int>(HIWORD(lParam));
@@ -9303,6 +9609,7 @@ private:
             }
             EdgeView_关闭();
             CEF3_关闭全部();
+            FBro_关闭全部();
             DestroyControls();
             DestroyWindowIcons();
             if (windowBrush_) {
@@ -9812,6 +10119,18 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     g_instance = instance;
     EnableDpiAwareness();
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+#if LINGBUILDER_FBRO_AVAILABLE
+    wchar_t fbroModulePath[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, fbroModulePath, MAX_PATH);
+    std::wstring fbroRuntimeDirectory = fbroModulePath;
+    const size_t fbroSlash = fbroRuntimeDirectory.find_last_of(L"\\\\/");
+    if (fbroSlash != std::wstring::npos) fbroRuntimeDirectory.resize(fbroSlash);
+    if (LB_FBro_Initialize(fbroRuntimeDirectory.c_str()) <= 0) {
+        MessageBoxW(nullptr, L"FBro 初始化失败：请检查 CEF 135 x64 运行时完整性。", L"LingBuilder", MB_OK | MB_ICONERROR);
+        CoUninitialize();
+        return 0;
+    }
+#endif
     Gdiplus::GdiplusStartupInput gdiplusInput;
     ULONG_PTR gdiplusToken = 0;
     Gdiplus::GdiplusStartup(&gdiplusToken, &gdiplusInput, nullptr);
@@ -9834,7 +10153,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     windowClass.hbrBackground = nullptr;
     windowClass.lpszClassName = GENERATED_WINDOW_CLASS;
 
-    if (!RegisterClassExW(&windowClass)) { if (SUCCEEDED(mediaFoundationResult)) MFShutdown(); if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken); CoUninitialize(); return 0; }
+    if (!RegisterClassExW(&windowClass)) { if (SUCCEEDED(mediaFoundationResult)) MFShutdown(); if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
+#if LINGBUILDER_FBRO_AVAILABLE
+        LB_FBro_Shutdown();
+#endif
+        CoUninitialize(); return 0; }
     HWND startWindow = OpenGeneratedWindow(g_startWindowIndex, showCommand);
 
     MSG message;
@@ -9850,6 +10173,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
 #if LINGBUILDER_CEF3_AVAILABLE
     CefShutdown();
+#endif
+#if LINGBUILDER_FBRO_AVAILABLE
+    LB_FBro_Shutdown();
 #endif
     CoUninitialize();
     return static_cast<int>(message.wParam);
@@ -11418,7 +11744,7 @@ function generateControlSpec(
       ? clampInteger(control.properties?.volume, 100, 0, 100)
       : control.type === 'ColorPicker'
         ? colorRefInteger(controlColorProperty(control, 'currentColor', '#3B82F6'))
-      : control.type === 'CefBrowser'
+      : control.type === 'CefBrowser' || control.type === 'FBroBrowser'
         ? (control.properties?.enableJs !== false ? 1 : 0)
           | (control.properties?.loadImages !== false ? 2 : 0)
           | (control.properties?.enableWebGL === true ? 4 : 0)
@@ -11640,6 +11966,18 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
     const proxyMode = typeof properties.proxyMode === 'string' ? properties.proxyMode : 'system';
     const proxyServer = typeof properties.proxyServer === 'string' ? properties.proxyServer : '';
     return [url, encodeControlFields([cacheDir, userAgent, proxyMode, proxyServer])];
+  }
+  if (control.type === 'FBroBrowser') {
+    const url = typeof properties.url === 'string' ? properties.url : '';
+    const fallbackProfileId = control.id.replace(/[^A-Za-z0-9_-]/gu, '_') || 'browser';
+    const cacheDir = typeof properties.cacheDir === 'string' && properties.cacheDir.trim()
+      ? properties.cacheDir.trim()
+      : `.fbro-global-cache/profile-${fallbackProfileId}`;
+    const userAgent = typeof properties.userAgent === 'string' ? properties.userAgent : '';
+    const proxyMode = typeof properties.proxyMode === 'string' ? properties.proxyMode : 'system';
+    const proxyServer = typeof properties.proxyServer === 'string' ? properties.proxyServer : '';
+    const fingerprintProfile = typeof properties.fingerprintProfile === 'string' ? properties.fingerprintProfile : '';
+    return [url, encodeControlFields([cacheDir, userAgent, proxyMode, proxyServer, fingerprintProfile])];
   }
   if (control.type === 'EdgeBrowser') {
     const url = typeof properties.url === 'string' ? properties.url : '';

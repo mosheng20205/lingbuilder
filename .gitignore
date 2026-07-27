@@ -22,6 +22,7 @@ google/
 assets/.aistudio/
 本地磁盘/
 .qoder/
+更新记录/
 
 # CEF3 SDK 和模块二进制
 .lingbuilder/cef3-sdk/
