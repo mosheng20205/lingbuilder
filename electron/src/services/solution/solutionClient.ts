@@ -9,6 +9,12 @@ export interface SolutionProject {
   references?: string[];
   projectFile?: string;
   buildProperties?: { configuration: 'Debug' | 'Release'; architecture: 'Win32' | 'x64'; additionalArguments: string[] };
+  solutionFolderId?: string;
+}
+
+export interface SolutionFolder {
+  id: string;
+  name: string;
 }
 
 export interface SolutionModel {
@@ -17,6 +23,7 @@ export interface SolutionModel {
   name: string;
   startupProjectId: string;
   startupProjectIds: string[];
+  folders: SolutionFolder[];
   projects: SolutionProject[];
 }
 
@@ -37,6 +44,7 @@ export const DEFAULT_SOLUTION: SolutionModel = {
   name: 'UI_CppLocProj',
   startupProjectId: 'lingbuilder-ui-project',
   startupProjectIds: ['lingbuilder-ui-project'],
+  folders: [],
   projects: [
     {
       id: 'lingbuilder-ui-project',
@@ -66,11 +74,23 @@ export async function importSolutionProject(projectFile: string): Promise<Soluti
   return postJson('/api/solution/import', { projectFile });
 }
 
+export async function createSolutionFolder(name?: string): Promise<SolutionCommandResult & { folder?: SolutionFolder }> {
+  return postJson('/api/solution/folders', { name });
+}
+
+export async function moveSolutionProject(projectId: string, solutionFolderId: string | null): Promise<SolutionCommandResult> {
+  return patchJson(`/api/solution/projects/${encodeURIComponent(projectId)}`, { solutionFolderId });
+}
+
+export async function renameSolutionProject(projectId: string, name: string): Promise<SolutionCommandResult> {
+  return patchJson(`/api/solution/projects/${encodeURIComponent(projectId)}`, { name });
+}
+
 export async function setStartupProject(projectId: string): Promise<SolutionCommandResult> {
   return patchJson(`/api/solution/projects/${encodeURIComponent(projectId)}`, { startup: true });
 }
 
-export async function configureSolutionProject(projectId: string, patch: { references?: string[]; startupProjectIds?: string[]; buildProperties?: SolutionProject['buildProperties'] }): Promise<SolutionCommandResult> {
+export async function configureSolutionProject(projectId: string, patch: { name?: string; references?: string[]; startupProjectIds?: string[]; buildProperties?: SolutionProject['buildProperties']; solutionFolderId?: string | null }): Promise<SolutionCommandResult> {
   return patchJson(`/api/solution/projects/${encodeURIComponent(projectId)}`, patch);
 }
 

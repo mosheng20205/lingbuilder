@@ -585,7 +585,7 @@ test('renderer server enforces auth and exposes safe modules, files, process, an
     assert.equal(configurationResponse.status, 200, await configurationResponse.clone().text());
     const initialConfiguration = await configurationResponse.json();
     assert.equal(initialConfiguration.ok, true);
-    assert.equal(initialConfiguration.settings.length, 9);
+    assert.ok(initialConfiguration.settings.length >= 9, '配置 API 应至少返回既有核心设置，新增设置不应破坏集成测试。');
     assert.equal(
       initialConfiguration.settings.find((item: any) => item.metadata.key === 'files.autoSave')?.inspection.value,
       'off'

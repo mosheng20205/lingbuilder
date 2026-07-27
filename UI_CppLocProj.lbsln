@@ -4,9 +4,19 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "fbro",
+  "startupProjectId": "fbro-ui",
   "startupProjectIds": [
-    "fbro"
+    "fbro-ui"
+  ],
+  "folders": [
+    {
+      "id": "cef3",
+      "name": "CEF3"
+    },
+    {
+      "id": "fbro",
+      "name": "FBro"
+    }
   ],
   "projects": [
     {
@@ -67,16 +77,18 @@
     },
     {
       "id": "cef3",
-      "name": "测试CEF3",
+      "name": "CEF3浏览器内嵌",
       "type": "visual-cpp",
       "sourceRoot": "src/cef3",
+      "solutionFolderId": "cef3",
       "references": []
     },
     {
       "id": "cef3-2",
-      "name": "测试CEF3-2",
+      "name": "CEF3浏览器谷歌UI",
       "type": "visual-cpp",
       "sourceRoot": "src/cef3-2",
+      "solutionFolderId": "cef3",
       "references": []
     },
     {
@@ -98,6 +110,15 @@
       "name": "测试FBro浏览器",
       "type": "visual-cpp",
       "sourceRoot": "src/fbro",
+      "solutionFolderId": "fbro",
+      "references": []
+    },
+    {
+      "id": "fbro-ui",
+      "name": "FBro浏览器内嵌和谷歌UI",
+      "type": "visual-cpp",
+      "sourceRoot": "src/fbro-ui",
+      "solutionFolderId": "fbro",
       "references": []
     }
   ]

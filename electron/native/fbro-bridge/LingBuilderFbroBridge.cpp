@@ -64,6 +64,7 @@ struct BrowserState {
   CefRefPtr<CefRequestContext> request_context;
   CefRefPtr<BridgeBrowserEvent> event;
   bool create_started = false;
+  bool chrome_ui = false;
   unsigned int flags = 7;
 };
 
@@ -175,6 +176,19 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
       Notify(*state, LB_FBRO_EVENT_CREATED, L"浏览器创建完成");
     }
   }
+  bool OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame>, int,
+                     const CefString& target_url, const CefString&,
+                     CefLifeSpanHandler::WindowOpenDisposition, bool,
+                     const CefPopupFeatures&, CefWindowInfo&, CefBrowserSettings&,
+                     bool*, CefRefPtr<FBroUseExtraData>) override {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    if (auto* state = Find(handle_)) {
+      Notify(*state, LB_FBRO_EVENT_BEFORE_POPUP, target_url.ToWString());
+    }
+    // Cancel the popup. LingBuilder dispatches the URL to the bound LCPP event,
+    // where the project can navigate the existing browser instance instead.
+    return true;
+  }
   void OnBeforeClose(CefRefPtr<CefBrowser>) override {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
     if (auto* state = Find(handle_)) {
@@ -220,18 +234,34 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
 };
 
 bool StartBrowser(BrowserState& state) {
-  if (!g_ready || state.create_started || !IsWindow(state.host)) return false;
+  if (!g_ready || state.create_started || (!state.chrome_ui && !IsWindow(state.host))) return false;
   state.create_started = true;
-  RECT bounds{};
-  GetClientRect(state.host, &bounds);
   E_WINDOWS_INFO window{};
   window.is_null = FALSE;
-  window.parent_window = state.host;
-  window.x = 0;
-  window.y = 0;
-  window.width = std::max<LONG>(1, bounds.right - bounds.left);
-  window.height = std::max<LONG>(1, bounds.bottom - bounds.top);
-  window.style = WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
+  if (state.chrome_ui) {
+    // Chrome Runtime owns this desktop popup. LingBuilder deliberately supplies
+    // no host/parent HWND, so it cannot be embedded into or cover the main window.
+    window.ex_style = WS_EX_APPWINDOW;
+    window.window_name = const_cast<char*>("FBro Chrome UI");
+    window.style = WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
+    window.x = CW_USEDEFAULT;
+    window.y = CW_USEDEFAULT;
+    window.width = CW_USEDEFAULT;
+    window.height = CW_USEDEFAULT;
+    window.parent_window = nullptr;
+    window.window = nullptr;
+    window.runtime_style = CEF_RUNTIME_STYLE_CHROME;
+  } else {
+    RECT bounds{};
+    GetClientRect(state.host, &bounds);
+    window.parent_window = state.host;
+    window.x = 0;
+    window.y = 0;
+    window.width = std::max<LONG>(1, bounds.right - bounds.left);
+    window.height = std::max<LONG>(1, bounds.bottom - bounds.top);
+    window.style = WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
+    window.runtime_style = CEF_RUNTIME_STYLE_ALLOY;
+  }
   FBroBrowserSetting settings{};
   settings.is_null = FALSE;
   settings.background_color = 0x00FFFFFF;
@@ -308,17 +338,15 @@ class BridgeInitEvent final : public FBroHsInitEvent {
   IMPLEMENT_REFCOUNTING(BridgeInitEvent);
 };
 
-BOOL CALLBACK ResizeChild(HWND child, LPARAM value) {
-  auto* bounds = reinterpret_cast<RECT*>(value);
-  MoveWindow(child, 0, 0, std::max<LONG>(1, bounds->right), std::max<LONG>(1, bounds->bottom), TRUE);
-  return TRUE;
-}
-
 int WithBrowser(LB_FBRO_HANDLE handle, const std::function<void(CefRefPtr<CefBrowser>)>& action) {
-  std::lock_guard<std::recursive_mutex> lock(g_mutex);
-  BrowserState* state = Find(handle);
-  if (!state || !state->browser) return -1;
-  action(state->browser);
+  CefRefPtr<CefBrowser> browser;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    BrowserState* state = Find(handle);
+    if (!state || !state->browser) return -1;
+    browser = state->browser;
+  }
+  action(browser);
   return 1;
 }
 
@@ -524,6 +552,37 @@ LB_FBRO_HANDLE __stdcall LB_FBro_CreateEx(HWND host, const wchar_t* url,
   return handle;
 }
 
+LB_FBRO_HANDLE __stdcall LB_FBro_CreateChromeUi(LB_FBRO_HANDLE owner,
+                                                 const wchar_t* url,
+                                                 LB_FBRO_EVENT_CALLBACK callback,
+                                                 void* user_data) {
+  if (!g_initialized) return 0;
+  auto state = std::make_unique<BrowserState>();
+  bool should_start = false;
+  LB_FBRO_HANDLE handle = 0;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    BrowserState* owner_state = Find(owner);
+    // The originating embedded browser supplies the initialized profile/context
+    // and proves that CEF is ready. No caller-owned HWND is accepted here.
+    if (!owner_state || !owner_state->browser) return 0;
+    state->handle = g_next_handle.fetch_add(1);
+    state->url = url && *url ? url : owner_state->url;
+    if (state->url.empty()) state->url = L"about:blank";
+    state->user_agent = owner_state->user_agent;
+    state->flags = owner_state->flags;
+    state->callback = callback;
+    state->user_data = user_data;
+    state->request_context = owner_state->request_context;
+    state->chrome_ui = true;
+    handle = state->handle;
+    g_browsers.emplace(handle, std::move(state));
+    should_start = g_ready && !g_shutdown_started;
+  }
+  if (should_start) ScheduleBrowserStart(handle);
+  return handle;
+}
+
 int __stdcall LB_FBro_Navigate(LB_FBRO_HANDLE browser, const wchar_t* url) {
   if (!url) return -2;
   return WithBrowser(browser, [url](CefRefPtr<CefBrowser> value) {
@@ -668,9 +727,30 @@ int __stdcall LB_FBro_ClearFingerprintCallCount(LB_FBRO_HANDLE browser) {
   FBroHsVIPControl_ClearFingerCount(vip); return 1;
 }
 int __stdcall LB_FBro_Resize(LB_FBRO_HANDLE browser) {
-  std::lock_guard<std::recursive_mutex> lock(g_mutex); BrowserState* state = Find(browser);
-  if (!state || !IsWindow(state->host)) return -1;
-  RECT bounds{}; GetClientRect(state->host, &bounds); EnumChildWindows(state->host, ResizeChild, reinterpret_cast<LPARAM>(&bounds)); return 1;
+  HWND host = nullptr;
+  {
+    // WM_SIZE runs on the host window thread. Browser creation runs on CEF's UI
+    // thread and may temporarily hold the registry mutex while synchronously
+    // creating native windows. Never make the host message pump wait for it.
+    std::unique_lock<std::recursive_mutex> lock(g_mutex, std::try_to_lock);
+    if (!lock.owns_lock()) return 0;
+    BrowserState* state = Find(browser);
+    if (!state || !IsWindow(state->host)) return -1;
+    host = state->host;
+  }
+  RECT bounds{};
+  if (!GetClientRect(host, &bounds)) return -1;
+  const int width = std::max<LONG>(1, bounds.right - bounds.left);
+  const int height = std::max<LONG>(1, bounds.bottom - bounds.top);
+  // EnumChildWindows is recursive and also returns Chromium's internal HWNDs.
+  // Resizing every descendant can synchronously re-enter CEF and freeze the
+  // parent window. Only resize the browser windows directly parented to host.
+  for (HWND child = GetWindow(host, GW_CHILD); child;) {
+    const HWND next = GetWindow(child, GW_HWNDNEXT);
+    MoveWindow(child, 0, 0, width, height, TRUE);
+    child = next;
+  }
+  return 1;
 }
 void __stdcall LB_FBro_Close(LB_FBRO_HANDLE browser) {
   std::lock_guard<std::recursive_mutex> lock(g_mutex); BrowserState* state = Find(browser);

@@ -63,6 +63,7 @@ test('workspace values override user values and snapshot exposes inspection, met
 
   assert.equal(service.get('editor.fontSize'), 19);
   assert.equal(service.get('editor.experienceMode'), 'professional');
+  assert.equal(service.get('workbench.sidebar.width'), 264);
   assert.equal(service.get('workbench.panel.visible'), false);
   assert.equal(service.get('workbench.aiPanel.visible'), false);
 
@@ -185,7 +186,7 @@ test('unsafe shortcuts from an existing settings file are diagnosed and fall bac
   )));
 });
 
-test('workbench schema enforces font bounds, experience modes, themes and visibility booleans', async () => {
+test('workbench schema enforces font and sidebar bounds, experience modes, themes and visibility booleans', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-workbench-schema-'));
   const service = createWorkbenchConfigurationService({
     workspaceRoot: path.join(root, 'workspace'),
@@ -197,6 +198,12 @@ test('workbench schema enforces font bounds, experience modes, themes and visibi
     await assert.rejects(
       () => service.update('editor.fontSize', invalidFontSize, 'user'),
       (error: unknown) => assertValidationError(error, 'editor.fontSize')
+    );
+  }
+  for (const invalidSidebarWidth of [159, 601, 264.5]) {
+    await assert.rejects(
+      () => service.update('workbench.sidebar.width', invalidSidebarWidth, 'user'),
+      (error: unknown) => assertValidationError(error, 'workbench.sidebar.width')
     );
   }
   await assert.rejects(
@@ -213,9 +220,11 @@ test('workbench schema enforces font bounds, experience modes, themes and visibi
   );
 
   await service.update('editor.fontSize', 24, 'workspace');
+  await service.update('workbench.sidebar.width', 540, 'user');
   await service.update('editor.experienceMode', 'native', 'workspace');
   await service.update('workbench.colorTheme', 'light', 'workspace');
   assert.equal(service.get('editor.fontSize'), 24);
+  assert.equal(service.get('workbench.sidebar.width'), 540);
   assert.equal(service.get('editor.experienceMode'), 'native');
   assert.equal(service.get('workbench.colorTheme'), 'light');
 });
@@ -230,13 +239,15 @@ test('user and workspace updates persist independently and reload with the same 
   await service.update('editor.fontSize', 15, 'user');
   await service.update('editor.fontSize', 21, 'workspace');
   await service.update('workbench.aiPanel.visible', false, 'user');
+  await service.update('workbench.sidebar.width', 512, 'user');
   await service.update('workbench.panel.visible', false, 'workspace');
 
   assert.deepEqual(JSON.parse(await fs.readFile(userSettingsPath, 'utf8')), {
     schemaVersion: 1,
     values: {
       'editor.fontSize': 15,
-      'workbench.aiPanel.visible': false
+      'workbench.aiPanel.visible': false,
+      'workbench.sidebar.width': 512
     }
   });
   assert.deepEqual(JSON.parse(await fs.readFile(workspaceSettingsPath, 'utf8')), {
@@ -250,6 +261,7 @@ test('user and workspace updates persist independently and reload with the same 
   const reloaded = createWorkbenchConfigurationService({ workspaceRoot, userSettingsPath });
   await reloaded.initialize();
   assert.equal(reloaded.get('editor.fontSize'), 21);
+  assert.equal(reloaded.get('workbench.sidebar.width'), 512);
   assert.equal(reloaded.get('workbench.aiPanel.visible'), false);
   assert.equal(reloaded.get('workbench.panel.visible'), false);
   assert.equal(reloaded.inspect('editor.fontSize').source, 'workspace');

@@ -1202,6 +1202,7 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
   assert.ok(CEF3_BROWSER_EVENTS.length >= 90);
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_取事件字段'));
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_设置事件结果'));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_打开原生UI浏览器'));
   assert.ok(manifest.compatibility?.conflicts?.some(item => item.moduleId === 'lingbuilder.fbro.browser'));
 
   const module: InstalledModule = {
@@ -1234,6 +1235,19 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
     assert.ok(cpp.includes(`L"${event.name}"`), `生成运行时缺少 CEF3 事件：${event.name}`);
   }
   assert.match(cpp, /CEF3_取事件字段/);
+  assert.match(cpp, /windowInfo\.runtime_style = CEF_RUNTIME_STYLE_CHROME;/);
+  assert.match(cpp, /windowInfo\.SetAsPopup\(nullptr, L"谷歌原生UI浏览器"\);/);
+  assert.match(cpp, /windowInfo\.parent_window = nullptr;/);
+  assert.match(cpp, /windowInfo\.ex_style \|= WS_EX_APPWINDOW;/);
+  assert.doesNotMatch(cpp, /windowInfo\.SetAsPopup\(hwnd_, L"谷歌原生UI浏览器"\);/);
+  assert.match(cpp, /int CEF3_打开原生UI浏览器\(const wchar_t\* controlName, const wchar_t\* address\)/);
+  assert.match(cpp, /int CEF3_打开原生UI浏览器\(const wchar_t\* controlName, const std::wstring& address\)/);
+  assert.match(cpp, /std::vector<CefRefPtr<CefBrowser>> popupBrowsers;/);
+  assert.match(cpp, /if \(isPrimary\) \{\s*instance\.browser = browser;/u);
+  assert.match(cpp, /if \(!alreadyTracked\) instance\.popupBrowsers\.push_back\(browser\);/);
+  assert.match(cpp, /owner_->CEF3_通知关闭\(controlId_, browser\);/);
+  assert.match(cpp, /for \(auto& popup : item\.second->popupBrowsers\)/);
+  assert.match(cpp, /if \(!IsPrimary\(browser\)\) return;/);
 });
 
 test('FBro module contributes a toolbox designer control and C ABI generated runtime', () => {
@@ -1242,10 +1256,11 @@ test('FBro module contributes a toolbox designer control and C ABI generated run
   assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
   assert.deepEqual(manifest.targets?.map(target => target.id), ['windows-msvc-x64']);
   assert.ok(manifest.compatibility?.conflicts?.some(item => item.moduleId === 'lingbuilder.cef3.browser'));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'FBro_打开谷歌原生UI浏览器'));
   const designer = manifest.contributes?.designerControls?.find(control => control.type === 'FBroBrowser');
   assert.equal(designer?.label, 'FBro指纹浏览器');
   assert.equal(designer?.nativeAdapter, 'fbro-browser');
-  assert.deepEqual(designer?.events?.map(event => event.name), ['Created', 'LoadEnd', 'AddressChanged', 'TitleChanged', 'Closed', 'Error']);
+  assert.deepEqual(designer?.events?.map(event => event.name), ['Created', 'LoadEnd', 'AddressChanged', 'BeforePopup', 'TitleChanged', 'Closed', 'Error']);
   const browserGroup = createControlToolboxGroups(['Button', 'FBroBrowser'], false).find(group => group.id === 'browser');
   assert.deepEqual(browserGroup?.controlTypes, ['FBroBrowser']);
 
@@ -1268,12 +1283,18 @@ test('FBro module contributes a toolbox designer control and C ABI generated run
   };
   const generated = generateLingCppNativeWin32Project(project, {
     enabledModules: [module],
-    lingCppSourceCode: '类 MainWindow\n    事件 FBro浏览器1_创建完成()\n        FBro_导航("FBro浏览器1", "https://example.com")\n    结束\n结束类'
+    lingCppSourceCode: '类 MainWindow\n    事件 FBro浏览器1_创建完成()\n        FBro_导航("FBro浏览器1", "https://example.com")\n        FBro_打开谷歌原生UI浏览器("FBro浏览器1", "https://example.com")\n    结束\n结束类'
   });
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
   assert.match(cpp, /#include <LingBuilderFbroBridge\.h>/u);
   assert.match(cpp, /IsType\(control, L"FBroBrowser"\)/u);
   assert.match(cpp, /LB_FBro_Create/u);
+  assert.match(cpp, /int FBro_导航\(const wchar_t\* controlName, const std::wstring& address\)/u);
+  assert.match(cpp, /LB_FBro_CreateChromeUi/u);
+  assert.match(cpp, /int FBro_打开谷歌原生UI浏览器\(const wchar_t\* controlName, const wchar_t\* address\)/u);
+  assert.match(cpp, /int FBro_打开谷歌原生UI浏览器\(const wchar_t\* controlName, const std::wstring& address\)/u);
+  assert.match(cpp, /std::vector<LB_FBRO_HANDLE> chromeUiHandles;/u);
+  assert.match(cpp, /for \(LB_FBRO_HANDLE popup : item\.second->chromeUiHandles\)/u);
   assert.match(cpp, /WM_LINGBUILDER_FBRO_EVENT/u);
   assert.match(cpp, /\.fbro-global-cache\/profile-fbro-1/u);
   assert.doesNotMatch(cpp, /CefRefPtr<FBro/u);
@@ -1285,6 +1306,46 @@ test('FBro bridge serializes browser creation onto the CEF UI thread and contain
   assert.match(bridgeSource, /ResolveProfileDirectory/u);
   assert.match(bridgeSource, /normalized_root \/ \(L"profile-"/u);
   assert.doesNotMatch(bridgeSource, /g_browsers\.emplace\(handle, std::move\(state\)\);\s*StartBrowser\(\*raw\)/u);
+  assert.match(bridgeSource, /LB_FBRO_EVENT_BEFORE_POPUP/u);
+  assert.match(bridgeSource, /Notify\(\*state, LB_FBRO_EVENT_BEFORE_POPUP, target_url\.ToWString\(\)\)/u);
+  assert.match(bridgeSource, /return true;\s*\}\s*void OnBeforeClose/u, '即将打开新窗口必须取消弹窗，由 LCPP 决定在当前实例导航');
+  assert.match(bridgeSource, /LB_FBro_CreateChromeUi/u);
+  assert.match(bridgeSource, /window\.runtime_style = CEF_RUNTIME_STYLE_CHROME;/u);
+  assert.match(bridgeSource, /window\.parent_window = nullptr;/u);
+  assert.match(bridgeSource, /window\.window = nullptr;/u);
+  assert.match(bridgeSource, /window\.ex_style = WS_EX_APPWINDOW;/u);
+  assert.doesNotMatch(bridgeSource, /LB_FBro_CreateChromeUi\(HWND/u);
+});
+
+test('FBro UI beginner project exposes embedded and hostless Chrome UI actions', async () => {
+  const root = path.resolve(import.meta.dirname, '..', '..');
+  const source = await fs.readFile(path.join(root, 'src', 'fbro-ui', 'MainWindow.lcpp'), 'utf8');
+  const project = JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'projects', 'fbro-ui', 'window-designer.json'), 'utf8')) as LingWindowProject;
+  const modules = JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'projects', 'fbro-ui', 'project-modules.json'), 'utf8')) as { enabledModuleIds: string[] };
+  assert.ok(modules.enabledModuleIds.includes('lingbuilder.fbro.browser'));
+  assert.ok(project.windows[0]?.controls.some(control => control.type === 'FBroBrowser'));
+  assert.ok(project.windows[0]?.controls.some(control => control.name === '内嵌打开按钮'));
+  assert.ok(project.windows[0]?.controls.some(control => control.name === '谷歌原生UI按钮'));
+  assert.match(source, /FBro_导航\("FBro指纹浏览器1"/u);
+  assert.match(source, /FBro_打开谷歌原生UI浏览器\("FBro指纹浏览器1"/u);
+  assert.match(source, /FBro_取最近事件\("FBro指纹浏览器1"\)/u);
+});
+
+test('FBro resize never blocks the host message loop or recursively moves Chromium descendants', async () => {
+  const bridgeSource = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8');
+  assert.match(bridgeSource, /std::unique_lock<std::recursive_mutex> lock\(g_mutex, std::try_to_lock\)/u);
+  assert.match(bridgeSource, /GetWindow\(host, GW_CHILD\)/u);
+  assert.match(bridgeSource, /GetWindow\(child, GW_HWNDNEXT\)/u);
+  assert.doesNotMatch(bridgeSource, /EnumChildWindows\(state->host/u);
+});
+
+test('FBro beginner browser keeps every navigation control DPI aligned while resizing', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '..', '..', 'src', 'fbro', 'MainWindow.lcpp'), 'utf8');
+  assert.match(source, /局部 整数型 当前DPI = 窗口_取事件DPI\(\)/u);
+  for (const name of ['后退按钮', '前进按钮', '刷新按钮', '地址栏', '导航按钮', 'FBro指纹浏览器1']) {
+    assert.match(source, new RegExp(`控件_设置位置大小\\(\"${name}\"`, 'u'));
+  }
+  assert.match(source, /50 \* 当前DPI \/ 96/u);
 });
 
 test('FBro bridge reports invalid VIP authorization without exposing the supplied key', async () => {

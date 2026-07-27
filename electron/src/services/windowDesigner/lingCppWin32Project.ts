@@ -742,6 +742,13 @@ static bool 控件_设置可见(const wchar_t* controlName, bool visible) {
     return true;
 }
 
+static bool 控件_设置位置大小(const wchar_t* controlName, int x, int y, int width, int height) {
+    const LB_NE_ElementRef* element = LB_NE_FindElement(controlName);
+    if (!g_newEmojiWindow || !element || element->id <= 0) return false;
+    EU_SetElementBounds(g_newEmojiWindow, element->id, x, y, std::max(1, width), std::max(1, height));
+    return true;
+}
+
 static bool 控件_设置勾选(const wchar_t* controlName, bool checked) {
     const LB_NE_ElementRef* element = LB_NE_FindElement(controlName);
     if (!g_newEmojiWindow || !element || element->id <= 0) return false;
@@ -2798,6 +2805,7 @@ protected:
         std::map<std::wstring, std::wstring> handlers;
 #if LINGBUILDER_CEF3_AVAILABLE
         CefRefPtr<CefBrowser> browser;
+        std::vector<CefRefPtr<CefBrowser>> popupBrowsers;
 #endif
     };
     std::map<int, std::unique_ptr<CefBrowserInstance>> cefBrowsers_;
@@ -2814,6 +2822,7 @@ protected:
         std::wstring fingerprintJson;
         std::wstring lastEvent;
         std::wstring lastError;
+        std::vector<LB_FBRO_HANDLE> chromeUiHandles;
     };
     std::map<int, std::unique_ptr<FbroBrowserInstance>> fbroBrowsers_;
     bool fbroInitialized_ = false;
@@ -3896,12 +3905,37 @@ ${edgeViewEventIdCases}
 #endif
     }
 
-    int FBro_导航(const wchar_t* controlName, const wchar_t* address) {
+    int FBro_导航(const wchar_t* controlName, const std::wstring& address) {
 #if LINGBUILDER_FBRO_AVAILABLE
-        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_Navigate(instance->handle, address) : 0;
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_Navigate(instance->handle, address.c_str()) : 0;
 #else
         (void)controlName; (void)address; return 0;
 #endif
+    }
+    int FBro_打开谷歌原生UI浏览器(const wchar_t* controlName, const wchar_t* address) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance || !instance->handle) {
+            调试输出(L"FBro 打开谷歌原生UI浏览器失败：请先创建内嵌浏览器控件。");
+            return 0;
+        }
+        const std::wstring url = address && address[0] ? address : instance->url;
+        const LB_FBRO_HANDLE popup = LB_FBro_CreateChromeUi(instance->handle,
+            url.empty() ? L"about:blank" : url.c_str(), FBro_桥接事件, this);
+        if (!popup) {
+            调试输出(L"FBro 谷歌原生UI浏览器创建请求失败：内嵌浏览器可能尚未创建完成。");
+            return 0;
+        }
+        instance->chromeUiHandles.push_back(popup);
+        return 1;
+#else
+        (void)controlName; (void)address;
+        调试输出(L"FBro 不可用：无法创建谷歌原生UI浏览器。");
+        return 0;
+#endif
+    }
+    int FBro_打开谷歌原生UI浏览器(const wchar_t* controlName, const std::wstring& address) {
+        return FBro_打开谷歌原生UI浏览器(controlName, address.c_str());
     }
     int FBro_后退(const wchar_t* controlName) {
 #if LINGBUILDER_FBRO_AVAILABLE
@@ -4039,19 +4073,29 @@ ${edgeViewEventIdCases}
     }
     void FBro_关闭全部() {
 #if LINGBUILDER_FBRO_AVAILABLE
-        for (auto& item : fbroBrowsers_) if (item.second->handle) LB_FBro_Close(item.second->handle);
+        for (auto& item : fbroBrowsers_) {
+            for (LB_FBRO_HANDLE popup : item.second->chromeUiHandles) if (popup) LB_FBro_Close(popup);
+            if (item.second->handle) LB_FBro_Close(item.second->handle);
+        }
 #endif
         fbroBrowsers_.clear();
     }
     void FBro_处理事件包(const LingFbroEventPacket& packet) {
         for (auto& item : fbroBrowsers_) {
             FbroBrowserInstance& instance = *item.second;
-            if (instance.handle != packet.handle) continue;
+            const bool isEmbedded = instance.handle == packet.handle;
+            auto chromeUi = std::find(instance.chromeUiHandles.begin(), instance.chromeUiHandles.end(), packet.handle);
+            if (!isEmbedded && chromeUi == instance.chromeUiHandles.end()) continue;
+            if (!isEmbedded) {
+                if (packet.eventCode == 6) instance.lastError = packet.data;
+                if (packet.eventCode == 5) instance.chromeUiHandles.erase(chromeUi);
+                return;
+            }
             const ControlSpec* control = FindControl(instance.controlId);
             if (!control) return;
             const wchar_t* eventName = packet.eventCode == 1 ? L"Created" : packet.eventCode == 2 ? L"LoadEnd" :
                 packet.eventCode == 3 ? L"AddressChanged" : packet.eventCode == 4 ? L"TitleChanged" :
-                packet.eventCode == 5 ? L"Closed" : L"Error";
+                packet.eventCode == 5 ? L"Closed" : packet.eventCode == 7 ? L"BeforePopup" : L"Error";
             instance.lastEvent = eventName;
             if (packet.eventCode == 6) instance.lastError = packet.data;
             DispatchLingEvent(*control, eventName);
@@ -4200,6 +4244,43 @@ ${edgeViewEventIdCases}
 #endif
     }
 
+    int CEF3_打开原生UI浏览器(const wchar_t* controlName, const wchar_t* address) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance || !instance->created || !instance->browser) {
+            调试输出(L"CEF3 打开原生UI浏览器失败：请先创建内嵌浏览器控件。");
+            return 0;
+        }
+        std::wstring url = address && address[0] ? address : instance->currentUrl;
+        if (url.empty()) url = L"about:blank";
+        CefWindowInfo windowInfo = {};
+        // Chrome Runtime 不能复用 LingBuilder 主窗口 HWND，否则 Chrome UI 会覆盖到内嵌宿主中。
+        // 使用空父句柄和 WS_EX_APPWINDOW，强制 CEF 创建拥有独立根 HWND 的桌面顶层窗口。
+        windowInfo.SetAsPopup(nullptr, L"谷歌原生UI浏览器");
+        windowInfo.parent_window = nullptr;
+        windowInfo.ex_style |= WS_EX_APPWINDOW;
+        windowInfo.style &= ~WS_CHILD;
+        windowInfo.runtime_style = CEF_RUNTIME_STYLE_CHROME;
+        CefBrowserSettings browserSettings = {};
+        browserSettings.size = sizeof(browserSettings);
+        if (!instance->enableJs) browserSettings.javascript = STATE_DISABLED;
+        if (!instance->loadImages) browserSettings.image_loading = STATE_DISABLED;
+        if (!instance->enableWebGL) browserSettings.webgl = STATE_DISABLED;
+        CefRefPtr<CefClient> client = LingCreateCefClient(this, instance->controlId);
+        bool requested = CefBrowserHost::CreateBrowser(windowInfo, client, url, browserSettings, nullptr, nullptr);
+        if (!requested) 调试输出(L"CEF3 谷歌原生UI浏览器创建请求失败。");
+        return requested ? 1 : 0;
+#else
+        (void)controlName; (void)address;
+        调试输出(L"CEF3 不可用：无法创建谷歌原生UI浏览器。");
+        return 0;
+#endif
+    }
+
+    int CEF3_打开原生UI浏览器(const wchar_t* controlName, const std::wstring& address) {
+        return CEF3_打开原生UI浏览器(controlName, address.c_str());
+    }
+
     std::wstring CEF3_执行JS(const wchar_t* controlName, const wchar_t* script) {
 #if LINGBUILDER_CEF3_AVAILABLE
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
@@ -4284,6 +4365,10 @@ ${edgeViewEventIdCases}
             const ControlSpec* control = FindControl(it->second->controlId);
             bool match = !controlName || !controlName[0] || (control && TextEquals(control->name, controlName));
             if (match) {
+                for (auto& popup : it->second->popupBrowsers) {
+                    if (popup && popup->GetHost()) popup->GetHost()->CloseBrowser(true);
+                }
+                it->second->popupBrowsers.clear();
                 if (it->second->browser) it->second->browser->GetHost()->CloseBrowser(true);
                 it = cefBrowsers_.erase(it);
             } else ++it;
@@ -4439,6 +4524,10 @@ ${edgeViewEventIdCases}
     void CEF3_关闭全部() {
 #if LINGBUILDER_CEF3_AVAILABLE
         for (auto& item : cefBrowsers_) {
+            for (auto& popup : item.second->popupBrowsers) {
+                if (popup && popup->GetHost()) popup->GetHost()->CloseBrowser(true);
+            }
+            item.second->popupBrowsers.clear();
             if (item.second->browser) item.second->browser->GetHost()->CloseBrowser(true);
         }
         cefBrowsers_.clear();
@@ -4483,17 +4572,42 @@ ${edgeViewEventIdCases}
         CEF3_记录事件(instance, L"地址被改变", instance.currentUrl.c_str());
     }
 
-    void CEF3_通知关闭(int controlId) {
-        cefBrowsers_.erase(controlId);
+#if LINGBUILDER_CEF3_AVAILABLE
+    bool CEF3_是否主浏览器(int controlId, CefRefPtr<CefBrowser> browser) const {
+        auto found = cefBrowsers_.find(controlId);
+        return found != cefBrowsers_.end() && found->second->browser && browser
+            && found->second->browser->IsSame(browser);
     }
 
-#if LINGBUILDER_CEF3_AVAILABLE
+    void CEF3_通知关闭(int controlId, CefRefPtr<CefBrowser> browser) {
+        auto found = cefBrowsers_.find(controlId);
+        if (found == cefBrowsers_.end() || !browser) return;
+        CefBrowserInstance& instance = *found->second;
+        if (instance.browser && instance.browser->IsSame(browser)) {
+            instance.browser = nullptr;
+            instance.created = false;
+            return;
+        }
+        instance.popupBrowsers.erase(
+            std::remove_if(instance.popupBrowsers.begin(), instance.popupBrowsers.end(),
+                [&](const CefRefPtr<CefBrowser>& popup) { return popup && popup->IsSame(browser); }),
+            instance.popupBrowsers.end());
+    }
+
     void CEF3_通知已创建(int controlId, CefRefPtr<CefBrowser> browser) {
         auto found = cefBrowsers_.find(controlId);
-        if (found == cefBrowsers_.end()) return;
-        found->second->browser = browser;
-        if (found->second->muteAudio && browser && browser->GetHost()) browser->GetHost()->SetAudioMuted(true);
-        CEF3_调整全部大小();
+        if (found == cefBrowsers_.end() || !browser) return;
+        CefBrowserInstance& instance = *found->second;
+        bool isPrimary = !instance.browser;
+        if (isPrimary) {
+            instance.browser = browser;
+        } else if (!instance.browser->IsSame(browser)) {
+            bool alreadyTracked = std::any_of(instance.popupBrowsers.begin(), instance.popupBrowsers.end(),
+                [&](const CefRefPtr<CefBrowser>& popup) { return popup && popup->IsSame(browser); });
+            if (!alreadyTracked) instance.popupBrowsers.push_back(browser);
+        }
+        if (instance.muteAudio && browser->GetHost()) browser->GetHost()->SetAudioMuted(true);
+        if (isPrimary) CEF3_调整全部大小();
     }
 #endif
 
@@ -5741,6 +5855,21 @@ ${edgeViewEventIdCases}
             ShowWindow(runtime->hwnd, visible ? SW_SHOW : SW_HIDE);
         }
         return true;
+    }
+    bool 控件_设置位置大小(const wchar_t* controlName, int x, int y, int width, int height) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName);
+        if (!runtime || !runtime->hwnd) return false;
+        width = std::max(1, width);
+        height = std::max(1, height);
+        HWND target = runtime->frameHwnd ? runtime->frameHwnd : runtime->hwnd;
+        const BOOL moved = MoveWindow(target, x, y, width, height, TRUE);
+        const ControlSpec* control = FindControl(runtime->id);
+        if (control && IsType(*control, L"FBroBrowser")) FBro_调整全部大小();
+        if (control && IsType(*control, L"CefBrowser")) CEF3_调整全部大小();
+#if LINGBUILDER_EDGEVIEW_AVAILABLE
+        if (control && IsType(*control, L"EdgeBrowser")) EdgeView_调整全部大小();
+#endif
+        return moved != FALSE;
     }
     bool 控件_设置勾选(const wchar_t* controlName, bool checked) { RuntimeControl* runtime = FindRuntimeControlByName(controlName); if (!runtime) return false; SendMessageW(runtime->hwnd, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0); return true; }
     bool 控件_取勾选(const wchar_t* controlName) { RuntimeControl* runtime = FindRuntimeControlByName(controlName); return runtime && SendMessageW(runtime->hwnd, BM_GETCHECK, 0, 0) != BST_UNCHECKED; }
@@ -9699,7 +9828,7 @@ public:
     }
     void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
         Async(L"浏览器即将关闭", I(browser ? browser->GetIdentifier() : 0));
-        if (owner_) owner_->CEF3_通知关闭(controlId_);
+        if (owner_) owner_->CEF3_通知关闭(controlId_, browser);
     }
     bool OnBeforePopup(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, int popupId,
                        const CefString& targetUrl, const CefString& targetFrameName,
@@ -9721,23 +9850,31 @@ public:
         Async(L"开发者工具窗口打开前", L"");
     }
 
-    void OnLoadingStateChange(CefRefPtr<CefBrowser>, bool loading, bool canBack, bool canForward) override {
+    void OnLoadingStateChange(CefRefPtr<CefBrowser> browser, bool loading, bool canBack, bool canForward) override {
+        if (!IsPrimary(browser)) return;
         Async(L"加载状态改变", B(loading), {{L"loading", B(loading)}, {L"canGoBack", B(canBack)}, {L"canGoForward", B(canForward)}});
     }
-    void OnLoadStart(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, TransitionType transition) override {
+    void OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, TransitionType transition) override {
+        if (!IsPrimary(browser)) return;
         Async(L"开始加载", frame ? frame->GetURL().ToWString() : L"", FrameFields(frame, {{L"transition", I(transition)}}));
     }
-    void OnLoadEnd(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, int statusCode) override {
+    void OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int statusCode) override {
+        if (!IsPrimary(browser)) return;
         Async(L"加载完成", frame ? frame->GetURL().ToWString() : L"", FrameFields(frame, {{L"statusCode", I(statusCode)}}));
     }
-    void OnLoadError(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, ErrorCode code,
+    void OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, ErrorCode code,
                      const CefString& text, const CefString& failedUrl) override {
+        if (!IsPrimary(browser)) return;
         Async(L"加载失败", text.ToWString(), FrameFields(frame, {{L"errorCode", I(code)}, {L"errorText", text.ToWString()}, {L"url", failedUrl.ToWString()}}));
     }
-    void OnAddressChange(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, const CefString& url) override {
+    void OnAddressChange(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString& url) override {
+        if (!IsPrimary(browser)) return;
         Async(L"地址被改变", url.ToWString(), FrameFields(frame, {{L"url", url.ToWString()}}));
     }
-    void OnTitleChange(CefRefPtr<CefBrowser>, const CefString& title) override { Async(L"标题被改变", title.ToWString(), {{L"title", title.ToWString()}}); }
+    void OnTitleChange(CefRefPtr<CefBrowser> browser, const CefString& title) override {
+        if (!IsPrimary(browser)) return;
+        Async(L"标题被改变", title.ToWString(), {{L"title", title.ToWString()}});
+    }
     void OnFaviconURLChange(CefRefPtr<CefBrowser>, const std::vector<CefString>& urls) override {
         Async(L"网页图标地址改变", urls.empty() ? L"" : urls.front().ToWString(), {{L"count", I(urls.size())}, {L"url", urls.empty() ? L"" : urls.front().ToWString()}});
     }
@@ -10012,6 +10149,9 @@ public:
 
 private:
     using Fields = std::map<std::wstring, std::wstring>;
+    bool IsPrimary(CefRefPtr<CefBrowser> browser) const {
+        return !owner_ || owner_->CEF3_是否主浏览器(controlId_, browser);
+    }
     static std::wstring I(long long value) { return std::to_wstring(value); }
     static std::wstring B(bool value) { return value ? L"1" : L"0"; }
     static std::wstring D(double value) { std::wostringstream out; out << value; return out.str(); }

@@ -2,6 +2,10 @@
 
 ## FBro 浏览器生成规则
 
+- FBro 的“即将打开新窗口”事件必须由桥接层同步取消原生 popup，并把目标 URL 作为事件数据投递给 `.lcpp`。需要单窗口浏览时调用 `FBro_导航(控件名, FBro_取最近事件(控件名))`；需要谷歌原生 UI 时调用 `FBro_打开谷歌原生UI浏览器(控件名, FBro_取最近事件(控件名))`。不得依赖脚本 `window.open` 绕过受管生命周期。
+- `FBro_打开谷歌原生UI浏览器` 必须通过 `LingBuilderFbroBridge` 在 CEF UI 线程创建 `CEF_RUNTIME_STYLE_CHROME` 顶层窗口，调用方不传入或复用 LingBuilder 的 `HWND`：`parent_window` 与预置 `window` 均为空，使用 `WS_EX_APPWINDOW` 和 `WS_OVERLAPPEDWINDOW`。这里的“无窗口句柄”是指 API 不接收宿主句柄；Chrome Runtime 创建后仍会拥有由其自行管理的系统顶层 `HWND`。原生 UI 句柄必须与所属内嵌实例分开登记，并在主窗口关闭时一并关闭。
+- 浏览器式窗口的自适应布局应在窗口“大小被改变”事件中读取 `窗口_取事件宽度/高度`，再调用 `控件_设置位置大小(控件名, 横坐标, 纵坐标, 宽度, 高度)` 调整地址栏、导航按钮和浏览器宿主。浏览器宿主变化后必须同步刷新其内部浏览器子窗口大小。
+
 - FBro 模块 ID 固定为 `lingbuilder.fbro.browser`，设计器控件类型为 `FBroBrowser`。AI 可以把它放入可视化窗口，但必须让每个实例保留独立宿主 `HWND`、控件 ID 和 profile/cache 目录。
 - FBro 只支持 Windows、MSVC、x64；启用它时应切换并锁定 x64。它与 `lingbuilder.cef3.browser` 以及任何携带其它版本 `libcef.dll` 的模块互斥，不得建议用户绕过生成前诊断或把两个 CEF 运行时复制到同一 exe 目录。
 - 生成程序只能调用 `LingBuilderFbroBridge` C ABI；不得让用户项目直接持有 `CefRefPtr`、FBro C++ 对象、STL ABI 或桥接层分配的裸指针。
@@ -10,6 +14,8 @@
 - FBro 的 SDK/运行时由统一原生依赖服务物化；AI Bridge 构建与导出不得另写复制旁路，也不得压平 `locales/` 等目录。
 - SDK、桥接 DLL、导入库、运行时清单或哈希校验失败时必须在生成/编译前阻断，不能把缺少 `LingBuilderFbroBridge.h` 的 `__has_include` 降级结果当作可运行浏览器。工作区根目录必须从 `.lingbuilder-build` 标记目录定位，不能假定构建配置只有固定层级；可复制 VS 导出必须包含完整 FBro runtime 与增量脚本。
 - FBro 浏览器只能由桥接层在 CEF UI 线程创建，已就绪实例必须通过 `CefPostTask(TID_UI, ...)` 投递，不能从生成窗口的 Win32 主线程直接调用 `FBroHsCreate`。每控件 profile 必须映射为 `.fbro-global-cache` 的直接子目录；不得生成会触发 `cache_path`、`root_cache_path` 或 `Cannot create profile` 的兄弟目录/多层目录后接受内存模式降级。
+- FBro 宿主窗口的 `WM_SIZE` 处理不得阻塞等待 CEF 创建锁；锁被占用时应跳过本次内部调整。调整浏览器尺寸只能移动宿主的直接子 `HWND`，禁止用 `EnumChildWindows` 递归移动 Chromium 内部后代窗口。
+- FBro 导航栏随窗口缩放时，后退、前进、刷新、地址栏、导航按钮和浏览器宿主必须在同一个大小改变事件内统一使用 `窗口_取事件DPI()` 换算坐标与尺寸，不得混用初始 DPI 缩放坐标和未缩放的固定像素。
 
 ## new_emoji 控件属性与事件规则
 
@@ -197,6 +203,8 @@ AI 必须遵守：
 - 已启用 `CEF3浏览器模块`（模块 ID：`lingbuilder.cef3.browser`）时，设计器工具箱会新增 `CEF3浏览器 (CefBrowser)` 控件；可在任意窗口添加多个实例，属性面板可设置打开地址 `url`、缓存目录 `cacheDir`、User-Agent、JavaScript/图片/WebGL 开关和代理。除原有导航、JS、前进后退、状态和事件绑定命令外，可用 `CEF3_取事件字段` 读取复杂事件字段，用 `CEF3_设置事件结果` 和 `CEF3_设置事件返回文本` 响应同步决策事件。
 - CEF3 是单进程浏览器框架：同一 exe 内全部 CEF3 控件共享同一 Chromium 进程与缓存，属性面板 `cacheDir` 以第一个 CEF3 控件的配置作为全局缓存目录。AI 不得声称 CEF3 多控件能像 EdgeView 那样每实例隔离登录态；需要会话隔离时应建议使用 `lingbuilder.edgeview`。`CEF3_设置缓存目录`/`CEF3_设置代理` 需在创建前调用，创建后调用无效。
 - CEF3 使用集中式 92 项 CEF 150 浏览器回调目录，覆盖生命周期、加载显示、菜单/对话框、输入焦点、下载、权限安全、网络资源、Cookie、音频打印、框架和渲染进程状态；可通过设计器事件面板或 `CEF3_绑定事件` 绑定到无参数中文事件/方法。同步决策结果固定为 `0=默认、1=允许/继续、2=拒绝/取消、3=已处理`。AI 必须先通过 `CEF3_取事件字段` 读取上下文，不得编造带参数事件签名、DOM 同步回调或绕过线程桥的原生回调代码。
+- CEF3 的“新窗口打开前”事件返回 `1` 或保持默认时，允许 CEF 创建独立原生 popup 浏览器；返回 `2` 时拒绝，返回 `3` 时表示 LCPP 已自行接管。允许 popup 时，生成运行时必须把主内嵌浏览器与 popup 分开跟踪：popup 的创建、地址变化和关闭不得覆盖主浏览器句柄、地址栏状态或前进后退目标，关闭主窗口/控件时必须同时关闭其全部 popup。需要主动创建带 Chrome 地址栏和完整浏览器界面的顶层窗口时，必须调用 `CEF3_打开原生UI浏览器(控件名, 地址)`；该命令显式使用 `CEF_RUNTIME_STYLE_CHROME`、空父句柄和独立桌面顶层 HWND，不能把 LingBuilder 主窗口 `HWND` 传给 Chrome Runtime，否则原生 UI 会覆盖进内嵌宿主。不能用可能被拦截的脚本 `window.open`，也不得另造不受管理的裸 `CefBrowser`。
+- CEF3 双形态实现不得混用宿主参数：内嵌控件固定使用 `SetAsChild(控件宿主HWND, CefRect)`；谷歌原生 UI 固定使用 `SetAsPopup(nullptr, ...)`、`parent_window=nullptr`、`WS_EX_APPWINDOW`、移除 `WS_CHILD` 和 `CEF_RUNTIME_STYLE_CHROME`。后续修改生成器时必须保留覆盖这些参数以及 popup/主浏览器隔离的回归测试。2026-07-28 已实机确认正确结果是两个可独立移动和缩放的桌面窗口，而不是 Chrome UI 覆盖在 LingBuilder 主窗口客户区。
 - 构建 CEF3 项目提示缺少 SDK 时，AI 应优先建议安装 CEF3 内核 SDK 离线模块包（模块 ID `lingbuilder.cef3.sdk`，含预编译 wrapper，免下载免编译，安装即生效、无需为项目启用）；其次才是手动下载 CEF 官方包到 `.lingbuilder/cef3-sdk` 或 `C:\cef3-sdk`。AI 不得声称只复制 `libcef.dll` 就能升级或修复 CEF3 内核：头文件、`.lib`、DLL 与资源必须同版本整体替换。
 - CEF 150 原生工程必须使用 C++20 和动态 CRT `/MD`；F5、AI Bridge 与导出的 Visual Studio 四组配置必须消费同一原生依赖计划。使用预编译 `/MD` wrapper 的 Debug 项目仍生成调试信息，但必须使用 `NDEBUG`，不能同时定义 `_DEBUG` 造成 Debug/Release CRT 混链。遇到 `<concepts>` STL4038 或 `convertible_to` C2061 时应重新生成工程以刷新 `stdcpp20`，不得修改 CEF SDK 头文件规避。
 - 当前随附 CEF 150 SDK 仅支持 x64。项目启用 CEF3 时 IDE 应自动切换为 x64，构建前必须再次校正，不得用 Win32 尝试链接 x64 CEF；如用户明确需要 32 位，应说明当前需要另行制作并验证完整的 32 位 SDK 包。

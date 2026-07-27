@@ -141,7 +141,7 @@ import {
   selectAndImportDesignerImage,
   type DesignerImageImportResult
 } from './services/windowDesigner/designerAssetClient';
-import { sourceControlService } from './services/lingCpp/sourceControlService';
+import { sourceControlService, type SourceControlMutation } from './services/lingCpp/sourceControlService';
 import { applyProjectFileDelete, applyProjectFileRename } from './services/workspace/projectFileState';
 import {
   applyWorkspaceReplace,
@@ -199,14 +199,22 @@ import {
   buildSolution,
   cleanSolution,
   configureSolutionProject,
+  createSolutionFolder,
   importSolutionProject,
   createSolutionProject,
   deleteSolutionProject,
   fetchSolution,
   getSolutionProjectDirectory,
+  moveSolutionProject,
+  renameSolutionProject,
   rebuildSolution,
   setStartupProject
 } from './services/solution/solutionClient';
+import {
+  CREATE_SOLUTION_FOLDER_COMMAND,
+  MOVE_PROJECT_TO_SOLUTION_FOLDER_COMMAND,
+  RENAME_SOLUTION_PROJECT_COMMAND
+} from './services/solution/solutionExplorerMenu';
 import {
   createInactiveTextEditorStatus,
   disposeWorkbenchTextModelsForSource,
@@ -295,9 +303,16 @@ const getEditorOperationLabel = (operation: EditorOperation | null) => {
 const DEFAULT_EDITOR_FONT_SIZE = 13;
 const MIN_EDITOR_FONT_SIZE = 10;
 const MAX_EDITOR_FONT_SIZE = 24;
+const DEFAULT_LEFT_SIDEBAR_WIDTH = 264;
+const MIN_LEFT_SIDEBAR_WIDTH = 160;
+const MAX_LEFT_SIDEBAR_WIDTH = 600;
 
 const clampEditorFontSize = (value: number) => {
   return Math.max(MIN_EDITOR_FONT_SIZE, Math.min(MAX_EDITOR_FONT_SIZE, Math.round(value)));
+};
+
+const clampLeftSidebarWidth = (value: number) => {
+  return Math.max(MIN_LEFT_SIDEBAR_WIDTH, Math.min(MAX_LEFT_SIDEBAR_WIDTH, Math.round(value)));
 };
 
 const getInitialEditorFontSize = () => {
@@ -1034,6 +1049,12 @@ export default function App() {
   const [createProjectName, setCreateProjectName] = useState('');
   const [createProjectError, setCreateProjectError] = useState('');
   const [isCreatingSolutionProject, setIsCreatingSolutionProject] = useState(false);
+  const [solutionNameOperation, setSolutionNameOperation] = useState<
+    { kind: 'create-folder' } | { kind: 'rename-project'; projectId: string } | null
+  >(null);
+  const [solutionNameValue, setSolutionNameValue] = useState('');
+  const [solutionNameError, setSolutionNameError] = useState('');
+  const [isSubmittingSolutionName, setIsSubmittingSolutionName] = useState(false);
   const [workspaceSearchMode, setWorkspaceSearchMode] = useState<'search' | 'replace' | null>(null);
   const pendingWorkspaceSearchRevealRef = useRef<WorkspaceSearchMatch | null>(null);
   const workspaceReplacePreviewRef = useRef(new Map<string, OwnedWorkspaceReplacePreview>());
@@ -1325,6 +1346,7 @@ export default function App() {
     const nextAutoSaveDelay = readValue('files.autoSaveDelay');
     const colorTheme = readValue('workbench.colorTheme');
     const sidebarVisible = readValue('workbench.sidebar.visible');
+    const sidebarWidth = readValue('workbench.sidebar.width');
     const panelVisible = readValue('workbench.panel.visible');
     const aiPanelVisible = readValue('workbench.aiPanel.visible');
     const shortcuts = readValue('keyboard.shortcuts');
@@ -1337,6 +1359,7 @@ export default function App() {
     if (typeof nextAutoSaveDelay === 'number') setAutoSaveDelay(nextAutoSaveDelay);
     if (colorTheme === 'dark' || colorTheme === 'light') setIsDarkMode(colorTheme === 'dark');
     if (typeof sidebarVisible === 'boolean') setShowLeftSidebar(sidebarVisible);
+    if (typeof sidebarWidth === 'number') setLeftWidth(clampLeftSidebarWidth(sidebarWidth));
     if (typeof panelVisible === 'boolean') setShowBottomPanel(panelVisible);
     if (typeof aiPanelVisible === 'boolean') setShowRightPanel(aiPanelVisible);
     setShortcutOverrides(isStringRecord(shortcuts) ? shortcuts : {});
@@ -1530,25 +1553,36 @@ export default function App() {
   }, []);
 
   // Resizable sidebars state
-  const [leftWidth, setLeftWidth] = useState(264);
+  const [leftWidth, setLeftWidth] = useState(DEFAULT_LEFT_SIDEBAR_WIDTH);
   const [rightWidth, setRightWidth] = useState(320);
   const [bottomHeight, setBottomHeight] = useState(260);
 
   const startResizeLeft = (e: React.MouseEvent) => {
     e.preventDefault();
+    let resizedWidth = leftWidth;
+    let didResize = false;
     const handleMouseMove = (moveEvent: MouseEvent) => {
       // Activity bar is 48px (w-12). Drawer is clientX - 48.
-      const newWidth = Math.max(160, Math.min(600, moveEvent.clientX - 48));
-      setLeftWidth(newWidth);
+      resizedWidth = clampLeftSidebarWidth(moveEvent.clientX - 48);
+      didResize = true;
+      setLeftWidth(resizedWidth);
     };
 
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      if (didResize) {
+        void configurationMutationRef.current('workbench.sidebar.width', resizedWidth, 'user');
+      }
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const resetLeftSidebarWidth = () => {
+    setLeftWidth(DEFAULT_LEFT_SIDEBAR_WIDTH);
+    void configurationMutationRef.current('workbench.sidebar.width', DEFAULT_LEFT_SIDEBAR_WIDTH, 'user');
   };
 
   const startResizeRight = (e: React.MouseEvent) => {
@@ -3801,6 +3835,85 @@ void DisplayStatus() {
     }
   }, [createProjectName, handleCreateSolutionProject, isCreatingSolutionProject]);
 
+  const handleCreateSolutionFolder = useCallback((): boolean => {
+    const suggestedName = `解决方案文件夹${(solution.folders?.length || 0) + 1}`;
+    setSolutionNameOperation({ kind: 'create-folder' });
+    setSolutionNameValue(suggestedName);
+    setSolutionNameError('');
+    return true;
+  }, [solution.folders]);
+
+  const handleMoveProjectToSolutionFolder = useCallback(async (
+    projectId: string,
+    solutionFolderId: string | null
+  ): Promise<boolean> => {
+    const project = solution.projects.find(item => item.id === projectId);
+    if (!project) return false;
+    if ((project.solutionFolderId || null) === solutionFolderId) return true;
+    const folder = solutionFolderId ? solution.folders?.find(item => item.id === solutionFolderId) : undefined;
+    if (solutionFolderId && !folder) return false;
+    const result = await moveSolutionProject(projectId, solutionFolderId);
+    appendSolutionLogs('移动解决方案项目', {
+      ...result,
+      logs: result.ok
+        ? [`已将项目“${project.name}”移动到${folder ? `解决方案文件夹“${folder.name}”` : '解决方案根节点'}。`]
+        : result.logs
+    });
+    if (result.solution) setSolution(result.solution);
+    return result.ok;
+  }, [appendSolutionLogs, solution.folders, solution.projects]);
+
+  const handleRenameSolutionProject = useCallback((projectId: string): boolean => {
+    const project = solution.projects.find(item => item.id === projectId);
+    if (!project) return false;
+    setSolutionNameOperation({ kind: 'rename-project', projectId });
+    setSolutionNameValue(project.name);
+    setSolutionNameError('');
+    return true;
+  }, [solution.projects]);
+
+  const submitSolutionNameOperation = useCallback(async (): Promise<void> => {
+    if (!solutionNameOperation || isSubmittingSolutionName) return;
+    const name = solutionNameValue.trim();
+    if (!name) {
+      setSolutionNameError(solutionNameOperation.kind === 'create-folder' ? '解决方案文件夹名称不能为空。' : '项目名称不能为空。');
+      return;
+    }
+    setIsSubmittingSolutionName(true);
+    setSolutionNameError('');
+    try {
+      if (solutionNameOperation.kind === 'create-folder') {
+        const result = await createSolutionFolder(name);
+        appendSolutionLogs('新建解决方案文件夹', result);
+        if (!result.ok) {
+          setSolutionNameError(result.error || '新建解决方案文件夹失败。');
+          return;
+        }
+        if (result.solution) setSolution(result.solution);
+      } else {
+        const project = solution.projects.find(item => item.id === solutionNameOperation.projectId);
+        if (!project) {
+          setSolutionNameError('要重命名的项目已不在当前解决方案中。');
+          return;
+        }
+        const result = await renameSolutionProject(project.id, name);
+        appendSolutionLogs('重命名项目', {
+          ...result,
+          logs: result.ok ? [`项目“${project.name}”已重命名为“${name}”。项目 ID 和磁盘路径保持不变。`] : result.logs
+        });
+        if (!result.ok) {
+          setSolutionNameError(result.error || '重命名项目失败。');
+          return;
+        }
+        if (result.solution) setSolution(result.solution);
+      }
+      setSolutionNameOperation(null);
+      setSolutionNameValue('');
+    } finally {
+      setIsSubmittingSolutionName(false);
+    }
+  }, [appendSolutionLogs, isSubmittingSolutionName, solution.projects, solutionNameOperation, solutionNameValue]);
+
   const handleSetStartupProject = useCallback(async (projectId: string) => {
     if (isProjectFileLoadPending(activeProjectId, loadedProjectId, projectFileLoadState)) {
       appendEditorTransactionLog('【切换项目】当前项目文件仍在载入，请稍后再切换。');
@@ -4126,11 +4239,35 @@ void DisplayStatus() {
       window.dispatchEvent(new CustomEvent('lingbuilder-open-git-changes'));
       return true;
     },
+    gitExecute: async (requestedOperation?: unknown, requestedPayload?: unknown) => {
+      if (typeof requestedOperation !== 'string') {
+        window.dispatchEvent(new CustomEvent('lingbuilder-open-git-changes'));
+        return true;
+      }
+      const payload = requestedPayload && typeof requestedPayload === 'object'
+        ? requestedPayload as Record<string, unknown>
+        : {};
+      const result = await sourceControlService.execute(requestedOperation as SourceControlMutation, payload);
+      await refreshSourceControlStatus();
+      return result;
+    },
     toggleSidebar: toggleSidebarVisibility,
     togglePanel: toggleBottomPanelVisibility,
     toggleAiPanel: toggleAiPanelVisibility,
     toggleTheme: toggleWorkbenchTheme,
     createProject: openCreateSolutionProjectDialog,
+    createSolutionFolder: handleCreateSolutionFolder,
+    moveProjectToSolutionFolder: (requestedProjectId?: unknown, requestedFolderId?: unknown) => {
+      const projectId = typeof requestedProjectId === 'string' ? requestedProjectId.trim() : '';
+      const folderId = typeof requestedFolderId === 'string' && requestedFolderId.trim() ? requestedFolderId.trim() : null;
+      return projectId ? handleMoveProjectToSolutionFolder(projectId, folderId) : false;
+    },
+    renameSolutionProject: (requestedProjectId?: unknown) => {
+      const projectId = typeof requestedProjectId === 'string' && requestedProjectId.trim()
+        ? requestedProjectId.trim()
+        : activeProjectId;
+      return projectId ? handleRenameSolutionProject(projectId) : false;
+    },
     addProjectResource: (requestedProjectId?: unknown) => {
       const projectId = typeof requestedProjectId === 'string' && requestedProjectId.trim()
         ? requestedProjectId.trim()
@@ -4159,6 +4296,7 @@ void DisplayStatus() {
     || showHelpCenter
     || showCustomModal
     || showCreateProjectDialog
+    || Boolean(solutionNameOperation)
     || showEnvironmentRepairCenter
     || showCliGuide
     || Boolean(pendingDesignerEventEdit)
@@ -4431,6 +4569,36 @@ void DisplayStatus() {
         handler: () => workbenchCommandHandlersRef.current.createProject()
       },
       {
+        id: CREATE_SOLUTION_FOLDER_COMMAND,
+        title: '新建解决方案文件夹',
+        aliases: ['Create Solution Folder', 'New Solution Folder'],
+        category: '解决方案',
+        description: '创建只用于整理项目的逻辑文件夹，不移动磁盘文件。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 13,
+        handler: () => workbenchCommandHandlersRef.current.createSolutionFolder()
+      },
+      {
+        id: MOVE_PROJECT_TO_SOLUTION_FOLDER_COMMAND,
+        title: '移动项目到解决方案文件夹',
+        aliases: ['Move Project to Solution Folder'],
+        category: '解决方案',
+        description: '更新项目的解决方案逻辑分组，不改变项目磁盘路径。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 14,
+        handler: (_context, projectId, folderId) => workbenchCommandHandlersRef.current.moveProjectToSolutionFolder(projectId, folderId)
+      },
+      {
+        id: RENAME_SOLUTION_PROJECT_COMMAND,
+        title: '重命名项目',
+        aliases: ['Rename Project'],
+        category: '解决方案',
+        description: '修改项目显示名称，保留项目 ID、磁盘目录、源码路径、引用和构建配置。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 15,
+        handler: (_context, projectId) => workbenchCommandHandlersRef.current.renameSolutionProject(projectId)
+      },
+      {
         id: 'workbench.action.project.addImageResource',
         title: '项目：添加图片资源',
         aliases: ['Add Image Resource', 'Add Project Resource', 'Import Image'],
@@ -4581,6 +4749,16 @@ void DisplayStatus() {
         handler: () => workbenchCommandHandlersRef.current.openGitChanges()
       },
       {
+        id: 'workbench.action.git.execute',
+        title: 'Git：执行源代码管理操作',
+        aliases: ['Git Execute', 'Source Control Action'],
+        category: 'Git',
+        description: '由 Git 更改视图统一执行暂存、提交、分支、远程、冲突和恢复操作；直接运行时打开 Git 更改视图。',
+        when: '!workbench.modalOpen',
+        order: 33,
+        handler: (_context, operation, payload) => workbenchCommandHandlersRef.current.gitExecute(operation, payload)
+      },
+      {
         id: 'workbench.action.toggleSidebar',
         title: '切换侧边栏可见性',
         aliases: ['Toggle Sidebar'],
@@ -4713,6 +4891,15 @@ void DisplayStatus() {
       return false;
     }
   }, []);
+
+  const executeSourceControlCommand = useCallback(async (operation: SourceControlMutation, payload: Record<string, unknown> = {}): Promise<unknown> => (
+    await commandServiceRef.current.executeCommand(
+      'workbench.action.git.execute',
+      commandContextRef.current,
+      operation,
+      payload
+    )
+  ), []);
 
   const handleAddProjectResource = useCallback(async (projectId: string): Promise<DesignerImageImportResult> => {
     try {
@@ -5704,7 +5891,10 @@ void DisplayStatus() {
           onRenameFile={handleRenameFile}
           sourceControlStatus={sourceControlStatus}
           onSourceControlChanged={refreshSourceControlStatus}
+          onExecuteSourceControlCommand={executeSourceControlCommand}
           solution={solution}
+          commandService={commandServiceRef.current}
+          onExecuteCommand={executeWorkbenchCommand}
           activeProjectId={activeProjectId}
           onRefreshSolution={refreshSolution}
           onCreateProject={openCreateSolutionProjectDialog}
@@ -5739,7 +5929,7 @@ void DisplayStatus() {
           }`}
           onMouseDown={showLeftSidebar ? startResizeLeft : undefined}
           title={showLeftSidebar ? "拖拽两侧边缘调整宽度 / 双击重置 / 点击按钮折叠" : "点击展开左侧解决方案资源管理器"}
-          onDoubleClick={showLeftSidebar ? () => setLeftWidth(264) : undefined}
+          onDoubleClick={showLeftSidebar ? resetLeftSidebarWidth : undefined}
           onClick={showLeftSidebar ? undefined : toggleSidebarVisibility}
         >
           {/* Thin line indicator */}
@@ -6094,6 +6284,34 @@ void DisplayStatus() {
         onConfirm={submitCreateSolutionProject}
         onClose={() => {
           if (!isCreatingSolutionProject) setShowCreateProjectDialog(false);
+        }}
+      />
+
+      <ProjectNameDialog
+        open={Boolean(solutionNameOperation)}
+        value={solutionNameValue}
+        isDarkMode={isDarkMode}
+        busy={isSubmittingSolutionName}
+        error={solutionNameError || undefined}
+        title={solutionNameOperation?.kind === 'rename-project' ? '重命名项目' : '新建解决方案文件夹'}
+        description={solutionNameOperation?.kind === 'rename-project'
+          ? '只修改项目显示名称；项目 ID、磁盘目录、源码路径、引用和构建配置保持不变。'
+          : '创建用于整理项目的逻辑文件夹，不会在磁盘上新建目录或移动项目文件。'}
+        label={solutionNameOperation?.kind === 'rename-project' ? '新的项目名称' : '文件夹名称'}
+        confirmLabel={solutionNameOperation?.kind === 'rename-project' ? '确认重命名' : '创建文件夹'}
+        busyLabel={solutionNameOperation?.kind === 'rename-project' ? '正在重命名…' : '正在创建…'}
+        dialogId="solution-name-dialog-title"
+        inputId="solution-name-input"
+        onChange={value => {
+          setSolutionNameValue(value);
+          if (solutionNameError) setSolutionNameError('');
+        }}
+        onConfirm={submitSolutionNameOperation}
+        onClose={() => {
+          if (isSubmittingSolutionName) return;
+          setSolutionNameOperation(null);
+          setSolutionNameValue('');
+          setSolutionNameError('');
         }}
       />
 

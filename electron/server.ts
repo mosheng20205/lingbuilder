@@ -854,6 +854,14 @@ app.post("/api/solution/projects", async (req, res) => {
     res.status(500).json({ ok: false, error: error?.message || "新建项目失败" });
   }
 });
+app.post("/api/solution/folders", async (req, res) => {
+  try {
+    const result = await getSolutionService().createFolder(req.body || {});
+    res.json({ ok: true, ...result, logs: [`已新建解决方案文件夹：${result.folder.name}`] });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "新建解决方案文件夹失败" });
+  }
+});
 app.post("/api/solution/import", async (req, res) => {
   try {
     if (!isNonEmptyString(req.body?.projectFile)) return res.status(400).json({ ok: false, error: "缺少要导入的工程路径。" });
@@ -867,7 +875,7 @@ app.patch("/api/solution/projects/:projectId", async (req, res) => {
     const solution = await getSolutionService().updateProject(req.params.projectId, req.body || {});
     res.json({ ok: true, solution });
   } catch (error: any) {
-    res.status(/循环|不存在|不能引用/iu.test(error?.message || "") ? 400 : 500).json({ ok: false, error: error?.message || "更新项目失败" });
+    res.status(/循环|不存在|不能引用|名称|已存在|不能为空|超过/iu.test(error?.message || "") ? 400 : 500).json({ ok: false, error: error?.message || "更新项目失败" });
   }
 });
 
@@ -2982,9 +2990,12 @@ app.post("/api/window-designer/function-libraries/copy", async (req, res) => {
 app.get("/api/source-control/status", async (_req, res) => {
   res.json(await gitService.status());
 });
+app.post("/api/source-control/init", async (req, res) => sourceControlAction(res, () => gitService.init(req.body?.defaultBranch)));
 app.post("/api/source-control/stage", async (req, res) => sourceControlAction(res, () => gitService.stage(req.body?.paths)));
 app.post("/api/source-control/unstage", async (req, res) => sourceControlAction(res, () => gitService.unstage(req.body?.paths)));
+app.post("/api/source-control/discard", async (req, res) => sourceControlAction(res, () => gitService.discard(req.body?.paths)));
 app.post("/api/source-control/commit", async (req, res) => sourceControlAction(res, () => gitService.commit(req.body?.message)));
+app.get("/api/source-control/diff", async (req, res) => sourceControlAction(res, () => gitService.diff(String(req.query.path || ""), String(req.query.staged || "") === "true")));
 app.get("/api/source-control/branches", async (_req, res) => sourceControlAction(res, () => gitService.branches()));
 app.post("/api/source-control/branches", async (req, res) => sourceControlAction(res, () => gitService.createBranch(req.body?.name, req.body?.checkout !== false)));
 app.post("/api/source-control/branches/checkout", async (req, res) => sourceControlAction(res, () => gitService.checkoutBranch(req.body?.name)));
@@ -2992,6 +3003,9 @@ app.delete("/api/source-control/branches/:name", async (req, res) => sourceContr
 app.get("/api/source-control/history", async (req, res) => sourceControlAction(res, () => gitService.history(Number(req.query.limit || 50), Number(req.query.skip || 0))));
 app.get("/api/source-control/blame", async (req, res) => sourceControlAction(res, () => gitService.blame(String(req.query.path || ""), Number(req.query.startLine || 1), Number(req.query.endLine || req.query.startLine || 1))));
 app.get("/api/source-control/remotes", async (_req, res) => sourceControlAction(res, () => gitService.remotes()));
+app.post("/api/source-control/remotes", async (req, res) => sourceControlAction(res, () => gitService.addRemote(req.body?.name, req.body?.url)));
+app.put("/api/source-control/remotes/:name", async (req, res) => sourceControlAction(res, () => gitService.setRemoteUrl(req.params.name, req.body?.url)));
+app.delete("/api/source-control/remotes/:name", async (req, res) => sourceControlAction(res, () => gitService.removeRemote(req.params.name)));
 app.post("/api/source-control/fetch", async (req, res) => sourceControlAction(res, () => gitService.fetch(req.body?.remote)));
 app.post("/api/source-control/pull", async (req, res) => sourceControlAction(res, () => gitService.pull(req.body?.remote, req.body?.branch, req.body?.strategy)));
 app.post("/api/source-control/push", async (req, res) => sourceControlAction(res, () => gitService.push(req.body?.remote, req.body?.branch, Boolean(req.body?.setUpstream))));

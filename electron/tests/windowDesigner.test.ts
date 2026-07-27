@@ -769,6 +769,8 @@ test('父容器的可见和启用状态由所有后代继承', () => {
   assert.match(cpp, /CF_HIDDEN = 1u << 29/u);
   assert.match(cpp, /if \(control\.flags & CF_HIDDEN\) frameStyle &= ~WS_VISIBLE/u);
   assert.match(cpp, /bool 控件_设置可见\(const wchar_t\* controlName, bool visible\)/u);
+  assert.match(cpp, /bool 控件_设置位置大小\(const wchar_t\* controlName, int x, int y, int width, int height\)/u);
+  assert.match(cpp, /MoveWindow\(target, x, y, width, height, TRUE\)/u);
   assert.match(cpp, /ShowWindow\(runtime->frameHwnd, visible \? SW_SHOW : SW_HIDE\);\s*ShowWindow\(runtime->hwnd, visible \? SW_SHOW : SW_HIDE\)/u);
   assert.match(cpp, /L"Button", L"disabled-button"[^\n]+false/u);
 });

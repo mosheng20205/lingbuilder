@@ -4,12 +4,15 @@ import path from 'node:path';
 export const LINGBUILDER_SOLUTION_EXTENSION = '.lbsln';
 export const LINGBUILDER_SOLUTION_KIND = 'lingbuilder-solution';
 export const INTERNAL_SOLUTION_PATH = '.lingbuilder/solution.json';
+let solutionEntryWriteSerial = 0;
+const solutionEntryWriteQueues = new Map<string, Promise<void>>();
 
 interface SolutionEntrySource {
   id: string;
   name: string;
   startupProjectId: string;
   startupProjectIds: string[];
+  folders?: Array<{ id: string; name: string }>;
   projects: Array<{
     id: string;
     name: string;
@@ -17,6 +20,7 @@ interface SolutionEntrySource {
     sourceRoot: string;
     projectFile?: string;
     references?: string[];
+    solutionFolderId?: string;
   }>;
 }
 
@@ -28,6 +32,7 @@ export interface LingBuilderSolutionEntry {
   solutionFile: typeof INTERNAL_SOLUTION_PATH;
   startupProjectId: string;
   startupProjectIds: string[];
+  folders: Array<{ id: string; name: string }>;
   projects: Array<{
     id: string;
     name: string;
@@ -35,6 +40,7 @@ export interface LingBuilderSolutionEntry {
     sourceRoot: string;
     projectFile?: string;
     references: string[];
+    solutionFolderId?: string;
   }>;
 }
 
@@ -47,12 +53,14 @@ export function createSolutionEntry(solution: SolutionEntrySource): LingBuilderS
     solutionFile: INTERNAL_SOLUTION_PATH,
     startupProjectId: solution.startupProjectId,
     startupProjectIds: [...solution.startupProjectIds],
+    folders: (solution.folders || []).map(folder => ({ ...folder })),
     projects: solution.projects.map(project => ({
       id: project.id,
       name: project.name,
       type: project.type,
       sourceRoot: project.sourceRoot,
       ...(project.projectFile ? { projectFile: project.projectFile } : {}),
+      ...(project.solutionFolderId ? { solutionFolderId: project.solutionFolderId } : {}),
       references: [...(project.references || [])]
     }))
   };
@@ -80,14 +88,16 @@ export async function findSolutionEntryPath(workspaceRoot: string, solutionName:
 export async function writeSolutionEntry(workspaceRoot: string, solution: SolutionEntrySource): Promise<string> {
   const targetPath = await findSolutionEntryPath(workspaceRoot, solution.name);
   const content = `${JSON.stringify(createSolutionEntry(solution), null, 2)}\n`;
-  try {
-    if (await fs.readFile(targetPath, 'utf8') === content) return targetPath;
-  } catch {
-    // Missing files are created below.
-  }
-  const temporaryPath = `${targetPath}.${process.pid}.tmp`;
-  await fs.writeFile(temporaryPath, content, 'utf8');
-  await fs.rename(temporaryPath, targetPath);
+  await enqueueSolutionEntryWrite(targetPath, async () => {
+    try {
+      if (await fs.readFile(targetPath, 'utf8') === content) return;
+    } catch {
+      // Missing files are created below.
+    }
+    const temporaryPath = `${targetPath}.${process.pid}.${++solutionEntryWriteSerial}.tmp`;
+    await fs.writeFile(temporaryPath, content, 'utf8');
+    await fs.rename(temporaryPath, targetPath);
+  });
   return targetPath;
 }
 
@@ -114,4 +124,15 @@ function safeSolutionFileName(value: string): string {
 
 async function exists(targetPath: string): Promise<boolean> {
   try { await fs.access(targetPath); return true; } catch { return false; }
+}
+
+async function enqueueSolutionEntryWrite(targetPath: string, write: () => Promise<void>): Promise<void> {
+  const previous = solutionEntryWriteQueues.get(targetPath) || Promise.resolve();
+  const pending = previous.catch(() => undefined).then(write);
+  solutionEntryWriteQueues.set(targetPath, pending);
+  try {
+    await pending;
+  } finally {
+    if (solutionEntryWriteQueues.get(targetPath) === pending) solutionEntryWriteQueues.delete(targetPath);
+  }
 }

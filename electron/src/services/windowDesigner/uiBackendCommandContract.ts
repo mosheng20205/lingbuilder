@@ -56,6 +56,7 @@ export const NEW_EMOJI_WIN32_BASIC_COMMANDS = new Set([
   '控件_取文本',
   '控件_设置启用',
   '控件_设置可见',
+  '控件_设置位置大小',
   '控件_设置勾选',
   '控件_取勾选',
   '控件_设置数值',

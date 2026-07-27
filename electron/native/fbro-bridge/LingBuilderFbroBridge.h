@@ -20,7 +20,8 @@ enum LB_FBRO_EVENT_CODE {
   LB_FBRO_EVENT_ADDRESS_CHANGED = 3,
   LB_FBRO_EVENT_TITLE_CHANGED = 4,
   LB_FBRO_EVENT_CLOSED = 5,
-  LB_FBRO_EVENT_ERROR = 6
+  LB_FBRO_EVENT_ERROR = 6,
+  LB_FBRO_EVENT_BEFORE_POPUP = 7
 };
 
 LB_FBRO_API int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory);
@@ -34,6 +35,10 @@ LB_FBRO_API LB_FBRO_HANDLE __stdcall LB_FBro_CreateEx(HWND host, const wchar_t* 
                                                       const wchar_t* user_agent, unsigned int flags,
                                                       LB_FBRO_EVENT_CALLBACK callback,
                                                       void* user_data);
+LB_FBRO_API LB_FBRO_HANDLE __stdcall LB_FBro_CreateChromeUi(LB_FBRO_HANDLE owner,
+                                                            const wchar_t* url,
+                                                            LB_FBRO_EVENT_CALLBACK callback,
+                                                            void* user_data);
 LB_FBRO_API int __stdcall LB_FBro_Navigate(LB_FBRO_HANDLE browser, const wchar_t* url);
 LB_FBRO_API int __stdcall LB_FBro_GoBack(LB_FBRO_HANDLE browser);
 LB_FBRO_API int __stdcall LB_FBro_GoForward(LB_FBRO_HANDLE browser);

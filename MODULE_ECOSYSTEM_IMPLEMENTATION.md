@@ -1,6 +1,14 @@
 # LingBuilder 模块生态实现说明
 
-> 2026-07-28 补充：FBro 浏览器创建必须统一投递到 CEF UI 线程。`LB_FBro_CreateEx` 只登记 C ABI 句柄和宿主 `HWND`，CEF 已就绪时使用 `CefPostTask(TID_UI, ...)` 创建；初始化尚未完成时由 `OnContextInitialized` 在同一线程启动待创建实例，禁止根据启动时序随机在 Win32 主线程直接调用 `FBroHsCreate`。每实例 `CefRequestContext` 的 profile 必须是全局 `.fbro-global-cache` 的直接子目录；旧相对路径、嵌套路径和根目录外绝对路径由桥接层稳定映射到隔离子目录，避免 Chromium 拒绝 profile 后静默降级。原生测试必须同时验证窗口响应、页面加载以及日志中不存在 `cache_path`、`root_cache_path`、`Cannot create profile`。
+> 2026-07-28 补充：FBro 同时支持内嵌 Alloy Runtime 和谷歌原生 Chrome Runtime。内嵌实例继续遵守“一控件一个宿主 `HWND`”；`FBro_打开谷歌原生UI浏览器` 则通过 C ABI `LB_FBro_CreateChromeUi` 只接收所属浏览器的整数句柄与 URL，不接收 LingBuilder `HWND`。桥接层固定设置空 `parent_window/window`、`WS_EX_APPWINDOW`、`WS_OVERLAPPEDWINDOW` 和 `CEF_RUNTIME_STYLE_CHROME`，让 FBro/CEF 自行创建桌面顶层窗口；这里的无句柄指调用契约不提供宿主句柄，不代表 Chrome 创建后不存在系统 HWND。Chrome UI 实例必须单独跟踪错误/关闭事件，不能覆盖内嵌实例状态，所属窗口销毁时必须统一关闭。
+
+> 2026-07-28 补充：FBro 浏览器创建必须统一投递到 CEF UI 线程。`LB_FBro_CreateEx` 只登记 C ABI 句柄和宿主 `HWND`，CEF 已就绪时使用 `CefPostTask(TID_UI, ...)` 创建；初始化尚未完成时由 `OnContextInitialized` 在同一线程启动待创建实例，禁止根据启动时序随机在 Win32 主线程直接调用 `FBroHsCreate`。每实例 `CefRequestContext` 的 profile 必须是全局 `.fbro-global-cache` 的直接子目录；旧相对路径、嵌套路径和根目录外绝对路径由桥接层稳定映射到隔离子目录，避免 Chromium 拒绝 profile 后静默降级。原生测试必须同时验证窗口响应、页面加载以及日志中不存在 `cache_path`、`root_cache_path`、`Cannot create profile`。`OnBeforePopup` 必须同步取消新窗口，并以 `BeforePopup` 事件把目标 URL 投递给当前控件的 LCPP 处理器，支持单窗口接管导航。
+
+> 2026-07-28 补充：FBro 尺寸同步位于 Win32 主消息循环，不得阻塞等待正在 `FBroHsCreate` 的 CEF UI 线程。桥接层必须使用非阻塞锁并在竞争时跳过本次调整；只移动宿主的直接子 `HWND`，禁止通过 `EnumChildWindows` 递归缩放 Chromium 内部窗口。
+
+> 2026-07-28 补充：包含导航栏的 FBro 示例必须将后退、前进、刷新、地址栏、导航按钮和浏览器宿主作为一个 DPI 自适应布局。所有坐标、尺寸、最小客户区和工具栏高度统一按 `窗口_取事件DPI()` 换算，避免初始缩放坐标与 `WM_SIZE` 的未缩放坐标混用。
+
+> 2026-07-28 补充：Win32 基础模块新增确定性命令 `控件_设置位置大小`，使用客户区像素坐标移动并调整真实控件 `HWND`；FBro/CEF/Edge 浏览器宿主改变后还必须刷新内部浏览器子窗口。new_emoji 后端通过 `EU_SetElementBounds` 提供等价实现，并继续纳入后端命令契约与符号回归测试。
 
 > 2026-07-28 补充：FBro VIP Key 属于 IDE 用户凭据，不属于项目或模块配置。“设置 → 浏览器凭据”通过 Electron `safeStorage` 保存到当前 Windows 用户目录，renderer 只接收配置状态而不接收已保存明文；本地服务收到 Key 后立即从自身全局环境移除，只在启动 FBro 生成程序时构造专用子进程环境。AI Bridge 由主进程在新启动时注入，已运行实例需停止后重启。环境变量仅保留为无人值守和导出工程兼容入口。桥接层会保存并脱敏 FBro SDK 的授权失败信息；正常退出必须执行 `FBroShutdown(FALSE)` 并等待 `OnBeforeClose`，自动测试禁止直接强杀进程。
 

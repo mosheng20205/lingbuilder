@@ -6,6 +6,13 @@ interface ProjectNameDialogProps {
   isDarkMode: boolean;
   busy?: boolean;
   error?: string;
+  title?: string;
+  description?: string;
+  label?: string;
+  confirmLabel?: string;
+  busyLabel?: string;
+  dialogId?: string;
+  inputId?: string;
   onChange: (value: string) => void;
   onConfirm: () => void | Promise<void>;
   onClose: () => void;
@@ -17,6 +24,13 @@ export default function ProjectNameDialog({
   isDarkMode,
   busy = false,
   error,
+  title = '新建解决方案项目',
+  description = '将在当前工作区创建中文源码、配置文件和窗口设计器模型。',
+  label = '项目名称',
+  confirmLabel = '创建项目',
+  busyLabel = '正在创建…',
+  dialogId = 'create-project-dialog-title',
+  inputId = 'create-project-name',
   onChange,
   onConfirm,
   onClose
@@ -45,7 +59,7 @@ export default function ProjectNameDialog({
       className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/55 p-4 font-sans"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="create-project-dialog-title"
+      aria-labelledby={dialogId}
       onKeyDown={event => {
         if (event.key === 'Escape' && !busy) onClose();
       }}
@@ -59,18 +73,18 @@ export default function ProjectNameDialog({
         }`}
       >
         <div className={`border-b px-4 py-3 ${isDarkMode ? 'border-[#35353c]' : 'border-slate-200'}`}>
-          <h2 id="create-project-dialog-title" className="text-sm font-semibold">新建解决方案项目</h2>
+          <h2 id={dialogId} className="text-sm font-semibold">{title}</h2>
           <p className={`mt-1 text-[11px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-            将在当前工作区创建中文源码、配置文件和窗口设计器模型。
+            {description}
           </p>
         </div>
 
         <div className="px-4 py-4">
-          <label htmlFor="create-project-name" className="mb-1.5 block text-xs font-medium">项目名称</label>
+          <label htmlFor={inputId} className="mb-1.5 block text-xs font-medium">{label}</label>
           <input
             ref={inputRef}
-            id="create-project-name"
-            aria-label="项目名称"
+            id={inputId}
+            aria-label={label}
             value={value}
             disabled={busy}
             onChange={event => onChange(event.target.value)}
@@ -97,7 +111,7 @@ export default function ProjectNameDialog({
             disabled={busy || !value.trim()}
             className="rounded bg-blue-600 px-3 py-1.5 text-xs text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? '正在创建…' : '创建项目'}
+            {busy ? busyLabel : confirmLabel}
           </button>
         </div>
       </form>

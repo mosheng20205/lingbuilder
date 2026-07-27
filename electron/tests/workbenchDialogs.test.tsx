@@ -113,6 +113,48 @@ test('new solution project uses an in-app input dialog instead of a browser prom
   assert.match(markup, /创建项目/u);
 });
 
+test('solution folders and project rename reuse the in-app name dialog', () => {
+  const folderMarkup = renderToStaticMarkup(
+    <ProjectNameDialog
+      open
+      value="工具集合"
+      isDarkMode
+      title="新建解决方案文件夹"
+      description="创建逻辑文件夹，不移动项目文件。"
+      label="文件夹名称"
+      confirmLabel="创建文件夹"
+      dialogId="solution-folder-title"
+      inputId="solution-folder-name"
+      onChange={() => undefined}
+      onConfirm={() => undefined}
+      onClose={() => undefined}
+    />
+  );
+  const renameMarkup = renderToStaticMarkup(
+    <ProjectNameDialog
+      open
+      value="中文工具项目"
+      isDarkMode
+      title="重命名项目"
+      description="项目 ID 和磁盘路径保持不变。"
+      label="新的项目名称"
+      confirmLabel="确认重命名"
+      dialogId="rename-project-title"
+      inputId="rename-project-name"
+      onChange={() => undefined}
+      onConfirm={() => undefined}
+      onClose={() => undefined}
+    />
+  );
+
+  assert.match(folderMarkup, /新建解决方案文件夹/u);
+  assert.match(folderMarkup, /aria-label="文件夹名称"/u);
+  assert.match(folderMarkup, /创建文件夹/u);
+  assert.match(renameMarkup, /重命名项目/u);
+  assert.match(renameMarkup, /aria-label="新的项目名称"/u);
+  assert.match(renameMarkup, /确认重命名/u);
+});
+
 test('settings dialog exposes scope, search, categories, effective values, and reset controls', () => {
   const markup = renderToStaticMarkup(
     <SettingsDialog

@@ -29,6 +29,7 @@ test('solution service creates a default solution for an empty workspace', async
   assert.equal(entry.kind, 'lingbuilder-solution');
   assert.equal(entry.solutionFile, '.lingbuilder/solution.json');
   assert.deepEqual(entry.startupProjectIds, [DEFAULT_PROJECT_ID]);
+  assert.deepEqual(solution.folders, []);
 });
 
 test('solution project directory resolves visual and external project locations', () => {
@@ -64,7 +65,14 @@ test('solution migrates v1 startup state and supports multiple startup projects'
       { id: 'b', name: 'B', type: 'visual-cpp', sourceRoot: 'src/b', configRoot: 'config/b', designerPath: '.lingbuilder/b.json' }
     ]
   }));
-  const service = createSolutionService(root); let solution = await service.getSolution();
+  const service = createSolutionService(root);
+  const migratedSolutions = await Promise.all([
+    service.getSolution(),
+    createSolutionService(root).getSolution(),
+    createSolutionService(root).getSolution()
+  ]);
+  let solution = migratedSolutions[0];
+  assert.ok(migratedSolutions.every(item => item.schemaVersion === 2));
   assert.deepEqual(solution.startupProjectIds, ['a']);
   assert.equal(JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'solution.json'), 'utf8')).schemaVersion, 2);
   solution = await service.updateProject('a', { startupProjectIds: ['a', 'b'] });
@@ -100,6 +108,50 @@ test('solution service creates project files and designer model', async () => {
   assert.ok(await exists(path.join(root, 'src', 'demo-app', 'MainWindow.lcpp')));
   assert.ok(await exists(path.join(root, 'config', 'demo-app', 'config.ini')));
   assert.ok(await exists(path.join(root, '.lingbuilder', 'projects', 'demo-app', 'window-designer.json')));
+});
+
+test('solution folders persist logical project grouping without moving project files', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+  await service.getSolution();
+  const createdProject = await service.createProject({ name: '工具项目', projectId: 'tools' });
+  const createdFolder = await service.createFolder({ name: '工具集合' });
+
+  const grouped = await service.updateProject(createdProject.project.id, { solutionFolderId: createdFolder.folder.id });
+
+  assert.equal(grouped.projects.find(project => project.id === 'tools')?.solutionFolderId, createdFolder.folder.id);
+  assert.ok(await exists(path.join(root, 'src', 'tools', 'MainWindow.lcpp')));
+  const persisted = JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'solution.json'), 'utf8'));
+  assert.equal(persisted.folders[0].name, '工具集合');
+  assert.equal(persisted.projects.find((project: { id: string }) => project.id === 'tools').solutionFolderId, createdFolder.folder.id);
+  const entry = JSON.parse(await fs.readFile(path.join(root, '未命名解决方案.lbsln'), 'utf8'));
+  assert.equal(entry.folders[0].name, '工具集合');
+  assert.equal(entry.projects.find((project: { id: string }) => project.id === 'tools').solutionFolderId, createdFolder.folder.id);
+
+  const returnedToRoot = await service.updateProject('tools', { solutionFolderId: null });
+  assert.equal(returnedToRoot.projects.find(project => project.id === 'tools')?.solutionFolderId, undefined);
+  await assert.rejects(service.updateProject('tools', { solutionFolderId: 'missing-folder' }), /未找到解决方案文件夹/u);
+});
+
+test('project rename persists the display name while preserving identity and disk paths', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+  await service.getSolution();
+  await service.createProject({ name: '另一个项目', projectId: 'other' });
+
+  const renamed = await service.updateProject(DEFAULT_PROJECT_ID, { name: '中文工具项目' });
+  const project = renamed.projects.find(item => item.id === DEFAULT_PROJECT_ID);
+
+  assert.equal(project?.name, '中文工具项目');
+  assert.equal(project?.id, DEFAULT_PROJECT_ID);
+  assert.equal(project?.sourceRoot, 'src');
+  assert.ok(await exists(path.join(root, 'src', 'MainWindow.lcpp')));
+  const persisted = JSON.parse(await fs.readFile(path.join(root, '.lingbuilder', 'solution.json'), 'utf8'));
+  assert.equal(persisted.projects.find((item: { id: string }) => item.id === DEFAULT_PROJECT_ID).name, '中文工具项目');
+  const entry = JSON.parse(await fs.readFile(path.join(root, '未命名解决方案.lbsln'), 'utf8'));
+  assert.equal(entry.projects.find((item: { id: string }) => item.id === DEFAULT_PROJECT_ID).name, '中文工具项目');
+  await assert.rejects(service.updateProject(DEFAULT_PROJECT_ID, { name: '   ' }), /不能为空/u);
+  await assert.rejects(service.updateProject(DEFAULT_PROJECT_ID, { name: '另一个项目' }), /已存在/u);
 });
 
 test('solution service removes references or files while preserving last project', async () => {

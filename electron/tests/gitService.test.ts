@@ -33,3 +33,41 @@ test('Git service rejects workspace escapes, invalid branch names, empty commits
   await assert.rejects(service.stage(['../outside.txt']), /不能超出/u); await assert.rejects(service.createBranch('../bad'), /分支名称/u);
   await assert.rejects(service.commit('   '), /提交说明/u); await assert.rejects(service.blame('a.txt', 0, 1), /起始行/u);
 });
+
+test('Git service initializes an unborn repository, previews staged and working diffs, discards changes and manages remotes', async t => {
+  const parent = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-complete-')); t.after(() => fs.rm(parent, { recursive: true, force: true }));
+  const root = path.join(parent, 'workspace'); const bareA = path.join(parent, 'remote-a.git'); const bareB = path.join(parent, 'remote-b.git');
+  await fs.mkdir(root); await git(parent, ['init', '--bare', bareA]); await git(parent, ['init', '--bare', bareB]);
+  const service = new GitService(root);
+  assert.equal((await service.status()).isRepository, false);
+  let status = await service.init('main'); assert.equal(status.isRepository, true); assert.equal(status.branch, 'main');
+  await git(root, ['config', 'user.name', 'Complete']); await git(root, ['config', 'user.email', 'complete@example.com']);
+
+  await fs.writeFile(path.join(root, 'new.txt'), '第一行\n第二行\n', 'utf8');
+  status = await service.status(); assert.equal(status.files[0].workingTreeStatus, '?');
+  let diff = await service.diff('new.txt', false); assert.match(diff.patch, /\+第一行/u); assert.equal(diff.staged, false);
+  await service.stage(['new.txt']); diff = await service.diff('new.txt', true); assert.match(diff.patch, /new file mode/u);
+  await service.commit('首次提交');
+
+  await fs.appendFile(path.join(root, 'new.txt'), '第三行\n'); diff = await service.diff('new.txt', false); assert.match(diff.patch, /\+第三行/u);
+  status = await service.discard(['new.txt']); assert.equal(status.files.length, 0); assert.doesNotMatch(await fs.readFile(path.join(root, 'new.txt'), 'utf8'), /第三行/u);
+  await fs.writeFile(path.join(root, 'temporary.txt'), '即将删除\n'); await service.discard(['temporary.txt']); await assert.rejects(fs.stat(path.join(root, 'temporary.txt')), /ENOENT/u);
+
+  let remotes = await service.addRemote('origin', bareA); assert.equal(remotes[0].fetchUrl, bareA);
+  remotes = await service.setRemoteUrl('origin', bareB); assert.equal(remotes[0].fetchUrl, bareB);
+  remotes = await service.removeRemote('origin'); assert.equal(remotes.length, 0);
+});
+
+test('Git service scopes status and path operations to a nested workspace', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-git-nested-')); t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, 'sub'); await fs.mkdir(workspace);
+  await git(root, ['init', '--initial-branch=main']); await git(root, ['config', 'user.name', 'Nested']); await git(root, ['config', 'user.email', 'nested@example.com']);
+  await fs.writeFile(path.join(root, 'outside.txt'), 'base\n'); await fs.writeFile(path.join(workspace, 'inside.txt'), 'base\n'); await git(root, ['add', '.']); await git(root, ['commit', '-m', 'base']);
+  await fs.appendFile(path.join(root, 'outside.txt'), 'outside\n'); await fs.appendFile(path.join(workspace, 'inside.txt'), 'inside\n');
+
+  const service = new GitService(workspace); const status = await service.status();
+  assert.deepEqual(status.files.map(item => item.path), ['inside.txt']);
+  await service.stage(['inside.txt']);
+  const staged = await git(root, ['diff', '--cached', '--name-only']); assert.equal(staged.stdout.trim().replace(/\\/gu, '/'), 'sub/inside.txt');
+  const outside = await git(root, ['diff', '--name-only']); assert.equal(outside.stdout.trim(), 'outside.txt');
+});

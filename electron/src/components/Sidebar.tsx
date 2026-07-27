@@ -55,8 +55,17 @@ import {
 } from '../services/windowDesigner/designerAssetClient';
 import type { InstalledModule, ModuleHintContent, ModuleTargetContribution } from '../services/modules/types';
 import { BUILTIN_MODULES } from '../services/modules/builtinModules';
-import type { SolutionModel, SolutionProject } from '../services/solution/solutionClient';
+import type { SolutionFolder, SolutionModel, SolutionProject } from '../services/solution/solutionClient';
+import type { CommandService } from '../services/commands/commandService';
+import { getMenuService } from '../services/menus/menuService';
+import { SOLUTION_EXPLORER_CONTEXT_MENU, SOLUTION_PROJECT_CONTEXT_MENU } from '../services/menus/types';
+import {
+  MOVE_PROJECT_TO_SOLUTION_FOLDER_COMMAND,
+  RENAME_SOLUTION_PROJECT_COMMAND,
+  registerSolutionExplorerMenu
+} from '../services/solution/solutionExplorerMenu';
 import SourceControlPanel from './SourceControlPanel';
+import type { SourceControlMutation } from '../services/lingCpp/sourceControlService';
 import ExtensionHostPanel from './ExtensionHostPanel';
 import DependencyPanel from './DependencyPanel';
 import RcResourcePanel from './RcResourcePanel';
@@ -75,6 +84,9 @@ type SolutionContextMenu =
   | { x: number; y: number; target: 'project'; project: SolutionProject };
 type ResourceContextMenu = { x: number; y: number; resource: DesignerImageResource };
 type ResourcePreview = { projectId: string; resource: DesignerImageResource };
+type SolutionTreeItem =
+  | { kind: 'folder'; folder: SolutionFolder }
+  | { kind: 'project'; project: SolutionProject };
 
 interface ModuleParameterDoc {
   name: string;
@@ -147,7 +159,10 @@ interface SidebarProps {
   onRenameFile?: (file: CppFile, newName: string) => boolean | Promise<boolean>;
   sourceControlStatus?: SourceControlStatus | null;
   onSourceControlChanged?: () => void;
+  onExecuteSourceControlCommand?: (operation: SourceControlMutation, payload?: Record<string, unknown>) => Promise<unknown>;
   solution?: SolutionModel;
+  commandService: CommandService;
+  onExecuteCommand?: (commandId: string, ...args: unknown[]) => Promise<boolean>;
   activeProjectId?: string;
   onRefreshSolution?: () => void | Promise<unknown>;
   onCreateProject?: () => void | Promise<void>;
@@ -190,7 +205,10 @@ export default function Sidebar({
   onRenameFile,
   sourceControlStatus = null,
   onSourceControlChanged,
+  onExecuteSourceControlCommand,
   solution,
+  commandService,
+  onExecuteCommand,
   activeProjectId,
   onRefreshSolution,
   onCreateProject,
@@ -219,6 +237,9 @@ export default function Sidebar({
   const [activeTab, setActiveTab] = useState<'explorer' | 'actions' | 'outline' | 'git'>('explorer');
   const [isSolutionOpen, setIsSolutionOpen] = useState(true);
   const [expandedProjectIds, setExpandedProjectIds] = useState<Record<string, boolean>>({});
+  const [expandedSolutionFolderIds, setExpandedSolutionFolderIds] = useState<Record<string, boolean>>({});
+  const [draggedSolutionProjectId, setDraggedSolutionProjectId] = useState<string | null>(null);
+  const [solutionDropTarget, setSolutionDropTarget] = useState<string | 'root' | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; file: CppFile } | null>(null);
   const [windowContextMenu, setWindowContextMenu] = useState<WindowContextMenu | null>(null);
   const [moduleContextMenu, setModuleContextMenu] = useState<ModuleContextMenu | null>(null);
@@ -239,6 +260,7 @@ export default function Sidebar({
     window.addEventListener('click', handleCloseMenu);
     return () => window.removeEventListener('click', handleCloseMenu);
   }, []);
+  useEffect(() => registerSolutionExplorerMenu(getMenuService(commandService)).dispose, [commandService]);
   const [isSrcOpen, setIsSrcOpen] = useState(true);
   const [isFunctionLibraryOpen, setIsFunctionLibraryOpen] = useState(true);
   const [isWindowsOpen, setIsWindowsOpen] = useState(true);
@@ -265,6 +287,18 @@ export default function Sidebar({
   const [hasCheckedPlaceholders, setHasCheckedPlaceholders] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const solutionProjects = solution?.projects || [];
+  const solutionFolders = solution?.folders || [];
+  const solutionTreeItems: SolutionTreeItem[] = [
+    ...solutionProjects.filter(project => !project.solutionFolderId).map(project => ({ kind: 'project' as const, project })),
+    ...solutionFolders.flatMap<SolutionTreeItem>(folder => [
+      { kind: 'folder', folder },
+      ...(expandedSolutionFolderIds[folder.id] === false
+        ? []
+        : solutionProjects
+          .filter(project => project.solutionFolderId === folder.id)
+          .map(project => ({ kind: 'project' as const, project })))
+    ])
+  ];
   const activeSolutionProjectId = activeProjectId || solution?.startupProjectId || solutionProjects[0]?.id;
   const moduleProjectId = activeSolutionProjectId || designerState.project.id || 'lingbuilder-ui-project';
   const moduleProjectIdRef = useRef(moduleProjectId);
@@ -1037,6 +1071,25 @@ export default function Sidebar({
     );
   };
 
+  const moveDraggedProject = async (projectId: string, folderId: string | null) => {
+    const project = solutionProjects.find(item => item.id === projectId);
+    if (!project || (project.solutionFolderId || null) === folderId) {
+      setSolutionDropTarget(null);
+      setDraggedSolutionProjectId(null);
+      return;
+    }
+    const targetFolder = folderId ? solutionFolders.find(item => item.id === folderId) : undefined;
+    const success = await onExecuteCommand?.(MOVE_PROJECT_TO_SOLUTION_FOLDER_COMMAND, projectId, folderId);
+    if (success) {
+      triggerSuccess(`已将“${project.name}”移动到${targetFolder ? `“${targetFolder.name}”` : '解决方案根节点'}`);
+      if (folderId) setExpandedSolutionFolderIds(previous => ({ ...previous, [folderId]: true }));
+    } else {
+      triggerError(`移动项目“${project.name}”失败。`);
+    }
+    setSolutionDropTarget(null);
+    setDraggedSolutionProjectId(null);
+  };
+
   const renderSolutionContextMenu = () => {
     if (!solutionContextMenu) return null;
     const menuItemClass = `px-3 py-1.5 cursor-pointer transition-colors flex items-center gap-2 ${
@@ -1046,6 +1099,14 @@ export default function Sidebar({
     const project = solutionContextMenu.target === 'project' ? solutionContextMenu.project : null;
     const isLastProject = (solution?.projects.length || 0) <= 1;
     const isStartup = project?.id === (activeProjectId || solution?.startupProjectId);
+    const contributedItems = getMenuService(commandService).resolveMenu(
+      solutionContextMenu.target === 'solution' ? SOLUTION_EXPLORER_CONTEXT_MENU : SOLUTION_PROJECT_CONTEXT_MENU,
+      {
+          'workspace.open': Boolean(solution),
+          'workbench.modalOpen': false
+      },
+      { includeDisabled: true }
+    );
 
     return (
       <div
@@ -1059,6 +1120,22 @@ export default function Sidebar({
       >
         {solutionContextMenu.target === 'solution' ? (
           <>
+            {contributedItems.map(item => item.kind === 'separator' ? (
+              <div key={item.id} className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
+            ) : item.kind === 'command' ? (
+              <div
+                key={item.id}
+                className={item.command.enabled ? menuItemClass : `${menuItemClass} cursor-not-allowed opacity-40`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (item.command.enabled) void onExecuteCommand?.(item.command.id, ...item.arguments);
+                  setSolutionContextMenu(null);
+                }}
+              >
+                <Folder className="w-3.5 h-3.5 text-amber-400 fill-amber-400/10" />
+                <span>{item.command.title}</span>
+              </div>
+            ) : null)}
             <div className={menuItemClass} onClick={() => void onCreateProject?.()}>
               <Plus className="w-3.5 h-3.5 text-emerald-500" />
               <span>新建项目 (N)</span>
@@ -1174,6 +1251,23 @@ export default function Sidebar({
               <Trash2 className="w-3.5 h-3.5 text-amber-500" />
               <span>清理项目</span>
             </div>
+            <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
+            {contributedItems.map(item => item.kind === 'separator' ? (
+              <div key={item.id} className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
+            ) : item.kind === 'command' ? (
+              <div
+                key={item.id}
+                className={item.command.enabled ? menuItemClass : `${menuItemClass} cursor-not-allowed opacity-40`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (item.command.enabled) void onExecuteCommand?.(item.command.id, project.id, ...item.arguments);
+                  setSolutionContextMenu(null);
+                }}
+              >
+                <FileText className="w-3.5 h-3.5 text-sky-400" />
+                <span>{item.command.title} (F2)</span>
+              </div>
+            ) : null)}
             <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
             <div
               className={isLastProject ? `${menuItemClass} cursor-not-allowed opacity-40` : dangerItemClass}
@@ -1480,6 +1574,20 @@ export default function Sidebar({
                 <div>
                   <div
                     onClick={() => setIsSolutionOpen(!isSolutionOpen)}
+                    onDragOver={(event) => {
+                      if (!draggedSolutionProjectId) return;
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = 'move';
+                      setSolutionDropTarget('root');
+                    }}
+                    onDragLeave={() => setSolutionDropTarget(current => current === 'root' ? null : current)}
+                    onDrop={(event) => {
+                      if (!draggedSolutionProjectId) return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const projectId = event.dataTransfer.getData('application/x-lingbuilder-solution-project') || draggedSolutionProjectId;
+                      void moveDraggedProject(projectId, null);
+                    }}
                     onContextMenu={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
@@ -1489,7 +1597,9 @@ export default function Sidebar({
                       setSolutionContextMenu({ x: event.clientX, y: event.clientY, target: 'solution' });
                     }}
                     className={`flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer text-[13px] font-semibold font-sans transition-colors ${
-                      isDarkMode ? 'hover:bg-[#2A2D2E]/40 text-slate-200' : 'hover:bg-slate-100 text-slate-700'
+                      solutionDropTarget === 'root'
+                        ? 'bg-blue-500/20 text-blue-200 ring-1 ring-inset ring-blue-400/70'
+                        : isDarkMode ? 'hover:bg-[#2A2D2E]/40 text-slate-200' : 'hover:bg-slate-100 text-slate-700'
                     }`}
                   >
                     {isSolutionOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
@@ -1499,7 +1609,47 @@ export default function Sidebar({
                   {isSolutionOpen && (
                     <div className="pl-1.5 border-l border-slate-750/30 dark:border-slate-800 ml-4">
                       {/* Project Subnode */}
-                      {solutionProjects.map(project => {
+                      {solutionTreeItems.map(item => {
+                        if (item.kind === 'folder') {
+                          const folder = item.folder;
+                          const isFolderOpen = expandedSolutionFolderIds[folder.id] !== false;
+                          const projectCount = solutionProjects.filter(project => project.solutionFolderId === folder.id).length;
+                          const isDropTarget = solutionDropTarget === folder.id;
+                          return (
+                            <div
+                              key={`folder:${folder.id}`}
+                              data-solution-folder={folder.id}
+                              onClick={() => setExpandedSolutionFolderIds(previous => ({ ...previous, [folder.id]: !isFolderOpen }))}
+                              onDragOver={(event) => {
+                                if (!draggedSolutionProjectId) return;
+                                event.preventDefault();
+                                event.stopPropagation();
+                                event.dataTransfer.dropEffect = 'move';
+                                setSolutionDropTarget(folder.id);
+                              }}
+                              onDragLeave={() => setSolutionDropTarget(current => current === folder.id ? null : current)}
+                              onDrop={(event) => {
+                                if (!draggedSolutionProjectId) return;
+                                event.preventDefault();
+                                event.stopPropagation();
+                                const projectId = event.dataTransfer.getData('application/x-lingbuilder-solution-project') || draggedSolutionProjectId;
+                                void moveDraggedProject(projectId, folder.id);
+                              }}
+                              className={`mb-1 flex min-h-8 items-center gap-1.5 rounded px-2 py-1.5 text-[13px] font-semibold font-sans cursor-pointer transition-colors ${
+                                isDropTarget
+                                  ? 'bg-blue-500/20 text-blue-100 ring-1 ring-inset ring-blue-400/80'
+                                  : isDarkMode ? 'text-amber-200 hover:bg-[#2A2D2E]/60' : 'text-amber-800 hover:bg-amber-50'
+                              }`}
+                              title={`解决方案文件夹“${folder.name}”\n按住项目并拖到这里进行归类；不会移动磁盘文件。`}
+                            >
+                              {isFolderOpen ? <ChevronDown className="w-4 h-4 shrink-0 text-slate-400" /> : <ChevronRight className="w-4 h-4 shrink-0 text-slate-400" />}
+                              <Folder className="w-4 h-4 shrink-0 text-amber-400 fill-amber-400/15" />
+                              <span className="min-w-0 flex-1 truncate">{folder.name}</span>
+                              <span className="text-[9px] text-slate-500">{projectCount}</span>
+                            </div>
+                          );
+                        }
+                        const project = item.project;
                         const isStartupProject = project.id === (activeProjectId || solution?.startupProjectId);
                         const isProjectOpen = isStartupProject && expandedProjectIds[project.id] !== false;
                         const imageResources = (projectImageResources[project.id] || []).filter(resource => includesSearch(
@@ -1512,7 +1662,7 @@ export default function Sidebar({
                         <div
                           key={project.id}
                           data-solution-project={project.id}
-                          className={`mb-2 last:mb-0 overflow-hidden rounded-md border ${
+                          className={`mb-2 last:mb-0 overflow-hidden rounded-md border ${project.solutionFolderId ? 'ml-4' : ''} ${
                             isStartupProject
                               ? isDarkMode
                                 ? 'border-violet-500/25 bg-violet-500/[0.025]'
@@ -1524,6 +1674,18 @@ export default function Sidebar({
                         >
                         <div
                           tabIndex={0}
+                          draggable
+                          aria-grabbed={draggedSolutionProjectId === project.id}
+                          onDragStart={(event) => {
+                            event.dataTransfer.effectAllowed = 'move';
+                            event.dataTransfer.setData('application/x-lingbuilder-solution-project', project.id);
+                            event.dataTransfer.setData('text/plain', project.name);
+                            setDraggedSolutionProjectId(project.id);
+                          }}
+                          onDragEnd={() => {
+                            setDraggedSolutionProjectId(null);
+                            setSolutionDropTarget(null);
+                          }}
                           onClick={() => {
                             setExpandedProjectIds(previous => ({ ...previous, [project.id]: true }));
                             void onSetStartupProject?.(project.id);
@@ -1537,6 +1699,12 @@ export default function Sidebar({
                             setSolutionContextMenu({ x: event.clientX, y: event.clientY, target: 'project', project });
                           }}
                           onKeyDown={(event) => {
+                            if (event.key === 'F2') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              void onExecuteCommand?.(RENAME_SOLUTION_PROJECT_COMMAND, project.id);
+                              return;
+                            }
                             if (!event.ctrlKey || event.key.toLocaleLowerCase() !== 'v' || project.type !== 'visual-cpp') return;
                             event.preventDefault();
                             void onPasteFunctionLibrary?.(project.id);
@@ -1546,7 +1714,7 @@ export default function Sidebar({
                               ? 'bg-violet-500/10 text-violet-300'
                               : isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/40' : 'text-slate-700 hover:bg-slate-100'
                           } ${isStartupProject ? 'border-violet-500/70' : 'border-transparent'}`}
-                          title={`${project.name} (${project.id})`}
+                          title={`${project.name} (${project.id})\n按住并拖动可移动到解决方案文件夹。`}
                         >
                           <button
                             type="button"
@@ -1567,7 +1735,7 @@ export default function Sidebar({
                             {isProjectOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
                           </button>
                           <Package className={`w-4 h-4 shrink-0 ${isStartupProject ? 'text-violet-300' : 'text-violet-400'}`} />
-                          <span className="text-violet-300 font-semibold truncate">{project.name} (Visual C++)</span>
+                          <span className="text-violet-300 font-semibold truncate">{project.name}</span>
                           {isStartupProject && (
                             <span className="ml-auto text-[9px] text-emerald-400">启动</span>
                           )}
@@ -1576,7 +1744,7 @@ export default function Sidebar({
 
                       {/* Project-global variables are a fixed source entry for native Visual C++ projects. */}
                       {isProjectOpen && project.type === 'visual-cpp' && (
-                        <div className="pl-2 mt-1">
+                        <div className="pl-6 mt-1">
                           <button
                             type="button"
                             onClick={() => void onOpenProjectGlobalVariables?.(project.id)}
@@ -1585,6 +1753,7 @@ export default function Sidebar({
                             }`}
                             title="打开当前项目固定的变量与常量文件"
                           >
+                            <span aria-hidden="true" className="h-4 w-4 shrink-0" />
                             <FileCode className="h-4 w-4 shrink-0 text-cyan-500" />
                             <span className="truncate">项目变量与常量</span>
                           </button>
@@ -1596,6 +1765,7 @@ export default function Sidebar({
                             }`}
                             title="打开项目级记录型数据类型；旧项目会在首次编辑时创建文件"
                           >
+                            <span aria-hidden="true" className="h-4 w-4 shrink-0" />
                             <FileCode className="h-4 w-4 shrink-0 text-emerald-500" />
                             <span className="truncate">自定义数据类型</span>
                             {!files.some(file => file.path.replace(/\\/gu, '/').endsWith(`/${project.sourceRoot.replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/+$/u, '')}/项目数据类型.lcpp`)) && (
@@ -1606,7 +1776,7 @@ export default function Sidebar({
                       )}
 
                       {/* Project modules group */}
-                      {isProjectOpen && <div className="pl-2 mt-1">
+                      {isProjectOpen && <div className="pl-6 mt-1">
                         <div
                           onClick={() => setIsProjectModulesOpen(!isProjectModulesOpen)}
                           className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
@@ -1704,7 +1874,7 @@ export default function Sidebar({
                       </div>}
 
                       {/* Window designer group */}
-                      {isProjectOpen && <div className="pl-2">
+                      {isProjectOpen && <div className="pl-6">
                         <div
                           onClick={() => setIsWindowsOpen(!isWindowsOpen)}
                           onContextMenu={(event) => {
@@ -1745,7 +1915,7 @@ export default function Sidebar({
                       </div>}
 
                       {/* Project image assets group */}
-                      {isProjectOpen && <div className="pl-2">
+                      {isProjectOpen && <div className="pl-6">
                         <div
                           onClick={() => {
                             const nextOpen = !isResourceGroupOpen;
@@ -1816,7 +1986,7 @@ export default function Sidebar({
                       </div>}
 
                       {/* Project function libraries */}
-                      {isProjectOpen && <div className="pl-2 mt-1.5">
+                      {isProjectOpen && <div className="pl-6 mt-1.5">
                         <div
                           onClick={() => setIsFunctionLibraryOpen(!isFunctionLibraryOpen)}
                           className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
@@ -1839,7 +2009,7 @@ export default function Sidebar({
                       </div>}
 
                       {/* includes / src Folder */}
-                      {isProjectOpen && <div className="pl-2 mt-1.5">
+                      {isProjectOpen && <div className="pl-6 mt-1.5">
                         <div
                           onClick={() => setIsSrcOpen(!isSrcOpen)}
                           className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
@@ -1862,7 +2032,7 @@ export default function Sidebar({
                       </div>}
 
                       {/* Config Folder */}
-                      {isProjectOpen && <div className="pl-2 mt-1.5">
+                      {isProjectOpen && <div className="pl-6 mt-1.5">
                         <div
                           onClick={() => setIsConfigOpen(!isConfigOpen)}
                           className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
@@ -2199,6 +2369,7 @@ export default function Sidebar({
                 isDarkMode={isDarkMode}
                 variant="full"
                 onChanged={onSourceControlChanged}
+                onExecuteCommand={onExecuteSourceControlCommand}
               />
             </div>
           )}

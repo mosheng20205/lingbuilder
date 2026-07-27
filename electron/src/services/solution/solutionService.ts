@@ -11,6 +11,8 @@ import { EMPTY_PROJECT_DATA_TYPES_SOURCE, PROJECT_DATA_TYPES_FILE_NAME } from '.
 
 export const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
 export const DEFAULT_SOLUTION_ID = 'lingbuilder-solution';
+let solutionWriteSerial = 0;
+const solutionWriteQueues = new Map<string, Promise<void>>();
 
 export interface LingBuilderSolutionProject {
   id: string;
@@ -23,6 +25,12 @@ export interface LingBuilderSolutionProject {
   references?: string[];
   projectFile?: string;
   buildProperties?: ExternalProjectProperties;
+  solutionFolderId?: string;
+}
+
+export interface LingBuilderSolutionFolder {
+  id: string;
+  name: string;
 }
 
 export interface LingBuilderSolution {
@@ -31,6 +39,7 @@ export interface LingBuilderSolution {
   name: string;
   startupProjectId: string;
   startupProjectIds: string[];
+  folders: LingBuilderSolutionFolder[];
   projects: LingBuilderSolutionProject[];
 }
 
@@ -41,6 +50,10 @@ export interface CreateSolutionProjectRequest {
 
 export interface DeleteSolutionProjectOptions {
   deleteFiles?: boolean;
+}
+
+export interface CreateSolutionFolderRequest {
+  name?: string;
 }
 
 export interface CleanSolutionResult {
@@ -104,19 +117,43 @@ export class SolutionService {
     return { solution: nextSolution, project };
   }
 
-  async updateProject(projectId: string, patch: Partial<Pick<LingBuilderSolutionProject, 'name' | 'references' | 'buildProperties'>> & { startup?: boolean; startupProjectIds?: string[] }): Promise<LingBuilderSolution> {
+  async createFolder(request: CreateSolutionFolderRequest = {}): Promise<{ solution: LingBuilderSolution; folder: LingBuilderSolutionFolder }> {
+    const solution = await this.getSolution();
+    const requestedName = request.name?.trim() || '新建解决方案文件夹';
+    const usedNames = new Set(solution.folders.map(folder => folder.name));
+    let name = requestedName;
+    let nameSuffix = 2;
+    while (usedNames.has(name)) name = `${requestedName} (${nameSuffix++})`;
+    const usedIds = new Set(solution.folders.map(folder => folder.id));
+    const baseId = safeSegment(requestedName).toLowerCase() || 'solution-folder';
+    let id = baseId === 'lingbuilder-project' ? 'solution-folder' : baseId;
+    let idSuffix = 2;
+    while (usedIds.has(id)) id = `${baseId}-${idSuffix++}`;
+    const folder = { id, name };
+    const nextSolution = { ...solution, folders: [...solution.folders, folder] };
+    await this.writeSolution(nextSolution);
+    return { solution: nextSolution, folder };
+  }
+
+  async updateProject(projectId: string, patch: Partial<Pick<LingBuilderSolutionProject, 'name' | 'references' | 'buildProperties'>> & { startup?: boolean; startupProjectIds?: string[]; solutionFolderId?: string | null }): Promise<LingBuilderSolution> {
     const solution = await this.getSolution();
     const target = solution.projects.find(project => project.id === projectId);
     if (!target) throw new Error(`未找到项目：${projectId}`);
     if (patch.buildProperties) validateProperties(patch.buildProperties);
+    if (patch.solutionFolderId && !solution.folders.some(folder => folder.id === patch.solutionFolderId)) {
+      throw new Error(`未找到解决方案文件夹：${patch.solutionFolderId}`);
+    }
+    const requestedName = patch.name === undefined ? undefined : validateProjectDisplayName(patch.name, projectId, solution.projects);
+    const updatesSolutionFolder = Object.prototype.hasOwnProperty.call(patch, 'solutionFolderId');
 
     const projects = solution.projects.map(project => {
       if (project.id !== projectId) return project;
       return {
         ...project,
-        name: patch.name?.trim() || project.name,
+        name: requestedName ?? project.name,
         references: project.id === projectId && patch.references ? [...new Set(patch.references)] : (project.references || []),
-        buildProperties: patch.buildProperties || project.buildProperties
+        buildProperties: patch.buildProperties || project.buildProperties,
+        solutionFolderId: updatesSolutionFolder ? patch.solutionFolderId || undefined : project.solutionFolderId
       };
     });
     validateProjectDependencies(projects);
@@ -271,7 +308,13 @@ export class SolutionService {
           designerPath: project.designerPath || (project.id === DEFAULT_PROJECT_ID ? '.lingbuilder/window-designer.json' : `.lingbuilder/projects/${project.id}/window-designer.json`)
         }))
       : fallback.projects;
-    const normalizedProjects = projects.map(project => ({ ...project, references: Array.isArray(project.references) ? [...new Set(project.references)] : [] }));
+    const folders = normalizeSolutionFolders((solution as Partial<LingBuilderSolution>).folders);
+    const folderIds = new Set(folders.map(folder => folder.id));
+    const normalizedProjects = projects.map(project => ({
+      ...project,
+      references: Array.isArray(project.references) ? [...new Set(project.references)] : [],
+      solutionFolderId: project.solutionFolderId && folderIds.has(project.solutionFolderId) ? project.solutionFolderId : undefined
+    }));
     validateProjectDependencies(normalizedProjects);
     const startupProjectId = normalizedProjects.some(project => project.id === solution.startupProjectId)
       ? solution.startupProjectId
@@ -283,6 +326,7 @@ export class SolutionService {
       name: solution.name || 'UI_CppLocProj',
       startupProjectId: startupProjectIds[0],
       startupProjectIds,
+      folders,
       projects: normalizedProjects
     };
   }
@@ -294,6 +338,7 @@ export class SolutionService {
       name: '未命名解决方案',
       startupProjectId: DEFAULT_PROJECT_ID,
       startupProjectIds: [DEFAULT_PROJECT_ID],
+      folders: [],
       projects: [
         {
           id: DEFAULT_PROJECT_ID,
@@ -324,11 +369,13 @@ export class SolutionService {
   private async writeSolution(solution: LingBuilderSolution): Promise<void> {
     const normalized = this.normalizeSolution(solution);
     const targetPath = this.solutionPath();
-    await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    const temporaryPath = `${targetPath}.${process.pid}.tmp`;
-    await fs.writeFile(temporaryPath, JSON.stringify(normalized, null, 2), 'utf8');
-    await fs.rename(temporaryPath, targetPath);
-    await writeSolutionEntry(this.workspaceRoot, normalized);
+    await enqueueSolutionWrite(targetPath, async () => {
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      const temporaryPath = `${targetPath}.${process.pid}.${++solutionWriteSerial}.tmp`;
+      await fs.writeFile(temporaryPath, JSON.stringify(normalized, null, 2), 'utf8');
+      await fs.rename(temporaryPath, targetPath);
+      await writeSolutionEntry(this.workspaceRoot, normalized);
+    });
   }
 
   private solutionPath(): string {
@@ -415,4 +462,40 @@ function safeSegment(value: string): string {
     .replace(/[^\w.-]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80) || 'lingbuilder-project';
+}
+
+function normalizeSolutionFolders(value: unknown): LingBuilderSolutionFolder[] {
+  if (!Array.isArray(value)) return [];
+  const usedIds = new Set<string>();
+  return value.flatMap(item => {
+    if (!item || typeof item !== 'object') return [];
+    const source = item as Partial<LingBuilderSolutionFolder>;
+    const id = typeof source.id === 'string' ? source.id.trim() : '';
+    const name = typeof source.name === 'string' ? source.name.trim() : '';
+    if (!id || !name || usedIds.has(id)) return [];
+    usedIds.add(id);
+    return [{ id, name }];
+  });
+}
+
+function validateProjectDisplayName(value: string, projectId: string, projects: readonly LingBuilderSolutionProject[]): string {
+  const name = value.trim();
+  if (!name) throw new Error('项目名称不能为空。');
+  if (name.length > 100) throw new Error('项目名称不能超过 100 个字符。');
+  if (/[\r\n\t]/u.test(name)) throw new Error('项目名称不能包含换行符或制表符。');
+  if (projects.some(project => project.id !== projectId && project.name.localeCompare(name, 'zh-CN', { sensitivity: 'accent' }) === 0)) {
+    throw new Error(`解决方案中已存在名为“${name}”的项目。`);
+  }
+  return name;
+}
+
+async function enqueueSolutionWrite(targetPath: string, write: () => Promise<void>): Promise<void> {
+  const previous = solutionWriteQueues.get(targetPath) || Promise.resolve();
+  const pending = previous.catch(() => undefined).then(write);
+  solutionWriteQueues.set(targetPath, pending);
+  try {
+    await pending;
+  } finally {
+    if (solutionWriteQueues.get(targetPath) === pending) solutionWriteQueues.delete(targetPath);
+  }
 }

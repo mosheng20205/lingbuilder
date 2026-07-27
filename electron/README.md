@@ -1,5 +1,11 @@
 # LingBuilder Electron
 
+> 2026-07-28：修复 FBro 初始化/拖动窗口时的“未响应”。`LB_FBro_Resize` 不再阻塞等待 CEF 创建锁，且只调整宿主直接子窗口，避免递归移动 Chromium 内部 HWND。实际 `fbro` Debug exe 运行 12 秒保持响应，百度页面脚本成功执行。
+
+> 2026-07-28：修复 FBro 窗口改变大小后后退、前进、刷新与地址栏错位。示例的六个导航/浏览器控件现在统一按 `窗口_取事件DPI()` 换算位置和尺寸，避免 150% 等系统缩放下混用物理像素。
+
+> 2026-07-28：FBro 单窗口浏览器示例增加完整导航栏和随窗口变化的自适应布局；新增 `控件_设置位置大小` 确定性命令。FBro `OnBeforePopup` 现在同步取消新窗口并投递 `BeforePopup` 目标 URL，LCPP 可在当前实例中接管导航。
+
 > 2026-07-28：修复 FBro F5 偶发白屏和窗口未响应。桥接层现在将所有 `FBroHsCreate` 统一投递到 CEF UI 线程，消除初始化完成顺序导致的跨线程创建竞态；每控件 profile 使用 `.fbro-global-cache` 的直接隔离子目录，旧相对/嵌套路径由桥接层稳定映射，根目录外绝对路径安全回退。`npm run test:fbro-invalid-vip` 现在也会拒绝任何 `cache_path` 或 `Cannot create profile` 日志。当前 `fbro` Debug 程序实测连续 8 秒响应、5 个子进程稳定、百度页面脚本成功执行并正常关闭。
 
 > 2026-07-28：FBro VIP Key 改为由每位 IDE 用户自行配置。“设置 → 浏览器凭据”提供保存、替换、清除与状态显示，使用 Electron `safeStorage` 写入当前 Windows 用户的加密凭据目录；renderer 只能读取“是否配置/来源”，不能取回现有明文。Key 仅在 F5、原生运行和新启动的 AI Bridge 子进程中通过临时环境注入，不进入项目、设计器模型、源码、日志、AI 上下文或设置同步包。`LINGBUILDER_FBRO_VIP_KEY` 继续作为无人值守和脱离 IDE 运行导出工程时的兼容后备。可运行 `npm run test:fbro-invalid-vip` 自动编译并启动真实 MSVC x64 程序；测试用假 Key 只存在于子进程环境，必须看到“FBro VIP 授权码校验失败”且不得输出 Key。退出使用 C++ SDK 的 `FBroShutdown(FALSE)` 并等待浏览器关闭回调，不能强制结束测试进程。
@@ -43,6 +49,8 @@
 - 程序暂停后，“局部变量 / 监视 / 调用栈”面板通过 DAP 读取线程、栈帧、作用域和变量；有 `variablesReference` 的值可继续展开，Watch 使用当前选中栈帧执行 `evaluate`。程序运行时这些读取会被拒绝，避免显示过期变量。
 
 这个目录是独立的 Electron 桌面端项目，包含当前 Vite + React + TypeScript 原型的完整渲染端副本，以及 Electron 主进程壳。
+
+> 2026-07-28：`src/fbro-ui` 新增 FBro 内嵌/谷歌原生 UI 双模式示例。`FBro_打开谷歌原生UI浏览器` 通过新 C ABI `LB_FBro_CreateChromeUi` 创建 Chrome Runtime 顶层窗口，API 不接收 LingBuilder `HWND`，桥接层使用空父窗口/预置窗口字段与 `CEF_RUNTIME_STYLE_CHROME`；内嵌浏览器仍使用独立子宿主和 Alloy Runtime。网页新窗口目标可在 `BeforePopup` 事件中显式转为受管 Chrome UI。MSVC x64 实测同时出现 LingBuilder 主窗口与 `Chrome_WidgetWin_1`，主进程保持响应。
 
 ## 目录结构
 
@@ -132,7 +140,9 @@ npm run package:win
 - 图片框即使初始没有配置图片源，也会以 Win32 `SS_BITMAP` 静态控件创建；因此可以在文件已选择或文件被拖入事件中直接调用 `.设置图片(...)`，不需要先在设计器中放置一张占位图片。
 - 高级模块未启用时，工具箱显示依赖状态但不能新增高级控件；项目已有高级控件不得被删除或静默替换。
 - 内置 `lingbuilder.edgeview` 模块按 v2 `contributes.designerControls` 贡献 `Edge浏览器 (EdgeBrowser)`：项目启用后工具箱可添加多个可拖动、可调整尺寸的 WebView2 占位，设计器父子层级会生成窗口、容器或选项卡页的真实父 HWND。每个控件拥有独立宿主、Controller 和默认 `.edgeview/<controlId>` User Data Folder，并可在属性面板设置地址、缓存目录和代理；按控件名的创建、导航、JS、事件读取、前进后退、刷新和关闭命令与原数字实例/区域 API 并存。事件目录以稳定 SDK `Microsoft.Web.WebView2 1.0.3537.50` 为边界，接入普通 HWND 控件可达的 62 项 WebView、Controller、Environment、Download、Find、Frame、Notification、Profile、DevTools 和自定义菜单事件，数据统一返回 UTF-16 JSON；仅 CompositionController 专属的 2 项合成事件不适用于真实 HWND 控件。原生构建从 NuGet 缓存复制 WebView2 SDK 头文件与目标架构 Loader，不依赖 React 组件硬编码路径。
-- 内置 `lingbuilder.cef3.browser` 模块按 v2 `contributes.designerControls` 贡献 `CEF3浏览器 (CefBrowser)` 设计器控件：项目启用后工具箱自动新增该控件，可在任意窗口添加多个实例，属性面板可设置打开地址、缓存目录、User-Agent、JavaScript/图片/WebGL 开关与代理；21 条 `CEF3_*` 中文命令和 92 项 CEF 150 浏览器回调同时进入补全、binding、设计器事件面板和确定性 C++ 运行时。事件通过 `WM_LINGBUILDER_CEF_EVENT` 回到所属窗口线程，同步决策支持默认/允许/拒绝/已处理，高频音频和进度回调限流。原生构建从 `CEF3_SDK_ROOT`、工作区 `.lingbuilder/cef3-sdk`、已安装 SDK 载体模块 `.lingbuilder/modules/lingbuilder.cef3.sdk/sdk` 或 `C:\cef3-sdk` 受控发现 CEF3 SDK，支持 CEF 官方二进制发行包布局（`include/` + `Release/` + `Resources/`，已验证 150.0.14 x64）；推荐安装离线 SDK 模块包 `cef3-sdk-x64.lbmod`。CEF3 原生依赖计划固定要求 C++20 与 `/MD`，F5、AI Bridge 和生成的 Visual Studio 四组配置会共同应用，普通项目仍使用 C++17。CEF3 同 exe 全部控件共享缓存，需要会话隔离时使用 `lingbuilder.edgeview`。
+- 内置 `lingbuilder.cef3.browser` 模块按 v2 `contributes.designerControls` 贡献 `CEF3浏览器 (CefBrowser)` 设计器控件：项目启用后工具箱自动新增该控件，可在任意窗口添加多个实例，属性面板可设置打开地址、缓存目录、User-Agent、JavaScript/图片/WebGL 开关与代理；22 条 `CEF3_*` 中文命令和 92 项 CEF 150 浏览器回调同时进入补全、binding、设计器事件面板和确定性 C++ 运行时。事件通过 `WM_LINGBUILDER_CEF_EVENT` 回到所属窗口线程，同步决策支持默认/允许/拒绝/已处理，高频音频和进度回调限流。原生构建从 `CEF3_SDK_ROOT`、工作区 `.lingbuilder/cef3-sdk`、已安装 SDK 载体模块 `.lingbuilder/modules/lingbuilder.cef3.sdk/sdk` 或 `C:\cef3-sdk` 受控发现 CEF3 SDK，支持 CEF 官方二进制发行包布局（`include/` + `Release/` + `Resources/`，已验证 150.0.14 x64）；推荐安装离线 SDK 模块包 `cef3-sdk-x64.lbmod`。CEF3 原生依赖计划固定要求 C++20 与 `/MD`，F5、AI Bridge 和生成的 Visual Studio 四组配置会共同应用，普通项目仍使用 C++17。CEF3 同 exe 全部控件共享缓存，需要会话隔离时使用 `lingbuilder.edgeview`。
+- CEF3 `OnBeforePopup` 返回允许时可创建独立原生 popup 浏览器。`CEF3_打开原生UI浏览器` 使用 `CEF_RUNTIME_STYLE_CHROME`、空父句柄与 `WS_EX_APPWINDOW` 主动创建拥有独立根 HWND、原生地址栏和完整浏览器界面的桌面顶层窗口，不复用 LingBuilder 主窗口句柄，也不依赖可能被弹窗策略拦截的网页脚本。生成运行时分别保存内嵌主浏览器与其 popup 集合，popup 创建不会覆盖主控件句柄，popup 的加载/地址/标题事件不会污染主窗口工具栏；关闭控件或主窗口时会一并关闭全部 popup。`src/cef3-2` 提供“内嵌打开 / 谷歌原生UI”双入口示例。
+- CEF3 双形态宿主是固定契约：内嵌浏览器只能 `SetAsChild(控件宿主HWND, CefRect)`；谷歌原生 UI 必须 `SetAsPopup(nullptr, ...)`，并保持 `parent_window=nullptr`、`WS_EX_APPWINDOW`、非 `WS_CHILD` 和 `CEF_RUNTIME_STYLE_CHROME`。曾验证 `SetAsPopup(hwnd_, ...)` 会让 Chrome 原生界面覆盖进 LingBuilder 主窗口。2026-07-28 实机回归已确认修复后主窗口与 Chrome UI 窗口同时存在，均可独立移动和缩放。
 - 当前随附 CEF 150 SDK 仅支持 x64。新项目启用 CEF3 时会自动把工作区从默认 Win32 切换到 x64，并在 F5/解决方案构建前再次校正；模块面板与任务日志会显示该自动变更。
 - IDE 构建目录中的 Visual Studio 工程把 exe 输出到 `$(Platform)/$(Configuration)/bin/`，与 F5 复制的 CEF DLL、snapshot 和资源保持同目录，可从 VS 直接编译启动。`generated/cpp` 的对外可移植 SDK/资源完整性需单独验收。
 

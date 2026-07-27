@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import { createCommandService } from '../src/services/commands/commandService';
 import { MenuService } from '../src/services/menus/menuService';
 import { validateModuleManifest } from '../src/services/modules/manifest';
+import { SOLUTION_EXPLORER_CONTEXT_MENU, SOLUTION_PROJECT_CONTEXT_MENU } from '../src/services/menus/types';
+import {
+  CREATE_SOLUTION_FOLDER_COMMAND,
+  RENAME_SOLUTION_PROJECT_COMMAND,
+  registerSolutionExplorerMenu
+} from '../src/services/solution/solutionExplorerMenu';
 
 test('MenuService resolves commands, groups, submenus and dynamic disposal', async () => {
   const commands = createCommandService();
@@ -51,6 +57,24 @@ test('MenuService rejects non-serializable or oversized arguments', () => {
   const menus = new MenuService(createCommandService());
   assert.throws(() => menus.registerMenuItem({ menu: 'x', command: 'x', arguments: [BigInt(1)] }), /JSON/);
   assert.throws(() => menus.registerMenuItem({ menu: 'x', command: 'x', arguments: ['x'.repeat(40_000)] }), /32KB/);
+});
+
+test('solution explorer folder and project actions use MenuService and unregister cleanly', () => {
+  const commands = createCommandService();
+  commands.registerCommand({ id: CREATE_SOLUTION_FOLDER_COMMAND, title: '新建解决方案文件夹', handler: () => true });
+  commands.registerCommand({ id: RENAME_SOLUTION_PROJECT_COMMAND, title: '重命名项目', handler: () => true });
+  const menus = new MenuService(commands);
+  const registration = registerSolutionExplorerMenu(menus);
+  const resolved = menus.resolveMenu(SOLUTION_EXPLORER_CONTEXT_MENU, { 'workspace.open': true });
+  assert.equal(resolved.length, 1);
+  assert.equal(resolved[0].kind, 'command');
+  if (resolved[0].kind === 'command') assert.equal(resolved[0].command.id, CREATE_SOLUTION_FOLDER_COMMAND);
+  const projectMenu = menus.resolveMenu(SOLUTION_PROJECT_CONTEXT_MENU, { 'workspace.open': true });
+  assert.equal(projectMenu.length, 1);
+  if (projectMenu[0].kind === 'command') assert.equal(projectMenu[0].command.id, RENAME_SOLUTION_PROJECT_COMMAND);
+  registration.dispose();
+  assert.deepEqual(menus.resolveMenu(SOLUTION_EXPLORER_CONTEXT_MENU, { 'workspace.open': true }), []);
+  assert.deepEqual(menus.resolveMenu(SOLUTION_PROJECT_CONTEXT_MENU, { 'workspace.open': true }), []);
 });
 
 test('module v2 validates declarative menus and container layouts', () => {

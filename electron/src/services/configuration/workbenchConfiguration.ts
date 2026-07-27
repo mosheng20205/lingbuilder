@@ -23,6 +23,7 @@ export const WORKBENCH_CONFIGURATION_KEYS = [
   'files.autoSaveDelay',
   'workbench.colorTheme',
   'workbench.sidebar.visible',
+  'workbench.sidebar.width',
   'workbench.panel.visible',
   'workbench.aiPanel.visible',
   'keyboard.shortcuts'
@@ -81,6 +82,13 @@ export const WORKBENCH_CONFIGURATION_SCHEMA: ConfigurationSchema = {
     type: 'boolean',
     default: true,
     description: '是否显示左侧资源管理器。'
+  },
+  'workbench.sidebar.width': {
+    type: 'integer',
+    default: 264,
+    minimum: 160,
+    maximum: 600,
+    description: '左侧解决方案资源管理器的宽度，单位为像素。'
   },
   'workbench.panel.visible': {
     type: 'boolean',
@@ -158,6 +166,15 @@ export const WORKBENCH_CONFIGURATION_METADATA: readonly WorkbenchConfigurationMe
     title: '显示侧边栏',
     description: '控制左侧资源管理器是否可见。',
     targets: USER_AND_WORKSPACE_TARGETS
+  },
+  {
+    key: 'workbench.sidebar.width',
+    category: '工作台',
+    title: '侧边栏宽度',
+    description: '设置左侧解决方案资源管理器的宽度（160-600 像素）。',
+    targets: USER_AND_WORKSPACE_TARGETS,
+    minimum: 160,
+    maximum: 600
   },
   {
     key: 'workbench.panel.visible',

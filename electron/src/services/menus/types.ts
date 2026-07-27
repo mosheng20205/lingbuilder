@@ -3,6 +3,8 @@ import type { CommandContext, CommandPresentation, CommandRegistration, CommandW
 export const DESIGNER_CONTROL_CONTEXT_MENU = 'designer/control/context';
 export const DESIGNER_CANVAS_CONTEXT_MENU = 'designer/canvas/context';
 export const DESIGNER_RESOURCE_CONTEXT_MENU = 'designer/resource/context';
+export const SOLUTION_EXPLORER_CONTEXT_MENU = 'solution/explorer/context';
+export const SOLUTION_PROJECT_CONTEXT_MENU = 'solution/project/context';
 
 export type MenuContributionSource = 'builtin' | 'module' | 'extension';
 

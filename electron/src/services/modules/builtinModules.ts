@@ -96,6 +96,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '控件_取文本', signature: '控件_取文本(控件名)', description: '读取指定控件的当前文本。', insertText: '控件_取文本("$1")', returnType: '文本型' },
         { name: '控件_设置启用', signature: '控件_设置启用(控件名, 启用)', description: '启用或禁用指定控件。', insertText: '控件_设置启用("$1", 真)', returnType: '逻辑型' },
         { name: '控件_设置可见', signature: '控件_设置可见(控件名, 可见)', description: '显示或隐藏指定控件。', insertText: '控件_设置可见("$1", 真)', returnType: '逻辑型' },
+        { name: '控件_设置位置大小', signature: '控件_设置位置大小(控件名, 横坐标, 纵坐标, 宽度, 高度)', description: '按当前窗口客户区像素坐标移动指定控件并调整大小，适合在窗口大小事件中实现自适应布局。', insertText: '控件_设置位置大小("$1", $2, $3, $4, $5)', returnType: '逻辑型' },
         { name: '控件_设置勾选', signature: '控件_设置勾选(控件名, 勾选)', description: '设置复选框、单选框或切换按钮状态。', insertText: '控件_设置勾选("$1", 真)', returnType: '逻辑型' },
         { name: '控件_取勾选', signature: '控件_取勾选(控件名)', description: '读取控件勾选状态。', insertText: '控件_取勾选("$1")', returnType: '逻辑型' },
         { name: '控件_设置数值', signature: '控件_设置数值(控件名, 数值)', description: '设置进度条、滑块、调节器或滚动条数值。', insertText: '控件_设置数值("$1", 50)', returnType: '逻辑型' },
@@ -175,6 +176,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '控件_取文本', runtimeName: '控件_取文本', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
         { command: '控件_设置启用', runtimeName: '控件_设置启用', parameters: [{ name: '控件名', type: 'wideString' }, { name: '启用', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_设置可见', runtimeName: '控件_设置可见', parameters: [{ name: '控件名', type: 'wideString' }, { name: '可见', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置位置大小', runtimeName: '控件_设置位置大小', parameters: [{ name: '控件名', type: 'wideString' }, { name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }, { name: '宽度', type: 'int' }, { name: '高度', type: 'int' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_设置勾选', runtimeName: '控件_设置勾选', parameters: [{ name: '控件名', type: 'wideString' }, { name: '勾选', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_取勾选', runtimeName: '控件_取勾选', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
         { command: '控件_设置数值', runtimeName: '控件_设置数值', parameters: [{ name: '控件名', type: 'wideString' }, { name: '数值', type: 'int' }], returnType: 'bool', encoding: 'wide' },
@@ -431,6 +433,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       designerControls: createControlContributions('lingbuilder.cef3.browser'),
       commands: [
         { name: 'CEF3_导航', signature: 'CEF3_导航(控件名, 地址)', description: '让指定 CEF3 浏览器控件导航到 HTTP/HTTPS 地址或本地文件地址。', insertText: 'CEF3_导航("$1", "https://www.baidu.com")', returnType: '整数型' },
+        { name: 'CEF3_打开原生UI浏览器', signature: 'CEF3_打开原生UI浏览器(控件名, 地址)', description: '使用 CEF Chrome Runtime 创建带原生地址栏和浏览器界面的独立顶层窗口，并纳入指定内嵌控件的 popup 生命周期管理。', insertText: 'CEF3_打开原生UI浏览器("$1", "https://www.baidu.com")', returnType: '整数型' },
         { name: 'CEF3_执行JS', signature: 'CEF3_执行JS(控件名, 脚本)', description: '在指定 CEF3 浏览器控件中执行 JavaScript 并等待结果，返回 JSON 编码结果文本。', insertText: 'CEF3_执行JS("$1", "document.title")', returnType: '文本型' },
         { name: 'CEF3_后退', signature: 'CEF3_后退(控件名)', description: '指定 CEF3 浏览器控件可以后退时返回上一页，成功返回 1。', insertText: 'CEF3_后退("$1")', returnType: '整数型' },
         { name: 'CEF3_前进', signature: 'CEF3_前进(控件名)', description: '指定 CEF3 浏览器控件可以前进时进入下一页，成功返回 1。', insertText: 'CEF3_前进("$1")', returnType: '整数型' },
@@ -463,6 +466,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     ],
     bindings: { commands: [
       { command: 'CEF3_导航', runtimeName: 'CEF3_导航', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_导航("浏览器1", "https://www.baidu.com")' },
+      { command: 'CEF3_打开原生UI浏览器', runtimeName: 'CEF3_打开原生UI浏览器', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_打开原生UI浏览器("浏览器1", "https://www.baidu.com")' },
       { command: 'CEF3_执行JS', runtimeName: 'CEF3_执行JS', parameters: [{ name: '控件名', type: 'wideString' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide', example: 'CEF3_执行JS("浏览器1", "document.title")' },
       { command: 'CEF3_后退', runtimeName: 'CEF3_后退', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_前进', runtimeName: 'CEF3_前进', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
@@ -501,6 +505,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       designerControls: createControlContributions('lingbuilder.fbro.browser'),
       commands: [
         { name: 'FBro_创建', signature: 'FBro_创建(控件名)', description: '使用设计器属性创建指定 FBro 浏览器；空控件名创建当前窗口全部 FBro 控件。', insertText: 'FBro_创建("$1")', returnType: '整数型' },
+        { name: 'FBro_打开谷歌原生UI浏览器', signature: 'FBro_打开谷歌原生UI浏览器(控件名, 地址)', description: '基于指定内嵌 FBro 实例的会话创建 Chrome Runtime 独立顶层浏览器；不接收或复用 LingBuilder 窗口句柄。', insertText: 'FBro_打开谷歌原生UI浏览器("$1", "https://www.baidu.com")', returnType: '整数型' },
         { name: 'FBro_关闭', signature: 'FBro_关闭(控件名)', description: '关闭指定 FBro 浏览器并释放实例。', insertText: 'FBro_关闭("$1")', returnType: '空' },
         { name: 'FBro_导航', signature: 'FBro_导航(控件名, 地址)', description: '让指定 FBro 浏览器导航到目标地址。', insertText: 'FBro_导航("$1", "https://www.baidu.com")', returnType: '整数型' },
         { name: 'FBro_刷新', signature: 'FBro_刷新(控件名)', description: '刷新指定 FBro 浏览器。', insertText: 'FBro_刷新("$1")', returnType: '空' },
@@ -532,6 +537,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     }],
     bindings: { commands: [
       { command: 'FBro_创建', runtimeName: 'FBro_创建', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_打开谷歌原生UI浏览器', runtimeName: 'FBro_打开谷歌原生UI浏览器', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'FBro_打开谷歌原生UI浏览器("FBro浏览器1", "https://www.baidu.com")' },
       { command: 'FBro_关闭', runtimeName: 'FBro_关闭', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
       { command: 'FBro_导航', runtimeName: 'FBro_导航', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'FBro_刷新', runtimeName: 'FBro_刷新', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
