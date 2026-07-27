@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import lingBuilderIcon from '../../image/lingbuilder-ide-icon-v1.png';
 import {
   FolderCode,
   Layers,
-  BookOpen,
   Brain,
   Terminal,
   Sun,
@@ -28,12 +28,6 @@ import {
   Redo2,
   Copy,
   ClipboardPaste,
-  SquareDot,
-  Type,
-  Keyboard,
-  CheckSquare,
-  CircleDot,
-  List,
   ShieldCheck,
   Minus,
   Maximize2,
@@ -43,7 +37,10 @@ import {
   Command as CommandIcon,
   Settings as SettingsIcon,
   Search,
-  Bug
+  Bug,
+  Columns2,
+  Rows2,
+  MoveRight
 } from 'lucide-react';
 
 import {
@@ -72,13 +69,16 @@ import CommandPalette from './components/CommandPalette';
 import SettingsDialog from './components/SettingsDialog';
 import WorkspaceSearchDialog from './components/WorkspaceSearchDialog';
 import EnvironmentRepairCenter from './components/EnvironmentRepairCenter';
+import CliGuideDialog from './components/CliGuideDialog';
+import AboutDialog from './components/AboutDialog';
+import HelpCenterDialog from './components/HelpCenterDialog';
 import ProjectNameDialog from './components/ProjectNameDialog';
 import TextFileStatusControls from './components/TextFileStatusControls';
 import EditorPositionStatus from './components/EditorPositionStatus';
 import {
   DIFF_VIEW_MODE_CHANGE_EVENT,
   type DiffViewMode
-} from './components/DiffViewModeSelector';
+} from './services/editor/diffViewMode';
 import {
   TEXT_FILE_ENCODINGS,
   TEXT_FILE_EOLS,
@@ -181,10 +181,17 @@ import { createEnvironmentCheckRequestGate } from './services/tasks/environmentC
 import type { TaskSnapshot } from './services/tasks/taskService';
 import type { ClangdStatus } from './services/lsp/clangdService';
 import type { BuildArchitecture, BuildConfiguration, BuildMode } from './services/tasks/buildConfigurationService';
-import { closeEditorGroup, closeEditorGroupTab, moveEditorTab, restoreEditorGroupLayout, selectEditorGroupTab, splitEditorGroup, type EditorGroupLayout } from './services/editor/editorGroupLayout';
+import { closeEditorGroupTab, collapseEditorGroups, moveEditorTab, restoreEditorGroupLayout, selectEditorGroupTab, splitEditorGroup, type EditorGroupLayout } from './services/editor/editorGroupLayout';
 import { getLingCppProblems } from './services/lingCpp/languageService';
 import { EditorExperienceMode, adaptProblemForBeginner } from './services/lingCpp/beginnerService';
 import { findLingCppMethod, parseLingCpp } from './services/lingCpp/parser';
+import { EMPTY_PROJECT_GLOBALS_SOURCE, isProjectGlobalsFilePath, PROJECT_GLOBALS_FILE_NAME } from './services/lingCpp/projectGlobalService';
+import { executeProjectGlobalVariableCommand } from './services/lingCpp/projectGlobalCommandService';
+import { EMPTY_PROJECT_DATA_TYPES_SOURCE, isProjectDataTypesFilePath, PROJECT_DATA_TYPES_FILE_NAME } from './services/lingCpp/projectDataTypeService';
+import { executeProjectDataTypeCommand } from './services/lingCpp/projectDataTypeCommandService';
+import { createProjectConstantRenameProposal, findProjectConstantReferences } from './services/lingCpp/projectConstantReferenceService';
+import { findFunctionLibraryReferences, isFunctionLibrarySource, renameFunctionLibraryAcrossSources } from './services/lingCpp/functionLibraryService';
+import type { LingCppAstEdit } from './services/lingCpp/types';
 import { InstalledModule, LingCppModuleContext, ModuleHintContent } from './services/modules/types';
 import {
   DEFAULT_SOLUTION,
@@ -208,8 +215,7 @@ import {
   TextModelIdentity,
   workbenchTextModelService
 } from './services/textModel';
-
-const BEGINNER_IGNORED_TASKS_STORAGE_KEY = 'lingbuilder.beginnerIgnoredTasks';
+import { LINGBUILDER_DISPLAY_VERSION } from './services/product/productInfo';
 
 const generateDefaultLingCppContentForWindow = (win: any) => {
   const className = win.className || '自定义窗体';
@@ -315,16 +321,6 @@ const getInitialEditorExperienceMode = (): EditorExperienceMode => {
   }
 };
 
-const getInitialIgnoredBeginnerTasks = (): string[] => {
-  try {
-    const savedValue = window.localStorage.getItem(BEGINNER_IGNORED_TASKS_STORAGE_KEY);
-    const parsed = savedValue ? JSON.parse(savedValue) : [];
-    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : [];
-  } catch {
-    return [];
-  }
-};
-
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const sanitizeLingCppText = (value: string | undefined, fallback: string) => {
@@ -394,12 +390,6 @@ const inferFileLanguage = (filePath: string): CppFile['language'] => {
 };
 
 const DEFAULT_TEXT_FILE_FORMAT: TextFileFormat = { encoding: 'utf8', eol: 'lf' };
-const DIFF_VIEW_MODE_COMMANDS: Readonly<Record<DiffViewMode, string>> = {
-  chinese: 'workbench.action.diff.edit',
-  split: 'workbench.action.diff.split',
-  unified: 'workbench.action.diff.unified'
-};
-
 const readTextFileFormat = (value: unknown): TextFileFormat => {
   if (!value || typeof value !== 'object') return DEFAULT_TEXT_FILE_FORMAT;
   const candidate = value as Partial<TextFileFormat>;
@@ -694,6 +684,230 @@ export default function App() {
     return true;
   }, [flushCurrentEditorDrafts, showEditorFlushFailure]);
 
+  const handleOpenProjectGlobalVariables = useCallback(async (projectId: string): Promise<void> => {
+    const project = solution.projects.find(item => item.id === projectId);
+    if (!project || project.type !== 'visual-cpp') return;
+    if (projectId !== activeProjectIdRef.current) {
+      window.alert('请先等待该项目切换并载入完成。');
+      return;
+    }
+    const sourceRoot = project.sourceRoot.replace(/\\/gu, '/').replace(/\/+$/u, '');
+    const filePath = `${sourceRoot}/${PROJECT_GLOBALS_FILE_NAME}`;
+    let targetFile = filesRef.current.find(file => file.path.replace(/\\/gu, '/') === filePath);
+    if (!targetFile) {
+      targetFile = {
+        path: filePath,
+        name: PROJECT_GLOBALS_FILE_NAME,
+        language: 'lingcpp',
+        encoding: 'utf8',
+        eol: 'lf',
+        savedEncoding: 'utf8',
+        savedEol: 'lf',
+        formatModified: false,
+        originalContent: '',
+        translatedContent: EMPTY_PROJECT_GLOBALS_SOURCE,
+        strings: [],
+        isModified: true
+      };
+      const nextFiles = [...filesRef.current, targetFile];
+      filesRef.current = nextFiles;
+      setFiles(nextFiles);
+    }
+    await handleSelectFile(targetFile);
+  }, [handleSelectFile, solution.projects]);
+
+  const handleOpenProjectDataTypes = useCallback(async (projectId: string): Promise<void> => {
+    const project = solution.projects.find(item => item.id === projectId);
+    if (!project || project.type !== 'visual-cpp') return;
+    if (projectId !== activeProjectIdRef.current) {
+      window.alert('请先等待该项目切换并载入完成。');
+      return;
+    }
+    const sourceRoot = project.sourceRoot.replace(/\\/gu, '/').replace(/\/+$/u, '');
+    const filePath = `${sourceRoot}/${PROJECT_DATA_TYPES_FILE_NAME}`;
+    let targetFile = filesRef.current.find(file => file.path.replace(/\\/gu, '/') === filePath);
+    if (!targetFile) {
+      targetFile = {
+        path: filePath,
+        name: PROJECT_DATA_TYPES_FILE_NAME,
+        language: 'lingcpp',
+        encoding: 'utf8',
+        eol: 'lf',
+        savedEncoding: 'utf8',
+        savedEol: 'lf',
+        formatModified: false,
+        originalContent: '',
+        translatedContent: EMPTY_PROJECT_DATA_TYPES_SOURCE,
+        strings: [],
+        isModified: true
+      };
+      const nextFiles = [...filesRef.current, targetFile];
+      filesRef.current = nextFiles;
+      setFiles(nextFiles);
+    }
+    await handleSelectFile(targetFile);
+  }, [handleSelectFile, solution.projects]);
+
+  const addPersistedFunctionLibraryToEditor = useCallback(async (filePath: string, sourceCode: string, select = true) => {
+    const existing = filesRef.current.find(file => file.path.replace(/\\/gu, '/') === filePath.replace(/\\/gu, '/'));
+    if (existing) {
+      const refreshed = existing.translatedContent === sourceCode && existing.originalContent === sourceCode
+        ? existing
+        : { ...existing, originalContent: sourceCode, translatedContent: sourceCode, isModified: false };
+      if (refreshed !== existing) {
+        const nextFiles = filesRef.current.map(file => file === existing ? refreshed : file);
+        filesRef.current = nextFiles;
+        setFiles(nextFiles);
+      }
+      if (select) await handleSelectFile(refreshed);
+      return;
+    }
+    const file: CppFile = {
+      path: filePath,
+      name: filePath.replace(/\\/gu, '/').split('/').at(-1) || filePath,
+      language: 'lingcpp',
+      encoding: 'utf8',
+      eol: 'lf',
+      savedEncoding: 'utf8',
+      savedEol: 'lf',
+      formatModified: false,
+      originalContent: sourceCode,
+      translatedContent: sourceCode,
+      strings: [],
+      isModified: false
+    };
+    const nextFiles = [...filesRef.current, file];
+    filesRef.current = nextFiles;
+    setFiles(nextFiles);
+    if (select) await handleSelectFile(file);
+  }, [handleSelectFile]);
+
+  const handleCreateFunctionLibrary = useCallback(async (projectId: string) => {
+    const name = window.prompt('输入功能库名称（将创建“功能/名称.lcpp”）', '通用工具')?.trim();
+    if (!name) return;
+    if (!/^[\p{L}_][\p{L}\p{N}_]*$/u.test(name)) {
+      window.alert('功能库名称只能包含中文、字母、数字和下划线，且不能以数字开头。');
+      return;
+    }
+    const response = await fetch('/api/window-designer/function-libraries/create', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, name })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok === false) {
+      window.alert(result.error || '新建功能库失败。');
+      return;
+    }
+    appendEditorTransactionLog(`【功能库】已新建 ${result.filePath}`);
+    if (projectId === activeProjectIdRef.current) await addPersistedFunctionLibraryToEditor(result.filePath, result.sourceCode);
+  }, [addPersistedFunctionLibraryToEditor]);
+
+  const handlePasteFunctionLibrary = useCallback(async (targetProjectId: string) => {
+    if (targetProjectId === activeProjectIdRef.current) {
+      const dirtyDependencyInput = filesRef.current.find(file => file.isModified && file.path.toLocaleLowerCase().endsWith('.lcpp'));
+      if (dirtyDependencyInput) {
+        window.alert(`请先保存 ${dirtyDependencyInput.name}，再粘贴功能库；依赖闭包需要以一致的项目源码生成事务。`);
+        return;
+      }
+    }
+    let clipboardText = '';
+    try { clipboardText = await navigator.clipboard.readText(); } catch { window.alert('无法读取剪贴板，请先在项目树中复制功能库。'); return; }
+    const prefix = 'LINGBUILDER_FUNCTION_LIBRARY:';
+    if (!clipboardText.startsWith(prefix)) {
+      window.alert('剪贴板中没有 LingBuilder 功能库。请右键功能库文件并选择“复制功能库”。');
+      return;
+    }
+    let payload: { sourceProjectId?: string; sourcePath?: string };
+    try { payload = JSON.parse(clipboardText.slice(prefix.length)); } catch { window.alert('剪贴板中的功能库信息已损坏。'); return; }
+    let targetName: string | undefined;
+    const previewCopy = async () => {
+      const response = await fetch('/api/window-designer/function-libraries/copy', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, targetProjectId, targetName, approved: false })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || '无法预览功能库复制。');
+      return result.preview as any;
+    };
+    try {
+      let preview = await previewCopy();
+      while (preview.targetExists) {
+        targetName = window.prompt('目标项目已有同名功能库，请输入新的独立名称：', `${preview.targetName}副本`)?.trim();
+        if (!targetName) return;
+        preview = await previewCopy();
+      }
+      const missingLines = [
+        ...(preview.missing.libraries || []).map((item: string) => `缺少功能库：${item}`),
+        ...(preview.missing.projectTypes || []).map((item: string) => `缺少项目数据类型：${item}`),
+        ...(preview.missing.projectSymbols || []).map((item: string) => `缺少项目常量/全局变量：${item}`),
+        ...(preview.missing.modules || []).map((item: string) => `缺少项目模块：${item}`)
+      ];
+      const conflictLines = (preview.conflicts || []).map((item: any) => `${item.name}：${item.reason}`);
+      if (missingLines.length > 0 || conflictLines.length > 0) {
+        window.alert([
+          '功能库依赖闭包尚不能安全复制：',
+          ...missingLines,
+          ...conflictLines,
+          '',
+          '请先补齐源依赖，或处理目标项目中的同名定义后重试。'
+        ].join('\n'));
+        return;
+      }
+      const copiedLibraries = (preview.libraries || []).filter((item: any) => item.action === 'copy');
+      const reusedLibraries = (preview.libraries || []).filter((item: any) => item.action === 'reuse');
+      const renamedLibraries = copiedLibraries.filter((item: any) => item.sourceName !== item.targetName);
+      const copiedTypes = preview.resources?.projectTypes?.copied || [];
+      const reusedTypes = preview.resources?.projectTypes?.reused || [];
+      const copiedSymbols = preview.resources?.projectSymbols?.copied || [];
+      const reusedSymbols = preview.resources?.projectSymbols?.reused || [];
+      const enabledModules = preview.resources?.modules?.enabled || [];
+      const reusedModules = preview.resources?.modules?.reused || [];
+      const confirmed = window.confirm([
+        `复制到：${preview.targetPath}`,
+        `\n将复制功能库：${copiedLibraries.map((item: any) => item.targetName).join('、') || '无'}`,
+        reusedLibraries.length ? `\n复用目标功能库：${reusedLibraries.map((item: any) => item.targetName).join('、')}` : '',
+        renamedLibraries.length ? `\n自动避让重名：${renamedLibraries.map((item: any) => `${item.sourceName} → ${item.targetName}`).join('、')}` : '',
+        copiedTypes.length ? `\n复制项目数据类型：${copiedTypes.join('、')}` : '',
+        reusedTypes.length ? `\n复用相同数据类型：${reusedTypes.join('、')}` : '',
+        copiedSymbols.length ? `\n复制项目常量/全局变量：${copiedSymbols.join('、')}` : '',
+        reusedSymbols.length ? `\n复用相同项目符号：${reusedSymbols.join('、')}` : '',
+        enabledModules.length ? `\n自动启用模块：${enabledModules.join('、')}` : '',
+        reusedModules.length ? `\n复用已启用模块：${reusedModules.join('、')}` : '',
+        '\n依赖闭包检查通过，以上内容会在同一次事务中写入。',
+        '\n复制后是目标项目中的独立源码副本，不与原项目保持隐藏链接。',
+        '\n是否继续？'
+      ].filter(Boolean).join(''));
+      if (!confirmed) return;
+      const response = await fetch('/api/window-designer/function-libraries/copy', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...payload, targetProjectId, targetName, approved: true })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result.ok === false) throw new Error(result.error || '复制功能库失败。');
+      appendEditorTransactionLog(`【功能库】已复制依赖闭包，共写入 ${(result.updatedFiles || []).length} 个项目文件；入口 ${result.filePath}`);
+      if (targetProjectId === activeProjectIdRef.current) {
+        for (const file of (result.updatedFiles || [])) await addPersistedFunctionLibraryToEditor(file.filePath, file.sourceCode, false);
+        await addPersistedFunctionLibraryToEditor(result.filePath, result.sourceCode, true);
+      }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : '复制功能库失败。');
+    }
+  }, [addPersistedFunctionLibraryToEditor]);
+
+  useEffect(() => {
+    const revealProjectGlobalDefinition = async (event: Event) => {
+      const detail = (event as CustomEvent<{ filePath?: string; line?: number; column?: number }>).detail;
+      if (!detail?.filePath || !detail.line) return;
+      const normalizePath = (value: string) => value.replace(/\\/gu, '/').replace(/^\.\//u, '').toLocaleLowerCase();
+      const target = filesRef.current.find(file => normalizePath(file.path) === normalizePath(detail.filePath || ''));
+      if (!target || !(await handleSelectFile(target))) return;
+      [0, 80].forEach(delay => window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('lingcpp-reveal-line', { detail }));
+      }, delay));
+    };
+    window.addEventListener('lingcpp-reveal-definition', revealProjectGlobalDefinition);
+    return () => window.removeEventListener('lingcpp-reveal-definition', revealProjectGlobalDefinition);
+  }, [handleSelectFile]);
+
   const handleCloseTab = useCallback(async (tabPath: string, event: React.MouseEvent) => {
     event.stopPropagation();
     event.preventDefault();
@@ -737,6 +951,7 @@ export default function App() {
   }, []);
 
   const activateEditorGroup = useCallback((group: 'primary' | 'secondary') => {
+    if (activeEditorGroupRef.current === group) return;
     activeEditorGroupRef.current = group;
     setEditorState(group === 'secondary'
       ? secondaryEditorStateRef.current
@@ -756,6 +971,14 @@ export default function App() {
   const splitActiveEditor = useCallback((orientation: 'horizontal' | 'vertical') => {
     setEditorGroupLayout(previous => splitEditorGroup(previous, activeFileRef.current?.path || activeFile.path, orientation));
   }, [activeFile.path]);
+
+  const restoreSingleEditorGroup = useCallback(() => {
+    const collapsed = collapseEditorGroups(editorGroupLayout);
+    const mergedTabs = collapsed.groups[0]?.tabs || [];
+    openTabsRef.current = mergedTabs;
+    setOpenTabs(mergedTabs);
+    setEditorGroupLayout(collapsed);
+  }, [editorGroupLayout]);
 
   useEffect(() => {
     if (editorGroupLayout.groups.length > 1 || activeEditorGroupRef.current !== 'secondary') return;
@@ -801,10 +1024,12 @@ export default function App() {
   const [isMaximizedApp, setIsMaximizedApp] = useState(false);
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
+  const [showHelpCenter, setShowHelpCenter] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [showEnvironmentRepairCenter, setShowEnvironmentRepairCenter] = useState(false);
+  const [showCliGuide, setShowCliGuide] = useState(false);
   const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
   const [createProjectName, setCreateProjectName] = useState('');
   const [createProjectError, setCreateProjectError] = useState('');
@@ -821,6 +1046,18 @@ export default function App() {
   const [commandRegistryVersion, setCommandRegistryVersion] = useState(0);
   const commandServiceRef = useRef(createCommandService());
   const commandContextRef = useRef<CommandContext>({});
+  const designerCommandContextRef = useRef<CommandContext>({});
+  useEffect(() => commandServiceRef.current.onDidChange(() => {
+    setCommandRegistryVersion(version => version + 1);
+  }).dispose, []);
+  useEffect(() => {
+    const handleDesignerContext = (event: Event) => {
+      designerCommandContextRef.current = (event as CustomEvent<CommandContext>).detail || {};
+      setCommandRegistryVersion(version => version + 1);
+    };
+    window.addEventListener('lingbuilder-designer-command-context', handleDesignerContext);
+    return () => window.removeEventListener('lingbuilder-designer-command-context', handleDesignerContext);
+  }, []);
   const configurationMutationRef = useRef<(
     key: WorkbenchConfigurationKey,
     value: ConfigurationValue,
@@ -831,10 +1068,13 @@ export default function App() {
   const [editorExperienceMode, setEditorExperienceModeState] = useState<EditorExperienceMode>(getInitialEditorExperienceMode);
   const [autoSaveMode, setAutoSaveMode] = useState<'off' | 'afterDelay'>('off');
   const [autoSaveDelay, setAutoSaveDelay] = useState(1200);
-  const [ignoredBeginnerTaskIds, setIgnoredBeginnerTaskIds] = useState<string[]>(getInitialIgnoredBeginnerTasks);
   const [sourceControlStatus, setSourceControlStatus] = useState<SourceControlStatus | null>(null);
   const [pendingDesignerEventEdit, setPendingDesignerEventEdit] = useState<PendingDesignerEventEdit | null>(null);
-  const [moduleContext, setModuleContext] = useState<LingCppModuleContext>({ enabledModules: [], availableModules: [] });
+  const [moduleContext, setModuleContext] = useState<LingCppModuleContext>({
+    enabledModules: [],
+    availableModules: [],
+    showAdvancedApi: window.localStorage.getItem('lingbuilder.modules.showAdvancedApi') === 'true'
+  });
 
   useEffect(() => {
     workspaceReplacePreviewRef.current.clear();
@@ -852,8 +1092,17 @@ export default function App() {
       || projectFileLoadGenerationRef.current !== loadGeneration) return;
     const availableModules = Array.isArray(installedResult.modules) ? installedResult.modules as InstalledModule[] : [];
     const enabledModules = Array.isArray(enabledResult.modules) ? enabledResult.modules as InstalledModule[] : [];
-    setModuleContext({ availableModules, enabledModules });
+    setModuleContext(previous => ({ availableModules, enabledModules, showAdvancedApi: previous.showAdvancedApi }));
   }, [activeProjectId]);
+
+  useEffect(() => {
+    const updateVisibility = (event: Event) => {
+      const value = (event as CustomEvent<{ showAdvancedApi?: boolean }>).detail?.showAdvancedApi === true;
+      setModuleContext(previous => ({ ...previous, showAdvancedApi: value }));
+    };
+    window.addEventListener('lingbuilder-module-api-visibility-changed', updateVisibility);
+    return () => window.removeEventListener('lingbuilder-module-api-visibility-changed', updateVisibility);
+  }, []);
 
   const refreshSolution = useCallback(async () => {
     try {
@@ -902,6 +1151,9 @@ export default function App() {
 
     const handleModulesChanged = () => {
       refreshModuleContext();
+      void fetch('/api/build-configuration')
+        .then(response => response.json())
+        .then(payload => payload.configuration && setBuildConfiguration(payload.configuration));
     };
 
     const handleDesignerDirtyStateChanged = (event: Event) => {
@@ -965,18 +1217,6 @@ export default function App() {
     if (mode === editorExperienceMode) return true;
     return await setEditorExperienceMode(mode);
   }, [editorExperienceMode, setEditorExperienceMode]);
-
-  const ignoreBeginnerTask = useCallback((taskId: string) => {
-    setIgnoredBeginnerTaskIds(previousIds => {
-      const nextIds = Array.from(new Set([...previousIds, taskId]));
-      try {
-        window.localStorage.setItem(BEGINNER_IGNORED_TASKS_STORAGE_KEY, JSON.stringify(nextIds));
-      } catch {
-        // Ignore state is a convenience only.
-      }
-      return nextIds;
-    });
-  }, []);
 
   const setEditorFontSize = useCallback((nextValue: number | ((value: number) => number)) => {
     setEditorFontSizeState(previousValue => {
@@ -1071,8 +1311,8 @@ export default function App() {
 
   // Workspace layout toggles
   const [showLeftSidebar, setShowLeftSidebar] = useState(true);
-  const [showRightPanel, setShowRightPanel] = useState(true);
-  const [showBottomPanel, setShowBottomPanel] = useState(true);
+  const [showRightPanel, setShowRightPanel] = useState(false);
+  const [showBottomPanel, setShowBottomPanel] = useState(false);
   const [activeTabInBottom, setActiveTabInBottom] = useState<BottomPanelTabType>('output');
 
   const applyConfigurationSnapshot = useCallback((snapshot: WorkbenchConfigurationSnapshot) => {
@@ -1703,9 +1943,27 @@ void DisplayStatus() {
   };
 
   const handleDeleteFile = async (file: CppFile): Promise<boolean> => {
+    if (isProjectGlobalsFilePath(file.path) || isProjectDataTypesFilePath(file.path)) {
+      window.alert('该项目结构文件不能在 IDE 中删除；请在对应的新手编辑器中清空内容。');
+      return false;
+    }
     if (!projectFilesReadyRef.current) {
       appendEditorTransactionLog('【删除文件】项目文件仍在载入，请稍后再试。');
       return false;
+    }
+    if (file.language === 'lingcpp') {
+      const library = parseLingCpp(getCurrentFileContent(file)).program.functionLibraries[0];
+      if (library) {
+        const references = findFunctionLibraryReferences(filesRef.current.map(candidate => ({
+          filePath: candidate.path,
+          sourceCode: getCurrentFileContent(candidate),
+          language: candidate.language
+        })), library.name).filter(reference => reference.filePath !== file.path);
+        if (references.length > 0) {
+          window.alert(`功能库“${library.name}”仍被 ${references.length} 处代码调用，已阻止删除。\n\n首个引用：${references[0]!.filePath} 第 ${references[0]!.line} 行`);
+          return false;
+        }
+      }
     }
     const confirmed = window.confirm(`确认删除文件 ${file.name} 吗？`);
     if (!confirmed) return false;
@@ -1773,6 +2031,10 @@ void DisplayStatus() {
   };
 
   const handleRenameFile = async (file: CppFile, newName: string): Promise<boolean> => {
+    if (isProjectGlobalsFilePath(file.path) || isProjectDataTypesFilePath(file.path)) {
+      window.alert('该项目结构文件使用固定名称，不能在 IDE 中重命名。');
+      return false;
+    }
     if (!projectFilesReadyRef.current) {
       appendEditorTransactionLog('【重命名文件】项目文件仍在载入，请稍后再试。');
       return false;
@@ -1801,10 +2063,10 @@ void DisplayStatus() {
       }
       const sourceFile = filesRef.current.find(candidate => candidate.path === file.path);
       if (!sourceFile) throw new Error(`当前项目中找不到文件：${file.path}`);
+      let functionLibraryRename: { oldName: string; newName: string } | undefined;
       if (sourceFile.language === 'lingcpp') {
-        const sourceClassNames = new Set(
-          parseLingCpp(getCurrentFileContent(sourceFile)).program.classes.map(item => item.name)
-        );
+        const parsedSource = parseLingCpp(getCurrentFileContent(sourceFile));
+        const sourceClassNames = new Set(parsedSource.program.classes.map(item => item.name));
         const boundDesignerWindow = windowDesignerState.project.windows.find(window =>
           getLingWindowSourceFileName(window.fileName, window.className).toLocaleLowerCase()
             === sourceFile.name.toLocaleLowerCase()
@@ -1815,6 +2077,13 @@ void DisplayStatus() {
             `“${sourceFile.name}”绑定设计器窗口“${boundDesignerWindow.title}”，不能只重命名源码文件。`
             + '请先创建或迁移窗口；在统一重构命令落地前，工作台会阻止类名、设计文件名和 .lcpp 路径静默脱钩。'
           );
+        }
+        const sourceLibrary = parsedSource.program.functionLibraries[0];
+        if (sourceLibrary) {
+          if (!normalizedName.toLocaleLowerCase().endsWith('.lcpp')) throw new Error('功能库文件必须保留 .lcpp 扩展名。');
+          const nextLibraryName = normalizedName.slice(0, -5);
+          if (!/^[\p{L}_][\p{L}\p{N}_]*$/u.test(nextLibraryName)) throw new Error('功能库名称只能包含中文、字母、数字和下划线，且不能以数字开头。');
+          functionLibraryRename = { oldName: sourceLibrary.name, newName: nextLibraryName };
         }
       }
 
@@ -1846,6 +2115,18 @@ void DisplayStatus() {
         openTabs: openTabsRef.current,
         activeFilePath: activeFileRef.current?.path || null
       }, sourceFile.path, targetPath, inferFileLanguage(targetPath));
+      if (functionLibraryRename) {
+        const rewritten = renameFunctionLibraryAcrossSources(nextState.files.map(candidate => ({
+          filePath: candidate.path,
+          sourceCode: getCurrentFileContent(candidate),
+          language: candidate.language
+        })), functionLibraryRename.oldName, functionLibraryRename.newName);
+        nextState.files = nextState.files.map(candidate => {
+          const changed = rewritten.find(item => item.filePath === candidate.path);
+          if (!changed || changed.sourceCode === getCurrentFileContent(candidate)) return candidate;
+          return { ...candidate, translatedContent: changed.sourceCode, isModified: changed.sourceCode !== candidate.originalContent };
+        });
+      }
       const renamedFile = nextState.files.find(candidate => candidate.path === targetPath);
       if (!renamedFile) throw new Error('磁盘文件已重命名，但工作台状态更新失败。');
       filesRef.current = nextState.files;
@@ -1887,6 +2168,27 @@ void DisplayStatus() {
       return nextFiles;
     });
   };
+
+  const handleUpdateProjectSources = useCallback((sources: Array<{ filePath: string; sourceCode: string }>) => {
+    if (!projectFilesReadyRef.current || sources.length === 0) return;
+    const updates = new Map(sources.map(source => [source.filePath.replace(/\\/gu, '/'), source.sourceCode]));
+    const nextFiles = filesRef.current.map(file => {
+      const sourceCode = updates.get(file.path.replace(/\\/gu, '/'));
+      return sourceCode === undefined ? file : {
+        ...file,
+        translatedContent: sourceCode,
+        isModified: sourceCode !== file.originalContent
+      };
+    });
+    filesRef.current = nextFiles;
+    setFiles(nextFiles);
+    const activePath = activeFileRef.current?.path;
+    const nextActive = activePath ? nextFiles.find(file => file.path === activePath) : undefined;
+    if (nextActive) {
+      activeFileRef.current = nextActive;
+      setActiveFile(nextActive);
+    }
+  }, []);
 
   const updateActiveTextFileFormat = useCallback((patch: Partial<TextFileFormat>) => {
     if (!projectFilesReadyRef.current) return;
@@ -2025,7 +2327,14 @@ void DisplayStatus() {
           || currentFiles.find(file => file.path.endsWith('.lcpp'));
       }
 
-      customEvent.detail?.respond(lingCppFile ? (lingCppFile.translatedContent || lingCppFile.originalContent) : '');
+      const sources = currentFiles
+        .filter(file => file.language === 'lingcpp' || file.path.toLocaleLowerCase().endsWith('.lcpp'))
+        .map(file => ({ filePath: file.path, sourceCode: file.translatedContent || file.originalContent || '' }));
+      customEvent.detail?.respond({
+        sourceCode: lingCppFile ? (lingCppFile.translatedContent || lingCppFile.originalContent) : '',
+        filePath: lingCppFile?.path,
+        sources
+      });
     };
 
     window.addEventListener(WINDOW_DESIGNER_LINGCPP_SOURCE_REQUEST, handleLingCppSourceRequest);
@@ -3254,6 +3563,66 @@ void DisplayStatus() {
     return true;
   };
 
+  const handleExportLcppSourcePackage = async (requestedProjectId?: string): Promise<boolean> => {
+    const sourcePackageApi = window.lingBuilder?.sourcePackages;
+    if (!sourcePackageApi) {
+      appendEditorTransactionLog('【源码分享错误】当前运行环境不支持导出 LCPP 源码包。');
+      return false;
+    }
+    if (editorOperationRef.current || isBuilding) {
+      appendEditorTransactionLog('【源码分享】当前有保存、生成或文件操作正在进行，请稍后再试。');
+      return false;
+    }
+    const projectId = requestedProjectId || activeProjectId || solution.startupProjectId || solution.projects[0]?.id;
+    const project = solution.projects.find(item => item.id === projectId);
+    if (!project || project.type !== 'visual-cpp') {
+      appendEditorTransactionLog('【源码分享错误】请选择一个 LingBuilder 可视 C++ 项目。');
+      return false;
+    }
+    const flushed = await flushCurrentEditorDrafts();
+    if (!flushed.ok) {
+      appendEditorTransactionLog(`【源码分享错误】${flushed.diagnostics[0] || '当前代码草稿无法提交。'}`);
+      return false;
+    }
+    if ((flushed.files.some(isEditorFileDirty) || designerDirtyRef.current)
+      && !await handleSaveWorkspace('导出 LCPP 源码包前保存')) return false;
+    const result = await sourcePackageApi.exportProject(project.id, project.name);
+    if (result.canceled) return false;
+    setShowBottomPanel(true);
+    setActiveTabInBottom('output');
+    if (!result.ok) {
+      setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] 【源码分享错误】${result.error || 'LCPP 源码包导出失败。'}`]);
+      return false;
+    }
+    setBuildLogs(previous => [
+      ...previous,
+      `> [${new Date().toLocaleTimeString()}] 【源码分享】已导出 ${result.lcppFileCount || 0} 个 LCPP 源文件、${result.fileCount || 0} 个完整项目文件。`,
+      `源码包：${result.packagePath}`,
+      ...(result.warnings || []).map(warning => `提醒：${warning}`)
+    ]);
+    return true;
+  };
+
+  const handleOpenLcppSourcePackage = async (): Promise<boolean> => {
+    const sourcePackageApi = window.lingBuilder?.sourcePackages;
+    if (!sourcePackageApi) {
+      appendEditorTransactionLog('【打开源码包错误】当前运行环境不支持打开 LCPP 源码包。');
+      return false;
+    }
+    if (editorOperationRef.current || isBuilding) return false;
+    const flushed = await flushCurrentEditorDrafts();
+    if (!flushed.ok) return false;
+    if ((flushed.files.some(isEditorFileDirty) || designerDirtyRef.current)
+      && !await handleSaveWorkspace('打开 LCPP 源码包前保存')) return false;
+    const result = await sourcePackageApi.open();
+    if (result.canceled) return false;
+    if (!result.ok) {
+      appendEditorTransactionLog(`【打开源码包错误】${result.error || 'LCPP 源码包打开失败。'}`);
+      return false;
+    }
+    return true;
+  };
+
   useEffect(() => {
     const workspaceApi = window.lingBuilder?.workspace;
     if (!workspaceApi) return;
@@ -3329,13 +3698,6 @@ void DisplayStatus() {
       `> [${new Date().toLocaleTimeString()}] 【生成】成功提取多个窗体、控件变量和中文事件注册...`,
       `> [${new Date().toLocaleTimeString()}] 【生成】已重新生成每个窗口对应的 C++ 逻辑类定义。代码生成完毕。`
     ]);
-  };
-
-  const handleAddDesignerControl = (type: string) => {
-    window.dispatchEvent(new CustomEvent('show-window-designer'));
-    window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('add-designer-control', { detail: { type } }));
-    }, 50);
   };
 
   const handleEnvCheck = async (): Promise<boolean> => {
@@ -3574,6 +3936,37 @@ void DisplayStatus() {
     if (error) appendEditorTransactionLog(`【打开目录错误】${error}`);
   }, [solution.projects]);
 
+  const handleCopySolutionFullPath = useCallback(async (): Promise<boolean> => {
+    const copyFullPath = window.lingBuilder?.shell?.copyFullPath;
+    if (!copyFullPath) {
+      appendEditorTransactionLog('【复制路径错误】当前运行环境不支持复制解决方案完整路径。');
+      return false;
+    }
+    const result = await copyFullPath({ kind: 'solution', solutionName: solution.name });
+    appendEditorTransactionLog(result.ok
+      ? `【复制路径】已复制解决方案完整路径：${result.path}`
+      : `【复制路径错误】${result.error || '复制解决方案完整路径失败。'}`);
+    return result.ok;
+  }, [solution.name]);
+
+  const handleCopyProjectFullPath = useCallback(async (projectId?: string): Promise<boolean> => {
+    const project = solution.projects.find(item => item.id === (projectId || activeProjectId || solution.startupProjectId));
+    if (!project) {
+      appendEditorTransactionLog('【复制路径错误】当前解决方案中没有可复制路径的项目。');
+      return false;
+    }
+    const copyFullPath = window.lingBuilder?.shell?.copyFullPath;
+    if (!copyFullPath) {
+      appendEditorTransactionLog('【复制路径错误】当前运行环境不支持复制项目完整路径。');
+      return false;
+    }
+    const result = await copyFullPath({ kind: 'project', relativePath: getSolutionProjectDirectory(project) });
+    appendEditorTransactionLog(result.ok
+      ? `【复制路径】已复制项目“${project.name}”完整路径：${result.path}`
+      : `【复制路径错误】${result.error || '复制项目完整路径失败。'}`);
+    return result.ok;
+  }, [activeProjectId, solution.projects, solution.startupProjectId]);
+
   // Real window designer build task (F5)
   const handleRunBuild = useCallback(async (): Promise<boolean> => {
     if (editorOperationRef.current) {
@@ -3707,6 +4100,12 @@ void DisplayStatus() {
     findInFiles: () => openWorkspaceSearch('search'),
     replaceInFiles: () => openWorkspaceSearch('replace'),
     openWorkspace: handleOpenWorkspace,
+    openLcppSourcePackage: handleOpenLcppSourcePackage,
+    exportLcppSourcePackage: (projectId?: unknown) => handleExportLcppSourcePackage(typeof projectId === 'string' ? projectId : undefined),
+    openProjectGlobalVariables: (projectId?: unknown) => handleOpenProjectGlobalVariables(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
+    openProjectDataTypes: (projectId?: unknown) => handleOpenProjectDataTypes(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
+    createFunctionLibrary: (projectId?: unknown) => handleCreateFunctionLibrary(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
+    pasteFunctionLibrary: (projectId?: unknown) => handlePasteFunctionLibrary(typeof projectId === 'string' ? projectId : activeProjectIdRef.current),
     closeSolution: handleCloseCurrentSolution,
     save: () => handleSaveWorkspace(),
     undo: () => handleToolbarAction('undo'),
@@ -3716,8 +4115,13 @@ void DisplayStatus() {
     solutionBuild: () => handleSolutionBuildCommand('build'),
     solutionRebuild: () => handleSolutionBuildCommand('rebuild'),
     solutionClean: () => handleSolutionBuildCommand('clean'),
+    copySolutionFullPath: handleCopySolutionFullPath,
+    copyProjectFullPath: (projectId?: unknown) => handleCopyProjectFullPath(typeof projectId === 'string' ? projectId : undefined),
     environmentCheck: handleEnvCheck,
     environmentRepair: () => { setShowEnvironmentRepairCenter(true); return true; },
+    openCliGuide: () => { setShowCliGuide(true); return true; },
+    openHelpCenter: () => { setShowHelpCenter(true); return true; },
+    openAbout: () => { setShowAboutModal(true); return true; },
     openGitChanges: () => {
       window.dispatchEvent(new CustomEvent('lingbuilder-open-git-changes'));
       return true;
@@ -3743,14 +4147,20 @@ void DisplayStatus() {
     },
     diffEdit: () => showDiffViewMode('chinese'),
     diffSplit: () => showDiffViewMode('split'),
-    diffUnified: () => showDiffViewMode('unified')
+    diffUnified: () => showDiffViewMode('unified'),
+    splitEditorRight: () => splitActiveEditor('horizontal'),
+    splitEditorDown: () => splitActiveEditor('vertical'),
+    moveEditorToSecondGroup: () => movePrimaryTabToSecondary(),
+    restoreSingleEditorGroup
   };
 
   const blockingDialogOpen = showCloseConfirmModal
     || showAboutModal
+    || showHelpCenter
     || showCustomModal
     || showCreateProjectDialog
     || showEnvironmentRepairCenter
+    || showCliGuide
     || Boolean(pendingDesignerEventEdit)
     || Boolean(workspaceSearchMode);
   commandContextRef.current = {
@@ -3758,7 +4168,10 @@ void DisplayStatus() {
     'workbench.commandPaletteOpen': showCommandPalette,
     'workbench.settingsOpen': showSettingsDialog,
     'workbench.environmentRepairOpen': showEnvironmentRepairCenter,
+    'workbench.cliGuideOpen': showCliGuide,
+    'workbench.helpCenterOpen': showHelpCenter,
     'workbench.workspaceSearchOpen': Boolean(workspaceSearchMode),
+    'editor.multipleGroups': editorGroupLayout.groups.length > 1,
     'workbench.blockingDialogOpen': blockingDialogOpen,
     'workbench.modalOpen': showCommandPalette || showSettingsDialog || blockingDialogOpen,
     'operation.saving': isSaving,
@@ -3771,7 +4184,8 @@ void DisplayStatus() {
     'view.sidebarVisible': showLeftSidebar,
     'view.panelVisible': showBottomPanel,
     'view.aiPanelVisible': showRightPanel,
-    'workbench.darkTheme': isDarkMode
+    'workbench.darkTheme': isDarkMode,
+    ...(editorState.surface === 'designer' ? designerCommandContextRef.current : {})
   };
 
   useEffect(() => {
@@ -3810,6 +4224,132 @@ void DisplayStatus() {
         when: '!workbench.modalOpen',
         order: 10,
         handler: () => workbenchCommandHandlersRef.current.openWorkspace()
+      },
+      {
+        id: 'workbench.action.files.openLcppSourcePackage',
+        title: '打开 LCPP 源码包',
+        aliases: ['Open LCPP Source Package', 'Import LCPP Package'],
+        category: '文件',
+        description: '校验源码包完整性，导入为独立工作区并直接打开。',
+        when: '!workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 10,
+        handler: () => workbenchCommandHandlersRef.current.openLcppSourcePackage()
+      },
+      {
+        id: 'workbench.action.project.openGlobalVariables',
+        title: '项目：打开项目变量与常量',
+        aliases: ['Open Project Global Variables', 'Global Variables'],
+        category: '文件',
+        description: '打开当前 Visual C++ 项目的固定变量与常量文件。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 11,
+        handler: (_context, projectId) => workbenchCommandHandlersRef.current.openProjectGlobalVariables(projectId)
+      },
+      {
+        id: 'workbench.action.project.openDataTypes',
+        title: '项目：打开自定义数据类型',
+        aliases: ['Open Project Data Types', 'Custom Data Types'],
+        category: '文件',
+        description: '打开当前项目的记录型自定义数据类型编辑器。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 12,
+        handler: (_context, projectId) => workbenchCommandHandlersRef.current.openProjectDataTypes(projectId)
+      },
+      {
+        id: 'workbench.action.project.createFunctionLibrary',
+        title: '项目：新建功能库',
+        aliases: ['Create Function Library', 'New Reusable LCPP'],
+        category: '文件',
+        description: '在当前项目的“功能”目录新建无状态、可复用的 .lcpp 功能库。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 13,
+        handler: (_context, projectId) => workbenchCommandHandlersRef.current.createFunctionLibrary(projectId)
+      },
+      {
+        id: 'workbench.action.project.pasteFunctionLibrary',
+        title: '项目：粘贴功能库',
+        aliases: ['Paste Function Library', 'Copy LCPP Between Projects'],
+        category: '文件',
+        description: '预览依赖后，把剪贴板中的功能库复制为当前项目的独立源码副本。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 14,
+        handler: (_context, projectId) => workbenchCommandHandlersRef.current.pasteFunctionLibrary(projectId)
+      },
+      ...(['lingcpp.dataType.add', 'lingcpp.dataType.update', 'lingcpp.dataType.delete', 'lingcpp.dataType.move', 'lingcpp.dataField.add', 'lingcpp.dataField.update', 'lingcpp.dataField.delete', 'lingcpp.dataField.move'] as const).map(id => ({
+        id,
+        title: `内部：${id}`,
+        category: '内部',
+        when: 'false',
+        handler: (_context: unknown, sourceCode: unknown, edit: unknown) => executeProjectDataTypeCommand(id, String(sourceCode || ''), edit as LingCppAstEdit)
+      })),
+      {
+        id: 'lingcpp.global.add', title: '内部：添加项目全局变量', category: '内部', when: 'false',
+        handler: (_context, sourceCode, edit) => executeProjectGlobalVariableCommand('lingcpp.global.add', String(sourceCode || ''), edit as LingCppAstEdit)
+      },
+      {
+        id: 'lingcpp.global.update', title: '内部：更新项目全局变量', category: '内部', when: 'false',
+        handler: (_context, sourceCode, edit) => executeProjectGlobalVariableCommand('lingcpp.global.update', String(sourceCode || ''), edit as LingCppAstEdit)
+      },
+      {
+        id: 'lingcpp.global.delete', title: '内部：删除项目全局变量', category: '内部', when: 'false',
+        handler: (_context, sourceCode, edit) => executeProjectGlobalVariableCommand('lingcpp.global.delete', String(sourceCode || ''), edit as LingCppAstEdit)
+      },
+      {
+        id: 'lingcpp.constant.add', title: '项目常量：新增', category: '项目', description: '打开“项目常量”页签并定位到新增行。', when: 'workspace.open && !workbench.modalOpen',
+        handler: (_context, sourceCode, edit) => {
+          if (typeof sourceCode === 'string' && edit) return executeProjectGlobalVariableCommand('lingcpp.constant.add', sourceCode, edit as LingCppAstEdit);
+          const opened = workbenchCommandHandlersRef.current.openProjectGlobalVariables();
+          void Promise.resolve(opened).then(() => window.requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('lingcpp-project-constant-command', { detail: { action: 'add' } }))));
+          return opened;
+        }
+      },
+      {
+        id: 'lingcpp.constant.update', title: '项目常量：编辑', category: '项目', description: '打开项目常量页签，在表格中编辑名称、类型、值或备注。', when: 'workspace.open && !workbench.modalOpen',
+        handler: (_context, sourceCode, edit) => {
+          if (typeof sourceCode === 'string' && edit) return executeProjectGlobalVariableCommand('lingcpp.constant.update', sourceCode, edit as LingCppAstEdit);
+          const opened = workbenchCommandHandlersRef.current.openProjectGlobalVariables();
+          void Promise.resolve(opened).then(() => window.requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('lingcpp-project-constant-command', { detail: { action: 'update' } }))));
+          return opened;
+        }
+      },
+      {
+        id: 'lingcpp.constant.delete', title: '项目常量：删除', category: '项目', description: '打开项目常量页签；存在引用的常量不能直接删除。', when: 'workspace.open && !workbench.modalOpen',
+        handler: (_context, sourceCode, edit) => {
+          if (typeof sourceCode === 'string' && edit) return executeProjectGlobalVariableCommand('lingcpp.constant.delete', sourceCode, edit as LingCppAstEdit);
+          const opened = workbenchCommandHandlersRef.current.openProjectGlobalVariables();
+          void Promise.resolve(opened).then(() => window.requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('lingcpp-project-constant-command', { detail: { action: 'delete' } }))));
+          return opened;
+        }
+      },
+      {
+        id: 'lingcpp.constant.findReferences', title: '项目常量：查找引用', category: '项目', description: '打开项目常量页签，从目标常量所在行查看全部引用。', when: 'workspace.open && !workbench.modalOpen',
+        handler: (_context, workspaceFiles, constantName) => {
+          if (Array.isArray(workspaceFiles) && constantName) return findProjectConstantReferences(workspaceFiles, String(constantName));
+          const opened = workbenchCommandHandlersRef.current.openProjectGlobalVariables();
+          void Promise.resolve(opened).then(() => window.requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('lingcpp-project-constant-command', { detail: { action: 'findReferences' } }))));
+          return opened;
+        }
+      },
+      {
+        id: 'lingcpp.constant.rename', title: '项目常量：重命名', category: '项目', description: '打开项目常量页签；修改名称后预览并原子更新全部引用。', when: 'workspace.open && !workbench.modalOpen',
+        handler: (_context, workspaceFiles, declarationFilePath, oldName, newName) => {
+          if (Array.isArray(workspaceFiles) && declarationFilePath && oldName && newName) return createProjectConstantRenameProposal(workspaceFiles, String(declarationFilePath), String(oldName), String(newName));
+          const opened = workbenchCommandHandlersRef.current.openProjectGlobalVariables();
+          void Promise.resolve(opened).then(() => window.requestAnimationFrame(() => window.dispatchEvent(new CustomEvent('lingcpp-project-constant-command', { detail: { action: 'rename' } }))));
+          return opened;
+        }
+      },
+      {
+        id: 'workbench.action.project.exportLcppSourcePackage',
+        title: '项目：一键导出 LCPP 源码包',
+        aliases: ['Export LCPP Source Package', 'Share LCPP Source'],
+        category: '文件',
+        description: '导出源码、设计器、资源、项目依赖和第三方模块，供其他用户直接打开。',
+        when: 'workspace.open && !workbench.modalOpen',
+        enabled: context => !context['operation.busy'],
+        order: 11,
+        handler: (_context, projectId) => workbenchCommandHandlersRef.current.exportLcppSourcePackage(projectId)
       },
       {
         id: 'workbench.action.files.closeSolution',
@@ -3962,6 +4502,26 @@ void DisplayStatus() {
         handler: () => workbenchCommandHandlersRef.current.solutionClean()
       },
       {
+        id: 'workbench.action.solution.copyFullPath',
+        title: '解决方案：复制完整路径',
+        aliases: ['Copy Solution Full Path'],
+        category: '文件',
+        description: '复制当前 .lbsln 解决方案文件的绝对路径。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 25,
+        handler: () => workbenchCommandHandlersRef.current.copySolutionFullPath()
+      },
+      {
+        id: 'workbench.action.project.copyFullPath',
+        title: '项目：复制完整路径',
+        aliases: ['Copy Project Full Path'],
+        category: '文件',
+        description: '复制当前项目所在目录的绝对路径。',
+        when: 'workspace.open && !workbench.modalOpen',
+        order: 26,
+        handler: (_context, projectId) => workbenchCommandHandlersRef.current.copyProjectFullPath(projectId)
+      },
+      {
         id: 'workbench.action.environment.check',
         title: '检查开发环境',
         aliases: ['Environment Check', 'doctor'],
@@ -3979,6 +4539,36 @@ void DisplayStatus() {
         when: '!workbench.modalOpen',
         order: 31,
         handler: () => workbenchCommandHandlersRef.current.environmentRepair()
+      },
+      {
+        id: 'workbench.action.help.openCliGuide',
+        title: '帮助：打开 AI Bridge 连接中心',
+        aliases: ['Open AI Bridge Center', 'Connect AI CLI', 'MCP Center', 'CLI Guide', 'command line help'],
+        category: '帮助',
+        description: '启动或停止 AI Bridge，一键连接外部 AI CLI，并管理 MCP、HTTP、权限、Token 与活动日志。',
+        when: '!workbench.modalOpen',
+        order: 32,
+        handler: () => workbenchCommandHandlersRef.current.openCliGuide()
+      },
+      {
+        id: 'workbench.action.help.openHelpCenter',
+        title: '帮助：打开帮助中心与更新日志',
+        aliases: ['Open Help Center', 'Release Notes', 'Changelog'],
+        category: '帮助',
+        description: '打开 LingBuilder 帮助中心，查看当前安装版本和内置更新日志。',
+        when: '!workbench.modalOpen',
+        order: 33,
+        handler: () => workbenchCommandHandlersRef.current.openHelpCenter()
+      },
+      {
+        id: 'workbench.action.help.openAbout',
+        title: `帮助：关于 LingBuilder IDE ${LINGBUILDER_DISPLAY_VERSION}`,
+        aliases: ['About LingBuilder', 'Application Version'],
+        category: '帮助',
+        description: '查看 LingBuilder 软件版本和产品信息。',
+        when: '!workbench.modalOpen',
+        order: 34,
+        handler: () => workbenchCommandHandlersRef.current.openAbout()
       },
       {
         id: 'workbench.action.git.openChanges',
@@ -4052,6 +4642,44 @@ void DisplayStatus() {
         when: '!workbench.modalOpen',
         order: 46,
         handler: () => workbenchCommandHandlersRef.current.diffUnified()
+      },
+      {
+        id: 'workbench.action.editor.splitRight',
+        title: '编辑器布局：左右拆分',
+        aliases: ['Split Editor Right', 'Split Editor Horizontal'],
+        category: '视图',
+        when: '!workbench.modalOpen',
+        order: 47,
+        handler: () => workbenchCommandHandlersRef.current.splitEditorRight()
+      },
+      {
+        id: 'workbench.action.editor.splitDown',
+        title: '编辑器布局：上下拆分',
+        aliases: ['Split Editor Down', 'Split Editor Vertical'],
+        category: '视图',
+        when: '!workbench.modalOpen',
+        order: 48,
+        handler: () => workbenchCommandHandlersRef.current.splitEditorDown()
+      },
+      {
+        id: 'workbench.action.editor.moveToSecondGroup',
+        title: '编辑器布局：移到第二组',
+        aliases: ['Move Editor Into Next Group'],
+        category: '视图',
+        when: '!workbench.modalOpen',
+        enabled: context => Boolean(context['editor.multipleGroups']),
+        order: 49,
+        handler: () => workbenchCommandHandlersRef.current.moveEditorToSecondGroup()
+      },
+      {
+        id: 'workbench.action.editor.singleGroup',
+        title: '编辑器布局：恢复单编辑区',
+        aliases: ['Single Editor Group', 'Reset Editor Layout'],
+        category: '视图',
+        when: '!workbench.modalOpen',
+        enabled: context => Boolean(context['editor.multipleGroups']),
+        order: 50,
+        handler: () => workbenchCommandHandlersRef.current.restoreSingleEditorGroup()
       }
     ]);
     setCommandRegistryVersion(version => version + 1);
@@ -4073,9 +4701,9 @@ void DisplayStatus() {
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, []);
 
-  const executeWorkbenchCommand = useCallback(async (commandId: string): Promise<boolean> => {
+  const executeWorkbenchCommand = useCallback(async (commandId: string, ...args: unknown[]): Promise<boolean> => {
     try {
-      const result = await commandServiceRef.current.executeCommand(commandId, commandContextRef.current);
+      const result = await commandServiceRef.current.executeCommand(commandId, commandContextRef.current, ...args);
       return isSuccessfulCommandResult(result);
     } catch (error) {
       setBuildLogs(previous => [
@@ -4356,18 +4984,28 @@ void DisplayStatus() {
   }
 
   return (
-    <div className={`h-screen flex flex-col overflow-hidden font-sans select-none ${isDarkMode ? 'bg-[#1E1E1E] text-[#D4D4D4]' : 'bg-slate-50 text-slate-800'}`}>
+    <div className={`workbench-shell h-screen flex flex-col overflow-hidden font-sans select-none ${isDarkMode ? 'bg-[#1E1E1E] text-[#D4D4D4]' : 'bg-slate-50 text-slate-800'}`}>
       {/* Title Bar */}
       <div
         onDoubleClick={handleWindowToggleMaximize}
-        className={`window-drag-region h-8 flex items-center justify-between pl-3 pr-0 border-b text-[11px] shrink-0 select-none cursor-default ${
+        className={`window-drag-region h-8 flex items-center justify-between pl-3 pr-0 border-b text-[12px] shrink-0 select-none cursor-default ${
           isDarkMode 
             ? 'bg-[#323233] text-slate-200 border-[#2B2B2B]' 
             : 'bg-[#F3F3F3] text-slate-800 border-slate-200'
         }`}
       >
-        <div className="flex items-center gap-4">
-          <div className="text-[#007ACC] font-bold tracking-wide">C++ LocMaster (LingBuilder)</div>
+        <div className="flex min-w-0 items-center gap-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <img
+              src={lingBuilderIcon}
+              alt="LingBuilder"
+              draggable={false}
+              className="h-5 w-5 shrink-0 rounded-[4px] object-contain"
+            />
+            <div className="truncate text-[#007ACC] font-bold tracking-wide">
+              C++ LocMaster (LingBuilder) <span className="text-cyan-400/80">{LINGBUILDER_DISPLAY_VERSION}</span>
+            </div>
+          </div>
           <div
             onDoubleClick={e => e.stopPropagation()}
             className={`window-no-drag hidden md:flex gap-4 ${isDarkMode ? 'text-[#CCCCCC]' : 'text-slate-600'} z-50`}
@@ -4388,6 +5026,12 @@ void DisplayStatus() {
                   <button onClick={() => { void handleToolbarAction('open'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>打开项目</span>
                     <span className="opacity-50 text-[10px]">Ctrl+O</span>
+                  </button>
+                  <button onClick={() => { void executeWorkbenchCommand('workbench.action.files.openLcppSourcePackage'); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    打开 LCPP 源码包…
+                  </button>
+                  <button disabled={isSaving || isBuilding} onClick={() => { void executeWorkbenchCommand('workbench.action.project.exportLcppSourcePackage', activeProjectId); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] disabled:cursor-not-allowed disabled:opacity-50 ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    一键导出当前项目源码包…
                   </button>
                   <button onClick={() => { void handleImportExternalProject(); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     导入 MSBuild/CMake 工程…
@@ -4633,9 +5277,13 @@ void DisplayStatus() {
               </span>
               {activeDropdown === 'help' && (
                 <div className={`absolute left-0 top-6 w-56 shadow-2xl border rounded-md py-1 flex flex-col z-50 ${isDarkMode ? 'bg-[#252526] border-[#3c3c3c] text-slate-200' : 'bg-white border-slate-200 text-slate-800'}`}>
-                  <button onClick={() => { setShowAboutModal(true); setActiveDropdown(null); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
-                    <span>关于 LingBuilder IDE...</span>
-                    <span className="opacity-50 text-[10px]">版本</span>
+                  <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.help.openHelpCenter'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>帮助中心与更新日志...</span>
+                    <span className="opacity-50 text-[10px]">{LINGBUILDER_DISPLAY_VERSION}</span>
+                  </button>
+                  <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.help.openCliGuide'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>AI Bridge 连接中心...</span>
+                    <span className="opacity-50 text-[10px]">CLI</span>
                   </button>
                   <button onClick={() => { 
                     setShowBottomPanel(true);
@@ -4658,6 +5306,11 @@ void DisplayStatus() {
                     <span>反馈意见与提交 Bug</span>
                     <span className="opacity-50 text-[10px]">反馈</span>
                   </button>
+                  <div className={`h-px my-1 ${isDarkMode ? 'bg-slate-700' : 'bg-slate-200'}`}></div>
+                  <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.help.openAbout'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>关于 LingBuilder IDE...</span>
+                    <span className="opacity-50 text-[10px]">{LINGBUILDER_DISPLAY_VERSION}</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -4667,7 +5320,7 @@ void DisplayStatus() {
         {/* Right window controls */}
         <div className="window-no-drag flex items-center gap-0" onDoubleClick={e => e.stopPropagation()}>
           <div className={`text-[10px] opacity-50 px-2 italic hidden lg:block ${isDarkMode ? 'text-[#CCCCCC]' : 'text-slate-600'}`}>
-            LingBuilder_v2.0 - 汉化方案
+            LingBuilder {LINGBUILDER_DISPLAY_VERSION} · 中文集成开发环境
           </div>
 
           <button 
@@ -4800,72 +5453,7 @@ void DisplayStatus() {
 
           <div className={`w-px h-5 mx-1 ${isDarkMode ? 'bg-[#3d3d42]' : 'bg-slate-300'}`}></div>
 
-          {/* GROUP 2: 设计器控件添加 */}
-          <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border ${
-            isDarkMode ? 'bg-[#1e1e1f] border-[#2d2d30]' : 'bg-white border-slate-200 shadow-sm'
-          }`}>
-            <span className={`text-[10px] font-bold px-1 select-none border-r mr-1 ${
-              isDarkMode ? 'text-slate-500 border-[#2d2d30]' : 'text-slate-400 border-slate-200'
-            }`}>添加控件</span>
-            <button
-              onClick={() => handleAddDesignerControl('Button')}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
-                isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-              title="按钮 (在设计器中添加一个“按钮”控件)"
-            >
-              <SquareDot className="w-4 h-4 text-blue-400" />
-            </button>
-            <button
-              onClick={() => handleAddDesignerControl('Label')}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
-                isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-              title="标签 (添加一个文本标签控件，用于显示说明文字)"
-            >
-              <Type className="w-4 h-4 text-cyan-400" />
-            </button>
-            <button
-              onClick={() => handleAddDesignerControl('TextBox')}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
-                isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-              title="输入框 (添加文本输入框控件)"
-            >
-              <Keyboard className="w-4 h-4 text-teal-400" />
-            </button>
-            <button
-              onClick={() => handleAddDesignerControl('CheckBox')}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
-                isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-              title="复选框 (添加可多选的勾选控件)"
-            >
-              <CheckSquare className="w-4 h-4 text-indigo-400" />
-            </button>
-            <button
-              onClick={() => handleAddDesignerControl('RadioButton')}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
-                isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-              title="单选框 (添加单选控件，通常用于一组选项中只能选一个)"
-            >
-              <CircleDot className="w-4 h-4 text-purple-400" />
-            </button>
-            <button
-              onClick={() => handleAddDesignerControl('ComboBox')}
-              className={`p-1 rounded cursor-pointer transition-all active:scale-95 ${
-                isDarkMode ? 'text-slate-400 hover:text-white hover:bg-[#2d2d30]' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-              title="下拉框 (添加下拉选择控件)"
-            >
-              <List className="w-4 h-4 text-violet-400" />
-            </button>
-          </div>
-
-          <div className={`w-px h-5 mx-1 ${isDarkMode ? 'bg-[#3d3d42]' : 'bg-slate-300'}`}></div>
-
-          {/* GROUP 3: 代码生成、运行和环境检测 */}
+          {/* GROUP 2: 代码生成、运行和环境检测。设计器控件从设计器内的工具箱添加。 */}
           <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border ${
             isDarkMode ? 'bg-[#1e1e1f] border-[#2d2d30]' : 'bg-white border-slate-200 shadow-sm'
           }`}>
@@ -4927,6 +5515,71 @@ void DisplayStatus() {
 
         {/* Right side items */}
         <div className="shrink-0 flex items-center gap-2 sm:gap-4">
+
+          {/* Editor group layout controls live in the global toolbar to avoid consuming an editor row. */}
+          <div
+            data-testid="editor-layout-toolbar"
+            className={`flex items-center rounded p-0.5 border ${
+              isDarkMode ? 'bg-[#37373D] border-[#181818]' : 'bg-white border-slate-200 shadow-sm'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => void executeWorkbenchCommand('workbench.action.editor.splitRight')}
+              aria-label="左右拆分编辑区"
+              aria-pressed={editorGroupLayout.groups.length > 1 && editorGroupLayout.orientation === 'horizontal'}
+              className={`p-1 rounded cursor-pointer transition-colors ${
+                editorGroupLayout.groups.length > 1 && editorGroupLayout.orientation === 'horizontal'
+                  ? isDarkMode ? 'bg-[#1E1E1E] text-sky-300' : 'bg-sky-100 text-sky-800'
+                  : isDarkMode ? 'text-slate-300 hover:bg-[#1E1E1E] hover:text-white' : 'text-slate-700 hover:bg-slate-100'
+              }`}
+              title="左右拆分编辑区"
+            >
+              <Columns2 className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void executeWorkbenchCommand('workbench.action.editor.splitDown')}
+              aria-label="上下拆分编辑区"
+              aria-pressed={editorGroupLayout.groups.length > 1 && editorGroupLayout.orientation === 'vertical'}
+              className={`p-1 rounded cursor-pointer transition-colors ${
+                editorGroupLayout.groups.length > 1 && editorGroupLayout.orientation === 'vertical'
+                  ? isDarkMode ? 'bg-[#1E1E1E] text-sky-300' : 'bg-sky-100 text-sky-800'
+                  : isDarkMode ? 'text-slate-300 hover:bg-[#1E1E1E] hover:text-white' : 'text-slate-700 hover:bg-slate-100'
+              }`}
+              title="上下拆分编辑区"
+            >
+              <Rows2 className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+            {editorGroupLayout.groups.length > 1 && (
+              <button
+                type="button"
+                onClick={() => void executeWorkbenchCommand('workbench.action.editor.moveToSecondGroup')}
+                aria-label="将当前标签移到第二编辑组"
+                className={`p-1 rounded cursor-pointer transition-colors ${
+                  isDarkMode ? 'text-violet-300 hover:bg-[#1E1E1E] hover:text-white' : 'text-violet-700 hover:bg-slate-100'
+                }`}
+                title="将当前标签移到第二编辑组"
+              >
+                <MoveRight className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void executeWorkbenchCommand('workbench.action.editor.singleGroup')}
+              disabled={editorGroupLayout.groups.length === 1}
+              aria-label="恢复为单编辑区"
+              aria-pressed={editorGroupLayout.groups.length === 1}
+              className={`p-1 rounded transition-colors disabled:cursor-default ${
+                editorGroupLayout.groups.length === 1
+                  ? isDarkMode ? 'bg-[#1E1E1E] text-emerald-300' : 'bg-emerald-100 text-emerald-800'
+                  : isDarkMode ? 'text-emerald-300 hover:bg-[#1E1E1E] hover:text-white' : 'text-emerald-700 hover:bg-slate-100'
+              }`}
+              title={editorGroupLayout.groups.length === 1 ? '当前已是单编辑区' : '恢复为单编辑区'}
+            >
+              <Square className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          </div>
 
           {/* Command and settings entry points remain visible when the desktop menu is collapsed. */}
           <div className={`flex items-center rounded p-0.5 border ${
@@ -5064,7 +5717,14 @@ void DisplayStatus() {
           onCloseSolution={() => { void executeWorkbenchCommand('workbench.action.files.closeSolution'); }}
           onOpenSolutionDirectory={handleOpenSolutionDirectory}
           onOpenProjectDirectory={handleOpenProjectDirectory}
+          onOpenProjectGlobalVariables={projectId => { void executeWorkbenchCommand('workbench.action.project.openGlobalVariables', projectId); }}
+          onOpenProjectDataTypes={projectId => { void executeWorkbenchCommand('workbench.action.project.openDataTypes', projectId); }}
+          onCreateFunctionLibrary={handleCreateFunctionLibrary}
+          onPasteFunctionLibrary={handlePasteFunctionLibrary}
+          onCopySolutionFullPath={() => executeWorkbenchCommand('workbench.action.solution.copyFullPath')}
+          onCopyProjectFullPath={projectId => executeWorkbenchCommand('workbench.action.project.copyFullPath', projectId)}
           onAddProjectResource={handleAddProjectResource}
+          onExportLcppSourcePackage={projectId => { void executeWorkbenchCommand('workbench.action.project.exportLcppSourcePackage', projectId); }}
           onCopyProjectResourcePath={handleCopyProjectResourcePath}
           activeModuleHintId={moduleHint?.itemId}
           onShowModuleHint={handleShowModuleHint}
@@ -5108,14 +5768,6 @@ void DisplayStatus() {
 
         {/* Central Comparative Editor Area */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-          <div className={`h-7 shrink-0 border-b px-2 flex items-center gap-2 text-[10px] ${isDarkMode ? 'border-[#303038] bg-[#18181e] text-slate-300' : 'border-slate-200 bg-slate-100 text-slate-700'}`}>
-            <button onClick={() => splitActiveEditor('horizontal')} className="hover:text-white">左右拆分</button>
-            <button onClick={() => splitActiveEditor('vertical')} className="hover:text-white">上下拆分</button>
-            {editorGroupLayout.groups.length > 1 && <>
-              <button onClick={() => void movePrimaryTabToSecondary()} className="hover:text-white">移到第二组</button>
-              <button onClick={() => setEditorGroupLayout(previous => closeEditorGroup(previous, previous.groups[1].id))} className="ml-auto hover:text-rose-300">关闭第二组</button>
-            </>}
-          </div>
           <div className={`flex-1 flex min-h-0 bg-[#141418] ${editorGroupLayout.orientation === 'horizontal' ? 'flex-row' : 'flex-col'}`}>
             {projectFilesReady ? <div
               className="flex min-h-0 min-w-0 flex-1 flex-col"
@@ -5128,6 +5780,8 @@ void DisplayStatus() {
               onUpdateStringTranslation={handleUpdateStringTranslation}
               onResetTranslation={handleResetTranslation}
               onUpdateSourceContent={handleUpdateSourceContent}
+              onUpdateProjectSources={handleUpdateProjectSources}
+              onOpenProjectDataTypes={() => { void executeWorkbenchCommand('workbench.action.project.openDataTypes', activeProjectIdRef.current); }}
               isDarkMode={isDarkMode}
               activeFile={activeFile}
               editorFontSize={editorFontSize}
@@ -5146,17 +5800,9 @@ void DisplayStatus() {
               editorExperienceMode={editorExperienceMode}
               onExperienceModeChange={handleEditorExperienceModeChange}
               problems={workbenchProblems}
-              ignoredBeginnerTaskIds={ignoredBeginnerTaskIds}
-              onIgnoreBeginnerTask={ignoreBeginnerTask}
-              onApplyWorkspaceEdit={handleApplyWorkspaceEdit}
-              onDiffViewModeChange={mode => {
-                void executeWorkbenchCommand(DIFF_VIEW_MODE_COMMANDS[mode]);
-              }}
-              onOpenProblemsPanel={() => {
-                setActiveTabInBottom('problems');
-                setShowBottomPanel(true);
-              }}
               onShowCommandHint={handleShowCommandHint}
+              commandService={commandServiceRef.current}
+              getCommandContext={() => commandContextRef.current}
             /></div> : (
               <div
                 className={`flex min-h-0 flex-1 items-center justify-center p-6 ${isDarkMode ? 'bg-[#141418] text-slate-200' : 'bg-slate-50 text-slate-800'}`}
@@ -5475,6 +6121,27 @@ void DisplayStatus() {
         }}
       />
 
+      <CliGuideDialog
+        open={showCliGuide}
+        isDarkMode={isDarkMode}
+        onClose={() => setShowCliGuide(false)}
+        onOpenTerminal={() => {
+          setShowCliGuide(false);
+          setShowBottomPanel(true);
+          setActiveTabInBottom('terminal');
+        }}
+      />
+
+      <HelpCenterDialog
+        open={showHelpCenter}
+        onClose={() => setShowHelpCenter(false)}
+      />
+
+      <AboutDialog
+        open={showAboutModal}
+        onClose={() => setShowAboutModal(false)}
+      />
+
       {/* Load Custom Code Modal */}
       {showCustomModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in select-text text-slate-300">
@@ -5631,54 +6298,6 @@ void DisplayStatus() {
         </div>
       )}
 
-      {showAboutModal && (
-        <div className="fixed inset-0 bg-black/65 backdrop-blur-xs flex items-center justify-center z-50 animate-fade-in p-4 select-none">
-          <div className="w-full max-w-sm bg-[#1e1e24] border border-[#2d2d34] rounded-lg shadow-2xl flex flex-col text-slate-200 overflow-hidden">
-            {/* Header */}
-            <div className="px-4 py-3 bg-[#18181c] border-b border-[#2d2d34] flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-200">关于 C++ LocMaster (LingBuilder)</span>
-              <button
-                onClick={() => setShowAboutModal(false)}
-                className="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* Content */}
-            <div className="p-5 flex flex-col items-center text-center space-y-4">
-              <div className="w-12 h-12 bg-[#007ACC]/15 rounded-full flex items-center justify-center border border-[#007ACC]/30 shadow-inner">
-                <FolderCode className="w-6 h-6 text-[#007ACC]" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-sm font-bold text-slate-100">C++ LocMaster (LingBuilder)</h3>
-                <p className="text-[10px] text-slate-500 font-mono">Build v2.0.4.108 - Release</p>
-              </div>
-
-              <div className="text-[11px] text-slate-400 leading-relaxed text-left w-full space-y-2 bg-[#141418] p-3 rounded border border-[#2d2d34]/60">
-                <p>💡 **中文零损编译替换方案**</p>
-                <p>由易集成开发环境研究院主导打造的 C++ 本地化宏引擎。其通过将提取出的多语言资源独立托管，免去重构代码的繁杂步骤，通过一键智能分析和 Unicode 资源打包机制，为您提供高品质、零侵入的原生中文化编程体验。</p>
-              </div>
-
-              <div className="text-[9.5px] text-slate-500 flex justify-between w-full">
-                <span>© 2026 LingBuilder Dev Group</span>
-                <span>All Rights Reserved</span>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="px-4 py-2.5 bg-[#18181c] border-t border-[#2d2d34] flex justify-end">
-              <button
-                onClick={() => setShowAboutModal(false)}
-                className="px-4 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[11px] font-semibold transition-colors cursor-pointer shadow"
-              >
-                确定
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showCloseConfirmModal && (
         <div className="fixed inset-0 bg-black/65 backdrop-blur-xs flex items-center justify-center z-50 animate-fade-in p-4 select-none">
           <div className="w-full max-w-sm bg-[#1e1e24] border border-[#2d2d34] rounded-lg shadow-2xl flex flex-col text-slate-200 overflow-hidden">
@@ -5742,7 +6361,7 @@ void DisplayStatus() {
       )}
 
       {/* Status Bar */}
-      <div data-workbench-statusbar className="h-7 bg-[#007ACC] text-white flex items-center px-3 justify-between gap-3 text-[11px] shrink-0 select-none font-sans overflow-x-auto">
+      <div data-workbench-statusbar className="h-7 bg-[#007ACC] text-white flex items-center px-3 justify-between gap-3 text-[12px] shrink-0 select-none font-sans overflow-x-auto">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex items-center gap-1.5 font-medium">
             <span className="w-2 h-2 rounded-full bg-white opacity-80"></span>

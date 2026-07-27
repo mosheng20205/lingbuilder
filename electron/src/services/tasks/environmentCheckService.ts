@@ -22,7 +22,12 @@ export interface EnvironmentCheckItem {
 export type EnvironmentChecks = Record<EnvironmentCheckId, EnvironmentCheckItem>;
 
 export interface EnvironmentCheckResult {
+  /** 默认 LingBuilder Win32/MSVC 构建链是否完整可用。 */
   ready: boolean;
+  /** 是否至少存在一个可用的 C++ 编译器，包括可选的 g++/clang++。 */
+  cppCompilerAvailable: boolean;
+  /** 默认 LingBuilder Win32/MSVC 构建链是否完整可用。 */
+  msvcBuildReady: boolean;
   warnings: string[];
   checkedAt: string;
   checks: EnvironmentChecks;
@@ -127,10 +132,16 @@ export class EnvironmentCheckService {
       platform: platformInfo
     };
     const warnings = buildWarnings(checks);
-    const hasCompiler = msvc.available || gpp.available || clangpp.available;
+    const cppCompilerAvailable = msvc.available || gpp.available || clangpp.available;
+    const msvcBuildReady = platformInfo.available
+      && node.available
+      && msvc.available
+      && windowsSdk.available;
 
     return {
-      ready: platformInfo.available && node.available && hasCompiler,
+      ready: msvcBuildReady,
+      cppCompilerAvailable,
+      msvcBuildReady,
       warnings,
       checkedAt: this.dependencies.now().toISOString(),
       checks
@@ -510,7 +521,7 @@ function buildWarnings(checks: EnvironmentChecks): string[] {
   if (!hasCompiler) {
     warnings.push('未检测到可用的 C++ 编译器（MSVC、g++ 或 clang++）。');
   } else if (!checks.msvc.available) {
-    warnings.push('未检测到 MSVC；依赖 Visual Studio .lib 导入库的模块无法构建。');
+    warnings.push('未检测到 MSVC；LingBuilder 默认 Win32 原生构建及依赖 Visual Studio .lib 导入库的模块不可用。');
   }
   if (!checks.windowsSdk.available) warnings.push('未检测到 Windows SDK rc.exe，资源文件编译不可用。');
   if (!checks.cmake.available) warnings.push('未检测到 CMake，CMake 项目功能不可用。');

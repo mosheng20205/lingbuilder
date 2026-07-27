@@ -54,6 +54,8 @@ test('environment check reports versions and paths for a complete Windows toolch
   }).check();
 
   assert.equal(result.ready, true);
+  assert.equal(result.cppCompilerAvailable, true);
+  assert.equal(result.msvcBuildReady, true);
   assert.deepEqual(result.warnings, []);
   assert.equal(result.checkedAt, '2026-07-10T08:00:00.000Z');
   assert.deepEqual(result.checks.node, {
@@ -118,6 +120,7 @@ test('environment check discovers MSVC and Windows SDK through vswhere and vcvar
   }).check();
 
   assert.equal(result.ready, true);
+  assert.equal(result.msvcBuildReady, true);
   assert.equal(result.checks.msvc.available, true);
   assert.equal(result.checks.msvc.version, '19.40.33811');
   assert.match(result.checks.msvc.detail, /vswhere.*vcvars64\.bat/u);
@@ -167,7 +170,37 @@ test('environment check discovers the CMake bundled with Visual Studio when it i
   assert.equal(result.warnings.some(warning => warning.includes('未检测到 CMake')), false);
 });
 
-test('an alternative compiler is build-ready but exposes missing optional capabilities as warnings', async () => {
+test('MSVC without the Windows SDK does not mark the default native build as ready', async () => {
+  const runner = createRunner((command, args) => {
+    const executable = baseName(command);
+    if (executable === 'where.exe' && args[0] === 'cl.exe') {
+      return ok('C:\\VS\\VC\\bin\\cl.exe\r\n');
+    }
+    if (executable === 'cl.exe') {
+      return { exitCode: 2, stdout: '', stderr: 'Microsoft (R) C/C++ Optimizing Compiler Version 19.40.33811 for x64' };
+    }
+    return missing();
+  });
+
+  const result = await new EnvironmentCheckService({
+    commandRunner: runner,
+    platform: 'win32',
+    architecture: 'x64',
+    osRelease: '10.0.22631',
+    nodeVersion: '22.14.0',
+    nodePath: 'C:\\Node\\node.exe',
+    environment: { SystemRoot: 'C:\\Windows' }
+  }).check();
+
+  assert.equal(result.cppCompilerAvailable, true);
+  assert.equal(result.checks.msvc.available, true);
+  assert.equal(result.checks.windowsSdk.available, false);
+  assert.equal(result.msvcBuildReady, false);
+  assert.equal(result.ready, false);
+  assert.ok(result.warnings.some(warning => warning.includes('Windows SDK rc.exe')));
+});
+
+test('an alternative compiler is detected but does not mark the default MSVC build as ready', async () => {
   const runner = createRunner((command, args) => {
     const executable = baseName(command);
     if (executable === 'where.exe' && args[0] === 'g++') return ok('D:\\mingw64\\bin\\g++.exe\r\n');
@@ -185,7 +218,9 @@ test('an alternative compiler is build-ready but exposes missing optional capabi
     environment: { SystemRoot: 'C:\\Windows' }
   }).check();
 
-  assert.equal(result.ready, true);
+  assert.equal(result.ready, false);
+  assert.equal(result.cppCompilerAvailable, true);
+  assert.equal(result.msvcBuildReady, false);
   assert.equal(result.checks.gpp.available, true);
   assert.equal(result.checks.msvc.available, false);
   assert.ok(result.warnings.some(warning => warning.includes('未检测到 MSVC')));
@@ -210,6 +245,8 @@ test('unsupported platform and missing compilers make the environment not ready'
   }).check();
 
   assert.equal(result.ready, false);
+  assert.equal(result.cppCompilerAvailable, false);
+  assert.equal(result.msvcBuildReady, false);
   assert.equal(result.checks.platform.available, false);
   assert.equal(result.checks.node.available, false);
   assert.equal(result.checks.msvc.available, false);

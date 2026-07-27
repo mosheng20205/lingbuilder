@@ -2,6 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
+const crypto = require('node:crypto');
 
 const execFileAsync = promisify(execFile);
 
@@ -25,11 +26,19 @@ async function main() {
   const exports = await parseExports(path.join(sourceRoot, 'src', 'new_emoji.def'));
   const prototypes = await parsePrototypes(path.join(sourceRoot, 'src', 'exports.h'));
   const apiManifest = await readJson(path.join(sourceRoot, 'docs', 'ai', 'api_manifest.full.json'), []);
+  const designerCatalogPath = path.join(sourceRoot, 'docs', 'ai', 'lingbuilder_designer_catalog.json');
+  const designerCatalogSource = await fs.readFile(designerCatalogPath, 'utf8');
+  const designerCatalog = JSON.parse(designerCatalogSource);
+  validateDesignerCatalog(designerCatalog, exports, prototypes);
   const commands = buildCommands(exports, prototypes, apiManifest);
 
-  await writeText(path.join(workRoot, 'lingbuilder.module.json'), JSON.stringify(buildManifest(commands), null, 2) + '\n');
+  const designerCatalogSha256 = crypto.createHash('sha256').update(designerCatalogSource).digest('hex');
+  await writeText(path.join(workRoot, 'lingbuilder.module.json'), JSON.stringify(buildManifest(commands, designerCatalog, designerCatalogSha256), null, 2) + '\n');
   await writeText(path.join(workRoot, 'include', 'new_emoji_bridge.h'), bridgeHeader());
   await writeText(path.join(workRoot, 'src', 'new_emoji_bridge.cpp'), bridgeSource());
+  await copyFile(path.join(sourceRoot, 'src', 'exports.h'), path.join(workRoot, 'include', 'exports.h'));
+  await copyFile(path.join(sourceRoot, 'src', 'element_types.h'), path.join(workRoot, 'include', 'element_types.h'));
+  await writeText(path.join(workRoot, 'docs', 'lingbuilder-designer-catalog.json'), designerCatalogSource.endsWith('\n') ? designerCatalogSource : `${designerCatalogSource}\n`);
   await writeText(path.join(workRoot, 'docs', 'new_emoji-api.json'), JSON.stringify({
     source: sourceRoot,
     generatedAt: new Date().toISOString(),
@@ -42,6 +51,7 @@ async function main() {
   await copyFile(path.join(sourceRoot, 'bin', 'Win32', 'Release', 'new_emoji.lib'), path.join(workRoot, 'lib', 'Win32', 'new_emoji.lib'));
   await copyFile(path.join(sourceRoot, 'bin', 'x64', 'Release', 'new_emoji.dll'), path.join(workRoot, 'bin', 'x64', 'new_emoji.dll'));
   await copyFile(path.join(sourceRoot, 'bin', 'x64', 'Release', 'new_emoji.lib'), path.join(workRoot, 'lib', 'x64', 'new_emoji.lib'));
+  await copyFile(path.join(repoRoot, 'image', 'lingbuilder-ide-icon-v2.ico'), path.join(workRoot, 'assets', 'lingbuilder-newemoji-window.ico'));
   await copyFile(path.join(sourceRoot, 'LICENSE'), path.join(workRoot, 'LICENSE'));
 
   await fs.mkdir(packageDir, { recursive: true });
@@ -60,6 +70,15 @@ async function main() {
   console.log(`Module directory: ${workRoot}`);
   console.log(`Package: ${packagePath}`);
   console.log(`Command count: ${commands.length}`);
+}
+
+function validateDesignerCatalog(catalog, exports, prototypes) {
+  if (catalog?.schemaVersion !== 1 || catalog?.moduleId !== MODULE_ID) throw new Error('new_emoji LingBuilder Designer Catalog 版本或模块 ID 无效。');
+  if (!Array.isArray(catalog.components) || catalog.components.length !== 92) throw new Error(`new_emoji 组件目录必须包含 92 个组件，实际 ${catalog?.components?.length || 0}。`);
+  if (!Array.isArray(catalog.rawExports) || catalog.rawExports.length !== exports.length) throw new Error(`new_emoji 导出目录数量与 .def 不一致：${catalog?.rawExports?.length || 0}/${exports.length}。`);
+  const catalogExports = new Set(catalog.rawExports.map(item => item.name));
+  const missing = exports.filter(name => !catalogExports.has(name) || !prototypes.has(name));
+  if (missing.length) throw new Error(`new_emoji 存在未分类或无声明导出：${missing.slice(0, 20).join(', ')}`);
 }
 
 function parseArgs(args) {
@@ -176,7 +195,8 @@ function buildCommands(exports, prototypes, apiManifest) {
       description: `${MODULE_NAME} 底层导出 ${exportName}。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。`,
       insertText: `${name}(${prototype.params.map((_, index) => `$${index + 1}`).join(', ')})`,
       returnType: mapReturnType(prototype.returnType),
-      runtimeName: exportName
+      runtimeName: exportName,
+      visibility: 'advanced'
     });
   }
 
@@ -188,6 +208,7 @@ function bridgeCommands() {
     ['NE_创建窗口', 'NE_创建窗口(标题, X, Y, 宽度, 高度)', '创建 new_emoji 原生窗口。', '窗口句柄'],
     ['NE_创建深色窗口', 'NE_创建深色窗口(标题, X, Y, 宽度, 高度)', '创建 new_emoji 深色原生窗口。', '窗口句柄'],
     ['NE_显示窗口', 'NE_显示窗口(窗口句柄, 是否显示)', '显示或隐藏 new_emoji 窗口。', '空'],
+    ['NE_显示并激活窗口', 'NE_显示并激活窗口(窗口句柄)', '恢复、显示并激活 new_emoji 窗口。', '空'],
     ['NE_运行消息循环', 'NE_运行消息循环()', '运行 new_emoji Win32 消息循环。', '整数型'],
     ['NE_销毁窗口', 'NE_销毁窗口(窗口句柄)', '销毁 new_emoji 窗口。', '空'],
     ['NE_创建容器', 'NE_创建容器(窗口句柄, 父元素ID, X, Y, 宽度, 高度)', '创建 new_emoji 容器。', '整数型'],
@@ -216,7 +237,8 @@ function bridgeCommands() {
     description,
     insertText: buildInsertTextFromSignature(name, signature),
     returnType,
-    runtimeName: name
+    runtimeName: name,
+    visibility: 'default'
   }));
 }
 
@@ -225,7 +247,7 @@ function buildInsertTextFromSignature(name, signature) {
   return `${name}(${parameters.map((_, index) => `$${index + 1}`).join(', ')})`;
 }
 
-function buildManifest(commands) {
+function buildManifest(commands, designerCatalog, designerCatalogSha256) {
   const commandContributions = commands.map(({ runtimeName, ...command }) => command);
   const bindings = commands.map(command => ({
     command: command.name,
@@ -247,7 +269,7 @@ function buildManifest(commands) {
     tags: ['界面', 'Direct2D', 'DirectWrite', 'emoji', 'Windows', '原生控件'],
     contributes: {
       commands: commandContributions,
-      designerControls: newEmojiDesignerControls(),
+      designerControls: newEmojiDesignerControls(designerCatalog),
       types: [
         { name: 'NE窗口句柄', description: 'new_emoji 原生窗口句柄。', cppType: 'HWND' },
         { name: 'NE元素ID', description: 'new_emoji Element 元素编号。', cppType: 'int' }
@@ -274,10 +296,10 @@ function buildManifest(commands) {
         arch: 'win32',
         toolchain: 'msvc',
         includeDirs: ['include'],
-        headers: ['include/new_emoji_bridge.h'],
+        headers: ['include/new_emoji_bridge.h', 'include/exports.h', 'include/element_types.h'],
         sources: ['src/new_emoji_bridge.cpp'],
         libs: ['lib/Win32/new_emoji.lib'],
-        runtimeFiles: ['bin/Win32/new_emoji.dll'],
+        runtimeFiles: ['bin/Win32/new_emoji.dll', 'assets/lingbuilder-newemoji-window.ico'],
         defines: ['LINGBUILDER_NEW_EMOJI_MODULE']
       },
       {
@@ -286,63 +308,589 @@ function buildManifest(commands) {
         arch: 'x64',
         toolchain: 'msvc',
         includeDirs: ['include'],
-        headers: ['include/new_emoji_bridge.h'],
+        headers: ['include/new_emoji_bridge.h', 'include/exports.h', 'include/element_types.h'],
         sources: ['src/new_emoji_bridge.cpp'],
         libs: ['lib/x64/new_emoji.lib'],
-        runtimeFiles: ['bin/x64/new_emoji.dll'],
+        runtimeFiles: ['bin/x64/new_emoji.dll', 'assets/lingbuilder-newemoji-window.ico'],
         defines: ['LINGBUILDER_NEW_EMOJI_MODULE']
       }
     ],
     bindings: { commands: bindings },
+    designer: {
+      backend: 'new-emoji',
+      path: 'docs/lingbuilder-designer-catalog.json',
+      schemaVersion: designerCatalog.schemaVersion,
+      sha256: designerCatalogSha256
+    },
     publish: {
       repository: 'T:/github/new_emoji'
     }
   };
 }
 
-function newEmojiDesignerControls() {
-  const common = (type, label, nativeAdapter, content, width, height, extra = {}) => ({
-    type,
-    label,
-    category: 'new_emoji 原生控件',
-    icon: type,
-    nativeAdapter,
-    defaultProps: { content, width, height, background: 'transparent', foreground: '#F8FAFC' },
-    ...extra
+function newEmojiDesignerControls(catalog) {
+  return catalog.components.map(component => {
+    const componentEvents = [...(component.events || []), ...(component.isVisual === false ? [] : COMMON_DESIGNER_EVENTS)]
+      .filter((event, index, items) => items.findIndex(item => item.name === event.name) === index);
+    const createExport = catalog.rawExports.find(item => item.name === component.createExport);
+    const previewType = inferPreviewType(component.id, component.isContainer);
+    const createAliases = CREATE_PARAMETER_ALIASES[component.id] || {};
+    const createParameters = createExport.parameters.map(parameter => {
+      const normalizedName = snakeToCamel(parameter.name.replace(/_(bytes|len)$/u, ''));
+      const propertyKey = createAliases[normalizedName];
+      return propertyKey ? { ...parameter, propertyKey } : parameter;
+    });
+    const createPropertyKeys = new Set(createParameters
+      .map(parameter => parameter.propertyKey || snakeToCamel(parameter.name.replace(/_(bytes|len)$/u, '')))
+      .filter(key => !['hwnd', 'parentId', 'x', 'y', 'w', 'h'].includes(key)));
+    const propertySetters = [
+      ...inferPropertySetters(component, catalog.rawExports),
+      ...getCustomPropertySetters(component)
+    ];
+    if (component.id === 'Image') {
+      const imageStyle = propertySetters.find(setter => setter.command === 'EU_SetImageStyle');
+      if (imageStyle && !imageStyle.propertyKeys.includes('borderless')) imageStyle.propertyKeys.push('borderless');
+    }
+    const eventBindings = inferEventBindings({ ...component, events: componentEvents }, catalog.rawExports);
+    const specialPropertyCommands = SPECIAL_PROPERTY_COMMANDS[component.id] || {};
+    const setterByProperty = new Map(propertySetters.flatMap(setter => setter.propertyKeys.map(key => [key, setter.command])));
+    Object.entries(specialPropertyCommands).forEach(([key, command]) => setterByProperty.set(key, command));
+    const bindingByEvent = new Map(eventBindings.map(binding => [binding.eventName, binding.command]));
+    const properties = (component.properties || []).map(property => ({
+      key: property.key,
+      label: property.label,
+      type: property.type,
+      defaultValue: property.defaultValue,
+      options: property.options,
+      description: property.description,
+      group: property.group,
+      level: property.level,
+      ...(createPropertyKeys.has(property.key)
+        ? { runtimeCommand: component.createExport }
+        : setterByProperty.has(property.key)
+          ? { runtimeCommand: setterByProperty.get(property.key) }
+          : {})
+    }));
+    return {
+      type: component.id,
+      namespacedType: component.namespacedId || `${MODULE_ID}/${component.id}`,
+      previewType,
+      label: component.label,
+      category: component.category || 'new_emoji 原生控件',
+      icon: component.id,
+      backend: 'new-emoji',
+      nativeAdapter: `new-emoji-${component.id.toLowerCase()}`,
+      isContainer: component.isContainer === true,
+      isVisual: component.isVisual !== false,
+      defaultProps: {
+        content: component.label.replace(/\s+[A-Za-z][A-Za-z0-9]*$/u, ''),
+        width: component.defaultWidth,
+        height: component.defaultHeight,
+        background: 'transparent',
+        foreground: '#F8FAFC',
+        ...Object.fromEntries(properties.map(property => [property.key, property.defaultValue]))
+      },
+      properties,
+      events: componentEvents.map(event => ({
+        name: event.name,
+        ...(newEmojiEventAliases(component.id, event.name).length
+          ? { aliases: newEmojiEventAliases(component.id, event.name) }
+          : {}),
+        label: event.label,
+        group: event.group,
+        handlerPattern: event.handlerPattern || `_{controlName}_${event.label}`,
+        parameters: event.parameters || [],
+        ...(bindingByEvent.has(event.name) ? { runtimeCommand: bindingByEvent.get(event.name) } : {})
+      })),
+      runtime: {
+        createCommand: component.createExport,
+        createReturnType: createExport.returnType,
+        createParameters,
+        propertyCommands: specialPropertyCommands,
+        propertySetters,
+        eventBindings
+      }
+    };
   });
-  const uploadProperties = dropEnabled => [
-    { key: 'tip', label: '提示文字', type: 'text', defaultValue: dropEnabled ? '将文件拖到此处，或点击选择文件' : '支持点击选择文件' },
-    { key: 'triggerText', label: '选择按钮文字', type: 'text', defaultValue: '选择文件' },
-    { key: 'submitText', label: '上传按钮文字', type: 'text', defaultValue: '开始上传' },
-    { key: 'initialFiles', label: '初始文件', type: 'stringList', defaultValue: [] },
-    { key: 'multiple', label: '允许多选', type: 'boolean', defaultValue: true },
-    { key: 'autoUpload', label: '自动上传', type: 'boolean', defaultValue: false },
-    { key: 'styleMode', label: '上传样式', type: 'enum', defaultValue: dropEnabled ? '5' : '0', options: ['文件列表', '头像', '图片卡片', '自定义卡片', '图片列表', '拖拽区域', '手动上传'].map((label, value) => ({ value: String(value), label })) },
-    { key: 'showFileList', label: '显示文件列表', type: 'boolean', defaultValue: true },
-    { key: 'showTip', label: '显示提示', type: 'boolean', defaultValue: true },
-    { key: 'showActions', label: '显示操作按钮', type: 'boolean', defaultValue: true },
-    { key: 'dropEnabled', label: '允许拖拽文件', type: 'boolean', defaultValue: dropEnabled },
-    { key: 'limit', label: '文件数量上限', type: 'number', defaultValue: 0, min: 0, max: 1000 },
-    { key: 'maxSizeKb', label: '单文件上限 KB', type: 'number', defaultValue: 0, min: 0 },
-    { key: 'accept', label: '允许文件类型', type: 'text', defaultValue: '*.*' }
-  ];
-  const uploadEvents = [
-    { name: 'FilesSelected', label: '文件已选择', handlerPattern: '_{controlName}_文件已选择' },
-    { name: 'UploadAction', label: '上传操作', handlerPattern: '_{controlName}_上传操作' }
-  ];
-  return [
-    common('Button', 'new_emoji 按钮', 'new-emoji-button', '新按钮', 120, 36, { events: [{ name: 'Click', label: '被单击', handlerPattern: '_{controlName}_被单击' }] }),
-    common('TextBox', 'new_emoji 编辑框', 'new-emoji-input', '请输入内容…', 180, 36),
-    common('Label', 'new_emoji 文本', 'new-emoji-text', '新文本标签', 180, 32),
-    common('CheckBox', 'new_emoji 复选框', 'new-emoji-checkbox', '复选选项', 150, 28),
-    common('RadioButton', 'new_emoji 单选框', 'new-emoji-radio', '单选选项', 150, 28),
-    common('ListBox', 'new_emoji 列表框', 'new-emoji-listbox', '', 200, 150),
-    common('Image', 'new_emoji 图片', 'new-emoji-image', '图片', 220, 180),
-    common('ProgressBar', 'new_emoji 进度条', 'new-emoji-progress', '50', 300, 22),
-    common('Grid', 'new_emoji 容器', 'new-emoji-container', '', 360, 220, { isContainer: true }),
-    common('Upload', 'new_emoji 上传组件', 'new-emoji-upload', '文件上传', 360, 180, { properties: uploadProperties(false), events: uploadEvents }),
-    common('DragUpload', 'new_emoji 拖拽上传组件', 'new-emoji-drag-upload', '拖拽文件到此处', 400, 220, { properties: uploadProperties(true), events: uploadEvents })
-  ];
+}
+
+const CREATE_PARAMETER_ALIASES = {
+  MessageBox: { text: 'body', boxType: 'messageType' },
+  Header: { text: 'title' },
+  Aside: { text: 'title' },
+  Main: { text: 'title' },
+  Footer: { text: 'title' }
+};
+
+const SPECIAL_PROPERTY_COMMANDS = { Table: {
+  tableFilters: 'LB_NE_ApplyTableFilters',
+  tableColumnAligns: 'LB_NE_ApplyTableColumnAligns',
+  tableRowAligns: 'LB_NE_ApplyTableRowAligns',
+  tableCellAligns: 'LB_NE_ApplyTableCellAligns',
+  tableRowStyles: 'LB_NE_ApplyTableRowStyles',
+  tableColumnEditOverrides: 'LB_NE_ApplyTableColumnEditOverrides',
+  tableCellEditOverrides: 'LB_NE_ApplyTableCellEditOverrides'
+} };
+
+const PROPERTY_PARAMETER_ALIASES = {
+  'Button.EU_SetButtonStateColors': {
+    hoverBg: 'hoverBackgroundColor', hoverBorder: 'hoverBorderColor', hoverFg: 'hoverForegroundColor',
+    pressedBg: 'pressedBackgroundColor', pressedBorder: 'pressedBorderColor', pressedFg: 'pressedForegroundColor'
+  },
+  'Panel.EU_SetPanelStyle': { bg: 'backgroundColor', border: 'borderColor', radius: 'cornerRadius' },
+  'Container.EU_SetContainerLayout': { direction: 'orientation' },
+  'Border.EU_SetBorderOptions': { color: 'borderColor', width: 'borderWidth' },
+  'InfoBox.EU_SetInfoBoxOptions': { type: 'infoType', accent: 'accentColor' },
+  'Divider.EU_SetDividerOptions': { width: 'lineWidth', text: 'content' },
+  'Progress.EU_SetProgressColors': { fill: 'fillColor', track: 'trackColor', text: 'progressTextColor' },
+  'Menu.EU_SetMenuColors': {
+    bg: 'menuBackgroundColor',
+    textColor: 'menuTextColor',
+    activeTextColor: 'menuActiveTextColor',
+    hoverBg: 'menuHoverBackgroundColor',
+    disabledTextColor: 'menuDisabledTextColor',
+    border: 'menuBorderColor'
+  },
+  'IconButton.EU_SetIconButtonPadding': {
+    left: 'paddingLeft', top: 'paddingTop', right: 'paddingRight', bottom: 'paddingBottom'
+  },
+  'Table.EU_SetTableColumnsEx': { columns: 'tableColumnsEx' },
+  'Table.EU_SetTableRowsEx': { rows: 'tableRowsEx' },
+  'Table.EU_SetTableCellOverridesUtf8': { spec: 'tableCellOverrides' },
+  'Table.EU_SetTableSpansUtf8': { spec: 'tableSpans' },
+  'Table.EU_SetTableBorderColor': { color: 'tableBorderColor' },
+  'Table.EU_SetTableBorderWidth': { width: 'tableBorderWidth' },
+  'Table.EU_SetTableSelectedRows': { rows: 'selectedRows' },
+  'Table.EU_SetTableSort': { col: 'sortColumn', descending: 'sortDescending' },
+  'Table.EU_SetTableSearch': { value: 'searchText' },
+  'Table.EU_SetTableScroll': { x: 'scrollX', row: 'scrollRow' },
+  'Table.EU_SetTableViewportOptions': {
+    maxHeight: 'tableMaxHeight', fixedHeader: 'tableFixedHeader',
+    horizontalScroll: 'tableHorizontalScroll', showSummary: 'tableShowSummary'
+  },
+  'Table.EU_SetTableSummary': { values: 'tableSummary' },
+  'Table.EU_SetTableTreeOptions': {
+    enabled: 'tableTreeEnabled', indent: 'tableTreeIndent', lazy: 'tableTreeLazy'
+  },
+  'Table.EU_SetTableHeaderDragOptions': {
+    columnResize: 'tableColumnResize', headerHeightResize: 'tableHeaderHeightResize',
+    minColWidth: 'tableMinColumnWidth', maxColWidth: 'tableMaxColumnWidth',
+    minHeaderHeight: 'tableMinHeaderHeight', maxHeaderHeight: 'tableMaxHeaderHeight'
+  },
+  'Table.EU_SetTableDoubleClickEdit': { enabled: 'tableDoubleClickEdit' },
+  'Table.EU_SetTableVirtualOptions': {
+    enabled: 'tableVirtualEnabled', rowCount: 'tableVirtualRowCount', cacheWindow: 'tableVirtualCacheWindow'
+  },
+  'Image.EU_SetImageStyle': {
+    bg: 'imageBackgroundColor', border: 'imageBorderColor', borderWidth: 'borderWidth', radius: 'radius', padding: 'padding'
+  },
+  'Image.EU_SetImagePreviewEnabled': { enabled: 'previewEnabled' },
+  'Image.EU_SetImagePreview': { open: 'previewOpen' },
+  'Image.EU_SetImagePreviewTransform': { scalePercent: 'previewScale', offsetX: 'previewOffsetX', offsetY: 'previewOffsetY' },
+  'Image.EU_SetImageCacheEnabled': { enabled: 'cacheEnabled' },
+  'Image.EU_SetImagePreviewList': { sources: 'previewList' },
+  'Image.EU_SetImagePreviewIndex': { index: 'previewIndex' },
+  'Image.EU_SetImagePlaceholder': {
+    icon: 'placeholderIcon', text: 'placeholderText', fg: 'placeholderTextColor', bg: 'placeholderBackgroundColor'
+  },
+  'Image.EU_SetImageErrorContent': {
+    icon: 'errorIcon', text: 'errorText', fg: 'errorTextColor', bg: 'errorBackgroundColor'
+  },
+  'Link.EU_SetLinkOptions': { type: 'linkType' },
+  'Link.EU_SetLinkContent': { prefix: 'prefixIcon', suffix: 'suffixIcon' },
+  'Omnibox.EU_SetOmniboxSecurityState': { state: 'securityState', bytes: 'securityText' },
+  'Omnibox.EU_SetOmniboxPrefixChip': {
+    icon: 'prefixIcon', text: 'prefixText', bgColor: 'prefixBg', fgColor: 'prefixFg'
+  },
+  'Omnibox.EU_SetOmniboxActionIcons': { icons: 'actionIcons' },
+  'Omnibox.EU_SetOmniboxSuggestionItems': { items: 'suggestions' },
+  'Omnibox.EU_SetOmniboxSuggestionOpen': { open: 'suggestionOpen' },
+  'Omnibox.EU_SetOmniboxSuggestionSelected': { index: 'suggestionSelected' },
+  'Tour.EU_SetTourOptions': {
+    mask: 'mask', targetX: 'targetX', targetY: 'targetY', targetW: 'targetWidth', targetH: 'targetHeight'
+  },
+  'Tour.EU_SetTourTargetElement': { targetElementId: 'targetElementId', padding: 'targetPadding' },
+  'Tour.EU_SetTourMaskBehavior': { passThrough: 'maskPassThrough', closeOnMask: 'closeOnMask' },
+  'Rate.EU_SetRateMax': { maxValue: 'max' },
+  'Rate.EU_SetRateDisplayOptions': {
+    showText: 'showText', showScore: 'showScore', textColor: 'textColor', template: 'scoreTemplate'
+  },
+  'DatePicker.EU_SetDatePickerPlaceholder': { bytes: 'placeholder', text: 'placeholder' },
+  'DatePicker.EU_SetDatePickerFormat': { bytes: 'dateFormat' },
+  'DatePicker.EU_SetDatePickerDisabledDatesUtf8': { dates: 'disabledDates' },
+  'DateTimePicker.EU_SetDateTimePickerOptions': { today: 'today', showToday: 'showToday', minuteStep: 'minuteStep' },
+  'Calendar.EU_SetCalendarRange': { minYyyymmdd: 'minDate', maxYyyymmdd: 'maxDate' },
+  'Calendar.EU_SetCalendarOptions': { today: 'today', showToday: 'showToday' },
+  'BrowserViewport.EU_SetBrowserViewportPlaceholder': {
+    title: 'placeholderTitle', desc: 'placeholderDesc', icon: 'placeholderIcon'
+  },
+  'BrowserViewport.EU_SetBrowserViewportScreenshot': { bytes: 'screenshot' },
+  'Empty.EU_SetEmptyOptions': { icon: 'icon', action: 'actionText' },
+  'Empty.EU_SetEmptyActionClicked': { clicked: 'actionClicked' },
+  'Transfer.EU_SetTransferSelected': { leftSelected: 'leftSelected', rightSelected: 'rightSelected' },
+  'Transfer.EU_SetTransferOptions': { filterable: 'filterable' },
+  'InputNumber.EU_SetInputNumberRange': { minimum: 'min', maximum: 'max' },
+  'Slider.EU_SetSliderRange': { minimum: 'min', maximum: 'max', stepValue: 'step' },
+  'Table.EU_SetTableEmptyText': { text: 'emptyText' },
+  'Table.EU_SetTableSelectedRow': { rowIndex: 'selectedRow' },
+  'Table.EU_SetTableSort': { columnIndex: 'sortColumn', desc: 'sortDescending' },
+  'Table.EU_SetTableSelectionMode': { mode: 'selectionMode' },
+  'ListBox.EU_SetListBoxItemsEx': { items: 'listBoxItemsEx' },
+  'ListBox.EU_SetListBoxSelectedIndex': { index: 'selectedIndex' },
+  'ListBox.EU_SetListBoxSelectedKeys': { keys: 'selectedKeys' },
+  'ListBox.EU_SetListBoxVirtualItemCount': { count: 'virtualItemCount' },
+  'Menu.EU_SetMenuExpandedUtf8': { indices: 'expandedIndices' },
+  'Tabs.EU_SetTabsPosition': { tabPosition: 'position' },
+  'Tabs.EU_SetTabsHeaderAlign': { align: 'headerAlign' },
+  'Tabs.EU_SetTabsContentVisible': { visible: 'contentVisible' },
+  'Dialog.EU_SetDialogOptions': { w: 'dialogWidth', h: 'dialogHeight' },
+  'Notification.EU_SetNotificationOptions': { notifyType: 'messageType', durationMs: 'duration' },
+  'Message.EU_SetMessageText': { bytes: 'body' },
+  'Message.EU_SetMessageOptions': { durationMs: 'duration' },
+  'Icon.EU_SetIconOptions': { rotationDegrees: 'rotation' },
+  'Layout.EU_SetLayoutOptions': { orientation: 'orientation' },
+  'SelectV2.EU_SetSelectV2OptionAlignment': { alignment: 'optionAlign' },
+  'SelectV2.EU_SetSelectV2ValueAlignment': { alignment: 'valueAlign' },
+  'InputNumber.EU_SetInputNumberStepStrictly': { strict: 'stepStrictly' },
+  'Tag.EU_SetTagSize': { sizePreset: 'size' },
+  'Tag.EU_SetTagThemeColor': { color: 'themeColor' },
+  'Badge.EU_SetBadgeMax': { maxValue: 'max' },
+  'Progress.EU_SetProgressColorStops': { stops: 'colorStops' },
+  'Progress.EU_SetProgressTextTemplate': { bytes: 'textTemplate' },
+  'Avatar.EU_SetAvatarSource': { src: 'source' },
+  'Avatar.EU_SetAvatarFallbackSource': { src: 'fallbackSource' },
+  'Collapse.EU_SetCollapseAdvancedOptions': { allowCollapse: 'allowCollapse', animated: 'animated', disabled: 'disabledIndices' },
+  'Tree.EU_SetTreeDataJson': { json: 'treeDataJson' },
+  'TreeSelect.EU_SetTreeSelectDataJson': { json: 'treeDataJson' },
+  'Autocomplete.EU_SetAutocompletePlaceholder': { text: 'placeholder' },
+  'TimePicker.EU_SetTimePickerRange': { minHhmm: 'minTime', maxHhmm: 'maxTime' },
+  'TimeSelect.EU_SetTimeSelectRange': { minHhmm: 'minTime', maxHhmm: 'maxTime' },
+  'TimeSelect.EU_SetTimeSelectPlaceholder': { text: 'placeholder' },
+  'PageHeader.EU_SetPageHeaderActions': { items: 'actions' },
+  'PageHeader.EU_SetPageHeaderBreadcrumbs': { items: 'breadcrumbs' },
+  'Watermark.EU_SetWatermarkOptions': { rotationDegrees: 'rotation', alpha: 'alpha' },
+  'Carousel.EU_SetCarouselAutoplay': { enabled: 'autoplay', intervalMs: 'intervalMs' },
+  'Loading.EU_SetLoadingTarget': { targetElementId: 'targetElementId', padding: 'targetPadding' },
+  'Popover.EU_SetPopoverArrow': { visible: 'showArrow', size: 'arrowSize' },
+  'Popover.EU_SetPopoverElevation': { level: 'elevation' },
+  'Popover.EU_SetPopoverAutoPlacement': { enabled: 'autoPlacement' },
+  'Popconfirm.EU_SetPopconfirmIcon': { icon: 'icon', iconColor: 'iconColor', visible: 'iconVisible' },
+  'IconButton.EU_SetIconButtonBadge': { bytes: 'badge', visible: 'badgeVisible' },
+  'IconButton.EU_SetIconButtonIconSize': { size: 'iconSize' },
+  'Omnibox.EU_SetOmniboxActionIcons': { bytes: 'actionIcons' },
+  'Omnibox.EU_SetOmniboxSuggestionItems': { bytes: 'suggestions' },
+  'Image.EU_SetImagePreviewList': { sources: 'previewList', selectedIndex: 'previewIndex' },
+  'DatePicker.EU_SetDatePickerOptions': { todayYyyymmdd: 'today', showToday: 'showToday', dateFormat: 'dateFormat' },
+  'DateTimePicker.EU_SetDateTimePickerOptions': { todayYyyymmdd: 'today', showToday: 'showToday', minuteStep: 'minuteStep', dateFormat: 'dateFormat' },
+  'Calendar.EU_SetCalendarOptions': { todayYyyymmdd: 'today', showToday: 'showToday' },
+  'Slider.EU_SetSliderRange': { minValue: 'min', maxValue: 'max' },
+  'Slider.EU_SetSliderOptions': { step: 'step' },
+  'InputNumber.EU_SetInputNumberRange': { minValue: 'min', maxValue: 'max' },
+  'Loading.EU_SetLoadingStyle': {
+    background: 'backgroundColor', spinnerColor: 'spinnerColor', textColor: 'loadingTextColor'
+  },
+  'Calendar.EU_SetCalendarDateRange': { minimum: 'minDate', maximum: 'maxDate' },
+  'Input.EU_SetInputPrefixChip': { bgColor: 'prefixBg', fgColor: 'prefixFg' },
+};
+
+const PROPERTY_PARAMETER_LITERALS = {
+  'Container.EU_SetContainerLayout': { enabled: 1 },
+  'Dialog.EU_SetDialogOptions': { closeOnMask: 1 },
+  'Slider.EU_SetSliderOptions': { showTooltip: 1 }
+};
+
+function getCustomPropertySetters(component) {
+  const textRegions = new Set(['Header', 'Aside', 'Main', 'Footer']);
+  const result = [];
+  if (component.id === 'Link') {
+    result.push({
+      command: 'EU_SetTextOptions',
+      parameters: [
+        { name: 'hwnd', type: 'HWND' }, { name: 'element_id', type: 'int' },
+        { name: 'align', type: 'int', propertyKey: 'align' }, { name: 'valign', type: 'int', propertyKey: 'valign' },
+        { name: 'wrap', type: 'int', propertyKey: 'wrap' }, { name: 'ellipsis', type: 'int', propertyKey: 'ellipsis' }
+      ],
+      propertyKeys: ['align', 'valign', 'wrap', 'ellipsis']
+    });
+  }
+  if (component.id === 'Container') {
+    result.push({
+      command: 'EU_SetPanelStyle',
+      parameters: [
+        { name: 'hwnd', type: 'HWND' }, { name: 'element_id', type: 'int' },
+        { name: 'bg', type: 'Color', propertyKey: 'backgroundColor' }, { name: 'border', type: 'Color', propertyKey: 'borderColor' },
+        { name: 'border_width', type: 'float', literal: 1 }, { name: 'radius', type: 'float', literal: 0 },
+        { name: 'padding', type: 'int', literal: 0 }
+      ],
+      propertyKeys: ['borderColor']
+    });
+  }
+  if (textRegions.has(component.id)) {
+    result.push({
+      command: 'EU_SetElementText',
+      parameters: [
+        { name: 'hwnd', type: 'HWND' }, { name: 'element_id', type: 'int' },
+        { name: 'bytes', type: 'const unsigned char*', propertyKey: 'title' },
+        { name: 'len', type: 'int', lengthOf: 'title' }
+      ],
+      propertyKeys: ['title']
+    });
+    result.push({
+      command: 'EU_SetContainerRegionTextOptions',
+      parameters: [
+        { name: 'hwnd', type: 'HWND' }, { name: 'element_id', type: 'int' },
+        { name: 'align', type: 'int', propertyKey: 'align' }, { name: 'valign', type: 'int', literal: 1 }
+      ],
+      propertyKeys: ['align']
+    });
+  }
+  if (textRegions.has(component.id) || component.id === 'Container' || component.id === 'Layout') {
+    result.push({
+      command: 'EU_SetElementColor',
+      parameters: [
+        { name: 'hwnd', type: 'HWND' }, { name: 'element_id', type: 'int' },
+        { name: 'bg', type: 'Color', propertyKey: 'backgroundColor' },
+        { name: 'fg', type: 'Color', propertyKey: 'foreground' }
+      ],
+      propertyKeys: ['backgroundColor']
+    });
+  }
+  if (component.id === 'Transfer') {
+    for (const [side, key] of [[0, 'leftSelected'], [1, 'rightSelected']]) {
+      result.push({
+        command: 'EU_SetTransferSelected',
+        parameters: [
+          { name: 'hwnd', type: 'HWND' }, { name: 'element_id', type: 'int' },
+          { name: 'side', type: 'int', literal: side }, { name: 'selected_index', type: 'int', propertyKey: key }
+        ],
+        propertyKeys: [key]
+      });
+    }
+    result.push({
+      command: 'EU_SetTransferOptions',
+      parameters: [
+        { name: 'hwnd', type: 'HWND' }, { name: 'element_id', type: 'int' },
+        { name: 'filterable', type: 'int', propertyKey: 'filterable' },
+        { name: 'multiple', type: 'int', literal: 0 }, { name: 'show_footer', type: 'int', literal: 0 },
+        { name: 'show_select_all', type: 'int', literal: 0 }, { name: 'show_count', type: 'int', literal: 0 },
+        { name: 'render_mode', type: 'int', literal: 0 }
+      ],
+      propertyKeys: ['filterable']
+    });
+  }
+  return result;
+}
+
+function inferPropertySetters(component, rawExports) {
+  const propertyKeys = new Set((component.properties || []).map(property => property.key));
+  const setters = [];
+  for (const runtimeExport of rawExports) {
+    if (!runtimeExport.name.startsWith(`EU_Set${component.id}`)
+      || runtimeExport.name.endsWith('Callback')
+      || runtimeExport.name.includes('Provider')) continue;
+    const aliases = PROPERTY_PARAMETER_ALIASES[`${component.id}.${runtimeExport.name}`] || {};
+    const literals = PROPERTY_PARAMETER_LITERALS[`${component.id}.${runtimeExport.name}`] || {};
+    const parameters = [];
+    const mappedKeys = new Set();
+    let supported = true;
+    let lastTextPropertyKey;
+    for (const parameter of runtimeExport.parameters || []) {
+      const normalizedName = snakeToCamel(parameter.name.replace(/_(bytes|len)$/u, ''));
+      if (normalizedName === 'hwnd' || normalizedName === 'elementId') {
+        parameters.push({ name: parameter.name, type: parameter.type });
+        continue;
+      }
+      if (normalizedName === 'len' && lastTextPropertyKey && parameter.type === 'int') {
+        parameters.push({ name: parameter.name, type: parameter.type, lengthOf: lastTextPropertyKey });
+        continue;
+      }
+      if (Object.prototype.hasOwnProperty.call(literals, normalizedName)) {
+        parameters.push({ name: parameter.name, type: parameter.type, literal: literals[normalizedName] });
+        continue;
+      }
+      if (!/^(?:int|float|double|Color|const unsigned char\*)$/u.test(parameter.type)) {
+        supported = false;
+        break;
+      }
+      const propertyKey = aliases[normalizedName]
+        || inferPropertyKey(normalizedName, propertyKeys);
+      if (!propertyKey) {
+        supported = false;
+        break;
+      }
+      mappedKeys.add(propertyKey);
+      parameters.push({
+        name: parameter.name,
+        type: parameter.type,
+        ...(parameter.name.endsWith('_len') ? { lengthOf: propertyKey } : { propertyKey })
+      });
+      if (parameter.type === 'const unsigned char*') lastTextPropertyKey = propertyKey;
+    }
+    if (supported && mappedKeys.size > 0) {
+      setters.push({ command: runtimeExport.name, parameters, propertyKeys: [...mappedKeys] });
+    }
+  }
+  return setters;
+}
+
+function inferPropertyKey(normalizedName, propertyKeys) {
+  if (propertyKeys.has(normalizedName)) return normalizedName;
+  const candidates = [
+    `${normalizedName}Color`,
+    normalizedName === 'bg' ? 'backgroundColor' : '',
+    normalizedName === 'border' ? 'borderColor' : '',
+    normalizedName === 'width' ? 'borderWidth' : '',
+    normalizedName === 'radius' ? 'cornerRadius' : '',
+    normalizedName === 'minimum' ? 'min' : '',
+    normalizedName === 'maximum' ? 'max' : ''
+  ].filter(Boolean);
+  return candidates.find(candidate => propertyKeys.has(candidate));
+}
+
+function snakeToCamel(value) {
+  return value.replace(/_([a-z])/gu, (_match, letter) => letter.toUpperCase());
+}
+
+const COMMON_DESIGNER_EVENTS = [
+  { name: 'MouseEnter', label: '鼠标进入', group: '鼠标' },
+  { name: 'MouseLeave', label: '鼠标离开', group: '鼠标' },
+  { name: 'MouseDown', label: '鼠标按下', group: '鼠标' },
+  { name: 'MouseUp', label: '鼠标抬起', group: '鼠标' },
+  { name: 'MouseDoubleClick', label: '鼠标双击', group: '鼠标' },
+  { name: 'MouseMove', label: '鼠标移动', group: '鼠标' },
+  { name: 'MouseWheel', label: '鼠标滚轮', group: '鼠标' },
+  { name: 'GotFocus', label: '获得焦点', group: '焦点' },
+  { name: 'LostFocus', label: '失去焦点', group: '焦点' }
+];
+
+const COMMON_EVENT_BINDINGS = {
+  MouseEnter: ['EU_SetElementMouseCallback', 'ElementMouseCallback', 1],
+  MouseLeave: ['EU_SetElementMouseCallback', 'ElementMouseCallback', 2],
+  MouseDown: ['EU_SetElementMouseCallback', 'ElementMouseCallback', 3],
+  MouseUp: ['EU_SetElementMouseCallback', 'ElementMouseCallback', 4],
+  MouseDoubleClick: ['EU_SetElementMouseCallback', 'ElementMouseCallback', 5],
+  MouseMove: ['EU_SetElementMouseCallback', 'ElementMouseCallback', 6],
+  MouseWheel: ['EU_SetElementMouseCallback', 'ElementMouseCallback', 7],
+  GotFocus: ['EU_SetElementFocusCallback', 'ElementFocusCallback', 1],
+  LostFocus: ['EU_SetElementFocusCallback', 'ElementFocusCallback', 0]
+};
+
+// LingBuilder 通用预览控件与 new_emoji 原生目录存在少量同义事件名。
+const NEW_EMOJI_EVENT_ALIASES = {
+  'Button.Clicked': ['Click'],
+  'Card.Clicked': ['Click'],
+  'Link.Clicked': ['Click'],
+  'PageHeader.Clicked': ['Click'],
+  'IconButton.Clicked': ['Click'],
+  'Checkbox.ValueChanged': ['Checked', 'Unchecked'],
+  'Radio.ValueChanged': ['Checked', 'Unchecked'],
+  'ListBox.ItemDoubleClicked': ['DoubleClick']
+};
+
+function newEmojiEventAliases(componentId, eventName) {
+  return NEW_EMOJI_EVENT_ALIASES[`${componentId}.${eventName}`] || [];
+}
+
+const EVENT_BINDINGS = {
+  'Button.Clicked': ['EU_SetElementClickCallback', 'ElementClickCallback'],
+  'Input.TextChanged': ['EU_SetInputTextCallback', 'ElementTextCallback'],
+  'EditBox.TextChanged': ['EU_SetEditBoxTextCallback', 'ElementTextCallback'],
+  'Table.CellClicked': ['EU_SetTableCellClickCallback', 'TableCellCallback'],
+  'Table.CellAction': ['EU_SetTableCellActionCallback', 'TableCellCallback'],
+  'Table.CellEdit': ['EU_SetTableCellEditCallback', 'TableCellEditCallback'],
+  'Table.ContextMenu': ['EU_SetTableContextMenuCallback', 'TableContextMenuCallback'],
+  'Table.VirtualRow': ['EU_SetTableVirtualRowProvider', 'TableVirtualRowCallback'],
+  'ListBox.SelectionChanged': ['EU_SetListBoxChangeCallback', 'ElementTextCallback'],
+  'ListBox.ItemClicked': ['EU_SetListBoxItemClickCallback', 'ElementValueCallback'],
+  'ListBox.ItemDoubleClicked': ['EU_SetListBoxItemDoubleClickCallback', 'ElementValueCallback'],
+  'ListBox.Edit': ['EU_SetListBoxEditCallback', 'ListBoxEditCallback'],
+  'ListBox.Reorder': ['EU_SetListBoxReorderCallback', 'ElementReorderCallback'],
+  'ListBox.ContextMenu': ['EU_SetListBoxContextMenuCallback', 'ElementValueCallback'],
+  'Card.Clicked': ['EU_SetElementClickCallback', 'ElementClickCallback'],
+  'Menu.MenuCommand': ['EU_SetMenuSelectCallback', 'MenuSelectCallback'],
+  'Tabs.SelectionChanged': ['EU_SetTabsChangeCallback', 'ElementValueCallback'],
+  'Dialog.Closed': ['EU_SetDialogBeforeCloseCallback', 'ElementBeforeCloseCallback'],
+  'Drawer.Closed': ['EU_SetDrawerCloseCallback', 'ElementValueCallback'],
+  'Notification.Closed': ['EU_SetNotificationCloseCallback', 'ElementValueCallback'],
+  'Message.Closed': ['EU_SetMessageCloseCallback', 'ElementValueCallback'],
+  'MessageBox.Result': ['EU_SetMessageBoxResultCallback', 'MessageBoxExCallback'],
+  'Link.Clicked': ['EU_SetElementClickCallback', 'ElementClickCallback'],
+  'Checkbox.ValueChanged': ['EU_SetElementClickCallback', 'ElementClickCallback'],
+  'Radio.ValueChanged': ['EU_SetElementClickCallback', 'ElementClickCallback'],
+  'Switch.ValueChanged': ['EU_SetElementClickCallback', 'ElementClickCallback'],
+  'Slider.ValueChanged': ['EU_SetSliderValueCallback', 'ElementValueCallback'],
+  'Select.SelectionChanged': ['EU_SetSelectChangeCallback', 'ElementValueCallback'],
+  'SelectV2.SelectionChanged': ['EU_SetSelectV2ChangeCallback', 'ElementValueCallback'],
+  'InputNumber.ValueChanged': ['EU_SetInputNumberValueCallback', 'ElementValueCallback'],
+  'InputTag.TextChanged': ['EU_SetInputTagChangeCallback', 'ElementTextCallback'],
+  'InputGroup.TextChanged': ['EU_SetElementTextChangeCallback', 'ElementClickCallback'],
+  'Rate.ValueChanged': ['EU_SetRateChangeCallback', 'ElementValueCallback'],
+  'ColorPicker.ValueChanged': ['EU_SetColorPickerChangeCallback', 'ElementValueCallback'],
+  'Tag.Closed': ['EU_SetTagCloseCallback', 'ElementClickCallback'],
+  'Alert.Closed': ['EU_SetAlertCloseCallback', 'ElementValueCallback'],
+  'Breadcrumb.SelectionChanged': ['EU_SetBreadcrumbSelectCallback', 'ElementValueCallback'],
+  'Pagination.ValueChanged': ['EU_SetPaginationChangeCallback', 'ElementValueCallback'],
+  'Steps.SelectionChanged': ['EU_SetStepsChangeCallback', 'ElementValueCallback'],
+  'Collapse.SelectionChanged': ['EU_SetCollapseChangeCallback', 'ElementValueCallback'],
+  'Calendar.SelectionChanged': ['EU_SetCalendarChangeCallback', 'ElementValueCallback'],
+  'Tree.NodeEvent': ['EU_SetTreeNodeEventCallback', 'TreeNodeEventCallback'],
+  'Tree.SelectionChanged': ['EU_SetElementSelectionChangeCallback', 'ElementClickCallback'],
+  'Tree.LazyLoad': ['EU_SetTreeLazyLoadCallback', 'TreeNodeEventCallback'],
+  'Tree.Drag': ['EU_SetTreeDragCallback', 'TreeNodeEventCallback'],
+  'Tree.AllowDrag': ['EU_SetTreeAllowDragCallback', 'TreeNodeAllowDragCallback'],
+  'Tree.AllowDrop': ['EU_SetTreeAllowDropCallback', 'TreeNodeAllowDropCallback'],
+  'TreeSelect.NodeEvent': ['EU_SetTreeSelectNodeEventCallback', 'TreeNodeEventCallback'],
+  'TreeSelect.SelectionChanged': ['EU_SetElementSelectionChangeCallback', 'ElementClickCallback'],
+  'TreeSelect.LazyLoad': ['EU_SetTreeSelectLazyLoadCallback', 'TreeNodeEventCallback'],
+  'TreeSelect.Drag': ['EU_SetTreeSelectDragCallback', 'TreeNodeEventCallback'],
+  'TreeSelect.AllowDrag': ['EU_SetTreeSelectAllowDragCallback', 'TreeNodeAllowDragCallback'],
+  'TreeSelect.AllowDrop': ['EU_SetTreeSelectAllowDropCallback', 'TreeNodeAllowDropCallback'],
+  'DatePicker.DisabledDate': ['EU_SetDatePickerDisabledDateCallback', 'DateDisabledCallback'],
+  'Transfer.SelectionChanged': ['EU_SetElementSelectionChangeCallback', 'ElementClickCallback'],
+  'Autocomplete.TextChanged': ['EU_SetElementTextChangeCallback', 'ElementClickCallback'],
+  'Mentions.TextChanged': ['EU_SetElementTextChangeCallback', 'ElementClickCallback'],
+  'Cascader.SelectionChanged': ['EU_SetElementSelectionChangeCallback', 'ElementClickCallback'],
+  'DatePicker.SelectionChanged': ['EU_SetElementSelectionChangeCallback', 'ElementClickCallback'],
+  'TimePicker.SelectionChanged': ['EU_SetElementSelectionChangeCallback', 'ElementClickCallback'],
+  'DateTimePicker.SelectionChanged': ['EU_SetElementSelectionChangeCallback', 'ElementClickCallback'],
+  'TimeSelect.SelectionChanged': ['EU_SetElementSelectionChangeCallback', 'ElementClickCallback'],
+  'Dropdown.Command': ['EU_SetDropdownCommandCallback', 'DropdownCommandCallback'],
+  'Dropdown.SelectionChanged': ['EU_SetElementSelectionChangeCallback', 'ElementClickCallback'],
+  'Anchor.SelectionChanged': ['EU_SetElementSelectionChangeCallback', 'ElementClickCallback'],
+  'Segmented.SelectionChanged': ['EU_SetElementSelectionChangeCallback', 'ElementClickCallback'],
+  'PageHeader.Clicked': ['EU_SetElementClickCallback', 'ElementClickCallback'],
+  'Upload.FilesSelected': ['EU_SetUploadSelectCallback', 'ElementTextCallback'],
+  'Upload.UploadAction': ['EU_SetUploadActionCallback', 'ElementValueCallback'],
+  'Popover.ValueChanged': ['EU_SetPopoverActionCallback', 'ElementValueCallback'],
+  'Popconfirm.ValueChanged': ['EU_SetPopconfirmResultCallback', 'ElementValueCallback'],
+  'Omnibox.TextChanged': ['EU_SetOmniboxCommitCallback', 'ElementTextCallback'],
+  'Omnibox.ValueChanged': ['EU_SetOmniboxIconButtonCallback', 'ElementValueCallback']
+  ,'IconButton.Clicked': ['EU_SetElementClickCallback', 'ElementClickCallback']
+};
+
+function inferEventBindings(component, rawExports) {
+  const available = new Set(rawExports.map(item => item.name));
+  return (component.events || []).flatMap(event => {
+    const binding = EVENT_BINDINGS[`${component.id}.${event.name}`] || COMMON_EVENT_BINDINGS[event.name];
+    if (!binding || !available.has(binding[0])) return [];
+    const aliases = newEmojiEventAliases(component.id, event.name);
+    return [{ eventName: event.name, ...(aliases.length ? { aliases } : {}), command: binding[0], callbackType: binding[1], ...(binding[2] === undefined ? {} : { eventCode: binding[2] }) }];
+  });
+}
+
+function inferPreviewType(type, isContainer) {
+  if (isContainer) return 'Grid';
+  if (/Button|Upload/u.test(type)) return 'Button';
+  if (/Input|Edit|Autocomplete|Mention|Cascader|Select/u.test(type)) return 'TextBox';
+  if (/Checkbox/u.test(type)) return 'CheckBox';
+  if (/Radio/u.test(type)) return 'RadioButton';
+  if (/ListBox|Menu|Dropdown/u.test(type)) return 'ListBox';
+  if (/Table|Descriptions/u.test(type)) return 'ListView';
+  if (/Tree/u.test(type)) return 'TreeView';
+  if (/Tabs/u.test(type)) return 'TabControl';
+  if (/Image|Avatar|Carousel|Rate/u.test(type)) return 'Image';
+  if (/Progress|Slider/u.test(type)) return 'ProgressBar';
+  return 'Label';
 }
 
 function parseBindingParameters(signature) {
@@ -381,6 +929,7 @@ function bridgeHeader() {
 HWND NE_创建窗口(const wchar_t* title, int x, int y, int width, int height);
 HWND NE_创建深色窗口(const wchar_t* title, int x, int y, int width, int height);
 void NE_显示窗口(HWND hwnd, int visible);
+void NE_显示并激活窗口(HWND hwnd);
 int NE_运行消息循环();
 void NE_销毁窗口(HWND hwnd);
 int NE_创建容器(HWND hwnd, int parentId, int x, int y, int width, int height);
@@ -406,6 +955,7 @@ int NE_取最近上传动作();
 int NE_取最近上传文件索引();
 int NE_取最近上传进度值();
 void NE_设置元素状态(HWND hwnd, int elementId, int visible, int enabled, unsigned int background, unsigned int foreground);
+void NE_设置元素焦点(HWND hwnd, int elementId);
 void NE_设置元素字体(HWND hwnd, int elementId, const wchar_t* fontFamily, int fontSize);
 void NE_设置窗口标题(HWND hwnd, const wchar_t* title);
 `;
@@ -451,7 +1001,8 @@ __declspec(dllimport) void __stdcall EU_SetElementText(HWND hwnd, int element_id
 __declspec(dllimport) void __stdcall EU_SetElementVisible(HWND hwnd, int element_id, int visible);
 __declspec(dllimport) void __stdcall EU_SetElementEnabled(HWND hwnd, int element_id, int enabled);
 __declspec(dllimport) void __stdcall EU_SetElementColor(HWND hwnd, int element_id, NEColor background, NEColor foreground);
-__declspec(dllimport) void __stdcall EU_SetElementFont(HWND hwnd, int element_id, const unsigned char* font_bytes, int font_len, int size);
+__declspec(dllimport) void __stdcall EU_SetElementFocus(HWND hwnd, int element_id);
+__declspec(dllimport) void __stdcall EU_SetElementFontInt(HWND hwnd, int element_id, const unsigned char* font_bytes, int font_len, int size);
 __declspec(dllimport) void __stdcall EU_SetWindowTitle(HWND hwnd, const unsigned char* bytes, int len);
 
 static std::vector<std::unique_ptr<std::string>>& NE_Utf8Pool() {
@@ -523,6 +1074,37 @@ HWND NE_创建深色窗口(const wchar_t* title, int x, int y, int width, int he
 
 void NE_显示窗口(HWND hwnd, int visible) {
     EU_ShowWindow(hwnd, visible);
+}
+
+void NE_显示并激活窗口(HWND hwnd) {
+    if (!hwnd || !IsWindow(hwnd)) return;
+
+    HWND foregroundWindow = GetForegroundWindow();
+    DWORD currentThreadId = GetCurrentThreadId();
+    DWORD foregroundThreadId = foregroundWindow
+        ? GetWindowThreadProcessId(foregroundWindow, nullptr)
+        : 0;
+    BOOL inputAttached = foregroundThreadId != 0
+        && foregroundThreadId != currentThreadId
+        && AttachThreadInput(currentThreadId, foregroundThreadId, TRUE);
+
+    ShowWindow(hwnd, IsIconic(hwnd) ? SW_RESTORE : SW_SHOW);
+    UpdateWindow(hwnd);
+
+    // 只短暂提升到最上层，确保由 IDE/F5 后台进程启动时窗口也能进入可见层级；
+    // 随即还原普通窗口层级，避免应用长期保持“总在最前”。
+    SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+    SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+    BringWindowToTop(hwnd);
+    SetForegroundWindow(hwnd);
+    SetActiveWindow(hwnd);
+    SetFocus(hwnd);
+
+    if (inputAttached) {
+        AttachThreadInput(currentThreadId, foregroundThreadId, FALSE);
+    }
 }
 
 int NE_运行消息循环() {
@@ -623,10 +1205,15 @@ void NE_设置元素状态(HWND hwnd, int elementId, int visible, int enabled, u
     EU_SetElementColor(hwnd, elementId, background, foreground);
 }
 
+void NE_设置元素焦点(HWND hwnd, int elementId) {
+    if (!hwnd || elementId <= 0) return;
+    EU_SetElementFocus(hwnd, elementId);
+}
+
 void NE_设置元素字体(HWND hwnd, int elementId, const wchar_t* fontFamily, int fontSize) {
     if (!hwnd || elementId <= 0) return;
     const std::string& fontBytes = NE_KeepUtf8(fontFamily && fontFamily[0] ? fontFamily : L"Microsoft YaHei UI");
-    EU_SetElementFont(hwnd, elementId, reinterpret_cast<const unsigned char*>(fontBytes.c_str()), static_cast<int>(fontBytes.size()), fontSize > 0 ? fontSize : 12);
+    EU_SetElementFontInt(hwnd, elementId, reinterpret_cast<const unsigned char*>(fontBytes.c_str()), static_cast<int>(fontBytes.size()), fontSize > 0 ? fontSize : 12);
 }
 
 void NE_设置窗口标题(HWND hwnd, const wchar_t* title) {

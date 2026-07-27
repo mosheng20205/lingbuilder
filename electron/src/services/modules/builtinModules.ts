@@ -5,6 +5,8 @@ import { SYSTEM_LIBRARY_MODULES } from './systemLibraryModules';
 import { NETWORK_LIBRARY_MODULES } from './networkLibraryModules';
 import { DATA_MEDIA_MODULES } from './dataMediaModules';
 import { PLATFORM_ADVANCED_MODULES } from './platformAdvancedModules';
+import { CEF3_BROWSER_EVENT_NAMES } from './cef3BrowserEvents';
+import { EDGEVIEW_BROWSER_EVENT_NAMES } from './edgeViewBrowserEvents';
 
 function createControlContributions(moduleId: Win32ControlModuleId) {
   return getWin32ControlsForModule(moduleId).map(definition => ({
@@ -328,6 +330,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     author: 'LingBuilder',
     tags: ['内置', 'Edge', 'WebView2', '浏览器', 'JavaScript'],
     contributes: {
+      designerControls: createControlContributions('lingbuilder.edgeview'),
       commands: [
         { name: 'EdgeView_创建', signature: 'EdgeView_创建(父组件句柄, 地址)', description: '在指定 HWND 组件客户区内创建 EdgeView；传 0 时嵌入当前窗口。成功返回 1。', insertText: 'EdgeView_创建(0, "https://example.com")', returnType: '整数型' },
         { name: 'EdgeView_创建实例', signature: 'EdgeView_创建实例(实例编号, 父组件句柄, 地址, 独立缓存目录)', description: '创建具名 EdgeView 实例；不同缓存目录拥有独立 Cookie、存储和会话。', insertText: 'EdgeView_创建实例(1, 0, "https://example.com", ".edgeview/cache-1")', returnType: '整数型' },
@@ -338,14 +341,15 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'EdgeView_清除全局代理', signature: 'EdgeView_清除全局代理()', description: '清除后续新建实例的全局代理，现有实例不变。', insertText: 'EdgeView_清除全局代理()', returnType: '空' },
         { name: 'EdgeView_取全局代理', signature: 'EdgeView_取全局代理()', description: '返回当前 EdgeView 全局代理设置。', insertText: 'EdgeView_取全局代理()', returnType: '文本型' },
         { name: 'EdgeView_取实例代理', signature: 'EdgeView_取实例代理(实例编号)', description: '返回指定实例创建时实际采用的代理地址。', insertText: 'EdgeView_取实例代理(1)', returnType: '文本型' },
-        { name: 'EdgeView_绑定事件', signature: 'EdgeView_绑定事件(实例编号, 事件名, 处理器名)', description: '把导航开始、导航完成、标题改变或网页消息事件回调到当前窗口的无参数中文事件/方法。', insertText: 'EdgeView_绑定事件(1, "导航完成", "浏览器1_导航完成")', returnType: '整数型' },
+        { name: 'EdgeView_绑定事件', signature: 'EdgeView_绑定事件(实例编号, 事件名, 处理器名)', description: `绑定 WebView2 完整事件目录中的中文事件；当前目录共 ${EDGEVIEW_BROWSER_EVENT_NAMES.length} 项。`, insertText: 'EdgeView_绑定事件(1, "导航完成", "浏览器1_导航完成")', returnType: '整数型' },
+        { name: 'EdgeView_监听开发者工具事件', signature: 'EdgeView_监听开发者工具事件(实例编号, 协议事件名)', description: '监听指定 Chromium DevTools Protocol 事件，触发“开发者工具协议事件”。', insertText: 'EdgeView_监听开发者工具事件(1, "Console.messageAdded")', returnType: '整数型' },
         { name: 'EdgeView_等待事件', signature: 'EdgeView_等待事件(实例编号, 事件名, 超时毫秒)', description: '泵送窗口消息并等待指定浏览器事件，成功返回 1，超时返回 0。', insertText: 'EdgeView_等待事件(1, "导航完成", 15000)', returnType: '整数型' },
         { name: 'EdgeView_导航', signature: 'EdgeView_导航(地址)', description: '导航到 HTTP/HTTPS 地址或本地文件地址。', insertText: 'EdgeView_导航("https://example.com")', returnType: '整数型' },
         { name: 'EdgeView_导航实例', signature: 'EdgeView_导航实例(实例编号, 地址)', description: '让指定 EdgeView 实例导航。', insertText: 'EdgeView_导航实例(1, "https://example.com")', returnType: '整数型' },
         { name: 'EdgeView_执行JS', signature: 'EdgeView_执行JS(脚本)', description: '执行 JavaScript 并等待异步回调，返回 WebView2 的 JSON 编码结果；失败返回空文本。', insertText: 'EdgeView_执行JS("document.title")', returnType: '文本型' },
         { name: 'EdgeView_执行JS实例', signature: 'EdgeView_执行JS实例(实例编号, 脚本)', description: '在指定实例执行 JavaScript，并返回 WebView2 JSON 编码结果。', insertText: 'EdgeView_执行JS实例(1, "document.title")', returnType: '文本型' },
-        { name: 'EdgeView_取最近事件', signature: 'EdgeView_取最近事件()', description: '返回最近浏览器事件名：导航开始、导航完成、标题改变或网页消息。', insertText: 'EdgeView_取最近事件()', returnType: '文本型' },
-        { name: 'EdgeView_取事件数据', signature: 'EdgeView_取事件数据()', description: '返回最近浏览器事件携带的地址、标题、消息或导航状态。', insertText: 'EdgeView_取事件数据()', returnType: '文本型' },
+        { name: 'EdgeView_取最近事件', signature: 'EdgeView_取最近事件()', description: '返回最近触发的 WebView2 中文事件名。', insertText: 'EdgeView_取最近事件()', returnType: '文本型' },
+        { name: 'EdgeView_取事件数据', signature: 'EdgeView_取事件数据()', description: '返回最近事件携带的 UTF-16 JSON 对象文本。', insertText: 'EdgeView_取事件数据()', returnType: '文本型' },
         { name: 'EdgeView_取最近事件实例', signature: 'EdgeView_取最近事件实例(实例编号)', description: '返回指定浏览器实例最近事件名。', insertText: 'EdgeView_取最近事件实例(1)', returnType: '文本型' },
         { name: 'EdgeView_取事件数据实例', signature: 'EdgeView_取事件数据实例(实例编号)', description: '返回指定浏览器实例最近事件携带的数据。', insertText: 'EdgeView_取事件数据实例(1)', returnType: '文本型' },
         { name: 'EdgeView_后退', signature: 'EdgeView_后退()', description: '浏览器可以后退时返回上一页。', insertText: 'EdgeView_后退()', returnType: '整数型' },
@@ -353,6 +357,17 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'EdgeView_刷新', signature: 'EdgeView_刷新()', description: '刷新当前网页。', insertText: 'EdgeView_刷新()', returnType: '空' },
         { name: 'EdgeView_关闭', signature: 'EdgeView_关闭()', description: '关闭浏览器控制器并释放 WebView2 资源。', insertText: 'EdgeView_关闭()', returnType: '空' }
         ,{ name: 'EdgeView_关闭实例', signature: 'EdgeView_关闭实例(实例编号)', description: '关闭指定 EdgeView 实例并释放其承载窗口。', insertText: 'EdgeView_关闭实例(1)', returnType: '空' }
+        ,{ name: 'EdgeView_创建控件', signature: 'EdgeView_创建控件(控件名)', description: '使用设计器属性重新创建指定 Edge 浏览器控件；空文本创建当前窗口全部 Edge 浏览器控件。', insertText: 'EdgeView_创建控件("$1")', returnType: '整数型' }
+        ,{ name: 'EdgeView_导航控件', signature: 'EdgeView_导航控件(控件名, 地址)', description: '让指定设计器 Edge 浏览器控件导航到新地址。', insertText: 'EdgeView_导航控件("$1", "https://example.com")', returnType: '整数型' }
+        ,{ name: 'EdgeView_执行JS控件', signature: 'EdgeView_执行JS控件(控件名, 脚本)', description: '在指定设计器 Edge 浏览器控件中执行 JavaScript 并返回 JSON 编码结果。', insertText: 'EdgeView_执行JS控件("$1", "document.title")', returnType: '文本型' }
+        ,{ name: 'EdgeView_取最近事件控件', signature: 'EdgeView_取最近事件控件(控件名)', description: '读取指定设计器 Edge 浏览器控件最近触发的事件名。', insertText: 'EdgeView_取最近事件控件("$1")', returnType: '文本型' }
+        ,{ name: 'EdgeView_取事件数据控件', signature: 'EdgeView_取事件数据控件(控件名)', description: '读取指定设计器 Edge 浏览器控件最近事件的数据。', insertText: 'EdgeView_取事件数据控件("$1")', returnType: '文本型' }
+        ,{ name: 'EdgeView_后退控件', signature: 'EdgeView_后退控件(控件名)', description: '让指定设计器 Edge 浏览器控件后退。', insertText: 'EdgeView_后退控件("$1")', returnType: '整数型' }
+        ,{ name: 'EdgeView_前进控件', signature: 'EdgeView_前进控件(控件名)', description: '让指定设计器 Edge 浏览器控件前进。', insertText: 'EdgeView_前进控件("$1")', returnType: '整数型' }
+        ,{ name: 'EdgeView_刷新控件', signature: 'EdgeView_刷新控件(控件名)', description: '刷新指定设计器 Edge 浏览器控件。', insertText: 'EdgeView_刷新控件("$1")', returnType: '空' }
+        ,{ name: 'EdgeView_关闭控件', signature: 'EdgeView_关闭控件(控件名)', description: '关闭指定设计器 Edge 浏览器控件并保留设计器宿主占位。', insertText: 'EdgeView_关闭控件("$1")', returnType: '空' }
+        ,{ name: 'EdgeView_绑定控件事件', signature: 'EdgeView_绑定控件事件(控件名, 事件名, 处理器名)', description: `按控件名绑定 WebView2 完整事件目录中的中文事件；当前目录共 ${EDGEVIEW_BROWSER_EVENT_NAMES.length} 项。`, insertText: 'EdgeView_绑定控件事件("$1", "导航完成", "$1_导航完成")', returnType: '整数型' }
+        ,{ name: 'EdgeView_监听开发者工具事件控件', signature: 'EdgeView_监听开发者工具事件控件(控件名, 协议事件名)', description: '按设计器控件名监听 Chromium DevTools Protocol 事件。', insertText: 'EdgeView_监听开发者工具事件控件("$1", "Console.messageAdded")', returnType: '整数型' }
       ],
       types: [{ name: 'EdgeView浏览器', description: '嵌入 Win32 HWND 的 Microsoft Edge WebView2 浏览器。', cppType: 'ICoreWebView2*' }],
       snippets: [{ label: 'EdgeView 嵌入与 JS 返回值', insertText: 'EdgeView_创建(0, "https://example.com")\n调试输出(EdgeView_执行JS("document.title"))\n调试输出(EdgeView_取最近事件())\n调试输出(EdgeView_取事件数据())', description: '在当前窗口嵌入 EdgeView，并读取网页标题与最近浏览器事件。' }]
@@ -372,6 +387,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'EdgeView_取全局代理', runtimeName: 'EdgeView_取全局代理', parameters: [], returnType: 'wideString', encoding: 'wide' },
       { command: 'EdgeView_取实例代理', runtimeName: 'EdgeView_取实例代理', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
       { command: 'EdgeView_绑定事件', runtimeName: 'EdgeView_绑定事件', parameters: [{ name: '实例编号', type: 'int' }, { name: '事件名', type: 'wideString' }, { name: '处理器名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'EdgeView_监听开发者工具事件', runtimeName: 'EdgeView_监听开发者工具事件', parameters: [{ name: '实例编号', type: 'int' }, { name: '协议事件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'EdgeView_等待事件', runtimeName: 'EdgeView_等待事件', parameters: [{ name: '实例编号', type: 'int' }, { name: '事件名', type: 'wideString' }, { name: '超时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide' },
       { command: 'EdgeView_导航', runtimeName: 'EdgeView_导航', parameters: [{ name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'EdgeView_导航实例', runtimeName: 'EdgeView_导航实例', parameters: [{ name: '实例编号', type: 'int' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
@@ -386,15 +402,26 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'EdgeView_刷新', runtimeName: 'EdgeView_刷新', parameters: [], returnType: 'void' },
       { command: 'EdgeView_关闭', runtimeName: 'EdgeView_关闭', parameters: [], returnType: 'void' },
       { command: 'EdgeView_关闭实例', runtimeName: 'EdgeView_关闭实例', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'void' }
+      ,{ command: 'EdgeView_创建控件', runtimeName: 'EdgeView_创建控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_导航控件', runtimeName: 'EdgeView_导航控件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_执行JS控件', runtimeName: 'EdgeView_执行JS控件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' }
+      ,{ command: 'EdgeView_取最近事件控件', runtimeName: 'EdgeView_取最近事件控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' }
+      ,{ command: 'EdgeView_取事件数据控件', runtimeName: 'EdgeView_取事件数据控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' }
+      ,{ command: 'EdgeView_后退控件', runtimeName: 'EdgeView_后退控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_前进控件', runtimeName: 'EdgeView_前进控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_刷新控件', runtimeName: 'EdgeView_刷新控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' }
+      ,{ command: 'EdgeView_关闭控件', runtimeName: 'EdgeView_关闭控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' }
+      ,{ command: 'EdgeView_绑定控件事件', runtimeName: 'EdgeView_绑定控件事件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '事件名', type: 'wideString' }, { name: '处理器名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_监听开发者工具事件控件', runtimeName: 'EdgeView_监听开发者工具事件控件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '协议事件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
     ] }
   },
   {
     schemaVersion: 2,
     id: 'lingbuilder.cef3.browser',
     name: 'CEF3浏览器模块',
-    version: '1.0.0',
+    version: '2.0.0',
     category: '界面',
-    description: '基于 Chromium Embedded Framework 3，提供设计器 CEF3 浏览器控件和中文命令接口；支持多实例、独立缓存目录、代理、JavaScript 执行和导航事件回调。',
+    description: '基于 Chromium Embedded Framework 3，提供设计器浏览器控件、中文命令和完整 CefClient 浏览器事件体系。',
     author: 'LingBuilder',
     tags: ['内置', 'CEF3', 'Chromium', '浏览器', 'JavaScript'],
     contributes: {
@@ -412,9 +439,12 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'CEF3_设置代理', signature: 'CEF3_设置代理(控件名, 代理地址)', description: '为指定 CEF3 浏览器控件设置 HTTP/HTTPS/SOCKS5 代理；空文本恢复直连。需在创建前设置。', insertText: 'CEF3_设置代理("$1", "http://127.0.0.1:7890")', returnType: '整数型' },
         { name: 'CEF3_创建', signature: 'CEF3_创建(控件名)', description: '使用属性面板配置的地址、缓存目录和代理参数初始化指定 CEF3 浏览器控件；传空控件名时初始化当前窗口全部 CEF3 控件。成功返回 1。', insertText: 'CEF3_创建("$1")', returnType: '整数型' },
         { name: 'CEF3_关闭', signature: 'CEF3_关闭(控件名)', description: '关闭指定 CEF3 浏览器控件并释放 Chromium 资源。', insertText: 'CEF3_关闭("$1")', returnType: '空' },
-        { name: 'CEF3_取最近事件', signature: 'CEF3_取最近事件(控件名)', description: '返回指定 CEF3 浏览器控件最近事件名：开始加载、加载完成、加载失败、标题被改变或地址被改变。', insertText: 'CEF3_取最近事件("$1")', returnType: '文本型' },
-        { name: 'CEF3_取事件数据', signature: 'CEF3_取事件数据(控件名)', description: '返回指定 CEF3 浏览器控件最近事件携带的地址、标题或错误信息。', insertText: 'CEF3_取事件数据("$1")', returnType: '文本型' },
-        { name: 'CEF3_绑定事件', signature: 'CEF3_绑定事件(控件名, 事件名, 处理器名)', description: '把开始加载、加载完成、加载失败、标题被改变或地址被改变事件回调到当前窗口的无参数中文事件/方法。', insertText: 'CEF3_绑定事件("$1", "加载完成", "$1_加载完成")', returnType: '整数型' },
+        { name: 'CEF3_取最近事件', signature: 'CEF3_取最近事件(控件名)', description: `返回最近 CEF3 事件名；当前目录包含 ${CEF3_BROWSER_EVENT_NAMES.length} 个浏览器回调。`, insertText: 'CEF3_取最近事件("$1")', returnType: '文本型' },
+        { name: 'CEF3_取事件数据', signature: 'CEF3_取事件数据(控件名)', description: '返回最近事件的主要文本数据。', insertText: 'CEF3_取事件数据("$1")', returnType: '文本型' },
+        { name: 'CEF3_取事件字段', signature: 'CEF3_取事件字段(控件名, 字段名)', description: '读取最近事件的命名字段，例如 url、frameId、statusCode、progress、commandId。', insertText: 'CEF3_取事件字段("$1", "url")', returnType: '文本型' },
+        { name: 'CEF3_设置事件结果', signature: 'CEF3_设置事件结果(控件名, 结果)', description: '设置当前同步事件结果：0=默认、1=允许/继续、2=拒绝/取消、3=已处理。', insertText: 'CEF3_设置事件结果("$1", 1)', returnType: '整数型' },
+        { name: 'CEF3_设置事件返回文本', signature: 'CEF3_设置事件返回文本(控件名, 文本)', description: '设置当前事件的返回文本，例如修改后的 URL、下载路径、对话框输入或身份验证信息。', insertText: 'CEF3_设置事件返回文本("$1", "$2")', returnType: '整数型' },
+        { name: 'CEF3_绑定事件', signature: 'CEF3_绑定事件(控件名, 事件名, 处理器名)', description: `绑定完整 CEF3 浏览器事件目录（${CEF3_BROWSER_EVENT_NAMES.length} 项）到当前窗口无参数中文事件或方法。`, insertText: 'CEF3_绑定事件("$1", "加载完成", "$1_加载完成")', returnType: '整数型' },
         { name: 'CEF3_是否可后退', signature: 'CEF3_是否可后退(控件名)', description: '指定 CEF3 浏览器控件可以后退时返回 1。', insertText: 'CEF3_是否可后退("$1")', returnType: '整数型' },
         { name: 'CEF3_是否可前进', signature: 'CEF3_是否可前进(控件名)', description: '指定 CEF3 浏览器控件可以前进时返回 1。', insertText: 'CEF3_是否可前进("$1")', returnType: '整数型' },
         { name: 'CEF3_是否加载中', signature: 'CEF3_是否加载中(控件名)', description: '指定 CEF3 浏览器控件正在加载网页时返回 1。', insertText: 'CEF3_是否加载中("$1")', returnType: '整数型' }
@@ -443,6 +473,9 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'CEF3_关闭', runtimeName: 'CEF3_关闭', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
       { command: 'CEF3_取最近事件', runtimeName: 'CEF3_取最近事件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
       { command: 'CEF3_取事件数据', runtimeName: 'CEF3_取事件数据', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3_取事件字段', runtimeName: 'CEF3_取事件字段', parameters: [{ name: '控件名', type: 'wideString' }, { name: '字段名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3_设置事件结果', runtimeName: 'CEF3_设置事件结果', parameters: [{ name: '控件名', type: 'wideString' }, { name: '结果', type: 'int' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_设置事件返回文本', runtimeName: 'CEF3_设置事件返回文本', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_绑定事件', runtimeName: 'CEF3_绑定事件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '事件名', type: 'wideString', description: '事件名 / 回调 handler' }, { name: '处理器名', type: 'wideString', description: '当前窗口中的无参数事件/方法名 / 回调 handler' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_是否可后退', runtimeName: 'CEF3_是否可后退', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_是否可前进', runtimeName: 'CEF3_是否可前进', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },

@@ -8,11 +8,11 @@ import { InstalledModule, LingCppModuleContext } from '../modules/types';
 import { buildChineseCompletionSearchAliases } from './completionSearchAliases';
 
 const KEYWORD = {
-  public: LING_CPP_KEYWORDS[3],
-  if: LING_CPP_KEYWORDS[11],
-  ifEnd: LING_CPP_KEYWORDS[13],
-  loop: LING_CPP_KEYWORDS[14],
-  loopEnd: LING_CPP_KEYWORDS[15]
+  public: '公开',
+  if: '如果',
+  ifEnd: '如果结束',
+  loop: '循环',
+  loopEnd: '循环结束'
 };
 
 export function getLingCppCompletionCatalog(contextKind: LingCppCompletionContextKind): LingCppCompletionCatalogItem[] {
@@ -70,31 +70,33 @@ export function getLingCppCompletionCatalog(contextKind: LingCppCompletionContex
     catalogItem('显示提示框事件', 'event', '事件 _$1_被单击()\n    信息框("$2", 64, "提示")\n    $0', '点击控件后弹出提示', ['ShowMessageEvent'], ['tsksj', 'xxk'], '事件 _按钮1_被单击()', 'event', 50, true)
   ];
 
+  const flowSnippet = (label: string, insertText: string, detail: string, aliases: string[], pinyin: string[]) =>
+    createLingCppCatalogItem({
+      label,
+      kind: 'snippet',
+      insertText,
+      detail,
+      category: 'snippet',
+      source: 'builtin',
+      sortRank: 50,
+      aliases,
+      pinyin,
+      isSnippet: true
+    });
   const controlFlowSnippets: LingCppCompletionCatalogItem[] = [
-    createLingCppCatalogItem({
-      label: KEYWORD.if,
-      kind: 'snippet',
-      insertText: `${KEYWORD.if} ($1)\n    $0\n${KEYWORD.ifEnd}`,
-      detail: '条件语句模板',
-      category: 'snippet',
-      source: 'builtin',
-      sortRank: 50,
-      aliases: ['if'],
-      pinyin: ['rg', 'if'],
-      isSnippet: true
-    }),
-    createLingCppCatalogItem({
-      label: KEYWORD.loop,
-      kind: 'snippet',
-      insertText: `${KEYWORD.loop}\n    $0\n${KEYWORD.loopEnd}`,
-      detail: '循环语句模板',
-      category: 'snippet',
-      source: 'builtin',
-      sortRank: 50,
-      aliases: ['loop', 'while'],
-      pinyin: ['xh'],
-      isSnippet: true
-    })
+    flowSnippet(KEYWORD.if, `${KEYWORD.if} ($1)\n    $0\n否则\n    \n${KEYWORD.ifEnd}`, '条件分支模板', ['if'], ['rg', 'if']),
+    flowSnippet('否则如果', '否则如果 ($1)', '追加条件分支', ['elseif', 'else if'], ['fzrg']),
+    flowSnippet('选择', '选择 ($1)\n    分支 ($2)\n        $0\n    默认\n        \n选择结束', '多路选择模板', ['switch', 'case'], ['xz', 'pd']),
+    flowSnippet(KEYWORD.loop, `${KEYWORD.loop}\n    $0\n${KEYWORD.loopEnd}`, '无限循环模板', ['loop', 'forever'], ['xh']),
+    flowSnippet('判断循环', '判断循环首 ($1)\n    $0\n判断循环尾 ()', '前置条件循环模板', ['while'], ['pdxh']),
+    flowSnippet('循环判断', '循环判断首 ()\n    $0\n循环判断尾 ($1)', '后置条件循环模板', ['do while'], ['xhpd']),
+    flowSnippet('计次循环', '计次循环首 ($1, $2)\n    $0\n计次循环尾 ()', '固定次数循环模板', ['for', 'repeat'], ['jcxh']),
+    flowSnippet('变量循环', '变量循环首 ($1, $2, $3, $4)\n    $0\n变量循环尾 ()', '数值区间循环模板', ['range for'], ['blxh']),
+    flowSnippet('枚举循环', '枚举循环首 ($1, $2)\n    $0\n枚举循环尾 ()', '集合遍历模板', ['foreach', 'for each'], ['mjxh']),
+    flowSnippet('跳出循环', '跳出循环', '跳出当前循环', ['break'], ['tcxh']),
+    flowSnippet('继续循环', '继续循环', '跳过本次循环并进入下一次', ['continue', '到循环尾'], ['jjxh', 'dxhw']),
+    flowSnippet('尝试', '尝试\n    $0\n捕获 (错误信息)\n    \n最终\n    \n尝试结束', '异常处理模板', ['try', 'catch', 'finally'], ['cs', 'bh']),
+    flowSnippet('抛出', '抛出("$1")', '主动抛出文本异常', ['throw'], ['pc'])
   ];
 
   const contextItems = contextKind === 'top-level'
@@ -117,7 +119,9 @@ export function getLingCppCompletionCatalog(contextKind: LingCppCompletionContex
 export function getLingCppModuleCompletionItems(moduleContext?: LingCppModuleContext): LingCppCompletionCatalogItem[] {
   return getEnabledLingCppModuleContributions(moduleContext).flatMap(module => {
     const manifest = module.manifest;
-    const commands: LingCppCompletionCatalogItem[] = (manifest.contributes?.commands || []).map(command => createLingCppCatalogItem({
+    const commands: LingCppCompletionCatalogItem[] = (manifest.contributes?.commands || [])
+      .filter(command => command.visibility !== 'internal' && (command.visibility !== 'advanced' || moduleContext?.showAdvancedApi === true))
+      .map(command => createLingCppCatalogItem({
       label: command.name,
       kind: 'function',
       insertText: command.insertText || command.signature || `${command.name}($1)`,

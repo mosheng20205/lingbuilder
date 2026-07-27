@@ -63,7 +63,8 @@ test('workspace values override user values and snapshot exposes inspection, met
 
   assert.equal(service.get('editor.fontSize'), 19);
   assert.equal(service.get('editor.experienceMode'), 'professional');
-  assert.equal(service.get('workbench.panel.visible'), true);
+  assert.equal(service.get('workbench.panel.visible'), false);
+  assert.equal(service.get('workbench.aiPanel.visible'), false);
 
   const snapshot = service.snapshot();
   assert.equal(snapshot.schemaVersion, 1);

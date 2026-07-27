@@ -41,6 +41,27 @@ export function createProjectFileVersion(bytes: Uint8Array): ProjectFileVersion 
   return `sha256:${crypto.createHash('sha256').update(buffer).digest('hex')}:${buffer.byteLength}`;
 }
 
+export async function readProjectFileVersionsFromDisk(
+  workspaceRoot: string,
+  relativePaths: readonly string[],
+  fileSystem: Pick<ProjectFilePersistenceFileSystem, 'readFile'> = fs
+): Promise<Record<string, ProjectFileVersion>> {
+  const resolvedRoot = path.resolve(workspaceRoot);
+  const versions: Record<string, ProjectFileVersion> = {};
+  for (const relativePath of relativePaths) {
+    if (path.isAbsolute(relativePath)) {
+      throw new Error(`项目文件版本路径必须是工作区相对路径：${relativePath}`);
+    }
+    const targetPath = path.resolve(resolvedRoot, relativePath);
+    const pathFromRoot = path.relative(resolvedRoot, targetPath);
+    if (pathFromRoot === '..' || pathFromRoot.startsWith(`..${path.sep}`) || path.isAbsolute(pathFromRoot)) {
+      throw new Error(`项目文件版本路径不能越过工作区：${relativePath}`);
+    }
+    versions[relativePath] = createProjectFileVersion(await fileSystem.readFile(targetPath));
+  }
+  return versions;
+}
+
 export function createProjectFilePersistenceService(
   fileSystem: ProjectFilePersistenceFileSystem = fs
 ) {

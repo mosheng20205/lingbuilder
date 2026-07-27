@@ -31,6 +31,7 @@ const RETURN_TYPE_LABELS: Record<ModuleBindingValueType, string> = {
   bool: '逻辑型',
   wideString: '文本型',
   utf8String: '文本型',
+  handler: '处理器',
   handle: '长整数型',
   raw: '原生类型'
 };

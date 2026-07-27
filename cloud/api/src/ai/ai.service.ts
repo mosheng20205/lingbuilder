@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { AiChatRequest, AiEditRequest, AiMessage, AiStreamEvent, LogicalAiModel } from '@lingbuilder/contracts';
 import { BillingService } from '../billing/billing.service.js';
 import { PrismaService } from '../prisma.service.js';
@@ -12,7 +12,7 @@ import { estimateCancellationUsage, estimateMessageTokens } from './usage-estima
 @Injectable()
 export class AiService {
   private readonly active = new Map<string, AbortController>();
-  constructor(private readonly prisma: PrismaService, private readonly billing: BillingService, private readonly promotions: PromotionService, private readonly providers: ProviderService, private readonly rulebook: RulebookService, private readonly redis: RedisService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService, @Inject(BillingService) private readonly billing: BillingService, @Inject(PromotionService) private readonly promotions: PromotionService, @Inject(ProviderService) private readonly providers: ProviderService, @Inject(RulebookService) private readonly rulebook: RulebookService, @Inject(RedisService) private readonly redis: RedisService) {}
   async models(): Promise<LogicalAiModel[]> { const rows = await this.prisma.logicalModel.findMany({ where: { enabled: true }, orderBy: { displayName: 'asc' } }); return rows.map(row => ({ alias: row.alias, displayName: row.displayName, description: row.description, contextWindow: row.contextWindow, maxOutputTokens: row.maxOutputTokens, inputPointsPerMillion: row.inputPointsPerMillion.toString(), cachedInputPointsPerMillion: row.cachedInputPointsPerMillion.toString(), outputPointsPerMillion: row.outputPointsPerMillion.toString(), enabled: row.enabled })); }
   async prepare(userId: string, idempotencyKey: string, operation: 'chat' | 'edit', request: AiChatRequest | AiEditRequest) {
     if (!idempotencyKey || idempotencyKey.length > 128) throw Object.assign(new Error('AI 请求必须提供有效 Idempotency-Key。'), { status: 400, code: 'VALIDATION_FAILED' });

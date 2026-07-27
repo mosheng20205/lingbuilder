@@ -8,6 +8,7 @@ import {
   Download,
   FileArchive,
   Layers,
+  LockKeyhole,
   Package,
   RefreshCw,
   Search,
@@ -20,10 +21,10 @@ import {
 import {
   InstalledModule,
   MarketModule,
-  ModuleTargetContribution,
   ModuleHistoryEntry,
   ModuleInstallPreview
 } from '../services/modules/types';
+import ModulePublicInfoDialog from './ModulePublicInfoDialog';
 
 type ModuleSectionId = 'installed' | 'packageInstall' | 'packageExport' | 'developer' | 'market' | 'history';
 
@@ -34,12 +35,24 @@ interface ModuleInspectorProps {
   selectedModuleId?: string | null;
 }
 
+export function formatModuleOperationError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error ?? '');
+  const chineseStart = raw.search(/[\u3400-\u9fff]/u);
+  if (chineseStart >= 0) return raw.slice(chineseStart).trim();
+  if (/fetch failed|failed to fetch|econnrefused|network error|cloud-modules/iu.test(raw)) {
+    return '无法连接模块授权服务，请确认 LingBuilder 云端 API 已启动，然后重新登录账号再试。';
+  }
+  if (/timeout|timed out|abort/iu.test(raw)) return '模块服务响应超时，请检查网络后重试。';
+  return '模块操作失败，请稍后重试；如果问题持续，请检查云端 API 和登录状态。';
+}
+
 export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true, selectedModuleId: externalSelectedModuleId = null }: ModuleInspectorProps) {
   const [installedModules, setInstalledModules] = useState<InstalledModule[]>([]);
   const [marketModules, setMarketModules] = useState<MarketModule[]>([]);
   const [history, setHistory] = useState<ModuleHistoryEntry[]>([]);
+  const [commerceProducts, setCommerceProducts] = useState<any[]>([]);
+  const [showAdvancedApi, setShowAdvancedApi] = useState(() => window.localStorage.getItem('lingbuilder.modules.showAdvancedApi') === 'true');
   const [searchText, setSearchText] = useState('');
-  const [moduleApiSearchText, setModuleApiSearchText] = useState('');
   const [selectedModuleId, setSelectedModuleId] = useState<string | null>(externalSelectedModuleId);
   const [categoryFilter, setCategoryFilter] = useState('全部');
   const [isLoading, setIsLoading] = useState(false);
@@ -66,7 +79,6 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   });
   const onAddLogRef = useRef(onAddLog);
   const refreshRequestIdRef = useRef(0);
-  const detailPanelRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     onAddLogRef.current = onAddLog;
@@ -100,11 +112,15 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       setInstalledModules(Array.isArray(installedRes.modules) ? installedRes.modules : []);
       setMarketModules(Array.isArray(marketRes.modules) ? marketRes.modules : []);
       setHistory(Array.isArray(historyRes.history) ? historyRes.history : []);
+      if (window.lingBuilder?.cloudAccount?.moduleCatalog) {
+        const commerce = await window.lingBuilder.cloudAccount.moduleCatalog().catch(() => null);
+        if (requestId === refreshRequestIdRef.current) setCommerceProducts(Array.isArray(commerce?.products) ? commerce.products : []);
+      }
       setStatusText('模块索引已刷新。');
       onAddLogRef.current(`> [${new Date().toLocaleTimeString()}] 【模块】已刷新模块索引。`);
     } catch (error) {
       if (requestId !== refreshRequestIdRef.current) return;
-      setStatusText(`模块刷新失败：${error instanceof Error ? error.message : String(error)}`);
+      setStatusText(`模块刷新失败：${formatModuleOperationError(error)}`);
     } finally {
       if (requestId === refreshRequestIdRef.current) setIsLoading(false);
     }
@@ -145,16 +161,8 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     return installedModules.find(module => module.manifest.id === selectedModuleId) || null;
   }, [installedModules, selectedModuleId]);
 
-  useEffect(() => {
-    if (!selectedModule) return;
-    window.setTimeout(() => {
-      detailPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 0);
-  }, [selectedModule]);
-
   const inspectModule = useCallback((moduleId: string) => {
     setSelectedModuleId(moduleId);
-    setModuleApiSearchText('');
   }, []);
 
   const toggleSection = useCallback((sectionId: ModuleSectionId) => {
@@ -206,8 +214,10 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       if (!result.ok) throw new Error(result.error || '模块安装失败');
       setInstallPreview(null);
       setPackagePath('');
-      setStatusText(`模块 ${result.result.moduleName} 已安装。`);
+      const compatibilityMessage = Array.isArray(result.messages) ? result.messages.join('；') : '';
+      setStatusText(`模块 ${result.result.moduleName} 已安装。${compatibilityMessage ? ` ${compatibilityMessage}` : ''}`);
       onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块】已安装 ${result.result.moduleName}。`);
+      if (compatibilityMessage) onAddLog(`> [${new Date().toLocaleTimeString()}] 【构建配置】${compatibilityMessage}`);
       dispatchModulesChanged(projectId, result.result.moduleId, 'project');
       await refresh();
     } catch (error) {
@@ -222,6 +232,13 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     const endpoint = enabled ? '/api/modules/project/disable' : '/api/modules/project/enable';
     setIsLoading(true);
     try {
+      if (!enabled && (module.manifest.id === 'lingbuilder.new_emoji.ui' || commerceProducts.some(product => product.moduleId === module.manifest.id))) {
+        const cloudModules = window.lingBuilder?.cloudAccount;
+        if (!cloudModules?.authorizeModule) throw new Error('收费模块必须在 LingBuilder 桌面端登录后使用。');
+        const authorization = await cloudModules.authorizeModule(module.manifest.id);
+        if (!authorization?.ok) throw new Error((authorization as { error?: string })?.error || '模块授权检查失败，请稍后重试。');
+        if (!authorization?.status?.allowed) throw new Error(authorization?.status?.reason || '当前账号没有该模块的有效权益。');
+      }
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -230,13 +247,34 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || '项目模块状态更新失败');
       onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块】${enabled ? '禁用' : '启用'} ${module.manifest.name}。`);
+      const compatibilityMessage = Array.isArray(result.messages) ? result.messages.join('；') : '';
+      if (compatibilityMessage) {
+        setStatusText(compatibilityMessage);
+        onAddLog(`> [${new Date().toLocaleTimeString()}] 【构建配置】${compatibilityMessage}`);
+      }
       dispatchModulesChanged(projectId, module.manifest.id, 'project');
       await refresh();
     } catch (error) {
-      setStatusText(`项目模块状态更新失败：${error instanceof Error ? error.message : String(error)}`);
+      setStatusText(`项目模块状态更新失败：${formatModuleOperationError(error)}`);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const purchaseModule = async (moduleId: string, provider: 'wechat'|'alipay') => {
+    const product = commerceProducts.find(item => item.moduleId === moduleId);
+    const offer = product?.offers?.[0];
+    if (!offer) { setStatusText('当前模块尚未配置可购买报价。'); return; }
+    const cloudModules = window.lingBuilder?.cloudAccount;
+    if (!cloudModules?.createModuleOrder) { setStatusText('请在 LingBuilder 桌面端登录后购买模块。'); return; }
+    setIsLoading(true);
+    try {
+      const result = await cloudModules.createModuleOrder({ offerId: offer.id, provider, idempotencyKey: crypto.randomUUID() });
+      if (!result?.order?.paymentUrl) throw new Error('支付渠道未返回付款地址。');
+      window.open(result.order.paymentUrl, '_blank', 'noopener,noreferrer');
+      setStatusText(`已创建${provider === 'wechat' ? '微信支付' : '支付宝'}订单，请在新窗口完成付款后刷新模块状态。`);
+    } catch (error) { setStatusText(`创建模块订单失败：${error instanceof Error ? error.message : String(error)}`); }
+    finally { setIsLoading(false); }
   };
 
   const uninstallModule = async (module: InstalledModule) => {
@@ -469,6 +507,15 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
         </div>
 
         <div className="mt-3 grid min-w-0 grid-cols-1 gap-2">
+          <label className={`flex min-h-8 items-center gap-2 rounded border px-2 text-xs ${inputClass}`}>
+            <input type="checkbox" checked={showAdvancedApi} onChange={event => {
+              const value = event.target.checked;
+              setShowAdvancedApi(value);
+              window.localStorage.setItem('lingbuilder.modules.showAdvancedApi', String(value));
+              window.dispatchEvent(new CustomEvent('lingbuilder-module-api-visibility-changed', { detail: { showAdvancedApi: value } }));
+            }} />
+            显示底层高级 API（NE_EU_*）
+          </label>
           <div className={`h-8 min-w-0 px-2 flex items-center gap-2 rounded border ${inputClass}`}>
             <Search size={14} />
             <input
@@ -510,21 +557,12 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
                 onToggle={() => toggleProjectModule(module)}
                 onUninstall={() => uninstallModule(module)}
                 onInspect={() => inspectModule(module.manifest.id)}
+                commerce={commerceProducts.find(product => product.moduleId === module.manifest.id)}
+                onPurchase={provider => purchaseModule(module.manifest.id, provider)}
               />
             ))}
           </div>
         </CollapsibleSection>
-
-        {selectedModule && (
-          <ModuleDetailPanel
-            ref={detailPanelRef}
-            module={selectedModule}
-            isDarkMode={isDarkMode}
-            searchText={moduleApiSearchText}
-            onSearchTextChange={setModuleApiSearchText}
-            onClose={() => setSelectedModuleId(null)}
-          />
-        )}
 
         <CollapsibleSection
           className={cardClass}
@@ -664,6 +702,14 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
         </CollapsibleSection>
       </div>
 
+      {selectedModule && (
+        <ModulePublicInfoDialog
+          module={selectedModule}
+          isDarkMode={isDarkMode}
+          onClose={() => setSelectedModuleId(null)}
+        />
+      )}
+
       {installPreview && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className={`w-full max-w-2xl rounded-md border shadow-xl ${cardClass}`}>
@@ -756,13 +802,15 @@ function CollapsibleSection({
   );
 }
 
-function ModuleRow({ module, isDarkMode, onToggle, onUninstall, onInspect }: {
+function ModuleRow({ module, isDarkMode, onToggle, onUninstall, onInspect, commerce, onPurchase }: {
   key?: React.Key;
   module: InstalledModule;
   isDarkMode: boolean;
   onToggle: () => void;
   onUninstall: () => void;
   onInspect: () => void;
+  commerce?: any;
+  onPurchase: (provider: 'wechat'|'alipay') => void;
 }) {
   const manifest = module.manifest;
   const subtleClass = isDarkMode ? 'text-slate-400' : 'text-slate-500';
@@ -779,6 +827,7 @@ function ModuleRow({ module, isDarkMode, onToggle, onUninstall, onInspect }: {
           <span className="shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300">{manifest.category}</span>
           {module.isBuiltin && <span className="shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">内置</span>}
           {module.isEnabledForProject && <span className="shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300">项目已引用</span>}
+          {commerce && <span className="shrink-0 rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] text-rose-300"><LockKeyhole size={10} className="mr-1 inline" />{commerce.access?.allowed ? '账号已授权' : commerce.freeWindow ? '限时免费' : `¥${((Number(commerce.offers?.[0]?.priceMinor) || 0) / 100).toFixed(2)}`}</span>}
         </div>
         <div className={`mt-1 break-all text-[11px] leading-4 ${subtleClass}`}>{manifest.id} · {manifest.version} · 能力 {capabilityCount} 项</div>
         <div className={`mt-1 break-words text-xs leading-5 ${subtleClass}`}>{manifest.description}</div>
@@ -805,196 +854,10 @@ function ModuleRow({ module, isDarkMode, onToggle, onUninstall, onInspect }: {
           卸载
         </button>
       </div>
-    </div>
-  );
-}
-
-const ModuleDetailPanel = React.forwardRef<HTMLElement, {
-  module: InstalledModule;
-  isDarkMode: boolean;
-  searchText: string;
-  onSearchTextChange: (value: string) => void;
-  onClose: () => void;
-}>(function ModuleDetailPanel({
-  module,
-  isDarkMode,
-  searchText,
-  onSearchTextChange,
-  onClose
-}, ref) {
-  const manifest = module.manifest;
-  const contributes = manifest.contributes || {};
-  const commands = contributes.commands || [];
-  const types = contributes.types || [];
-  const snippets = contributes.snippets || [];
-  const designerControls = contributes.designerControls || [];
-  const docs = contributes.docs || [];
-  const subtleClass = isDarkMode ? 'text-slate-400' : 'text-slate-500';
-  const panelClass = isDarkMode
-    ? 'bg-[#252526] border-white/10 text-slate-200'
-    : 'bg-white border-slate-200 text-slate-800';
-  const inputClass = isDarkMode
-    ? 'bg-[#1e1e1e] border-white/10 text-slate-100 placeholder:text-slate-500'
-    : 'bg-white border-slate-300 text-slate-900 placeholder:text-slate-400';
-  const normalizedSearch = searchText.trim().toLowerCase();
-  const filteredCommands = commands.filter(command => {
-    if (!normalizedSearch) return true;
-    return [
-      command.name,
-      command.signature,
-      command.description,
-      command.returnType,
-    ].filter(Boolean).join(' ').toLowerCase().includes(normalizedSearch);
-  });
-  const visibleCommands = filteredCommands.slice(0, 80);
-
-  return (
-    <section ref={ref} className={`min-w-0 rounded-md border ${panelClass}`}>
-      <div className="min-w-0 p-3 border-b border-white/10 flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="break-words text-sm font-semibold">{manifest.name} 接口能力</span>
-            <span className="shrink-0 rounded bg-sky-500/15 px-1.5 py-0.5 text-[10px] text-sky-300">{manifest.category}</span>
-            {module.isEnabledForProject && <span className="shrink-0 rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] text-violet-300">项目已引用</span>}
-          </div>
-          <div className={`mt-1 break-all text-[11px] leading-4 ${subtleClass}`}>{manifest.id} · {manifest.version}</div>
-          <div className={`mt-1 break-words text-xs leading-5 ${subtleClass}`}>{manifest.description}</div>
-        </div>
-        <button onClick={onClose} className="shrink-0 rounded p-1 text-slate-400 transition-colors hover:bg-white/10 hover:text-white" title="关闭接口详情">
-          <X size={16} />
-        </button>
-      </div>
-
-      <div className="p-3 space-y-3">
-        <div className="grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-4">
-          <CapabilityStat label="命令接口" value={commands.length} />
-          <CapabilityStat label="类型" value={types.length} />
-          <CapabilityStat label="设计器控件" value={designerControls.length} />
-          <CapabilityStat label="代码片段" value={snippets.length} />
-        </div>
-
-        <div className={`h-8 min-w-0 px-2 flex items-center gap-2 rounded border ${inputClass}`}>
-          <Search size={14} />
-          <input
-            value={searchText}
-            onChange={event => onSearchTextChange(event.target.value)}
-            className="min-w-0 flex-1 bg-transparent outline-none text-xs"
-            placeholder="搜索接口名、签名、返回值、C++ 运行时名..."
-          />
-        </div>
-
-        <CapabilityBlock
-          title={`命令接口 ${filteredCommands.length}/${commands.length}`}
-          emptyText="该模块未贡献命令接口。"
-          footer={filteredCommands.length > visibleCommands.length ? `仅显示前 ${visibleCommands.length} 项，请用搜索缩小范围。` : ''}
-        >
-          {visibleCommands.map((command, index) => (
-            <div key={`${command.name}:${command.signature}:${index}`} className={`rounded border p-2 ${isDarkMode ? 'border-white/10 bg-black/10' : 'border-slate-200 bg-slate-50'}`}>
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="break-all text-xs font-semibold text-cyan-300">{command.name}</span>
-                {command.returnType && <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-300">{command.returnType}</span>}
-              </div>
-              <div className="mt-1 break-all font-mono text-[11px] text-slate-300">{command.signature}</div>
-              <div className={`mt-1 break-words text-[11px] leading-4 ${subtleClass}`}>{command.description}</div>
-            </div>
-          ))}
-        </CapabilityBlock>
-
-        <CapabilityBlock title={`类型 ${types.length}`} emptyText="该模块未贡献类型。">
-          {types.map(type => (
-            <div key={type.name} className={`rounded border p-2 ${isDarkMode ? 'border-white/10 bg-black/10' : 'border-slate-200 bg-slate-50'}`}>
-              <div className="text-xs font-semibold text-amber-300">{type.name}</div>
-              <div className={`mt-1 text-[11px] ${subtleClass}`}>{type.description}</div>
-              {type.cppType && <div className={`mt-1 break-all font-mono text-[10px] ${subtleClass}`}>{type.cppType}</div>}
-            </div>
-          ))}
-        </CapabilityBlock>
-
-        <CapabilityBlock title={`设计器控件 ${designerControls.length}`} emptyText="该模块未贡献设计器控件。">
-          {designerControls.map(control => (
-            <div key={control.type} className={`rounded border p-2 ${isDarkMode ? 'border-white/10 bg-black/10' : 'border-slate-200 bg-slate-50'}`}>
-              <div className="text-xs font-semibold text-violet-300">{control.label}</div>
-              <div className={`mt-1 break-all font-mono text-[10px] ${subtleClass}`}>{control.type}</div>
-              {control.events?.length ? (
-                <div className={`mt-1 text-[10px] ${subtleClass}`}>事件：{control.events.map(event => `${event.label}(${event.handlerPattern})`).join('、')}</div>
-              ) : null}
-            </div>
-          ))}
-        </CapabilityBlock>
-
-        <CppContributionBlock targets={manifest.targets || []} bindings={manifest.bindings?.commands || []} docs={docs} isDarkMode={isDarkMode} />
-      </div>
-    </section>
-  );
-});
-
-function CapabilityStat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded border border-white/10 bg-black/10 px-2 py-1.5">
-      <div className="text-[10px] text-slate-500">{label}</div>
-      <div className="text-sm font-semibold text-slate-100">{value}</div>
-    </div>
-  );
-}
-
-function CapabilityBlock({
-  title,
-  emptyText,
-  footer,
-  children
-}: {
-  title: string;
-  emptyText: string;
-  footer?: string;
-  children: React.ReactNode;
-}) {
-  const hasChildren = React.Children.count(children) > 0;
-  return (
-    <div>
-      <div className="mb-2 text-xs font-semibold text-slate-200">{title}</div>
-      {hasChildren ? <div className="space-y-2">{children}</div> : <div className="rounded border border-white/10 p-3 text-xs text-slate-500">{emptyText}</div>}
-      {footer && <div className="mt-2 text-[10px] text-slate-500">{footer}</div>}
-    </div>
-  );
-}
-
-function CppContributionBlock({
-  targets,
-  bindings,
-  docs,
-  isDarkMode
-}: {
-  targets: ModuleTargetContribution[];
-  bindings: Array<{ command: string; runtimeName: string; returnType?: string }>;
-  docs: Array<{ title: string; path: string }>;
-  isDarkMode: boolean;
-}) {
-  const rows = [
-    ['目标', targets.map(target => `${target.id}：${target.platform}/${target.toolchain}/${target.arch}`)],
-    ['头文件', targets.flatMap(target => target.headers || [])],
-    ['源码', targets.flatMap(target => target.sources || [])],
-    ['库文件', targets.flatMap(target => target.libs || [])],
-    ['运行时 DLL', targets.flatMap(target => target.runtimeFiles || [])],
-    ['包含目录', targets.flatMap(target => target.includeDirs || [])],
-    ['宏定义', targets.flatMap(target => target.defines || [])],
-    ['命令绑定', bindings.map(binding => `${binding.command} -> ${binding.runtimeName}${binding.returnType ? ` : ${binding.returnType}` : ''}`)],
-    ['文档', docs.map(doc => `${doc.title}：${doc.path}`)]
-  ] as Array<[string, string[]]>;
-  const hasAny = rows.some(([, values]) => values.length > 0);
-  const rowClass = isDarkMode ? 'border-white/10 bg-black/10' : 'border-slate-200 bg-slate-50';
-  return (
-    <div>
-      <div className="mb-2 text-xs font-semibold text-slate-200">C++ 构建与文档</div>
-      {!hasAny ? (
-        <div className="rounded border border-white/10 p-3 text-xs text-slate-500">该模块未声明 C++ 依赖或文档。</div>
-      ) : (
-        <div className="space-y-2">
-          {rows.filter(([, values]) => values.length > 0).map(([label, values]) => (
-            <div key={label} className={`rounded border p-2 ${rowClass}`}>
-              <div className="mb-1 text-[11px] font-semibold text-slate-300">{label}</div>
-              {values.map((value, index) => <div key={`${label}:${index}:${value}`} className="break-all font-mono text-[10px] text-slate-400">{value}</div>)}
-            </div>
-          ))}
+      {commerce && !commerce.access?.allowed && Array.isArray(commerce.offers) && commerce.offers.length > 0 && (
+        <div className="grid grid-cols-2 gap-2" aria-label="购买模块授权">
+          <button type="button" onClick={() => onPurchase('wechat')} className="h-8 rounded border border-emerald-500/40 px-2 text-xs text-emerald-300 hover:bg-emerald-500/10">微信支付</button>
+          <button type="button" onClick={() => onPurchase('alipay')} className="h-8 rounded border border-sky-500/40 px-2 text-xs text-sky-300 hover:bg-sky-500/10">支付宝</button>
         </div>
       )}
     </div>

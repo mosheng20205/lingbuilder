@@ -2,6 +2,7 @@ export interface BeginnerCompletionContext {
   token: string;
   isBlankLine: boolean;
   isCommandStart: boolean;
+  isAssignmentValue: boolean;
   isInsideString: boolean;
   isInsideComment: boolean;
   parenDepth: number;
@@ -75,6 +76,7 @@ export function getBeginnerCompletionContext(value: string, cursor: number): Beg
   const token = linePrefix.match(/[a-zA-Z0-9_@.\u4e00-\u9fa5]+$/u)?.[0] || '';
   const beforeToken = linePrefix.slice(0, linePrefix.length - token.length);
   const syntax = scanBeginnerCodePrefix(linePrefix);
+  const isAssignmentValue = /(?:^|[^=!<>])(?:=|＝)\s*$/u.test(beforeToken);
   const isWindowTargetContext = /(?:^|\s)(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*["“][^"”\n]*$/u.test(linePrefix);
   const isWindowPlacementContext = /(?:^|\s)(?:打开窗口|窗口_打开|载入窗口|载入新窗口)\s*[（(]\s*(?:L)?["“][^"”\n]*["”]\s*[,，]\s*(?:(?:L)?["“][^"”\n]*|[\w\u4e00-\u9fa5-]*)$/u.test(linePrefix);
 
@@ -82,6 +84,7 @@ export function getBeginnerCompletionContext(value: string, cursor: number): Beg
     token,
     isBlankLine: linePrefix.trim().length === 0,
     isCommandStart: beforeToken.trim().length === 0,
+    isAssignmentValue,
     isWindowTargetContext,
     isWindowPlacementContext,
     ...syntax
@@ -92,8 +95,8 @@ export function shouldShowBeginnerCompletion(context: BeginnerCompletionContext,
   if (context.isWindowTargetContext || context.isWindowPlacementContext) return true;
   if (context.isInsideString || context.isInsideComment) return false;
   if (context.parenDepth > 0) return includeAll || context.token.length > 0;
-  if (includeAll) return context.isBlankLine || context.isCommandStart;
-  return context.isCommandStart && context.token.length > 0;
+  if (includeAll) return context.isBlankLine || context.isCommandStart || context.isAssignmentValue;
+  return (context.isCommandStart || context.isAssignmentValue) && context.token.length > 0;
 }
 
 export function getBeginnerCompletionToken(value: string, cursor: number): string {

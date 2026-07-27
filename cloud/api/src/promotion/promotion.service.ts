@@ -1,11 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { getConfig } from '../config.js';
 import { BillingService } from '../billing/billing.service.js';
 import { PrismaService } from '../prisma.service.js';
 
 @Injectable()
 export class PromotionService {
-  constructor(private readonly prisma: PrismaService, private readonly billing: BillingService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService, @Inject(BillingService) private readonly billing: BillingService) {}
   async grantSignupGift(userId: string) {
     const now = new Date();
     let policy = await this.prisma.promotionPolicy.findFirst({ where: { kind: 'SIGNUP_GIFT', enabled: true, startsAt: { lte: now }, endsAt: { gt: now } }, orderBy: { createdAt: 'desc' } });

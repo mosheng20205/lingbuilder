@@ -1,0 +1,128 @@
+{
+  "project": {
+    "schemaVersion": 2,
+    "id": "basic-control-flow-demo",
+    "name": "基础控制类命令演示",
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "BasicControlFlowDemo.xml",
+        "className": "基础控制演示窗口",
+        "title": "LingBuilder 基础控制类命令 Demo",
+        "width": 820,
+        "height": 600,
+        "background": "#1E1E24",
+        "description": "使用新手模式演示条件、选择、循环、跳转、异常和返回命令。",
+        "events": {
+          "Loaded": "_基础控制演示窗口_创建完毕"
+        },
+        "controls": [
+          {
+            "id": "title-label",
+            "type": "Label",
+            "name": "标题标签",
+            "content": "基础控制类命令演示",
+            "x": 20,
+            "y": 16,
+            "width": 500,
+            "height": 34,
+            "fontSize": 20,
+            "background": "transparent",
+            "foreground": "#FFFFFF",
+            "isEnabled": true,
+            "visibility": "Visible"
+          },
+          {
+            "id": "status-label",
+            "type": "Label",
+            "name": "状态标签",
+            "content": "准备中...",
+            "x": 20,
+            "y": 56,
+            "width": 770,
+            "height": 26,
+            "fontSize": 13,
+            "background": "transparent",
+            "foreground": "#4FC3F7",
+            "isEnabled": true,
+            "visibility": "Visible"
+          },
+          {
+            "id": "log-list",
+            "type": "ListBox",
+            "name": "演示日志",
+            "content": "",
+            "x": 20,
+            "y": 92,
+            "width": 770,
+            "height": 390,
+            "fontSize": 12,
+            "background": "#0F172A",
+            "foreground": "#E2E8F0",
+            "isEnabled": true,
+            "visibility": "Visible"
+          },
+          {
+            "id": "run-button",
+            "type": "Button",
+            "name": "运行演示按钮",
+            "content": "运行完整演示",
+            "x": 20,
+            "y": 500,
+            "width": 180,
+            "height": 40,
+            "fontSize": 13,
+            "background": "#2563EB",
+            "foreground": "#FFFFFF",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "events": {
+              "Click": "_运行演示按钮_被单击"
+            }
+          },
+          {
+            "id": "clear-button",
+            "type": "Button",
+            "name": "清空日志按钮",
+            "content": "清空日志",
+            "x": 220,
+            "y": 500,
+            "width": 130,
+            "height": 40,
+            "fontSize": 13,
+            "background": "#334155",
+            "foreground": "#FFFFFF",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "events": {
+              "Click": "_清空日志按钮_被单击"
+            }
+          },
+          {
+            "id": "exit-button",
+            "type": "Button",
+            "name": "退出按钮",
+            "content": "退出",
+            "x": 660,
+            "y": 500,
+            "width": 130,
+            "height": 40,
+            "fontSize": 13,
+            "background": "#7F1D1D",
+            "foreground": "#FFFFFF",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "events": {
+              "Click": "_退出按钮_被单击"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "activeWindowId": "main-window",
+  "lingCppSourceCode": "包 基础控制类命令演示\n使用 Win32窗口基础模块\n使用 通用控件模块\n\n类 基础控制演示窗口 : 窗口\n公开\n  构造()\n  结束\n\n  事件 _基础控制演示窗口_创建完毕()\n    控件_设置文本(\"状态标签\", \"就绪：点击“运行完整演示”\")\n    控件_添加项目(\"演示日志\", \"程序已启动，等待运行控制流演示。\")\n  结束\n\n  事件 _运行演示按钮_被单击()\n    局部 整数型 数值 = 2\n    局部 整数型 索引 = 0\n    局部 整数型 当前项 = 0\n    局部 整数型 返回结果 = 0\n    局部 整数型 数字列表[] = {2, 4, 6}\n\n    控件_清空项目(\"演示日志\")\n    控件_设置文本(\"状态标签\", \"正在运行基础控制流演示...\")\n\n    // 1. 如果真、否则如果、否则\n    如果真 (数值 == 2)\n      控件_添加项目(\"演示日志\", \"1. 如果真：数值等于 2\")\n    否则如果 (数值 == 3)\n      控件_添加项目(\"演示日志\", \"1. 否则如果：数值等于 3\")\n    否则\n      控件_添加项目(\"演示日志\", \"1. 否则：数值不是 2 或 3\")\n    如果真结束\n\n    // 2. 选择、分支、默认\n    选择 (数值)\n      分支 (1)\n        控件_添加项目(\"演示日志\", \"2. 选择：命中分支 1\")\n      分支 (2, 3)\n        控件_添加项目(\"演示日志\", \"2. 选择：命中分支 2 或 3\")\n      默认\n        控件_添加项目(\"演示日志\", \"2. 选择：命中默认分支\")\n    选择结束\n\n    // 3. 无限循环与跳出循环\n    循环\n      控件_添加项目(\"演示日志\", \"3. 无限循环：执行一次后跳出\")\n      跳出循环\n    循环结束\n\n    // 4. 前置判断循环\n    索引 = 0\n    判断循环首 (索引 < 2)\n      索引 = 索引 + 1\n      控件_添加项目(\"演示日志\", \"4. 判断循环：执行一轮\")\n    判断循环尾 ()\n\n    // 5. 后置判断循环，循环体至少执行一次\n    循环判断首 ()\n      控件_添加项目(\"演示日志\", \"5. 循环判断：至少执行一次\")\n    循环判断尾 (假)\n\n    // 6. 计次循环与继续循环\n    计次循环首 (3, 索引)\n      如果 (索引 == 2)\n        继续循环\n      如果结束\n      控件_添加项目(\"演示日志\", \"6. 计次循环：第 2 次被跳过\")\n      调试输出(\"计次循环索引\", 索引)\n    计次循环尾 ()\n\n    // 7. 变量循环与“到循环尾”别名\n    变量循环首 (1, 3, 1, 索引)\n      如果 (索引 == 2)\n        到循环尾\n      如果结束\n      控件_添加项目(\"演示日志\", \"7. 变量循环：非跳过轮次\")\n      调试输出(\"变量循环索引\", 索引)\n    变量循环尾 ()\n\n    // 8. 枚举循环\n    枚举循环首 (数字列表, 当前项)\n      控件_添加项目(\"演示日志\", \"8. 枚举循环：读取一个数组成员\")\n      调试输出(\"枚举成员\", 当前项)\n    枚举循环尾 ()\n\n    // 9. 尝试、抛出、捕获、最终\n    尝试\n      抛出(\"这是用于演示的异常\")\n    捕获 (错误信息)\n      控件_添加项目(\"演示日志\", \"9. 捕获：异常已被安全接住\")\n      调试输出(\"捕获到异常\", 错误信息)\n    最终\n      控件_添加项目(\"演示日志\", \"9. 最终：无论是否异常都会执行\")\n    尝试结束\n\n    // 10. 调用带返回值的方法\n    返回结果 = 演示返回(数值)\n    如果 (返回结果 == 100)\n      控件_添加项目(\"演示日志\", \"10. 返回：方法返回了 100\")\n    如果结束\n\n    控件_设置文本(\"状态标签\", \"演示完成：全部基础控制流已执行\")\n    控件_添加项目(\"演示日志\", \"全部演示完成。\")\n  结束\n\n  整数型 演示返回(整数型 输入值)\n    如果 (输入值 > 0)\n      返回 (100)\n    如果结束\n    返回 (0)\n  结束\n\n  事件 _清空日志按钮_被单击()\n    控件_清空项目(\"演示日志\")\n    控件_设置文本(\"状态标签\", \"日志已清空\")\n  结束\n\n  事件 _退出按钮_被单击()\n    结束()\n  结束\n结束类\n",
+  "lingCppSourceFilePath": "src/基础控制类命令.lcpp",
+  "run": true,
+  "approved": true
+}

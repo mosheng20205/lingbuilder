@@ -1,5 +1,5 @@
 import { getLingCppModuleCompletionItems } from '../lingCpp/completionCatalog';
-import { InstalledModule, LingCppModuleContext, ModuleCommandContribution } from './types';
+import { InstalledModule, LingCppModuleContext, ModuleCommandBinding, ModuleCommandContribution } from './types';
 
 export interface BeginnerModuleCodeCompletion {
   label: string;
@@ -21,6 +21,7 @@ export interface BeginnerModuleCommandHint {
   command: string;
   signature: string;
   returnType: string;
+  returnDescription?: string;
   summary: string;
   parameters: BeginnerModuleCommandHintParameter[];
   example: string;
@@ -50,13 +51,17 @@ export function getBeginnerModuleCodeCompletions(moduleContext?: LingCppModuleCo
 export function getBeginnerModuleCommandHints(moduleContext?: LingCppModuleContext): Record<string, BeginnerModuleCommandHint> {
   const hints: Record<string, BeginnerModuleCommandHint> = {};
   getEnabledCleanModules(moduleContext).forEach(module => {
-    (module.manifest.contributes?.commands || []).forEach(command => {
+    (module.manifest.contributes?.commands || [])
+      .filter(command => command.visibility !== 'internal' && (command.visibility !== 'advanced' || moduleContext?.showAdvancedApi === true))
+      .forEach(command => {
+      const binding = module.manifest.bindings?.commands?.find(item => item.command === command.name);
       hints[command.name] = {
         command: command.name,
         signature: command.signature || `${command.name}()`,
         returnType: command.returnType || '无',
+        returnDescription: command.returnDescription,
         summary: command.description || `${module.manifest.name} 提供的模块命令`,
-        parameters: parseCommandParameters(command),
+        parameters: parseCommandParameters(command, binding),
         example: normalizeSnippetPlaceholders(command.insertText || command.signature || `${command.name}()`).text
       };
     });
@@ -124,7 +129,9 @@ function getEnabledCleanModules(moduleContext?: LingCppModuleContext): Installed
 function formatModuleForAi(module: InstalledModule): string {
   const manifest = module.manifest;
   const lines = [`- ${manifest.name} (${manifest.id}) v${manifest.version}：${manifest.description}`];
-  const commands = (manifest.contributes?.commands || []).slice(0, 12);
+  const commands = (manifest.contributes?.commands || [])
+    .filter(command => command.visibility !== 'internal' && command.visibility !== 'advanced')
+    .slice(0, 12);
   const bindings = (manifest.bindings?.commands || []).slice(0, 12);
   const targets = (manifest.targets || []).slice(0, 4);
   const types = (manifest.contributes?.types || []).slice(0, 12);
@@ -149,21 +156,40 @@ function formatModuleForAi(module: InstalledModule): string {
   return lines.join('\n');
 }
 
-function parseCommandParameters(command: ModuleCommandContribution): BeginnerModuleCommandHintParameter[] {
+function parseCommandParameters(
+  command: ModuleCommandContribution,
+  binding?: ModuleCommandBinding
+): BeginnerModuleCommandHintParameter[] {
   const signature = command.signature || '';
   const match = signature.match(/^[^(（]+[（(](.*)[）)]/u);
   if (!match || !match[1].trim()) return [];
+
+  const bindingTypeLabels: Record<string, string> = {
+    void: '空',
+    int: '整数型',
+    longLong: '长整数型',
+    double: '小数型',
+    bool: '逻辑型',
+    wideString: '文本型',
+    utf8String: 'UTF-8 文本',
+    handler: '处理器',
+    handle: '句柄',
+    raw: '原始值'
+  };
 
   return match[1]
     .split(/[，,]/u)
     .map(part => part.trim())
     .filter(Boolean)
-    .map(part => {
+    .map((part, index) => {
       const [name, type] = part.split(/[:：]/u).map(value => value.trim());
+      const bindingParameter = binding?.parameters?.[index];
       return {
-        name: name || part,
-        type: type || '参数',
-        note: command.description || ''
+        name: bindingParameter?.name || name || part,
+        type: bindingParameter?.type
+          ? bindingTypeLabels[bindingParameter.type] || bindingParameter.type
+          : type || '参数',
+        note: bindingParameter?.description || '模块尚未提供这个参数的详细说明。'
       };
     });
 }

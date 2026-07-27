@@ -10,6 +10,7 @@ import {
 import {
   LingCppAstNode,
   LingCppClass,
+  LingCppConstant,
   LingCppCompletionCatalogItem,
   LingCppCompletionContext,
   LingCppCompletionContextKind,
@@ -19,9 +20,14 @@ import {
   LingCppDocumentSymbol,
   LingCppEventBlockHighlight,
   LingCppFoldingRange,
+  LingCppGlobalVariable,
   LingCppInlineHint,
   LingCppMethod,
   LingCppProblem,
+  LingCppProgram,
+  LingCppProjectGlobalContext,
+  LingCppProjectFunctionContext,
+  LingCppProjectTypeContext,
   LingCppQuickAction,
   LingCppHover,
   LingCppReadableActionSummary,
@@ -43,22 +49,29 @@ import {
   WINDOW_EVENT_DEFINITIONS
 } from '../windowDesigner/windowEventRegistry';
 import { getWin32ControlDefinition } from '../windowDesigner/win32ControlRegistry';
+import { areLingCppTypesCompatible, inferLingCppExpressionType } from './expressionTypeService';
+import { parseLingCppControlFlowLine } from './controlFlow';
+import { getProjectGlobalDiagnostics, isProjectGlobalsFilePath, projectSymbolTypes } from './projectGlobalService';
+import { getProjectDataTypeDiagnostics, getProjectDataTypeNames, resolveProjectFieldPathType } from './projectDataTypeService';
+import { getFunctionLibraryCompletionItems, getFunctionLibraryDiagnostics } from './functionLibraryService';
 
 const KEYWORD = {
-  package: LING_CPP_KEYWORDS[0],
-  use: LING_CPP_KEYWORDS[1],
-  class: LING_CPP_KEYWORDS[2],
-  public: LING_CPP_KEYWORDS[3],
-  private: LING_CPP_KEYWORDS[4],
-  protected: LING_CPP_KEYWORDS[5],
-  constructor: LING_CPP_KEYWORDS[6],
-  destructor: LING_CPP_KEYWORDS[7],
-  event: LING_CPP_KEYWORDS[8],
-  if: LING_CPP_KEYWORDS[11],
-  ifEnd: LING_CPP_KEYWORDS[13],
-  loop: LING_CPP_KEYWORDS[14],
-  loopEnd: LING_CPP_KEYWORDS[15],
-  classEnd: LING_CPP_KEYWORDS[16]
+  package: '包',
+  use: '使用',
+  class: '类',
+  functionLibrary: '功能库',
+  public: '公开',
+  private: '私有',
+  protected: '保护',
+  constructor: '构造',
+  destructor: '析构',
+  event: '事件',
+  if: '如果',
+  ifEnd: '如果结束',
+  loop: '循环',
+  loopEnd: '循环结束',
+  classEnd: '结束类',
+  functionLibraryEnd: '结束功能库'
 };
 
 const METHOD_KEYWORDS = [KEYWORD.constructor, KEYWORD.destructor, KEYWORD.event, ...LING_CPP_TYPES];
@@ -90,6 +103,44 @@ export function getLingCppSymbols(source: string): LingCppDocumentSymbol[] {
       endLine: useLine
     });
   });
+
+  parsed.program.globals.forEach(global => symbols.push({
+    name: global.name,
+    detail: global.type,
+    kind: 'global',
+    line: global.line,
+    endLine: global.line
+  }));
+
+  parsed.program.dataTypes.forEach(dataType => symbols.push({
+    name: dataType.name,
+    detail: '项目自定义数据类型',
+    kind: 'data-type',
+    line: dataType.line,
+    endLine: dataType.endLine || dataType.line,
+    children: dataType.fields.map(field => ({
+      name: field.name,
+      detail: `${field.type}${field.isArray ? '[]' : ''}`,
+      kind: 'data-field',
+      line: field.line,
+      endLine: field.line
+    }))
+  }));
+
+  parsed.program.functionLibraries.forEach(library => symbols.push({
+    name: library.name,
+    detail: '项目功能库',
+    kind: 'function-library',
+    line: library.line,
+    endLine: library.endLine || library.line,
+    children: library.methods.map(method => ({
+      name: method.name,
+      detail: `${method.access} · ${method.returnType}`,
+      kind: 'method',
+      line: method.line,
+      endLine: method.endLine || method.line
+    }))
+  }));
 
   parsed.program.classes.forEach(cls => {
     const classSymbol: LingCppDocumentSymbol = {
@@ -123,7 +174,6 @@ export function getLingCppSymbols(source: string): LingCppDocumentSymbol[] {
 
     symbols.push(classSymbol);
   });
-
   return symbols;
 }
 
@@ -131,15 +181,15 @@ export function getLingCppFoldingRanges(source: string): LingCppFoldingRange[] {
   const lines = splitLines(source);
   const ranges: LingCppFoldingRange[] = [];
   const classStack: number[] = [];
-  const ifStack: number[] = [];
-  const loopStack: number[] = [];
+  const functionLibraryStack: number[] = [];
+  const controlStack: Array<{ family: string; line: number }> = [];
   let activeMethodLine: number | null = null;
 
   lines.forEach((line, index) => {
     const lineNumber = index + 1;
     const trimmed = line.trim();
 
-    if (activeMethodLine && (isMethodStart(trimmed) || isAccessLine(trimmed) || isClassEnd(trimmed))) {
+    if (activeMethodLine && (isMethodStart(trimmed) || isAccessLine(trimmed) || isClassEnd(trimmed) || isFunctionLibraryEnd(trimmed))) {
       addRange(ranges, activeMethodLine, lineNumber - 1);
       activeMethodLine = null;
     }
@@ -155,30 +205,40 @@ export function getLingCppFoldingRanges(source: string): LingCppFoldingRange[] {
       return;
     }
 
+    if (isFunctionLibraryStart(trimmed)) {
+      functionLibraryStack.push(lineNumber);
+      return;
+    }
+
+    if (isFunctionLibraryEnd(trimmed)) {
+      const startLine = functionLibraryStack.pop();
+      if (startLine) addRange(ranges, startLine, lineNumber);
+      return;
+    }
+
     if (isMethodStart(trimmed)) {
       activeMethodLine = lineNumber;
       return;
     }
 
-    if (isIfStart(trimmed)) {
-      ifStack.push(lineNumber);
+    const control = parseLingCppControlFlowLine(trimmed);
+    if (control?.family && control.role === 'start') {
+      controlStack.push({ family: control.family, line: lineNumber });
       return;
     }
 
-    if (isIfEnd(trimmed)) {
-      const startLine = ifStack.pop();
-      if (startLine) addRange(ranges, startLine, lineNumber);
-      return;
-    }
-
-    if (isLoopStart(trimmed)) {
-      loopStack.push(lineNumber);
-      return;
-    }
-
-    if (isLoopEnd(trimmed)) {
-      const startLine = loopStack.pop();
-      if (startLine) addRange(ranges, startLine, lineNumber);
+    if (control?.family && control.role === 'end') {
+      let stackIndex = -1;
+      for (let index = controlStack.length - 1; index >= 0; index -= 1) {
+        if (controlStack[index]?.family === control.family) {
+          stackIndex = index;
+          break;
+        }
+      }
+      if (stackIndex >= 0) {
+        const [start] = controlStack.splice(stackIndex, 1);
+        if (start) addRange(ranges, start.line, lineNumber);
+      }
     }
   });
 
@@ -191,12 +251,24 @@ export function getLingCppSemanticDiagnostics(
   source: string,
   designerProject?: LingWindowProject,
   filePath?: string,
-  moduleContext?: LingCppModuleContext
+  moduleContext?: LingCppModuleContext,
+  projectGlobals?: LingCppProjectGlobalContext,
+  projectTypes?: LingCppProjectTypeContext,
+  projectFunctions?: LingCppProjectFunctionContext
 ): LingCppDiagnostic[] {
   const parsed = parseLingCpp(source);
   const diagnostics = [...parsed.diagnostics, ...getBlockDiagnostics(source)];
+  diagnostics.push(...getProjectGlobalDiagnostics(source, filePath, moduleContext, getProjectDataTypeNames(projectTypes)));
+  diagnostics.push(...getProjectDataTypeDiagnostics(source, filePath, moduleContext, parsed.program.classes.map(cls => cls.name)));
   diagnostics.push(...getModuleUsageDiagnostics(source, moduleContext));
-  diagnostics.push(...getVariableDiagnostics(parsed.program.classes, moduleContext));
+  const effectiveConstants = isProjectGlobalsFilePath(filePath) ? parsed.program.constants : (projectGlobals?.constants || []);
+  const effectiveGlobals = isProjectGlobalsFilePath(filePath) ? parsed.program.globals : (projectGlobals?.globals || []);
+  diagnostics.push(...getVariableDiagnostics([
+    ...parsed.program.classes,
+    ...parsed.program.functionLibraries.map(library => ({ name: library.name, line: library.line, endLine: library.endLine, members: [], methods: library.methods }))
+  ], moduleContext, effectiveConstants, effectiveGlobals, projectTypes));
+  diagnostics.push(...getUnknownDeclaredTypeDiagnostics(parsed.program, moduleContext, projectTypes));
+  diagnostics.push(...getFunctionLibraryDiagnostics(source, filePath, projectFunctions));
 
   if (designerProject) {
     getLingCppDesignerBindings(source, designerProject, filePath, moduleContext).forEach(hint => {
@@ -237,7 +309,10 @@ export function buildLingCppLanguageContext(
   source: string,
   designerProject?: LingWindowProject,
   moduleContext?: LingCppModuleContext,
-  filePath?: string
+  filePath?: string,
+  projectGlobals?: LingCppProjectGlobalContext,
+  projectTypes?: LingCppProjectTypeContext,
+  projectFunctions?: LingCppProjectFunctionContext
 ): LingCppLanguageContext {
   const parsed = parseLingCpp(source);
   const designerBindings = getLingCppDesignerBindings(source, designerProject, filePath, moduleContext);
@@ -247,11 +322,14 @@ export function buildLingCppLanguageContext(
     ast: parsed.ast,
     program: parsed.program,
     symbolIndex: parsed.symbolIndex,
-    diagnostics: getLingCppSemanticDiagnostics(source, designerProject, filePath, moduleContext),
+    diagnostics: getLingCppSemanticDiagnostics(source, designerProject, filePath, moduleContext, projectGlobals, projectTypes, projectFunctions),
     designerBindings,
     designerProject,
     moduleContext,
-    moduleContributions: getLingCppModuleCompletionItems(moduleContext)
+    moduleContributions: getLingCppModuleCompletionItems(moduleContext),
+    projectGlobals,
+    projectTypes,
+    projectFunctions
   };
 }
 
@@ -274,6 +352,13 @@ export function getLingCppCompletionItems(
   languageContext = buildLingCppLanguageContext(context.source)
 ): LingCppCompletionItem[] {
   const contextKind = getLingCppCompletionContextKind(context.source, context.line, context.column);
+  const projectFieldItems = getProjectFieldCompletionItems(context, languageContext);
+  if (projectFieldItems) return dedupeLingCppCompletionItems(projectFieldItems, context.triggerText);
+  const functionLibraryItems = getFunctionLibraryCompletionItems(context, languageContext.projectFunctions);
+  const lineText = context.source.split(/\r?\n/u)[context.line - 1] || '';
+  if (/\p{L}[\p{L}\p{N}_]*\s*\.\s*[\p{L}\p{N}_]*$/u.test(lineText.slice(0, Math.max(0, context.column - 1)))) {
+    return dedupeLingCppCompletionItems(functionLibraryItems, context.triggerText);
+  }
   const symbolItems = getCurrentSymbolCompletionItems(languageContext, context.line);
   const designerProject = languageContext.designerProject as LingWindowProject | undefined;
   const windowPlacementItems = getOpenWindowPlacementCompletionItems(context);
@@ -288,7 +373,7 @@ export function getLingCppCompletionItems(
   const moduleItems = languageContext.moduleContributions;
   const catalogItems = getCatalogCompletionItems(contextKind);
   return dedupeLingCppCompletionItems(
-    rankLingCppCompletionItems([...symbolItems, ...designerItems, ...moduleItems, ...catalogItems], contextKind),
+    rankLingCppCompletionItems([...functionLibraryItems, ...symbolItems, ...designerItems, ...moduleItems, ...catalogItems], contextKind),
     context.triggerText
   );
 }
@@ -369,19 +454,57 @@ function formatLingCppCompletionHover(item: LingCppCompletionItem): string {
   ].filter(Boolean).join('\n\n');
 }
 
+function getProjectFieldCompletionItems(
+  context: LingCppCompletionContext,
+  languageContext: LingCppLanguageContext
+): LingCppCompletionCatalogItem[] | undefined {
+  const projectTypes = languageContext.projectTypes;
+  if (!projectTypes?.dataTypes.length) return undefined;
+  const prefix = (splitLines(context.source)[Math.max(0, context.line - 1)] || '').slice(0, Math.max(0, context.column - 1));
+  const access = prefix.match(/([\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*)\s*\.\s*[\p{L}\p{N}_]*$/u);
+  if (!access) return undefined;
+  const segments = (access[1] || '').split(/\s*\.\s*/u);
+  const root = segments.shift() || '';
+  const scope = new Map<string, string>();
+  (languageContext.projectGlobals?.globals || []).forEach(global => scope.set(normalizeIdentifier(global.name), global.type));
+  languageContext.program.classes.forEach(cls => {
+    if (context.line < cls.line || context.line > (cls.endLine || Number.MAX_SAFE_INTEGER)) return;
+    cls.members.forEach(member => scope.set(normalizeIdentifier(member.name), member.type));
+    cls.methods.forEach(method => {
+      if (context.line < method.line || context.line > (method.endLine || method.line)) return;
+      method.parameters.forEach(parameter => scope.set(normalizeIdentifier(parameter.name), parameter.type));
+      (method.locals || []).filter(local => local.line <= context.line).forEach(local => scope.set(normalizeIdentifier(local.name), local.type));
+    });
+  });
+  const ownerTypeName = resolveProjectFieldPathType(scope.get(normalizeIdentifier(root)), segments, projectTypes);
+  const owner = projectTypes.dataTypes.find(dataType => normalizeIdentifier(dataType.name) === normalizeIdentifier(ownerTypeName || ''));
+  if (!owner) return undefined;
+  return owner.fields.map(field => createLingCppCatalogItem({
+    label: field.name,
+    kind: 'type',
+    insertText: field.name,
+    detail: `${owner.name} 字段 · ${field.type}${field.isArray ? '[]' : ''}`,
+    documentation: field.note || `项目自定义数据类型 ${owner.name} 的字段。`,
+    category: 'symbol',
+    source: 'symbol',
+    sortRank: 0
+  }));
+}
+
 function getCurrentSymbolCompletionItems(languageContext: LingCppLanguageContext, line: number): LingCppCompletionCatalogItem[] {
   const activeMethodNode = [
     ...languageContext.symbolIndex.methods,
     ...languageContext.symbolIndex.events
   ].find(node => line >= node.range.startLine && line <= node.range.endLine);
   const nodes = [
+    ...languageContext.symbolIndex.constants,
     ...languageContext.symbolIndex.classes,
     ...languageContext.symbolIndex.members,
     ...languageContext.symbolIndex.locals.filter(node => activeMethodNode && node.parentId === activeMethodNode.id),
     ...languageContext.symbolIndex.methods,
     ...languageContext.symbolIndex.events
   ];
-  return nodes
+  const currentItems = nodes
     .filter(node => Boolean(node.name?.trim()))
     .map(node => createLingCppCatalogItem({
       label: node.name,
@@ -394,11 +517,44 @@ function getCurrentSymbolCompletionItems(languageContext: LingCppLanguageContext
       sortRank: 0,
       isSnippet: node.kind === 'method' || node.kind === 'event'
     }));
+  const constantItems = (languageContext.projectGlobals?.constants || languageContext.program.constants)
+    .map(constant => createLingCppCatalogItem({
+      label: constant.name,
+      kind: 'type',
+      insertText: constant.name,
+      detail: `项目常量 · ${constant.type}`,
+      documentation: `项目常量：${constant.name}\n类型：${constant.type}\n值：${constant.initialValue}\n文件：${languageContext.projectGlobals?.filePath || languageContext.filePath || '项目全局变量.lcpp'}`,
+      category: 'symbol',
+      source: 'symbol',
+      sortRank: 0
+    }));
+  const globalItems = (languageContext.projectGlobals?.globals || languageContext.program.globals)
+    .map(global => createLingCppCatalogItem({
+      label: global.name,
+      kind: 'type',
+      insertText: global.name,
+      detail: `项目全局变量 · ${global.type}`,
+      documentation: `项目全局变量：${global.name}\n类型：${global.type}\n文件：${languageContext.projectGlobals?.filePath || languageContext.filePath || '项目全局变量.lcpp'}`,
+      category: 'symbol',
+      source: 'symbol',
+      sortRank: 0
+    }));
+  const projectTypeItems = (languageContext.projectTypes?.dataTypes || languageContext.program.dataTypes).map(dataType => createLingCppCatalogItem({
+    label: dataType.name,
+    kind: 'type',
+    insertText: dataType.name,
+    detail: '项目自定义数据类型',
+    documentation: `记录型值类型：${dataType.name}\n字段：${dataType.fields.map(field => `${field.type}${field.isArray ? '[]' : ''} ${field.name}`).join('、') || '无'}\n文件：${languageContext.projectTypes?.filePath || languageContext.filePath || '项目数据类型.lcpp'}`,
+    category: 'symbol',
+    source: 'symbol',
+    sortRank: 0
+  }));
+  return [...projectTypeItems, ...constantItems, ...globalItems, ...currentItems];
 }
 
 function completionKindForAstNode(node: LingCppAstNode): LingCppCompletionItem['kind'] {
   if (node.kind === 'class') return 'type';
-  if (node.kind === 'member' || node.kind === 'local') return 'type';
+  if (node.kind === 'constant' || node.kind === 'global' || node.kind === 'member' || node.kind === 'local') return 'type';
   if (node.kind === 'event') return 'event';
   if (node.kind === 'method' || node.kind === 'constructor' || node.kind === 'destructor') return 'function';
   return 'keyword';
@@ -406,6 +562,9 @@ function completionKindForAstNode(node: LingCppAstNode): LingCppCompletionItem['
 
 function symbolDetailForAstNode(node: LingCppAstNode): string {
   if (node.kind === 'class') return node.type ? `当前源码类 · 继承 ${node.type}` : '当前源码类';
+  if (node.kind === 'function-library') return '当前项目功能库 · 无状态';
+  if (node.kind === 'constant') return `项目常量 · ${node.type || '未标注类型'}`;
+  if (node.kind === 'global') return `项目全局变量 · ${node.type || '未标注类型'}`;
   if (node.kind === 'member') return `当前成员 · ${node.type || '未标注类型'}`;
   if (node.kind === 'local') return `当前子程序局部变量 · ${node.type || '未标注类型'}`;
   if (node.kind === 'event') return '当前事件处理器';
@@ -416,7 +575,10 @@ function symbolDetailForAstNode(node: LingCppAstNode): string {
 function hoverTextForAstNode(node: LingCppAstNode): string {
   if (node.kind === 'package') return `包：${node.name}`;
   if (node.kind === 'use') return `使用：${node.name}`;
+  if (node.kind === 'constant') return `项目常量：${node.name}\n类型：${node.type || '未标注'}\n值：${node.value || ''}\n作用域：当前项目（只读）`;
+  if (node.kind === 'global') return `项目全局变量：${node.name}\n类型：${node.type || '未标注'}\n作用域：当前项目`;
   if (node.kind === 'class') return node.type ? `类：${node.name}\n基础类：${node.type}` : `类：${node.name}`;
+  if (node.kind === 'function-library') return `功能库：${node.name}\n作用域：当前项目\n调用：${node.name}.功能名(...)`;
   if (node.kind === 'member') return `成员：${node.name}\n类型：${node.type || '未标注'}\n访问：${node.access || '私有'}`;
   if (node.kind === 'local') return `局部变量：${node.name}\n类型：${node.type || '未标注'}\n作用域：当前子程序`;
   if (node.kind === 'event') return `事件处理器：${node.name}`;
@@ -452,6 +614,14 @@ export function getLingCppCompletionContextKind(source: string, line: number, _c
       || /文本型|整数型|按钮|标签|输入框|鏂囨湰鍨|鏁存暟鍨|鎸夐挳|鏍囩/u.test(targetText)
     ) {
       return 'member-section';
+    }
+    return 'class-body';
+  }
+  for (const library of parsed.program.functionLibraries) {
+    if (targetLine < library.line || targetLine > (library.endLine || lines.length)) continue;
+    for (const method of library.methods) {
+      const methodEnd = methodEnds.get(method.line) || method.endLine || method.statements.at(-1)?.line || method.line;
+      if (targetLine >= method.line && targetLine <= methodEnd) return 'method-body';
     }
     return 'class-body';
   }
@@ -547,6 +717,14 @@ export function getLingCppStructureView(
     });
   });
 
+  parsed.program.globals.forEach(global => nodes.push({
+    id: `global-${global.name}-${global.line}`,
+    kind: 'global',
+    name: global.name,
+    detail: global.type,
+    line: global.line
+  }));
+
   parsed.program.classes.forEach(cls => {
     const classNode: LingCppStructureNode = {
       id: `class-${cls.name}-${cls.line}`,
@@ -622,6 +800,21 @@ export function getLingCppStructuredReadingRows(
       line: findFirstKeywordLine(lines, KEYWORD.package) || 1
     });
   }
+
+  parsed.program.globals.forEach(global => rows.push({
+    id: `reading-global-${global.name}-${global.line}`,
+    group: 'global',
+    name: global.name,
+    type: global.type,
+    value: [global.isArray ? '数组' : '', global.initialValue || ''].filter(Boolean).join(' · '),
+    note: noteBeforeLine(lines, global.line) || '当前项目全部 LCPP 源码可用',
+    line: global.line,
+    editable: true,
+    editKind: 'global',
+    targetName: global.name,
+    initialValue: global.initialValue,
+    isArray: global.isArray
+  }));
 
   parsed.program.classes.forEach(cls => {
     const classBlock = blockByLine.get(cls.line);
@@ -791,6 +984,55 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
       line: findLineContainingText(lines, designerFile) || 1
     });
   }
+
+  languageContext.program.functionLibraries.forEach(library => {
+    rows.push({
+      id: `structured-function-library-${library.name}-${library.line}`,
+      group: 'class',
+      name: library.name,
+      type: '功能库',
+      value: '无状态',
+      note: '项目内自动发现；通过“功能库名.功能名(...)”调用',
+      line: library.line,
+      editable: false,
+      className: library.name,
+      targetName: library.name
+    });
+    library.methods.forEach(method => {
+      (method.locals || []).forEach(local => rows.push({
+        id: `structured-library-local-${library.name}-${method.name}-${local.name}-${local.line}`,
+        group: 'local',
+        name: local.name,
+        type: local.type,
+        value: [local.isArray ? '数组' : '', local.initialValue ? `初始值 ${local.initialValue}` : ''].filter(Boolean).join(' · '),
+        note: `仅在 ${library.name}.${method.name} 内有效`,
+        line: local.line,
+        editable: true,
+        editKind: 'local',
+        className: library.name,
+        methodName: method.name,
+        targetName: local.name,
+        initialValue: local.initialValue,
+        isArray: local.isArray
+      }));
+      rows.push({
+        id: `structured-library-method-${library.name}-${method.name}-${method.line}`,
+        group: 'method',
+        name: method.name,
+        type: method.returnType,
+        value: formatParameterList(method.parameters),
+        note: `${method.access === '公开' ? '对项目公开' : '仅功能库内部'} · ${noteBeforeLine(lines, method.line) || '可复用功能代码'}`,
+        line: method.line,
+        editable: true,
+        editKind: 'method',
+        className: library.name,
+        targetName: method.name,
+        access: method.access,
+        returnType: method.returnType,
+        parameters: method.parameters
+      });
+    });
+  });
 
   languageContext.program.classes.forEach(cls => {
     const classBlock = blockByLine.get(cls.line);
@@ -1120,6 +1362,7 @@ export function formatLingCpp(source: string): string {
   let inClass = false;
   let inMethod = false;
   let previousStructuralKind = '';
+  const controlStack: Array<{ family: string; selectBranchOpen?: boolean }> = [];
 
   const pushBlankBefore = (kind: string) => {
     const needsBlank = formatted.length > 0
@@ -1165,8 +1408,19 @@ export function formatLingCpp(source: string): string {
       return;
     }
 
-    if (isIfEnd(trimmed) || isLoopEnd(trimmed)) {
-      bodyIndent = Math.max(0, bodyIndent - 1);
+    const control = parseLingCppControlFlowLine(trimmed);
+    if (control?.role === 'end') {
+      const top = controlStack.at(-1);
+      const closeDepth = top?.family === 'select' && top.selectBranchOpen ? 2 : 1;
+      bodyIndent = Math.max(0, bodyIndent - closeDepth);
+      if (top?.family === control.family) controlStack.pop();
+    } else if (control?.role === 'branch') {
+      const top = controlStack.at(-1);
+      if (control.family === 'select') {
+        if (top?.family === 'select' && top.selectBranchOpen) bodyIndent = Math.max(0, bodyIndent - 1);
+      } else {
+        bodyIndent = Math.max(0, bodyIndent - 1);
+      }
     }
 
     if (isMethodStart(trimmed)) {
@@ -1181,7 +1435,12 @@ export function formatLingCpp(source: string): string {
       pushLine(trimmed, 'top');
     }
 
-    if (isIfStart(trimmed) || isLoopStart(trimmed)) {
+    if (control?.role === 'start') {
+      controlStack.push({ family: control.family || '', selectBranchOpen: false });
+      bodyIndent += 1;
+    } else if (control?.role === 'branch') {
+      const top = controlStack.at(-1);
+      if (top?.family === 'select') top.selectBranchOpen = true;
       bodyIndent += 1;
     }
   });
@@ -1766,14 +2025,15 @@ function groupOrder(group: LingCppStructuredReadingRow['group']): number {
   const order: Record<LingCppStructuredReadingRow['group'], number> = {
     declaration: 0,
     package: 0,
-    class: 1,
-    member: 2,
-    local: 3,
-    method: 4,
-    constructor: 4,
-    event: 5,
-    parameter: 6,
-    note: 7
+    global: 1,
+    class: 2,
+    member: 3,
+    local: 4,
+    method: 5,
+    constructor: 5,
+    event: 6,
+    parameter: 7,
+    note: 8
   };
   return order[group] ?? 99;
 }
@@ -1793,6 +2053,10 @@ function getSemanticFoldingRanges(source: string): LingCppFoldingRange[] {
       const lines = cls.members.map(member => member.line);
       ranges.push({ startLine: Math.min(...lines), endLine: Math.max(...lines), kind: 'region' });
     }
+  });
+  parsed.program.dataTypes.forEach(dataType => {
+    const endLine = dataType.endLine || dataType.line;
+    if (endLine > dataType.line) ranges.push({ startLine: dataType.line, endLine, kind: 'region' });
   });
   return ranges;
 }
@@ -1962,57 +2226,101 @@ function methodStructuralKind(trimmed: string): string {
 function getBlockDiagnostics(source: string): LingCppDiagnostic[] {
   const lines = splitLines(source);
   const diagnostics: LingCppDiagnostic[] = [];
-  const stacks: Record<'class' | 'if' | 'loop', Array<{ line: number; text: string }>> = {
-    class: [],
-    if: [],
-    loop: []
-  };
+  const classStack: Array<{ line: number; text: string }> = [];
 
   lines.forEach((line, index) => {
     const lineNumber = index + 1;
     const trimmed = line.trim();
     if (!trimmed) return;
 
-    if (isClassStart(trimmed)) stacks.class.push({ line: lineNumber, text: line });
-    if (isIfStart(trimmed)) stacks.if.push({ line: lineNumber, text: line });
-    if (isLoopStart(trimmed)) stacks.loop.push({ line: lineNumber, text: line });
+    if (isClassStart(trimmed)) classStack.push({ line: lineNumber, text: line });
 
-    if (isClassEnd(trimmed) && !stacks.class.pop()) {
+    if (isClassEnd(trimmed) && !classStack.pop()) {
       diagnostics.push(createDiagnostic('warning', lineNumber, line, '多余的类结束语句。', `删除多余的 ${KEYWORD.classEnd}。`));
     }
-    if (isIfEnd(trimmed) && !stacks.if.pop()) {
-      diagnostics.push(createDiagnostic('warning', lineNumber, line, '多余的条件结束语句。', `删除多余的 ${KEYWORD.ifEnd}。`));
-    }
-    if (isLoopEnd(trimmed) && !stacks.loop.pop()) {
-      diagnostics.push(createDiagnostic('warning', lineNumber, line, '多余的循环结束语句。', `删除多余的 ${KEYWORD.loopEnd}。`));
-    }
   });
 
-  stacks.class.forEach(item => {
+  classStack.forEach(item => {
     diagnostics.push(createDiagnostic('error', item.line, item.text, '类声明缺少结束语句。', `在类末尾添加 ${KEYWORD.classEnd}。`));
-  });
-  stacks.if.forEach(item => {
-    diagnostics.push(createDiagnostic('error', item.line, item.text, '条件语句缺少结束语句。', `在条件块末尾添加 ${KEYWORD.ifEnd}。`));
-  });
-  stacks.loop.forEach(item => {
-    diagnostics.push(createDiagnostic('error', item.line, item.text, '循环语句缺少结束语句。', `在循环块末尾添加 ${KEYWORD.loopEnd}。`));
   });
 
   return diagnostics;
 }
 
-function getVariableDiagnostics(classes: LingCppClass[], moduleContext?: LingCppModuleContext): LingCppDiagnostic[] {
+function getUnknownDeclaredTypeDiagnostics(
+  program: LingCppProgram,
+  moduleContext?: LingCppModuleContext,
+  projectTypes?: LingCppProjectTypeContext
+): LingCppDiagnostic[] {
+  const known = new Set([
+    ...LING_CPP_TYPES.map(normalizeIdentifier),
+    ...getProjectDataTypeNames(projectTypes).map(normalizeIdentifier),
+    ...program.dataTypes.map(dataType => normalizeIdentifier(dataType.name)),
+    ...program.classes.map(cls => normalizeIdentifier(cls.name)),
+    ...(moduleContext?.enabledModules || []).flatMap(module => (module.manifest.contributes?.types || []).map(type => normalizeIdentifier(type.name))),
+    '空', '无'
+  ]);
   const diagnostics: LingCppDiagnostic[] = [];
+  const check = (type: string, name: string, line: number, position: string) => {
+    const itemType = type.replace(/(?:\[\]|［］)$/u, '');
+    if (known.has(normalizeIdentifier(itemType)) || /控件|窗体/u.test(itemType)) return;
+    diagnostics.push(createDiagnostic('error', line, `${type} ${name}`, `${position} ${name} 使用了未知类型 ${type}。`, '请选择内置类型、已启用模块类型或项目自定义数据类型。'));
+  };
+  program.globals.forEach(global => check(global.type, global.name, global.line, '项目全局变量'));
+  program.classes.forEach(cls => {
+    cls.members.forEach(member => check(member.type, member.name, member.line, '程序集变量'));
+    cls.methods.forEach(method => {
+      check(method.returnType, method.name, method.line, '子程序返回值');
+      method.parameters.forEach(parameter => check(parameter.type, parameter.name, method.line, '参数'));
+      (method.locals || []).forEach(local => check(local.type, local.name, local.line, '局部变量'));
+    });
+  });
+  program.functionLibraries.forEach(library => library.methods.forEach(method => {
+    check(method.returnType, method.name, method.line, '功能库返回值');
+    method.parameters.forEach(parameter => check(parameter.type, parameter.name, method.line, '功能库参数'));
+    (method.locals || []).forEach(local => check(local.type, local.name, local.line, '功能库局部变量'));
+  }));
+  return diagnostics;
+}
+
+function getVariableDiagnostics(
+  classes: LingCppClass[],
+  moduleContext?: LingCppModuleContext,
+  constants: LingCppConstant[] = [],
+  globals: LingCppGlobalVariable[] = [],
+  projectTypes?: LingCppProjectTypeContext
+): LingCppDiagnostic[] {
+  const diagnostics: LingCppDiagnostic[] = [];
+  const globalTypes = projectSymbolTypes(constants, globals);
+  const constantNames = new Set(constants.map(constant => normalizeIdentifier(constant.name)));
   classes.forEach(cls => {
     const memberTypes = new Map(cls.members.map(member => [normalizeIdentifier(member.name), member.type]));
+    cls.members.forEach(member => {
+      if (constantNames.has(normalizeIdentifier(member.name))) {
+        diagnostics.push(createDiagnostic('error', member.line, member.name, `程序集变量 ${member.name} 不能遮蔽同名项目常量。`, '请修改程序集变量或项目常量的名称。'));
+        return;
+      }
+      if (!globalTypes.has(normalizeIdentifier(member.name))) return;
+      diagnostics.push(createDiagnostic('warning', member.line, member.name, `程序集变量 ${member.name} 会遮蔽同名项目全局变量。`, '建议使用不同名称，避免新手模式中混淆变量作用域。'));
+    });
     cls.methods.forEach(method => {
-      const baseScopeTypes = new Map(memberTypes);
-      method.parameters.forEach(parameter => baseScopeTypes.set(normalizeIdentifier(parameter.name), parameter.type));
+      const baseScopeTypes = new Map(globalTypes);
+      memberTypes.forEach((type, name) => baseScopeTypes.set(name, type));
+      method.parameters.forEach(parameter => {
+        const name = normalizeIdentifier(parameter.name);
+        if (constantNames.has(name)) diagnostics.push(createDiagnostic('error', method.line, parameter.name, `参数 ${parameter.name} 不能遮蔽同名项目常量。`, '请修改参数或项目常量的名称。'));
+        if (globalTypes.has(name)) diagnostics.push(createDiagnostic('warning', method.line, parameter.name, `参数 ${parameter.name} 会遮蔽同名项目全局变量。`, '建议使用不同名称，避免混淆变量作用域。'));
+        baseScopeTypes.set(name, parameter.type);
+      });
       const orderedLocals = [...(method.locals || [])].sort((left, right) => left.line - right.line);
       const initializerScopeTypes = new Map(baseScopeTypes);
       orderedLocals.forEach(local => {
+        if (constantNames.has(normalizeIdentifier(local.name))) diagnostics.push(createDiagnostic('error', local.line, local.name, `局部变量 ${local.name} 不能遮蔽同名项目常量。`, '请修改局部变量或项目常量的名称。'));
+        if (globalTypes.has(normalizeIdentifier(local.name))) {
+          diagnostics.push(createDiagnostic('warning', local.line, local.name, `局部变量 ${local.name} 会遮蔽同名项目全局变量。`, '建议使用不同名称，或直接使用已有项目全局变量。'));
+        }
         if (local.initialValue) {
-          const actualType = inferLingCppExpressionType(local.initialValue, initializerScopeTypes, moduleContext);
+          const actualType = inferLingCppExpressionType(local.initialValue, initializerScopeTypes, moduleContext, new Map(), projectTypes);
           if (actualType && !areLingCppTypesCompatible(local.type, actualType)) {
             diagnostics.push({
               id: `lingcpp-local-initializer-type-${method.name}-${local.name}-${local.line}`,
@@ -2032,22 +2340,30 @@ function getVariableDiagnostics(classes: LingCppClass[], moduleContext?: LingCpp
         orderedLocals
           .filter(local => local.line < statement.line)
           .forEach(local => scopeTypes.set(normalizeIdentifier(local.name), local.type));
-        const assignment = statement.text.trim().match(/^([\w\u4e00-\u9fa5]+)\s*[=＝](?!=)\s*(.+?)\s*;?$/u);
+        const assignment = statement.text.trim().match(/^([\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*)\s*[=＝](?!=)\s*(.+?)\s*;?$/u);
         if (!assignment) return;
-        const targetName = assignment[1] || '';
-        const targetType = scopeTypes.get(normalizeIdentifier(targetName));
+        const targetPath = (assignment[1] || '').split(/\s*\.\s*/u);
+        const targetName = targetPath[0] || '';
+        if (targetPath.length === 1 && constantNames.has(normalizeIdentifier(targetName))) {
+          diagnostics.push(createDiagnostic('error', statement.line, statement.text, `项目常量 ${targetName} 是只读值，不能重新赋值。`, '请改用局部变量或项目全局变量保存运行时变化的值。'));
+          return;
+        }
+        const rootType = scopeTypes.get(normalizeIdentifier(targetName));
+        const rootIsProjectType = projectTypes?.dataTypes.some(dataType => normalizeIdentifier(dataType.name) === normalizeIdentifier(rootType || ''));
+        if (targetPath.length > 1 && rootType && !rootIsProjectType) return;
+        const targetType = targetPath.length === 1 ? rootType : resolveProjectFieldPathType(rootType, targetPath.slice(1), projectTypes);
         if (!targetType) {
           diagnostics.push({
             id: `lingcpp-undeclared-variable-${method.name}-${targetName}-${statement.line}`,
             line: statement.line,
             level: 'error',
-            message: `变量 ${targetName} 尚未声明。`,
+            message: rootType ? `类型 ${rootType} 中不存在字段 ${targetPath.slice(1).join('.')}。` : `变量 ${targetName} 尚未声明。`,
             codeSnippet: statement.text,
-            suggestion: `请在 ${method.name} 的局部变量表中新增 ${targetName}，或在程序集变量表中声明它。`
+            suggestion: `请在 ${method.name} 的局部变量表、程序集变量表或项目全局变量表中声明 ${targetName}。`
           });
           return;
         }
-        const actualType = inferLingCppExpressionType(assignment[2] || '', scopeTypes, moduleContext);
+        const actualType = inferLingCppExpressionType(assignment[2] || '', scopeTypes, moduleContext, new Map(), projectTypes);
         if (actualType && !areLingCppTypesCompatible(targetType, actualType)) {
           diagnostics.push({
             id: `lingcpp-assignment-type-${method.name}-${targetName}-${statement.line}`,
@@ -2062,42 +2378,6 @@ function getVariableDiagnostics(classes: LingCppClass[], moduleContext?: LingCpp
     });
   });
   return diagnostics;
-}
-
-function inferLingCppExpressionType(
-  expression: string,
-  scopeTypes: Map<string, string>,
-  moduleContext?: LingCppModuleContext
-): string | undefined {
-  const value = expression.trim();
-  if (/^(?:L)?["“].*["”]$/su.test(value)) return '文本型';
-  if (/^(真|假)$/u.test(value)) return '逻辑型';
-  if (/^-?\d+$/u.test(value)) return '整数型';
-  if (/^-?\d+\.\d+$/u.test(value)) return '小数型';
-  const identifierType = scopeTypes.get(normalizeIdentifier(value));
-  if (identifierType) return identifierType;
-  const call = value.match(/^([\w\u4e00-\u9fa5]+)\s*[（(]/u);
-  if (!call) return undefined;
-  const commandName = call[1] || '';
-  for (const module of moduleContext?.enabledModules || []) {
-    const contribution = (module.manifest.contributes?.commands || []).find(command => command.name === commandName);
-    if (contribution?.returnType) return contribution.returnType;
-  }
-  return undefined;
-}
-
-function areLingCppTypesCompatible(expected: string, actual: string): boolean {
-  const category = (type: string) => {
-    if (/文本|字符串/u.test(type)) return 'text';
-    if (/字节集/u.test(type)) return 'bytes';
-    if (/逻辑|布尔/u.test(type)) return 'bool';
-    if (/小数|双精度/u.test(type)) return 'decimal';
-    if (/整数|长整数|字节/u.test(type)) return 'integer';
-    return normalizeIdentifier(type);
-  };
-  const expectedCategory = category(expected);
-  const actualCategory = category(actual);
-  return expectedCategory === actualCategory || (expectedCategory === 'decimal' && actualCategory === 'integer');
 }
 
 function getModuleUsageDiagnostics(source: string, moduleContext?: LingCppModuleContext): LingCppDiagnostic[] {
@@ -2143,13 +2423,18 @@ function collectModuleCallbackHandlerNames(source: string, moduleContext?: LingC
 
       extractCommandInvocationArguments(source, binding.command).forEach(args => {
         callbackParameterIndexes.forEach(index => {
-          const handlerName = parseStringLiteralArgument(args[index]);
+          const handlerName = parseModuleHandlerArgument(args[index]);
           if (handlerName) handlers.add(normalizeIdentifier(handlerName));
         });
       });
     });
   });
   return handlers;
+}
+
+function parseModuleHandlerArgument(value?: string): string | undefined {
+  const reference = value?.trim().match(/^&([\w\u4e00-\u9fa5]+)$/u);
+  return reference?.[1] || parseStringLiteralArgument(value);
 }
 
 function isModuleCallbackParameter(name: string, description?: string): boolean {
@@ -2388,7 +2673,7 @@ function findMethodEndLines(lines: string[]): Map<number, number> {
   lines.forEach((line, index) => {
     const lineNumber = index + 1;
     const trimmed = line.trim();
-    if (activeMethodLine && (isMethodStart(trimmed) || isAccessLine(trimmed) || isClassEnd(trimmed))) {
+    if (activeMethodLine && (isMethodStart(trimmed) || isAccessLine(trimmed) || isClassEnd(trimmed) || isFunctionLibraryEnd(trimmed))) {
       ranges.set(activeMethodLine, Math.max(activeMethodLine, lineNumber - 1));
       activeMethodLine = null;
     }
@@ -2442,6 +2727,14 @@ function isClassStart(trimmed: string): boolean {
 
 function isClassEnd(trimmed: string): boolean {
   return startsKeyword(trimmed, KEYWORD.classEnd);
+}
+
+function isFunctionLibraryStart(trimmed: string): boolean {
+  return startsKeyword(trimmed, KEYWORD.functionLibrary);
+}
+
+function isFunctionLibraryEnd(trimmed: string): boolean {
+  return startsKeyword(trimmed, KEYWORD.functionLibraryEnd);
 }
 
 function isAccessLine(trimmed: string): boolean {

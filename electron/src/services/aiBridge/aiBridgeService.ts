@@ -4,7 +4,10 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { applyWorkspaceEditToFiles, getWorkspaceEditProposal, proposeLingCppEdit, rejectWorkspaceEdit } from '../lingCpp/aiEditService';
 import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
-import { LingCppEditContext, LingCppWorkspaceFile } from '../lingCpp/types';
+import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
+import { createProjectTypeContext, isProjectDataTypesFilePath } from '../lingCpp/projectDataTypeService';
+import { createProjectFunctionContext } from '../lingCpp/functionLibraryService';
+import { LingCppEditContext, LingCppProjectSourceFile, LingCppWorkspaceFile } from '../lingCpp/types';
 import { createModuleService } from '../modules/moduleService';
 import { describeLingCppModuleContextForAi } from '../modules/moduleContextAdapters';
 import { exportModuleNativeDependencies, materializeModuleNativeDependencies, ModuleNativeDependencyPlan } from '../modules/nativeDependencyService';
@@ -108,7 +111,8 @@ export interface AiBridgeCompileResult {
   logs: string[];
 }
 
-export type AiBridgeProcessManager = Pick<ManagedProcessService, 'start' | 'stop' | 'stopAll'>;
+export type AiBridgeProcessManager = Pick<ManagedProcessService, 'start' | 'stop' | 'stopAll'>
+  & Partial<Pick<ManagedProcessService, 'waitForExit'>>;
 
 export interface AiBridgeServiceDependencies {
   managedProcessService?: AiBridgeProcessManager;
@@ -123,6 +127,7 @@ export interface AiBridgeServiceDependencies {
     modulePlan?: ModuleNativeDependencyPlan,
     signal?: AbortSignal
   ) => Promise<AiBridgeCompileResult>;
+  assertModuleAccess?: (moduleIds: readonly string[]) => void;
 }
 
 export class AiBridgeService {
@@ -137,6 +142,7 @@ export class AiBridgeService {
   private readonly projectBuildSessionService: ProjectBuildSessionService;
   private readonly compilerDetector: () => Promise<AiBridgeCompilerInfo | null>;
   private readonly compilerRunner: NonNullable<AiBridgeServiceDependencies['compileWin32Preview']>;
+  private readonly assertModuleAccess: NonNullable<AiBridgeServiceDependencies['assertModuleAccess']>;
   private runAdmissionClosed = false;
   private shuttingDown = false;
 
@@ -158,6 +164,7 @@ export class AiBridgeService {
     );
     this.compilerDetector = dependencies.detectCompiler ?? detectCompiler;
     this.compilerRunner = dependencies.compileWin32Preview ?? compileWin32Preview;
+    this.assertModuleAccess = dependencies.assertModuleAccess ?? (() => undefined);
   }
 
   health(): AiBridgeHealth {
@@ -228,11 +235,31 @@ export class AiBridgeService {
       ? request.sourceCode
       : (await this.readFile(request.filePath)).content;
     const moduleContext = await this.getModuleContext(request.projectId);
+    const normalizedRequestPath = normalizeFilePath(request.filePath);
+    let projectGlobals;
+    let projectTypes;
+    const projectSources = request.projectId
+      ? await this.resolveLingCppProjectSources(request.projectId)
+      : [];
+    const effectiveSources: LingCppProjectSourceFile[] = [
+      ...projectSources.filter(source => normalizeFilePath(source.filePath) !== normalizedRequestPath),
+      { filePath: normalizedRequestPath, sourceCode }
+    ];
+    const globalSource = effectiveSources.find(source => isProjectGlobalsFilePath(source.filePath));
+    if (globalSource) projectGlobals = createProjectGlobalContext(globalSource.filePath, globalSource.sourceCode);
+    const typeSource = effectiveSources.find(source => isProjectDataTypesFilePath(source.filePath));
+    if (typeSource) projectTypes = createProjectTypeContext(typeSource.filePath, typeSource.sourceCode);
+    const projectFunctions = createProjectFunctionContext(
+      effectiveSources.map(source => ({ ...source, language: 'lingcpp' }))
+    );
     const diagnostics = getLingCppSemanticDiagnostics(
       sourceCode,
       request.designerProject,
       request.filePath,
-      moduleContext
+      moduleContext,
+      projectGlobals,
+      projectTypes,
+      projectFunctions
     );
     return {
       ok: true,
@@ -308,6 +335,7 @@ export class AiBridgeService {
       this.moduleService.getEnabledProjectModules(projectId),
       this.moduleService.getHistory()
     ]);
+    this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
     return {
       ok: true,
       availableModules,
@@ -318,17 +346,24 @@ export class AiBridgeService {
   }
 
   async nativePreview(request: AiBridgeNativeRequest) {
-    const enabledModules = await this.moduleService.getEnabledProjectModules(request.project.id || 'lingbuilder-ui-project');
+    const projectId = request.project.id || 'lingbuilder-ui-project';
+    const [enabledModules, lingCppSources] = await Promise.all([
+      this.moduleService.getEnabledProjectModules(projectId),
+      this.resolveLingCppProjectSources(projectId, request.lingCppSources)
+    ]);
+    this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
     const generatedProject = generateLingCppNativeWin32Project(request.project, {
       activeWindowId: request.activeWindowId,
       lingCppSourceCode: request.lingCppSourceCode || '',
       lingCppSourceFilePath: request.lingCppSourceFilePath,
+      lingCppSources,
       enabledModules
     });
     return {
       ok: true,
       files: generatedProject.files,
       diagnostics: generatedProject.diagnostics,
+      blockingDiagnostics: generatedProject.blockingDiagnostics,
       selectedWindow: generatedProject.selectedWindow,
       enabledModules,
       sourceMap: generatedProject.sourceMap
@@ -339,6 +374,9 @@ export class AiBridgeService {
     await this.requireWriteWithAudit('native.export', request.project?.id, request.approved);
     try {
       const preview = await this.nativePreview(request);
+      if (preview.blockingDiagnostics.length > 0) {
+        throw new Error(`LCPP 项目源码存在阻止导出的错误：\n${preview.blockingDiagnostics.join('\n')}`);
+      }
       const exportDir = await this.pathPolicy.resolveDirectoryForWrite(
         normalizeFilePath(path.join('generated', 'cpp', sanitizeFilename(request.project.id || 'window-preview')))
       );
@@ -427,6 +465,51 @@ export class AiBridgeService {
     }
   }
 
+  async waitForRun(projectId: string) {
+    const normalizedProjectId = sanitizeFilename((projectId || 'window-preview').trim());
+    if (!this.managedProcessService.waitForExit) {
+      return {
+        projectId: normalizedProjectId,
+        found: false,
+        message: `项目“${normalizedProjectId}”的进程管理器不支持等待运行结束。`
+      };
+    }
+    return await this.managedProcessService.waitForExit(normalizedProjectId);
+  }
+
+  private async resolveLingCppProjectSources(
+    projectId: string,
+    explicitSources?: LingCppProjectSourceFile[]
+  ): Promise<LingCppProjectSourceFile[]> {
+    const solution = await this.solutionService.getSolution();
+    let projectRef: LingBuilderSolutionProject;
+    try {
+      projectRef = this.solutionService.getProject(solution, projectId);
+    } catch (error) {
+      if (explicitSources?.length) throw error;
+      return [];
+    }
+    const sourceRoot = normalizeFilePath(projectRef.sourceRoot).replace(/\/+$/u, '');
+    if (Array.isArray(explicitSources) && explicitSources.length > 0) {
+      let totalSize = 0;
+      const unique = new Map<string, LingCppProjectSourceFile>();
+      for (const source of explicitSources) {
+        if (!source || typeof source.filePath !== 'string' || typeof source.sourceCode !== 'string') throw new Error('项目源码集合包含无效条目。');
+        const filePath = normalizeFilePath(source.filePath).replace(/^\.\//u, '');
+        if (!filePath.toLocaleLowerCase().endsWith('.lcpp') || filePath.split('/').includes('..') || path.isAbsolute(filePath)) throw new Error(`项目源码路径不安全：${source.filePath}`);
+        if (!filePath.startsWith(`${sourceRoot}/`)) throw new Error(`项目源码路径不属于当前项目源码目录：${source.filePath}`);
+        totalSize += Buffer.byteLength(source.sourceCode, 'utf8');
+        if (totalSize > 8 * 1024 * 1024) throw new Error('项目 LCPP 源码集合超过 8 MB 限制。');
+        unique.set(filePath.toLocaleLowerCase(), { filePath, sourceCode: source.sourceCode });
+      }
+      return [...unique.values()];
+    }
+    const files = await this.solutionService.readProjectFiles(projectRef);
+    return Object.entries(files)
+      .filter(([filePath]) => filePath.toLocaleLowerCase().endsWith('.lcpp') && normalizeFilePath(filePath).startsWith(`${sourceRoot}/`))
+      .map(([filePath, sourceCode]) => ({ filePath: normalizeFilePath(filePath), sourceCode: String(sourceCode || '') }));
+  }
+
   async shutdown(): Promise<ManagedProcessStopAllResult> {
     this.shuttingDown = true;
     this.runAdmissionClosed = true;
@@ -440,13 +523,21 @@ export class AiBridgeService {
     buildLease: ProjectBuildLease,
     preBuildLogs: string[]
   ) {
-    const enabledModules = await this.moduleService.getEnabledProjectModules(request.project.id || 'lingbuilder-ui-project');
+    const sourceProjectId = request.project.id || 'lingbuilder-ui-project';
+    const [enabledModules, lingCppSources] = await Promise.all([
+      this.moduleService.getEnabledProjectModules(sourceProjectId),
+      this.resolveLingCppProjectSources(sourceProjectId, request.lingCppSources)
+    ]);
     const generatedProject = generateLingCppNativeWin32Project(request.project, {
       activeWindowId: request.activeWindowId,
       lingCppSourceCode: request.lingCppSourceCode || '',
       lingCppSourceFilePath: request.lingCppSourceFilePath,
+      lingCppSources,
       enabledModules
     });
+    if (generatedProject.blockingDiagnostics.length > 0) {
+      throw new Error(`LCPP 项目源码存在阻止构建的错误：\n${generatedProject.blockingDiagnostics.join('\n')}`);
+    }
     const managedProjectId = buildLease.projectId;
     const projectId = sanitizeFilename(managedProjectId);
     const [buildDir, exportDir] = await Promise.all([
@@ -518,14 +609,18 @@ export class AiBridgeService {
         relativePath: normalizeFilePath(path.join('src', file.relativePath))
       })),
       enabledModules,
-      contentFiles: buildContentFiles
+      contentFiles: buildContentFiles,
+      requiredCppStandard: moduleNativePlan.requiredCppStandard,
+      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
     });
     const exportVisualStudioProjectResult = await exportVisualStudioProject({
       projectDir: exportDir,
       projectId,
       generatedFiles: generatedProject.files,
       enabledModules,
-      contentFiles: exportContentFiles
+      contentFiles: exportContentFiles,
+      requiredCppStandard: moduleNativePlan.requiredCppStandard,
+      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
     });
     if (buildLease.isCancelled()) {
       return await this.createCancelledBuildResult(
@@ -723,6 +818,7 @@ export class AiBridgeService {
       this.moduleService.scanInstalledModules(projectId),
       this.moduleService.getEnabledProjectModules(projectId)
     ]);
+    this.assertModuleAccess(enabledModules.map(module => module.manifest.id));
     return { availableModules, enabledModules };
   }
 
@@ -992,15 +1088,16 @@ async function compileWin32Preview(
 
   const objectPath = path.join(objDir, 'main.obj');
   const useDynamicCrt = modulePlan?.requiresDynamicCrt === true;
+  const requiredCppStandard = modulePlan?.requiredCppStandard === 20 ? 20 : 17;
   if (compiler.kind === 'msvc' && moduleSources.length > 0) {
-    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, useDynamicCrt, signal);
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, requiredCppStandard, useDynamicCrt, signal);
   }
 
   const commandArgs = compiler.kind === 'msvc'
     ? [
         '/nologo',
         '/EHsc',
-        useDynamicCrt ? '/std:c++20' : '/std:c++17',
+        `/std:c++${requiredCppStandard}`,
         '/utf-8',
         ...(useDynamicCrt ? ['/MD'] : []),
         '/DUNICODE',
@@ -1016,7 +1113,7 @@ async function compileWin32Preview(
       ]
     : [
         '-municode',
-        '-std=c++17',
+        `-std=c++${requiredCppStandard}`,
         '-finput-charset=UTF-8',
         '-fexec-charset=UTF-8',
         '-DUNICODE',
@@ -1094,6 +1191,7 @@ async function compileMsvcPreviewWithModules(
   includeArgs: string[],
   moduleSources: string[],
   moduleLibs: string[],
+  requiredCppStandard: 17 | 20,
   useDynamicCrt: boolean,
   signal?: AbortSignal
 ): Promise<{ ok: boolean; logs: string[] }> {
@@ -1102,7 +1200,7 @@ async function compileMsvcPreviewWithModules(
   const compileCommands = sources.map((source, index) => [
     '/nologo',
     '/EHsc',
-    useDynamicCrt ? '/std:c++20' : '/std:c++17',
+    `/std:c++${requiredCppStandard}`,
     '/utf-8',
     ...(useDynamicCrt ? ['/MD'] : []),
     '/DUNICODE',

@@ -46,6 +46,22 @@ export function closeEditorGroup(layout: EditorGroupLayout, groupId: string): Ed
   return normalize({ ...layout, groups, activeGroupId: groups[0].id });
 }
 
+export function collapseEditorGroups(layout: EditorGroupLayout): EditorGroupLayout {
+  if (layout.groups.length === 1) return layout;
+  const primary = layout.groups[0];
+  const tabs = unique(layout.groups.flatMap(group => group.tabs));
+  return normalize({
+    ...layout,
+    orientation: 'horizontal',
+    activeGroupId: primary.id,
+    groups: [{
+      ...primary,
+      tabs,
+      activePath: primary.activePath && tabs.includes(primary.activePath) ? primary.activePath : tabs[0] || null
+    }]
+  });
+}
+
 export function restoreEditorGroupLayout(raw: unknown, availablePaths: readonly string[], fallbackPath?: string): EditorGroupLayout {
   const available = new Set(availablePaths);
   if (!raw || typeof raw !== 'object' || (raw as any).schemaVersion !== 1 || !Array.isArray((raw as any).groups)) return createEditorGroupLayout(fallbackPath ? [fallbackPath] : [], fallbackPath);

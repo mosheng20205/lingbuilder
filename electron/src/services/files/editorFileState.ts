@@ -34,6 +34,15 @@ export function updateEditorFileContent(
   filePath: string,
   content: string
 ): EditorFileContentUpdate {
+  const currentFile = files.find(file => file.path === filePath);
+  if (!currentFile || getCurrentFileContent(currentFile) === content) {
+    return {
+      files: files as CppFile[],
+      activeFile,
+      updatedFile: null
+    };
+  }
+
   let updatedFile: CppFile | null = null;
   const nextFiles = files.map(file => {
     if (file.path !== filePath) return file;

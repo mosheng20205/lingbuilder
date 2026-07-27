@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   Menu,
@@ -15,9 +16,14 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, getArgumentValue, resolveWorkspaceDropTarget } from './workspaceService';
+import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, getArgumentValue } from './workspaceService';
 import { CloudAccountService } from './cloudAccountService';
+import { inspectCliIntegration } from './cliIntegrationService';
+import { AiBridgeManagerService, type ManagedAiBridgePermission, type ManagedAiBridgeLifecycle } from './aiBridgeManagerService';
+import { createExternalAiLaunchPlan, detectExternalAiClients, type ExternalAiClientId } from './aiClientIntegrationService';
+import { CodexDesktopIntegrationService } from './codexDesktopIntegrationService';
 import { openPathWithExplorerFallback, selectShellWorkspaceRoot } from './shellPathService';
+import { createLcppSourcePackageService, LCPP_SOURCE_PACKAGE_EXTENSION } from './lcppSourcePackageService';
 
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:3001/';
 const SERVER_READY_PREFIX = 'LINGBUILDER_SERVER_READY ';
@@ -41,6 +47,7 @@ let activeWorkspace = '';
 let isQuitting = false;
 let shutdownPromise: Promise<void> | null = null;
 let workspaceService: DesktopWorkspaceService;
+let aiBridgeManager: AiBridgeManagerService;
 const rendererConfirmedClose = new WeakSet<BrowserWindow>();
 
 function getFocusedWindow() {
@@ -83,12 +90,129 @@ function moduleManualPath(): string {
     : path.join(repoRoot(), '模块开发手册.md');
 }
 
+function cliManualPath(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'docs', 'AI_BRIDGE_CLI_USAGE.md')
+    : path.join(repoRoot(), 'AI_BRIDGE_CLI_USAGE.md');
+}
+
+async function findCurrentSolutionEntryPath(workspaceRoot: string, solutionName: string): Promise<string> {
+  const entries = await fs.readdir(workspaceRoot, { withFileTypes: true });
+  let firstValidEntry = '';
+  for (const entry of entries.filter(item => item.isFile() && item.name.toLowerCase().endsWith('.lbsln')).sort((a, b) => a.name.localeCompare(b.name))) {
+    const candidate = path.join(workspaceRoot, entry.name);
+    try {
+      const parsed = JSON.parse(await fs.readFile(candidate, 'utf8')) as { kind?: unknown; solutionFile?: unknown; name?: unknown };
+      if (parsed.kind !== 'lingbuilder-solution' || parsed.solutionFile !== '.lingbuilder/solution.json') continue;
+      if (!firstValidEntry) firstValidEntry = candidate;
+      if (parsed.name === solutionName) return candidate;
+    } catch {
+      // Ignore unrelated or damaged .lbsln files while locating the active solution entry.
+    }
+  }
+  if (firstValidEntry) return firstValidEntry;
+  throw new Error('当前工作区中没有可复制的 LingBuilder 解决方案文件。');
+}
+
+function cliLauncherPath(): string {
+  return path.join(path.dirname(process.execPath), 'lingbuilder.cmd');
+}
+
+function cliEntryPath(): string {
+  return app.isPackaged
+    ? path.join(app.getAppPath(), 'dist', 'cli.cjs')
+    : path.join(repoRoot(), 'electron', 'dist', 'cli.cjs');
+}
+
+function codexDesktopIntegration(): CodexDesktopIntegrationService {
+  return new CodexDesktopIntegrationService({
+    workspaceRoot: getShellWorkspaceRoot(),
+    runtimeExecutable: process.execPath,
+    cliEntryPath: cliEntryPath()
+  });
+}
+
+async function runFixedProcess(
+  executable: string,
+  args: string[],
+  environment: NodeJS.ProcessEnv = process.env,
+  timeoutMs = 10_000
+): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    const child = spawn(executable, args, {
+      env: environment,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    let settled = false;
+    const finish = (action: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      action();
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish(() => reject(new Error(`命令运行超过 ${timeoutMs / 1000} 秒。`)));
+    }, timeoutMs);
+    child.stdout?.on('data', chunk => stdout.push(Buffer.from(chunk)));
+    child.stderr?.on('data', chunk => stderr.push(Buffer.from(chunk)));
+    child.once('error', error => finish(() => reject(error)));
+    child.once('exit', code => finish(() => {
+      const output = Buffer.concat(stdout).toString('utf8').trim();
+      const errorOutput = Buffer.concat(stderr).toString('utf8').trim();
+      if (code === 0) resolve(output);
+      else reject(new Error(errorOutput || output || `命令退出码：${code}`));
+    }));
+  });
+}
+
+async function readCurrentUserPath(): Promise<string> {
+  if (process.platform !== 'win32') return process.env.PATH || '';
+  const encoded = await runFixedProcess('powershell.exe', [
+    '-NoLogo',
+    '-NoProfile',
+    '-NonInteractive',
+    '-Command',
+    "$value=[Environment]::GetEnvironmentVariable('Path','User'); if ($null -eq $value) {$value=''}; [Console]::Out.Write([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($value)))"
+  ], process.env, 5_000);
+  return Buffer.from(encoded, 'base64').toString('utf8');
+}
+
+async function inspectInstalledCli() {
+  const installDirectory = path.dirname(process.execPath);
+  let userPath = process.env.PATH || '';
+  try {
+    userPath = await readCurrentUserPath();
+  } catch {
+    // PATH 读取失败时仍可继续验证启动器和内置 CLI。
+  }
+  return await inspectCliIntegration({
+    packaged: app.isPackaged,
+    installDirectory,
+    launcherPath: cliLauncherPath(),
+    userPath,
+    runVersion: async () => {
+      await fs.access(cliEntryPath());
+      return await runFixedProcess(process.execPath, [cliEntryPath(), '--version'], {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1'
+      });
+    }
+  });
+}
+
 function credentialPath(): string { return path.join(app.getPath('userData'), 'credentials', 'ai-api-key.bin'); }
 async function readAiCredential(): Promise<string> { try { if (!safeStorage.isEncryptionAvailable()) return ''; const encrypted = await fs.readFile(credentialPath()); return safeStorage.decryptString(encrypted); } catch { return ''; } }
 async function writeAiCredential(value: string): Promise<void> { if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统不支持安全凭据存储。'); const file = credentialPath(); await fs.mkdir(path.dirname(file), { recursive: true }); if (!value) { await fs.rm(file, { force: true }); return; } const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(value)); await fs.rename(temporary, file); }
 function cloudRefreshPath(): string { return path.join(app.getPath('userData'), 'credentials', 'cloud-refresh-token.bin'); }
 async function readCloudRefresh(): Promise<string> { try { if (!safeStorage.isEncryptionAvailable()) return ''; return safeStorage.decryptString(await fs.readFile(cloudRefreshPath())); } catch { return ''; } }
 async function writeCloudRefresh(value: string): Promise<void> { if (!safeStorage.isEncryptionAvailable()) throw new Error('当前系统不支持安全账号凭据存储。'); const file = cloudRefreshPath(); await fs.mkdir(path.dirname(file), { recursive: true }); if (!value) { await fs.rm(file, { force: true }); return; } const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(value)); await fs.rename(temporary, file); }
+function modulePermitCachePath(): string { return path.join(app.getPath('userData'), 'credentials', 'module-permits.bin'); }
+async function readModulePermitCache(): Promise<any[]> { try { if (!safeStorage.isEncryptionAvailable()) return []; const value = JSON.parse(safeStorage.decryptString(await fs.readFile(modulePermitCachePath()))); return Array.isArray(value) ? value : []; } catch { return []; } }
+async function writeModulePermitCache(values: any[]): Promise<void> { if (!safeStorage.isEncryptionAvailable()) return; const file = modulePermitCachePath(); await fs.mkdir(path.dirname(file), { recursive: true }); const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(JSON.stringify(values.slice(-32)))); await fs.rename(temporary, file); }
 const cloudAccountService = new CloudAccountService(process.env.LINGBUILDER_CLOUD_API_URL || 'http://127.0.0.1:17900', readCloudRefresh, writeCloudRefresh);
 
 async function startPackagedRendererServer(workspaceRoot: string): Promise<ServerReadyInfo> {
@@ -209,6 +333,12 @@ function shutdownAndExit(code: number): Promise<void> {
   shutdownPromise = (async () => {
     let exitCode = code;
     try {
+      await aiBridgeManager?.stop('LingBuilder 正在退出');
+    } catch (error) {
+      exitCode = 1;
+      console.error(error);
+    }
+    try {
       await stopRendererServer();
     } catch (error) {
       exitCode = 1;
@@ -235,11 +365,28 @@ function configureRendererSession(origin: string, token: string): void {
   });
 }
 
+async function requestRendererApi(apiPath: string, init: RequestInit): Promise<unknown> {
+  const response = await fetch(new URL(apiPath, rendererOrigin), {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(rendererSessionToken ? { 'X-LingBuilder-Session': rendererSessionToken } : {}),
+      ...(init.headers || {})
+    }
+  });
+  const result = await response.json().catch(() => ({})) as { error?: unknown };
+  if (!response.ok) throw new Error(typeof result.error === 'string' ? result.error : `LingBuilder 本地服务请求失败：HTTP ${response.status}`);
+  return result;
+}
+
 async function createMainWindow(): Promise<void> {
   const smokeTest = process.argv.includes('--smoke-test');
   const savedWindowState = await workspaceService.getWindowState();
   const usableBounds = savedWindowState && screen.getAllDisplays().some(display => intersects(display.workArea, savedWindowState))
     ? savedWindowState
+    : undefined;
+  const developmentWindowIcon = !app.isPackaged && process.platform === 'win32'
+    ? path.join(repoRoot(), 'image', 'lingbuilder-ide-icon-v1.ico')
     : undefined;
   mainWindow = new BrowserWindow({
     width: usableBounds?.width || 1440,
@@ -252,6 +399,7 @@ async function createMainWindow(): Promise<void> {
     frame: false,
     autoHideMenuBar: true,
     show: false,
+    ...(developmentWindowIcon ? { icon: developmentWindowIcon } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -303,6 +451,41 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
         })
       });
       const bridgeResponse = await fetch('/api/ai-bridge/health');
+      let managedBridgeStatus = 0;
+      let managedMcpStatus = 0;
+      let managedBridgeStopped = false;
+      let managedClientLaunched = false;
+      let managedBridgeError = '';
+      try {
+        const bridgeApi = window.lingBuilder?.aiBridge;
+        if (!bridgeApi) throw new Error('安装版 preload 未暴露 AI Bridge API。');
+        let started = null;
+        for (let port = 17869; port <= 17879 && !started; port += 1) {
+          try {
+            started = await bridgeApi.start({ port, permission: 'preview', lifecycle: 'workspace' });
+          } catch (error) {
+            managedBridgeError = error instanceof Error ? error.message : String(error);
+          }
+        }
+        if (!started) throw new Error(managedBridgeError || '没有可用的 AI Bridge 冒烟端口。');
+        const token = await bridgeApi.revealToken();
+        const refreshed = await bridgeApi.status();
+        managedBridgeStatus = started.state === 'running' && started.httpUrl && token.length >= 24 ? 200 : 0;
+        managedMcpStatus = refreshed.state === 'running' && refreshed.mcpUrl && !refreshed.error ? 200 : 0;
+        const launched = await bridgeApi.launchClient('generic');
+        managedClientLaunched = launched.ok === true && Boolean(launched.sessionId);
+        const stopped = await bridgeApi.stop();
+        managedBridgeStopped = stopped.state === 'stopped';
+        managedBridgeError = '';
+      } catch (error) {
+        managedBridgeError = error instanceof Error ? error.message : String(error);
+        try {
+          const stopped = await window.lingBuilder?.aiBridge?.stop();
+          managedBridgeStopped = stopped?.state === 'stopped';
+        } catch {
+          // Preserve the original Bridge failure.
+        }
+      }
       const terminalCreateResponse = await fetch('/api/terminal/sessions', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ profile: 'cmd', cols: 80, rows: 24 })
@@ -335,6 +518,10 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
           && modulesResponse.ok
           && aiResponse.ok
           && bridgeResponse.status === 404
+          && managedBridgeStatus === 200
+          && managedMcpStatus === 200
+          && managedBridgeStopped
+          && managedClientLaunched
           && health.status === 'ok'
           && Array.isArray(modules.modules)
           && ai.ok === true
@@ -347,6 +534,11 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
         modulesStatus: modulesResponse.status,
         aiStatus: aiResponse.status,
         bridgeStatus: bridgeResponse.status,
+        managedBridgeStatus,
+        managedMcpStatus,
+        managedBridgeStopped,
+        managedClientLaunched,
+        managedBridgeError,
         terminalStatus: terminalCreateResponse.status,
         terminalResizeStatus,
         terminalCloseStatus,
@@ -390,6 +582,7 @@ async function switchWorkspace(workspacePath: string): Promise<void> {
   const candidateWorkspace = await workspaceService.validateWorkspace(workspacePath);
   const previousWorkspace = activeWorkspace;
   try {
+    if (aiBridgeManager?.snapshot().state !== 'stopped') await aiBridgeManager.stop('工作区即将切换');
     const ready = await startPackagedRendererServer(candidateWorkspace);
     rendererOrigin = ready.origin;
     configureRendererSession(rendererOrigin, rendererSessionToken);
@@ -476,7 +669,96 @@ function registerIpcHandlers(): void {
     if (relativeTarget.startsWith('..') || path.isAbsolute(relativeTarget)) return '目标目录超出当前工作区。';
     return await openPathWithExplorerFallback(targetPath, shell);
   });
+  ipcMain.handle('shell:copy-full-path', async (_event, target: unknown) => {
+    try {
+      const selectedWorkspaceRoot = getShellWorkspaceRoot();
+      if (!selectedWorkspaceRoot) throw new Error('当前没有已打开的工作区。');
+      if (!target || typeof target !== 'object') throw new Error('复制路径目标无效。');
+
+      const request = target as { kind?: unknown; relativePath?: unknown; solutionName?: unknown };
+      const workspaceRoot = await fs.realpath(path.resolve(selectedWorkspaceRoot));
+      let requestedPath: string;
+      if (request.kind === 'solution') {
+        const solutionName = typeof request.solutionName === 'string' ? request.solutionName.trim() : '';
+        if (!solutionName) throw new Error('解决方案名称无效。');
+        requestedPath = await findCurrentSolutionEntryPath(workspaceRoot, solutionName);
+      } else if (request.kind === 'project') {
+        const relativePath = typeof request.relativePath === 'string' ? request.relativePath.trim() : '';
+        requestedPath = path.resolve(workspaceRoot, relativePath || '.');
+      } else {
+        throw new Error('不支持的复制路径目标。');
+      }
+
+      const resolvedPath = await fs.realpath(requestedPath);
+      const relativeTarget = path.relative(workspaceRoot, resolvedPath);
+      if (relativeTarget.startsWith('..') || path.isAbsolute(relativeTarget)) {
+        throw new Error('目标路径超出当前工作区。');
+      }
+      clipboard.writeText(resolvedPath);
+      return { ok: true, path: resolvedPath };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
   ipcMain.handle('docs:open-module-manual', async () => shell.openPath(moduleManualPath()));
+  ipcMain.handle('docs:open-cli-manual', async () => shell.openPath(cliManualPath()));
+  ipcMain.handle('cli:inspect', async () => inspectInstalledCli());
+  ipcMain.handle('ai-bridge:status', async () => await aiBridgeManager.refreshRuntime());
+  ipcMain.handle('ai-bridge:start', async (_event, request: unknown) => {
+    const value = request && typeof request === 'object' ? request as Record<string, unknown> : {};
+    const permission = String(value.permission || 'preview') as ManagedAiBridgePermission;
+    if (permission === 'yolo' && value.approvedYolo !== true) throw new Error('启用 yolo 前必须确认外部 AI 可自动写入并执行受控构建。');
+    return await aiBridgeManager.start({
+      workspaceRoot: getShellWorkspaceRoot(),
+      port: typeof value.port === 'number' ? value.port : Number(value.port || 17860),
+      permission,
+      lifecycle: String(value.lifecycle || 'workspace') as ManagedAiBridgeLifecycle,
+      token: typeof value.token === 'string' ? value.token : undefined,
+      moduleAccessState: Buffer.from(JSON.stringify(await readModulePermitCache()), 'utf8').toString('base64url')
+    });
+  });
+  ipcMain.handle('ai-bridge:stop', async () => await aiBridgeManager.stop('用户停止'));
+  ipcMain.handle('ai-bridge:rotate-token', async () => await aiBridgeManager.rotateToken());
+  ipcMain.handle('ai-bridge:reveal-token', async () => aiBridgeManager.revealToken());
+  ipcMain.handle('ai-bridge:clients', async () => await detectExternalAiClients());
+  ipcMain.handle('ai-bridge:codex-desktop-status', async (_event, permission?: ManagedAiBridgePermission) => (
+    await codexDesktopIntegration().inspect(permission || 'preview')
+  ));
+  ipcMain.handle('ai-bridge:configure-codex-desktop', async (_event, request: unknown) => {
+    const value = request && typeof request === 'object' ? request as Record<string, unknown> : {};
+    const permission = String(value.permission || 'preview') as ManagedAiBridgePermission;
+    if (permission === 'yolo' && value.approvedYolo !== true) {
+      throw new Error('为 Codex 桌面版启用 yolo 前必须确认其可自动写入并执行受控构建。');
+    }
+    return await codexDesktopIntegration().configure({
+      permission,
+      replaceExisting: value.replaceExisting === true,
+      openApp: value.openApp !== false
+    });
+  });
+  ipcMain.handle('ai-bridge:remove-codex-desktop', async () => await codexDesktopIntegration().remove());
+  ipcMain.handle('ai-bridge:open-codex-desktop', async () => await codexDesktopIntegration().open());
+  ipcMain.handle('ai-bridge:launch-client', async (_event, clientId: ExternalAiClientId) => {
+    const snapshot = aiBridgeManager.snapshot();
+    if (snapshot.state !== 'running') throw new Error('请先启动 AI Bridge，再连接外部 AI CLI。');
+    const clients = clientId === 'generic'
+      ? [{ id: 'generic' as const, label: '通用终端', installed: true, executable: '', detail: '打开已注入 Bridge 地址和临时 Token 的 PowerShell。' }]
+      : await detectExternalAiClients();
+    const plan = await createExternalAiLaunchPlan({
+      clientId, clients, workspaceRoot: snapshot.workspaceRoot, mcpUrl: snapshot.mcpUrl,
+      httpUrl: snapshot.httpUrl, token: aiBridgeManager.revealToken()
+    });
+    const created = await requestRendererApi('/api/terminal/sessions', {
+      method: 'POST',
+      body: JSON.stringify({ profile: plan.profile, cwd: plan.cwd, cols: 100, rows: 30, env: plan.env, title: plan.title })
+    }) as { session?: { id?: string } };
+    const sessionId = created.session?.id;
+    if (!sessionId) throw new Error('集成终端没有返回有效会话。');
+    await requestRendererApi(`/api/terminal/sessions/${encodeURIComponent(sessionId)}/input`, {
+      method: 'POST', body: JSON.stringify({ data: `${plan.command}\r` })
+    });
+    return { ok: true, sessionId, detail: plan.detail };
+  });
   ipcMain.handle('modules:import-package', async (_event, sourcePath: string) => {
     try {
       if (!activeWorkspace) throw new Error('当前没有已打开的工作区。');
@@ -499,6 +781,41 @@ function registerIpcHandlers(): void {
       return { ok: true, relativePath: path.relative(activeWorkspace, target).replace(/\\/gu, '/') };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('source-packages:export-project', async (_event, projectId: string, suggestedName?: string) => {
+    try {
+      if (!activeWorkspace) throw new Error('当前没有已打开的工作区。');
+      const owner = getFocusedWindow();
+      const defaultName = `${String(suggestedName || 'LingBuilder源码').replace(/[<>:"/\\|?*\u0000-\u001f]+/gu, '-')}${LCPP_SOURCE_PACKAGE_EXTENSION}`;
+      const options: Electron.SaveDialogOptions = {
+        title: '一键导出 LCPP 源码包',
+        defaultPath: path.join(app.getPath('downloads'), defaultName),
+        filters: [{ name: 'LingBuilder LCPP 源码包', extensions: [LCPP_SOURCE_PACKAGE_EXTENSION.slice(1)] }]
+      };
+      const selected = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
+      if (selected.canceled || !selected.filePath) return { ok: false, canceled: true };
+      const result = await createLcppSourcePackageService(activeWorkspace).exportProject(String(projectId || ''), selected.filePath, app.getVersion());
+      return { ...result, canceled: false };
+    } catch (error) {
+      return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('source-packages:open', async () => {
+    const owner = getFocusedWindow();
+    const options: Electron.OpenDialogOptions = {
+      title: '打开 LCPP 源码包',
+      properties: ['openFile'],
+      filters: [{ name: 'LingBuilder LCPP 源码包', extensions: [LCPP_SOURCE_PACKAGE_EXTENSION.slice(1)] }]
+    };
+    const selected = owner ? await dialog.showOpenDialog(owner, options) : await dialog.showOpenDialog(options);
+    if (selected.canceled || !selected.filePaths[0]) return { ok: false, canceled: true };
+    try {
+      const workspacePath = await workspaceService.resolveWorkspaceTarget(selected.filePaths[0]);
+      await switchWorkspace(workspacePath);
+      return { ok: true, canceled: false, workspacePath };
+    } catch (error) {
+      return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
   ipcMain.handle('designer-assets:select-image', async () => {
@@ -592,10 +909,27 @@ function registerIpcHandlers(): void {
   ipcMain.handle('cloud-account:register', (_event, value: any) => cloudAccountService.register(String(value?.email || ''), String(value?.password || '')));
   ipcMain.handle('cloud-account:verify-email', (_event, token: string) => cloudAccountService.verifyEmail(String(token || '')));
   ipcMain.handle('cloud-account:login', (_event, value: any) => cloudAccountService.login(String(value?.email || ''), String(value?.password || '')));
-  ipcMain.handle('cloud-account:logout', () => cloudAccountService.logout());
+  ipcMain.handle('cloud-account:logout', async () => { const result = await cloudAccountService.logout(); await writeModulePermitCache([]); await requestRendererApi('/api/module-access/clear', { method: 'POST', body: '{}' }).catch(() => undefined); if (aiBridgeManager?.snapshot().state === 'running') await aiBridgeManager.stop('账号已退出，正在撤销收费模块授权'); return result; });
   ipcMain.handle('cloud-account:session', () => cloudAccountService.snapshot());
   ipcMain.handle('cloud-account:models', () => cloudAccountService.models());
   ipcMain.handle('cloud-account:balance', () => cloudAccountService.balance());
+  ipcMain.handle('cloud-modules:catalog', () => cloudAccountService.moduleCatalog());
+  ipcMain.handle('cloud-modules:entitlements', () => cloudAccountService.moduleEntitlements());
+  ipcMain.handle('cloud-modules:create-order', (_event, value: any) => cloudAccountService.createModuleOrder(String(value?.offerId || ''), value?.provider === 'alipay' ? 'alipay' : 'wechat', String(value?.idempotencyKey || '')));
+  ipcMain.handle('cloud-modules:authorize', async (_event, moduleId: string) => {
+    try {
+      const authorization = await cloudAccountService.modulePermit(String(moduleId || ''));
+      const response = await requestRendererApi('/api/module-access/sync', { method: 'POST', body: JSON.stringify(authorization) }) as any;
+      if (!response?.ok) return { ok: false, error: String(response?.error || '本地模块授权同步失败，请重新启动 IDE 后重试。') };
+      const cached = (await readModulePermitCache()).filter(item => item?.permit?.payload?.moduleId !== moduleId);
+      cached.push(authorization); await writeModulePermitCache(cached);
+      if (aiBridgeManager?.snapshot().state === 'running') await aiBridgeManager.stop('模块授权已刷新，请重新启动 AI Bridge');
+      return response;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, error: /[\u3400-\u9fff]/u.test(message) ? message : '模块授权检查失败，请确认云端服务已启动并重新登录后再试。' };
+    }
+  });
   ipcMain.handle('cloud-ai:start', async (event, kind: 'chat'|'edit', payload: unknown) => cloudAccountService.startAi(kind, payload, (requestKey, streamEvent) => event.sender.send('cloud-ai:event', requestKey, streamEvent)));
   ipcMain.handle('cloud-ai:cancel', (_event, requestKey: string) => cloudAccountService.cancel(requestKey));
   ipcMain.handle('workspace:get-current', () => activeWorkspace);
@@ -617,7 +951,7 @@ function registerIpcHandlers(): void {
   });
   ipcMain.handle('workspace:open-path', async (_event, targetPath: string, newWindow = false) => {
     try {
-      const workspacePath = await resolveWorkspaceDropTarget(targetPath);
+      const workspacePath = await workspaceService.resolveWorkspaceTarget(targetPath);
       if (newWindow) {
         launchWorkspaceWindow(workspacePath);
         return { ok: true, canceled: false, workspacePath, newWindow: true };
@@ -634,6 +968,7 @@ function registerIpcHandlers(): void {
       title: '打开 LingBuilder 解决方案',
       properties: ['openFile'],
       filters: [
+        { name: 'LingBuilder LCPP 源码包', extensions: [LCPP_SOURCE_PACKAGE_EXTENSION.slice(1)] },
         { name: 'LingBuilder 解决方案', extensions: ['lbsln'] },
         { name: '兼容的工作区入口', extensions: ['lingbuilder', 'lbworkspace', 'sln'] }
       ]
@@ -643,7 +978,7 @@ function registerIpcHandlers(): void {
       : await dialog.showOpenDialog(options);
     if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
     try {
-      await switchWorkspace(await resolveWorkspaceDropTarget(result.filePaths[0]));
+      await switchWorkspace(await workspaceService.resolveWorkspaceTarget(result.filePaths[0]));
       return { ok: true, canceled: false, workspacePath: activeWorkspace };
     } catch (error) {
       return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };
@@ -655,6 +990,7 @@ function registerIpcHandlers(): void {
       title: '在新窗口打开 LingBuilder 解决方案',
       properties: ['openFile'],
       filters: [
+        { name: 'LingBuilder LCPP 源码包', extensions: [LCPP_SOURCE_PACKAGE_EXTENSION.slice(1)] },
         { name: 'LingBuilder 解决方案', extensions: ['lbsln'] },
         { name: '兼容的工作区入口', extensions: ['lingbuilder', 'lbworkspace', 'sln'] }
       ]
@@ -663,7 +999,7 @@ function registerIpcHandlers(): void {
       ? await dialog.showOpenDialog(owner, options)
       : await dialog.showOpenDialog(options);
     if (result.canceled || !result.filePaths[0]) return { ok: false, canceled: true };
-    const workspacePath = await resolveWorkspaceDropTarget(result.filePaths[0]);
+    const workspacePath = await workspaceService.resolveWorkspaceTarget(result.filePaths[0]);
     launchWorkspaceWindow(workspacePath);
     return { ok: true, canceled: false, workspacePath, newWindow: true };
   });
@@ -685,6 +1021,8 @@ function intersects(area: Electron.Rectangle, bounds: { x: number; y: number; wi
     && bounds.y < area.y + area.height && bounds.y + bounds.height > area.y;
 }
 
+if (process.platform === 'win32') app.setAppUserModelId('cn.lingbuilder.ide');
+
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   const smokeDocumentsPath = process.argv.includes('--smoke-test')
@@ -701,6 +1039,14 @@ app.whenReady().then(async () => {
   activeWorkspace = await workspaceService.resolveInitialWorkspace(
     app.isPackaged ? undefined : (process.env.LINGBUILDER_WORKSPACE_ROOT || repoRoot())
   );
+  aiBridgeManager = new AiBridgeManagerService({
+    runtimeExecutable: process.execPath,
+    cliEntryPath: cliEntryPath(),
+    environment: process.env
+  });
+  aiBridgeManager.subscribe(snapshot => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('ai-bridge:status-changed', snapshot);
+  });
 
   if (app.isPackaged) {
     const ready = await startPackagedRendererServer(activeWorkspace);
@@ -712,6 +1058,9 @@ app.whenReady().then(async () => {
   }
 
   await cloudAccountService.initialize().catch(error => console.warn(`系统 AI 账号恢复失败：${error instanceof Error ? error.message : String(error)}`));
+  for (const authorization of await readModulePermitCache()) {
+    await requestRendererApi('/api/module-access/sync', { method: 'POST', body: JSON.stringify(authorization) }).catch(() => undefined);
+  }
   registerIpcHandlers();
   await createMainWindow();
   app.on('activate', () => {

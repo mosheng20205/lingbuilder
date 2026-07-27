@@ -57,6 +57,17 @@ test('editing a secondary file does not replace a different primary active file'
   assert.equal(result.files[1].translatedContent, '新内容');
 });
 
+test('split editor ignores unchanged Monaco synchronization events', () => {
+  const active = createFile({ originalContent: '相同内容', translatedContent: '相同内容' });
+  const files = [active];
+
+  const result = updateEditorFileContent(files, active, active.path, '相同内容');
+
+  assert.equal(result.files, files);
+  assert.equal(result.activeFile, active);
+  assert.equal(result.updatedFile, null);
+});
+
 function createFile(patch: Partial<CppFile>): CppFile {
   return {
     path: 'src/test.lcpp',

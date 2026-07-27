@@ -6,6 +6,10 @@ const PROBLEM_LEVEL_LABELS: Record<ProblemItem['level'], string> = {
   info: '辅助信息 (Info)'
 };
 
+export function countErrorListProblems(problems: ProblemItem[]): number {
+  return problems.filter(problem => problem.level !== 'info').length;
+}
+
 export function formatProblemsForClipboard(problems: ProblemItem[]): string {
   if (problems.length === 0) return '> [错误列表] 空';
 

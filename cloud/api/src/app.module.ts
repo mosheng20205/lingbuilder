@@ -17,10 +17,14 @@ import { RulebookService } from './ai/rulebook.service.js';
 import { AiController, UsageController } from './ai/ai.controller.js';
 import { AdminController } from './admin/admin.controller.js';
 import { HealthController } from './health.controller.js';
+import { PaymentProviderService } from './modules/payment-provider.service.js';
+import { ModuleCommerceService } from './modules/module-commerce.service.js';
+import { ModuleCommerceController } from './modules/module-commerce.controller.js';
+import { ModuleAdminController } from './modules/module-admin.controller.js';
 
 @Module({
   imports: [JwtModule.register({ global: true, secret: getConfig().jwtSecret, signOptions: { issuer: 'lingbuilder-cloud', audience: 'lingbuilder-clients' }, verifyOptions: { issuer: 'lingbuilder-cloud', audience: 'lingbuilder-clients' } })],
-  controllers: [HealthController, AuthController, MeController, AiController, UsageController, AdminController],
-  providers: [PrismaService, RedisService, SecretVaultService, BillingService, PromotionService, AuthService, ProviderService, RulebookService, AiService, { provide: APP_GUARD, useClass: AuthGuard }, { provide: APP_FILTER, useClass: CloudExceptionFilter }]
+  controllers: [HealthController, AuthController, MeController, AiController, UsageController, AdminController, ModuleCommerceController, ModuleAdminController],
+  providers: [PrismaService, RedisService, SecretVaultService, BillingService, PromotionService, AuthService, ProviderService, RulebookService, AiService, PaymentProviderService, ModuleCommerceService, { provide: APP_GUARD, useClass: AuthGuard }, { provide: APP_FILTER, useClass: CloudExceptionFilter }]
 })
 export class AppModule {}

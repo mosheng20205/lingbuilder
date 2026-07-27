@@ -22,7 +22,7 @@ import type { ModuleHintContent } from '../services/modules/types';
 import TerminalPanel from './TerminalPanel';
 import DebugInspector from './DebugInspector';
 import TestExplorer from './TestExplorer';
-import { formatProblemsForClipboard } from '../services/problems/problemClipboard';
+import { countErrorListProblems, formatProblemsForClipboard } from '../services/problems/problemClipboard';
 
 type LogContextMenuTab = 'problems' | 'output' | 'debug_logs';
 
@@ -182,6 +182,7 @@ export default function BottomPanel({
     if (filterType === 'all') return true;
     return s.type === filterType;
   });
+  const errorListProblemCount = countErrorListProblems(problems);
 
   const handleStartEdit = (s: ExtractedString) => {
     setEditingId(s.id);
@@ -303,8 +304,8 @@ export default function BottomPanel({
                   : 'text-slate-600 hover:text-slate-800 hover:bg-slate-200/40 bg-transparent border-transparent'
             }`}
           >
-            <AlertTriangle className={`w-3.5 h-3.5 ${problems.length > 0 ? 'text-rose-500 animate-pulse' : 'text-slate-500'}`} />
-            <span>错误列表 ({problems.length})</span>
+            <AlertTriangle className={`w-3.5 h-3.5 ${errorListProblemCount > 0 ? 'text-rose-500 animate-pulse' : 'text-slate-500'}`} />
+            <span>错误列表 ({errorListProblemCount})</span>
           </button>
 
           <button
@@ -599,6 +600,19 @@ export default function BottomPanel({
               </div>
 
               <div className="space-y-4 p-4">
+                {commandHint.returnDescription && (
+                  <div className={`rounded border px-3 py-2 ${
+                    isDarkMode ? 'border-sky-500/20 bg-sky-500/[0.06]' : 'border-sky-200 bg-sky-50'
+                  }`}>
+                    <div className={`text-[10px] font-semibold ${isDarkMode ? 'text-sky-300' : 'text-sky-700'}`}>返回值</div>
+                    <div className={`mt-1 flex items-start gap-2 text-[11px] leading-5 ${isDarkMode ? 'text-slate-300' : 'text-slate-700'}`}>
+                      <span className={`shrink-0 rounded px-1.5 py-0.5 font-semibold ${
+                        isDarkMode ? 'bg-sky-500/10 text-sky-300' : 'bg-white text-sky-700'
+                      }`}>{commandHint.returnType}</span>
+                      <span>{commandHint.returnDescription}</span>
+                    </div>
+                  </div>
+                )}
                 <div className={`overflow-hidden rounded border ${isDarkMode ? 'border-slate-700/60' : 'border-slate-200'}`}>
                   <div className={`grid grid-cols-[minmax(80px,120px)_minmax(70px,110px)_minmax(0,1fr)] border-b px-3 py-2 text-[10px] font-semibold ${
                     isDarkMode ? 'border-slate-700/50 bg-white/[0.03] text-slate-400' : 'border-slate-200 bg-slate-100 text-slate-600'

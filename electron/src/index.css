@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+:root {
+  --lingbuilder-ui-font: "Microsoft YaHei UI", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  font-family: var(--lingbuilder-ui-font);
+  font-synthesis: none;
+}
+
 html,
 body,
 #root {
@@ -15,6 +21,44 @@ body,
 body {
   position: fixed;
   inset: 0;
+  font-family: var(--lingbuilder-ui-font);
+  font-size: 12px;
+  line-height: 1.4;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+/*
+ * 中文 UI 使用同一套经过 Windows 小字号优化的字体。过去活动栏文字再经过
+ * transform 缩小，会落在半像素上并产生明显模糊；工作台文字不再参与整体缩放。
+ */
+.workbench-shell,
+.workbench-shell .font-sans {
+  font-family: var(--lingbuilder-ui-font);
+}
+
+.workbench-shell {
+  isolation: isolate;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* 主要工作台区域不再使用 8–10px 的正文。Windows 100% 缩放下，这些字号的
+ * 中文笔画容易在不同 fallback 字体间呈现一清一糊。徽标保持紧凑，正文至少 11px。 */
+:is(#ide-top-toolbar, #vs-dockable-sidebar, #vs-bottom-tabs, #ai-assistant-panel, #diff-window-host)
+  :is(.text-\[8px\], .text-\[9px\]) {
+  font-size: 10px;
+}
+
+:is(#ide-top-toolbar, #vs-dockable-sidebar, #vs-bottom-tabs, #ai-assistant-panel, #diff-window-host)
+  .text-\[10px\] {
+  font-size: 11px;
 }
 
 /* Electron 无边框窗口的自定义标题栏拖动区域。交互控件必须排除在拖动区域之外。 */

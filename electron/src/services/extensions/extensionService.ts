@@ -36,7 +36,31 @@ export class ExtensionService {
   private log(message: string) { if (!message) return; this.snapshot.logs.push(message); if (this.snapshot.logs.length > 500) this.snapshot.logs.splice(0, this.snapshot.logs.length - 500); }
 }
 
-function validateManifest(value: any): ExtensionManifest { if (!value || typeof value !== 'object') throw new Error('扩展 package.json 无效。'); for (const key of ['name', 'publisher', 'version', 'main']) if (typeof value[key] !== 'string' || !value[key].trim()) throw new Error(`扩展缺少 ${key}。`); if (!/^[a-z0-9._-]+$/iu.test(value.name) || !/^[a-z0-9._-]+$/iu.test(value.publisher)) throw new Error('扩展 publisher/name 无效。'); if (value.activationEvents && (!Array.isArray(value.activationEvents) || value.activationEvents.some((item: any) => typeof item !== 'string' || !/^(?:\*|onCommand:[a-z0-9._-]+|onLanguage:[a-z0-9._-]+|workspaceContains:[^\0]+)$/iu.test(item)))) throw new Error('activationEvents 无效。'); const permissions = value.permissions || []; if (!Array.isArray(permissions) || permissions.some((item: any) => !['workspace.read', 'workspace.write'].includes(item))) throw new Error('扩展权限无效。'); const contributes = value.contributes || {}; if (contributes.commands && (!Array.isArray(contributes.commands) || contributes.commands.some((item: any) => typeof item.command !== 'string' || typeof item.title !== 'string'))) throw new Error('命令贡献无效。'); if (contributes.menus && (!Array.isArray(contributes.menus) || contributes.menus.some((item: any) => typeof item.menu !== 'string' || typeof item.command !== 'string'))) throw new Error('菜单贡献无效。'); if (contributes.views && (!Array.isArray(contributes.views) || contributes.views.some((item: any) => typeof item.id !== 'string' || typeof item.name !== 'string'))) throw new Error('视图贡献无效。'); if (contributes.languages && (!Array.isArray(contributes.languages) || contributes.languages.some((item: any) => typeof item.id !== 'string' || (item.extensions && !Array.isArray(item.extensions))))) throw new Error('语言贡献无效。'); if (contributes.themes && (!Array.isArray(contributes.themes) || contributes.themes.some((item: any) => typeof item.id !== 'string' || typeof item.label !== 'string' || typeof item.path !== 'string'))) throw new Error('主题贡献无效。'); return structuredClone(value); }
+function validateManifest(value: any): ExtensionManifest {
+  if (!value || typeof value !== 'object') throw new Error('扩展 package.json 无效。');
+  for (const key of ['name', 'publisher', 'version', 'main']) if (typeof value[key] !== 'string' || !value[key].trim()) throw new Error(`扩展缺少 ${key}。`);
+  if (!/^[a-z0-9._-]+$/iu.test(value.name) || !/^[a-z0-9._-]+$/iu.test(value.publisher)) throw new Error('扩展 publisher/name 无效。');
+  if (value.activationEvents && (!Array.isArray(value.activationEvents) || value.activationEvents.some((item: any) => typeof item !== 'string' || !/^(?:\*|onCommand:[a-z0-9._-]+|onLanguage:[a-z0-9._-]+|workspaceContains:[^\0]+)$/iu.test(item)))) throw new Error('activationEvents 无效。');
+  const permissions = value.permissions || [];
+  if (!Array.isArray(permissions) || permissions.some((item: any) => !['workspace.read', 'workspace.write', 'designer.read', 'designer.write'].includes(item))) throw new Error('扩展权限无效。');
+  const contributes = value.contributes || {};
+  if (contributes.commands && (!Array.isArray(contributes.commands) || contributes.commands.some((item: any) => typeof item.command !== 'string' || typeof item.title !== 'string'))) throw new Error('命令贡献无效。');
+  const submenuIds = new Set<string>();
+  if (contributes.submenus && (!Array.isArray(contributes.submenus) || contributes.submenus.some((item: any) => {
+    const invalid = typeof item.id !== 'string' || typeof item.title !== 'string' || submenuIds.has(item.id);
+    if (typeof item.id === 'string') submenuIds.add(item.id);
+    return invalid;
+  }))) throw new Error('子菜单贡献无效。');
+  if (contributes.menus && (!Array.isArray(contributes.menus) || contributes.menus.some((item: any) => {
+    const hasCommand = typeof item.command === 'string' && Boolean(item.command.trim());
+    const hasSubmenu = typeof item.submenu === 'string' && Boolean(item.submenu.trim());
+    return typeof item.menu !== 'string' || hasCommand === hasSubmenu || (hasSubmenu && !submenuIds.has(item.submenu)) || (item.order !== undefined && typeof item.order !== 'number') || (item.arguments !== undefined && !Array.isArray(item.arguments));
+  }))) throw new Error('菜单贡献无效。');
+  if (contributes.views && (!Array.isArray(contributes.views) || contributes.views.some((item: any) => typeof item.id !== 'string' || typeof item.name !== 'string'))) throw new Error('视图贡献无效。');
+  if (contributes.languages && (!Array.isArray(contributes.languages) || contributes.languages.some((item: any) => typeof item.id !== 'string' || (item.extensions && !Array.isArray(item.extensions))))) throw new Error('语言贡献无效。');
+  if (contributes.themes && (!Array.isArray(contributes.themes) || contributes.themes.some((item: any) => typeof item.id !== 'string' || typeof item.label !== 'string' || typeof item.path !== 'string'))) throw new Error('主题贡献无效。');
+  return structuredClone(value);
+}
 function requirePermission(extension: ExtensionDescriptor, permission: ExtensionPermission) { if (!(extension.manifest.permissions || []).includes(permission)) throw new Error(`扩展 ${extension.id} 未声明权限 ${permission}。`); }
 async function atomicJson(file: string, value: unknown) { await fs.mkdir(path.dirname(file), { recursive: true }); const temp = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, 'utf8'); await fs.rename(temp, file); }
 async function exists(file: string) { try { await fs.access(file); return true; } catch { return false; } }

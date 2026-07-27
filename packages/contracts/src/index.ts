@@ -41,6 +41,70 @@ export interface UsageReceipt {
 }
 export interface CreditBalance { available: string; reserved: string; lifetimeGranted: string; lifetimeSpent: string }
 
+export type ModuleOfferKind = 'perpetual' | 'fixed_term';
+export type ModulePaymentProvider = 'wechat' | 'alipay' | 'manual';
+export type ModuleAccessSource = 'purchase' | 'admin_grant' | 'compensation' | 'free_window';
+
+export interface ModuleOffer {
+  id: string;
+  productId: string;
+  name: string;
+  kind: ModuleOfferKind;
+  priceMinor: string;
+  currency: 'CNY';
+  durationDays?: number;
+}
+
+export interface ModuleCommerceState {
+  moduleId: string;
+  productId: string;
+  name: string;
+  description: string;
+  listed: boolean;
+  enabled: boolean;
+  offers: ModuleOffer[];
+  freeWindow?: { id: string; name: string; startsAt: string; endsAt: string; timezone: string };
+  access?: { allowed: boolean; source?: ModuleAccessSource; expiresAt?: string; reason?: string };
+}
+
+export interface ModuleEntitlement {
+  id: string;
+  moduleId: string;
+  source: Exclude<ModuleAccessSource, 'free_window'>;
+  startsAt: string;
+  endsAt?: string;
+  revokedAt?: string;
+}
+
+export interface ModuleAccessPermitPayload {
+  version: 1;
+  keyId: string;
+  userId: string;
+  moduleId: string;
+  source: ModuleAccessSource;
+  policyVersion: number;
+  issuedAt: string;
+  expiresAt: string;
+  serverTime: string;
+}
+
+export interface ModuleAccessPermit {
+  payload: ModuleAccessPermitPayload;
+  signature: string;
+}
+
+export interface ModuleOrder {
+  id: string;
+  moduleId: string;
+  offerId: string;
+  provider: ModulePaymentProvider;
+  status: 'pending' | 'paid' | 'expired' | 'cancelled' | 'refunded';
+  amountMinor: string;
+  currency: 'CNY';
+  paymentUrl?: string;
+  expiresAt: string;
+}
+
 export type AiStreamEvent =
   | { type: 'accepted'; requestId: string; reservedPoints: string; freePromotionId?: string }
   | { type: 'delta'; requestId: string; text: string }
@@ -87,6 +151,8 @@ export type CloudErrorCode =
   | 'VALIDATION_FAILED' | 'AUTH_REQUIRED' | 'AUTH_INVALID' | 'EMAIL_NOT_VERIFIED'
   | 'FORBIDDEN' | 'MFA_REQUIRED' | 'RATE_LIMITED' | 'INSUFFICIENT_CREDITS'
   | 'IDEMPOTENCY_CONFLICT' | 'MODEL_UNAVAILABLE' | 'PROVIDER_FAILED'
-  | 'REQUEST_CANCELLED' | 'FILE_CONFLICT' | 'INTERNAL_ERROR';
+  | 'REQUEST_CANCELLED' | 'FILE_CONFLICT' | 'INTERNAL_ERROR'
+  | 'MODULE_LOGIN_REQUIRED' | 'MODULE_PAYMENT_REQUIRED' | 'MODULE_ENTITLEMENT_EXPIRED'
+  | 'MODULE_FREE_WINDOW_ENDED' | 'MODULE_ACCESS_UNAVAILABLE' | 'MODULE_PERMIT_INVALID';
 
 export interface CloudApiError { ok: false; code: CloudErrorCode; message: string; requestId: string; details?: unknown }

@@ -16,7 +16,7 @@ import 'monaco-editor/esm/vs/basic-languages/ini/ini.contribution.js';
 import {
   buildLingCppLanguageContext,
   formatLingCpp,
-  getLingCppBilingualCompletions,
+  getLingCppCompletionItems,
   getLingCppDesignerBindings,
   getLingCppEventBlockHighlights,
   getLingCppFoldingRanges,
@@ -27,7 +27,13 @@ import {
   getLingCppSymbols
 } from '../services/lingCpp/languageService';
 import { createLingCppMonarchLanguage } from '../services/lingCpp/monacoTokens';
-import { LingCppDesignerBindingHint, LingCppDocumentSymbol, LingCppReadingMode, LingCppStructuredReadingRow } from '../services/lingCpp/types';
+import { LingCppDesignerBindingHint, LingCppDocumentSymbol, LingCppProjectGlobalContext, LingCppProjectSourceFile, LingCppProjectTypeContext, LingCppReadingMode, LingCppStructuredReadingRow } from '../services/lingCpp/types';
+import { findProjectGlobalDefinition, renameProjectGlobalAcrossSources } from '../services/lingCpp/projectGlobalService';
+import { createProjectFunctionContext } from '../services/lingCpp/functionLibraryService';
+import { findProjectDataTypeDefinition, resolveProjectDataFieldAccess } from '../services/lingCpp/projectDataTypeService';
+import { applyWorkspaceEditToFiles } from '../services/lingCpp/aiEditService';
+import { createProjectConstantRenameProposal, findProjectConstantReferences } from '../services/lingCpp/projectConstantReferenceService';
+import { selectCompletionFilterText } from '../services/lingCpp/completionSearchAliases';
 import { LingWindowProject } from '../services/windowDesigner/types';
 import { InstalledModule, LingCppModuleContext } from '../services/modules/types';
 import {
@@ -89,6 +95,10 @@ export interface MonacoCodeEditorProps {
   focusedBlockId?: string;
   onRevealReadableBlock?: (blockId: string) => void;
   moduleContext?: LingCppModuleContext;
+  projectGlobals?: LingCppProjectGlobalContext;
+  projectTypes?: LingCppProjectTypeContext;
+  projectSources?: LingCppProjectSourceFile[];
+  onProjectSourcesChange?: (sources: LingCppProjectSourceFile[]) => void;
   modelIdentity?: TextModelIdentity;
   modelSurface?: string;
   onEditorStateChange?: (state: MonacoEditorState) => void;
@@ -105,6 +115,10 @@ let lingCppFilePathSnapshot: string | undefined;
 let lingCppRevealBindingSnapshot: ((binding: LingCppDesignerBindingHint) => void) | undefined;
 let lingCppRevealCommandId: string | undefined;
 let lingCppModuleContextSnapshot: LingCppModuleContext | undefined;
+let lingCppProjectGlobalsSnapshot: LingCppProjectGlobalContext | undefined;
+let lingCppProjectTypesSnapshot: LingCppProjectTypeContext | undefined;
+let lingCppProjectSourcesSnapshot: LingCppProjectSourceFile[] | undefined;
+let lingCppProjectSourcesChangeSnapshot: ((sources: LingCppProjectSourceFile[]) => void) | undefined;
 
 const EPL_KEYWORDS = [
   '如果', '如果真', '否则', '否则如果', '如果结束',
@@ -116,7 +130,7 @@ const EPL_KEYWORDS = [
   '枚举循环首', '枚举循环尾',
   '跳出循环', '到循环尾',
   '尝试', '捕获',
-  '子程序', '局部变量', '返回', '结束'
+  '子程序', '局部变量', '常量', '返回', '结束'
 ];
 
 const EPL_COMMANDS = [
@@ -210,7 +224,7 @@ const eplMonarchLanguage = createMonarchLanguage(
   EPL_COMMANDS,
   EPL_TYPES,
   EPL_BOOLEANS,
-  /^\s*\.(子程序|局部变量|变量|程序集|程序集变量|版本|支持库)\b/
+  /^\s*\.(子程序|局部变量|变量|常量|程序集|程序集变量|版本|支持库)\b/
 );
 
 const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProps>(function MonacoCodeEditor({
@@ -231,6 +245,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
   focusedBlockId,
   onRevealReadableBlock,
   moduleContext: providedModuleContext,
+  projectGlobals, projectTypes, projectSources, onProjectSourcesChange,
   modelIdentity: providedModelIdentity,
   modelSurface = 'professional',
   onEditorStateChange,
@@ -681,7 +696,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       });
 
       monaco.languages.registerCompletionItemProvider('lingcpp', {
-        triggerCharacters: ['_', ' ', '(', '"', '“'],
+        triggerCharacters: ['_', ' ', '(', '"', '“', '.'],
         provideCompletionItems: (model: any, position: any) => {
           const word = model.getWordUntilPosition(position);
           const range = {
@@ -691,18 +706,32 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
             endColumn: word.endColumn
           };
 
-          const suggestions = getLingCppBilingualCompletions({
-            source: model.getValue(),
+          const source = model.getValue();
+          const suggestions = getLingCppCompletionItems({
+            source,
             line: position.lineNumber,
             column: position.column,
             triggerText: word.word
-          }, lingCppDesignerProjectSnapshot, lingCppModuleContextSnapshot).map(item => ({
+          }, buildLingCppLanguageContext(
+            source,
+            lingCppDesignerProjectSnapshot,
+            lingCppModuleContextSnapshot,
+            lingCppFilePathSnapshot,
+            lingCppProjectGlobalsSnapshot,
+            lingCppProjectTypesSnapshot
+            , createProjectFunctionContext((lingCppProjectSourcesSnapshot || []).map(item => ({ ...item, language: 'lingcpp' })))
+          )).map(item => ({
             label: item.label,
             kind: toMonacoCompletionKind(item.kind, monaco),
             insertText: item.insertText,
             insertTextRules: item.isSnippet
               ? monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet
               : undefined,
+            filterText: selectCompletionFilterText(
+              item.label,
+              [...(item.aliases || []), ...(item.pinyin || [])],
+              word.word
+            ),
             detail: item.detail,
             documentation: buildCompletionDocumentation(item),
             range
@@ -723,7 +752,10 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
             source,
             lingCppDesignerProjectSnapshot,
             lingCppModuleContextSnapshot,
-            lingCppFilePathSnapshot
+            lingCppFilePathSnapshot,
+            lingCppProjectGlobalsSnapshot,
+            lingCppProjectTypesSnapshot
+            , createProjectFunctionContext((lingCppProjectSourcesSnapshot || []).map(item => ({ ...item, language: 'lingcpp' })))
           ));
           if (!hover) return null;
           return {
@@ -735,6 +767,108 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
             } : undefined,
             contents: [{ value: hover.contents }]
           };
+        }
+      });
+
+      monaco.languages.registerDefinitionProvider('lingcpp', {
+        provideDefinition: (model: any, position: any) => {
+          const word = model.getWordAtPosition(position);
+          if (!word?.word) return null;
+          const constant = lingCppProjectGlobalsSnapshot?.constants.find(item => item.name === word.word);
+          const globalDefinition = lingCppProjectGlobalsSnapshot ? findProjectGlobalDefinition(word.word, lingCppProjectGlobalsSnapshot) : undefined;
+          const typeDefinition = findProjectDataTypeDefinition(word.word, lingCppProjectTypesSnapshot);
+          const lineText = model.getLineContent(position.lineNumber) as string;
+          const memberAccess = [...lineText.matchAll(/[\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)+/gu)]
+            .find(match => (match.index || 0) < position.column && (match.index || 0) + match[0].length >= position.column - 1)?.[0];
+          const globalTypes = new Map((lingCppProjectGlobalsSnapshot?.globals || []).map(global => [global.name, global.type]));
+          const fieldDefinition = memberAccess ? resolveProjectDataFieldAccess(model.getValue(), position.lineNumber, memberAccess, lingCppProjectTypesSnapshot, globalTypes) : undefined;
+          const definition = constant
+            ? { filePath: lingCppProjectGlobalsSnapshot!.filePath, line: constant.line, name: constant.name }
+            : globalDefinition
+              ? { filePath: globalDefinition.filePath, line: globalDefinition.line, name: globalDefinition.global.name }
+              : fieldDefinition
+                ? { filePath: fieldDefinition.filePath, line: fieldDefinition.line, name: fieldDefinition.field.name }
+                : typeDefinition
+                  ? { filePath: typeDefinition.filePath, line: typeDefinition.line, name: typeDefinition.dataType.name }
+                  : undefined;
+          if (!definition) return null;
+          const range = {
+            startLineNumber: definition.line,
+            startColumn: 1,
+            endLineNumber: definition.line,
+            endColumn: Math.max(2, definition.name.length + 1)
+          };
+          const normalizePath = (value: string) => value.replace(/\\/gu, '/').replace(/^\.\//u, '').toLocaleLowerCase();
+          if (lingCppFilePathSnapshot && normalizePath(definition.filePath) === normalizePath(lingCppFilePathSnapshot)) {
+            return { uri: model.uri, range };
+          }
+          window.dispatchEvent(new CustomEvent('lingcpp-reveal-definition', {
+            detail: { filePath: definition.filePath, line: definition.line, column: 1 }
+          }));
+          return null;
+        }
+      });
+
+      monaco.languages.registerRenameProvider('lingcpp', {
+        resolveRenameLocation: (model: any, position: any) => {
+          const word = model.getWordAtPosition(position);
+          const isConstant = Boolean(word?.word && lingCppProjectGlobalsSnapshot?.constants.some(item => item.name === word.word));
+          const definition = word?.word && lingCppProjectGlobalsSnapshot ? findProjectGlobalDefinition(word.word, lingCppProjectGlobalsSnapshot) : undefined;
+          if (!word?.word || (!definition && !isConstant)) return { rejectReason: '当前符号不是项目变量或项目常量。' };
+          return {
+            text: word.word,
+            range: {
+              startLineNumber: position.lineNumber,
+              startColumn: word.startColumn,
+              endLineNumber: position.lineNumber,
+              endColumn: word.endColumn
+            }
+          };
+        },
+        provideRenameEdits: (model: any, position: any, newName: string) => {
+          const word = model.getWordAtPosition(position);
+          if (!word?.word || !lingCppProjectGlobalsSnapshot || !lingCppProjectSourcesSnapshot?.length || !lingCppProjectSourcesChangeSnapshot) {
+            return { edits: [], rejectReason: '项目全局变量上下文尚未就绪。' };
+          }
+          try {
+            const isConstant = lingCppProjectGlobalsSnapshot.constants.some(item => item.name === word.word);
+            const sources = isConstant
+              ? applyWorkspaceEditToFiles(
+                  lingCppProjectSourcesSnapshot,
+                  createProjectConstantRenameProposal(
+                    lingCppProjectSourcesSnapshot,
+                    lingCppProjectGlobalsSnapshot.filePath,
+                    word.word,
+                    newName
+                  )
+                )
+              : renameProjectGlobalAcrossSources(
+                  lingCppProjectSourcesSnapshot,
+                  lingCppProjectGlobalsSnapshot,
+                  word.word,
+                  newName
+                );
+            lingCppProjectSourcesChangeSnapshot(sources);
+            return { edits: [] };
+          } catch (error) {
+            return { edits: [], rejectReason: error instanceof Error ? error.message : '项目符号重命名失败。' };
+          }
+        }
+      });
+
+      monaco.languages.registerReferenceProvider('lingcpp', {
+        provideReferences: (model: any, position: any) => {
+          const word = model.getWordAtPosition(position);
+          if (!word?.word || !lingCppProjectGlobalsSnapshot?.constants.some(item => item.name === word.word) || !lingCppProjectSourcesSnapshot?.length) return [];
+          return findProjectConstantReferences(lingCppProjectSourcesSnapshot, word.word).map(reference => ({
+            uri: reference.filePath === lingCppFilePathSnapshot ? model.uri : monaco.Uri.file(reference.filePath),
+            range: {
+              startLineNumber: reference.line,
+              startColumn: reference.column,
+              endLineNumber: reference.line,
+              endColumn: reference.column + word.word.length
+            }
+          }));
         }
       });
 
@@ -991,6 +1125,10 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     lingCppFilePathSnapshot = filePath;
     lingCppRevealBindingSnapshot = onRevealDesignerBinding;
     lingCppModuleContextSnapshot = moduleContext;
+    lingCppProjectGlobalsSnapshot = projectGlobals;
+    lingCppProjectTypesSnapshot = projectTypes;
+    lingCppProjectSourcesSnapshot = projectSources;
+    lingCppProjectSourcesChangeSnapshot = onProjectSourcesChange;
 
     const monaco = monacoRef.current;
     const editor = editorRef.current;
@@ -1003,7 +1141,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       return;
     }
 
-    const markers = getLingCppSemanticDiagnostics(sourceCode, designerProject, filePath, moduleContext).map(diagnostic => {
+    const markers = getLingCppSemanticDiagnostics(sourceCode, designerProject, filePath, moduleContext, projectGlobals, projectTypes, createProjectFunctionContext((projectSources || []).map(item => ({ ...item, language: 'lingcpp' })))).map(diagnostic => {
       const line = Math.max(1, Math.min(diagnostic.line, model.getLineCount()));
       return {
         severity: toMonacoMarkerSeverity(diagnostic.level, monaco),
@@ -1048,7 +1186,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     );
 
     decorationIdsRef.current = editor.deltaDecorations(decorationIdsRef.current, [...bindingDecorations, ...structureDecorations, ...readingDecorations]);
-  }, [sourceCode, language, designerProject, filePath, onRevealDesignerBinding, moduleContext, readingMode, focusedBlockId]);
+  }, [sourceCode, language, designerProject, filePath, onRevealDesignerBinding, moduleContext, projectGlobals, projectTypes, readingMode, focusedBlockId]);
 
   useEffect(() => {
     const editor = editorRef.current; const monaco = monacoRef.current; if (!editor || !monaco) return;
@@ -1098,6 +1236,9 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
           },
           lineNumbers: 'on',
           codeLens: false,
+          quickSuggestions: { other: true, comments: false, strings: false },
+          suggestOnTriggerCharacters: true,
+          acceptSuggestionOnEnter: 'on',
           roundedSelection: false,
           scrollBeyondLastLine: false,
           automaticLayout: true,
@@ -1321,6 +1462,7 @@ function structureTextForGroup(group: LingCppStructuredReadingRow['group']): str
   const labels: Record<LingCppStructuredReadingRow['group'], string> = {
     declaration: '声明',
     package: '入口',
+    global: '项目全局变量',
     class: '类',
     member: '成员',
     local: '局部变量',
@@ -1408,6 +1550,10 @@ function toMonacoSymbolKind(kind: LingCppDocumentSymbol['kind'], monaco: any): n
       return monaco.languages.SymbolKind.Namespace;
     case 'class':
       return monaco.languages.SymbolKind.Class;
+    case 'data-type':
+      return monaco.languages.SymbolKind.Struct;
+    case 'data-field':
+      return monaco.languages.SymbolKind.Field;
     case 'member':
       return monaco.languages.SymbolKind.Field;
     case 'constructor':

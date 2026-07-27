@@ -1,0 +1,23 @@
+模块: Win32窗口基础模块
+ID: lingbuilder.win32.basic
+版本: 1.0.0
+内置: 是
+目标: windows-msvc-win32 (windows/msvc/win32)
+命令数: 36
+控件数: 12
+头文件: 无
+源码: 无
+库: comctl32.lib
+运行时文件: 无
+
+模块: 网页访问模块
+ID: lingbuilder.web.http
+版本: 1.0.0
+内置: 否
+目标: windows-msvc-win32 (windows/msvc/win32)
+命令数: 6
+控件数: 0
+头文件: include/web_http_bridge.h
+源码: src/web_http_bridge.cpp
+库: 无
+运行时文件: 无

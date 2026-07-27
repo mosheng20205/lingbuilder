@@ -4,7 +4,13 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { createProjectFilePersistenceService, createProjectFileVersion, ProjectFileConflictError, type ProjectFilePersistenceFileSystem } from '../src/services/files/projectFilePersistenceService';
+import {
+  createProjectFilePersistenceService,
+  createProjectFileVersion,
+  ProjectFileConflictError,
+  readProjectFileVersionsFromDisk,
+  type ProjectFilePersistenceFileSystem
+} from '../src/services/files/projectFilePersistenceService';
 import { HotExitRecoveryService } from '../src/services/files/hotExitRecoveryService';
 import {
   isWorkspaceSaveEcho,
@@ -100,6 +106,32 @@ test('atomically writes a complete batch', async t => {
   assert.equal(await fs.readFile(first, 'utf8'), 'a1');
   assert.equal(await fs.readFile(second, 'utf8'), 'b1');
   assert.equal(result.versions[path.resolve(first)], createProjectFileVersion(Buffer.from('a1')));
+});
+
+test('initial versions use exact disk bytes when decoded text normalizes mixed line endings', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-version-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const relativePath = 'src/Main.lcpp';
+  const diskBytes = Buffer.from('第一行\r\n第二行\n第三行\r\n', 'utf8');
+  await fs.mkdir(path.join(root, 'src'), { recursive: true });
+  await fs.writeFile(path.join(root, relativePath), diskBytes);
+
+  const versions = await readProjectFileVersionsFromDisk(root, [relativePath]);
+
+  assert.equal(versions[relativePath], createProjectFileVersion(diskBytes));
+  assert.notEqual(
+    versions[relativePath],
+    createProjectFileVersion(Buffer.from('第一行\n第二行\n第三行\n', 'utf8'))
+  );
+});
+
+test('disk version reads reject paths outside the workspace', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-version-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  await assert.rejects(
+    readProjectFileVersionsFromDisk(root, ['../outside.lcpp']),
+    /不能越过工作区/u
+  );
 });
 
 test('rolls earlier replacements back when a later rename fails', async t => {

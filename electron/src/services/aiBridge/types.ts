@@ -1,5 +1,6 @@
 import { AiConnectionConfig, LingCppWorkspaceFile, WorkspaceEditProposal, WorkspaceEditRange } from '../lingCpp/types';
 import { LingWindowProject } from '../windowDesigner/types';
+import { LingCppProjectSourceFile } from '../lingCpp/types';
 
 export type AiBridgePermissionMode = 'readonly' | 'preview' | 'yolo';
 
@@ -77,6 +78,7 @@ export interface AiBridgeBuildRunRequest {
   activeWindowId?: string;
   lingCppSourceCode?: string;
   lingCppSourceFilePath?: string;
+  lingCppSources?: LingCppProjectSourceFile[];
   run?: boolean;
   approved?: boolean;
 }
@@ -86,6 +88,7 @@ export interface AiBridgeNativeRequest {
   activeWindowId?: string;
   lingCppSourceCode?: string;
   lingCppSourceFilePath?: string;
+  lingCppSources?: LingCppProjectSourceFile[];
   approved?: boolean;
 }
 

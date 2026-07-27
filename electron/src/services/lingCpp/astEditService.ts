@@ -5,11 +5,14 @@ import {
   LingCppAstEditResult,
   LingCppAccessModifier,
   LingCppClass,
+  LingCppDataField,
+  LingCppDataType,
   LingCppDiagnostic,
   LingCppLocalVariable,
   LingCppMember,
   LingCppMethod,
-  LingCppParameter
+  LingCppParameter,
+  LingCppProgram
 } from './types';
 
 const DEFAULT_FILE_PATH = 'memory.lcpp';
@@ -21,7 +24,7 @@ export function applyLingCppAstEdit(source: string, edit: LingCppAstEdit): LingC
 
   try {
     const lines = source.split(/\r?\n/);
-    const updatedLines = applyEditToLines(lines, parsed.program.classes, edit);
+    const updatedLines = applyEditToLines(lines, parsed.program, edit);
     const updatedSource = updatedLines.join(newline);
     const nextParse = parseLingCpp(updatedSource);
     const blockingDiagnostics = nextParse.diagnostics.filter(diagnostic => diagnostic.level === 'error');
@@ -40,7 +43,7 @@ export function applyLingCppAstEdit(source: string, edit: LingCppAstEdit): LingC
   }
 }
 
-function applyEditToLines(lines: string[], classes: LingCppClass[], edit: LingCppAstEdit): string[] {
+function applyEditToLines(lines: string[], program: LingCppProgram, edit: LingCppAstEdit): string[] {
   const next = [...lines];
   if (edit.kind === 'update-package') {
     const packageIndex = next.findIndex(line => line.trim().startsWith('包 '));
@@ -55,7 +58,129 @@ function applyEditToLines(lines: string[], classes: LingCppClass[], edit: LingCp
     return next;
   }
 
-  const cls = resolveClass(classes, edit.className, 'line' in edit ? edit.line : undefined);
+  if (edit.kind === 'add-constant') {
+    insertConstant(next, program, edit.constant);
+    return next;
+  }
+
+  if (edit.kind === 'update-constant') {
+    const constant = program.constants.find(item => normalizeIdentifier(item.name) === normalizeIdentifier(edit.constantName));
+    if (!constant) throw new Error(`未找到项目常量：${edit.constantName}`);
+    const index = lineIndex(constant.line);
+    next[index] = formatConstantDeclaration(next[index] || '', {
+      name: edit.newName || constant.name,
+      type: edit.type || constant.type,
+      initialValue: edit.initialValue ?? constant.initialValue
+    });
+    if (edit.note !== undefined) replaceOrInsertNote(next, constant.line, edit.note);
+    return next;
+  }
+
+  if (edit.kind === 'delete-constant') {
+    const constant = program.constants.find(item => normalizeIdentifier(item.name) === normalizeIdentifier(edit.constantName));
+    if (!constant) throw new Error(`未找到项目常量：${edit.constantName}`);
+    const index = lineIndex(constant.line);
+    const removeFrom = isNoteLine(next[index - 1] || '') ? index - 1 : index;
+    next.splice(removeFrom, removeFrom === index ? 1 : 2);
+    return next;
+  }
+
+  if (edit.kind === 'add-global') {
+    insertGlobal(next, program, edit.global);
+    return next;
+  }
+
+  if (edit.kind === 'update-global') {
+    const global = program.globals.find(item => normalizeIdentifier(item.name) === normalizeIdentifier(edit.globalName));
+    if (!global) throw new Error(`未找到项目全局变量：${edit.globalName}`);
+    const index = lineIndex(global.line);
+    next[index] = formatGlobalDeclaration(next[index] || '', {
+      name: edit.newName || global.name,
+      type: edit.type || global.type,
+      initialValue: edit.initialValue ?? global.initialValue,
+      isArray: edit.isArray ?? global.isArray ?? false
+    });
+    if (edit.note !== undefined) replaceOrInsertNote(next, global.line, edit.note);
+    return next;
+  }
+
+  if (edit.kind === 'delete-global') {
+    const global = program.globals.find(item => normalizeIdentifier(item.name) === normalizeIdentifier(edit.globalName));
+    if (!global) throw new Error(`未找到项目全局变量：${edit.globalName}`);
+    const index = lineIndex(global.line);
+    const removeFrom = isNoteLine(next[index - 1] || '') ? index - 1 : index;
+    next.splice(removeFrom, removeFrom === index ? 1 : 2);
+    return next;
+  }
+
+  if (edit.kind === 'add-data-type') {
+    insertDataType(next, program, edit.dataType);
+    return next;
+  }
+  if (edit.kind === 'update-data-type') {
+    const dataType = resolveDataType(program.dataTypes, edit.dataTypeName);
+    if (!dataType) throw new Error(`未找到数据类型：${edit.dataTypeName}`);
+    next[lineIndex(dataType.line)] = `${indentOf(next[lineIndex(dataType.line)] || '')}数据类型 ${(edit.newName || dataType.name).trim()}`;
+    if (edit.note !== undefined) replaceOrInsertNote(next, dataType.line, edit.note);
+    return next;
+  }
+  if (edit.kind === 'delete-data-type') {
+    const dataType = resolveDataType(program.dataTypes, edit.dataTypeName);
+    if (!dataType) throw new Error(`未找到数据类型：${edit.dataTypeName}`);
+    removeDataTypeBlock(next, dataType);
+    return next;
+  }
+  if (edit.kind === 'move-data-type') {
+    moveDataTypeBlock(next, program.dataTypes, edit.dataTypeName, edit.direction);
+    return next;
+  }
+  if (edit.kind === 'add-data-field') {
+    const dataType = resolveDataType(program.dataTypes, edit.dataTypeName);
+    if (!dataType) throw new Error(`未找到数据类型：${edit.dataTypeName}`);
+    insertDataField(next, dataType, edit.field);
+    return next;
+  }
+  if (edit.kind === 'update-data-field') {
+    const dataType = resolveDataType(program.dataTypes, edit.dataTypeName);
+    const field = dataType && resolveDataField(dataType, edit.fieldName);
+    if (!dataType || !field) throw new Error(`未找到字段：${edit.dataTypeName}.${edit.fieldName}`);
+    const index = lineIndex(field.line);
+    next[index] = formatDataField(next[index] || '', {
+      name: edit.newName || field.name,
+      type: edit.type || field.type,
+      initialValue: edit.initialValue ?? field.initialValue,
+      isArray: edit.isArray ?? field.isArray ?? false
+    });
+    if (edit.note !== undefined) replaceOrInsertNote(next, field.line, edit.note);
+    return next;
+  }
+  if (edit.kind === 'delete-data-field') {
+    const dataType = resolveDataType(program.dataTypes, edit.dataTypeName);
+    const field = dataType && resolveDataField(dataType, edit.fieldName);
+    if (!field) throw new Error(`未找到字段：${edit.dataTypeName}.${edit.fieldName}`);
+    removeDeclarationWithNote(next, field.line);
+    return next;
+  }
+  if (edit.kind === 'move-data-field') {
+    const dataType = resolveDataType(program.dataTypes, edit.dataTypeName);
+    if (!dataType) throw new Error(`未找到数据类型：${edit.dataTypeName}`);
+    moveDataField(next, dataType, edit.fieldName, edit.direction);
+    return next;
+  }
+
+  const requestedOwnerName = 'className' in edit ? edit.className : undefined;
+  const functionLibrary = requestedOwnerName
+    ? program.functionLibraries.find(item => normalizeIdentifier(item.name) === normalizeIdentifier(requestedOwnerName))
+    : undefined;
+  const cls = resolveClass(program.classes, requestedOwnerName, 'line' in edit ? edit.line : undefined)
+    || (functionLibrary ? {
+      name: functionLibrary.name,
+      baseClass: undefined,
+      line: functionLibrary.line,
+      endLine: functionLibrary.endLine,
+      members: [],
+      methods: functionLibrary.methods
+    } : undefined);
   if (!cls) throw new Error('未找到要编辑的类。');
 
   if (edit.kind === 'update-class') {
@@ -96,7 +221,7 @@ function applyEditToLines(lines: string[], classes: LingCppClass[], edit: LingCp
   if (edit.kind === 'add-local') {
     const method = resolveMethod(cls, edit.methodName);
     if (!method) throw new Error(`未找到子程序：${edit.methodName}`);
-    insertLocal(next, method, edit.local);
+    insertLocal(next, method, edit.local, edit.insertBeforeLine);
     return next;
   }
 
@@ -178,11 +303,122 @@ function applyEditToLines(lines: string[], classes: LingCppClass[], edit: LingCp
   if (edit.kind === 'update-method-body') {
     const method = resolveMethod(cls, edit.methodName);
     if (!method) throw new Error(`未找到方法：${edit.methodName}`);
-    replaceMethodBody(next, method, edit.bodyLines);
+    replaceMethodBody(next, method, edit.bodyLines, edit.localStatementAnchors);
     return next;
   }
 
   return next;
+}
+
+function insertConstant(
+  lines: string[],
+  program: LingCppProgram,
+  constant: { name: string; type: string; initialValue: string; note?: string }
+): void {
+  const insertAt = program.constants.length > 0
+    ? lineIndex(Math.max(...program.constants.map(item => item.line)) + 1)
+    : program.globals.length > 0
+      ? lineIndex(Math.min(...program.globals.map(item => item.line)))
+      : program.classes.length > 0
+        ? lineIndex(Math.min(...program.classes.map(item => item.line)))
+        : lines.length;
+  const nextLines = [
+    constant.note ? `// ${constant.note.trim()}` : '',
+    formatConstantDeclaration(`常量 ${constant.type} ${constant.name}`, constant)
+  ].filter(Boolean);
+  lines.splice(insertAt, 0, ...nextLines);
+}
+
+function insertDataType(lines: string[], program: LingCppProgram, dataType: { name: string; note?: string }): void {
+  const insertAt = program.dataTypes.length > 0
+    ? lineIndex(Math.max(...program.dataTypes.map(item => item.endLine || item.line)) + 1)
+    : lines.length;
+  const block = [
+    dataType.note ? `// ${dataType.note.trim()}` : '',
+    `数据类型 ${dataType.name.trim()}`,
+    '结束数据类型'
+  ].filter(Boolean);
+  if (insertAt > 0 && lines[insertAt - 1]?.trim()) block.unshift('');
+  lines.splice(insertAt, 0, ...block);
+}
+
+function insertDataField(
+  lines: string[],
+  dataType: LingCppDataType,
+  field: { name: string; type: string; initialValue?: string; isArray?: boolean; note?: string }
+): void {
+  const insertAt = dataType.fields.length > 0
+    ? lineIndex(Math.max(...dataType.fields.map(item => item.line)) + 1)
+    : lineIndex((dataType.endLine || dataType.line + 1));
+  const indent = inferDataTypeFieldIndent(lines, dataType);
+  const nextLines = [
+    field.note ? `${indent}// ${field.note.trim()}` : '',
+    formatDataField(`${indent}${field.type} ${field.name}`, field)
+  ].filter(Boolean);
+  lines.splice(insertAt, 0, ...nextLines);
+}
+
+function removeDataTypeBlock(lines: string[], dataType: LingCppDataType): void {
+  const startIndex = lineIndex(dataType.line);
+  const start = isNoteLine(lines[startIndex - 1] || '') ? startIndex - 1 : startIndex;
+  const end = lineIndex(dataType.endLine || dataType.line);
+  lines.splice(start, end - start + 1);
+}
+
+function moveDataTypeBlock(lines: string[], dataTypes: LingCppDataType[], name: string, direction: 'up' | 'down'): void {
+  const index = dataTypes.findIndex(item => normalizeIdentifier(item.name) === normalizeIdentifier(name));
+  const targetIndex = direction === 'up' ? index - 1 : index + 1;
+  if (index < 0 || targetIndex < 0 || targetIndex >= dataTypes.length) return;
+  const first = dataTypes[index];
+  const second = dataTypes[targetIndex];
+  const firstRange = declarationBlockRange(lines, first.line, first.endLine || first.line);
+  const secondRange = declarationBlockRange(lines, second.line, second.endLine || second.line);
+  const start = Math.min(firstRange.start, secondRange.start);
+  const end = Math.max(firstRange.end, secondRange.end);
+  const firstBlock = lines.slice(firstRange.start, firstRange.end + 1);
+  const secondBlock = lines.slice(secondRange.start, secondRange.end + 1);
+  lines.splice(start, end - start + 1, ...(direction === 'up' ? [...firstBlock, ...secondBlock] : [...secondBlock, ...firstBlock]));
+}
+
+function moveDataField(lines: string[], dataType: LingCppDataType, name: string, direction: 'up' | 'down'): void {
+  const index = dataType.fields.findIndex(item => normalizeIdentifier(item.name) === normalizeIdentifier(name));
+  const targetIndex = direction === 'up' ? index - 1 : index + 1;
+  if (index < 0 || targetIndex < 0 || targetIndex >= dataType.fields.length) return;
+  const first = declarationBlockRange(lines, dataType.fields[index].line, dataType.fields[index].line);
+  const second = declarationBlockRange(lines, dataType.fields[targetIndex].line, dataType.fields[targetIndex].line);
+  const start = Math.min(first.start, second.start);
+  const end = Math.max(first.end, second.end);
+  const firstBlock = lines.slice(first.start, first.end + 1);
+  const secondBlock = lines.slice(second.start, second.end + 1);
+  lines.splice(start, end - start + 1, ...(direction === 'up' ? [...firstBlock, ...secondBlock] : [...secondBlock, ...firstBlock]));
+}
+
+function declarationBlockRange(lines: string[], startLine: number, endLine: number): { start: number; end: number } {
+  const declarationStart = lineIndex(startLine);
+  return { start: isNoteLine(lines[declarationStart - 1] || '') ? declarationStart - 1 : declarationStart, end: lineIndex(endLine) };
+}
+
+function removeDeclarationWithNote(lines: string[], line: number): void {
+  const index = lineIndex(line);
+  const start = isNoteLine(lines[index - 1] || '') ? index - 1 : index;
+  lines.splice(start, index - start + 1);
+}
+
+function insertGlobal(
+  lines: string[],
+  program: LingCppProgram,
+  global: { name: string; type: string; initialValue?: string; isArray?: boolean; note?: string }
+): void {
+  const insertAt = program.globals.length > 0
+    ? lineIndex(Math.max(...program.globals.map(item => item.line)) + 1)
+    : program.classes.length > 0
+      ? lineIndex(Math.min(...program.classes.map(item => item.line)))
+      : lines.length;
+  const nextLines = [
+    global.note ? `// ${global.note.trim()}` : '',
+    formatGlobalDeclaration(`全局 ${global.type} ${global.name}`, global)
+  ].filter(Boolean);
+  lines.splice(insertAt, 0, ...nextLines);
 }
 
 function insertMember(
@@ -220,12 +456,21 @@ function insertEvent(
 function insertLocal(
   lines: string[],
   method: LingCppMethod,
-  local: { name: string; type: string; initialValue?: string; isArray?: boolean }
+  local: { name: string; type: string; initialValue?: string; isArray?: boolean },
+  insertBeforeLine?: number
 ): void {
   const locals = method.locals || [];
-  const insertAt = locals.length > 0
-    ? lineIndex(Math.max(...locals.map(item => item.line)) + 1)
-    : lineIndex(method.line + 1);
+  const defaultInsertBeforeLine = locals.length > 0
+    ? Math.max(...locals.map(item => item.line)) + 1
+    : method.line + 1;
+  const methodEndLine = method.endLine || lines.length;
+  const closesWithEndMarker = (lines[lineIndex(methodEndLine)] || '').trim() === '结束';
+  const lastInsertBeforeLine = closesWithEndMarker ? methodEndLine : methodEndLine + 1;
+  const safeInsertBeforeLine = Math.max(
+    method.line + 1,
+    Math.min(insertBeforeLine ?? defaultInsertBeforeLine, lastInsertBeforeLine)
+  );
+  const insertAt = lineIndex(safeInsertBeforeLine);
   const indent = inferMethodBodyIndent(lines, method);
   lines.splice(insertAt, 0, formatLocalDeclaration(`${indent}局部 ${local.type} ${local.name}`, local));
 }
@@ -295,19 +540,43 @@ function removeMethodBlock(lines: string[], method: LingCppMethod): void {
   lines.splice(start, Math.max(1, end - start + 1));
 }
 
-function replaceMethodBody(lines: string[], method: LingCppMethod, bodyLines: string[]): void {
-  const locals = method.locals || [];
-  const declarationEndLine = locals.length > 0
-    ? Math.max(...locals.map(local => local.line))
-    : method.line;
-  const start = lineIndex(declarationEndLine) + 1;
-  const end = lineIndex(method.endLine || method.statements.at(-1)?.line || method.line);
-  const deleteCount = Math.max(0, end - start + 1);
+function replaceMethodBody(
+  lines: string[],
+  method: LingCppMethod,
+  bodyLines: string[],
+  localStatementAnchors?: Record<string, number>
+): void {
+  const locals = [...(method.locals || [])].sort((left, right) => left.line - right.line);
+  const statements = [...method.statements].sort((left, right) => left.line - right.line);
+  const localAnchors = locals.map(local => ({
+    local,
+    statementIndex: localStatementAnchors?.[local.name]
+      ?? localStatementAnchors?.[normalizeIdentifier(local.name)]
+      ?? statements.filter(statement => statement.line < local.line).length,
+    source: formatLocalDeclaration(lines[lineIndex(local.line)] || '', local)
+  }));
+  const start = lineIndex(method.line + 1);
+  const methodEndLine = method.endLine || method.statements.at(-1)?.line || method.line;
+  const closesWithEndMarker = (lines[lineIndex(methodEndLine)] || '').trim() === '结束';
+  const endExclusive = closesWithEndMarker ? lineIndex(methodEndLine) : lineIndex(methodEndLine) + 1;
+  const deleteCount = Math.max(0, endExclusive - start);
   const bodyIndent = inferMethodBodyIndent(lines, method);
   const normalizedBody = normalizeMethodBodyLines(bodyLines).map(line =>
     line.trim() ? `${bodyIndent}${line}` : ''
   );
-  lines.splice(start, deleteCount, ...normalizedBody);
+  const mergedBody: string[] = [];
+  let localIndex = 0;
+  for (let statementIndex = 0; statementIndex <= normalizedBody.length; statementIndex += 1) {
+    while (
+      localIndex < localAnchors.length &&
+      Math.min(localAnchors[localIndex].statementIndex, normalizedBody.length) === statementIndex
+    ) {
+      mergedBody.push(localAnchors[localIndex].source);
+      localIndex += 1;
+    }
+    if (statementIndex < normalizedBody.length) mergedBody.push(normalizedBody[statementIndex]);
+  }
+  lines.splice(start, deleteCount, ...mergedBody);
 }
 
 function resolveClass(classes: LingCppClass[], className?: string, line?: number): LingCppClass | undefined {
@@ -321,6 +590,16 @@ function resolveClass(classes: LingCppClass[], className?: string, line?: number
     if (byName) return byName;
   }
   return classes[0];
+}
+
+function resolveDataType(dataTypes: LingCppDataType[], name: string): LingCppDataType | undefined {
+  const normalized = normalizeIdentifier(name);
+  return dataTypes.find(item => normalizeIdentifier(item.name) === normalized);
+}
+
+function resolveDataField(dataType: LingCppDataType, name: string): LingCppDataField | undefined {
+  const normalized = normalizeIdentifier(name);
+  return dataType.fields.find(item => normalizeIdentifier(item.name) === normalized);
 }
 
 function resolveMember(cls: LingCppClass, memberName: string): LingCppMember | undefined {
@@ -362,6 +641,35 @@ function formatMemberDeclaration(
   const staticPrefix = member.isStatic ? '静态 ' : '';
   const arraySuffix = member.isArray ? '[]' : '';
   return `${indent}${staticPrefix}${member.type.trim()} ${member.name.trim()}${arraySuffix}${initialValue}`;
+}
+
+function formatGlobalDeclaration(
+  originalLine: string,
+  global: { name: string; type: string; initialValue?: string; isArray?: boolean }
+): string {
+  const indent = indentOf(originalLine);
+  const initialValue = typeof global.initialValue === 'string' && global.initialValue.trim()
+    ? ` = ${global.initialValue.trim()}`
+    : '';
+  const arraySuffix = global.isArray ? '[]' : '';
+  return `${indent}全局 ${global.type.trim()} ${global.name.trim()}${arraySuffix}${initialValue}`;
+}
+
+function formatDataField(
+  originalLine: string,
+  field: { name: string; type: string; initialValue?: string; isArray?: boolean }
+): string {
+  const indent = indentOf(originalLine);
+  const initialValue = field.initialValue?.trim() ? ` = ${field.initialValue.trim()}` : '';
+  return `${indent}${field.type.trim()} ${field.name.trim()}${field.isArray ? '[]' : ''}${initialValue}`;
+}
+
+function formatConstantDeclaration(
+  originalLine: string,
+  constant: { name: string; type: string; initialValue: string }
+): string {
+  const indent = indentOf(originalLine);
+  return `${indent}常量 ${constant.type.trim()} ${constant.name.trim()} = ${constant.initialValue.trim()}`;
 }
 
 function formatLocalDeclaration(
@@ -410,6 +718,13 @@ function inferClassBodyIndent(lines: string[], cls: LingCppClass): string {
     .map(line => lines[lineIndex(line)] || '')
     .find(line => line.trim());
   return candidateLine ? indentOf(candidateLine) : '    ';
+}
+
+function inferDataTypeFieldIndent(lines: string[], dataType: LingCppDataType): string {
+  const candidateLine = dataType.fields
+    .map(field => lines[lineIndex(field.line)] || '')
+    .find(line => line.trim());
+  return candidateLine ? indentOf(candidateLine) : `${indentOf(lines[lineIndex(dataType.line)] || '')}    `;
 }
 
 function inferMethodBodyIndent(lines: string[], method: LingCppMethod): string {

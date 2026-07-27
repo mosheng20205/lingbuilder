@@ -13,8 +13,10 @@ import {
   getWin32ControlDefinition
 } from './win32ControlRegistry';
 import { getWindowEventDefinition } from './windowEventRegistry';
+import type { ModuleDesignerControlContribution } from '../modules/types';
 
 export const WINDOW_DESIGNER_AUTOSAVE_KEY = 'lingbuilder.windowDesigner.autosave.v1';
+const NEW_EMOJI_DESIGNER_TYPE_PREFIX = 'lingbuilder.new_emoji.ui/';
 export const WINDOW_DESIGNER_PROJECT_UPDATED = 'window-designer:project-updated';
 export const WINDOW_DESIGNER_DIRTY_STATE_CHANGED = 'window-designer:dirty-state-changed';
 
@@ -109,10 +111,17 @@ export function getDesignerWindowContentOffset(window: Pick<LingWindowModel, 'me
 
 export function getPrimaryDesignerEventBinding(
   control: LingControl,
-  window?: LingWindowModel
+  window?: LingWindowModel,
+  moduleControl?: ModuleDesignerControlContribution
 ): PrimaryDesignerEventBinding {
-  const eventName = getPrimaryEventNameForType(control.type);
-  const existingControlHandler = control.events?.[eventName]?.trim();
+  const fallbackEventName = getPrimaryEventNameForType(control.type);
+  const moduleEvent = moduleControl?.events?.find(event => Boolean(event.runtimeCommand));
+  const eventName = moduleEvent?.name || fallbackEventName;
+  const compatibleEventNames = [eventName, ...(moduleEvent?.aliases || []), fallbackEventName]
+    .filter((name, index, names) => names.indexOf(name) === index);
+  const existingControlHandler = compatibleEventNames
+    .map(name => control.events?.[name]?.trim())
+    .find(Boolean);
 
   if (control.id === '__window_menu_bar__') {
     return {
@@ -139,7 +148,9 @@ export function getPrimaryDesignerEventBinding(
 
   return {
     eventName,
-    handlerName: existingControlHandler || getEplEventHandlerName(control.name, eventName)
+    handlerName: existingControlHandler
+      || moduleEvent?.handlerPattern.replace('{controlName}', control.name)
+      || getEplEventHandlerName(control.name, eventName)
   };
 }
 
@@ -224,7 +235,7 @@ export function createControl(type: LingControlType, index: number): LingControl
   };
 }
 
-export function createBlankWindow(index: number): LingWindowModel {
+export function createBlankWindow(index: number, designerBackend = 'win32'): LingWindowModel {
   return {
     id: `window_${Date.now()}_${index}`,
     fileName: `Window${index}.xml`,
@@ -241,7 +252,8 @@ export function createBlankWindow(index: number): LingWindowModel {
     openPlacement: 'default',
     resizable: true,
     maximizable: true,
-    controls: [
+    designerBackend,
+    controls: designerBackend !== 'win32' ? [] : [
       {
         id: `lbl_custom_${index}`,
         type: 'Label',
@@ -637,10 +649,13 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
         }
       };
     });
+    const inferredDesignerBackend = window.designerBackend
+      || (controls.some(control => control.designerType?.startsWith(NEW_EMOJI_DESIGNER_TYPE_PREFIX)) ? 'new-emoji' : undefined);
     const appearanceChanged = !window.titleBarBackground || !window.titleBarForeground || !window.cornerStyle || !window.iconStyle || !window.menuBackground || !window.menuForeground
       || typeof window.resizable !== 'boolean' || typeof window.maximizable !== 'boolean'
       || window.menuFontFamily !== menuFont.family || window.menuFontSize !== menuFont.size || window.menuFontBold !== menuFont.bold
-      || window.menuFontItalic !== menuFont.italic || window.menuFontUnderline !== menuFont.underline;
+      || window.menuFontItalic !== menuFont.italic || window.menuFontUnderline !== menuFont.underline
+      || window.designerBackend !== inferredDesignerBackend;
     if (!controlsChanged && !appearanceChanged) return window;
     projectChanged = true;
     return {
@@ -656,6 +671,7 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       menuFontUnderline: menuFont.underline,
       cornerStyle: window.cornerStyle || DEFAULT_WINDOW_CORNER_STYLE,
       iconStyle: window.iconStyle || DEFAULT_WINDOW_ICON_STYLE,
+      ...(inferredDesignerBackend ? { designerBackend: inferredDesignerBackend } : {}),
       resizable: window.resizable !== false,
       maximizable: window.maximizable !== false,
       controls
@@ -684,20 +700,34 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
   };
 }
 
-export function readWindowDesignerState(): PersistedWindowDesignerState {
+export function getWindowDesignerAutosaveKey(projectId: string): string {
+  return `${WINDOW_DESIGNER_AUTOSAVE_KEY}.${encodeURIComponent(projectId.trim())}`;
+}
+
+export function readWindowDesignerState(projectId?: string): PersistedWindowDesignerState {
   if (typeof window === 'undefined') {
     return normalizeWindowDesignerState();
   }
 
-  try {
-    const rawState = window.localStorage.getItem(WINDOW_DESIGNER_AUTOSAVE_KEY);
-    if (!rawState) {
-      return normalizeWindowDesignerState();
+  const normalizedProjectId = projectId?.trim();
+  const keys = normalizedProjectId
+    ? [getWindowDesignerAutosaveKey(normalizedProjectId), WINDOW_DESIGNER_AUTOSAVE_KEY]
+    : [WINDOW_DESIGNER_AUTOSAVE_KEY];
+  for (const key of keys) {
+    try {
+      const rawState = window.localStorage.getItem(key);
+      if (!rawState) continue;
+      const state = normalizeWindowDesignerState(JSON.parse(rawState) as Partial<PersistedWindowDesignerState>);
+      if (normalizedProjectId && state.project.id !== normalizedProjectId) continue;
+      if (normalizedProjectId && key === WINDOW_DESIGNER_AUTOSAVE_KEY) {
+        window.localStorage.setItem(getWindowDesignerAutosaveKey(normalizedProjectId), JSON.stringify(state));
+      }
+      return state;
+    } catch {
+      // Ignore a damaged cache entry and continue with the legacy/fallback key.
     }
-    return normalizeWindowDesignerState(JSON.parse(rawState) as Partial<PersistedWindowDesignerState>);
-  } catch {
-    return normalizeWindowDesignerState();
   }
+  return normalizeWindowDesignerState();
 }
 
 export function notifyWindowDesignerProjectUpdated(state: PersistedWindowDesignerState): void {
@@ -725,6 +755,7 @@ export function saveWindowDesignerState(
   const nextState = normalizeWindowDesignerState(state);
   if (typeof window !== 'undefined') {
     try {
+      window.localStorage.setItem(getWindowDesignerAutosaveKey(nextState.project.id), JSON.stringify(nextState));
       window.localStorage.setItem(WINDOW_DESIGNER_AUTOSAVE_KEY, JSON.stringify(nextState));
     } catch {
       // Autosave is best-effort in the prototype; editing should keep working if storage is unavailable.

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 2,
+  "id": "official-demo",
+  "name": "官方demo",
+  "startupProjectId": "web-access-demo",
+  "startupProjectIds": [
+    "web-access-demo"
+  ],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-ui-project",
+      "name": "组件demo",
+      "sourceRoot": "src/component-demo",
+      "configRoot": "config/component-demo",
+      "designerPath": ".lingbuilder/window-designer.json",
+      "isDefault": true,
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "web-access-demo",
+      "name": "网页访问使用demo",
+      "sourceRoot": "src/web-access-demo",
+      "configRoot": "config/web-access-demo",
+      "designerPath": ".lingbuilder/projects/web-access-demo/window-designer.json",
+      "references": []
+    }
+  ]
+}

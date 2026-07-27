@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     openPath: (targetPath: string) => ipcRenderer.invoke('shell:open-path', targetPath),
     revealWorkspacePath: (targetPath: string) => ipcRenderer.invoke('shell:reveal-workspace-path', targetPath),
     openWorkspacePath: (relativePath = '.') => ipcRenderer.invoke('shell:open-workspace-path', relativePath),
+    copyFullPath: (target: { kind: 'solution'; solutionName: string } | { kind: 'project'; relativePath: string }) => ipcRenderer.invoke('shell:copy-full-path', target),
   },
   workspace: {
     getCurrent: () => ipcRenderer.invoke('workspace:get-current'),
@@ -31,9 +32,35 @@ contextBridge.exposeInMainWorld('lingBuilder', {
   },
   docs: {
     openModuleManual: () => ipcRenderer.invoke('docs:open-module-manual'),
+    openCliManual: () => ipcRenderer.invoke('docs:open-cli-manual'),
+  },
+  cli: {
+    inspect: () => ipcRenderer.invoke('cli:inspect'),
+  },
+  aiBridge: {
+    status: () => ipcRenderer.invoke('ai-bridge:status'),
+    start: (request: unknown) => ipcRenderer.invoke('ai-bridge:start', request),
+    stop: () => ipcRenderer.invoke('ai-bridge:stop'),
+    rotateToken: () => ipcRenderer.invoke('ai-bridge:rotate-token'),
+    revealToken: () => ipcRenderer.invoke('ai-bridge:reveal-token'),
+    clients: () => ipcRenderer.invoke('ai-bridge:clients'),
+    codexDesktopStatus: (permission?: string) => ipcRenderer.invoke('ai-bridge:codex-desktop-status', permission),
+    configureCodexDesktop: (request: unknown) => ipcRenderer.invoke('ai-bridge:configure-codex-desktop', request),
+    removeCodexDesktop: () => ipcRenderer.invoke('ai-bridge:remove-codex-desktop'),
+    openCodexDesktop: () => ipcRenderer.invoke('ai-bridge:open-codex-desktop'),
+    launchClient: (clientId: string) => ipcRenderer.invoke('ai-bridge:launch-client', clientId),
+    onStatusChanged: (listener: (snapshot: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, snapshot: unknown) => listener(snapshot);
+      ipcRenderer.on('ai-bridge:status-changed', handler);
+      return () => ipcRenderer.removeListener('ai-bridge:status-changed', handler);
+    },
   },
   modules: {
     importPackage: (sourcePath: string) => ipcRenderer.invoke('modules:import-package', sourcePath),
+  },
+  sourcePackages: {
+    exportProject: (projectId: string, suggestedName?: string) => ipcRenderer.invoke('source-packages:export-project', projectId, suggestedName),
+    open: () => ipcRenderer.invoke('source-packages:open'),
   },
   designerAssets: {
     selectImage: () => ipcRenderer.invoke('designer-assets:select-image'),
@@ -55,6 +82,10 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     session: () => ipcRenderer.invoke('cloud-account:session'),
     models: () => ipcRenderer.invoke('cloud-account:models'),
     balance: () => ipcRenderer.invoke('cloud-account:balance'),
+    moduleCatalog: () => ipcRenderer.invoke('cloud-modules:catalog'),
+    moduleEntitlements: () => ipcRenderer.invoke('cloud-modules:entitlements'),
+    authorizeModule: (moduleId: string) => ipcRenderer.invoke('cloud-modules:authorize', moduleId),
+    createModuleOrder: (value: { offerId: string; provider: 'wechat'|'alipay'; idempotencyKey: string }) => ipcRenderer.invoke('cloud-modules:create-order', value),
   },
   cloudAi: {
     start: (kind: 'chat' | 'edit', payload: unknown) => ipcRenderer.invoke('cloud-ai:start', kind, payload),

@@ -16,7 +16,13 @@ export interface WindowDesignerLingCppSourceRequestDetail {
   activeWindowId?: string;
   windowFileName?: string;
   windowClassName?: string;
-  respond: (sourceCode: string) => void;
+  respond: (snapshot: WindowDesignerLingCppSourceSnapshot) => void;
+}
+
+export interface WindowDesignerLingCppSourceSnapshot {
+  sourceCode: string;
+  filePath?: string;
+  sources: Array<{ filePath: string; sourceCode: string }>;
 }
 
 export type WindowDesignerEplSourceRequestDetail = WindowDesignerLingCppSourceRequestDetail;
@@ -33,19 +39,19 @@ export function requestWindowDesignerLingCppSource(
   activeWindowId?: string,
   windowFileName?: string,
   windowClassName?: string
-): string {
-  let sourceCode = '';
+): WindowDesignerLingCppSourceSnapshot {
+  let snapshot: WindowDesignerLingCppSourceSnapshot = { sourceCode: '', sources: [] };
   window.dispatchEvent(new CustomEvent<WindowDesignerLingCppSourceRequestDetail>(WINDOW_DESIGNER_LINGCPP_SOURCE_REQUEST, {
     detail: {
       activeWindowId,
       windowFileName,
       windowClassName,
-      respond: nextSourceCode => {
-        sourceCode = nextSourceCode;
+      respond: nextSnapshot => {
+        snapshot = nextSnapshot;
       }
     }
   }));
-  return sourceCode;
+  return snapshot;
 }
 
 export const requestWindowDesignerEplSource = requestWindowDesignerLingCppSource;

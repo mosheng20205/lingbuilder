@@ -8,6 +8,8 @@ import { promisify } from 'node:util';
 
 import { getLingCppCompletions, getLingCppSemanticDiagnostics } from '../src/services/lingCpp/languageService';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
+import { CEF3_BROWSER_EVENTS } from '../src/services/modules/cef3BrowserEvents';
+import { EDGEVIEW_BROWSER_EVENTS, EDGEVIEW_COMPOSITION_ONLY_EVENTS } from '../src/services/modules/edgeViewBrowserEvents';
 import { STANDARD_LIBRARY_MODULES } from '../src/services/modules/standardLibraryModules';
 import { SYSTEM_LIBRARY_MODULES } from '../src/services/modules/systemLibraryModules';
 import { NETWORK_LIBRARY_MODULES } from '../src/services/modules/networkLibraryModules';
@@ -348,6 +350,22 @@ test('module project references stay isolated and unknown project writes are rej
   await assert.rejects(() => service.enableModuleForProject('missing-project', manifest.id), /项目不存在/);
 });
 
+test('module enable plan is side-effect free and can join a source copy transaction', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-plan-'));
+  await writeSolutionFixture(root, ['project-a']);
+  const manifest = createTestModule().manifest;
+  await writeFixture(
+    path.join(root, '.lingbuilder', 'modules', manifest.id, 'lingbuilder.module.json'),
+    JSON.stringify(manifest, null, 2)
+  );
+  const service = createModuleService(root);
+  const plan = await service.planEnableModulesForProject('project-a', [manifest.id]);
+  assert.deepEqual(plan.addedModuleIds, [manifest.id]);
+  assert.match(plan.targetPath, /projects[\\/]project-a[\\/]project-modules\.json$/u);
+  assert.ok(JSON.parse(plan.sourceCode).enabledModuleIds.includes(manifest.id));
+  assert.ok(!(await service.getEnabledProjectModules('project-a')).some(module => module.manifest.id === manifest.id));
+});
+
 test('uninstall removes module references from every solution project', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-uninstall-'));
   await writeSolutionFixture(root, ['lingbuilder-ui-project', 'project-b']);
@@ -531,7 +549,12 @@ test('module context adapters feed beginner IDE and AI assistant context', () =>
   assert.ok(beginnerCompletions.some(item => item.kind === 'type'));
 
   const hints = getBeginnerModuleCommandHints(moduleContext);
-  assert.ok(Object.values(hints).some(hint => hint.signature.includes('SQL')));
+  assert.equal(hints.执行SQL.returnDescription, '返回受影响的记录数量。');
+  assert.deepEqual(hints.执行SQL.parameters, [{
+    name: '语句',
+    type: '文本型',
+    note: '要执行的 SQL 语句。'
+  }]);
 
   const aiSummary = describeLingCppModuleContextForAi(moduleContext);
   assert.ok(aiSummary.includes('com.example.sqlite'));
@@ -732,6 +755,16 @@ test('built-in EdgeView module contributes HWND embedding, browser events and Ja
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
   assert.ok(manifest);
   assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
+  const designer = manifest.contributes?.designerControls?.find(control => control.type === 'EdgeBrowser');
+  assert.equal(designer?.nativeAdapter, 'edgeview-browser');
+  assert.equal(EDGEVIEW_BROWSER_EVENTS.length, 62);
+  assert.equal(EDGEVIEW_BROWSER_EVENTS.length + EDGEVIEW_COMPOSITION_ONLY_EVENTS.length, 64);
+  assert.equal(new Set(EDGEVIEW_BROWSER_EVENTS.map(event => event.id)).size, EDGEVIEW_BROWSER_EVENTS.length);
+  assert.equal(new Set(EDGEVIEW_BROWSER_EVENTS.map(event => event.name)).size, EDGEVIEW_BROWSER_EVENTS.length);
+  assert.deepEqual(
+    designer?.events?.map(event => event.name),
+    EDGEVIEW_BROWSER_EVENTS.map(event => event.designerId || event.id)
+  );
   const module: InstalledModule = {
     manifest,
     installPath: 'builtin://lingbuilder.edgeview',
@@ -750,6 +783,9 @@ test('built-in EdgeView module contributes HWND embedding, browser events and Ja
   assert.ok(completions.some(item => item.label === 'EdgeView_设置全局代理'));
   assert.ok(completions.some(item => item.label === 'EdgeView_创建区域代理'));
   assert.ok(completions.some(item => item.label === 'EdgeView_执行JS'));
+  assert.ok(completions.some(item => item.label === 'EdgeView_导航控件'));
+  assert.ok(completions.some(item => item.label === 'EdgeView_监听开发者工具事件'));
+  assert.ok(completions.some(item => item.label === 'EdgeView_监听开发者工具事件控件'));
   assert.ok(completions.some(item => item.label === 'EdgeView 嵌入与 JS 返回值'));
   const generated = generateLingCppNativeWin32Project(sampleProject, {
     enabledModules: [module],
@@ -759,6 +795,7 @@ test('built-in EdgeView module contributes HWND embedding, browser events and Ja
       '    EdgeView_创建区域(1, 10, 10, 300, 400, "https://example.com", ".edgeview/cache-1")',
       '    EdgeView_创建区域(2, 320, 10, 300, 400, "https://example.org", ".edgeview/cache-2")',
       '    EdgeView_绑定事件(1, "导航完成", "浏览器1_导航完成")',
+      '    EdgeView_监听开发者工具事件(1, "Console.messageAdded")',
       '  结束',
       '  事件 浏览器1_导航完成()',
       '    调试输出("浏览器1回调")',
@@ -776,8 +813,19 @@ test('built-in EdgeView module contributes HWND embedding, browser events and Ja
   assert.ok(mainCpp.includes('add_NavigationCompleted'));
   assert.ok(mainCpp.includes('add_WebMessageReceived'));
   assert.ok(mainCpp.includes('add_ContextMenuRequested'));
+  for (const event of EDGEVIEW_BROWSER_EVENTS) {
+    const nativeEventName = event.id.includes('.') ? event.id.slice(event.id.lastIndexOf('.') + 1) : event.id;
+    assert.ok(mainCpp.includes(`add_${nativeEventName}`), `缺少 WebView2 事件订阅：${event.id}`);
+    assert.ok(mainCpp.includes(`TextEquals(eventName, L"${event.name}")`), `缺少设计器事件映射：${event.name}`);
+  }
+  assert.ok(mainCpp.includes('ICoreWebView2Frame7'));
+  assert.ok(mainCpp.includes('ICoreWebView2Environment8'));
+  assert.ok(mainCpp.includes('ICoreWebView2Profile8'));
+  assert.ok(mainCpp.includes('ICoreWebView2Find'));
+  assert.ok(mainCpp.includes('GetDevToolsProtocolEventReceiver'));
+  assert.ok(mainCpp.includes('std::map<std::wstring, UINT64> eventCounts'));
   assert.ok(mainCpp.includes('CreateContextMenuItem(L"刷新"'));
-  assert.ok(mainCpp.includes('EdgeView_刷新实例(instanceId);'));
+  assert.ok(mainCpp.includes('EdgeView_刷新实例(raw->id);'));
   assert.ok(mainCpp.includes('std::wstring edgeViewGlobalProxy_'));
   assert.ok(mainCpp.includes('L"--proxy-server=" + raw->proxyServer'));
   assert.ok(mainCpp.includes('environmentOptions->put_AdditionalBrowserArguments'));
@@ -788,6 +836,70 @@ test('built-in EdgeView module contributes HWND embedding, browser events and Ja
   assert.ok(mainCpp.includes('SetWindowPos(raw->host, HWND_TOP'));
   assert.ok(mainCpp.includes('if (callback == L"浏览器1_导航完成") { 浏览器1_导航完成(); return; }'));
   assert.ok(mainCpp.includes('EdgeView_创建区域(1, 10, 10, 300, 400, L"https://example.com", L".edgeview/cache-1");'));
+  assert.ok(mainCpp.includes('EdgeView_监听开发者工具事件(1, L"Console.messageAdded");'));
+});
+
+test('EdgeView designer controls create multiple WebView2 children and bind to generated parent HWNDs', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
+  assert.ok(manifest);
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.edgeview',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [
+        {
+          id: 'browser-group', type: 'GroupBox', name: '浏览器容器', content: '浏览器容器',
+          x: 10, y: 10, width: 610, height: 210, background: '#202020', foreground: '#ffffff',
+          fontSize: 14, isEnabled: true, visibility: 'Visible', properties: {}
+        },
+        {
+          id: 'edge-1', parentId: 'browser-group', type: 'EdgeBrowser', name: '浏览器1', content: '',
+          x: 20, y: 35, width: 285, height: 170, background: '#ffffff', foreground: '#000000',
+          fontSize: 14, isEnabled: true, visibility: 'Visible', properties: { url: 'https://example.com' },
+          events: { NavigationCompleted: '浏览器1_导航完成' }
+        },
+        {
+          id: 'edge-2', parentId: 'browser-group', type: 'EdgeBrowser', name: '浏览器2', content: '',
+          x: 320, y: 35, width: 285, height: 170, background: '#ffffff', foreground: '#000000',
+          fontSize: 14, isEnabled: true, visibility: 'Visible',
+          properties: { url: 'https://example.org', cacheDir: '.edgeview/custom-2', proxyMode: 'custom', proxyServer: 'http://127.0.0.1:7890' },
+          events: { WebMessageReceived: '浏览器2_网页消息' }
+        }
+      ]
+    }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    enabledModules: [module],
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '  事件 浏览器1_导航完成()',
+      '    EdgeView_导航控件("浏览器2", "https://www.bing.com")',
+      '  结束',
+      '  事件 浏览器2_网页消息()',
+      '    调试输出(EdgeView_取事件数据控件("浏览器2"))',
+      '  结束',
+      '结束类'
+    ].join('\n')
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(mainCpp, /virtual void OnWindowCreated\(\) \{ EdgeView_创建控件\(nullptr\);/u);
+  assert.match(mainCpp, /IsType\(control, L"EdgeBrowser"\)/u);
+  assert.match(mainCpp, /EdgeView_创建核心\(control\.id, runtime->hwnd, false/u);
+  assert.match(mainCpp, /GetEventHandler\(\*control, EdgeView_取设计器事件ID/u);
+  assert.match(mainCpp, /NavigationCompleted=浏览器1_导航完成/u);
+  assert.match(mainCpp, /WebMessageReceived=浏览器2_网页消息/u);
+  assert.match(mainCpp, /\.edgeview\/edge-1/u);
+  assert.match(mainCpp, /\.edgeview\/custom-2/u);
+  assert.match(mainCpp, /EdgeView_导航控件\(L"浏览器2", L"https:\/\/www\.bing\.com"\);/u);
+  assert.match(mainCpp, /EdgeView_取事件数据控件\(L"浏览器2"\)/u);
 });
 
 test('built-in threading module contributes safe background task commands and C++ runtime', () => {
@@ -1015,17 +1127,175 @@ test('Win32 native builds never fall back to an incompatible module target', asy
   assert.doesNotMatch(generated.files.find(file => file.relativePath === 'main.cpp')?.content || '', /liblinux\.a/);
 });
 
+test('web HTTP async command translates handler references and emits a UI-thread completion bridge', () => {
+  const manifest = {
+    schemaVersion: 2 as const,
+    id: 'lingbuilder.web.http',
+    name: '网页访问模块',
+    version: '1.1.0',
+    category: '网络' as const,
+    description: '在后台线程中访问网页并回到 UI 线程。',
+    contributes: {
+      commands: [
+        { name: '网页_异步访问', signature: '网页_异步访问(网址, 访问方式, 完成处理器)', description: '启动异步网页访问。', returnType: '整数型' },
+        { name: '网页_异步取当前请求编号', signature: '网页_异步取当前请求编号()', description: '读取当前完成请求编号。', returnType: '整数型' },
+        { name: '网页_异步取返回文本', signature: '网页_异步取返回文本(请求编号)', description: '读取请求文本。', returnType: '文本型' }
+      ]
+    },
+    targets: [{
+      id: 'windows-msvc-win32', platform: 'windows' as const, arch: 'win32' as const, toolchain: 'msvc' as const,
+      headers: ['include/web_http_bridge.h'], sources: ['src/web_http_bridge.cpp'], defines: ['LINGBUILDER_WEB_HTTP_MODULE']
+    }],
+    bindings: {
+      commands: [
+        {
+          command: '网页_异步访问', runtimeName: '网页_异步访问', returnType: 'int' as const,
+          parameters: [
+            { name: '网址', type: 'wideString' as const },
+            { name: '访问方式', type: 'int' as const },
+            { name: '完成处理器', type: 'handler' as const }
+          ]
+        },
+        { command: '网页_异步取当前请求编号', runtimeName: '网页_异步取当前请求编号', parameters: [], returnType: 'int' as const },
+        { command: '网页_异步取返回文本', runtimeName: '网页_异步取返回文本', parameters: [{ name: '请求编号', type: 'int' as const }], returnType: 'wideString' as const }
+      ]
+    }
+  };
+  assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
+
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'C:/modules/lingbuilder.web.http',
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const source = [
+    '类 MainWindow',
+    '    整数型 请求编号',
+    '    事件 _按钮1_被单击()',
+    '        请求编号 = 网页_异步访问("https://ipinfo.io/json", 0, &获取IP完成)',
+    '    结束',
+    '    事件 获取IP完成()',
+    '        请求编号 = 网页_异步取当前请求编号()',
+    '        调试输出(网页_异步取返回文本(请求编号))',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, enabledModules: [module] });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  assert.ok(cpp.includes('网页_异步访问(L"https://ipinfo.io/json", 0, L"获取IP完成")'));
+  assert.ok(cpp.includes('WM_LINGBUILDER_WEB_ASYNC_COMPLETE'));
+  assert.ok(cpp.includes('DispatchAsyncWebEvent'));
+  assert.ok(cpp.includes('if (callback == L"获取IP完成") { 获取IP完成(); return; }'));
+  assert.doesNotMatch(cpp, /&获取IP完成/);
+});
+
+test('CEF3 module exposes the complete event catalog and generates thread-safe handler bridges', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.browser');
+  assert.ok(manifest);
+  const designer = manifest.contributes?.designerControls?.find(control => control.type === 'CefBrowser');
+  assert.equal(designer?.events?.length, CEF3_BROWSER_EVENTS.length);
+  assert.ok(CEF3_BROWSER_EVENTS.length >= 90);
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_取事件字段'));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_设置事件结果'));
+
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.cef3.browser',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'cef', type: 'CefBrowser', name: '浏览器1', content: '', x: 0, y: 0,
+        width: 400, height: 300, background: '#fff', foreground: '#000',
+        fontSize: 14, isEnabled: true, visibility: 'Visible', properties: { url: 'https://example.com' },
+        events: { OnConsoleMessage: '浏览器1_控制台消息' }
+      }]
+    }]
+  };
+  const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 浏览器1_控制台消息()\n    调试输出(CEF3_取事件字段("浏览器1", "message"))\n  结束\n结束类`;
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /public CefAudioHandler/);
+  assert.match(cpp, /public CefResourceRequestHandler/);
+  assert.match(cpp, /WM_LINGBUILDER_CEF_EVENT/);
+  for (const event of CEF3_BROWSER_EVENTS) {
+    assert.ok(cpp.includes(`L"${event.name}"`), `生成运行时缺少 CEF3 事件：${event.name}`);
+  }
+  assert.match(cpp, /CEF3_取事件字段/);
+});
+
 test('generated new_emoji bridge completions match binding parameter counts', async () => {
   const manifestPath = path.join(process.cwd(), '..', '.lingbuilder', 'module-build', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json');
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
-  assert.deepEqual(
-    manifest.contributes.designerControls.map((control: { type: string }) => control.type),
-    ['Button', 'TextBox', 'Label', 'CheckBox', 'RadioButton', 'ListBox', 'Image', 'ProgressBar', 'Grid', 'Upload', 'DragUpload']
-  );
+  assert.equal(manifest.contributes.designerControls.length, 92);
+  assert.equal(manifest.contributes.commands.filter((command: { visibility?: string }) => command.visibility === 'advanced').length, 1573);
+  assert.ok(manifest.contributes.designerControls.every((control: any) => (
+    control.namespacedType?.startsWith('lingbuilder.new_emoji.ui/')
+    && control.backend === 'new-emoji'
+    && control.runtime?.createCommand
+    && Array.isArray(control.runtime?.createParameters)
+  )));
+  assert.ok(manifest.contributes.designerControls.every((control: any) => (
+    control.properties.every((property: any) => Boolean(property.runtimeCommand))
+    && control.events.every((event: any) => Boolean(event.runtimeCommand))
+  )), 'new_emoji 所有目录属性和事件都必须具有真实运行时映射');
+  const installedModule: InstalledModule = {
+    manifest,
+    installPath: path.dirname(manifestPath),
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const buttonContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Button');
+  const tableContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Table');
+  const generated = generateLingCppNativeWin32Project({
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      designerBackend: 'new-emoji',
+      controls: [
+        {
+          id: 'button', type: buttonContribution.previewType, designerType: buttonContribution.namespacedType,
+          name: '按钮1', content: '确定', x: 20, y: 20, width: 140, height: 42,
+          fontSize: 14, background: '#FF303133', foreground: '#FFFFFFFF', isEnabled: true, visibility: 'Visible',
+          properties: { ...buttonContribution.defaultProps, hoverBackgroundColor: '#FF409EFF' },
+          events: { Click: '_按钮1_被单击', MouseEnter: '按钮1_鼠标进入' }
+        },
+        {
+          id: 'table', type: tableContribution.previewType, designerType: tableContribution.namespacedType,
+          name: '表格1', content: '表格', x: 20, y: 80, width: 420, height: 220,
+          fontSize: 14, background: '#FF202020', foreground: '#FFFFFFFF', isEnabled: true, visibility: 'Visible',
+          properties: { ...tableContribution.defaultProps, tableColumnAligns: 'col=0\theader=center\tcell=right' },
+          events: {}
+        }
+      ]
+    }]
+  }, {
+    enabledModules: [installedModule],
+    lingCppSourceCode: '包 测试\n类 MainWindow : 窗口\n公开\n  事件 _按钮1_被单击()\n    信息框("按钮", 64, "事件触发")\n    调试输出("点击")\n  结束\n  事件 按钮1_鼠标进入()\n    调试输出("进入")\n  结束\n结束类'
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /EU_SetButtonStateColors\(/u);
+  assert.match(cpp, /static void __stdcall LB_NE_Event_[^(]+\(int\)[\s\S]*信息框\(L"按钮", MB_OK \| MB_ICONINFORMATION, L"事件触发"\)/u);
+  assert.match(cpp, /EU_SetElementClickCallback\(g_newEmojiWindow, ne_element_1, LB_NE_Event_/u);
+  assert.match(cpp, /EU_SetElementMouseCallback\(/u);
+  assert.match(cpp, /EU_SetTableColumnAlign\(g_newEmojiWindow/u);
+  assert.equal(manifest.designer.schemaVersion, 1);
+  assert.match(manifest.designer.sha256, /^[a-f0-9]{64}$/u);
   const highLevelNames = [
     'NE_创建窗口',
     'NE_创建深色窗口',
     'NE_显示窗口',
+    'NE_显示并激活窗口',
     'NE_运行消息循环',
     'NE_销毁窗口',
     'NE_创建容器',
@@ -1101,6 +1371,26 @@ test('exportVisualStudioProject writes sln and vcxproj with module dependencies'
   assert.match(vcxproj, /new_emoji\.dll/);
 });
 
+test('exportVisualStudioProject applies native module C++20 and dynamic CRT requirements', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-vs-cpp20-'));
+  const result = await exportVisualStudioProject({
+    projectDir: root,
+    projectId: 'cef3-cpp20',
+    generatedFiles: [{ relativePath: 'main.cpp', content: '' }],
+    enabledModules: [],
+    requiredCppStandard: 20,
+    requiresDynamicCrt: true
+  });
+
+  const vcxproj = await fs.readFile(result.projectPath, 'utf8');
+  assert.equal((vcxproj.match(/<LanguageStandard>stdcpp20<\/LanguageStandard>/g) || []).length, 4);
+  assert.equal((vcxproj.match(/<RuntimeLibrary>MultiThreadedDLL<\/RuntimeLibrary>/g) || []).length, 4);
+  assert.equal((vcxproj.match(/<UseDebugLibraries>false<\/UseDebugLibraries>/g) || []).length, 4);
+  assert.doesNotMatch(vcxproj, /_DEBUG/);
+  assert.doesNotMatch(vcxproj, /<LanguageStandard>stdcpp17<\/LanguageStandard>/);
+  assert.match(vcxproj, /<OutDir>\$\(ProjectDir\)\$\(Platform\)\\\$\(Configuration\)\\bin\\<\/OutDir>/u);
+});
+
 test('exportVisualStudioProject links built-in module system libraries without module-relative paths', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-vs-builtin-libs-'));
   const modules: InstalledModule[] = ['lingbuilder.http.server', 'lingbuilder.websocket.server', 'lingbuilder.websocket.client']
@@ -1141,8 +1431,36 @@ test('new_emoji bridge template keeps UTF-8 buffers alive for native controls', 
   assert.match(script, /std::string bytes\(static_cast<size_t>\(needed\), '\\\\0'\)/);
   assert.match(script, /bytes\.pop_back\(\)/);
   assert.match(script, /reinterpret_cast<const unsigned char\*>\(textBytes\.c_str\(\)\)/);
+  assert.match(script, /void NE_设置元素焦点\(HWND hwnd, int elementId\)/u);
+  assert.match(script, /EU_SetElementFocus\(hwnd, elementId\)/u);
+  assert.match(script, /void NE_显示并激活窗口\(HWND hwnd\)/u);
+  assert.match(script, /GetWindowThreadProcessId\(foregroundWindow, nullptr\)/u);
+  assert.match(script, /AttachThreadInput\(currentThreadId, foregroundThreadId, TRUE\)/u);
+  assert.match(script, /ShowWindow\(hwnd, IsIconic\(hwnd\) \? SW_RESTORE : SW_SHOW\)/u);
+  assert.match(script, /SetWindowPos\(hwnd, HWND_TOPMOST/u);
+  assert.match(script, /SetWindowPos\(hwnd, HWND_NOTOPMOST/u);
+  assert.match(script, /SetForegroundWindow\(hwnd\)/u);
+  assert.match(script, /SetActiveWindow\(hwnd\)/u);
+  assert.match(script, /SetFocus\(hwnd\)/u);
+  assert.match(script, /AttachThreadInput\(currentThreadId, foregroundThreadId, FALSE\)/u);
+  assert.match(script, /image', 'lingbuilder-ide-icon-v2\.ico'/u);
+  assert.match(script, /assets\/lingbuilder-newemoji-window\.ico/u);
   assert.doesNotMatch(script, /static std::vector<unsigned char> NE_ToUtf8/);
   assert.doesNotMatch(script, /std::vector<unsigned char> bytes\(static_cast<size_t>\(needed - 1\)\)/);
+});
+
+test('module manager interface action opens the viewport-level public information dialog', async () => {
+  const inspectorSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'ModuleInspector.tsx'), 'utf8');
+  const dialogSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'ModulePublicInfoDialog.tsx'), 'utf8');
+
+  assert.match(inspectorSource, /onInspect=\{\(\) => inspectModule\(module\.manifest\.id\)\}/);
+  assert.match(inspectorSource, /<ModulePublicInfoDialog/);
+  assert.doesNotMatch(inspectorSource, /<ModuleDetailPanel/);
+  assert.match(dialogSource, /createPortal\(/);
+  assert.match(dialogSource, /aria-modal="true"/);
+  assert.match(dialogSource, /模块公开信息 - \{manifest\.name\}/);
+  assert.match(dialogSource, /if \(event\.key === 'Escape'\)/);
+  assert.match(dialogSource, /if \(event\.target === event\.currentTarget\) onClose\(\)/);
 });
 
 function createTestModule(): InstalledModule {
@@ -1158,11 +1476,23 @@ function createTestModule(): InstalledModule {
       category: '数据库',
       description: '提供 SQLite 数据库访问能力。',
       contributes: {
-        commands: [{ name: '执行SQL', signature: '执行SQL(语句)', description: '执行 SQL。', insertText: '执行SQL("$1")' }],
+        commands: [{
+          name: '执行SQL',
+          signature: '执行SQL(语句)',
+          description: '执行 SQL。',
+          insertText: '执行SQL("$1")',
+          returnType: '整数型',
+          returnDescription: '返回受影响的记录数量。'
+        }],
         types: [{ name: '数据库连接', description: '数据库连接句柄。' }],
         snippets: [{ label: '打开数据库模板', insertText: '打开数据库("$1")', description: '打开数据库。' }]
       },
-      bindings: { commands: [{ command: '执行SQL', runtimeName: 'ExecuteSql', parameters: [{ name: '语句', type: 'wideString' }], returnType: 'int' }] }
+      bindings: { commands: [{
+        command: '执行SQL',
+        runtimeName: 'ExecuteSql',
+        parameters: [{ name: '语句', type: 'wideString', description: '要执行的 SQL 语句。' }],
+        returnType: 'int'
+      }] }
     }
   };
 }

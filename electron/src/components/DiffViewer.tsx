@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useImperativeHandle } from 'react';
-import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X, ListTree, PanelRightClose, GraduationCap, Lightbulb, ClipboardList, Wand2, PlayCircle, Pencil, Save, Trash2, Plus, ChevronDown, ChevronRight, RefreshCw, FolderOpen, Copy, FileInput, ExternalLink } from 'lucide-react';
+import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X, ListTree, PanelRightClose, Lightbulb, PlayCircle, Pencil, Save, Trash2, Plus, Minus, ChevronDown, ChevronRight, RefreshCw, FolderOpen, Copy, FileInput, ExternalLink } from 'lucide-react';
 
 function FileIcon({ fileName, isDarkMode }: { fileName: string; isDarkMode: boolean }) {
   if (fileName.endsWith('.lcpp')) {
@@ -31,40 +31,69 @@ function getEditorTabClassName(isActive: boolean, isDarkMode: boolean) {
         : 'bg-slate-200/50 border-transparent text-slate-600 hover:text-slate-800'
   }`;
 }
-import { AppliedWorkspaceFile, CommandHintContent, DiffLine, DiffResult, ExtractedString, ProblemItem, WorkspaceEditProposal } from '../types';
+import { CommandHintContent, DiffLine, DiffResult, ExtractedString, ProblemItem } from '../types';
 import WpfDesigner from './WpfDesigner';
+import type { CommandService } from '../services/commands/commandService';
+import type { CommandContext } from '../services/commands/types';
 import MonacoCodeEditor, {
   MonacoContentChange,
   MonacoCodeEditorHandle,
   MonacoEditorState
 } from './MonacoCodeEditor';
 import LingCppStructureEditor from './LingCppStructureEditor';
-import DiffViewModeSelector, {
+import ProjectGlobalVariableEditor from './ProjectGlobalVariableEditor';
+import ProjectDataTypeEditor from './ProjectDataTypeEditor';
+import {
   DIFF_VIEW_MODE_CHANGE_EVENT,
   type DiffViewMode
-} from './DiffViewModeSelector';
+} from '../services/editor/diffViewMode';
 import { buildLingCppLanguageContext, getLingCppDesignerControlCompletions, getLingCppReadableBlocks, getLingCppStructuredRows, getLingCppStructureView } from '../services/lingCpp/languageService';
-import { LingCppAccessModifier, LingCppAstEdit, LingCppLocalVariable, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
+import { LingCppAccessModifier, LingCppAstEdit, LingCppLocalVariable, LingCppMethod, LingCppNativeSourceMapEntry, LingCppParameter, LingCppProjectGlobalContext, LingCppProjectTypeContext, LingCppReadableBlock, LingCppReadingMode, LingCppStructuredReadingRow, LingCppStructureNode } from '../services/lingCpp/types';
 import { getBeginnerCommandTokenAtCursor, getBeginnerCompletionContext, getBeginnerCompletionToken, shouldShowBeginnerCompletion } from '../services/lingCpp/beginnerCompletionContext';
+import { getBeginnerProcedureCallAtCursor, resolveBeginnerProcedureDefinition } from '../services/lingCpp/beginnerDefinitionNavigation';
+import { getBeginnerTextareaOffsetAtPoint } from '../services/lingCpp/beginnerTextPosition';
+import {
+  beginnerIfLineKind,
+  beginnerStructureAnchors,
+  currentBeginnerBranch,
+  findBeginnerIfBlocksAtLine,
+  getBeginnerIfFlowGuideRows,
+  parseBeginnerIfBlocks
+} from '../services/lingCpp/beginnerFlowGuide';
 import { BEGINNER_BUILTIN_VALUE_COMPLETIONS } from '../services/lingCpp/beginnerBuiltinValueCompletions';
 import { toggleBeginnerLineComment } from '../services/lingCpp/beginnerLineComment';
 import { applyLingCppAstEdit } from '../services/lingCpp/astEditService';
-import { LingCppNativePreviewFile, LingWindowProject, NativeCppImportResult } from '../services/windowDesigner/types';
 import {
-  BeginnerTask,
-  EditorExperienceMode,
-  LingCppActionBlock,
-  createWorkspaceEditFromActionBlock,
-  getActionBlocksForEvent,
-  getBeginnerTasks,
-  getCodeExplanation,
-  getLearningPathState,
-  summarizeEventPreview
-} from '../services/lingCpp/beginnerService';
-import { applyWorkspaceEdit } from '../services/lingCpp/aiEditService';
+  BeginnerMethodBodySegment,
+  getBeginnerLocalInsertStatementIndex,
+  getBeginnerMethodBodySegments,
+  isBeginnerLocalInsertShortcut
+} from '../services/lingCpp/beginnerLocalVariableLayout';
+import {
+  analyzeBeginnerAutoLocalAssignment,
+  analyzeBeginnerAutoLocalCommandArgument
+} from '../services/lingCpp/beginnerAutoLocalService';
+import {
+  BeginnerCommandParameterCatalog,
+  parseBeginnerCommandExpansion,
+  updateBeginnerCommandArgument
+} from '../services/lingCpp/beginnerCommandExpansion';
+import {
+  BeginnerTypeCompletionItem,
+  buildBeginnerTypeCompletionCatalog,
+  filterBeginnerTypeCompletions,
+  resolveBeginnerTypeAlias
+} from '../services/lingCpp/beginnerTypeCompletion';
+import { createBeginnerVariableCompletion } from '../services/lingCpp/beginnerVariableCompletion';
+import { LingCppNativePreviewFile, LingWindowProject, NativeCppImportResult } from '../services/windowDesigner/types';
+import { EditorExperienceMode } from '../services/lingCpp/beginnerService';
 import { importNativeCppToLingBuilder } from '../services/windowDesigner/nativeCppImportService';
 import { saveWindowDesignerState } from '../services/windowDesigner/windowDesignerService';
-import { normalizeIdentifier } from '../services/lingCpp/parser';
+import { normalizeIdentifier, parseLingCpp } from '../services/lingCpp/parser';
+import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../services/lingCpp/projectGlobalService';
+import { createProjectTypeContext, isProjectDataTypesFilePath } from '../services/lingCpp/projectDataTypeService';
+import { createProjectFunctionContext } from '../services/lingCpp/functionLibraryService';
+import { getProjectConstantNameAtCursor } from '../services/lingCpp/projectConstantReferenceService';
 import {
   classifyLingCppPresentationCode,
   extractLingCppNativeVariableNames,
@@ -135,6 +164,8 @@ interface DiffViewerProps {
   onUpdateStringTranslation: (id: string, value: string) => void;
   onResetTranslation: (id: string) => void;
   onUpdateSourceContent?: (value: string) => void;
+  onUpdateProjectSources?: (sources: Array<{ filePath: string; sourceCode: string }>) => void;
+  onOpenProjectDataTypes?: () => void;
   isDarkMode: boolean;
   activeFile?: any;
   editorFontSize?: number;
@@ -150,15 +181,12 @@ interface DiffViewerProps {
   editorExperienceMode?: EditorExperienceMode;
   onExperienceModeChange?: (mode: EditorExperienceMode) => void | boolean | Promise<void | boolean>;
   problems?: ProblemItem[];
-  ignoredBeginnerTaskIds?: string[];
-  onIgnoreBeginnerTask?: (taskId: string) => void;
-  onApplyWorkspaceEdit?: (proposal: WorkspaceEditProposal, appliedFiles: AppliedWorkspaceFile[]) => void;
-  onOpenProblemsPanel?: () => void;
   onShowCommandHint?: (hint: CommandHintContent | null) => void;
-  onDiffViewModeChange?: (mode: DiffViewMode) => void;
   textModelWorkspaceId?: string;
   textModelProjectId?: string;
   onEditorStateChange?: (state: MonacoEditorState) => void;
+  commandService?: CommandService;
+  getCommandContext?: () => CommandContext;
 }
 
 function mapNativeBuildDiagnostics(
@@ -191,7 +219,7 @@ function mapNativeBuildDiagnostics(
   return diagnostics;
 }
 
-type StructureEditMode = 'package' | 'class' | 'member' | 'method' | 'event' | 'add-member' | 'add-event';
+type StructureEditMode = 'package' | 'global' | 'class' | 'member' | 'method' | 'event' | 'add-member' | 'add-event';
 
 interface StructureEditDraft {
   mode: StructureEditMode;
@@ -242,6 +270,11 @@ interface NativeMappedDiagnostic {
 }
 
 type BeginnerCodeTarget = { className: string; method: LingCppMethod };
+type BeginnerCodeSegment = Extract<BeginnerMethodBodySegment, { kind: 'code' }>;
+type BeginnerCodeSegmentContext = {
+  segment: BeginnerCodeSegment;
+  segments: BeginnerMethodBodySegment[];
+};
 
 type StructureInputTone = 'plain' | 'type' | 'name' | 'value' | 'procedure' | 'variable' | 'parameter';
 type StructureTextTone = StructureInputTone | 'muted';
@@ -258,6 +291,7 @@ interface BeginnerCodeCompletion {
 
 interface BeginnerCompletionState {
   targetKey: string;
+  segmentId: string;
   token: string;
   items: BeginnerCodeCompletion[];
   selectedIndex: number;
@@ -271,23 +305,28 @@ interface BeginnerCompletionPosition {
   placement: 'above' | 'below';
 }
 
+interface BeginnerAutoLocalTypeState {
+  targetKey: string;
+  segmentId: string;
+  variableName: string;
+  expression: string;
+  items: string[];
+  selectedIndex: number;
+  position: BeginnerCompletionPosition;
+}
+
 interface BeginnerContextMenuState {
   x: number;
   y: number;
   className?: string;
   methodName?: string;
+  definitionName?: string;
 }
 
 interface BeginnerJumpHighlightState {
   targetKey: string;
   line: number;
   label: string;
-}
-
-interface BeginnerTypeCompletionItem {
-  label: string;
-  detail: string;
-  aliases: string[];
 }
 
 interface BeginnerTypeCompletionState {
@@ -312,22 +351,15 @@ const BEGINNER_CODE_OVERLAY_TOKEN_STYLE: React.CSSProperties = {
   letterSpacing: 'inherit'
 };
 
-type BeginnerIfBranchKind = 'if' | 'elseif' | 'else';
-
-interface BeginnerIfBranch {
-  kind: BeginnerIfBranchKind;
-  line: number;
-  text: string;
-}
-
-interface BeginnerIfBlock {
-  startLine: number;
-  endLine: number;
-  branches: BeginnerIfBranch[];
-  parent?: BeginnerIfBlock;
-}
-
 const BEGINNER_IF_SNIPPET = '如果 (条件)\n    \n否则\n    \n如果结束';
+const BEGINNER_SELECT_SNIPPET = '选择 (表达式)\n    分支 (值)\n        \n    默认\n        \n选择结束';
+const BEGINNER_LOOP_SNIPPET = '循环\n    \n循环结束';
+const BEGINNER_WHILE_SNIPPET = '判断循环首 (条件)\n    \n判断循环尾 ()';
+const BEGINNER_DO_WHILE_SNIPPET = '循环判断首 ()\n    \n循环判断尾 (条件)';
+const BEGINNER_COUNT_LOOP_SNIPPET = '计次循环首 (次数, 计次变量)\n    \n计次循环尾 ()';
+const BEGINNER_RANGE_LOOP_SNIPPET = '变量循环首 (起始值, 目标值, 递增值, 循环变量)\n    \n变量循环尾 ()';
+const BEGINNER_FOREACH_SNIPPET = '枚举循环首 (集合, 当前项)\n    \n枚举循环尾 ()';
+const BEGINNER_TRY_SNIPPET = '尝试\n    \n捕获 (错误信息)\n    \n最终\n    \n尝试结束';
 
 const BEGINNER_COMMAND_HINTS: Record<string, BeginnerCommandHintInfo> = {
   信息框: {
@@ -443,6 +475,52 @@ const BEGINNER_COMMAND_HINTS: Record<string, BeginnerCommandHintInfo> = {
     parameters: [],
     example: '如果结束'
   },
+  选择: {
+    command: '选择',
+    signature: '选择 (表达式) ... 分支 (值) ... 默认 ... 选择结束',
+    returnType: '流程控制',
+    summary: '根据整数表达式进入匹配的分支；没有匹配值时进入默认分支。',
+    parameters: [{ name: '表达式', type: '整数型', note: '用于匹配各个分支值。' }],
+    example: '选择 (状态码)'
+  },
+  分支: {
+    command: '分支', signature: '分支 (值1, [值2...])', returnType: '流程控制',
+    summary: '声明选择结构中的一个或多个匹配值。',
+    parameters: [{ name: '值...', type: '整数型', note: '多个值使用逗号分隔。' }], example: '分支 (1, 2)'
+  },
+  默认: {
+    command: '默认', signature: '默认', returnType: '流程控制', summary: '处理选择结构中没有匹配值的情况。', parameters: [], example: '默认'
+  },
+  循环: {
+    command: '循环', signature: '循环 ... 循环结束', returnType: '流程控制', summary: '持续执行循环体，直到返回、结束程序或跳出循环。', parameters: [], example: '循环'
+  },
+  判断循环首: {
+    command: '判断循环首', signature: '判断循环首 (条件)', returnType: '流程控制', summary: '条件成立时反复执行循环体。', parameters: [{ name: '条件', type: '逻辑型', note: '每次进入循环前重新判断。' }], example: '判断循环首 (次数 < 10)'
+  },
+  循环判断首: {
+    command: '循环判断首', signature: '循环判断首 () ... 循环判断尾 (条件)', returnType: '流程控制', summary: '先执行一次循环体，再判断是否继续。', parameters: [], example: '循环判断首 ()'
+  },
+  计次循环首: {
+    command: '计次循环首', signature: '计次循环首 (次数, [计次变量])', returnType: '流程控制', summary: '按指定次数执行循环体，计次从 1 开始。', parameters: [{ name: '次数', type: '整数型', note: '循环体要执行的总次数。' }, { name: '计次变量', type: '整数型', note: '可选，需预先声明。' }], example: '计次循环首 (10, 次数)'
+  },
+  变量循环首: {
+    command: '变量循环首', signature: '变量循环首 (起始值, 目标值, 递增值, 循环变量)', returnType: '流程控制', summary: '让已声明变量按指定步长遍历数值区间。', parameters: [{ name: '起始值', type: '数值型', note: '第一次循环使用的值。' }, { name: '目标值', type: '数值型', note: '包含在遍历范围内的终点。' }, { name: '递增值', type: '数值型', note: '正数递增、负数递减，不能为 0。' }, { name: '循环变量', type: '数值型', note: '需预先声明，用于接收当前值。' }], example: '变量循环首 (1, 10, 1, 索引)'
+  },
+  枚举循环首: {
+    command: '枚举循环首', signature: '枚举循环首 (集合, 当前项)', returnType: '流程控制', summary: '依次读取数组或集合中的每一项。', parameters: [{ name: '集合', type: '数组或集合', note: '要遍历的数组或集合变量。' }, { name: '当前项', type: '兼容元素类型', note: '需预先声明。' }], example: '枚举循环首 (名称列表, 当前名称)'
+  },
+  跳出循环: {
+    command: '跳出循环', signature: '跳出循环', returnType: '流程控制', summary: '立即离开当前最内层循环。', parameters: [], example: '跳出循环'
+  },
+  继续循环: {
+    command: '继续循环', signature: '继续循环', returnType: '流程控制', summary: '跳过当前循环剩余语句并进入下一次循环。', parameters: [], example: '继续循环'
+  },
+  尝试: {
+    command: '尝试', signature: '尝试 ... 捕获 (错误信息) ... 最终 ... 尝试结束', returnType: '流程控制', summary: '捕获运行时异常；最终块无论正常、异常或提前返回都会执行。', parameters: [], example: '尝试'
+  },
+  抛出: {
+    command: '抛出', signature: '抛出 (错误信息)', returnType: '流程控制', summary: '主动抛出文本异常，由最近的捕获块处理。', parameters: [{ name: '错误信息', type: '文本型', note: '用于诊断和捕获处理的中文说明。' }], example: '抛出("文件无效")'
+  },
   返回: {
     command: '返回',
     signature: '返回 (返回值)',
@@ -461,66 +539,6 @@ const BEGINNER_COMMAND_HINTS: Record<string, BeginnerCommandHintInfo> = {
     parameters: [],
     example: '结束()'
   }
-};
-
-const BEGINNER_TYPE_ALIASES: Record<string, string[]> = {
-  空: ['void', 'none', 'null', 'kong', 'wu', '无返回值', '无'],
-  文本型: ['string', 'text', 'str', 'wstring', 'wenben', 'wb', '字符', '字符串'],
-  整数型: ['int', 'integer', 'number', 'zhengshu', 'zs', '数字'],
-  长整数型: ['long', 'long long', 'int64', 'longint', 'changzhengshu', 'czs'],
-  逻辑型: ['bool', 'boolean', 'logic', 'luoji', 'lj', '布尔'],
-  小数型: ['float', 'decimal', 'number', 'xiaoshu', 'xs'],
-  双精度小数型: ['double', 'shuangjingdu', 'sjd'],
-  字节型: ['byte', 'uint8', 'zijie', 'zj'],
-  对象: ['object', 'obj', 'any', 'duixiang', 'dx'],
-  窗体: ['window', 'form', 'wnd', 'chuangti', 'ct'],
-  按钮: ['button', 'btn', 'anniu', 'an'],
-  标签: ['label', 'biaoqian', 'bq'],
-  编辑框: ['edit', 'textbox', 'input', 'bianjikuang', 'bjk'],
-  复选框: ['checkbox', 'check', 'fuxuankuang', 'fxk'],
-  单选框: ['radio', 'danxuankuang', 'dxk'],
-  下拉框: ['combo', 'select', 'dropdown', 'xialakuang', 'xlk'],
-  进度条: ['progress', 'progressbar', 'jindutiao', 'jdt']
-};
-
-const buildBeginnerTypeCompletionCatalog = (types: string[]): BeginnerTypeCompletionItem[] => {
-  const normalizedTypes = Array.from(new Set(['空', ...types].map(type => type.trim()).filter(Boolean)));
-  return normalizedTypes.map(label => {
-    const aliases = Array.from(new Set([label, ...(BEGINNER_TYPE_ALIASES[label] || [])].filter(Boolean)));
-    const aliasPreview = aliases.filter(alias => alias !== label).slice(0, 3).join(' / ');
-    return {
-      label,
-      aliases,
-      detail: aliasPreview ? `类型 · ${aliasPreview}` : '类型'
-    };
-  });
-};
-
-const filterBeginnerTypeCompletions = (
-  items: BeginnerTypeCompletionItem[],
-  token: string,
-  includeAll = false
-) => {
-  const normalizedToken = token.trim().toLowerCase();
-  if (!normalizedToken && !includeAll) return [];
-  if (!normalizedToken) return items;
-
-  return items
-    .map(item => {
-      const values = item.aliases.map(alias => alias.toLowerCase());
-      const label = item.label.toLowerCase();
-      const exactMatch = values.some(value => value === normalizedToken);
-      const labelStartsWith = label.startsWith(normalizedToken);
-      const aliasStartsWith = values.some(value => value.startsWith(normalizedToken));
-      const includesMatch = values.some(value => value.includes(normalizedToken));
-      return {
-        item,
-        rank: exactMatch ? 0 : labelStartsWith ? 1 : aliasStartsWith ? 2 : includesMatch ? 3 : 9
-      };
-    })
-    .filter(result => result.rank < 9)
-    .sort((left, right) => left.rank - right.rank || left.item.label.localeCompare(right.item.label, 'zh-Hans-CN'))
-    .map(result => result.item);
 };
 
 const getBeginnerTypeCompletionLayout = (
@@ -548,8 +566,31 @@ const getBeginnerTypeCompletionLayout = (
   };
 };
 
+const BEGINNER_CONTROL_BOUNDARY_COMPLETIONS: BeginnerCodeCompletion[] = [
+  ['分支', '分支 (值)', '选择结构的匹配分支'],
+  ['默认', '默认', '选择结构的默认分支'],
+  ['选择结束', '选择结束', '结束多路选择结构'],
+  ['循环结束', '循环结束', '结束无限循环结构'],
+  ['判断循环尾', '判断循环尾 ()', '结束前置条件循环'],
+  ['循环判断尾', '循环判断尾 (条件)', '结束后置条件循环并判断是否继续'],
+  ['计次循环尾', '计次循环尾 ()', '结束计次循环'],
+  ['变量循环尾', '变量循环尾 ()', '结束变量循环'],
+  ['枚举循环尾', '枚举循环尾 ()', '结束枚举循环'],
+  ['到循环尾', '到循环尾', '继续下一次循环的兼容命令'],
+  ['捕获', '捕获 (错误信息)', '捕获尝试块中的异常'],
+  ['最终', '最终', '无论结果如何都执行的清理分支'],
+  ['尝试结束', '尝试结束', '结束异常处理结构']
+].map(([label, insertText, detail]) => ({
+  label,
+  insertText,
+  detail,
+  aliases: [label],
+  kind: '流程' as const
+}));
+
 const BEGINNER_CODE_COMPLETIONS: BeginnerCodeCompletion[] = [
   ...BEGINNER_BUILTIN_VALUE_COMPLETIONS,
+  ...BEGINNER_CONTROL_BOUNDARY_COMPLETIONS,
   {
     label: '调试输出',
     detail: '输出一行调试文本',
@@ -611,6 +652,50 @@ const BEGINNER_CODE_COMPLETIONS: BeginnerCodeCompletion[] = [
     selectLength: '条件'.length
   },
   {
+    label: '选择', detail: '多路分支选择结构', insertText: BEGINNER_SELECT_SNIPPET,
+    aliases: ['xz', 'xuanze', 'pd', 'panduan', 'switch', 'case'], kind: '流程', cursorOffset: '选择 ('.length, selectLength: '表达式'.length
+  },
+  {
+    label: '循环', detail: '无限循环结构', insertText: BEGINNER_LOOP_SNIPPET,
+    aliases: ['xh', 'xunhuan', 'loop', 'forever'], kind: '流程'
+  },
+  {
+    label: '判断循环', detail: '先判断条件的循环', insertText: BEGINNER_WHILE_SNIPPET,
+    aliases: ['pdxh', 'panduanxunhuan', 'while'], kind: '流程', cursorOffset: '判断循环首 ('.length, selectLength: '条件'.length
+  },
+  {
+    label: '循环判断', detail: '至少执行一次的循环', insertText: BEGINNER_DO_WHILE_SNIPPET,
+    aliases: ['xhpd', 'xunhuanpanduan', 'do', 'do while'], kind: '流程'
+  },
+  {
+    label: '计次循环', detail: '按指定次数循环', insertText: BEGINNER_COUNT_LOOP_SNIPPET,
+    aliases: ['jcxh', 'jicixunhuan', 'for', 'repeat'], kind: '流程', cursorOffset: '计次循环首 ('.length, selectLength: '次数'.length
+  },
+  {
+    label: '变量循环', detail: '按数值区间和步长循环', insertText: BEGINNER_RANGE_LOOP_SNIPPET,
+    aliases: ['blxh', 'bianliangxunhuan', 'range'], kind: '流程', cursorOffset: '变量循环首 ('.length, selectLength: '起始值'.length
+  },
+  {
+    label: '枚举循环', detail: '遍历数组或集合', insertText: BEGINNER_FOREACH_SNIPPET,
+    aliases: ['mjxh', 'meijuxunhuan', 'foreach', 'for each'], kind: '流程', cursorOffset: '枚举循环首 ('.length, selectLength: '集合'.length
+  },
+  {
+    label: '跳出循环', detail: '立即离开当前循环', insertText: '跳出循环',
+    aliases: ['tcxh', 'tiaochuxunhuan', 'break'], kind: '流程'
+  },
+  {
+    label: '继续循环', detail: '跳过本次循环的剩余语句', insertText: '继续循环',
+    aliases: ['jjxh', 'jixuxunhuan', 'dxhw', '到循环尾', 'continue'], kind: '流程'
+  },
+  {
+    label: '尝试捕获', detail: '捕获异常并始终执行最终块', insertText: BEGINNER_TRY_SNIPPET,
+    aliases: ['cs', 'changshi', 'bh', 'buhuo', 'try', 'catch', 'finally'], kind: '流程'
+  },
+  {
+    label: '抛出', detail: '主动抛出文本异常', insertText: '抛出("错误信息")',
+    aliases: ['pc', 'paochu', 'throw'], kind: '流程', cursorOffset: '抛出("'.length, selectLength: '错误信息'.length
+  },
+  {
     label: '返回',
     detail: '结束当前功能并返回',
     insertText: '返回',
@@ -657,7 +742,7 @@ const scrollElementInsideBeginnerEditor = (
 
   scrollRoot.scrollTo({
     top: Math.max(0, targetTop),
-    behavior: 'smooth'
+    behavior: 'auto'
   });
 
   if (window.scrollX !== 0 || window.scrollY !== 0) {
@@ -791,78 +876,6 @@ const getBeginnerLineOffset = (lines: string[], line: number) => {
     offset += lines[index].length + 1;
   }
   return offset;
-};
-
-const beginnerIfLineKind = (line: string): BeginnerIfBranchKind | 'end' | undefined => {
-  const trimmed = line.trim();
-  if (/^如果结束(?:\s|$|[）)])?/u.test(trimmed)) return 'end';
-  if (/^否则如果(?:\s|$|[（(])/u.test(trimmed)) return 'elseif';
-  if (/^否则(?:\s|$|[（(])/u.test(trimmed)) return 'else';
-  if (/^如果(?:\s|$|[（(])/u.test(trimmed)) return 'if';
-  return undefined;
-};
-
-const parseBeginnerIfBlocks = (lines: string[]): BeginnerIfBlock[] => {
-  const blocks: BeginnerIfBlock[] = [];
-  const stack: BeginnerIfBlock[] = [];
-
-  lines.forEach((line, index) => {
-    const lineNumber = index + 1;
-    const kind = beginnerIfLineKind(line);
-    if (!kind) return;
-
-    if (kind === 'end') {
-      const current = stack.pop();
-      if (current) current.endLine = lineNumber;
-      return;
-    }
-
-    if (kind === 'elseif' || kind === 'else') {
-      const current = stack.at(-1);
-      if (current) {
-        current.branches.push({ kind, line: lineNumber, text: line.trim() });
-      }
-      return;
-    }
-
-    const parent = stack.at(-1);
-    const block: BeginnerIfBlock = {
-      startLine: lineNumber,
-      endLine: lines.length,
-      parent,
-      branches: [{ kind: 'if', line: lineNumber, text: line.trim() }]
-    };
-    blocks.push(block);
-    stack.push(block);
-  });
-
-  return blocks;
-};
-
-const findBeginnerIfBlocksAtLine = (blocks: BeginnerIfBlock[], line: number) =>
-  blocks
-    .filter(block => line >= block.startLine && line <= block.endLine)
-    .sort((left, right) => {
-      const leftSpan = left.endLine - left.startLine;
-      const rightSpan = right.endLine - right.startLine;
-      return leftSpan - rightSpan || right.startLine - left.startLine;
-    });
-
-const currentBeginnerBranch = (block: BeginnerIfBlock, line: number) =>
-  [...block.branches]
-    .sort((left, right) => left.line - right.line)
-    .filter(branch => branch.line <= line)
-    .at(-1) || block.branches[0];
-
-const beginnerStructureAnchors = (block: BeginnerIfBlock) => {
-  const anchors = [...block.branches]
-    .sort((left, right) => left.line - right.line)
-    .map(branch => ({
-      line: branch.line,
-      label: branch.kind === 'if' ? branch.text || '如果' : branch.kind === 'elseif' ? branch.text || '否则如果' : '否则'
-    }));
-  if (block.endLine >= block.startLine) anchors.push({ line: block.endLine, label: '如果结束' });
-  return anchors.filter((anchor, index, all) => all.findIndex(item => item.line === anchor.line) === index);
 };
 
 const CONTROL_MEMBER_TYPE_PATTERN = /按钮|标签|编辑框|复选框|单选框|下拉框|控件|窗体/u;
@@ -1074,6 +1087,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   onUpdateStringTranslation,
   onResetTranslation,
   onUpdateSourceContent,
+  onUpdateProjectSources,
+  onOpenProjectDataTypes,
   isDarkMode,
   activeFile,
   editorFontSize = 13,
@@ -1089,15 +1104,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   editorExperienceMode = 'beginner',
   onExperienceModeChange,
   problems = [],
-  ignoredBeginnerTaskIds = [],
-  onIgnoreBeginnerTask,
-  onApplyWorkspaceEdit,
-  onOpenProblemsPanel,
   onShowCommandHint,
-  onDiffViewModeChange,
   textModelWorkspaceId = 'lingbuilder-renderer',
   textModelProjectId = 'default-project',
-  onEditorStateChange
+  onEditorStateChange,
+  commandService,
+  getCommandContext
 }: DiffViewerProps, ref) {
   const [viewType, setViewType] = useState<'code' | 'designer'>('code');
 
@@ -1153,23 +1165,25 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const selectedBeginnerHandlerRef = useRef<string | null>(null);
   selectedBeginnerHandlerRef.current = selectedBeginnerHandler;
   const [selectedBeginnerCodeTarget, setSelectedBeginnerCodeTarget] = useState<{ className?: string; methodName: string } | null>(null);
+  const [pendingProjectConstantFocus, setPendingProjectConstantFocus] = useState<string>();
   const [collapsedVolcanoSections, setCollapsedVolcanoSections] = useState<string[]>([]);
   const [readingMode, setReadingMode] = useState<LingCppReadingMode>(editorExperienceMode === 'beginner' ? 'beginner' : 'off');
   const [focusedReadableBlockId, setFocusedReadableBlockId] = useState<string | undefined>();
   const [structureEditDraft, setStructureEditDraft] = useState<StructureEditDraft | null>(null);
   const [structureEditError, setStructureEditError] = useState<string | null>(null);
   const [newMemberDraft, setNewMemberDraft] = useState({ type: '文本型', name: '', initialValue: '', isStatic: false, isArray: false, note: '' });
-  const [showBeginnerTools, setShowBeginnerTools] = useState(false);
   const [newEventDraft, setNewEventDraft] = useState({ handlerName: '', parameters: '' });
   const [newFunctionDraft, setNewFunctionDraft] = useState({ returnType: '空', name: '', parameters: '' });
   const [newParameterDrafts, setNewParameterDrafts] = useState<Record<string, ParameterDraft>>({});
-  const [newLocalVariableDrafts, setNewLocalVariableDrafts] = useState<Record<string, LocalVariableDraft>>({});
   const [functionCallDrafts, setFunctionCallDrafts] = useState<Record<string, Record<string, string>>>({});
   const [sourceScroll, setSourceScroll] = useState({ top: 0, left: 0 });
   const [pendingHandlerFocus, setPendingHandlerFocus] = useState<{ handlerName: string; filePath?: string } | null>(null);
   const [expandedBeginnerEventTargetKey, setExpandedBeginnerEventTargetKey] = useState<string | null>(null);
   const [expandedBeginnerFunctionTargetKey, setExpandedBeginnerFunctionTargetKey] = useState<string | null>(null);
   const [collapsedBeginnerProcessTargetKeys, setCollapsedBeginnerProcessTargetKeys] = useState<string[]>([]);
+  const [collapsedBeginnerLocalGroupKeys, setCollapsedBeginnerLocalGroupKeys] = useState<string[]>([]);
+  const [expandedBeginnerCommand, setExpandedBeginnerCommand] = useState<string | null>(null);
+  const [beginnerCommandArgumentDrafts, setBeginnerCommandArgumentDrafts] = useState<Record<string, string>>({});
   const [selectedFunctionTemplateKey, setSelectedFunctionTemplateKey] = useState<string | null>(null);
   const [nativePreviewState, setNativePreviewState] = useState<NativePreviewState | null>(null);
   const nativePreviewStateRef = useRef<NativePreviewState | null>(null);
@@ -1193,14 +1207,22 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [structuredRevealLine, setStructuredRevealLine] = useState<number | null>(null);
   const [pendingNativeSourceReveal, setPendingNativeSourceReveal] = useState<{ line: number; filePath?: string } | null>(null);
   const [beginnerCompletionState, setBeginnerCompletionState] = useState<BeginnerCompletionState | null>(null);
+  const [beginnerAutoLocalTypeState, setBeginnerAutoLocalTypeState] = useState<BeginnerAutoLocalTypeState | null>(null);
   const [beginnerJumpHighlight, setBeginnerJumpHighlight] = useState<BeginnerJumpHighlightState | null>(null);
   const [beginnerCodeDrafts, setBeginnerCodeDrafts] = useState<Record<string, string>>({});
   const beginnerCodeDraftsRef = useRef<Record<string, string>>({});
+  const beginnerCodeSegmentLineCountsRef = useRef<Record<string, Record<string, number>>>({});
+  const beginnerLocalStatementAnchorsRef = useRef<Record<string, Record<string, number>>>({});
   const [beginnerContextMenu, setBeginnerContextMenu] = useState<BeginnerContextMenuState | null>(null);
   const [beginnerTypeCompletionState, setBeginnerTypeCompletionState] = useState<BeginnerTypeCompletionState | null>(null);
 
   useEffect(() => {
     setCollapsedBeginnerProcessTargetKeys([]);
+    setCollapsedBeginnerLocalGroupKeys([]);
+    setExpandedBeginnerCommand(null);
+    setBeginnerCommandArgumentDrafts({});
+    beginnerCodeSegmentLineCountsRef.current = {};
+    beginnerLocalStatementAnchorsRef.current = {};
   }, [sourceModelOwnerKey]);
 
   useEffect(() => {
@@ -1242,11 +1264,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     setSelectedFunctionTemplateKey(null);
     setFunctionCallDrafts({});
     setBeginnerCompletionState(null);
+    setBeginnerAutoLocalTypeState(null);
     setBeginnerJumpHighlight(null);
     beginnerCodeDraftsRef.current = {};
+    beginnerCodeSegmentLineCountsRef.current = {};
+    beginnerLocalStatementAnchorsRef.current = {};
     setBeginnerCodeDrafts({});
     setBeginnerContextMenu(null);
     setBeginnerTypeCompletionState(null);
+    setExpandedBeginnerCommand(null);
+    setBeginnerCommandArgumentDrafts({});
     onShowCommandHint?.(null);
   }, [activeFile?.path, onShowCommandHint]);
 
@@ -1263,6 +1290,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const sourceLineNumberRef = useRef<HTMLDivElement>(null);
   const beginnerStructureScrollRef = useRef<HTMLDivElement>(null);
   const beginnerJumpHighlightTimerRef = useRef<number | null>(null);
+  const beginnerPointerSyncFramesRef = useRef<{ first: number | null; second: number | null }>({
+    first: null,
+    second: null
+  });
   const cursorPositionRef = useRef(cursorPosition);
   cursorPositionRef.current = cursorPosition;
   const beginnerTextareaViewRef = useRef<{
@@ -1281,6 +1312,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     if (beginnerJumpHighlightTimerRef.current !== null) {
       window.clearTimeout(beginnerJumpHighlightTimerRef.current);
     }
+    const pointerFrames = beginnerPointerSyncFramesRef.current;
+    if (pointerFrames.first !== null) window.cancelAnimationFrame(pointerFrames.first);
+    if (pointerFrames.second !== null) window.cancelAnimationFrame(pointerFrames.second);
   }, []);
 
   useEffect(() => {
@@ -1344,7 +1378,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       startPosition: start,
       endPosition: end
     };
-    setCursorPosition(cursor);
+    if (cursorPositionRef.current.line !== cursor.line || cursorPositionRef.current.column !== cursor.column) {
+      cursorPositionRef.current = cursor;
+      setCursorPosition(cursor);
+    }
     const state: MonacoEditorState = {
       modelId: sourceModelRecord.modelId,
       surface: 'beginner',
@@ -1356,8 +1393,21 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       readOnly: false,
       positionAvailable: true
     };
-    latestEditorStateRef.current = state;
-    onEditorStateChange?.(state);
+    const previous = latestEditorStateRef.current;
+    const stateChanged = !previous
+      || previous.modelId !== state.modelId
+      || previous.surface !== state.surface
+      || previous.line !== state.line
+      || previous.column !== state.column
+      || previous.selectionLength !== state.selectionLength
+      || previous.canUndo !== state.canUndo
+      || previous.canRedo !== state.canRedo
+      || previous.readOnly !== state.readOnly
+      || previous.positionAvailable !== state.positionAvailable;
+    if (stateChanged) {
+      latestEditorStateRef.current = state;
+      onEditorStateChange?.(state);
+    }
   }, [onEditorStateChange, sourceModelRecord.modelId, textEditHistory]);
   useEffect(() => {
     const historyChanged = reconcileTextEditHistory(textEditHistory, {
@@ -1377,6 +1427,33 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     sourceModelRecord.modelId,
     textEditHistory
   ]);
+  const projectGlobals = useMemo<LingCppProjectGlobalContext | undefined>(() => {
+    const globalFile = allFiles.find(file => isProjectGlobalsFilePath(String(file.path || file.name || '')));
+    if (!globalFile) return undefined;
+    const sourceCode = activeFile?.path === globalFile.path
+      ? normalizedSourceCode
+      : String(globalFile.translatedContent || globalFile.originalContent || '');
+    return createProjectGlobalContext(String(globalFile.path || globalFile.name || ''), sourceCode);
+  }, [activeFile?.path, allFiles, moduleContext, normalizedSourceCode]);
+  const projectTypes = useMemo<LingCppProjectTypeContext | undefined>(() => {
+    const typeFile = allFiles.find(file => isProjectDataTypesFilePath(String(file.path || file.name || '')));
+    if (!typeFile) return undefined;
+    const sourceCode = activeFile?.path === typeFile.path
+      ? normalizedSourceCode
+      : String(typeFile.translatedContent || typeFile.originalContent || '');
+    return createProjectTypeContext(String(typeFile.path || typeFile.name || ''), sourceCode);
+  }, [activeFile?.path, allFiles, normalizedSourceCode]);
+  const lingCppProjectSources = useMemo(() => allFiles
+    .filter(file => file.language === 'lingcpp' || String(file.path || '').toLocaleLowerCase().endsWith('.lcpp'))
+    .map(file => ({
+      filePath: String(file.path || file.name || ''),
+      sourceCode: file.path === activeFile?.path
+        ? normalizedSourceCode
+        : String(file.translatedContent || file.originalContent || '')
+    })), [activeFile?.path, allFiles, normalizedSourceCode]);
+  const projectClassNames = useMemo(() => lingCppProjectSources.flatMap(source =>
+    parseLingCpp(source.sourceCode).program.classes.map(cls => cls.name)
+  ), [lingCppProjectSources]);
   const lingCppStructure = useMemo(
     () => activeFile?.language === 'lingcpp'
       ? getLingCppStructureView(normalizedSourceCode, designerProject, activeFile?.path, moduleContext)
@@ -1391,13 +1468,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   );
   const lingCppLanguageContext = useMemo(
     () => activeFile?.language === 'lingcpp'
-      ? buildLingCppLanguageContext(normalizedSourceCode, designerProject, moduleContext, activeFile?.path)
+      ? buildLingCppLanguageContext(normalizedSourceCode, designerProject, moduleContext, activeFile?.path, projectGlobals, projectTypes, createProjectFunctionContext(lingCppProjectSources.map(item => ({ ...item, language: 'lingcpp' }))))
       : null,
-    [activeFile?.language, activeFile?.path, designerProject, moduleContext, normalizedSourceCode]
+    [activeFile?.language, activeFile?.path, designerProject, lingCppProjectSources, moduleContext, normalizedSourceCode, projectGlobals, projectTypes]
   );
   const flushBeginnerDrafts = useCallback((applyToParent: boolean): FlushPendingEditsResult => {
     const currentSourceCode = latestSourceCodeRef.current;
-    const result = applyPendingBeginnerCodeDrafts(currentSourceCode, beginnerCodeDraftsRef.current);
+    const result = applyPendingBeginnerCodeDrafts(
+      currentSourceCode,
+      beginnerCodeDraftsRef.current,
+      beginnerLocalStatementAnchorsRef.current
+    );
     if (!result.success) {
       setStructureEditError(result.diagnostics[0] || '新手代码提交失败，源码已保持不变。');
       return result;
@@ -1407,6 +1488,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     }
     latestSourceCodeRef.current = result.sourceCode;
     beginnerCodeDraftsRef.current = {};
+    beginnerCodeSegmentLineCountsRef.current = {};
+    beginnerLocalStatementAnchorsRef.current = {};
     setBeginnerCodeDrafts({});
     setStructureEditError(null);
     if (applyToParent && result.changed) onUpdateSourceContent?.(result.sourceCode);
@@ -1416,6 +1499,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const applyBeginnerHistoryValue = useCallback((value: string) => {
     latestSourceCodeRef.current = value;
     beginnerCodeDraftsRef.current = {};
+    beginnerCodeSegmentLineCountsRef.current = {};
+    beginnerLocalStatementAnchorsRef.current = {};
     setBeginnerCodeDrafts({});
     setStructureEditError(null);
     onUpdateSourceContent?.(value);
@@ -1546,6 +1631,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         command: value.command,
         signature: value.signature,
         returnType: value.returnType,
+        returnDescription: value.returnDescription,
         summary: value.summary,
         parameters: value.parameters,
         example: value.example
@@ -1561,6 +1647,62 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     () => new Set(Object.keys(beginnerCommandHints)),
     [beginnerCommandHints]
   );
+  const beginnerCommandParameterCatalog = useMemo<BeginnerCommandParameterCatalog>(() => {
+    const catalog: Record<string, Array<{ name: string; type?: string; note?: string }>> = {};
+    Object.values(beginnerCommandHints).forEach(hint => {
+      catalog[hint.command] = hint.parameters.map(parameter => ({
+        name: parameter.name,
+        type: parameter.type,
+        note: parameter.note
+      }));
+    });
+    const bindingTypeLabels: Record<string, string> = {
+      void: '空',
+      int: '整数型',
+      longLong: '长整数型',
+      double: '小数型',
+      bool: '逻辑型',
+      wideString: '文本型',
+      utf8String: 'UTF-8 文本',
+      handle: '句柄',
+      raw: '原始值'
+    };
+    (moduleContext?.enabledModules || [])
+      .filter(module => module.diagnostics.length === 0)
+      .forEach(module => {
+        (module.manifest.bindings?.commands || []).forEach(binding => {
+          const contributed = catalog[binding.command] || [];
+          const bindingParameters = binding.parameters || [];
+          const count = Math.max(contributed.length, bindingParameters.length);
+          catalog[binding.command] = Array.from({ length: count }, (_, index) => ({
+            name: bindingParameters[index]?.name || contributed[index]?.name || `参数 ${index + 1}`,
+            type: bindingParameters[index]?.type
+              ? bindingTypeLabels[bindingParameters[index].type] || bindingParameters[index].type
+              : contributed[index]?.type,
+            note: bindingParameters[index]?.description || contributed[index]?.note
+          }));
+        });
+      });
+    lingCppLanguageContext?.program.classes.forEach(cls => {
+      cls.methods.forEach(method => {
+        catalog[method.name] = method.parameters.map(parameter => ({
+          name: parameter.name,
+          type: parameter.type,
+          note: parameter.defaultValue ? `默认值：${parameter.defaultValue}` : undefined
+        }));
+      });
+    });
+    lingCppLanguageContext?.program.functionLibraries.forEach(library => {
+      library.methods.forEach(method => {
+        catalog[`${library.name}.${method.name}`] = method.parameters.map(parameter => ({
+          name: parameter.name,
+          type: parameter.type,
+          note: parameter.defaultValue ? `默认值：${parameter.defaultValue}` : undefined
+        }));
+      });
+    });
+    return catalog;
+  }, [beginnerCommandHints, lingCppLanguageContext, moduleContext]);
   const structuredReadingRows = useMemo(
     () => lingCppLanguageContext
       ? getLingCppStructuredRows(lingCppLanguageContext)
@@ -1594,45 +1736,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     [structuredReadingRows]
   );
   const primaryLingCppClass = lingCppLanguageContext?.program.classes[0];
-  const beginnerTasks = useMemo(
-    () => activeFile?.language === 'lingcpp'
-      ? getBeginnerTasks(normalizedSourceCode, designerProject, activeFile?.path, ignoredBeginnerTaskIds, moduleContext)
-      : [],
-    [activeFile?.language, activeFile?.path, designerProject, ignoredBeginnerTaskIds, moduleContext, normalizedSourceCode]
-  );
-  const visibleBeginnerTasks = useMemo(
-    () => beginnerTasks.filter(task => task.status !== 'ignored'),
-    [beginnerTasks]
-  );
-  const codeExplanation = useMemo(
-    () => activeFile?.language === 'lingcpp'
-      ? getCodeExplanation(normalizedSourceCode, cursorPosition.line, cursorPosition.column)
-      : null,
-    [activeFile?.language, cursorPosition.column, cursorPosition.line, normalizedSourceCode]
-  );
+  const primaryFunctionLibrary = lingCppLanguageContext?.program.functionLibraries[0];
+  const primaryMethodOwnerName = primaryLingCppClass?.name || primaryFunctionLibrary?.name;
   const activeBeginnerHandler = selectedBeginnerHandler
-    || visibleBeginnerTasks.find(task => task.handlerName)?.handlerName
     || lingCppStructure.flatMap(node => node.children || []).find(node => node.kind === 'event')?.name
     || '';
-  const actionBlocks = useMemo(
-    () => activeFile?.language === 'lingcpp' && activeBeginnerHandler
-      ? getActionBlocksForEvent(normalizedSourceCode, activeBeginnerHandler)
-      : [],
-    [activeBeginnerHandler, activeFile?.language, normalizedSourceCode]
-  );
-  const learningPath = useMemo(
-    () => getLearningPathState(designerProject?.id || 'local-workspace', normalizedSourceCode, designerProject),
-    [designerProject, normalizedSourceCode]
-  );
   const designerTabLabel = designerProject?.windows.find(window => window.id === activeWindowId)?.fileName
     || designerProject?.windows[0]?.fileName
     || '界面可视化';
   const isLingCppBeginnerStructureMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'beginner';
   const isLingCppNativeMode = activeFile?.language === 'lingcpp' && editorExperienceMode === 'native';
-
-  useEffect(() => {
-    if (!isLingCppBeginnerStructureMode) setShowBeginnerTools(false);
-  }, [isLingCppBeginnerStructureMode]);
 
   useEffect(() => {
     let surface: string | null = null;
@@ -1865,6 +1978,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     { label: '类', text: '\n类 新窗口 : 公开 窗体\n公开:\n    构造()\n        调试输出("初始化完成")\n结束类\n' },
     { label: '事件', text: '    事件 按钮1_被单击()\n        信息框("提示内容", 64, "提示")\n' },
     { label: '如果', text: BEGINNER_IF_SNIPPET },
+    { label: '选择', text: BEGINNER_SELECT_SNIPPET },
+    { label: '循环', text: BEGINNER_LOOP_SNIPPET },
+    { label: '判断循环', text: BEGINNER_WHILE_SNIPPET },
+    { label: '计次循环', text: BEGINNER_COUNT_LOOP_SNIPPET },
+    { label: '尝试', text: BEGINNER_TRY_SNIPPET },
     { label: '返回', text: '返回' },
     { label: '信息框', text: '信息框("提示内容", 64, "提示")' },
     { label: '调试输出', text: '调试输出("调试信息")' },
@@ -2061,7 +2179,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           project: designerProject,
           activeWindowId,
           lingCppSourceCode: normalizedSourceCode,
-          lingCppSourceFilePath: activeFile?.path
+          lingCppSourceFilePath: activeFile?.path,
+          lingCppSources: lingCppProjectSources
         })
       });
       const result = await response.json();
@@ -2113,7 +2232,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           project: designerProject,
           activeWindowId,
           lingCppSourceCode: normalizedSourceCode,
-          lingCppSourceFilePath: activeFile?.path
+          lingCppSourceFilePath: activeFile?.path,
+          lingCppSources: lingCppProjectSources
         })
       });
       const result = await response.json();
@@ -2145,6 +2265,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           activeWindowId,
           lingCppSourceCode: normalizedSourceCode,
           lingCppSourceFilePath: activeFile?.path,
+          lingCppSources: lingCppProjectSources,
           run: true
         })
       });
@@ -3008,7 +3129,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       name: row.editKind === 'event' || row.editKind === 'method'
         ? row.targetName || row.name
         : row.name,
-      type: row.editKind === 'member' ? row.type || '' : '',
+      type: row.editKind === 'member' || row.editKind === 'global' ? row.type || '' : '',
       baseClass: row.editKind === 'class' ? row.value || '' : '',
       initialValue: row.initialValue || '',
       parameters: formatParameterDraft(row.parameters),
@@ -3042,7 +3163,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const note = draft.note.trim();
     const edits: LingCppAstEdit[] = [];
 
-    if ((draft.mode === 'package' || draft.mode === 'class' || draft.mode === 'member' || draft.mode === 'method' || draft.mode === 'event' || draft.mode === 'add-member' || draft.mode === 'add-event') && !draft.name.trim()) {
+    if ((draft.mode === 'package' || draft.mode === 'global' || draft.mode === 'class' || draft.mode === 'member' || draft.mode === 'method' || draft.mode === 'event' || draft.mode === 'add-member' || draft.mode === 'add-event') && !draft.name.trim()) {
       setStructureEditError('名称不能为空。');
       return;
     }
@@ -3050,6 +3171,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     if (draft.mode === 'package') {
       edits.push({ kind: 'update-package', packageName: draft.name.trim() });
       if (note && draft.line) edits.push({ kind: 'update-note', line: draft.line, note });
+    }
+    if (draft.mode === 'global') {
+      return applyStructureAstEdits([{
+        kind: 'update-global',
+        globalName: draft.targetName,
+        newName: draft.name,
+        type: draft.type,
+        initialValue: draft.initialValue || undefined,
+        note: draft.note
+      }], draft.line);
     }
 
     if (draft.mode === 'class') {
@@ -3513,25 +3644,26 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     setNewFunctionDraft(draft);
     const name = draft.name.trim();
     if (!name) return;
-    if (!primaryLingCppClass) {
-      setStructureEditError('当前源码里还没有类，无法新增功能代码。');
+    if (!primaryMethodOwnerName) {
+      setStructureEditError('当前源码里还没有类或功能库，无法新增功能代码。');
       return;
     }
 
     const applied = applyStructureAstEdits([{
       kind: 'add-method',
-      className: primaryLingCppClass.name,
+      className: primaryMethodOwnerName,
       method: {
         name,
         returnType: draft.returnType.trim() || '空',
+        access: primaryFunctionLibrary ? '公开' : undefined,
         parameters: parseParameterDraft(draft.parameters),
         note: '新手模式新增的功能代码'
       }
     }]);
     if (applied) {
       setNewFunctionDraft({ returnType: '空', name: '', parameters: '' });
-      setSelectedBeginnerCodeTarget({ className: primaryLingCppClass.name, methodName: name });
-      setExpandedBeginnerFunctionTargetKey(`${primaryLingCppClass.name}:method:${name}`);
+      setSelectedBeginnerCodeTarget({ className: primaryMethodOwnerName, methodName: name });
+      setExpandedBeginnerFunctionTargetKey(`${primaryMethodOwnerName}:method:${name}`);
       window.requestAnimationFrame(() => {
         scrollElementInsideBeginnerEditor(document.getElementById('lingcpp-structure-section-function'), 'start');
       });
@@ -3584,7 +3716,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     className: string | undefined,
     methodName: string,
     currentBody: string,
-    nextBody: string
+    nextBody: string,
+    localStatementAnchors?: Record<string, number>
   ) => {
     const normalizedNext = nextBody.replace(/\s+$/u, '');
     if (normalizedNext === currentBody.replace(/\s+$/u, '')) return true;
@@ -3592,7 +3725,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       kind: 'update-method-body',
       className,
       methodName,
-      bodyLines: normalizedNext ? normalizedNext.split(/\r?\n/u) : []
+      bodyLines: normalizedNext ? normalizedNext.split(/\r?\n/u) : [],
+      localStatementAnchors
     }]);
   };
 
@@ -3626,6 +3760,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const renderStructureEditForm = (draft: StructureEditDraft) => {
     const title: Record<StructureEditMode, string> = {
       package: '编辑包名',
+      global: '编辑项目全局变量',
       class: '编辑类',
       member: '编辑成员',
       method: '编辑方法',
@@ -3752,6 +3887,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const groupTitle: Record<LingCppStructuredReadingRow['group'], string> = {
       declaration: '源码声明',
       package: '入口',
+      global: '项目全局变量',
       class: '类',
       member: '成员声明',
       local: '局部变量',
@@ -4009,6 +4145,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const groupTitle: Record<LingCppStructuredReadingRow['group'], string> = {
       declaration: '源码声明',
       package: '入口',
+      global: '项目全局变量',
       class: '类',
       member: '成员声明',
       local: '局部变量',
@@ -4038,10 +4175,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const functionRows = methodRows.filter(row => row.editKind === 'method');
     const lifecycleRows = methodRows.filter(row => row.editKind !== 'method');
     const otherRows = normalRows.filter(row => row.group === 'parameter' || row.group === 'note');
-    const codeTargets = (lingCppLanguageContext?.program.classes || []).flatMap(cls =>
-      cls.methods
+    const codeTargets = [
+      ...(lingCppLanguageContext?.program.classes || []).map(cls => ({ name: cls.name, methods: cls.methods })),
+      ...(lingCppLanguageContext?.program.functionLibraries || []).map(library => ({ name: library.name, methods: library.methods }))
+    ].flatMap(owner =>
+      owner.methods
         .filter(method => method.kind !== 'destructor')
-        .map(method => ({ className: cls.name, method }))
+        .map(method => ({ className: owner.name, method }))
     );
     const functionTargets = codeTargets.filter(target => target.method.kind === 'method');
     const preferredCodeTarget = selectedBeginnerCodeTarget
@@ -4074,11 +4214,100 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     ].filter(Boolean)));
     const typeSuggestions = Array.from(new Set([
       ...commonLingCppTypes,
+      ...(projectTypes?.dataTypes || []).map(dataType => dataType.name),
       ...beginnerModuleCodeCompletions.filter(item => item.kind === '类型').map(item => item.label),
       ...memberRows.map(row => row.type || ''),
       ...codeTargets.flatMap(target => [target.method.returnType, ...target.method.parameters.map(parameter => parameter.type)])
     ].filter(Boolean)));
+    const beginnerAutoLocalReturnTypes = new Map<string, string>([
+      ...Object.values(beginnerCommandHints)
+        .filter(hint => hint.returnType && !/^(空|无|流程控制)$/u.test(hint.returnType))
+        .map(hint => [normalizeIdentifier(hint.command), hint.returnType] as [string, string]),
+      ...codeTargets
+        .filter(target => target.method.kind === 'method' && !/^(空|无)$/u.test(target.method.returnType))
+        .map(target => [normalizeIdentifier(target.method.name), target.method.returnType] as [string, string])
+    ]);
     const typeCompletionCatalog = buildBeginnerTypeCompletionCatalog(typeSuggestions);
+    const resolveBeginnerTypeInput = (rawValue: string) =>
+      resolveBeginnerTypeAlias(typeCompletionCatalog, rawValue);
+    const updateBeginnerTypeCompletion = (
+      inputKey: string,
+      input: HTMLInputElement,
+      includeAll = false
+    ) => {
+      if (!onUpdateSourceContent) return;
+      const items = filterBeginnerTypeCompletions(typeCompletionCatalog, input.value, includeAll).slice(0, 8);
+      const layout = getBeginnerTypeCompletionLayout(input, items.length);
+      setBeginnerTypeCompletionState(items.length > 0
+        ? { inputKey, value: input.value, items, selectedIndex: 0, ...layout }
+        : null
+      );
+    };
+    const closeBeginnerTypeCompletionLater = (inputKey: string) => {
+      window.setTimeout(() => {
+        setBeginnerTypeCompletionState(current => current?.inputKey === inputKey ? null : current);
+      }, 120);
+    };
+    const moveBeginnerTypeCompletion = (inputKey: string, delta: number) => {
+      setBeginnerTypeCompletionState(current => {
+        if (!current || current.inputKey !== inputKey || current.items.length === 0) return current;
+        return {
+          ...current,
+          selectedIndex: (current.selectedIndex + delta + current.items.length) % current.items.length
+        };
+      });
+    };
+    const renderBeginnerTypeCompletionPopup = (
+      inputKey: string,
+      onApply: (item: BeginnerTypeCompletionItem, input: HTMLInputElement | null) => void
+    ) => {
+      const typeCompletion = beginnerTypeCompletionState?.inputKey === inputKey
+        ? beginnerTypeCompletionState
+        : null;
+      if (!typeCompletion) return null;
+      return (
+        <div className={`absolute left-0 z-[90] w-64 max-w-[calc(100vw_-_24px)] overflow-hidden rounded border text-[11px] shadow-xl ${
+          typeCompletion.placement === 'above' ? 'bottom-full mb-1' : 'top-full mt-1'
+        } ${
+          isDarkMode ? 'border-[#343442] bg-[#17181f] text-slate-200 shadow-black/30' : 'border-slate-200 bg-white text-slate-800 shadow-slate-200/80'
+        }`} role="listbox" aria-label="类型补全">
+          <div className={`flex items-center justify-between border-b px-2 py-1 text-[10px] ${
+            isDarkMode ? 'border-[#2b2d34] text-slate-500' : 'border-slate-100 text-slate-500'
+          }`}>
+            <span>类型补全</span>
+            <span>Tab/Enter</span>
+          </div>
+          <div className="overflow-auto py-1" style={{ maxHeight: typeCompletion.maxListHeight }}>
+            {typeCompletion.items.map((item, index) => (
+              <button
+                key={`${inputKey}:${item.label}`}
+                type="button"
+                role="option"
+                aria-selected={index === typeCompletion.selectedIndex}
+                onMouseDown={event => {
+                  event.preventDefault();
+                  const input = event.currentTarget.closest('[data-beginner-type-wrap]')?.querySelector('input');
+                  onApply(item, input instanceof HTMLInputElement ? input : null);
+                }}
+                className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left ${
+                  index === typeCompletion.selectedIndex
+                    ? isDarkMode ? 'bg-cyan-500/15 text-cyan-100' : 'bg-cyan-50 text-cyan-900'
+                    : isDarkMode ? 'text-slate-300 hover:bg-[#20222a]' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span className="min-w-0">
+                  <span className={`block truncate ${textTone('type')}`}>{item.label}</span>
+                  <span className={`block truncate text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>{item.detail}</span>
+                </span>
+                <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] ${
+                  isDarkMode ? 'bg-[#252733] text-slate-400' : 'bg-slate-100 text-slate-500'
+                }`}>类型</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    };
     const windowTargetCompletionItems = buildBeginnerWindowTargetCompletions(designerProject);
     const defaultCodeArgument = (parameter: LingCppParameter) => {
       const defaultValue = parameter.defaultValue?.trim();
@@ -4094,12 +4323,22 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         ...BEGINNER_CODE_COMPLETIONS,
         ...beginnerModuleCodeCompletions,
         ...beginnerDesignerControlCompletions,
-        ...memberRows.map(row => ({
-          label: row.targetName || row.name,
-          detail: `${row.type || '对象'} 变量`,
-          insertText: row.targetName || row.name,
-          aliases: [row.targetName || row.name, row.name, row.type || '变量'].filter(Boolean),
-          kind: '变量' as BeginnerCodeCompletion['kind']
+        ...(projectGlobals?.constants || []).map(constant => createBeginnerVariableCompletion({
+          name: constant.name,
+          type: constant.type,
+          scope: '项目常量',
+          aliases: ['常量', constant.initialValue]
+        })),
+        ...(projectGlobals?.globals || []).map(global => createBeginnerVariableCompletion({
+          name: global.name,
+          type: global.type,
+          scope: '项目全局变量'
+        })),
+        ...memberRows.map(row => createBeginnerVariableCompletion({
+          name: row.targetName || row.name,
+          type: row.type,
+          scope: '程序集变量',
+          aliases: [row.name]
         })),
         ...codeTargets
           .filter(target => target.method.kind === 'method')
@@ -4123,12 +4362,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const getBeginnerCodeCompletionItems = (target: BeginnerCodeTarget) => Array.from(
       new Map([
         ...beginnerCodeCompletionItems,
-        ...(target.method.locals || []).map(local => ({
-          label: local.name,
-          detail: `${local.type} 局部变量 · ${target.method.name}`,
-          insertText: local.name,
-          aliases: [local.name, local.type, '局部变量'],
-          kind: '变量' as BeginnerCodeCompletion['kind']
+        ...(target.method.locals || []).map(local => createBeginnerVariableCompletion({
+          name: local.name,
+          type: local.type,
+          scope: '局部变量',
+          ownerName: target.method.name
         }))
       ].map(item => [`${item.label}:${item.insertText}`, item]))
         .values()
@@ -4139,21 +4377,102 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       beginnerCodeDraftsRef.current = nextDrafts;
       setBeginnerCodeDrafts(nextDrafts);
     };
+    const getCodeSegmentLineCounts = (
+      target: BeginnerCodeTarget,
+      segments: BeginnerMethodBodySegment[]
+    ) => {
+      const targetKey = codeTargetKey(target);
+      const current = beginnerCodeSegmentLineCountsRef.current[targetKey] || {};
+      const next = { ...current };
+      segments.forEach(segment => {
+        if (segment.kind === 'code' && next[segment.id] === undefined) {
+          next[segment.id] = segment.statements.length;
+        }
+      });
+      beginnerCodeSegmentLineCountsRef.current[targetKey] = next;
+      let statementIndex = 0;
+      const localAnchors: Record<string, number> = {};
+      segments.forEach(segment => {
+        if (segment.kind === 'code') {
+          statementIndex += next[segment.id] ?? segment.statements.length;
+          return;
+        }
+        segment.locals.forEach(local => {
+          localAnchors[local.name] = statementIndex;
+        });
+      });
+      beginnerLocalStatementAnchorsRef.current[targetKey] = localAnchors;
+      return next;
+    };
+    const getCodeSegmentDraft = (
+      target: BeginnerCodeTarget,
+      context: BeginnerCodeSegmentContext
+    ) => {
+      const targetKey = codeTargetKey(target);
+      const fullBody = beginnerCodeDraftsRef.current[targetKey] ?? methodBodyText(target.method);
+      const fullLines = fullBody ? fullBody.split('\n') : [];
+      const counts = getCodeSegmentLineCounts(target, context.segments);
+      const codeSegments = context.segments.filter((segment): segment is BeginnerCodeSegment => segment.kind === 'code');
+      const segmentIndex = codeSegments.findIndex(segment => segment.id === context.segment.id);
+      const start = codeSegments
+        .slice(0, Math.max(0, segmentIndex))
+        .reduce((total, segment) => total + (counts[segment.id] ?? segment.statements.length), 0);
+      const isLastCodeSegment = segmentIndex === codeSegments.length - 1;
+      const count = isLastCodeSegment
+        ? Math.max(0, fullLines.length - start)
+        : counts[context.segment.id] ?? context.segment.statements.length;
+      return {
+        value: fullLines.slice(start, start + count).join('\n'),
+        start,
+        count
+      };
+    };
+    const updateBeginnerCodeSegmentDraft = (
+      target: BeginnerCodeTarget,
+      context: BeginnerCodeSegmentContext,
+      nextSegmentValue: string
+    ) => {
+      const targetKey = codeTargetKey(target);
+      const currentFullBody = beginnerCodeDraftsRef.current[targetKey] ?? methodBodyText(target.method);
+      const currentFullLines = currentFullBody ? currentFullBody.split('\n') : [];
+      const currentSegment = getCodeSegmentDraft(target, context);
+      const nextSegmentLines = nextSegmentValue ? nextSegmentValue.split('\n') : [];
+      const nextFullLines = [
+        ...currentFullLines.slice(0, currentSegment.start),
+        ...nextSegmentLines,
+        ...currentFullLines.slice(currentSegment.start + currentSegment.count)
+      ];
+      const counts = getCodeSegmentLineCounts(target, context.segments);
+      beginnerCodeSegmentLineCountsRef.current[targetKey] = {
+        ...counts,
+        [context.segment.id]: nextSegmentLines.length
+      };
+      getCodeSegmentLineCounts(target, context.segments);
+      updateBeginnerCodeDraft(target, nextFullLines.join('\n'));
+    };
     const clearBeginnerCodeDraft = (target: BeginnerCodeTarget) => {
       const targetKey = codeTargetKey(target);
       if (!(targetKey in beginnerCodeDraftsRef.current)) return;
       const nextDrafts = { ...beginnerCodeDraftsRef.current };
       delete nextDrafts[targetKey];
       beginnerCodeDraftsRef.current = nextDrafts;
+      const nextCounts = { ...beginnerCodeSegmentLineCountsRef.current };
+      delete nextCounts[targetKey];
+      beginnerCodeSegmentLineCountsRef.current = nextCounts;
+      const nextAnchors = { ...beginnerLocalStatementAnchorsRef.current };
+      delete nextAnchors[targetKey];
+      beginnerLocalStatementAnchorsRef.current = nextAnchors;
       setBeginnerCodeDrafts(nextDrafts);
     };
     const updateBeginnerCompletion = (
       target: BeginnerCodeTarget,
       input: HTMLTextAreaElement,
-      includeAll = false
+      includeAll = false,
+      segmentContext?: BeginnerCodeSegmentContext
     ) => {
       const context = getBeginnerCompletionContext(input.value, input.selectionStart);
       const targetKey = codeTargetKey(target);
+      const segmentId = segmentContext?.segment.id || 'all';
       if (!shouldShowBeginnerCompletion(context, includeAll)) {
         setBeginnerCompletionState(current => current?.targetKey === targetKey ? null : current);
         return;
@@ -4171,6 +4490,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       }
       setBeginnerCompletionState({
         targetKey,
+        segmentId,
         token,
         items,
         selectedIndex: 0,
@@ -4213,7 +4533,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const applyBeginnerCompletion = (
       target: BeginnerCodeTarget,
       input: HTMLTextAreaElement,
-      completion: BeginnerCodeCompletion
+      completion: BeginnerCodeCompletion,
+      segmentContext?: BeginnerCodeSegmentContext
     ) => {
       const cursor = input.selectionStart;
       const token = getBeginnerCompletionToken(input.value, cursor);
@@ -4224,7 +4545,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const selectLength = completion.selectLength ?? 0;
 
       input.value = nextValue;
-      updateBeginnerCodeDraft(target, nextValue);
+      if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, nextValue);
+      else updateBeginnerCodeDraft(target, nextValue);
       input.focus();
       window.requestAnimationFrame(() => {
         input.setSelectionRange(nextCursor, nextCursor + selectLength);
@@ -4311,33 +4633,305 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     };
     const handleBeginnerCodeChange = (
       target: BeginnerCodeTarget,
-      event: React.ChangeEvent<HTMLTextAreaElement>
+      event: React.ChangeEvent<HTMLTextAreaElement>,
+      segmentContext?: BeginnerCodeSegmentContext
     ) => {
-      updateBeginnerCodeDraft(target, event.currentTarget.value);
-      updateBeginnerCompletion(target, event.currentTarget);
+      setBeginnerAutoLocalTypeState(current =>
+        current?.targetKey === codeTargetKey(target) ? null : current
+      );
+      if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, event.currentTarget.value);
+      else updateBeginnerCodeDraft(target, event.currentTarget.value);
+      updateBeginnerCompletion(target, event.currentTarget, false, segmentContext);
       updateBeginnerCommandHint(target, event.currentTarget);
     };
     const handleBeginnerCodeBlur = (
       target: BeginnerCodeTarget,
       currentBody: string,
-      event: React.FocusEvent<HTMLTextAreaElement>
+      _event: React.FocusEvent<HTMLTextAreaElement>
     ) => {
       closeBeginnerCompletion(target);
+      const targetKey = codeTargetKey(target);
+      const nextBody = beginnerCodeDraftsRef.current[targetKey] ?? currentBody;
       const applied = commitBeginnerCodeBody(
         target.className,
         target.method.name,
         currentBody,
-        event.currentTarget.value
+        nextBody,
+        beginnerLocalStatementAnchorsRef.current[targetKey]
       );
       if (applied) clearBeginnerCodeDraft(target);
     };
+    const insertBeginnerLocalAtCursor = (
+      target: BeginnerCodeTarget,
+      input: HTMLTextAreaElement,
+      segmentContext?: BeginnerCodeSegmentContext
+    ) => {
+      if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, input.value);
+      else updateBeginnerCodeDraft(target, input.value);
+      const targetKey = codeTargetKey(target);
+      const statementIndex = getBeginnerLocalInsertStatementIndex(
+        input.value,
+        input.selectionStart,
+        segmentContext?.segment.statementStartIndex ?? 0
+      );
+      const flushed = applyPendingBeginnerCodeDrafts(
+        latestSourceCodeRef.current,
+        beginnerCodeDraftsRef.current,
+        beginnerLocalStatementAnchorsRef.current
+      );
+      if (!flushed.success) {
+        setStructureEditError(flushed.diagnostics[0] || '插入局部变量前提交正文失败。');
+        return;
+      }
+
+      const parsed = parseLingCpp(flushed.sourceCode);
+      const parsedClass = parsed.program.classes.find(cls => cls.name === target.className);
+      const parsedMethod = parsedClass?.methods.find(method =>
+        method.name === target.method.name && method.kind === target.method.kind
+      );
+      if (!parsedMethod) {
+        setStructureEditError(`无法定位子程序 ${target.method.name}，局部变量未插入。`);
+        return;
+      }
+
+      const name = uniqueBeginnerName('局部变量', [
+        ...parsedMethod.parameters.map(parameter => parameter.name),
+        ...(parsedMethod.locals || []).map(local => local.name)
+      ]);
+      const statementAtCursor = parsedMethod.statements[Math.min(statementIndex, parsedMethod.statements.length - 1)];
+      const insertBeforeLine = statementIndex < parsedMethod.statements.length
+        ? statementAtCursor?.line
+        : parsedMethod.endLine;
+      const inserted = applyLingCppAstEdit(flushed.sourceCode, {
+        kind: 'add-local',
+        className: target.className,
+        methodName: target.method.name,
+        insertBeforeLine,
+        local: {
+          name,
+          type: '文本型',
+          initialValue: '""'
+        }
+      });
+      if (!inserted.success) {
+        setStructureEditError(inserted.error || inserted.diagnostics[0]?.message || '局部变量插入失败。');
+        return;
+      }
+
+      beginnerCodeDraftsRef.current = {};
+      beginnerCodeSegmentLineCountsRef.current = {};
+      beginnerLocalStatementAnchorsRef.current = {};
+      setBeginnerCodeDrafts({});
+      setCollapsedBeginnerProcessTargetKeys(current => current.filter(key => key !== targetKey));
+      setStructureEditError(null);
+      updateSourceCode(inserted.sourceCode);
+      window.requestAnimationFrame(() => {
+        const localNameInput = document.querySelector(`[data-beginner-local-name="${CSS.escape(name)}"]`);
+        if (localNameInput instanceof HTMLInputElement) {
+          localNameInput.focus();
+          localNameInput.select();
+          localNameInput.scrollIntoView({ block: 'nearest' });
+        }
+      });
+    };
+    const commitBeginnerAutoLocal = (
+      target: BeginnerCodeTarget,
+      input: HTMLTextAreaElement,
+      segmentContext: BeginnerCodeSegmentContext,
+      variableName: string,
+      variableType: string
+    ) => {
+      const targetKey = codeTargetKey(target);
+      const cursor = input.selectionEnd;
+      const lineStart = input.value.lastIndexOf('\n', Math.max(0, cursor - 1)) + 1;
+      const meaningfulLinesBefore = input.value
+        .slice(0, lineStart)
+        .split('\n')
+        .filter(line => line.trim()).length;
+      const segmentDraft = getCodeSegmentDraft(target, segmentContext);
+      const statementIndex = segmentDraft.start + meaningfulLinesBefore;
+      const nextSegmentValue = `${input.value.slice(0, input.selectionStart)}\n${input.value.slice(input.selectionEnd)}`;
+
+      updateBeginnerCodeSegmentDraft(target, segmentContext, input.value);
+      const flushed = applyPendingBeginnerCodeDrafts(
+        latestSourceCodeRef.current,
+        beginnerCodeDraftsRef.current,
+        beginnerLocalStatementAnchorsRef.current
+      );
+      if (!flushed.success) {
+        setStructureEditError(flushed.diagnostics[0] || '自动声明局部变量前提交正文失败。');
+        return false;
+      }
+
+      const parsed = parseLingCpp(flushed.sourceCode);
+      const parsedClass = parsed.program.classes.find(cls => cls.name === target.className);
+      const parsedMethod = parsedClass?.methods.find(method =>
+        method.name === target.method.name && method.kind === target.method.kind
+      );
+      if (!parsedMethod) {
+        setStructureEditError(`无法定位子程序 ${target.method.name}，局部变量未自动声明。`);
+        return false;
+      }
+
+      const normalizedVariableName = normalizeIdentifier(variableName);
+      const alreadyDeclared = [
+        ...parsedClass.members.map(member => member.name),
+        ...parsedMethod.parameters.map(parameter => parameter.name),
+        ...(parsedMethod.locals || []).map(local => local.name)
+      ].some(name => normalizeIdentifier(name) === normalizedVariableName);
+      if (alreadyDeclared) {
+        setBeginnerAutoLocalTypeState(null);
+        return false;
+      }
+
+      const statementAtCursor = parsedMethod.statements[Math.min(statementIndex, parsedMethod.statements.length - 1)];
+      const inserted = applyLingCppAstEdit(flushed.sourceCode, {
+        kind: 'add-local',
+        className: target.className,
+        methodName: target.method.name,
+        insertBeforeLine: statementAtCursor?.line ?? parsedMethod.endLine ?? parsedMethod.line + 1,
+        local: {
+          name: variableName,
+          type: variableType
+        }
+      });
+      if (!inserted.success) {
+        setStructureEditError(inserted.error || inserted.diagnostics[0]?.message || '局部变量自动声明失败。');
+        return false;
+      }
+
+      input.value = nextSegmentValue;
+      updateBeginnerCodeSegmentDraft(target, segmentContext, nextSegmentValue);
+      const pendingBody = beginnerCodeDraftsRef.current[targetKey] ?? nextSegmentValue;
+      beginnerCodeDraftsRef.current = { [targetKey]: pendingBody };
+      beginnerCodeSegmentLineCountsRef.current = {};
+      beginnerLocalStatementAnchorsRef.current = {};
+      setBeginnerCodeDrafts({ [targetKey]: pendingBody });
+      setBeginnerAutoLocalTypeState(null);
+      closeBeginnerCompletion(target);
+      setCollapsedBeginnerProcessTargetKeys(current => current.filter(key => key !== targetKey));
+      setStructureEditError(null);
+      updateSourceCode(inserted.sourceCode);
+
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+        const editors = Array.from(document.querySelectorAll(
+          `textarea[data-beginner-target-key="${CSS.escape(targetKey)}"]`
+        )).filter((editor): editor is HTMLTextAreaElement => editor instanceof HTMLTextAreaElement);
+        const continuation = editors.find(editor =>
+          Number(editor.dataset.beginnerStatementStart) === statementIndex
+        ) || editors.at(-1);
+        if (!continuation) return;
+        const firstLineEnd = continuation.value.indexOf('\n');
+        const nextCursor = firstLineEnd >= 0 ? firstLineEnd + 1 : continuation.value.length;
+        continuation.focus();
+        continuation.setSelectionRange(nextCursor, nextCursor);
+        captureBeginnerTextareaView(continuation);
+      }));
+      return true;
+    };
+    const tryBeginnerAutoLocalOnEnter = (
+      target: BeginnerCodeTarget,
+      input: HTMLTextAreaElement,
+      segmentContext?: BeginnerCodeSegmentContext
+    ) => {
+      if (!segmentContext || input.selectionStart !== input.selectionEnd) return false;
+      const cursor = input.selectionEnd;
+      const lineStart = input.value.lastIndexOf('\n', Math.max(0, cursor - 1)) + 1;
+      const nextBreak = input.value.indexOf('\n', cursor);
+      const lineEnd = nextBreak >= 0 ? nextBreak : input.value.length;
+      const lineText = input.value.slice(lineStart, lineEnd);
+      const meaningfulLineEnd = lineStart + lineText.replace(/\s+$/u, '').length;
+      if (cursor < meaningfulLineEnd || input.value.slice(cursor, lineEnd).trim()) return false;
+
+      const ownerClass = lingCppLanguageContext?.program.classes.find(cls => cls.name === target.className);
+      const analysis = analyzeBeginnerAutoLocalAssignment({
+        lineText,
+        method: target.method,
+        ownerClass,
+        globals: projectGlobals?.globals,
+        moduleContext,
+        commandReturnTypes: beginnerAutoLocalReturnTypes
+      });
+      if (analysis.kind !== 'declare') return false;
+
+      if (analysis.inferredType) {
+        return commitBeginnerAutoLocal(
+          target,
+          input,
+          segmentContext,
+          analysis.name,
+          analysis.inferredType
+        );
+      }
+
+      const items = typeSuggestions.filter(type => !/^(空|无)$/u.test(type));
+      if (items.length === 0) return false;
+      closeBeginnerCompletion(target);
+      setBeginnerAutoLocalTypeState({
+        targetKey: codeTargetKey(target),
+        segmentId: segmentContext.segment.id,
+        variableName: analysis.name,
+        expression: analysis.expression,
+        items,
+        selectedIndex: 0,
+        position: getBeginnerCompletionPanelPosition(input, analysis.name, items.length)
+      });
+      return true;
+    };
     const handleBeginnerCodeKeyDown = (
       target: BeginnerCodeTarget,
-      event: React.KeyboardEvent<HTMLTextAreaElement>
+      event: React.KeyboardEvent<HTMLTextAreaElement>,
+      segmentContext?: BeginnerCodeSegmentContext
     ) => {
       const input = event.currentTarget;
       const targetKey = codeTargetKey(target);
-      const activeCompletion = beginnerCompletionState?.targetKey === targetKey ? beginnerCompletionState : null;
+      const segmentId = segmentContext?.segment.id || 'all';
+      const activeCompletion = beginnerCompletionState?.targetKey === targetKey
+        && beginnerCompletionState.segmentId === segmentId
+        ? beginnerCompletionState
+        : null;
+      const activeAutoLocalType = beginnerAutoLocalTypeState?.targetKey === targetKey
+        && beginnerAutoLocalTypeState.segmentId === segmentContext?.segment.id
+        ? beginnerAutoLocalTypeState
+        : null;
+
+      if (activeAutoLocalType) {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          const delta = event.key === 'ArrowDown' ? 1 : -1;
+          setBeginnerAutoLocalTypeState(current => {
+            if (!current || current.targetKey !== targetKey || current.items.length === 0) return current;
+            const selectedIndex = (current.selectedIndex + delta + current.items.length) % current.items.length;
+            return { ...current, selectedIndex };
+          });
+          return;
+        }
+        if ((event.key === 'Enter' || event.key === 'Tab') && segmentContext) {
+          event.preventDefault();
+          const type = activeAutoLocalType.items[activeAutoLocalType.selectedIndex] || activeAutoLocalType.items[0];
+          if (type) commitBeginnerAutoLocal(
+            target,
+            input,
+            segmentContext,
+            activeAutoLocalType.variableName,
+            type
+          );
+          return;
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          setBeginnerAutoLocalTypeState(null);
+          return;
+        }
+        setBeginnerAutoLocalTypeState(null);
+      }
+
+      if (isBeginnerLocalInsertShortcut(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        insertBeginnerLocalAtCursor(target, input, segmentContext);
+        return;
+      }
 
       if (event.altKey && !event.ctrlKey && !event.metaKey && event.key === 'ArrowUp') {
         if (navigateBeginnerStructure(target, input, 'previous')) event.preventDefault();
@@ -4362,7 +4956,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
       if ((event.ctrlKey || event.metaKey) && event.key === ' ') {
         event.preventDefault();
-        updateBeginnerCompletion(target, input, true);
+        updateBeginnerCompletion(target, input, true, segmentContext);
         return;
       }
 
@@ -4372,7 +4966,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         const result = toggleBeginnerLineComment(input.value, input.selectionStart, input.selectionEnd);
         if (result.value === input.value) return;
         input.value = result.value;
-        updateBeginnerCodeDraft(target, result.value);
+        if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, result.value);
+        else updateBeginnerCodeDraft(target, result.value);
         window.requestAnimationFrame(() => {
           input.focus();
           input.setSelectionRange(result.selectionStart, result.selectionEnd);
@@ -4396,12 +4991,20 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         if (event.key === 'Enter' || event.key === 'Tab') {
           event.preventDefault();
           const completion = activeCompletion.items[activeCompletion.selectedIndex] || activeCompletion.items[0];
-          if (completion) applyBeginnerCompletion(target, input, completion);
+          if (completion) applyBeginnerCompletion(target, input, completion, segmentContext);
           return;
         }
         if (event.key === 'Escape') {
           event.preventDefault();
           closeBeginnerCompletion(target);
+          return;
+        }
+      }
+
+      if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey) {
+        if (tryBeginnerAutoLocalOnEnter(target, input, segmentContext)) {
+          event.preventDefault();
+          event.stopPropagation();
           return;
         }
       }
@@ -4416,15 +5019,23 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         const end = input.selectionEnd;
         const nextValue = `${input.value.slice(0, start)}    ${input.value.slice(end)}`;
         input.value = nextValue;
-        updateBeginnerCodeDraft(target, nextValue);
+        if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, nextValue);
+        else updateBeginnerCodeDraft(target, nextValue);
         window.requestAnimationFrame(() => {
           input.selectionStart = input.selectionEnd = start + 4;
         });
       }
     };
-    const renderBeginnerCompletionPanel = (target: BeginnerCodeTarget) => {
+    const renderBeginnerCompletionPanel = (
+      target: BeginnerCodeTarget,
+      segmentContext?: BeginnerCodeSegmentContext
+    ) => {
       const targetKey = codeTargetKey(target);
-      const state = beginnerCompletionState?.targetKey === targetKey ? beginnerCompletionState : null;
+      const segmentId = segmentContext?.segment.id || 'all';
+      const state = beginnerCompletionState?.targetKey === targetKey
+        && beginnerCompletionState.segmentId === segmentId
+        ? beginnerCompletionState
+        : null;
       if (!state || state.items.length === 0) return null;
 
       return (
@@ -4448,7 +5059,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 onMouseDown={event => {
                   event.preventDefault();
                   const editor = event.currentTarget.closest('[data-beginner-editor-root]')?.querySelector('textarea');
-                  if (editor instanceof HTMLTextAreaElement) applyBeginnerCompletion(target, editor, item);
+                  if (editor instanceof HTMLTextAreaElement) applyBeginnerCompletion(target, editor, item, segmentContext);
                 }}
                 className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[11px] ${
                   index === state.selectedIndex
@@ -4463,6 +5074,64 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] ${
                   isDarkMode ? 'bg-[#2b2d34] text-slate-400' : 'bg-slate-100 text-slate-500'
                 }`}>{item.kind}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    };
+    const renderBeginnerAutoLocalTypePanel = (
+      target: BeginnerCodeTarget,
+      segmentContext?: BeginnerCodeSegmentContext
+    ) => {
+      const targetKey = codeTargetKey(target);
+      const state = beginnerAutoLocalTypeState?.targetKey === targetKey
+        && beginnerAutoLocalTypeState.segmentId === segmentContext?.segment.id
+        ? beginnerAutoLocalTypeState
+        : null;
+      if (!state || !segmentContext || state.items.length === 0) return null;
+
+      return (
+        <div
+          className={`absolute left-2 z-40 w-[calc(100%_-_16px)] max-w-[280px] overflow-hidden rounded border shadow-xl ${
+            isDarkMode ? 'border-amber-400/30 bg-[#191b22] text-slate-100 shadow-black/35' : 'border-amber-300 bg-white text-slate-900 shadow-slate-300/50'
+          } ${state.position.placement === 'above' ? 'origin-bottom-left' : 'origin-top-left'}`}
+          style={{ top: state.position.top }}
+          role="listbox"
+          aria-label={`选择局部变量 ${state.variableName} 的类型`}
+        >
+          <div className={`border-b px-2 py-1.5 text-[10px] ${
+            isDarkMode ? 'border-[#2b2d34] text-amber-200' : 'border-amber-100 text-amber-800'
+          }`}>
+            <div className="font-semibold">为 {state.variableName} 选择类型</div>
+            <div className={`truncate ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`} title={state.expression}>
+              无法确定右侧表达式类型 · ↑↓ 选择 · Enter 确认
+            </div>
+          </div>
+          <div className="overflow-auto py-1" style={{ maxHeight: state.position.maxListHeight }}>
+            {state.items.map((type, index) => (
+              <button
+                key={type}
+                type="button"
+                role="option"
+                aria-selected={index === state.selectedIndex}
+                onMouseDown={event => {
+                  event.preventDefault();
+                  const editor = event.currentTarget.closest('[data-beginner-editor-root]')?.querySelector('textarea');
+                  if (editor instanceof HTMLTextAreaElement) {
+                    commitBeginnerAutoLocal(target, editor, segmentContext, state.variableName, type);
+                  }
+                }}
+                className={`flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-[11px] ${
+                  index === state.selectedIndex
+                    ? isDarkMode ? 'bg-amber-400/15 text-amber-100' : 'bg-amber-50 text-amber-900'
+                    : isDarkMode ? 'text-slate-300 hover:bg-[#232631]' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <span className="font-semibold">{type}</span>
+                <span className={`rounded px-1.5 py-0.5 text-[9px] ${
+                  isDarkMode ? 'bg-[#2b2d34] text-slate-400' : 'bg-slate-100 text-slate-500'
+                }`}>局部变量</span>
               </button>
             ))}
           </div>
@@ -4604,24 +5273,25 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       return candidate;
     };
     const createBeginnerFunction = () => {
-      if (!primaryLingCppClass) {
-        setStructureEditError('当前源码里还没有类，无法新增子程序。');
+      if (!primaryMethodOwnerName) {
+        setStructureEditError('当前源码里还没有类或功能库，无法新增子程序。');
         return;
       }
       const name = uniqueBeginnerName('新子程序', codeTargets.map(target => target.method.name));
       const applied = applyStructureAstEdits([{
         kind: 'add-method',
-        className: primaryLingCppClass.name,
+        className: primaryMethodOwnerName,
         method: {
           name,
           returnType: '空',
+          access: primaryFunctionLibrary ? '公开' : undefined,
           bodyLines: [`调试输出("${name} 已执行")`],
           note: '新手模式右键新增的子程序'
         }
       }]);
       if (applied) {
-        setSelectedBeginnerCodeTarget({ className: primaryLingCppClass.name, methodName: name });
-        setExpandedBeginnerFunctionTargetKey(`${primaryLingCppClass.name}:method:${name}`);
+        setSelectedBeginnerCodeTarget({ className: primaryMethodOwnerName, methodName: name });
+        setExpandedBeginnerFunctionTargetKey(`${primaryMethodOwnerName}:method:${name}`);
       }
     };
     const createBeginnerMember = () => {
@@ -4641,30 +5311,18 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         }
       }]);
     };
-    const localDraftForTarget = (target: BeginnerCodeTarget): LocalVariableDraft => ({
-      type: '文本型',
-      name: '',
-      initialValue: '',
-      isArray: false,
-      ...(newLocalVariableDrafts[codeTargetKey(target)] || {})
-    });
-    const updateNewLocalDraft = (target: BeginnerCodeTarget, patch: Partial<LocalVariableDraft>) => {
-      const key = codeTargetKey(target);
-      setNewLocalVariableDrafts(current => ({
-        ...current,
-        [key]: { type: '文本型', name: '', initialValue: '', isArray: false, ...(current[key] || {}), ...patch }
-      }));
-    };
-    const clearNewLocalDraft = (target: BeginnerCodeTarget) => {
-      const key = codeTargetKey(target);
-      setNewLocalVariableDrafts(current => {
-        const next = { ...current };
-        delete next[key];
-        return next;
-      });
-    };
-    const commitNewLocalVariable = (target: BeginnerCodeTarget, draftOverride?: Partial<LocalVariableDraft>) => {
-      const draft = { ...localDraftForTarget(target), ...(draftOverride || {}) };
+    const commitNewLocalVariable = (
+      target: BeginnerCodeTarget,
+      draftOverride?: Partial<LocalVariableDraft>,
+      insertBeforeLine?: number
+    ) => {
+      const draft: LocalVariableDraft = {
+        type: '文本型',
+        name: '',
+        initialValue: '',
+        isArray: false,
+        ...(draftOverride || {})
+      };
       const name = draft.name.trim();
       const type = draft.type.trim();
       if (!name || !type) {
@@ -4683,6 +5341,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         kind: 'add-local',
         className: target.className,
         methodName: target.method.name,
+        insertBeforeLine,
         local: {
           name,
           type,
@@ -4690,7 +5349,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           isArray: draft.isArray
         }
       }], target.method.line);
-      if (applied) clearNewLocalDraft(target);
       return applied;
     };
     const createBeginnerLocal = (target?: BeginnerCodeTarget) => {
@@ -4769,10 +5427,123 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const applied = commitBeginnerCodeBody(target.className, target.method.name, currentBody, nextBody);
       if (applied) clearBeginnerCodeDraft(target);
     };
-    const openBeginnerContextMenu = (event: React.MouseEvent, target?: BeginnerCodeTarget) => {
+    const getProcedureCallFromInput = (input: HTMLTextAreaElement, cursor = input.selectionStart) =>
+      getBeginnerProcedureCallAtCursor(
+        input.value,
+        cursor,
+        codeTargets.map(candidate => candidate.method.name)
+      );
+    const cancelBeginnerPointerSync = () => {
+      const frames = beginnerPointerSyncFramesRef.current;
+      if (frames.first !== null) window.cancelAnimationFrame(frames.first);
+      if (frames.second !== null) window.cancelAnimationFrame(frames.second);
+      frames.first = null;
+      frames.second = null;
+    };
+    const scheduleBeginnerPointerSync = (
+      target: BeginnerCodeTarget,
+      input: HTMLTextAreaElement
+    ) => {
+      cancelBeginnerPointerSync();
+      const frames = beginnerPointerSyncFramesRef.current;
+      frames.first = window.requestAnimationFrame(() => {
+        frames.first = null;
+        frames.second = window.requestAnimationFrame(() => {
+          frames.second = null;
+          if (!input.isConnected || document.activeElement !== input) return;
+          updateBeginnerCommandHint(target, input);
+          captureBeginnerTextareaView(input);
+        });
+      });
+    };
+    const revealBeginnerProcedureDefinition = (callerClassName: string, procedureName: string) => {
+      if (!lingCppLanguageContext) return false;
+      const definition = resolveBeginnerProcedureDefinition(
+        lingCppLanguageContext.program,
+        callerClassName,
+        procedureName
+      );
+      if (!definition) return false;
+
+      const definitionTarget: BeginnerCodeTarget = {
+        className: definition.className,
+        method: definition.method
+      };
+      const definitionKey = codeTargetKey(definitionTarget);
+      setSelectedBeginnerCodeTarget({
+        className: definition.className,
+        methodName: definition.method.name
+      });
+      if (definition.method.kind === 'event') {
+        setSelectedBeginnerHandler(definition.method.name);
+        setExpandedBeginnerEventTargetKey(definitionKey);
+      } else if (definition.method.kind === 'method') {
+        setExpandedBeginnerFunctionTargetKey(definitionKey);
+      }
+      setCollapsedBeginnerProcessTargetKeys(current => current.filter(key => key !== definitionKey));
+      setCursorPosition({ line: definition.method.line, column: 1 });
+      setStructuredRevealLine(definition.method.line);
+      closeBeginnerCompletion();
+
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+        const header = document.querySelector<HTMLElement>(
+          `[data-beginner-process-key="${CSS.escape(definitionKey)}"]`
+        );
+        if (header) scrollElementInsideBeginnerEditor(header, 'center');
+      }));
+      return true;
+    };
+    const revealProjectConstantDefinition = (constantName: string) => {
+      const globalFile = allFiles.find(file => isProjectGlobalsFilePath(String(file.path || file.name || '')));
+      if (!globalFile) return false;
+      setPendingProjectConstantFocus(constantName);
+      onSelectTab(globalFile);
+      closeBeginnerCompletion();
+      return true;
+    };
+    const handleBeginnerCodeClick = (
+      target: BeginnerCodeTarget,
+      event: React.MouseEvent<HTMLTextAreaElement>
+    ) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) {
+        scheduleBeginnerPointerSync(target, event.currentTarget);
+        return;
+      }
+      cancelBeginnerPointerSync();
+      updateBeginnerCommandHint(target, event.currentTarget);
+      captureBeginnerTextareaView(event.currentTarget);
+
+      const cursor = getBeginnerTextareaOffsetAtPoint(event.currentTarget, event.clientX, event.clientY);
+      const call = getProcedureCallFromInput(event.currentTarget, cursor);
+      const constantName = getProjectConstantNameAtCursor(
+        event.currentTarget.value,
+        cursor,
+        projectGlobals?.constants.map(constant => constant.name) || []
+      );
+      const revealed = call
+        ? revealBeginnerProcedureDefinition(target.className, call.name)
+        : constantName
+          ? revealProjectConstantDefinition(constantName)
+          : false;
+      if (!revealed) return;
       event.preventDefault();
+      event.stopPropagation();
+    };
+    const openBeginnerContextMenu = (
+      event: React.MouseEvent,
+      target?: BeginnerCodeTarget,
+      input?: HTMLTextAreaElement
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
       setBeginnerCompletionState(null);
       const effectiveTarget = target || activeCanvasTarget;
+      const procedureCall = input
+        ? getProcedureCallFromInput(
+            input,
+            getBeginnerTextareaOffsetAtPoint(input, event.clientX, event.clientY)
+          )
+        : null;
       if (effectiveTarget) {
         setSelectedBeginnerCodeTarget({ className: effectiveTarget.className, methodName: effectiveTarget.method.name });
         if (effectiveTarget.method.kind === 'event') setSelectedBeginnerHandler(effectiveTarget.method.name);
@@ -4781,7 +5552,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         x: event.clientX,
         y: event.clientY,
         className: effectiveTarget?.className,
-        methodName: effectiveTarget?.method.name
+        methodName: effectiveTarget?.method.name,
+        definitionName: procedureCall?.name
       });
     };
     const parameterExampleText = (parameter: LingCppParameter) =>
@@ -5514,16 +6286,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const targetKey = codeTargetKey(target);
       const draftBodyText = beginnerCodeDrafts[targetKey] ?? bodyText;
       const bodyLines = draftBodyText.split('\n').length ? draftBodyText.split('\n') : [''];
-      const ifBlocks = parseBeginnerIfBlocks(bodyLines);
+      const flowGuideRows = getBeginnerIfFlowGuideRows(bodyLines);
       const editorHeightClass = compact ? 'min-h-[170px]' : 'min-h-[230px]';
       const lineHeight = Math.max(18, Math.round(editorFontSize * 1.65));
       const editorTextStyle = {
         fontSize: `${editorFontSize}px`,
         lineHeight: `${lineHeight}px`
       };
-      const lineInFlowBlock = (lineNumber: number) =>
-        ifBlocks.some(block => lineNumber >= block.startLine && lineNumber <= block.endLine);
-
       return (
         <div className="relative" data-beginner-editor-root onWheel={handleEditorFontWheel}>
           <div className={`grid grid-cols-[var(--beginner-gutter-width)_var(--beginner-flow-width)_minmax(0,1fr)] border-b text-[10px] font-semibold ${
@@ -5564,14 +6333,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               isDarkMode ? 'bg-[#101116] text-cyan-500/70' : 'bg-slate-50 text-cyan-600/80'
             }`} style={editorTextStyle}>
               {bodyLines.map((line, index) => {
-                const lineNumber = index + 1;
-                const kind = beginnerIfLineKind(line);
-                const inBlock = lineInFlowBlock(lineNumber);
-                const mark =
-                  kind === 'if' ? '┌' :
-                  kind === 'elseif' || kind === 'else' ? '├' :
-                  kind === 'end' ? '└' :
-                  inBlock ? '│' : '';
+                const { kind, inBlock, mark } = flowGuideRows[index];
                 return (
                   <div
                     key={`${index}:${mark}`}
@@ -5579,6 +6341,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                       inBlock && !kind ? isDarkMode ? 'text-cyan-500/35' : 'text-cyan-600/45' : ''
                     }`}
                     title={kind ? line.trim() : undefined}
+                    style={{ height: `${lineHeight}px`, lineHeight: `${lineHeight}px` }}
                   >
                     {mark}
                   </div>
@@ -5594,16 +6357,18 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               data-source-column-start={methodBodyStartColumn(target.method)}
               data-source-column-map={methodBodySourceColumns(target.method).join(',')}
               value={draftBodyText}
+              wrap="off"
               spellCheck={false}
               readOnly={!onUpdateSourceContent}
               placeholder="输入中文代码，@ 后面写原生 C++"
               onChange={event => { handleBeginnerCodeChange(target, event); captureBeginnerTextareaView(event.currentTarget); }}
               onBlur={event => handleBeginnerCodeBlur(target, bodyText, event)}
-              onFocus={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
-              onClick={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
+              onFocus={event => scheduleBeginnerPointerSync(target, event.currentTarget)}
+              onClick={event => handleBeginnerCodeClick(target, event)}
+              onContextMenu={event => openBeginnerContextMenu(event, target, event.currentTarget)}
               onKeyDown={event => handleBeginnerCodeKeyDown(target, event)}
               onKeyUp={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
-              onSelect={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
+              onSelect={event => scheduleBeginnerPointerSync(target, event.currentTarget)}
               onScroll={event => {
                 const lineNumberColumn = event.currentTarget.closest('[data-beginner-editor-root]')?.querySelector('[data-beginner-line-numbers]');
                 const flowGuideColumn = event.currentTarget.closest('[data-beginner-editor-root]')?.querySelector('[data-beginner-flow-guide]');
@@ -5612,8 +6377,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                 captureBeginnerTextareaView(event.currentTarget);
               }}
               onWheel={handleEditorFontWheel}
+              title="Ctrl+单击项目子程序调用或 &处理器名可转到定义"
               style={editorTextStyle}
-              className={`${editorHeightClass} w-full resize-y border-0 bg-transparent px-3 py-2 font-mono outline-none ${
+              className={`${editorHeightClass} w-full resize-y overflow-x-auto overflow-y-hidden whitespace-pre border-0 bg-transparent px-3 py-2 font-mono outline-none ${
                 isDarkMode
                   ? 'text-slate-100 placeholder:text-slate-600'
                   : 'text-slate-900 placeholder:text-slate-400'
@@ -5743,7 +6509,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const renderMemberTable = (rows: LingCppStructuredReadingRow[]) => renderSectionFrame(
       'member',
       '成员声明',
-      rows.length + (primaryLingCppClass ? 1 : 0),
+      rows.length + (primaryMethodOwnerName ? 1 : 0),
       '成员变量、控件成员和设计器关联',
       <table className={`w-full min-w-[760px] border-b text-left ${tableChrome}`}>
         <thead>
@@ -5774,7 +6540,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               </tr>
             );
           })}
-          {primaryLingCppClass && (
+          {primaryMethodOwnerName && (
             <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
               <td className={cellClass}>{renderNewMemberInput('type', '类型', 'type')}</td>
               <td className={cellClass}>{renderNewMemberInput('name', '输入新成员', 'variable')}</td>
@@ -6027,7 +6793,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const renderFunctionTable = (rows: LingCppStructuredReadingRow[]) => renderSectionFrame(
       'function',
       '功能代码',
-      rows.length + (primaryLingCppClass ? 1 : 0),
+      rows.length + (primaryMethodOwnerName ? 1 : 0),
       '可被事件调用的普通功能方法',
       <table className={`w-full min-w-[800px] border-b text-left ${tableChrome}`}>
         <thead>
@@ -6095,7 +6861,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               </React.Fragment>
             );
           })}
-          {primaryLingCppClass && (
+          {primaryMethodOwnerName && (
             <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
               <td className={cellClass}>{renderNewFunctionInput('returnType', '空', 'type')}</td>
               <td className={cellClass}>{renderNewFunctionInput('name', '输入功能名', 'procedure')}</td>
@@ -6221,7 +6987,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       isDarkMode ? 'bg-[#15161b] text-slate-600' : 'bg-white text-slate-400'
     }`;
     type CompactColumn = { label: string; className?: string; style?: React.CSSProperties };
-    const beginnerKnownMembers = new Set(memberRows.map(row => row.targetName || row.name).filter(Boolean));
+    const beginnerKnownMembers = new Set([
+      ...memberRows.map(row => row.targetName || row.name),
+      ...(projectGlobals?.constants || []).map(constant => constant.name),
+      ...(projectGlobals?.globals || []).map(global => global.name)
+    ].filter(Boolean));
     const beginnerKnownProcedures = new Set(codeTargets.map(target => target.method.name).filter(Boolean));
     const beginnerModuleCommands = new Set(getLingCppModuleCommandNames(moduleContext));
     const beginnerNativeVariables = extractLingCppNativeVariableNames(normalizedSourceCode);
@@ -6320,11 +7090,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       fold?: {
         collapsed: boolean;
         onToggle: () => void;
+        targetKey?: string;
       }
     ) => (
       <section
         id={sectionDomId(id)}
         data-structured-line={sourceLine}
+        data-beginner-process-key={fold?.targetKey}
         className={`grid grid-cols-[var(--beginner-gutter-width)_minmax(0,1fr)] border-b ${canvasBorder} ${
           tone === 'active'
             ? `${canvasBg} ${isDarkMode ? 'shadow-[inset_2px_0_0_rgba(34,211,238,0.55)]' : 'shadow-[inset_2px_0_0_rgba(8,145,178,0.5)]'}`
@@ -6443,9 +7215,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const isActiveProcessTarget = (target: BeginnerCodeTarget) =>
       Boolean(activeCanvasTarget && codeTargetKey(activeCanvasTarget) === codeTargetKey(target));
 
-    const getProcessBodyLineCount = (target: BeginnerCodeTarget) =>
-      Math.max(1, (beginnerCodeDrafts[codeTargetKey(target)] ?? methodBodyText(target.method)).split('\n').length);
-
     const getProcedureNameColumnWidth = (name: string) => {
       const cellHorizontalPadding = Math.max(8, Math.round(beginnerTableFontSize * 0.75)) * 2;
       const inputHorizontalPaddingAndEditingRoom = 24;
@@ -6519,7 +7288,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         ),
         {
           collapsed,
-          onToggle: () => toggleBeginnerProcessCollapsed(target)
+          onToggle: () => toggleBeginnerProcessCollapsed(target),
+          targetKey: codeTargetKey(target)
         }
       );
     };
@@ -6677,42 +7447,112 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       value: string,
       placeholder: string,
       tone: StructureInputTone
-    ) => (
-      <input
-        key={`${codeTargetKey(target)}:${local.line}:${local.name}:${field}:${value}`}
-        defaultValue={value}
-        placeholder={placeholder}
-        readOnly={!onUpdateSourceContent}
-        onBlur={event => {
-          const nextValue = event.currentTarget.value.trim();
-          if (nextValue === value) return;
-          if (field === 'name') updateLocalVariable(target, local, { newName: nextValue });
-          if (field === 'type') updateLocalVariable(target, local, { type: nextValue });
-          if (field === 'initialValue') updateLocalVariable(target, local, { initialValue: nextValue });
-        }}
-        onKeyDown={event => {
-          if (event.key === 'Enter') event.currentTarget.blur();
-          if (event.key === 'Escape') {
-            event.currentTarget.value = value;
-            event.currentTarget.blur();
-          }
-        }}
-        className={directInputClasses(tone)}
-      />
-    );
+    ) => {
+      const inputKey = `${codeTargetKey(target)}:local:${local.line}:${local.name}:${field}`;
+      const typeCompletion = field === 'type' && beginnerTypeCompletionState?.inputKey === inputKey
+        ? beginnerTypeCompletionState
+        : null;
+      const applyTypeCompletion = (item: BeginnerTypeCompletionItem, input: HTMLInputElement | null) => {
+        if (input) {
+          input.value = item.label;
+          input.dataset.beginnerTypeApplied = 'true';
+        }
+        setBeginnerTypeCompletionState(null);
+        updateLocalVariable(target, local, { type: item.label });
+      };
 
-    const renderLocalVariableCanvas = (target: BeginnerCodeTarget, visualLine: number) => {
-      const locals = target.method.locals || [];
-      const draft = localDraftForTarget(target);
+      return (
+        <div className="relative min-w-0" data-beginner-type-wrap={field === 'type' ? inputKey : undefined}>
+          <input
+            key={`${codeTargetKey(target)}:${local.line}:${local.name}:${field}:${value}`}
+            data-beginner-local-name={field === 'name' ? local.name : undefined}
+            data-beginner-local-type={field === 'type' ? local.name : undefined}
+            defaultValue={value}
+            placeholder={placeholder}
+            autoComplete="off"
+            readOnly={!onUpdateSourceContent}
+            onChange={event => {
+              if (field === 'type') updateBeginnerTypeCompletion(inputKey, event.currentTarget);
+            }}
+            onBlur={event => {
+              if (field === 'type') closeBeginnerTypeCompletionLater(inputKey);
+              if (event.currentTarget.dataset.beginnerTypeApplied === 'true') {
+                delete event.currentTarget.dataset.beginnerTypeApplied;
+                return;
+              }
+              const rawValue = event.currentTarget.value.trim();
+              const nextValue = field === 'type' ? resolveBeginnerTypeInput(rawValue) : rawValue;
+              if (nextValue === value) return;
+              event.currentTarget.value = nextValue;
+              if (field === 'name') updateLocalVariable(target, local, { newName: nextValue });
+              if (field === 'type') updateLocalVariable(target, local, { type: nextValue });
+              if (field === 'initialValue') updateLocalVariable(target, local, { initialValue: nextValue });
+            }}
+            onKeyDown={event => {
+              if (field === 'type' && typeCompletion) {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  moveBeginnerTypeCompletion(inputKey, event.key === 'ArrowDown' ? 1 : -1);
+                  return;
+                }
+                if (event.key === 'Enter' || event.key === 'Tab') {
+                  const item = typeCompletion.items[typeCompletion.selectedIndex];
+                  if (item) {
+                    event.preventDefault();
+                    applyTypeCompletion(item, event.currentTarget);
+                    event.currentTarget.blur();
+                    return;
+                  }
+                }
+              }
+              if (event.key === 'Enter') event.currentTarget.blur();
+              if (event.key === 'Escape') {
+                setBeginnerTypeCompletionState(null);
+                event.currentTarget.value = value;
+                event.currentTarget.blur();
+              }
+            }}
+            className={directInputClasses(tone)}
+            title={field === 'type' ? '支持中文、英文和拼音简写，例如 wb、zs、string、int' : undefined}
+          />
+          {field === 'type' && renderBeginnerTypeCompletionPopup(inputKey, applyTypeCompletion)}
+        </div>
+      );
+    };
+
+    const renderLocalVariableCanvas = (
+      target: BeginnerCodeTarget,
+      visualLine: number,
+      locals: LingCppLocalVariable[] = target.method.locals || [],
+      groupId = 'default'
+    ) => {
+      if (locals.length === 0) return null;
       const sourceLine = locals[0]?.line || target.method.line + 1;
+      const localGroupKey = `${codeTargetKey(target)}:${groupId}`;
+      const collapsed = collapsedBeginnerLocalGroupKeys.includes(localGroupKey);
       return renderSourceShell(
         `${target.method.kind}-${target.method.name}-locals`,
         visualLine,
         sourceLine,
         'plain',
         <div className="min-w-0">
-          <div className={`border-b px-2 py-1 text-[10px] font-semibold ${tableHeadChrome}`}>局部变量 · 仅在当前子程序内有效</div>
-          {renderInlineTable(
+          <button
+            type="button"
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? '展开局部变量组' : '折叠局部变量组'}
+            onClick={() => setCollapsedBeginnerLocalGroupKeys(current =>
+              current.includes(localGroupKey)
+                ? current.filter(key => key !== localGroupKey)
+                : [...current, localGroupKey]
+            )}
+            className={`flex w-full items-center gap-1.5 border-b px-2 py-1 text-left text-[10px] font-semibold ${tableHeadChrome}`}
+            title={collapsed ? '展开局部变量组' : '折叠局部变量组'}
+          >
+            {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            <span>局部变量 · {locals.length} 个 · 仅在当前子程序内有效</span>
+            <span className="ml-auto font-normal opacity-70">正文中按 Ctrl+L 快速插入</span>
+          </button>
+          {!collapsed && renderInlineTable(
             [
               { label: '局部变量', className: 'w-[140px]' },
               { label: '类 型', className: 'w-[110px]' },
@@ -6720,9 +7560,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               { label: '初始值', className: 'w-[180px]' },
               { label: '操 作', className: 'w-[88px]' }
             ],
-            [
-              ...locals.map(local => (
-                <tr key={`${codeTargetKey(target)}:local:${local.line}:${local.name}`} className={isDarkMode ? 'bg-[#18191f]' : 'bg-white'}>
+            locals.map(local => (
+              <tr key={`${codeTargetKey(target)}:local:${local.line}:${local.name}`} className={isDarkMode ? 'bg-[#18191f]' : 'bg-white'}>
                   <td className={compactCellClass}>{renderLocalVariableInput(target, local, 'name', local.name, '变量名', 'variable')}</td>
                   <td className={compactCellClass}>{renderLocalVariableInput(target, local, 'type', local.type, '类型', 'type')}</td>
                   <td className={compactCellClass}>
@@ -6750,59 +7589,327 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                       <Trash2 className="h-3 w-3" />删除
                     </button>
                   </td>
-                </tr>
-              )),
-              <tr key={`${codeTargetKey(target)}:new-local`} className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
-                <td className={compactCellClass}>
-                  <input value={draft.name} onChange={event => updateNewLocalDraft(target, { name: event.currentTarget.value })} placeholder="输入变量名" className={directInputClasses('variable')} />
-                </td>
-                <td className={compactCellClass}>
-                  <input value={draft.type} onChange={event => updateNewLocalDraft(target, { type: event.currentTarget.value })} placeholder="类型" className={directInputClasses('type')} />
-                </td>
-                <td className={compactCellClass}>
-                  <label className="inline-flex h-[var(--beginner-input-height)] w-full cursor-pointer items-center justify-center">
-                    <input type="checkbox" checked={draft.isArray} onChange={event => updateNewLocalDraft(target, { isArray: event.currentTarget.checked })} className="h-3.5 w-3.5 accent-cyan-500" aria-label="新局部变量 · 数组" />
-                  </label>
-                </td>
-                <td className={compactCellClass}>
-                  <input value={draft.initialValue} onChange={event => updateNewLocalDraft(target, { initialValue: event.currentTarget.value })} placeholder="可留空" className={directInputClasses('value')} />
-                </td>
-                <td className={compactCellClass}>
-                  <button
-                    type="button"
-                    onClick={() => commitNewLocalVariable(target)}
-                    disabled={!onUpdateSourceContent || !draft.name.trim() || !draft.type.trim()}
-                    className={`inline-flex h-[var(--beginner-input-height)] w-full items-center justify-center gap-1 rounded border px-2 text-[10px] font-semibold disabled:opacity-35 ${
-                      isDarkMode ? 'border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/10' : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
-                    }`}
-                  >
-                    <Check className="h-3 w-3" />新增
-                  </button>
-                </td>
               </tr>
-            ],
+            )),
             574
           )}
         </div>
       );
     };
 
-    const renderContinuousCodeBody = (target: BeginnerCodeTarget, firstVisualLine: number) => {
+    const renderContinuousCodeBody = (
+      target: BeginnerCodeTarget,
+      firstVisualLine: number,
+      segmentContext?: BeginnerCodeSegmentContext
+    ) => {
       const bodyText = methodBodyText(target.method);
       const targetKey = codeTargetKey(target);
-      const draftBodyText = beginnerCodeDrafts[targetKey] ?? bodyText;
+      const draftBodyText = segmentContext
+        ? getCodeSegmentDraft(target, segmentContext).value
+        : beginnerCodeDrafts[targetKey] ?? bodyText;
+      const segmentStatements = segmentContext?.segment.statements || target.method.statements;
       const bodyLines = draftBodyText.split('\n').length ? draftBodyText.split('\n') : [''];
-      const ifBlocks = parseBeginnerIfBlocks(bodyLines);
+      const flowGuideRows = getBeginnerIfFlowGuideRows(bodyLines);
       const lineHeight = Math.max(18, Math.round(editorFontSize * 1.65));
-      const editorHeight = Math.max(lineHeight * Math.max(bodyLines.length, 1) + 16, lineHeight + 16);
+      const editorHeight = Math.max(lineHeight * Math.max(bodyLines.length, 1) + 24, lineHeight + 24);
       const editorTextStyle = { fontSize: `${editorFontSize}px`, lineHeight: `${lineHeight}px`, height: `${editorHeight}px` };
-      const lineInFlowBlock = (lineNumber: number) =>
-        ifBlocks.some(block => lineNumber >= block.startLine && lineNumber <= block.endLine);
+      const segmentId = segmentContext?.segment.id || 'all';
+      const commandExpansionKey = (index: number) => `${targetKey}:${segmentId}:${index}`;
+      const commandExpansions = bodyLines.map(line =>
+        parseBeginnerCommandExpansion(line, beginnerCommandParameterCatalog)
+      );
+      const expandedCommandIndex = expandedBeginnerCommand
+        ? commandExpansions.findIndex((expansion, index) =>
+            Boolean(expansion) && expandedBeginnerCommand === commandExpansionKey(index)
+          )
+        : -1;
+      const activeCommandExpansion = expandedCommandIndex >= 0
+        ? commandExpansions[expandedCommandIndex]
+        : null;
+      const displaySourceLine = (index: number) => segmentStatements[index]?.line
+        || (segmentStatements[0]?.line || segmentContext?.segment.sourceLine || target.method.line + 1) + index;
+      const toggleCommandExpansion = (
+        event: React.MouseEvent<HTMLButtonElement>,
+        index: number
+      ) => {
+        event.stopPropagation();
+        const key = commandExpansionKey(index);
+        setExpandedBeginnerCommand(current => current === key ? null : key);
+      };
+      const commandArgumentDraftKey = (argumentIndex: number) =>
+        `${commandExpansionKey(expandedCommandIndex)}:argument:${argumentIndex}`;
+      const clearCommandArgumentDraft = (argumentIndex: number) => {
+        const draftKey = commandArgumentDraftKey(argumentIndex);
+        setBeginnerCommandArgumentDrafts(current => {
+          if (!(draftKey in current)) return current;
+          const next = { ...current };
+          delete next[draftKey];
+          return next;
+        });
+      };
+      const commitCommandArgument = (argumentIndex: number, value: string) => {
+        if (expandedCommandIndex < 0 || !activeCommandExpansion) return;
+        const currentLine = bodyLines[expandedCommandIndex] || '';
+        const nextLine = updateBeginnerCommandArgument(
+          currentLine,
+          beginnerCommandParameterCatalog,
+          argumentIndex,
+          value
+        );
+        clearCommandArgumentDraft(argumentIndex);
+
+        const argument = activeCommandExpansion.arguments[argumentIndex];
+        const ownerClass = lingCppLanguageContext?.program.classes.find(cls => cls.name === target.className);
+        const autoLocal = analyzeBeginnerAutoLocalCommandArgument({
+          value,
+          parameterName: argument?.name,
+          parameterType: argument?.type,
+          parameterNote: argument?.note,
+          method: target.method,
+          ownerClass,
+          globals: projectGlobals?.globals
+        });
+        if (nextLine === currentLine && autoLocal.kind !== 'declare') return;
+
+        const nextBodyLines = [...bodyLines];
+        nextBodyLines[expandedCommandIndex] = nextLine;
+        const nextSegmentBody = nextBodyLines.join('\n');
+        if (nextLine !== currentLine) {
+          if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, nextSegmentBody);
+          else updateBeginnerCodeDraft(target, nextSegmentBody);
+        }
+
+        if (autoLocal.kind === 'declare') {
+          const flushed = applyPendingBeginnerCodeDrafts(
+            latestSourceCodeRef.current,
+            beginnerCodeDraftsRef.current,
+            beginnerLocalStatementAnchorsRef.current
+          );
+          if (!flushed.success) {
+            setStructureEditError(flushed.diagnostics[0] || `自动声明局部变量 ${autoLocal.name} 前提交参数失败。`);
+            return;
+          }
+
+          const parsed = parseLingCpp(flushed.sourceCode);
+          const parsedClass = parsed.program.classes.find(cls => cls.name === target.className);
+          const parsedMethod = parsedClass?.methods.find(method =>
+            method.name === target.method.name && method.kind === target.method.kind
+          );
+          if (!parsedClass || !parsedMethod) {
+            setStructureEditError(`无法定位子程序 ${target.method.name}，局部变量 ${autoLocal.name} 未自动声明。`);
+            return;
+          }
+
+          const latestAnalysis = analyzeBeginnerAutoLocalCommandArgument({
+            value,
+            parameterName: argument?.name,
+            parameterType: argument?.type,
+            parameterNote: argument?.note,
+            method: parsedMethod,
+            ownerClass: parsedClass,
+            globals: projectGlobals?.globals
+          });
+          if (latestAnalysis.kind === 'declare') {
+            const meaningfulLinesBefore = nextBodyLines
+              .slice(0, expandedCommandIndex)
+              .filter(line => line.trim()).length;
+            const statementIndex = (segmentContext?.segment.statementStartIndex ?? 0) + meaningfulLinesBefore;
+            const statementAtArgument = parsedMethod.statements[Math.min(
+              statementIndex,
+              Math.max(0, parsedMethod.statements.length - 1)
+            )];
+            const inserted = applyLingCppAstEdit(flushed.sourceCode, {
+              kind: 'add-local',
+              className: target.className,
+              methodName: target.method.name,
+              insertBeforeLine: statementAtArgument?.line ?? parsedMethod.endLine ?? parsedMethod.line + 1,
+              local: {
+                name: latestAnalysis.name,
+                type: latestAnalysis.inferredType
+              }
+            });
+            if (!inserted.success) {
+              setStructureEditError(inserted.error || inserted.diagnostics[0]?.message || `局部变量 ${latestAnalysis.name} 自动声明失败。`);
+              return;
+            }
+
+            beginnerCodeDraftsRef.current = {};
+            beginnerCodeSegmentLineCountsRef.current = {};
+            beginnerLocalStatementAnchorsRef.current = {};
+            setBeginnerCodeDrafts({});
+            setCollapsedBeginnerProcessTargetKeys(current => current.filter(key => key !== targetKey));
+            setStructureEditError(null);
+            updateSourceCode(inserted.sourceCode);
+            return;
+          }
+        }
+
+        const currentBody = methodBodyText(target.method);
+        const pendingBody = beginnerCodeDraftsRef.current[targetKey] ?? currentBody;
+        const applied = commitBeginnerCodeBody(
+          target.className,
+          target.method.name,
+          currentBody,
+          pendingBody,
+          beginnerLocalStatementAnchorsRef.current[targetKey]
+        );
+        if (applied) clearBeginnerCodeDraft(target);
+      };
+      const flowMarkForLine = (_line: string, index: number) => flowGuideRows[index];
+
+      if (activeCommandExpansion && expandedBeginnerCommand) {
+        return (
+          <section
+            key={`${target.className}:${target.method.name}:code:${segmentId}:expanded`}
+            data-structured-line={segmentStatements[0]?.line || target.method.line}
+            data-beginner-editor-root
+            className={editorCanvasBg}
+            onContextMenu={event => openBeginnerContextMenu(event, target)}
+            onWheel={handleEditorFontWheel}
+          >
+            {bodyLines.map((line, index) => {
+              const displayLine = displaySourceLine(index);
+              const expansion = commandExpansions[index];
+              const expansionOpen = expandedBeginnerCommand === commandExpansionKey(index);
+              const flow = flowMarkForLine(line, index);
+              return (
+                <React.Fragment key={`${displayLine}:${index}`}>
+                  <div
+                    className="grid grid-cols-[var(--beginner-gutter-width)_var(--beginner-flow-width)_minmax(0,1fr)]"
+                    style={{ minHeight: `${lineHeight}px`, fontSize: `${editorFontSize}px`, lineHeight: `${lineHeight}px` }}
+                  >
+                    <div className={`relative flex items-center justify-end border-r px-2 text-[11px] tabular-nums ${canvasBorder} ${gutterBg}`}>
+                      {expansion && (
+                        <button
+                          type="button"
+                          data-beginner-command-expand={displayLine}
+                          aria-expanded={expansionOpen}
+                          aria-label={expansionOpen
+                            ? `收起第 ${displayLine} 行 ${expansion.commandName} 的参数`
+                            : `展开第 ${displayLine} 行 ${expansion.commandName} 的参数`}
+                          title={expansionOpen ? '收起命令参数' : `展开 ${expansion.commandName} 的参数`}
+                          onMouseDown={event => event.preventDefault()}
+                          onClick={event => toggleCommandExpansion(event, index)}
+                          className={`absolute left-2 flex h-4 w-4 items-center justify-center rounded border transition-colors ${
+                            expansionOpen
+                              ? isDarkMode
+                                ? 'border-cyan-400/55 bg-cyan-500/15 text-cyan-200'
+                                : 'border-cyan-500/50 bg-cyan-50 text-cyan-700'
+                              : isDarkMode
+                                ? 'border-slate-600 text-slate-400 hover:border-cyan-500/50 hover:text-cyan-200'
+                                : 'border-slate-300 text-slate-500 hover:border-cyan-400 hover:text-cyan-700'
+                          }`}
+                        >
+                          {expansionOpen ? <Minus className="h-2.5 w-2.5" /> : <Plus className="h-2.5 w-2.5" />}
+                        </button>
+                      )}
+                      <span>{displayLine}</span>
+                    </div>
+                    <div className={`select-none px-1 text-center text-[11px] ${
+                      isDarkMode ? 'bg-[#101116] text-cyan-500/70' : 'bg-slate-50 text-cyan-600/80'
+                    }`} title={flow.kind ? line.trim() : undefined}>
+                      {flow.mark}
+                    </div>
+                    <div
+                      className={`min-w-0 overflow-x-auto whitespace-pre px-3 font-mono ${editorCanvasBg}`}
+                      title="收起参数后可继续按普通代码方式编辑整行"
+                    >
+                      {renderBeginnerCodeLine(line)}
+                    </div>
+                  </div>
+                  {expansionOpen && expansion && (
+                    <div
+                      data-beginner-command-expansion={expansion.commandName}
+                      className={`border-y ${canvasBorder} ${isDarkMode ? 'bg-[#0d1117]' : 'bg-cyan-50/30'}`}
+                    >
+                      {expansion.arguments.map((argument, argumentIndex) => {
+                        const isLast = argumentIndex === expansion.arguments.length - 1;
+                        const draftKey = commandArgumentDraftKey(argumentIndex);
+                        return (
+                          <div
+                            key={`${argument.name}:${argumentIndex}`}
+                            className="grid grid-cols-[var(--beginner-gutter-width)_var(--beginner-flow-width)_minmax(0,1fr)]"
+                            style={{ minHeight: `${Math.max(30, lineHeight + 6)}px` }}
+                          >
+                            <div className={`flex items-center justify-end border-r px-2 font-mono text-[10px] tabular-nums ${canvasBorder} ${gutterBg} ${
+                              isDarkMode ? 'text-amber-500/70' : 'text-amber-700/70'
+                            }`}>
+                              {displayLine}.{argumentIndex + 1}
+                            </div>
+                            <div className={`flex items-center justify-center font-mono text-[12px] ${
+                              isDarkMode ? 'text-cyan-500/65' : 'text-cyan-700/65'
+                            }`} aria-hidden="true">
+                              {isLast ? '└' : '├'}
+                            </div>
+                            <div className={`flex min-w-0 items-center gap-2 border-b px-3 py-1 last:border-b-0 ${
+                              isDarkMode ? 'border-[#242a33]' : 'border-cyan-100'
+                            }`}>
+                              <label className="flex min-w-0 flex-1 items-center gap-2">
+                                <span className={`shrink-0 font-mono text-[12px] font-semibold ${
+                                  isDarkMode ? 'text-cyan-300' : 'text-cyan-800'
+                                }`}>
+                                  ※{argument.name}：
+                                </span>
+                                 <input
+                                   data-beginner-command-argument={argumentIndex}
+                                   value={beginnerCommandArgumentDrafts[draftKey]
+                                     ?? (argument.provided ? argument.value : '')}
+                                   spellCheck={false}
+                                   autoComplete="off"
+                                   placeholder="未填写（使用默认值）"
+                                   aria-label={`编辑参数 ${argument.name}`}
+                                   title={`编辑 ${argument.name}，按回车或移开焦点写回源码`}
+                                   onPointerDown={event => event.stopPropagation()}
+                                   onMouseDown={event => event.stopPropagation()}
+                                   onClick={event => event.stopPropagation()}
+                                   onInput={event => {
+                                     const value = event.currentTarget.value;
+                                     setBeginnerCommandArgumentDrafts(current => ({ ...current, [draftKey]: value }));
+                                   }}
+                                   onBlur={event => commitCommandArgument(argumentIndex, event.currentTarget.value)}
+                                   onKeyDown={event => {
+                                     event.stopPropagation();
+                                     if (event.key === 'Enter') {
+                                       event.preventDefault();
+                                       event.currentTarget.blur();
+                                    }
+                                    if (event.key === 'Escape') {
+                                      event.preventDefault();
+                                      event.currentTarget.value = argument.provided ? argument.value : '';
+                                      clearCommandArgumentDraft(argumentIndex);
+                                       event.currentTarget.blur();
+                                     }
+                                   }}
+                                   className={`pointer-events-auto h-7 min-w-[180px] max-w-[680px] flex-1 cursor-text select-text rounded-sm border px-2 font-mono text-[12px] outline-none transition-colors ${
+                                     isDarkMode
+                                       ? 'border-slate-700 bg-[#111720] text-slate-100 placeholder:text-slate-600 hover:border-slate-500 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400/25'
+                                       : 'border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 hover:border-slate-400 focus:border-cyan-600 focus:ring-1 focus:ring-cyan-500/20'
+                                   }`}
+                                 />
+                              </label>
+                              <span
+                                className={`max-w-[260px] shrink truncate text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}
+                                title={[argument.type, argument.note].filter(Boolean).join(' · ') || '未提供定义'}
+                              >
+                                {argument.type || '参数'}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </section>
+        );
+      }
 
       return (
         <section
-          key={`${target.className}:${target.method.name}:code`}
-          data-structured-line={target.method.statements[0]?.line || target.method.line}
+          key={`${target.className}:${target.method.name}:code:${segmentContext?.segment.id || 'all'}`}
+          data-structured-line={segmentStatements[0]?.line || target.method.line}
           className={`relative grid grid-cols-[var(--beginner-gutter-width)_var(--beginner-flow-width)_minmax(0,1fr)] ${editorCanvasBg}`}
           data-beginner-editor-root
           onContextMenu={event => openBeginnerContextMenu(event, target)}
@@ -6810,21 +7917,46 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         >
           <div data-beginner-line-numbers className={`select-none overflow-hidden border-r px-2 py-2 text-right text-[11px] tabular-nums ${canvasBorder} ${gutterBg}`} style={editorTextStyle}>
             {bodyLines.map((_, index) => {
-              const displayLine = target.method.statements[index]?.line
-                || (target.method.statements[0]?.line || target.method.line + 1) + index;
+              const displayLine = displaySourceLine(index);
               const localLine = index + 1;
               const isJumpTarget = beginnerJumpHighlight?.targetKey === targetKey && beginnerJumpHighlight.line === localLine;
+              const expansion = commandExpansions[index];
+              const expansionOpen = Boolean(expansion && expandedBeginnerCommand === commandExpansionKey(index));
               return (
                 <div
                   key={displayLine}
-                  className={`rounded px-1 transition-colors duration-150 ${
+                  className={`relative flex items-center justify-end rounded px-1 transition-colors duration-150 ${
                     isJumpTarget
                       ? isDarkMode ? 'bg-cyan-500/25 text-cyan-100 ring-1 ring-cyan-400/40' : 'bg-cyan-100 text-cyan-800 ring-1 ring-cyan-300'
                       : ''
                   }`}
                   title={isJumpTarget ? `已跳转到：${beginnerJumpHighlight.label}` : undefined}
                 >
-                  {displayLine}
+                  {expansion && (
+                    <button
+                      type="button"
+                      data-beginner-command-expand={displayLine}
+                      aria-expanded={expansionOpen}
+                      aria-label={expansionOpen
+                        ? `收起第 ${displayLine} 行 ${expansion.commandName} 的参数`
+                        : `展开第 ${displayLine} 行 ${expansion.commandName} 的参数`}
+                      title={expansionOpen ? '收起命令参数' : `展开 ${expansion.commandName} 的 ${expansion.arguments.length} 个参数`}
+                      onMouseDown={event => event.preventDefault()}
+                      onClick={event => toggleCommandExpansion(event, index)}
+                      className={`absolute left-0 flex h-4 w-4 items-center justify-center rounded border transition-colors ${
+                        expansionOpen
+                          ? isDarkMode
+                            ? 'border-cyan-400/55 bg-cyan-500/15 text-cyan-200'
+                            : 'border-cyan-500/50 bg-cyan-50 text-cyan-700'
+                          : isDarkMode
+                            ? 'border-slate-600 text-slate-400 hover:border-cyan-500/50 hover:text-cyan-200'
+                            : 'border-slate-300 text-slate-500 hover:border-cyan-400 hover:text-cyan-700'
+                      }`}
+                    >
+                      {expansionOpen ? <Minus className="h-2.5 w-2.5" /> : <Plus className="h-2.5 w-2.5" />}
+                    </button>
+                  )}
+                  <span>{displayLine}</span>
                 </div>
               );
             })}
@@ -6833,14 +7965,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             isDarkMode ? 'bg-[#101116] text-cyan-500/70' : 'bg-slate-50 text-cyan-600/80'
           }`} style={editorTextStyle}>
             {bodyLines.map((line, index) => {
-              const localLine = index + 1;
-              const kind = beginnerIfLineKind(line);
-              const inBlock = lineInFlowBlock(localLine);
-              const mark =
-                kind === 'if' ? '┌' :
-                kind === 'elseif' || kind === 'else' ? '├' :
-                kind === 'end' ? '└' :
-                inBlock ? '│' : '';
+              const { kind, inBlock, mark } = flowGuideRows[index];
               return (
                 <div
                   key={`${index}:${mark}`}
@@ -6848,6 +7973,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                     inBlock && !kind ? isDarkMode ? 'text-cyan-500/35' : 'text-cyan-600/45' : ''
                   }`}
                   title={kind ? line.trim() : undefined}
+                  style={{ height: `${lineHeight}px`, lineHeight: `${lineHeight}px` }}
                 >
                   {mark}
                 </div>
@@ -6857,13 +7983,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           <div className={`relative min-w-0 ${editorCanvasBg}`} style={editorTextStyle}>
             <div
               aria-hidden="true"
+              data-beginner-code-highlight
               className="pointer-events-none absolute inset-0 overflow-hidden px-3 py-2 font-mono font-normal not-italic tracking-normal"
               style={{ fontSize: `${editorFontSize}px`, lineHeight: `${lineHeight}px`, tabSize: 4 }}
             >
               {bodyLines.map((line, index) => (
                 <div
                   key={`${targetKey}:highlight:${index}`}
-                  className="whitespace-pre-wrap"
+                  className="whitespace-pre"
                   style={{ height: `${lineHeight}px`, lineHeight: `${lineHeight}px` }}
                 >
                   {renderBeginnerCodeLine(line)}
@@ -6871,40 +7998,52 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               ))}
             </div>
             <textarea
-              key={`${target.className}:${target.method.name}:${target.method.line}:${bodyText}:yc-source`}
-              data-text-model-view-key={`${target.className}:${target.method.kind}:${target.method.name}`}
+              key={`${target.className}:${target.method.name}:${target.method.line}:${segmentContext?.segment.id || 'all'}:${bodyText}:yc-source`}
+              data-text-model-view-key={`${target.className}:${target.method.kind}:${target.method.name}:${segmentContext?.segment.id || 'all'}`}
+              data-beginner-target-key={targetKey}
+              data-beginner-statement-start={segmentContext?.segment.statementStartIndex ?? 0}
               data-lingbuilder-editor-command-owner="true"
-              data-source-line-start={target.method.statements[0]?.line || target.method.line + 1}
-              data-source-line-map={target.method.statements.map(statement => statement.line).join(',')}
+              data-source-line-start={segmentStatements[0]?.line || segmentContext?.segment.sourceLine || target.method.line + 1}
+              data-source-line-map={segmentStatements.map(statement => statement.line).join(',')}
               data-source-column-start={methodBodyStartColumn(target.method)}
-              data-source-column-map={methodBodySourceColumns(target.method).join(',')}
+              data-source-column-map={getBeginnerBodySourceColumns(segmentStatements, methodBodyStartColumn(target.method)).join(',')}
               value={draftBodyText}
+              wrap="off"
               spellCheck={false}
               readOnly={!onUpdateSourceContent}
               placeholder="输入中文代码；@ 后面写原生 C++"
-              onChange={event => { handleBeginnerCodeChange(target, event); captureBeginnerTextareaView(event.currentTarget); }}
+              onChange={event => { handleBeginnerCodeChange(target, event, segmentContext); captureBeginnerTextareaView(event.currentTarget); }}
               onBlur={event => handleBeginnerCodeBlur(target, bodyText, event)}
-              onFocus={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
-              onClick={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
-              onKeyDown={event => handleBeginnerCodeKeyDown(target, event)}
+              onFocus={event => scheduleBeginnerPointerSync(target, event.currentTarget)}
+              onClick={event => handleBeginnerCodeClick(target, event)}
+              onContextMenu={event => openBeginnerContextMenu(event, target, event.currentTarget)}
+              onKeyDown={event => handleBeginnerCodeKeyDown(target, event, segmentContext)}
               onKeyUp={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
-              onSelect={event => { updateBeginnerCommandHint(target, event.currentTarget); captureBeginnerTextareaView(event.currentTarget); }}
+              onSelect={event => scheduleBeginnerPointerSync(target, event.currentTarget)}
               onScroll={event => {
                 const root = event.currentTarget.closest('[data-beginner-editor-root]');
                 const lineNumberColumn = root?.querySelector('[data-beginner-line-numbers]');
                 const flowGuideColumn = root?.querySelector('[data-beginner-flow-guide]');
-                if (lineNumberColumn instanceof HTMLElement) lineNumberColumn.scrollTop = event.currentTarget.scrollTop;
-                if (flowGuideColumn instanceof HTMLElement) flowGuideColumn.scrollTop = event.currentTarget.scrollTop;
+                const codeHighlight = root?.querySelector('[data-beginner-code-highlight]');
+                // This editor grows to fit every source row, so it must never retain an
+                // internal vertical offset. A hidden textarea scroll previously shifted
+                // the flow guide upward and drew 如果/否则 brackets beside earlier lines.
+                if (event.currentTarget.scrollTop !== 0) event.currentTarget.scrollTop = 0;
+                if (lineNumberColumn instanceof HTMLElement) lineNumberColumn.scrollTop = 0;
+                if (flowGuideColumn instanceof HTMLElement) flowGuideColumn.scrollTop = 0;
+                if (codeHighlight instanceof HTMLElement) codeHighlight.scrollLeft = event.currentTarget.scrollLeft;
                 captureBeginnerTextareaView(event.currentTarget);
               }}
               onWheel={handleEditorFontWheel}
+              title="Ctrl+单击项目子程序调用或 &处理器名可转到定义"
               style={editorTextStyle}
-              className={`relative z-10 w-full resize-none overflow-hidden border-0 bg-transparent px-3 py-2 font-mono font-normal not-italic tracking-normal text-transparent outline-none selection:bg-cyan-500/30 ${
+              className={`relative z-10 w-full resize-none overflow-x-auto overflow-y-hidden whitespace-pre border-0 bg-transparent px-3 py-2 font-mono font-normal not-italic tracking-normal text-transparent outline-none selection:bg-cyan-500/30 [&::-webkit-scrollbar]:h-2 ${
                 isDarkMode ? 'caret-cyan-200 placeholder:text-slate-600' : 'caret-cyan-700 placeholder:text-slate-400'
               }`}
             />
           </div>
-          {renderBeginnerCompletionPanel(target)}
+          {renderBeginnerCompletionPanel(target, segmentContext)}
+          {renderBeginnerAutoLocalTypePanel(target, segmentContext)}
         </section>
       );
     };
@@ -6934,11 +8073,28 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           nextVisualLine += Math.max(1, target.method.parameters.length);
         }
 
-        processCanvases.push(renderLocalVariableCanvas(target, nextVisualLine));
-        nextVisualLine += Math.max(1, (target.method.locals || []).length + 1);
+        const bodySegments = getBeginnerMethodBodySegments(target.method);
+        bodySegments.forEach(segment => {
+          if (segment.kind === 'locals') {
+            const groupKey = `${segment.id}:${segment.locals.map(local => local.name).join('|')}`;
+            const collapsed = collapsedBeginnerLocalGroupKeys.includes(`${codeTargetKey(target)}:${groupKey}`);
+            processCanvases.push(renderLocalVariableCanvas(
+              target,
+              nextVisualLine,
+              segment.locals,
+              groupKey
+            ));
+            nextVisualLine += collapsed
+              ? 1
+              : Math.max(1, segment.locals.length);
+            return;
+          }
 
-        processCanvases.push(renderContinuousCodeBody(target, nextVisualLine));
-        nextVisualLine += getProcessBodyLineCount(target);
+          const segmentContext = { segment, segments: bodySegments };
+          processCanvases.push(renderContinuousCodeBody(target, nextVisualLine, segmentContext));
+          const segmentBody = getCodeSegmentDraft(target, segmentContext).value;
+          nextVisualLine += Math.max(1, segmentBody.split('\n').length);
+        });
       }
 
       if (index < allProcessTargets.length - 1) {
@@ -6952,6 +8108,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           target.className === beginnerContextMenu.className &&
           target.method.name === beginnerContextMenu.methodName
         ) || activeCanvasTarget
+      : undefined;
+    const contextDefinition = beginnerContextMenu?.definitionName && contextTarget && lingCppLanguageContext
+      ? resolveBeginnerProcedureDefinition(
+          lingCppLanguageContext.program,
+          beginnerContextMenu.className || contextTarget.className,
+          beginnerContextMenu.definitionName
+        )
       : undefined;
     const renderContextMenuButton = (
       label: string,
@@ -7000,6 +8163,23 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           onClick={event => event.stopPropagation()}
           onContextMenu={event => event.preventDefault()}
         >
+          {renderContextMenuButton(
+            beginnerContextMenu.definitionName
+              ? `转到定义：${beginnerContextMenu.definitionName}`
+              : '转到定义',
+            () => {
+              if (beginnerContextMenu.definitionName && contextTarget) {
+                revealBeginnerProcedureDefinition(
+                  beginnerContextMenu.className || contextTarget.className,
+                  beginnerContextMenu.definitionName
+                );
+              }
+            },
+            <ExternalLink className="h-3.5 w-3.5" />,
+            false,
+            !contextDefinition
+          )}
+          <div className={`my-1 border-t ${canvasBorder}`} />
           {renderContextMenuButton('新建子程序', createBeginnerFunction, <Plus className="h-3.5 w-3.5" />)}
           {renderContextMenuButton('新建程序集变量', createBeginnerMember, <Plus className="h-3.5 w-3.5" />)}
           {renderContextMenuButton('新建局部变量', () => createBeginnerLocal(contextTarget), <Plus className="h-3.5 w-3.5" />, false, !contextTarget)}
@@ -7020,6 +8200,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           {renderContextMenuButton('插入信息框', () => appendBeginnerSnippet(contextTarget, '信息框("提示内容", 64, "提示")'), <Lightbulb className="h-3.5 w-3.5" />, false, !contextTarget)}
           {renderContextMenuButton('插入打开窗口', () => appendBeginnerSnippet(contextTarget, '打开窗口("窗口标题")'), <ExternalLink className="h-3.5 w-3.5" />, false, !contextTarget)}
           {renderContextMenuButton('插入如果结构', () => appendBeginnerSnippet(contextTarget, BEGINNER_IF_SNIPPET), <ListTree className="h-3.5 w-3.5" />, false, !contextTarget)}
+          {renderContextMenuButton('插入选择结构', () => appendBeginnerSnippet(contextTarget, BEGINNER_SELECT_SNIPPET), <ListTree className="h-3.5 w-3.5" />, false, !contextTarget)}
+          {renderContextMenuButton('插入判断循环', () => appendBeginnerSnippet(contextTarget, BEGINNER_WHILE_SNIPPET), <ListTree className="h-3.5 w-3.5" />, false, !contextTarget)}
+          {renderContextMenuButton('插入计次循环', () => appendBeginnerSnippet(contextTarget, BEGINNER_COUNT_LOOP_SNIPPET), <ListTree className="h-3.5 w-3.5" />, false, !contextTarget)}
+          {renderContextMenuButton('插入异常处理', () => appendBeginnerSnippet(contextTarget, BEGINNER_TRY_SNIPPET), <ListTree className="h-3.5 w-3.5" />, false, !contextTarget)}
           {beginnerModuleCodeCompletions.filter(item => item.kind !== '类型').slice(0, 4).map(item => (
             <React.Fragment key={`module-context-menu-${item.label}`}>
               {renderContextMenuButton(`插入模块命令：${item.label}`, () => appendBeginnerSnippet(contextTarget, item.insertText), <Code className="h-3.5 w-3.5" />, false, !contextTarget)}
@@ -7489,122 +8673,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     </LingCppStructureEditor>
   );
 
-  const revealBeginnerTask = (task: BeginnerTask) => {
-    if (task.controlId || task.windowId) {
-      window.dispatchEvent(new CustomEvent('show-window-designer'));
-      setViewType('designer');
-      return;
-    }
-    revealLingCppLine(task.line);
-  };
-
-  const applyBeginnerAction = (label: string, action: LingCppActionBlock) => {
-    if (!activeBeginnerHandler || !activeFile?.path || !onApplyWorkspaceEdit) return;
-
-    const proposal = createWorkspaceEditFromActionBlock({
-      filePath: activeFile.path,
-      sourceCode: normalizedSourceCode,
-      handlerName: activeBeginnerHandler
-    }, action) as unknown as WorkspaceEditProposal;
-    const change = proposal.changes[0];
-    const previewText = [
-      proposal.summary,
-      '',
-      '将替换：',
-      change?.originalText || '(空)',
-      '',
-      '替换为：',
-      change?.newText || '(无变化)',
-      '',
-      '确认后才会应用到当前 .lcpp。'
-    ].join('\n');
-
-    if (!window.confirm(previewText)) return;
-
-    const nextSource = applyWorkspaceEdit(normalizedSourceCode, proposal as any);
-    onApplyWorkspaceEdit(proposal, [{
-      filePath: activeFile.path,
-      sourceCode: nextSource
-    }]);
-    setSelectedBeginnerHandler(activeBeginnerHandler);
-    window.setTimeout(() => setCursorPosition(position => ({ ...position })), 0);
-  };
-
-  const createAction = (kind: LingCppActionBlock['kind'], label: string, params: Record<string, string> = {}): LingCppActionBlock => ({
-    id: `new-${kind}`,
-    kind,
-    label,
-    description: label,
-    params
-  });
-
-  const renderBeginnerTaskCard = (task: BeginnerTask) => (
-    <div
-      key={task.id}
-      className={`rounded border p-2.5 ${
-        task.severity === 'must-fix'
-          ? isDarkMode ? 'border-rose-500/25 bg-rose-950/15' : 'border-rose-200 bg-rose-50'
-          : task.severity === 'suggestion'
-            ? isDarkMode ? 'border-amber-500/25 bg-amber-950/15' : 'border-amber-200 bg-amber-50'
-            : isDarkMode ? 'border-slate-700 bg-[#202027]' : 'border-slate-200 bg-slate-50'
-      }`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className={`text-[12px] font-semibold leading-snug ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>{task.title}</div>
-          <div className={`mt-1 text-[11px] leading-relaxed ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{task.description}</div>
-        </div>
-        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold ${
-          task.status === 'ready'
-            ? 'bg-emerald-500/15 text-emerald-500'
-            : 'bg-slate-500/15 text-slate-400'
-        }`}>{task.status === 'ready' ? '可做' : '待做'}</span>
-      </div>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        <button
-          type="button"
-          onClick={() => {
-            if (task.handlerName) setSelectedBeginnerHandler(task.handlerName);
-            revealBeginnerTask(task);
-          }}
-          className={`rounded border px-2 py-1 text-[10px] font-semibold ${
-            isDarkMode ? 'border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20' : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
-          }`}
-        >
-          {task.actionLabel}
-        </button>
-        {task.handlerName && (
-          <button
-            type="button"
-            onClick={() => {
-              setSelectedBeginnerHandler(task.handlerName || null);
-              applyBeginnerAction('生成提示框事件', createAction('message-box', '提示框', {
-                text: `${task.controlName || '控件'} 已触发`,
-                title: '提示'
-              }));
-            }}
-            className={`rounded border px-2 py-1 text-[10px] font-semibold ${
-              isDarkMode ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20' : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-            }`}
-          >
-            生成提示框
-          </button>
-        )}
-        {task.canIgnore && (
-          <button
-            type="button"
-            onClick={() => onIgnoreBeginnerTask?.(task.id)}
-            className={`rounded border px-2 py-1 text-[10px] ${
-              isDarkMode ? 'border-slate-700 text-slate-400 hover:bg-slate-800' : 'border-slate-200 text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            忽略
-          </button>
-        )}
-      </div>
-    </div>
-  );
-
   const renderBeginnerStructuredReadingSection = () => {
     return (
       <section className={`overflow-hidden rounded border ${
@@ -7644,214 +8712,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     );
   };
 
-  const renderBeginnerPanel = () => (
-    <aside className={`${
-      showBeginnerTools
-        ? 'fixed inset-y-0 right-0 z-50 flex w-[min(360px,calc(100vw-32px))] shadow-2xl'
-        : 'hidden'
-    } xl:static xl:z-auto xl:flex xl:w-[360px] xl:shadow-none shrink-0 flex-col border-l ${
-      isDarkMode ? 'bg-[#18181f] border-[#2d2d34]' : 'bg-white border-slate-200'
-    }`}>
-      <div className={`h-9 px-3 flex items-center justify-between border-b ${
-        isDarkMode ? 'border-[#2d2d34]' : 'border-slate-200'
-      }`}>
-        <div className="flex items-center gap-2 min-w-0">
-          <GraduationCap className="w-3.5 h-3.5 text-emerald-400" />
-          <span className={`text-[11px] font-semibold ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>新手工作台</span>
-          <span className="text-[10px] text-slate-500">{visibleBeginnerTasks.length}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => onExperienceModeChange?.('professional')}
-            className={`rounded border px-2 py-1 text-[10px] font-semibold ${
-              isDarkMode ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            专业模式
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowBeginnerTools(false)}
-            aria-label="关闭新手工具"
-            className={`inline-flex h-6 w-6 items-center justify-center rounded xl:hidden ${
-              isDarkMode ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-slate-500 hover:bg-slate-100'
-            }`}
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-auto p-3 space-y-3">
-        <section className={`rounded border p-3 ${
-          isDarkMode ? 'border-[#2d2d34] bg-[#202027]' : 'border-slate-200 bg-slate-50'
-        }`}>
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
-              <ClipboardList className="w-3.5 h-3.5 text-amber-400" />
-              <span className={`text-[12px] font-semibold ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>待处理任务</span>
-            </div>
-            {visibleBeginnerTasks.length > 0 && (
-              <button
-                type="button"
-                onClick={onOpenProblemsPanel}
-                className="text-[10px] font-semibold text-blue-500 hover:underline"
-              >
-                打开问题面板
-              </button>
-            )}
-          </div>
-          <div className="space-y-2">
-            {visibleBeginnerTasks.length > 0
-              ? visibleBeginnerTasks.slice(0, 4).map(renderBeginnerTaskCard)
-              : <div className="py-4 text-center text-[11px] text-slate-500">当前没有必须处理的新手任务。</div>}
-          </div>
-        </section>
-
-        <section className={`rounded border p-3 ${
-          isDarkMode ? 'border-[#2d2d34] bg-[#202027]' : 'border-slate-200 bg-slate-50'
-        }`}>
-          <div className="mb-2 flex items-center gap-1.5">
-            <Lightbulb className="w-3.5 h-3.5 text-yellow-400" />
-            <span className={`text-[12px] font-semibold ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>当前代码解释</span>
-          </div>
-          <div className={`text-[12px] font-semibold ${isDarkMode ? 'text-slate-200' : 'text-slate-800'}`}>{codeExplanation?.title}</div>
-          <p className={`mt-1 text-[11px] leading-relaxed ${isDarkMode ? 'text-slate-400' : 'text-slate-600'}`}>{codeExplanation?.body}</p>
-          {codeExplanation?.example && (
-            <pre className={`mt-2 overflow-auto rounded border p-2 text-[10.5px] leading-relaxed ${
-              isDarkMode ? 'border-slate-700 bg-black/20 text-emerald-300' : 'border-slate-200 bg-white text-emerald-700'
-            }`}>{codeExplanation.example}</pre>
-          )}
-          {codeExplanation?.commonMistake && (
-            <p className="mt-2 text-[11px] text-amber-500">{codeExplanation.commonMistake}</p>
-          )}
-        </section>
-
-        <section className={`rounded border p-3 ${
-          isDarkMode ? 'border-[#2d2d34] bg-[#202027]' : 'border-slate-200 bg-slate-50'
-        }`}>
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1.5">
-              <Wand2 className="w-3.5 h-3.5 text-violet-400" />
-              <span className={`text-[12px] font-semibold ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>事件动作块</span>
-            </div>
-            <span className="truncate text-[10px] text-slate-500">{activeBeginnerHandler || '未选择事件'}</span>
-          </div>
-          <div className="space-y-1.5">
-            {actionBlocks.length > 0 ? actionBlocks.map(block => (
-              <div key={block.id} className={`rounded border px-2 py-1.5 ${
-                block.readonly
-                  ? isDarkMode ? 'border-slate-700 bg-slate-900/20 text-slate-500' : 'border-slate-200 bg-white text-slate-500'
-                  : isDarkMode ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-              }`}>
-                <div className="text-[11px] font-semibold">{block.label}</div>
-                <div className="mt-0.5 text-[10px] opacity-80">{summarizeEventPreview([block])[0]}</div>
-              </div>
-            )) : (
-              <div className="rounded border border-dashed border-slate-600/50 p-2 text-[11px] text-slate-500">选择或生成一个事件后，这里会显示可视化动作。</div>
-            )}
-          </div>
-          <div className="mt-2 grid grid-cols-2 gap-1.5">
-            <button type="button" onClick={() => applyBeginnerAction('提示框', createAction('message-box', '提示框', { text: '操作成功', title: '提示' }))} className="rounded border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-[10px] font-semibold text-blue-400">提示框</button>
-            <button type="button" onClick={() => applyBeginnerAction('调试输出', createAction('debug-output', '调试输出', { text: '事件已触发' }))} className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-400">调试输出</button>
-            <button type="button" onClick={() => applyBeginnerAction('结束程序', createAction('exit-program', '结束程序'))} className="rounded border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[10px] font-semibold text-rose-400">结束程序</button>
-            <button type="button" onClick={() => applyBeginnerAction('打开窗口', createAction('open-window', '打开窗口', { window: '新窗口' }))} className="rounded border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[10px] font-semibold text-violet-400">打开窗口</button>
-          </div>
-          <div className="mt-2 rounded border border-slate-700/50 p-2 text-[10.5px] text-slate-500">
-            <div className="mb-1 flex items-center gap-1 text-slate-400"><PlayCircle className="h-3 w-3" />预览此事件</div>
-            {summarizeEventPreview(actionBlocks).map((line, index) => <div key={index}>{line}</div>)}
-          </div>
-        </section>
-
-        <section className={`rounded border p-3 ${
-          isDarkMode ? 'border-[#2d2d34] bg-[#202027]' : 'border-slate-200 bg-slate-50'
-        }`}>
-          <div className="mb-2 text-[12px] font-semibold">5 步学习路径</div>
-          <div className="space-y-1.5">
-            {learningPath.steps.map((step, index) => (
-              <button
-                key={step.id}
-                type="button"
-                onClick={() => {
-                  if (step.target === 'designer') setViewType('designer');
-                  if (step.target === 'tasks') onOpenProblemsPanel?.();
-                  if (step.target === 'run') window.dispatchEvent(new KeyboardEvent('keydown', { key: 'F5' }));
-                }}
-                className={`w-full rounded border px-2 py-1.5 text-left text-[11px] ${
-                  step.completed
-                    ? isDarkMode ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                    : isDarkMode ? 'border-slate-700 text-slate-400 hover:bg-slate-800' : 'border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <span className="font-semibold">{index + 1}. {step.title}</span>
-                <span className="ml-2 opacity-75">{step.description}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-      </div>
-    </aside>
-  );
-
-  const renderBeginnerSummaryStrip = () => {
-    if (activeFile?.language !== 'lingcpp' || editorExperienceMode !== 'beginner') return null;
-    const taskCount = visibleBeginnerTasks.length;
-    return (
-      <div className={`xl:hidden border-b px-3 py-2 ${
-        isDarkMode ? 'border-[#2d2d34] bg-[#18181f]' : 'border-slate-200 bg-white'
-      }`}>
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-          <button
-            type="button"
-            onClick={onOpenProblemsPanel}
-            className={`rounded border px-2.5 py-2 text-left ${
-              isDarkMode ? 'border-amber-500/20 bg-amber-500/10 text-amber-200' : 'border-amber-200 bg-amber-50 text-amber-800'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold">
-              <ClipboardList className="h-3.5 w-3.5" />
-              <span>{taskCount > 0 ? `还有 ${taskCount} 个事件待处理` : '暂无待处理事件'}</span>
-            </div>
-            <div className="mt-1 truncate text-[10px] opacity-80">{visibleBeginnerTasks[0]?.description || '可以继续编写窗口逻辑或运行程序。'}</div>
-          </button>
-          <button
-            type="button"
-            onClick={() => revealLingCppLine(codeExplanation?.line || cursorPosition.line)}
-            className={`rounded border px-2.5 py-2 text-left ${
-              isDarkMode ? 'border-blue-500/20 bg-blue-500/10 text-blue-200' : 'border-blue-200 bg-blue-50 text-blue-800'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold">
-              <Lightbulb className="h-3.5 w-3.5" />
-              <span>当前代码：{codeExplanation?.title || '普通代码'}</span>
-            </div>
-            <div className="mt-1 truncate text-[10px] opacity-80">{codeExplanation?.body}</div>
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowBeginnerTools(true)}
-            className={`rounded border px-2.5 py-2 text-left ${
-              isDarkMode ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-200' : 'border-emerald-200 bg-emerald-50 text-emerald-800'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold">
-              <Wand2 className="h-3.5 w-3.5" />
-              <span>新手工具</span>
-            </div>
-            <div className="mt-1 truncate text-[10px] opacity-80">事件动作、代码解释与 5 步学习路径</div>
-          </button>
-        </div>
-      </div>
-    );
-  };
-
   const renderActiveLineStructureBar = () => {
     if (activeFile?.language !== 'lingcpp' || !activeStructuredRow) return null;
     const row = activeStructuredRow;
     const titleMap: Record<LingCppStructuredReadingRow['group'], string> = {
       declaration: '源码声明',
       package: '包声明',
+      global: '项目全局变量',
       class: '类声明',
       member: '成员声明',
       local: '局部变量',
@@ -8055,6 +8922,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
         {/* Top-Right Quick Toggle Button between Code/Designer */}
         <div className="flex shrink-0 items-center gap-2 pr-2">
+          {editorExperienceMode === 'beginner' && viewType === 'code' && activeFile?.language === 'lingcpp' && (
+            <button
+              type="button"
+              onClick={onOpenProjectDataTypes}
+              className={`flex items-center gap-1 rounded border px-2.5 py-1 text-[10px] font-medium ${isDarkMode ? 'border-emerald-500/30 bg-emerald-600/10 text-emerald-300 hover:bg-emerald-600/20' : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}`}
+              title="打开项目自定义数据类型"
+            >
+              <ListTree className="h-3 w-3" />
+              <span>数据类型</span>
+            </button>
+          )}
           {activeFile?.name?.endsWith('.lcpp') && (
             viewType === 'designer' ? (
               <button
@@ -8086,36 +8964,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           )}
         </div>
       </div>
-
-
-      {/* Statistics Banner */}
-      <div className={`px-4 py-1.5 border-b flex flex-wrap items-center justify-between gap-2 text-xs font-mono shrink-0 select-none ${
-        isDarkMode ? 'bg-[#18181c]/50 border-[#2d2d34] text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-650'
-      }`}>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
-          <span>对比统计：</span>
-          <span className="text-emerald-500 font-bold">+{diffResult.stats.added} 插入</span>
-          <span className="text-rose-500 font-bold">-{diffResult.stats.deleted} 移除</span>
-          <span className="text-amber-500 font-bold">~{diffResult.stats.modified} 修改</span>
-          <span>({diffResult.stats.unchanged} 行未改动)</span>
-        </div>
-        {viewType === 'code' && (
-          <DiffViewModeSelector
-            value={viewMode}
-            onChange={mode => onDiffViewModeChange ? onDiffViewModeChange(mode) : setViewMode(mode)}
-            isDarkMode={isDarkMode}
-            hasDifferences={diffResult.stats.added + diffResult.stats.deleted + diffResult.stats.modified > 0}
-          />
-        )}
-      </div>
-
       {/* Main Comparative Frame */}
       {viewType === 'designer' ? (
         <WpfDesigner
           key={`designer:${textModelProjectId}`}
           projectId={textModelProjectId}
+          authoritativeProject={designerProject}
+          authoritativeActiveWindowId={activeWindowId}
           isDarkMode={isDarkMode}
           activeFile={activeFile}
+          commandService={commandService}
+          getCommandContext={getCommandContext}
         />
       ) : (
         <div className={`flex-1 flex overflow-hidden ${style.bg} ${style.text}`}>
@@ -8247,14 +9106,35 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             )}
 
             <div className="flex-1 min-h-0 flex overflow-hidden">
-              {isLingCppBeginnerStructureMode ? (
-                <>
-                  <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                    {renderBeginnerSummaryStrip()}
-                    {renderLingCppStructureTableEditor()}
-                  </div>
-                  {renderBeginnerPanel()}
-                </>
+              {isLingCppBeginnerStructureMode && isProjectDataTypesFilePath(activeFile?.path) ? (
+                <ProjectDataTypeEditor
+                  sourceCode={normalizedSourceCode}
+                  filePath={activeFile?.path}
+                  moduleContext={moduleContext}
+                  projectClassNames={projectClassNames}
+                  isDarkMode={isDarkMode}
+                  readOnly={!onUpdateSourceContent}
+                  onChange={updateSourceCode}
+                  projectSources={lingCppProjectSources}
+                  onProjectSourcesChange={onUpdateProjectSources}
+                />
+              ) : isLingCppBeginnerStructureMode && isProjectGlobalsFilePath(activeFile?.path) ? (
+                <ProjectGlobalVariableEditor
+                  sourceCode={normalizedSourceCode}
+                  filePath={activeFile?.path}
+                  moduleContext={moduleContext}
+                  projectTypes={projectTypes}
+                  isDarkMode={isDarkMode}
+                  readOnly={!onUpdateSourceContent}
+                  onChange={updateSourceCode}
+                  projectSources={lingCppProjectSources}
+                  onProjectSourcesChange={onUpdateProjectSources}
+                  focusConstantName={pendingProjectConstantFocus}
+                />
+              ) : isLingCppBeginnerStructureMode ? (
+                <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+                  {renderLingCppStructureTableEditor()}
+                </div>
               ) : isLingCppNativeMode ? (
                 renderNativePreviewEditor()
               ) : (
@@ -8272,6 +9152,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   filePath={activeFile?.path}
                   designerProject={designerProject}
                   moduleContext={moduleContext}
+                  projectGlobals={projectGlobals}
+                  projectTypes={projectTypes}
+                  projectSources={lingCppProjectSources}
+                  onProjectSourcesChange={onUpdateProjectSources}
                   onRevealDesignerBinding={() => setViewType('designer')}
                   onCursorPositionChange={setCursorPosition}
                   readingMode={activeFile?.language === 'lingcpp' ? readingMode : 'off'}

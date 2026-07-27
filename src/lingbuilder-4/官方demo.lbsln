@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "official-demo",
+  "name": "官方demo",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "web-access-demo",
+  "startupProjectIds": [
+    "web-access-demo"
+  ],
+  "projects": [
+    {
+      "id": "lingbuilder-ui-project",
+      "name": "组件demo",
+      "type": "visual-cpp",
+      "sourceRoot": "src/component-demo",
+      "references": []
+    },
+    {
+      "id": "web-access-demo",
+      "name": "网页访问使用demo",
+      "type": "visual-cpp",
+      "sourceRoot": "src/web-access-demo",
+      "references": []
+    }
+  ]
+}

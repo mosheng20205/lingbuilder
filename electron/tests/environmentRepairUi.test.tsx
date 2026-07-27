@@ -17,6 +17,9 @@ test('environment repair center exposes confirmation, progress, retry, accessibi
   assert.match(source, /aria-live="polite"/u);
   assert.match(source, /重新检测/u);
   assert.match(source, /高级替代工具链/u);
+  assert.match(source, /LingBuilder 原生 MSVC 构建环境/u);
+  assert.match(source, /不能替代 LingBuilder 默认 Win32 构建/u);
+  assert.match(source, /item\.required \? '必需' : '可选'/u);
   assert.match(source, /关闭窗口不会中断微软安装程序/u);
   assert.doesNotMatch(source, /window\.confirm/u);
 });

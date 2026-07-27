@@ -1,0 +1,285 @@
+{
+  "id": "web-access-demo",
+  "name": "网页访问使用demo",
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "MainWindow",
+      "title": "网页访问使用demo主窗口",
+      "width": 900,
+      "height": 560,
+      "background": "#1f2937",
+      "description": "网页访问模块 GET、POST、Cookie、协议头、全部方法和高级参数交互示例",
+      "controls": [
+        {
+          "id": "title-label",
+          "type": "Label",
+          "name": "标题标签",
+          "content": "网页访问模块完整示例",
+          "x": 24,
+          "y": 22,
+          "width": 820,
+          "height": 36,
+          "fontSize": 20,
+          "background": "transparent",
+          "foreground": "#F8FAFC",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "help-label",
+          "type": "Label",
+          "name": "操作说明",
+          "content": "点击按钮执行对应示例；请求状态、响应文本、Cookie、协议头和错误信息输出到调试面板。",
+          "x": 24,
+          "y": 64,
+          "width": 820,
+          "height": 42,
+          "fontSize": 13,
+          "background": "transparent",
+          "foreground": "#94A3B8",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "get-button",
+          "type": "Button",
+          "name": "GET按钮",
+          "content": "GET 与结果读取",
+          "x": 24,
+          "y": 126,
+          "width": 250,
+          "height": 52,
+          "fontSize": 14,
+          "background": "#0369A1",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_GET按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "post-button",
+          "type": "Button",
+          "name": "POST按钮",
+          "content": "POST 表单",
+          "x": 302,
+          "y": 126,
+          "width": 250,
+          "height": 52,
+          "fontSize": 14,
+          "background": "#047857",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_POST按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "cookie-button",
+          "type": "Button",
+          "name": "Cookie按钮",
+          "content": "Cookie 提交与接收",
+          "x": 580,
+          "y": 126,
+          "width": 264,
+          "height": 52,
+          "fontSize": 14,
+          "background": "#7C3AED",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_Cookie按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "headers-button",
+          "type": "Button",
+          "name": "请求头按钮",
+          "content": "请求头 / 响应头 / 重定向",
+          "x": 24,
+          "y": 204,
+          "width": 250,
+          "height": 52,
+          "fontSize": 14,
+          "background": "#B45309",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_请求头按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "methods-button",
+          "type": "Button",
+          "name": "全部方法按钮",
+          "content": "HEAD / PUT / DELETE 等",
+          "x": 302,
+          "y": 204,
+          "width": 250,
+          "height": 52,
+          "fontSize": 14,
+          "background": "#BE123C",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_全部方法按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "advanced-button",
+          "type": "Button",
+          "name": "高级参数按钮",
+          "content": "字节集 / 代理 / 全部参数",
+          "x": 580,
+          "y": 204,
+          "width": 264,
+          "height": 52,
+          "fontSize": 14,
+          "background": "#475569",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "events": {
+            "Click": "_高级参数按钮_被单击"
+          },
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6,
+            "checked": false,
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        },
+        {
+          "id": "warning-label",
+          "type": "Label",
+          "name": "高级参数提示",
+          "content": "高级参数按钮包含示例代理 127.0.0.1:8888，运行前请在源码中替换；全部方法的服务端支持情况可能不同。",
+          "x": 24,
+          "y": 292,
+          "width": 820,
+          "height": 56,
+          "fontSize": 13,
+          "background": "transparent",
+          "foreground": "#FBBF24",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        }
+      ],
+      "titleBarBackground": "#2D2D30",
+      "titleBarForeground": "#CBD5E1",
+      "menuBackground": "#ffffff",
+      "menuForeground": "#000000",
+      "menuFontFamily": "Microsoft YaHei UI",
+      "menuFontSize": 11,
+      "menuFontBold": false,
+      "menuFontItalic": false,
+      "menuFontUnderline": false,
+      "cornerStyle": "rounded",
+      "iconStyle": "lingbuilder",
+      "resizable": true,
+      "maximizable": true
+    }
+  ],
+  "schemaVersion": 2,
+  "resources": []
+}

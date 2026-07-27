@@ -15,8 +15,9 @@ const MODULE_ID_RE = /^[a-z0-9][a-z0-9._-]{2,80}$/;
 const TARGET_PLATFORMS: ModuleTargetPlatform[] = ['windows', 'linux', 'macos'];
 const TARGET_ARCHES: ModuleTargetArch[] = ['win32', 'x64', 'arm64', 'any'];
 const TARGET_TOOLCHAINS: ModuleTargetToolchain[] = ['msvc', 'gcc', 'clang', 'cmake', 'any'];
-const BINDING_VALUE_TYPES: ModuleBindingValueType[] = ['void', 'int', 'longLong', 'double', 'bool', 'wideString', 'utf8String', 'handle', 'raw'];
+const BINDING_VALUE_TYPES: ModuleBindingValueType[] = ['void', 'int', 'longLong', 'double', 'bool', 'wideString', 'utf8String', 'handler', 'handle', 'raw'];
 const DESIGNER_PROPERTY_TYPES = ['text', 'number', 'boolean', 'enum', 'color', 'file', 'stringList', 'columns', 'treeNodes', 'tabs', 'date', 'controlRef'];
+const DESIGNER_LAYOUT_MODES = ['absolute', 'flow', 'stack', 'grid', 'dock', 'slots', 'single', 'custom'];
 
 export function validateModuleManifest(value: unknown): { manifest?: LingBuilderModuleManifest; diagnostics: string[] } {
   const diagnostics: string[] = [];
@@ -47,9 +48,15 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
         seen.add(command?.name);
         if (typeof command?.signature !== 'string' || !command.signature.trim()) diagnostics.push(`命令 ${command?.name || index + 1} 缺少 signature。`);
         if (typeof command?.description !== 'string' || !command.description.trim()) diagnostics.push(`命令 ${command?.name || index + 1} 缺少 description。`);
+        if (command?.visibility !== undefined && !['default', 'advanced', 'internal'].includes(command.visibility)) diagnostics.push(`命令 ${command?.name || index + 1} 的 visibility 无效。`);
+        if (command?.returnDescription !== undefined && (typeof command.returnDescription !== 'string' || !command.returnDescription.trim())) {
+          diagnostics.push(`命令 ${command?.name || index + 1} 的 returnDescription 必须是非空文本。`);
+        }
       });
     }
   }
+
+  validateMenuContributions(contributes?.menus, contributes?.submenus, diagnostics);
 
   if (contributes?.designerControls) {
     if (!Array.isArray(contributes.designerControls)) diagnostics.push('contributes.designerControls 必须是数组。');
@@ -61,12 +68,26 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
         seenControls.add(control?.type);
         if (typeof control?.label !== 'string' || !control.label.trim()) diagnostics.push(`designerControls[${controlIndex}] 缺少 label。`);
         if (!control?.defaultProps || typeof control.defaultProps !== 'object' || Array.isArray(control.defaultProps)) diagnostics.push(`designerControls[${controlIndex}].defaultProps 必须是对象。`);
+        if (control?.layout !== undefined) {
+          if (!control.layout || typeof control.layout !== 'object' || !DESIGNER_LAYOUT_MODES.includes(control.layout.mode)) {
+            diagnostics.push(`designerControls[${controlIndex}].layout.mode 不受支持。`);
+          } else {
+            if (control.layout.coordinateSpace !== undefined && !['window', 'parent'].includes(control.layout.coordinateSpace)) diagnostics.push(`designerControls[${controlIndex}].layout.coordinateSpace 无效。`);
+            if (control.layout.orientation !== undefined && !['horizontal', 'vertical'].includes(control.layout.orientation)) diagnostics.push(`designerControls[${controlIndex}].layout.orientation 无效。`);
+            if (control.layout.capacity !== undefined && (!Number.isInteger(control.layout.capacity) || control.layout.capacity < 1)) diagnostics.push(`designerControls[${controlIndex}].layout.capacity 必须是正整数。`);
+            if (control.layout.slots !== undefined && (!Array.isArray(control.layout.slots) || control.layout.slots.some((slot: unknown) => typeof slot !== 'string' || !slot.trim()))) diagnostics.push(`designerControls[${controlIndex}].layout.slots 必须是非空文本数组。`);
+            if (control.layout.acceptedDesignerTypes !== undefined && (!Array.isArray(control.layout.acceptedDesignerTypes) || control.layout.acceptedDesignerTypes.some((type: unknown) => typeof type !== 'string' || !type.trim()))) diagnostics.push(`designerControls[${controlIndex}].layout.acceptedDesignerTypes 必须是非空文本数组。`);
+          }
+        }
         const eventNames = new Set<string>();
         if (control?.events !== undefined && !Array.isArray(control.events)) diagnostics.push(`designerControls[${controlIndex}].events 必须是数组。`);
         else (control?.events || []).forEach((event: any, eventIndex: number) => {
           if (typeof event?.name !== 'string' || !event.name.trim()) diagnostics.push(`designerControls[${controlIndex}].events[${eventIndex}] 缺少 name。`);
           if (eventNames.has(event?.name)) diagnostics.push(`控件 ${control.type} 的事件重复：${event.name}`);
           eventNames.add(event?.name);
+          if (event?.aliases !== undefined && (!Array.isArray(event.aliases) || event.aliases.some((alias: unknown) => typeof alias !== 'string' || !alias.trim()))) {
+            diagnostics.push(`控件 ${control.type} 的事件 ${event?.name || eventIndex} aliases 必须是非空文本数组。`);
+          }
           if (typeof event?.handlerPattern !== 'string' || !event.handlerPattern.includes('{controlName}')) diagnostics.push(`控件 ${control.type} 的事件 ${event?.name || eventIndex} 缺少 {controlName} 处理器占位符。`);
         });
         const propertyKeys = new Set<string>();
@@ -77,8 +98,19 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
           propertyKeys.add(property?.key);
           if (!DESIGNER_PROPERTY_TYPES.includes(property?.type)) diagnostics.push(`控件 ${control.type} 的属性 ${property?.key || propertyIndex} 类型不受支持。`);
           if (property?.type === 'file' && typeof property?.defaultValue === 'string' && property.defaultValue && !validateModuleRelativePath(property.defaultValue)) diagnostics.push(`控件 ${control.type} 的文件属性 ${property.key} 默认值不是安全相对路径。`);
+          if (property?.level !== undefined && !['basic', 'advanced'].includes(property.level)) diagnostics.push(`控件 ${control.type} 的属性 ${property.key} level 无效。`);
         });
       });
+    }
+  }
+
+  if (raw.designer !== undefined) {
+    if (!raw.designer || typeof raw.designer !== 'object') diagnostics.push('designer 必须是对象。');
+    else {
+      if (typeof raw.designer.backend !== 'string' || !raw.designer.backend.trim()) diagnostics.push('designer.backend 不能为空。');
+      if (!Number.isInteger(raw.designer.schemaVersion) || raw.designer.schemaVersion < 1) diagnostics.push('designer.schemaVersion 必须是正整数。');
+      if (typeof raw.designer.path !== 'string' || !validateModuleRelativePath(raw.designer.path)) diagnostics.push('designer.path 必须是安全模块相对路径。');
+      if (typeof raw.designer.sha256 !== 'string' || !/^[a-f0-9]{64}$/iu.test(raw.designer.sha256)) diagnostics.push('designer.sha256 必须是 64 位十六进制摘要。');
     }
   }
 
@@ -89,6 +121,36 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
 
   if (diagnostics.length > 0) return { diagnostics };
   return { manifest: raw as LingBuilderModuleManifest, diagnostics };
+}
+
+function validateMenuContributions(menus: unknown, submenus: unknown, diagnostics: string[]): void {
+  const submenuIds = new Set<string>();
+  if (submenus !== undefined) {
+    if (!Array.isArray(submenus)) diagnostics.push('contributes.submenus 必须是数组。');
+    else submenus.forEach((submenu: any, index: number) => {
+      if (typeof submenu?.id !== 'string' || !submenu.id.trim()) diagnostics.push(`submenus[${index}] 缺少 id。`);
+      if (typeof submenu?.title !== 'string' || !submenu.title.trim()) diagnostics.push(`submenus[${index}] 缺少 title。`);
+      if (submenuIds.has(submenu?.id)) diagnostics.push(`子菜单重复：${submenu.id}`);
+      submenuIds.add(submenu?.id);
+    });
+  }
+  if (menus === undefined) return;
+  if (!Array.isArray(menus)) { diagnostics.push('contributes.menus 必须是数组。'); return; }
+  menus.forEach((menu: any, index: number) => {
+    if (typeof menu?.menu !== 'string' || !menu.menu.trim()) diagnostics.push(`menus[${index}] 缺少 menu。`);
+    const hasCommand = typeof menu?.command === 'string' && Boolean(menu.command.trim());
+    const hasSubmenu = typeof menu?.submenu === 'string' && Boolean(menu.submenu.trim());
+    if (hasCommand === hasSubmenu) diagnostics.push(`menus[${index}] 必须且只能声明 command 或 submenu。`);
+    if (hasSubmenu && !submenuIds.has(menu.submenu)) diagnostics.push(`menus[${index}] 引用了未声明子菜单：${menu.submenu}`);
+    if (menu?.order !== undefined && typeof menu.order !== 'number') diagnostics.push(`menus[${index}].order 必须是数字。`);
+    if (menu?.arguments !== undefined) {
+      if (!Array.isArray(menu.arguments)) diagnostics.push(`menus[${index}].arguments 必须是数组。`);
+      else {
+        try { if (JSON.stringify(menu.arguments).length > 32 * 1024) diagnostics.push(`menus[${index}].arguments 超过 32KB。`); }
+        catch { diagnostics.push(`menus[${index}].arguments 必须可 JSON 序列化。`); }
+      }
+    }
+  });
 }
 
 export function validateModuleRelativePath(value: string): boolean {
@@ -107,6 +169,7 @@ export async function validateModuleManifestContents(
   const fileReferences = uniqueReferences([
     ...(manifest.contributes?.docs || []).map(item => ({ path: item.path, label: '文档' })),
     ...(manifest.contributes?.examples || []).map(item => ({ path: item.path, label: '示例' })),
+    ...(manifest.designer ? [{ path: manifest.designer.path, label: '设计器目录' }] : []),
     ...(manifest.targets || []).flatMap(target => [
       ...(target.headers || []).map(item => ({ path: item, label: `目标 ${target.id} 的头文件` })),
       ...(target.sources || []).map(item => ({ path: item, label: `目标 ${target.id} 的源码` })),

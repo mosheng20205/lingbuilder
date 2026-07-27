@@ -6,19 +6,30 @@ const os = require('node:os');
 const path = require('node:path');
 
 const projectRoot = path.resolve(__dirname, '..');
-const executablePath = path.join(projectRoot, 'release', 'win-unpacked', 'LingBuilder.exe');
+const packagedRoot = process.env.LINGBUILDER_PACKAGED_ROOT
+  ? path.resolve(process.env.LINGBUILDER_PACKAGED_ROOT)
+  : path.join(projectRoot, 'release', 'win-unpacked');
+const executablePath = path.join(packagedRoot, 'LingBuilder.exe');
+const cliLauncherPath = path.join(packagedRoot, 'lingbuilder.cmd');
 const execFileAsync = promisify(execFile);
+const expectedCliVersion = `LingBuilder CLI ${require('../package.json').version}`;
 
 async function main() {
   await fs.access(executablePath).catch(() => {
-    throw new Error('未找到 release/win-unpacked/LingBuilder.exe，请先运行 npm run package:dir。');
+    throw new Error(`未找到 ${executablePath}，请先运行 npm run package:dir。`);
   });
+
+  if (process.argv.includes('--cli-only')) {
+    console.log(JSON.stringify({ ok: true, cliVersion: await assertPackagedCli() }, null, 2));
+    return;
+  }
 
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-packaged-smoke-'));
   const documentsRoot = path.join(tempRoot, 'Documents');
   const userDataRoot = path.join(tempRoot, 'user-data');
 
   try {
+    const cliVersion = await assertPackagedCli();
     const first = await launchSmoke('first', documentsRoot, userDataRoot);
     const expectedWorkspace = path.join(documentsRoot, 'LingBuilder', '起始工作区');
     assertSmokeResult(first, expectedWorkspace);
@@ -38,6 +49,7 @@ async function main() {
       ok: true,
       firstRun: first,
       secondRun: second,
+      cliVersion,
       preservedUserEdit: true,
       noResidualProcesses: true
     }, null, 2));
@@ -46,6 +58,27 @@ async function main() {
     if (!tempRoot.startsWith(expectedPrefix)) throw new Error(`拒绝清理非临时目录：${tempRoot}`);
     await fs.rm(tempRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
+}
+
+async function assertPackagedCli() {
+  await fs.access(cliLauncherPath).catch(() => {
+    throw new Error('安装版未包含 lingbuilder.cmd CLI 启动器。');
+  });
+  const { stdout, stderr } = await execFileAsync(
+    'powershell.exe',
+    ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', '& $env:LINGBUILDER_CLI_LAUNCHER --version'],
+    {
+      cwd: projectRoot,
+      windowsHide: true,
+      timeout: 15_000,
+      env: { ...process.env, LINGBUILDER_CLI_LAUNCHER: cliLauncherPath }
+    }
+  );
+  const version = stdout.trim();
+  if (version !== expectedCliVersion) {
+    throw new Error(`安装版 CLI 冒烟失败：${version || stderr.trim() || '无输出'}`);
+  }
+  return version;
 }
 
 async function launchSmoke(name, documentsRoot, userDataRoot) {
@@ -95,6 +128,7 @@ async function launchSmoke(name, documentsRoot, userDataRoot) {
 
 function assertSmokeResult(result, expectedWorkspace) {
   if (!result.ok || !result.hasRoot || result.healthStatus !== 200 || result.modulesStatus !== 200 || result.aiStatus !== 200 || result.bridgeStatus !== 404
+    || result.managedBridgeStatus !== 200 || result.managedMcpStatus !== 200 || !result.managedBridgeStopped || !result.managedClientLaunched
     || result.terminalStatus !== 201 || result.terminalResizeStatus !== 200 || result.terminalCloseStatus !== 200 || !result.terminalPtyOutput) {
     throw new Error(`安装版接口冒烟失败：${JSON.stringify(result)}`);
   }

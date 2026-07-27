@@ -14,9 +14,59 @@ export interface LingCppDiagnostic {
 export interface LingCppProgram {
   packageName: string;
   uses: string[];
+  constants: LingCppConstant[];
+  globals: LingCppGlobalVariable[];
+  dataTypes: LingCppDataType[];
+  functionLibraries: LingCppFunctionLibrary[];
   classes: LingCppClass[];
   diagnostics: LingCppDiagnostic[];
   source: string;
+}
+
+/**
+ * A stateless, project-scoped collection of reusable functions.
+ * Function libraries intentionally have no members, events or constructors.
+ */
+export interface LingCppFunctionLibrary {
+  name: string;
+  line: number;
+  endLine?: number;
+  methods: LingCppMethod[];
+}
+
+export interface LingCppConstant {
+  /** 项目级只读符号。 */
+  name: string;
+  type: string;
+  line: number;
+  initialValue: string;
+  note?: string;
+}
+
+export interface LingCppGlobalVariable {
+  name: string;
+  type: string;
+  line: number;
+  initialValue?: string;
+  isArray?: boolean;
+  note?: string;
+}
+
+export interface LingCppDataType {
+  name: string;
+  line: number;
+  endLine?: number;
+  note?: string;
+  fields: LingCppDataField[];
+}
+
+export interface LingCppDataField {
+  name: string;
+  type: string;
+  line: number;
+  initialValue?: string;
+  isArray?: boolean;
+  note?: string;
 }
 
 export interface LingCppClass {
@@ -82,6 +132,11 @@ export type LingCppAstNodeKind =
   | 'program'
   | 'package'
   | 'use'
+  | 'constant'
+  | 'global'
+  | 'data-type'
+  | 'data-field'
+  | 'function-library'
   | 'class'
   | 'access'
   | 'member'
@@ -114,6 +169,11 @@ export interface LingCppAstNode {
 export interface LingCppSymbolIndex {
   declarations: LingCppAstNode[];
   classes: LingCppAstNode[];
+  constants: LingCppAstNode[];
+  globals: LingCppAstNode[];
+  dataTypes: LingCppAstNode[];
+  dataFields: LingCppAstNode[];
+  functionLibraries: LingCppAstNode[];
   members: LingCppAstNode[];
   locals: LingCppAstNode[];
   methods: LingCppAstNode[];
@@ -175,6 +235,24 @@ export interface LingCppWorkspaceFile {
   language?: string;
 }
 
+export interface LingCppProjectSourceFile {
+  filePath: string;
+  sourceCode: string;
+}
+
+export interface LingCppProjectGlobalContext {
+  filePath: string;
+  sourceCode: string;
+  constants: LingCppConstant[];
+  globals: LingCppGlobalVariable[];
+}
+
+export interface LingCppProjectTypeContext {
+  filePath: string;
+  sourceCode: string;
+  dataTypes: LingCppDataType[];
+}
+
 export interface AiConnectionConfig {
   baseUrl?: string;
   apiKey?: string;
@@ -228,6 +306,10 @@ export interface SourceControlStatus {
 export type LingCppSymbolKind =
   | 'package'
   | 'use'
+  | 'global'
+  | 'data-type'
+  | 'data-field'
+  | 'function-library'
   | 'class'
   | 'member'
   | 'constructor'
@@ -351,6 +433,7 @@ export interface LingCppQuickAction {
 export type LingCppStructureNodeKind =
   | 'package'
   | 'use'
+  | 'global'
   | 'class'
   | 'member'
   | 'constructor'
@@ -439,7 +522,7 @@ export type LingCppCompletionContextKind =
 
 export interface LingCppStructuredReadingRow {
   id: string;
-  group: 'declaration' | 'package' | 'class' | 'member' | 'local' | 'method' | 'constructor' | 'event' | 'parameter' | 'note';
+  group: 'declaration' | 'package' | 'global' | 'class' | 'member' | 'local' | 'method' | 'constructor' | 'event' | 'parameter' | 'note';
   name: string;
   type?: string;
   value?: string;
@@ -448,7 +531,7 @@ export interface LingCppStructuredReadingRow {
   blockId?: string;
   status?: LingCppDesignerBindingStatus;
   editable?: boolean;
-  editKind?: 'package' | 'class' | 'member' | 'local' | 'method' | 'event' | 'missing-event' | 'note';
+  editKind?: 'package' | 'global' | 'class' | 'member' | 'local' | 'method' | 'event' | 'missing-event' | 'note';
   className?: string;
   methodName?: string;
   targetName?: string;
@@ -471,15 +554,40 @@ export interface LingCppLanguageContext {
   designerProject?: unknown;
   moduleContext?: LingCppModuleContext;
   moduleContributions: LingCppCompletionCatalogItem[];
+  projectGlobals?: LingCppProjectGlobalContext;
+  projectTypes?: LingCppProjectTypeContext;
+  projectFunctions?: LingCppProjectFunctionContext;
+}
+
+export interface LingCppProjectFunctionLibrary extends LingCppFunctionLibrary {
+  filePath: string;
+}
+
+export interface LingCppProjectFunctionContext {
+  libraries: LingCppProjectFunctionLibrary[];
 }
 
 export type LingCppAstEdit =
   | { kind: 'update-package'; packageName: string }
+  | { kind: 'add-constant'; constant: { name: string; type: string; initialValue: string; note?: string } }
+  | { kind: 'update-constant'; constantName: string; newName?: string; type?: string; initialValue?: string; note?: string }
+  | { kind: 'delete-constant'; constantName: string }
+  | { kind: 'add-global'; global: { name: string; type: string; initialValue?: string; isArray?: boolean; note?: string } }
+  | { kind: 'update-global'; globalName: string; newName?: string; type?: string; initialValue?: string; isArray?: boolean; note?: string }
+  | { kind: 'delete-global'; globalName: string }
+  | { kind: 'add-data-type'; dataType: { name: string; note?: string } }
+  | { kind: 'update-data-type'; dataTypeName: string; newName?: string; note?: string }
+  | { kind: 'delete-data-type'; dataTypeName: string }
+  | { kind: 'move-data-type'; dataTypeName: string; direction: 'up' | 'down' }
+  | { kind: 'add-data-field'; dataTypeName: string; field: { name: string; type: string; initialValue?: string; isArray?: boolean; note?: string } }
+  | { kind: 'update-data-field'; dataTypeName: string; fieldName: string; newName?: string; type?: string; initialValue?: string; isArray?: boolean; note?: string }
+  | { kind: 'delete-data-field'; dataTypeName: string; fieldName: string }
+  | { kind: 'move-data-field'; dataTypeName: string; fieldName: string; direction: 'up' | 'down' }
   | { kind: 'update-class'; className?: string; line?: number; newName?: string; baseClass?: string; note?: string }
   | { kind: 'add-member'; className?: string; member: { name: string; type: string; access?: LingCppAccessModifier; initialValue?: string; isStatic?: boolean; isArray?: boolean; note?: string } }
   | { kind: 'update-member'; className?: string; memberName: string; newName?: string; type?: string; access?: LingCppAccessModifier; initialValue?: string; isStatic?: boolean; isArray?: boolean; note?: string }
   | { kind: 'delete-member'; className?: string; memberName: string }
-  | { kind: 'add-local'; className?: string; methodName: string; local: { name: string; type: string; initialValue?: string; isArray?: boolean } }
+  | { kind: 'add-local'; className?: string; methodName: string; insertBeforeLine?: number; local: { name: string; type: string; initialValue?: string; isArray?: boolean } }
   | { kind: 'update-local'; className?: string; methodName: string; localName: string; newName?: string; type?: string; initialValue?: string; isArray?: boolean }
   | { kind: 'delete-local'; className?: string; methodName: string; localName: string }
   | { kind: 'add-event'; className?: string; event: { handlerName: string; access?: LingCppAccessModifier; parameters?: LingCppParameter[]; note?: string } }
@@ -488,7 +596,7 @@ export type LingCppAstEdit =
   | { kind: 'add-method'; className?: string; method: { name: string; returnType?: string; access?: LingCppAccessModifier; isStatic?: boolean; parameters?: LingCppParameter[]; bodyLines?: string[]; note?: string } }
   | { kind: 'update-method-signature'; className?: string; methodName: string; newName?: string; returnType?: string; access?: LingCppAccessModifier; isStatic?: boolean; parameters?: LingCppParameter[]; note?: string }
   | { kind: 'delete-method'; className?: string; methodName: string }
-  | { kind: 'update-method-body'; className?: string; methodName: string; bodyLines: string[] }
+  | { kind: 'update-method-body'; className?: string; methodName: string; bodyLines: string[]; localStatementAnchors?: Record<string, number> }
   | { kind: 'update-note'; line: number; note: string };
 
 export interface LingCppAstEditResult {
@@ -506,7 +614,7 @@ export interface LingCppNativeSourceMapEntry {
   sourceFile?: string;
   sourceStartLine: number;
   sourceEndLine: number;
-  kind: 'class' | 'event' | 'method' | 'statement' | 'native-cpp';
+  kind: 'constant' | 'global' | 'data-type' | 'data-field' | 'function-library' | 'class' | 'event' | 'method' | 'statement' | 'native-cpp';
   symbolName: string;
   className?: string;
 }

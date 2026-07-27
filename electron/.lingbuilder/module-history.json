@@ -1,0 +1,24 @@
+[
+  {
+    "id": "module-history-1785074372682-399fa4",
+    "time": "2026-07-26T13:59:32.683Z",
+    "action": "export",
+    "moduleId": "lingbuilder.web.http",
+    "moduleName": "网页访问模块",
+    "version": "1.1.1",
+    "status": "success",
+    "summary": "已导出模块包 网页访问模块",
+    "details": "导出路径：C:\\Users\\Administrator\\Downloads\\c++-汉化集成开发环境(lingbuilder)\\.lingbuilder\\module-packages\\web_http.lbmod\nSHA256：14f4d34cdd68a415b7566e102b31544616125b03220c36769342a295124d4d7c"
+  },
+  {
+    "id": "module-history-1785073050097-b78f44",
+    "time": "2026-07-26T13:37:30.097Z",
+    "action": "export",
+    "moduleId": "lingbuilder.web.http",
+    "moduleName": "网页访问模块",
+    "version": "1.1.0",
+    "status": "success",
+    "summary": "已导出模块包 网页访问模块",
+    "details": "导出路径：C:\\Users\\Administrator\\Downloads\\c++-汉化集成开发环境(lingbuilder)\\.lingbuilder\\module-packages\\web_http.lbmod\nSHA256：2916f6d32094f368628c9d5dcd638f409195c34ebb0fa81374817895b4e2b167"
+  }
+]

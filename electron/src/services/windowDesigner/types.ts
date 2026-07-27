@@ -9,7 +9,7 @@ export type LingControlType =
   | 'DateTimePicker' | 'MonthCalendar' | 'TrackBar' | 'UpDown' | 'HotKey' | 'IPAddress'
   | 'ToolBar' | 'StatusBar' | 'ToolTip' | 'ReBar' | 'Pager' | 'RichEdit'
   | 'Animation' | 'VideoPlayer' | 'ColorPicker' | 'FlatScrollBar' | 'ImageList' | 'PropertySheet' | 'FileDialog'
-  | 'ContextMenu' | 'PopupMenu' | 'CefBrowser';
+  | 'ContextMenu' | 'PopupMenu' | 'EdgeBrowser' | 'CefBrowser';
 
 export interface LingEventBinding {
   [eventName: string]: string;
@@ -32,6 +32,8 @@ export interface LingControl {
   /** 布局树中的父控件。控件坐标仍使用窗口绝对坐标，避免影响现有生成结果。 */
   parentId?: string;
   type: LingControlType;
+  /** 模块控件稳定 ID，例如 lingbuilder.new_emoji.ui/Button。 */
+  designerType?: string;
   name: string;
   content: string;
   width: number;
@@ -48,6 +50,13 @@ export interface LingControl {
   foreground: string;
   isEnabled: boolean;
   visibility: 'Visible' | 'Collapsed';
+  /** 仅限设计时的锁定状态；不参与原生运行时生成。 */
+  designerLocked?: boolean;
+  /** 流式、网格、停靠等非绝对布局的可验证设计时位置数据。 */
+  designerLayout?: {
+    kind: string;
+    data?: Record<string, unknown>;
+  };
   /** 控件专属属性。旧项目缺失时由注册表默认值和 content 确定性迁移。 */
   properties?: Record<string, Win32ControlPropertyValue>;
   /** Tab、PropertySheet、Rebar 等多槽位容器中的目标槽位。 */
@@ -71,6 +80,8 @@ export interface LingWindowModel {
   /** 自定义窗口图标的工作区相对路径；仅在 iconStyle 为 custom 时使用。 */
   iconPath?: string;
   description: string;
+  /** 每个窗口独立选择原生设计后端；值由后端注册表提供，同一窗口不混用后端。 */
+  designerBackend?: string;
   openPlacement?: LingWindowOpenPlacement;
   openX?: number;
   openY?: number;

@@ -4,7 +4,8 @@
 
 - 两个同时嵌入同一窗口的 CEF3 浏览器控件（`浏览器1`、`浏览器2`）。
 - `.cef3/cache-1` 与 `.cef3/cache-2` 两个缓存目录配置（CEF3 单进程，实际以第一个控件配置作为全局 `cache_path`）。
-- `加载完成` 与 `标题被改变` 到 `.lcpp` 无参数事件处理器的真实回调。
+- `加载完成`、`标题被改变`、`控制台消息` 与 `新窗口打开前` 到 `.lcpp` 无参数事件处理器的真实回调。
+- 使用 `CEF3_取事件字段` 读取控制台消息和目标 URL，并用 `CEF3_设置事件结果(..., 2)` 拒绝新窗口。
 - `CEF3_导航`、`CEF3_取地址`、`CEF3_取标题` 等中文命令。
 
 项目 ID 为 `cef3-cli-test`，模块引用保存在 `.lingbuilder/projects/cef3-cli-test/project-modules.json`（启用 `lingbuilder.win32.basic` 与 `lingbuilder.cef3.browser`）。
@@ -71,4 +72,4 @@ SDK 支持两种目录布局：
 
 - exe 同目录应存在 `libcef.dll`、`chrome_elf.dll`、`v8_context_snapshot.bin` 和 CEF 资源文件（SDK 就绪时由构建链路复制；`v8_context_snapshot.bin` 缺失会导致渲染进程无法启动、浏览器白屏）。
 - 启动后两个浏览器区域分别加载百度与必应（2026-07-26 已用 CEF 150.0.14 x64 真实验证通过）。
-- 调试输出包含两个实例的 `加载完成` 回调与地址、标题日志。
+- 调试输出包含两个实例的 `加载完成` 回调与地址、标题日志；网页产生控制台消息或新窗口请求时能读取完整事件字段。

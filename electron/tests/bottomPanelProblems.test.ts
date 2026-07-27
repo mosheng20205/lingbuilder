@@ -1,6 +1,41 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatProblemsForClipboard } from '../src/services/problems/problemClipboard';
+import {
+  countErrorListProblems,
+  formatProblemsForClipboard
+} from '../src/services/problems/problemClipboard';
+
+test('错误列表数量排除辅助信息并保留错误和警告', () => {
+  assert.equal(countErrorListProblems([
+    {
+      id: 'compiler',
+      filePath: 'src/main.lcpp',
+      line: 12,
+      level: 'error',
+      message: '编译失败',
+      codeSnippet: '信息框（“测试”）',
+      suggestion: '检查中文引号'
+    },
+    {
+      id: 'designer',
+      filePath: 'src/MainWindow.lcpp',
+      line: 2,
+      level: 'warning',
+      message: '事件控件不存在',
+      codeSnippet: '创建完毕',
+      suggestion: '重新绑定事件'
+    },
+    {
+      id: 'insertion',
+      filePath: 'src/MainWindow.lcpp',
+      line: 1,
+      level: 'info',
+      message: '这里有一条建议',
+      codeSnippet: '类 MainWindow',
+      suggestion: '可稍后处理'
+    }
+  ]), 2);
+});
 
 test('错误列表复制文本包含全部诊断及其完整上下文', () => {
   const text = formatProblemsForClipboard([

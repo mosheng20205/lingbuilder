@@ -84,13 +84,13 @@ export const WORKBENCH_CONFIGURATION_SCHEMA: ConfigurationSchema = {
   },
   'workbench.panel.visible': {
     type: 'boolean',
-    default: true,
-    description: '是否显示底部面板。'
+    default: false,
+    description: '是否显示底部面板。默认收起，为编辑器保留主要工作空间。'
   },
   'workbench.aiPanel.visible': {
     type: 'boolean',
-    default: true,
-    description: '是否显示右侧 AI 助手面板。'
+    default: false,
+    description: '是否显示右侧 AI 助手面板。默认按需打开，避免与编辑器形成并列主界面。'
   },
   'keyboard.shortcuts': {
     type: 'object',
@@ -163,14 +163,14 @@ export const WORKBENCH_CONFIGURATION_METADATA: readonly WorkbenchConfigurationMe
     key: 'workbench.panel.visible',
     category: '工作台',
     title: '显示底部面板',
-    description: '控制终端、输出和问题等底部面板是否可见。',
+    description: '控制终端、输出和问题等底部面板是否可见；默认按需打开。',
     targets: USER_AND_WORKSPACE_TARGETS
   },
   {
     key: 'workbench.aiPanel.visible',
     category: '工作台',
     title: '显示 AI 助手',
-    description: '控制右侧 AI 助手面板是否可见。',
+    description: '控制右侧 AI 助手面板是否可见；默认收起以突出代码编辑区。',
     targets: USER_AND_WORKSPACE_TARGETS
   },
   {

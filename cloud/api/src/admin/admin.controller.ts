@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Patch, Post, Query } from '@nestjs/common';
 import { authenticator } from 'otplib';
 import { BillingService } from '../billing/billing.service.js';
 import { CurrentUser, Roles, type AuthenticatedUser } from '../common/current-user.js';
@@ -9,7 +9,7 @@ import { validateProviderUrl } from '../security/network-policy.js';
 @Controller('v1/admin')
 @Roles('super_admin', 'operator', 'support', 'auditor')
 export class AdminController {
-  constructor(private readonly prisma: PrismaService, private readonly billing: BillingService, private readonly vault: SecretVaultService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService, @Inject(BillingService) private readonly billing: BillingService, @Inject(SecretVaultService) private readonly vault: SecretVaultService) {}
   @Get('overview') async overview() { const [users, requests, models, providers] = await Promise.all([this.prisma.user.count(), this.prisma.aiRequest.count(), this.prisma.logicalModel.count({ where: { enabled: true } }), this.prisma.providerChannel.count({ where: { enabled: true } })]); const aggregate = await this.prisma.aiRequest.aggregate({ _sum: { inputTokens: true, outputTokens: true, chargedPoints: true, providerCostMicros: true } }); return json({ ok: true, users, requests, models, providers, totals: aggregate._sum }); }
   @Get('users') async users(@Query('query') query = '') { const users = await this.prisma.user.findMany({ where: query ? { email: { contains: query, mode: 'insensitive' } } : {}, include: { creditAccount: true, adminMembership: true }, orderBy: { createdAt: 'desc' }, take: 200 }); return json({ ok: true, users }); }
   @Patch('users/:userId/status') @Roles('super_admin', 'operator') async status(@Param('userId') userId: string, @Body() body: any, @CurrentUser() actor: AuthenticatedUser) { const status = String(body.status || ''); if (!['ACTIVE', 'SUSPENDED'].includes(status)) throw Object.assign(new Error('账号状态无效。'), { status: 400, code: 'VALIDATION_FAILED' }); const user = await this.prisma.user.update({ where: { id: userId }, data: { status: status as any } }); await this.audit(actor, 'user.status', 'user', userId, { status }); return { ok: true, user }; }

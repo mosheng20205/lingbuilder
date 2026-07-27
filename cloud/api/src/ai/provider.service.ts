@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { AiMessage } from '@lingbuilder/contracts';
 import type { ModelRoute, ProviderChannel } from '@prisma/client';
 import { SecretVaultService } from '../security/secret-vault.service.js';
@@ -11,7 +11,7 @@ export interface ProviderStreamChunk { delta?: string; reasoningDelta?: string; 
 
 @Injectable()
 export class ProviderService {
-  constructor(private readonly vault: SecretVaultService) {}
+  constructor(@Inject(SecretVaultService) private readonly vault: SecretVaultService) {}
   async *stream(provider: ProviderChannel, route: ModelRoute, messages: AiMessage[], maxOutputTokens: number, signal: AbortSignal): AsyncGenerator<ProviderStreamChunk> {
     const base = await validateProviderUrl(provider.baseUrl); const secret = this.vault.decrypt(provider.encryptedSecret);
     const timeout = AbortSignal.timeout(Math.max(1_000, Math.min(provider.timeoutMs, 120_000))); const combined = AbortSignal.any([signal, timeout]);

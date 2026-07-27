@@ -28,3 +28,23 @@ export function buildChineseCompletionSearchAliases(label: string): string[] {
 
   return Array.from(new Set(combinations.filter(value => value && value !== normalized)));
 }
+
+/**
+ * 为补全控件挑选最贴近当前输入的过滤文本。
+ * Monaco 会再次按 filterText 过滤服务层返回的候选；若只传中文 label，
+ * 即使服务层已经用 `bj` 找到“本机”，候选仍可能被 Monaco 隐藏。
+ */
+export function selectCompletionFilterText(
+  label: string,
+  aliases: readonly string[],
+  triggerText: string
+): string {
+  const query = triggerText.trim().toLowerCase();
+  if (!query) return label;
+
+  const candidates = Array.from(new Set([label, ...aliases].filter(Boolean)));
+  return candidates.find(value => value.toLowerCase() === query)
+    || candidates.find(value => value.toLowerCase().startsWith(query))
+    || candidates.find(value => value.toLowerCase().includes(query))
+    || label;
+}

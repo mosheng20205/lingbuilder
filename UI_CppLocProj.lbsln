@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "upload-drag-cli-test",
+  "startupProjectId": "ne",
   "startupProjectIds": [
-    "upload-drag-cli-test"
+    "ne"
   ],
   "projects": [
     {
@@ -56,6 +56,41 @@
       "name": "上传与拖拽上传 CLI 测试",
       "type": "visual-cpp",
       "sourceRoot": "examples/upload-drag-cli-test/src",
+      "references": []
+    },
+    {
+      "id": "lingbuilder-project",
+      "name": "测试项目",
+      "type": "visual-cpp",
+      "sourceRoot": "src/lingbuilder-project",
+      "references": []
+    },
+    {
+      "id": "cef3",
+      "name": "测试CEF3",
+      "type": "visual-cpp",
+      "sourceRoot": "src/cef3",
+      "references": []
+    },
+    {
+      "id": "cef3-2",
+      "name": "测试CEF3-2",
+      "type": "visual-cpp",
+      "sourceRoot": "src/cef3-2",
+      "references": []
+    },
+    {
+      "id": "lingbuilder-project-2",
+      "name": "空窗口",
+      "type": "visual-cpp",
+      "sourceRoot": "src/lingbuilder-project-2",
+      "references": []
+    },
+    {
+      "id": "ne",
+      "name": "NE测试",
+      "type": "visual-cpp",
+      "sourceRoot": "src/ne",
       "references": []
     }
   ]

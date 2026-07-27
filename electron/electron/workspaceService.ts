@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createLcppSourcePackageService, isLcppSourcePackagePath } from './lcppSourcePackageService';
 
 export interface WorkspaceState {
   schemaVersion: 3;
@@ -33,12 +34,12 @@ export class DesktopWorkspaceService {
   async resolveInitialWorkspace(fallbackWorkspace?: string): Promise<string> {
     const requested = getArgumentValue(this.options.argv, '--workspace');
     if (requested) {
-      const target = await pathExists(requested) ? await resolveWorkspaceDropTarget(requested) : requested;
+      const target = await pathExists(requested) ? await this.resolveWorkspaceTarget(requested) : requested;
       return await this.rememberWorkspace(target);
     }
     const associatedFile = this.options.argv.slice(1).find(value => value && !value.startsWith('-'));
     if (associatedFile) {
-      try { return await this.rememberWorkspace(await resolveWorkspaceDropTarget(associatedFile)); }
+      try { return await this.rememberWorkspace(await this.resolveWorkspaceTarget(associatedFile)); }
       catch { /* Ignore executable/bootstrap arguments that are not workspace targets. */ }
     }
 
@@ -121,6 +122,16 @@ export class DesktopWorkspaceService {
     const resolved = path.resolve(workspacePath);
     await this.assertWorkspaceDirectory(resolved);
     return resolved;
+  }
+
+  async resolveWorkspaceTarget(targetPath: string): Promise<string> {
+    const resolved = path.resolve(targetPath);
+    if (isLcppSourcePackagePath(resolved)) {
+      const destinationParent = path.join(this.options.documentsPath, 'LingBuilder', '已导入源码');
+      const imported = await createLcppSourcePackageService(path.dirname(resolved)).importPackage(resolved, destinationParent);
+      return imported.workspacePath;
+    }
+    return await resolveWorkspaceDropTarget(resolved);
   }
 
   async seedDefaultWorkspace(): Promise<string> {

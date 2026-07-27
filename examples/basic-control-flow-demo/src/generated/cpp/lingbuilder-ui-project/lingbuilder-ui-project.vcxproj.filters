@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="源文件">
+      <UniqueIdentifier>{C9CBAA62-5D95-C368-49CB-8D95945E690A}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx</Extensions>
+    </Filter>
+    <Filter Include="生成资源">
+      <UniqueIdentifier>{C2C40669-102F-F81B-42C4-802FD2EBFE72}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="layout.json">
+      <Filter>生成资源</Filter>
+    </None>
+    <None Include="module-dependencies.txt">
+      <Filter>生成资源</Filter>
+    </None>
+    <None Include="README.txt">
+      <Filter>生成资源</Filter>
+    </None>
+    <None Include="lingbuilder-native-manifest.json">
+      <Filter>生成资源</Filter>
+    </None>
+    <None Include="lcpp-sources\src\MainWindow.lcpp">
+      <Filter>生成资源</Filter>
+    </None>
+    <None Include="lcpp-sources\src\项目全局变量.lcpp">
+      <Filter>生成资源</Filter>
+    </None>
+    <None Include="lcpp-sources\src\项目数据类型.lcpp">
+      <Filter>生成资源</Filter>
+    </None>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,187 @@
+{
+  "schemaVersion": 2,
+  "id": "lingbuilder.web.http",
+  "name": "网页访问模块",
+  "version": "1.0.0",
+  "category": "网络",
+  "description": "基于 Windows WinHTTP 封装易语言风格的网页_访问_对象命令，支持 GET、POST、Cookie、请求头、响应头、状态码、代理、超时和重定向控制。",
+  "author": "LingBuilder",
+  "license": "MIT",
+  "tags": ["网络", "HTTP", "HTTPS", "WinHTTP", "易语言兼容"],
+  "contributes": {
+    "commands": [
+      {
+        "name": "网页_访问_对象",
+        "signature": "网页_访问_对象(网址, 访问方式, 提交信息, 提交Cookies, 返回Cookies, 附加协议头, 返回协议头, 返回状态代码, 禁止重定向, 字节集提交, 代理地址, 超时, 代理用户名, 代理密码, 代理标识, 对象继承, 是否自动合并更新Cookie, 是否补全必要协议头, 是否处理协议头大小写)",
+        "description": "使用 WinHTTP 对象方式访问网页。访问方式：0=GET，1=POST，2=HEAD，3=PUT，4=OPTIONS，5=DELETE，6=TRACE，7=CONNECT，8=PATCH。",
+        "insertText": "网页_访问_对象(\"${1:https://example.com}\", 0)",
+        "returnType": "字节集"
+      },
+      {
+        "name": "网页_取返回文本",
+        "signature": "网页_取返回文本()",
+        "description": "读取最近一次网页_访问_对象返回的 UTF-8 文本内容。",
+        "insertText": "网页_取返回文本()",
+        "returnType": "文本型"
+      },
+      {
+        "name": "网页_取返回Cookies",
+        "signature": "网页_取返回Cookies()",
+        "description": "读取最近一次网页_访问_对象返回的 Cookie。",
+        "insertText": "网页_取返回Cookies()",
+        "returnType": "文本型"
+      },
+      {
+        "name": "网页_取返回协议头",
+        "signature": "网页_取返回协议头()",
+        "description": "读取最近一次网页_访问_对象返回的响应协议头。",
+        "insertText": "网页_取返回协议头()",
+        "returnType": "文本型"
+      },
+      {
+        "name": "网页_取返回状态代码",
+        "signature": "网页_取返回状态代码()",
+        "description": "读取最近一次网页_访问_对象返回的 HTTP 状态代码。",
+        "insertText": "网页_取返回状态代码()",
+        "returnType": "整数型"
+      },
+      {
+        "name": "网页_取错误信息",
+        "signature": "网页_取错误信息()",
+        "description": "读取最近一次网页访问失败时的中文错误信息。",
+        "insertText": "网页_取错误信息()",
+        "returnType": "文本型"
+      }
+    ],
+    "types": [
+      {
+        "name": "字节集",
+        "description": "HTTP 响应体的原始字节数据。",
+        "cppType": "std::vector<unsigned char>"
+      }
+    ],
+    "snippets": [
+      {
+        "label": "网页访问 GET",
+        "insertText": "网页_访问_对象(\"https://example.com\", 0)\n调试输出(网页_取返回文本())",
+        "description": "发起 GET 请求并输出返回文本。"
+      },
+      {
+        "label": "网页访问 POST",
+        "insertText": "网页_访问_对象(\"https://example.com/api\", 1, \"name=lingbuilder\")\n调试输出(网页_取返回状态代码())",
+        "description": "发起 UTF-8 表单 POST 请求并输出状态码。"
+      }
+    ],
+    "docs": [
+      { "title": "网页访问模块说明", "path": "README.md" },
+      { "title": "网页_访问_对象兼容说明", "path": "docs/web-http.md" }
+    ],
+    "examples": [
+      {
+        "title": "最小 GET 示例",
+        "path": "examples/minimal-get.lcpp",
+        "description": "演示网页_访问_对象、状态码和文本结果读取。"
+      }
+    ]
+  },
+  "targets": [
+    {
+      "id": "windows-msvc-win32",
+      "platform": "windows",
+      "arch": "win32",
+      "toolchain": "msvc",
+      "includeDirs": ["include"],
+      "headers": ["include/web_http_bridge.h"],
+      "sources": ["src/web_http_bridge.cpp"],
+      "defines": ["LINGBUILDER_WEB_HTTP_MODULE", "UNICODE", "_UNICODE"]
+    },
+    {
+      "id": "windows-msvc-x64",
+      "platform": "windows",
+      "arch": "x64",
+      "toolchain": "msvc",
+      "includeDirs": ["include"],
+      "headers": ["include/web_http_bridge.h"],
+      "sources": ["src/web_http_bridge.cpp"],
+      "defines": ["LINGBUILDER_WEB_HTTP_MODULE", "UNICODE", "_UNICODE"]
+    }
+  ],
+  "bindings": {
+    "commands": [
+      {
+        "command": "网页_访问_对象",
+        "runtimeName": "网页_访问_对象",
+        "parameters": [
+          { "name": "网址", "type": "wideString", "description": "完整网页地址，必须包含 http:// 或 https://" },
+          { "name": "访问方式", "type": "int", "description": "0=GET，1=POST，2=HEAD，3=PUT，4=OPTIONS，5=DELETE，6=TRACE，7=CONNECT，8=PATCH" },
+          { "name": "提交信息", "type": "wideString", "description": "POST 专用，自动 UTF-8 编码" },
+          { "name": "提交Cookies", "type": "wideString", "description": "设置提交时的 Cookie" },
+          { "name": "返回Cookies", "type": "wideString", "description": "当前生成器暂以最近一次结果函数读取" },
+          { "name": "附加协议头", "type": "wideString", "description": "一行一个协议头" },
+          { "name": "返回协议头", "type": "wideString", "description": "当前生成器暂以最近一次结果函数读取" },
+          { "name": "返回状态代码", "type": "int", "description": "当前生成器暂以最近一次结果函数读取" },
+          { "name": "禁止重定向", "type": "bool" },
+          { "name": "字节集提交", "type": "raw" },
+          { "name": "代理地址", "type": "wideString", "description": "格式如 8.8.8.8:88" },
+          { "name": "超时", "type": "int", "description": "秒，默认 15，-1 为无限等待" },
+          { "name": "代理用户名", "type": "wideString" },
+          { "name": "代理密码", "type": "wideString" },
+          { "name": "代理标识", "type": "int", "description": "默认 1，0 使用系统默认代理" },
+          { "name": "对象继承", "type": "raw", "description": "预留 WinHTTP 对象继承入口" },
+          { "name": "是否自动合并更新Cookie", "type": "bool" },
+          { "name": "是否补全必要协议头", "type": "bool" },
+          { "name": "是否处理协议头大小写", "type": "bool" }
+        ],
+        "returnType": "raw",
+        "encoding": "wide",
+        "targetIds": ["windows-msvc-win32", "windows-msvc-x64"],
+        "example": "网页_访问_对象(\"https://example.com\", 0)"
+      },
+      {
+        "command": "网页_取返回文本",
+        "runtimeName": "网页_取返回文本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "targetIds": ["windows-msvc-win32", "windows-msvc-x64"],
+        "example": "网页_取返回文本()"
+      },
+      {
+        "command": "网页_取返回Cookies",
+        "runtimeName": "网页_取返回Cookies",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "targetIds": ["windows-msvc-win32", "windows-msvc-x64"],
+        "example": "网页_取返回Cookies()"
+      },
+      {
+        "command": "网页_取返回协议头",
+        "runtimeName": "网页_取返回协议头",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "targetIds": ["windows-msvc-win32", "windows-msvc-x64"],
+        "example": "网页_取返回协议头()"
+      },
+      {
+        "command": "网页_取返回状态代码",
+        "runtimeName": "网页_取返回状态代码",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "wide",
+        "targetIds": ["windows-msvc-win32", "windows-msvc-x64"],
+        "example": "网页_取返回状态代码()"
+      },
+      {
+        "command": "网页_取错误信息",
+        "runtimeName": "网页_取错误信息",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "targetIds": ["windows-msvc-win32", "windows-msvc-x64"],
+        "example": "网页_取错误信息()"
+      }
+    ]
+  }
+}

@@ -62,7 +62,8 @@ test('designer event cards open existing handlers or create missing bindings wit
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   const appSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/App.tsx'), 'utf8');
   assert.match(source, /function ControlEvents\(\{[\s\S]*?windowModel/u);
-  assert.match(source, /onClick=\{\(\) => openEventCode\(eventInfo\.name\)\}/u);
+  assert.match(source, /onClick=\{\(\) => openEventCode\(eventInfo\.name, 'handlerPattern' in eventInfo/u);
+  assert.match(source, /moduleControl\.events/u);
   assert.match(source, /\[eventName\]: handlerName/u);
   assert.match(source, /\{isBound \? '打开代码' : '生成并打开'\}/u);
   assert.match(source, /onClick=\{\(\) => openEventCode\(definition\.name\)\}/u);
@@ -79,7 +80,10 @@ test('designer state is isolated by project identity across unmounts and project
   assert.doesNotMatch(designerSource, /cachedInitialDesignerState/u);
   assert.match(designerSource, /nextState\.project\.id !== projectId/u);
   assert.match(designerSource, /project\.id !== projectId/u);
+  assert.match(designerSource, /readWindowDesignerState\(projectId\)/u);
+  assert.match(designerSource, /authoritativeProject\.id !== projectId/u);
   assert.match(diffSource, /designer:\$\{textModelProjectId\}/u);
+  assert.match(diffSource, /authoritativeProject=\{designerProject\}/u);
   assert.match(sidebarSource, /detail\.project\.id !== activeSolutionProjectId/u);
   assert.match(sidebarSource, /handleOpenDesignerWindow\(projectId, windowModel\)/u);
 });
@@ -105,7 +109,7 @@ test('designer uses menu-aware content coordinates and keeps source identity rea
   assert.doesNotMatch(source, /TextField label="类名".*onChange=\{value => onChange\(\{ className: value \}\)\}/u);
 });
 
-test('beginner editor navigation, variable form and guidance tools remain safe and reachable', async () => {
+test('beginner editor navigation and variable form remain safe without a duplicate guidance sidebar', async () => {
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/DiffViewer.tsx'), 'utf8');
 
   assert.match(source, /moveBeginnerEditorCaretToLine/u);
@@ -115,12 +119,20 @@ test('beginner editor navigation, variable form and guidance tools remain safe a
   assert.match(source, /onClick=\{commitNewMemberDraft\}/u);
   assert.match(source, /aria-label="取消新增变量"/u);
   assert.match(source, /onClick=\{\(\) => deleteStructuredRow\(row\)\}/u);
-  assert.match(source, /\{renderBeginnerSummaryStrip\(\)\}/u);
-  assert.match(source, /\{renderBeginnerPanel\(\)\}/u);
-  assert.match(source, /事件动作、代码解释与 5 步学习路径/u);
-  assert.match(source, /className=\{`pointer-events-auto absolute z-20/u);
-  assert.match(source, /onWheel=\{event => event\.stopPropagation\(\)\}/u);
-  assert.match(source, /const handleBeginnerCodeBlur[\s\S]*?closeBeginnerCompletion\(target\);[\s\S]*?closeBeginnerCommandHint\(target\);/u);
+  assert.doesNotMatch(source, /新手工作台/u);
+  assert.doesNotMatch(source, /renderBeginnerSummaryStrip/u);
+  assert.doesNotMatch(source, /renderBeginnerPanel/u);
+  assert.match(source, /className=\{`absolute z-30/u);
+  assert.match(source, /onWheel=\{handleEditorFontWheel\}/u);
+  assert.match(source, /wrap="off"/u);
+  assert.match(source, /data-beginner-code-highlight/u);
+  assert.match(source, /className="whitespace-pre"/u);
+  assert.match(source, /lineHeight \* Math\.max\(bodyLines\.length, 1\) \+ 24/u);
+  assert.ok(source.includes('[&::-webkit-scrollbar]:h-2'));
+  assert.match(source, /codeHighlight\.scrollLeft = event\.currentTarget\.scrollLeft/u);
+  assert.match(source, /behavior: 'auto'/u);
+  assert.doesNotMatch(source, /behavior: 'smooth'/u);
+  assert.match(source, /const handleBeginnerCodeBlur[\s\S]*?closeBeginnerCompletion\(target\);/u);
   assert.match(source, /const BEGINNER_CODE_OVERLAY_TOKEN_STYLE: React\.CSSProperties/u);
   assert.match(source, /fontWeight: 'inherit'/u);
   assert.match(source, /style=\{BEGINNER_CODE_OVERLAY_TOKEN_STYLE\}/u);
@@ -392,4 +404,13 @@ test('designer exposes persisted native window appearance instead of fixed chrom
   assert.match(source, /activeWindow\.titleBarBackground/u);
   assert.match(source, /activeWindow\.cornerStyle/u);
   assert.doesNotMatch(source, /className="relative rounded-lg shadow-2xl/u);
+});
+
+test('designer toolbox exposes searchable accessible control groups', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /搜索全部控件分组/u);
+  assert.match(source, /aria-expanded=\{expanded\}/u);
+  assert.match(source, /createControlToolboxGroups/u);
+  assert.match(source, /没有找到/u);
+  assert.doesNotMatch(source, />高级<\/span>/u);
 });

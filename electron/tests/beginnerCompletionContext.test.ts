@@ -51,6 +51,19 @@ test('新手编辑器允许在控件方法参数中使用拼音补全表达式�
   assert.equal(shouldShowBeginnerCompletion(context, false), true);
 });
 
+test('新手编辑器允许在赋值右侧使用变量拼音补全', () => {
+  const source = '编辑框1.内容=bj';
+  const context = getBeginnerCompletionContext(source, source.length);
+
+  assert.equal(context.token, 'bj');
+  assert.equal(context.isCommandStart, false);
+  assert.equal(context.isAssignmentValue, true);
+  assert.equal(shouldShowBeginnerCompletion(context, false), true);
+
+  const comparison = getBeginnerCompletionContext('本机IP==bj', '本机IP==bj'.length);
+  assert.equal(comparison.isAssignmentValue, false);
+});
+
 test('新手编辑器仍禁止在字符串和注释中弹出普通命令补全', () => {
   const stringSource = '调试输出("dzs';
   const commentSource = '选项卡1.设置选择项(0) // dzs';

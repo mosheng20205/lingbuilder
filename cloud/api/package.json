@@ -4,14 +4,14 @@
   "version": "0.2.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local --import tsx --watch src/main.ts",
     "build": "prisma generate && tsc -p tsconfig.build.json",
-    "start": "node dist/main.js",
+    "start": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local dist/main.js",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "admin:bootstrap": "tsx src/scripts/bootstrap-admin.ts"
+    "prisma:generate": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local ../../node_modules/prisma/build/index.js generate",
+    "prisma:migrate": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local ../../node_modules/prisma/build/index.js migrate dev",
+    "admin:bootstrap": "node --env-file-if-exists=../../.env --env-file-if-exists=../../.env.local --import tsx src/scripts/bootstrap-admin.ts"
   },
   "dependencies": {
     "@lingbuilder/contracts": "0.2.0",

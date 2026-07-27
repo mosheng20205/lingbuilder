@@ -123,6 +123,8 @@ export function applyDesignerLayout(
   const ids = new Set(selectedIds);
   const selected = window.controls.filter(control => ids.has(control.id));
   if (selected.length < 2) throw new Error('至少选择两个控件才能执行布局操作。');
+  if (selected.some(control => control.designerLocked)) throw new Error('选区中包含已锁定控件，请先解除锁定。');
+  if (new Set(selected.map(control => `${control.parentId || ''}\0${control.containerSlot || ''}`)).size > 1) throw new Error('布局操作只能应用于同一父容器和插槽中的控件。');
   const anchor = selected[0];
   const changes = new Map<string, Partial<LingControl>>();
 
@@ -166,9 +168,10 @@ export function nudgeControls(
     throw new Error('批量移动距离无效。');
   }
 
-  const selected = new Set(selectedIds);
+  const selected = new Set(selectedIds.filter(id => !window.controls.find(control => control.id === id)?.designerLocked));
+  if (selected.size === 0) return window;
   const affected = new Set(selectedIds);
-  for (const controlId of selectedIds) {
+  for (const controlId of selected) {
     for (const descendantId of getControlDescendantIds(window.controls, controlId)) affected.add(descendantId);
   }
   const affectedControls = window.controls.filter(control => affected.has(control.id));
@@ -186,6 +189,68 @@ export function nudgeControls(
   }
 
   return { ...window, controls: applyControlChangesWithDescendants(window.controls, changes) };
+}
+
+export type DesignerLayerOperation = 'front' | 'forward' | 'backward' | 'back';
+
+/**
+ * Reorders controls only among siblings that share the same parent and slot.
+ * Descendants keep their parent links, so designer painting continues to treat
+ * a selected container and its subtree as one hierarchy block.
+ */
+export function reorderDesignerControls(
+  window: LingWindowModel,
+  selectedIds: readonly string[],
+  operation: DesignerLayerOperation
+): LingWindowModel {
+  const selected = new Set(selectedIds.filter(id => !window.controls.find(control => control.id === id)?.designerLocked));
+  if (!selected.size) return window;
+  const byId = new Map(window.controls.map(control => [control.id, control]));
+  const topLevelSelected = new Set([...selected].filter(id => {
+    let parentId = byId.get(id)?.parentId;
+    const visited = new Set<string>();
+    while (parentId && !visited.has(parentId)) {
+      if (selected.has(parentId)) return false;
+      visited.add(parentId);
+      parentId = byId.get(parentId)?.parentId;
+    }
+    return true;
+  }));
+  const groups = new Map<string, LingControl[]>();
+  window.controls.forEach(control => {
+    const key = `${control.parentId || ''}\0${control.containerSlot || ''}`;
+    const list = groups.get(key) || [];
+    list.push(control);
+    groups.set(key, list);
+  });
+  let controls = [...window.controls];
+  groups.forEach(siblings => {
+    if (!siblings.some(control => topLevelSelected.has(control.id))) return;
+    const ordered = reorderSiblings(siblings, topLevelSelected, operation);
+    const positions = controls.map((control, index) => siblings.some(sibling => sibling.id === control.id) ? index : -1).filter(index => index >= 0);
+    positions.forEach((position, index) => { controls[position] = ordered[index]; });
+  });
+  return controls.some((control, index) => control !== window.controls[index]) ? { ...window, controls } : window;
+}
+
+function reorderSiblings(
+  siblings: readonly LingControl[],
+  selected: ReadonlySet<string>,
+  operation: DesignerLayerOperation
+): LingControl[] {
+  const result = [...siblings];
+  if (operation === 'front') return [...result.filter(item => !selected.has(item.id)), ...result.filter(item => selected.has(item.id))];
+  if (operation === 'back') return [...result.filter(item => selected.has(item.id)), ...result.filter(item => !selected.has(item.id))];
+  if (operation === 'forward') {
+    for (let index = result.length - 2; index >= 0; index -= 1) {
+      if (selected.has(result[index].id) && !selected.has(result[index + 1].id)) [result[index], result[index + 1]] = [result[index + 1], result[index]];
+    }
+  } else {
+    for (let index = 1; index < result.length; index += 1) {
+      if (selected.has(result[index].id) && !selected.has(result[index - 1].id)) [result[index], result[index - 1]] = [result[index - 1], result[index]];
+    }
+  }
+  return result;
 }
 
 export class DesignerHistory {

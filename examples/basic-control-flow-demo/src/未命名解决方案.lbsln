@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "lingbuilder-solution",
+  "name": "基础控制类命令演示",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "lingbuilder-ui-project",
+  "startupProjectIds": [
+    "lingbuilder-ui-project"
+  ],
+  "projects": [
+    {
+      "id": "lingbuilder-ui-project",
+      "name": "基础控制类命令演示",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    }
+  ]
+}

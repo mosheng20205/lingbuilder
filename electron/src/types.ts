@@ -82,6 +82,7 @@ export interface CommandHintContent {
   command: string;
   signature: string;
   returnType: string;
+  returnDescription?: string;
   summary: string;
   parameters: CommandHintParameter[];
   example: string;

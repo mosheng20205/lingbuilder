@@ -1,11 +1,11 @@
-import { Body, Controller, Get, Headers, Ip, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Inject, Ip, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import { AuthService } from './auth.service.js';
 import { CurrentUser, Public, type AuthenticatedUser } from '../common/current-user.js';
 
 @Controller('v1/auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(@Inject(AuthService) private readonly auth: AuthService) {}
   @Public() @Post('register') register(@Body() body: any, @Ip() ip: string) { return this.auth.register(String(body.email || ''), String(body.password || ''), ip); }
   @Public() @Post('verify-email') verify(@Body() body: any) { return this.auth.verifyEmail(String(body.token || '')); }
   @Public() @Post('login') login(@Body() body: any, @Ip() ip: string, @Headers('user-agent') userAgent = '') { return this.auth.login(String(body.email || ''), String(body.password || ''), String(body.deviceName || 'LingBuilder IDE'), ip, userAgent, String(body.mfaCode || '')); }

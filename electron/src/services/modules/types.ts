@@ -14,6 +14,50 @@ export interface ModuleCommandContribution {
   description: string;
   insertText?: string;
   returnType?: string;
+  returnDescription?: string;
+  /** 默认命令进入常规补全；advanced 仅在显式开启底层 API 时展示；internal 不进入用户补全。 */
+  visibility?: 'default' | 'advanced' | 'internal';
+}
+
+export interface ModuleDesignerEventParameter {
+  name: string;
+  type: ModuleBindingValueType;
+  description?: string;
+}
+
+export interface ModuleDesignerRuntimeMapping {
+  createCommand?: string;
+  createReturnType?: string;
+  createParameters?: ModuleDesignerRuntimeParameter[];
+  propertyCommands?: Record<string, string>;
+  eventCommands?: Record<string, string>;
+  propertySetters?: ModuleDesignerPropertySetterMapping[];
+  eventBindings?: ModuleDesignerEventBindingMapping[];
+}
+
+export interface ModuleDesignerRuntimeParameter {
+  name: string;
+  type: string;
+  propertyKey?: string;
+  lengthOf?: string;
+  /** Setter 需要的固定参数，例如启用布局或默认关闭掩码。 */
+  literal?: string | number;
+}
+
+export interface ModuleDesignerPropertySetterMapping {
+  command: string;
+  parameters: ModuleDesignerRuntimeParameter[];
+  propertyKeys: string[];
+}
+
+export interface ModuleDesignerEventBindingMapping {
+  eventName: string;
+  /** 兼容设计器旧模型或预览控件使用的历史事件键。 */
+  aliases?: string[];
+  command: string;
+  callbackType: string;
+  /** 共享鼠标/焦点回调中的原生事件码。 */
+  eventCode?: number;
 }
 
 export interface ModuleTypeContribution {
@@ -28,14 +72,56 @@ export interface ModuleSnippetContribution {
   description: string;
 }
 
+export interface ModuleMenuContribution {
+  menu: string;
+  command?: string;
+  submenu?: string;
+  when?: string;
+  group?: string;
+  order?: number;
+  arguments?: unknown[];
+}
+
+export interface ModuleSubmenuContribution {
+  id: string;
+  title: string;
+}
+
+export interface ModuleDesignerLayoutContribution {
+  mode: 'absolute' | 'flow' | 'stack' | 'grid' | 'dock' | 'slots' | 'single' | 'custom';
+  coordinateSpace?: 'window' | 'parent';
+  orientation?: 'horizontal' | 'vertical';
+  slots?: string[];
+  capacity?: number;
+  acceptedDesignerTypes?: string[];
+  adapterId?: string;
+}
+
 export interface ModuleDesignerControlContribution {
   type: string;
   label: string;
   defaultProps: Record<string, unknown>;
-  events?: Array<{ name: string; label: string; handlerPattern: string }>;
+  /** 稳定的命名空间控件 ID；旧模块缺失时由 moduleId/type 确定性补齐。 */
+  namespacedType?: string;
+  /** 设计器画布使用的兼容预览控件类型。 */
+  previewType?: string;
+  backend?: string;
+  events?: Array<{
+    name: string;
+    /** 兼容设计器旧模型或预览控件使用的历史事件键。 */
+    aliases?: string[];
+    label: string;
+    handlerPattern: string;
+    group?: string;
+    parameters?: ModuleDesignerEventParameter[];
+    /** 仅当生成器已实现真实原生回调绑定时设置。 */
+    runtimeCommand?: string;
+  }>;
   category?: string;
   icon?: string;
   isContainer?: boolean;
+  /** 容器的声明式布局协议；新增容器必须显式声明。 */
+  layout?: ModuleDesignerLayoutContribution;
   isVisual?: boolean;
   nativeAdapter?: string;
   requiredLibraries?: string[];
@@ -48,7 +134,18 @@ export interface ModuleDesignerControlContribution {
     min?: number;
     max?: number;
     description?: string;
+    group?: string;
+    level?: 'basic' | 'advanced';
+    runtimeCommand?: string;
   }>;
+  runtime?: ModuleDesignerRuntimeMapping;
+}
+
+export interface ModuleDesignerCatalogContribution {
+  backend: string;
+  path: string;
+  schemaVersion: number;
+  sha256: string;
 }
 
 export interface ModuleCppContribution {
@@ -98,6 +195,7 @@ export type ModuleBindingValueType =
   | 'bool'
   | 'wideString'
   | 'utf8String'
+  | 'handler'
   | 'handle'
   | 'raw';
 
@@ -144,6 +242,8 @@ export interface LingBuilderModuleManifest {
   minLingBuilderVersion?: string;
   contributes?: {
     commands?: ModuleCommandContribution[];
+    menus?: ModuleMenuContribution[];
+    submenus?: ModuleSubmenuContribution[];
     types?: ModuleTypeContribution[];
     snippets?: ModuleSnippetContribution[];
     designerControls?: ModuleDesignerControlContribution[];
@@ -152,6 +252,7 @@ export interface LingBuilderModuleManifest {
   };
   targets?: ModuleTargetContribution[];
   bindings?: ModuleBindingsContribution;
+  designer?: ModuleDesignerCatalogContribution;
   publish?: ModulePublishContribution;
 }
 
@@ -251,4 +352,6 @@ export interface ModuleHistoryEntry {
 export interface LingCppModuleContext {
   enabledModules: InstalledModule[];
   availableModules?: InstalledModule[];
+  /** 用户显式开启后，Monaco/新手补全才展示 advanced 命令；internal 始终隐藏。 */
+  showAdvancedApi?: boolean;
 }

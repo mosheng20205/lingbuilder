@@ -1,0 +1,313 @@
+{
+  "projectId": "web-access-demo",
+  "files": {
+    "src/web-access-demo/MainWindow.lcpp": "类 MainWindow\n    构造()\n        调试输出(\"网页访问使用demo 正在初始化。\")\n    结束\n\n    事件 创建完毕()\n        调试输出(\"网页访问使用demo 已启动。\")\n        调试输出(\"本项目不会在启动时自动联网，请在代码中按需调用各个演示子程序。\")\n        调试输出(\"建议先点击“GET 与结果读取”，请求结果会显示在调试输出中。\")\n    结束\n\n    事件 _GET按钮_被单击()\n        局部 文本型 局部变量 = \"\"\n        演示_GET与全部结果读取()\n    结束\n\n    事件 _POST按钮_被单击()\n        演示_POST表单()\n    结束\n\n    事件 _Cookie按钮_被单击()\n        演示_Cookie提交与接收()\n    结束\n\n    事件 _请求头按钮_被单击()\n        演示_请求头响应头和禁止重定向()\n    结束\n\n    事件 _全部方法按钮_被单击()\n        演示_全部HTTP方法()\n    结束\n\n    事件 _高级参数按钮_被单击()\n        演示_字节集请求体和全部高级参数()\n    结束\n\n    空 演示_GET与全部结果读取()\n        局部 文本型 网址 = \"https://httpbin.org/get?from=LingBuilder\"\n        局部 字节集 返回字节\n        返回字节 = 网页_访问_对象(网址, 0)\n        调试输出(\"GET 状态码：\", 网页_取返回状态代码())\n        调试输出(\"GET 返回文本：\", 网页_取返回文本())\n        调试输出(\"GET 返回 Cookie：\", 网页_取返回Cookies())\n        调试输出(\"GET 返回协议头：\", 网页_取返回协议头())\n        局部 文本型 局部变量 = \"\"\n        调试输出(\"GET 错误信息：\", 网页_取错误信息())\n    结束\n\n    空 演示_POST表单()\n        局部 文本型 网址 = \"https://httpbin.org/post\"\n        局部 文本型 表单数据 = \"name=LingBuilder&language=LCPP\"\n        局部 字节集 返回字节\n        返回字节 = 网页_访问_对象(网址, 1, 表单数据)\n        调试输出(\"POST 状态码：\", 网页_取返回状态代码())\n        调试输出(\"POST 返回文本：\", 网页_取返回文本())\n        调试输出(\"POST 错误信息：\", 网页_取错误信息())\n    结束\n\n    空 演示_Cookie提交与接收()\n        局部 文本型 提交Cookie = \"session=LingBuilder; theme=dark\"\n        局部 字节集 返回字节\n        返回字节 = 网页_访问_对象(\"https://httpbin.org/cookies\", 0, \"\", 提交Cookie)\n        调试输出(\"服务器看到的 Cookie：\", 网页_取返回文本())\n        返回字节 = 网页_访问_对象(\"https://httpbin.org/cookies/set/demo/LingBuilder\", 0)\n        调试输出(\"Set-Cookie：\", 网页_取返回Cookies())\n        调试输出(\"Cookie 请求状态码：\", 网页_取返回状态代码())\n    结束\n\n    空 演示_请求头响应头和禁止重定向()\n        局部 文本型 请求头 = \"Accept: application/json\\r\\nX-LingBuilder-Demo: header-example\"\n        局部 字节集 返回字节\n        返回字节 = 网页_访问_对象(\"https://httpbin.org/redirect/1\", 0, \"\", \"\", \"\", 请求头, \"\", 0, 真)\n        调试输出(\"禁止重定向后的状态码：\", 网页_取返回状态代码())\n        调试输出(\"响应协议头：\", 网页_取返回协议头())\n        调试输出(\"请求错误：\", 网页_取错误信息())\n    结束\n\n    空 演示_全部HTTP方法()\n        局部 字节集 返回字节\n        返回字节 = 网页_访问_对象(\"https://httpbin.org/anything\", 2)\n        调试输出(\"HEAD 状态码：\", 网页_取返回状态代码())\n        返回字节 = 网页_访问_对象(\"https://httpbin.org/anything\", 3, \"method=PUT\")\n        调试输出(\"PUT 状态码：\", 网页_取返回状态代码())\n        返回字节 = 网页_访问_对象(\"https://httpbin.org/anything\", 4)\n        调试输出(\"OPTIONS 状态码：\", 网页_取返回状态代码())\n        返回字节 = 网页_访问_对象(\"https://httpbin.org/anything\", 5)\n        调试输出(\"DELETE 状态码：\", 网页_取返回状态代码())\n        返回字节 = 网页_访问_对象(\"https://httpbin.org/anything\", 6)\n        调试输出(\"TRACE 状态码：\", 网页_取返回状态代码())\n        返回字节 = 网页_访问_对象(\"https://httpbin.org\", 7)\n        调试输出(\"CONNECT 状态码：\", 网页_取返回状态代码())\n        返回字节 = 网页_访问_对象(\"https://httpbin.org/anything\", 8, \"method=PATCH\")\n        调试输出(\"PATCH 状态码：\", 网页_取返回状态代码())\n    结束\n\n    空 演示_字节集请求体和全部高级参数()\n        局部 字节集 原始请求体\n        局部 字节集 返回字节\n        原始请求体 = 网页_访问_对象(\"https://httpbin.org/bytes/16\", 0)\n        // 完整参数依次演示：Cookie、请求头、返回占位、禁止重定向、字节集、代理、超时、代理账号、代理模式、对象继承、Cookie 合并、协议头补全和大小写处理。\n        // 运行前请把示例代理 127.0.0.1:8888 改成真实代理；对象继承当前使用 0，表示不继承外部 WinHTTP 对象。\n        返回字节 = 网页_访问_对象(\"https://httpbin.org/anything\", 1, \"\", \"session=LingBuilder\", \"\", \"content-type: application/octet-stream\\r\\nx-demo: full-options\", \"\", 0, 真, 原始请求体, \"127.0.0.1:8888\", 10, \"proxy-user\", \"proxy-password\", 1, 0, 真, 真, 真)\n        调试输出(\"高级参数状态码：\", 网页_取返回状态代码())\n        调试输出(\"高级参数返回文本：\", 网页_取返回文本())\n        调试输出(\"高级参数错误：\", 网页_取错误信息())\n    结束\n\n    空 演示_系统代理和无限等待参数()\n        局部 字节集 返回字节\n        // 代理标识为 0 时使用系统默认代理；超时为 -1 时表示尽量无限等待。此示例只用于展示参数，请谨慎实际调用。\n        返回字节 = 网页_访问_对象(\"https://httpbin.org/get\", 0, \"\", \"\", \"\", \"\", \"\", 0, 假, 返回字节, \"\", -1, \"\", \"\", 0, 0, 真, 真, 真)\n        调试输出(\"系统代理请求状态码：\", 网页_取返回状态代码())\n    结束\n结束类\n",
+    "config/web-access-demo/config.ini": "[project]\nname=网页访问使用demo\nid=web-access-demo\n"
+  },
+  "fileFormats": {
+    "src/web-access-demo/MainWindow.lcpp": {
+      "encoding": "utf8",
+      "eol": "lf"
+    },
+    "config/web-access-demo/config.ini": {
+      "encoding": "utf8",
+      "eol": "lf"
+    }
+  },
+  "baseVersions": {
+    "src/web-access-demo/MainWindow.lcpp": "sha256:3798527993dc9819b9ba1a40d9c6c17d169dd0e46c566e910723acd5e9819d6e:6032",
+    "config/web-access-demo/config.ini": "sha256:360e75fd21dd021567ba8d91d24f5222d30ddf2e3228b077740c4d2b2f8b8ea7:57",
+    ".lingbuilder/projects/web-access-demo/window-designer.json": "sha256:e4783e0fc5a2bba136fa174e6ddcd4fc7b1176d7c816f0ce77aae116e42a24a1:8382"
+  },
+  "openTabs": [
+    "src/web-access-demo/MainWindow.lcpp"
+  ],
+  "activeFilePath": "src/web-access-demo/MainWindow.lcpp",
+  "designerProject": {
+    "id": "web-access-demo",
+    "name": "网页访问使用demo",
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "MainWindow.xml",
+        "className": "MainWindow",
+        "title": "网页访问使用demo主窗口",
+        "width": 900,
+        "height": 560,
+        "background": "#1f2937",
+        "description": "网页访问模块 GET、POST、Cookie、协议头、全部方法和高级参数交互示例",
+        "controls": [
+          {
+            "id": "title-label",
+            "type": "Label",
+            "name": "标题标签",
+            "content": "网页访问模块完整示例",
+            "x": 24,
+            "y": 22,
+            "width": 820,
+            "height": 36,
+            "fontSize": 20,
+            "background": "transparent",
+            "foreground": "#F8FAFC",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "fontFamily": "Microsoft YaHei UI",
+            "fontBold": false,
+            "fontItalic": false,
+            "fontUnderline": false,
+            "properties": {
+              "staticStyle": "text",
+              "textAlign": "left",
+              "imageSource": "",
+              "toolTip": "",
+              "toolTipDelay": 500
+            }
+          },
+          {
+            "id": "help-label",
+            "type": "Label",
+            "name": "操作说明",
+            "content": "点击按钮执行对应示例；请求状态、响应文本、Cookie、协议头和错误信息输出到调试面板。",
+            "x": 24,
+            "y": 64,
+            "width": 820,
+            "height": 42,
+            "fontSize": 13,
+            "background": "transparent",
+            "foreground": "#94A3B8",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "fontFamily": "Microsoft YaHei UI",
+            "fontBold": false,
+            "fontItalic": false,
+            "fontUnderline": false,
+            "properties": {
+              "staticStyle": "text",
+              "textAlign": "left",
+              "imageSource": "",
+              "toolTip": "",
+              "toolTipDelay": 500
+            }
+          },
+          {
+            "id": "get-button",
+            "type": "Button",
+            "name": "GET按钮",
+            "content": "GET 与结果读取",
+            "x": 25,
+            "y": 125,
+            "width": 250,
+            "height": 52,
+            "fontSize": 14,
+            "background": "#0369A1",
+            "foreground": "#FFFFFF",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "events": {
+              "Click": "_GET按钮_被单击"
+            },
+            "fontFamily": "Microsoft YaHei UI",
+            "fontBold": false,
+            "fontItalic": false,
+            "fontUnderline": false,
+            "properties": {
+              "buttonStyle": "push",
+              "cornerRadius": 6,
+              "checked": false,
+              "toolTip": "",
+              "toolTipDelay": 500
+            }
+          },
+          {
+            "id": "post-button",
+            "type": "Button",
+            "name": "POST按钮",
+            "content": "POST 表单",
+            "x": 302,
+            "y": 126,
+            "width": 250,
+            "height": 52,
+            "fontSize": 14,
+            "background": "#047857",
+            "foreground": "#FFFFFF",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "events": {
+              "Click": "_POST按钮_被单击"
+            },
+            "fontFamily": "Microsoft YaHei UI",
+            "fontBold": false,
+            "fontItalic": false,
+            "fontUnderline": false,
+            "properties": {
+              "buttonStyle": "push",
+              "cornerRadius": 6,
+              "checked": false,
+              "toolTip": "",
+              "toolTipDelay": 500
+            }
+          },
+          {
+            "id": "cookie-button",
+            "type": "Button",
+            "name": "Cookie按钮",
+            "content": "Cookie 提交与接收",
+            "x": 580,
+            "y": 126,
+            "width": 264,
+            "height": 52,
+            "fontSize": 14,
+            "background": "#7C3AED",
+            "foreground": "#FFFFFF",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "events": {
+              "Click": "_Cookie按钮_被单击"
+            },
+            "fontFamily": "Microsoft YaHei UI",
+            "fontBold": false,
+            "fontItalic": false,
+            "fontUnderline": false,
+            "properties": {
+              "buttonStyle": "push",
+              "cornerRadius": 6,
+              "checked": false,
+              "toolTip": "",
+              "toolTipDelay": 500
+            }
+          },
+          {
+            "id": "headers-button",
+            "type": "Button",
+            "name": "请求头按钮",
+            "content": "请求头 / 响应头 / 重定向",
+            "x": 24,
+            "y": 204,
+            "width": 250,
+            "height": 52,
+            "fontSize": 14,
+            "background": "#B45309",
+            "foreground": "#FFFFFF",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "events": {
+              "Click": "_请求头按钮_被单击"
+            },
+            "fontFamily": "Microsoft YaHei UI",
+            "fontBold": false,
+            "fontItalic": false,
+            "fontUnderline": false,
+            "properties": {
+              "buttonStyle": "push",
+              "cornerRadius": 6,
+              "checked": false,
+              "toolTip": "",
+              "toolTipDelay": 500
+            }
+          },
+          {
+            "id": "methods-button",
+            "type": "Button",
+            "name": "全部方法按钮",
+            "content": "HEAD / PUT / DELETE 等",
+            "x": 302,
+            "y": 204,
+            "width": 250,
+            "height": 52,
+            "fontSize": 14,
+            "background": "#BE123C",
+            "foreground": "#FFFFFF",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "events": {
+              "Click": "_全部方法按钮_被单击"
+            },
+            "fontFamily": "Microsoft YaHei UI",
+            "fontBold": false,
+            "fontItalic": false,
+            "fontUnderline": false,
+            "properties": {
+              "buttonStyle": "push",
+              "cornerRadius": 6,
+              "checked": false,
+              "toolTip": "",
+              "toolTipDelay": 500
+            }
+          },
+          {
+            "id": "advanced-button",
+            "type": "Button",
+            "name": "高级参数按钮",
+            "content": "字节集 / 代理 / 全部参数",
+            "x": 580,
+            "y": 204,
+            "width": 264,
+            "height": 52,
+            "fontSize": 14,
+            "background": "#475569",
+            "foreground": "#FFFFFF",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "events": {
+              "Click": "_高级参数按钮_被单击"
+            },
+            "fontFamily": "Microsoft YaHei UI",
+            "fontBold": false,
+            "fontItalic": false,
+            "fontUnderline": false,
+            "properties": {
+              "buttonStyle": "push",
+              "cornerRadius": 6,
+              "checked": false,
+              "toolTip": "",
+              "toolTipDelay": 500
+            }
+          },
+          {
+            "id": "warning-label",
+            "type": "Label",
+            "name": "高级参数提示",
+            "content": "高级参数按钮包含示例代理 127.0.0.1:8888，运行前请在源码中替换；全部方法的服务端支持情况可能不同。",
+            "x": 24,
+            "y": 292,
+            "width": 820,
+            "height": 56,
+            "fontSize": 13,
+            "background": "transparent",
+            "foreground": "#FBBF24",
+            "isEnabled": true,
+            "visibility": "Visible",
+            "fontFamily": "Microsoft YaHei UI",
+            "fontBold": false,
+            "fontItalic": false,
+            "fontUnderline": false,
+            "properties": {
+              "staticStyle": "text",
+              "textAlign": "left",
+              "imageSource": "",
+              "toolTip": "",
+              "toolTipDelay": 500
+            }
+          }
+        ],
+        "titleBarBackground": "#2D2D30",
+        "titleBarForeground": "#CBD5E1",
+        "menuBackground": "#ffffff",
+        "menuForeground": "#000000",
+        "menuFontFamily": "Microsoft YaHei UI",
+        "menuFontSize": 11,
+        "menuFontBold": false,
+        "menuFontItalic": false,
+        "menuFontUnderline": false,
+        "cornerStyle": "rounded",
+        "iconStyle": "lingbuilder",
+        "resizable": true,
+        "maximizable": true
+      }
+    ],
+    "schemaVersion": 2,
+    "resources": []
+  },
+  "schemaVersion": 1,
+  "savedAt": "2026-07-27T13:17:46.905Z"
+}

@@ -5,10 +5,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import express from 'express';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
 import { AiBridgeService, type AiBridgeProcessManager } from '../src/services/aiBridge/aiBridgeService';
 import { createProjectBuildCoordinator } from '../src/services/tasks/projectBuildCoordinator';
 import { createAiBridgeRouter } from '../src/services/aiBridge/httpRoutes';
+import { createAiBridgeMcpHttpGateway } from '../src/services/aiBridge/mcpServer';
 import { AiBridgeServerOptions } from '../src/services/aiBridge/types';
 import {
   isServerSessionAuthorized,
@@ -63,6 +66,41 @@ test('AI Bridge MCP uses the official SDK and strict tool schemas', async () => 
   assert.match(source, /@modelcontextprotocol\/sdk\/server/u);
   assert.match(source, /additionalProperties:\s*false/u);
   assert.match(source, /CallToolRequestSchema/u);
+});
+
+test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and reports activity', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  await fs.writeFile(path.join(workspaceRoot, 'README.md'), 'LingBuilder MCP shared transport', 'utf8');
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview', 'shared-mcp-secret-token'));
+  const gateway = createAiBridgeMcpHttpGateway(service, 'shared-mcp-secret-token');
+  const app = express();
+  app.use(express.json());
+  app.use('/api/ai-bridge/mcp', gateway.router);
+  const server = await listen(app);
+  const endpoint = `http://127.0.0.1:${server.port}/api/ai-bridge/mcp`;
+  try {
+    assert.equal((await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).status, 401);
+    const client = new Client({ name: 'lingbuilder-test-client', version: '1.0.0' }, { capabilities: {} });
+    const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
+      requestInit: { headers: { Authorization: 'Bearer shared-mcp-secret-token' } }
+    });
+    await client.connect(transport);
+    const tools = await client.listTools();
+    assert.equal(tools.tools.length, 10);
+    assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.file.read'));
+    const result = await client.callTool({ name: 'lingbuilder.file.read', arguments: { filePath: 'README.md' } });
+    assert.match(JSON.stringify(result), /LingBuilder MCP shared transport/u);
+    const statusResponse = await fetch(`${endpoint}/status`, { headers: { Authorization: 'Bearer shared-mcp-secret-token' } });
+    assert.equal(statusResponse.status, 200);
+    const status = await statusResponse.json() as { activeClients: number; recentActivity: Array<{ tool?: string; ok: boolean }> };
+    assert.equal(status.activeClients, 1);
+    assert.ok(status.recentActivity.some(item => item.tool === 'lingbuilder.file.read' && item.ok));
+    await client.close();
+  } finally {
+    await gateway.close();
+    await server.close();
+    await service.shutdown();
+  }
 });
 
 test('AI Bridge rejects workspace path traversal', async () => {
@@ -614,6 +652,8 @@ test('renderer server enforces auth and exposes safe modules, files, process, an
     const environmentResult = await environmentResponse.json();
     assert.equal(environmentResult.ok, true);
     assert.equal(typeof environmentResult.ready, 'boolean');
+    assert.equal(typeof environmentResult.cppCompilerAvailable, 'boolean');
+    assert.equal(typeof environmentResult.msvcBuildReady, 'boolean');
     assert.equal(environmentResult.checks.length, 8);
     for (const check of environmentResult.checks) {
       assert.equal(typeof check.id, 'string');
@@ -623,10 +663,14 @@ test('renderer server enforces auth and exposes safe modules, files, process, an
       assert.equal(typeof check.detail, 'string');
     }
     const compilerChecks = environmentResult.checks.filter((check: any) => ['msvc', 'gpp', 'clangpp'].includes(check.id));
-    const hasCompiler = compilerChecks.some((check: any) => check.available);
     assert.equal(compilerChecks.length, 3);
-    assert.equal(compilerChecks.every((check: any) => check.required === !hasCompiler), true);
-    if (environmentResult.ready) assert.equal(hasCompiler, true);
+    assert.equal(compilerChecks.find((check: any) => check.id === 'msvc')?.required, true);
+    assert.equal(compilerChecks.find((check: any) => check.id === 'gpp')?.required, false);
+    assert.equal(compilerChecks.find((check: any) => check.id === 'clangpp')?.required, false);
+    const msvcAvailable = compilerChecks.find((check: any) => check.id === 'msvc')?.available === true;
+    const windowsSdkAvailable = environmentResult.checks.find((check: any) => check.id === 'windowsSdk')?.available === true;
+    assert.equal(environmentResult.ready, environmentResult.msvcBuildReady);
+    if (environmentResult.ready) assert.equal(msvcAvailable && windowsSdkAvailable, true);
 
     const environmentRepairStatusResponse = await fetch(`${ready.origin}/api/environment/repair/status`, { headers });
     assert.equal(environmentRepairStatusResponse.status, 200, await environmentRepairStatusResponse.clone().text());
@@ -818,6 +862,78 @@ test('AI Bridge diagnostics and modules use LingCpp module context', async () =>
   assert.equal(modules.ok, true);
   assert.ok(Array.isArray(modules.availableModules));
   assert.equal(typeof modules.summary, 'string');
+});
+
+test('AI Bridge diagnostics load project constants from the fixed symbol file', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'constants-project';
+  const sourceRoot = `src/${projectId}`;
+  await fs.mkdir(path.join(workspaceRoot, '.lingbuilder'), { recursive: true });
+  await fs.mkdir(path.join(workspaceRoot, sourceRoot), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, '.lingbuilder', 'solution.json'), JSON.stringify({
+    schemaVersion: 1,
+    id: 'constants-solution',
+    name: '项目常量测试',
+    startupProjectId: projectId,
+    projects: [{
+      id: projectId,
+      name: '项目常量测试',
+      type: 'visual-cpp',
+      sourceRoot,
+      configRoot: `config/${projectId}`,
+      designerPath: `.lingbuilder/projects/${projectId}/window-designer.json`
+    }]
+  }, null, 2), 'utf8');
+  await fs.writeFile(path.join(workspaceRoot, sourceRoot, '项目全局变量.lcpp'), '常量 整数型 最大重试次数 = 3\n', 'utf8');
+  const sourceCode = '类 Main\n    事件 创建完毕()\n        最大重试次数 = 4\n    结束\n结束类\n';
+  await fs.writeFile(path.join(workspaceRoot, sourceRoot, 'main.lcpp'), sourceCode, 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const result = await service.getLingCppDiagnostics({
+    projectId,
+    filePath: `${sourceRoot}/main.lcpp`,
+    sourceCode
+  });
+  assert.ok(result.diagnostics.some(diagnostic => diagnostic.message.includes('最大重试次数') && diagnostic.message.includes('不能重新赋值')));
+});
+
+test('AI Bridge diagnostics load project data types while checking the fixed globals file', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const projectId = 'typed-globals-project';
+  const sourceRoot = `src/${projectId}`;
+  await fs.mkdir(path.join(workspaceRoot, '.lingbuilder'), { recursive: true });
+  await fs.mkdir(path.join(workspaceRoot, sourceRoot), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, '.lingbuilder', 'solution.json'), JSON.stringify({
+    schemaVersion: 1,
+    id: 'typed-globals-solution',
+    name: '自定义类型全局变量测试',
+    startupProjectId: projectId,
+    projects: [{
+      id: projectId,
+      name: '自定义类型全局变量测试',
+      type: 'visual-cpp',
+      sourceRoot,
+      configRoot: `config/${projectId}`,
+      designerPath: `.lingbuilder/projects/${projectId}/window-designer.json`
+    }]
+  }, null, 2), 'utf8');
+  await fs.writeFile(
+    path.join(workspaceRoot, sourceRoot, '项目数据类型.lcpp'),
+    '数据类型 用户信息\n    文本型 姓名 = ""\n结束数据类型\n',
+    'utf8'
+  );
+  const globalsPath = `${sourceRoot}/项目全局变量.lcpp`;
+  const globalsSource = '全局 用户信息 当前用户\n';
+  await fs.writeFile(path.join(workspaceRoot, globalsPath), globalsSource, 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const result = await service.getLingCppDiagnostics({ projectId, filePath: globalsPath });
+
+  assert.equal(
+    result.diagnostics.some(diagnostic => diagnostic.message.includes('未知类型 用户信息')),
+    false,
+    JSON.stringify(result.diagnostics)
+  );
 });
 
 test('AI Bridge native export writes Visual Studio project files', async () => {

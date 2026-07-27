@@ -22,6 +22,8 @@ export interface ModuleNativeDependencyPlan {
   requiresMsvc: boolean;
   /** CEF3 等模块要求主程序与 C++ 运行时使用动态 CRT（/MD）。 */
   requiresDynamicCrt?: boolean;
+  /** 已启用原生模块要求的最低 C++ 语言标准；普通项目默认使用 C++17。 */
+  requiredCppStandard?: 17 | 20;
 }
 
 export async function materializeModuleNativeDependencies(
@@ -232,6 +234,7 @@ async function materializeCef3Sdk(
   const sdkRoot = await findCef3SdkRoot(layout);
   plan.requiresMsvc = true;
   plan.requiresDynamicCrt = true;
+  plan.requiredCppStandard = 20;
   if (!sdkRoot) {
     plan.diagnostics.push('CEF3 模块缺少 Chromium Embedded Framework SDK。推荐方式：安装 CEF3 内核 SDK 离线模块包（lingbuilder.cef3.sdk，含预编译 libcef_dll_wrapper，免下载免编译）。手动方式：从 https://cef-builds.spotifycdn.com/index.html 下载最新稳定版 windows64 标准包（如 cef_binary_150.0.14+..._windows64.tar.bz2），解压后把 cef_binary_* 目录内容放到工作区 .lingbuilder/cef3-sdk 或 C:\\cef3-sdk，或设置 CEF3_SDK_ROOT 环境变量指向该目录，然后重新构建。LingBuilder 会自动用 CMake 编译 libcef_dll_wrapper。');
     return;

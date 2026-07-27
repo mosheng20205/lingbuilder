@@ -25,6 +25,7 @@ type OutlineGroup = {
 const groupLabel: Record<LingCppStructuredReadingRow['group'], string> = {
   declaration: '声明',
   package: '入口',
+  global: '项目全局变量',
   class: '类',
   member: '变量',
   local: '局部变量',

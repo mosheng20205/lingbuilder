@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { closeEditorGroup, closeEditorGroupTab, createEditorGroupLayout, moveEditorTab, restoreEditorGroupLayout, selectEditorGroupTab, splitEditorGroup } from '../src/services/editor/editorGroupLayout';
+import { closeEditorGroup, closeEditorGroupTab, collapseEditorGroups, createEditorGroupLayout, moveEditorTab, restoreEditorGroupLayout, selectEditorGroupTab, splitEditorGroup } from '../src/services/editor/editorGroupLayout';
 
 test('editor groups split, select, move, close tabs and collapse empty groups deterministically', () => {
   let layout = createEditorGroupLayout(['a.cpp', 'b.cpp'], 'a.cpp');
@@ -25,4 +25,18 @@ test('editor layout restore filters missing files, deduplicates tabs, bounds gro
   assert.equal(restored.groups.length, 2); assert.deepEqual(restored.groups[0].tabs, ['a.cpp']); assert.equal(restored.groups[0].activePath, 'a.cpp');
   assert.equal(restored.activeGroupId, 'group-2');
   assert.deepEqual(restoreEditorGroupLayout('broken', ['a.cpp'], 'a.cpp').groups[0].tabs, ['a.cpp']);
+});
+
+test('collapsing editor groups restores one group without losing secondary tabs', () => {
+  let layout = createEditorGroupLayout(['a.cpp', 'b.cpp'], 'b.cpp');
+  layout = splitEditorGroup(layout, 'a.cpp', 'vertical');
+  layout = selectEditorGroupTab(layout, 'group-2', 'c.cpp');
+
+  const collapsed = collapseEditorGroups(layout);
+
+  assert.equal(collapsed.groups.length, 1);
+  assert.equal(collapsed.orientation, 'horizontal');
+  assert.equal(collapsed.activeGroupId, 'group-1');
+  assert.equal(collapsed.groups[0].activePath, 'b.cpp');
+  assert.deepEqual(collapsed.groups[0].tabs, ['a.cpp', 'b.cpp', 'c.cpp']);
 });

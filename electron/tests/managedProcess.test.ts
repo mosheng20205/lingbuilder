@@ -210,6 +210,29 @@ test('stop and replacement return only after child close and owned log flush com
   assert.ok(Buffer.byteLength(replacedLog, 'utf8') > 2_000_000);
 });
 
+test('waitForExit waits for natural exit and owned run log settlement', { timeout: 10_000 }, async t => {
+  const workspace = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-managed-wait-'));
+  const logFilePath = path.join(workspace, 'run.log');
+  const service = createManagedProcessService();
+  t.after(async () => {
+    await service.stopAll();
+  });
+
+  const started = await service.start('wait-project', process.execPath, {
+    args: ['-e', "process.stdout.write('自然退出日志\\n', () => setTimeout(() => process.exit(0), 30));"],
+    windowsHide: true,
+    logFilePath
+  });
+  const completion = await service.waitForExit('wait-project');
+
+  assert.equal(completion.found, true);
+  assert.equal(completion.pid, started.pid);
+  assert.equal(completion.exitCode, 0);
+  assert.equal(completion.signal, null);
+  assert.equal(service.getStatus('wait-project'), null);
+  assert.match(await fs.readFile(logFilePath, 'utf8'), /自然退出日志/u);
+});
+
 function spawnReadyNodeProcess(): ChildProcess {
   return spawn(process.execPath, ['-e', KEEP_ALIVE_SCRIPT], {
     windowsHide: true,

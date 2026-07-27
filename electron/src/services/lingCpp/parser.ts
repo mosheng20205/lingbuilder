@@ -4,7 +4,12 @@ import {
   LingCppAstNode,
   LingCppAstNodeKind,
   LingCppClass,
+  LingCppConstant,
+  LingCppDataField,
+  LingCppDataType,
   LingCppDiagnostic,
+  LingCppGlobalVariable,
+  LingCppFunctionLibrary,
   LingCppLocalVariable,
   LingCppMember,
   LingCppMethod,
@@ -15,6 +20,7 @@ import {
   LingCppStatement,
   LingCppSymbolIndex
 } from './types';
+import { LingCppControlFlowLine, lingCppControlFlowEndLabel, parseLingCppControlFlowLine } from './controlFlow';
 
 export const LING_CPP_KEYWORDS = [
   '包',
@@ -35,7 +41,38 @@ export const LING_CPP_KEYWORDS = [
   '循环结束',
   '结束类',
   '静态',
-  '局部'
+  '局部',
+  '如果真',
+  '否则如果',
+  '如果真结束',
+  '选择',
+  '分支',
+  '默认',
+  '选择结束',
+  '判断循环首',
+  '判断循环尾',
+  '循环判断首',
+  '循环判断尾',
+  '计次循环首',
+  '计次循环尾',
+  '变量循环首',
+  '变量循环尾',
+  '枚举循环首',
+  '枚举循环尾',
+  '跳出循环',
+  '到循环尾',
+  '继续循环',
+  '尝试',
+  '捕获',
+  '最终',
+  '尝试结束',
+  '抛出',
+  '常量',
+  '全局',
+  '数据类型',
+  '结束数据类型',
+  '功能库',
+  '结束功能库'
 ];
 
 export const LING_CPP_COMMANDS = [
@@ -50,6 +87,11 @@ export const LING_CPP_COMMANDS = [
   '窗口_置标题',
   '窗口_取标题'
 ];
+
+export function isLingCppCommentLine(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith('//') || trimmed === '注释' || trimmed.startsWith('注释 ');
+}
 
 export const LING_CPP_TYPES = [
   '窗体',
@@ -71,23 +113,30 @@ export const LING_CPP_TYPES = [
   '下拉框'
 ];
 
+const TYPE_NAME_SOURCE = '[\\p{L}_][\\p{L}\\p{N}_]*';
+const TYPE_EXPRESSION_SOURCE = `${TYPE_NAME_SOURCE}(?:\\[\\]|［］)?`;
 const CLASS_RE = /^类\s+([\w\u4e00-\u9fa5]+)(?:\s*[:：]\s*(?:公开|私有|保护)?\s*([\w\u4e00-\u9fa5]+))?/;
+const FUNCTION_LIBRARY_RE = new RegExp(`^功能库\\s+(${TYPE_NAME_SOURCE})$`, 'u');
+const DATA_TYPE_RE = new RegExp(`^数据类型\\s+(${TYPE_NAME_SOURCE})$`, 'u');
+const DATA_FIELD_RE = new RegExp(`^(${TYPE_NAME_SOURCE})\\s+(${TYPE_NAME_SOURCE})(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.+))?$`, 'u');
+const CONSTANT_RE = new RegExp(`^常量\\s+(${TYPE_NAME_SOURCE})\\s+(${TYPE_NAME_SOURCE})(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.*))?$`, 'u');
+const GLOBAL_RE = new RegExp(`^全局\\s+(${TYPE_NAME_SOURCE})\\s+(${TYPE_NAME_SOURCE})(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.+))?$`, 'u');
 const ACCESS_RE = /^(公开|私有|保护)\s*[:：]?$/;
 const METHOD_RE = new RegExp(
-  `^(静态\\s+)?(${['事件', '构造', '析构', '空', ...LING_CPP_TYPES].map(escapeRegexLiteral).join('|')})\\s*([\\w\\u4e00-\\u9fa5]*)\\s*[（(]([^）)]*)[）)]`
+  `^(静态\\s+)?(事件|构造|析构|空|${TYPE_EXPRESSION_SOURCE})\\s*(${TYPE_NAME_SOURCE})?\\s*[（(]([^）)]*)[）)]`, 'u'
 );
-const MEMBER_RE = new RegExp(
-  `^(静态\\s+)?(${LING_CPP_TYPES.map(escapeRegexLiteral).join('|')})\\s+([\\w\\u4e00-\\u9fa5]+)(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.+))?$`
-);
-const LOCAL_RE = new RegExp(
-  `^(?:局部\\s+)?(${LING_CPP_TYPES.map(escapeRegexLiteral).join('|')})\\s+([\\w\\u4e00-\\u9fa5]+)(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.+))?$`
-);
+const MEMBER_RE = new RegExp(`^(静态\\s+)?(${TYPE_NAME_SOURCE})\\s+(${TYPE_NAME_SOURCE})(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.+))?$`, 'u');
+const LOCAL_RE = new RegExp(`^(?:局部\\s+)?(${TYPE_NAME_SOURCE})\\s+(${TYPE_NAME_SOURCE})(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.+))?$`, 'u');
 
 export function parseLingCpp(source: string): LingCppParseResult {
   const diagnostics: LingCppDiagnostic[] = [];
   const program: LingCppProgram = {
     packageName: '',
     uses: [],
+    constants: [],
+    globals: [],
+    dataTypes: [],
+    functionLibraries: [],
     classes: [],
     diagnostics,
     source
@@ -99,6 +148,10 @@ export function parseLingCpp(source: string): LingCppParseResult {
   let currentAccess: LingCppAccessModifier = '私有';
   let currentMethod: LingCppMethod | null = null;
   let currentMethodNode: LingCppAstNode | null = null;
+  let currentDataType: LingCppDataType | null = null;
+  let currentDataTypeNode: LingCppAstNode | null = null;
+  let currentFunctionLibrary: LingCppFunctionLibrary | null = null;
+  let currentFunctionLibraryNode: LingCppAstNode | null = null;
   const astNodes: LingCppAstNode[] = [];
   const rootNode = createAstNode('program', '源文件', 1, lines[0] || '', undefined, {
     range: createDocumentRange(lines)
@@ -134,6 +187,17 @@ export function parseLingCpp(source: string): LingCppParseResult {
     currentAccess = '私有';
   };
 
+  const closeCurrentFunctionLibrary = (endLine: number) => {
+    if (!currentFunctionLibrary || !currentFunctionLibraryNode) return;
+    closeCurrentMethod(Math.max(currentFunctionLibrary.line, endLine - 1));
+    const safeEndLine = Math.max(currentFunctionLibrary.line, Math.min(Math.max(1, lines.length), endLine));
+    currentFunctionLibrary.endLine = safeEndLine;
+    setNodeEndRange(currentFunctionLibraryNode, lines, safeEndLine);
+    currentFunctionLibrary = null;
+    currentFunctionLibraryNode = null;
+    currentAccess = '公开';
+  };
+
   lines.forEach((line, index) => {
     const lineNumber = index + 1;
     const trimmed = line.trim();
@@ -143,11 +207,60 @@ export function parseLingCpp(source: string): LingCppParseResult {
       return;
     }
 
-    if (trimmed.startsWith('//') || trimmed.startsWith('注释 ')) {
+    if (isLingCppCommentLine(trimmed)) {
       appendStatement(currentMethod, line, lineNumber);
-      pushNode(createAstNode('comment', trimmed, lineNumber, line, currentMethodNode?.id || currentClassNode?.id || rootNode.id, {
+      pushNode(createAstNode('comment', trimmed, lineNumber, line, currentMethodNode?.id || currentClassNode?.id || currentFunctionLibraryNode?.id || currentDataTypeNode?.id || rootNode.id, {
         value: trimmed
-      }), currentMethodNode || currentClassNode || rootNode);
+      }), currentMethodNode || currentClassNode || currentFunctionLibraryNode || currentDataTypeNode || rootNode);
+      return;
+    }
+
+    if (trimmed === '结束数据类型') {
+      if (!currentDataType || !currentDataTypeNode) {
+        diagnostics.push(createDiagnostic('error', lineNumber, line, '多余的结束数据类型。', '请删除该行，或在前面添加数据类型声明。'));
+        return;
+      }
+      currentDataType.endLine = lineNumber;
+      setNodeEndRange(currentDataTypeNode, lines, lineNumber);
+      currentDataType = null;
+      currentDataTypeNode = null;
+      return;
+    }
+
+    const dataTypeMatch = !currentClass && !currentFunctionLibrary && !currentDataType ? trimmed.match(DATA_TYPE_RE) : null;
+    if (dataTypeMatch) {
+      currentDataType = { name: dataTypeMatch[1], line: lineNumber, fields: [] };
+      program.dataTypes.push(currentDataType);
+      currentDataTypeNode = pushNode(createAstNode('data-type', currentDataType.name, lineNumber, line, rootNode.id, {
+        detail: '项目自定义数据类型'
+      }));
+      return;
+    }
+
+    if (currentDataType && currentDataTypeNode) {
+      const fieldMatch = trimmed.match(DATA_FIELD_RE);
+      if (!fieldMatch) {
+        diagnostics.push(createDiagnostic('error', lineNumber, line, `数据类型 ${currentDataType.name} 中的字段声明无效。`, '请写成 `类型 字段名`，可追加 [] 或字面量默认值。'));
+        pushNode(createAstNode('statement', trimmed, lineNumber, line, currentDataTypeNode.id, {
+          value: trimmed,
+          detail: '无效字段声明'
+        }), currentDataTypeNode);
+        return;
+      }
+      const field: LingCppDataField = {
+        type: fieldMatch[1],
+        name: fieldMatch[2],
+        line: lineNumber,
+        isArray: Boolean(fieldMatch[3]),
+        initialValue: fieldMatch[4]?.trim()
+      };
+      currentDataType.fields.push(field);
+      pushNode(createAstNode('data-field', field.name, lineNumber, line, currentDataTypeNode.id, {
+        type: field.type,
+        value: field.initialValue,
+        isArray: field.isArray,
+        detail: [field.type, field.isArray ? '数组' : '', field.initialValue ? `= ${field.initialValue}` : ''].filter(Boolean).join(' ')
+      }), currentDataTypeNode);
       return;
     }
 
@@ -168,7 +281,72 @@ export function parseLingCpp(source: string): LingCppParseResult {
       return;
     }
 
-    const classMatch = trimmed.match(CLASS_RE);
+    const constantMatch = !currentClass && !currentFunctionLibrary ? trimmed.match(CONSTANT_RE) : null;
+    if (constantMatch) {
+      const constant: LingCppConstant = {
+        type: constantMatch[1],
+        name: constantMatch[2],
+        line: lineNumber,
+        initialValue: constantMatch[4]?.trim() || ''
+      };
+      program.constants.push(constant);
+      pushNode(createAstNode('constant', constant.name, lineNumber, line, rootNode.id, {
+        type: constant.type,
+        value: constant.initialValue,
+        detail: [constant.type, constant.initialValue ? `= ${constant.initialValue}` : '未初始化'].join(' ')
+      }));
+      if (constantMatch[3]) {
+        diagnostics.push(createDiagnostic('error', lineNumber, line, `项目常量 ${constant.name} 不支持数组。`, '请使用基础标量类型，并删除数组标记。'));
+      }
+      return;
+    }
+
+    const globalMatch = !currentClass && !currentFunctionLibrary ? trimmed.match(GLOBAL_RE) : null;
+    if (globalMatch) {
+      const global: LingCppGlobalVariable = {
+        type: globalMatch[1],
+        name: globalMatch[2],
+        line: lineNumber,
+        isArray: Boolean(globalMatch[3]),
+        initialValue: globalMatch[4]?.trim()
+      };
+      program.globals.push(global);
+      pushNode(createAstNode('global', global.name, lineNumber, line, rootNode.id, {
+        type: global.type,
+        value: global.initialValue,
+        isArray: global.isArray,
+        detail: [global.type, global.isArray ? '数组' : '', global.initialValue ? `= ${global.initialValue}` : ''].filter(Boolean).join(' ')
+      }));
+      return;
+    }
+
+    const functionLibraryMatch = !currentClass && !currentDataType && !currentFunctionLibrary
+      ? trimmed.match(FUNCTION_LIBRARY_RE)
+      : null;
+    if (functionLibraryMatch) {
+      currentFunctionLibrary = {
+        name: functionLibraryMatch[1],
+        line: lineNumber,
+        methods: []
+      };
+      currentFunctionLibraryNode = pushNode(createAstNode('function-library', currentFunctionLibrary.name, lineNumber, line, rootNode.id, {
+        detail: '项目功能库'
+      }));
+      currentAccess = '公开';
+      program.functionLibraries.push(currentFunctionLibrary);
+      return;
+    }
+
+    if (trimmed === '结束功能库') {
+      if (!currentFunctionLibrary) {
+        diagnostics.push(createDiagnostic('error', lineNumber, line, '多余的结束功能库。', '请删除该行，或在前面添加功能库声明。'));
+        return;
+      }
+      closeCurrentFunctionLibrary(lineNumber);
+      return;
+    }
+
+    const classMatch = !currentFunctionLibrary ? trimmed.match(CLASS_RE) : null;
     if (classMatch) {
       if (currentClass) closeCurrentClass(lineNumber - 1);
       currentClass = {
@@ -197,10 +375,16 @@ export function parseLingCpp(source: string): LingCppParseResult {
     if (accessMatch) {
       closeCurrentMethod(lineNumber - 1);
       currentAccess = accessMatch[1] as LingCppAccessModifier;
-      pushNode(createAstNode('access', currentAccess, lineNumber, line, currentClassNode?.id || rootNode.id, {
+      if (!currentClass && !currentFunctionLibrary) {
+        diagnostics.push(createDiagnostic('warning', lineNumber, line, '访问修饰符必须写在类或功能库内部。', '请把公开或私有段移动到对应结构内。'));
+      }
+      if (currentFunctionLibrary && currentAccess === '保护') {
+        diagnostics.push(createDiagnostic('error', lineNumber, line, '功能库不支持保护访问。', '请改用公开或私有。'));
+      }
+      pushNode(createAstNode('access', currentAccess, lineNumber, line, currentClassNode?.id || currentFunctionLibraryNode?.id || rootNode.id, {
         access: currentAccess,
         detail: '访问修饰符'
-      }), currentClassNode || rootNode);
+      }), currentClassNode || currentFunctionLibraryNode || rootNode);
       return;
     }
 
@@ -209,7 +393,7 @@ export function parseLingCpp(source: string): LingCppParseResult {
       return;
     }
 
-    if (!currentClass) {
+    if (!currentClass && !currentFunctionLibrary) {
       diagnostics.push(createDiagnostic('warning', lineNumber, line, '类外语句不会参与中文 C++ 生成。', '请把语句放入 `类 ... 结束类` 内。'));
       pushNode(createAstNode('statement', trimmed, lineNumber, line, rootNode.id, {
         value: trimmed,
@@ -219,13 +403,13 @@ export function parseLingCpp(source: string): LingCppParseResult {
     }
 
     const methodMatch = trimmed.match(METHOD_RE);
-    if (methodMatch && isMethodDeclaration(trimmed, methodMatch[2])) {
+    if (methodMatch && isMethodDeclaration(trimmed, methodMatch[2], methodMatch[3])) {
       closeCurrentMethod(lineNumber - 1);
       const isStatic = Boolean(methodMatch[1]);
       const prefix = methodMatch[2];
       const declaredName = methodMatch[3]?.trim();
       const method: LingCppMethod = {
-        name: normalizeMethodName(prefix, declaredName, currentClass.name),
+        name: normalizeMethodName(prefix, declaredName, currentClass?.name || currentFunctionLibrary?.name || ''),
         returnType: methodReturnType(prefix),
         access: currentAccess,
         isStatic: isStatic && methodKind(prefix) === 'method',
@@ -235,7 +419,10 @@ export function parseLingCpp(source: string): LingCppParseResult {
         locals: [],
         statements: []
       };
-      currentClass.methods.push(method);
+      if (currentFunctionLibrary && method.kind !== 'method') {
+        diagnostics.push(createDiagnostic('error', lineNumber, line, '功能库只允许普通功能，不能声明事件、构造或析构。', '请使用 `空 功能名()` 或带返回类型的普通功能。'));
+      }
+      (currentClass?.methods || currentFunctionLibrary?.methods)?.push(method);
       currentMethod = method;
       const methodNodeKind = method.kind;
       currentMethodNode = pushNode(createAstNode(methodNodeKind, method.name, lineNumber, line, currentClassNode?.id, {
@@ -243,7 +430,7 @@ export function parseLingCpp(source: string): LingCppParseResult {
         returnType: method.returnType,
         isStatic: method.isStatic,
         detail: method.kind === 'event' ? '事件处理器' : method.returnType
-      }), currentClassNode);
+      }), currentClassNode || currentFunctionLibraryNode);
       method.parameters.forEach(parameter => {
         pushNode(createAstNode('parameter', parameter.name, lineNumber, line, currentMethodNode?.id, {
           type: parameter.type,
@@ -254,7 +441,7 @@ export function parseLingCpp(source: string): LingCppParseResult {
     }
 
     const localMatch = currentMethod ? trimmed.match(LOCAL_RE) : null;
-    if (localMatch && currentMethod && currentMethodNode) {
+    if (localMatch && currentMethod && currentMethodNode && !LING_CPP_KEYWORDS.includes(localMatch[1])) {
       const local: LingCppLocalVariable = {
         type: localMatch[1],
         name: localMatch[2],
@@ -273,6 +460,15 @@ export function parseLingCpp(source: string): LingCppParseResult {
     }
 
     const memberMatch = trimmed.match(MEMBER_RE);
+    if (memberMatch && !currentMethod && currentFunctionLibrary) {
+      diagnostics.push(createDiagnostic('error', lineNumber, line, '首版功能库不支持成员变量或状态。', '请把数据通过参数传入并通过返回值传出。'));
+      pushNode(createAstNode('statement', trimmed, lineNumber, line, currentFunctionLibraryNode?.id, {
+        value: trimmed,
+        detail: '功能库不支持成员状态'
+      }), currentFunctionLibraryNode);
+      return;
+    }
+
     if (memberMatch && !currentMethod) {
       const member: LingCppMember = {
         type: memberMatch[2],
@@ -301,22 +497,57 @@ export function parseLingCpp(source: string): LingCppParseResult {
     }
 
     const statement = appendStatement(currentMethod, line, lineNumber);
-    pushNode(createAstNode('statement', trimmed, lineNumber, line, currentMethodNode?.id || currentClassNode?.id, {
+    pushNode(createAstNode('statement', trimmed, lineNumber, line, currentMethodNode?.id || currentClassNode?.id || currentFunctionLibraryNode?.id, {
       value: statement?.text || trimmed,
       detail: currentMethod ? '方法语句' : '未识别类成员'
-    }), currentMethodNode || currentClassNode);
+    }), currentMethodNode || currentClassNode || currentFunctionLibraryNode);
   });
 
   if (currentMethod) closeCurrentMethod(lines.length);
+  if (currentDataType && currentDataTypeNode) {
+    currentDataType.endLine = lines.length;
+    setNodeEndRange(currentDataTypeNode, lines, lines.length);
+    diagnostics.push(createDiagnostic('error', currentDataType.line, lines[currentDataType.line - 1] || currentDataType.name, `数据类型 ${currentDataType.name} 缺少结束语句。`, '请在字段末尾添加 `结束数据类型`。'));
+  }
+  if (currentFunctionLibrary && currentFunctionLibraryNode) {
+    currentFunctionLibrary.endLine = lines.length;
+    setNodeEndRange(currentFunctionLibraryNode, lines, lines.length);
+    diagnostics.push(createDiagnostic('error', currentFunctionLibrary.line, lines[currentFunctionLibrary.line - 1] || `功能库 ${currentFunctionLibrary.name}`, '功能库声明缺少结束语句。', '请在功能库末尾添加 `结束功能库`。'));
+  }
   if (currentClass && currentClassNode) {
     currentClass.endLine = lines.length;
     setNodeEndRange(currentClassNode, lines, lines.length);
     diagnostics.push(createDiagnostic('error', currentClass.line, lines[currentClass.line - 1] || `类 ${currentClass.name}`, '类声明缺少结束语句。', '请在类末尾添加 `结束类`。'));
   }
 
-  if (program.classes.length === 0) {
-    diagnostics.push(createDiagnostic('error', 1, lines[0] || '', '未找到中文 C++ 类。', '请添加 `类 游戏主窗体 : 公开 窗体`。'));
-  }
+  const declaredDataTypes = new Set<string>();
+  program.dataTypes.forEach(dataType => {
+    const normalized = normalizeIdentifier(dataType.name);
+    if (declaredDataTypes.has(normalized)) diagnostics.push(createDiagnostic('error', dataType.line, dataType.name, `数据类型 ${dataType.name} 重复声明。`, '请为项目数据类型使用唯一名称。'));
+    declaredDataTypes.add(normalized);
+    const fields = new Set<string>();
+    dataType.fields.forEach(field => {
+      const fieldName = normalizeIdentifier(field.name);
+      if (fields.has(fieldName)) diagnostics.push(createDiagnostic('error', field.line, field.name, `数据类型 ${dataType.name} 中的字段 ${field.name} 重复声明。`, '请为同一数据类型的字段使用唯一名称。'));
+      fields.add(fieldName);
+    });
+  });
+
+  const declaredGlobals = new Set<string>();
+  program.constants.forEach(constant => {
+    const normalized = normalizeIdentifier(constant.name);
+    if (declaredGlobals.has(normalized)) {
+      diagnostics.push(createDiagnostic('error', constant.line, lines[constant.line - 1] || constant.name, `项目常量 ${constant.name} 重复声明。`, '请为项目常量使用唯一名称。'));
+    }
+    declaredGlobals.add(normalized);
+  });
+  program.globals.forEach(global => {
+    const normalized = normalizeIdentifier(global.name);
+    if (declaredGlobals.has(normalized)) {
+      diagnostics.push(createDiagnostic('error', global.line, lines[global.line - 1] || global.name, `项目符号 ${global.name} 与已有常量或全局变量重名。`, '请为项目常量和全局变量使用唯一名称。'));
+    }
+    declaredGlobals.add(normalized);
+  });
 
   program.classes.forEach(cls => {
     if (!cls.methods.some(method => method.kind === 'constructor')) {
@@ -331,6 +562,21 @@ export function parseLingCpp(source: string): LingCppParseResult {
         }
         declaredNames.add(normalized);
       });
+      diagnostics.push(...validateLingCppControlFlow(method, lines));
+    });
+  });
+
+  const declaredLibraries = new Set<string>();
+  program.functionLibraries.forEach(library => {
+    const normalized = normalizeIdentifier(library.name);
+    if (declaredLibraries.has(normalized)) diagnostics.push(createDiagnostic('error', library.line, library.name, `功能库 ${library.name} 重复声明。`, '一个项目中的功能库名称必须唯一。'));
+    declaredLibraries.add(normalized);
+    const methodNames = new Set<string>();
+    library.methods.forEach(method => {
+      const methodName = normalizeIdentifier(method.name);
+      if (methodNames.has(methodName)) diagnostics.push(createDiagnostic('error', method.line, method.name, `功能库 ${library.name} 中的功能 ${method.name} 重复声明。`, '首版功能库不支持重载，请使用唯一功能名。'));
+      methodNames.add(methodName);
+      diagnostics.push(...validateLingCppControlFlow(method, lines));
     });
   });
 
@@ -368,10 +614,115 @@ export function normalizeIdentifier(value: string): string {
   return value.trim().replace(/^_+/, '').replace(/\s+/g, '');
 }
 
+function validateLingCppControlFlow(method: LingCppMethod, sourceLines: string[]): LingCppDiagnostic[] {
+  const diagnostics: LingCppDiagnostic[] = [];
+  const stack: Array<{
+    control: LingCppControlFlowLine;
+    line: number;
+    hasElse?: boolean;
+    hasDefault?: boolean;
+    hasCatch?: boolean;
+    hasFinally?: boolean;
+  }> = [];
+  const report = (statement: LingCppStatement, message: string, suggestion: string, level: LingCppDiagnostic['level'] = 'error') => {
+    diagnostics.push(createDiagnostic(level, statement.line, sourceLines[statement.line - 1] || statement.text, message, suggestion));
+  };
+
+  method.statements.forEach(statement => {
+    const control = parseLingCppControlFlowLine(statement.text);
+    if (!control) return;
+    const top = stack.at(-1);
+
+    if (control.role === 'start' && control.family) {
+      if ((control.family === 'if' || control.loopKind === 'while') && !control.expression) {
+        report(statement, `${control.keyword} 缺少条件表达式。`, `请写成 ${control.keyword} (条件)。`);
+      }
+      if (control.family === 'select' && !control.expression) {
+        report(statement, `${control.keyword} 缺少选择表达式。`, '请写成 选择 (整数表达式)。');
+      }
+      const expectedArguments = control.loopKind === 'count' ? [1, 2]
+        : control.loopKind === 'range' ? [4]
+          : control.loopKind === 'foreach' ? [2]
+            : undefined;
+      if (expectedArguments && !expectedArguments.includes(control.arguments.length)) {
+        report(statement, `${control.keyword} 的参数数量不正确。`,
+          control.loopKind === 'count'
+            ? '请写成 计次循环首 (次数, [计次变量])。'
+            : control.loopKind === 'range'
+              ? '请写成 变量循环首 (起始值, 目标值, 递增值, 循环变量)。'
+              : '请写成 枚举循环首 (集合, 当前项)。');
+      }
+      stack.push({ control, line: statement.line });
+      return;
+    }
+
+    if (control.role === 'branch' && control.family) {
+      if (!top || top.control.family !== control.family) {
+        report(statement, `${control.keyword} 没有对应的${control.family === 'if' ? '如果' : control.family === 'select' ? '选择' : '尝试'}结构。`, '请把分支放入匹配的控制结构内。');
+        return;
+      }
+      if (control.branchKind === 'elseif' && top.hasElse) report(statement, '否则之后不能再写否则如果。', '请把否则如果移动到否则之前。');
+      if (control.branchKind === 'else') {
+        if (top.hasElse) report(statement, '同一个如果结构只能有一个否则分支。', '请合并或删除重复的否则分支。');
+        top.hasElse = true;
+      }
+      if (control.branchKind === 'case' && control.arguments.length === 0) report(statement, '分支缺少匹配值。', '请写成 分支 (值)。');
+      if (control.branchKind === 'default') {
+        if (top.hasDefault) report(statement, '同一个选择结构只能有一个默认分支。', '请合并或删除重复的默认分支。');
+        top.hasDefault = true;
+      }
+      if (control.branchKind === 'catch') {
+        if (top.hasFinally) report(statement, '最终之后不能再写捕获分支。', '请把捕获移动到最终之前。');
+        top.hasCatch = true;
+      }
+      if (control.branchKind === 'finally') {
+        if (top.hasFinally) report(statement, '同一个尝试结构只能有一个最终分支。', '请合并或删除重复的最终分支。');
+        top.hasFinally = true;
+      }
+      return;
+    }
+
+    if (control.role === 'end' && control.family) {
+      if (!top || top.control.family !== control.family) {
+        report(statement, `多余或错位的 ${control.keyword}。`, '请检查控制结构的嵌套顺序。');
+        return;
+      }
+      if (control.family === 'try' && !top.hasCatch && !top.hasFinally) {
+        report(statement, '尝试结构至少需要一个捕获或最终分支。', '请在尝试结束前添加捕获或最终。');
+      }
+      stack.pop();
+      return;
+    }
+
+    if ((control.role === 'break' || control.role === 'continue') && !stack.some(entry => entry.control.family === 'loop')) {
+      report(statement, `${control.keyword} 只能在循环内部使用。`, '请把该命令移动到循环体内。');
+    }
+    if (control.role === 'throw' && !control.expression) {
+      report(statement, '抛出命令缺少错误信息。', '请写成 抛出("错误信息")。');
+    }
+  });
+
+  stack.forEach(entry => {
+    diagnostics.push(createDiagnostic(
+      'error',
+      entry.line,
+      sourceLines[entry.line - 1] || entry.control.keyword,
+      `${entry.control.keyword} 结构缺少结束语句。`,
+      `请添加 ${lingCppControlFlowEndLabel(entry.control)}。`
+    ));
+  });
+  return diagnostics;
+}
+
 export function buildLingCppSymbolIndex(nodes: LingCppAstNode[]): LingCppSymbolIndex {
   const index: LingCppSymbolIndex = {
     declarations: [],
     classes: [],
+    constants: [],
+    globals: [],
+    dataTypes: [],
+    dataFields: [],
+    functionLibraries: [],
     members: [],
     locals: [],
     methods: [],
@@ -381,8 +732,13 @@ export function buildLingCppSymbolIndex(nodes: LingCppAstNode[]): LingCppSymbolI
   };
 
   nodes.forEach(node => {
-    if (node.kind === 'package' || node.kind === 'use' || node.kind === 'designer') index.declarations.push(node);
+    if (node.kind === 'package' || node.kind === 'use' || node.kind === 'constant' || node.kind === 'global' || node.kind === 'data-type' || node.kind === 'data-field' || node.kind === 'function-library' || node.kind === 'designer') index.declarations.push(node);
     if (node.kind === 'class') index.classes.push(node);
+    if (node.kind === 'constant') index.constants.push(node);
+    if (node.kind === 'global') index.globals.push(node);
+    if (node.kind === 'data-type') index.dataTypes.push(node);
+    if (node.kind === 'data-field') index.dataFields.push(node);
+    if (node.kind === 'function-library') index.functionLibraries.push(node);
     if (node.kind === 'member') index.members.push(node);
     if (node.kind === 'local') index.locals.push(node);
     if (node.kind === 'constructor' || node.kind === 'destructor' || node.kind === 'method') index.methods.push(node);
@@ -494,8 +850,9 @@ function splitParameterDefault(part: string): { definition: string; defaultValue
   return { definition: part.trim() };
 }
 
-function isMethodDeclaration(trimmed: string, prefix: string): boolean {
+function isMethodDeclaration(trimmed: string, prefix: string, declaredName?: string): boolean {
   if (prefix === '构造' || prefix === '析构') return true;
+  if (!declaredName?.trim()) return false;
   const withoutStatic = trimmed.replace(/^静态\s+/u, '');
   return new RegExp(`^${escapeRegexLiteral(prefix)}\\s+`, 'u').test(withoutStatic);
 }

@@ -24,12 +24,13 @@ test('PTY service supports multiple sessions, input, resize, buffered recovery, 
   const children: FakePty[] = []; const options: any[] = [];
   const spawner: PtySpawner = (_file, _args, value) => { options.push(value); const child = new FakePty(); children.push(child); return child; };
   const service = new PtyTerminalService(root, spawner); const events: string[] = []; service.subscribe(event => events.push(event.kind));
-  const first = await service.create({ profile: 'cmd', cwd: '.', cols: 100, rows: 30, env: { DEMO: '中文' } });
+  const first = await service.create({ profile: 'cmd', cwd: '.', cols: 100, rows: 30, env: { DEMO: '中文' }, title: 'Claude Code + LingBuilder' });
   const second = await service.create({ profile: 'powershell' });
   assert.equal(service.list().length, 2); assert.equal(options[0].cwd, await fs.realpath(root)); assert.equal(options[0].env.DEMO, '中文');
   service.write(first.id, 'echo ok\r'); service.resize(first.id, 120, 40); children[0].emitData('输出内容');
   assert.deepEqual(children[0].writes, ['echo ok\r']); assert.deepEqual(children[0].sizes, [[120, 40]]);
   assert.equal(service.get(first.id)?.buffer, '输出内容'); assert.equal(service.get(first.id)?.sequence, 2);
+  assert.equal(service.get(first.id)?.title, 'Claude Code + LingBuilder');
   children[0].emitExit(7); assert.equal(service.get(first.id)?.status, 'exited'); assert.equal(service.get(first.id)?.exitCode, 7);
   assert.throws(() => service.write(first.id, 'late'), /已经退出/u);
   assert.equal(service.close(first.id), true); assert.equal(service.close(first.id), false);
@@ -43,6 +44,7 @@ test('PTY service rejects cwd escape and invalid environment or input', async t 
   const child = new FakePty(); const service = new PtyTerminalService(root, () => child);
   await assert.rejects(service.create({ cwd: '..' }), /不能超出/u);
   await assert.rejects(service.create({ env: { 'BAD-NAME': 'x' } }), /环境变量/u);
+  await assert.rejects(service.create({ title: 'bad\ntitle' }), /终端标题/u);
   const session = await service.create(); assert.throws(() => service.write(session.id, ''), /1 至 65536/u);
   service.closeAll();
 });

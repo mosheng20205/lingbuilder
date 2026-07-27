@@ -49,6 +49,31 @@ enum PromotionKind {
   FREE_WINDOW
 }
 
+enum ModuleOfferKind {
+  PERPETUAL
+  FIXED_TERM
+}
+
+enum ModuleOrderStatus {
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
+  REFUNDED
+}
+
+enum ModulePaymentProvider {
+  WECHAT
+  ALIPAY
+  MANUAL
+}
+
+enum ModuleEntitlementSource {
+  PURCHASE
+  ADMIN_GRANT
+  COMPENSATION
+}
+
 model User {
   id                 String                   @id @default(uuid())
   email              String                   @unique
@@ -67,6 +92,134 @@ model User {
   promotionGrants    PromotionGrant[]
   freeUsages         FreeUsage[]
   adminMembership    AdminMembership?
+  moduleOrders       ModuleOrder[]
+  moduleEntitlements ModuleEntitlement[]
+  moduleAccessAudits ModuleAccessAudit[]
+}
+
+model ModuleProduct {
+  id            String              @id @default(uuid())
+  moduleId      String              @unique
+  name          String
+  description   String              @default("")
+  listed        Boolean             @default(false)
+  enabled       Boolean             @default(true)
+  policyVersion Int                 @default(1)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  offers        ModuleOffer[]
+  orders        ModuleOrder[]
+  entitlements  ModuleEntitlement[]
+  freeWindows   ModuleFreeWindow[]
+  accessAudits  ModuleAccessAudit[]
+}
+
+model ModuleOffer {
+  id           String          @id @default(uuid())
+  productId    String
+  name         String
+  kind         ModuleOfferKind
+  priceMinor   BigInt
+  currency     String          @default("CNY")
+  durationDays Int?
+  enabled      Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  product      ModuleProduct   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orders       ModuleOrder[]
+
+  @@index([productId, enabled])
+}
+
+model ModuleOrder {
+  id                String                @id @default(uuid())
+  userId            String
+  productId         String
+  offerId           String
+  idempotencyKey    String
+  provider          ModulePaymentProvider
+  providerOrderId   String?
+  status            ModuleOrderStatus     @default(PENDING)
+  amountMinor       BigInt
+  currency          String
+  offerKind         ModuleOfferKind
+  durationDays      Int?
+  paymentUrl        String?
+  paidAt            DateTime?
+  expiresAt         DateTime
+  refundedAt        DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product           ModuleProduct         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  offer             ModuleOffer           @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  entitlement       ModuleEntitlement?
+
+  @@unique([userId, idempotencyKey])
+  @@unique([provider, providerOrderId])
+  @@index([userId, createdAt])
+}
+
+model ModuleEntitlement {
+  id          String                  @id @default(uuid())
+  userId      String
+  productId   String
+  orderId     String?                 @unique
+  source      ModuleEntitlementSource
+  startsAt    DateTime                @default(now())
+  endsAt      DateTime?
+  revokedAt   DateTime?
+  reason      String                  @default("")
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product     ModuleProduct           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  order       ModuleOrder?            @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([userId, productId, startsAt, endsAt])
+}
+
+model ModuleFreeWindow {
+  id          String        @id @default(uuid())
+  productId   String
+  name        String
+  startsAt    DateTime
+  endsAt      DateTime
+  timezone    String        @default("Asia/Shanghai")
+  enabled     Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  product     ModuleProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId, enabled, startsAt, endsAt])
+}
+
+model PaymentWebhookEvent {
+  id         String                @id @default(uuid())
+  provider   ModulePaymentProvider
+  eventId    String
+  orderId    String?
+  eventType  String
+  payloadHash String
+  processedAt DateTime             @default(now())
+
+  @@unique([provider, eventId])
+}
+
+model ModuleAccessAudit {
+  id        String        @id @default(uuid())
+  userId    String
+  productId String
+  moduleId  String
+  action    String
+  allowed   Boolean
+  source    String?
+  reason    String?
+  createdAt DateTime      @default(now())
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   ModuleProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([userId, moduleId, createdAt])
 }
 
 model AuthSession {

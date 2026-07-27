@@ -76,6 +76,15 @@ export interface ManagedProcessStopAllResult {
   message: string;
 }
 
+export interface ManagedProcessExitResult {
+  projectId: string;
+  pid?: number;
+  found: boolean;
+  exitCode?: number | null;
+  signal?: NodeJS.Signals | null;
+  message: string;
+}
+
 export interface ManagedProcessServiceOptions {
   gracefulStopTimeoutMs?: number;
   forceStopTimeoutMs?: number;
@@ -247,6 +256,32 @@ export class ManagedProcessService {
 
   isRunning(projectId: string): boolean {
     return this.processes.has(requireProjectId(projectId));
+  }
+
+  async waitForExit(projectId: string): Promise<ManagedProcessExitResult> {
+    const normalizedProjectId = requireProjectId(projectId);
+    const entry = this.processes.get(normalizedProjectId);
+    if (!entry) {
+      return {
+        projectId: normalizedProjectId,
+        found: false,
+        message: `项目“${normalizedProjectId}”当前没有受控运行进程。`
+      };
+    }
+
+    await entry.settledPromise;
+    const exit = entry.exit ?? entry.close ?? {
+      code: entry.child.exitCode,
+      signal: entry.child.signalCode
+    };
+    return {
+      projectId: normalizedProjectId,
+      pid: entry.status.pid,
+      found: true,
+      exitCode: exit.code,
+      signal: exit.signal,
+      message: `项目“${normalizedProjectId}”的运行进程已退出（${exit.signal ? `信号 ${exit.signal}` : `退出码 ${exit.code ?? '未知'}`}）。`
+    };
   }
 
   private async replaceCurrentProcess(projectId: string): Promise<boolean> {

@@ -63,6 +63,7 @@ import RcResourcePanel from './RcResourcePanel';
 import PublishingPanel from './PublishingPanel';
 import AiIndexPanel from './AiIndexPanel';
 import SettingsSyncPanel from './SettingsSyncPanel';
+import { isFunctionLibrarySource } from '../services/lingCpp/functionLibraryService';
 
 type WindowContextMenu =
   | { x: number; y: number; target: 'group' }
@@ -159,7 +160,14 @@ interface SidebarProps {
   onCloseSolution?: () => void | Promise<void>;
   onOpenSolutionDirectory?: () => void | Promise<void>;
   onOpenProjectDirectory?: (projectId: string) => void | Promise<void>;
+  onOpenProjectGlobalVariables?: (projectId: string) => void | Promise<void>;
+  onOpenProjectDataTypes?: (projectId: string) => void | Promise<void>;
+  onCreateFunctionLibrary?: (projectId: string) => void | Promise<void>;
+  onPasteFunctionLibrary?: (projectId: string) => void | Promise<void>;
+  onCopySolutionFullPath?: () => boolean | Promise<boolean>;
+  onCopyProjectFullPath?: (projectId: string) => boolean | Promise<boolean>;
   onAddProjectResource?: (projectId: string) => Promise<DesignerImageImportResult>;
+  onExportLcppSourcePackage?: (projectId: string) => void | Promise<void>;
   onCopyProjectResourcePath?: (relativePath: string) => Promise<boolean>;
   activeModuleHintId?: string;
   onShowModuleHint?: (hint: ModuleHintContent) => void;
@@ -195,7 +203,14 @@ export default function Sidebar({
   onCloseSolution,
   onOpenSolutionDirectory,
   onOpenProjectDirectory,
+  onOpenProjectGlobalVariables,
+  onOpenProjectDataTypes,
+  onCreateFunctionLibrary,
+  onPasteFunctionLibrary,
+  onCopySolutionFullPath,
+  onCopyProjectFullPath,
   onAddProjectResource,
+  onExportLcppSourcePackage,
   onCopyProjectResourcePath,
   activeModuleHintId,
   onShowModuleHint
@@ -225,6 +240,7 @@ export default function Sidebar({
     return () => window.removeEventListener('click', handleCloseMenu);
   }, []);
   const [isSrcOpen, setIsSrcOpen] = useState(true);
+  const [isFunctionLibraryOpen, setIsFunctionLibraryOpen] = useState(true);
   const [isWindowsOpen, setIsWindowsOpen] = useState(true);
   const [isConfigOpen, setIsConfigOpen] = useState(true);
   const [isProjectModulesOpen, setIsProjectModulesOpen] = useState(true);
@@ -260,6 +276,8 @@ export default function Sidebar({
     !normalizedFileSearch || values.some(value => value?.toLowerCase().includes(normalizedFileSearch))
   );
   const srcFiles = files.filter(f => f.path.startsWith('src/') && includesSearch(f.name, f.path));
+  const functionLibraryFiles = files.filter(file => file.language === 'lingcpp' && includesSearch(file.name, file.path) && isFunctionLibrarySource(file.translatedContent || file.originalContent));
+  const regularSrcFiles = srcFiles.filter(file => !functionLibraryFiles.includes(file));
   const configFiles = files.filter(f => f.path.startsWith('config/') && includesSearch(f.name, f.path));
   const designerStateMatchesActiveProject = designerState.project.id === activeSolutionProjectId;
   const designerWindows = (designerStateMatchesActiveProject ? designerState.project.windows : []).filter(windowModel => includesSearch(
@@ -674,6 +692,13 @@ export default function Sidebar({
     triggerSuccess('✓ 中文版映射 C++ 代码已复制到您的剪贴板！');
   };
 
+  const copyFunctionLibraryToClipboard = (file: CppFile) => {
+    const payload = { sourceProjectId: activeSolutionProjectId, sourcePath: file.path };
+    void navigator.clipboard.writeText(`LINGBUILDER_FUNCTION_LIBRARY:${JSON.stringify(payload)}`)
+      .then(() => triggerSuccess('已复制功能库，可在其他项目节点按 Ctrl+V 或右键粘贴'))
+      .catch(() => triggerError('复制功能库到剪贴板失败。'));
+  };
+
   const renderFileRow = (file: CppFile) => {
     const isActive = file.path === activeFile.path;
     const progress = getProgress(file);
@@ -681,12 +706,19 @@ export default function Sidebar({
     return (
       <div
         key={file.path}
+        tabIndex={0}
         id={`file-row-${file.name.replace('.', '-')}`}
         onClick={() => onSelectFile(file)}
         onContextMenu={(e) => {
           e.preventDefault();
           setWindowContextMenu(null);
           setContextMenu({ x: e.clientX, y: e.clientY, file });
+        }}
+        onKeyDown={(event) => {
+          if (!event.ctrlKey || event.key.toLocaleLowerCase() !== 'c') return;
+          if (file.language !== 'lingcpp' || !isFunctionLibrarySource(file.translatedContent || file.originalContent)) return;
+          event.preventDefault();
+          copyFunctionLibraryToClipboard(file);
         }}
         className={`group flex items-center justify-between gap-2 py-1.5 px-3 pl-8 text-[13px] cursor-pointer border-l-2 transition-all ${
           isActive
@@ -881,6 +913,17 @@ export default function Sidebar({
         >
           <span>复制路径 (C)</span>
         </div>
+        {contextMenu.file.language === 'lingcpp' && isFunctionLibrarySource(contextMenu.file.translatedContent || contextMenu.file.originalContent) && (
+          <div
+            className="px-3 py-1.5 hover:bg-blue-500 hover:text-white cursor-pointer transition-colors flex items-center gap-1.5"
+            onClick={() => {
+              copyFunctionLibraryToClipboard(contextMenu.file);
+            }}
+          >
+            <Copy className="w-3.5 h-3.5" />
+            <span>复制功能库</span>
+          </div>
+        )}
         <div
           className={`px-3 py-1.5 hover:bg-blue-500 hover:text-white cursor-pointer transition-colors`}
           onClick={() => {
@@ -1038,6 +1081,16 @@ export default function Sidebar({
               <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
               <span>打开解决方案所在目录</span>
             </div>
+            <div
+              className={menuItemClass}
+              onClick={() => void Promise.resolve(onCopySolutionFullPath?.() ?? false).then(success => {
+                if (success) triggerSuccess('已复制解决方案完整路径');
+                else triggerError('复制解决方案完整路径失败。');
+              })}
+            >
+              <Copy className="w-3.5 h-3.5 text-sky-400" />
+              <span>复制完整路径</span>
+            </div>
             <div className={menuItemClass} onClick={() => void onCloseSolution?.()}>
               <FolderMinus className="w-3.5 h-3.5 text-amber-400" />
               <span>关闭解决方案</span>
@@ -1049,6 +1102,15 @@ export default function Sidebar({
           </>
         ) : project && (
           <>
+            {project.type === 'visual-cpp' && <div className={menuItemClass} onClick={() => void onCreateFunctionLibrary?.(project.id)}>
+              <FileCode className="w-3.5 h-3.5 text-cyan-400" />
+              <span>新建功能库…</span>
+            </div>}
+            {project.type === 'visual-cpp' && <div className={menuItemClass} onClick={() => void onPasteFunctionLibrary?.(project.id)}>
+              <Copy className="w-3.5 h-3.5 text-cyan-400" />
+              <span>粘贴功能库…</span>
+            </div>}
+            <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
             <div className={menuItemClass} onClick={() => void onSetStartupProject?.(project.id)}>
               <CheckCircle2 className={`w-3.5 h-3.5 ${isStartup ? 'text-emerald-500' : 'text-slate-400'}`} />
               <span>{isStartup ? '当前启动项目' : '设为启动项目'}</span>
@@ -1080,10 +1142,24 @@ export default function Sidebar({
                 : <Plus className="w-3.5 h-3.5 text-sky-400" />}
               <span>{resourceImportingProjectId === project.id ? '正在添加资源…' : '添加资源…'}</span>
             </div>
+            <div className={menuItemClass} onClick={() => void onExportLcppSourcePackage?.(project.id)}>
+              <Package className="w-3.5 h-3.5 text-emerald-400" />
+              <span>一键导出 LCPP 源码包…</span>
+            </div>
             <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
             <div className={menuItemClass} onClick={() => void onOpenProjectDirectory?.(project.id)}>
               <FolderOpen className="w-3.5 h-3.5 text-sky-400" />
               <span>打开项目所在目录</span>
+            </div>
+            <div
+              className={menuItemClass}
+              onClick={() => void Promise.resolve(onCopyProjectFullPath?.(project.id) ?? false).then(success => {
+                if (success) triggerSuccess('已复制项目完整路径');
+                else triggerError('复制项目完整路径失败。');
+              })}
+            >
+              <Copy className="w-3.5 h-3.5 text-sky-400" />
+              <span>复制完整路径</span>
             </div>
             <div className="h-[1px] bg-slate-700/20 dark:bg-slate-700/50 my-1" />
             <div className={menuItemClass} onClick={() => void onSolutionCommand?.('build', project.id)}>
@@ -1243,7 +1319,7 @@ export default function Sidebar({
             title="解决方案资源管理器"
           >
             <Folder className="w-5 h-5" />
-            <span className="text-[9px] scale-90 font-semibold leading-none font-sans">文件</span>
+            <span className="text-[10px] font-semibold leading-none font-sans">文件</span>
             {showLeftSidebar && activeTab === 'explorer' && (
               <div className="absolute left-0 top-1 bottom-1 w-[3px] bg-[#007ACC] rounded-r"></div>
             )}
@@ -1260,7 +1336,7 @@ export default function Sidebar({
             title="快捷编程工具箱"
           >
             <Wrench className="w-5 h-5" />
-            <span className="text-[9px] scale-90 font-semibold leading-none font-sans">工具</span>
+            <span className="text-[10px] font-semibold leading-none font-sans">工具</span>
             {showLeftSidebar && activeTab === 'actions' && (
               <div className="absolute left-0 top-1 bottom-1 w-[3px] bg-[#007ACC] rounded-r"></div>
             )}
@@ -1277,7 +1353,7 @@ export default function Sidebar({
             title="文本与函数模块"
           >
             <Layers className="w-5 h-5" />
-            <span className="text-[9px] scale-90 font-semibold leading-none font-sans">模块</span>
+            <span className="text-[10px] font-semibold leading-none font-sans">模块</span>
             {showLeftSidebar && activeTab === 'outline' && (
               <div className="absolute left-0 top-1 bottom-1 w-[3px] bg-[#007ACC] rounded-r"></div>
             )}
@@ -1297,7 +1373,7 @@ export default function Sidebar({
             title="Git 更改"
           >
             <GitBranch className="w-5 h-5" aria-hidden="true" />
-            <span className="text-[9px] scale-90 font-semibold leading-none font-sans">Git更改</span>
+            <span className="text-[10px] font-semibold leading-none font-sans">Git更改</span>
             {Boolean(sourceControlStatus?.files.length) && (
               <span
                 className="absolute right-0.5 top-0.5 min-w-3.5 rounded-full bg-[#007ACC] px-0.5 text-center text-[8px] font-bold leading-3.5 text-white"
@@ -1447,6 +1523,7 @@ export default function Sidebar({
                           }`}
                         >
                         <div
+                          tabIndex={0}
                           onClick={() => {
                             setExpandedProjectIds(previous => ({ ...previous, [project.id]: true }));
                             void onSetStartupProject?.(project.id);
@@ -1458,6 +1535,11 @@ export default function Sidebar({
                             setWindowContextMenu(null);
                             setModuleContextMenu(null);
                             setSolutionContextMenu({ x: event.clientX, y: event.clientY, target: 'project', project });
+                          }}
+                          onKeyDown={(event) => {
+                            if (!event.ctrlKey || event.key.toLocaleLowerCase() !== 'v' || project.type !== 'visual-cpp') return;
+                            event.preventDefault();
+                            void onPasteFunctionLibrary?.(project.id);
                           }}
                           className={`flex min-h-8 items-center gap-1.5 px-2 py-2 text-[13px] font-semibold font-sans cursor-pointer border-l-2 transition-colors ${
                             isStartupProject
@@ -1491,6 +1573,37 @@ export default function Sidebar({
                           )}
                           {(project.references?.length || 0) > 0 && <span className="text-[9px] text-sky-400">引用 {project.references!.length}</span>}
                         </div>
+
+                      {/* Project-global variables are a fixed source entry for native Visual C++ projects. */}
+                      {isProjectOpen && project.type === 'visual-cpp' && (
+                        <div className="pl-2 mt-1">
+                          <button
+                            type="button"
+                            onClick={() => void onOpenProjectGlobalVariables?.(project.id)}
+                            className={`flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[13px] font-sans transition-colors ${
+                              isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/50' : 'text-slate-700 hover:bg-slate-100'
+                            }`}
+                            title="打开当前项目固定的变量与常量文件"
+                          >
+                            <FileCode className="h-4 w-4 shrink-0 text-cyan-500" />
+                            <span className="truncate">项目变量与常量</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void onOpenProjectDataTypes?.(project.id)}
+                            className={`flex w-full items-center gap-1.5 px-2 py-1.5 text-left text-[13px] font-sans transition-colors ${
+                              isDarkMode ? 'text-slate-300 hover:bg-[#2A2D2E]/50' : 'text-slate-700 hover:bg-slate-100'
+                            }`}
+                            title="打开项目级记录型数据类型；旧项目会在首次编辑时创建文件"
+                          >
+                            <FileCode className="h-4 w-4 shrink-0 text-emerald-500" />
+                            <span className="truncate">自定义数据类型</span>
+                            {!files.some(file => file.path.replace(/\\/gu, '/').endsWith(`/${project.sourceRoot.replace(/\\/gu, '/').replace(/^\.\//u, '').replace(/\/+$/u, '')}/项目数据类型.lcpp`)) && (
+                              <span className="ml-auto text-[9px] opacity-60">未创建</span>
+                            )}
+                          </button>
+                        </div>
+                      )}
 
                       {/* Project modules group */}
                       {isProjectOpen && <div className="pl-2 mt-1">
@@ -1702,6 +1815,29 @@ export default function Sidebar({
                         )}
                       </div>}
 
+                      {/* Project function libraries */}
+                      {isProjectOpen && <div className="pl-2 mt-1.5">
+                        <div
+                          onClick={() => setIsFunctionLibraryOpen(!isFunctionLibraryOpen)}
+                          className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
+                            isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
+                          }`}
+                          title="独立、无状态、可跨项目复制的 .lcpp 功能库"
+                        >
+                          {isFunctionLibraryOpen ? <ChevronDown className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                          <Layers className="w-4 h-4 text-cyan-400" />
+                          <span>功能代码</span>
+                          <span className="ml-auto text-[9px] text-slate-500">{functionLibraryFiles.length}</span>
+                        </div>
+                        {isFunctionLibraryOpen && (
+                          <div className="mt-0.5 border-l border-slate-750/30 dark:border-slate-800 ml-3.5 pl-0.5">
+                            {functionLibraryFiles.length === 0
+                              ? <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">右键项目可新建或粘贴功能库</div>
+                              : functionLibraryFiles.map(renderFileRow)}
+                          </div>
+                        )}
+                      </div>}
+
                       {/* includes / src Folder */}
                       {isProjectOpen && <div className="pl-2 mt-1.5">
                         <div
@@ -1716,10 +1852,10 @@ export default function Sidebar({
                         </div>
                         {isSrcOpen && (
                           <div className="mt-0.5 border-l border-slate-750/30 dark:border-slate-800 ml-3.5 pl-0.5">
-                            {srcFiles.length === 0 ? (
+                            {regularSrcFiles.length === 0 ? (
                               <div className="pl-8 text-slate-500 text-[10px] py-1 font-sans">未找到匹配文件</div>
                             ) : (
-                              srcFiles.map(renderFileRow)
+                              regularSrcFiles.map(renderFileRow)
                             )}
                           </div>
                         )}
@@ -1776,7 +1912,7 @@ export default function Sidebar({
                         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                       }}
                     >
-                      <span className={`font-bold text-[9px] px-1 rounded uppercase scale-90 font-mono ${
+                      <span className={`font-bold text-[9px] px-1 rounded uppercase font-mono ${
                         isDarkMode ? 'bg-[#1E1E1E] text-[#007ACC]' : 'bg-slate-200 text-blue-600'
                       }`}>L{s.line}</span>
                       <span className="truncate italic">"{s.original}"</span>
@@ -1832,7 +1968,7 @@ export default function Sidebar({
                       <Sparkles className="w-3 h-3" />
                       <span>智能中文代码映射器</span>
                     </span>
-                    <span className="text-[9px] px-1.5 py-0.5 bg-emerald-950/40 text-emerald-300 rounded border border-emerald-500/10 scale-90">
+                    <span className="text-[9px] px-1.5 py-0.5 bg-emerald-950/40 text-emerald-300 rounded border border-emerald-500/10">
                       Gemini Core
                     </span>
                   </div>
@@ -2330,6 +2466,7 @@ function ModuleInterfaceTree({
                   declaration: command.signature,
                   fields: [
                     { label: '返回值', value: command.returnType || '空' },
+                    ...(command.returnDescription ? [{ label: '返回值说明', value: command.returnDescription }] : []),
                     { label: '插入代码', value: command.insertText || command.signature },
                     { label: 'C++ 运行时', value: binding?.runtimeName || '模块未声明绑定' },
                     { label: '编码', value: binding?.encoding || '默认' },

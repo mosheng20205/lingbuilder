@@ -7,10 +7,12 @@ import os from 'node:os';
 import path from 'path';
 import { AiBridgeService } from './services/aiBridge/aiBridgeService';
 import { createAiBridgeRouter } from './services/aiBridge/httpRoutes';
-import { startAiBridgeMcpServer } from './services/aiBridge/mcpServer';
+import { createAiBridgeMcpHttpGateway, startAiBridgeMcpServer } from './services/aiBridge/mcpServer';
 import { AiBridgePermissionMode, AiBridgeServerOptions } from './services/aiBridge/types';
 import { CloudCliClient } from './services/cloud/cloudCliClient';
 import { createModuleService } from './services/modules/moduleService';
+import { ModuleAccessService } from './services/modules/moduleAccessService';
+import { LINGBUILDER_VERSION } from './services/product/productInfo';
 import {
   createMarketIndex,
   createModuleTemplate,
@@ -20,7 +22,7 @@ import {
 
 async function main(): Promise<void> {
   const [command, subcommand, ...rest] = process.argv.slice(2);
-  if (command === '--version' || command === 'version') { console.log('LingBuilder CLI 0.2.0'); return; }
+  if (command === '--version' || command === 'version') { console.log(`LingBuilder CLI ${LINGBUILDER_VERSION}`); return; }
   if (command === '--help' || command === 'help' || !command) { printUsage(); return; }
   if (command === 'doctor') { await runDoctor(rest); return; }
   if (command === 'auth') { await runAuthCommand(subcommand, rest); return; }
@@ -43,13 +45,21 @@ async function main(): Promise<void> {
   const port = Number.parseInt(getStringArg(args.port) || '17860', 10);
   const permission = parsePermission(getStringArg(args.permission) || 'preview');
   const allowRemote = false;
-  const enableMcp = args.mcp === 'true' || args.mcp === true;
+  const enableMcpStdio = args.mcp === 'true' || args.mcp === true;
+  const stdioOnly = args['stdio-only'] === 'true' || args['stdio-only'] === true;
+  const enableMcpHttp = !stdioOnly && args['no-mcp-http'] !== true && args['no-mcp-http'] !== 'true';
+
+  if (stdioOnly && !enableMcpStdio) {
+    throw new Error('--stdio-only 必须与 --mcp 一起使用。');
+  }
 
   if (host !== '127.0.0.1' && host !== 'localhost' && host !== '::1') {
     throw new Error('AI Bridge 只允许监听 127.0.0.1、localhost 或 ::1；远程 AI 请使用 LingBuilder 云端 API。');
   }
 
-  const token = getStringArg(args.token) || crypto.randomBytes(24).toString('hex');
+  const token = stdioOnly
+    ? 'stdio-transport-does-not-use-http-token'
+    : getStringArg(args.token) || process.env.LINGBUILDER_AI_BRIDGE_TOKEN || crypto.randomBytes(24).toString('hex');
   const options: AiBridgeServerOptions = {
     workspaceRoot,
     host,
@@ -57,12 +67,29 @@ async function main(): Promise<void> {
     token,
     permission,
     allowRemote,
-    enableMcp
+    enableMcp: enableMcpStdio || enableMcpHttp
   };
 
-  const service = new AiBridgeService(options);
+  const moduleAccess = new ModuleAccessService();
+  const encodedModuleAccess = process.env.LINGBUILDER_MODULE_ACCESS_STATE;
+  if (encodedModuleAccess) {
+    const authorizations = JSON.parse(Buffer.from(encodedModuleAccess, 'base64url').toString('utf8'));
+    if (Array.isArray(authorizations)) authorizations.forEach(authorization => moduleAccess.sync(authorization));
+  }
+  const service = new AiBridgeService(options, {
+    assertModuleAccess: moduleIds => moduleIds.forEach(moduleId => moduleAccess.assertAccess(moduleId))
+  });
+  if (stdioOnly) {
+    installAiBridgeStdioShutdownHandlers(service);
+    console.error(`LINGBUILDER_AI_BRIDGE_READY ${JSON.stringify({ host: 'stdio', port: 0, origin: 'stdio', workspaceRoot, permission, mcpHttp: false, mcpStdio: true })}`);
+    console.error(`LingBuilder AI Bridge MCP stdio 已启动；工作区：${workspaceRoot}；权限：${permission}`);
+    startAiBridgeMcpServer(service);
+    return;
+  }
   const app = express();
   app.use(express.json({ limit: '4mb' }));
+  const mcpHttpGateway = enableMcpHttp ? createAiBridgeMcpHttpGateway(service, token) : undefined;
+  if (mcpHttpGateway) app.use('/api/ai-bridge/mcp', mcpHttpGateway.router);
   app.use('/api/ai-bridge', createAiBridgeRouter(service, token));
   const server = http.createServer(app);
 
@@ -70,14 +97,19 @@ async function main(): Promise<void> {
     server.listen(port, host, resolve);
   });
 
-  const log = enableMcp ? console.error : console.log;
-  installAiBridgeShutdownHandlers(server, service, log);
-  log(`LingBuilder AI Bridge listening on http://${host}:${port}/api/ai-bridge`);
+  const address = server.address();
+  const actualPort = typeof address === 'object' && address ? address.port : port;
+  const origin = `http://${host}:${actualPort}`;
+  const log = enableMcpStdio ? console.error : console.log;
+  installAiBridgeShutdownHandlers(server, service, log, () => mcpHttpGateway?.close());
+  log(`LINGBUILDER_AI_BRIDGE_READY ${JSON.stringify({ host, port: actualPort, origin, workspaceRoot, permission, mcpHttp: enableMcpHttp, mcpStdio: enableMcpStdio })}`);
+  log(`LingBuilder AI Bridge listening on ${origin}/api/ai-bridge`);
   log(`Workspace: ${workspaceRoot}`);
   log(`Permission: ${permission}`);
   log(`Token: ${token}`);
+  if (enableMcpHttp) log(`MCP Streamable HTTP: ${origin}/api/ai-bridge/mcp`);
 
-  if (enableMcp) {
+  if (enableMcpStdio) {
     startAiBridgeMcpServer(service);
   }
 }
@@ -126,10 +158,53 @@ async function runProjectCommand(subcommand: string | undefined, rest: string[])
   try {
     if (subcommand === 'diagnose') { printValue(await service.getLingCppDiagnostics(request), args.json === true); return; }
     if (subcommand === 'export') { if (!approved) { printValue(await service.nativePreview(request), args.json === true); return; } printValue(await service.nativeExport({ ...request, approved: true }), args.json === true); return; }
-    if (subcommand === 'build' || subcommand === 'run') { if (!approved) throw new Error('构建和运行必须显式传入 --yes；可先使用 project export 预览。'); printValue(await service.buildRun({ ...request, run: subcommand === 'run', approved: true }), args.json === true); return; }
+    if (subcommand === 'build') {
+      if (!approved) throw new Error('构建和运行必须显式传入 --yes；可先使用 project export 预览。');
+      printValue(await service.buildRun({ ...request, run: false, approved: true }), args.json === true);
+      return;
+    }
+    if (subcommand === 'run') {
+      if (!approved) throw new Error('构建和运行必须显式传入 --yes；可先使用 project export 预览。');
+      const result = await service.buildRun({ ...request, run: true, approved: true });
+      if (!result.ok) {
+        printValue(result, args.json === true);
+        return;
+      }
+      const runCompletion = await waitForProjectRun(service, request.project?.id || 'window-preview');
+      printValue({ ...result, runCompletion }, args.json === true);
+      return;
+    }
     if (subcommand === 'stop') { printValue(await service.stopRuns(), args.json === true); return; }
     throw new Error('project 子命令仅支持 diagnose、export、build、run、stop。');
   } finally { await service.shutdown(); }
+}
+
+async function waitForProjectRun(service: AiBridgeService, projectId: string) {
+  let resolveSignal: (signal: 'SIGINT' | 'SIGTERM') => void = () => undefined;
+  const signalPromise = new Promise<'SIGINT' | 'SIGTERM'>(resolve => {
+    resolveSignal = resolve;
+  });
+  const onSigint = () => resolveSignal('SIGINT');
+  const onSigterm = () => resolveSignal('SIGTERM');
+  process.once('SIGINT', onSigint);
+  process.once('SIGTERM', onSigterm);
+  const completionPromise = service.waitForRun(projectId);
+  try {
+    const outcome = await Promise.race([
+      completionPromise.then(completion => ({ kind: 'completed' as const, completion })),
+      signalPromise.then(signal => ({ kind: 'signal' as const, signal }))
+    ]);
+    if (outcome.kind === 'completed') return outcome.completion;
+
+    console.error(`收到 ${outcome.signal}，正在停止项目运行进程…`);
+    const stopResult = await service.stopRuns();
+    const completion = await completionPromise;
+    process.exitCode = outcome.signal === 'SIGINT' ? 130 : 143;
+    return { ...completion, interruptedBy: outcome.signal, stopResult };
+  } finally {
+    process.off('SIGINT', onSigint);
+    process.off('SIGTERM', onSigterm);
+  }
 }
 
 function printValue(value: unknown, json: boolean) { if (json) console.log(JSON.stringify(value, bigintReplacer, 2)); else console.log(formatHuman(value)); }
@@ -139,7 +214,8 @@ function formatHuman(value: unknown) { return typeof value === 'string' ? value 
 function installAiBridgeShutdownHandlers(
   server: http.Server,
   service: AiBridgeService,
-  log: (...values: unknown[]) => void
+  log: (...values: unknown[]) => void,
+  closeMcpHttp: () => Promise<void> | undefined = () => undefined
 ): void {
   let shutdownPromise: Promise<void> | null = null;
 
@@ -149,6 +225,11 @@ function installAiBridgeShutdownHandlers(
       process.off('SIGINT', handleSigint);
       process.off('SIGTERM', handleSigterm);
       log(`收到 ${signal}，正在停止 AI Bridge 及其受控运行进程…`);
+      try {
+        await closeMcpHttp();
+      } catch (error) {
+        console.error(`AI Bridge MCP HTTP 会话关闭失败：${error instanceof Error ? error.message : String(error)}`);
+      }
       try {
         await closeHttpServer(server);
       } catch (error) {
@@ -172,6 +253,19 @@ function installAiBridgeShutdownHandlers(
 
   process.once('SIGINT', handleSigint);
   process.once('SIGTERM', handleSigterm);
+}
+
+function installAiBridgeStdioShutdownHandlers(service: AiBridgeService): void {
+  let shuttingDown = false;
+  const shutdown = (exitCode: number) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    void service.shutdown()
+      .catch(error => console.error(`AI Bridge stdio 清理失败：${error instanceof Error ? error.message : String(error)}`))
+      .finally(() => process.exit(exitCode));
+  };
+  process.once('SIGINT', () => shutdown(130));
+  process.once('SIGTERM', () => shutdown(143));
 }
 
 async function closeHttpServer(server: http.Server): Promise<void> {
@@ -326,7 +420,7 @@ function printUsage(): void {
   lingbuilder ai chat --model <alias> --prompt <text> [--json]
   lingbuilder workspace inspect [--workspace <path>] [--json]
   lingbuilder project diagnose|export|build|run|stop --request <file.json> [--workspace <path>] [--yes] [--json]
-  lingbuilder ai-server --workspace <path> [--host 127.0.0.1] [--port 17860] [--permission preview] [--token <token>] [--mcp]
+  lingbuilder ai-server --workspace <path> [--host 127.0.0.1] [--port 17860] [--permission preview] [--token <token>] [--mcp] [--no-mcp-http] [--stdio-only]
   lingbuilder module init --template cpp-source --out <dir> [--id <id>] [--name <name>]
   lingbuilder module validate <dir|file.lbmod>
   lingbuilder module pack <dir> --out <file.lbmod>
@@ -337,7 +431,12 @@ function printUsage(): void {
 Permissions:
   readonly  只允许读取、搜索、诊断和生成预览
   preview   默认模式，写入和执行需要 approved=true
-  yolo      带 token 的客户端可自动写入和执行受控 LingBuilder 命令`);
+  yolo      带 token 的客户端可自动写入和执行受控 LingBuilder 命令
+
+MCP:
+  默认启用带 Bearer Token 的 Streamable HTTP 端点 /api/ai-bridge/mcp
+  --mcp 额外启用兼容旧客户端的 stdio MCP；--no-mcp-http 可关闭共享 HTTP MCP
+  --mcp --stdio-only 只启动 stdio MCP，供 ChatGPT/Codex 桌面客户端直接拉起，不监听端口也不需要 Token`);
 }
 
 main().catch(error => {

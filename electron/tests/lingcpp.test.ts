@@ -1,4 +1,7 @@
 import test from 'node:test';
+import './functionLibraries.test';
+import './projectDataTypes.test';
+import './projectDataTypesUi.test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -29,6 +32,27 @@ import {
   lingCppLanguageService
 } from '../src/services/lingCpp/languageService';
 import { applyLingCppAstEdit } from '../src/services/lingCpp/astEditService';
+import { createProjectGlobalContext, getProjectGlobalDiagnostics } from '../src/services/lingCpp/projectGlobalService';
+import { createProjectConstantRenameProposal, findProjectConstantReferences, getProjectConstantNameAtCursor } from '../src/services/lingCpp/projectConstantReferenceService';
+import {
+  getBeginnerLocalInsertStatementIndex,
+  getBeginnerMethodBodySegments,
+  isBeginnerLocalInsertShortcut
+} from '../src/services/lingCpp/beginnerLocalVariableLayout';
+import { analyzeBeginnerAutoLocalAssignment, isCompleteBeginnerExpression } from '../src/services/lingCpp/beginnerAutoLocalService';
+import {
+  buildBeginnerTypeCompletionCatalog,
+  filterBeginnerTypeCompletions,
+  resolveBeginnerTypeAlias
+} from '../src/services/lingCpp/beginnerTypeCompletion';
+import { createBeginnerVariableCompletion } from '../src/services/lingCpp/beginnerVariableCompletion';
+import { selectCompletionFilterText } from '../src/services/lingCpp/completionSearchAliases';
+import {
+  getBeginnerProcedureCallAtCursor,
+  resolveBeginnerProcedureDefinition
+} from '../src/services/lingCpp/beginnerDefinitionNavigation';
+import { getBeginnerIfFlowGuideRows } from '../src/services/lingCpp/beginnerFlowGuide';
+import { getBeginnerTextOffsetAtPoint } from '../src/services/lingCpp/beginnerTextPosition';
 import {
   applyPendingBeginnerCodeDrafts,
   createBeginnerCodeDraftKey
@@ -393,6 +417,89 @@ test('LingCpp parses scoped local variables and diagnoses undeclared or incompat
   assert.ok(useBeforeDeclarationDiagnostics.some(diagnostic => diagnostic.id.includes('undeclared-variable') && diagnostic.message.includes('ret')));
 });
 
+test('LingCpp project constants parse, validate, complete, rename and remain read-only', () => {
+  const symbolPath = 'src/项目全局变量.lcpp';
+  const symbolSource = [
+    '常量 整数型 最大重试次数 = 3',
+    '常量 长整数型 大整数 = 最大重试次数 * 1000',
+    '常量 小数型 缩放 = 1.25',
+    '常量 双精度小数型 精度 = 0.001',
+    '常量 逻辑型 启用日志 = 真',
+    '常量 文本型 软件名称 = "LingBuilder"',
+    '全局 整数型 当前次数 = 最大重试次数'
+  ].join('\n');
+  const sourcePath = 'src/MainWindow.lcpp';
+  const source = [
+    '类 MainWindow : 公开 窗体',
+    '    事件 创建完毕()',
+    '        调试输出(软件名称)',
+    '        最大重试次数 = 4',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const parsed = parseLingCpp(symbolSource);
+  assert.equal(parsed.program.constants.length, 6);
+  assert.equal(parsed.symbolIndex.constants.length, 6);
+  assert.equal(parsed.program.constants[0]?.initialValue, '3');
+  assert.deepEqual(getProjectGlobalDiagnostics(symbolSource, symbolPath), []);
+
+  const projectGlobals = createProjectGlobalContext(symbolPath, symbolSource);
+  const diagnostics = getLingCppSemanticDiagnostics(source, undefined, sourcePath, undefined, projectGlobals);
+  assert.ok(diagnostics.some(diagnostic => diagnostic.message.includes('最大重试次数') && diagnostic.message.includes('不能重新赋值')));
+  const completions = getLingCppCompletionItems(
+    { source, line: 3, column: 15, triggerText: '软件' },
+    buildLingCppLanguageContext(source, undefined, undefined, sourcePath, projectGlobals)
+  );
+  assert.ok(completions.some(item => item.label === '软件名称' && item.detail.includes('项目常量')));
+
+  const added = applyLingCppAstEdit(symbolSource, { kind: 'add-constant', constant: { name: '超时时间', type: '整数型', initialValue: '30' } });
+  assert.equal(added.success, true);
+  assert.equal(parseLingCpp(added.sourceCode).program.constants.at(-1)?.name, '超时时间');
+  const updated = applyLingCppAstEdit(added.sourceCode, { kind: 'update-constant', constantName: '超时时间', initialValue: '60' });
+  assert.equal(parseLingCpp(updated.sourceCode).program.constants.at(-1)?.initialValue, '60');
+  const removed = applyLingCppAstEdit(updated.sourceCode, { kind: 'delete-constant', constantName: '超时时间' });
+  assert.equal(parseLingCpp(removed.sourceCode).program.constants.some(item => item.name === '超时时间'), false);
+
+  const files = [
+    { filePath: symbolPath, sourceCode: symbolSource, language: 'lingcpp' },
+    { filePath: sourcePath, sourceCode: source.replace('        最大重试次数 = 4\n', ''), language: 'lingcpp' }
+  ];
+  const references = findProjectConstantReferences(files, '软件名称');
+  assert.equal(references.length, 2);
+  const proposal = createProjectConstantRenameProposal(files, symbolPath, '软件名称', '产品名称');
+  const applied = applyWorkspaceEditToFiles(files, proposal);
+  assert.ok(applied.every(file => !file.sourceCode.includes('软件名称')));
+  assert.ok(applied.some(file => file.sourceCode.includes('调试输出(产品名称)')));
+  const constantCursorSource = '调试输出(软件名称)';
+  assert.equal(getProjectConstantNameAtCursor(constantCursorSource, constantCursorSource.indexOf('软件名称') + 2, ['软件名称']), '软件名称');
+  assert.equal(getProjectConstantNameAtCursor('调试输出("软件名称")', 8, ['软件名称']), undefined);
+  assert.equal(findProjectConstantReferences([
+    ...files,
+    { filePath: 'src/忽略项.lcpp', sourceCode: '// 软件名称\n调试输出("软件名称")\n软件名称()', language: 'lingcpp' }
+  ], '软件名称').length, 2);
+  assert.throws(
+    () => createProjectConstantRenameProposal([
+      ...files,
+      { filePath: 'src/冲突.lcpp', sourceCode: '类 冲突\n    整数型 已有成员\n结束类', language: 'lingcpp' }
+    ], symbolPath, '软件名称', '已有成员'),
+    /同名成员/u
+  );
+
+  assert.ok(getProjectGlobalDiagnostics('全局 整数型 数量 = 1\n常量 整数型 上限 = 2', symbolPath).some(diagnostic => diagnostic.message.includes('必须声明在全部项目全局变量之前')));
+  assert.ok(getProjectGlobalDiagnostics('常量 字节集 数据 = "x"', symbolPath).some(diagnostic => diagnostic.message.includes('不支持类型')));
+  assert.ok(getProjectGlobalDiagnostics('常量 文本型 空值 = ', symbolPath).some(diagnostic => diagnostic.message.includes('必须填写常量值')));
+});
+
+test('新手项目变量与常量编辑器提供双页签、引用入口和窄屏滚动容器', () => {
+  const editorSource = readFileSync(resolve(import.meta.dirname, '../src/components/ProjectGlobalVariableEditor.tsx'), 'utf8');
+  assert.match(editorSource, /项目变量与常量/u);
+  assert.match(editorSource, /项目变量<\/button>/u);
+  assert.match(editorSource, /项目常量<\/button>/u);
+  assert.match(editorSource, /showReferences/u);
+  assert.match(editorSource, /overflow-auto/u);
+  assert.match(editorSource, /readOnly/u);
+});
+
 test('LingCpp completion only exposes locals from the current method', () => {
   const source = [
     '类 MainWindow : 公开 窗体',
@@ -416,6 +523,36 @@ test('LingCpp completion only exposes locals from the current method', () => {
   assert.equal(firstLabels.includes('仅第二个可见'), false);
   assert.ok(secondLabels.includes('仅第二个可见'));
   assert.equal(secondLabels.includes('仅第一个可见'), false);
+});
+
+test('LingCpp source variables support full pinyin and initials in scoped completions', () => {
+  const source = [
+    '类 MainWindow : 公开 窗体',
+    '    文本型 本机地址',
+    '    事件 第一个事件()',
+    '        局部 文本型 本机',
+    '        调试输出(本机)',
+    '    结束',
+    '    事件 第二个事件()',
+    '        调试输出(本机地址)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const languageContext = buildLingCppLanguageContext(source);
+  const firstItems = getLingCppCompletionItems(
+    { source, line: 5, column: 18, triggerText: 'bj' },
+    languageContext
+  );
+  const secondItems = getLingCppCompletionItems(
+    { source, line: 8, column: 18, triggerText: 'bj' },
+    languageContext
+  );
+
+  assert.ok(firstItems.some(item => item.label === '本机' && item.pinyin?.includes('bj')));
+  assert.ok(firstItems.some(item => item.label === '本机地址' && item.pinyin?.includes('bjdz')));
+  assert.ok(secondItems.some(item => item.label === '本机地址'));
+  assert.equal(secondItems.some(item => item.label === '本机'), false);
+  assert.equal(selectCompletionFilterText('本机', ['benji', 'bj'], 'bj'), 'bj');
 });
 
 test('parseLingCpp keeps 窗口_ commands inside the current event instead of treating them as method declarations', () => {
@@ -815,7 +952,7 @@ test('LingCpp language service reports block diagnostics and keeps formatting id
   const brokenSource = sampleSource.replace(LING_CPP_KEYWORDS[13], '');
   const diagnostics = getLingCppSemanticDiagnostics(brokenSource);
 
-  assert.ok(diagnostics.some(diagnostic => diagnostic.id.includes('lingcpp-language-error')));
+  assert.ok(diagnostics.some(diagnostic => diagnostic.level === 'error' && diagnostic.message.includes('缺少结束语句')));
 
   const formatted = formatLingCpp(sampleSource);
   assert.equal(formatLingCpp(formatted), formatted);
@@ -926,7 +1063,7 @@ test('LingCpp designer diagnostics ignore handlers registered through enabled mo
           runtimeName: 'CustomModuleSubscribe',
           parameters: [
             { name: '频道', type: 'wideString' },
-            { name: '回调处理器名称', type: 'wideString' }
+            { name: '回调处理器名称', type: 'handler' }
           ],
           returnType: 'void'
         }]
@@ -939,7 +1076,7 @@ test('LingCpp designer diagnostics ignore handlers registered through enabled mo
     '公开:',
     '    文本型 关联设计文件 = "MainWindow.xml"',
     '    构造()',
-    '        自定义模块_订阅("状态,更新", "数据通道_收到消息")',
+    '        自定义模块_订阅("状态,更新", &数据通道_收到消息)',
     '    结束',
     '    事件 数据通道_收到消息()',
     '        调试输出("已收到")',
@@ -1540,13 +1677,393 @@ test('LingCpp AST edit service adds, updates and deletes method-scoped local var
   assert.equal(removed.sourceCode.includes('局部 文本型 请求地址'), false);
 });
 
+test('beginner definition navigation resolves project procedure calls at the cursor', () => {
+  const source = `类 网页窗口 : 公开 窗体
+公开:
+    空 _GET按钮_被单击()
+        演示_GET与全部结果读取()
+        调试输出("演示_GET与全部结果读取()")
+        // 演示_GET与全部结果读取()
+    结束
+
+    空 演示_GET与全部结果读取()
+        调试输出("已读取")
+    结束
+结束类`;
+  const parsed = parseLingCpp(source);
+  const body = `演示_GET与全部结果读取()
+调试输出("演示_GET与全部结果读取()")
+// 演示_GET与全部结果读取()`;
+  const procedureNames = parsed.program.classes[0].methods.map(method => method.name);
+  const callOffset = body.indexOf('GET') + 1;
+  const call = getBeginnerProcedureCallAtCursor(body, callOffset, procedureNames);
+
+  assert.equal(call?.name, '演示_GET与全部结果读取');
+  assert.equal(
+    getBeginnerProcedureCallAtCursor(
+      body,
+      body.indexOf('演示_GET与全部结果读取', body.indexOf('\n')) + 2,
+      procedureNames
+    ),
+    null
+  );
+  assert.equal(
+    getBeginnerProcedureCallAtCursor(
+      body,
+      body.lastIndexOf('演示_GET与全部结果读取') + 2,
+      procedureNames
+    ),
+    null
+  );
+
+  const definition = resolveBeginnerProcedureDefinition(
+    parsed.program,
+    '网页窗口',
+    call?.name || ''
+  );
+  assert.equal(definition?.className, '网页窗口');
+  assert.equal(definition?.method.name, '演示_GET与全部结果读取');
+  assert.equal(definition?.method.line, 9);
+});
+
+test('beginner definition navigation resolves &handler references and ignores quoted handlers', () => {
+  const body = '请求编号 = 网页_异步访问("https://example.com", 0, &获取IP完成)';
+  const handlerOffset = body.indexOf('获取IP完成') + 2;
+  assert.equal(
+    getBeginnerProcedureCallAtCursor(body, handlerOffset, ['获取IP完成'])?.name,
+    '获取IP完成'
+  );
+
+  const quoted = '调试输出("&获取IP完成")';
+  assert.equal(
+    getBeginnerProcedureCallAtCursor(quoted, quoted.indexOf('获取IP完成') + 2, ['获取IP完成']),
+    null
+  );
+});
+
+test('beginner flow guides stay on 如果 branches instead of preceding assignments', () => {
+  const firstBody = [
+    '调试输出("按钮1被单击")',
+    '编辑框1.内容 = "正在获取本机IP……"',
+    'IP请求编号 = 网页_异步访问("https://ipinfo.io/json", 0, &获取IP完成)',
+    '如果 (IP请求编号 == 0)',
+    '编辑框1.内容 = "无法启动后台请求"',
+    '如果结束'
+  ];
+  assert.deepEqual(getBeginnerIfFlowGuideRows(firstBody).map(row => row.mark), [
+    '', '', '', '┌', '│', '└'
+  ]);
+
+  const completionBody = [
+    'IP请求编号 = 网页_异步取当前请求编号()',
+    '错误信息 = 网页_异步取错误信息(IP请求编号)',
+    '如果 (错误信息 != "")',
+    '编辑框1.内容 = "获取失败：" + 错误信息',
+    '否则',
+    '编辑框1.内容 = 网页_异步取返回文本(IP请求编号)',
+    '如果结束'
+  ];
+  assert.deepEqual(getBeginnerIfFlowGuideRows(completionBody).map(row => row.mark), [
+    '', '', '┌', '│', '├', '│', '└'
+  ]);
+});
+
+test('beginner pointer position resolves the clicked async handler instead of the old caret', () => {
+  const body = [
+    '调试输出("按钮1被单击")',
+    'IP请求编号 = 网页_异步访问("https://ipinfo.io/json", 0, &获取IP完成)'
+  ].join('\n');
+  const secondLine = body.split('\n')[1];
+  const handlerColumn = secondLine.indexOf('获取IP完成') + 2;
+  const offset = getBeginnerTextOffsetAtPoint(body, {
+    clientX: handlerColumn * 10,
+    clientY: 30,
+    left: 0,
+    top: 0,
+    paddingLeft: 0,
+    paddingTop: 0,
+    scrollLeft: 0,
+    scrollTop: 0,
+    lineHeight: 24,
+    measureText: text => text.length * 10
+  });
+
+  assert.equal(
+    getBeginnerProcedureCallAtCursor(body, offset, ['获取IP完成'])?.name,
+    '获取IP完成'
+  );
+});
+
+test('beginner definition navigation prefers the caller class and rejects ambiguous cross-class methods', () => {
+  const parsed = parseLingCpp(`类 甲 : 公开 窗体
+公开:
+    空 同名功能()
+    结束
+结束类
+
+类 乙 : 公开 窗体
+公开:
+    空 同名功能()
+    结束
+结束类`);
+
+  assert.equal(resolveBeginnerProcedureDefinition(parsed.program, '乙', '同名功能')?.className, '乙');
+  assert.equal(resolveBeginnerProcedureDefinition(parsed.program, '不存在的类', '同名功能'), undefined);
+});
+
+test('local variables can be inserted between statements and survive beginner body rewrites', () => {
+  const source = `类 测试窗口 : 公开 窗体
+公开:
+    空 运行()
+        调试输出("前")
+        调试输出("后")
+    结束
+结束类`;
+  const inserted = applyLingCppAstEdit(source, {
+    kind: 'add-local',
+    className: '测试窗口',
+    methodName: '运行',
+    insertBeforeLine: 5,
+    local: { name: '中间值', type: '文本型', initialValue: '"内容"' }
+  });
+  assert.equal(inserted.success, true);
+  assert.match(inserted.sourceCode, /调试输出\("前"\)\n\s+局部 文本型 中间值 = "内容"\n\s+调试输出\("后"\)/u);
+
+  const parsedMethod = findLingCppMethod(parseLingCpp(inserted.sourceCode).program, '运行');
+  assert.ok(parsedMethod);
+  const segments = getBeginnerMethodBodySegments(parsedMethod);
+  assert.deepEqual(segments.map(segment => segment.kind), ['code', 'locals', 'code']);
+
+  const rewritten = applyLingCppAstEdit(inserted.sourceCode, {
+    kind: 'update-method-body',
+    className: '测试窗口',
+    methodName: '运行',
+    bodyLines: ['调试输出("新的前段")', '调试输出("新的后段")']
+  });
+  assert.equal(rewritten.success, true);
+  assert.match(rewritten.sourceCode, /调试输出\("新的前段"\)\n\s+局部 文本型 中间值 = "内容"\n\s+调试输出\("新的后段"\)/u);
+
+  const expandedFirstSegment = applyLingCppAstEdit(inserted.sourceCode, {
+    kind: 'update-method-body',
+    className: '测试窗口',
+    methodName: '运行',
+    bodyLines: ['调试输出("前")', '调试输出("前段新增")', '调试输出("后")'],
+    localStatementAnchors: { 中间值: 2 }
+  });
+  assert.equal(expandedFirstSegment.success, true);
+  assert.match(expandedFirstSegment.sourceCode, /调试输出\("前"\)\n\s+调试输出\("前段新增"\)\n\s+局部 文本型 中间值 = "内容"\n\s+调试输出\("后"\)/u);
+});
+
+test('multiple local-variable groups remain freely insertable across one method body', () => {
+  let source = `类 测试窗口 : 公开 窗体
+公开:
+    空 运行()
+        调试输出("甲")
+        调试输出("乙")
+        调试输出("丙")
+    结束
+结束类`;
+  const insertBeforeStatement = (name: string, statementText?: string) => {
+    const method = findLingCppMethod(parseLingCpp(source).program, '运行');
+    assert.ok(method);
+    const insertBeforeLine = statementText
+      ? method.statements.find(statement => statement.text.includes(statementText))?.line
+      : method.endLine;
+    const result = applyLingCppAstEdit(source, {
+      kind: 'add-local',
+      className: '测试窗口',
+      methodName: '运行',
+      insertBeforeLine,
+      local: { name, type: '整数型' }
+    });
+    assert.equal(result.success, true);
+    source = result.sourceCode;
+  };
+
+  insertBeforeStatement('前置变量', '甲');
+  insertBeforeStatement('中间变量', '乙');
+  insertBeforeStatement('尾部变量');
+
+  assert.match(source, /局部 整数型 前置变量\n\s+调试输出\("甲"\)\n\s+局部 整数型 中间变量\n\s+调试输出\("乙"\)\n\s+调试输出\("丙"\)\n\s+局部 整数型 尾部变量/u);
+  const method = findLingCppMethod(parseLingCpp(source).program, '运行');
+  assert.ok(method);
+  assert.deepEqual(
+    getBeginnerMethodBodySegments(method).map(segment => segment.kind),
+    ['locals', 'code', 'locals', 'code', 'locals']
+  );
+});
+
+test('beginner Ctrl+L resolves the caret row to the statement that must move down', () => {
+  const body = [
+    '返回字节 = 网页_访问_对象(网址, 1, 表单数据)',
+    '调试输出("POST 状态码：", 网页_取返回状态代码())',
+    '调试输出("POST 返回文本：", 网页_取返回文本())',
+    '调试输出("POST 错误信息：", 网页_取错误信息())'
+  ].join('\n');
+  const fourthLineStart = body.lastIndexOf('调试输出');
+
+  assert.equal(getBeginnerLocalInsertStatementIndex(body, fourthLineStart), 3);
+  assert.equal(getBeginnerLocalInsertStatementIndex(body, fourthLineStart + 8), 3);
+  assert.equal(getBeginnerLocalInsertStatementIndex(`${body}\n`, body.length + 1), 4);
+  assert.equal(getBeginnerLocalInsertStatementIndex(`\n${body}`, 0), 0);
+  assert.equal(getBeginnerLocalInsertStatementIndex(body, fourthLineStart, 5), 8);
+  assert.equal(getBeginnerLocalInsertStatementIndex('第一行\n\n第三行', 4), 1);
+  assert.equal(isBeginnerLocalInsertShortcut({
+    key: 'Process', code: 'KeyL', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false
+  }), true);
+  assert.equal(isBeginnerLocalInsertShortcut({
+    key: 'l', code: 'KeyL', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false
+  }), false);
+});
+
+test('beginner Enter auto-declaration infers literals and module command return types safely', () => {
+  const source = `类 测试窗口 : 公开 窗体
+公开:
+    空 _按钮1_被单击()
+        url="http://127.0.0.1:8981/api"
+        ret = 网页_访问_对象(url, 1)
+    结束
+结束类`;
+  const parsed = parseLingCpp(source);
+  const ownerClass = parsed.program.classes[0];
+  const method = ownerClass.methods[0];
+  const webModule: InstalledModule = {
+    manifest: {
+      schemaVersion: 2,
+      id: 'lingbuilder.web.http.test',
+      name: '网页访问',
+      version: '1.0.0',
+      category: '网络',
+      description: '测试网页访问返回类型',
+      contributes: {
+        commands: [{
+          name: '网页_访问_对象',
+          signature: '网页_访问_对象(网址, 访问方式)',
+          description: '访问网页',
+          returnType: '字节集'
+        }]
+      },
+      bindings: {
+        commands: [{ command: '网页_访问_对象', runtimeName: '网页_访问_对象', returnType: 'raw' }]
+      },
+      targets: []
+    },
+    installPath: 'test/web',
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+
+  const url = analyzeBeginnerAutoLocalAssignment({
+    lineText: 'url="http://127.0.0.1:8981/api"',
+    method,
+    ownerClass
+  });
+  assert.deepEqual(url, {
+    kind: 'declare',
+    name: 'url',
+    expression: '"http://127.0.0.1:8981/api"',
+    inferredType: '文本型'
+  });
+
+  const ret = analyzeBeginnerAutoLocalAssignment({
+    lineText: 'ret = 网页_访问_对象(url, 1)',
+    method,
+    ownerClass,
+    moduleContext: { enabledModules: [webModule], availableModules: [webModule] }
+  });
+  assert.equal(ret.kind, 'declare');
+  assert.equal(ret.kind === 'declare' ? ret.inferredType : undefined, '字节集');
+
+  const unknown = analyzeBeginnerAutoLocalAssignment({
+    lineText: '未知结果 = 自定义调用()',
+    method,
+    ownerClass
+  });
+  assert.equal(unknown.kind, 'declare');
+  assert.equal(unknown.kind === 'declare' ? unknown.inferredType : 'unexpected', undefined);
+  assert.equal(analyzeBeginnerAutoLocalAssignment({ lineText: '// url="x"', method, ownerClass }).kind, 'none');
+  assert.equal(analyzeBeginnerAutoLocalAssignment({ lineText: '按钮1.标题 = "x"', method, ownerClass }).kind, 'none');
+  assert.equal(isCompleteBeginnerExpression('网页_访问_对象(url, 1'), false);
+  assert.equal(isCompleteBeginnerExpression('网页_访问_对象(url, 1)'), true);
+});
+
+test('beginner local variable type completion resolves Chinese pinyin abbreviations', () => {
+  const catalog = buildBeginnerTypeCompletionCatalog([
+    '文本型', '整数型', '逻辑型', '小数型', '按钮'
+  ]);
+  assert.equal(filterBeginnerTypeCompletions(catalog, 'wb')[0]?.label, '文本型');
+  assert.equal(filterBeginnerTypeCompletions(catalog, 'zs')[0]?.label, '整数型');
+  assert.equal(filterBeginnerTypeCompletions(catalog, 'string')[0]?.label, '文本型');
+  assert.equal(filterBeginnerTypeCompletions(catalog, 'int')[0]?.label, '整数型');
+  assert.equal(resolveBeginnerTypeAlias(catalog, 'wb'), '文本型');
+  assert.equal(resolveBeginnerTypeAlias(catalog, 'zs'), '整数型');
+  assert.equal(resolveBeginnerTypeAlias(catalog, '自定义类型'), '自定义类型');
+});
+
+test('beginner local and assembly variables expose pinyin completion aliases', () => {
+  const local = createBeginnerVariableCompletion({
+    name: '本机IP',
+    type: '文本型',
+    scope: '局部变量',
+    ownerName: '按钮1_被单击'
+  });
+  const assembly = createBeginnerVariableCompletion({
+    name: '本机地址',
+    type: '文本型',
+    scope: '程序集变量'
+  });
+
+  assert.ok(local.aliases.includes('benjiip'));
+  assert.ok(local.aliases.includes('bjip'));
+  assert.ok(local.aliases.some(alias => alias.startsWith('bj')));
+  assert.ok(assembly.aliases.includes('benjidizhi'));
+  assert.ok(assembly.aliases.includes('bjdz'));
+  assert.match(local.detail, /局部变量/u);
+  assert.match(assembly.detail, /程序集变量/u);
+});
+
 test('beginner editor exposes a method-scoped local variable table', () => {
   const source = readFileSync(resolve(process.cwd(), 'src', 'components', 'DiffViewer.tsx'), 'utf8');
-  assert.match(source, /局部变量 · 仅在当前子程序内有效/u);
+  assert.match(source, /局部变量 · .*仅在当前子程序内有效/u);
   assert.match(source, /kind: 'add-local'/u);
   assert.match(source, /kind: 'update-local'/u);
   assert.match(source, /kind: 'delete-local'/u);
   assert.match(source, /getBeginnerCodeCompletionItems\(target\)/u);
+  assert.match(source, /createBeginnerVariableCompletion\(/u);
+  assert.match(source, /event\.key === 'Enter' \|\| event\.key === 'Tab'/u);
+  assert.match(source, /onMouseDown=\{event =>/u);
+  assert.match(source, /const segmentId = segmentContext\?\.segment\.id \|\| 'all'/u);
+  assert.match(source, /beginnerCompletionState\.segmentId === segmentId/u);
+  assert.match(source, /isBeginnerLocalInsertShortcut\(event\)/u);
+  assert.match(source, /getBeginnerLocalInsertStatementIndex\(/u);
+  assert.match(source, /折叠局部变量组/u);
+  assert.match(source, /tryBeginnerAutoLocalOnEnter/u);
+  assert.match(source, /为 .* 选择类型/u);
+  assert.match(source, /handleBeginnerCodeClick/u);
+  assert.match(source, /转到定义：/u);
+  assert.match(source, /&处理器名可转到定义/u);
+  assert.match(source, /getBeginnerTextareaOffsetAtPoint\(event\.currentTarget, event\.clientX, event\.clientY\)/u);
+  assert.match(source, /style=\{\{ height: `\$\{lineHeight\}px`, lineHeight: `\$\{lineHeight\}px` \}\}/u);
+  assert.match(source, /flowGuideColumn instanceof HTMLElement\) flowGuideColumn\.scrollTop = 0/u);
+  assert.match(source, /data-beginner-process-key/u);
+  assert.match(source, /if \(locals\.length === 0\) return null/u);
+  assert.doesNotMatch(source, /locals:empty/u);
+  assert.doesNotMatch(source, /data-beginner-new-local-type/u);
+  assert.match(source, /data-beginner-local-type/u);
+  assert.match(source, /支持中文、英文和拼音简写/u);
+});
+
+test('beginner editor defers pointer state synchronization until after the caret paint', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src', 'components', 'DiffViewer.tsx'), 'utf8');
+  const appSource = readFileSync(resolve(process.cwd(), 'src', 'App.tsx'), 'utf8');
+  assert.match(appSource, /if \(activeEditorGroupRef\.current === group\) return/u);
+  assert.match(source, /const scheduleBeginnerPointerSync/u);
+  assert.match(source, /frames\.first = window\.requestAnimationFrame/u);
+  assert.match(source, /frames\.second = window\.requestAnimationFrame/u);
+  assert.match(source, /onFocus=\{event => scheduleBeginnerPointerSync/u);
+  assert.match(source, /onSelect=\{event => scheduleBeginnerPointerSync/u);
+  assert.match(source, /const stateChanged = !previous/u);
 });
 
 test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wiring', () => {
@@ -1601,7 +2118,11 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
   assert.ok(mainCpp.includes('background = BlendColor(control->background, RGB(255, 255, 255), 10)'));
   assert.ok(mainCpp.includes('background = BlendColor(control->background, RGB(0, 0, 0), 16)'));
   assert.ok(mainCpp.includes('RGB(125, 211, 252)'));
-  assert.equal(mainCpp.includes('DrawFocusRect(item->hDC'), false);
+  const ownerButtonPainter = mainCpp.slice(
+    mainCpp.indexOf('bool PaintOwnerButton(const DRAWITEMSTRUCT* item)'),
+    mainCpp.indexOf('bool PaintOwnerListBox(', mainCpp.indexOf('bool PaintOwnerButton(const DRAWITEMSTRUCT* item)'))
+  );
+  assert.equal(ownerButtonPainter.includes('DrawFocusRect(item->hDC'), false);
   assert.ok(mainCpp.includes('message == WM_PAINT && IsType(*control, L"ProgressBar")'));
   assert.ok(mainCpp.includes('swprintf_s(label, L"%d%%", percent)'));
   assert.ok(mainCpp.includes('SetTextColor(hdc, RGB(255, 255, 255))'));
@@ -1661,6 +2182,31 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
 
   const layoutJson = generated.files.find(file => file.relativePath === 'layout.json')?.content || '';
   assert.equal(JSON.parse(layoutJson).id, 'sample-project');
+});
+
+test('LCPP 整行注释中的信息框和调试输出不会进入 F5 生成结果', () => {
+  const source = [
+    '类 游戏主窗体 : 公开 窗体',
+    '    事件 _按钮1_被单击()',
+    '        // 信息框("注释弹窗", 64, "事件触发")',
+    '        注释 调试输出("注释日志")',
+    '        // 如果 (信息框("注释确认", 36, "退出确认") == 6)',
+    '        如果 (真)',
+    '            // 信息框("分支注释弹窗", 64, "提示")',
+    '            调试输出("保留输出")',
+    '        如果结束',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  assert.doesNotMatch(mainCpp, /L"(?:注释弹窗|注释日志|注释确认|分支注释弹窗)"/u);
+  assert.match(mainCpp, /if \(true\) \{/u);
+  assert.match(mainCpp, /调试输出\(L"保留输出"\);/u);
 });
 
 test('generateLingCppNativeWin32Project emits members, locals and module return assignments as C++', () => {
@@ -1763,7 +2309,7 @@ test('generateLingCppNativeWin32Project translates beginner open-window commands
   assert.ok(mainCpp.includes('窗口_打开(L"关于太空冒险客户端", L"custom", 100, 200, true);'));
   assert.ok(mainCpp.includes('窗口_打开(L"关于窗体", L"bottom-right");'));
   assert.ok(mainCpp.includes('ResolveWindowPlacement(spec_, windowWidth, windowHeight, placement, x, y, hasCustomPosition, windowX, windowY)'));
-  assert.ok(mainCpp.includes('L"center", CW_USEDEFAULT, CW_USEDEFAULT, g_controls_1'));
+  assert.ok(mainCpp.includes('L"center", CW_USEDEFAULT, CW_USEDEFAULT, true, true, g_controls_1'));
   assert.ok(mainCpp.includes('WindowSpecMatchesName(g_windows[index], windowName)'));
   assert.ok(mainCpp.includes('void 关于菜单_被选择()'));
   assert.ok(mainCpp.includes('class 关于窗体 : public LingWindowBase'));
@@ -1906,9 +2452,147 @@ test('generateLingCppNativeWin32Project keeps richer control types and unsupport
   assert.ok(mainCpp.includes('L"ProgressBar"'));
   assert.ok(mainCpp.includes('L"ComboBox"'));
   assert.ok(mainCpp.includes('调试输出(L"切换记住密码");'));
-  assert.ok(mainCpp.includes('// 暂不支持的中文 C++ 语句：循环'));
-  assert.ok(mainCpp.includes('// 暂不支持的中文 C++ 语句：循环结束'));
+  assert.ok(mainCpp.includes('while (true) {'));
+  assert.equal(mainCpp.includes('// 暂不支持的中文 C++ 语句：循环'), false);
+  assert.equal(mainCpp.includes('// 暂不支持的中文 C++ 语句：循环结束'), false);
   assert.ok(mainCpp.includes('return;'));
+});
+
+test('LingCpp complete control flow generates deterministic C++ and beginner flow guides', () => {
+  const source = `包 控制流测试
+使用 Win32窗口
+
+类 游戏主窗体 : 公开 窗体
+公开:
+    事件 _游戏主窗体_创建完毕()
+        局部 整数型 次数 = 0
+        局部 整数型 索引 = 0
+        局部 整数型 当前项 = 0
+        局部 整数型 项目[]
+        如果真 (真 并且 非假)
+            次数 = 1
+        否则如果 (次数 == 2 或者 假)
+            次数 = 2
+        否则
+            次数 = 3
+        如果真结束
+        选择 (次数)
+            分支 (1, 2)
+                次数 = 4
+            默认
+                次数 = 5
+        选择结束
+        循环
+            跳出循环
+        循环结束
+        判断循环首 (次数 < 8)
+            次数 = 次数 + 1
+        判断循环尾 ()
+        循环判断首 ()
+            继续循环
+        循环判断尾 (假)
+        计次循环首 (3, 索引)
+            调试输出("计次")
+        计次循环尾 ()
+        变量循环首 (1, 3, 1, 索引)
+            调试输出("变量")
+        变量循环尾 ()
+        枚举循环首 (项目, 当前项)
+            调试输出("枚举")
+        枚举循环尾 ()
+        尝试
+            抛出("测试异常")
+        捕获 (错误信息)
+            调试输出("已捕获")
+        最终
+            选择 (次数)
+                分支 (4)
+                    调试输出("最终分支")
+                默认
+                    调试输出("最终默认")
+            选择结束
+            调试输出("始终执行")
+        尝试结束
+    结束
+结束类`;
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source
+  });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  assert.match(mainCpp, /if \(true&&!\(false\)\) \{/u);
+  assert.match(mainCpp, /\} else if \(次数==2\|\|false\) \{/u);
+  assert.match(mainCpp, /switch \(次数\) \{/u);
+  assert.match(mainCpp, /case 1: case 2: \{/u);
+  assert.match(mainCpp, /default: \{/u);
+  assert.match(mainCpp, /while \(true\) \{/u);
+  assert.match(mainCpp, /while \(次数<8\) \{/u);
+  assert.match(mainCpp, /do \{/u);
+  assert.match(mainCpp, /\} while \(false\);/u);
+  assert.match(mainCpp, /for \(int __ling_\d+_index = 1/u);
+  assert.match(mainCpp, /for \(索引 = 1;/u);
+  assert.match(mainCpp, /for \(const auto& __ling_\d+_item : 项目\)/u);
+  assert.match(mainCpp, /break;/u);
+  assert.match(mainCpp, /continue;/u);
+  assert.match(mainCpp, /LingFinallyGuard __ling_\d+_finally/u);
+  assert.match(mainCpp, /throw std::runtime_error\(LingCppWideToUtf8\(L"测试异常"\)\);/u);
+  assert.match(mainCpp, /catch \(const std::exception& __ling_\d+_exception\)/u);
+  assert.equal(mainCpp.match(/switch \(次数\) \{/gu)?.length, 2);
+  assert.equal(mainCpp.includes('暂不支持的中文 C++ 语句'), false);
+
+  const body = source.split('\n').slice(10, -2);
+  const guide = getBeginnerIfFlowGuideRows(body);
+  assert.ok(guide.some(row => row.kind === 'select' && row.mark === '┌'));
+  assert.ok(guide.some(row => row.kind === 'case' && row.mark === '├'));
+  assert.ok(guide.some(row => row.kind === 'loop' && row.mark === '┌'));
+  assert.ok(guide.some(row => row.kind === 'try' && row.mark === '┌'));
+  assert.ok(guide.some(row => row.kind === 'catch' && row.mark === '├'));
+  assert.ok(guide.some(row => row.kind === 'finally' && row.mark === '├'));
+  assert.ok(guide.some(row => row.kind === 'break' && row.mark === '↳'));
+  assert.ok(guide.some(row => row.kind === 'continue' && row.mark === '↳'));
+
+  const completions = getLingCppCompletions({ source, line: 8, column: 9 });
+  const completionLabels = new Set(completions.map(item => item.label));
+  ['如果', '否则如果', '选择', '循环', '判断循环', '循环判断', '计次循环', '变量循环', '枚举循环', '跳出循环', '继续循环', '尝试', '抛出']
+    .forEach(label => assert.ok(completionLabels.has(label), `缺少控制流补全：${label}`));
+
+  const formatted = formatLingCpp(source);
+  assert.equal(formatLingCpp(formatted), formatted);
+  assert.match(formatted, /        选择 \(次数\)\n            分支 \(1, 2\)\n                次数 = 4/u);
+  assert.match(formatted, /        尝试\n            抛出\("测试异常"\)\n        捕获/u);
+  const foldingRanges = getLingCppFoldingRanges(source);
+  const sourceLines = source.split('\n');
+  ['选择 (次数)', '计次循环首 (3, 索引)', '尝试'].forEach(startText => {
+    const startLine = sourceLines.findIndex(line => line.trim() === startText) + 1;
+    assert.ok(foldingRanges.some(range => range.startLine === startLine && range.endLine > startLine), `缺少折叠范围：${startText}`);
+  });
+});
+
+test('LingCpp control flow diagnostics reject misplaced and incomplete commands', () => {
+  const source = `类 错误流程 : 公开 窗体
+公开:
+    构造()
+        跳出循环
+        继续循环
+        否则如果 (真)
+        选择 (1)
+            默认
+            默认
+        选择结束
+        尝试
+        尝试结束
+        判断循环首 ()
+    结束
+结束类`;
+  const messages = parseLingCpp(source).diagnostics.map(diagnostic => diagnostic.message);
+  assert.ok(messages.some(message => message.includes('跳出循环 只能在循环内部使用')));
+  assert.ok(messages.some(message => message.includes('继续循环 只能在循环内部使用')));
+  assert.ok(messages.some(message => message.includes('否则如果 没有对应的如果结构')));
+  assert.ok(messages.some(message => message.includes('只能有一个默认分支')));
+  assert.ok(messages.some(message => message.includes('至少需要一个捕获或最终分支')));
+  assert.ok(messages.some(message => message.includes('判断循环首 缺少条件表达式')));
+  assert.ok(messages.some(message => message.includes('判断循环首 结构缺少结束语句')));
 });
 
 test('generateLingCppNativeWin32Project emits source map and native manifest', () => {
@@ -2047,4 +2731,33 @@ test('新手编辑事务失败时保持原源码且不返回部分提交结果',
   assert.equal(result.changed, false);
   assert.equal(result.appliedDraftCount, 0);
   assert.match(result.diagnostics[0] || '', /找不到待提交的代码块/u);
+});
+
+test('generateLingCppNativeWin32Project emits project constants before mutable globals with source maps', () => {
+  const globalsPath = 'src/项目全局变量.lcpp';
+  const sourcePath = 'src/MainWindow.lcpp';
+  const globals = [
+    '常量 整数型 最大次数 = 3',
+    '常量 文本型 产品名称 = "LingBuilder"',
+    '常量 逻辑型 启用日志 = 真',
+    '常量 双精度小数型 精度 = 0.01',
+    '全局 整数型 当前次数 = 最大次数'
+  ].join('\n');
+  const source = '类 MainWindow : 公开 窗体\n    事件 创建完毕()\n        调试输出(产品名称)\n    结束\n结束类';
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source,
+    lingCppSourceFilePath: sourcePath,
+    lingCppSources: [
+      { filePath: globalsPath, sourceCode: globals },
+      { filePath: sourcePath, sourceCode: source }
+    ]
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /inline constexpr int 最大次数 = 3;/u);
+  assert.match(cpp, /inline const std::wstring 产品名称 = L"LingBuilder";/u);
+  assert.match(cpp, /inline constexpr bool 启用日志 = true;/u);
+  assert.match(cpp, /inline constexpr double 精度 = 0\.01;/u);
+  assert.ok(cpp.indexOf('inline constexpr int 最大次数') < cpp.indexOf('int 当前次数'));
+  assert.ok(generated.sourceMap.some(entry => entry.kind === 'constant' && entry.symbolName === '产品名称' && entry.sourceFile === globalsPath));
 });

@@ -1,10 +1,32 @@
 # LingBuilder 模块生态实现说明
 
+> 2026-07-27 补充：原生 UI 模块的后端命令能力统一通过 `electron/src/services/windowDesigner/uiBackendCommandContract.ts` 中的 `NativeUiBackendCommandContract` 注册。契约按模块 v2 `bindings.commands` 判断支持范围；普通 Win32 与 new_emoji 是首批实现，后续 Qt、wxWidgets 或其它 UI 库必须注册独立后端 ID 和命令契约，并补齐原生布局生成器后才能开放构建。后端不兼容命令、未知契约和缺失布局生成器必须在生成 C++ 前阻断，禁止静默回退为 Win32 或等到编译器报告未定义标识符。后端无关模块运行时可复用；依赖 `LingWindowBase`、专属 HWND/消息上下文的模块必须显式标为不支持或提供该后端适配层。
+
+> 2026-07-27 补充：new_emoji 设计器生成程序必须在控件创建和窗口“创建完毕”处理器执行完成后、进入 `NE_运行消息循环` 前调用 `NE_显示并激活窗口`。该桥接负责恢复、刷新、临时提升层级后立即取消置顶，并请求前台、激活与焦点；受 Windows 前台锁限制时临时用 `AttachThreadInput` 连接当前线程与原前台线程，完成后必须立即分离。该流程解决 IDE/F5 后台启动时只有任务栏按钮而窗口被压在 IDE 后方的问题；不得通过修改用户 `.lcpp` 或让窗口永久置顶规避。
+
+> 2026-07-27 补充：`contributes.designerControls[].events[]` 与 `runtime.eventBindings[]` 可用 `aliases` 声明历史或预览事件键。生成器必须先匹配规范 `eventName`，再按别名兼容旧项目；设计器新建绑定仍保存规范事件名。new_emoji 使用该机制兼容通用按钮的 `Click` 与原生目录的 `Clicked`，不得因键名差异静默省略回调注册。
+
+> 2026-07-27 补充：`contributes.designerControls[].runtime` 支持结构化 `createParameters`、`propertySetters`、`propertyCommands` 与 `eventBindings`。new_emoji 生成器必须从上游设计器目录和导出签名生成这些映射，属性面板只公开存在确定性运行时落地的项；组合 Setter 参数可声明固定 `literal`，共享鼠标/焦点回调可用 `eventCode` 聚合到一个原生回调，禁止同一 Setter 被后注册的事件静默覆盖。
+
+> 2026-07-27 补充：外部模块同时声明 `windows-msvc-win32` 与 `windows-msvc-x64` 时，生成到 `main.cpp` 的 `#pragma comment(lib, ...)` 必须使用 `_WIN64` 条件分支选择对应 target；Visual Studio 工程和原生依赖物化仍按当前构建架构精确选择。禁止 x64 工程因默认 `targets[0]` 再引用 Win32 `.lib`，双架构模块生成测试必须覆盖两个库路径。
+
 > 2026-07-24 补充：内置 `lingbuilder.win32.common-controls` 已注册 `VideoPlayer` /“视频播放器”控件。该控件的 Media Foundation 依赖声明为 `mfplat.lib`、`mfplay.lib`、`mfuuid.lib`，中文播放命令同时存在于 `contributes.commands` 与 `bindings.commands`；设计器、语言服务和 C++ 生成器必须继续从同一模块清单消费这些定义。
 
-> 2026-07-25 补充：新增内置 `lingbuilder.cef3.browser`（CEF3浏览器模块），按 v2 `contributes.designerControls` 注册 `CefBrowser` /“CEF3浏览器”可视控件（`nativeAdapter: cef3-browser`，依赖 `libcef.lib`、`libcef_dll_wrapper.lib`）。控件支持多实例、属性面板 `url`/`cacheDir`/`userAgent`/JavaScript/图片/WebGL/代理配置，18 条 `CEF3_*` 中文命令同时存在于 `contributes.commands` 与 `bindings.commands`；设计器、语言服务和 C++ 生成器从同一模块清单消费这些定义。CEF3 SDK 由 `nativeDependencyService.ts` 从 `CEF3_SDK_ROOT`、工作区 `.lingbuilder/cef3-sdk` 或 `C:\cef3-sdk` 受控发现复制；CEF3 为单进程框架，同 exe 全部控件共享缓存（以第一个控件 `cacheDir` 作为全局 `cache_path`），需要会话隔离时使用 `lingbuilder.edgeview`。
+> 2026-07-25 补充：新增内置 `lingbuilder.cef3.browser`（CEF3浏览器模块），按 v2 `contributes.designerControls` 注册 `CefBrowser` /“CEF3浏览器”可视控件（`nativeAdapter: cef3-browser`，依赖 `libcef.lib`、`libcef_dll_wrapper.lib`）。控件支持多实例、属性面板 `url`/`cacheDir`/`userAgent`/JavaScript/图片/WebGL/代理配置；当前 21 条 `CEF3_*` 中文命令同时存在于 `contributes.commands` 与 `bindings.commands`。CEF3 SDK 由 `nativeDependencyService.ts` 受控发现复制；CEF3 为单进程框架，同 exe 全部控件共享缓存，需要会话隔离时使用 `lingbuilder.edgeview`。
 
 > 2026-07-26 补充：新增 CEF3 内核 SDK 离线载体模块 `lingbuilder.cef3.sdk`（x64），这是首个“纯二进制资产模块”参考实现：v2 manifest 只有基础字段（无 commands/designerControls/targets），安装到 `.lingbuilder/modules/lingbuilder.cef3.sdk/` 即生效，无需为项目启用；`findCef3SdkRoot` 新增该路径候选。打包脚本为 `electron/scripts/generate-cef3-sdk-module.cjs`（`npm run module:cef3-sdk -- --install`），把 CEF 官方包 `include/Release/Resources` 与预编译 /MD `libcef_dll_wrapper.lib` 打成 `cef3-sdk-x64.lbmod`（实测 184MB，版本自动读 `cef_version.h`）；为此 `moduleService.ts` 的 `.lbmod` 包上限从 100MB 放宽到 1GB。用户安装该模块后构建 CEF3 项目免下载 SDK、免 CMake 编译。
+
+> 2026-07-26 补充：CEF3 SDK 已纳入 Windows 发布强制门禁。`electron/scripts/verify-cef3-release-sdk.cjs` 以源 SDK 的完整路径/大小/CRC32 清单为基准；Electron Builder 的 `beforePack`、`afterPack` 和 NSIS 后置校验分别验证源目录、`win-unpacked` 与最终安装包。任何缺失、损坏、版本不一致、非 x64 产物或归档漏项都会让 `package:dir` / `package:win` 非零退出。修改默认模块复制位置、`extraResources`、CEF SDK 结构或发布脚本时必须同步更新校验器和测试，禁止绕过门禁发布。
+
+> 2026-07-26 补充：`lingbuilder.cef3.browser` 事件模型升级为集中式 92 项 CEF 150 浏览器回调目录，定义在 `electron/src/services/modules/cef3BrowserEvents.ts`。`win32ControlRegistry`、内置模块 manifest、设计器事件面板与 C++ 生成器必须消费同一目录；不得重新维护局部事件列表。普通通知、同步决策和高频事件必须区分：同步决策通过窗口线程桥返回 `默认/允许/拒绝/已处理`，高频音频与进度回调必须限流。离屏渲染 `CefRenderHandler`/无障碍像素事件只属于未来独立 OSR 控件，不属于当前 windowed `CefBrowser`。
+
+> 2026-07-26 补充：原生依赖计划可以声明最低 C++ 标准和动态 CRT 要求。CEF3 固定要求 C++20 与 `/MD`，该要求必须同时进入 F5、AI Bridge 和 Visual Studio 工程导出；不得再以“需要动态 CRT”间接猜测语言标准，也不得让 `.vcxproj` 回退为 `stdcpp17`。使用预编译 `/MD` wrapper 的 Debug 配置保留优化关闭、PDB 和链接调试信息，但必须用 `NDEBUG` 而非 `_DEBUG`，避免主程序产生 Debug CRT 外部符号。
+
+> 2026-07-26 补充：当前随附 CEF 150 SDK 只提供经验证的 x64 产物。启用/安装并启用 `lingbuilder.cef3.browser` 时，`BuildConfigurationService` 必须把工作区架构切换为 x64；F5 和受控解决方案构建前必须再按项目已启用模块校正。这个构建兼容策略属于服务层，不得只在 React 控件中修改状态栏文字。
+
+> 2026-07-26 补充：Visual Studio 工程生成器的 `OutDir` 固定为 `$(ProjectDir)$(Platform)\$(Configuration)\bin\`，与 IDE 构建目录内原生依赖物化的 `binDir` 一致。CEF/WebView2/new_emoji 等需要运行时文件的模块不得把 VS exe 输出到运行时资源目录之外；`generated/cpp` 对外导出还必须另行验证其 SDK/资源复制完整性。
+
+> 2026-07-26 补充：模块管理页每个本地模块的“接口”入口改为视口级“模块公开信息”弹窗，不再把详情插入模块长列表。弹窗直接消费当前 `InstalledModule.manifest`，统一展示类型、命令、设计器控件、代码片段、C++ 目标依赖和随包文档，支持搜索、分类树、单项详情/复制、Esc 与背景关闭，并对超大命令清单限制首屏渲染数量。
 
 本文记录当前仓库已经落地的模块系统实现，供后续开发者和 Agent 继续扩展时参考。模块系统的目标不是做展示页，而是让“项目引用模块 -> Monaco 中文代码能力 -> 设计器控件 -> C++ 生成/构建”形成同一套数据闭环。
 
@@ -13,10 +35,11 @@
 ### Win32 标准控件注册表（2026-07）
 
 - 新增统一 `electron/src/services/windowDesigner/win32ControlRegistry.ts`，基础/高级模块清单、设计器工具箱、专属属性、事件和原生适配器均从该注册表读取。
+- 基础/高级 Win32 可视控件把原生子类运行时支持的 `MouseDown`、`MouseEnter`、`MouseLeave`、`GotFocus`、`LostFocus` 作为通用事件从注册表同步到模块 manifest 和设计器事件面板；`Label`、`Image`、`AnimatedImage` 同时公开 `Click`。由自身交互链完整接管的 `ColorPicker` 与 `VideoPlayer` 只公开经验证的专用事件，不能为了表面统一生成不可靠回调。
 - Win32 基础模块注册 `AnimatedImage`“动态图像控件”，以项目内 `properties.gifSource` 为唯一 GIF 资源来源；设计器预览与 LingCpp Win32 生成器共同消费自动播放、循环、填充方式和播放完毕事件。它不复用仅支持 AVI 的 `SysAnimate32` 控件。
 - 默认 `lingbuilder.win32.basic` 覆盖基础输入、列表、组合、分组框、滚动、图片和进度；可选 `lingbuilder.win32.common-controls` 覆盖 ListView、TreeView、Tab、日期、滑块、工具栏、状态栏、RichEdit 等系统标准控件。旧 `Grid` 网格容器、`Pager` 分页容器和窗口级 `MenuBar` 仅保留项目读取与原生生成兼容，不再进入工具箱或新增入口；普通父级容器统一使用分组框，常规窗口操作入口统一使用 `ToolBar`。
 - `ModuleDesignerControlContribution` 可声明 `category`、`icon`、`properties`、`isContainer`、`isVisual`、`nativeAdapter` 和 `requiredLibraries`；字段保持 manifest v2 向后兼容。
-- 非可视 ToolTip、ImageList、PropertySheet 不进入普通控件工具箱；系统通用对话框通过高级模块中文命令和 bindings 暴露。
+- 非可视 ToolTip、ImageList、FileDialog、ContextMenu、PopupMenu、PropertySheet 不进入普通可视控件工具箱，但必须在非可视资源区可选择、可编辑。注册表属性键必须与实际持久化模型完全一致：ToolTip 使用 `text/targetControlId/initialDelay`，FileDialog 使用 `ownerWindowId/triggerControlId/dropTargetId/title/filter/multiple/allowDrop`，ContextMenu 使用 `ownerWindowId/targetControlId/items`，PopupMenu 使用 `ownerWindowId/items`，PropertySheet 使用 `title/pages`。菜单选择事件按菜单项绑定，PropertySheet 的 `Applied` 使用统一事件卡片创建/导航。
 - 高级模块的文件对话框会实际应用 `名称|模式` 筛选器，并通过 `系统对话框_状态` 区分成功、取消与错误；查找替换提供动作/文本读取命令，工具栏和状态栏提供最后命令 ID/分区索引，打印文本会创建真实打印文档。这些命令与 C++ runtime 必须继续由同一份 `contributes.commands`/`bindings.commands` 声明驱动。
 - `lingbuilder.win32.common-controls` 贡献可拖放的 `ColorPicker`“颜色选择器”。可视时它以 owner-draw 按钮显示当前色块和可选十六进制文本，点击后打开 LingBuilder 自绘暗色弹窗；设置为不可视时仍必须进入生成运行时控件表，可由任意事件调用 `颜色选择器_打开(控件名)`。弹窗提供 HSV 色谱、色相条、HEX/RGB、预设色与确认/取消，不再使用旧式 `ChooseColorW`。当前颜色使用 COLORREF，通过 `颜色选择器_置颜色/取颜色` 确定性读写，并统一分发打开、改变、确认、取消和关闭事件。
 - `lingbuilder.win32.common-controls` 为 TabControl 提供 `选项卡_设置隐藏表头/取隐藏表头`，用于运行时切换表头并重排页面承载区；补全、binding 与生成运行时必须保持同源。设计器注册表中的结构/创建期属性不自动等同于运行时命令，只有具备确定性 C++ 实现的属性能力才能进入 `.lcpp` 控件命令补全。
@@ -40,7 +63,8 @@
 - 当前 F5 目标只接受精确 `windows-msvc-win32`。缺少该 target 时跳过原生依赖并返回中文诊断，不会回退到 `targets[0]`。
 - manifest 预览、目录校验、安装与打包会确认 `docs`、`examples`、`headers`、`sources`、`libs`、`runtimeFiles` 和 include 目录实际存在。
 - 命令 `insertText` 必须由签名参数生成并与 binding 参数数量一致；零参数命令生成 `命令()`，多参数按顺序生成 `$1` 到 `$N`。
-- binding 参数名称或说明包含“处理器 / 回调 / handler / callback”时，语言服务会把该参数中的字符串字面量识别为模块回调处理器名；只从当前项目已启用模块上下文读取，不把模块回调误判为缺少设计器控件。
+- 有返回值的命令通过 `contributes.commands[].returnDescription` 解释返回值语义；命令提示参数表优先读取 `bindings.commands[].parameters[].description`，不得把命令简介重复显示成每个参数的说明。
+- binding 的处理器参数使用 `type: "handler"`；语言服务把 `.lcpp` 中的 `&处理器名` 识别为当前类无参数事件/方法引用，生成器确定性转换为运行时处理器名。只从当前项目已启用模块上下文读取，不把模块回调误判为缺少设计器控件；字符串处理器名仅作旧清单兼容。
 
 ## 当前实现范围
 
@@ -154,11 +178,13 @@
 - 已安装模块：`.lingbuilder/modules/<moduleId>/`
 - 默认项目启用模块：`.lingbuilder/project-modules.json`
 - 非默认项目启用模块：`.lingbuilder/projects/<projectId>/project-modules.json`
+- 跨项目粘贴 `.lcpp` 功能库时，`ModuleService.planEnableModulesForProject` 只生成经过安装与清单校验的模块引用计划，不直接写盘；复制服务把该计划与功能库、项目数据类型、项目常量/全局变量合并到同一个 `ProjectFilePersistenceService.writeAll` 事务，成功后再记录模块历史。禁止在源码事务之前逐个调用 `enableModuleForProject`，否则失败时会留下半完成项目引用。
 - 模块市场源：`.lingbuilder/module-sources.json`
 - 模块操作历史：`.lingbuilder/module-history.json`
 - 卸载/升级快照：`.lingbuilder/module-snapshots/`
 - 安装预览临时目录：系统临时目录 `lingbuilder-module-previews`
 - 生成输出：`generated/cpp/<projectId>/module-dependencies.txt`、`generated/cpp/<projectId>/<projectId>.sln`、`generated/cpp/<projectId>/<projectId>.vcxproj`
+- LCPP 源码分享包：`.lcpppkg` 会保存每个项目的 `project-modules.json`，并把已启用第三方模块及无命令/无 target 的 SDK 资产模块隔离复制到包内工作区 `.lingbuilder/modules/`；导入不会修改接收者其他工作区的模块安装状态。
 
 所有模块 JSON 必须使用 UTF-8 读写。遇到旧文件乱码时，只报告诊断，不要凭终端乱码重写中文文案。
 
@@ -229,6 +255,15 @@ lingbuilder.module.json
 - 两个服务端模块当前都是 Windows/MSVC 原型闭环，Win32 C++ 生成器在 `LingWindowBase` 内置基于 Winsock 的单连接同步服务端运行时；HTTP 链接 `ws2_32.lib`，WebSocket 服务端链接 `ws2_32.lib` 和 `advapi32.lib`。
 - 服务端监听默认绑定 `127.0.0.1`，适合作为本地调试、AI 示例和模块能力验证入口；后续如开放局域网监听、路由、多客户端或异步事件循环，必须先抽象受控服务层和清晰的权限提示。
 
+## EdgeView 设计器控件（2026-07）
+
+- `lingbuilder.edgeview` 通过 v2 `contributes.designerControls` 贡献 `EdgeBrowser`，注册表、模块清单、设计器工具箱和生成器使用同一份控件定义。
+- 每个设计器控件生成独立 STATIC 宿主和 WebView2 Controller；`parentId` 由通用 Win32 控件层级解析为窗口、容器或选项卡页面 HWND，不在 React 中模拟浏览器运行。
+- 控件内部实例编号使用稳定生成 control ID，用户代码优先通过中文控件名调用 EdgeView 控件命令；旧数字实例和区域 API 保持兼容。空缓存目录必须确定性生成独立 `.edgeview/<controlId>`，避免多控件默认共享会话目录。
+- WebView2 SDK/Loader 仍由 `nativeDependencyService` 受控发现和复制；设计器只保存模型，不直接读取 NuGet 或启动原生浏览器。
+- EdgeView 事件目录集中维护在 `electron/src/services/modules/edgeViewBrowserEvents.ts`，以稳定 SDK `Microsoft.Web.WebView2 1.0.3537.50` 的 64 个 `add_*` 入口为审计依据。窗口化 HWND 控件接入其中可达的 62 项；`CompositionController` 独占的 `CursorChanged` / `NonClientRegionChanged` 明确不适用。注册表、模块补全、设计器事件面板、中文事件映射和生成器覆盖测试必须消费同一目录，新增 SDK 版本时不得只补 UI 或只补 C++。
+- 事件运行时通过 `QueryInterface` 逐级启用 WebView2 版本接口，并级联保存 Download、Frame、Notification、Find、Profile、DevTools receiver 等事件源。事件数据统一为 UTF-16 JSON；等待事件按事件名计数，避免高频资源/下载事件覆盖最近值后造成漏判。
+
 ## 分类内置模块库（2026-07）
 
 - 参考精易模块的程序、窗口句柄、键盘鼠标、进程线程、配置、图片、网页、文本字节、文件目录、系统、杂类和组件分类，新增 51 个内置 v2 模块、287 条中文命令。
@@ -261,3 +296,23 @@ npm run build
 ```
 
 涉及 UI 时还应打开 `http://127.0.0.1:3000/` 或当前开发端口，确认项目树下“模块”组和模块管理页不重叠、不报错。
+
+## new_emoji 设计器目录与收费模块（2026-07-27）
+
+- `new_emoji` 的唯一设计器来源为上游 `docs/ai/lingbuilder_designer_catalog.json`。模块生成脚本强制校验 92 个组件、1566 个导出、精确参数和目录 SHA-256；目录与 `.def` / `exports.h` 漂移时直接失败。
+- 模块控件使用 `lingbuilder.new_emoji.ui/<Control>` 命名空间 ID，窗口通过 `designerBackend: win32 | new-emoji` 固定后端；非空窗口禁止切换，项目内可同时保存两类窗口。
+- 设计器重新挂载必须以磁盘加载完成的项目模型为准，不得用全局 localStorage 覆盖模块控件。自动保存缓存按 `projectId` 隔离；旧窗口只要包含 `lingbuilder.new_emoji.ui/*` 命名空间控件，规范化时就补齐并在下次保存持久化 `designerBackend: new-emoji`。
+- 属性与事件面板消费模块目录，支持搜索、分组、基础/高级切换、默认值恢复和事件处理器模板。底层 `NE_EU_*` 默认为 advanced，不进入普通补全；用户显式开启“显示底层高级 API”后才显示。
+- `runtimeCommand` 是属性或事件可编辑的硬门槛。当前 new_emoji 目录的 703 个专属属性中，219 个由 `EU_Create*` 创建签名直接消费；其余 484 个属性保持只读诊断。目录中的 74 个事件尚未取得通用 callback 映射，不能在事件页生成假绑定；旧 Upload/DragUpload 的历史回调继续按兼容链路工作。
+- new_emoji 设计画布必须使用上游原生主题令牌预览，不得再用 React 专属渐变或阴影伪装运行效果。深色主题的核心默认值为窗口 `#1E1E2E`、标题栏 `#181825`、按钮 `#45475A`、编辑框 `#313244`、边框 `#585B70`；浅色主题使用对应上游令牌。点阵只属于设计辅助，不进入原生运行时。
+- new_emoji 控件创建完成后，生成器默认调用安全桥接 `NE_设置元素焦点` 聚焦首个可见且启用的 Input/EditBox，保证启动即可键盘输入并显示光标；该调用位于窗口“创建完毕”处理器之前，因此用户事件代码仍可设置其它焦点。隐藏或禁用输入框不能获得默认焦点。
+- new_emoji 窗口的默认 `lingbuilder` 图标来自根目录 `image/lingbuilder-ide-icon-v2.ico`。模块生成脚本将其打包为 `assets/lingbuilder-newemoji-window.ico`，Win32/x64 target 都声明为运行时文件，F5 和 VS 工程构建后复制到 exe 同目录并由生成代码加载；`system`、`custom`、`none` 三种显式设置优先于默认图标。
+- 完整封装仍需把上游 `EmojiCodeGenerator` / `exports.h` 中的 setter、callback 和事件上下文关系导出为正式目录映射，并完成混合后端多窗口生成；在此之前不得把“目录已收录”写成“运行时已支持”。
+- 收费状态不来自 manifest。云端以 `moduleId` 管理商品、报价、订单、权益和限免；本地只接受 Ed25519 签名的短期 Permit。模块安装、启用、设计器编辑、构建、预览、导出和 AI Bridge 均必须经过同一授权守卫。
+- 已购买 Permit 最长离线 72 小时；限免 Permit 不得越过活动结束时间。退出账号只撤销使用能力，不删除项目引用、控件或属性数据。
+
+## 菜单和容器布局贡献
+
+v2 manifest 可在 `contributes.menus[]` 和 `contributes.submenus[]` 中向稳定 `MenuId` 贡献声明式菜单。每个菜单项必须且只能声明 `command` 或 `submenu`，可附带 `when`、`group`、`order` 和最多 32KB 的 JSON `arguments`。模块菜单只能调用 IDE 已注册的受控命令，不能执行 renderer 脚本。
+
+容器型 `contributes.designerControls[]` 可声明 `layout`，其 `mode` 为 `absolute | flow | stack | grid | dock | slots | single | custom`，并可声明坐标空间、方向、插槽、容量和子控件类型限制。旧 `isContainer: true` 控件缺少 `layout` 时临时按窗口绝对坐标兼容并输出迁移诊断；新容器必须显式声明布局，否则不得作为可跨容器粘贴的正式控件发布。

@@ -6,6 +6,8 @@ import { LingWindowProject } from '../windowDesigner/types';
 import { normalizeStartupProjects, topologicalProjectOrder, validateProjectDependencies } from './projectDependencyGraph';
 import { ExternalProjectService, validateProperties, type ExternalProjectProperties } from './externalProjectService';
 import { writeSolutionEntry } from './solutionEntryFile';
+import { EMPTY_PROJECT_GLOBALS_SOURCE, PROJECT_GLOBALS_FILE_NAME } from '../lingCpp/projectGlobalService';
+import { EMPTY_PROJECT_DATA_TYPES_SOURCE, PROJECT_DATA_TYPES_FILE_NAME } from '../lingCpp/projectDataTypeService';
 
 export const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
 export const DEFAULT_SOLUTION_ID = 'lingbuilder-solution';
@@ -245,6 +247,8 @@ export class SolutionService {
     const mainWindow = designerProject.windows[0];
     await Promise.all([
       fs.writeFile(path.join(sourceRoot, `${mainWindow.className}.lcpp`), createDefaultLingCppSource(mainWindow.className), 'utf8'),
+      fs.writeFile(path.join(sourceRoot, PROJECT_GLOBALS_FILE_NAME), EMPTY_PROJECT_GLOBALS_SOURCE, 'utf8'),
+      fs.writeFile(path.join(sourceRoot, PROJECT_DATA_TYPES_FILE_NAME), EMPTY_PROJECT_DATA_TYPES_SOURCE, 'utf8'),
       fs.writeFile(path.join(configRoot, 'config.ini'), `[project]\nname=${project.name}\nid=${project.id}\n`, 'utf8'),
       fs.writeFile(designerPath, JSON.stringify(designerProject, null, 2), 'utf8')
     ]);

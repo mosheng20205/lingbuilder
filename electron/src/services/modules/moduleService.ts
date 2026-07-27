@@ -30,6 +30,14 @@ const MAX_PACKAGE_BYTES = 1024 * 1024 * 1024;
 
 const previewCache = new Map<string, ModuleInstallPreview>();
 
+export interface ProjectModuleEnablePlan {
+  projectId: string;
+  targetPath: string;
+  sourceCode: string;
+  addedModuleIds: string[];
+  reusedModuleIds: string[];
+}
+
 export class ModuleService {
   constructor(private readonly workspaceRoot: string) {}
 
@@ -112,6 +120,58 @@ export class ModuleService {
       summary: `已为项目启用模块 ${target.manifest.name}`,
       details: `项目 ${projectId} 已引用 ${moduleId}@${target.manifest.version}。`
     });
+  }
+
+  /**
+   * Produces a validated project-module file update that can be committed in the
+   * same transaction as copied source files. No disk mutation happens here.
+   */
+  async planEnableModulesForProject(projectId: string, moduleIds: readonly string[]): Promise<ProjectModuleEnablePlan> {
+    await this.assertProjectExists(projectId);
+    const modules = await this.scanInstalledModules(projectId);
+    const installedById = new Map(modules.map(module => [module.manifest.id, module]));
+    const refs = await this.readProjectModules(projectId);
+    const nextRefs: LingBuilderProjectModules = {
+      schemaVersion: refs.schemaVersion,
+      enabledModuleIds: [...refs.enabledModuleIds],
+      pinnedVersions: { ...refs.pinnedVersions }
+    };
+    const addedModuleIds: string[] = [];
+    const reusedModuleIds: string[] = [];
+    for (const moduleId of [...new Set(moduleIds)]) {
+      const module = installedById.get(moduleId);
+      if (!module) throw new Error(`功能库依赖的模块尚未安装：${moduleId}`);
+      if (module.diagnostics.length > 0) throw new Error(`功能库依赖的模块校验未通过：${moduleId}：${module.diagnostics.join('；')}`);
+      if (nextRefs.enabledModuleIds.includes(moduleId)) {
+        reusedModuleIds.push(moduleId);
+        continue;
+      }
+      nextRefs.enabledModuleIds.push(moduleId);
+      nextRefs.pinnedVersions[moduleId] = module.manifest.version;
+      addedModuleIds.push(moduleId);
+    }
+    return {
+      projectId,
+      targetPath: this.projectModulesPath(projectId),
+      sourceCode: `${JSON.stringify(nextRefs, null, 2)}\n`,
+      addedModuleIds,
+      reusedModuleIds
+    };
+  }
+
+  async recordProjectModuleEnablePlan(plan: ProjectModuleEnablePlan): Promise<void> {
+    for (const moduleId of plan.addedModuleIds) {
+      const module = (await this.scanInstalledModules(plan.projectId)).find(item => item.manifest.id === moduleId);
+      await this.appendHistory({
+        action: 'enable',
+        moduleId,
+        moduleName: module?.manifest.name,
+        version: module?.manifest.version,
+        status: 'success',
+        summary: `随功能库复制启用模块 ${module?.manifest.name || moduleId}`,
+        details: `项目 ${plan.projectId} 已引用 ${moduleId}${module?.manifest.version ? `@${module.manifest.version}` : ''}。`
+      });
+    }
   }
 
   async disableModuleForProject(projectId: string, moduleId: string): Promise<void> {
@@ -229,6 +289,11 @@ export class ModuleService {
       installPath: targetPath,
       historyId: history.id
     };
+  }
+
+  getPackageInstallPreview(previewId: string): ModuleInstallPreview | undefined {
+    const preview = previewCache.get(previewId);
+    return preview ? structuredClone(preview) : undefined;
   }
 
   async uninstallModule(moduleId: string): Promise<void> {

@@ -8,16 +8,18 @@ import { promisify } from "util";
 import dotenv from "dotenv";
 import { GoogleGenAI, Type } from "@google/genai";
 import { ExtractedString } from "./src/types";
-import { parseLingCpp } from "./src/services/lingCpp/parser";
+import { normalizeIdentifier, parseLingCpp } from "./src/services/lingCpp/parser";
 import {
   AppliedWorkspaceFile,
   AiConnectionConfig,
   LingCppEditContext,
   LingCppEditDraft,
+  LingCppProjectSourceFile,
   LingCppWorkspaceFile,
   WorkspaceEditRange
 } from "./src/services/lingCpp/types";
 import { generateLingCppNativeWin32Project } from "./src/services/windowDesigner/lingCppWin32Project";
+import { writeGeneratedProjectFiles } from "./src/services/windowDesigner/generatedProjectFileService";
 import { exportVisualStudioProject } from "./src/services/windowDesigner/visualStudioProjectExporter";
 import { LingWindowProject } from "./src/services/windowDesigner/types";
 import {
@@ -28,7 +30,17 @@ import {
   rejectWorkspaceEdit
 } from "./src/services/lingCpp/aiEditService";
 import { getLingCppSemanticDiagnostics } from "./src/services/lingCpp/languageService";
+import { createProjectGlobalContext, isProjectGlobalsFilePath } from "./src/services/lingCpp/projectGlobalService";
+import { createProjectTypeContext, isProjectDataTypesFilePath } from "./src/services/lingCpp/projectDataTypeService";
+import {
+  analyzeFunctionLibraryDependencyClosure,
+  createFunctionLibraryTemplate,
+  createProjectFunctionContext,
+  mergeFunctionLibraryProjectResources,
+  renameFunctionLibraryAcrossSources
+} from "./src/services/lingCpp/functionLibraryService";
 import { createModuleService } from "./src/services/modules/moduleService";
+import { ModuleAccessService } from "./src/services/modules/moduleAccessService";
 import { LingCppModuleContext } from "./src/services/modules/types";
 import { describeLingCppModuleContextForAi } from "./src/services/modules/moduleContextAdapters";
 import {
@@ -91,7 +103,8 @@ import { decodeTextFile, encodeTextFile } from "./src/services/files/textFileSer
 import {
   createProjectFilePersistenceService,
   createProjectFileVersion,
-  ProjectFileConflictError
+  ProjectFileConflictError,
+  readProjectFileVersionsFromDisk
 } from "./src/services/files/projectFilePersistenceService";
 import { HotExitRecoveryService } from "./src/services/files/hotExitRecoveryService";
 import {
@@ -160,6 +173,7 @@ const publishingService = new PublishingService(serverRuntimeConfig.workspaceRoo
 const workspaceIndexService = new WorkspaceIndexService(serverRuntimeConfig.workspaceRoot);
 const settingsSyncService = new SettingsSyncService(serverRuntimeConfig.workspaceRoot, serverRuntimeConfig.userSettingsPath);
 const externalProjectService = new ExternalProjectService(serverRuntimeConfig.workspaceRoot);
+const moduleAccessService = new ModuleAccessService();
 const clangdService = new ClangdService({
   workspaceRoot: serverRuntimeConfig.workspaceRoot,
   command: process.env.LINGBUILDER_CLANGD_PATH || "clangd"
@@ -442,6 +456,14 @@ function getModuleService() {
   return createModuleService(getRepoWorkspaceRoot());
 }
 
+function assertModuleAccess(moduleIds: readonly string[]): void {
+  for (const moduleId of moduleIds) moduleAccessService.assertAccess(moduleId);
+}
+
+function assertEnabledModuleAccess(modules: readonly { manifest: { id: string } }[]): void {
+  assertModuleAccess(modules.map(module => module.manifest.id));
+}
+
 async function requireExistingProject(projectId: string | undefined): Promise<string> {
   const normalizedProjectId = projectId?.trim();
   if (!normalizedProjectId) throw new Error("缺少 projectId，模块操作必须指定当前项目。");
@@ -510,7 +532,8 @@ if (serverRuntimeConfig.aiBridgeEnabled) {
   };
   const aiBridgeService = new AiBridgeService(aiBridgeOptions, {
     managedProcessService,
-    projectBuildCoordinator
+    projectBuildCoordinator,
+    assertModuleAccess
   });
   app.use(
     "/api/ai-bridge",
@@ -610,14 +633,10 @@ app.post("/api/workspace-search/rollback", async (req, res) => {
 app.get("/api/environment/check", async (_req, res) => {
   try {
     const result = await checkDevelopmentEnvironment();
-    const compilerIds = new Set(["msvc", "gpp", "clangpp"]);
-    const hasCompiler = result.checks.msvc.available
-      || result.checks.gpp.available
-      || result.checks.clangpp.available;
     const metadata: Record<string, { label: string; required: boolean }> = {
       node: { label: "Node.js", required: true },
-      msvc: { label: "MSVC C++ 编译器", required: false },
-      windowsSdk: { label: "Windows SDK / rc.exe", required: false },
+      msvc: { label: "MSVC C++ 编译器", required: true },
+      windowsSdk: { label: "Windows SDK / rc.exe", required: true },
       cmake: { label: "CMake", required: false },
       gpp: { label: "GNU g++", required: false },
       clangpp: { label: "Clang++", required: false },
@@ -627,12 +646,14 @@ app.get("/api/environment/check", async (_req, res) => {
     const checks = Object.entries(result.checks).map(([id, item]) => ({
       id,
       label: metadata[id]?.label || id,
-      required: metadata[id]?.required || (compilerIds.has(id) && !hasCompiler),
+      required: metadata[id]?.required || false,
       ...item
     }));
     res.json({
       ok: true,
       ready: result.ready,
+      cppCompilerAvailable: result.cppCompilerAvailable,
+      msvcBuildReady: result.msvcBuildReady,
       warnings: result.warnings,
       checkedAt: result.checkedAt,
       platform: result.checks.platform.detail,
@@ -692,6 +713,25 @@ app.post("/api/ai/connect", async (req, res) => {
   }
 });
 
+app.post("/api/module-access/sync", (req, res) => {
+  try {
+    const status = moduleAccessService.sync(req.body || {});
+    res.json({ ok: true, status });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, code: "MODULE_PERMIT_INVALID", error: error?.message || "模块授权同步失败。" });
+  }
+});
+
+app.post("/api/module-access/clear", (_req, res) => {
+  moduleAccessService.clear();
+  res.json({ ok: true });
+});
+
+app.get("/api/module-access/status", (req, res) => {
+  const moduleId = String(req.query.moduleId || "");
+  res.json({ ok: true, status: moduleAccessService.status(moduleId) });
+});
+
 app.get("/api/modules/installed", async (req, res) => {
   try {
     const { projectId } = req.query as { projectId?: string };
@@ -717,10 +757,13 @@ app.post("/api/modules/project/enable", async (req, res) => {
     const { projectId, moduleId } = req.body as { projectId?: string; moduleId?: string };
     if (!moduleId) return res.status(400).json({ ok: false, error: "缺少 moduleId" });
     const validatedProjectId = await requireExistingProject(projectId);
+    moduleAccessService.assertAccess(moduleId);
     await getModuleService().enableModuleForProject(validatedProjectId, moduleId);
-    res.json({ ok: true });
+    const enabledModules = await getModuleService().getEnabledProjectModules(validatedProjectId);
+    const compatibility = await buildConfigurationService.ensureCompatibleWithModules(enabledModules.map(module => module.manifest.id));
+    res.json({ ok: true, buildConfiguration: compatibility.configuration, buildConfigurationChanged: compatibility.changed, messages: compatibility.messages });
   } catch (error: any) {
-    res.status(500).json({ ok: false, error: error?.message || "启用模块失败" });
+    res.status(error?.status || 500).json({ ok: false, code: error?.code, error: error?.message || "启用模块失败" });
   }
 });
 
@@ -752,13 +795,27 @@ app.post("/api/modules/package/install", async (req, res) => {
     const { previewId, projectId, enableForProject = true } = req.body as { previewId?: string; projectId?: string; enableForProject?: boolean };
     if (!previewId) return res.status(400).json({ ok: false, error: "缺少 previewId" });
     const validatedProjectId = await requireExistingProject(projectId);
+    const preview = getModuleService().getPackageInstallPreview(previewId);
+    if (!preview?.manifest) return res.status(400).json({ ok: false, error: "安装预览不存在或已经失效。" });
+    moduleAccessService.assertAccess(preview.manifest.id);
     const result = await getModuleService().installPackage(previewId);
     if (enableForProject) {
       await getModuleService().enableModuleForProject(validatedProjectId, result.moduleId);
     }
-    res.json({ ok: true, result });
+    const compatibility = enableForProject
+      ? await buildConfigurationService.ensureCompatibleWithModules(
+        (await getModuleService().getEnabledProjectModules(validatedProjectId)).map(module => module.manifest.id)
+      )
+      : undefined;
+    res.json({
+      ok: true,
+      result,
+      buildConfiguration: compatibility?.configuration,
+      buildConfigurationChanged: compatibility?.changed || false,
+      messages: compatibility?.messages || []
+    });
   } catch (error: any) {
-    res.status(500).json({ ok: false, error: error?.message || "模块安装失败" });
+    res.status(error?.status || 500).json({ ok: false, code: error?.code, error: error?.message || "模块安装失败" });
   }
 });
 
@@ -1273,11 +1330,12 @@ app.get("/api/window-designer/assets/content", async (req, res) => {
 });
 
 app.post("/api/window-designer/native-preview", async (req, res) => {
-  const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath } = req.body as {
+  const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath, lingCppSources } = req.body as {
     project?: LingWindowProject;
     activeWindowId?: string;
     lingCppSourceCode?: string;
     lingCppSourceFilePath?: string;
+    lingCppSources?: LingCppProjectSourceFile[];
   };
 
   if (!project || !Array.isArray(project.windows) || project.windows.length === 0) {
@@ -1289,10 +1347,12 @@ app.post("/api/window-designer/native-preview", async (req, res) => {
 
   try {
     const enabledModules = await getModuleService().getEnabledProjectModules(project.id || "lingbuilder-ui-project");
+    assertEnabledModuleAccess(enabledModules);
     const generatedProject = generateLingCppNativeWin32Project(project, {
       activeWindowId,
       lingCppSourceCode: typeof lingCppSourceCode === "string" ? lingCppSourceCode : "",
       lingCppSourceFilePath,
+      lingCppSources: await resolveLingCppProjectSources(project.id || "lingbuilder-ui-project", lingCppSources),
       enabledModules
     });
 
@@ -1310,19 +1370,21 @@ app.post("/api/window-designer/native-preview", async (req, res) => {
       sourceMap: generatedProject.sourceMap
     });
   } catch (error: any) {
-    res.status(500).json({
+    res.status(error?.status || 500).json({
       ok: false,
+      code: error?.code,
       error: error?.message || "原生 C++ 预览生成失败"
     });
   }
 });
 
 app.post("/api/window-designer/native-export", async (req, res) => {
-  const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath } = req.body as {
+  const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath, lingCppSources } = req.body as {
     project?: LingWindowProject;
     activeWindowId?: string;
     lingCppSourceCode?: string;
     lingCppSourceFilePath?: string;
+    lingCppSources?: LingCppProjectSourceFile[];
   };
 
   if (!project || !Array.isArray(project.windows) || project.windows.length === 0) {
@@ -1334,12 +1396,15 @@ app.post("/api/window-designer/native-export", async (req, res) => {
 
   try {
     const enabledModules = await getModuleService().getEnabledProjectModules(project.id || "lingbuilder-ui-project");
+    assertEnabledModuleAccess(enabledModules);
     const generatedProject = generateLingCppNativeWin32Project(project, {
       activeWindowId,
       lingCppSourceCode: typeof lingCppSourceCode === "string" ? lingCppSourceCode : "",
       lingCppSourceFilePath,
+      lingCppSources: await resolveLingCppProjectSources(project.id || "lingbuilder-ui-project", lingCppSources),
       enabledModules
     });
+    assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
     const exportDir = path.join(getRepoWorkspaceRoot(), "generated", "cpp", sanitizeFilename(project.id || "window-preview"));
     await fs.mkdir(exportDir, { recursive: true });
     await writeGeneratedProjectFiles(exportDir, generatedProject.files);
@@ -1377,8 +1442,9 @@ app.post("/api/window-designer/native-export", async (req, res) => {
       ]
     });
   } catch (error: any) {
-    res.status(500).json({
+    res.status(error?.status || 500).json({
       ok: false,
+      code: error?.code,
       error: error?.message || "原生 C++ 工程导出失败"
     });
   }
@@ -1651,11 +1717,12 @@ app.post("/api/window-designer/stop", async (req, res) => {
 });
 
 app.post("/api/window-designer/build-run", async (req, res) => {
-  const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath, eplSourceCode, run = true } = req.body as {
+  const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath, lingCppSources, eplSourceCode, run = true } = req.body as {
     project?: LingWindowProject;
     activeWindowId?: string;
     lingCppSourceCode?: string;
     lingCppSourceFilePath?: string;
+    lingCppSources?: LingCppProjectSourceFile[];
     eplSourceCode?: string;
     run?: boolean;
   };
@@ -1699,7 +1766,6 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     buildLease = buildSession.lease;
     if (buildSession.previousRun.found) preBuildLogs = [buildSession.previousRun.message];
     const projectId = await requireExistingProject(requestedProjectId);
-    const buildConfiguration = await buildConfigurationService.read();
     if (buildLease.isCancelled()) {
       return res.status(409).json(createCancelledBuildResult(buildLease, preBuildLogs));
     }
@@ -1709,12 +1775,18 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         ? eplSourceCode
         : "";
     const enabledModules = await getModuleService().getEnabledProjectModules(projectId);
+    assertEnabledModuleAccess(enabledModules);
+    const buildCompatibility = await buildConfigurationService.ensureCompatibleWithModules(enabledModules.map(module => module.manifest.id));
+    const buildConfiguration = buildCompatibility.configuration;
+    preBuildLogs.push(...buildCompatibility.messages);
     const generatedProject = generateLingCppNativeWin32Project(project, {
       activeWindowId,
       lingCppSourceCode: sourceCode,
       lingCppSourceFilePath,
+      lingCppSources: await resolveLingCppProjectSources(projectId, lingCppSources),
       enabledModules
     });
+    assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
     const repoRoot = getRepoWorkspaceRoot();
     const buildRoot = path.join(repoRoot, ".lingbuilder-build");
     const buildDir = path.join(buildRoot, sanitizeFilename(projectId), getBuildOutputSegment(buildConfiguration));
@@ -1735,14 +1807,10 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       const fileName = `${activeWindow.className || activeWindow.fileName.replace(/\.xml$/i, "")}.lcpp`;
       await fs.writeFile(path.join(sourceDir, fileName), sourceCode, "utf8");
     }
-    await Promise.all(generatedProject.files.map(file => {
-      const targetPath = path.join(sourceDir, file.relativePath);
-      const exportPath = path.join(exportDir, file.relativePath);
-      return Promise.all([
-        fs.writeFile(targetPath, file.content, "utf8"),
-        fs.writeFile(exportPath, file.content, "utf8")
-      ]);
-    }));
+    await Promise.all([
+      writeGeneratedProjectFiles(sourceDir, generatedProject.files),
+      writeGeneratedProjectFiles(exportDir, generatedProject.files)
+    ]);
     const assetProjectRef = getSolutionService().getProject(await getSolutionService().getSolution(), projectId);
     const copiedAssets = await designerAssetService.copyProjectAssets(assetProjectRef, [buildDir, binDir, exportDir]);
     const buildContentFiles = copiedAssets
@@ -1766,14 +1834,18 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         relativePath: normalizeFilePath(path.join("src", file.relativePath))
       })),
       enabledModules,
-      contentFiles: buildContentFiles
+      contentFiles: buildContentFiles,
+      requiredCppStandard: moduleNativePlan.requiredCppStandard,
+      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
     });
     const exportVisualStudioProjectResult = await exportVisualStudioProject({
       projectDir: exportDir,
       projectId,
       generatedFiles: generatedProject.files,
       enabledModules,
-      contentFiles: exportContentFiles
+      contentFiles: exportContentFiles,
+      requiredCppStandard: moduleNativePlan.requiredCppStandard,
+      requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
     });
 
     if (buildLease.isCancelled()) {
@@ -1922,8 +1994,9 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     const expectedConflict = error instanceof ProjectBuildBusyError
       || error instanceof ProjectBuildCancelledBeforeStartError
       || error instanceof ProjectBuildPreparationError;
-    return res.status(expectedConflict ? 409 : 500).json({
+    return res.status(error?.status || (expectedConflict ? 409 : 500)).json({
       ok: false,
+      code: error?.code,
       stage: error instanceof ProjectBuildBusyError
         ? "busy"
         : error instanceof ProjectBuildCancelledBeforeStartError
@@ -2021,6 +2094,7 @@ async function buildSolutionProjects(options: {
       activeWindowId: project.windows[0]?.id,
       lingCppSourceCode: source.sourceCode,
       lingCppSourceFilePath: source.filePath,
+      lingCppSources: source.sources,
       run: Boolean(options.run && runProjectIds.has(projectRef.id)),
       buildAdmission: options.admission,
       incremental: options.incremental !== false
@@ -2053,11 +2127,12 @@ async function runControlledWindowDesignerBuild(options: {
   activeWindowId?: string;
   lingCppSourceCode?: string;
   lingCppSourceFilePath?: string;
+  lingCppSources?: LingCppProjectSourceFile[];
   run?: boolean;
   buildAdmission?: ProjectBuildAdmission;
   incremental?: boolean;
 }) {
-  const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath, run = false, buildAdmission, incremental = true } = options;
+  const { project, activeWindowId, lingCppSourceCode, lingCppSourceFilePath, lingCppSources, run = false, buildAdmission, incremental = true } = options;
   let buildLease: ProjectBuildLease | undefined;
   let projectId: string;
   let preBuildLogs: string[] = [];
@@ -2087,14 +2162,19 @@ async function runControlledWindowDesignerBuild(options: {
   try {
   if (buildLease.isCancelled()) return createCancelledBuildResult(buildLease, preBuildLogs);
   const sourceCode = typeof lingCppSourceCode === "string" ? lingCppSourceCode : "";
-  const buildConfiguration = await buildConfigurationService.read();
   const enabledModules = await getModuleService().getEnabledProjectModules(projectId);
+  assertEnabledModuleAccess(enabledModules);
+  const buildCompatibility = await buildConfigurationService.ensureCompatibleWithModules(enabledModules.map(module => module.manifest.id));
+  const buildConfiguration = buildCompatibility.configuration;
+  preBuildLogs.push(...buildCompatibility.messages);
   const generatedProject = generateLingCppNativeWin32Project(project, {
     activeWindowId,
     lingCppSourceCode: sourceCode,
     lingCppSourceFilePath,
+    lingCppSources: lingCppSources?.length ? lingCppSources : await resolveLingCppProjectSources(projectId),
     enabledModules
   });
+  assertNoBlockingLingCppDiagnostics(generatedProject.blockingDiagnostics);
   const repoRoot = getRepoWorkspaceRoot();
   const buildRoot = path.join(repoRoot, ".lingbuilder-build");
   const buildDir = path.join(buildRoot, sanitizeFilename(projectId), getBuildOutputSegment(buildConfiguration));
@@ -2116,14 +2196,10 @@ async function runControlledWindowDesignerBuild(options: {
     const fileName = `${activeWindow.className || activeWindow.fileName.replace(/\.xml$/i, "")}.lcpp`;
     await fs.writeFile(path.join(sourceDir, fileName), sourceCode, "utf8");
   }
-  await Promise.all(generatedProject.files.map(file => {
-    const targetPath = path.join(sourceDir, file.relativePath);
-    const exportPath = path.join(exportDir, file.relativePath);
-    return Promise.all([
-      fs.writeFile(targetPath, file.content, "utf8"),
-      fs.writeFile(exportPath, file.content, "utf8")
-    ]);
-  }));
+  await Promise.all([
+    writeGeneratedProjectFiles(sourceDir, generatedProject.files),
+    writeGeneratedProjectFiles(exportDir, generatedProject.files)
+  ]);
   const assetProjectRef = getSolutionService().getProject(await getSolutionService().getSolution(), projectId);
   const copiedAssets = await designerAssetService.copyProjectAssets(assetProjectRef, [buildDir, binDir, exportDir]);
   const buildContentFiles = copiedAssets
@@ -2147,14 +2223,18 @@ async function runControlledWindowDesignerBuild(options: {
       relativePath: normalizeFilePath(path.join("src", file.relativePath))
     })),
     enabledModules,
-    contentFiles: buildContentFiles
+    contentFiles: buildContentFiles,
+    requiredCppStandard: moduleNativePlan.requiredCppStandard,
+    requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
   });
   const exportVisualStudioProjectResult = await exportVisualStudioProject({
     projectDir: exportDir,
     projectId,
     generatedFiles: generatedProject.files,
     enabledModules,
-    contentFiles: exportContentFiles
+    contentFiles: exportContentFiles,
+    requiredCppStandard: moduleNativePlan.requiredCppStandard,
+    requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
   });
 
   const incrementalKey = `${projectId}:${buildConfiguration.mode}:${buildConfiguration.architecture}`;
@@ -2351,17 +2431,63 @@ function resolveProjectLingCppSource(
   projectRef: LingBuilderSolutionProject,
   project: LingWindowProject,
   files: Record<string, string>
-): { filePath: string; sourceCode: string } {
+): { filePath: string; sourceCode: string; sources: LingCppProjectSourceFile[] } {
   const activeWindow = project.windows[0];
   const preferredName = activeWindow
     ? `${activeWindow.className || activeWindow.fileName.replace(/\.xml$/i, "")}.lcpp`
     : "";
   const preferredPath = preferredName ? `${projectRef.sourceRoot}/${preferredName}` : "";
   if (preferredPath && typeof files[preferredPath] === "string") {
-    return { filePath: preferredPath, sourceCode: files[preferredPath] };
+    return { filePath: preferredPath, sourceCode: files[preferredPath], sources: collectProjectLingCppSources(projectRef, files) };
   }
   const fallbackPath = Object.keys(files).find(filePath => filePath.endsWith(".lcpp")) || preferredPath || `${projectRef.sourceRoot}/MainWindow.lcpp`;
-  return { filePath: fallbackPath, sourceCode: files[fallbackPath] || "" };
+  return { filePath: fallbackPath, sourceCode: files[fallbackPath] || "", sources: collectProjectLingCppSources(projectRef, files) };
+}
+
+function collectProjectLingCppSources(projectRef: LingBuilderSolutionProject, files: Record<string, string>): LingCppProjectSourceFile[] {
+  const sourceRoot = projectRef.sourceRoot.replace(/\\/g, "/").replace(/\/+$/u, "");
+  return Object.entries(files)
+    .filter(([filePath]) => filePath.toLocaleLowerCase().endsWith(".lcpp") && filePath.startsWith(`${sourceRoot}/`))
+    .map(([filePath, sourceCode]) => ({ filePath, sourceCode }));
+}
+
+async function resolveLingCppProjectSources(
+  projectId: string,
+  explicitSources?: LingCppProjectSourceFile[]
+): Promise<LingCppProjectSourceFile[]> {
+  const solutionService = getSolutionService();
+  const solution = await solutionService.getSolution();
+  const projectRef = solutionService.getProject(solution, projectId);
+  const sourceRoot = projectRef.sourceRoot.replace(/\\/g, "/").replace(/\/+$/u, "");
+  if (Array.isArray(explicitSources) && explicitSources.length > 0) {
+    let totalSize = 0;
+    const unique = new Map<string, LingCppProjectSourceFile>();
+    for (const source of explicitSources) {
+      if (!source || typeof source.filePath !== "string" || typeof source.sourceCode !== "string") {
+        throw new Error("项目源码集合包含无效条目。");
+      }
+      const filePath = source.filePath.replace(/\\/g, "/").replace(/^\.\//u, "");
+      if (!filePath.toLocaleLowerCase().endsWith(".lcpp") || filePath.split("/").includes("..") || path.isAbsolute(filePath)) {
+        throw new Error(`项目源码路径不安全：${source.filePath}`);
+      }
+      if (filePath !== sourceRoot && !filePath.startsWith(`${sourceRoot}/`)) {
+        throw new Error(`项目源码路径不属于当前项目源码目录：${source.filePath}`);
+      }
+      totalSize += Buffer.byteLength(source.sourceCode, "utf8");
+      if (totalSize > 8 * 1024 * 1024) throw new Error("项目 LCPP 源码集合超过 8 MB 限制。");
+      unique.set(filePath.toLocaleLowerCase(), { filePath, sourceCode: source.sourceCode });
+    }
+    return [...unique.values()];
+  }
+  const files = await solutionService.readProjectFiles(projectRef);
+  return Object.entries(files)
+    .filter(([filePath]) => filePath.toLocaleLowerCase().endsWith(".lcpp") && (filePath === sourceRoot || filePath.startsWith(`${sourceRoot}/`)))
+    .map(([filePath, sourceCode]) => ({ filePath, sourceCode }));
+}
+
+function assertNoBlockingLingCppDiagnostics(diagnostics: string[]): void {
+  if (diagnostics.length === 0) return;
+  throw new Error(`LCPP 项目源码存在阻止构建的错误：\n${diagnostics.join("\n")}`);
 }
 
 type CompilerInfo = {
@@ -2446,11 +2572,9 @@ app.get("/api/window-designer/files", async (req, res) => {
     const fileFormats = Object.fromEntries(
       Object.entries(snapshots).map(([filePath, snapshot]) => [filePath, snapshot.format])
     );
-    const fileVersions = Object.fromEntries(
-      Object.entries(snapshots).map(([filePath, snapshot]) => [
-        filePath,
-        createProjectFileVersion(encodeTextFile(snapshot.content, snapshot.format))
-      ])
+    const fileVersions = await readProjectFileVersionsFromDisk(
+      getRepoWorkspaceRoot(),
+      Object.keys(snapshots)
     );
     const designerProject = await solutionService.readDesignerProject(projectRef);
     const designerRelativePath = projectRef.designerPath.replace(/\\/g, "/");
@@ -2538,11 +2662,9 @@ app.post("/api/window-designer/files", async (req, res) => {
     const savedFileFormats = Object.fromEntries(
       Object.entries(savedSnapshots).map(([filePath, snapshot]) => [filePath, snapshot.format])
     );
-    const fileVersions = Object.fromEntries(
-      Object.entries(savedSnapshots).map(([filePath, snapshot]) => [
-        filePath,
-        createProjectFileVersion(encodeTextFile(snapshot.content, snapshot.format))
-      ])
+    const fileVersions = await readProjectFileVersionsFromDisk(
+      getRepoWorkspaceRoot(),
+      Object.keys(savedSnapshots)
     );
     try {
       fileVersions[designerRelativePath] = createProjectFileVersion(await fs.readFile(designerPath));
@@ -2563,10 +2685,10 @@ app.post("/api/window-designer/files", async (req, res) => {
       const snapshots = await solutionService.readProjectFileSnapshots(projectRef);
       const designerRelativePath = projectRef.designerPath.replace(/\\/g, "/");
       const designerProject = await solutionService.readDesignerProject(projectRef);
-      const conflictFileVersions = Object.fromEntries(Object.entries(snapshots).map(([key, value]) => [
-        key,
-        createProjectFileVersion(encodeTextFile(value.content, value.format))
-      ]));
+      const conflictFileVersions = await readProjectFileVersionsFromDisk(
+        getRepoWorkspaceRoot(),
+        Object.keys(snapshots)
+      );
       try {
         conflictFileVersions[designerRelativePath] = createProjectFileVersion(
           await fs.readFile(path.join(getRepoWorkspaceRoot(), projectRef.designerPath))
@@ -2629,6 +2751,181 @@ app.post("/api/window-designer/files/delete", async (req, res) => {
     res.json({ ok: true, ...result });
   } catch (error: any) {
     respondWithProjectFileMutationError(res, error, "文件删除失败");
+  }
+});
+
+app.post("/api/window-designer/function-libraries/create", async (req, res) => {
+  const { projectId, name } = req.body as { projectId?: string; name?: string };
+  if (!isNonEmptyString(projectId) || !isValidLingCppIdentifier(name)) {
+    return res.status(400).json({ ok: false, error: "缺少有效的 projectId 或功能库名称。" });
+  }
+  try {
+    const solutionService = getSolutionService();
+    const solution = await solutionService.getSolution();
+    const project = solutionService.getProject(solution, projectId.trim());
+    const targetPath = `${project.sourceRoot.replace(/\\/g, "/").replace(/\/+$/u, "")}/功能/${name!.trim()}.lcpp`;
+    const absolutePath = await workspacePathPolicy.resolveForWrite(targetPath);
+    try {
+      await fs.lstat(absolutePath);
+      return res.status(409).json({ ok: false, code: "TARGET_EXISTS", error: `功能库文件已存在：${targetPath}` });
+    } catch (error: any) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    await projectFilePersistenceService.writeAll([{ targetPath: absolutePath, bytes: Buffer.from(createFunctionLibraryTemplate(name!.trim()), "utf8") }]);
+    res.json({ ok: true, filePath: targetPath, sourceCode: createFunctionLibraryTemplate(name!.trim()) });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "新建功能库失败。" });
+  }
+});
+
+app.post("/api/window-designer/function-libraries/copy", async (req, res) => {
+  const { sourceProjectId, targetProjectId, sourcePath, targetName, approved } = req.body as {
+    sourceProjectId?: string;
+    targetProjectId?: string;
+    sourcePath?: string;
+    targetName?: string;
+    approved?: boolean;
+  };
+  if (!isNonEmptyString(sourceProjectId) || !isNonEmptyString(targetProjectId) || !isNonEmptyString(sourcePath)) {
+    return res.status(400).json({ ok: false, error: "复制功能库缺少源项目、目标项目或源文件。" });
+  }
+  try {
+    const solutionService = getSolutionService();
+    const solution = await solutionService.getSolution();
+    const sourceProject = solutionService.getProject(solution, sourceProjectId.trim());
+    const targetProject = solutionService.getProject(solution, targetProjectId.trim());
+    const [sourceSnapshots, targetSnapshots, enabledModules] = await Promise.all([
+      solutionService.readProjectFileSnapshots(sourceProject),
+      solutionService.readProjectFileSnapshots(targetProject),
+      getModuleService().getEnabledProjectModules(sourceProjectId.trim())
+    ]);
+    const normalizedSourcePath = sourcePath.replace(/\\/g, "/");
+    const sourceSnapshot = sourceSnapshots[normalizedSourcePath];
+    if (!sourceSnapshot) return res.status(404).json({ ok: false, error: `找不到源功能库文件：${normalizedSourcePath}` });
+    const parsed = parseLingCpp(sourceSnapshot.content);
+    if (parsed.program.functionLibraries.length !== 1) {
+      return res.status(400).json({ ok: false, error: "源文件必须且只能包含一个功能库。" });
+    }
+    const sourceLibrary = parsed.program.functionLibraries[0]!;
+    const nextName = isNonEmptyString(targetName) ? targetName.trim() : sourceLibrary.name;
+    if (!isValidLingCppIdentifier(nextName)) return res.status(400).json({ ok: false, error: "目标功能库名称无效。" });
+    const sourceFiles = Object.entries(sourceSnapshots).filter(([filePath]) => filePath.toLocaleLowerCase().endsWith(".lcpp")).map(([filePath, snapshot]) => ({ filePath, sourceCode: snapshot.content, language: "lingcpp" as const }));
+    const targetFiles = Object.entries(targetSnapshots).filter(([filePath]) => filePath.toLocaleLowerCase().endsWith(".lcpp")).map(([filePath, snapshot]) => ({ filePath, sourceCode: snapshot.content, language: "lingcpp" as const }));
+    const moduleContext = { availableModules: enabledModules, enabledModules };
+    const closure = analyzeFunctionLibraryDependencyClosure(normalizedSourcePath, sourceFiles, moduleContext);
+    const targetRoot = targetProject.sourceRoot.replace(/\\/g, "/").replace(/\/+$/u, "");
+    const targetLibraries = new Map<string, { name: string; filePath: string; sourceCode: string }>();
+    targetFiles.forEach(file => {
+      const library = parseLingCpp(file.sourceCode).program.functionLibraries[0];
+      if (library) targetLibraries.set(normalizeIdentifier(library.name), { name: library.name, filePath: file.filePath, sourceCode: file.sourceCode });
+    });
+    const usedNames = new Set([...targetLibraries.keys()]);
+    const reservedRootName = normalizeIdentifier(nextName);
+    if (!usedNames.has(reservedRootName)) usedNames.add(reservedRootName);
+    const libraryNames = new Map<string, string>();
+    const libraryActions: Array<{ sourceName: string; targetName: string; action: "copy" | "reuse"; sourcePath: string; targetPath: string }> = [];
+    const portableSource = (value: string) => value.replace(/\r\n?/gu, "\n").split("\n").map(line => line.replace(/\s+$/u, "")).join("\n").trim();
+    const uniqueLibraryName = (baseName: string) => {
+      let candidate = `${baseName}副本`;
+      let index = 2;
+      while (usedNames.has(normalizeIdentifier(candidate))) candidate = `${baseName}副本${index++}`;
+      return candidate;
+    };
+    let targetExists = false;
+    for (const file of closure.files) {
+      const isRoot = normalizeIdentifier(file.name) === normalizeIdentifier(closure.rootLibrary);
+      let desiredName = isRoot ? nextName : file.name;
+      const existing = targetLibraries.get(normalizeIdentifier(desiredName));
+      if (existing && isRoot) targetExists = true;
+      if (existing && !isRoot && portableSource(existing.sourceCode) === portableSource(file.sourceCode)) {
+        libraryNames.set(normalizeIdentifier(file.name), existing.name);
+        libraryActions.push({ sourceName: file.name, targetName: existing.name, action: "reuse", sourcePath: file.filePath, targetPath: existing.filePath });
+        continue;
+      }
+      if (existing && !isRoot) desiredName = uniqueLibraryName(file.name);
+      else if (!isRoot && usedNames.has(normalizeIdentifier(desiredName))) desiredName = uniqueLibraryName(file.name);
+      libraryNames.set(normalizeIdentifier(file.name), desiredName);
+      usedNames.add(normalizeIdentifier(desiredName));
+      libraryActions.push({ sourceName: file.name, targetName: desiredName, action: "copy", sourcePath: file.filePath, targetPath: `${targetRoot}/功能/${desiredName}.lcpp` });
+    }
+    let rewrittenLibraries: LingCppWorkspaceFile[] = closure.files.map(file => ({ filePath: file.filePath, sourceCode: file.sourceCode, language: "lingcpp" }));
+    libraryNames.forEach((mappedName, sourceKey) => {
+      const sourceName = closure.files.find(file => normalizeIdentifier(file.name) === sourceKey)?.name;
+      if (sourceName && normalizeIdentifier(sourceName) !== normalizeIdentifier(mappedName)) {
+        rewrittenLibraries = renameFunctionLibraryAcrossSources(rewrittenLibraries, sourceName, mappedName);
+      }
+    });
+    const rewrittenByPath = new Map(rewrittenLibraries.map(file => [file.filePath.replace(/\\/g, "/").toLocaleLowerCase(), file.sourceCode]));
+    const resources = mergeFunctionLibraryProjectResources(closure, sourceFiles, targetFiles);
+    const modulePlan = await getModuleService().planEnableModulesForProject(targetProjectId.trim(), closure.modules);
+    const rootAction = libraryActions.find(item => normalizeIdentifier(item.sourceName) === normalizeIdentifier(closure.rootLibrary))!;
+    const missing = { libraries: closure.missingLibraries, projectTypes: [], projectSymbols: [], modules: [] };
+    const preview = {
+      sourceLibrary: sourceLibrary.name,
+      targetName: nextName,
+      sourcePath: normalizedSourcePath,
+      targetPath: rootAction.targetPath,
+      targetExists,
+      dependencies: {
+        libraries: closure.files.filter(file => normalizeIdentifier(file.name) !== normalizeIdentifier(closure.rootLibrary)).map(file => file.name),
+        projectTypes: closure.projectTypes,
+        projectSymbols: closure.projectSymbols,
+        modules: closure.modules
+      },
+      libraries: libraryActions,
+      resources: {
+        projectTypes: resources.projectTypes,
+        projectSymbols: resources.projectSymbols,
+        modules: { enabled: modulePlan.addedModuleIds, reused: modulePlan.reusedModuleIds }
+      },
+      conflicts: resources.conflicts,
+      missing
+    };
+    if (!approved) return res.json({ ok: true, preview });
+    if (targetExists) return res.status(409).json({ ok: false, code: "TARGET_EXISTS", error: `目标功能库已存在：${rootAction.targetPath}`, preview });
+    if (closure.missingLibraries.length > 0) return res.status(409).json({ ok: false, code: "DEPENDENCY_MISSING", error: `源项目缺少依赖功能库：${closure.missingLibraries.join("、")}`, preview });
+    if (resources.conflicts.length > 0) return res.status(409).json({ ok: false, code: "RESOURCE_CONFLICT", error: `目标项目存在依赖冲突：${resources.conflicts.map(item => item.name).join("、")}`, preview });
+
+    const writes: Array<{ targetPath: string; bytes: Buffer; expectedVersion?: string }> = [];
+    const updatedProjectFiles: Array<{ filePath: string; sourceCode: string }> = [];
+    for (const action of libraryActions.filter(item => item.action === "copy")) {
+      const absolutePath = await workspacePathPolicy.resolveForWrite(action.targetPath);
+      const currentVersion = await projectFilePersistenceService.readVersion(absolutePath);
+      if (currentVersion) return res.status(409).json({ ok: false, code: "TARGET_EXISTS", error: `目标功能库已存在：${action.targetPath}`, preview });
+      writes.push({ targetPath: absolutePath, bytes: Buffer.from(rewrittenByPath.get(action.sourcePath.replace(/\\/g, "/").toLocaleLowerCase()) || "", "utf8") });
+    }
+    const appendProjectResourceWrite = async (relativePath: string, content: string | undefined) => {
+      if (content === undefined) return;
+      const absolutePath = await workspacePathPolicy.resolveForWrite(relativePath);
+      const snapshot = targetSnapshots[relativePath];
+      writes.push({
+        targetPath: absolutePath,
+        bytes: encodeTextFile(content, snapshot?.format || { encoding: "utf8", eol: "lf" }),
+        expectedVersion: (await projectFilePersistenceService.readVersion(absolutePath)) || undefined
+      });
+      updatedProjectFiles.push({ filePath: relativePath, sourceCode: content });
+    };
+    await appendProjectResourceWrite(`${targetRoot}/项目数据类型.lcpp`, resources.dataTypesSource);
+    await appendProjectResourceWrite(`${targetRoot}/项目全局变量.lcpp`, resources.globalsSource);
+    if (modulePlan.addedModuleIds.length > 0) {
+      writes.push({
+        targetPath: modulePlan.targetPath,
+        bytes: Buffer.from(modulePlan.sourceCode, "utf8"),
+        expectedVersion: (await projectFilePersistenceService.readVersion(modulePlan.targetPath)) || undefined
+      });
+    }
+    await projectFilePersistenceService.writeAll(writes);
+    if (modulePlan.addedModuleIds.length > 0) {
+      try { await getModuleService().recordProjectModuleEnablePlan(modulePlan); } catch { /* 复制事务已完成，历史记录失败不回滚源码。 */ }
+    }
+    const copiedFiles = libraryActions.filter(item => item.action === "copy").map(action => ({
+      filePath: action.targetPath,
+      sourceCode: rewrittenByPath.get(action.sourcePath.replace(/\\/g, "/").toLocaleLowerCase()) || ""
+    }));
+    const rootFile = copiedFiles.find(file => file.filePath === rootAction.targetPath)!;
+    res.json({ ok: true, preview, filePath: rootFile.filePath, sourceCode: rootFile.sourceCode, files: copiedFiles, updatedFiles: [...copiedFiles, ...updatedProjectFiles] });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "复制功能库失败。" });
   }
 });
 
@@ -2959,19 +3256,27 @@ async function compileWin32Preview(
   }
 
   const objectPath = path.join(objDir, "main.obj");
+  const requiredCppStandard = modulePlan?.requiredCppStandard === 20 ? 20 : 17;
+  const useDynamicCrt = modulePlan?.requiresDynamicCrt === true;
+  const msvcBuildFlags = getBuildCompilerFlags(buildConfiguration, "msvc")
+    .filter(flag => !useDynamicCrt || (flag !== "/MD" && flag !== "/MDd" && flag !== "/D_DEBUG"));
+  if (useDynamicCrt) {
+    if (!msvcBuildFlags.includes("/DNDEBUG")) msvcBuildFlags.push("/DNDEBUG");
+    msvcBuildFlags.push("/MD");
+  }
   if (compiler.kind === "msvc" && moduleSources.length > 0) {
-    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, buildConfiguration, signal);
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, buildConfiguration, requiredCppStandard, useDynamicCrt, signal);
   }
 
   const commandArgs = compiler.kind === "msvc"
     ? [
         "/nologo",
         "/EHsc",
-        "/std:c++17",
+        `/std:c++${requiredCppStandard}`,
         "/utf-8",
         "/DUNICODE",
         "/D_UNICODE",
-        ...getBuildCompilerFlags(buildConfiguration, "msvc"),
+        ...msvcBuildFlags,
         ...includeArgs,
         sourcePath,
         "/Fo:" + objectPath,
@@ -2984,7 +3289,7 @@ async function compileWin32Preview(
       ]
     : [
         "-municode",
-        "-std=c++17",
+        `-std=c++${requiredCppStandard}`,
         "-finput-charset=UTF-8",
       "-fexec-charset=UTF-8",
       "-DUNICODE",
@@ -3065,18 +3370,26 @@ async function compileMsvcPreviewWithModules(
   moduleSources: string[],
   moduleLibs: string[],
   buildConfiguration: BuildConfiguration,
+  requiredCppStandard: 17 | 20,
+  useDynamicCrt: boolean,
   signal?: AbortSignal
 ): Promise<{ ok: boolean; logs: string[] }> {
   const sources = [sourcePath, ...moduleSources];
   const objectFiles = sources.map((source, index) => path.join(objDir, `${index === 0 ? "main" : `module_${index}`}.obj`));
+  const msvcBuildFlags = getBuildCompilerFlags(buildConfiguration, "msvc")
+    .filter(flag => !useDynamicCrt || (flag !== "/MD" && flag !== "/MDd" && flag !== "/D_DEBUG"));
+  if (useDynamicCrt) {
+    if (!msvcBuildFlags.includes("/DNDEBUG")) msvcBuildFlags.push("/DNDEBUG");
+    msvcBuildFlags.push("/MD");
+  }
   const compileCommands = sources.map((source, index) => [
     "/nologo",
     "/EHsc",
-    "/std:c++17",
+    `/std:c++${requiredCppStandard}`,
     "/utf-8",
     "/DUNICODE",
     "/D_UNICODE",
-    ...getBuildCompilerFlags(buildConfiguration, "msvc"),
+    ...msvcBuildFlags,
     ...includeArgs,
     "/c",
     source,
@@ -3147,17 +3460,6 @@ async function execCompilerFileAsync(command: string, args: string[], options: R
   }
 }
 
-async function writeGeneratedProjectFiles(
-  targetDirectory: string,
-  files: Array<{ relativePath: string; content: string }>
-): Promise<void> {
-  await Promise.all(files.map(async file => {
-    const targetPath = path.join(targetDirectory, file.relativePath);
-    await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.writeFile(targetPath, file.content, "utf8");
-  }));
-}
-
 function getGeneratedFileLanguage(relativePath: string): "cpp" | "json" | "text" {
   if (relativePath.endsWith(".cpp")) return "cpp";
   if (relativePath.endsWith(".json")) return "json";
@@ -3189,7 +3491,23 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
   const sourceCode = normalizeLineEndings(context.sourceCode);
   const workspaceFiles = resolveEditWorkspaceFiles(context);
   const promptWorkspaceFiles = selectWorkspaceFilesForPrompt(workspaceFiles, context.filePath);
-  const diagnostics = getLingCppSemanticDiagnostics(sourceCode, undefined, context.filePath, context.moduleContext)
+  const globalWorkspaceFile = isProjectGlobalsFilePath(context.filePath)
+    ? { filePath: context.filePath, sourceCode }
+    : workspaceFiles.find(file => isProjectGlobalsFilePath(file.filePath));
+  const projectGlobals = globalWorkspaceFile
+    ? createProjectGlobalContext(globalWorkspaceFile.filePath, globalWorkspaceFile.sourceCode)
+    : undefined;
+  const typeWorkspaceFile = isProjectDataTypesFilePath(context.filePath)
+    ? { filePath: context.filePath, sourceCode }
+    : workspaceFiles.find(file => isProjectDataTypesFilePath(file.filePath));
+  const projectTypes = typeWorkspaceFile
+    ? createProjectTypeContext(typeWorkspaceFile.filePath, typeWorkspaceFile.sourceCode)
+    : undefined;
+  const projectFunctions = createProjectFunctionContext([
+    ...workspaceFiles.filter(file => normalizeFilePath(file.filePath) !== normalizeFilePath(context.filePath)),
+    { filePath: context.filePath, sourceCode, language: "lingcpp" }
+  ]);
+  const diagnostics = getLingCppSemanticDiagnostics(sourceCode, undefined, context.filePath, context.moduleContext, projectGlobals, projectTypes, projectFunctions)
     .slice(0, 12)
     .map(diagnostic => `- [${diagnostic.level}] 第 ${diagnostic.line} 行：${diagnostic.message}`)
     .join("\n") || "无";
@@ -3202,7 +3520,7 @@ async function planLingCppEditWithGemini(context: LingCppEditContext): Promise<L
 严格规则：
 1. 只能编辑“本次提供给你的工作区文件”，不能创建、引用或假装修改其他文件。
 2. 每个 changed file 的 updatedSource 都必须是该文件的完整内容，不能只返回片段，不能使用 Markdown 代码块。
-3. 若修改 .lcpp 文件，必须保持 LingCpp 语法风格：包、使用、类、公开、私有、保护、构造、析构、事件、返回、如果、否则、如果结束、循环、循环结束、结束类。
+3. 若修改 .lcpp 文件，必须保持 LingCpp 语法风格；可使用窗口类，或使用“功能库 名称 ... 结束功能库”声明一个文件一个、无状态的项目功能库，并通过“功能库名.功能名(...)”限定调用。
 4. 除非用户明确要求，不要重命名现有事件处理器、类名、控件名、设计器绑定名或配置键名。
 5. 优先做最小必要改动，保留无关代码、缩进和注释。
 6. 只返回确实发生变化的文件；如果无需修改某个文件，就不要把它放进 files 数组。
@@ -3418,6 +3736,10 @@ function normalizeFilePath(value: string): string {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isValidLingCppIdentifier(value: unknown): value is string {
+  return typeof value === "string" && /^[\p{L}_][\p{L}\p{N}_]*$/u.test(value.trim());
 }
 
 function isWorkbenchConfigurationKey(value: unknown): value is WorkbenchConfigurationKey {

@@ -26,10 +26,12 @@ export class PtyTerminalService {
 
   constructor(private readonly workspaceRoot: string, private readonly spawnPty: PtySpawner = nodePty.spawn) {}
 
-  async create(options: { profile?: TerminalProfile; cwd?: string; cols?: number; rows?: number; env?: Record<string, string> } = {}): Promise<TerminalSessionSnapshot> {
+  async create(options: { profile?: TerminalProfile; cwd?: string; cols?: number; rows?: number; env?: Record<string, string>; title?: string } = {}): Promise<TerminalSessionSnapshot> {
     const profile = normalizeProfile(options.profile);
     const cwd = await this.resolveCwd(options.cwd);
     const cols = dimension(options.cols, 80, 20, 500); const rows = dimension(options.rows, 24, 5, 200);
+    const requestedTitle = typeof options.title === 'string' ? options.title.trim() : '';
+    if (requestedTitle.length > 80 || /[\r\n\0]/u.test(requestedTitle)) throw new Error('终端标题不能超过 80 个字符或包含控制字符。');
     const shell = resolveShell(profile); const env = validateEnvironment(options.env);
     const child = this.spawnPty(shell.file, shell.args, {
       name: 'xterm-256color', cwd, cols, rows, env: { ...process.env, ...env },
@@ -37,7 +39,7 @@ export class PtyTerminalService {
     });
     const id = crypto.randomUUID();
     const snapshot: TerminalSessionSnapshot = {
-      id, title: `${profileTitle(profile)} ${this.sessions.size + 1}`, profile, cwd, cols, rows,
+      id, title: requestedTitle || `${profileTitle(profile)} ${this.sessions.size + 1}`, profile, cwd, cols, rows,
       status: 'running', pid: child.pid, createdAt: new Date().toISOString(), sequence: 0, buffer: ''
     };
     const record: SessionRecord = { snapshot, process: child, disposables: [] };

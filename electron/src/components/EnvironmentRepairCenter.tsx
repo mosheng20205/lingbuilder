@@ -29,6 +29,8 @@ interface EnvironmentCheckItem {
 interface EnvironmentCheckResponse {
   ok: boolean;
   ready: boolean;
+  cppCompilerAvailable: boolean;
+  msvcBuildReady: boolean;
   checks: EnvironmentCheckItem[];
   warnings: string[];
   error?: string;
@@ -133,8 +135,9 @@ export default function EnvironmentRepairCenter({
   const webView2 = checksById.get('webView2');
   const gpp = checksById.get('gpp');
   const clangpp = checksById.get('clangpp');
-  const coreReady = Boolean(msvc?.available && windowsSdk?.available);
-  const microsoftToolchainReady = coreReady && Boolean(cmake?.available);
+  const nativeBuildReady = check?.msvcBuildReady
+    ?? Boolean(msvc?.available && windowsSdk?.available);
+  const alternativeCompilerAvailable = Boolean(gpp?.available || clangpp?.available);
 
   if (!open) return null;
 
@@ -224,16 +227,23 @@ export default function EnvironmentRepairCenter({
             </div>
           )}
 
+          {!nativeBuildReady && alternativeCompilerAvailable && (
+            <div className="mb-3 flex items-start gap-2 rounded border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-600" role="status">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>已检测到 g++ 或 clang++，但它们不能替代 LingBuilder 默认 Win32 构建所需的 MSVC 与 Windows SDK。</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <CapabilityCard
-              title="微软 C++ 构建环境"
-              description="用于生成和编译 LingCpp/Win32 项目。"
-              ready={microsoftToolchainReady}
+              title="LingBuilder 原生 MSVC 构建环境"
+              description="MSVC 与 Windows SDK 为默认 Win32 构建必需项；CMake 用于部分高级项目。"
+              ready={nativeBuildReady}
               isDarkMode={isDarkMode}
               cardClass={card}
               items={[msvc, windowsSdk, cmake]}
-              actionLabel={microsoftToolchainReady ? '已就绪' : '一键安装核心构建环境'}
-              disabled={repair.active || loading || microsoftToolchainReady}
+              actionLabel={nativeBuildReady ? '原生构建已就绪' : '一键安装核心构建环境'}
+              disabled={repair.active || loading || nativeBuildReady}
               onAction={() => setConfirmTarget('cppBuildTools')}
             />
             <CapabilityCard
@@ -359,7 +369,7 @@ function StatusRow({ item }: { item: EnvironmentCheckItem | undefined }) {
     <div className="flex min-w-0 items-start gap-2 text-[11px]">
       <span className={`mt-0.5 shrink-0 font-bold ${item.available ? 'text-emerald-500' : 'text-slate-500'}`} aria-hidden="true">{item.available ? '✓' : '○'}</span>
       <div className="min-w-0">
-        <div className="font-medium">{item.label}{item.version ? ` · ${item.version}` : ''}</div>
+        <div className="font-medium">{item.label} · {item.required ? '必需' : '可选'}{item.version ? ` · ${item.version}` : ''}</div>
         <div className="truncate opacity-60" title={item.path || item.detail || undefined}>{item.path || item.detail || '未检测到'}</div>
       </div>
     </div>

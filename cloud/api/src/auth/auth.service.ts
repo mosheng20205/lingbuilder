@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import argon2 from 'argon2';
 import nodemailer from 'nodemailer';
@@ -12,7 +12,7 @@ import { SecretVaultService } from '../security/secret-vault.service.js';
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly prisma: PrismaService, private readonly jwt: JwtService, private readonly promotions: PromotionService, private readonly redis: RedisService, private readonly vault: SecretVaultService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService, @Inject(JwtService) private readonly jwt: JwtService, @Inject(PromotionService) private readonly promotions: PromotionService, @Inject(RedisService) private readonly redis: RedisService, @Inject(SecretVaultService) private readonly vault: SecretVaultService) {}
   private fail(message: string, code = 'AUTH_INVALID', status = 400): never { throw Object.assign(new Error(message), { code, status }); }
   private normalizeEmail(value: string) { const email = value.trim().toLowerCase(); if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(email)) this.fail('邮箱格式无效。', 'VALIDATION_FAILED'); return email; }
   private validatePassword(value: string) { if (value.length < 10 || value.length > 128 || !/[A-Za-z]/u.test(value) || !/\d/u.test(value)) this.fail('密码需要 10 至 128 位，并同时包含字母和数字。', 'VALIDATION_FAILED'); }
