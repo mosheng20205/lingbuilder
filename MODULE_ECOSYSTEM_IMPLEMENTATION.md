@@ -1,5 +1,11 @@
 # LingBuilder 模块生态实现说明
 
+> 2026-07-28 补充：`lingbuilder.new_emoji.ui/ListBox` 的创建期“简单项目”和可选状态 Setter 必须按原生破坏性语义生成。`EU_CreateListBox` / `EU_SetListBoxItems` 负责静态简单项目；只有 `listBoxItemsEx` 存在非空项目时才调用 `EU_SetListBoxItemsEx`。空 `selectedKeys` 不得覆盖 `selectedIndex`，`virtualItemCount <= 0` 不得调用 `EU_SetListBoxVirtualItemCount`，因为上游这两个 Setter 会分别重置选择和清空普通项目。高级项目用于确实需要 key、父级、分组、描述等 TSV 字段的项目，不能把空默认值作为一次运行时清空操作无条件发出。
+
+> 2026-07-28 补充：`lingbuilder.new_emoji.ui/Tabs` 已按真实分页容器接入。模块清单必须使用 `previewType: TabControl`、`isContainer: true` 和 `layout.mode: slots`；设计器以稳定页面 ID 保存槽位，同时兼容旧项目中 `type: Grid + designerType: .../Tabs + items[]` 的模型。原生生成器固定开启 Tabs 内容区，为每个标签生成与 Tabs 同级、覆盖内容矩形的独立 `Panel` 元素，并把页面内控件挂到对应 Panel，最后通过 `EU_SetTabsPageElements` 绑定切换显隐。页面 Panel 不得作为 Tabs 子元素创建，因为上游 Tabs 自绘不会遍历绘制子元素；页面 Panel 还必须显式使用无边框、0 圆角样式。绑定外部页面时，`ItemsEx` 的内置内容字段必须为空白，避免高 DPI 下页面起点差异露出 Tabs 自绘内容。也不得仅把控件高度交给关闭内容区的 Tabs，否则整个高度会被当成标签头。
+
+> 2026-07-28 补充：Win32 基础模块新增可确定性生成的 `到文本(值)`，覆盖整数、长整数、小数、逻辑值和文本，并由普通 Win32 与 new_emoji 后端共同实现。`lingbuilder.std.encoding` 扩展为 30 条命令，覆盖 UTF-8、UTF-16LE/BE、UTF-32LE/BE、ANSI、GBK、GB2312、GB18030 双向转换、通用编码转换、BOM 处理及保守检测。由于当前 LingCpp 没有公开字节数组类型，编码后的原始字节统一以无空格大写十六进制文本跨越命令边界，禁止把任意字节伪装成 Unicode 文本。
+
 > 2026-07-28 补充：FBro 同时支持内嵌 Alloy Runtime 和谷歌原生 Chrome Runtime。内嵌实例继续遵守“一控件一个宿主 `HWND`”；`FBro_打开谷歌原生UI浏览器` 则通过 C ABI `LB_FBro_CreateChromeUi` 只接收所属浏览器的整数句柄与 URL，不接收 LingBuilder `HWND`。桥接层固定设置空 `parent_window/window`、`WS_EX_APPWINDOW`、`WS_OVERLAPPEDWINDOW` 和 `CEF_RUNTIME_STYLE_CHROME`，让 FBro/CEF 自行创建桌面顶层窗口；这里的无句柄指调用契约不提供宿主句柄，不代表 Chrome 创建后不存在系统 HWND。Chrome UI 实例必须单独跟踪错误/关闭事件，不能覆盖内嵌实例状态，所属窗口销毁时必须统一关闭。
 
 > 2026-07-28 补充：FBro 浏览器创建必须统一投递到 CEF UI 线程。`LB_FBro_CreateEx` 只登记 C ABI 句柄和宿主 `HWND`，CEF 已就绪时使用 `CefPostTask(TID_UI, ...)` 创建；初始化尚未完成时由 `OnContextInitialized` 在同一线程启动待创建实例，禁止根据启动时序随机在 Win32 主线程直接调用 `FBroHsCreate`。每实例 `CefRequestContext` 的 profile 必须是全局 `.fbro-global-cache` 的直接子目录；旧相对路径、嵌套路径和根目录外绝对路径由桥接层稳定映射到隔离子目录，避免 Chromium 拒绝 profile 后静默降级。原生测试必须同时验证窗口响应、页面加载以及日志中不存在 `cache_path`、`root_cache_path`、`Cannot create profile`。`OnBeforePopup` 必须同步取消新窗口，并以 `BeforePopup` 事件把目标 URL 投递给当前控件的 LCPP 处理器，支持单窗口接管导航。

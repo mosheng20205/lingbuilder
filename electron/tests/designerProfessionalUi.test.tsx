@@ -95,6 +95,9 @@ test('designer reports model-only edits as dirty without treating selection as a
   assert.match(source, /if \(previousProject === project\) return/u);
   assert.match(source, /notifyWindowDesignerDirtyStateChanged\(detail\)/u);
   assert.match(source, /suppressNextDirtySignalRef/u);
+  assert.match(source, /const suppressNextProjectPublishRef = useRef\(false\)/u);
+  assert.match(source, /suppressNextProjectPublishRef\.current = true;\s+setProject\(nextState\.project\)/u);
+  assert.match(source, /if \(suppressNextProjectPublishRef\.current\) \{\s+suppressNextProjectPublishRef\.current = false;\s+return;/u);
   assert.match(source, /if \(publishingDesignerStateRef\.current\) return/u);
 });
 
@@ -281,6 +284,9 @@ test('designer renders ListView columns and rows through a dedicated live previe
   const previewSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/ListViewDesignerPreview.tsx'), 'utf8');
   assert.match(designerSource, /<ListViewDesignerPreview control=\{control\}/u);
   assert.match(previewSource, /data-list-view-preview="details"/u);
+  assert.match(previewSource, /model\.columns\.map\(\(column, index\) =>/u);
+  assert.match(previewSource, /<div key=\{index\} role="columnheader"/u);
+  assert.doesNotMatch(previewSource, /key=\{`\$\{column\.title\}/u);
   assert.match(previewSource, /model\.columns/u);
   assert.match(previewSource, /model\.rows/u);
   assert.match(previewSource, /model\.gridLines/u);
@@ -305,7 +311,7 @@ test('designer renders TabControl with a Win32-style tab strip and page surface'
   const designerSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   const previewSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/TabControlDesignerPreview.tsx'), 'utf8');
   assert.match(designerSource, /<TabControlDesignerPreview control=\{control\}/u);
-  assert.match(previewSource, /data-tab-control-preview="win32"/u);
+  assert.match(previewSource, /data-tab-control-preview=\{newEmojiTabs \? 'new-emoji' : 'win32'\}/u);
   assert.match(previewSource, /role="tablist"/u);
   assert.match(previewSource, /role="tabpanel"/u);
   assert.match(previewSource, /onSelectPage\?\.\(tab\.id\)/u);
@@ -326,6 +332,11 @@ test('ListView collection dialog supports spreadsheet cells, batch paste and res
   assert.match(source, /行 ID 由系统自动维护/u);
   assert.match(source, /第 \$\{index \+ 1\} 列对齐方式/u);
   assert.match(source, /function ColumnWidthInput/u);
+  assert.match(source, /useState\(\(\) => normalizeListViewColumns\(columnsValue\)\)/u);
+  assert.match(source, /useState\(\(\) => normalizeListViewRows\(rowsValue\)\)/u);
+  assert.match(source, /const publishChange = \(nextColumns/u);
+  assert.match(source, /setColumns\(nextColumns\)/u);
+  assert.match(source, /setRows\(nextRows\)/u);
   assert.match(source, /nextDraft\.trim\(\) === ''/u);
   assert.match(source, /onBlur=\{\(\) => commitDraft\(draft, true\)\}/u);
   assert.doesNotMatch(source, /value=\{column\.alignment\}\s+disabled/u);

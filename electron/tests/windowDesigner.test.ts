@@ -103,6 +103,8 @@ import {
   getSelectedTabPage,
   getTabControlPages,
   isControlOnSelectedTab,
+  isNewEmojiTabsControl,
+  isTabContainerControl,
   moveTabControlPage,
   normalizeTabControlPages,
   removeTabControlPage
@@ -1255,6 +1257,115 @@ test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件
   assert.ok(generated.diagnostics.some(item => item.includes('说明文本') && item.includes('仅支持字体名称和字号')));
 });
 
+test('new_emoji 命名空间列表框保留静态项目并跳过会清空数据的空可选 setter', () => {
+  const textSetter = (command: string, propertyKey: string) => ({
+    command,
+    parameters: [
+      { name: 'hwnd', type: 'HWND' },
+      { name: 'element_id', type: 'int' },
+      { name: 'items_bytes', type: 'const unsigned char*', propertyKey },
+      { name: 'items_len', type: 'int', lengthOf: propertyKey }
+    ],
+    propertyKeys: [propertyKey]
+  });
+  const newEmojiModule: InstalledModule = {
+    manifest: {
+      schemaVersion: 2,
+      id: 'lingbuilder.new_emoji.ui',
+      name: 'new_emoji 原生界面库',
+      version: '1.0.0',
+      category: '界面',
+      description: '列表框生成测试模块',
+      contributes: {
+        designerControls: [{
+          type: 'ListBox',
+          namespacedType: 'lingbuilder.new_emoji.ui/ListBox',
+          label: '列表框 ListBox',
+          defaultProps: {},
+          runtime: {
+            createCommand: 'EU_CreateListBox',
+            createParameters: [
+              { name: 'hwnd', type: 'HWND' },
+              { name: 'parent_id', type: 'int' },
+              { name: 'title_bytes', type: 'const unsigned char*' },
+              { name: 'title_len', type: 'int' },
+              { name: 'items_bytes', type: 'const unsigned char*' },
+              { name: 'items_len', type: 'int' },
+              { name: 'x', type: 'int' },
+              { name: 'y', type: 'int' },
+              { name: 'w', type: 'int' },
+              { name: 'h', type: 'int' }
+            ],
+            propertySetters: [
+              textSetter('EU_SetListBoxItems', 'items'),
+              textSetter('EU_SetListBoxItemsEx', 'listBoxItemsEx'),
+              {
+                command: 'EU_SetListBoxSelectedIndex',
+                parameters: [
+                  { name: 'hwnd', type: 'HWND' },
+                  { name: 'element_id', type: 'int' },
+                  { name: 'index', type: 'int', propertyKey: 'selectedIndex' }
+                ],
+                propertyKeys: ['selectedIndex']
+              },
+              textSetter('EU_SetListBoxSelectedKeys', 'selectedKeys'),
+              {
+                command: 'EU_SetListBoxVirtualItemCount',
+                parameters: [
+                  { name: 'hwnd', type: 'HWND' },
+                  { name: 'element_id', type: 'int' },
+                  { name: 'count', type: 'int', propertyKey: 'virtualItemCount' }
+                ],
+                propertyKeys: ['virtualItemCount']
+              }
+            ]
+          }
+        }]
+      }
+    },
+    installPath: 'C:/modules/lingbuilder.new_emoji.ui',
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const listBox = {
+    ...createControl('catalog-listbox', undefined, 'ListBox'),
+    name: '任务列表',
+    content: '列表框',
+    designerType: 'lingbuilder.new_emoji.ui/ListBox',
+    properties: {
+      title: '任务列表 📋',
+      items: ['整理需求 📋', '设计界面 🎨', '导出项目 🚀'],
+      listBoxItemsEx: [],
+      selectedIndex: 0,
+      selectedKeys: [],
+      virtualItemCount: 0
+    }
+  } satisfies LingControl;
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'new-emoji-listbox-project',
+    name: 'new_emoji 列表框',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '列表框测试',
+      width: 640, height: 420, background: '#111827', description: '', designerBackend: 'new-emoji', controls: [listBox]
+    }]
+  };
+
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 MainWindow\n结束类',
+    enabledModules: [newEmojiModule]
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /LB_NE_ToUtf8\(L"整理需求 📋\|设计界面 🎨\|导出项目 🚀"\)/u);
+  assert.match(cpp, /EU_CreateListBox\(/u);
+  assert.match(cpp, /EU_SetListBoxItems\(/u);
+  assert.match(cpp, /EU_SetListBoxSelectedIndex\([^\n]+, 0\);/u);
+  assert.doesNotMatch(cpp, /EU_SetListBoxItemsEx\(/u);
+  assert.doesNotMatch(cpp, /EU_SetListBoxSelectedKeys\(/u);
+  assert.doesNotMatch(cpp, /EU_SetListBoxVirtualItemCount\(/u);
+});
+
 test('UI 后端命令契约可注册扩展并准确扫描源码调用', () => {
   const backendId = 'test-ui-backend-contract';
   registerNativeUiBackendCommandContract({
@@ -1828,6 +1939,40 @@ test('选项卡设计器预览使用控件文字颜色和背景颜色', () => {
   assert.doesNotMatch(hiddenMarkup, /data-tab-header-hidden="true" class="[^"]*\bborder\b/u);
   assert.doesNotMatch(hiddenMarkup, /role="tablist"/u);
   assert.doesNotMatch(hiddenMarkup, />常规</u);
+});
+
+test('new_emoji Tabs 兼容旧 Grid 预览并提供稳定的独立页面槽位', () => {
+  const tabs = {
+    ...createControl('new-emoji-tabs', undefined, 'Grid'),
+    designerType: 'lingbuilder.new_emoji.ui/Tabs',
+    width: 360,
+    height: 160,
+    background: 'transparent',
+    foreground: '#F8FAFC',
+    properties: {
+      items: ['标签1', '标签2', '标签3'],
+      activeIndex: 1,
+      contentVisible: false
+    }
+  } satisfies LingControl;
+  const firstPageChild = { ...createControl('page-one', tabs.id, 'Button'), containerSlot: 'page1' };
+  const secondPageChild = { ...createControl('page-two', tabs.id, 'Button'), containerSlot: 'page2' };
+
+  assert.equal(isNewEmojiTabsControl(tabs), true);
+  assert.equal(isTabContainerControl(tabs), true);
+  assert.deepEqual(getTabControlPages(tabs).map(page => [page.id, page.title]), [
+    ['page1', '标签1'], ['page2', '标签2'], ['page3', '标签3']
+  ]);
+  assert.equal(getSelectedTabPage(tabs)?.id, 'page2');
+  assert.equal(isControlOnSelectedTab([tabs, firstPageChild, secondPageChild], firstPageChild.id), false);
+  assert.equal(isControlOnSelectedTab([tabs, firstPageChild, secondPageChild], secondPageChild.id), true);
+
+  const markup = renderToStaticMarkup(React.createElement(TabControlDesignerPreview, { control: tabs }));
+  assert.match(markup, /data-tab-control-preview="new-emoji"/u);
+  assert.match(markup, />标签1</u);
+  assert.match(markup, /aria-selected="true"[^>]*>.*标签2/u);
+  assert.match(markup, /data-tab-content-container="true"/u);
+  assert.match(markup, /background-color:#242941/u);
 });
 
 test('选项卡注册隐藏表头属性且默认保持显示', () => {
@@ -2805,6 +2950,7 @@ test('.lcpp 控件属性读写和集合命令通过模块 binding 确定性生�
   const source = `类 主窗口 : 公开 窗体
     事件 _主窗口_创建完毕()
         控件_设置文本("保存按钮", "立即保存")
+        控件_设置文本("保存按钮", 到文本(123))
         编辑框_表头.内容 = "1"
         控件_设置启用("保存按钮", 真)
         页面选项卡.设置选择项(到整数(编辑框_表头.内容))
@@ -2817,6 +2963,9 @@ test('.lcpp 控件属性读写和集合命令通过模块 binding 确定性生�
 结束类`;
   const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.find(file => file.relativePath === 'main.cpp')!.content;
   assert.match(cpp, /控件_设置文本\(L"保存按钮", L"立即保存"\)/u);
+  assert.match(cpp, /控件_设置文本\(L"保存按钮", 到文本\(123\)\)/u);
+  assert.match(cpp, /LingCppTextValue 到文本\(int value\) const/u);
+  assert.match(cpp, /LingCppTextValue 到文本\(bool value\) const/u);
   assert.match(cpp, /控件_设置文本\(L"编辑框_表头", L"1"\)/u);
   assert.match(cpp, /控件_设置启用\(L"保存按钮", true\)/u);
   assert.match(cpp, /控件_设置选择项\(L"页面选项卡", 到整数\(控件_取文本\(L"编辑框_表头"\)\)\)/u);

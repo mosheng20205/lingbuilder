@@ -1,8 +1,8 @@
 # LingBuilder 模块封装清单
 
-更新时间：2026-07-23
+更新时间：2026-07-28
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **58 个内置模块、389 条中文命令**；其中本轮参考精易模块分类新增 **51 个模块、287 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **60 个内置模块、497 条中文命令**；其中参考精易模块分类新增 **51 个模块、287 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -16,12 +16,14 @@
 |---|---|---|---:|
 | 已封装 | `lingbuilder.std.text` | 文本处理模块 | 10 |
 | 已封装 | `lingbuilder.std.bytes` | 字节与十六进制模块 | 4 |
-| 已封装 | `lingbuilder.std.encoding` | 编码转换模块 | 6 |
+| 已封装 | `lingbuilder.std.encoding` | 编码转换模块 | 30 |
 | 已封装 | `lingbuilder.std.math` | 数学与随机模块 | 7 |
 | 已封装 | `lingbuilder.std.datetime` | 日期时间模块 | 5 |
 | 已封装 | `lingbuilder.std.regex` | 正则表达式模块 | 5 |
 | 已封装 | `lingbuilder.data.json` | JSON 数据模块 | 5 |
 | 已封装 | `lingbuilder.data.xml` | XML 文本模块 | 5 |
+
+编码转换模块覆盖 UTF-8、UTF-16LE/BE、UTF-32LE/BE、ANSI、GBK、GB2312、GB18030 的双向转换，以及通用转换、BOM 操作和保守检测。原始字节统一以大写十六进制文本传递，避免任意二进制被误当作 Unicode 文本。
 
 ## 文件、配置与系统
 
@@ -108,7 +110,7 @@ SQLite 模块不会静默假装数据库可用：项目需要提供 `sqlite3.dll
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已有 | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 32 |
+| 已有 | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 38 |
 | 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 25 |
 | 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 24 |
 | 已有 | `lingbuilder.cef3.browser` | CEF3浏览器模块 | 18 |

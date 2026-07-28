@@ -88,6 +88,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           insertText: '结束()',
           returnType: '空'
         },
+        { name: '到文本', signature: '到文本(值)', description: '把整数、长整数、小数、逻辑值或文本确定性转换为文本；逻辑值返回“真”或“假”。', insertText: '到文本($1)', returnType: '文本型' },
         { name: '到整数', signature: '到整数(文本)', description: '把文本转换为整数；空文本或无法转换的内容返回 0。', insertText: '到整数("$1")', returnType: '整数型' },
         { name: '取鼠标水平位置', signature: '取鼠标水平位置()', description: '返回鼠标指针当前相对于屏幕左边的水平位置，单位为像素点。初级命令。', insertText: '取鼠标水平位置()', returnType: '整数型' },
         { name: '取鼠标垂直位置', signature: '取鼠标垂直位置()', description: '返回鼠标指针当前相对于屏幕顶边的垂直位置，单位为像素点。初级命令。', insertText: '取鼠标垂直位置()', returnType: '整数型' },
@@ -168,6 +169,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           returnType: 'void',
           example: '结束()'
         },
+        { command: '到文本', runtimeName: '到文本', parameters: [{ name: '值', type: 'raw' }], returnType: 'wideString', encoding: 'wide', example: '到文本(123)' },
         { command: '到整数', runtimeName: '到整数', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
         { command: '取鼠标水平位置', runtimeName: '取鼠标水平位置', parameters: [], returnType: 'int' },
         { command: '取鼠标垂直位置', runtimeName: '取鼠标垂直位置', parameters: [], returnType: 'int' },

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "module-history-1785226061650-492902",
+    "time": "2026-07-28T08:07:41.650Z",
+    "action": "enable",
+    "moduleId": "lingbuilder.fbro.browser",
+    "moduleName": "FBro指纹浏览器模块",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "已为项目启用模块 FBro指纹浏览器模块",
+    "details": "项目 fbro 已引用 lingbuilder.fbro.browser@1.0.0。"
+  },
+  {
+    "id": "module-history-1785222073972-9a2852",
+    "time": "2026-07-28T07:01:13.973Z",
+    "action": "enable",
+    "moduleId": "lingbuilder.win32.common-controls",
+    "moduleName": "Win32高级控件模块",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "已为项目启用模块 Win32高级控件模块",
+    "details": "项目 lingbuilder-2 已引用 lingbuilder.win32.common-controls@1.0.0。"
+  }
+]

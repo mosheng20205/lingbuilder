@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ArrowDown,
   ArrowLeft,
@@ -112,8 +112,8 @@ export default function ListViewCollectionDialog({
   onChange,
   onClose
 }: ListViewCollectionDialogProps) {
-  const columns = useMemo(() => normalizeListViewColumns(columnsValue), [columnsValue]);
-  const rows = useMemo(() => normalizeListViewRows(rowsValue), [rowsValue]);
+  const [columns, setColumns] = useState(() => normalizeListViewColumns(columnsValue));
+  const [rows, setRows] = useState(() => normalizeListViewRows(rowsValue));
   const dialogRef = useRef<HTMLDivElement>(null);
   const firstButtonRef = useRef<HTMLButtonElement>(null);
   const onCloseRef = useRef(onClose);
@@ -147,29 +147,35 @@ export default function ListViewCollectionDialog({
     isDarkMode ? 'text-slate-300 hover:bg-white/10' : 'text-slate-600 hover:bg-slate-200'
   }`;
 
+  const publishChange = (nextColumns: ListViewEditableColumn[], nextRows: ListViewEditableRow[]) => {
+    setColumns(nextColumns);
+    setRows(nextRows);
+    onChange(nextColumns, nextRows);
+  };
+
   const updateColumn = (index: number, fields: Partial<ListViewEditableColumn>) => {
-    onChange(columns.map((column, columnIndex) => columnIndex === index ? { ...column, ...fields } : column), rows);
+    publishChange(columns.map((column, columnIndex) => columnIndex === index ? { ...column, ...fields } : column), rows);
   };
 
   const addColumn = () => {
     const next = appendListViewColumn(columns, rows);
-    onChange(next.columns, next.rows);
+    publishChange(next.columns, next.rows);
     setNotice(`已新增第 ${next.columns.length} 列。`);
   };
 
   const moveColumn = (from: number, to: number) => {
     const next = moveListViewColumn(columns, rows, from, to);
-    onChange(next.columns, next.rows);
+    publishChange(next.columns, next.rows);
   };
 
   const deleteColumn = (index: number) => {
     const next = removeListViewColumn(columns, rows, index);
-    onChange(next.columns, next.rows);
+    publishChange(next.columns, next.rows);
     setNotice('已删除列，并同步移除每行对应单元格。');
   };
 
   const updateRowCell = (rowIndex: number, columnIndex: number, value: string) => {
-    onChange(columns, rows.map((row, index) => {
+    publishChange(columns, rows.map((row, index) => {
       if (index !== rowIndex) return row;
       const cells = Array.from({ length: columns.length }, (_, cellIndex) => row.cells[cellIndex] ?? '');
       cells[columnIndex] = value;
@@ -182,7 +188,7 @@ export default function ListViewCollectionDialog({
     const nextRows = afterIndex === undefined
       ? [...rows, row]
       : [...rows.slice(0, afterIndex + 1), row, ...rows.slice(afterIndex + 1)];
-    onChange(columns, nextRows);
+    publishChange(columns, nextRows);
     setNotice(`已新增第 ${nextRows.length} 行。`);
     return nextRows.indexOf(row);
   };
@@ -191,14 +197,14 @@ export default function ListViewCollectionDialog({
     const source = rows[index];
     const duplicate = { ...createListViewRow(rows, columns.length, source.cells), image: source.image };
     const nextRows = [...rows.slice(0, index + 1), duplicate, ...rows.slice(index + 1)];
-    onChange(columns, nextRows);
+    publishChange(columns, nextRows);
     const newIndex = index + 1;
     setNotice(`已复制第 ${index + 1} 行到第 ${newIndex + 1} 行。`);
   };
 
-  const moveRow = (from: number, to: number) => onChange(columns, moveItem(rows, from, to));
+  const moveRow = (from: number, to: number) => publishChange(columns, moveItem(rows, from, to));
   const deleteRow = (index: number) => {
-    onChange(columns, rows.filter((_, rowIndex) => rowIndex !== index));
+    publishChange(columns, rows.filter((_, rowIndex) => rowIndex !== index));
     setNotice(`已删除第 ${index + 1} 行。`);
   };
 
@@ -230,7 +236,7 @@ export default function ListViewCollectionDialog({
     const isTablePaste = matrix.length > 1 || (matrix[0]?.length || 0) > 1;
     if (!isTablePaste) return;
     event.preventDefault();
-    onChange(columns, applyListViewCellMatrix(rows, columns.length, rowIndex, columnIndex, matrix));
+    publishChange(columns, applyListViewCellMatrix(rows, columns.length, rowIndex, columnIndex, matrix));
     setNotice(`已从当前单元格粘贴 ${matrix.length} 行、${Math.max(...matrix.map(row => row.length))} 列数据。`);
   };
 
@@ -243,7 +249,7 @@ export default function ListViewCollectionDialog({
     const nextRows = mode === 'replace'
       ? replaceListViewRowsFromMatrix(rows, columns.length, matrix)
       : applyListViewCellMatrix(rows, columns.length, rows.length, 0, matrix);
-    onChange(columns, nextRows);
+    publishChange(columns, nextRows);
     setNotice(`${mode === 'replace' ? '已替换' : '已追加'} ${matrix.length} 行数据；超出当前列数的单元格已忽略。`);
     setBatchText('');
     setShowBatchPaste(false);
@@ -399,7 +405,7 @@ export default function ListViewCollectionDialog({
                     <tr key={row.id} className={isDarkMode ? 'hover:bg-white/[0.025]' : 'hover:bg-slate-100/60'}>
                       <td className={`sticky left-0 z-10 border-b p-2 text-center font-mono text-slate-500 ${isDarkMode ? 'bg-[#18181d]' : 'bg-slate-50'}`}>{rowIndex + 1}</td>
                       {columns.map((column, columnIndex) => <td key={columnIndex} className="border-b p-1.5"><input data-list-view-cell={`${rowIndex}-${columnIndex}`} aria-label={`第 ${rowIndex + 1} 行，${column.title || `第 ${columnIndex + 1} 列`}`} value={row.cells[columnIndex] ?? ''} onChange={event => updateRowCell(rowIndex, columnIndex, event.target.value)} onKeyDown={event => handleCellKeyDown(event, rowIndex, columnIndex)} onPaste={event => handleCellPaste(event, rowIndex, columnIndex)} className={inputClass} /></td>)}
-                      {showImages && <td className="border-b p-1.5"><input aria-label={`第 ${rowIndex + 1} 行图片编号`} type="number" min={-1} value={row.image} onChange={event => onChange(columns, rows.map((item, index) => index === rowIndex ? { ...item, image: Number(event.target.value) || 0 } : item))} className={inputClass} /></td>}
+                      {showImages && <td className="border-b p-1.5"><input aria-label={`第 ${rowIndex + 1} 行图片编号`} type="number" min={-1} value={row.image} onChange={event => publishChange(columns, rows.map((item, index) => index === rowIndex ? { ...item, image: Number(event.target.value) || 0 } : item))} className={inputClass} /></td>}
                       <td className={`sticky right-0 z-10 border-b p-1.5 ${isDarkMode ? 'bg-[#18181d]' : 'bg-slate-50'}`}>{renderRowActions(rowIndex)}</td>
                     </tr>
                   ))}</tbody>
@@ -408,7 +414,7 @@ export default function ListViewCollectionDialog({
               <div className="space-y-2 md:hidden">{rows.map((row, rowIndex) => (
                 <section key={row.id} className={`rounded border p-3 ${isDarkMode ? 'border-[#3d3d46] bg-[#202026]' : 'border-slate-200 bg-white'}`}>
                   <div className="mb-2 flex items-center justify-between"><span className="text-xs font-semibold">第 {rowIndex + 1} 行</span>{renderRowActions(rowIndex)}</div>
-                  <div className="space-y-2">{columns.map((column, columnIndex) => <label key={columnIndex} className="block text-[10px] text-slate-500">{column.title || `列 ${columnIndex + 1}`}<input data-list-view-cell={`${rowIndex}-${columnIndex}`} value={row.cells[columnIndex] ?? ''} onChange={event => updateRowCell(rowIndex, columnIndex, event.target.value)} onKeyDown={event => handleCellKeyDown(event, rowIndex, columnIndex)} onPaste={event => handleCellPaste(event, rowIndex, columnIndex)} className={`${inputClass} mt-1`} /></label>)}{showImages && <label className="block text-[10px] text-slate-500">图片编号<input type="number" min={-1} value={row.image} onChange={event => onChange(columns, rows.map((item, index) => index === rowIndex ? { ...item, image: Number(event.target.value) || 0 } : item))} className={`${inputClass} mt-1`} /></label>}</div>
+                  <div className="space-y-2">{columns.map((column, columnIndex) => <label key={columnIndex} className="block text-[10px] text-slate-500">{column.title || `列 ${columnIndex + 1}`}<input data-list-view-cell={`${rowIndex}-${columnIndex}`} value={row.cells[columnIndex] ?? ''} onChange={event => updateRowCell(rowIndex, columnIndex, event.target.value)} onKeyDown={event => handleCellKeyDown(event, rowIndex, columnIndex)} onPaste={event => handleCellPaste(event, rowIndex, columnIndex)} className={`${inputClass} mt-1`} /></label>)}{showImages && <label className="block text-[10px] text-slate-500">图片编号<input type="number" min={-1} value={row.image} onChange={event => publishChange(columns, rows.map((item, index) => index === rowIndex ? { ...item, image: Number(event.target.value) || 0 } : item))} className={`${inputClass} mt-1`} /></label>}</div>
                 </section>
               ))}</div>
             </>

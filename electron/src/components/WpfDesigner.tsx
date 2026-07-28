@@ -156,10 +156,11 @@ import type { InstalledModule, ModuleDesignerControlContribution } from '../serv
 import {
   getControlTabSlot,
   getSelectedTabPage,
+  getTabContainerContentOffset,
   getTabControlPages,
   isControlOnSelectedTab,
-  isTabControlHeaderHidden,
-  normalizeTabControlPages,
+  isNewEmojiTabsControl,
+  isTabContainerControl,
   type TabControlPage,
   type TabControlPageMutation
 } from '../services/windowDesigner/tabControlModel';
@@ -314,6 +315,7 @@ export default function WpfDesigner({
   const currentProjectRef = useRef(project);
   const observedProjectRef = useRef(project);
   const suppressNextDirtySignalRef = useRef(false);
+  const suppressNextProjectPublishRef = useRef(false);
   const publishingDesignerStateRef = useRef(false);
   currentProjectRef.current = project;
   const [enabledDesignerModules, setEnabledDesignerModules] = useState<Set<string>>(() => new Set(['lingbuilder.win32.basic']));
@@ -372,6 +374,7 @@ export default function WpfDesigner({
 
       if (currentProjectRef.current !== nextState.project) {
         suppressNextDirtySignalRef.current = true;
+        suppressNextProjectPublishRef.current = true;
         setProject(nextState.project);
       }
       setActiveWindowId(nextState.activeWindowId);
@@ -398,6 +401,7 @@ export default function WpfDesigner({
       selectedControlId: cachedState.project.id === projectId ? cachedState.selectedControlId : null
     });
     suppressNextDirtySignalRef.current = true;
+    suppressNextProjectPublishRef.current = true;
     setProject(nextState.project);
     setActiveWindowId(nextState.activeWindowId);
     setSelectedControlId(nextState.selectedControlId);
@@ -810,6 +814,10 @@ export default function WpfDesigner({
 
   useEffect(() => {
     if (project.id !== projectId) return;
+    if (suppressNextProjectPublishRef.current) {
+      suppressNextProjectPublishRef.current = false;
+      return;
+    }
     publishingDesignerStateRef.current = true;
     try {
       saveWindowDesignerState({
@@ -1028,7 +1036,7 @@ export default function WpfDesigner({
 
   const updateTabControlPages = (controlId: string, pages: TabControlPage[], mutation?: TabControlPageMutation) => {
     updateActiveWindow(window => {
-      const tabControl = window.controls.find(control => control.id === controlId && control.type === 'TabControl');
+      const tabControl = window.controls.find(control => control.id === controlId && isTabContainerControl(control));
       if (!tabControl) return window;
       const selectedPageId = getSelectedTabPage(tabControl)?.id;
       const remappedSelectedPageId = mutation?.type === 'rename' && selectedPageId === mutation.previousId
@@ -1042,7 +1050,14 @@ export default function WpfDesigner({
         if (control.id === controlId) {
           return {
             ...control,
-            properties: { ...(control.properties || {}), tabs: pages.map(page => ({ ...page })), selectedIndex }
+            properties: {
+              ...(control.properties || {}),
+              tabs: pages.map(page => ({ ...page })),
+              items: pages.map(page => page.title),
+              selectedIndex,
+              activeIndex: selectedIndex,
+              ...(isNewEmojiTabsControl(control) ? { contentVisible: true } : {})
+            }
           };
         }
         if (control.parentId !== controlId) return control;
@@ -1082,12 +1097,13 @@ export default function WpfDesigner({
       if (controls === window.controls) return window;
       if (!target) return { ...window, controls };
       const inset = 12;
-      const topInset = target.type === 'TabControl' && !isTabControlHeaderHidden(target) ? 36 : inset;
+      const tabOffset = isTabContainerControl(target) ? getTabContainerContentOffset(target) : { x: 0, y: 0 };
+      const topInset = tabOffset.y || inset;
       const sourceLeft = Math.min(...sources.map(control => control.x));
       const sourceTop = Math.min(...sources.map(control => control.y));
       const sourceRight = Math.max(...sources.map(control => control.x + control.width));
       const sourceBottom = Math.max(...sources.map(control => control.y + control.height));
-      const availableLeft = target.x + inset;
+      const availableLeft = target.x + tabOffset.x + inset;
       const availableTop = target.y + topInset;
       const availableRight = Math.max(availableLeft, target.x + target.width - inset);
       const availableBottom = Math.max(availableTop, target.y + target.height - inset);
@@ -1104,7 +1120,7 @@ export default function WpfDesigner({
     });
     setSelectedControlIds(uniqueControlIds);
     setSelectedControlId(uniqueControlIds.at(-1) || null);
-    const page = target?.type === 'TabControl'
+    const page = target && isTabContainerControl(target)
       ? getTabControlPages(target).find(item => item.id === containerSlot)
       : undefined;
     const sourceLabel = uniqueControlIds.length > 1 ? `${uniqueControlIds.length} 个控件` : sources[0].name;
@@ -1112,14 +1128,14 @@ export default function WpfDesigner({
   };
 
   const handleSelectTabPage = (tabControlId: string, pageId: string) => {
-    const tabControl = activeWindow.controls.find(control => control.id === tabControlId && control.type === 'TabControl');
+    const tabControl = activeWindow.controls.find(control => control.id === tabControlId && isTabContainerControl(control));
     if (!tabControl) return;
     const pageIndex = getTabControlPages(tabControl).findIndex(page => page.id === pageId);
     if (pageIndex < 0) return;
     updateActiveWindow(window => ({
       ...window,
       controls: window.controls.map(control => control.id === tabControlId
-        ? { ...control, properties: { ...(control.properties || {}), selectedIndex: pageIndex } }
+        ? { ...control, properties: { ...(control.properties || {}), selectedIndex: pageIndex, activeIndex: pageIndex } }
         : control)
     }));
     selectOnlyControl(tabControlId);
@@ -1315,7 +1331,10 @@ export default function WpfDesigner({
     const selectedParent = activeWindow.controls.find(control => (
       control.id === selectedControlId && getWin32ControlDefinition(control.type)?.isContainer
     ));
-    const selectedPage = selectedParent?.type === 'TabControl' ? getSelectedTabPage(selectedParent) : undefined;
+    const selectedPage = selectedParent && isTabContainerControl(selectedParent) ? getSelectedTabPage(selectedParent) : undefined;
+    const selectedParentTabOffset = selectedParent && isTabContainerControl(selectedParent)
+      ? getTabContainerContentOffset(selectedParent)
+      : { x: 0, y: 0 };
     const createdControl = createControl(type, typeIndex);
     const moduleDefaults = moduleControl?.defaultProps || {};
     const newControl: LingControl = {
@@ -1330,8 +1349,8 @@ export default function WpfDesigner({
         foreground: String(moduleDefaults.foreground || createdControl.foreground),
         properties: Object.fromEntries((moduleControl.properties || []).map(property => [property.key, property.defaultValue])) as LingControl['properties']
       } : {}),
-      x: selectedParent ? selectedParent.x + 12 : createdControl.x,
-      y: selectedParent ? selectedParent.y + (selectedParent.type === 'TabControl' && !isTabControlHeaderHidden(selectedParent) ? 36 : 12) : createdControl.y,
+      x: selectedParent ? selectedParent.x + selectedParentTabOffset.x + 12 : createdControl.x,
+      y: selectedParent ? selectedParent.y + selectedParentTabOffset.y + (selectedParentTabOffset.y === 0 ? 12 : 0) : createdControl.y,
       parentId: selectedParent?.id,
       containerSlot: selectedPage?.id
     };
@@ -1472,7 +1491,7 @@ export default function WpfDesigner({
     if (isContainer && targetControl) {
       return {
         parentId: targetControl.id,
-        containerSlot: targetControl.type === 'TabControl' ? getSelectedTabPage(targetControl)?.id : undefined
+        containerSlot: isTabContainerControl(targetControl) ? getSelectedTabPage(targetControl)?.id : undefined
       };
     }
     return { parentId: targetControl?.parentId, containerSlot: targetControl?.containerSlot };
@@ -2664,7 +2683,7 @@ export default function WpfDesigner({
                 effectiveState.visible,
                 effectiveState.enabled,
                 ancestorsVisible && isControlOnSelectedTab(activeWindow.controls, control.id),
-                control.type === 'TabControl' ? pageId => handleSelectTabPage(control.id, pageId) : undefined,
+                isTabContainerControl(control) ? pageId => handleSelectTabPage(control.id, pageId) : undefined,
                 control.type === 'ReBar' ? (fromIndex, toIndex) => handleReorderRebarBand(control.id, fromIndex, toIndex) : undefined
               );
             })}
@@ -3001,7 +3020,7 @@ function LayoutHierarchy({
       nodes.forEach(node => {
         orderedIds.push(node.control.id);
         if (!expandedIds.has(node.control.id)) return;
-        const tabPages = node.control.type === 'TabControl' ? getTabControlPages(node.control) : [];
+        const tabPages = isTabContainerControl(node.control) ? getTabControlPages(node.control) : [];
         if (tabPages.length > 0) {
           tabPages.forEach(page => {
             const pageTreeId = `${node.control.id}:${page.id}`;
@@ -3022,7 +3041,7 @@ function LayoutHierarchy({
     const parentIds = window.controls
       .filter(control => window.controls.some(item => item.parentId === control.id))
       .map(control => control.id);
-    const tabPageIds = window.controls.flatMap(control => control.type === 'TabControl'
+    const tabPageIds = window.controls.flatMap(control => isTabContainerControl(control)
       ? getTabControlPages(control)
         .filter(page => window.controls.some(child => child.parentId === control.id && getControlTabSlot(child, control) === page.id))
         .map(page => `${control.id}:${page.id}`)
@@ -3165,13 +3184,13 @@ function LayoutHierarchy({
   };
 
   const renderControlNode = (node: LingControlHierarchyNode, depth: number): React.ReactNode => {
-    const tabPages = node.control.type === 'TabControl' ? getTabControlPages(node.control) : [];
-    const selectedTabPage = node.control.type === 'TabControl' ? getSelectedTabPage(node.control) : undefined;
+    const tabPages = isTabContainerControl(node.control) ? getTabControlPages(node.control) : [];
+    const selectedTabPage = isTabContainerControl(node.control) ? getSelectedTabPage(node.control) : undefined;
     const hasChildren = node.children.length > 0 || tabPages.length > 0;
     const expanded = expandedIds.has(node.control.id);
     const selected = selectedControlIds.includes(node.control.id);
     const isContainer = Boolean(getWin32ControlDefinition(node.control.type)?.isContainer);
-    const defaultDropSlot = node.control.type === 'TabControl' ? selectedTabPage?.id : undefined;
+    const defaultDropSlot = isTabContainerControl(node.control) ? selectedTabPage?.id : undefined;
     const nodeDropTargetId = defaultDropSlot ? `${node.control.id}:${defaultDropSlot}` : node.control.id;
     const isDropTarget = dropTargetId === nodeDropTargetId;
     const isInvalidDropTarget = invalidDropTargetId === nodeDropTargetId;
@@ -3374,8 +3393,8 @@ function renderControl(
   const isHiddenByAncestor = !ancestorsVisible;
   const definition = getWin32ControlDefinition(control.type);
   const controlFontStyle = getControlFontCssStyle(control);
-  const newEmojiSupported = isNewEmojiDesignerControlSupported(control.type);
-  const hasSpecialPreview = hasDedicatedControlPreview(control.type)
+  const newEmojiSupported = Boolean(control.designerType) || isNewEmojiDesignerControlSupported(control.type);
+  const hasSpecialPreview = isTabContainerControl(control) || hasDedicatedControlPreview(control.type)
     || (useNewEmojiDesigner && !newEmojiSupported);
   const resizeHandles: Array<{
     direction: ResizeDirection;
@@ -3924,7 +3943,7 @@ function renderControl(
           <RebarDesignerPreview control={control} onReorder={onReorderRebarBand} interactive={isSelected} />
         )}
 
-        {control.type === 'TabControl' && <TabControlDesignerPreview control={control} onSelectPage={onSelectTabPage} />}
+        {isTabContainerControl(control) && <TabControlDesignerPreview control={control} onSelectPage={onSelectTabPage} />}
 
         {control.type === 'TreeView' && <TreeViewDesignerPreview control={control} isEnabled={isEffectivelyEnabled} />}
 
@@ -4911,8 +4930,8 @@ function ControlProperties({
   const statusBarPartCount = control.type === 'StatusBar'
     ? normalizeStatusBarParts(control.properties?.parts).length
     : 0;
-  const tabPageCount = control.type === 'TabControl'
-    ? normalizeTabControlPages(control.properties?.tabs).length
+  const tabPageCount = isTabContainerControl(control)
+    ? getTabControlPages(control).length
     : 0;
   const updateControlProperty = (key: string, value: Win32ControlPropertyValue) => {
     const properties = { ...(control.properties || {}), [key]: value };
@@ -5069,6 +5088,7 @@ function ControlProperties({
           onSearchChange={setModulePropertySearch}
           onShowAdvancedChange={setShowAdvancedModuleProperties}
           onPropertyChange={updateControlProperty}
+          onEditTabPages={() => setTabPagesEditorOpen(true)}
         />
       )}
 
@@ -5284,11 +5304,11 @@ function ControlProperties({
           onClose={() => setStatusBarPartsEditorOpen(false)}
         />
       )}
-      {control.type === 'TabControl' && tabPagesEditorOpen && (
+      {isTabContainerControl(control) && tabPagesEditorOpen && (
         <TabControlPagesDialog
           controlName={control.name}
-          value={control.properties?.tabs}
-          hasImageList={Boolean(control.properties?.imageListId)}
+          value={getTabControlPages(control) as unknown as Win32ControlPropertyValue}
+          hasImageList={!isNewEmojiTabsControl(control) && Boolean(control.properties?.imageListId)}
           isDarkMode={isDarkMode}
           onChange={(pages, mutation) => onTabPagesChange(control.id, pages, mutation)}
           onClose={() => setTabPagesEditorOpen(false)}
@@ -5529,7 +5549,7 @@ function StructuredCollectionEditor({
   );
 }
 
-function ModuleControlProperties({ control, definition, controls, imageLists, projectId, isDarkMode, search, showAdvanced, onSearchChange, onShowAdvancedChange, onPropertyChange }: {
+function ModuleControlProperties({ control, definition, controls, imageLists, projectId, isDarkMode, search, showAdvanced, onSearchChange, onShowAdvancedChange, onPropertyChange, onEditTabPages }: {
   control: LingControl;
   definition: ModuleDesignerControlContribution;
   controls: LingControl[];
@@ -5541,6 +5561,7 @@ function ModuleControlProperties({ control, definition, controls, imageLists, pr
   onSearchChange: (value: string) => void;
   onShowAdvancedChange: (value: boolean) => void;
   onPropertyChange: (key: string, value: Win32ControlPropertyValue) => void;
+  onEditTabPages: () => void;
 }) {
   const normalizedSearch = search.trim().toLocaleLowerCase('zh-CN');
   const matched = (definition.properties || []).filter(property => (showAdvanced || property.level !== 'advanced') && (!normalizedSearch || [property.label, property.key, property.group, property.description].filter(Boolean).join(' ').toLocaleLowerCase('zh-CN').includes(normalizedSearch)));
@@ -5556,17 +5577,38 @@ function ModuleControlProperties({ control, definition, controls, imageLists, pr
     </PropertyGroup>
     {groups.map(group => <PropertyGroup key={group} title={`new_emoji / ${group}`} isDarkMode={isDarkMode}>
       {visible.filter(property => (property.group || '组件属性') === group).map(property => <div key={property.key} className="group relative">
-        <ControlPropertyField
-          definition={property as Win32ControlPropertyDefinition}
-          controlType={control.type}
-          controlProperties={control.properties || {}}
-          value={(control.properties?.[property.key] ?? property.defaultValue) as Win32ControlPropertyValue}
-          controls={controls}
-          imageLists={imageLists}
-          isDarkMode={isDarkMode}
-          projectId={projectId}
-          onChange={value => onPropertyChange(property.key, value)}
-        />
+        {isNewEmojiTabsControl(control) && property.key === 'items' ? (
+          <PropertyRow label={property.label} isDarkMode={isDarkMode}>
+            <button
+              type="button"
+              onClick={onEditTabPages}
+              className={`flex w-full items-center justify-between rounded border px-2.5 py-1.5 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                isDarkMode
+                  ? 'border-[#3f3f49] bg-[#24242b] text-slate-200 hover:bg-[#303038]'
+                  : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+              }`}
+            >
+              <span>{getTabControlPages(control).length} 个标签页</span>
+              <span className="font-semibold text-cyan-500">编辑标签页</span>
+            </button>
+          </PropertyRow>
+        ) : isNewEmojiTabsControl(control) && property.key === 'contentVisible' ? (
+          <PropertyRow label={property.label} isDarkMode={isDarkMode}>
+            <span className="text-[10px] text-emerald-500">分页容器模式固定开启</span>
+          </PropertyRow>
+        ) : (
+          <ControlPropertyField
+            definition={property as Win32ControlPropertyDefinition}
+            controlType={control.type}
+            controlProperties={control.properties || {}}
+            value={(control.properties?.[property.key] ?? property.defaultValue) as Win32ControlPropertyValue}
+            controls={controls}
+            imageLists={imageLists}
+            isDarkMode={isDarkMode}
+            projectId={projectId}
+            onChange={value => onPropertyChange(property.key, value)}
+          />
+        )}
         <button type="button" onClick={() => onPropertyChange(property.key, property.defaultValue as Win32ControlPropertyValue)} title={`恢复 ${property.label} 默认值`} aria-label={`恢复 ${property.label} 默认值`} className="absolute right-1 top-1 rounded px-1 text-[9px] text-slate-500 opacity-0 transition-opacity hover:text-fuchsia-400 focus:opacity-100 group-hover:opacity-100">默认</button>
       </div>)}
     </PropertyGroup>)}

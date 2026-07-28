@@ -1,0 +1,66 @@
+{
+  "id": "fbro",
+  "name": "FBro浏览器测试",
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "MainWindow",
+      "title": "FBro浏览器测试主窗口",
+      "width": 900,
+      "height": 560,
+      "background": "#1f2937",
+      "description": "FBro浏览器测试 默认主窗口",
+      "controls": [
+        {
+          "id": "fbrobrowser_7731",
+          "type": "FBroBrowser",
+          "name": "FBro指纹浏览器1",
+          "content": "FBro指纹浏览器",
+          "width": 800,
+          "height": 465,
+          "x": 60,
+          "y": 40,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "background": "#FFFFFF",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "url": "https://www.baidu.com",
+            "cacheDir": "",
+            "userAgent": "",
+            "enableJs": true,
+            "loadImages": true,
+            "enableWebGL": true,
+            "muteAudio": false,
+            "proxyMode": "system",
+            "proxyServer": "",
+            "fingerprintProfile": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        }
+      ],
+      "titleBarBackground": "#2D2D30",
+      "titleBarForeground": "#CBD5E1",
+      "menuBackground": "#ffffff",
+      "menuForeground": "#000000",
+      "menuFontFamily": "Microsoft YaHei UI",
+      "menuFontSize": 11,
+      "menuFontBold": false,
+      "menuFontItalic": false,
+      "menuFontUnderline": false,
+      "cornerStyle": "rounded",
+      "iconStyle": "lingbuilder",
+      "resizable": true,
+      "maximizable": true
+    }
+  ],
+  "schemaVersion": 2,
+  "resources": []
+}

@@ -2,9 +2,15 @@
   "schemaVersion": 2,
   "id": "lingbuilder-solution",
   "name": "基础控制类命令演示",
-  "startupProjectId": "lingbuilder-ui-project",
+  "startupProjectId": "new_emoji",
   "startupProjectIds": [
-    "lingbuilder-ui-project"
+    "new_emoji"
+  ],
+  "folders": [
+    {
+      "id": "newemoji",
+      "name": "NewEmoji项目集合"
+    }
   ],
   "projects": [
     {
@@ -16,6 +22,34 @@
       "designerPath": ".lingbuilder/window-designer.json",
       "isDefault": true,
       "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-2",
+      "name": "LingBuilder项目2",
+      "sourceRoot": "src/lingbuilder-2",
+      "configRoot": "config/lingbuilder-2",
+      "designerPath": ".lingbuilder/projects/lingbuilder-2/window-designer.json",
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "fbro",
+      "name": "FBro浏览器测试",
+      "sourceRoot": "src/fbro",
+      "configRoot": "config/fbro",
+      "designerPath": ".lingbuilder/projects/fbro/window-designer.json",
+      "references": []
+    },
+    {
+      "type": "visual-cpp",
+      "id": "new_emoji",
+      "name": "普通New_emoji窗口",
+      "sourceRoot": "src/new_emoji",
+      "configRoot": "config/new_emoji",
+      "designerPath": ".lingbuilder/projects/new_emoji/window-designer.json",
+      "references": [],
+      "solutionFolderId": "newemoji"
     }
   ]
 }

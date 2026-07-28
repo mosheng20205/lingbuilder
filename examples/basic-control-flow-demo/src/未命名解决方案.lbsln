@@ -4,9 +4,15 @@
   "id": "lingbuilder-solution",
   "name": "基础控制类命令演示",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "lingbuilder-ui-project",
+  "startupProjectId": "new_emoji",
   "startupProjectIds": [
-    "lingbuilder-ui-project"
+    "new_emoji"
+  ],
+  "folders": [
+    {
+      "id": "newemoji",
+      "name": "NewEmoji项目集合"
+    }
   ],
   "projects": [
     {
@@ -14,6 +20,28 @@
       "name": "基础控制类命令演示",
       "type": "visual-cpp",
       "sourceRoot": "src",
+      "references": []
+    },
+    {
+      "id": "lingbuilder-2",
+      "name": "LingBuilder项目2",
+      "type": "visual-cpp",
+      "sourceRoot": "src/lingbuilder-2",
+      "references": []
+    },
+    {
+      "id": "fbro",
+      "name": "FBro浏览器测试",
+      "type": "visual-cpp",
+      "sourceRoot": "src/fbro",
+      "references": []
+    },
+    {
+      "id": "new_emoji",
+      "name": "普通New_emoji窗口",
+      "type": "visual-cpp",
+      "sourceRoot": "src/new_emoji",
+      "solutionFolderId": "newemoji",
       "references": []
     }
   ]

@@ -48,6 +48,7 @@ export const NEW_EMOJI_WIN32_BASIC_COMMANDS = new Set([
   '信息框',
   '调试输出',
   '结束',
+  '到文本',
   '到整数',
   '取鼠标水平位置',
   '取鼠标垂直位置',

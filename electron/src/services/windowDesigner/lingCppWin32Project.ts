@@ -41,6 +41,7 @@ import { getEffectiveControlState } from './controlHierarchy';
 import { getUiBackendCommandDiagnostics, NEW_EMOJI_UI_BACKEND_ID, WIN32_UI_BACKEND_ID } from './uiBackendCommandContract';
 import { normalizeControlFont } from './controlFont';
 import { reconcileRebarBands } from './designerOperations';
+import { getControlTabSlot, getTabControlPages, isNewEmojiTabsControl } from './tabControlModel';
 import {
   parseEplControlMemberAssignmentRule,
   parseEplControlMemberRule,
@@ -382,6 +383,19 @@ function generateNewEmojiMainCpp(
       visibility: getEffectiveControlState(window.controls, control.id).visible ? 'Visible' : 'Collapsed'
     })));
   const variables = new Map(controls.map((control, index) => [control.id, `ne_element_${index + 1}`]));
+  const tabPageVariables = new Map<string, string>();
+  const tabPagesByControl = new Map<string, Array<{ id: string; variable: string }>>();
+  controls.forEach((control, controlIndex) => {
+    if (!isNewEmojiTabsControl(control)) return;
+    const pages = getTabControlPages(control).map((page, pageIndex) => ({
+      id: page.id,
+      variable: `ne_tab_page_${controlIndex + 1}_${pageIndex + 1}`
+    }));
+    pages.forEach(page => tabPageVariables.set(newEmojiTabPageKey(control.id, page.id), page.variable));
+    tabPagesByControl.set(control.id, pages);
+  });
+  const darkWindow = isNewEmojiDarkBackground(window.background);
+  const tabPageBackground = darkWindow ? 0xff242941 : 0xfff8fafc;
   const catalogEventCallbacks = new Map<string, Array<{ command: string; callback: string }>>();
   const catalogEventCallbackBlocks: string[] = [];
   controls.forEach((control, controlIndex) => {
@@ -431,10 +445,17 @@ function generateNewEmojiMainCpp(
   });
   const createLines = controls.flatMap(control => {
     const variable = variables.get(control.id)!;
-    const parent = control.parentId ? window.controls.find(item => item.id === control.parentId) : undefined;
-    const parentVariable = parent ? variables.get(parent.id) || '0' : '0';
-    const x = parent ? control.x - parent.x : control.x;
-    const y = parent ? control.y - parent.y : control.y;
+    const parent = control.parentId ? controls.find(item => item.id === control.parentId) : undefined;
+    const parentTabSlot = parent && isNewEmojiTabsControl(parent) ? getControlTabSlot(control, parent) : undefined;
+    const parentVariable = parent
+      ? (parentTabSlot ? tabPageVariables.get(newEmojiTabPageKey(parent.id, parentTabSlot)) : undefined) || variables.get(parent.id) || '0'
+      : '0';
+    const parentTabContent = parent && isNewEmojiTabsControl(parent) ? getNewEmojiTabsContentBox(parent) : undefined;
+    const coordinateParent = parent && parentTabContent
+      ? { ...parent, x: parent.x + parentTabContent.x, y: parent.y + parentTabContent.y }
+      : parent;
+    const x = coordinateParent ? control.x - coordinateParent.x : control.x;
+    const y = coordinateParent ? control.y - coordinateParent.y : control.y;
     const text = `L"${escapeWideString(control.content)}"`;
     const contractType = control.designerType?.split('/').pop() || control.type;
     const font = normalizeControlFont(control);
@@ -444,7 +465,7 @@ function generateNewEmojiMainCpp(
     const beforeLines: string[] = [];
     const extraLines: string[] = [];
     const catalogCall = control.designerType
-      ? generateNewEmojiCatalogCreateCall(control, parentVariable, variable, enabledModules, parent)
+      ? generateNewEmojiCatalogCreateCall(control, parentVariable, variable, enabledModules, coordinateParent)
       : undefined;
     if (catalogCall) {
       call = catalogCall.call;
@@ -521,6 +542,26 @@ function generateNewEmojiMainCpp(
           beforeLines.push(...fallbackCatalogCall.beforeLines);
         }
     }
+    const pageLines: string[] = [];
+    if (isNewEmojiTabsControl(control)) {
+      const contentBox = getNewEmojiTabsContentBox(control);
+      const pages = tabPagesByControl.get(control.id) || [];
+      for (const page of pages) {
+        pageLines.push(`    int ${page.variable} = EU_CreatePanel(g_newEmojiWindow, ${parentVariable}, ${int(x + contentBox.x)}, ${int(y + contentBox.y)}, ${int(contentBox.width)}, ${int(contentBox.height)});`);
+        pageLines.push(`    EU_SetPanelLayout(g_newEmojiWindow, ${page.variable}, 0, 0);`);
+        pageLines.push(`    NE_设置元素状态(g_newEmojiWindow, ${page.variable}, 1, ${control.isEnabled ? 1 : 0}, ${toNewEmojiColor('', tabPageBackground)}, ${toNewEmojiColor(control.foreground, 0xfff8fafc)});`);
+        pageLines.push(`    EU_SetPanelStyle(g_newEmojiWindow, ${page.variable}, ${toNewEmojiColor('', tabPageBackground)}, 0x00000000u, 0.0f, 0.0f, 0);`);
+      }
+      if (pages.length > 0) {
+        const pageIdsVariable = `${variable}_page_ids`;
+        const pageIdsExpression = pages.map(page => `std::to_string(${page.variable})`).join(' + "|" + ');
+        pageLines.push(`    std::string ${pageIdsVariable} = ${pageIdsExpression};`);
+        pageLines.push(`    EU_SetTabsPageElements(g_newEmojiWindow, ${variable}, reinterpret_cast<const unsigned char*>(${pageIdsVariable}.data()), static_cast<int>(${pageIdsVariable}.size()));`);
+        if (control.visibility === 'Collapsed') {
+          pages.forEach(page => pageLines.push(`    EU_SetElementVisible(g_newEmojiWindow, ${page.variable}, 0);`));
+        }
+      }
+    }
     return [
       ...beforeLines,
       `    int ${variable} = ${call};`,
@@ -530,7 +571,8 @@ function generateNewEmojiMainCpp(
       ...generateNewEmojiCatalogPropertySetterCalls(control, variable, enabledModules),
       ...generateNewEmojiCatalogComplexPropertySetterCalls(control, variable),
       ...(catalogEventCallbacks.get(control.id) || []).map(binding => `    ${binding.command}(g_newEmojiWindow, ${variable}, ${binding.callback});`),
-      ...extraLines
+      ...extraLines,
+      ...pageLines
     ];
   });
   const createdHandler = findWindowCreatedHandler(window, program);
@@ -547,7 +589,6 @@ function generateNewEmojiMainCpp(
   const initialFocusLine = initialFocusVariable
     ? `    if (${initialFocusVariable} > 0) NE_设置元素焦点(g_newEmojiWindow, ${initialFocusVariable});`
     : '';
-  const darkWindow = isNewEmojiDarkBackground(window.background);
   const createWindow = darkWindow ? 'NE_创建深色窗口' : 'NE_创建窗口';
   const modulePreamble = generateModuleCppPreamble(enabledModules);
   const iconStyle = window.iconStyle || 'lingbuilder';
@@ -676,6 +717,20 @@ static bool LB_NE_IsType(const LB_NE_ElementRef* element, std::initializer_list<
     for (const wchar_t* type : types) if (type && element->type == type) return true;
     return false;
 }
+
+struct LingCppTextValue : std::wstring {
+    using std::wstring::wstring;
+    LingCppTextValue(const std::wstring& value) : std::wstring(value) {}
+    operator const wchar_t*() const { return c_str(); }
+};
+
+static LingCppTextValue 到文本(const wchar_t* value) { return LingCppTextValue(value ? value : L""); }
+static LingCppTextValue 到文本(const std::wstring& value) { return LingCppTextValue(value); }
+static LingCppTextValue 到文本(bool value) { return LingCppTextValue(value ? L"真" : L"假"); }
+static LingCppTextValue 到文本(int value) { return LingCppTextValue(std::to_wstring(value)); }
+static LingCppTextValue 到文本(long long value) { return LingCppTextValue(std::to_wstring(value)); }
+static LingCppTextValue 到文本(float value) { std::wostringstream stream; stream.precision(7); stream << value; return LingCppTextValue(stream.str()); }
+static LingCppTextValue 到文本(double value) { std::wostringstream stream; stream.precision(15); stream << value; return LingCppTextValue(stream.str()); }
 
 static int 到整数(const std::wstring& text) {
     if (text.empty()) return 0;
@@ -1006,6 +1061,25 @@ function orderNewEmojiControls(controls: LingControl[]): LingControl[] {
   return ordered;
 }
 
+function getNewEmojiTabsContentBox(control: LingControl): { x: number; y: number; width: number; height: number } {
+  const position = Number(control.properties?.position ?? 0);
+  const vertical = position === 1 || position === 3;
+  if (vertical) {
+    const headerWidth = Math.max(120, Math.min(190, control.width * 0.32));
+    return position === 1
+      ? { x: 0, y: 0, width: Math.max(1, control.width - headerWidth), height: Math.max(1, control.height) }
+      : { x: headerWidth, y: 0, width: Math.max(1, control.width - headerWidth), height: Math.max(1, control.height) };
+  }
+  const headerHeight = Math.max(38, Math.min(52, control.height * 0.28));
+  return position === 2
+    ? { x: 0, y: 0, width: Math.max(1, control.width), height: Math.max(1, control.height - headerHeight) }
+    : { x: 0, y: headerHeight, width: Math.max(1, control.width), height: Math.max(1, control.height - headerHeight) };
+}
+
+function newEmojiTabPageKey(controlId: string, pageId: string): string {
+  return `${controlId}\0${pageId}`;
+}
+
 function generateNewEmojiCatalogCreateCall(
   control: LingControl,
   parentVariable: string,
@@ -1077,6 +1151,17 @@ function getNewEmojiCatalogStringValue(control: LingControl, key: string): strin
 }
 
 function readNewEmojiCatalogProperty(control: LingControl, key: string): unknown {
+  if (isNewEmojiTabsControl(control)) {
+    if (key === 'items') return getTabControlPages(control).map(page => page.title);
+    if (key === 'itemsEx') {
+      return getTabControlPages(control).map(page => `${page.title}\t${page.id}\t `).join('|');
+    }
+    if (key === 'activeIndex') {
+      const selectedPage = getSelectedTabPageIndex(control);
+      return selectedPage;
+    }
+    if (key === 'contentVisible') return true;
+  }
   if (key === 'content') return control.content;
   if (key === 'foreground') return control.foreground;
   if (key === 'background') return control.background;
@@ -1097,6 +1182,34 @@ function readNewEmojiCatalogProperty(control: LingControl, key: string): unknown
   return alias ? control.properties?.[alias] : undefined;
 }
 
+function getSelectedTabPageIndex(control: LingControl): number {
+  const pages = getTabControlPages(control);
+  const selected = control.properties?.activeIndex ?? control.properties?.selectedIndex ?? 0;
+  const requested = Number.isFinite(Number(selected)) ? Math.trunc(Number(selected)) : 0;
+  return Math.max(0, Math.min(Math.max(0, pages.length - 1), requested));
+}
+
+function hasNonEmptyNewEmojiListValue(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some(item => String(item ?? '').trim().length > 0);
+  }
+  return value !== undefined && value !== null && String(value).trim().length > 0;
+}
+
+function shouldGenerateNewEmojiCatalogPropertySetter(control: LingControl, command: string): boolean {
+  if (!control.designerType?.endsWith('/ListBox')) return true;
+  if (command === 'EU_SetListBoxItemsEx') {
+    return hasNonEmptyNewEmojiListValue(readNewEmojiCatalogProperty(control, 'listBoxItemsEx'));
+  }
+  if (command === 'EU_SetListBoxSelectedKeys') {
+    return hasNonEmptyNewEmojiListValue(readNewEmojiCatalogProperty(control, 'selectedKeys'));
+  }
+  if (command === 'EU_SetListBoxVirtualItemCount') {
+    return Number(readNewEmojiCatalogProperty(control, 'virtualItemCount')) > 0;
+  }
+  return true;
+}
+
 function generateNewEmojiCatalogPropertySetterCalls(
   control: LingControl,
   variable: string,
@@ -1109,6 +1222,7 @@ function generateNewEmojiCatalogPropertySetterCalls(
   const setters = contribution?.runtime?.propertySetters || [];
   const lines: string[] = [];
   setters.forEach((setter, setterIndex) => {
+    if (!shouldGenerateNewEmojiCatalogPropertySetter(control, setter.command)) return;
     const utf8Variables = new Map<string, string>();
     const args = setter.parameters.map((parameter, parameterIndex) => {
       if (parameter.literal !== undefined) return String(parameter.literal);
@@ -1121,7 +1235,12 @@ function generateNewEmojiCatalogPropertySetterCalls(
         const stringVariable = utf8Variables.get(propertyKey);
         return stringVariable ? `static_cast<int>(${stringVariable}.size())` : '0';
       }
-      const value = readNewEmojiCatalogProperty(control, propertyKey);
+      const valuePropertyKey = isNewEmojiTabsControl(control)
+        && setter.command === 'EU_SetTabsItemsEx'
+        && propertyKey === 'items'
+        ? 'itemsEx'
+        : propertyKey;
+      const value = readNewEmojiCatalogProperty(control, valuePropertyKey);
       if (setter.command === 'EU_SetImageStyle' && propertyKey === 'borderWidth' && control.properties?.borderless === true) return '0';
       if (parameter.type === 'const unsigned char*') {
         const stringVariable = `${variable}_setter_${setterIndex + 1}_${parameterIndex + 1}`;
@@ -5671,6 +5790,20 @@ ${edgeViewEventIdCases}
             ? droppedFiles_[static_cast<size_t>(index)].c_str()
             : L"";
     }
+
+    struct LingCppTextValue : std::wstring {
+        using std::wstring::wstring;
+        LingCppTextValue(const std::wstring& value) : std::wstring(value) {}
+        operator const wchar_t*() const { return c_str(); }
+    };
+
+    LingCppTextValue 到文本(const wchar_t* value) const { return LingCppTextValue(value ? value : L""); }
+    LingCppTextValue 到文本(const std::wstring& value) const { return LingCppTextValue(value); }
+    LingCppTextValue 到文本(bool value) const { return LingCppTextValue(value ? L"真" : L"假"); }
+    LingCppTextValue 到文本(int value) const { return LingCppTextValue(std::to_wstring(value)); }
+    LingCppTextValue 到文本(long long value) const { return LingCppTextValue(std::to_wstring(value)); }
+    LingCppTextValue 到文本(float value) const { std::wostringstream stream; stream.precision(7); stream << value; return LingCppTextValue(stream.str()); }
+    LingCppTextValue 到文本(double value) const { std::wostringstream stream; stream.precision(15); stream << value; return LingCppTextValue(stream.str()); }
 
     int 到整数(const std::wstring& value) const {
         if (value.empty()) return 0;

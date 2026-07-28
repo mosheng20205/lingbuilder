@@ -1,0 +1,131 @@
+{
+  "id": "lingbuilder-2",
+  "name": "LingBuilder项目2",
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "MainWindow",
+      "title": "LingBuilder项目2主窗口",
+      "width": 900,
+      "height": 560,
+      "background": "#1f2937",
+      "description": "LingBuilder项目2 默认主窗口",
+      "controls": [
+        {
+          "id": "listview_1326",
+          "type": "ListView",
+          "name": "列表视图1",
+          "content": "",
+          "width": 475,
+          "height": 245,
+          "x": 225,
+          "y": 175,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": false,
+          "fontItalic": false,
+          "fontUnderline": false,
+          "background": "transparent",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "columns": [
+              {
+                "title": "列 13245",
+                "width": 120,
+                "image": -1,
+                "alignment": "left"
+              },
+              {
+                "title": "列 2二锅头",
+                "width": 120,
+                "image": -1,
+                "alignment": "left"
+              },
+              {
+                "title": "列 3二",
+                "width": 120,
+                "image": -1,
+                "alignment": "left"
+              },
+              {
+                "title": "列 4让他",
+                "width": 120,
+                "image": -1,
+                "alignment": "left"
+              },
+              {
+                "title": "列 5让他换",
+                "width": 120,
+                "image": -1,
+                "alignment": "left"
+              }
+            ],
+            "items": [
+              {
+                "id": "row1",
+                "cells": [
+                  "1",
+                  "",
+                  "",
+                  "",
+                  ""
+                ],
+                "image": -1
+              },
+              {
+                "id": "row2",
+                "cells": [
+                  "2",
+                  "",
+                  "",
+                  "",
+                  ""
+                ],
+                "image": -1
+              },
+              {
+                "id": "row3",
+                "cells": [
+                  "3",
+                  "",
+                  "",
+                  "",
+                  ""
+                ],
+                "image": -1
+              }
+            ],
+            "view": "details",
+            "gridLines": true,
+            "multiple": false,
+            "borderColor": "#64748B",
+            "borderWidth": 1,
+            "headerHeight": 28,
+            "itemHeight": 28,
+            "imageListId": "",
+            "toolTip": "",
+            "toolTipDelay": 500
+          }
+        }
+      ],
+      "titleBarBackground": "#2D2D30",
+      "titleBarForeground": "#CBD5E1",
+      "menuBackground": "#ffffff",
+      "menuForeground": "#000000",
+      "menuFontFamily": "Microsoft YaHei UI",
+      "menuFontSize": 11,
+      "menuFontBold": false,
+      "menuFontItalic": false,
+      "menuFontUnderline": false,
+      "cornerStyle": "rounded",
+      "iconStyle": "lingbuilder",
+      "resizable": true,
+      "maximizable": true
+    }
+  ],
+  "schemaVersion": 2,
+  "resources": []
+}

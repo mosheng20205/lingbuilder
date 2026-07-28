@@ -1,5 +1,11 @@
 # LingBuilder 后期优化事项
 
+- 已修复（2026-07-28）：new_emoji ListBox 在设计器显示项目、F5 运行后项目为空。目录生成器过去会无条件发出全部属性 Setter：空高级项目会覆盖创建期简单项目，空 `selectedKeys` 会清除默认选中索引，`EU_SetListBoxVirtualItemCount(..., 0)` 还会直接清空普通项目。现在生成器仅在高级项目或选中 Key 确实非空时调用对应 Setter，仅在虚拟项目数量大于 0 时进入虚拟数量设置；普通静态列表保留创建期项目和 `selectedIndex`。新增命名空间 ListBox 生成回归测试，并用当前 `ne` 项目及已安装模块清单确认生成结果不再包含空选择 Key 和零虚拟数量调用。
+
+- 已修复（2026-07-28）：new_emoji `Tabs` 过去被通用容器预览提前映射成 `Grid`，设计器不显示多个标签头；生成器又沿用上游 `contentVisible=false`，使运行窗口把完整控件高度用于标签头，且没有独立页面容器。现在模块生成脚本优先映射 `Tabs -> TabControl`，贡献动态 slots 布局和默认页面；设计器复用稳定页面 ID、页面树、拖放和仅显示当前页子控件的模型，并兼容旧 Grid 预览数据。原生生成器固定开启内容区，按上游内容矩形创建同级独立、无边框且 0 圆角的 Panel，通过 `EU_SetTabsPageElements` 绑定页面切换，页面子控件使用对应 Panel 作为真实 new_emoji 父元素；绑定外部页面时还会把 `ItemsEx` 的内置内容字段设为空白，避免高 DPI 下页面起点差异露出标签标题顶部笔画。模块清单、设计器模型和生成源码回归测试覆盖旧数据迁移、标签头、页面槽位、Panel 创建、父级映射、空白内置内容和禁止回退 `contentVisible=0`。
+
+- 已完成（2026-07-28）：LCPP 补齐基础 `到文本` 与字符编码转换闭环。`到文本` 支持整数、长整数、小数、逻辑值和文本，普通 Win32 与 new_emoji 均有真实 C++ 实现；`lingbuilder.std.encoding` 现覆盖 UTF-8、UTF-16LE/BE、UTF-32LE/BE、ANSI、GBK、GB2312、GB18030、通用转换、BOM 与保守检测。当前原始编码字节统一使用大写十六进制文本承载，避免在尚无字节数组类型时损坏零字节或非法 Unicode。运行时专项测试、真实 MSVC 编码冒烟以及完整生成工程 MSVC 编译均已通过；未来若引入正式字节数组类型，应增加二进制重载而不是改变现有十六进制命令语义。
+
 - 已完成并实机验证（2026-07-28）：`src/fbro-ui` 新手模式项目支持 FBro 内嵌浏览器与谷歌原生 UI 两种创建入口。新增确定性命令 `FBro_打开谷歌原生UI浏览器(控件名, 地址)` 和 C ABI `LB_FBro_CreateChromeUi`；后者不接收调用方 `HWND`，使用空 `parent_window/window`、`WS_EX_APPWINDOW`、`WS_OVERLAPPEDWINDOW` 与 `CEF_RUNTIME_STYLE_CHROME`，由 FBro/CEF 自行创建并管理独立桌面顶层窗口。内嵌浏览器继续使用独立子宿主 `HWND` 与 Alloy Runtime。网页 `BeforePopup` 由桥接取消后，示例 LCPP 用事件目标 URL 显式创建受管 Chrome UI；主窗口关闭时统一关闭其全部原生 UI 实例。真实 MSVC x64 构建通过，点击后同时检测到 `LingBuilderChineseCppWindowClass` 主窗口和独立 `Chrome_WidgetWin_1`，进程保持响应。
 
 - 已完成并实机验证（2026-07-28）：`src/cef3-2` 新手模式项目新增 CEF3 双窗口形态示例。主窗口保留可随 DPI/窗口尺寸缩放的内嵌浏览器，工具栏提供“内嵌打开”和“谷歌原生UI”两个明确入口；新增确定性命令 `CEF3_打开原生UI浏览器`，通过 `CEF_RUNTIME_STYLE_CHROME`、空父句柄与独立根 HWND 直接创建带原生地址栏和完整浏览器界面的受管桌面顶层窗口，避免 Chrome UI 覆盖到主窗口内嵌宿主，也避免脚本 `window.open` 被 Chromium 弹窗策略拦截。已确认错误写法 `SetAsPopup(主窗口HWND, ...)` 会把 Chrome UI 挂入主窗口句柄层级；正确实现固定使用 `SetAsPopup(nullptr, ...)`、`parent_window=nullptr`、`WS_EX_APPWINDOW` 和非 `WS_CHILD`。实机截图确认 LingBuilder 内嵌窗口与 Chrome 原生 UI 窗口可同时存在并独立缩放。`OnBeforePopup` 显式返回允许，因此网页自身的新窗口链接同样创建独立原生浏览器窗口，不会重定向回内嵌实例。

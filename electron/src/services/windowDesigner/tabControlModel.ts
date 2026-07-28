@@ -11,6 +11,24 @@ export type TabControlPageMutation =
   | { type: 'rename'; previousId: string; nextId: string }
   | { type: 'remove'; removedId: string; fallbackId: string };
 
+export function isTabContainerControl(control: Pick<LingControl, 'type' | 'designerType'>): boolean {
+  return control.type === 'TabControl' || control.designerType === 'lingbuilder.new_emoji.ui/Tabs';
+}
+
+export function isNewEmojiTabsControl(control: Pick<LingControl, 'designerType'>): boolean {
+  return control.designerType === 'lingbuilder.new_emoji.ui/Tabs';
+}
+
+export function getTabContainerContentOffset(control: LingControl): { x: number; y: number } {
+  if (!isTabContainerControl(control) || isTabControlHeaderHidden(control)) return { x: 0, y: 0 };
+  if (!isNewEmojiTabsControl(control)) return { x: 0, y: 36 };
+  const position = Number(control.properties?.position ?? 0);
+  if (position === 1) return { x: 0, y: 0 };
+  if (position === 3) return { x: Math.max(120, Math.min(190, control.width * 0.32)), y: 0 };
+  if (position === 2) return { x: 0, y: 0 };
+  return { x: 0, y: Math.max(38, Math.min(52, control.height * 0.28)) };
+}
+
 function finiteImage(value: unknown): number {
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? Math.max(-1, Math.trunc(parsed)) : -1;
@@ -67,22 +85,26 @@ export function removeTabControlPage(pages: TabControlPage[], index: number): Ta
 }
 
 export function getTabControlPages(control: LingControl): TabControlPage[] {
-  if (control.type !== 'TabControl') return [];
-  const pages = normalizeTabControlPages(control.properties?.tabs);
+  if (!isTabContainerControl(control)) return [];
+  const stablePages = normalizeTabControlPages(control.properties?.tabs);
+  const pages = stablePages.length > 0
+    ? stablePages
+    : normalizeTabControlPages(control.properties?.items);
   return pages.length > 0 ? pages : [{ id: 'page1', title: '标签页 1', image: -1 }];
 }
 
 export function getSelectedTabPage(control: LingControl): TabControlPage | undefined {
   const pages = getTabControlPages(control);
   if (pages.length === 0) return undefined;
-  const requested = typeof control.properties?.selectedIndex === 'number'
-    ? Math.trunc(control.properties.selectedIndex)
-    : 0;
+  const selectedValue = isNewEmojiTabsControl(control)
+    ? control.properties?.activeIndex ?? control.properties?.selectedIndex
+    : control.properties?.selectedIndex;
+  const requested = typeof selectedValue === 'number' ? Math.trunc(selectedValue) : Number(selectedValue ?? 0);
   return pages[Math.max(0, Math.min(pages.length - 1, requested))];
 }
 
 export function isTabControlHeaderHidden(control: LingControl): boolean {
-  return control.type === 'TabControl' && control.properties?.hideHeader === true;
+  return !isNewEmojiTabsControl(control) && control.type === 'TabControl' && control.properties?.hideHeader === true;
 }
 
 export function getControlTabSlot(control: LingControl, tabControl: LingControl): string | undefined {
@@ -102,7 +124,7 @@ export function isControlOnSelectedTab(controls: LingControl[], controlId: strin
     visited.add(current.id);
     const parent = controlsById.get(current.parentId);
     if (!parent) return true;
-    if (parent.type === 'TabControl') {
+    if (isTabContainerControl(parent)) {
       const selectedPage = getSelectedTabPage(parent);
       if (!selectedPage || getControlTabSlot(current, parent) !== selectedPage.id) return false;
     }

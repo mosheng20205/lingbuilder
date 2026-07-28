@@ -441,6 +441,10 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
   const resultPath = getArgumentValue(process.argv, '--smoke-result');
   try {
     const rendererResult = await window.webContents.executeJavaScript(`(async () => {
+      const withTimeout = (promise, label, timeoutMs = 15000) => Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(label + '超时。')), timeoutMs))
+      ]);
       const healthResponse = await fetch('/api/health');
       const modulesResponse = await fetch('/api/modules/installed?projectId=lingbuilder-ui-project');
       const aiResponse = await fetch('/api/lingcpp/edit/propose', {
@@ -470,25 +474,25 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
         let started = null;
         for (let port = 17869; port <= 17879 && !started; port += 1) {
           try {
-            started = await bridgeApi.start({ port, permission: 'preview', lifecycle: 'workspace' });
+            started = await withTimeout(bridgeApi.start({ port, permission: 'preview', lifecycle: 'workspace' }), '启动受管 AI Bridge');
           } catch (error) {
             managedBridgeError = error instanceof Error ? error.message : String(error);
           }
         }
         if (!started) throw new Error(managedBridgeError || '没有可用的 AI Bridge 冒烟端口。');
-        const token = await bridgeApi.revealToken();
-        const refreshed = await bridgeApi.status();
+        const token = await withTimeout(bridgeApi.revealToken(), '读取受管 AI Bridge Token');
+        const refreshed = await withTimeout(bridgeApi.status(), '读取受管 AI Bridge 状态');
         managedBridgeStatus = started.state === 'running' && started.httpUrl && token.length >= 24 ? 200 : 0;
         managedMcpStatus = refreshed.state === 'running' && refreshed.mcpUrl && !refreshed.error ? 200 : 0;
-        const launched = await bridgeApi.launchClient('generic');
+        const launched = await withTimeout(bridgeApi.launchClient('generic'), '启动受管 AI 客户端');
         managedClientLaunched = launched.ok === true && Boolean(launched.sessionId);
-        const stopped = await bridgeApi.stop();
+        const stopped = await withTimeout(bridgeApi.stop(), '停止受管 AI Bridge');
         managedBridgeStopped = stopped.state === 'stopped';
         managedBridgeError = '';
       } catch (error) {
         managedBridgeError = error instanceof Error ? error.message : String(error);
         try {
-          const stopped = await window.lingBuilder?.aiBridge?.stop();
+          const stopped = await withTimeout(window.lingBuilder?.aiBridge?.stop(), '清理受管 AI Bridge');
           managedBridgeStopped = stopped?.state === 'stopped';
         } catch {
           // Preserve the original Bridge failure.
@@ -793,7 +797,8 @@ function registerIpcHandlers(): void {
   });
   ipcMain.handle('source-packages:export-project', async (_event, projectId: string, suggestedName?: string) => {
     try {
-      if (!activeWorkspace) throw new Error('当前没有已打开的工作区。');
+      const workspaceRoot = getShellWorkspaceRoot();
+      if (!workspaceRoot) throw new Error('当前没有已打开的工作区。');
       const owner = getFocusedWindow();
       const defaultName = `${String(suggestedName || 'LingBuilder源码').replace(/[<>:"/\\|?*\u0000-\u001f]+/gu, '-')}${LCPP_SOURCE_PACKAGE_EXTENSION}`;
       const options: Electron.SaveDialogOptions = {
@@ -803,7 +808,7 @@ function registerIpcHandlers(): void {
       };
       const selected = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
       if (selected.canceled || !selected.filePath) return { ok: false, canceled: true };
-      const result = await createLcppSourcePackageService(activeWorkspace).exportProject(String(projectId || ''), selected.filePath, app.getVersion());
+      const result = await createLcppSourcePackageService(workspaceRoot).exportProject(String(projectId || ''), selected.filePath, app.getVersion());
       return { ...result, canceled: false };
     } catch (error) {
       return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };

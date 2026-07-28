@@ -1,6 +1,6 @@
 import React from 'react';
 import type { LingControl } from '../services/windowDesigner/types';
-import { getSelectedTabPage, getTabControlPages, isTabControlHeaderHidden } from '../services/windowDesigner/tabControlModel';
+import { getSelectedTabPage, getTabControlPages, isNewEmojiTabsControl, isTabControlHeaderHidden } from '../services/windowDesigner/tabControlModel';
 import { getControlFontCssStyle } from '../services/windowDesigner/controlFont';
 
 export interface TabControlDesignerPreviewProps {
@@ -24,20 +24,25 @@ function mixHexColor(source: string, target: string, targetPercent: number): str
 export default function TabControlDesignerPreview({ control, onSelectPage }: TabControlDesignerPreviewProps) {
   const tabs = getTabControlPages(control);
   const selectedPage = getSelectedTabPage(control) || tabs[0];
+  const newEmojiTabs = isNewEmojiTabsControl(control);
   const fontSize = Math.max(9, control.fontSize);
-  const background = control.background === 'transparent' ? '#ffffff' : control.background;
+  const background = control.background === 'transparent'
+    ? newEmojiTabs ? '#242941' : '#ffffff'
+    : control.background;
   const foreground = control.foreground;
   const headerBackground = mixHexColor(background, '#000000', 8);
   const selectedBackground = mixHexColor(background, '#ffffff', 7);
   const inactiveForeground = mixHexColor(foreground, background, 30);
   const borderColor = mixHexColor(background, foreground, 18);
-  const headerHeight = Math.max(28, fontSize + 14);
+  const headerHeight = newEmojiTabs
+    ? Math.max(38, Math.min(52, control.height * 0.28))
+    : Math.max(28, fontSize + 14);
   const hideHeader = isTabControlHeaderHidden(control);
   const fontStyle = getControlFontCssStyle(control);
 
   return (
     <div
-      data-tab-control-preview="win32"
+      data-tab-control-preview={newEmojiTabs ? 'new-emoji' : 'win32'}
       className="relative flex h-full w-full flex-col overflow-hidden"
       style={{
         color: foreground,
@@ -83,6 +88,7 @@ export default function TabControlDesignerPreview({ control, onSelectPage }: Tab
       <div
         role="tabpanel"
         aria-label={selectedPage.title}
+        data-tab-content-container="true"
         data-tab-header-hidden={hideHeader ? 'true' : 'false'}
         className={hideHeader ? 'min-h-0 flex-1' : 'min-h-0 flex-1 border border-t-0'}
         style={{ color: foreground, backgroundColor: background, borderColor }}

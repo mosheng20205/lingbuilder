@@ -75,6 +75,22 @@ test('标准库模块命令、binding、Win32/x64 target 保持完整对应', ()
   }
 });
 
+test('编码转换模块公开完整的文本安全字符编码、BOM 与通用转码命令', () => {
+  const manifest = STANDARD_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.std.encoding')!;
+  const commandNames = new Set(manifest.contributes?.commands?.map(command => command.name));
+  const requiredCommands = [
+    '编码_文本转UTF8', '编码_UTF8转文本',
+    '编码_文本转UTF16LE', '编码_UTF16LE转文本', '编码_文本转UTF16BE', '编码_UTF16BE转文本',
+    '编码_文本转UTF32LE', '编码_UTF32LE转文本', '编码_文本转UTF32BE', '编码_UTF32BE转文本',
+    '编码_文本转ANSI', '编码_ANSI转文本', '编码_文本转GBK', '编码_GBK转文本',
+    '编码_文本转GB2312', '编码_GB2312转文本', '编码_文本转GB18030', '编码_GB18030转文本',
+    '编码_转换', '编码_添加BOM', '编码_删除BOM', '编码_是否有BOM', '编码_检测BOM', '编码_检测'
+  ];
+  requiredCommands.forEach(command => assert.ok(commandNames.has(command), `编码模块缺少命令：${command}`));
+  assert.match(manifest.contributes?.commands?.find(command => command.name === '编码_文本转UTF8')?.description || '', /十六进制/u);
+  assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), manifest.contributes?.commands?.map(command => command.name));
+});
+
 test('标准库模块生成独立 C++ 运行时并翻译嵌套中文调用', () => {
   const moduleIds = ['lingbuilder.win32.basic', 'lingbuilder.std.text', 'lingbuilder.std.encoding', 'lingbuilder.data.json'];
   const enabledModules: InstalledModule[] = moduleIds.map(moduleId => {
@@ -95,6 +111,10 @@ test('标准库模块生成独立 C++ 运行时并翻译嵌套中文调用', () 
       '    事件 _MainWindow_创建完毕()',
       '        调试输出(文本_转大写("LingBuilder"))',
       '        调试输出(编码_Base64解码("5L2g5aW9"))',
+      '        调试输出(编码_UTF8转文本(编码_文本转UTF8("你好")))',
+      '        调试输出(编码_文本转UTF8(到文本(123)))',
+      '        调试输出(编码_转换("E4BDA0E5A5BD", "UTF-8", "UTF-16LE"))',
+      '        调试输出(编码_检测BOM(编码_添加BOM("E4BDA0E5A5BD", "UTF-8")))',
       '        JSON_是否有效("{}")',
       '    结束',
       '结束类'
@@ -104,9 +124,17 @@ test('标准库模块生成独立 C++ 运行时并翻译嵌套中文调用', () 
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
   assert.match(mainCpp, /const wchar_t\* 文本_转大写\(const wchar_t\* text\)/u);
   assert.match(mainCpp, /const wchar_t\* 编码_Base64解码\(const wchar_t\* text\)/u);
+  assert.match(mainCpp, /const wchar_t\* 编码_文本转UTF32BE\(const wchar_t\* text\)/u);
+  assert.match(mainCpp, /const wchar_t\* 编码_GB18030转文本\(const wchar_t\* hex\)/u);
+  assert.match(mainCpp, /const wchar_t\* 编码_转换\(const wchar_t\* hex/u);
+  assert.match(mainCpp, /const wchar_t\* 编码_检测BOM\(const wchar_t\* hex\)/u);
   assert.match(mainCpp, /bool JSON_是否有效\(const wchar_t\* json\)/u);
   assert.match(mainCpp, /调试输出\(文本_转大写\(L"LingBuilder"\)\);/u);
   assert.match(mainCpp, /调试输出\(编码_Base64解码\(L"5L2g5aW9"\)\);/u);
+  assert.match(mainCpp, /调试输出\(编码_UTF8转文本\(编码_文本转UTF8\(L"你好"\)\)\);/u);
+  assert.match(mainCpp, /调试输出\(编码_文本转UTF8\(到文本\(123\)\)\);/u);
+  assert.match(mainCpp, /编码_转换\(L"E4BDA0E5A5BD", L"UTF-8", L"UTF-16LE"\)/u);
+  assert.match(mainCpp, /编码_检测BOM\(编码_添加BOM\(L"E4BDA0E5A5BD", L"UTF-8"\)\)/u);
   assert.match(mainCpp, /JSON_是否有效\(L"\{\}"\);/u);
 });
 
@@ -263,8 +291,11 @@ test('平台扩展和高风险模块保持独立启用并具有确定性运行�
 
 test('模块封装清单覆盖实际内置模块注册表', async () => {
   const checklist = await fs.readFile(path.resolve('..', 'MODULE_ENCAPSULATION_CHECKLIST.md'), 'utf8');
-  assert.match(checklist, /58 个内置模块、389 条中文命令/u);
+  const commandCount = BUILTIN_MODULES.reduce((total, manifest) => total + (manifest.contributes?.commands?.length ?? 0), 0);
+  assert.ok(checklist.includes(`${BUILTIN_MODULES.length} 个内置模块、${commandCount} 条中文命令`));
   assert.match(checklist, /51 个模块、287 条命令/u);
+  assert.match(checklist, /`lingbuilder\.std\.encoding` \| 编码转换模块 \| 30/u);
+  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 38/u);
   for (const manifest of BUILTIN_MODULES) {
     assert.ok(checklist.includes(`\`${manifest.id}\``), `封装清单缺少 ${manifest.id}`);
   }
@@ -593,11 +624,18 @@ test('中文模块命令支持拼音首字母、全拼和中文拼音混合补�
   ).some(item => item.label === '控件_设置选择项'));
   const integerCompletion = getBeginnerModuleCodeCompletions(moduleContext)
     .find(item => item.label === '到整数');
+  const textCompletion = getBeginnerModuleCodeCompletions(moduleContext)
+    .find(item => item.label === '到文本');
   assert.ok(integerCompletion?.aliases.includes('dzs'));
+  assert.ok(textCompletion?.aliases.includes('dwb'));
   assert.ok(getLingCppCompletions(
     { source: '', line: 1, column: 4, triggerText: 'dzs' },
     moduleContext
   ).some(item => item.label === '到整数'));
+  assert.ok(getLingCppCompletions(
+    { source: '', line: 1, column: 4, triggerText: 'dwb' },
+    moduleContext
+  ).some(item => item.label === '到文本'));
 });
 
 test('generateLingCppNativeWin32Project emits module dependency report', () => {
@@ -1462,6 +1500,16 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   };
   const buttonContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Button');
   const tableContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Table');
+  const tabsContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Tabs');
+  assert.equal(tabsContribution.previewType, 'TabControl');
+  assert.equal(tabsContribution.isContainer, true);
+  assert.deepEqual(tabsContribution.layout, {
+    mode: 'slots',
+    coordinateSpace: 'window',
+    adapterId: 'new-emoji.tabs.pages'
+  });
+  assert.deepEqual(tabsContribution.defaultProps.items, ['标签页 1']);
+  assert.equal(tabsContribution.defaultProps.contentVisible, true);
   const generated = generateLingCppNativeWin32Project({
     ...sampleProject,
     windows: [{
@@ -1481,6 +1529,31 @@ test('generated new_emoji bridge completions match binding parameter counts', as
           fontSize: 14, background: '#FF202020', foreground: '#FFFFFFFF', isEnabled: true, visibility: 'Visible',
           properties: { ...tableContribution.defaultProps, tableColumnAligns: 'col=0\theader=center\tcell=right' },
           events: {}
+        },
+        {
+          id: 'tabs', type: tabsContribution.previewType, designerType: tabsContribution.namespacedType,
+          name: '功能标签页', content: '标签页', x: 20, y: 320, width: 420, height: 180,
+          fontSize: 14, background: 'transparent', foreground: '#FFFFFFFF', isEnabled: true, visibility: 'Visible',
+          properties: {
+            ...tabsContribution.defaultProps,
+            tabs: [{ id: 'overview', title: '概览' }, { id: 'settings', title: '设置' }],
+            items: ['概览', '设置'], activeIndex: 0, contentVisible: false
+          },
+          events: {}
+        },
+        {
+          id: 'overview-button', parentId: 'tabs', containerSlot: 'overview',
+          type: buttonContribution.previewType, designerType: buttonContribution.namespacedType,
+          name: '概览按钮', content: '概览操作', x: 40, y: 390, width: 140, height: 42,
+          fontSize: 14, background: '#FF303133', foreground: '#FFFFFFFF', isEnabled: true, visibility: 'Visible',
+          properties: { ...buttonContribution.defaultProps }, events: {}
+        },
+        {
+          id: 'settings-button', parentId: 'tabs', containerSlot: 'settings',
+          type: buttonContribution.previewType, designerType: buttonContribution.namespacedType,
+          name: '设置按钮', content: '设置操作', x: 40, y: 390, width: 140, height: 42,
+          fontSize: 14, background: '#FF303133', foreground: '#FFFFFFFF', isEnabled: true, visibility: 'Visible',
+          properties: { ...buttonContribution.defaultProps }, events: {}
         }
       ]
     }]
@@ -1494,6 +1567,18 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   assert.match(cpp, /EU_SetElementClickCallback\(g_newEmojiWindow, ne_element_1, LB_NE_Event_/u);
   assert.match(cpp, /EU_SetElementMouseCallback\(/u);
   assert.match(cpp, /EU_SetTableColumnAlign\(g_newEmojiWindow/u);
+  assert.match(cpp, /LB_NE_ToUtf8\(L"概览\|设置"\)/u);
+  assert.match(cpp, /LB_NE_ToUtf8\(L"概览\\toverview\\t \|设置\\tsettings\\t "\)/u);
+  assert.match(cpp, /EU_CreateTabs\(g_newEmojiWindow/u);
+  assert.match(cpp, /EU_SetTabsContentVisible\(g_newEmojiWindow, ne_element_3, 1\)/u);
+  assert.match(cpp, /int ne_tab_page_3_1 = EU_CreatePanel\(/u);
+  assert.match(cpp, /int ne_tab_page_3_2 = EU_CreatePanel\(/u);
+  assert.match(cpp, /EU_SetPanelStyle\(g_newEmojiWindow, ne_tab_page_3_1, 0xff242941u, 0x00000000u, 0\.0f, 0\.0f, 0\)/u);
+  assert.match(cpp, /EU_SetPanelStyle\(g_newEmojiWindow, ne_tab_page_3_2, 0xff242941u, 0x00000000u, 0\.0f, 0\.0f, 0\)/u);
+  assert.match(cpp, /EU_SetTabsPageElements\(g_newEmojiWindow, ne_element_3,/u);
+  assert.match(cpp, /EU_CreateButton\(g_newEmojiWindow, ne_tab_page_3_1,/u);
+  assert.match(cpp, /EU_CreateButton\(g_newEmojiWindow, ne_tab_page_3_2,/u);
+  assert.doesNotMatch(cpp, /EU_SetTabsContentVisible\(g_newEmojiWindow, ne_element_3, 0\)/u);
   assert.equal(manifest.designer.schemaVersion, 1);
   assert.match(manifest.designer.sha256, /^[a-f0-9]{64}$/u);
   const highLevelNames = [

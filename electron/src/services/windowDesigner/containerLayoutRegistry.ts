@@ -1,4 +1,4 @@
-import { getTabControlPages, isTabControlHeaderHidden } from './tabControlModel';
+import { getSelectedTabPage, getTabContainerContentOffset, getTabControlPages, isTabContainerControl } from './tabControlModel';
 import { reconcileRebarBands } from './designerOperations';
 import type { LingControl, LingWindowModel } from './types';
 
@@ -154,7 +154,7 @@ class StandardLayoutAdapter implements DesignerContainerLayoutAdapter {
   listSlots(window: LingWindowModel, target: DesignerPasteTarget): readonly string[] {
     if (this.descriptor.slots?.length) return [...this.descriptor.slots];
     const parent = target.parentId ? window.controls.find(control => control.id === target.parentId) : undefined;
-    if (parent?.type === 'TabControl') return getTabControlPages(parent).map(page => page.id);
+    if (parent && isTabContainerControl(parent)) return getTabControlPages(parent).map(page => page.id);
     if (parent?.type === 'ReBar') {
       const bands = Array.isArray(parent.properties?.bands) ? parent.properties.bands : [];
       return bands.map((band, index) => String((band as Record<string, unknown>)?.id || `band-${index + 1}`));
@@ -190,20 +190,19 @@ class StandardLayoutAdapter implements DesignerContainerLayoutAdapter {
     let slot = target.containerSlot;
     if (this.descriptor.mode === 'slots') {
       if (!slot || (slots.length && !slots.includes(slot))) {
-        if (parent?.type === 'TabControl') {
-          const selectedIndex = Number(parent.properties?.selectedIndex || 0);
-          slot = getTabControlPages(parent)[selectedIndex]?.id || slots[0];
+        if (parent && isTabContainerControl(parent)) {
+          slot = getSelectedTabPage(parent)?.id || slots[0];
         } else slot = slots[0];
         if (slot) warnings.push(`来源插槽在目标容器中不存在，已放入“${slot}”。`);
       }
-      if (!slot && parent?.type === 'TabControl') errors.push('目标选项卡没有可用标签页。');
+      if (!slot && parent && isTabContainerControl(parent)) errors.push('目标选项卡没有可用标签页。');
     }
 
     const minX = Math.min(...items.map(item => item.placement.x));
     const minY = Math.min(...items.map(item => item.placement.y));
-    const defaultAnchorX = parent ? parent.x + 12 : minX + 10;
-    const parentTopInset = parent?.type === 'TabControl' && !isTabControlHeaderHidden(parent) ? 36 : 12;
-    const defaultAnchorY = parent ? parent.y + parentTopInset : minY + 10;
+    const tabOffset = parent && isTabContainerControl(parent) ? getTabContainerContentOffset(parent) : { x: 0, y: 0 };
+    const defaultAnchorX = parent ? parent.x + tabOffset.x + 12 : minX + 10;
+    const defaultAnchorY = parent ? parent.y + tabOffset.y + (tabOffset.y === 0 ? 12 : 0) : minY + 10;
     const anchorX = target.anchorX ?? defaultAnchorX;
     const anchorY = target.anchorY ?? defaultAnchorY;
     const ordered = [...items].sort((left, right) => left.placement.siblingIndex - right.placement.siblingIndex);

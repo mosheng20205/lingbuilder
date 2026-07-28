@@ -28,7 +28,7 @@ export default function HeaderDesignerPreview({ control }: { control: LingContro
     >
       {visibleColumns.map((column, index) => (
         <div
-          key={`${index}:${column.title}`}
+          key={index}
           role="columnheader"
           className={`flex h-full min-w-0 shrink-0 items-center overflow-hidden border-l px-1.5 ${alignmentClass(column.alignment)}`}
           style={{ width: `${Math.max(1, column.width)}px`, borderColor: control.foreground }}

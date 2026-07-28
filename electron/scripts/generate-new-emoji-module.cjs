@@ -360,7 +360,11 @@ function newEmojiDesignerControls(catalog) {
       key: property.key,
       label: property.label,
       type: property.type,
-      defaultValue: property.defaultValue,
+      defaultValue: component.id === 'Tabs' && property.key === 'items'
+        ? ['标签页 1']
+        : component.id === 'Tabs' && property.key === 'contentVisible'
+          ? true
+          : property.defaultValue,
       options: property.options,
       description: property.description,
       group: property.group,
@@ -381,6 +385,13 @@ function newEmojiDesignerControls(catalog) {
       backend: 'new-emoji',
       nativeAdapter: `new-emoji-${component.id.toLowerCase()}`,
       isContainer: component.isContainer === true,
+      ...(component.id === 'Tabs' ? {
+        layout: {
+          mode: 'slots',
+          coordinateSpace: 'window',
+          adapterId: 'new-emoji.tabs.pages'
+        }
+      } : {}),
       isVisual: component.isVisual !== false,
       defaultProps: {
         content: component.label.replace(/\s+[A-Za-z][A-Za-z0-9]*$/u, ''),
@@ -388,7 +399,8 @@ function newEmojiDesignerControls(catalog) {
         height: component.defaultHeight,
         background: 'transparent',
         foreground: '#F8FAFC',
-        ...Object.fromEntries(properties.map(property => [property.key, property.defaultValue]))
+        ...Object.fromEntries(properties.map(property => [property.key, property.defaultValue])),
+        ...(component.id === 'Tabs' ? { contentVisible: true } : {})
       },
       properties,
       events: componentEvents.map(event => ({
@@ -879,6 +891,7 @@ function inferEventBindings(component, rawExports) {
 }
 
 function inferPreviewType(type, isContainer) {
+  if (/Tabs/u.test(type)) return 'TabControl';
   if (isContainer) return 'Grid';
   if (/Button|Upload/u.test(type)) return 'Button';
   if (/Input|Edit|Autocomplete|Mention|Cascader|Select/u.test(type)) return 'TextBox';
@@ -887,7 +900,6 @@ function inferPreviewType(type, isContainer) {
   if (/ListBox|Menu|Dropdown/u.test(type)) return 'ListBox';
   if (/Table|Descriptions/u.test(type)) return 'ListView';
   if (/Tree/u.test(type)) return 'TreeView';
-  if (/Tabs/u.test(type)) return 'TabControl';
   if (/Image|Avatar|Carousel|Rate/u.test(type)) return 'Image';
   if (/Progress|Slider/u.test(type)) return 'ProgressBar';
   return 'Label';

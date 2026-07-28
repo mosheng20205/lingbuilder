@@ -82,7 +82,7 @@ export default function ListViewDesignerPreview({ control }: ListViewDesignerPre
           style={{ gridTemplateColumns, height: `${model.headerHeight}px` }}
         >
           {model.columns.map((column, index) => (
-            <div key={`${column.title}-${index}`} role="columnheader" className={`flex min-w-0 items-center gap-1 px-1.5 ${alignmentClass(column.alignment)} ${cellBorderClass}`}>
+            <div key={index} role="columnheader" className={`flex min-w-0 items-center gap-1 px-1.5 ${alignmentClass(column.alignment)} ${cellBorderClass}`}>
               <PreviewImage image={column.image} compact />
               <span className="truncate">{column.title || `列 ${index + 1}`}</span>
             </div>

@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "fbro-ui",
+  "startupProjectId": "ne",
   "startupProjectIds": [
-    "fbro-ui"
+    "ne"
   ],
   "folders": [
     {
@@ -16,6 +16,10 @@
     {
       "id": "fbro",
       "name": "FBro"
+    },
+    {
+      "id": "newemoji",
+      "name": "NewEmoji集合"
     }
   ],
   "projects": [
@@ -52,13 +56,6 @@
       "name": "新增模块 CLI 冒烟测试",
       "type": "visual-cpp",
       "sourceRoot": "examples/module-cli-smoke/src",
-      "references": []
-    },
-    {
-      "id": "newemoji",
-      "name": "NewEmoji项目",
-      "type": "visual-cpp",
-      "sourceRoot": "src/newemoji",
       "references": []
     },
     {
@@ -103,6 +100,7 @@
       "name": "NE测试",
       "type": "visual-cpp",
       "sourceRoot": "src/ne",
+      "solutionFolderId": "newemoji",
       "references": []
     },
     {
@@ -119,6 +117,27 @@
       "type": "visual-cpp",
       "sourceRoot": "src/fbro-ui",
       "solutionFolderId": "fbro",
+      "references": []
+    },
+    {
+      "id": "lingbuilder-15",
+      "name": "LingBuilder项目15",
+      "type": "visual-cpp",
+      "sourceRoot": "src/lingbuilder-15",
+      "references": []
+    },
+    {
+      "id": "lingbuilder-16",
+      "name": "LingBuilder项目16",
+      "type": "visual-cpp",
+      "sourceRoot": "src/lingbuilder-16",
+      "references": []
+    },
+    {
+      "id": "lingbuilder-17",
+      "name": "LingBuilder项目17",
+      "type": "visual-cpp",
+      "sourceRoot": "src/lingbuilder-17",
       "references": []
     }
   ]
