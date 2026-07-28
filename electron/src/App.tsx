@@ -1631,9 +1631,10 @@ export default function App() {
   const taskLogCountsRef = useRef(new Map<string, number>());
 
   useEffect(() => {
-    const events = new EventSource('/api/tasks/events');
-    const handleTask = (event: MessageEvent<string>) => {
-      const task = JSON.parse(event.data) as TaskSnapshot;
+    let disposed = false;
+    let polling = false;
+    let pollTimer: number | undefined;
+    const applyTask = (task: TaskSnapshot) => {
       setTaskSnapshots(previous => [...previous.filter(item => item.id !== task.id), task]
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt)).slice(0, 30));
       const consumed = taskLogCountsRef.current.get(task.id) || 0;
@@ -1641,11 +1642,30 @@ export default function App() {
       taskLogCountsRef.current.set(task.id, task.logs.length);
       if (additions.length) setBuildLogs(previous => [...previous, ...additions]);
     };
-    events.addEventListener('task', handleTask as EventListener);
-    return () => events.close();
+    const pollTasks = async () => {
+      if (disposed || polling) return;
+      polling = true;
+      try {
+        const response = await fetch('/api/tasks', { cache: 'no-store' });
+        const payload = await response.json();
+        if (!disposed && response.ok && Array.isArray(payload.tasks)) payload.tasks.forEach(applyTask);
+      } catch {
+        // The task list is advisory UI state; the next bounded poll retries it.
+      } finally {
+        polling = false;
+        if (!disposed) pollTimer = window.setTimeout(() => void pollTasks(), 1_000);
+      }
+    };
+    void pollTasks();
+    return () => {
+      disposed = true;
+      if (pollTimer !== undefined) window.clearTimeout(pollTimer);
+    };
   }, []);
 
   useEffect(() => {
+    const isCpp = activeFile.language === 'cpp' || /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/iu.test(activeFile.path);
+    if (!projectFilesReady || !isCpp) return;
     const events = new EventSource('/api/lsp/events');
     events.addEventListener('status', ((event: MessageEvent<string>) => setClangdStatus(JSON.parse(event.data))) as EventListener);
     events.addEventListener('diagnostics', ((event: MessageEvent<string>) => {
@@ -1654,7 +1674,7 @@ export default function App() {
       if (count) setBuildLogs(previous => [...previous, `> [${new Date().toLocaleTimeString()}] [clangd] 收到 ${count} 条 C/C++ 诊断。`]);
     }) as EventListener);
     return () => events.close();
-  }, []);
+  }, [activeFile.language, activeFile.path, projectFilesReady]);
 
   useEffect(() => { void fetch('/api/build-configuration').then(response => response.json()).then(payload => payload.configuration && setBuildConfiguration(payload.configuration)); }, []);
   const updateBuildConfiguration = useCallback(async (patch: { mode?: BuildMode; architecture?: BuildArchitecture }) => {
@@ -2968,9 +2988,13 @@ void DisplayStatus() {
 
   useEffect(() => {
     let intervalId: any;
+    let polling = false;
+    let disposed = false;
     const loadGeneration = projectFileLoadGenerationRef.current;
     const pollLogs = async () => {
+      if (disposed || polling || !projectFilesReady || loadedProjectId !== activeProjectId) return;
       if (nativeDebugSession && !['terminated', 'error'].includes(nativeDebugSession.state)) return;
+      polling = true;
       try {
         const projectId = activeProjectId;
         const res = await fetch(`/api/window-designer/debug-logs?projectId=${projectId}`);
@@ -2991,11 +3015,17 @@ void DisplayStatus() {
         }
       } catch (e) {
         // Polling errors can be ignored
+      } finally {
+        polling = false;
       }
     };
+    void pollLogs();
     intervalId = setInterval(pollLogs, 1000);
-    return () => clearInterval(intervalId);
-  }, [activeProjectId, projectFileReloadToken, nativeDebugSession?.state]);
+    return () => {
+      disposed = true;
+      clearInterval(intervalId);
+    };
+  }, [activeProjectId, loadedProjectId, nativeDebugSession?.state, projectFileReloadToken, projectFilesReady]);
 
   useEffect(() => {
     const toggle = (event: Event) => {
@@ -3023,6 +3053,7 @@ void DisplayStatus() {
   }, [debugBreakpoints]);
 
   useEffect(() => {
+    if (!nativeDebugSession || ['terminated', 'error'].includes(nativeDebugSession.state)) return;
     const events = new EventSource('/api/debug/events');
     events.addEventListener('debug', raw => {
       const session = JSON.parse((raw as MessageEvent).data); setNativeDebugSession(session);
@@ -3030,7 +3061,7 @@ void DisplayStatus() {
       if (session.state === 'stopped') { setShowBottomPanel(true); setActiveTabInBottom('debug_locals'); }
     });
     return () => events.close();
-  }, []);
+  }, [nativeDebugSession?.state]);
 
   const handleClearLogs = useCallback((tab: string) => {
     if (tab === 'problems') {

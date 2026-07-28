@@ -770,6 +770,32 @@ app.get("/api/modules/project", async (req, res) => {
   }
 });
 
+app.get("/api/modules/project/designer", async (req, res) => {
+  try {
+    const { projectId } = req.query as { projectId?: string };
+    const validatedProjectId = await requireExistingProject(projectId);
+    const modules = await getModuleService().getEnabledProjectModules(validatedProjectId);
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      ok: true,
+      modules: modules.map(module => ({
+        manifest: {
+          id: module.manifest.id,
+          name: module.manifest.name,
+          version: module.manifest.version,
+          contributes: {
+            designerControls: module.manifest.contributes?.designerControls || [],
+            menus: module.manifest.contributes?.menus || [],
+            submenus: module.manifest.contributes?.submenus || []
+          }
+        }
+      }))
+    });
+  } catch (error: any) {
+    res.status(500).json({ ok: false, error: error?.message || "设计器模块读取失败" });
+  }
+});
+
 app.post("/api/modules/project/enable", async (req, res) => {
   try {
     const { projectId, moduleId } = req.body as { projectId?: string; moduleId?: string };

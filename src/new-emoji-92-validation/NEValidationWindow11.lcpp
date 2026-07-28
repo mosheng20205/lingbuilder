@@ -1,0 +1,5 @@
+类 NEValidationWindow11
+    事件 创建完毕()
+        调试输出("New_Emoji 验证窗口 11 已创建")
+    结束
+结束类

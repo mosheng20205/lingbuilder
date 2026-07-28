@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "ne",
+  "startupProjectId": "new-emoji-92-tabs-validation",
   "startupProjectIds": [
-    "ne"
+    "new-emoji-92-tabs-validation"
   ],
   "folders": [
     {
@@ -138,6 +138,22 @@
       "name": "LingBuilder项目17",
       "type": "visual-cpp",
       "sourceRoot": "src/lingbuilder-17",
+      "references": []
+    },
+    {
+      "id": "new-emoji-92-validation",
+      "name": "New_Emoji 92控件验证",
+      "type": "visual-cpp",
+      "sourceRoot": "src/new-emoji-92-validation",
+      "solutionFolderId": "newemoji",
+      "references": []
+    },
+    {
+      "id": "new-emoji-92-tabs-validation",
+      "name": "New_Emoji 92控件标签页验证",
+      "type": "visual-cpp",
+      "sourceRoot": "src/new-emoji-92-tabs-validation",
+      "solutionFolderId": "newemoji",
       "references": []
     }
   ]

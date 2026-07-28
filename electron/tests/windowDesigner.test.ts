@@ -58,7 +58,11 @@ import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import { EDGEVIEW_BROWSER_EVENTS } from '../src/services/modules/edgeViewBrowserEvents';
 import type { InstalledModule } from '../src/services/modules/types';
 import { getWindowEventHandlerName, WINDOW_EVENT_CATEGORIES, WINDOW_EVENT_DEFINITIONS } from '../src/services/windowDesigner/windowEventRegistry';
-import { getNewEmojiThemePreview, isNewEmojiTextInputControl } from '../src/services/windowDesigner/newEmojiDesignerAdapter';
+import {
+  getNewEmojiThemePreview,
+  getNewEmojiUnsupportedControlDiagnostics,
+  isNewEmojiTextInputControl
+} from '../src/services/windowDesigner/newEmojiDesignerAdapter';
 import {
   collectLingCppCommandCalls,
   getNativeUiBackendCommandContract,
@@ -1545,6 +1549,29 @@ test('new_emoji 设计器预览使用与原生库一致的明暗主题令牌', (
   assert.equal(isNewEmojiTextInputControl(createControl('button', undefined, 'Button')), false);
 });
 
+test('new_emoji 模块贡献控件不会因兼容 Win32 类型产生不支持误报', () => {
+  const namespacedTabs = {
+    ...createControl('模块标签页', undefined, 'TabControl'),
+    designerType: 'lingbuilder.new_emoji.ui/Tabs'
+  };
+  const unsupportedLegacy = createControl('未知旧控件', undefined, 'TabControl');
+  const windowModel: LingWindowModel = {
+    id: 'main',
+    fileName: 'MainWindow.xml',
+    className: '主窗口',
+    title: '主窗口',
+    width: 640,
+    height: 480,
+    background: '#1E1E2E',
+    description: '',
+    controls: [namespacedTabs, unsupportedLegacy]
+  };
+
+  assert.deepEqual(getNewEmojiUnsupportedControlDiagnostics(windowModel), [
+    'new_emoji 设计器暂不支持控件“未知旧控件”(TabControl)；该控件不会被伪装成 Win32 控件生成。'
+  ]);
+});
+
 test('Win32 工具箱移除上传外观控件并注册非可视文件对话框', () => {
   const upload = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'Upload');
   const dragUpload = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'DragUpload');
@@ -1942,6 +1969,7 @@ test('选项卡设计器预览使用控件文字颜色和背景颜色', () => {
 });
 
 test('new_emoji Tabs 兼容旧 Grid 预览并提供稳定的独立页面槽位', () => {
+  const validationPageTitles = ['01–08', '09–16', '17–24', '25–32', '33–40', '41–48', '49–56', '57–64', '65–72', '73–80', '81–88', '89–92'];
   const tabs = {
     ...createControl('new-emoji-tabs', undefined, 'Grid'),
     designerType: 'lingbuilder.new_emoji.ui/Tabs',
@@ -1950,8 +1978,9 @@ test('new_emoji Tabs 兼容旧 Grid 预览并提供稳定的独立页面槽位',
     background: 'transparent',
     foreground: '#F8FAFC',
     properties: {
-      items: ['标签1', '标签2', '标签3'],
+      items: validationPageTitles,
       activeIndex: 1,
+      headerAlign: '1',
       contentVisible: false
     }
   } satisfies LingControl;
@@ -1960,17 +1989,19 @@ test('new_emoji Tabs 兼容旧 Grid 预览并提供稳定的独立页面槽位',
 
   assert.equal(isNewEmojiTabsControl(tabs), true);
   assert.equal(isTabContainerControl(tabs), true);
-  assert.deepEqual(getTabControlPages(tabs).map(page => [page.id, page.title]), [
-    ['page1', '标签1'], ['page2', '标签2'], ['page3', '标签3']
-  ]);
+  assert.deepEqual(getTabControlPages(tabs).map(page => page.title), validationPageTitles);
   assert.equal(getSelectedTabPage(tabs)?.id, 'page2');
   assert.equal(isControlOnSelectedTab([tabs, firstPageChild, secondPageChild], firstPageChild.id), false);
   assert.equal(isControlOnSelectedTab([tabs, firstPageChild, secondPageChild], secondPageChild.id), true);
 
   const markup = renderToStaticMarkup(React.createElement(TabControlDesignerPreview, { control: tabs }));
   assert.match(markup, /data-tab-control-preview="new-emoji"/u);
-  assert.match(markup, />标签1</u);
-  assert.match(markup, /aria-selected="true"[^>]*>.*标签2/u);
+  assert.match(markup, />01–08</u);
+  assert.match(markup, /aria-selected="true"[^>]*>.*09–16/u);
+  assert.match(markup, />89–92</u);
+  assert.match(markup, /data-tab-header-align="1"/u);
+  assert.match(markup, /width:72px/u);
+  assert.match(markup, /justify-content:center/u);
   assert.match(markup, /data-tab-content-container="true"/u);
   assert.match(markup, /background-color:#242941/u);
 });

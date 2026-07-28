@@ -311,7 +311,14 @@ test('designer renders TabControl with a Win32-style tab strip and page surface'
   const designerSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   const previewSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/TabControlDesignerPreview.tsx'), 'utf8');
   assert.match(designerSource, /<TabControlDesignerPreview control=\{control\}/u);
+  assert.match(designerSource, /const useNewEmojiControlPreview = Boolean\(newEmojiPreviewKind\) && !isTabContainerControl\(control\)/u);
+  assert.match(designerSource, /\{useNewEmojiControlPreview \? \(/u);
+  assert.match(designerSource, /pointer-events-none absolute top-1/u);
+  assert.match(designerSource, /style=\{\{ right: 'calc\(60% \+ 4px\)' \}\}/u);
   assert.match(previewSource, /data-tab-control-preview=\{newEmojiTabs \? 'new-emoji' : 'win32'\}/u);
+  assert.match(previewSource, /data-tab-header-align=\{newEmojiTabs \? headerAlign : undefined\}/u);
+  assert.match(previewSource, /justifyContent: headerTextJustifyContent/u);
+  assert.match(previewSource, /Math\.max\(72, Math\.min\(152, control\.width \/ tabs\.length\)\)/u);
   assert.match(previewSource, /role="tablist"/u);
   assert.match(previewSource, /role="tabpanel"/u);
   assert.match(previewSource, /onSelectPage\?\.\(tab\.id\)/u);

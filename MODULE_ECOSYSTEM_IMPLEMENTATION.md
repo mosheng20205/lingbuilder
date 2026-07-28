@@ -1,8 +1,10 @@
 # LingBuilder 模块生态实现说明
 
+> 2026-07-28 补充：New_Emoji 92 个设计器控件必须用模块命名空间 `designerType: lingbuilder.new_emoji.ui/<Control>` 判断后端支持能力，不能只看为设计器兼容而使用的 `TabControl`、`ListView`、`TreeView` 等基础类型。模块命名空间控件已由 `runtime.createFunction` / Setter 映射生成真实 `EU_*` 调用时，不得再输出“不会生成”的矛盾诊断。设计器读取模块贡献应使用紧凑的项目设计器上下文，避免加载与画布无关的 1500+ binding 和二进制依赖元数据；模块服务暂时不可用时采用有界重试，不能永久回退到只有 Win32 基础控件。
+
 > 2026-07-28 补充：`lingbuilder.new_emoji.ui/ListBox` 的创建期“简单项目”和可选状态 Setter 必须按原生破坏性语义生成。`EU_CreateListBox` / `EU_SetListBoxItems` 负责静态简单项目；只有 `listBoxItemsEx` 存在非空项目时才调用 `EU_SetListBoxItemsEx`。空 `selectedKeys` 不得覆盖 `selectedIndex`，`virtualItemCount <= 0` 不得调用 `EU_SetListBoxVirtualItemCount`，因为上游这两个 Setter 会分别重置选择和清空普通项目。高级项目用于确实需要 key、父级、分组、描述等 TSV 字段的项目，不能把空默认值作为一次运行时清空操作无条件发出。
 
-> 2026-07-28 补充：`lingbuilder.new_emoji.ui/Tabs` 已按真实分页容器接入。模块清单必须使用 `previewType: TabControl`、`isContainer: true` 和 `layout.mode: slots`；设计器以稳定页面 ID 保存槽位，同时兼容旧项目中 `type: Grid + designerType: .../Tabs + items[]` 的模型。原生生成器固定开启 Tabs 内容区，为每个标签生成与 Tabs 同级、覆盖内容矩形的独立 `Panel` 元素，并把页面内控件挂到对应 Panel，最后通过 `EU_SetTabsPageElements` 绑定切换显隐。页面 Panel 不得作为 Tabs 子元素创建，因为上游 Tabs 自绘不会遍历绘制子元素；页面 Panel 还必须显式使用无边框、0 圆角样式。绑定外部页面时，`ItemsEx` 的内置内容字段必须为空白，避免高 DPI 下页面起点差异露出 Tabs 自绘内容。也不得仅把控件高度交给关闭内容区的 Tabs，否则整个高度会被当成标签头。
+> 2026-07-28 补充：`lingbuilder.new_emoji.ui/Tabs` 已按真实分页容器接入。模块清单必须使用 `previewType: TabControl`、`isContainer: true` 和 `layout.mode: slots`；设计器以稳定页面 ID 保存槽位，同时兼容旧项目中 `type: Grid + designerType: .../Tabs + items[]` 的模型。Tabs 属于分页容器，画布渲染必须优先走 `TabControlDesignerPreview` 并读取真实 `tabs/items`、选中页、`headerAlign` 和页面槽位，不能被 New_Emoji 通用控件预览截获后显示写死的示意标签。`headerAlign` 的上游语义是每个统一宽度标签内部的文字对齐，不是整组标签在标签栏中的位置；水平标签宽度应复用原生规则：4 项以内为 `max(72, 可用宽度/数量)`，更多项目为 `max(72, min(152, 可用宽度/数量))`，超出后从左排列并裁切/滚动。模块属性行的“恢复默认”操作不得覆盖下拉框、输入框或文件选择按钮的交互区域；透明状态必须停止鼠标命中。原生生成器固定开启 Tabs 内容区，为每个标签生成与 Tabs 同级、覆盖内容矩形的独立 `Panel` 元素，并把页面内控件挂到对应 Panel，最后通过 `EU_SetTabsPageElements` 绑定切换显隐。页面 Panel 不得作为 Tabs 子元素创建，因为上游 Tabs 自绘不会遍历绘制子元素；页面 Panel 还必须显式使用无边框、0 圆角样式。绑定外部页面时，`ItemsEx` 的内置内容字段必须为空白，避免高 DPI 下页面起点差异露出 Tabs 自绘内容。也不得仅把控件高度交给关闭内容区的 Tabs，否则整个高度会被当成标签头。
 
 > 2026-07-28 补充：Win32 基础模块新增可确定性生成的 `到文本(值)`，覆盖整数、长整数、小数、逻辑值和文本，并由普通 Win32 与 new_emoji 后端共同实现。`lingbuilder.std.encoding` 扩展为 30 条命令，覆盖 UTF-8、UTF-16LE/BE、UTF-32LE/BE、ANSI、GBK、GB2312、GB18030 双向转换、通用编码转换、BOM 处理及保守检测。由于当前 LingCpp 没有公开字节数组类型，编码后的原始字节统一以无空格大写十六进制文本跨越命令边界，禁止把任意字节伪装成 Unicode 文本。
 
@@ -325,6 +327,7 @@ npm run build
 - 属性与事件面板消费模块目录，支持搜索、分组、基础/高级切换、默认值恢复和事件处理器模板。底层 `NE_EU_*` 默认为 advanced，不进入普通补全；用户显式开启“显示底层高级 API”后才显示。
 - `runtimeCommand` 是属性或事件可编辑的硬门槛。当前 new_emoji 目录的 703 个专属属性中，219 个由 `EU_Create*` 创建签名直接消费；其余 484 个属性保持只读诊断。目录中的 74 个事件尚未取得通用 callback 映射，不能在事件页生成假绑定；旧 Upload/DragUpload 的历史回调继续按兼容链路工作。
 - new_emoji 设计画布必须使用上游原生主题令牌预览，不得再用 React 专属渐变或阴影伪装运行效果。深色主题的核心默认值为窗口 `#1E1E2E`、标题栏 `#181825`、按钮 `#45475A`、编辑框 `#313244`、边框 `#585B70`；浅色主题使用对应上游令牌。点阵只属于设计辅助，不进入原生运行时。
+- 92 个命名空间控件的设计时形态由独立 `NewEmojiDesignerControlPreview` 负责，并以 `designerType` 末段选择预览；不能再只按兼容 `previewType` 渲染为普通文字或空容器。弹窗、抽屉、图表、浮层等内部遮罩和阴影必须裁切在控件边界内，禁止污染相邻控件；预览组件继续消费 `NewEmojiThemePreview`，不得另建与原生主题无关的基础按钮/编辑框配色。
 - new_emoji 控件创建完成后，生成器默认调用安全桥接 `NE_设置元素焦点` 聚焦首个可见且启用的 Input/EditBox，保证启动即可键盘输入并显示光标；该调用位于窗口“创建完毕”处理器之前，因此用户事件代码仍可设置其它焦点。隐藏或禁用输入框不能获得默认焦点。
 - new_emoji 窗口的默认 `lingbuilder` 图标来自根目录 `image/lingbuilder-ide-icon-v2.ico`。模块生成脚本将其打包为 `assets/lingbuilder-newemoji-window.ico`，Win32/x64 target 都声明为运行时文件，F5 和 VS 工程构建后复制到 exe 同目录并由生成代码加载；`system`、`custom`、`none` 三种显式设置优先于默认图标。
 - 完整封装仍需把上游 `EmojiCodeGenerator` / `exports.h` 中的 setter、callback 和事件上下文关系导出为正式目录映射，并完成混合后端多窗口生成；在此之前不得把“目录已收录”写成“运行时已支持”。

@@ -37,6 +37,15 @@ export default function TabControlDesignerPreview({ control, onSelectPage }: Tab
   const headerHeight = newEmojiTabs
     ? Math.max(38, Math.min(52, control.height * 0.28))
     : Math.max(28, fontSize + 14);
+  const headerAlign = String(control.properties?.headerAlign ?? '0');
+  const headerTextJustifyContent = newEmojiTabs
+    ? headerAlign === '1' ? 'center' : headerAlign === '2' ? 'flex-end' : 'flex-start'
+    : undefined;
+  const newEmojiTabExtent = newEmojiTabs && tabs.length > 0
+    ? tabs.length <= 4
+      ? Math.max(72, control.width / tabs.length)
+      : Math.max(72, Math.min(152, control.width / tabs.length))
+    : undefined;
   const hideHeader = isTabControlHeaderHidden(control);
   const fontStyle = getControlFontCssStyle(control);
 
@@ -55,6 +64,7 @@ export default function TabControlDesignerPreview({ control, onSelectPage }: Tab
       {!hideHeader && (
         <div
           role="tablist"
+          data-tab-header-align={newEmojiTabs ? headerAlign : undefined}
           className="relative z-10 flex shrink-0 items-stretch overflow-hidden"
           style={{ height: `${headerHeight}px`, backgroundColor: headerBackground }}
         >
@@ -66,7 +76,7 @@ export default function TabControlDesignerPreview({ control, onSelectPage }: Tab
                 key={tab.id}
                 role="tab"
                 aria-selected={selected}
-                className="pointer-events-auto relative flex min-w-0 max-w-[220px] shrink-0 items-center justify-center truncate border-0 px-3"
+                className="pointer-events-auto relative flex min-w-0 max-w-[220px] shrink-0 items-center truncate border-0 px-3"
                 onMouseDown={event => event.stopPropagation()}
                 onClick={event => {
                   event.stopPropagation();
@@ -74,6 +84,8 @@ export default function TabControlDesignerPreview({ control, onSelectPage }: Tab
                 }}
                 style={{
                   height: `${headerHeight}px`,
+                  width: newEmojiTabExtent === undefined ? undefined : `${newEmojiTabExtent}px`,
+                  justifyContent: headerTextJustifyContent,
                   color: selected ? foreground : inactiveForeground,
                   backgroundColor: selected ? selectedBackground : headerBackground,
                   boxShadow: selected ? 'inset 0 -2px #f59e0b' : index > 0 ? `inset 1px 0 ${borderColor}` : undefined

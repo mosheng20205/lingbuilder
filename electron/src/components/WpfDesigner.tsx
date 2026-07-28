@@ -46,6 +46,7 @@ import ListViewDesignerPreview from './ListViewDesignerPreview';
 import HeaderDesignerPreview from './HeaderDesignerPreview';
 import TabControlDesignerPreview from './TabControlDesignerPreview';
 import UpDownDesignerPreview from './UpDownDesignerPreview';
+import NewEmojiDesignerControlPreview, { getNewEmojiPreviewKind } from './NewEmojiDesignerControlPreview';
 import ListViewCollectionDialog, { type ListViewCollectionEditorKind } from './ListViewCollectionDialog';
 import ToolbarButtonsDialog from './ToolbarButtonsDialog';
 import StatusBarPartsDialog from './StatusBarPartsDialog';
@@ -332,11 +333,11 @@ export default function WpfDesigner({
         w.fileName.toLowerCase() === xmlName.toLowerCase()
         || w.className.toLowerCase() === className.toLowerCase()
       );
-      if (foundWindow && foundWindow.id !== activeWindowId) {
-        setActiveWindowId(foundWindow.id);
-      }
+      if (foundWindow) setActiveWindowId(currentWindowId => (
+        foundWindow.id === currentWindowId ? currentWindowId : foundWindow.id
+      ));
     }
-  }, [activeFile, project.windows, activeWindowId]);
+  }, [activeFile?.name]);
 
   useEffect(() => {
     if (activeWindowId && project.windows) {
@@ -540,36 +541,62 @@ export default function WpfDesigner({
     }));
   };
 
-  const refreshDesignerModules = useCallback(async (projectId: string) => {
+  const refreshDesignerModules = useCallback(async (projectId: string): Promise<boolean> => {
     try {
-      const response = await fetch(`/api/modules/project?projectId=${encodeURIComponent(projectId)}`);
+      const response = await fetch(`/api/modules/project/designer?projectId=${encodeURIComponent(projectId)}`, {
+        cache: 'no-store'
+      });
       if (!response.ok) throw new Error('模块服务不可用');
       const result = await response.json();
-      if (projectIdRef.current !== projectId) return;
+      if (projectIdRef.current !== projectId) return true;
       const ids = (Array.isArray(result.modules) ? result.modules : [])
         .map((module: any) => module?.manifest?.id)
         .filter((id: unknown): id is string => typeof id === 'string');
       setEnabledDesignerModules(new Set(['lingbuilder.win32.basic', ...ids]));
       setEnabledDesignerModuleRecords(Array.isArray(result.modules) ? result.modules : []);
+      return true;
     } catch {
       if (projectIdRef.current === projectId) {
         setEnabledDesignerModules(new Set(['lingbuilder.win32.basic']));
         setEnabledDesignerModuleRecords([]);
       }
+      return false;
     }
   }, []);
 
   useEffect(() => {
-    void refreshDesignerModules(project.id);
+    let disposed = false;
+    let retryTimer: number | undefined;
+    let retryAttempt = 0;
+
+    const refreshWithRetry = async () => {
+      const loaded = await refreshDesignerModules(project.id);
+      if (disposed || loaded || retryAttempt >= 4) return;
+      const delay = Math.min(2_000, 250 * (2 ** retryAttempt));
+      retryAttempt += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined;
+        void refreshWithRetry();
+      }, delay);
+    };
+
+    void refreshWithRetry();
 
     const handleModulesChanged = (event: Event) => {
       const detail = (event as CustomEvent<{ projectId?: string; scope?: string }>).detail;
       if (detail?.scope === 'project' && detail.projectId && detail.projectId !== project.id) return;
-      void refreshDesignerModules(project.id);
+      retryAttempt = 0;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+      retryTimer = undefined;
+      void refreshWithRetry();
     };
 
     window.addEventListener('lingbuilder-modules-changed', handleModulesChanged);
-    return () => window.removeEventListener('lingbuilder-modules-changed', handleModulesChanged);
+    return () => {
+      disposed = true;
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+      window.removeEventListener('lingbuilder-modules-changed', handleModulesChanged);
+    };
   }, [project.id, refreshDesignerModules]);
 
   useEffect(() => {
@@ -3393,8 +3420,10 @@ function renderControl(
   const isHiddenByAncestor = !ancestorsVisible;
   const definition = getWin32ControlDefinition(control.type);
   const controlFontStyle = getControlFontCssStyle(control);
+  const newEmojiPreviewKind = getNewEmojiPreviewKind(control);
+  const useNewEmojiControlPreview = Boolean(newEmojiPreviewKind) && !isTabContainerControl(control);
   const newEmojiSupported = Boolean(control.designerType) || isNewEmojiDesignerControlSupported(control.type);
-  const hasSpecialPreview = isTabContainerControl(control) || hasDedicatedControlPreview(control.type)
+  const hasSpecialPreview = Boolean(newEmojiPreviewKind) || isTabContainerControl(control) || hasDedicatedControlPreview(control.type)
     || (useNewEmojiDesigner && !newEmojiSupported);
   const resizeHandles: Array<{
     direction: ResizeDirection;
@@ -3456,6 +3485,10 @@ function renderControl(
       )}
 
       <div className={`w-full h-full relative select-none ${control.type === 'ReBar' && isSelected ? 'pointer-events-auto' : 'pointer-events-none'}`} style={controlFontStyle}>
+        {useNewEmojiControlPreview ? (
+          <NewEmojiDesignerControlPreview control={control} isEnabled={isEffectivelyEnabled} theme={newEmojiThemePreview} />
+        ) : (
+          <>
         {control.type === 'Button' && (
           <button
             disabled={!isEffectivelyEnabled}
@@ -3995,6 +4028,8 @@ function renderControl(
             <span className="truncate">{control.content || definition?.label || control.type}</span>
             {definition?.isContainer && <span className="ml-auto text-[9px] text-sky-400/70">容器</span>}
           </div>
+        )}
+          </>
         )}
       </div>
 
@@ -5609,7 +5644,16 @@ function ModuleControlProperties({ control, definition, controls, imageLists, pr
             onChange={value => onPropertyChange(property.key, value)}
           />
         )}
-        <button type="button" onClick={() => onPropertyChange(property.key, property.defaultValue as Win32ControlPropertyValue)} title={`恢复 ${property.label} 默认值`} aria-label={`恢复 ${property.label} 默认值`} className="absolute right-1 top-1 rounded px-1 text-[9px] text-slate-500 opacity-0 transition-opacity hover:text-fuchsia-400 focus:opacity-100 group-hover:opacity-100">默认</button>
+        <button
+          type="button"
+          onClick={() => onPropertyChange(property.key, property.defaultValue as Win32ControlPropertyValue)}
+          title={`恢复 ${property.label} 默认值`}
+          aria-label={`恢复 ${property.label} 默认值`}
+          className="pointer-events-none absolute top-1 rounded px-1 text-[9px] text-slate-500 opacity-0 transition-opacity hover:text-fuchsia-400 focus:pointer-events-auto focus:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
+          style={{ right: 'calc(60% + 4px)' }}
+        >
+          默认
+        </button>
       </div>)}
     </PropertyGroup>)}
     {unsupported.length > 0 && (

@@ -90,7 +90,9 @@ export function isNewEmojiTextInputControl(control: LingControl): boolean {
 
 export function getNewEmojiUnsupportedControlDiagnostics(window: LingWindowModel): string[] {
   return window.controls
-    .filter(control => control.visibility === 'Visible' && !isNewEmojiDesignerControlSupported(control.type))
+    .filter(control => control.visibility === 'Visible'
+      && !control.designerType?.startsWith(`${NEW_EMOJI_MODULE_ID}/`)
+      && !isNewEmojiDesignerControlSupported(control.type))
     .map(control => `new_emoji 设计器暂不支持控件“${control.name}”(${control.type})；该控件不会被伪装成 Win32 控件生成。`);
 }
 
