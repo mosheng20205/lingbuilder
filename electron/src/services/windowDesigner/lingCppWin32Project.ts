@@ -41,6 +41,8 @@ import { getEffectiveControlState } from './controlHierarchy';
 import { getUiBackendCommandDiagnostics, NEW_EMOJI_UI_BACKEND_ID, WIN32_UI_BACKEND_ID } from './uiBackendCommandContract';
 import { normalizeControlFont } from './controlFont';
 import { reconcileRebarBands } from './designerOperations';
+import { normalizeDataGridModel } from './dataGridModel';
+import { DATA_GRID_NATIVE_GLOBALS, DATA_GRID_NATIVE_METHODS } from './dataGridNativeRuntime';
 import { getControlTabSlot, getTabControlPages, isNewEmojiTabsControl } from './tabControlModel';
 import {
   parseEplControlMemberAssignmentRule,
@@ -109,7 +111,7 @@ export function generateLingCppNativeWin32Project(
 ): GeneratedLingCppNativeProject {
   const enabledModules = options.enabledModules || [];
   const projectSources = normalizeProjectSources(options);
-  const aggregate = aggregateLingCppProjectSources(projectSources, enabledModules);
+  const aggregate = aggregateLingCppProjectSources(projectSources, enabledModules, project);
   const selectedWindow = resolveNativeWindowForSource(project, options, aggregate.program);
   const sourceFilePath = options.lingCppSourceFilePath || getLingWindowSourceFileName(selectedWindow.fileName, selectedWindow.className);
   const newEmojiModuleEnabled = enabledModules.some(module => module.manifest.id === NEW_EMOJI_MODULE_ID);
@@ -239,7 +241,8 @@ function normalizeProjectSources(options: GenerateLingCppNativeWin32ProjectOptio
 
 function aggregateLingCppProjectSources(
   sources: LingCppProjectSourceFile[],
-  enabledModules: InstalledModule[]
+  enabledModules: InstalledModule[],
+  designerProject?: LingWindowProject
 ): AggregatedLingCppProjectSources {
   const parsedSources = (sources.length > 0 ? sources : [{ filePath: 'source.lcpp', sourceCode: '' }]).map(source => ({
     source,
@@ -269,7 +272,7 @@ function aggregateLingCppProjectSources(
       diagnostics.push(message);
       if (diagnostic.level === 'error') blockingDiagnostics.push(message);
     });
-    getLingCppSemanticDiagnostics(source.sourceCode, undefined, source.filePath, { availableModules: enabledModules, enabledModules }, projectGlobals, projectTypes, projectFunctions)
+    getLingCppSemanticDiagnostics(source.sourceCode, designerProject, source.filePath, { availableModules: enabledModules, enabledModules }, projectGlobals, projectTypes, projectFunctions)
       .forEach(diagnostic => {
         const message = `${source.filePath} 第 ${diagnostic.line} 行：${diagnostic.message}`;
         diagnostics.push(message);
@@ -362,6 +365,7 @@ function generateNewEmojiMainCpp(
   program: LingCppProgram,
   enabledModules: InstalledModule[]
 ): string {
+  const fbroModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser');
   const builtinLibraryFragments = [
     generateStandardLibraryRuntime(enabledModules),
     generateSystemLibraryRuntime(enabledModules),
@@ -375,8 +379,18 @@ function generateNewEmojiMainCpp(
   const projectDataTypesDefinition = generateProjectDataTypesDefinition(program, enabledModules);
   const projectGlobalsDefinition = generateProjectGlobalsDefinition(program, enabledModules);
   const newEmojiFunctionLibraries = generateNewEmojiFunctionLibraries(program, enabledModules);
+  const fbroControls: LingControl[] = fbroModuleEnabled
+    ? window.controls
+      .filter(control => control.type === 'FBroBrowser')
+      .map(control => ({
+        ...control,
+        isEnabled: getEffectiveControlState(window.controls, control.id).enabled,
+        visibility: getEffectiveControlState(window.controls, control.id).visible ? 'Visible' : 'Collapsed'
+      }))
+    : [];
   const controls = orderNewEmojiControls(window.controls
     .filter(control => Boolean(control.designerType) || isNewEmojiDesignerControlSupported(control.type))
+    .filter(control => control.type !== 'FBroBrowser')
     .map(control => ({
       ...control,
       isEnabled: getEffectiveControlState(window.controls, control.id).enabled,
@@ -394,6 +408,9 @@ function generateNewEmojiMainCpp(
     pages.forEach(page => tabPageVariables.set(newEmojiTabPageKey(control.id, page.id), page.variable));
     tabPagesByControl.set(control.id, pages);
   });
+  const tabsWithFbroChildren = new Set(fbroControls
+    .map(control => control.parentId)
+    .filter((parentId): parentId is string => Boolean(parentId)));
   const darkWindow = isNewEmojiDarkBackground(window.background);
   const tabPageBackground = darkWindow ? 0xff242941 : 0xfff8fafc;
   const catalogEventCallbacks = new Map<string, Array<{ command: string; callback: string }>>();
@@ -416,11 +433,25 @@ function generateNewEmojiMainCpp(
     }
     for (const [command, bindings] of groupedBindings) {
       const callback = `LB_NE_Event_${controlIndex + 1}_${catalogEventCallbackBlocks.length + 1}`;
-      const block = generateNewEmojiCatalogEventCallbackGroup(callback, bindings, enabledModules, program.dataTypes);
+      const fbroTabsChange = isNewEmojiTabsControl(control)
+        && tabsWithFbroChildren.has(control.id)
+        && command === 'EU_SetTabsChangeCallback';
+      const block = fbroTabsChange
+        ? generateNewEmojiFbroTabsCallback(callback, bindings, enabledModules, program.dataTypes)
+        : generateNewEmojiCatalogEventCallbackGroup(callback, bindings, enabledModules, program.dataTypes);
       if (!block) continue;
       catalogEventCallbackBlocks.push(block);
       const callbacks = catalogEventCallbacks.get(control.id) || [];
       callbacks.push({ command, callback });
+      catalogEventCallbacks.set(control.id, callbacks);
+    }
+    if (isNewEmojiTabsControl(control)
+      && tabsWithFbroChildren.has(control.id)
+      && !groupedBindings.has('EU_SetTabsChangeCallback')) {
+      const callback = `LB_NE_FbroTabs_${controlIndex + 1}`;
+      catalogEventCallbackBlocks.push(`static void __stdcall ${callback}(int element_id, int value, int, int) {\n    LB_NE_UpdateFbroTabVisibility(element_id, value);\n}`);
+      const callbacks = catalogEventCallbacks.get(control.id) || [];
+      callbacks.push({ command: 'EU_SetTabsChangeCallback', callback });
       catalogEventCallbacks.set(control.id, callbacks);
     }
   });
@@ -575,6 +606,7 @@ function generateNewEmojiMainCpp(
       ...pageLines
     ];
   });
+  const fbroCreateLines = generateNewEmojiFbroCreateLines(fbroControls, controls, variables);
   const createdHandler = findWindowCreatedHandler(window, program);
   const createdMethod = createdHandler ? findLingCppMethod(program, createdHandler) : undefined;
   const createdBody = createdMethod
@@ -621,11 +653,13 @@ function generateNewEmojiMainCpp(
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
+#include <windowsx.h>
 #include <winternl.h>
 #include <commctrl.h>
 #include <commdlg.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <shldisp.h>
 #include <shobjidl.h>
 #include <shlwapi.h>
 #include <wincodec.h>
@@ -658,6 +692,7 @@ function generateNewEmojiMainCpp(
 #include <initializer_list>
 #include <iterator>
 #include <map>
+#include <set>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -673,6 +708,13 @@ function generateNewEmojiMainCpp(
 #include "new_emoji_bridge.h"
 #include "exports.h"
 ${modulePreamble}
+#if defined(LINGBUILDER_FBRO_MODULE) && __has_include(<LingBuilderFbroBridge.h>)
+#include <LingBuilderFbroBridge.h>
+#define LINGBUILDER_NE_FBRO_AVAILABLE 1
+#else
+#define LINGBUILDER_NE_FBRO_AVAILABLE 0
+using LB_FBRO_HANDLE = UINT_PTR;
+#endif
 
 ${builtinLibraryRuntime}
 
@@ -722,7 +764,14 @@ struct LingCppTextValue : std::wstring {
     using std::wstring::wstring;
     LingCppTextValue(const std::wstring& value) : std::wstring(value) {}
     operator const wchar_t*() const { return c_str(); }
+    LingCppTextValue operator+(const std::wstring& value) const { return LingCppTextValue(static_cast<const std::wstring&>(*this) + value); }
+    LingCppTextValue operator+(const wchar_t* value) const { return LingCppTextValue(static_cast<const std::wstring&>(*this) + (value ? value : L"")); }
+    friend LingCppTextValue operator+(const std::wstring& left, const LingCppTextValue& right) { return LingCppTextValue(left + static_cast<const std::wstring&>(right)); }
+    friend LingCppTextValue operator+(const wchar_t* left, const LingCppTextValue& right) { return LingCppTextValue(std::wstring(left ? left : L"") + static_cast<const std::wstring&>(right)); }
 };
+
+static const wchar_t* LingCppWideArg(const wchar_t* value) { return value ? value : L""; }
+static const wchar_t* LingCppWideArg(const std::wstring& value) { return value.c_str(); }
 
 static LingCppTextValue 到文本(const wchar_t* value) { return LingCppTextValue(value ? value : L""); }
 static LingCppTextValue 到文本(const std::wstring& value) { return LingCppTextValue(value); }
@@ -731,6 +780,35 @@ static LingCppTextValue 到文本(int value) { return LingCppTextValue(std::to_w
 static LingCppTextValue 到文本(long long value) { return LingCppTextValue(std::to_wstring(value)); }
 static LingCppTextValue 到文本(float value) { std::wostringstream stream; stream.precision(7); stream << value; return LingCppTextValue(stream.str()); }
 static LingCppTextValue 到文本(double value) { std::wostringstream stream; stream.precision(15); stream << value; return LingCppTextValue(stream.str()); }
+
+static LingCppTextValue LB_NE_应用格式模板(const std::wstring& format, const std::vector<std::wstring>& values) {
+    std::wstring output;
+    output.reserve(format.size());
+    size_t valueIndex = 0;
+    for (size_t index = 0; index < format.size();) {
+        const wchar_t character = format[index];
+        const wchar_t next = index + 1 < format.size() ? format[index + 1] : L'\\0';
+        if (character == L'{' && next == L'{') { output.push_back(L'{'); index += 2; continue; }
+        if (character == L'}' && next == L'}') { output.push_back(L'}'); index += 2; continue; }
+        if (character == L'{' && next == L'}') {
+            if (valueIndex < values.size()) output += values[valueIndex++];
+            else output += L"{}";
+            index += 2;
+            continue;
+        }
+        output.push_back(character);
+        ++index;
+    }
+    return LingCppTextValue(output);
+}
+
+template <typename... Args> static LingCppTextValue 格式化文本(const std::wstring& format, const Args&... args) {
+    std::vector<std::wstring> values;
+    values.reserve(sizeof...(args));
+    auto appendValue = [&](const auto& value) { values.emplace_back(到文本(value)); };
+    (appendValue(args), ...);
+    return LB_NE_应用格式模板(format, values);
+}
 
 static int 到整数(const std::wstring& text) {
     if (text.empty()) return 0;
@@ -951,6 +1029,8 @@ static void 结束() {
     }
 }
 
+${generateNewEmojiFbroRuntime(fbroModuleEnabled)}
+
 ${newEmojiFunctionLibraries}
 
 ${catalogEventCallbackBlocks.join('\n\n')}
@@ -959,19 +1039,34 @@ ${uploadCallbackBlocks.join('\n\n')}
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     SetProcessDPIAware();
+    const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+${fbroModuleEnabled ? `    if (!LB_NE_InitializeFbro()) {
+        MessageBoxW(nullptr, L"FBro 初始化失败：请检查 CEF 135 x64 运行时和 LingBuilderFbroBridge.dll。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
+        if (SUCCEEDED(comResult)) CoUninitialize();
+        return 3;
+    }` : ''}
     g_newEmojiWindow = ${createWindow}(L"${escapeWideString(window.title)}", ${window.openPlacement === 'custom' ? int(window.openX ?? 120) : 120}, ${window.openPlacement === 'custom' ? int(window.openY ?? 80) : 80}, ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height))});
     if (!g_newEmojiWindow) {
         MessageBoxW(nullptr, L"new_emoji 原生窗口创建失败，请确认 new_emoji.dll 与 exe 位于同一目录。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
+        LB_NE_ShutdownFbro();
+        if (SUCCEEDED(comResult)) CoUninitialize();
         return 2;
     }
 ${iconSetup}
 ${createLines.join('\n')}
+${fbroCreateLines.join('\n')}
 ${initialFocusLine}
 ${createdBody}
-    if (!g_newEmojiWindow) return 0;
+    if (!g_newEmojiWindow) {
+        LB_NE_ShutdownFbro();
+        if (SUCCEEDED(comResult)) CoUninitialize();
+        return 0;
+    }
     NE_显示并激活窗口(g_newEmojiWindow);
     int exitCode = NE_运行消息循环();
+    LB_NE_ShutdownFbro();
 ${iconCleanup}
+    if (SUCCEEDED(comResult)) CoUninitialize();
     return exitCode;
 }
 `;
@@ -982,6 +1077,315 @@ function generateNewEmojiMethodBody(method: LingCppMethod, enabledModules: Insta
     .filter(Boolean)
     .join('\n')
     .replace(/^ {8}/gmu, '    ');
+}
+
+function generateNewEmojiFbroTabsCallback(
+  callback: string,
+  bindings: Array<{ callbackType: string; eventCode?: number; method: LingCppMethod }>,
+  enabledModules: InstalledModule[],
+  dataTypes: LingCppDataType[]
+): string | undefined {
+  const binding = bindings.find(item => item.callbackType === 'ElementValueCallback') || bindings[0];
+  if (!binding) return undefined;
+  const body = generateNewEmojiMethodBody(binding.method, enabledModules, dataTypes);
+  return `static void __stdcall ${callback}(int element_id, int value, int, int) {\n    LB_NE_UpdateFbroTabVisibility(element_id, value);\n${body}\n}`;
+}
+
+function generateNewEmojiFbroCreateLines(
+  fbroControls: LingControl[],
+  controls: LingControl[],
+  variables: Map<string, string>
+): string[] {
+  if (fbroControls.length === 0) return [];
+  const controlsById = new Map(controls.map(control => [control.id, control]));
+  const lines = fbroControls.map(control => {
+    const parent = control.parentId ? controlsById.get(control.parentId) : undefined;
+    const tabPages = parent && isNewEmojiTabsControl(parent) ? getTabControlPages(parent) : [];
+    const tabSlot = parent && isNewEmojiTabsControl(parent) ? getControlTabSlot(control, parent) : undefined;
+    const tabIndex = tabSlot ? tabPages.findIndex(page => page.id === tabSlot) : -1;
+    const tabElement = parent && isNewEmojiTabsControl(parent) ? variables.get(parent.id) || '0' : '0';
+    const fallbackProfileId = control.id.replace(/[^A-Za-z0-9_-]/gu, '_') || 'browser';
+    const cacheDirectory = typeof control.properties?.cacheDir === 'string' && control.properties.cacheDir.trim()
+      ? control.properties.cacheDir.trim()
+      : `.fbro-global-cache/profile-${fallbackProfileId}`;
+    const url = typeof control.properties?.url === 'string' && control.properties.url.trim()
+      ? control.properties.url.trim()
+      : 'about:blank';
+    const userAgent = typeof control.properties?.userAgent === 'string' ? control.properties.userAgent : '';
+    const proxyMode = typeof control.properties?.proxyMode === 'string' ? control.properties.proxyMode : 'system';
+    const proxyServer = proxyMode === 'custom' && typeof control.properties?.proxyServer === 'string'
+      ? control.properties.proxyServer
+      : '';
+    const fingerprint = typeof control.properties?.fingerprintProfile === 'string' ? control.properties.fingerprintProfile : '';
+    const flags = (control.properties?.enableJs !== false ? 1 : 0)
+      | (control.properties?.loadImages !== false ? 2 : 0)
+      | (control.properties?.enableWebGL === true ? 4 : 0)
+      | (control.properties?.muteAudio === true ? 8 : 0)
+      | (control.properties?.enableDevTools !== false ? 16 : 0);
+    return `    LB_NE_RegisterFbro(L"${escapeWideString(control.name)}", ${int(control.x)}, ${int(control.y)}, ${int(control.width)}, ${int(control.height)}, L"${escapeWideString(url)}", L"${escapeWideString(cacheDirectory)}", L"${escapeWideString(userAgent)}", L"${escapeWideString(proxyServer)}", L"${escapeWideString(fingerprint)}", ${flags}, ${tabElement}, ${tabIndex}, ${control.visibility === 'Collapsed' ? 0 : 1});`;
+  });
+  lines.push('    FBro_创建(nullptr);');
+  lines.push('    LB_NE_UpdateFbroTabVisibility(0, -1);');
+  return lines;
+}
+
+function generateNewEmojiFbroRuntime(enabled: boolean): string {
+  if (!enabled) {
+    return `static void LB_NE_UpdateFbroTabVisibility(int, int) {}\nstatic void LB_NE_ShutdownFbro() {}`;
+  }
+  return String.raw`
+struct LB_NE_FbroBrowserInstance {
+    std::wstring name;
+    HWND host = nullptr;
+    LB_FBRO_HANDLE handle = 0;
+    std::wstring url;
+    std::wstring profileDirectory;
+    std::wstring userAgent;
+    std::wstring proxyServer;
+    std::wstring fingerprintJson;
+    std::wstring lastEvent;
+    std::wstring lastError;
+    std::vector<LB_FBRO_HANDLE> chromeUiHandles;
+    unsigned int flags = 0;
+    int tabElementId = 0;
+    int tabIndex = -1;
+    bool configuredVisible = true;
+};
+static std::vector<LB_NE_FbroBrowserInstance> g_newEmojiFbroBrowsers;
+static bool g_newEmojiFbroInitialized = false;
+
+static LB_NE_FbroBrowserInstance* LB_NE_FindFbro(const wchar_t* controlName) {
+    if (!controlName || !*controlName) return nullptr;
+    for (auto& browser : g_newEmojiFbroBrowsers) if (browser.name == controlName) return &browser;
+    return nullptr;
+}
+
+static void __stdcall LB_NE_FbroEvent(LB_FBRO_HANDLE handle, int eventCode, const wchar_t* data, void*) {
+    for (auto& browser : g_newEmojiFbroBrowsers) {
+        if (browser.handle != handle) continue;
+        browser.lastEvent = eventCode == 1 ? L"Created" : eventCode == 2 ? L"LoadEnd" :
+            eventCode == 3 ? L"AddressChanged" : eventCode == 4 ? L"TitleChanged" :
+            eventCode == 5 ? L"Closed" : eventCode == 7 ? L"BeforePopup" : L"Error";
+        if (eventCode == 6) browser.lastError = data ? data : L"";
+        return;
+    }
+}
+
+static void LB_NE_RegisterFbro(const wchar_t* name, int x, int y, int width, int height,
+    const wchar_t* url, const wchar_t* profile, const wchar_t* userAgent, const wchar_t* proxy,
+    const wchar_t* fingerprint, unsigned int flags, int tabElementId, int tabIndex, int visible) {
+    const UINT dpi = g_newEmojiWindow ? GetDpiForWindow(g_newEmojiWindow) : 96;
+    const auto scale = [dpi](int value) { return MulDiv(value, static_cast<int>(dpi), 96); };
+    // new_emoji 元素坐标使用逻辑像素，并以默认 30 逻辑像素标题栏之后为内容原点。
+    // 原生子 HWND 要求实际客户区像素，因此同时换算 DPI 与标题栏偏移。
+    constexpr int titleBarLogicalHeight = 30;
+    HWND host = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+        scale(x), scale(y + titleBarLogicalHeight), (std::max)(1, scale(width)), (std::max)(1, scale(height)),
+        g_newEmojiWindow, nullptr, GetModuleHandleW(nullptr), nullptr);
+    g_newEmojiFbroBrowsers.push_back({ name ? name : L"", host, 0, url ? url : L"about:blank",
+        profile ? profile : L"", userAgent ? userAgent : L"", proxy ? proxy : L"",
+        fingerprint ? fingerprint : L"", L"", L"", {}, flags, tabElementId, tabIndex, visible != 0 });
+}
+
+static void LB_NE_UpdateFbroTabVisibility(int elementId, int activeIndex) {
+    for (auto& browser : g_newEmojiFbroBrowsers) {
+        if (!browser.host || (elementId > 0 && browser.tabElementId != elementId)) continue;
+        const int selected = browser.tabElementId > 0
+            ? (elementId == browser.tabElementId && activeIndex >= 0 ? activeIndex : EU_GetTabsActive(g_newEmojiWindow, browser.tabElementId))
+            : -1;
+        const bool visible = browser.configuredVisible && (browser.tabElementId <= 0 || browser.tabIndex == selected);
+        ShowWindow(browser.host, visible ? SW_SHOW : SW_HIDE);
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+        if (visible && browser.handle) LB_FBro_Resize(browser.handle);
+#endif
+    }
+}
+
+static int LB_NE_InitializeFbro() {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    if (g_newEmojiFbroInitialized) return 1;
+    wchar_t modulePath[MAX_PATH] = {};
+    GetModuleFileNameW(nullptr, modulePath, MAX_PATH);
+    std::wstring runtimeDirectory = modulePath;
+    const size_t slash = runtimeDirectory.find_last_of(L"\\/");
+    if (slash != std::wstring::npos) runtimeDirectory.resize(slash);
+    g_newEmojiFbroInitialized = LB_FBro_Initialize(runtimeDirectory.c_str()) > 0;
+    if (!g_newEmojiFbroInitialized) 调试输出(L"FBro 初始化失败：请确认 CEF 135 x64 运行时完整。");
+    return g_newEmojiFbroInitialized ? 1 : 0;
+#else
+    调试输出(L"FBro 不可用：New_Emoji 子宿主缺少 LingBuilderFbroBridge.h。");
+    return 0;
+#endif
+}
+
+static int FBro_创建(const wchar_t* controlName) {
+    if (!LB_NE_InitializeFbro()) return 0;
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    int created = 0;
+    for (auto& browser : g_newEmojiFbroBrowsers) {
+        if (controlName && *controlName && browser.name != controlName) continue;
+        if (!browser.host || browser.handle) continue;
+        browser.handle = LB_FBro_CreateEx(browser.host, browser.url.c_str(), browser.profileDirectory.c_str(),
+            browser.userAgent.c_str(), browser.flags, LB_NE_FbroEvent, nullptr);
+        if (!browser.handle) { browser.lastError = L"创建 FBro 浏览器句柄失败"; continue; }
+        if (!browser.proxyServer.empty()) LB_FBro_SetProxy(browser.handle, browser.proxyServer.c_str(), L"", L"");
+        if (!browser.fingerprintJson.empty()) LB_FBro_ApplyFingerprintJson(browser.handle, browser.fingerprintJson.c_str());
+        ++created;
+    }
+    return created > 0 ? 1 : 0;
+#else
+    (void)controlName; return 0;
+#endif
+}
+
+static int FBro_导航(const wchar_t* name, const std::wstring& address) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_Navigate(browser->handle, address.c_str()) : 0;
+#else
+    (void)name; (void)address; return 0;
+#endif
+}
+static int FBro_打开谷歌原生UI浏览器(const wchar_t* name, const wchar_t* address) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); if (!browser || !browser->handle) return 0;
+    LB_FBRO_HANDLE popup = LB_FBro_CreateChromeUi(browser->handle, address && *address ? address : browser->url.c_str(), LB_NE_FbroEvent, nullptr);
+    if (popup) browser->chromeUiHandles.push_back(popup);
+    return popup ? 1 : 0;
+#else
+    (void)name; (void)address; return 0;
+#endif
+}
+static int FBro_打开谷歌原生UI浏览器(const wchar_t* name, const std::wstring& address) { return FBro_打开谷歌原生UI浏览器(name, address.c_str()); }
+static void FBro_刷新(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle) LB_FBro_Reload(browser->handle);
+#else
+    (void)name;
+#endif
+}
+static int FBro_后退(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_GoBack(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static int FBro_前进(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_GoForward(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static void FBro_停止(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle) LB_FBro_Stop(browser->handle);
+#else
+    (void)name;
+#endif
+}
+static std::wstring LB_NE_ReadFbroText(const wchar_t* name, int kind) {
+    wchar_t result[16384] = {};
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); if (!browser || !browser->handle) return L"";
+    if (kind == 1) LB_FBro_GetTitle(browser->handle, result, 16384);
+    else if (kind == 2) LB_FBro_GetUrl(browser->handle, result, 16384);
+    else if (kind == 3) LB_FBro_GetLastEvent(browser->handle, result, 16384);
+    else LB_FBro_GetLastError(browser->handle, result, 16384);
+#else
+    (void)name; (void)kind;
+#endif
+    return result;
+}
+static std::wstring FBro_执行JS(const wchar_t* name, const wchar_t* script) {
+    wchar_t result[8192] = {};
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle && LB_FBro_ExecuteJs(browser->handle, script, result, 8192) > 0) return result;
+#else
+    (void)name; (void)script;
+#endif
+    return L"";
+}
+static std::wstring FBro_取标题(const wchar_t* name) { return LB_NE_ReadFbroText(name, 1); }
+static std::wstring FBro_取地址(const wchar_t* name) { return LB_NE_ReadFbroText(name, 2); }
+static std::wstring FBro_取最近事件(const wchar_t* name) { return LB_NE_ReadFbroText(name, 3); }
+static std::wstring FBro_取最近错误(const wchar_t* name) { return LB_NE_ReadFbroText(name, 4); }
+static int FBro_设置代理(const wchar_t* name, const wchar_t* proxy) {
+    auto* browser = LB_NE_FindFbro(name); if (!browser) return 0; browser->proxyServer = proxy ? proxy : L"";
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return browser->handle ? LB_FBro_SetProxy(browser->handle, browser->proxyServer.c_str(), L"", L"") : 1;
+#else
+    return 0;
+#endif
+}
+static int FBro_设置缓存目录(const wchar_t* name, const wchar_t* directory) { auto* browser = LB_NE_FindFbro(name); if (!browser || browser->handle) return 0; browser->profileDirectory = directory ? directory : L""; return 1; }
+static int FBro_设置UserAgent(const wchar_t* name, const wchar_t* userAgent) {
+    auto* browser = LB_NE_FindFbro(name); if (!browser) return 0; browser->userAgent = userAgent ? userAgent : L"";
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return browser->handle ? LB_FBro_SetUserAgent(browser->handle, browser->userAgent.c_str()) : 1;
+#else
+    return 0;
+#endif
+}
+static std::wstring FBro_取Cookie(const wchar_t* name, const wchar_t* address) {
+    wchar_t result[16384] = {};
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle) LB_FBro_GetCookies(browser->handle, address, result, 16384);
+#else
+    (void)name; (void)address;
+#endif
+    return result;
+}
+static int FBro_清空Cookie(const wchar_t* name, const wchar_t* address) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_ClearCookies(browser->handle, address) : 0;
+#else
+    (void)name; (void)address; return 0;
+#endif
+}
+static int FBro指纹_应用配置(const wchar_t* name, const wchar_t* json) {
+    auto* browser = LB_NE_FindFbro(name); if (!browser) return 0; browser->fingerprintJson = json ? json : L"";
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return browser->handle ? (LB_FBro_ApplyFingerprintJson(browser->handle, browser->fingerprintJson.c_str()) > 0 ? 1 : 0) : 1;
+#else
+    return 0;
+#endif
+}
+static std::wstring FBro指纹_取调用次数(const wchar_t* name) {
+    wchar_t result[4096] = {};
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle) LB_FBro_GetFingerprintCallCount(browser->handle, result, 4096);
+#else
+    (void)name;
+#endif
+    return result;
+}
+static int FBro指纹_清空调用次数(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle && LB_FBro_ClearFingerprintCallCount(browser->handle) > 0 ? 1 : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static void FBro_关闭(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle) LB_FBro_Close(browser->handle);
+#else
+    (void)name;
+#endif
+}
+static void LB_NE_ShutdownFbro() {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    for (auto& browser : g_newEmojiFbroBrowsers) {
+        for (LB_FBRO_HANDLE popup : browser.chromeUiHandles) if (popup) LB_FBro_Close(popup);
+        if (browser.handle) LB_FBro_Close(browser.handle);
+    }
+    if (g_newEmojiFbroInitialized) LB_FBro_Shutdown();
+#endif
+    g_newEmojiFbroBrowsers.clear();
+    g_newEmojiFbroInitialized = false;
+}
+`;
 }
 
 const NEW_EMOJI_CALLBACK_SIGNATURES: Record<string, { parameters: string; returnValue?: string }> = {
@@ -1519,6 +1923,7 @@ ${moduleFeatureDefines}
 #include <commdlg.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <shldisp.h>
 #include <shobjidl.h>
 #include <shlwapi.h>
 #include <richedit.h>
@@ -1583,6 +1988,7 @@ using LB_FBRO_HANDLE = UINT_PTR;
 #include <regex>
 #include <sstream>
 #include <map>
+#include <set>
 #include <string>
 #include <thread>
 #include <utility>
@@ -1916,6 +2322,8 @@ private:
     int controlId_;
 };
 
+${DATA_GRID_NATIVE_GLOBALS}
+
 struct RuntimeControl {
     int id;
     HWND hwnd;
@@ -1939,6 +2347,11 @@ struct RuntimeControl {
     bool animatedLoop = false;
     COLORREF colorValue = RGB(59, 130, 246);
     bool colorDialogOpen = false;
+    std::vector<std::vector<std::wstring>> listViewRows;
+    std::wstring listViewTextBuffer;
+    int listViewBatchDepth = 0;
+    int listViewLastClickedColumn = -1;
+    std::shared_ptr<DataGridNativeState> dataGrid;
 };
 
 struct RuntimeTabPage {
@@ -2460,8 +2873,22 @@ static WORD ParseHotKeyValue(const wchar_t* value) {
 
 static bool TextEquals(const wchar_t* value, const wchar_t* expected);
 
+static std::wstring ResolveRuntimeAssetPath(const wchar_t* path) {
+    std::wstring value = path ? path : L"";
+    if (value.empty() || value[0] == L'\\\\' || value[0] == L'/' || (value.size() > 1 && value[1] == L':')) return value;
+    wchar_t executablePath[32768] = {};
+    DWORD length = GetModuleFileNameW(nullptr, executablePath, static_cast<DWORD>(_countof(executablePath)));
+    if (!length || length >= _countof(executablePath)) return value;
+    std::wstring directory(executablePath, length);
+    size_t separator = directory.find_last_of(L"\\\\/");
+    if (separator == std::wstring::npos) return value;
+    directory.resize(separator + 1);
+    return directory + value;
+}
+
 static HBITMAP LoadWicBitmap(const wchar_t* path, int requestedWidth, int requestedHeight, const wchar_t* stretchMode) {
     if (!path || !path[0]) return nullptr;
+    const std::wstring resolvedPath = ResolveRuntimeAssetPath(path);
     IWICImagingFactory* factory = nullptr;
     IWICBitmapDecoder* decoder = nullptr;
     IWICBitmapFrameDecode* frame = nullptr;
@@ -2473,7 +2900,7 @@ static HBITMAP LoadWicBitmap(const wchar_t* path, int requestedWidth, int reques
     BITMAPINFO info = {};
     void* pixels = nullptr;
     if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)))) goto cleanup;
-    if (FAILED(factory->CreateDecoderFromFilename(path, nullptr, GENERIC_READ, WICDecodeMetadataCacheOnLoad, &decoder))) goto cleanup;
+    if (FAILED(factory->CreateDecoderFromFilename(resolvedPath.c_str(), nullptr, GENERIC_READ, WICDecodeMetadataCacheOnLoad, &decoder))) goto cleanup;
     if (FAILED(decoder->GetFrame(0, &frame))) goto cleanup;
     if (FAILED(frame->GetSize(&sourceWidth, &sourceHeight)) || sourceWidth == 0 || sourceHeight == 0) goto cleanup;
     targetWidth = sourceWidth; targetHeight = sourceHeight;
@@ -3186,6 +3613,14 @@ protected:
 
     int 信息框(const wchar_t* text, UINT flags, const wchar_t* title) {
         return MessageBoxW(hwnd_, text, title && title[0] ? title : L"LingBuilder 中文 C++", flags);
+    }
+
+    int 信息框(const std::wstring& text, UINT flags, const std::wstring& title) {
+        return 信息框(text.c_str(), flags, title.c_str());
+    }
+
+    int 信息框(const std::wstring& text, UINT flags, const wchar_t* title) {
+        return 信息框(text.c_str(), flags, title);
     }
 
     // 旧单实例实现保留在生成模板中但不参与编译，便于旧产物差异审查。
@@ -5795,7 +6230,14 @@ ${edgeViewEventIdCases}
         using std::wstring::wstring;
         LingCppTextValue(const std::wstring& value) : std::wstring(value) {}
         operator const wchar_t*() const { return c_str(); }
+        LingCppTextValue operator+(const std::wstring& value) const { return LingCppTextValue(static_cast<const std::wstring&>(*this) + value); }
+        LingCppTextValue operator+(const wchar_t* value) const { return LingCppTextValue(static_cast<const std::wstring&>(*this) + (value ? value : L"")); }
+        friend LingCppTextValue operator+(const std::wstring& left, const LingCppTextValue& right) { return LingCppTextValue(left + static_cast<const std::wstring&>(right)); }
+        friend LingCppTextValue operator+(const wchar_t* left, const LingCppTextValue& right) { return LingCppTextValue(std::wstring(left ? left : L"") + static_cast<const std::wstring&>(right)); }
     };
+
+    static const wchar_t* LingCppWideArg(const wchar_t* value) { return value ? value : L""; }
+    static const wchar_t* LingCppWideArg(const std::wstring& value) { return value.c_str(); }
 
     LingCppTextValue 到文本(const wchar_t* value) const { return LingCppTextValue(value ? value : L""); }
     LingCppTextValue 到文本(const std::wstring& value) const { return LingCppTextValue(value); }
@@ -5804,6 +6246,35 @@ ${edgeViewEventIdCases}
     LingCppTextValue 到文本(long long value) const { return LingCppTextValue(std::to_wstring(value)); }
     LingCppTextValue 到文本(float value) const { std::wostringstream stream; stream.precision(7); stream << value; return LingCppTextValue(stream.str()); }
     LingCppTextValue 到文本(double value) const { std::wostringstream stream; stream.precision(15); stream << value; return LingCppTextValue(stream.str()); }
+
+    static LingCppTextValue ApplyFormatTemplate(const std::wstring& format, const std::vector<std::wstring>& values) {
+        std::wstring output;
+        output.reserve(format.size());
+        size_t valueIndex = 0;
+        for (size_t index = 0; index < format.size();) {
+            const wchar_t character = format[index];
+            const wchar_t next = index + 1 < format.size() ? format[index + 1] : L'\\0';
+            if (character == L'{' && next == L'{') { output.push_back(L'{'); index += 2; continue; }
+            if (character == L'}' && next == L'}') { output.push_back(L'}'); index += 2; continue; }
+            if (character == L'{' && next == L'}') {
+                if (valueIndex < values.size()) output += values[valueIndex++];
+                else output += L"{}";
+                index += 2;
+                continue;
+            }
+            output.push_back(character);
+            ++index;
+        }
+        return LingCppTextValue(output);
+    }
+
+    template <typename... Args> LingCppTextValue 格式化文本(const std::wstring& format, const Args&... args) const {
+        std::vector<std::wstring> values;
+        values.reserve(sizeof...(args));
+        auto appendValue = [&](const auto& value) { values.emplace_back(到文本(value)); };
+        (appendValue(args), ...);
+        return ApplyFormatTemplate(format, values);
+    }
 
     int 到整数(const std::wstring& value) const {
         if (value.empty()) return 0;
@@ -6052,18 +6523,260 @@ ${edgeViewEventIdCases}
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control) return false;
         if (IsType(*control, L"ListBox")) SendMessageW(runtime->hwnd, LB_RESETCONTENT, 0, 0);
         else if (IsType(*control, L"ComboBox") || IsType(*control, L"ComboBoxEx")) SendMessageW(runtime->hwnd, CB_RESETCONTENT, 0, 0);
-        else if (IsType(*control, L"ListView")) ListView_DeleteAllItems(runtime->hwnd);
+        else if (IsType(*control, L"ListView")) {
+            if (control->value != 0) { runtime->listViewRows.clear(); ListView_SetItemCountEx(runtime->hwnd, 0, LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL); }
+            else ListView_DeleteAllItems(runtime->hwnd);
+        }
         else if (IsType(*control, L"TreeView")) TreeView_DeleteAllItems(runtime->hwnd);
         else if (IsType(*control, L"TabControl")) TabCtrl_DeleteAllItems(runtime->hwnd);
         else return false; return true;
     }
+${DATA_GRID_NATIVE_METHODS}
+
+    static std::vector<std::wstring> ListViewSplitCells(const wchar_t* tabSeparatedCells) {
+        std::vector<std::wstring> cells; std::wstring source = tabSeparatedCells ? tabSeparatedCells : L""; size_t start = 0;
+        while (start <= source.size()) { size_t end = source.find(static_cast<wchar_t>(9), start); cells.push_back(source.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start)); if (end == std::wstring::npos) break; start = end + 1; }
+        return cells;
+    }
+    static int ListViewColumnCount(HWND hwnd) {
+        HWND header = hwnd ? ListView_GetHeader(hwnd) : nullptr;
+        return std::max(1, header ? Header_GetItemCount(header) : 1);
+    }
+    int ListViewInsertCells(RuntimeControl& runtime, const ControlSpec& control, int rowIndex, std::vector<std::wstring> cells) {
+        int rowCount = control.value != 0 ? static_cast<int>(runtime.listViewRows.size()) : ListView_GetItemCount(runtime.hwnd);
+        int target = std::max(0, std::min(rowIndex, rowCount));
+        if (control.value != 0) {
+            runtime.listViewRows.insert(runtime.listViewRows.begin() + target, std::move(cells));
+            if (runtime.listViewBatchDepth == 0) ListView_SetItemCountEx(runtime.hwnd, static_cast<int>(runtime.listViewRows.size()), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
+            return target;
+        }
+        if (cells.empty()) cells.push_back(L"");
+        LVITEMW item = {}; item.mask = LVIF_TEXT; item.iItem = target; item.pszText = const_cast<wchar_t*>(cells[0].c_str());
+        int inserted = ListView_InsertItem(runtime.hwnd, &item);
+        for (int column = 1; inserted >= 0 && column < static_cast<int>(cells.size()); ++column) ListView_SetItemText(runtime.hwnd, inserted, column, const_cast<wchar_t*>(cells[column].c_str()));
+        return inserted;
+    }
     int 列表视图_添加行(const wchar_t* controlName, const wchar_t* tabSeparatedCells) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView")) return -1;
-        std::vector<std::wstring> cells; std::wstring source = tabSeparatedCells ? tabSeparatedCells : L""; size_t start = 0;
-        while (start <= source.size()) { size_t end = source.find(L'\t', start); cells.push_back(source.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start)); if (end == std::wstring::npos) break; start = end + 1; }
-        LVITEMW item = {}; item.mask = LVIF_TEXT; item.iItem = ListView_GetItemCount(runtime->hwnd); item.pszText = const_cast<wchar_t*>((cells.empty() ? L"" : cells[0].c_str()));
-        int row = ListView_InsertItem(runtime->hwnd, &item); for (int column = 1; row >= 0 && column < static_cast<int>(cells.size()); ++column) ListView_SetItemText(runtime->hwnd, row, column, const_cast<wchar_t*>(cells[column].c_str())); return row;
+        int rowIndex = control->value != 0 ? static_cast<int>(runtime->listViewRows.size()) : ListView_GetItemCount(runtime->hwnd);
+        return ListViewInsertCells(*runtime, *control, rowIndex, ListViewSplitCells(tabSeparatedCells));
     }
+    int 列表视图_添加行(const wchar_t* controlName, const std::wstring& tabSeparatedCells) { return 列表视图_添加行(controlName, tabSeparatedCells.c_str()); }
+    int 列表视图_插入行(const wchar_t* controlName, int rowIndex, const wchar_t* tabSeparatedCells) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView")) return -1;
+        return ListViewInsertCells(*runtime, *control, rowIndex, ListViewSplitCells(tabSeparatedCells));
+    }
+    int 列表视图_插入行(const wchar_t* controlName, int rowIndex, const std::wstring& tabSeparatedCells) { return 列表视图_插入行(controlName, rowIndex, tabSeparatedCells.c_str()); }
+    bool 列表视图_删除行(const wchar_t* controlName, int rowIndex) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView") || rowIndex < 0) return false;
+        if (control->value != 0) {
+            if (rowIndex >= static_cast<int>(runtime->listViewRows.size())) return false;
+            runtime->listViewRows.erase(runtime->listViewRows.begin() + rowIndex);
+            if (runtime->listViewBatchDepth == 0) ListView_SetItemCountEx(runtime->hwnd, static_cast<int>(runtime->listViewRows.size()), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
+            return true;
+        }
+        return ListView_DeleteItem(runtime->hwnd, rowIndex) != FALSE;
+    }
+    bool 列表视图_设置单元格(const wchar_t* controlName, int rowIndex, int columnIndex, const wchar_t* text) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView") || rowIndex < 0 || columnIndex < 0) return false;
+        if (control->value != 0) {
+            if (rowIndex >= static_cast<int>(runtime->listViewRows.size())) return false;
+            auto& row = runtime->listViewRows[static_cast<size_t>(rowIndex)];
+            if (columnIndex >= static_cast<int>(row.size())) row.resize(static_cast<size_t>(columnIndex + 1));
+            row[static_cast<size_t>(columnIndex)] = text ? text : L"";
+            if (runtime->listViewBatchDepth == 0) ListView_RedrawItems(runtime->hwnd, rowIndex, rowIndex);
+            return true;
+        }
+        if (rowIndex >= ListView_GetItemCount(runtime->hwnd) || columnIndex >= ListViewColumnCount(runtime->hwnd)) return false;
+        ListView_SetItemText(runtime->hwnd, rowIndex, columnIndex, const_cast<wchar_t*>(text ? text : L"")); return true;
+    }
+    bool 列表视图_设置单元格(const wchar_t* controlName, int rowIndex, int columnIndex, const std::wstring& text) { return 列表视图_设置单元格(controlName, rowIndex, columnIndex, text.c_str()); }
+    const wchar_t* 列表视图_取单元格(const wchar_t* controlName, int rowIndex, int columnIndex) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView") || rowIndex < 0 || columnIndex < 0) return L"";
+        if (control->value != 0) {
+            if (rowIndex >= static_cast<int>(runtime->listViewRows.size())) return L"";
+            const auto& row = runtime->listViewRows[static_cast<size_t>(rowIndex)];
+            runtime->listViewTextBuffer = columnIndex < static_cast<int>(row.size()) ? row[static_cast<size_t>(columnIndex)] : L"";
+        } else {
+            std::vector<wchar_t> buffer(32768, static_cast<wchar_t>(0));
+            ListView_GetItemText(runtime->hwnd, rowIndex, columnIndex, buffer.data(), static_cast<int>(buffer.size()));
+            runtime->listViewTextBuffer.assign(buffer.data());
+        }
+        return runtime->listViewTextBuffer.c_str();
+    }
+    int 列表视图_取行数(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView")) return 0;
+        return control->value != 0 ? static_cast<int>(runtime->listViewRows.size()) : ListView_GetItemCount(runtime->hwnd);
+    }
+    bool 列表视图_开始批量更新(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView")) return false;
+        if (runtime->listViewBatchDepth++ == 0) SendMessageW(runtime->hwnd, WM_SETREDRAW, FALSE, 0); return true;
+    }
+    bool 列表视图_结束批量更新(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView") || runtime->listViewBatchDepth <= 0) return false;
+        if (--runtime->listViewBatchDepth == 0) {
+            if (control->value != 0) ListView_SetItemCountEx(runtime->hwnd, static_cast<int>(runtime->listViewRows.size()), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
+            SendMessageW(runtime->hwnd, WM_SETREDRAW, TRUE, 0); InvalidateRect(runtime->hwnd, nullptr, TRUE);
+        }
+        return true;
+    }
+    int 列表视图_批量添加行(const wchar_t* controlName, const wchar_t* multiLineTsv) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView")) return 0;
+        const bool ownsBatch = runtime->listViewBatchDepth == 0; if (ownsBatch) 列表视图_开始批量更新(controlName);
+        std::wstring source = multiLineTsv ? multiLineTsv : L""; size_t start = 0; int added = 0;
+        while (start <= source.size()) {
+            size_t end = source.find(static_cast<wchar_t>(10), start); std::wstring line = source.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start);
+            if (!line.empty() && line.back() == static_cast<wchar_t>(13)) line.pop_back();
+            if (!(line.empty() && end == std::wstring::npos && start == source.size())) { if (列表视图_添加行(controlName, line.c_str()) >= 0) ++added; }
+            if (end == std::wstring::npos) break; start = end + 1;
+        }
+        if (ownsBatch) 列表视图_结束批量更新(controlName); return added;
+    }
+    int 列表视图_批量添加行(const wchar_t* controlName, const std::wstring& multiLineTsv) { return 列表视图_批量添加行(controlName, multiLineTsv.c_str()); }
+    bool 列表视图_排序(const wchar_t* controlName, int columnIndex, bool ascending) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView") || columnIndex < 0 || columnIndex >= ListViewColumnCount(runtime->hwnd)) return false;
+        std::vector<std::vector<std::wstring>> rows;
+        if (control->value != 0) rows = runtime->listViewRows;
+        else {
+            const int rowCount = ListView_GetItemCount(runtime->hwnd), columnCount = ListViewColumnCount(runtime->hwnd);
+            rows.resize(static_cast<size_t>(rowCount));
+            for (int row = 0; row < rowCount; ++row) for (int column = 0; column < columnCount; ++column) {
+                std::vector<wchar_t> buffer(32768, static_cast<wchar_t>(0)); ListView_GetItemText(runtime->hwnd, row, column, buffer.data(), static_cast<int>(buffer.size())); rows[static_cast<size_t>(row)].emplace_back(buffer.data());
+            }
+        }
+        std::stable_sort(rows.begin(), rows.end(), [columnIndex, ascending](const auto& left, const auto& right) {
+            const std::wstring leftValue = columnIndex < static_cast<int>(left.size()) ? left[static_cast<size_t>(columnIndex)] : L"";
+            const std::wstring rightValue = columnIndex < static_cast<int>(right.size()) ? right[static_cast<size_t>(columnIndex)] : L"";
+            const int compared = _wcsicmp(leftValue.c_str(), rightValue.c_str()); return ascending ? compared < 0 : compared > 0;
+        });
+        const bool ownsBatch = runtime->listViewBatchDepth == 0; if (ownsBatch) 列表视图_开始批量更新(controlName);
+        if (control->value != 0) runtime->listViewRows = std::move(rows);
+        else { ListView_DeleteAllItems(runtime->hwnd); for (auto& row : rows) ListViewInsertCells(*runtime, *control, ListView_GetItemCount(runtime->hwnd), std::move(row)); }
+        if (ownsBatch) 列表视图_结束批量更新(controlName); return true;
+    }
+    int 列表视图_取最后单击列(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; return runtime && control && IsType(*control, L"ListView") ? runtime->listViewLastClickedColumn : -1;
+    }
+    bool 列表视图_取虚拟模式(const wchar_t* controlName) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; return runtime && control && IsType(*control, L"ListView") && control->value != 0;
+    }
+    bool 列表视图_设置虚拟行数(const wchar_t* controlName, int rowCount) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView") || control->value == 0 || rowCount < 0 || rowCount > 10000000) return false;
+        runtime->listViewRows.resize(static_cast<size_t>(rowCount)); if (runtime->listViewBatchDepth == 0) ListView_SetItemCountEx(runtime->hwnd, rowCount, LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL); return true;
+    }
+    bool 列表视图_设置虚拟行(const wchar_t* controlName, int rowIndex, const wchar_t* tabSeparatedCells) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView") || control->value == 0 || rowIndex < 0 || rowIndex >= static_cast<int>(runtime->listViewRows.size())) return false;
+        runtime->listViewRows[static_cast<size_t>(rowIndex)] = ListViewSplitCells(tabSeparatedCells); if (runtime->listViewBatchDepth == 0) ListView_RedrawItems(runtime->hwnd, rowIndex, rowIndex); return true;
+    }
+    bool 列表视图_设置虚拟行(const wchar_t* controlName, int rowIndex, const std::wstring& tabSeparatedCells) { return 列表视图_设置虚拟行(controlName, rowIndex, tabSeparatedCells.c_str()); }
+    bool ResolveListView(const wchar_t* controlName, RuntimeControl*& runtime, const ControlSpec*& control) {
+        runtime = FindRuntimeControlByName(controlName); control = runtime ? FindControl(runtime->id) : nullptr;
+        return runtime && control && IsType(*control, L"ListView");
+    }
+    const wchar_t* ListViewFormatValues(RuntimeControl& runtime, std::initializer_list<long long> values) {
+        runtime.listViewTextBuffer.clear(); bool first = true;
+        for (long long value : values) { if (!first) runtime.listViewTextBuffer += L","; runtime.listViewTextBuffer += std::to_wstring(value); first = false; }
+        return runtime.listViewTextBuffer.c_str();
+    }
+    int ListViewAlignment(const wchar_t* alignment) {
+        return alignment && _wcsicmp(alignment, L"center") == 0 ? LVCFMT_CENTER : alignment && _wcsicmp(alignment, L"right") == 0 ? LVCFMT_RIGHT : LVCFMT_LEFT;
+    }
+    int 列表视图_添加列(const wchar_t* controlName, const wchar_t* title, int width, const wchar_t* alignment) {
+        RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control)) return -1;
+        return 列表视图_插入列(controlName, ListViewColumnCount(runtime->hwnd), title, width, alignment);
+    }
+    int 列表视图_插入列(const wchar_t* controlName, int columnIndex, const wchar_t* title, int width, const wchar_t* alignment) {
+        RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control) || columnIndex < 0) return -1;
+        LVCOLUMNW column = {}; column.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT; column.pszText = const_cast<wchar_t*>(title ? title : L""); column.cx = width; column.fmt = ListViewAlignment(alignment);
+        return ListView_InsertColumn(runtime->hwnd, columnIndex, &column);
+    }
+    bool 列表视图_删除列(const wchar_t* controlName, int columnIndex) {
+        RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control) || columnIndex < 0 || columnIndex >= ListViewColumnCount(runtime->hwnd)) return false;
+        if (!ListView_DeleteColumn(runtime->hwnd, columnIndex)) return false;
+        if (control->value != 0) for (auto& row : runtime->listViewRows) if (columnIndex < static_cast<int>(row.size())) row.erase(row.begin() + columnIndex);
+        return true;
+    }
+    bool 列表视图_设置列标题(const wchar_t* controlName, int columnIndex, const wchar_t* title) {
+        RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control)) return false;
+        LVCOLUMNW column = {}; column.mask = LVCF_TEXT; column.pszText = const_cast<wchar_t*>(title ? title : L""); return ListView_SetColumn(runtime->hwnd, columnIndex, &column) != FALSE;
+    }
+    const wchar_t* 列表视图_取列标题(const wchar_t* controlName, int columnIndex) {
+        RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control)) return L"";
+        std::vector<wchar_t> buffer(4096, 0); LVCOLUMNW column = {}; column.mask = LVCF_TEXT; column.pszText = buffer.data(); column.cchTextMax = static_cast<int>(buffer.size());
+        runtime->listViewTextBuffer = ListView_GetColumn(runtime->hwnd, columnIndex, &column) ? buffer.data() : L""; return runtime->listViewTextBuffer.c_str();
+    }
+    bool 列表视图_设置列宽(const wchar_t* controlName, int columnIndex, int width) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) && ListView_SetColumnWidth(runtime->hwnd, columnIndex, width) != FALSE; }
+    int 列表视图_取列宽(const wchar_t* controlName, int columnIndex) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) ? ListView_GetColumnWidth(runtime->hwnd, columnIndex) : 0; }
+    int 列表视图_取列数(const wchar_t* controlName) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) ? ListViewColumnCount(runtime->hwnd) : 0; }
+    bool 列表视图_设置行选中(const wchar_t* controlName, int rowIndex, bool selected) {
+        RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control) || rowIndex < 0) return false;
+        ListView_SetItemState(runtime->hwnd, rowIndex, selected ? LVIS_SELECTED | LVIS_FOCUSED : 0, LVIS_SELECTED | LVIS_FOCUSED); return true;
+    }
+    int 列表视图_取选中行数(const wchar_t* controlName) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) ? ListView_GetSelectedCount(runtime->hwnd) : 0; }
+    int 列表视图_取下一个选中行(const wchar_t* controlName, int startRow) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) ? ListView_GetNextItem(runtime->hwnd, startRow, LVNI_SELECTED) : -1; }
+    bool 列表视图_设置行勾选(const wchar_t* controlName, int rowIndex, bool checked) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control) || rowIndex < 0) return false; ListView_SetCheckState(runtime->hwnd, rowIndex, checked); return true; }
+    bool 列表视图_取行勾选(const wchar_t* controlName, int rowIndex) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) && rowIndex >= 0 && ListView_GetCheckState(runtime->hwnd, rowIndex) != FALSE; }
+    bool 列表视图_设置焦点行(const wchar_t* controlName, int rowIndex) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control) || rowIndex < 0) return false; ListView_SetItemState(runtime->hwnd, rowIndex, LVIS_FOCUSED, LVIS_FOCUSED); return true; }
+    int 列表视图_取焦点行(const wchar_t* controlName) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) ? ListView_GetNextItem(runtime->hwnd, -1, LVNI_FOCUSED) : -1; }
+    bool 列表视图_设置行图像(const wchar_t* controlName, int rowIndex, int imageIndex) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control) || control->value != 0) return false; LVITEMW item = {}; item.mask = LVIF_IMAGE; item.iItem = rowIndex; item.iImage = imageIndex; return ListView_SetItem(runtime->hwnd, &item) != FALSE; }
+    int 列表视图_取行图像(const wchar_t* controlName, int rowIndex) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control) || control->value != 0) return -1; LVITEMW item = {}; item.mask = LVIF_IMAGE; item.iItem = rowIndex; return ListView_GetItem(runtime->hwnd, &item) ? item.iImage : -1; }
+    bool 列表视图_设置行数据(const wchar_t* controlName, int rowIndex, long long data) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control) || control->value != 0) return false; LVITEMW item = {}; item.mask = LVIF_PARAM; item.iItem = rowIndex; item.lParam = static_cast<LPARAM>(data); return ListView_SetItem(runtime->hwnd, &item) != FALSE; }
+    long long 列表视图_取行数据(const wchar_t* controlName, int rowIndex) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control) || control->value != 0) return 0; LVITEMW item = {}; item.mask = LVIF_PARAM; item.iItem = rowIndex; return ListView_GetItem(runtime->hwnd, &item) ? static_cast<long long>(item.lParam) : 0; }
+    int 列表视图_查找文本(const wchar_t* controlName, const wchar_t* text, int startRow, bool partial) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control)) return -1; LVFINDINFOW find = {}; find.flags = partial ? LVFI_PARTIAL : LVFI_STRING; find.psz = text ? text : L""; return ListView_FindItem(runtime->hwnd, startRow, &find); }
+    int ListViewHit(RuntimeControl& runtime, int x, int y, bool column) { LVHITTESTINFO hit = {}; hit.pt = { x, y }; int row = ListView_SubItemHitTest(runtime.hwnd, &hit); return column ? (row >= 0 ? hit.iSubItem : -1) : row; }
+    int 列表视图_命中测试行(const wchar_t* controlName, int x, int y) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) ? ListViewHit(*runtime, x, y, false) : -1; }
+    int 列表视图_命中测试列(const wchar_t* controlName, int x, int y) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) ? ListViewHit(*runtime, x, y, true) : -1; }
+    const wchar_t* 列表视图_取行矩形(const wchar_t* controlName, int rowIndex, const wchar_t* part) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control)) return L""; int code = part && _wcsicmp(part, L"icon") == 0 ? LVIR_ICON : part && _wcsicmp(part, L"label") == 0 ? LVIR_LABEL : part && _wcsicmp(part, L"select") == 0 ? LVIR_SELECTBOUNDS : LVIR_BOUNDS; RECT rect = {}; return ListView_GetItemRect(runtime->hwnd, rowIndex, &rect, code) ? ListViewFormatValues(*runtime, { rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top }) : L""; }
+    const wchar_t* 列表视图_取单元格矩形(const wchar_t* controlName, int rowIndex, int columnIndex) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control)) return L""; RECT rect = {}; return ListView_GetSubItemRect(runtime->hwnd, rowIndex, columnIndex, LVIR_BOUNDS, &rect) ? ListViewFormatValues(*runtime, { rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top }) : L""; }
+    bool 列表视图_保证可见(const wchar_t* controlName, int rowIndex, bool partial) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) && ListView_EnsureVisible(runtime->hwnd, rowIndex, partial) != FALSE; }
+    bool 列表视图_是否可见(const wchar_t* controlName, int rowIndex) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) && ListView_IsItemVisible(runtime->hwnd, rowIndex) != FALSE; }
+    bool 列表视图_滚动(const wchar_t* controlName, int x, int y) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) && ListView_Scroll(runtime->hwnd, x, y) != FALSE; }
+    int 列表视图_取顶部行(const wchar_t* controlName) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) ? ListView_GetTopIndex(runtime->hwnd) : -1; }
+    int 列表视图_取每页行数(const wchar_t* controlName) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) ? ListView_GetCountPerPage(runtime->hwnd) : 0; }
+    bool 列表视图_重绘行(const wchar_t* controlName, int first, int last) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) && ListView_RedrawItems(runtime->hwnd, first, last) != FALSE; }
+    bool 列表视图_更新行(const wchar_t* controlName, int rowIndex) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(controlName, runtime, control) && ListView_Update(runtime->hwnd, rowIndex) != FALSE; }
+    bool 列表视图_设置视图(const wchar_t* controlName, const wchar_t* view) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control)) return false; DWORD value = view && _wcsicmp(view, L"icon") == 0 ? LV_VIEW_ICON : view && _wcsicmp(view, L"smallIcon") == 0 ? LV_VIEW_SMALLICON : view && _wcsicmp(view, L"list") == 0 ? LV_VIEW_LIST : view && _wcsicmp(view, L"tile") == 0 ? LV_VIEW_TILE : LV_VIEW_DETAILS; return ListView_SetView(runtime->hwnd, value) == 1; }
+    const wchar_t* 列表视图_取视图(const wchar_t* controlName) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(controlName, runtime, control)) return L""; DWORD value = ListView_GetView(runtime->hwnd); return value == LV_VIEW_ICON ? L"icon" : value == LV_VIEW_SMALLICON ? L"smallIcon" : value == LV_VIEW_LIST ? L"list" : value == LV_VIEW_TILE ? L"tile" : L"details"; }
+    DWORD ListViewStyleByName(const wchar_t* name) { if (!name) return 0; if (_wcsicmp(name,L"gridLines")==0) return LVS_EX_GRIDLINES; if (_wcsicmp(name,L"checkBoxes")==0) return LVS_EX_CHECKBOXES; if (_wcsicmp(name,L"fullRowSelect")==0) return LVS_EX_FULLROWSELECT; if (_wcsicmp(name,L"doubleBuffer")==0) return LVS_EX_DOUBLEBUFFER; if (_wcsicmp(name,L"headerDragDrop")==0) return LVS_EX_HEADERDRAGDROP; if (_wcsicmp(name,L"infoTip")==0) return LVS_EX_INFOTIP; if (_wcsicmp(name,L"labelTip")==0) return LVS_EX_LABELTIP; if (_wcsicmp(name,L"trackSelect")==0) return LVS_EX_TRACKSELECT; if (_wcsicmp(name,L"borderSelect")==0) return LVS_EX_BORDERSELECT; return 0; }
+    bool 列表视图_设置扩展样式(const wchar_t* controlName, const wchar_t* styleName, bool enabled) { RuntimeControl* runtime; const ControlSpec* control; DWORD style = ListViewStyleByName(styleName); if (!ResolveListView(controlName, runtime, control) || !style) return false; ListView_SetExtendedListViewStyleEx(runtime->hwnd, style, enabled ? style : 0); return true; }
+    bool 列表视图_取扩展样式(const wchar_t* controlName, const wchar_t* styleName) { RuntimeControl* runtime; const ControlSpec* control; DWORD style = ListViewStyleByName(styleName); return ResolveListView(controlName, runtime, control) && style && (ListView_GetExtendedListViewStyle(runtime->hwnd) & style) != 0; }
+    BYTE ListViewColorByte(int value) { return static_cast<BYTE>(std::max(0, std::min(255, value))); }
+    bool 列表视图_设置背景色(const wchar_t* name,int r,int g,int b) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control) && ListView_SetBkColor(runtime->hwnd,RGB(ListViewColorByte(r),ListViewColorByte(g),ListViewColorByte(b))) != CLR_NONE; }
+    int 列表视图_取背景色(const wchar_t* name) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control) ? static_cast<int>(ListView_GetBkColor(runtime->hwnd)) : -1; }
+    bool 列表视图_设置文字色(const wchar_t* name,int r,int g,int b) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control) && ListView_SetTextColor(runtime->hwnd,RGB(ListViewColorByte(r),ListViewColorByte(g),ListViewColorByte(b))) != CLR_NONE; }
+    int 列表视图_取文字色(const wchar_t* name) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control) ? static_cast<int>(ListView_GetTextColor(runtime->hwnd)) : -1; }
+    bool 列表视图_设置文字背景色(const wchar_t* name,int r,int g,int b) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control) && ListView_SetTextBkColor(runtime->hwnd,RGB(ListViewColorByte(r),ListViewColorByte(g),ListViewColorByte(b))) != CLR_NONE; }
+    int 列表视图_取文字背景色(const wchar_t* name) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control) ? static_cast<int>(ListView_GetTextBkColor(runtime->hwnd)) : -1; }
+    bool 列表视图_启用分组(const wchar_t* name,bool enabled) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control) && control->value == 0 && ListView_EnableGroupView(runtime->hwnd,enabled) != -1; }
+    bool 列表视图_取分组启用(const wchar_t* name) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control) && ListView_IsGroupViewEnabled(runtime->hwnd) != FALSE; }
+    int 列表视图_添加组(const wchar_t* name,int id,const wchar_t* title) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control) || control->value != 0) return -1; LVGROUP group={}; group.cbSize=sizeof(group); group.mask=LVGF_GROUPID|LVGF_HEADER; group.iGroupId=id; group.pszHeader=const_cast<wchar_t*>(title?title:L""); return ListView_InsertGroup(runtime->hwnd,-1,&group); }
+    bool 列表视图_删除组(const wchar_t* name,int id) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control) && ListView_RemoveGroup(runtime->hwnd,id) != -1; }
+    bool 列表视图_清空组(const wchar_t* name) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control)) return false; ListView_RemoveAllGroups(runtime->hwnd); return true; }
+    int 列表视图_取组数(const wchar_t* name) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control) ? ListView_GetGroupCount(runtime->hwnd) : 0; }
+    bool 列表视图_是否有组(const wchar_t* name,int id) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control) && ListView_HasGroup(runtime->hwnd,id) != FALSE; }
+    bool 列表视图_设置组标题(const wchar_t* name,int id,const wchar_t* title) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control)) return false; LVGROUP group={}; group.cbSize=sizeof(group); group.mask=LVGF_HEADER; group.pszHeader=const_cast<wchar_t*>(title?title:L""); return ListView_SetGroupInfo(runtime->hwnd,id,&group) != -1; }
+    const wchar_t* 列表视图_取组标题(const wchar_t* name,int id) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control)) return L""; std::vector<wchar_t> buffer(4096,0); LVGROUP group={}; group.cbSize=sizeof(group); group.mask=LVGF_HEADER; group.pszHeader=buffer.data(); group.cchHeader=static_cast<int>(buffer.size()); runtime->listViewTextBuffer=ListView_GetGroupInfo(runtime->hwnd,id,&group)>=0?buffer.data():L""; return runtime->listViewTextBuffer.c_str(); }
+    bool 列表视图_设置行组(const wchar_t* name,int row,int id) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control) || control->value != 0) return false; LVITEMW item={}; item.mask=LVIF_GROUPID; item.iItem=row; item.iGroupId=id; return ListView_SetItem(runtime->hwnd,&item) != FALSE; }
+    int 列表视图_取行组(const wchar_t* name,int row) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control) || control->value != 0) return -1; LVITEMW item={}; item.mask=LVIF_GROUPID; item.iItem=row; return ListView_GetItem(runtime->hwnd,&item)?item.iGroupId:-1; }
+    bool 列表视图_设置标签可编辑(const wchar_t* name,bool editable) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control)) return false; LONG_PTR style=GetWindowLongPtrW(runtime->hwnd,GWL_STYLE); SetWindowLongPtrW(runtime->hwnd,GWL_STYLE,editable?style|LVS_EDITLABELS:style&~LVS_EDITLABELS); return true; }
+    bool 列表视图_开始标签编辑(const wchar_t* name,int row) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control) && ListView_EditLabel(runtime->hwnd,row) != nullptr; }
+    bool 列表视图_取消标签编辑(const wchar_t* name) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control)) return false; ListView_CancelEditLabel(runtime->hwnd); return true; }
+    int 列表视图_设置选择标记(const wchar_t* name,int row) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control)?ListView_SetSelectionMark(runtime->hwnd,row):-1; }
+    int 列表视图_取选择标记(const wchar_t* name) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control)?ListView_GetSelectionMark(runtime->hwnd):-1; }
+    int 列表视图_设置热项(const wchar_t* name,int row) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control)?ListView_SetHotItem(runtime->hwnd,row):-1; }
+    int 列表视图_取热项(const wchar_t* name) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control)?ListView_GetHotItem(runtime->hwnd):-1; }
+    int 列表视图_设置悬停时间(const wchar_t* name,int ms) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control)?static_cast<int>(ListView_SetHoverTime(runtime->hwnd,ms)):-1; }
+    int 列表视图_取悬停时间(const wchar_t* name) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control)?static_cast<int>(ListView_GetHoverTime(runtime->hwnd)):-1; }
+    bool 列表视图_设置图像列表(const wchar_t* name,const wchar_t* id,const wchar_t* kind) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control)) return false; HIMAGELIST image=FindImageList(id); if (!image) return false; int type=kind&&_wcsicmp(kind,L"normal")==0?LVSIL_NORMAL:kind&&_wcsicmp(kind,L"state")==0?LVSIL_STATE:kind&&_wcsicmp(kind,L"group")==0?LVSIL_GROUPHEADER:LVSIL_SMALL; ListView_SetImageList(runtime->hwnd,type==LVSIL_SMALL?CreateListViewSizingImageList(*control,image):image,type); return true; }
+    long long 列表视图_取表头句柄(const wchar_t* name) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control)?reinterpret_cast<long long>(ListView_GetHeader(runtime->hwnd)):0; }
+    int 列表视图_取字符串宽度(const wchar_t* name,const wchar_t* text) { RuntimeControl* runtime; const ControlSpec* control; return ResolveListView(name,runtime,control)?ListView_GetStringWidth(runtime->hwnd,text?text:L""):0; }
+    bool 列表视图_设置插入标记(const wchar_t* name,int row,bool after) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control)) return false; LVINSERTMARK mark={}; mark.cbSize=sizeof(mark); mark.iItem=row; mark.dwFlags=after?LVIM_AFTER:0; return ListView_SetInsertMark(runtime->hwnd,&mark) != FALSE; }
+    const wchar_t* 列表视图_取插入标记(const wchar_t* name) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control)) return L""; LVINSERTMARK mark={}; mark.cbSize=sizeof(mark); return ListView_GetInsertMark(runtime->hwnd,&mark)?ListViewFormatValues(*runtime,{mark.iItem,(mark.dwFlags&LVIM_AFTER)!=0}):L""; }
+    bool 列表视图_设置项目位置(const wchar_t* name,int row,int x,int y) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control)) return false; ListView_SetItemPosition32(runtime->hwnd,row,x,y); return true; }
+    const wchar_t* 列表视图_取项目位置(const wchar_t* name,int row) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control)) return L""; POINT point={}; return ListView_GetItemPosition(runtime->hwnd,row,&point)?ListViewFormatValues(*runtime,{point.x,point.y}):L""; }
+    bool 列表视图_排列图标(const wchar_t* name,const wchar_t* mode) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control)) return false; UINT value=mode&&_wcsicmp(mode,L"left")==0?LVA_ALIGNLEFT:mode&&_wcsicmp(mode,L"top")==0?LVA_ALIGNTOP:mode&&_wcsicmp(mode,L"snap")==0?LVA_SNAPTOGRID:LVA_DEFAULT; return ListView_Arrange(runtime->hwnd,value) != FALSE; }
+    const wchar_t* 列表视图_设置图标间距(const wchar_t* name,int x,int y) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control)) return L""; DWORD result=ListView_SetIconSpacing(runtime->hwnd,x,y); return ListViewFormatValues(*runtime,{LOWORD(result),HIWORD(result)}); }
+    const wchar_t* 列表视图_取近似尺寸(const wchar_t* name,int count,int width,int height) { RuntimeControl* runtime; const ControlSpec* control; if (!ResolveListView(name,runtime,control)) return L""; DWORD result=ListView_ApproximateViewRect(runtime->hwnd,width,height,count); return ListViewFormatValues(*runtime,{LOWORD(result),HIWORD(result)}); }
     bool 树形框_添加节点(const wchar_t* controlName, const wchar_t* parentText, const wchar_t* text) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"TreeView")) return false;
         HTREEITEM parent = parentText && parentText[0] ? FindTreeItemByText(runtime->hwnd, TreeView_GetRoot(runtime->hwnd), parentText) : TVI_ROOT;
@@ -8375,6 +9088,12 @@ private:
         const ControlSpec* control = self->FindControl(static_cast<int>(subclassId));
         RuntimeControl* runtime = self->FindRuntimeControl(static_cast<int>(subclassId));
         if (control && runtime) {
+            if (IsType(*control, L"DataGrid") && runtime->dataGrid) {
+                if (message == WM_MOUSEMOVE || message == WM_MOUSELEAVE) self->UpdateDataGridHover(*runtime, *control, message, lParam);
+                if (message == WM_MOUSEMOVE) { TRACKMOUSEEVENT tracking = { sizeof(tracking), TME_LEAVE, hwnd, 0 }; TrackMouseEvent(&tracking); }
+                LRESULT dataGridResult = 0;
+                if (self->HandleDataGridMessage(*runtime, *control, hwnd, message, wParam, lParam, dataGridResult)) return dataGridResult;
+            }
             if (message == WM_CONTEXTMENU && self->HandleContextMenu(hwnd, lParam)) return 0;
             if (IsType(*control, L"HotKey")) {
                 if (message == WM_ERASEBKGND) return 1;
@@ -8842,8 +9561,14 @@ private:
             else if (control.flags & CF_VIEW_LIST) style |= LVS_LIST;
             else style |= LVS_REPORT;
             style |= LVS_SHOWSELALWAYS;
+            if (control.value != 0) style |= LVS_OWNERDATA;
             if (!(control.flags & CF_MULTIPLE)) style |= LVS_SINGLESEL;
             exStyle = 0;
+        } else if (IsType(control, L"DataGrid")) {
+            className = L"LingBuilderDataGrid";
+            text = L"";
+            style |= WS_TABSTOP | WS_HSCROLL | WS_VSCROLL | WS_CLIPCHILDREN | WS_CLIPSIBLINGS;
+            exStyle = WS_EX_CONTROLPARENT;
         } else if (IsType(control, L"TreeView")) {
             className = WC_TREEVIEWW;
             style |= TVS_HASBUTTONS | TVS_NONEVENHEIGHT;
@@ -9009,6 +9734,9 @@ private:
         if (font) SendMessageW(child, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
         if (IsUploadControl(control)) {
             InitializeUploadControl(control, runtimeControls_.back());
+        } else if (IsType(control, L"DataGrid")) {
+            InitializeDataGrid(control, runtimeControls_.back());
+            InvalidateRect(child, nullptr, FALSE);
         } else if (IsType(control, L"TextBox")) {
             SendMessageW(child, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(ScaleForDpi(10, dpi_), ScaleForDpi(10, dpi_)));
             RuntimeControl& runtime = runtimeControls_.back();
@@ -9133,14 +9861,20 @@ private:
             }
             if (alignFirstColumn) ListView_DeleteColumn(child, 0);
             auto rows = DecodeControlRecords(control.data2, 3);
+            RuntimeControl& runtime = runtimeControls_.back();
             for (int rowIndex = 0; rowIndex < static_cast<int>(rows.size()); ++rowIndex) {
                 auto decodedCells = DecodeControlRecords(rows[rowIndex][1].c_str(), static_cast<int>(columns.size()));
                 std::vector<std::wstring> cells = decodedCells.empty() ? std::vector<std::wstring>{ rows[rowIndex][0] } : decodedCells[0];
+                if (control.value != 0) {
+                    runtime.listViewRows.push_back(std::move(cells));
+                    continue;
+                }
                 int image = _wtoi(rows[rowIndex][2].c_str());
                 LVITEMW item = { static_cast<UINT>(LVIF_TEXT | (image >= 0 ? LVIF_IMAGE : 0)), rowIndex, 0, 0, 0, const_cast<wchar_t*>(cells[0].c_str()), 0, image };
                 int inserted = ListView_InsertItem(child, &item);
                 for (int columnIndex = 1; columnIndex < static_cast<int>(cells.size()); ++columnIndex) ListView_SetItemText(child, inserted, columnIndex, const_cast<wchar_t*>(cells[columnIndex].c_str()));
             }
+            if (control.value != 0) ListView_SetItemCountEx(child, static_cast<int>(runtime.listViewRows.size()), LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL);
         } else if (IsType(control, L"TreeView")) {
             SendMessageW(child, TVM_SETBKCOLOR, 0, static_cast<LPARAM>(control.background));
             SendMessageW(child, TVM_SETTEXTCOLOR, 0, static_cast<LPARAM>(control.foreground));
@@ -9746,6 +10480,17 @@ private:
             if (!control) return 0;
             if (IsType(*control, L"Header") && header->code == NM_CUSTOMDRAW) {
                 return PaintStandaloneHeader(*control, reinterpret_cast<NMCUSTOMDRAW*>(lParam));
+            } else if (IsType(*control, L"ListView") && header->code == LVN_GETDISPINFOW) {
+                auto* display = reinterpret_cast<NMLVDISPINFOW*>(lParam);
+                RuntimeControl* runtime = FindRuntimeControl(control->id);
+                if (runtime && display && (display->item.mask & LVIF_TEXT)
+                    && display->item.iItem >= 0 && display->item.iSubItem >= 0
+                    && display->item.iItem < static_cast<int>(runtime->listViewRows.size())) {
+                    const auto& row = runtime->listViewRows[static_cast<size_t>(display->item.iItem)];
+                    display->item.pszText = const_cast<wchar_t*>(display->item.iSubItem < static_cast<int>(row.size())
+                        ? row[static_cast<size_t>(display->item.iSubItem)].c_str() : L"");
+                }
+                return 0;
             } else if (IsType(*control, L"ToolBar") && header->code == NM_CUSTOMDRAW) {
                 return PaintToolBar(*control, reinterpret_cast<NMTBCUSTOMDRAW*>(lParam));
             } else if (IsType(*control, L"DateTimePicker") && header->code == DTN_DROPDOWN) {
@@ -9757,6 +10502,8 @@ private:
                 if (IsType(*control, L"TabControl")) UpdateTabChildren(*control);
                 DispatchLingEvent(*control, L"SelectionChanged");
             } else if (IsType(*control, L"ListView") && header->code == LVN_COLUMNCLICK) {
+                RuntimeControl* runtime = FindRuntimeControl(control->id);
+                if (runtime) runtime->listViewLastClickedColumn = reinterpret_cast<NMLISTVIEW*>(lParam)->iSubItem;
                 DispatchLingEvent(*control, L"ColumnClick");
             } else if ((IsType(*control, L"ListView") || IsType(*control, L"TreeView")) && header->code == NM_DBLCLK) {
                 DispatchLingEvent(*control, L"DoubleClick");
@@ -10417,6 +11164,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
         ICC_PAGESCROLLER_CLASS | ICC_LINK_CLASS;
     InitCommonControlsEx(&controls);
     LoadLibraryW(L"Msftedit.dll");
+    if (!RegisterLingBuilderDataGridClass(instance)) { if (SUCCEEDED(mediaFoundationResult)) MFShutdown(); if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken); CoUninitialize(); return 0; }
 
     WNDCLASSEXW windowClass = {};
     windowClass.cbSize = sizeof(WNDCLASSEXW);
@@ -10886,8 +11634,10 @@ function findGeneratedStatementLine(lines: string[], code: string, fromLine: num
 function generateModuleCppPreamble(enabledModules: InstalledModule[]): string {
   const lines: string[] = [];
   enabledModules.forEach(module => {
-    const target = getPreferredModuleTarget(module);
-    (target?.defines || []).forEach(define => {
+    // 模块可用性宏不能只取默认 Win32 target：部分模块（如 FBro）仅提供 x64 target，
+    // 但同一份生成源码需要先看到宏，才能通过 __has_include 启用对应桥接实现。
+    const defines = new Set((module.manifest.targets || []).flatMap(target => target.defines || []));
+    defines.forEach(define => {
       const safeDefine = toCppDefineIdentifier(define);
       lines.push(`#ifndef ${safeDefine}\n#define ${safeDefine}\n#endif`);
     });
@@ -11631,12 +12381,15 @@ function translateCallArguments(raw: string, enabledModules: InstalledModule[] =
 function translateModuleCallArguments(raw: string, binding: ModuleCommandBinding, enabledModules: InstalledModule[] = []): string {
   return splitCallArguments(raw)
     .map((argument, index) => {
-      if (binding.parameters?.[index]?.type !== 'handler') {
-        return translateLingCppExpression(argument, enabledModules);
-      }
+      const parameterType = binding.parameters?.[index]?.type;
+      const translated = translateLingCppExpression(argument, enabledModules);
+      if (parameterType === 'wideString'
+        && binding.command.startsWith('表格_')
+        && /^[\p{L}_][\p{L}\p{N}_]*$/u.test(argument.trim())) return `LingCppWideArg(${translated})`;
+      if (parameterType !== 'handler') return translated;
       const reference = argument.trim().match(/^&([\w\u4e00-\u9fa5]+)$/u);
       if (reference) return `L"${escapeWideString(reference[1] || '')}"`;
-      return translateLingCppExpression(argument, enabledModules);
+      return translated;
     })
     .join(', ');
 }
@@ -12004,7 +12757,7 @@ function generateControlSpec(
     .map(([eventName, handler]) => `${eventName}=${handler.trim()}`)
     .join('\n');
   const background = control.background === 'transparent'
-    ? control.type === 'ListView' ? '#0F172A' : windowBackground
+    ? control.type === 'ListView' || control.type === 'DataGrid' ? '#0F172A' : windowBackground
     : control.background;
   const x = parent ? control.x - parent.x : control.x;
   const y = parent ? control.y - parent.y : control.y;
@@ -12017,6 +12770,10 @@ function generateControlSpec(
       ? clampInteger(control.properties?.volume, 100, 0, 100)
       : control.type === 'ColorPicker'
         ? colorRefInteger(controlColorProperty(control, 'currentColor', '#3B82F6'))
+      : control.type === 'ListView'
+        ? (control.properties?.virtualMode === true ? 1 : 0)
+      : control.type === 'DataGrid'
+        ? (control.properties?.virtualMode === true ? 1 : 0)
       : control.type === 'CefBrowser' || control.type === 'FBroBrowser'
         ? (control.properties?.enableJs !== false ? 1 : 0)
           | (control.properties?.loadImages !== false ? 2 : 0)
@@ -12032,6 +12789,8 @@ function generateControlSpec(
         | (control.properties?.showTip === false ? 0 : 4)
         | (control.properties?.showActions === false ? 0 : 8)
         | (control.type === 'DragUpload' || control.properties?.dropEnabled === true ? 16 : 0)
+      : control.type === 'DataGrid'
+        ? numericControlProperty(control, 'virtualRowCount', 0)
       : numericControlProperty(control, 'selectedIndex', 0);
   const [data, data2] = serializeControlData(control, controlIds);
   const tooltip = typeof control.properties?.toolTip === 'string' ? control.properties.toolTip : '';
@@ -12040,7 +12799,7 @@ function generateControlSpec(
   const [option1, option2] = getControlOptions(control, controlIds);
   const flags = generateControlFlags(control);
   const cornerRadius = control.type === 'Button' ? clampInteger(control.properties?.cornerRadius, 6, 0, 100) : 0;
-  const collectionControl = control.type === 'ListBox' || control.type === 'ComboBox' || control.type === 'ListView';
+  const collectionControl = control.type === 'ListBox' || control.type === 'ComboBox' || control.type === 'ListView' || control.type === 'DataGrid';
   const groupBoxControl = control.type === 'GroupBox';
   const ipAddressControl = control.type === 'IPAddress';
   const borderControl = collectionControl || groupBoxControl || ipAddressControl;
@@ -12048,14 +12807,14 @@ function generateControlSpec(
     ? control.properties?.showBorder !== false
     : true;
   const listBorderWidth = borderControl && borderVisible ? clampInteger(control.properties?.borderWidth, 1, 0, 8) : 0;
-  const listBorderColor = controlColorProperty(control, 'borderColor', groupBoxControl || control.type === 'ListView' || ipAddressControl ? '#64748B' : '#334155');
+  const listBorderColor = controlColorProperty(control, 'borderColor', groupBoxControl || control.type === 'ListView' || control.type === 'DataGrid' || ipAddressControl ? '#64748B' : '#334155');
   const listSelectionStart = controlColorProperty(control, 'selectionStartColor', '#7C3AED');
   const listSelectionEnd = controlColorProperty(control, 'selectionEndColor', '#0891B2');
   const listSelectionBorder = controlColorProperty(control, 'selectionBorderColor', '#38BDF8');
   const listSelectionCornerRadius = collectionControl ? clampInteger(control.properties?.selectionCornerRadius, 4, 0, 24) : 0;
   const listItemHeight = collectionControl ? clampInteger(control.properties?.itemHeight, 28, 16, 96) : 28;
   const listItemSpacing = control.type === 'ListBox' ? clampInteger(control.properties?.itemSpacing, 0, 0, 24) : 0;
-  const listHeaderHeight = control.type === 'ListView' ? clampInteger(control.properties?.headerHeight, 28, 16, 96) : 28;
+  const listHeaderHeight = control.type === 'ListView' || control.type === 'DataGrid' ? clampInteger(control.properties?.headerHeight, control.type === 'DataGrid' ? 32 : 28, 16, 96) : 28;
   const listContentPadding = control.type === 'ListBox' ? clampInteger(control.properties?.contentPadding, 4, 0, 24) : 4;
   const listScrollBarVisibility = control.type === 'ListBox'
     ? control.properties?.scrollBarVisibility === 'visible' ? 1 : control.properties?.scrollBarVisibility === 'hidden' ? 2 : 0
@@ -12069,7 +12828,8 @@ function generateControlSpec(
   const treeNodeSpacing = treeControl ? clampInteger(control.properties?.nodeSpacing, 2, 0, 24) : 2;
   const treeNodePadding = treeControl ? clampInteger(control.properties?.nodePadding, 3, 0, 24) : 3;
   const font = normalizeControlFont(control);
-  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(control.content)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${font.size}, L"${escapeWideString(font.family)}", ${font.bold ? 'true' : 'false'}, ${font.italic ? 'true' : 'false'}, ${font.underline ? 'true' : 'false'}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listItemSpacing}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(events)}" }`;
+  const controlText = control.type === 'DataGrid' ? String(control.properties?.emptyText || '暂无数据') : control.content;
+  return `    { ${id}, ${parentId}, L"${control.type}", L"${escapeWideString(control.name)}", L"${escapeWideString(controlText)}", ${int(x)}, ${int(y)}, ${int(control.width)}, ${int(control.height)}, ${font.size}, L"${escapeWideString(font.family)}", ${font.bold ? 'true' : 'false'}, ${font.italic ? 'true' : 'false'}, ${font.underline ? 'true' : 'false'}, ${cornerRadius}, ${listBorderWidth}, ${toColorRef(listBorderColor)}, ${toColorRef(listSelectionStart)}, ${toColorRef(listSelectionEnd)}, ${toColorRef(listSelectionBorder)}, ${listSelectionCornerRadius}, ${listItemHeight}, ${listItemSpacing}, ${listHeaderHeight}, ${listContentPadding}, ${listScrollBarVisibility}, ${listScrollBarWidth}, ${toColorRef(listScrollBarTrack)}, ${toColorRef(listScrollBarThumb)}, ${treeBorderWidth}, ${toColorRef(treeBorderColor)}, ${treeNodeSpacing}, ${treeNodePadding}, ${toColorRef(background)}, ${control.background === 'transparent' ? 'true' : 'false'}, ${toColorRef(control.foreground)}, ${control.isEnabled ? 'true' : 'false'}, L"${escapeWideString(data)}", L"${escapeWideString(data2)}", L"${escapeWideString(tooltip)}", ${tooltipDelay}, L"${escapeWideString(containerSlot)}", L"${escapeWideString(option1)}", L"${escapeWideString(option2)}", ${minimum}, ${maximum}, ${value}, ${selectedIndex}, ${flags}, L"${escapeWideString(events)}" }`;
 }
 
 function controlColorProperty(control: LingControl, key: string, fallback: string): string {
@@ -12240,6 +13000,47 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
     const proxyServer = typeof properties.proxyServer === 'string' ? properties.proxyServer : '';
     return [url, encodeControlFields([cacheDir, userAgent, proxyMode, proxyServer])];
   }
+  if (control.type === 'DataGrid') {
+    const model = normalizeDataGridModel({
+      columns: properties.dataGridColumns as any,
+      rows: properties.dataGridRows as any,
+      selectionMode: properties.selectionMode as any,
+      emptyText: properties.emptyText as any,
+      virtualMode: properties.virtualMode as any,
+      virtualRowCount: properties.virtualRowCount as any
+    });
+    const columns = model.columns.map(column => [
+      column.id, column.title, column.type, String(column.width), String(column.minWidth), String(column.maxWidth), column.alignment,
+      column.readOnly ? '1' : '0', column.visible ? '1' : '0', column.frozen ? '1' : '0', column.sortable ? '1' : '0', column.filterable ? '1' : '0', column.required ? '1' : '0', column.format,
+      column.threeState ? '1' : '0', column.onText || '', column.offText || '', column.imageMode || 'contain',
+      String(column.progressMinimum ?? 0), String(column.progressMaximum ?? 100), column.progressShowText === false ? '0' : '1', column.allowCustomInput ? '1' : '0',
+      encodeControlRecords((column.options || []).map(option => [option.value, option.label])),
+      encodeControlRecords((column.buttons || []).map(button => [button.id, button.text, button.style, button.icon || '', button.tooltip || '', button.visible === false ? '0' : '1', button.enabled === false ? '0' : '1']))
+    ]);
+    const rows = model.rows.map(row => [
+      row.key,
+      row.enabled ? '1' : '0',
+      encodeControlRecords(model.columns.map(column => [column.id, row.cells[column.id] === null ? '__LING_NULL__' : String(row.cells[column.id] ?? '')])),
+      encodeControlRecords(Object.entries(row.cellOverrides || {}).map(([id, override]) => [
+        id,
+        override.readOnly === undefined ? '' : override.readOnly ? '1' : '0',
+        override.imageMode || '',
+        override.progressState || '',
+        encodeControlRecords((override.options || []).map(option => [option.value, option.label])),
+        encodeControlRecords(Object.entries(override.buttonStates || {}).map(([buttonId, state]) => {
+          const base = model.columns.find(column => column.id === id)?.buttons?.find(button => button.id === buttonId);
+          return [
+            buttonId,
+            state.text ?? base?.text ?? '',
+            state.style ?? base?.style ?? 'normal',
+            (state.visible ?? base?.visible ?? true) ? '1' : '0',
+            (state.enabled ?? base?.enabled ?? true) ? '1' : '0'
+          ];
+        }))
+      ]))
+    ]);
+    return [encodeControlRecords(columns), encodeControlRecords(rows)];
+  }
   if (control.type === 'FBroBrowser') {
     const url = typeof properties.url === 'string' ? properties.url : '';
     const fallbackProfileId = control.id.replace(/[^A-Za-z0-9_-]/gu, '_') || 'browser';
@@ -12320,6 +13121,7 @@ function getControlOptions(control: LingControl, controlIds: Map<string, number>
     case 'Image':
     case 'AnimatedImage': return [stringValue('stretch'), ''];
     case 'ListView': return [stringValue('view'), stringValue('imageListId')];
+    case 'DataGrid': return [stringValue('selectionMode') || 'cell', stringValue('imageListId')];
     case 'TreeView':
     case 'TabControl':
     case 'Header':

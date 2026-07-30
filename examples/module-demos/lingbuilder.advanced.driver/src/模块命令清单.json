@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.463Z",
+  "module": {
+    "id": "lingbuilder.advanced.driver",
+    "name": "设备驱动通信模块",
+    "version": "1.0.0",
+    "description": "打开显式设备路径并执行无缓冲区 IOCTL；需要相应驱动权限，不负责安装或提权。"
+  },
+  "commandCount": 4,
+  "commands": [
+    {
+      "index": 1,
+      "name": "设备_打开",
+      "signature": "设备_打开(设备路径, 允许写入)",
+      "description": "打开 \\.\\DeviceName 形式设备。",
+      "insertText": "设备_打开(\"$1\", 假)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "设备_打开",
+        "runtimeName": "设备_打开",
+        "parameters": [
+          {
+            "name": "设备路径",
+            "type": "wideString"
+          },
+          {
+            "name": "允许写入",
+            "type": "bool"
+          }
+        ],
+        "returnType": "handle",
+        "encoding": "wide"
+      },
+      "demoInvocation": "设备_打开(\"module-demo-temp.txt\", 真)"
+    },
+    {
+      "index": 2,
+      "name": "设备_无参数控制",
+      "signature": "设备_无参数控制(设备句柄, 控制码)",
+      "description": "执行无输入输出缓冲区 DeviceIoControl。",
+      "insertText": "设备_无参数控制(0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "设备_无参数控制",
+        "runtimeName": "设备_无参数控制",
+        "parameters": [
+          {
+            "name": "设备句柄",
+            "type": "handle"
+          },
+          {
+            "name": "控制码",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "设备_无参数控制(0, 1)"
+    },
+    {
+      "index": 3,
+      "name": "设备_关闭",
+      "signature": "设备_关闭(设备句柄)",
+      "description": "关闭设备句柄。",
+      "insertText": "设备_关闭(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "设备_关闭",
+        "runtimeName": "设备_关闭",
+        "parameters": [
+          {
+            "name": "设备句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "设备_关闭(0)"
+    },
+    {
+      "index": 4,
+      "name": "设备_取错误码",
+      "signature": "设备_取错误码()",
+      "description": "返回最近设备操作 Win32 错误码。",
+      "insertText": "设备_取错误码()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "设备_取错误码",
+        "runtimeName": "设备_取错误码",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "设备_取错误码()"
+    }
+  ]
+}

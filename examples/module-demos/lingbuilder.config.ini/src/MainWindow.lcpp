@@ -1,0 +1,51 @@
+包 INI配置模块完整演示
+使用 Win32窗口基础模块
+使用 INI配置模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "INI 配置模块：6 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.config.ini")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–6：INI_读文本 至 INI_删除节；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：INI_读文本
+            // [1] INI_读文本(文件, 节, 键, 默认值)
+            // 功能：读取 INI 文本值。
+            // 参数：文件:wideString，节:wideString，键:wideString，默认值:wideString；返回：wideString；可见性：default
+            INI_读文本("module-demo-temp.txt", "演示参数2", "演示参数3", "演示参数4")
+            // 命令ID：INI_读整数
+            // [2] INI_读整数(文件, 节, 键, 默认值)
+            // 功能：读取 INI 整数值。
+            // 参数：文件:wideString，节:wideString，键:wideString，默认值:int；返回：int；可见性：default
+            INI_读整数("module-demo-temp.txt", "演示参数2", "演示参数3", 1)
+            // 命令ID：INI_写文本
+            // [3] INI_写文本(文件, 节, 键, 值)
+            // 功能：写入 INI 文本值。
+            // 参数：文件:wideString，节:wideString，键:wideString，值:wideString；返回：bool；可见性：default
+            INI_写文本("module-demo-temp.txt", "演示参数2", "演示参数3", "演示参数4")
+            // 命令ID：INI_写整数
+            // [4] INI_写整数(文件, 节, 键, 值)
+            // 功能：写入 INI 整数值。
+            // 参数：文件:wideString，节:wideString，键:wideString，值:int；返回：bool；可见性：default
+            INI_写整数("module-demo-temp.txt", "演示参数2", "演示参数3", 1)
+            // 命令ID：INI_删除键
+            // [5] INI_删除键(文件, 节, 键)
+            // 功能：删除指定 INI 键。
+            // 参数：文件:wideString，节:wideString，键:wideString；返回：bool；可见性：default
+            INI_删除键("module-demo-temp.txt", "演示参数2", "演示参数3")
+            // 命令ID：INI_删除节
+            // [6] INI_删除节(文件, 节)
+            // 功能：删除整个 INI 节。
+            // 参数：文件:wideString，节:wideString；返回：bool；可见性：default
+            INI_删除节("module-demo-temp.txt", "演示参数2")
+        如果结束
+        调试输出("已查看 命令 1–6：INI_读文本 至 INI_删除节；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

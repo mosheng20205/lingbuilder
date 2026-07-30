@@ -1,0 +1,379 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T11:02:57.005Z",
+  "project": {
+    "id": "lingbuilder-ui-project",
+    "name": "分组框接口完整演示"
+  },
+  "selectedWindow": {
+    "id": "main-window",
+    "fileName": "MainWindow.xml",
+    "className": "MainWindow",
+    "title": "分组框 GroupBox 全能力演示"
+  },
+  "sourceFilePath": "MainWindow.lcpp",
+  "modules": [
+    {
+      "id": "lingbuilder.win32.basic",
+      "name": "Win32窗口基础模块",
+      "version": "1.0.0",
+      "builtin": true
+    },
+    {
+      "id": "lingbuilder.win32.common-controls",
+      "name": "Win32高级控件模块",
+      "version": "1.0.0",
+      "builtin": true
+    }
+  ],
+  "files": [
+    "main.cpp",
+    "layout.json",
+    "module-dependencies.txt",
+    "README.txt",
+    "lingbuilder-native-manifest.json"
+  ],
+  "sourceMap": [
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9789,
+      "generatedEndLine": 9919,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 5,
+      "sourceEndLine": 67,
+      "kind": "class",
+      "symbolName": "MainWindow",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9807,
+      "generatedEndLine": 9807,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 10,
+      "sourceEndLine": 14,
+      "kind": "event",
+      "symbolName": "_MainWindow_创建完毕",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9874,
+      "generatedEndLine": 9877,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 63,
+      "sourceEndLine": 66,
+      "kind": "event",
+      "symbolName": "_子按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9875,
+      "generatedEndLine": 9875,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 64,
+      "sourceEndLine": 64,
+      "kind": "statement",
+      "symbolName": "_子按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9876,
+      "generatedEndLine": 9876,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 65,
+      "sourceEndLine": 65,
+      "kind": "statement",
+      "symbolName": "_子按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9879,
+      "generatedEndLine": 9883,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 17,
+      "sourceEndLine": 21,
+      "kind": "event",
+      "symbolName": "_设置标题按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9880,
+      "generatedEndLine": 9880,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 18,
+      "sourceEndLine": 18,
+      "kind": "statement",
+      "symbolName": "_设置标题按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9881,
+      "generatedEndLine": 9881,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 19,
+      "sourceEndLine": 19,
+      "kind": "statement",
+      "symbolName": "_设置标题按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9882,
+      "generatedEndLine": 9882,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 20,
+      "sourceEndLine": 20,
+      "kind": "statement",
+      "symbolName": "_设置标题按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9885,
+      "generatedEndLine": 9890,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 24,
+      "sourceEndLine": 29,
+      "kind": "event",
+      "symbolName": "_读取标题按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9887,
+      "generatedEndLine": 9887,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 26,
+      "sourceEndLine": 26,
+      "kind": "statement",
+      "symbolName": "_读取标题按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9888,
+      "generatedEndLine": 9888,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 27,
+      "sourceEndLine": 27,
+      "kind": "statement",
+      "symbolName": "_读取标题按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9889,
+      "generatedEndLine": 9889,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 28,
+      "sourceEndLine": 28,
+      "kind": "statement",
+      "symbolName": "_读取标题按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9892,
+      "generatedEndLine": 9895,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 32,
+      "sourceEndLine": 35,
+      "kind": "event",
+      "symbolName": "_禁用分组框按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9893,
+      "generatedEndLine": 9893,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 33,
+      "sourceEndLine": 33,
+      "kind": "statement",
+      "symbolName": "_禁用分组框按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9894,
+      "generatedEndLine": 9894,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 34,
+      "sourceEndLine": 34,
+      "kind": "statement",
+      "symbolName": "_禁用分组框按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9897,
+      "generatedEndLine": 9900,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 38,
+      "sourceEndLine": 41,
+      "kind": "event",
+      "symbolName": "_隐藏分组框按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9898,
+      "generatedEndLine": 9898,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 39,
+      "sourceEndLine": 39,
+      "kind": "statement",
+      "symbolName": "_隐藏分组框按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9899,
+      "generatedEndLine": 9899,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 40,
+      "sourceEndLine": 40,
+      "kind": "statement",
+      "symbolName": "_隐藏分组框按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9902,
+      "generatedEndLine": 9905,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 44,
+      "sourceEndLine": 47,
+      "kind": "event",
+      "symbolName": "_调整大小按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9903,
+      "generatedEndLine": 9903,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 45,
+      "sourceEndLine": 45,
+      "kind": "statement",
+      "symbolName": "_调整大小按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9904,
+      "generatedEndLine": 9904,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 46,
+      "sourceEndLine": 46,
+      "kind": "statement",
+      "symbolName": "_调整大小按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9907,
+      "generatedEndLine": 9913,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 50,
+      "sourceEndLine": 56,
+      "kind": "event",
+      "symbolName": "_恢复状态按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9908,
+      "generatedEndLine": 9908,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 51,
+      "sourceEndLine": 51,
+      "kind": "statement",
+      "symbolName": "_恢复状态按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9909,
+      "generatedEndLine": 9909,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 52,
+      "sourceEndLine": 52,
+      "kind": "statement",
+      "symbolName": "_恢复状态按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9910,
+      "generatedEndLine": 9910,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 53,
+      "sourceEndLine": 53,
+      "kind": "statement",
+      "symbolName": "_恢复状态按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9911,
+      "generatedEndLine": 9911,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 54,
+      "sourceEndLine": 54,
+      "kind": "statement",
+      "symbolName": "_恢复状态按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9912,
+      "generatedEndLine": 9912,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 55,
+      "sourceEndLine": 55,
+      "kind": "statement",
+      "symbolName": "_恢复状态按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9915,
+      "generatedEndLine": 9918,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 58,
+      "sourceEndLine": 61,
+      "kind": "event",
+      "symbolName": "_显示隐藏示例按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9916,
+      "generatedEndLine": 9916,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 59,
+      "sourceEndLine": 59,
+      "kind": "statement",
+      "symbolName": "_显示隐藏示例按钮_被单击",
+      "className": "MainWindow"
+    },
+    {
+      "generatedFile": "main.cpp",
+      "generatedStartLine": 9917,
+      "generatedEndLine": 9917,
+      "sourceFile": "src/MainWindow.lcpp",
+      "sourceStartLine": 60,
+      "sourceEndLine": 60,
+      "kind": "statement",
+      "symbolName": "_显示隐藏示例按钮_被单击",
+      "className": "MainWindow"
+    }
+  ]
+}

@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.564Z",
+  "module": {
+    "id": "lingbuilder.ipc",
+    "name": "进程通信模块",
+    "version": "1.0.0",
+    "description": "提供单连接命名管道 UTF-8 文本通信和命名互斥体单实例判断。"
+  },
+  "commandCount": 8,
+  "commands": [
+    {
+      "index": 1,
+      "name": "IPC_创建管道服务端",
+      "signature": "IPC_创建管道服务端(名称)",
+      "description": "创建本机命名管道服务端。",
+      "insertText": "IPC_创建管道服务端(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "IPC_创建管道服务端",
+        "runtimeName": "IPC_创建管道服务端",
+        "parameters": [
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IPC_创建管道服务端(\"演示参数1\")"
+    },
+    {
+      "index": 2,
+      "name": "IPC_等待管道客户端",
+      "signature": "IPC_等待管道客户端()",
+      "description": "等待一个管道客户端连接。",
+      "insertText": "IPC_等待管道客户端()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "IPC_等待管道客户端",
+        "runtimeName": "IPC_等待管道客户端",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "IPC_等待管道客户端()"
+    },
+    {
+      "index": 3,
+      "name": "IPC_连接管道",
+      "signature": "IPC_连接管道(名称, 超时毫秒)",
+      "description": "连接本机命名管道。",
+      "insertText": "IPC_连接管道(\"$1\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "IPC_连接管道",
+        "runtimeName": "IPC_连接管道",
+        "parameters": [
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IPC_连接管道(\"演示参数1\", 1)"
+    },
+    {
+      "index": 4,
+      "name": "IPC_发送文本",
+      "signature": "IPC_发送文本(文本)",
+      "description": "发送一条长度前缀 UTF-8 文本。",
+      "insertText": "IPC_发送文本(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "IPC_发送文本",
+        "runtimeName": "IPC_发送文本",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IPC_发送文本(\"演示参数1\")"
+    },
+    {
+      "index": 5,
+      "name": "IPC_接收文本",
+      "signature": "IPC_接收文本()",
+      "description": "接收一条长度前缀 UTF-8 文本。",
+      "insertText": "IPC_接收文本()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "IPC_接收文本",
+        "runtimeName": "IPC_接收文本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IPC_接收文本()"
+    },
+    {
+      "index": 6,
+      "name": "IPC_创建单实例锁",
+      "signature": "IPC_创建单实例锁(名称)",
+      "description": "创建命名互斥体；首次创建返回真。",
+      "insertText": "IPC_创建单实例锁(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "IPC_创建单实例锁",
+        "runtimeName": "IPC_创建单实例锁",
+        "parameters": [
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IPC_创建单实例锁(\"演示参数1\")"
+    },
+    {
+      "index": 7,
+      "name": "IPC_取错误",
+      "signature": "IPC_取错误()",
+      "description": "返回最近 IPC 错误。",
+      "insertText": "IPC_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "IPC_取错误",
+        "runtimeName": "IPC_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "IPC_取错误()"
+    },
+    {
+      "index": 8,
+      "name": "IPC_关闭",
+      "signature": "IPC_关闭()",
+      "description": "关闭管道和单实例锁。",
+      "insertText": "IPC_关闭()",
+      "returnType": "空",
+      "binding": {
+        "command": "IPC_关闭",
+        "runtimeName": "IPC_关闭",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "IPC_关闭()"
+    }
+  ]
+}

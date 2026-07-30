@@ -66,6 +66,9 @@ declare global {
           error?: string;
         }>;
       };
+      community?: {
+        openQQGroup: () => Promise<string>;
+      };
       workspace?: {
         getCurrent: () => Promise<string>;
         open: () => Promise<{

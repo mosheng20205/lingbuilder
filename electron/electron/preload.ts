@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     openWorkspacePath: (relativePath = '.') => ipcRenderer.invoke('shell:open-workspace-path', relativePath),
     copyFullPath: (target: { kind: 'solution'; solutionName: string } | { kind: 'project'; relativePath: string }) => ipcRenderer.invoke('shell:copy-full-path', target),
   },
+  community: {
+    openQQGroup: () => ipcRenderer.invoke('community:open-qq-group'),
+  },
   workspace: {
     getCurrent: () => ipcRenderer.invoke('workspace:get-current'),
     open: () => ipcRenderer.invoke('workspace:open'),

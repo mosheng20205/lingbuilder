@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.518Z",
+  "module": {
+    "id": "lingbuilder.database.sqlite",
+    "name": "SQLite数据库桥接模块",
+    "version": "1.0.0",
+    "description": "动态加载用户提供的 sqlite3.dll，提供单连接执行和查询闭环；缺少运行库时返回明确错误。"
+  },
+  "commandCount": 7,
+  "commands": [
+    {
+      "index": 1,
+      "name": "SQLite_加载运行库",
+      "signature": "SQLite_加载运行库(DLL路径)",
+      "description": "加载 sqlite3.dll 并检查所需 API；空路径尝试系统搜索。",
+      "insertText": "SQLite_加载运行库(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "SQLite_加载运行库",
+        "runtimeName": "SQLite_加载运行库",
+        "parameters": [
+          {
+            "name": "DLL路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_加载运行库(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 2,
+      "name": "SQLite_打开",
+      "signature": "SQLite_打开(数据库路径)",
+      "description": "以 UTF-8 路径打开 SQLite 数据库。",
+      "insertText": "SQLite_打开(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "SQLite_打开",
+        "runtimeName": "SQLite_打开",
+        "parameters": [
+          {
+            "name": "数据库路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_打开(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 3,
+      "name": "SQLite_执行",
+      "signature": "SQLite_执行(SQL语句)",
+      "description": "执行无结果 SQL。",
+      "insertText": "SQLite_执行(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "SQLite_执行",
+        "runtimeName": "SQLite_执行",
+        "parameters": [
+          {
+            "name": "SQL语句",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_执行(\"演示参数1\")"
+    },
+    {
+      "index": 4,
+      "name": "SQLite_查询首值",
+      "signature": "SQLite_查询首值(SQL语句)",
+      "description": "返回首行首列 UTF-8 文本。",
+      "insertText": "SQLite_查询首值(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "SQLite_查询首值",
+        "runtimeName": "SQLite_查询首值",
+        "parameters": [
+          {
+            "name": "SQL语句",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_查询首值(\"演示参数1\")"
+    },
+    {
+      "index": 5,
+      "name": "SQLite_取更改行数",
+      "signature": "SQLite_取更改行数()",
+      "description": "返回最近语句更改的行数。",
+      "insertText": "SQLite_取更改行数()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "SQLite_取更改行数",
+        "runtimeName": "SQLite_取更改行数",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "SQLite_取更改行数()"
+    },
+    {
+      "index": 6,
+      "name": "SQLite_取错误",
+      "signature": "SQLite_取错误()",
+      "description": "返回最近 SQLite 或运行库加载错误。",
+      "insertText": "SQLite_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "SQLite_取错误",
+        "runtimeName": "SQLite_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SQLite_取错误()"
+    },
+    {
+      "index": 7,
+      "name": "SQLite_关闭",
+      "signature": "SQLite_关闭()",
+      "description": "关闭数据库并卸载动态运行库。",
+      "insertText": "SQLite_关闭()",
+      "returnType": "空",
+      "binding": {
+        "command": "SQLite_关闭",
+        "runtimeName": "SQLite_关闭",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "SQLite_关闭()"
+    }
+  ]
+}

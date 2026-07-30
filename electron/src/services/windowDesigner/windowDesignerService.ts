@@ -14,6 +14,11 @@ import {
 } from './win32ControlRegistry';
 import { getWindowEventDefinition } from './windowEventRegistry';
 import type { ModuleDesignerControlContribution } from '../modules/types';
+import {
+  dataGridModelToPropertyValues,
+  migrateLegacyNewEmojiTableProperties,
+  normalizeDataGridModel
+} from './dataGridModel';
 
 export const WINDOW_DESIGNER_AUTOSAVE_KEY = 'lingbuilder.windowDesigner.autosave.v1';
 const NEW_EMOJI_DESIGNER_TYPE_PREFIX = 'lingbuilder.new_emoji.ui/';
@@ -614,7 +619,25 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
     let controlsChanged = hierarchyControls !== window.controls;
     const controls = hierarchyControls.map(control => {
       const font = normalizeControlFont(control);
-      const properties = control.properties || createDefaultControlProperties(control.type, control.content);
+      let properties = control.properties || createDefaultControlProperties(control.type, control.content);
+      let dataGridMigrated = false;
+      if (control.type === 'DataGrid') {
+        const model = normalizeDataGridModel({
+          columns: properties.dataGridColumns as any,
+          rows: properties.dataGridRows as any,
+          selectionMode: properties.selectionMode as any,
+          emptyText: properties.emptyText as any,
+          virtualMode: properties.virtualMode as any,
+          virtualRowCount: properties.virtualRowCount as any
+        });
+        const normalizedProperties = { ...properties, ...dataGridModelToPropertyValues(model) };
+        dataGridMigrated = JSON.stringify(normalizedProperties) !== JSON.stringify(properties);
+        properties = normalizedProperties;
+      } else if (control.designerType === 'lingbuilder.new_emoji.ui/Table') {
+        const migrated = migrateLegacyNewEmojiTableProperties(properties as Record<string, unknown>);
+        dataGridMigrated = JSON.stringify(migrated) !== JSON.stringify(properties);
+        properties = migrated as typeof properties;
+      }
       const missingComboBoxExDropDownHeight = control.type === 'ComboBoxEx'
         && !Number.isFinite(Number(properties.dropDownHeight));
       const missingDateTimePickerCalendarHeight = control.type === 'DateTimePicker'
@@ -622,6 +645,7 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
       const usesLegacyDateTimePickerHeight = control.type === 'DateTimePicker' && control.height === 30;
       const usesLegacyMonthCalendarSize = control.type === 'MonthCalendar' && control.width === 250 && control.height === 190;
       const requiresMigration = !control.properties
+        || dataGridMigrated
         || missingComboBoxExDropDownHeight
         || missingDateTimePickerCalendarHeight
         || usesLegacyDateTimePickerHeight

@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.468Z",
+  "module": {
+    "id": "lingbuilder.advanced.memory",
+    "name": "受控内存模块",
+    "version": "1.0.0",
+    "description": "只允许访问本模块登记的本进程内存块，拒绝任意裸地址。"
+  },
+  "commandCount": 6,
+  "commands": [
+    {
+      "index": 1,
+      "name": "内存_申请",
+      "signature": "内存_申请(字节数)",
+      "description": "申请清零内存并返回受控句柄。",
+      "insertText": "内存_申请(0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "内存_申请",
+        "runtimeName": "内存_申请",
+        "parameters": [
+          {
+            "name": "字节数",
+            "type": "int"
+          }
+        ],
+        "returnType": "handle"
+      },
+      "demoInvocation": "内存_申请(1)"
+    },
+    {
+      "index": 2,
+      "name": "内存_写整数",
+      "signature": "内存_写整数(内存句柄, 偏移, 数值)",
+      "description": "在边界内写入 32 位整数。",
+      "insertText": "内存_写整数(0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "内存_写整数",
+        "runtimeName": "内存_写整数",
+        "parameters": [
+          {
+            "name": "内存句柄",
+            "type": "handle"
+          },
+          {
+            "name": "偏移",
+            "type": "int"
+          },
+          {
+            "name": "数值",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "内存_写整数(0, 1, 1)"
+    },
+    {
+      "index": 3,
+      "name": "内存_读整数",
+      "signature": "内存_读整数(内存句柄, 偏移)",
+      "description": "在边界内读取 32 位整数。",
+      "insertText": "内存_读整数(0, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "内存_读整数",
+        "runtimeName": "内存_读整数",
+        "parameters": [
+          {
+            "name": "内存句柄",
+            "type": "handle"
+          },
+          {
+            "name": "偏移",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "内存_读整数(0, 1)"
+    },
+    {
+      "index": 4,
+      "name": "内存_写UTF8文本",
+      "signature": "内存_写UTF8文本(内存句柄, 偏移, 文本)",
+      "description": "在边界内写入带零结尾 UTF-8 文本。",
+      "insertText": "内存_写UTF8文本(0, 0, \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "内存_写UTF8文本",
+        "runtimeName": "内存_写UTF8文本",
+        "parameters": [
+          {
+            "name": "内存句柄",
+            "type": "handle"
+          },
+          {
+            "name": "偏移",
+            "type": "int"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "内存_写UTF8文本(0, 1, \"演示参数3\")"
+    },
+    {
+      "index": 5,
+      "name": "内存_读UTF8文本",
+      "signature": "内存_读UTF8文本(内存句柄, 偏移, 最大字节数)",
+      "description": "在边界内读取 UTF-8 文本。",
+      "insertText": "内存_读UTF8文本(0, 0, 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "内存_读UTF8文本",
+        "runtimeName": "内存_读UTF8文本",
+        "parameters": [
+          {
+            "name": "内存句柄",
+            "type": "handle"
+          },
+          {
+            "name": "偏移",
+            "type": "int"
+          },
+          {
+            "name": "最大字节数",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "内存_读UTF8文本(0, 1, 1)"
+    },
+    {
+      "index": 6,
+      "name": "内存_释放",
+      "signature": "内存_释放(内存句柄)",
+      "description": "释放受控内存块。",
+      "insertText": "内存_释放(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "内存_释放",
+        "runtimeName": "内存_释放",
+        "parameters": [
+          {
+            "name": "内存句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "内存_释放(0)"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+包 Cookie文本模块完整演示
+使用 Win32窗口基础模块
+使用 Cookie文本模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "Cookie文本模块：5 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.net.cookie")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–5：Cookie_取值 至 Cookie_生成响应项；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：Cookie_取值
+            // [1] Cookie_取值(Cookie文本, 名称)
+            // 功能：读取 Cookie 请求头中的指定值。
+            // 参数：Cookie文本:wideString，名称:wideString；返回：wideString；可见性：default
+            Cookie_取值("演示参数1", "演示参数2")
+            // 命令ID：Cookie_是否存在
+            // [2] Cookie_是否存在(Cookie文本, 名称)
+            // 功能：判断 Cookie 名称是否存在。
+            // 参数：Cookie文本:wideString，名称:wideString；返回：bool；可见性：default
+            Cookie_是否存在("演示参数1", "演示参数2")
+            // 命令ID：Cookie_设置
+            // [3] Cookie_设置(Cookie文本, 名称, 值)
+            // 功能：添加或替换 Cookie 值。
+            // 参数：Cookie文本:wideString，名称:wideString，值:wideString；返回：wideString；可见性：default
+            Cookie_设置("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：Cookie_删除
+            // [4] Cookie_删除(Cookie文本, 名称)
+            // 功能：删除指定 Cookie。
+            // 参数：Cookie文本:wideString，名称:wideString；返回：wideString；可见性：default
+            Cookie_删除("演示参数1", "演示参数2")
+            // 命令ID：Cookie_生成响应项
+            // [5] Cookie_生成响应项(名称, 值, 路径, 最大秒数)
+            // 功能：生成一条 Set-Cookie 响应值。
+            // 参数：名称:wideString，值:wideString，路径:wideString，最大秒数:int；返回：wideString；可见性：default
+            Cookie_生成响应项("演示参数1", "演示参数2", "module-demo-temp.txt", 1)
+        如果结束
+        调试输出("已查看 命令 1–5：Cookie_取值 至 Cookie_生成响应项；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

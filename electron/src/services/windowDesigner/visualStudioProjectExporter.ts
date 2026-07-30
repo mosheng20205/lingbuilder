@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { InstalledModule } from '../modules/types';
 import { getPreferredModuleTarget } from '../modules/targetResolver';
+import { CRYPTO_SDK_MODULE_IDS } from '../modules/dataMediaModules';
 import { LingCppNativeProjectFile } from './lingCppWin32Project';
 
 export interface VisualStudioProjectExportResult {
@@ -44,6 +45,7 @@ export async function exportVisualStudioProject(
   const runtimeFiles = getModuleRuntimeFiles(options.enabledModules, 'windows-msvc-win32');
   const runtimeFilesX64 = getModuleRuntimeFiles(options.enabledModules, 'windows-msvc-x64');
   const hasFbro = options.enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser');
+  const hasCryptoSdk = usesCryptoSdk(options.enabledModules);
 
   await fs.mkdir(options.projectDir, { recursive: true });
   await Promise.all([
@@ -62,8 +64,8 @@ export async function exportVisualStudioProject(
       hasFbro,
       fbroRuntimeFromBuildBin: options.fbroRuntimeFromBuildBin,
       contentFiles,
-      requiredCppStandard: options.requiredCppStandard,
-      requiresDynamicCrt: options.requiresDynamicCrt
+      requiredCppStandard: options.requiredCppStandard ?? (hasCryptoSdk ? 20 : undefined),
+      requiresDynamicCrt: options.requiresDynamicCrt ?? hasCryptoSdk
     }), 'utf8'),
     fs.writeFile(filtersPath, generateFilters(sourceFiles, noneFiles), 'utf8')
   ]);
@@ -89,7 +91,8 @@ function getSourceFiles(generatedFiles: LingCppNativeProjectFile[], enabledModul
         ...(getPreferredModuleTarget(module, 'windows-msvc-x64')?.sources || [])
       ])
         .map(file => normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
-    })
+    }),
+    ...(usesCryptoSdk(enabledModules) ? ['modules/lingbuilder.crypto.sdk/src/blake3_amalgamation.c'] : [])
   ]);
 }
 
@@ -100,7 +103,7 @@ function getNoneFiles(generatedFiles: LingCppNativeProjectFile[]): string[] {
 }
 
 function getModuleIncludeDirs(enabledModules: InstalledModule[], targetId = 'windows-msvc-win32'): string[] {
-  return unique(enabledModules.flatMap(module => {
+  return unique([...enabledModules.flatMap(module => {
     const moduleId = module.manifest.id;
     const target = getPreferredModuleTarget(module, targetId);
     if (!target) return [];
@@ -110,25 +113,31 @@ function getModuleIncludeDirs(enabledModules: InstalledModule[], targetId = 'win
       return firstSegment ? normalizeSlash(path.posix.join('modules', moduleId, firstSegment)) : '';
     }).filter(Boolean);
     return [...explicitDirs, ...headerDirs];
-  }));
+  }), ...(usesCryptoSdk(enabledModules) ? ['modules/lingbuilder.crypto.sdk/include'] : [])]);
 }
 
 function getModuleLibFiles(enabledModules: InstalledModule[], targetId = 'windows-msvc-win32'): string[] {
-  return unique(enabledModules.flatMap(module => {
+  const architecture = targetId === 'windows-msvc-x64' ? 'x64' : 'Win32';
+  return unique([...enabledModules.flatMap(module => {
     const moduleId = module.manifest.id;
     return (getPreferredModuleTarget(module, targetId)?.libs || [])
       .map(file => isBuiltinModule(module)
         ? normalizeSlash(file)
         : normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
-  }));
+  }), ...(usesCryptoSdk(enabledModules) ? [`modules/lingbuilder.crypto.sdk/lib/${architecture}/botan-3.lib`] : [])]);
 }
 
 function getModuleRuntimeFiles(enabledModules: InstalledModule[], targetId = 'windows-msvc-win32'): string[] {
-  return unique(enabledModules.flatMap(module => {
+  const architecture = targetId === 'windows-msvc-x64' ? 'x64' : 'Win32';
+  return unique([...enabledModules.flatMap(module => {
     const moduleId = module.manifest.id;
     return (getPreferredModuleTarget(module, targetId)?.runtimeFiles || [])
       .map(file => normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
-  }));
+  }), ...(usesCryptoSdk(enabledModules) ? [`modules/lingbuilder.crypto.sdk/bin/${architecture}/botan-3.dll`] : [])]);
+}
+
+function usesCryptoSdk(enabledModules: InstalledModule[]): boolean {
+  return enabledModules.some(module => CRYPTO_SDK_MODULE_IDS.includes(module.manifest.id as typeof CRYPTO_SDK_MODULE_IDS[number]));
 }
 
 function generateSolution(projectName: string, projectGuid: string): string {

@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.540Z",
+  "module": {
+    "id": "lingbuilder.image.bitmap",
+    "name": "位图像素模块",
+    "version": "1.0.0",
+    "description": "以文件为边界读取和修改像素，避免向中文代码暴露 GDI+ 裸指针。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "位图_取像素ARGB",
+      "signature": "位图_取像素ARGB(路径, 横坐标, 纵坐标)",
+      "description": "返回 ARGB 颜色值，失败返回 -1。",
+      "insertText": "位图_取像素ARGB(\"$1\", 0, 0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "位图_取像素ARGB",
+        "runtimeName": "位图_取像素ARGB",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "位图_取像素ARGB(\"module-demo-temp.txt\", 1, 1)"
+    },
+    {
+      "index": 2,
+      "name": "位图_置像素ARGB",
+      "signature": "位图_置像素ARGB(来源, 目标, 横坐标, 纵坐标, ARGB)",
+      "description": "修改一个像素并保存到目标文件。",
+      "insertText": "位图_置像素ARGB(\"$1\", \"$2\", 0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "位图_置像素ARGB",
+        "runtimeName": "位图_置像素ARGB",
+        "parameters": [
+          {
+            "name": "来源",
+            "type": "wideString"
+          },
+          {
+            "name": "目标",
+            "type": "wideString"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "ARGB",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "位图_置像素ARGB(\"演示参数1\", \"演示参数2\", 1, 1, 1)"
+    },
+    {
+      "index": 3,
+      "name": "位图_取像素红色",
+      "signature": "位图_取像素红色(ARGB)",
+      "description": "从 ARGB 值读取红色分量。",
+      "insertText": "位图_取像素红色(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "位图_取像素红色",
+        "runtimeName": "位图_取像素红色",
+        "parameters": [
+          {
+            "name": "ARGB",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "位图_取像素红色(1)"
+    },
+    {
+      "index": 4,
+      "name": "位图_取像素绿色",
+      "signature": "位图_取像素绿色(ARGB)",
+      "description": "从 ARGB 值读取绿色分量。",
+      "insertText": "位图_取像素绿色(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "位图_取像素绿色",
+        "runtimeName": "位图_取像素绿色",
+        "parameters": [
+          {
+            "name": "ARGB",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "位图_取像素绿色(1)"
+    },
+    {
+      "index": 5,
+      "name": "位图_取像素蓝色",
+      "signature": "位图_取像素蓝色(ARGB)",
+      "description": "从 ARGB 值读取蓝色分量。",
+      "insertText": "位图_取像素蓝色(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "位图_取像素蓝色",
+        "runtimeName": "位图_取像素蓝色",
+        "parameters": [
+          {
+            "name": "ARGB",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "位图_取像素蓝色(1)"
+    }
+  ]
+}

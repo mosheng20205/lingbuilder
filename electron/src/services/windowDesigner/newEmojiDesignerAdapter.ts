@@ -57,6 +57,9 @@ export const NEW_EMOJI_SUPPORTED_CONTROL_TYPES = new Set<LingControlType>([
   'Image',
   'ProgressBar',
   'Grid',
+  // FBro 通过受控的外部 HWND 子宿主适配到 new_emoji 窗口；它不是伪装的
+  // new_emoji 元素，并继续保留每实例独立 HWND 与原生模块生命周期。
+  'FBroBrowser',
   'Upload',
   'DragUpload'
 ]);
@@ -89,11 +92,24 @@ export function isNewEmojiTextInputControl(control: LingControl): boolean {
 }
 
 export function getNewEmojiUnsupportedControlDiagnostics(window: LingWindowModel): string[] {
-  return window.controls
+  const unsupportedControls = window.controls
     .filter(control => control.visibility === 'Visible'
       && !control.designerType?.startsWith(`${NEW_EMOJI_MODULE_ID}/`)
       && !isNewEmojiDesignerControlSupported(control.type))
     .map(control => `new_emoji 设计器暂不支持控件“${control.name}”(${control.type})；该控件不会被伪装成 Win32 控件生成。`);
+  const unsupportedTableImages = window.controls.flatMap(control => {
+    if (!control.designerType?.endsWith('/Table')) return [];
+    const properties = control.properties || {};
+    const columns = Array.isArray(properties.dataGridColumns)
+      ? properties.dataGridColumns
+      : Array.isArray(properties.tableColumnsEx) ? properties.tableColumnsEx : [];
+    const hasImageColumn = columns.some(item => item && typeof item === 'object'
+      && String(('type' in item ? item.type : '') || ('kind' in item ? item.kind : '')).toLocaleLowerCase() === 'image');
+    return hasImageColumn
+      ? [`new_emoji 表格“${control.name}”包含图片列；当前 DLL 不支持图片单元格，请移除图片列或改用普通 Win32 数据表格。`]
+      : [];
+  });
+  return [...unsupportedControls, ...unsupportedTableImages];
 }
 
 export function getNewEmojiElementKind(control: LingControl): string {

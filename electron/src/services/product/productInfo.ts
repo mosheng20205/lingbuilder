@@ -18,6 +18,68 @@ export interface LingBuilderReleaseNote {
 
 export const LINGBUILDER_RELEASE_NOTES: readonly LingBuilderReleaseNote[] = [
   {
+    version: '0.2.6',
+    date: '2026-07-30',
+    title: '密码学模块与中文编程示例',
+    sections: [
+      {
+        title: '新增',
+        items: [
+          '新增哈希、密码哈希与派生、对称加密、非对称密码四类模块，共提供 77 条中文命令。',
+          '新增固定版本的 Botan 3.12.0 与 BLAKE3 1.8.5 双架构 SDK，支持模块包、依赖物化和 Visual Studio 导出。',
+          '基础模块新增格式化文本，支持多类型占位符、字面花括号及安全的参数不足或多余处理。'
+        ]
+      },
+      {
+        title: '示例',
+        items: [
+          '新增 PopupMenu、格式化文本与完整控制流中文示例及可独立导入的源码包。',
+          '密码学原生验证覆盖摘要、密码哈希、对称加密、RSA、ECDSA、SM2、ECDH、X25519 与 ElGamal。'
+        ]
+      }
+    ]
+  },
+  {
+    version: '0.2.5',
+    date: '2026-07-30',
+    title: 'Win32 数据表格',
+    sections: [
+      {
+        title: '新增',
+        items: [
+          '高级控件新增独立 DataGrid，支持文本、数值、日期、选择框、Switch、图片、进度、组合框和多按钮列。',
+          '数据表格提供稳定行键与列 ID、结构化设计器、TSV/CSV、排序筛选、撤销重做及非阻塞虚拟数据接口。'
+        ]
+      },
+      {
+        title: '兼容性',
+        items: ['旧 New_Emoji Table 保留原后端与生成行为，仅补充统一结构化编辑模型；源码包使用 win32.datagrid.v1 能力标记。']
+      }
+    ]
+  },
+  {
+    version: '0.2.4',
+    date: '2026-07-30',
+    title: 'ListView 能力、New_Emoji 浏览器与帮助入口',
+    sections: [
+      {
+        title: '新增',
+        items: [
+          'Win32 ListView 补齐行与单元格读写、批量 TSV、排序、重绘事务及真正的虚拟列表模式。',
+          'New_Emoji Tabs 支持在三个页面槽中承载独立 FBro 浏览器，并随标签切换显示状态。',
+          '帮助菜单新增赞助二维码和交流 QQ 群入口，同时注册到命令系统与命令面板。'
+        ]
+      },
+      {
+        title: '改进',
+        items: [
+          '源码包只携带当前项目实际需要的 CEF3/FBro SDK 资产，普通项目导出体积显著降低。',
+          'Visual Studio 导出会携带模块发布的全部 Windows/MSVC 目标，并修复 FBro 子宿主的 DPI、坐标与初始化流程。'
+        ]
+      }
+    ]
+  },
+  {
     version: '0.2.3',
     date: '2026-07-28',
     title: 'ListView 设计器编辑稳定性',

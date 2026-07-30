@@ -1,0 +1,66 @@
+包 密码哈希与派生模块完整演示
+使用 Win32窗口基础模块
+使用 密码哈希与派生模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "密码哈希与派生模块：9 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.crypto.password")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–9：密码_Argon2id哈希 至 密码_取错误；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：密码_Argon2id哈希
+            // [1] 密码_Argon2id哈希(密码, 内存KB, 迭代次数, 并行度)
+            // 功能：生成标准 PHC 格式的 Argon2id 密码哈希。
+            // 参数：密码:wideString，内存KB:int，迭代次数:int，并行度:int；返回：wideString；可见性：default
+            密码_Argon2id哈希("演示参数1", 1, 1, 1)
+            // 命令ID：密码_Argon2id验证
+            // [2] 密码_Argon2id验证(密码, 已保存哈希)
+            // 功能：恒定时间验证 Argon2id PHC 哈希。
+            // 参数：密码:wideString，已保存哈希:wideString；返回：bool；可见性：default
+            密码_Argon2id验证("演示参数1", "演示参数2")
+            // 命令ID：密码_scrypt哈希
+            // [3] 密码_scrypt哈希(密码, N, r, p)
+            // 功能：生成包含全部参数和随机盐的 scrypt PHC 哈希。
+            // 参数：密码:wideString，N:int，r:int，p:int；返回：wideString；可见性：default
+            密码_scrypt哈希("演示参数1", 1, 1, 1)
+            // 命令ID：密码_scrypt验证
+            // [4] 密码_scrypt验证(密码, 已保存哈希)
+            // 功能：恒定时间验证 scrypt PHC 哈希。
+            // 参数：密码:wideString，已保存哈希:wideString；返回：bool；可见性：default
+            密码_scrypt验证("演示参数1", "演示参数2")
+            // 命令ID：密码_bcrypt哈希
+            // [5] 密码_bcrypt哈希(密码, 成本)
+            // 功能：生成标准 bcrypt 密码哈希。
+            // 参数：密码:wideString，成本:int；返回：wideString；可见性：default
+            密码_bcrypt哈希("演示参数1", 1)
+            // 命令ID：密码_bcrypt验证
+            // [6] 密码_bcrypt验证(密码, 已保存哈希)
+            // 功能：验证 bcrypt 密码哈希。
+            // 参数：密码:wideString，已保存哈希:wideString；返回：bool；可见性：default
+            密码_bcrypt验证("演示参数1", "演示参数2")
+            // 命令ID：密码_PBKDF2_SHA256哈希
+            // [7] 密码_PBKDF2_SHA256哈希(密码, 迭代次数)
+            // 功能：生成带随机盐的 PBKDF2-HMAC-SHA256 自描述哈希。
+            // 参数：密码:wideString，迭代次数:int；返回：wideString；可见性：default
+            密码_PBKDF2_SHA256哈希("演示参数1", 1)
+            // 命令ID：密码_PBKDF2_SHA256验证
+            // [8] 密码_PBKDF2_SHA256验证(密码, 已保存哈希)
+            // 功能：恒定时间验证 PBKDF2-HMAC-SHA256 哈希。
+            // 参数：密码:wideString，已保存哈希:wideString；返回：bool；可见性：default
+            密码_PBKDF2_SHA256验证("演示参数1", "演示参数2")
+            // 命令ID：密码_取错误
+            // [9] 密码_取错误()
+            // 功能：读取最近一次密码哈希或验证失败的中文错误。
+            // 参数：无；返回：wideString；可见性：default
+            密码_取错误()
+        如果结束
+        调试输出("已查看 命令 1–9：密码_Argon2id哈希 至 密码_取错误；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

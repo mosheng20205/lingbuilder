@@ -72,6 +72,7 @@ import EnvironmentRepairCenter from './components/EnvironmentRepairCenter';
 import CliGuideDialog from './components/CliGuideDialog';
 import AboutDialog from './components/AboutDialog';
 import HelpCenterDialog from './components/HelpCenterDialog';
+import SponsorDialog from './components/SponsorDialog';
 import ProjectNameDialog from './components/ProjectNameDialog';
 import TextFileStatusControls from './components/TextFileStatusControls';
 import EditorPositionStatus from './components/EditorPositionStatus';
@@ -224,6 +225,8 @@ import {
   workbenchTextModelService
 } from './services/textModel';
 import { LINGBUILDER_DISPLAY_VERSION } from './services/product/productInfo';
+
+const LINGBUILDER_QQ_GROUP_URL = 'https://qm.qq.com/q/q2VNHZXLXy';
 
 const generateDefaultLingCppContentForWindow = (win: any) => {
   const className = win.className || '自定义窗体';
@@ -1040,6 +1043,7 @@ export default function App() {
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showHelpCenter, setShowHelpCenter] = useState(false);
+  const [showSponsorDialog, setShowSponsorDialog] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [commandQuery, setCommandQuery] = useState('');
   const [showSettingsDialog, setShowSettingsDialog] = useState(false);
@@ -4265,6 +4269,23 @@ void DisplayStatus() {
     environmentRepair: () => { setShowEnvironmentRepairCenter(true); return true; },
     openCliGuide: () => { setShowCliGuide(true); return true; },
     openHelpCenter: () => { setShowHelpCenter(true); return true; },
+    openSponsor: () => { setShowSponsorDialog(true); return true; },
+    openQQGroup: async () => {
+      const openQQGroup = window.lingBuilder?.community?.openQQGroup;
+      if (!openQQGroup) {
+        // 兼容旧版 preload 和 Web 原型；Electron 主进程会通过
+        // setWindowOpenHandler 把该固定链接交给系统默认浏览器。
+        const opened = window.open(LINGBUILDER_QQ_GROUP_URL, '_blank', 'noopener,noreferrer');
+        if (!opened) {
+          appendEditorTransactionLog('【交流QQ群】无法打开系统默认浏览器，请检查浏览器弹窗权限。');
+          return false;
+        }
+        return true;
+      }
+      const error = await openQQGroup();
+      if (error) appendEditorTransactionLog(`【交流QQ群】${error}`);
+      return !error;
+    },
     openAbout: () => { setShowAboutModal(true); return true; },
     openGitChanges: () => {
       window.dispatchEvent(new CustomEvent('lingbuilder-open-git-changes'));
@@ -4325,6 +4346,7 @@ void DisplayStatus() {
   const blockingDialogOpen = showCloseConfirmModal
     || showAboutModal
     || showHelpCenter
+    || showSponsorDialog
     || showCustomModal
     || showCreateProjectDialog
     || Boolean(solutionNameOperation)
@@ -4760,13 +4782,33 @@ void DisplayStatus() {
         handler: () => workbenchCommandHandlersRef.current.openHelpCenter()
       },
       {
+        id: 'workbench.action.help.openSponsor',
+        title: '帮助：打开赞助二维码',
+        aliases: ['Sponsor LingBuilder', 'Donation QR Code'],
+        category: '帮助',
+        description: '打开支付宝和微信赞助二维码。',
+        when: '!workbench.modalOpen',
+        order: 34,
+        handler: () => workbenchCommandHandlersRef.current.openSponsor()
+      },
+      {
+        id: 'workbench.action.help.openQQGroup',
+        title: '帮助：打开交流QQ群',
+        aliases: ['Open QQ Group', 'LingBuilder QQ Group'],
+        category: '帮助',
+        description: '在系统默认浏览器中打开 LingBuilder 交流QQ群链接。',
+        when: '!workbench.modalOpen',
+        order: 35,
+        handler: () => workbenchCommandHandlersRef.current.openQQGroup()
+      },
+      {
         id: 'workbench.action.help.openAbout',
         title: `帮助：关于 LingBuilder IDE ${LINGBUILDER_DISPLAY_VERSION}`,
         aliases: ['About LingBuilder', 'Application Version'],
         category: '帮助',
         description: '查看 LingBuilder 软件版本和产品信息。',
         when: '!workbench.modalOpen',
-        order: 34,
+        order: 36,
         handler: () => workbenchCommandHandlersRef.current.openAbout()
       },
       {
@@ -5502,6 +5544,14 @@ void DisplayStatus() {
                   <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.help.openCliGuide'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
                     <span>AI Bridge 连接中心...</span>
                     <span className="opacity-50 text-[10px]">CLI</span>
+                  </button>
+                  <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.help.openSponsor'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>赞助</span>
+                    <span className="opacity-50 text-[10px]">二维码</span>
+                  </button>
+                  <button onClick={() => { setActiveDropdown(null); void executeWorkbenchCommand('workbench.action.help.openQQGroup'); }} className={`px-3 py-1.5 text-left flex items-center justify-between text-[11px] ${isDarkMode ? 'hover:bg-[#007acc] hover:text-white' : 'hover:bg-[#007acc] hover:text-white'}`}>
+                    <span>交流QQ群</span>
+                    <span className="opacity-50 text-[10px]">QQ</span>
                   </button>
                   <button onClick={() => { 
                     setShowBottomPanel(true);
@@ -6389,6 +6439,11 @@ void DisplayStatus() {
       <AboutDialog
         open={showAboutModal}
         onClose={() => setShowAboutModal(false)}
+      />
+
+      <SponsorDialog
+        open={showSponsorDialog}
+        onClose={() => setShowSponsorDialog(false)}
       />
 
       {/* Load Custom Code Modal */}

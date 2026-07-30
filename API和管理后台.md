@@ -14,6 +14,9 @@
 | Prisma 数据模型 | `cloud/api/prisma/schema.prisma` |
 | 收费模块数据库迁移 | `cloud/api/prisma/migrations/202607270001_module_commerce/migration.sql` |
 | 管理后台工程 | `cloud/admin/` |
+| 软件信息首页 | `cloud/admin/src/HomePage.tsx`，公开路径 `/` |
+| 系统 AI 供应商配置页 | `cloud/admin/src/SystemAiProviderAdmin.tsx` |
+| 系统 AI 供应商服务 | `cloud/api/src/ai/system-ai-provider.service.ts` |
 | 收费模块管理页面 | `cloud/admin/src/main.tsx` 中的 `ModuleCommerceAdmin` |
 | IDE、CLI、API、后台共享协议 | `packages/contracts/src/index.ts` |
 | Electron 云端账号客户端 | `electron/electron/cloudAccountService.ts` |
@@ -25,12 +28,15 @@
 - 云端 API：`http://127.0.0.1:17900`
 - API 健康检查：`http://127.0.0.1:17900/health`
 - Swagger 接口文档：`http://127.0.0.1:17900/docs`
-- 管理后台：`http://127.0.0.1:17901`
+- 软件信息首页：`http://127.0.0.1:17901/`
+- 管理后台：`http://127.0.0.1:17901/admin`
 - Mailpit 测试邮箱：`http://127.0.0.1:8029`
 - PostgreSQL 开发端口：`54329`
 - Redis 开发端口：`6389`
 
 Electron 默认读取环境变量 `LINGBUILDER_CLOUD_API_URL`；未配置时连接 `http://127.0.0.1:17900`。管理后台读取 `VITE_CLOUD_API_URL`；未配置时同样连接本机 `17900`。
+
+管理后台“系统 AI 供应商”支持 DeepSeek V4 预设和自定义供应商。DeepSeek 预设会同时建立 `deepseek-v4-flash`、`deepseek-v4-pro` 两条模型路由；自定义供应商可填写 Base URL、Model Name 和 API Key，并选择 OpenAI 兼容协议或 Anthropic Messages 协议。API Key 使用云端 Secret Vault 加密保存，列表和编辑接口只返回“已配置”状态，不回传明文。
 
 ## 3. 本地开发启动
 
@@ -73,7 +79,7 @@ npm run admin:bootstrap -w @lingbuilder/cloud-api -- admin@example.com StrongPas
 
 1. 启动 PostgreSQL、Redis、云端 API 和管理后台。
 2. 执行数据库迁移，确保 `ModuleProduct`、`ModuleOffer`、`ModuleOrder`、`ModuleEntitlement`、`ModuleFreeWindow` 等表存在。
-3. 创建管理员并登录 `http://127.0.0.1:17901`。
+3. 创建管理员并登录 `http://127.0.0.1:17901/admin`。
 4. 在“收费模块”页面确认商品 `lingbuilder.new_emoji.ui` 已上架。
 5. 配置永久买断或固定期限报价，或者建立未来开始的 24 小时免费窗口。
 6. 注册普通用户、验证邮箱，并在 LingBuilder IDE 中登录该用户。

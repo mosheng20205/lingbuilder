@@ -126,6 +126,12 @@ macOS 等使用 Command 键的平台同时注册对应的 `Meta+Shift+P`、`Meta
 | ListView 数据编辑器中的 `Enter` / `Shift+Enter` | 移动到同一列的下一行／上一行；在最后一行按 `Enter` 会新增一行并继续输入。 |
 | ListView 数据编辑器中的 `Esc` | 关闭集合编辑窗口；已经输入的数据会实时保留在设计器模型中。 |
 | ListView 单元格中的 `Ctrl+V` | 可直接粘贴 Excel、CSV 或 TSV 多行多列数据，并从当前单元格开始填充。 |
+| DataGrid 中的方向键 / `Tab` | 在可见单元格之间移动当前单元格。 |
+| DataGrid 中的 `Enter` / `F2` | 为文本、数值、日期或组合框单元格创建临时原生编辑器。 |
+| DataGrid 编辑器中的 `Enter` / `Esc` | 提交或取消当前编辑；校验失败时保持编辑器并显示最后错误。 |
+| DataGrid 中的 `Delete` | 清空当前可编辑单元格；必填、只读或禁用单元格会拒绝操作。 |
+| DataGrid 中的 `Ctrl+C` / `Ctrl+V` | 复制当前单元格，或从当前单元格开始原子粘贴 TSV 区域；任何越界、只读或类型错误都会取消整次粘贴。 |
+| DataGrid 中的 `Ctrl+Z` / `Ctrl+Y` | 撤销或重做最近的数据事务。 |
 
 ### 热键输入框属性
 

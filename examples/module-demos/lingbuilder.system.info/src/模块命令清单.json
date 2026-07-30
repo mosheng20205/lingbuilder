@@ -1,0 +1,128 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.651Z",
+  "module": {
+    "id": "lingbuilder.system.info",
+    "name": "系统信息模块",
+    "version": "1.0.0",
+    "description": "读取当前 Windows、计算机、用户、处理器和内存信息。"
+  },
+  "commandCount": 7,
+  "commands": [
+    {
+      "index": 1,
+      "name": "系统_取用户名",
+      "signature": "系统_取用户名()",
+      "description": "返回当前登录用户名。",
+      "insertText": "系统_取用户名()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "系统_取用户名",
+        "runtimeName": "系统_取用户名",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "系统_取用户名()"
+      },
+      "demoInvocation": "系统_取用户名()"
+    },
+    {
+      "index": 2,
+      "name": "系统_取计算机名",
+      "signature": "系统_取计算机名()",
+      "description": "返回本机计算机名。",
+      "insertText": "系统_取计算机名()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "系统_取计算机名",
+        "runtimeName": "系统_取计算机名",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "系统_取计算机名()"
+    },
+    {
+      "index": 3,
+      "name": "系统_取Windows版本",
+      "signature": "系统_取Windows版本()",
+      "description": "返回真实 Windows 主版本、次版本和内部版本号。",
+      "insertText": "系统_取Windows版本()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "系统_取Windows版本",
+        "runtimeName": "系统_取Windows版本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "系统_取Windows版本()"
+    },
+    {
+      "index": 4,
+      "name": "系统_取处理器数量",
+      "signature": "系统_取处理器数量()",
+      "description": "返回系统逻辑处理器数量。",
+      "insertText": "系统_取处理器数量()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "系统_取处理器数量",
+        "runtimeName": "系统_取处理器数量",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "系统_取处理器数量()"
+    },
+    {
+      "index": 5,
+      "name": "系统_取内存总量MB",
+      "signature": "系统_取内存总量MB()",
+      "description": "返回物理内存总量，单位 MB。",
+      "insertText": "系统_取内存总量MB()",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "系统_取内存总量MB",
+        "runtimeName": "系统_取内存总量MB",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "系统_取内存总量MB()"
+    },
+    {
+      "index": 6,
+      "name": "系统_取内存可用MB",
+      "signature": "系统_取内存可用MB()",
+      "description": "返回当前可用物理内存，单位 MB。",
+      "insertText": "系统_取内存可用MB()",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "系统_取内存可用MB",
+        "runtimeName": "系统_取内存可用MB",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "系统_取内存可用MB()"
+    },
+    {
+      "index": 7,
+      "name": "系统_取环境变量",
+      "signature": "系统_取环境变量(名称)",
+      "description": "读取当前进程可见的环境变量。",
+      "insertText": "系统_取环境变量(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "系统_取环境变量",
+        "runtimeName": "系统_取环境变量",
+        "parameters": [
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "系统_取环境变量(\"演示参数1\")"
+    }
+  ]
+}

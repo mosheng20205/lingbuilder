@@ -1,0 +1,197 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.686Z",
+  "module": {
+    "id": "lingbuilder.win32.menu",
+    "name": "Win32菜单模块",
+    "version": "1.0.0",
+    "description": "封装 HMENU 创建、菜单项、窗口菜单和弹出菜单返回命令。"
+  },
+  "commandCount": 8,
+  "commands": [
+    {
+      "index": 1,
+      "name": "菜单_创建",
+      "signature": "菜单_创建()",
+      "description": "创建菜单栏。",
+      "insertText": "菜单_创建()",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "菜单_创建",
+        "runtimeName": "菜单_创建",
+        "parameters": [],
+        "returnType": "handle"
+      },
+      "demoInvocation": "菜单_创建()"
+    },
+    {
+      "index": 2,
+      "name": "菜单_创建弹出菜单",
+      "signature": "菜单_创建弹出菜单()",
+      "description": "创建弹出菜单。",
+      "insertText": "菜单_创建弹出菜单()",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "菜单_创建弹出菜单",
+        "runtimeName": "菜单_创建弹出菜单",
+        "parameters": [],
+        "returnType": "handle"
+      },
+      "demoInvocation": "菜单_创建弹出菜单()"
+    },
+    {
+      "index": 3,
+      "name": "菜单_添加项目",
+      "signature": "菜单_添加项目(菜单句柄, 命令ID, 标题)",
+      "description": "添加普通菜单项。",
+      "insertText": "菜单_添加项目(0, 0, \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "菜单_添加项目",
+        "runtimeName": "菜单_添加项目",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "handle"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "菜单_添加项目(0, 1, \"演示参数3\")"
+    },
+    {
+      "index": 4,
+      "name": "菜单_添加子菜单",
+      "signature": "菜单_添加子菜单(菜单句柄, 子菜单句柄, 标题)",
+      "description": "添加子菜单。",
+      "insertText": "菜单_添加子菜单(0, 0, \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "菜单_添加子菜单",
+        "runtimeName": "菜单_添加子菜单",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "handle"
+          },
+          {
+            "name": "子菜单句柄",
+            "type": "handle"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "菜单_添加子菜单(0, 0, \"演示参数3\")"
+    },
+    {
+      "index": 5,
+      "name": "菜单_添加分隔线",
+      "signature": "菜单_添加分隔线(菜单句柄)",
+      "description": "添加分隔线。",
+      "insertText": "菜单_添加分隔线(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "菜单_添加分隔线",
+        "runtimeName": "菜单_添加分隔线",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "菜单_添加分隔线(0)"
+    },
+    {
+      "index": 6,
+      "name": "菜单_设置到窗口",
+      "signature": "菜单_设置到窗口(窗口句柄, 菜单句柄)",
+      "description": "把菜单设置为窗口菜单栏。",
+      "insertText": "菜单_设置到窗口(0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "菜单_设置到窗口",
+        "runtimeName": "菜单_设置到窗口",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          },
+          {
+            "name": "菜单句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "菜单_设置到窗口(0, 0)"
+    },
+    {
+      "index": 7,
+      "name": "菜单_弹出并取命令",
+      "signature": "菜单_弹出并取命令(菜单句柄, 窗口句柄, 横坐标, 纵坐标)",
+      "description": "显示弹出菜单并返回选择的命令 ID。",
+      "insertText": "菜单_弹出并取命令(0, 0, 0, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "菜单_弹出并取命令",
+        "runtimeName": "菜单_弹出并取命令",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "handle"
+          },
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "菜单_弹出并取命令(0, 0, 1, 1)"
+    },
+    {
+      "index": 8,
+      "name": "菜单_销毁",
+      "signature": "菜单_销毁(菜单句柄)",
+      "description": "销毁未附加或不再使用的菜单。",
+      "insertText": "菜单_销毁(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "菜单_销毁",
+        "runtimeName": "菜单_销毁",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "菜单_销毁(0)"
+    }
+  ]
+}

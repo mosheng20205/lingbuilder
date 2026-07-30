@@ -16,7 +16,7 @@ const TARGET_PLATFORMS: ModuleTargetPlatform[] = ['windows', 'linux', 'macos'];
 const TARGET_ARCHES: ModuleTargetArch[] = ['win32', 'x64', 'arm64', 'any'];
 const TARGET_TOOLCHAINS: ModuleTargetToolchain[] = ['msvc', 'gcc', 'clang', 'cmake', 'any'];
 const BINDING_VALUE_TYPES: ModuleBindingValueType[] = ['void', 'int', 'longLong', 'double', 'bool', 'wideString', 'utf8String', 'handler', 'handle', 'raw'];
-const DESIGNER_PROPERTY_TYPES = ['text', 'number', 'boolean', 'enum', 'color', 'file', 'stringList', 'columns', 'treeNodes', 'tabs', 'date', 'controlRef'];
+const DESIGNER_PROPERTY_TYPES = ['text', 'number', 'boolean', 'enum', 'color', 'file', 'stringList', 'columns', 'dataGridColumns', 'dataGridRows', 'treeNodes', 'tabs', 'date', 'controlRef'];
 const DESIGNER_LAYOUT_MODES = ['absolute', 'flow', 'stack', 'grid', 'dock', 'slots', 'single', 'custom'];
 
 export function validateModuleManifest(value: unknown): { manifest?: LingBuilderModuleManifest; diagnostics: string[] } {

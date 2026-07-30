@@ -3,20 +3,23 @@ import { createRoot } from 'react-dom/client';
 import { Activity, Bot, Boxes, CalendarDays, ChevronRight, CircleDollarSign, Gauge, KeyRound, LogOut, Menu, Network, PackageCheck, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react';
 import './styles.css';
 import './mfa.css';
+import { HomePage } from './HomePage';
+import { SystemAiProviderAdmin } from './SystemAiProviderAdmin';
 
 const API = import.meta.env.VITE_CLOUD_API_URL || 'http://127.0.0.1:17900';
 type Page = 'overview'|'users'|'credits'|'promotions'|'modules'|'providers'|'models'|'usage'|'audit';
 const NAV: Array<{id:Page;label:string;icon:React.ComponentType<{size?:number}>}> = [
-  {id:'overview',label:'运营总览',icon:Gauge},{id:'users',label:'用户账号',icon:Users},{id:'credits',label:'点数调账',icon:CircleDollarSign},{id:'promotions',label:'AI 赠送与免费日',icon:CalendarDays},{id:'modules',label:'收费模块',icon:PackageCheck},{id:'providers',label:'供应商通道',icon:Network},{id:'models',label:'模型路由',icon:Bot},{id:'usage',label:'AI 用量',icon:Activity},{id:'audit',label:'审计日志',icon:ShieldCheck}
+  {id:'overview',label:'运营总览',icon:Gauge},{id:'users',label:'用户账号',icon:Users},{id:'credits',label:'点数调账',icon:CircleDollarSign},{id:'promotions',label:'AI 赠送与免费日',icon:CalendarDays},{id:'modules',label:'收费模块',icon:PackageCheck},{id:'providers',label:'系统 AI 供应商',icon:Network},{id:'models',label:'模型路由',icon:Bot},{id:'usage',label:'AI 用量',icon:Activity},{id:'audit',label:'审计日志',icon:ShieldCheck}
 ];
 
 function App(){
   const [tokens,setTokens]=useState(()=>({access:sessionStorage.getItem('lb-admin-access')||'',refresh:sessionStorage.getItem('lb-admin-refresh')||''}));
   const [page,setPage]=useState<Page>('overview'); const [mobile,setMobile]=useState(false); const [data,setData]=useState<any>(null); const [busy,setBusy]=useState(false); const [error,setError]=useState(''); const [needsMfa,setNeedsMfa]=useState(false);
   const request=async(path:string,init:RequestInit={})=>{const response=await fetch(`${API}${path}`,{...init,headers:{'content-type':'application/json',authorization:`Bearer ${tokens.access}`,...init.headers}});const value=await response.json();if(!response.ok)throw new Error(value.message||'请求失败');return value};
-  const load=async()=>{if(!tokens.access)return;setBusy(true);setError('');try{const route=page==='models'?'model-routes':page;setData(await request(`/v1/admin/${route}`))}catch(reason){setError(reason instanceof Error?reason.message:String(reason))}finally{setBusy(false)}};
+  const load=async()=>{if(!tokens.access)return;setBusy(true);setError('');try{const route=page==='models'?'model-routes':page==='providers'?'system-ai/providers':page;setData(await request(`/v1/admin/${route}`))}catch(reason){setError(reason instanceof Error?reason.message:String(reason))}finally{setBusy(false)}};
   useEffect(()=>{void load()},[page,tokens.access]);
   useEffect(()=>{if(tokens.access)void request('/v1/me').then(value=>setNeedsMfa(Boolean(value.user?.role&&!value.user?.mfa))).catch(()=>undefined)},[tokens.access]);
+  if(location.pathname==='/'||location.pathname==='/index.html')return <HomePage/>;
   if(!tokens.access)return <Login onLogin={value=>{sessionStorage.setItem('lb-admin-access',value.accessToken);sessionStorage.setItem('lb-admin-refresh',value.refreshToken);setTokens({access:value.accessToken,refresh:value.refreshToken})}}/>;
   if(needsMfa)return <MfaSetup request={request} onComplete={()=>{sessionStorage.clear();setTokens({access:'',refresh:''})}}/>;
   if(location.pathname==='/device')return <DeviceApproval request={request}/>;
@@ -39,7 +42,7 @@ function PageContent({page,data,request,reload}:{page:Page;data:any;request:(p:s
  if(page==='credits')return <ActionForm title="人工点数调整" description="每次调整都会写入不可变账本和管理员审计。" fields={[['userId','用户 ID','text'],['points','调整点数（可为负数）','number'],['reason','调整原因','text']]} onSubmit={async value=>{await request('/v1/admin/credits/adjust',{method:'POST',body:JSON.stringify(value)});await reload()}}/>;
  if(page==='promotions')return <><ActionForm title="新增赠送或免费日" description="免费窗口按 Asia/Shanghai 时区执行，仍记录供应商真实成本。" fields={[['name','活动名称','text'],['kind','类型：signup_gift 或 free_window','text'],['startsAt','开始时间（ISO）','text'],['endsAt','结束时间（ISO）','text'],['giftPoints','赠送点数','number'],['perUserListPriceCap','单用户免费上限','number']]} onSubmit={async value=>{await request('/v1/admin/promotions',{method:'POST',body:JSON.stringify(value)});await reload()}}/><DataTable title="活动策略" rows={data?.promotions||[]} columns={[['name','活动'],['kind','类型'],['startsAt','开始'],['endsAt','结束'],['enabled','状态']]} empty="尚未配置活动"/></>;
  if(page==='modules')return <ModuleCommerceAdmin data={data} request={request} reload={reload}/>;
- if(page==='providers')return <><ActionForm title="新增供应商通道" description="仅接受公开 HTTPS 地址；密钥保存后不再回显。" fields={[['name','通道名称','text'],['kind','openai-compatible / anthropic / gemini','text'],['baseUrl','HTTPS Base URL','url'],['secret','API 密钥','password']]} onSubmit={async value=>{await request('/v1/admin/providers',{method:'POST',body:JSON.stringify(value)});await reload()}}/><DataTable title="供应商通道" rows={data?.providers||[]} columns={[['name','名称'],['kind','协议'],['baseUrl','地址'],['enabled','状态']]} empty="尚未配置供应商"/></>;
+ if(page==='providers')return <SystemAiProviderAdmin data={data} request={request} reload={reload}/>;
  if(page==='models')return <><ActionForm title="发布逻辑模型" description="IDE 使用模型别名；真实模型和价格由这里集中控制。" fields={[['alias','模型别名','text'],['displayName','显示名称','text'],['providerId','供应商 ID','text'],['upstreamModel','真实模型名','text'],['inputPointsPerMillion','每百万输入点数','number'],['outputPointsPerMillion','每百万输出点数','number']]} onSubmit={async value=>{await request('/v1/admin/model-routes',{method:'POST',body:JSON.stringify(value)});await reload()}}/><DataTable title="模型路由" rows={data?.models||[]} columns={[['alias','别名'],['displayName','模型'],['contextWindow','上下文'],['enabled','状态']]} empty="尚未发布模型"/></>;
  if(page==='usage')return <DataTable title="最近 AI 请求" rows={data?.requests||[]} columns={[['id','请求 ID'],['modelAlias','模型'],['status','状态'],['inputTokens','输入 Token'],['outputTokens','输出 Token'],['chargedPoints','扣除点数']]} empty="尚无 AI 请求"/>;
  return <DataTable title="管理员审计" rows={data?.entries||[]} columns={[['createdAt','时间'],['actorUserId','操作者'],['action','操作'],['targetType','对象']]} empty="尚无审计记录"/>;

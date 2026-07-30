@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.556Z",
+  "module": {
+    "id": "lingbuilder.input.keyboard",
+    "name": "键盘输入模块",
+    "version": "1.0.0",
+    "description": "读取键盘状态并通过 SendInput 执行受控按键操作。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "键盘_键是否按下",
+      "signature": "键盘_键是否按下(虚拟键码)",
+      "description": "判断指定 Win32 虚拟键当前是否按下。",
+      "insertText": "键盘_键是否按下(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "键盘_键是否按下",
+        "runtimeName": "键盘_键是否按下",
+        "parameters": [
+          {
+            "name": "虚拟键码",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_键是否按下(1)"
+    },
+    {
+      "index": 2,
+      "name": "键盘_大小写锁定状态",
+      "signature": "键盘_大小写锁定状态()",
+      "description": "读取 Caps Lock 切换状态。",
+      "insertText": "键盘_大小写锁定状态()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "键盘_大小写锁定状态",
+        "runtimeName": "键盘_大小写锁定状态",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_大小写锁定状态()"
+    },
+    {
+      "index": 3,
+      "name": "键盘_数字锁定状态",
+      "signature": "键盘_数字锁定状态()",
+      "description": "读取 Num Lock 切换状态。",
+      "insertText": "键盘_数字锁定状态()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "键盘_数字锁定状态",
+        "runtimeName": "键盘_数字锁定状态",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_数字锁定状态()"
+    },
+    {
+      "index": 4,
+      "name": "键盘_单击",
+      "signature": "键盘_单击(虚拟键码)",
+      "description": "模拟一次按下并释放。",
+      "insertText": "键盘_单击(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "键盘_单击",
+        "runtimeName": "键盘_单击",
+        "parameters": [
+          {
+            "name": "虚拟键码",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_单击(1)"
+    },
+    {
+      "index": 5,
+      "name": "键盘_组合按键",
+      "signature": "键盘_组合按键(修饰键码, 主键码)",
+      "description": "模拟修饰键与主键组合。",
+      "insertText": "键盘_组合按键(0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "键盘_组合按键",
+        "runtimeName": "键盘_组合按键",
+        "parameters": [
+          {
+            "name": "修饰键码",
+            "type": "int"
+          },
+          {
+            "name": "主键码",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_组合按键(1, 1)"
+    }
+  ]
+}

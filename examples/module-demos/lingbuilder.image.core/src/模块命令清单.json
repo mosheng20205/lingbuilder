@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.546Z",
+  "module": {
+    "id": "lingbuilder.image.core",
+    "name": "图像基础模块",
+    "version": "1.0.0",
+    "description": "基于 GDI+ 提供图片尺寸、格式转换、缩放、裁剪和旋转。"
+  },
+  "commandCount": 7,
+  "commands": [
+    {
+      "index": 1,
+      "name": "图像_取宽度",
+      "signature": "图像_取宽度(路径)",
+      "description": "返回图片像素宽度，失败返回 0。",
+      "insertText": "图像_取宽度(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "图像_取宽度",
+        "runtimeName": "图像_取宽度",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "图像_取宽度(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 2,
+      "name": "图像_取高度",
+      "signature": "图像_取高度(路径)",
+      "description": "返回图片像素高度，失败返回 0。",
+      "insertText": "图像_取高度(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "图像_取高度",
+        "runtimeName": "图像_取高度",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "图像_取高度(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 3,
+      "name": "图像_转换格式",
+      "signature": "图像_转换格式(来源, 目标, 格式)",
+      "description": "转换为 png、jpg、bmp、gif 或 tif。",
+      "insertText": "图像_转换格式(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图像_转换格式",
+        "runtimeName": "图像_转换格式",
+        "parameters": [
+          {
+            "name": "来源",
+            "type": "wideString"
+          },
+          {
+            "name": "目标",
+            "type": "wideString"
+          },
+          {
+            "name": "格式",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "图像_转换格式(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 4,
+      "name": "图像_缩放",
+      "signature": "图像_缩放(来源, 目标, 宽度, 高度)",
+      "description": "高质量缩放并按目标扩展名保存。",
+      "insertText": "图像_缩放(\"$1\", \"$2\", 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图像_缩放",
+        "runtimeName": "图像_缩放",
+        "parameters": [
+          {
+            "name": "来源",
+            "type": "wideString"
+          },
+          {
+            "name": "目标",
+            "type": "wideString"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "图像_缩放(\"演示参数1\", \"演示参数2\", 1, 1)"
+    },
+    {
+      "index": 5,
+      "name": "图像_裁剪",
+      "signature": "图像_裁剪(来源, 目标, 横坐标, 纵坐标, 宽度, 高度)",
+      "description": "裁剪图像区域。",
+      "insertText": "图像_裁剪(\"$1\", \"$2\", 0, 0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图像_裁剪",
+        "runtimeName": "图像_裁剪",
+        "parameters": [
+          {
+            "name": "来源",
+            "type": "wideString"
+          },
+          {
+            "name": "目标",
+            "type": "wideString"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "图像_裁剪(\"演示参数1\", \"演示参数2\", 1, 1, 1, 1)"
+    },
+    {
+      "index": 6,
+      "name": "图像_旋转90度",
+      "signature": "图像_旋转90度(来源, 目标, 顺时针)",
+      "description": "顺时针或逆时针旋转 90 度。",
+      "insertText": "图像_旋转90度(\"$1\", \"$2\", 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图像_旋转90度",
+        "runtimeName": "图像_旋转90度",
+        "parameters": [
+          {
+            "name": "来源",
+            "type": "wideString"
+          },
+          {
+            "name": "目标",
+            "type": "wideString"
+          },
+          {
+            "name": "顺时针",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "图像_旋转90度(\"演示参数1\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 7,
+      "name": "图像_取错误",
+      "signature": "图像_取错误()",
+      "description": "返回最近图像错误。",
+      "insertText": "图像_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "图像_取错误",
+        "runtimeName": "图像_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "图像_取错误()"
+    }
+  ]
+}

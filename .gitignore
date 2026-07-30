@@ -5,6 +5,15 @@ dist-electron/
 .lingbuilder-build/
 electron/scratch/
 electron/release/
+electron/release-*/
+**/*.exe
+**/*.dll
+**/*.pdb
+**/*.ilk
+**/*.obj
+**/*.lib
+**/*.pak
+**/app.asar
 coverage/
 .DS_Store
 .vs/

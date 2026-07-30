@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "id": "official-demo",
+  "name": "官方demo",
+  "startupProjectId": "lingbuilder-ui-project",
+  "startupProjectIds": [
+    "lingbuilder-ui-project"
+  ],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "lingbuilder-ui-project",
+      "name": "组件demo",
+      "sourceRoot": "src/component-demo",
+      "configRoot": "config/component-demo",
+      "designerPath": ".lingbuilder/window-designer.json",
+      "isDefault": true,
+      "references": []
+    }
+  ]
+}

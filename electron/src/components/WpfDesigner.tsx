@@ -43,11 +43,13 @@ import {
 import ModuleInspector from './ModuleInspector';
 import WorkbenchContextMenu from './WorkbenchContextMenu';
 import ListViewDesignerPreview from './ListViewDesignerPreview';
+import DataGridDesignerPreview from './DataGridDesignerPreview';
 import HeaderDesignerPreview from './HeaderDesignerPreview';
 import TabControlDesignerPreview from './TabControlDesignerPreview';
 import UpDownDesignerPreview from './UpDownDesignerPreview';
 import NewEmojiDesignerControlPreview, { getNewEmojiPreviewKind } from './NewEmojiDesignerControlPreview';
 import ListViewCollectionDialog, { type ListViewCollectionEditorKind } from './ListViewCollectionDialog';
+import DataGridEditorDialog from './DataGridEditorDialog';
 import ToolbarButtonsDialog from './ToolbarButtonsDialog';
 import StatusBarPartsDialog from './StatusBarPartsDialog';
 import TabControlPagesDialog from './TabControlPagesDialog';
@@ -76,6 +78,7 @@ import {
 } from '../services/windowDesigner/windowDesignerService';
 import { normalizeToolbarButtons } from '../services/windowDesigner/toolbarButtonCollectionModel';
 import { normalizeStatusBarParts } from '../services/windowDesigner/statusBarPartCollectionModel';
+import { normalizeDataGridModel } from '../services/windowDesigner/dataGridModel';
 import { captureDesignerHotKey } from '../services/windowDesigner/hotKeyProperty';
 import {
   notifyWindowDesignerBuildRunState,
@@ -229,7 +232,7 @@ const CONTROL_LABELS: Record<string, string> = Object.fromEntries([
 const DEDICATED_CONTROL_PREVIEW_TYPES = new Set<LingControlType>([
   'Button', 'TextBox', 'Label', 'SysLink', 'CheckBox', 'RadioButton', 'ListBox',
   'ProgressBar', 'ComboBox', 'ComboBoxEx', 'GroupBox', 'Image', 'AnimatedImage',
-  'VideoPlayer', 'ListView', 'Header', 'TreeView', 'TabControl', 'StatusBar', 'ReBar',
+  'VideoPlayer', 'ListView', 'DataGrid', 'Header', 'TreeView', 'TabControl', 'StatusBar', 'ReBar',
   'IPAddress', 'TrackBar', 'UpDown', 'Upload', 'DragUpload', 'RichEdit', 'ColorPicker', 'EdgeBrowser', 'CefBrowser', 'FBroBrowser'
 ]);
 
@@ -3966,6 +3969,8 @@ function renderControl(
 
         {control.type === 'ListView' && <ListViewDesignerPreview control={control} />}
 
+        {control.type === 'DataGrid' && <DataGridDesignerPreview control={control} />}
+
         {control.type === 'Header' && <HeaderDesignerPreview control={control} />}
 
         {control.type === 'StatusBar' && (
@@ -4897,6 +4902,7 @@ function ControlProperties({
   onDelete: () => void;
 }) {
   const [listViewEditorKind, setListViewEditorKind] = useState<ListViewCollectionEditorKind | null>(null);
+  const [dataGridEditorOpen, setDataGridEditorOpen] = useState(false);
   const [headerColumnsEditorOpen, setHeaderColumnsEditorOpen] = useState(false);
   const [toolbarButtonsEditorOpen, setToolbarButtonsEditorOpen] = useState(false);
   const [statusBarPartsEditorOpen, setStatusBarPartsEditorOpen] = useState(false);
@@ -4908,6 +4914,7 @@ function ControlProperties({
 
   useEffect(() => {
     setListViewEditorKind(null);
+    setDataGridEditorOpen(false);
     setHeaderColumnsEditorOpen(false);
     setToolbarButtonsEditorOpen(false);
     setStatusBarPartsEditorOpen(false);
@@ -4953,6 +4960,16 @@ function ControlProperties({
   const listViewRows = control.type === 'ListView'
     ? normalizeListViewRows(control.properties?.items)
     : [];
+  const dataGridModel = control.type === 'DataGrid'
+    ? normalizeDataGridModel({
+      columns: control.properties?.dataGridColumns as any,
+      rows: control.properties?.dataGridRows as any,
+      selectionMode: control.properties?.selectionMode as any,
+      emptyText: control.properties?.emptyText as any,
+      virtualMode: control.properties?.virtualMode as any,
+      virtualRowCount: control.properties?.virtualRowCount as any
+    })
+    : undefined;
   const headerColumnCount = control.type === 'Header'
     ? normalizeListViewColumns(control.properties?.columns).length
     : 0;
@@ -5150,6 +5167,23 @@ function ControlProperties({
                 </PropertyRow>
               );
             }
+            if (control.type === 'DataGrid' && (property.type === 'dataGridColumns' || property.type === 'dataGridRows')) {
+              const count = property.type === 'dataGridColumns' ? dataGridModel?.columns.length || 0 : dataGridModel?.rows.length || 0;
+              return (
+                <PropertyRow key={property.key} label={property.label} isDarkMode={isDarkMode}>
+                  <button
+                    type="button"
+                    onClick={() => setDataGridEditorOpen(true)}
+                    className={`flex w-full items-center justify-between rounded border px-2.5 py-1.5 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                      isDarkMode ? 'border-[#3f3f49] bg-[#24242b] text-slate-200 hover:bg-[#303038]' : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>{count} {property.type === 'dataGridColumns' ? '列' : '行'}</span>
+                    <span className="font-semibold text-cyan-500">编辑表格</span>
+                  </button>
+                </PropertyRow>
+              );
+            }
             if (control.type === 'Header' && property.key === 'columns') {
               return (
                 <PropertyRow key={property.key} label={property.label} isDarkMode={isDarkMode}>
@@ -5305,6 +5339,17 @@ function ControlProperties({
           isDarkMode={isDarkMode}
           onChange={updateListViewCollections}
           onClose={() => setListViewEditorKind(null)}
+        />
+      )}
+      {control.type === 'DataGrid' && dataGridEditorOpen && (
+        <DataGridEditorDialog
+          control={control}
+          isDarkMode={isDarkMode}
+          onSave={properties => {
+            onChange({ properties: { ...(control.properties || {}), ...properties } });
+            setDataGridEditorOpen(false);
+          }}
+          onClose={() => setDataGridEditorOpen(false)}
         />
       )}
       {control.type === 'Header' && headerColumnsEditorOpen && (

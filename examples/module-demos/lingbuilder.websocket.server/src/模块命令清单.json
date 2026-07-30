@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.670Z",
+  "module": {
+    "id": "lingbuilder.websocket.server",
+    "name": "WebSocket 服务端模块",
+    "version": "1.0.0",
+    "description": "提供基于 Windows Winsock 的本地 WebSocket 服务端监听、握手、收发文本和关闭能力。"
+  },
+  "commandCount": 6,
+  "commands": [
+    {
+      "index": 1,
+      "name": "WSS_启动服务",
+      "signature": "WSS_启动服务(端口)",
+      "description": "在 127.0.0.1 指定端口启动单连接 WebSocket 服务端，成功返回 1。",
+      "insertText": "WSS_启动服务(18080)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "WSS_启动服务",
+        "runtimeName": "WSS_启动服务",
+        "parameters": [
+          {
+            "name": "端口",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "example": "WSS_启动服务(18080)"
+      },
+      "demoInvocation": "WSS_启动服务(1)"
+    },
+    {
+      "index": 2,
+      "name": "WSS_等待连接",
+      "signature": "WSS_等待连接()",
+      "description": "等待一个 WebSocket 客户端连接并完成标准握手。",
+      "insertText": "WSS_等待连接()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "WSS_等待连接",
+        "runtimeName": "WSS_等待连接",
+        "parameters": [],
+        "returnType": "int",
+        "example": "WSS_等待连接()"
+      },
+      "demoInvocation": "WSS_等待连接()"
+    },
+    {
+      "index": 3,
+      "name": "WSS_接收文本",
+      "signature": "WSS_接收文本()",
+      "description": "从当前 WebSocket 客户端接收一条 UTF-8 文本消息。",
+      "insertText": "WSS_接收文本()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "WSS_接收文本",
+        "runtimeName": "WSS_接收文本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "WSS_接收文本()"
+      },
+      "demoInvocation": "WSS_接收文本()"
+    },
+    {
+      "index": 4,
+      "name": "WSS_接收到调试输出",
+      "signature": "WSS_接收到调试输出()",
+      "description": "接收一条 WebSocket 文本消息并写入调试输出。",
+      "insertText": "WSS_接收到调试输出()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "WSS_接收到调试输出",
+        "runtimeName": "WSS_接收到调试输出",
+        "parameters": [],
+        "returnType": "int",
+        "example": "WSS_接收到调试输出()"
+      },
+      "demoInvocation": "WSS_接收到调试输出()"
+    },
+    {
+      "index": 5,
+      "name": "WSS_发送文本",
+      "signature": "WSS_发送文本(内容)",
+      "description": "向当前 WebSocket 客户端发送一条文本消息。",
+      "insertText": "WSS_发送文本(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "WSS_发送文本",
+        "runtimeName": "WSS_发送文本",
+        "parameters": [
+          {
+            "name": "内容",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "WSS_发送文本(\"你好\")"
+      },
+      "demoInvocation": "WSS_发送文本(\"演示参数1\")"
+    },
+    {
+      "index": 6,
+      "name": "WSS_关闭服务",
+      "signature": "WSS_关闭服务()",
+      "description": "关闭当前 WebSocket 服务端监听和客户端连接。",
+      "insertText": "WSS_关闭服务()",
+      "returnType": "空",
+      "binding": {
+        "command": "WSS_关闭服务",
+        "runtimeName": "WSS_关闭服务",
+        "parameters": [],
+        "returnType": "void",
+        "example": "WSS_关闭服务()"
+      },
+      "demoInvocation": "WSS_关闭服务()"
+    }
+  ]
+}

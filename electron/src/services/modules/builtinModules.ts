@@ -7,6 +7,8 @@ import { DATA_MEDIA_MODULES } from './dataMediaModules';
 import { PLATFORM_ADVANCED_MODULES } from './platformAdvancedModules';
 import { CEF3_BROWSER_EVENT_NAMES } from './cef3BrowserEvents';
 import { EDGEVIEW_BROWSER_EVENT_NAMES } from './edgeViewBrowserEvents';
+import { LIST_VIEW_ADVANCED_BINDINGS, LIST_VIEW_ADVANCED_COMMANDS } from './listViewApiCatalog';
+import { DATA_GRID_BINDINGS, DATA_GRID_COMMANDS } from './dataGridApiCatalog';
 
 function createControlContributions(moduleId: Win32ControlModuleId) {
   return getWin32ControlsForModule(moduleId).map(definition => ({
@@ -89,6 +91,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           returnType: '空'
         },
         { name: '到文本', signature: '到文本(值)', description: '把整数、长整数、小数、逻辑值或文本确定性转换为文本；逻辑值返回“真”或“假”。', insertText: '到文本($1)', returnType: '文本型' },
+        { name: '格式化文本', signature: '格式化文本(格式模板, 参数...)', description: '按顺序用参数替换格式模板中的 {}；使用 {{ 和 }} 输出字面量花括号。参数不足时保留未替换的 {}，多余参数忽略。', insertText: '格式化文本("$1：{}", $2)', returnType: '文本型' },
         { name: '到整数', signature: '到整数(文本)', description: '把文本转换为整数；空文本或无法转换的内容返回 0。', insertText: '到整数("$1")', returnType: '整数型' },
         { name: '取鼠标水平位置', signature: '取鼠标水平位置()', description: '返回鼠标指针当前相对于屏幕左边的水平位置，单位为像素点。初级命令。', insertText: '取鼠标水平位置()', returnType: '整数型' },
         { name: '取鼠标垂直位置', signature: '取鼠标垂直位置()', description: '返回鼠标指针当前相对于屏幕顶边的垂直位置，单位为像素点。初级命令。', insertText: '取鼠标垂直位置()', returnType: '整数型' },
@@ -170,6 +173,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           example: '结束()'
         },
         { command: '到文本', runtimeName: '到文本', parameters: [{ name: '值', type: 'raw' }], returnType: 'wideString', encoding: 'wide', example: '到文本(123)' },
+        { command: '格式化文本', runtimeName: '格式化文本', parameters: [{ name: '格式模板', type: 'wideString' }, { name: '参数', type: 'raw', description: '可继续传入任意数量的文本、整数、小数或逻辑值。' }], returnType: 'wideString', encoding: 'wide', example: '格式化文本("姓名：{}，年龄：{}", "小林", 18)' },
         { command: '到整数', runtimeName: '到整数', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
         { command: '取鼠标水平位置', runtimeName: '取鼠标水平位置', parameters: [], returnType: 'int' },
         { command: '取鼠标垂直位置', runtimeName: '取鼠标垂直位置', parameters: [], returnType: 'int' },
@@ -244,6 +248,21 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: '页面设置_下边距', signature: '页面设置_下边距()', description: '返回最近页面设置的下边距。', insertText: '页面设置_下边距()', returnType: '整数型' }
         ,{ name: '属性页_显示', signature: '属性页_显示(资源ID)', description: '显示设计器资源中定义的顶层 Windows PropertySheet。', insertText: '属性页_显示("property-sheet-1")', returnType: '整数型' }
         ,{ name: '列表视图_添加行', signature: '列表视图_添加行(控件名, Tab分隔单元格)', description: '向 ListView 追加结构化行。', insertText: '列表视图_添加行("$1", "名称\\t状态")', returnType: '整数型' }
+        ,{ name: '列表视图_插入行', signature: '列表视图_插入行(控件名, 行索引, Tab分隔单元格)', description: '在指定的零基行索引插入结构化行。', insertText: '列表视图_插入行("$1", 0, "名称\\t状态")', returnType: '整数型' }
+        ,{ name: '列表视图_删除行', signature: '列表视图_删除行(控件名, 行索引)', description: '删除指定的零基行索引。', insertText: '列表视图_删除行("$1", 0)', returnType: '逻辑型' }
+        ,{ name: '列表视图_设置单元格', signature: '列表视图_设置单元格(控件名, 行索引, 列索引, 文本)', description: '修改指定零基行、列索引的单元格。', insertText: '列表视图_设置单元格("$1", 0, 1, "$2")', returnType: '逻辑型' }
+        ,{ name: '列表视图_取单元格', signature: '列表视图_取单元格(控件名, 行索引, 列索引)', description: '读取指定零基行、列索引的单元格文本。', insertText: '列表视图_取单元格("$1", 0, 1)', returnType: '文本型' }
+        ,{ name: '列表视图_取行数', signature: '列表视图_取行数(控件名)', description: '返回列表视图当前数据行数。', insertText: '列表视图_取行数("$1")', returnType: '整数型' }
+        ,{ name: '列表视图_批量添加行', signature: '列表视图_批量添加行(控件名, 多行TSV文本)', description: '一次追加多行 TSV 数据；换行分隔行，Tab 分隔列，内部自动关闭并恢复重绘。', insertText: '列表视图_批量添加行("$1", "第一行\\t1\\n第二行\\t2")', returnType: '整数型' }
+        ,{ name: '列表视图_开始批量更新', signature: '列表视图_开始批量更新(控件名)', description: '暂停 ListView 重绘；必须与结束批量更新成对调用。', insertText: '列表视图_开始批量更新("$1")', returnType: '逻辑型' }
+        ,{ name: '列表视图_结束批量更新', signature: '列表视图_结束批量更新(控件名)', description: '结束一层批量更新，并在最外层结束时恢复重绘。', insertText: '列表视图_结束批量更新("$1")', returnType: '逻辑型' }
+        ,{ name: '列表视图_排序', signature: '列表视图_排序(控件名, 列索引, 升序)', description: '按指定列文本稳定排序，列索引从 0 开始。', insertText: '列表视图_排序("$1", 0, 真)', returnType: '逻辑型' }
+        ,{ name: '列表视图_取最后单击列', signature: '列表视图_取最后单击列(控件名)', description: '返回最近一次表头单击的零基列索引；尚未单击时返回 -1。', insertText: '列表视图_取最后单击列("$1")', returnType: '整数型' }
+        ,{ name: '列表视图_取虚拟模式', signature: '列表视图_取虚拟模式(控件名)', description: '返回控件是否以 Win32 LVS_OWNERDATA 虚拟模式创建。', insertText: '列表视图_取虚拟模式("$1")', returnType: '逻辑型' }
+        ,{ name: '列表视图_设置虚拟行数', signature: '列表视图_设置虚拟行数(控件名, 行数)', description: '设置虚拟 ListView 的总行数；设计器必须先开启虚拟列表模式。', insertText: '列表视图_设置虚拟行数("$1", 15000)', returnType: '逻辑型' }
+        ,{ name: '列表视图_设置虚拟行', signature: '列表视图_设置虚拟行(控件名, 行索引, Tab分隔单元格)', description: '设置虚拟 ListView 指定行的数据，不创建真实行项目。', insertText: '列表视图_设置虚拟行("$1", 0, "1\\t代码段\\t128\\t5")', returnType: '逻辑型' }
+        ,...LIST_VIEW_ADVANCED_COMMANDS
+        ,...DATA_GRID_COMMANDS
         ,{ name: '树形框_添加节点', signature: '树形框_添加节点(控件名, 父节点文字, 节点文字)', description: '向 TreeView 根级或指定父节点追加节点。', insertText: '树形框_添加节点("$1", "", "$2")', returnType: '逻辑型' }
         ,{ name: '选项卡_添加页', signature: '选项卡_添加页(控件名, 标题)', description: '向 TabControl 追加标签页。', insertText: '选项卡_添加页("$1", "$2")', returnType: '整数型' }
         ,{ name: '选项卡_设置隐藏表头', signature: '选项卡_设置隐藏表头(控件名, 隐藏)', description: '运行时隐藏或显示 TabControl 的标签表头，并重新布局当前页面。', insertText: '选项卡_设置隐藏表头("$1", 真)', returnType: '逻辑型' }
@@ -303,6 +322,21 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ command: '页面设置_下边距', runtimeName: '页面设置_下边距', parameters: [], returnType: 'int' }
         ,{ command: '属性页_显示', runtimeName: '属性页_显示', parameters: [{ name: '资源ID', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
         ,{ command: '列表视图_添加行', runtimeName: '列表视图_添加行', parameters: [{ name: '控件名', type: 'wideString' }, { name: 'Tab分隔单元格', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_插入行', runtimeName: '列表视图_插入行', parameters: [{ name: '控件名', type: 'wideString' }, { name: '行索引', type: 'int' }, { name: 'Tab分隔单元格', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_删除行', runtimeName: '列表视图_删除行', parameters: [{ name: '控件名', type: 'wideString' }, { name: '行索引', type: 'int' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_设置单元格', runtimeName: '列表视图_设置单元格', parameters: [{ name: '控件名', type: 'wideString' }, { name: '行索引', type: 'int' }, { name: '列索引', type: 'int' }, { name: '文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_取单元格', runtimeName: '列表视图_取单元格', parameters: [{ name: '控件名', type: 'wideString' }, { name: '行索引', type: 'int' }, { name: '列索引', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
+        ,{ command: '列表视图_取行数', runtimeName: '列表视图_取行数', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_批量添加行', runtimeName: '列表视图_批量添加行', parameters: [{ name: '控件名', type: 'wideString' }, { name: '多行TSV文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_开始批量更新', runtimeName: '列表视图_开始批量更新', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_结束批量更新', runtimeName: '列表视图_结束批量更新', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_排序', runtimeName: '列表视图_排序', parameters: [{ name: '控件名', type: 'wideString' }, { name: '列索引', type: 'int' }, { name: '升序', type: 'bool' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_取最后单击列', runtimeName: '列表视图_取最后单击列', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_取虚拟模式', runtimeName: '列表视图_取虚拟模式', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_设置虚拟行数', runtimeName: '列表视图_设置虚拟行数', parameters: [{ name: '控件名', type: 'wideString' }, { name: '行数', type: 'int' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_设置虚拟行', runtimeName: '列表视图_设置虚拟行', parameters: [{ name: '控件名', type: 'wideString' }, { name: '行索引', type: 'int' }, { name: 'Tab分隔单元格', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,...LIST_VIEW_ADVANCED_BINDINGS
+        ,...DATA_GRID_BINDINGS
         ,{ command: '树形框_添加节点', runtimeName: '树形框_添加节点', parameters: [{ name: '控件名', type: 'wideString' }, { name: '父节点文字', type: 'wideString' }, { name: '节点文字', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '选项卡_添加页', runtimeName: '选项卡_添加页', parameters: [{ name: '控件名', type: 'wideString' }, { name: '标题', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
         ,{ command: '选项卡_设置隐藏表头', runtimeName: '选项卡_设置隐藏表头', parameters: [{ name: '控件名', type: 'wideString' }, { name: '隐藏', type: 'bool' }], returnType: 'bool', encoding: 'wide' }

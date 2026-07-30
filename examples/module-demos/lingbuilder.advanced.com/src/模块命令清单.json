@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.460Z",
+  "module": {
+    "id": "lingbuilder.advanced.com",
+    "name": "COM自动化模块",
+    "version": "1.0.0",
+    "description": "通过 ProgID 创建 IDispatch 自动化对象，支持文本属性和无参方法。"
+  },
+  "commandCount": 6,
+  "commands": [
+    {
+      "index": 1,
+      "name": "COM_创建对象",
+      "signature": "COM_创建对象(ProgID)",
+      "description": "创建一个 COM 自动化对象。",
+      "insertText": "COM_创建对象(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "COM_创建对象",
+        "runtimeName": "COM_创建对象",
+        "parameters": [
+          {
+            "name": "ProgID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "COM_创建对象(\"演示参数1\")"
+    },
+    {
+      "index": 2,
+      "name": "COM_取文本属性",
+      "signature": "COM_取文本属性(属性名)",
+      "description": "读取文本或可转文本属性。",
+      "insertText": "COM_取文本属性(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "COM_取文本属性",
+        "runtimeName": "COM_取文本属性",
+        "parameters": [
+          {
+            "name": "属性名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "COM_取文本属性(\"演示参数1\")"
+    },
+    {
+      "index": 3,
+      "name": "COM_置文本属性",
+      "signature": "COM_置文本属性(属性名, 值)",
+      "description": "设置 BSTR 文本属性。",
+      "insertText": "COM_置文本属性(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "COM_置文本属性",
+        "runtimeName": "COM_置文本属性",
+        "parameters": [
+          {
+            "name": "属性名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "COM_置文本属性(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 4,
+      "name": "COM_调用无参方法",
+      "signature": "COM_调用无参方法(方法名)",
+      "description": "调用无参数方法。",
+      "insertText": "COM_调用无参方法(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "COM_调用无参方法",
+        "runtimeName": "COM_调用无参方法",
+        "parameters": [
+          {
+            "name": "方法名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "COM_调用无参方法(\"演示参数1\")"
+    },
+    {
+      "index": 5,
+      "name": "COM_取错误",
+      "signature": "COM_取错误()",
+      "description": "返回最近 COM 错误。",
+      "insertText": "COM_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "COM_取错误",
+        "runtimeName": "COM_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "COM_取错误()"
+    },
+    {
+      "index": 6,
+      "name": "COM_关闭",
+      "signature": "COM_关闭()",
+      "description": "释放当前自动化对象。",
+      "insertText": "COM_关闭()",
+      "returnType": "空",
+      "binding": {
+        "command": "COM_关闭",
+        "runtimeName": "COM_关闭",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "COM_关闭()"
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.504Z",
+  "module": {
+    "id": "lingbuilder.crypto.windows",
+    "name": "Windows数据保护模块",
+    "version": "1.0.0",
+    "description": "使用当前 Windows 用户的 DPAPI 保护和还原文本，不暴露密钥。"
+  },
+  "commandCount": 4,
+  "commands": [
+    {
+      "index": 1,
+      "name": "数据保护_加密文本",
+      "signature": "数据保护_加密文本(文本)",
+      "description": "使用当前用户 DPAPI 加密 UTF-8 文本并返回 Base64。",
+      "insertText": "数据保护_加密文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "数据保护_加密文本",
+        "runtimeName": "数据保护_加密文本",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "数据保护_加密文本(\"演示参数1\")"
+    },
+    {
+      "index": 2,
+      "name": "数据保护_解密文本",
+      "signature": "数据保护_解密文本(Base64密文)",
+      "description": "解密当前用户 DPAPI Base64 密文。",
+      "insertText": "数据保护_解密文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "数据保护_解密文本",
+        "runtimeName": "数据保护_解密文本",
+        "parameters": [
+          {
+            "name": "Base64密文",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "数据保护_解密文本(\"演示参数1\")"
+    },
+    {
+      "index": 3,
+      "name": "数据保护_机器级加密文本",
+      "signature": "数据保护_机器级加密文本(文本)",
+      "description": "使用本机范围 DPAPI 加密文本。",
+      "insertText": "数据保护_机器级加密文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "数据保护_机器级加密文本",
+        "runtimeName": "数据保护_机器级加密文本",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "数据保护_机器级加密文本(\"演示参数1\")"
+    },
+    {
+      "index": 4,
+      "name": "数据保护_取错误",
+      "signature": "数据保护_取错误()",
+      "description": "返回最近数据保护错误。",
+      "insertText": "数据保护_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "数据保护_取错误",
+        "runtimeName": "数据保护_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "数据保护_取错误()"
+    }
+  ]
+}

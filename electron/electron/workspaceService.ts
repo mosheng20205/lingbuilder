@@ -210,7 +210,7 @@ export function buildWorkspaceWindowLaunch(options: {
     command: options.executablePath,
     args: options.packaged
       ? ['--workspace', workspacePath, '--new-window']
-      : [path.resolve(options.mainEntryPath), '--workspace', workspacePath, '--new-window']
+      : [path.resolve(options.mainEntryPath), '--workspace', workspacePath, '--new-window', '--managed-dev-server']
   };
 }
 

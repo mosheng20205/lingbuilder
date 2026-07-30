@@ -78,6 +78,7 @@ export const LING_CPP_KEYWORDS = [
 export const LING_CPP_COMMANDS = [
   '信息框',
   '调试输出',
+  '格式化文本',
   '结束',
   '打开窗口',
   '载入窗口',

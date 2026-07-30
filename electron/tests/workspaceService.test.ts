@@ -158,6 +158,17 @@ test('new workspace windows use an isolated process with an explicit workspace a
   assert.deepEqual(packaged.args.slice(-3), ['--workspace', path.resolve('C:\\项目'), '--new-window']);
   const development = buildWorkspaceWindowLaunch({ packaged: false, executablePath: 'electron.exe', mainEntryPath: 'dist/main.cjs', workspacePath: 'C:\\项目' });
   assert.equal(development.args[0], path.resolve('dist/main.cjs'));
+  assert.deepEqual(development.args.slice(-4), ['--workspace', path.resolve('C:\\项目'), '--new-window', '--managed-dev-server']);
+});
+
+test('development workspace switching starts a managed Vite service instead of requiring npm restart', async () => {
+  const mainSource = await fs.readFile(path.resolve(import.meta.dirname, '../electron/main.ts'), 'utf8');
+  const desktopSource = await fs.readFile(path.resolve(import.meta.dirname, '../scripts/start-electron.cjs'), 'utf8');
+  assert.doesNotMatch(mainSource, /开发模式切换工作区后请重新运行 npm run dev/u);
+  assert.match(mainSource, /startManagedRendererServer\(candidateWorkspace\)/u);
+  assert.match(mainSource, /NODE_ENV: app\.isPackaged \? 'production' : 'development'/u);
+  assert.match(mainSource, /process\.argv\.includes\('--managed-dev-server'\)/u);
+  assert.match(desktopSource, /'run', 'build:server'/u);
 });
 
 async function exists(filePath: string): Promise<boolean> {

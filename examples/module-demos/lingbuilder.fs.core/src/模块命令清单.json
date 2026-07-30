@@ -1,0 +1,269 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.530Z",
+  "module": {
+    "id": "lingbuilder.fs.core",
+    "name": "文件目录模块",
+    "version": "1.0.0",
+    "description": "提供 UTF-8 文本文件和常用文件目录操作，所有路径均使用 Unicode。"
+  },
+  "commandCount": 11,
+  "commands": [
+    {
+      "index": 1,
+      "name": "文件_是否存在",
+      "signature": "文件_是否存在(路径)",
+      "description": "判断指定路径是否为普通文件。",
+      "insertText": "文件_是否存在(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_是否存在",
+        "runtimeName": "文件_是否存在",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "文件_是否存在(\"配置.json\")"
+      },
+      "demoInvocation": "文件_是否存在(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 2,
+      "name": "目录_是否存在",
+      "signature": "目录_是否存在(路径)",
+      "description": "判断指定路径是否为目录。",
+      "insertText": "目录_是否存在(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "目录_是否存在",
+        "runtimeName": "目录_是否存在",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "目录_是否存在(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 3,
+      "name": "文件_读取文本",
+      "signature": "文件_读取文本(路径)",
+      "description": "按 UTF-8 读取完整文本；失败返回空文本。",
+      "insertText": "文件_读取文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文件_读取文本",
+        "runtimeName": "文件_读取文本",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文件_读取文本(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 4,
+      "name": "文件_写入文本",
+      "signature": "文件_写入文本(路径, 内容)",
+      "description": "按 UTF-8 覆盖写入文本文件。",
+      "insertText": "文件_写入文本(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_写入文本",
+        "runtimeName": "文件_写入文本",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          },
+          {
+            "name": "内容",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文件_写入文本(\"module-demo-temp.txt\", \"演示参数2\")"
+    },
+    {
+      "index": 5,
+      "name": "文件_追加文本",
+      "signature": "文件_追加文本(路径, 内容)",
+      "description": "按 UTF-8 向文件末尾追加文本。",
+      "insertText": "文件_追加文本(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_追加文本",
+        "runtimeName": "文件_追加文本",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          },
+          {
+            "name": "内容",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文件_追加文本(\"module-demo-temp.txt\", \"演示参数2\")"
+    },
+    {
+      "index": 6,
+      "name": "文件_复制",
+      "signature": "文件_复制(来源, 目标, 允许覆盖)",
+      "description": "复制文件并可选择是否覆盖。",
+      "insertText": "文件_复制(\"$1\", \"$2\", 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_复制",
+        "runtimeName": "文件_复制",
+        "parameters": [
+          {
+            "name": "来源",
+            "type": "wideString"
+          },
+          {
+            "name": "目标",
+            "type": "wideString"
+          },
+          {
+            "name": "允许覆盖",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文件_复制(\"演示参数1\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 7,
+      "name": "文件_移动",
+      "signature": "文件_移动(来源, 目标, 允许覆盖)",
+      "description": "移动或重命名文件。",
+      "insertText": "文件_移动(\"$1\", \"$2\", 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_移动",
+        "runtimeName": "文件_移动",
+        "parameters": [
+          {
+            "name": "来源",
+            "type": "wideString"
+          },
+          {
+            "name": "目标",
+            "type": "wideString"
+          },
+          {
+            "name": "允许覆盖",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文件_移动(\"演示参数1\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 8,
+      "name": "文件_删除",
+      "signature": "文件_删除(路径)",
+      "description": "删除一个普通文件。",
+      "insertText": "文件_删除(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件_删除",
+        "runtimeName": "文件_删除",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文件_删除(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 9,
+      "name": "文件_取大小",
+      "signature": "文件_取大小(路径)",
+      "description": "返回文件字节数，失败返回 -1。",
+      "insertText": "文件_取大小(\"$1\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "文件_取大小",
+        "runtimeName": "文件_取大小",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文件_取大小(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 10,
+      "name": "目录_创建",
+      "signature": "目录_创建(路径)",
+      "description": "递归创建目录；目录已经存在也返回真。",
+      "insertText": "目录_创建(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "目录_创建",
+        "runtimeName": "目录_创建",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "目录_创建(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 11,
+      "name": "目录_删除空目录",
+      "signature": "目录_删除空目录(路径)",
+      "description": "只删除空目录，不执行递归删除。",
+      "insertText": "目录_删除空目录(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "目录_删除空目录",
+        "runtimeName": "目录_删除空目录",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "目录_删除空目录(\"module-demo-temp.txt\")"
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.543Z",
+  "module": {
+    "id": "lingbuilder.image.capture",
+    "name": "屏幕截图模块",
+    "version": "1.0.0",
+    "description": "截取主屏、屏幕区域或指定窗口到 PNG 文件。"
+  },
+  "commandCount": 3,
+  "commands": [
+    {
+      "index": 1,
+      "name": "截图_主屏到PNG",
+      "signature": "截图_主屏到PNG(目标路径)",
+      "description": "截取主显示器并保存 PNG。",
+      "insertText": "截图_主屏到PNG(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "截图_主屏到PNG",
+        "runtimeName": "截图_主屏到PNG",
+        "parameters": [
+          {
+            "name": "目标路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "截图_主屏到PNG(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 2,
+      "name": "截图_区域到PNG",
+      "signature": "截图_区域到PNG(目标路径, 横坐标, 纵坐标, 宽度, 高度)",
+      "description": "截取指定屏幕区域。",
+      "insertText": "截图_区域到PNG(\"$1\", 0, 0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "截图_区域到PNG",
+        "runtimeName": "截图_区域到PNG",
+        "parameters": [
+          {
+            "name": "目标路径",
+            "type": "wideString"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "截图_区域到PNG(\"module-demo-temp.txt\", 1, 1, 1, 1)"
+    },
+    {
+      "index": 3,
+      "name": "截图_窗口到PNG",
+      "signature": "截图_窗口到PNG(目标路径, 窗口句柄)",
+      "description": "截取窗口边界区域。",
+      "insertText": "截图_窗口到PNG(\"$1\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "截图_窗口到PNG",
+        "runtimeName": "截图_窗口到PNG",
+        "parameters": [
+          {
+            "name": "目标路径",
+            "type": "wideString"
+          },
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "截图_窗口到PNG(\"module-demo-temp.txt\", 0)"
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactPath, type NestedWorkspaceArtifactPlan } from './nestedWorkspaceGuard';
 
 const execFileAsync = promisify(execFile);
 
@@ -11,12 +12,32 @@ export const LCPP_SOURCE_PACKAGE_EXTENSION = '.lcpppkg';
 export const LCPP_SOURCE_PACKAGE_KIND = 'lingbuilder-lcpp-source-package';
 export const LCPP_SOURCE_PACKAGE_MANIFEST = 'lingbuilder-source-package.json';
 
-const PACKAGE_SCHEMA_VERSION = 1;
+const PACKAGE_SCHEMA_VERSION = 2;
+const LEGACY_PACKAGE_SCHEMA_VERSION = 1;
+const MINIMUM_GENERATOR_VERSION = '0.2.5';
 const MAX_PACKAGE_BYTES = 1024 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_FILE_BYTES = 512 * 1024 * 1024;
 const MAX_FILE_COUNT = 50_000;
 const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
+
+export const LCPP_GENERATOR_CAPABILITIES = {
+  listViewAdvancedApi: 'win32.listview.advanced-api.v1',
+  dataGridV1: 'win32.datagrid.v1'
+} as const;
+
+const SUPPORTED_GENERATOR_CAPABILITIES = new Set<string>(Object.values(LCPP_GENERATOR_CAPABILITIES));
+const GENERATOR_CAPABILITY_LABELS: Record<string, string> = {
+  [LCPP_GENERATOR_CAPABILITIES.listViewAdvancedApi]: 'Win32 ListView 85 条高层命令（含列、状态、分组和布局接口）',
+  [LCPP_GENERATOR_CAPABILITIES.dataGridV1]: 'Win32 数据表格 v1（强类型列、虚拟数据和单元格交互）'
+};
+const LIST_VIEW_DATA_COMMANDS = new Set([
+  '列表视图_添加行', '列表视图_插入行', '列表视图_删除行', '列表视图_设置单元格', '列表视图_取单元格',
+  '列表视图_取行数', '列表视图_批量添加行', '列表视图_开始批量更新', '列表视图_结束批量更新', '列表视图_排序',
+  '列表视图_取最后单击列', '列表视图_取虚拟模式', '列表视图_设置虚拟行数', '列表视图_设置虚拟行'
+]);
+const LIST_VIEW_COMMAND_PATTERN = /列表视图_[\p{L}\p{N}_]+\s*\(/gu;
+const DATA_GRID_COMMAND_PATTERN = /表格_[\p{L}\p{N}_]+\s*\(/gu;
 
 interface PortableSolutionProject {
   id: string;
@@ -77,12 +98,14 @@ export interface LcppSourcePackageModuleRequirement {
 }
 
 export interface LcppSourcePackageManifest {
-  schemaVersion: 1;
+  schemaVersion: 2;
   kind: typeof LCPP_SOURCE_PACKAGE_KIND;
   createdAt: string;
   createdBy: { product: 'LingBuilder'; version: string };
   sourceSolution: { id: string; name: string };
   startupProjectId: string;
+  minimumGeneratorVersion: string;
+  requiredCapabilities: string[];
   projects: Array<{ id: string; name: string; sourceRoot: string; configRoot: string; designerPath: string }>;
   modules: LcppSourcePackageModuleRequirement[];
   bundledSupportModuleIds: string[];
@@ -148,12 +171,18 @@ export class LcppSourcePackageService {
     try {
       await fs.mkdir(stagedWorkspace, { recursive: true });
       const portableSolution = createPortableSolution(solution, projects, selectedProject.id);
+      const requiredCapabilities = await collectRequiredGeneratorCapabilities(this.workspaceRoot, projects);
       const installedModules = await readInstalledModules(this.workspaceRoot);
       const moduleRequirements: LcppSourcePackageModuleRequirement[] = [];
       const bundledModules = new Map<string, PortableInstalledModule>();
 
       for (const project of projects) {
-        await this.copyRequiredProjectPath(project.sourceRoot, stagedWorkspace, budget, true);
+        const sourceRoot = resolveWithin(this.workspaceRoot, normalizeRelativePath(project.sourceRoot));
+        const nestedWorkspacePlan = await detectNestedWorkspaceArtifacts(sourceRoot);
+        await this.copyRequiredProjectPath(project.sourceRoot, stagedWorkspace, budget, true, nestedWorkspacePlan);
+        if (nestedWorkspacePlan.detected) {
+          warnings.push(`已排除项目“${project.name}”源码目录中误创建的嵌套 LingBuilder 工作区。`);
+        }
         await this.copyRequiredProjectPath(project.configRoot, stagedWorkspace, budget, false);
         await this.copyRequiredProjectPath(project.designerPath, stagedWorkspace, budget, false);
         const assetRoot = project.isDefault ? 'assets' : `assets/${safePathSegment(project.id)}`;
@@ -182,9 +211,11 @@ export class LcppSourcePackageService {
           if (module) bundledModules.set(module.manifest.id, module);
         }
 
-        for (const module of installedModules.values()) {
-          if (isSupportAssetModule(module)) bundledModules.set(module.manifest.id, module);
-        }
+      }
+
+      const requiredModuleIds = new Set(moduleRequirements.map(requirement => requirement.id));
+      for (const module of installedModules.values()) {
+        if (isRequiredSupportAssetModule(module, requiredModuleIds)) bundledModules.set(module.manifest.id, module);
       }
 
       for (const module of bundledModules.values()) {
@@ -213,6 +244,8 @@ export class LcppSourcePackageService {
         createdBy: { product: 'LingBuilder', version: ideVersion },
         sourceSolution: { id: solution.id, name: solution.name },
         startupProjectId: selectedProject.id,
+        minimumGeneratorVersion: MINIMUM_GENERATOR_VERSION,
+        requiredCapabilities,
         projects: projects.map(project => ({
           id: project.id,
           name: project.name,
@@ -284,21 +317,34 @@ export class LcppSourcePackageService {
     }
   }
 
-  private async copyRequiredProjectPath(relativePath: string, stagedWorkspace: string, budget: CopyBudget, required: boolean): Promise<void> {
+  private async copyRequiredProjectPath(
+    relativePath: string,
+    stagedWorkspace: string,
+    budget: CopyBudget,
+    required: boolean,
+    nestedWorkspacePlan?: NestedWorkspaceArtifactPlan
+  ): Promise<void> {
     const normalized = normalizeRelativePath(relativePath);
     const source = resolveWithin(this.workspaceRoot, normalized);
     if (!await exists(source)) {
       if (required) throw new Error(`项目源码目录不存在：${normalized}`);
       return;
     }
-    await this.copyAbsoluteTree(source, normalized, stagedWorkspace, budget);
+    await this.copyAbsoluteTree(source, normalized, stagedWorkspace, budget, true, nestedWorkspacePlan);
   }
 
-  private async copyAbsoluteTree(source: string, destinationRelativePath: string, stagedWorkspace: string, budget: CopyBudget, skipBuildDirectories = true): Promise<void> {
+  private async copyAbsoluteTree(
+    source: string,
+    destinationRelativePath: string,
+    stagedWorkspace: string,
+    budget: CopyBudget,
+    skipBuildDirectories = true,
+    nestedWorkspacePlan?: NestedWorkspaceArtifactPlan
+  ): Promise<void> {
     const realWorkspace = await fs.realpath(this.workspaceRoot);
     const realSource = await fs.realpath(source);
     if (!isWithin(realWorkspace, realSource)) throw new Error(`分享文件路径超出工作区：${source}`);
-    await copyTree(realSource, resolveWithin(stagedWorkspace, destinationRelativePath), stagedWorkspace, budget, skipBuildDirectories);
+    await copyTree(realSource, resolveWithin(stagedWorkspace, destinationRelativePath), stagedWorkspace, budget, skipBuildDirectories, nestedWorkspacePlan);
   }
 }
 
@@ -333,6 +379,23 @@ function isSupportAssetModule(module: PortableInstalledModule): boolean {
     && (contributes?.designerControls?.length || 0) === 0
     && (contributes?.types?.length || 0) === 0
     && (contributes?.snippets?.length || 0) === 0;
+}
+
+function isRequiredSupportAssetModule(module: PortableInstalledModule, requiredModuleIds: ReadonlySet<string>): boolean {
+  if (!isSupportAssetModule(module)) return false;
+  const consumers: Record<string, readonly string[]> = {
+    'lingbuilder.cef3.sdk': ['lingbuilder.cef3.browser'],
+    'lingbuilder.fbro.sdk': ['lingbuilder.fbro.browser'],
+    'lingbuilder.crypto.sdk': [
+      'lingbuilder.crypto.hash',
+      'lingbuilder.crypto.password',
+      'lingbuilder.crypto.symmetric',
+      'lingbuilder.crypto.asymmetric'
+    ]
+  };
+  const knownConsumers = consumers[module.manifest.id];
+  if (knownConsumers) return knownConsumers.some(moduleId => requiredModuleIds.has(moduleId));
+  return requiredModuleIds.has(module.manifest.id);
 }
 
 async function readSolution(workspaceRoot: string): Promise<PortableSolution> {
@@ -448,7 +511,15 @@ async function writePortableSolutionEntry(workspaceRoot: string, solution: Porta
   return targetPath;
 }
 
-async function copyTree(source: string, destination: string, stagedWorkspace: string, budget: CopyBudget, skipBuildDirectories: boolean): Promise<void> {
+async function copyTree(
+  source: string,
+  destination: string,
+  stagedWorkspace: string,
+  budget: CopyBudget,
+  skipBuildDirectories: boolean,
+  nestedWorkspacePlan?: NestedWorkspaceArtifactPlan
+): Promise<void> {
+  if (nestedWorkspacePlan && isNestedWorkspaceArtifactPath(source, nestedWorkspacePlan)) return;
   const stat = await fs.lstat(source);
   if (stat.isSymbolicLink()) throw new Error(`源码包不允许包含符号链接：${source}`);
   if (stat.isDirectory()) {
@@ -456,7 +527,7 @@ async function copyTree(source: string, destination: string, stagedWorkspace: st
     await fs.mkdir(destination, { recursive: true });
     const entries = await fs.readdir(source, { withFileTypes: true });
     for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-      await copyTree(path.join(source, entry.name), path.join(destination, entry.name), stagedWorkspace, budget, skipBuildDirectories);
+      await copyTree(path.join(source, entry.name), path.join(destination, entry.name), stagedWorkspace, budget, skipBuildDirectories, nestedWorkspacePlan);
     }
     return;
   }
@@ -502,7 +573,9 @@ async function extractAndValidatePackage(packagePath: string): Promise<Extracted
     if (rootEntries.some(entry => entry !== LCPP_SOURCE_PACKAGE_MANIFEST && entry !== 'workspace')) {
       throw new Error('源码包根目录包含未声明内容。');
     }
-    const manifest = validatePackageManifest(JSON.parse(await fs.readFile(path.join(temporaryRoot, LCPP_SOURCE_PACKAGE_MANIFEST), 'utf8')));
+    const rawManifest = JSON.parse(await fs.readFile(path.join(temporaryRoot, LCPP_SOURCE_PACKAGE_MANIFEST), 'utf8')) as { schemaVersion?: unknown };
+    const legacyPackage = rawManifest.schemaVersion === LEGACY_PACKAGE_SCHEMA_VERSION;
+    const manifest = validatePackageManifest(rawManifest);
     const workspaceRoot = path.join(temporaryRoot, 'workspace');
     const actualFiles = await describeFiles(workspaceRoot);
     const expected = new Map(manifest.files.map(file => [file.path.toLowerCase(), file]));
@@ -522,8 +595,16 @@ async function extractAndValidatePackage(packagePath: string): Promise<Extracted
     if (solution.schemaVersion !== 2 || !solution.projects.some(project => project.id === manifest.startupProjectId)) {
       throw new Error('源码包中的 LingBuilder 解决方案状态无效。');
     }
-    const moduleWarnings = await validateModuleAvailability(manifest, workspaceRoot);
-    const warnings = manifest.excludedSensitiveFiles.length > 0
+    const compatibilityManifest = legacyPackage
+      ? {
+        ...manifest,
+        requiredCapabilities: await collectRequiredGeneratorCapabilities(workspaceRoot, solution.projects),
+        minimumGeneratorVersion: MINIMUM_GENERATOR_VERSION
+      }
+      : manifest;
+    validateRequiredGeneratorCapabilities(compatibilityManifest);
+    const moduleWarnings = await validateModuleAvailability(compatibilityManifest, workspaceRoot);
+    const warnings = compatibilityManifest.excludedSensitiveFiles.length > 0
       ? [`导出方已排除 ${manifest.excludedSensitiveFiles.length} 个疑似敏感文件。`]
       : [];
     warnings.push(...moduleWarnings);
@@ -531,7 +612,7 @@ async function extractAndValidatePackage(packagePath: string): Promise<Extracted
       temporaryRoot,
       workspaceRoot,
       preview: {
-        manifest,
+        manifest: compatibilityManifest,
         packagePath: source,
         packageSha256: await hashFile(source),
         totalBytes,
@@ -547,11 +628,24 @@ async function extractAndValidatePackage(packagePath: string): Promise<Extracted
 function validatePackageManifest(value: unknown): LcppSourcePackageManifest {
   if (!value || typeof value !== 'object') throw new Error('LCPP 源码包清单不是有效对象。');
   const manifest = value as LcppSourcePackageManifest;
-  if (manifest.schemaVersion !== PACKAGE_SCHEMA_VERSION || manifest.kind !== LCPP_SOURCE_PACKAGE_KIND) {
+  const schemaVersion = (value as { schemaVersion?: unknown }).schemaVersion;
+  if (![LEGACY_PACKAGE_SCHEMA_VERSION, PACKAGE_SCHEMA_VERSION].includes(schemaVersion as number) || manifest.kind !== LCPP_SOURCE_PACKAGE_KIND) {
     throw new Error('LCPP 源码包格式版本不受支持。');
   }
   if (!manifest.sourceSolution || typeof manifest.sourceSolution.name !== 'string') throw new Error('源码包缺少解决方案信息。');
   if (typeof manifest.startupProjectId !== 'string' || !manifest.startupProjectId) throw new Error('源码包缺少启动项目。');
+  const minimumGeneratorVersion = schemaVersion === LEGACY_PACKAGE_SCHEMA_VERSION
+    ? MINIMUM_GENERATOR_VERSION
+    : manifest.minimumGeneratorVersion;
+  if (typeof minimumGeneratorVersion !== 'string' || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(minimumGeneratorVersion)) {
+    throw new Error('源码包缺少有效的最低生成器版本。');
+  }
+  const requiredCapabilities = schemaVersion === LEGACY_PACKAGE_SCHEMA_VERSION ? [] : manifest.requiredCapabilities;
+  if (!Array.isArray(requiredCapabilities)
+    || requiredCapabilities.length > 100
+    || requiredCapabilities.some(capability => typeof capability !== 'string' || !/^[a-z0-9][a-z0-9.-]{2,100}$/u.test(capability))) {
+    throw new Error('源码包所需生成器能力清单无效。');
+  }
   if (!Array.isArray(manifest.projects) || manifest.projects.length === 0 || manifest.projects.length > 100) throw new Error('源码包项目清单无效。');
   if (!Array.isArray(manifest.modules) || manifest.modules.length > 1000) throw new Error('源码包模块清单无效。');
   if (!Array.isArray(manifest.files) || manifest.files.length === 0 || manifest.files.length > MAX_FILE_COUNT) throw new Error('源码包文件清单无效。');
@@ -561,7 +655,64 @@ function validatePackageManifest(value: unknown): LcppSourcePackageManifest {
       throw new Error(`源码包文件记录无效：${String(file?.path || '')}`);
     }
   }
-  return manifest;
+  return {
+    ...manifest,
+    schemaVersion: PACKAGE_SCHEMA_VERSION,
+    minimumGeneratorVersion,
+    requiredCapabilities
+  };
+}
+
+function validateRequiredGeneratorCapabilities(manifest: LcppSourcePackageManifest): void {
+  const unsupported = [...new Set(manifest.requiredCapabilities)].filter(capability => !SUPPORTED_GENERATOR_CAPABILITIES.has(capability));
+  if (unsupported.length === 0) return;
+  const details = unsupported.map(capability => GENERATOR_CAPABILITY_LABELS[capability] || capability).join('、');
+  throw new Error(`当前 LingBuilder 生成器不支持此源码包所需能力：${details}。请升级到 ${manifest.minimumGeneratorVersion} 或更新版本后再导入。`);
+}
+
+async function collectRequiredGeneratorCapabilities(
+  workspaceRoot: string,
+  projects: PortableSolutionProject[]
+): Promise<string[]> {
+  const required = new Set<string>();
+  for (const project of projects) {
+    const sourceRoot = resolveWithin(workspaceRoot, project.sourceRoot);
+    const nestedWorkspacePlan = await detectNestedWorkspaceArtifacts(sourceRoot);
+    for (const source of await collectLcppSources(sourceRoot, nestedWorkspacePlan)) {
+      const sourceCode = await fs.readFile(source, 'utf8');
+      const commands = [...sourceCode.matchAll(LIST_VIEW_COMMAND_PATTERN)].map(match => match[0].replace(/\s*\($/u, ''));
+      if (commands.some(command => !LIST_VIEW_DATA_COMMANDS.has(command))) {
+        required.add(LCPP_GENERATOR_CAPABILITIES.listViewAdvancedApi);
+      }
+      if (DATA_GRID_COMMAND_PATTERN.test(sourceCode)) required.add(LCPP_GENERATOR_CAPABILITIES.dataGridV1);
+      DATA_GRID_COMMAND_PATTERN.lastIndex = 0;
+    }
+    try {
+      const designerPath = resolveWithin(workspaceRoot, project.designerPath);
+      const designerText = await fs.readFile(designerPath, 'utf8');
+      if (/"type"\s*:\s*"DataGrid"|"nativeAdapter"\s*:\s*"lingbuilder-datagrid"/u.test(designerText)) {
+        required.add(LCPP_GENERATOR_CAPABILITIES.dataGridV1);
+      }
+    } catch {
+      // 没有设计器文件的纯源码项目继续按源码命令检测。
+    }
+  }
+  return [...required].sort();
+}
+
+async function collectLcppSources(root: string, nestedWorkspacePlan?: NestedWorkspaceArtifactPlan): Promise<string[]> {
+  if (nestedWorkspacePlan && isNestedWorkspaceArtifactPath(root, nestedWorkspacePlan)) return [];
+  const stat = await fs.stat(root);
+  if (stat.isFile()) return root.toLowerCase().endsWith('.lcpp') ? [root] : [];
+  if (!stat.isDirectory()) return [];
+  const result: string[] = [];
+  for (const entry of await fs.readdir(root, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) continue;
+    const child = path.join(root, entry.name);
+    if (entry.isDirectory()) result.push(...await collectLcppSources(child, nestedWorkspacePlan));
+    else if (entry.isFile() && entry.name.toLowerCase().endsWith('.lcpp')) result.push(child);
+  }
+  return result;
 }
 
 async function validateModuleAvailability(manifest: LcppSourcePackageManifest, workspaceRoot: string): Promise<string[]> {

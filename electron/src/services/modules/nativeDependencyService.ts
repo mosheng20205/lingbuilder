@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process';
 import { InstalledModule } from './types';
 import { validateModuleRelativePath } from './manifest';
 import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from './targetResolver';
+import { CRYPTO_SDK_MODULE_IDS } from './dataMediaModules';
 
 export interface ModuleNativeDependencyLayout {
   buildDir: string;
@@ -68,6 +69,10 @@ export async function materializeModuleNativeDependencies(
 
   if (enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser')) {
     await materializeFbroSdk(layout, plan);
+  }
+
+  if (enabledModules.some(module => CRYPTO_SDK_MODULE_IDS.includes(module.manifest.id as typeof CRYPTO_SDK_MODULE_IDS[number]))) {
+    await materializeCryptoSdk(layout, plan);
   }
 
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
@@ -194,20 +199,36 @@ export async function exportModuleNativeDependencies(
       preferredTargetId: 'windows-msvc-x64'
     }, plan);
   }
+  if (enabledModules.some(module => CRYPTO_SDK_MODULE_IDS.includes(module.manifest.id as typeof CRYPTO_SDK_MODULE_IDS[number]))) {
+    const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: true };
+    await materializeCryptoSdk({
+      buildDir: exportDir,
+      sourceDir: exportDir,
+      binDir: exportDir,
+      exportDir,
+      preferredTargetId: 'windows-msvc-win32'
+    }, plan);
+  }
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
-    const target = getPreferredModuleTarget(module);
-    if (!target) {
+    const preferredTarget = getPreferredModuleTarget(module);
+    if (!preferredTarget) {
       const diagnostic = getUnsupportedModuleTargetDiagnostic(module);
       if (diagnostic) diagnostics.push(diagnostic);
       continue;
     }
     if (!module.installPath || module.installPath.startsWith('builtin://')) continue;
     const exportModuleRoot = path.join(exportDir, 'modules', module.manifest.id);
+    // Visual Studio 导出同时声明 Win32/x64 配置，因此可移植工程必须携带模块
+    // 已发布的全部 Windows MSVC target，不能只复制当前机器首选架构。
+    const exportTargets = (module.manifest.targets || []).filter(target => (
+      target.platform === 'windows' && target.toolchain === 'msvc'
+    ));
+    const targets = exportTargets.length > 0 ? exportTargets : [preferredTarget];
     for (const relativePath of unique([
-      ...(target.headers || []),
-      ...(target.sources || []),
-      ...(target.libs || []),
-      ...(target.runtimeFiles || [])
+      ...targets.flatMap(target => target.headers || []),
+      ...targets.flatMap(target => target.sources || []),
+      ...targets.flatMap(target => target.libs || []),
+      ...targets.flatMap(target => target.runtimeFiles || [])
     ])) {
       await copyModuleFile(module, relativePath, exportModuleRoot, diagnostics);
     }
@@ -442,6 +463,98 @@ async function findFbroSdkRoot(layout: ModuleNativeDependencyLayout): Promise<st
   for (const candidate of candidates) {
     if (await pathExists(path.join(candidate, 'runtime-manifest.json')) &&
         await pathExists(path.join(candidate, 'include', 'LingBuilderFbroBridge.h'))) return candidate;
+  }
+  return null;
+}
+
+interface CryptoSdkManifestFile {
+  path: string;
+  size: number;
+  sha256: string;
+}
+
+interface CryptoSdkManifest {
+  schemaVersion: 1;
+  botanVersion: string;
+  blake3Version: string;
+  files: CryptoSdkManifestFile[];
+}
+
+async function materializeCryptoSdk(
+  layout: ModuleNativeDependencyLayout,
+  plan: ModuleNativeDependencyPlan
+): Promise<void> {
+  plan.requiresMsvc = true;
+  plan.requiresDynamicCrt = true;
+  plan.requiredCppStandard = 20;
+  if (process.platform !== 'win32') {
+    addBlockingDiagnostic(plan, 'LingBuilder 密码学模块当前只提供 Windows/MSVC 的已审计 SDK。');
+    return;
+  }
+  const sdkRoot = await findCryptoSdkRoot(layout);
+  if (!sdkRoot) {
+    addBlockingDiagnostic(plan, '密码学模块缺少 lingbuilder.crypto.sdk。请运行“cd electron && npm run module:crypto-sdk -- --install”生成并安装经过哈希校验的 Botan/BLAKE3 SDK。');
+    return;
+  }
+  let manifest: CryptoSdkManifest;
+  try {
+    manifest = JSON.parse(await fs.readFile(path.join(sdkRoot, 'runtime-manifest.json'), 'utf8')) as CryptoSdkManifest;
+  } catch (error) {
+    addBlockingDiagnostic(plan, `密码学 SDK 清单读取失败：${errorMessage(error)}`);
+    return;
+  }
+  if (manifest.schemaVersion !== 1 || !manifest.botanVersion || !manifest.blake3Version || !Array.isArray(manifest.files) || manifest.files.length === 0) {
+    addBlockingDiagnostic(plan, '密码学 SDK 清单格式无效。');
+    return;
+  }
+  for (const entry of manifest.files) {
+    const relative = normalizeRelativePath(entry.path || '');
+    if (!validateModuleRelativePath(relative) || !Number.isSafeInteger(entry.size) || entry.size < 0 || !/^[a-f0-9]{64}$/i.test(entry.sha256 || '')) {
+      addBlockingDiagnostic(plan, `密码学 SDK 清单包含无效文件记录：${entry.path || '未知路径'}`);
+      return;
+    }
+    if (!await fileMatchesManifest(path.join(sdkRoot, relative), entry)) {
+      addBlockingDiagnostic(plan, `密码学 SDK 文件缺失或哈希不一致：${relative}`);
+      return;
+    }
+  }
+  const moduleRoot = path.join('modules', 'lingbuilder.crypto.sdk');
+  const architecture = layout.preferredTargetId === 'windows-msvc-x64' ? 'x64' : 'Win32';
+  try {
+    const roots = unique([
+      path.join(layout.buildDir, moduleRoot),
+      path.join(layout.sourceDir, moduleRoot),
+      path.join(layout.exportDir, moduleRoot)
+    ]);
+    for (const root of roots) await copyDirectoryRecursive(sdkRoot, root);
+    const runtimeSource = path.join(sdkRoot, 'bin', architecture, 'botan-3.dll');
+    const runtimeTarget = path.join(layout.binDir, 'botan-3.dll');
+    await fs.mkdir(layout.binDir, { recursive: true });
+    await copyFileAtomicallyIfDifferent(runtimeSource, runtimeTarget);
+    plan.includeDirs.push(path.join(layout.sourceDir, moduleRoot, 'include'));
+    plan.sourceFiles.push(path.join(layout.sourceDir, moduleRoot, 'src', 'blake3_amalgamation.c'));
+    plan.libFiles.push(path.join(layout.buildDir, moduleRoot, 'lib', architecture, 'botan-3.lib'));
+    plan.runtimeFiles.push(runtimeTarget);
+  } catch (error) {
+    addBlockingDiagnostic(plan, `准备密码学 SDK 失败：${errorMessage(error)}`);
+  }
+}
+
+async function findCryptoSdkRoot(layout: ModuleNativeDependencyLayout): Promise<string | null> {
+  const workspaceRoot = inferWorkspaceRootFromBuildDir(layout.buildDir);
+  const packagedRoot = process.resourcesPath
+    ? path.join(process.resourcesPath, 'default-workspace', '.lingbuilder', 'modules', 'lingbuilder.crypto.sdk', 'sdk')
+    : '';
+  const candidates = unique([
+    process.env.LINGBUILDER_CRYPTO_SDK_ROOT || '',
+    path.join(workspaceRoot, '.lingbuilder', 'modules', 'lingbuilder.crypto.sdk', 'sdk'),
+    packagedRoot,
+    path.resolve('.lingbuilder', 'modules', 'lingbuilder.crypto.sdk', 'sdk')
+  ].filter(Boolean));
+  for (const candidate of candidates) {
+    if (await pathExists(path.join(candidate, 'runtime-manifest.json')) &&
+        await pathExists(path.join(candidate, 'include', 'botan', 'ffi.h')) &&
+        await pathExists(path.join(candidate, 'include', 'blake3.h'))) return candidate;
   }
   return null;
 }

@@ -13,6 +13,8 @@ export type Win32ControlPropertyType =
   | 'file'
   | 'stringList'
   | 'columns'
+  | 'dataGridColumns'
+  | 'dataGridRows'
   | 'treeNodes'
   | 'tabs'
   | 'date'
@@ -160,7 +162,41 @@ export const WIN32_CONTROL_DEFINITIONS: Win32ControlDefinition[] = [
   control({ type: 'ProgressBar', label: '进度条', moduleId: 'lingbuilder.win32.basic', category: '基础', icon: 'Minus', nativeClass: 'msctls_progress32', nativeAdapter: 'progress', defaultProps: { content: '50', width: 300, height: 20 }, properties: [number('minimum', '最小值', 0), number('maximum', '最大值', 100), number('value', '当前值', 50), bool('marquee', '不确定进度')], events: [] }),
   control({ type: 'Grid', label: '网格容器（旧项目兼容）', moduleId: 'lingbuilder.win32.basic', category: '容器', icon: 'LayoutGrid', nativeClass: 'STATIC', nativeAdapter: 'container', defaultProps: { content: '', width: 360, height: 220 }, properties: [bool('showBorder', '显示边框', true)], events: [event('Loaded', '创建完毕', '创建完毕', 'window')], isContainer: true, legacyOnly: true }),
 
-  control({ type: 'ListView', label: '列表视图', moduleId: 'lingbuilder.win32.common-controls', category: '集合', icon: 'Table', nativeClass: 'SysListView32', nativeAdapter: 'listview', defaultProps: { content: '', width: 320, height: 180 }, properties: [{ key: 'columns', label: '列集合', type: 'columns', defaultValue: [] }, { key: 'items', label: '行项目', type: 'columns', defaultValue: [] }, { key: 'view', label: '视图模式', type: 'enum', defaultValue: 'details', options: [option('icon', '大图标'), option('smallIcon', '小图标'), option('list', '列表'), option('details', '详细信息')] }, bool('gridLines', '显示网格线', true), bool('multiple', '允许多选'), color('borderColor', '边框颜色', '#64748B'), number('borderWidth', '边框粗细', 1, 0, 8), number('headerHeight', '表头高度', 28, 16, 96), number('itemHeight', '表项高度', 28, 16, 96), text('imageListId', '图像列表 ID')], events: [event('SelectionChanged', '选择项被改变', '选择项被改变', 'notify'), event('DoubleClick', '被双击', '被双击', 'notify'), event('ColumnClick', '列被单击', '列被单击', 'notify')] }),
+  control({ type: 'ListView', label: '列表视图', moduleId: 'lingbuilder.win32.common-controls', category: '集合', icon: 'Table', nativeClass: 'SysListView32', nativeAdapter: 'listview', defaultProps: { content: '', width: 320, height: 180 }, properties: [{ key: 'columns', label: '列集合', type: 'columns', defaultValue: [] }, { key: 'items', label: '行项目', type: 'columns', defaultValue: [] }, { key: 'view', label: '视图模式', type: 'enum', defaultValue: 'details', options: [option('icon', '大图标'), option('smallIcon', '小图标'), option('list', '列表'), option('details', '详细信息')] }, bool('gridLines', '显示网格线', true), bool('multiple', '允许多选'), bool('virtualMode', '虚拟列表模式'), color('borderColor', '边框颜色', '#64748B'), number('borderWidth', '边框粗细', 1, 0, 8), number('headerHeight', '表头高度', 28, 16, 96), number('itemHeight', '表项高度', 28, 16, 96), text('imageListId', '图像列表 ID')], events: [event('SelectionChanged', '选择项被改变', '选择项被改变', 'notify'), event('DoubleClick', '被双击', '被双击', 'notify'), event('ColumnClick', '列被单击', '列被单击', 'notify')] }),
+  control({
+    type: 'DataGrid', label: '数据表格', moduleId: 'lingbuilder.win32.common-controls', category: '集合', icon: 'Table2',
+    nativeClass: 'LingBuilderDataGrid', nativeAdapter: 'lingbuilder-datagrid',
+    defaultProps: { content: '', width: 560, height: 280, background: '#0F172A', foreground: '#E2E8F0' },
+    properties: [
+      { key: 'dataGridColumns', label: '列配置', type: 'dataGridColumns', defaultValue: [
+        { id: 'name', title: '名称', type: 'text', width: 180 },
+        { id: 'status', title: '状态', type: 'text', width: 140 }
+      ] },
+      { key: 'dataGridRows', label: '初始数据', type: 'dataGridRows', defaultValue: [] },
+      enumProp('selectionMode', '选择模式', 'cell', ['none', 'cell', 'row', 'multiRow', 'range'], { none: '不选择', cell: '单元格', row: '单行', multiRow: '多行', range: '区域' }),
+      text('emptyText', '空状态文字', '暂无数据'), bool('virtualMode', '虚拟数据模式'), number('virtualRowCount', '虚拟总行数', 0, 0, 100000000),
+      number('headerHeight', '表头高度', 32, 20, 96), number('itemHeight', '行高', 32, 20, 128),
+      color('borderColor', '边框颜色', '#475569'), number('borderWidth', '边框粗细', 1, 0, 8)
+    ],
+    events: [
+      event('CurrentCellChanged', '当前单元格被改变', '当前单元格被改变', 'notify'),
+      event('SelectionRangeChanged', '选择区域被改变', '选择区域被改变', 'notify'),
+      event('CellClick', '单元格被单击', '单元格被单击', 'notify'),
+      event('CellDoubleClick', '单元格被双击', '单元格被双击', 'notify'),
+      event('EditStarting', '开始编辑', '开始编辑', 'notify'),
+      event('Validating', '正在验证', '正在验证', 'notify'),
+      event('EditCommitted', '编辑已提交', '编辑已提交', 'notify'),
+      event('EditCancelled', '编辑已取消', '编辑已取消', 'notify'),
+      event('CheckBoxChanged', '选择框被改变', '选择框被改变', 'notify'),
+      event('SwitchChanged', '开关被改变', '开关被改变', 'notify'),
+      event('ComboChanged', '组合框被改变', '组合框被改变', 'notify'),
+      event('CellButtonClick', '单元格按钮被单击', '单元格按钮被单击', 'notify'),
+      event('CellImageClick', '单元格图片被单击', '单元格图片被单击', 'notify'),
+      event('SortChanged', '排序被改变', '排序被改变', 'notify'),
+      event('FilterChanged', '筛选被改变', '筛选被改变', 'notify'),
+      event('VirtualDataRequested', '请求虚拟数据', '请求虚拟数据', 'notify')
+    ]
+  }),
   control({ type: 'TreeView', label: '树形视图', moduleId: 'lingbuilder.win32.common-controls', category: '集合', icon: 'ListTree', nativeClass: 'SysTreeView32', nativeAdapter: 'treeview', defaultProps: { content: '', width: 260, height: 200 }, properties: [{ key: 'nodes', label: '节点集合', type: 'treeNodes', defaultValue: [] }, number('borderWidth', '边框线粗细', 1, 0, 8), color('borderColor', '边框线颜色', '#64748B'), number('nodeSpacing', '节点间距', 2, 0, 24), number('nodePadding', '节点内间距', 3, 0, 24), bool('showLines', '显示连接线', true), bool('checkBoxes', '显示复选框'), text('imageListId', '图像列表 ID')], events: [event('SelectionChanged', '选择节点被改变', '选择节点被改变', 'notify'), event('Expanded', '节点被展开', '节点被展开', 'notify'), event('Collapsed', '节点被折叠', '节点被折叠', 'notify'), event('DoubleClick', '被双击', '被双击', 'notify')] }),
   control({ type: 'TabControl', label: '选项卡', moduleId: 'lingbuilder.win32.common-controls', category: '容器', icon: 'PanelsTopLeft', nativeClass: 'SysTabControl32', nativeAdapter: 'tab', defaultProps: { content: '', width: 360, height: 240, background: '#FFFFFF', foreground: '#202020' }, properties: [{ key: 'tabs', label: '标签页', type: 'tabs', defaultValue: [{ id: 'page1', title: '标签页 1' }] }, number('selectedIndex', '当前页', 0, 0), bool('hideHeader', '隐藏表头'), text('imageListId', '图像列表 ID')], events: [event('SelectionChanged', '标签页被改变', '标签页被改变', 'notify')], isContainer: true }),
   control({ type: 'Header', label: '表头', moduleId: 'lingbuilder.win32.common-controls', category: '集合', icon: 'Columns3', nativeClass: 'SysHeader32', nativeAdapter: 'header', defaultProps: { content: '', width: 320, height: 28 }, properties: [{ key: 'columns', label: '列集合', type: 'columns', defaultValue: [] }, text('imageListId', '图像列表 ID')], events: [event('ColumnClick', '列被单击', '列被单击', 'notify'), event('ColumnResized', '列宽被改变', '列宽被改变', 'notify')] }),
@@ -242,6 +278,7 @@ export function createDefaultControlProperties(type: string, legacyContent = '')
   if (type === 'Image') properties.imageSource = legacyContent && !legacyContent.startsWith('【') ? legacyContent : '';
   if (type === 'AnimatedImage') properties.gifSource = legacyContent && !legacyContent.startsWith('【') ? legacyContent : '';
   if (type === 'ComboBox' && legacyContent) properties.items = [legacyContent];
+  if (type === 'DataGrid') properties.dataGridSchemaVersion = 1;
   if (type === 'IPAddress' && legacyContent) properties.address = legacyContent;
   return properties;
 }

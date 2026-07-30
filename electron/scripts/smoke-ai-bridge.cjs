@@ -3,9 +3,10 @@ const { spawn } = require('node:child_process');
 
 const electronRoot = path.resolve(__dirname, '..');
 const workspaceRoot = path.resolve(electronRoot, '..');
-const cliEntry = path.join(electronRoot, 'dist', 'cli.cjs');
+const runtimeExecutable = process.env.LINGBUILDER_SMOKE_RUNTIME || process.execPath;
+const cliEntry = process.env.LINGBUILDER_SMOKE_CLI_ENTRY || path.join(electronRoot, 'dist', 'cli.cjs');
 const token = 'lingbuilder-local-health-smoke-token';
-const child = spawn(process.execPath, [
+const child = spawn(runtimeExecutable, [
   cliEntry,
   'ai-server',
   '--workspace', workspaceRoot,
@@ -13,7 +14,12 @@ const child = spawn(process.execPath, [
   '--port', '0',
   '--permission', 'preview',
   '--token', token
-], { cwd: electronRoot, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+], {
+  cwd: electronRoot,
+  windowsHide: true,
+  stdio: ['ignore', 'pipe', 'pipe'],
+  env: { ...process.env, ...(runtimeExecutable === process.execPath ? {} : { ELECTRON_RUN_AS_NODE: '1' }) }
+});
 
 let output = '';
 let errorOutput = '';

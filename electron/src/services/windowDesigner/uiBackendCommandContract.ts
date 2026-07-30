@@ -10,6 +10,7 @@ import { NEW_EMOJI_MODULE_ID } from './newEmojiDesignerAdapter';
 export const WIN32_UI_BACKEND_ID = 'win32';
 export const NEW_EMOJI_UI_BACKEND_ID = 'new-emoji';
 const WIN32_BASIC_MODULE_ID = 'lingbuilder.win32.basic';
+const FBRO_BROWSER_MODULE_ID = 'lingbuilder.fbro.browser';
 
 const BACKEND_NEUTRAL_BUILTIN_MODULE_IDS = new Set([
   ...STANDARD_LIBRARY_MODULES,
@@ -49,6 +50,7 @@ export const NEW_EMOJI_WIN32_BASIC_COMMANDS = new Set([
   '调试输出',
   '结束',
   '到文本',
+  '格式化文本',
   '到整数',
   '取鼠标水平位置',
   '取鼠标垂直位置',
@@ -84,6 +86,8 @@ export const NEW_EMOJI_UI_BACKEND_COMMAND_CONTRACT: NativeUiBackendCommandContra
   supportsCommand: ({ module, commandName }) => {
     if (module.manifest.id === NEW_EMOJI_MODULE_ID) return true;
     if (module.manifest.id === WIN32_BASIC_MODULE_ID) return NEW_EMOJI_WIN32_BASIC_COMMANDS.has(commandName);
+    // FBro 在 new_emoji 后端使用独立 HWND 子宿主，生成模板提供完整 C ABI 命令适配。
+    if (module.manifest.id === FBRO_BROWSER_MODULE_ID) return true;
     if (module.isBuiltin) return BACKEND_NEUTRAL_BUILTIN_MODULE_IDS.has(module.manifest.id);
     // 第三方 v2 模块由 targets.headers/sources/libs 提供独立运行时；模块清单校验负责约束 binding。
     return true;

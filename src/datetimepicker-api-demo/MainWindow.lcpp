@@ -1,0 +1,114 @@
+包 日期时间选择器完整接口示例
+使用 new_emoji 原生界面库
+
+类 MainWindow : 公开 窗体
+    // 日期时间选择器的设计器属性会覆盖创建参数：年份、月份、日期、小时和分钟。
+    // 本示例按能力分组调用全部 EU_DateTimePicker* 接口，@ 行保留真实 native ABI 调用。
+    事件 _MainWindow_创建完毕()
+        调试输出("日期时间选择器完整接口演示已启动")
+        控件_设置文本("状态标签", "状态：请选择一个选项卡执行接口组。")
+    结束
+
+    事件 _基础设置_被点击()
+        @ const LB_NE_ElementRef* picker = LB_NE_FindElement(L"演示日期时间选择器");
+        @ if (!picker) return;
+        @ EU_SetDateTimePickerDateTime(g_newEmojiWindow, picker->id, 2026, 8, 18, 14, 30);
+        @ EU_SetDateTimePickerOptions(g_newEmojiWindow, picker->id, 20260818, 1, 15, 0);
+        @ EU_SetDateTimePickerDefaultTime(g_newEmojiWindow, picker->id, 9, 0);
+        @ EU_SetDateTimePickerOpen(g_newEmojiWindow, picker->id, 1);
+        调试输出("基础设置：日期时间、选项、默认时间和打开接口已调用")
+        控件_设置文本("状态标签", "状态：已设置 2026-08-18 14:30，分钟步进 15。")
+    结束
+
+    事件 _清空今天现在_被点击()
+        @ const LB_NE_ElementRef* picker = LB_NE_FindElement(L"演示日期时间选择器");
+        @ if (!picker) return;
+        @ EU_ClearDateTimePicker(g_newEmojiWindow, picker->id);
+        @ EU_DateTimePickerSelectToday(g_newEmojiWindow, picker->id);
+        @ EU_DateTimePickerSelectNow(g_newEmojiWindow, picker->id);
+        调试输出("清空、选择今天和选择现在接口已调用")
+        控件_设置文本("状态标签", "状态：已执行清空 → 今天 → 现在。")
+    结束
+
+    事件 _范围设置_被点击()
+        @ const LB_NE_ElementRef* picker = LB_NE_FindElement(L"演示日期时间选择器");
+        @ if (!picker) return;
+        @ EU_SetDateTimePickerRange(g_newEmojiWindow, picker->id, 20260101, 20261231, 800, 2200);
+        @ EU_SetDateTimePickerStartPlaceholder(g_newEmojiWindow, picker->id, reinterpret_cast<const unsigned char*>("开始日期"), 12);
+        @ EU_SetDateTimePickerEndPlaceholder(g_newEmojiWindow, picker->id, reinterpret_cast<const unsigned char*>("结束日期"), 12);
+        @ EU_SetDateTimePickerRangeSeparator(g_newEmojiWindow, picker->id, reinterpret_cast<const unsigned char*>(" 至 "), static_cast<int>(sizeof(" 至 ") - 1));
+        @ EU_SetDateTimePickerRangeDefaultTime(g_newEmojiWindow, picker->id, 9, 0, 18, 0);
+        @ EU_SetDateTimePickerRangeSelect(g_newEmojiWindow, picker->id, 1, 20260818, 900, 20260820, 1800);
+        调试输出("范围接口：日期时间范围、占位符、分隔符、默认时间和范围选择已调用")
+        控件_设置文本("状态标签", "状态：已启用 2026 年范围选择，时间 08:00–22:00。")
+    结束
+
+    事件 _快捷与滚动_被点击()
+        @ const LB_NE_ElementRef* picker = LB_NE_FindElement(L"演示日期时间选择器");
+        @ if (!picker) return;
+        @ EU_SetDateTimePickerShortcuts(g_newEmojiWindow, picker->id, reinterpret_cast<const unsigned char*>("今天=0;现在=1;清空=2"), static_cast<int>(sizeof("今天=0;现在=1;清空=2") - 1));
+        @ EU_SetDateTimePickerScroll(g_newEmojiWindow, picker->id, 2, 3);
+        @ EU_DateTimePickerMoveMonth(g_newEmojiWindow, picker->id, 1);
+        @ EU_SetDateTimePickerOpen(g_newEmojiWindow, picker->id, 1);
+        调试输出("快捷与导航接口：快捷键、滚动、下月和打开接口已调用")
+        控件_设置文本("状态标签", "状态：已配置快捷操作，滚动到第 2/3 行并移动到下个月。")
+    结束
+
+    事件 _读取状态_被点击()
+        @ const LB_NE_ElementRef* picker = LB_NE_FindElement(L"演示日期时间选择器");
+        @ if (!picker) return;
+        @ int openState = EU_GetDateTimePickerOpen(g_newEmojiWindow, picker->id);
+        @ int dateValue = EU_GetDateTimePickerDateValue(g_newEmojiWindow, picker->id);
+        @ int timeValue = EU_GetDateTimePickerTimeValue(g_newEmojiWindow, picker->id);
+        @ int minDate = 0; int maxDate = 0; int minTime = 0; int maxTime = 0;
+        @ int rangeResult = EU_GetDateTimePickerRange(g_newEmojiWindow, picker->id, &minDate, &maxDate, &minTime, &maxTime);
+        @ int today = 0; int showToday = 0; int minuteStep = 0; int dateFormat = 0;
+        @ int optionsResult = EU_GetDateTimePickerOptions(g_newEmojiWindow, picker->id, &today, &showToday, &minuteStep, &dateFormat);
+        @ int hourScroll = 0; int minuteScroll = 0;
+        @ int scrollResult = EU_GetDateTimePickerScroll(g_newEmojiWindow, picker->id, &hourScroll, &minuteScroll);
+        @ int startDate = 0; int startTime = 0; int endDate = 0; int endTime = 0; int rangeEnabled = 0;
+        @ int rangeValueResult = EU_GetDateTimePickerRangeValue(g_newEmojiWindow, picker->id, &startDate, &startTime, &endDate, &endTime, &rangeEnabled);
+        调试输出("读取状态：打开=", openState, "日期=", dateValue, "时间=", timeValue, "范围返回=", rangeResult, "选项返回=", optionsResult, "滚动返回=", scrollResult, "范围值返回=", rangeValueResult)
+        控件_设置文本("状态标签", "状态：已读取打开、日期、时间、范围、选项、滚动和范围值；详见输出面板。")
+    结束
+
+    事件 _演示日期时间选择器_选择变化()
+        调试输出("事件：日期时间选择器选择变化")
+    结束
+
+    事件 _演示日期时间选择器_鼠标进入()
+        调试输出("事件：鼠标进入")
+    结束
+
+    事件 _演示日期时间选择器_鼠标离开()
+        调试输出("事件：鼠标离开")
+    结束
+
+    事件 _演示日期时间选择器_鼠标按下()
+        调试输出("事件：鼠标按下")
+    结束
+
+    事件 _演示日期时间选择器_鼠标抬起()
+        调试输出("事件：鼠标抬起")
+    结束
+
+    事件 _演示日期时间选择器_鼠标双击()
+        调试输出("事件：鼠标双击")
+    结束
+
+    事件 _演示日期时间选择器_鼠标移动()
+        调试输出("事件：鼠标移动")
+    结束
+
+    事件 _演示日期时间选择器_鼠标滚轮()
+        调试输出("事件：鼠标滚轮")
+    结束
+
+    事件 _演示日期时间选择器_获得焦点()
+        调试输出("事件：获得焦点")
+    结束
+
+    事件 _演示日期时间选择器_失去焦点()
+        调试输出("事件：失去焦点")
+    结束
+结束类

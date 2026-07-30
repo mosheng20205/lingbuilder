@@ -1,0 +1,236 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.660Z",
+  "module": {
+    "id": "lingbuilder.threading",
+    "name": "多线程模块",
+    "version": "1.0.0",
+    "description": "提供受控后台任务、等待回收、活动任务查询、硬件并发数和线程休眠能力。"
+  },
+  "commandCount": 9,
+  "commands": [
+    {
+      "index": 1,
+      "name": "线程_启动延时输出",
+      "signature": "线程_启动延时输出(内容, 延时毫秒)",
+      "description": "启动后台线程，等待指定毫秒后写入调试输出，并返回任务编号。",
+      "insertText": "线程_启动延时输出(\"$1\", 1000)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "线程_启动延时输出",
+        "runtimeName": "线程_启动延时输出",
+        "parameters": [
+          {
+            "name": "内容",
+            "type": "wideString"
+          },
+          {
+            "name": "延时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "线程_启动延时输出(\"后台任务完成\", 500)"
+      },
+      "demoInvocation": "线程_启动延时输出(\"演示参数1\", 1)"
+    },
+    {
+      "index": 2,
+      "name": "线程_等待全部",
+      "signature": "线程_等待全部()",
+      "description": "等待当前窗口启动的全部后台任务结束并回收线程。",
+      "insertText": "线程_等待全部()",
+      "returnType": "空",
+      "binding": {
+        "command": "线程_等待全部",
+        "runtimeName": "线程_等待全部",
+        "parameters": [],
+        "returnType": "void",
+        "example": "线程_等待全部()"
+      },
+      "demoInvocation": "线程_等待全部()"
+    },
+    {
+      "index": 3,
+      "name": "线程_活动数量",
+      "signature": "线程_活动数量()",
+      "description": "返回当前仍在执行的后台任务数量。",
+      "insertText": "线程_活动数量()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "线程_活动数量",
+        "runtimeName": "线程_活动数量",
+        "parameters": [],
+        "returnType": "int",
+        "example": "线程_活动数量()"
+      },
+      "demoInvocation": "线程_活动数量()"
+    },
+    {
+      "index": 4,
+      "name": "线程_硬件并发数",
+      "signature": "线程_硬件并发数()",
+      "description": "返回 C++ 运行时建议的并行线程数量。",
+      "insertText": "线程_硬件并发数()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "线程_硬件并发数",
+        "runtimeName": "线程_硬件并发数",
+        "parameters": [],
+        "returnType": "int",
+        "example": "线程_硬件并发数()"
+      },
+      "demoInvocation": "线程_硬件并发数()"
+    },
+    {
+      "index": 5,
+      "name": "线程_休眠",
+      "signature": "线程_休眠(毫秒)",
+      "description": "让当前线程休眠指定毫秒；界面线程中使用会暂停界面响应。",
+      "insertText": "线程_休眠(100)",
+      "returnType": "空",
+      "binding": {
+        "command": "线程_休眠",
+        "runtimeName": "线程_休眠",
+        "parameters": [
+          {
+            "name": "毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "void",
+        "example": "线程_休眠(100)"
+      },
+      "demoInvocation": "线程_休眠(1)"
+    },
+    {
+      "index": 6,
+      "name": "线程_启动延时设置文本",
+      "signature": "线程_启动延时设置文本(控件名, 文本, 延时毫秒)",
+      "description": "启动后台线程，延时后线程安全地设置指定控件的显示文本。",
+      "insertText": "线程_启动延时设置文本(\"$1\", \"完成\", 1000)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "线程_启动延时设置文本",
+        "runtimeName": "线程_启动延时设置文本",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "延时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "线程_启动延时设置文本(\"状态标签\", \"完成\", 1000)"
+      },
+      "demoInvocation": "线程_启动延时设置文本(\"演示输出\", \"演示参数2\", 1)"
+    },
+    {
+      "index": 7,
+      "name": "线程_启动延时添加行",
+      "signature": "线程_启动延时添加行(控件名, Tab分隔单元格, 延时毫秒)",
+      "description": "启动后台线程，延时后线程安全地向列表视图追加一行。",
+      "insertText": "线程_启动延时添加行(\"$1\", \"内容\\t状态\", 500)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "线程_启动延时添加行",
+        "runtimeName": "线程_启动延时添加行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "Tab分隔单元格",
+            "type": "wideString"
+          },
+          {
+            "name": "延时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "线程_启动延时添加行(\"列表1\", \"任务\\t完成\", 500)"
+      },
+      "demoInvocation": "线程_启动延时添加行(\"演示输出\", \"演示参数2\", 1)"
+    },
+    {
+      "index": 8,
+      "name": "线程_启动延时添加项目",
+      "signature": "线程_启动延时添加项目(控件名, 文本, 延时毫秒)",
+      "description": "启动后台线程，延时后线程安全地向列表框追加一条日志。",
+      "insertText": "线程_启动延时添加项目(\"$1\", \"日志内容\", 500)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "线程_启动延时添加项目",
+        "runtimeName": "线程_启动延时添加项目",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "延时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "线程_启动延时添加项目(\"日志列表\", \"任务完成\", 500)"
+      },
+      "demoInvocation": "线程_启动延时添加项目(\"演示输出\", \"演示参数2\", 1)"
+    },
+    {
+      "index": 9,
+      "name": "线程_批量启动",
+      "signature": "线程_批量启动(任务数控件, 线程数控件, 列表视图, 日志列表, 状态标签)",
+      "description": "读取输入框中的任务数和线程数，动态创建多线程并行执行任务，实时更新列表视图和日志。",
+      "insertText": "线程_批量启动(\"任务数输入\", \"线程数输入\", \"任务列表\", \"日志列表\", \"状态标签\")",
+      "returnType": "空",
+      "binding": {
+        "command": "线程_批量启动",
+        "runtimeName": "线程_批量启动",
+        "parameters": [
+          {
+            "name": "任务数控件",
+            "type": "wideString"
+          },
+          {
+            "name": "线程数控件",
+            "type": "wideString"
+          },
+          {
+            "name": "列表视图",
+            "type": "wideString"
+          },
+          {
+            "name": "日志列表",
+            "type": "wideString"
+          },
+          {
+            "name": "状态标签",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "void",
+        "encoding": "wide",
+        "example": "线程_批量启动(\"任务数输入\", \"线程数输入\", \"任务列表\", \"日志列表\", \"状态标签\")"
+      },
+      "demoInvocation": "线程_批量启动(\"演示输出\", \"演示输出\", \"演示参数3\", \"演示参数4\", \"演示参数5\")"
+    }
+  ]
+}

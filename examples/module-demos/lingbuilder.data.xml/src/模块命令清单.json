@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.513Z",
+  "module": {
+    "id": "lingbuilder.data.xml",
+    "name": "XML 文本模块",
+    "version": "1.0.0",
+    "description": "提供 XML 文本转义、节点生成和简单节点内容读取，不执行外部实体。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "XML_转义文本",
+      "signature": "XML_转义文本(文本)",
+      "description": "转义 XML 文本节点中的特殊字符。",
+      "insertText": "XML_转义文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "XML_转义文本",
+        "runtimeName": "XML_转义文本",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "XML_转义文本(\"<中文>\")"
+      },
+      "demoInvocation": "XML_转义文本(\"演示参数1\")"
+    },
+    {
+      "index": 2,
+      "name": "XML_反转义文本",
+      "signature": "XML_反转义文本(文本)",
+      "description": "还原本模块支持的五种预定义 XML 实体。",
+      "insertText": "XML_反转义文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "XML_反转义文本",
+        "runtimeName": "XML_反转义文本",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "XML_反转义文本(\"演示参数1\")"
+    },
+    {
+      "index": 3,
+      "name": "XML_生成节点",
+      "signature": "XML_生成节点(节点名, 内容)",
+      "description": "生成包含安全转义文本的简单 XML 节点；非法节点名返回空文本。",
+      "insertText": "XML_生成节点(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "XML_生成节点",
+        "runtimeName": "XML_生成节点",
+        "parameters": [
+          {
+            "name": "节点名",
+            "type": "wideString"
+          },
+          {
+            "name": "内容",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "XML_生成节点(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 4,
+      "name": "XML_是否包含节点",
+      "signature": "XML_是否包含节点(XML文本, 节点名)",
+      "description": "判断 XML 文本是否包含指定简单节点。",
+      "insertText": "XML_是否包含节点(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "XML_是否包含节点",
+        "runtimeName": "XML_是否包含节点",
+        "parameters": [
+          {
+            "name": "XML文本",
+            "type": "wideString"
+          },
+          {
+            "name": "节点名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "XML_是否包含节点(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 5,
+      "name": "XML_取节点文本",
+      "signature": "XML_取节点文本(XML文本, 节点名)",
+      "description": "读取第一个指定简单节点的文本内容并反转义。",
+      "insertText": "XML_取节点文本(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "XML_取节点文本",
+        "runtimeName": "XML_取节点文本",
+        "parameters": [
+          {
+            "name": "XML文本",
+            "type": "wideString"
+          },
+          {
+            "name": "节点名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "XML_取节点文本(\"演示参数1\", \"演示参数2\")"
+    }
+  ]
+}

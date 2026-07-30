@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.674Z",
+  "module": {
+    "id": "lingbuilder.win32.accessibility",
+    "name": "辅助功能模块",
+    "version": "1.0.0",
+    "description": "通过 Microsoft Active Accessibility 读取窗口对象名称、值、角色和状态。"
+  },
+  "commandCount": 4,
+  "commands": [
+    {
+      "index": 1,
+      "name": "辅助_取名称",
+      "signature": "辅助_取名称(窗口句柄)",
+      "description": "读取窗口可访问对象名称。",
+      "insertText": "辅助_取名称(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "辅助_取名称",
+        "runtimeName": "辅助_取名称",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "辅助_取名称(0)"
+    },
+    {
+      "index": 2,
+      "name": "辅助_取值",
+      "signature": "辅助_取值(窗口句柄)",
+      "description": "读取窗口可访问对象值。",
+      "insertText": "辅助_取值(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "辅助_取值",
+        "runtimeName": "辅助_取值",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "辅助_取值(0)"
+    },
+    {
+      "index": 3,
+      "name": "辅助_取角色",
+      "signature": "辅助_取角色(窗口句柄)",
+      "description": "返回本地化角色文本。",
+      "insertText": "辅助_取角色(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "辅助_取角色",
+        "runtimeName": "辅助_取角色",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "辅助_取角色(0)"
+    },
+    {
+      "index": 4,
+      "name": "辅助_取状态值",
+      "signature": "辅助_取状态值(窗口句柄)",
+      "description": "返回 MSAA 状态位。",
+      "insertText": "辅助_取状态值(0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "辅助_取状态值",
+        "runtimeName": "辅助_取状态值",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "辅助_取状态值(0)"
+    }
+  ]
+}

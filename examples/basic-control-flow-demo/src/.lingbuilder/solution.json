@@ -1,10 +1,10 @@
 {
   "schemaVersion": 2,
   "id": "lingbuilder-solution",
-  "name": "基础控制类命令演示",
-  "startupProjectId": "new_emoji",
+  "name": "LingBuilder 全部控制流命令详细演示",
+  "startupProjectId": "lingbuilder-ui-project",
   "startupProjectIds": [
-    "new_emoji"
+    "lingbuilder-ui-project"
   ],
   "folders": [
     {
@@ -16,9 +16,9 @@
     {
       "type": "visual-cpp",
       "id": "lingbuilder-ui-project",
-      "name": "基础控制类命令演示",
-      "sourceRoot": "src",
-      "configRoot": "config",
+      "name": "全部控制流命令详细演示",
+      "sourceRoot": "src/control-flow-demo",
+      "configRoot": "config/control-flow-demo",
       "designerPath": ".lingbuilder/window-designer.json",
       "isDefault": true,
       "references": []

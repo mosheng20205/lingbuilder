@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.549Z",
+  "module": {
+    "id": "lingbuilder.image.icon",
+    "name": "图标处理模块",
+    "version": "1.0.0",
+    "description": "提取 EXE/DLL 图标并保存为 PNG，同时提供图标数量查询。"
+  },
+  "commandCount": 3,
+  "commands": [
+    {
+      "index": 1,
+      "name": "图标_取数量",
+      "signature": "图标_取数量(文件路径)",
+      "description": "返回 EXE、DLL 或 ICO 中可提取图标数量。",
+      "insertText": "图标_取数量(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "图标_取数量",
+        "runtimeName": "图标_取数量",
+        "parameters": [
+          {
+            "name": "文件路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "图标_取数量(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 2,
+      "name": "图标_提取大图标到PNG",
+      "signature": "图标_提取大图标到PNG(文件路径, 索引, 目标路径)",
+      "description": "提取大图标并保存 PNG。",
+      "insertText": "图标_提取大图标到PNG(\"$1\", 0, \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图标_提取大图标到PNG",
+        "runtimeName": "图标_提取大图标到PNG",
+        "parameters": [
+          {
+            "name": "文件路径",
+            "type": "wideString"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "目标路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "图标_提取大图标到PNG(\"module-demo-temp.txt\", 1, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 3,
+      "name": "图标_提取小图标到PNG",
+      "signature": "图标_提取小图标到PNG(文件路径, 索引, 目标路径)",
+      "description": "提取小图标并保存 PNG。",
+      "insertText": "图标_提取小图标到PNG(\"$1\", 0, \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "图标_提取小图标到PNG",
+        "runtimeName": "图标_提取小图标到PNG",
+        "parameters": [
+          {
+            "name": "文件路径",
+            "type": "wideString"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "目标路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "图标_提取小图标到PNG(\"module-demo-temp.txt\", 1, \"module-demo-temp.txt\")"
+    }
+  ]
+}

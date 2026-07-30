@@ -1,5 +1,21 @@
 # LingBuilder 模块生态实现说明
 
+> 2026-07-30 补充：仓库新增清单驱动的全模块演示生成器 `electron/scripts/generate-module-demos.ts`。它按实际 `BUILTIN_MODULES` 与已安装外置模块生成 68 个独立演示项目，逐条覆盖 contribution/binding 中的 2357 条命令；命令较多时最多使用 12 个 TabControl 页面分组，并通过“允许实际执行”开关避免网络、文件、进程、驱动等调用被误触发。演示源码位于 `examples/module-demos/`，可分享包统一以中文模块名称导出到 `exports/`。新增或删除模块、命令后应运行 `cd electron && npm run module:demos`，并以 `npm run module:demos:verify:deep` 对全部源码包做解压、哈希、模块引用和启动项目校验。
+
+> 2026-07-30 补充：LCPP 源码包对只读原生资产的自动携带范围包含 CEF3、FBro 与密码学 SDK。启用 `lingbuilder.crypto.hash/password/symmetric/asymmetric` 中任一模块时，导出服务必须自动携带 `lingbuilder.crypto.sdk`，与 CEF3/FBro 消费模块使用同一隔离打包逻辑，避免源码包在作者机器可构建、导入后因缺少 Botan/BLAKE3 资产失败。
+
+> 2026-07-30 补充：默认启用的 `lingbuilder.win32.basic` 新增占位符命令 `格式化文本(格式模板, 参数...)`。命令按从左到右顺序以文本、整数、长整数、小数和逻辑值替换 `{}`，`{{` / `}}` 输出字面量花括号；参数不足时保留剩余 `{}`，多余参数忽略。该命令的 contribution、v2 binding、新手/Monaco 补全、普通 Win32 运行时、new_emoji 运行时与后端命令契约必须保持同源，不能只在编辑器中模拟格式化结果。
+
+> 2026-07-30 补充：`lingbuilder.win32.common-controls` 的 ListView 已形成普通模式与 `LVS_OWNERDATA` 虚拟模式的同源命令闭环。普通模式支持添加/插入/删除行、单元格读写、行数、批量 TSV、重绘事务和排序；虚拟模式必须由设计器 `virtualMode` 创建期属性开启，再使用 `列表视图_设置虚拟行数/设置虚拟行` 管理内存数据，并由 `LVN_GETDISPINFOW` 按需显示。`contributes.commands`、`bindings.commands`、控件成员补全和 C++ 运行时必须继续同步，禁止只增加补全或在 React 预览中模拟数据方法。
+
+> 2026-07-30 补充：ListView 公开面现为 85 条高层命令。14 条数据/虚拟命令继续保留在内置模块；新增 71 条 Win32 高级命令必须统一由 `electron/src/services/modules/listViewApiCatalog.ts` 产生 contribution 与 binding，语言服务和 C++ 生成测试按目录全量枚举，不再手工复制多份命令表。原始指针/回调型 `LVM_*` 能力必须通过原生模块提供类型安全包装，不得在 DSL binding 中暴露任意地址或通用 `SendMessage`。
+
+> 2026-07-30 补充：LCPP 源码包清单版本 2 会按实际 `.lcpp` 调用记录生成器能力。使用 71 条 ListView 高级命令的包写入 `win32.listview.advanced-api.v1` 和最低生成器版本；导入时若当前 IDE 不具备该能力，必须在编译前给出明确升级诊断，不得继续生成 C++ 后再暴露 `C3861`。
+
+> 2026-07-30 DataGrid 对齐补充：结构化列模型的 `alignment` 只允许 `left/center/right` 且默认 `center`；设计器、预览、`表格_设置列对齐` binding 和 Win32 C++ 运行时必须消费同一字段，不能只在 React 预览中模拟。
+
+> 2026-07-30 补充：新版 IDE 对 v1 `.lcpppkg` 保留兼容导入路径；旧包缺少能力字段时，必须从包内 `.lcpp` 重新计算所需能力并规范化为 v2 内存清单，不能因为清单旧就误拒绝可迁移的项目。
+
 > 2026-07-28 补充：New_Emoji 92 个设计器控件必须用模块命名空间 `designerType: lingbuilder.new_emoji.ui/<Control>` 判断后端支持能力，不能只看为设计器兼容而使用的 `TabControl`、`ListView`、`TreeView` 等基础类型。模块命名空间控件已由 `runtime.createFunction` / Setter 映射生成真实 `EU_*` 调用时，不得再输出“不会生成”的矛盾诊断。设计器读取模块贡献应使用紧凑的项目设计器上下文，避免加载与画布无关的 1500+ binding 和二进制依赖元数据；模块服务暂时不可用时采用有界重试，不能永久回退到只有 Win32 基础控件。
 
 > 2026-07-28 补充：`lingbuilder.new_emoji.ui/ListBox` 的创建期“简单项目”和可选状态 Setter 必须按原生破坏性语义生成。`EU_CreateListBox` / `EU_SetListBoxItems` 负责静态简单项目；只有 `listBoxItemsEx` 存在非空项目时才调用 `EU_SetListBoxItemsEx`。空 `selectedKeys` 不得覆盖 `selectedIndex`，`virtualItemCount <= 0` 不得调用 `EU_SetListBoxVirtualItemCount`，因为上游这两个 Setter 会分别重置选择和清空普通项目。高级项目用于确实需要 key、父级、分组、描述等 TSV 字段的项目，不能把空默认值作为一次运行时清空操作无条件发出。
@@ -289,13 +305,33 @@ lingbuilder.module.json
 ## 分类内置模块库（2026-07）
 
 - 参考精易模块的程序、窗口句柄、键盘鼠标、进程线程、配置、图片、网页、文本字节、文件目录、系统、杂类和组件分类，新增 51 个内置 v2 模块、287 条中文命令。
-- 当前 `BUILTIN_MODULES` 合计 58 个模块、389 条命令；正式清单位于根目录 `MODULE_ENCAPSULATION_CHECKLIST.md`。
+- 当前 `BUILTIN_MODULES` 合计 63 个模块、746 条命令；正式清单位于根目录 `MODULE_ENCAPSULATION_CHECKLIST.md`。
 - 模块定义按领域拆到 `standardLibraryModules.ts`、`systemLibraryModules.ts`、`networkLibraryModules.ts`、`dataMediaModules.ts` 和 `platformAdvancedModules.ts`，不继续扩张单个 `builtinModules.ts`。
 - 对应 C++ 实现按领域拆到 `standardLibraryRuntime.ts`、`systemLibraryRuntime.ts`、`networkLibraryRuntime.ts`、`dataMediaRuntime.ts` 和 `platformAdvancedRuntime.ts`，生成器只注入当前项目已启用模块的运行时片段。
 - 新增表达式翻译支持嵌套模块调用，例如 `调试输出(文本_转大写("LingBuilder"))` 会把内层文本参数和 binding 一并确定性翻译为宽字符串 C++。
 - 内置纯系统模块统一补齐 `windows-msvc-win32` 与 `windows-msvc-x64` target；外部 `.lbmod` 仍必须显式提供各架构产物，不允许自动假设二进制兼容。
 - 高风险模块使用 `lingbuilder.advanced.*` 独立 ID，默认不启用；受控内存模块只访问自身登记内存，CPU 指令模块不执行用户机器码，驱动模块不负责安装或提权。
 - 双架构 smoke 工程位于 `.lingbuilder-build/standard-library-smoke-20260723/`，用于同时启用除 EdgeView 外的内置模块并执行 Visual Studio Release 编译。
+
+## New_Emoji Tabs 外部 HWND 子宿主（2026-07-29）
+
+- `lingbuilder.fbro.browser` 是 New_Emoji 后端当前唯一正式登记的外部 `HWND` 可视控件适配。FBro 不伪装为 New_Emoji 元素；每个实例仍创建独立 `STATIC` 子宿主 `HWND` 和独立 FBro/CEF profile。
+- FBro 可作为 `lingbuilder.new_emoji.ui/Tabs` 的页面子控件，使用 `parentId` 指向 Tabs、`containerSlot` 指向稳定页 ID。生成器注册 `EU_SetTabsChangeCallback`，只显示当前页对应的浏览器子宿主。
+- New_Emoji 后端的 FBro 中文命令继续复用 `lingbuilder.fbro.browser` v2 bindings 和 `LingBuilderFbroBridge` C ABI；不得在 React 中模拟切页或为每页共用同一浏览器句柄。
+- 此适配不放开任意 Win32 控件混用。其它外部 HWND 控件需先提供独立寿命周期、坐标、页面可见性、命令契约和生成回归测试，才能加入支持矩阵。
+- Visual Studio 可移植导出必须复制模块已发布的全部 Windows/MSVC target；工程既然同时声明 Win32/x64，不得只复制当前机器的首选 `.lib`/DLL。
+- New_Emoji 元素坐标是以自绘标题栏之后为原点的逻辑像素；外部子 `HWND` 必须补入默认 30 逻辑像素标题栏偏移，并用 `GetDpiForWindow` / `MulDiv` 转成客户区实际坐标，禁止直接把设计器坐标传给 `CreateWindowExW` 后覆盖 Tabs 标签头。
+- 生成模块可用性宏时必须汇总已启用模块全部 target 的 `defines`，并置于 `__has_include`/桥接头探测之前；不能因默认选择 Win32 target 而遗漏仅提供 x64 target 的 FBro。运行验收必须确认 exe 保持响应且至少三个 FBro renderer 子进程已建立，不能把白色 `STATIC` 宿主视为浏览器成功。
+
+## 通用密码学模块（2026-07-30）
+
+- 内置逻辑模块拆分为 `lingbuilder.crypto.hash`、`lingbuilder.crypto.password`、`lingbuilder.crypto.symmetric` 和 `lingbuilder.crypto.asymmetric`；每条中文命令同时具备 contribution、binding 和真实 C++ 符号，不能只提供补全。
+- 哈希覆盖 MD5、SHA-1、SHA-256、SHA3-256、SM3、BLAKE2b-512 和 BLAKE3 的文本/文件入口；密码哈希覆盖 Argon2id、scrypt、bcrypt、PBKDF2-HMAC-SHA256，并保存带算法、参数和随机盐的自描述格式。
+- 对称模块覆盖 AES-256-GCM、ChaCha20-Poly1305、SM4-GCM、Camellia-256-GCM、Twofish-GCM、Serpent-GCM，以及仅作兼容的 AES-CBC、Blowfish、RC2、RC4、DES 和 3DES。AEAD 命令必须校验附加数据和认证标签；旧式算法保持高级可见性并明确不提供完整性保证。
+- 非对称模块覆盖 RSA-OAEP/PSS、ECDSA P-256、SM2 加密与签名、ECDH P-256、X25519 和兼容用 ElGamal；私钥统一导出 PKCS#8 PEM，公钥统一导出 X.509 PEM。
+- `lingbuilder.crypto.sdk` 是只读原生资产载体，固定 Botan 3.12.0 与官方 BLAKE3 C 1.8.5。`npm run module:crypto-sdk -- --install` 校验上游版本/提交后生成 Win32 与 x64 MSVC 资产、逐文件 SHA-256 清单及 `.lbmod`；F5、AI Bridge、原生预览和 Visual Studio 导出必须复用 `nativeDependencyService` 校验与物化，禁止绕过摘要检查或从 renderer 直接复制 DLL。
+- SDK 使用动态 CRT 和 C++20 工程设置。缺少 SDK、架构、清单或文件摘要不一致均为生成前阻断诊断，不得退化成不可用占位函数。
+- 原生回归入口为 `npm run smoke:crypto-native`：同时构建 Release Win32/x64，并在 x64 真实运行标准摘要向量、密码验证、全部对称算法往返/AEAD 篡改拒绝，以及 RSA、ECDSA、SM2、ECDH、X25519、ElGamal 闭环。
 
 ## 后续扩展规则
 
@@ -340,3 +376,16 @@ v2 manifest 可在 `contributes.menus[]` 和 `contributes.submenus[]` 中向稳�
 
 容器型 `contributes.designerControls[]` 可声明 `layout`，其 `mode` 为 `absolute | flow | stack | grid | dock | slots | single | custom`，并可声明坐标空间、方向、插槽、容量和子控件类型限制。旧 `isContainer: true` 控件缺少 `layout` 时临时按窗口绝对坐标兼容并输出迁移诊断；新容器必须显式声明布局，否则不得作为可跨容器粘贴的正式控件发布。
 > 2026-07-28 补充：FBro SDK 查找必须从任意深度的 `.lingbuilder-build/<project>/<arch>/<mode>` 向上定位工作区，不能用固定两级父目录推导。缺少 SDK、桥接文件、清单或运行时校验失败属于 `blockingDiagnostics`，F5、原生构建和 AI Bridge 必须在编译前停止，禁止依靠 `__has_include` 编译空白占位浏览器后仍报告成功。F5 中间 VS 工程从已校验的 `bin` 增量物化运行时；`generated/cpp` 可复制工程必须携带 78 项完整 runtime、清单和脚本。生成的 C++ 必须用 `L"\\\\/"` 同时识别 Windows 反斜杠和正斜杠，否则缓存根目录会被错误拼到 exe 文件名之后并导致 CEF 子进程失败。
+
+## DataGrid v1 实现约束（2026-07-30）
+
+- 内置模块 `lingbuilder.win32.common-controls` 注册 `DataGrid`；每个实例创建独立 `LingBuilderDataGrid` 主 HWND，即使设计器初始状态为隐藏也不省略创建。
+- 单元格采用双缓冲、可见区域绘制。选择框、Switch、图片、进度和按钮不创建逐单元格 HWND；仅编辑文本/数字、组合框、日期时创建临时 EDIT、COMBOBOX、DateTimePicker 子 HWND。
+- Switch 与进度由 DataGrid 主 HWND 使用 GDI+ 抗锯齿圆角绘制并保持设计器同系配色；组合框静态绘制中文标签和箭头，单击后展开深色自绘的真实临时 COMBOBOX，未悬停项也必须使用可读前景色，选择提交时同时发送编辑提交和组合框改变事件。
+- 图片运行时路径相对 EXE 目录解析，F5/导出必须通过 `DesignerAssetService` 保持 `assets/<项目ID>/` 结构复制资源；原生测试禁止额外手工复制图片来掩盖资源物化缺失。
+- 图片列和单元格覆盖共用 `tile/contain/cover/center/stretch` 显示方式，原生路径图片与 ImageList 都必须真正执行平铺、等比缩放、铺满裁剪、原始居中或拉伸，不能只保存属性后仍统一 StretchBlt。
+- `dataGridSchemaVersion` 当前为 1。列、行和单元格覆盖先经过 `dataGridModel.ts` 规范化，再由设计器预览和 Win32 生成器共同消费。
+- `dataGridApiCatalog.ts` 是 contribution、binding、Monaco 补全和真实 C++ 符号的一致性来源。新增命令必须同时实现运行时行为和测试，不能只增加补全。
+- DataGrid 当前共有 92 条目录命令；进度状态和行选择状态均有成对读写接口。`.xlsx` 导入/导出通过标准 SpreadsheetML 与 Windows ZIP Shell 实现，不启动或依赖 Excel；只处理首个工作表、仅允许静态模式，并把图片单元格作为路径文本往返。
+- Win32 支持本地排序筛选及虚拟缓存；虚拟模式只更新状态并异步触发 `VirtualDataRequested`，不得在绘制回调中调用数据提供者。
+- 旧 new_emoji Table 不自动转成 Win32 DataGrid；迁移服务只添加统一结构化编辑字段，保留原模块类型、后端和生成适配器。new_emoji 不声明支持 Win32 `表格_` 命令。

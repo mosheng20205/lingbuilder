@@ -1,0 +1,257 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.643Z",
+  "module": {
+    "id": "lingbuilder.std.text",
+    "name": "文本处理模块",
+    "version": "1.0.0",
+    "description": "提供 Unicode 文本查找、截取、替换、修剪和大小写转换能力。索引统一从 0 开始。"
+  },
+  "commandCount": 10,
+  "commands": [
+    {
+      "index": 1,
+      "name": "文本_取长度",
+      "signature": "文本_取长度(文本)",
+      "description": "返回 Unicode 文本的字符数量。",
+      "insertText": "文本_取长度(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "文本_取长度",
+        "runtimeName": "文本_取长度",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "文本_取长度(\"LingBuilder\")"
+      },
+      "demoInvocation": "文本_取长度(\"演示参数1\")"
+    },
+    {
+      "index": 2,
+      "name": "文本_寻找",
+      "signature": "文本_寻找(文本, 目标)",
+      "description": "返回目标文本首次出现的从 0 开始索引，未找到返回 -1。",
+      "insertText": "文本_寻找(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "文本_寻找",
+        "runtimeName": "文本_寻找",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "目标",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "文本_寻找(\"中文编程\", \"编程\")"
+      },
+      "demoInvocation": "文本_寻找(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 3,
+      "name": "文本_是否包含",
+      "signature": "文本_是否包含(文本, 目标)",
+      "description": "判断文本是否包含目标内容。",
+      "insertText": "文本_是否包含(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文本_是否包含",
+        "runtimeName": "文本_是否包含",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "目标",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_是否包含(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 4,
+      "name": "文本_开头为",
+      "signature": "文本_开头为(文本, 前缀)",
+      "description": "判断文本是否以指定前缀开头。",
+      "insertText": "文本_开头为(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文本_开头为",
+        "runtimeName": "文本_开头为",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "前缀",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_开头为(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 5,
+      "name": "文本_结尾为",
+      "signature": "文本_结尾为(文本, 后缀)",
+      "description": "判断文本是否以指定后缀结尾。",
+      "insertText": "文本_结尾为(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文本_结尾为",
+        "runtimeName": "文本_结尾为",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "后缀",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_结尾为(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 6,
+      "name": "文本_取中间",
+      "signature": "文本_取中间(文本, 起始位置, 长度)",
+      "description": "按从 0 开始的索引截取文本，超出范围时安全截断。",
+      "insertText": "文本_取中间(\"$1\", 0, 1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_取中间",
+        "runtimeName": "文本_取中间",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "起始位置",
+            "type": "int"
+          },
+          {
+            "name": "长度",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_取中间(\"演示参数1\", 1, 1)"
+    },
+    {
+      "index": 7,
+      "name": "文本_替换",
+      "signature": "文本_替换(文本, 查找内容, 替换内容)",
+      "description": "替换文本中的全部匹配内容。",
+      "insertText": "文本_替换(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_替换",
+        "runtimeName": "文本_替换",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "查找内容",
+            "type": "wideString"
+          },
+          {
+            "name": "替换内容",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_替换(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 8,
+      "name": "文本_删首尾空白",
+      "signature": "文本_删首尾空白(文本)",
+      "description": "删除文本首尾的 Unicode 空白字符。",
+      "insertText": "文本_删首尾空白(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_删首尾空白",
+        "runtimeName": "文本_删首尾空白",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_删首尾空白(\"演示参数1\")"
+    },
+    {
+      "index": 9,
+      "name": "文本_转大写",
+      "signature": "文本_转大写(文本)",
+      "description": "把文本转换为大写。",
+      "insertText": "文本_转大写(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_转大写",
+        "runtimeName": "文本_转大写",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_转大写(\"演示参数1\")"
+    },
+    {
+      "index": 10,
+      "name": "文本_转小写",
+      "signature": "文本_转小写(文本)",
+      "description": "把文本转换为小写。",
+      "insertText": "文本_转小写(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文本_转小写",
+        "runtimeName": "文本_转小写",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文本_转小写(\"演示参数1\")"
+    }
+  ]
+}

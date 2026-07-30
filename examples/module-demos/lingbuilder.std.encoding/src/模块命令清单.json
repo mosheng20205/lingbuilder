@@ -1,0 +1,659 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.631Z",
+  "module": {
+    "id": "lingbuilder.std.encoding",
+    "name": "编码转换模块",
+    "version": "1.0.0",
+    "description": "通过十六进制字节文本安全提供 UTF-8、UTF-16、UTF-32、ANSI、GBK、GB2312、GB18030、BOM、Base64、URL 与 HTML 编解码。"
+  },
+  "commandCount": 30,
+  "commands": [
+    {
+      "index": 1,
+      "name": "编码_文本转UTF8",
+      "signature": "编码_文本转UTF8(文本)",
+      "description": "把 Unicode 文本编码为 UTF-8 字节，返回大写十六进制文本。",
+      "insertText": "编码_文本转UTF8(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_文本转UTF8",
+        "runtimeName": "编码_文本转UTF8",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "编码_文本转UTF8(\"你好\")"
+      },
+      "demoInvocation": "编码_文本转UTF8(\"演示参数1\")"
+    },
+    {
+      "index": 2,
+      "name": "编码_UTF8转文本",
+      "signature": "编码_UTF8转文本(UTF8十六进制)",
+      "description": "把十六进制表示的 UTF-8 字节解码为 Unicode 文本；无效输入返回空文本。",
+      "insertText": "编码_UTF8转文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_UTF8转文本",
+        "runtimeName": "编码_UTF8转文本",
+        "parameters": [
+          {
+            "name": "UTF8十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "编码_UTF8转文本(\"E4BDA0E5A5BD\")"
+      },
+      "demoInvocation": "编码_UTF8转文本(\"演示参数1\")"
+    },
+    {
+      "index": 3,
+      "name": "编码_文本转UTF16LE",
+      "signature": "编码_文本转UTF16LE(文本)",
+      "description": "把 Unicode 文本编码为不带 BOM 的 UTF-16 LE 字节，返回大写十六进制文本。",
+      "insertText": "编码_文本转UTF16LE(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_文本转UTF16LE",
+        "runtimeName": "编码_文本转UTF16LE",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_文本转UTF16LE(\"演示参数1\")"
+    },
+    {
+      "index": 4,
+      "name": "编码_UTF16LE转文本",
+      "signature": "编码_UTF16LE转文本(UTF16LE十六进制)",
+      "description": "把十六进制表示的 UTF-16 LE 字节解码为 Unicode 文本；会识别并移除匹配的 BOM。",
+      "insertText": "编码_UTF16LE转文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_UTF16LE转文本",
+        "runtimeName": "编码_UTF16LE转文本",
+        "parameters": [
+          {
+            "name": "UTF16LE十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_UTF16LE转文本(\"演示参数1\")"
+    },
+    {
+      "index": 5,
+      "name": "编码_文本转UTF16BE",
+      "signature": "编码_文本转UTF16BE(文本)",
+      "description": "把 Unicode 文本编码为不带 BOM 的 UTF-16 BE 字节，返回大写十六进制文本。",
+      "insertText": "编码_文本转UTF16BE(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_文本转UTF16BE",
+        "runtimeName": "编码_文本转UTF16BE",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_文本转UTF16BE(\"演示参数1\")"
+    },
+    {
+      "index": 6,
+      "name": "编码_UTF16BE转文本",
+      "signature": "编码_UTF16BE转文本(UTF16BE十六进制)",
+      "description": "把十六进制表示的 UTF-16 BE 字节解码为 Unicode 文本；会识别并移除匹配的 BOM。",
+      "insertText": "编码_UTF16BE转文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_UTF16BE转文本",
+        "runtimeName": "编码_UTF16BE转文本",
+        "parameters": [
+          {
+            "name": "UTF16BE十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_UTF16BE转文本(\"演示参数1\")"
+    },
+    {
+      "index": 7,
+      "name": "编码_文本转UTF32LE",
+      "signature": "编码_文本转UTF32LE(文本)",
+      "description": "把 Unicode 文本编码为不带 BOM 的 UTF-32 LE 字节，返回大写十六进制文本。",
+      "insertText": "编码_文本转UTF32LE(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_文本转UTF32LE",
+        "runtimeName": "编码_文本转UTF32LE",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_文本转UTF32LE(\"演示参数1\")"
+    },
+    {
+      "index": 8,
+      "name": "编码_UTF32LE转文本",
+      "signature": "编码_UTF32LE转文本(UTF32LE十六进制)",
+      "description": "把十六进制表示的 UTF-32 LE 字节解码为 Unicode 文本；无效码点返回空文本。",
+      "insertText": "编码_UTF32LE转文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_UTF32LE转文本",
+        "runtimeName": "编码_UTF32LE转文本",
+        "parameters": [
+          {
+            "name": "UTF32LE十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_UTF32LE转文本(\"演示参数1\")"
+    },
+    {
+      "index": 9,
+      "name": "编码_文本转UTF32BE",
+      "signature": "编码_文本转UTF32BE(文本)",
+      "description": "把 Unicode 文本编码为不带 BOM 的 UTF-32 BE 字节，返回大写十六进制文本。",
+      "insertText": "编码_文本转UTF32BE(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_文本转UTF32BE",
+        "runtimeName": "编码_文本转UTF32BE",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_文本转UTF32BE(\"演示参数1\")"
+    },
+    {
+      "index": 10,
+      "name": "编码_UTF32BE转文本",
+      "signature": "编码_UTF32BE转文本(UTF32BE十六进制)",
+      "description": "把十六进制表示的 UTF-32 BE 字节解码为 Unicode 文本；无效码点返回空文本。",
+      "insertText": "编码_UTF32BE转文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_UTF32BE转文本",
+        "runtimeName": "编码_UTF32BE转文本",
+        "parameters": [
+          {
+            "name": "UTF32BE十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_UTF32BE转文本(\"演示参数1\")"
+    },
+    {
+      "index": 11,
+      "name": "编码_文本转ANSI",
+      "signature": "编码_文本转ANSI(文本)",
+      "description": "按当前 Windows 系统 ANSI 代码页编码文本，返回大写十六进制字节；无法无损表示时返回空文本。",
+      "insertText": "编码_文本转ANSI(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_文本转ANSI",
+        "runtimeName": "编码_文本转ANSI",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_文本转ANSI(\"演示参数1\")"
+    },
+    {
+      "index": 12,
+      "name": "编码_ANSI转文本",
+      "signature": "编码_ANSI转文本(ANSI十六进制)",
+      "description": "按当前 Windows 系统 ANSI 代码页解码十六进制字节。",
+      "insertText": "编码_ANSI转文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_ANSI转文本",
+        "runtimeName": "编码_ANSI转文本",
+        "parameters": [
+          {
+            "name": "ANSI十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_ANSI转文本(\"演示参数1\")"
+    },
+    {
+      "index": 13,
+      "name": "编码_文本转GBK",
+      "signature": "编码_文本转GBK(文本)",
+      "description": "按 Windows CP936 把文本编码为 GBK 字节，返回大写十六进制文本；无法无损表示时返回空文本。",
+      "insertText": "编码_文本转GBK(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_文本转GBK",
+        "runtimeName": "编码_文本转GBK",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_文本转GBK(\"演示参数1\")"
+    },
+    {
+      "index": 14,
+      "name": "编码_GBK转文本",
+      "signature": "编码_GBK转文本(GBK十六进制)",
+      "description": "按 Windows CP936 解码十六进制表示的 GBK 字节。",
+      "insertText": "编码_GBK转文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_GBK转文本",
+        "runtimeName": "编码_GBK转文本",
+        "parameters": [
+          {
+            "name": "GBK十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_GBK转文本(\"演示参数1\")"
+    },
+    {
+      "index": 15,
+      "name": "编码_文本转GB2312",
+      "signature": "编码_文本转GB2312(文本)",
+      "description": "把文本编码为严格 GB2312 双字节范围，返回大写十六进制文本；GBK 扩展字符或无法表示的字符返回空文本。",
+      "insertText": "编码_文本转GB2312(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_文本转GB2312",
+        "runtimeName": "编码_文本转GB2312",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_文本转GB2312(\"演示参数1\")"
+    },
+    {
+      "index": 16,
+      "name": "编码_GB2312转文本",
+      "signature": "编码_GB2312转文本(GB2312十六进制)",
+      "description": "校验 GB2312 字节范围后按 Windows CP936 解码为 Unicode 文本。",
+      "insertText": "编码_GB2312转文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_GB2312转文本",
+        "runtimeName": "编码_GB2312转文本",
+        "parameters": [
+          {
+            "name": "GB2312十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_GB2312转文本(\"演示参数1\")"
+    },
+    {
+      "index": 17,
+      "name": "编码_文本转GB18030",
+      "signature": "编码_文本转GB18030(文本)",
+      "description": "按 Windows CP54936 把文本编码为 GB18030 字节，返回大写十六进制文本。",
+      "insertText": "编码_文本转GB18030(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_文本转GB18030",
+        "runtimeName": "编码_文本转GB18030",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_文本转GB18030(\"演示参数1\")"
+    },
+    {
+      "index": 18,
+      "name": "编码_GB18030转文本",
+      "signature": "编码_GB18030转文本(GB18030十六进制)",
+      "description": "按 Windows CP54936 解码十六进制表示的 GB18030 字节。",
+      "insertText": "编码_GB18030转文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_GB18030转文本",
+        "runtimeName": "编码_GB18030转文本",
+        "parameters": [
+          {
+            "name": "GB18030十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_GB18030转文本(\"演示参数1\")"
+    },
+    {
+      "index": 19,
+      "name": "编码_转换",
+      "signature": "编码_转换(字节十六进制, 来源编码, 目标编码)",
+      "description": "在支持的字符编码间转换十六进制字节；编码名支持 UTF-8、UTF-16LE/BE、UTF-32LE/BE、ANSI、GBK、GB2312、GB18030。输出不自动添加 BOM。",
+      "insertText": "编码_转换(\"$1\", \"UTF-8\", \"UTF-16LE\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_转换",
+        "runtimeName": "编码_转换",
+        "parameters": [
+          {
+            "name": "字节十六进制",
+            "type": "wideString"
+          },
+          {
+            "name": "来源编码",
+            "type": "wideString"
+          },
+          {
+            "name": "目标编码",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_转换(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 20,
+      "name": "编码_添加BOM",
+      "signature": "编码_添加BOM(字节十六进制, 编码名称)",
+      "description": "为 UTF-8、UTF-16LE/BE 或 UTF-32LE/BE 十六进制字节添加匹配 BOM；已有 BOM 不重复添加。",
+      "insertText": "编码_添加BOM(\"$1\", \"UTF-8\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_添加BOM",
+        "runtimeName": "编码_添加BOM",
+        "parameters": [
+          {
+            "name": "字节十六进制",
+            "type": "wideString"
+          },
+          {
+            "name": "编码名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_添加BOM(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 21,
+      "name": "编码_删除BOM",
+      "signature": "编码_删除BOM(字节十六进制)",
+      "description": "识别并删除 UTF-8、UTF-16 或 UTF-32 BOM，返回剩余大写十六进制字节。",
+      "insertText": "编码_删除BOM(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_删除BOM",
+        "runtimeName": "编码_删除BOM",
+        "parameters": [
+          {
+            "name": "字节十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_删除BOM(\"演示参数1\")"
+    },
+    {
+      "index": 22,
+      "name": "编码_是否有BOM",
+      "signature": "编码_是否有BOM(字节十六进制)",
+      "description": "判断十六进制字节是否以受支持的 BOM 开头。",
+      "insertText": "编码_是否有BOM(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "编码_是否有BOM",
+        "runtimeName": "编码_是否有BOM",
+        "parameters": [
+          {
+            "name": "字节十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_是否有BOM(\"演示参数1\")"
+    },
+    {
+      "index": 23,
+      "name": "编码_检测BOM",
+      "signature": "编码_检测BOM(字节十六进制)",
+      "description": "根据 BOM 返回 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE 或 UTF-32BE；没有 BOM 返回空文本。",
+      "insertText": "编码_检测BOM(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_检测BOM",
+        "runtimeName": "编码_检测BOM",
+        "parameters": [
+          {
+            "name": "字节十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_检测BOM(\"演示参数1\")"
+    },
+    {
+      "index": 24,
+      "name": "编码_检测",
+      "signature": "编码_检测(字节十六进制)",
+      "description": "先检测 BOM；无 BOM 时仅在字节是严格 UTF-8 时返回 UTF-8，否则返回“未知”，不猜测 ANSI 或中文代码页。",
+      "insertText": "编码_检测(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_检测",
+        "runtimeName": "编码_检测",
+        "parameters": [
+          {
+            "name": "字节十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_检测(\"演示参数1\")"
+    },
+    {
+      "index": 25,
+      "name": "编码_Base64编码",
+      "signature": "编码_Base64编码(文本)",
+      "description": "将 Unicode 文本按 UTF-8 编码为 Base64。",
+      "insertText": "编码_Base64编码(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_Base64编码",
+        "runtimeName": "编码_Base64编码",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "编码_Base64编码(\"你好\")"
+      },
+      "demoInvocation": "编码_Base64编码(\"演示参数1\")"
+    },
+    {
+      "index": 26,
+      "name": "编码_Base64解码",
+      "signature": "编码_Base64解码(Base64文本)",
+      "description": "将 Base64 解码为 UTF-8 文本，格式错误返回空文本。",
+      "insertText": "编码_Base64解码(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_Base64解码",
+        "runtimeName": "编码_Base64解码",
+        "parameters": [
+          {
+            "name": "Base64文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "编码_Base64解码(\"5L2g5aW9\")"
+      },
+      "demoInvocation": "编码_Base64解码(\"演示参数1\")"
+    },
+    {
+      "index": 27,
+      "name": "编码_URL编码",
+      "signature": "编码_URL编码(文本)",
+      "description": "按 UTF-8 对 URL 参数内容进行百分号编码。",
+      "insertText": "编码_URL编码(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_URL编码",
+        "runtimeName": "编码_URL编码",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_URL编码(\"演示参数1\")"
+    },
+    {
+      "index": 28,
+      "name": "编码_URL解码",
+      "signature": "编码_URL解码(文本)",
+      "description": "解码 URL 百分号编码和加号空格。",
+      "insertText": "编码_URL解码(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_URL解码",
+        "runtimeName": "编码_URL解码",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_URL解码(\"演示参数1\")"
+    },
+    {
+      "index": 29,
+      "name": "编码_HTML转义",
+      "signature": "编码_HTML转义(文本)",
+      "description": "转义 HTML 中的与号、尖括号、引号和单引号。",
+      "insertText": "编码_HTML转义(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_HTML转义",
+        "runtimeName": "编码_HTML转义",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_HTML转义(\"演示参数1\")"
+    },
+    {
+      "index": 30,
+      "name": "编码_HTML反转义",
+      "signature": "编码_HTML反转义(文本)",
+      "description": "还原本模块支持的常用 HTML 实体。",
+      "insertText": "编码_HTML反转义(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "编码_HTML反转义",
+        "runtimeName": "编码_HTML反转义",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "编码_HTML反转义(\"演示参数1\")"
+    }
+  ]
+}

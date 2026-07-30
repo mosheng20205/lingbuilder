@@ -43,10 +43,13 @@ export function getControlToolboxGroupId(
   type: LingControlType,
   useNewEmojiDesigner: boolean
 ): ControlToolboxGroupId {
+  const moduleId = getWin32ControlDefinition(type)?.moduleId;
+  // FBro 在 new_emoji 窗口中使用受控 HWND 子宿主，但仍属于浏览器模块，
+  // 不应混入 New_Emoji 目录贡献列表后被 92 个目录控件覆盖。
+  if (moduleId === 'lingbuilder.fbro.browser') return 'browser';
   if (useNewEmojiDesigner && isNewEmojiDesignerControlSupported(type)) {
     return 'new-emoji';
   }
-  const moduleId = getWin32ControlDefinition(type)?.moduleId;
   return (moduleId && GROUP_BY_MODULE_ID[moduleId]) || 'basic';
 }
 

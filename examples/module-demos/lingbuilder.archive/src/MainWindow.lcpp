@@ -1,0 +1,41 @@
+包 ZIP压缩模块完整演示
+使用 Win32窗口基础模块
+使用 ZIP压缩模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "ZIP压缩模块：4 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.archive")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–4：压缩_ZIP创建 至 压缩_取错误；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：压缩_ZIP创建
+            // [1] 压缩_ZIP创建(来源路径, ZIP路径)
+            // 功能：把文件或目录创建为 ZIP。
+            // 参数：来源路径:wideString，ZIP路径:wideString；返回：bool；可见性：default
+            压缩_ZIP创建("module-demo-temp.txt", "module-demo-temp.txt")
+            // 命令ID：压缩_ZIP解压
+            // [2] 压缩_ZIP解压(ZIP路径, 目标目录)
+            // 功能：解压 ZIP 到目标目录。
+            // 参数：ZIP路径:wideString，目标目录:wideString；返回：bool；可见性：default
+            压缩_ZIP解压("module-demo-temp.txt", ".")
+            // 命令ID：压缩_ZIP列出
+            // [3] 压缩_ZIP列出(ZIP路径)
+            // 功能：返回 ZIP 内文件列表。
+            // 参数：ZIP路径:wideString；返回：wideString；可见性：default
+            压缩_ZIP列出("module-demo-temp.txt")
+            // 命令ID：压缩_取错误
+            // [4] 压缩_取错误()
+            // 功能：返回最近压缩错误。
+            // 参数：无；返回：wideString；可见性：default
+            压缩_取错误()
+        如果结束
+        调试输出("已查看 命令 1–4：压缩_ZIP创建 至 压缩_取错误；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

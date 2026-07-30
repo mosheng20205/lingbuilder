@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.628Z",
+  "module": {
+    "id": "lingbuilder.std.datetime",
+    "name": "日期时间模块",
+    "version": "1.0.0",
+    "description": "提供本地时间格式化、Unix 时间戳和高精度单调计时。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "时间_当前时间戳",
+      "signature": "时间_当前时间戳()",
+      "description": "返回当前 Unix 秒级时间戳。",
+      "insertText": "时间_当前时间戳()",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "时间_当前时间戳",
+        "runtimeName": "时间_当前时间戳",
+        "parameters": [],
+        "returnType": "longLong",
+        "example": "时间_当前时间戳()"
+      },
+      "demoInvocation": "时间_当前时间戳()"
+    },
+    {
+      "index": 2,
+      "name": "时间_当前毫秒",
+      "signature": "时间_当前毫秒()",
+      "description": "返回当前 Unix 毫秒级时间戳。",
+      "insertText": "时间_当前毫秒()",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "时间_当前毫秒",
+        "runtimeName": "时间_当前毫秒",
+        "parameters": [],
+        "returnType": "longLong",
+        "example": "时间_当前毫秒()"
+      },
+      "demoInvocation": "时间_当前毫秒()"
+    },
+    {
+      "index": 3,
+      "name": "时间_单调毫秒",
+      "signature": "时间_单调毫秒()",
+      "description": "返回适合计算耗时的单调时钟毫秒值。",
+      "insertText": "时间_单调毫秒()",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "时间_单调毫秒",
+        "runtimeName": "时间_单调毫秒",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "时间_单调毫秒()"
+    },
+    {
+      "index": 4,
+      "name": "时间_格式化当前",
+      "signature": "时间_格式化当前(格式)",
+      "description": "使用 wcsftime 格式格式化当前本地时间。",
+      "insertText": "时间_格式化当前(\"%Y-%m-%d %H:%M:%S\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "时间_格式化当前",
+        "runtimeName": "时间_格式化当前",
+        "parameters": [
+          {
+            "name": "格式",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "时间_格式化当前(\"演示参数1\")"
+    },
+    {
+      "index": 5,
+      "name": "时间_格式化时间戳",
+      "signature": "时间_格式化时间戳(时间戳, 格式)",
+      "description": "格式化指定 Unix 秒级时间戳。",
+      "insertText": "时间_格式化时间戳(0, \"%Y-%m-%d %H:%M:%S\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "时间_格式化时间戳",
+        "runtimeName": "时间_格式化时间戳",
+        "parameters": [
+          {
+            "name": "时间戳",
+            "type": "longLong"
+          },
+          {
+            "name": "格式",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "时间_格式化时间戳(1, \"演示参数2\")"
+    }
+  ]
+}

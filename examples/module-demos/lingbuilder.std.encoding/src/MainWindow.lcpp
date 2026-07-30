@@ -1,0 +1,178 @@
+包 编码转换模块完整演示
+使用 Win32窗口基础模块
+使用 编码转换模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "编码转换模块：30 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.std.encoding")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–15：编码_文本转UTF8 至 编码_文本转GB2312；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：编码_文本转UTF8
+            // [1] 编码_文本转UTF8(文本)
+            // 功能：把 Unicode 文本编码为 UTF-8 字节，返回大写十六进制文本。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            编码_文本转UTF8("演示参数1")
+            // 命令ID：编码_UTF8转文本
+            // [2] 编码_UTF8转文本(UTF8十六进制)
+            // 功能：把十六进制表示的 UTF-8 字节解码为 Unicode 文本；无效输入返回空文本。
+            // 参数：UTF8十六进制:wideString；返回：wideString；可见性：default
+            编码_UTF8转文本("演示参数1")
+            // 命令ID：编码_文本转UTF16LE
+            // [3] 编码_文本转UTF16LE(文本)
+            // 功能：把 Unicode 文本编码为不带 BOM 的 UTF-16 LE 字节，返回大写十六进制文本。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            编码_文本转UTF16LE("演示参数1")
+            // 命令ID：编码_UTF16LE转文本
+            // [4] 编码_UTF16LE转文本(UTF16LE十六进制)
+            // 功能：把十六进制表示的 UTF-16 LE 字节解码为 Unicode 文本；会识别并移除匹配的 BOM。
+            // 参数：UTF16LE十六进制:wideString；返回：wideString；可见性：default
+            编码_UTF16LE转文本("演示参数1")
+            // 命令ID：编码_文本转UTF16BE
+            // [5] 编码_文本转UTF16BE(文本)
+            // 功能：把 Unicode 文本编码为不带 BOM 的 UTF-16 BE 字节，返回大写十六进制文本。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            编码_文本转UTF16BE("演示参数1")
+            // 命令ID：编码_UTF16BE转文本
+            // [6] 编码_UTF16BE转文本(UTF16BE十六进制)
+            // 功能：把十六进制表示的 UTF-16 BE 字节解码为 Unicode 文本；会识别并移除匹配的 BOM。
+            // 参数：UTF16BE十六进制:wideString；返回：wideString；可见性：default
+            编码_UTF16BE转文本("演示参数1")
+            // 命令ID：编码_文本转UTF32LE
+            // [7] 编码_文本转UTF32LE(文本)
+            // 功能：把 Unicode 文本编码为不带 BOM 的 UTF-32 LE 字节，返回大写十六进制文本。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            编码_文本转UTF32LE("演示参数1")
+            // 命令ID：编码_UTF32LE转文本
+            // [8] 编码_UTF32LE转文本(UTF32LE十六进制)
+            // 功能：把十六进制表示的 UTF-32 LE 字节解码为 Unicode 文本；无效码点返回空文本。
+            // 参数：UTF32LE十六进制:wideString；返回：wideString；可见性：default
+            编码_UTF32LE转文本("演示参数1")
+            // 命令ID：编码_文本转UTF32BE
+            // [9] 编码_文本转UTF32BE(文本)
+            // 功能：把 Unicode 文本编码为不带 BOM 的 UTF-32 BE 字节，返回大写十六进制文本。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            编码_文本转UTF32BE("演示参数1")
+            // 命令ID：编码_UTF32BE转文本
+            // [10] 编码_UTF32BE转文本(UTF32BE十六进制)
+            // 功能：把十六进制表示的 UTF-32 BE 字节解码为 Unicode 文本；无效码点返回空文本。
+            // 参数：UTF32BE十六进制:wideString；返回：wideString；可见性：default
+            编码_UTF32BE转文本("演示参数1")
+            // 命令ID：编码_文本转ANSI
+            // [11] 编码_文本转ANSI(文本)
+            // 功能：按当前 Windows 系统 ANSI 代码页编码文本，返回大写十六进制字节；无法无损表示时返回空文本。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            编码_文本转ANSI("演示参数1")
+            // 命令ID：编码_ANSI转文本
+            // [12] 编码_ANSI转文本(ANSI十六进制)
+            // 功能：按当前 Windows 系统 ANSI 代码页解码十六进制字节。
+            // 参数：ANSI十六进制:wideString；返回：wideString；可见性：default
+            编码_ANSI转文本("演示参数1")
+            // 命令ID：编码_文本转GBK
+            // [13] 编码_文本转GBK(文本)
+            // 功能：按 Windows CP936 把文本编码为 GBK 字节，返回大写十六进制文本；无法无损表示时返回空文本。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            编码_文本转GBK("演示参数1")
+            // 命令ID：编码_GBK转文本
+            // [14] 编码_GBK转文本(GBK十六进制)
+            // 功能：按 Windows CP936 解码十六进制表示的 GBK 字节。
+            // 参数：GBK十六进制:wideString；返回：wideString；可见性：default
+            编码_GBK转文本("演示参数1")
+            // 命令ID：编码_文本转GB2312
+            // [15] 编码_文本转GB2312(文本)
+            // 功能：把文本编码为严格 GB2312 双字节范围，返回大写十六进制文本；GBK 扩展字符或无法表示的字符返回空文本。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            编码_文本转GB2312("演示参数1")
+        如果结束
+        调试输出("已查看 命令 1–15：编码_文本转UTF8 至 编码_文本转GB2312；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本("演示状态", "命令 16–30：编码_GB2312转文本 至 编码_HTML反转义；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：编码_GB2312转文本
+            // [16] 编码_GB2312转文本(GB2312十六进制)
+            // 功能：校验 GB2312 字节范围后按 Windows CP936 解码为 Unicode 文本。
+            // 参数：GB2312十六进制:wideString；返回：wideString；可见性：default
+            编码_GB2312转文本("演示参数1")
+            // 命令ID：编码_文本转GB18030
+            // [17] 编码_文本转GB18030(文本)
+            // 功能：按 Windows CP54936 把文本编码为 GB18030 字节，返回大写十六进制文本。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            编码_文本转GB18030("演示参数1")
+            // 命令ID：编码_GB18030转文本
+            // [18] 编码_GB18030转文本(GB18030十六进制)
+            // 功能：按 Windows CP54936 解码十六进制表示的 GB18030 字节。
+            // 参数：GB18030十六进制:wideString；返回：wideString；可见性：default
+            编码_GB18030转文本("演示参数1")
+            // 命令ID：编码_转换
+            // [19] 编码_转换(字节十六进制, 来源编码, 目标编码)
+            // 功能：在支持的字符编码间转换十六进制字节；编码名支持 UTF-8、UTF-16LE/BE、UTF-32LE/BE、ANSI、GBK、GB2312、GB18030。输出不自动添加 BOM。
+            // 参数：字节十六进制:wideString，来源编码:wideString，目标编码:wideString；返回：wideString；可见性：default
+            编码_转换("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：编码_添加BOM
+            // [20] 编码_添加BOM(字节十六进制, 编码名称)
+            // 功能：为 UTF-8、UTF-16LE/BE 或 UTF-32LE/BE 十六进制字节添加匹配 BOM；已有 BOM 不重复添加。
+            // 参数：字节十六进制:wideString，编码名称:wideString；返回：wideString；可见性：default
+            编码_添加BOM("演示参数1", "演示参数2")
+            // 命令ID：编码_删除BOM
+            // [21] 编码_删除BOM(字节十六进制)
+            // 功能：识别并删除 UTF-8、UTF-16 或 UTF-32 BOM，返回剩余大写十六进制字节。
+            // 参数：字节十六进制:wideString；返回：wideString；可见性：default
+            编码_删除BOM("演示参数1")
+            // 命令ID：编码_是否有BOM
+            // [22] 编码_是否有BOM(字节十六进制)
+            // 功能：判断十六进制字节是否以受支持的 BOM 开头。
+            // 参数：字节十六进制:wideString；返回：bool；可见性：default
+            编码_是否有BOM("演示参数1")
+            // 命令ID：编码_检测BOM
+            // [23] 编码_检测BOM(字节十六进制)
+            // 功能：根据 BOM 返回 UTF-8、UTF-16LE、UTF-16BE、UTF-32LE 或 UTF-32BE；没有 BOM 返回空文本。
+            // 参数：字节十六进制:wideString；返回：wideString；可见性：default
+            编码_检测BOM("演示参数1")
+            // 命令ID：编码_检测
+            // [24] 编码_检测(字节十六进制)
+            // 功能：先检测 BOM；无 BOM 时仅在字节是严格 UTF-8 时返回 UTF-8，否则返回“未知”，不猜测 ANSI 或中文代码页。
+            // 参数：字节十六进制:wideString；返回：wideString；可见性：default
+            编码_检测("演示参数1")
+            // 命令ID：编码_Base64编码
+            // [25] 编码_Base64编码(文本)
+            // 功能：将 Unicode 文本按 UTF-8 编码为 Base64。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            编码_Base64编码("演示参数1")
+            // 命令ID：编码_Base64解码
+            // [26] 编码_Base64解码(Base64文本)
+            // 功能：将 Base64 解码为 UTF-8 文本，格式错误返回空文本。
+            // 参数：Base64文本:wideString；返回：wideString；可见性：default
+            编码_Base64解码("演示参数1")
+            // 命令ID：编码_URL编码
+            // [27] 编码_URL编码(文本)
+            // 功能：按 UTF-8 对 URL 参数内容进行百分号编码。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            编码_URL编码("演示参数1")
+            // 命令ID：编码_URL解码
+            // [28] 编码_URL解码(文本)
+            // 功能：解码 URL 百分号编码和加号空格。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            编码_URL解码("演示参数1")
+            // 命令ID：编码_HTML转义
+            // [29] 编码_HTML转义(文本)
+            // 功能：转义 HTML 中的与号、尖括号、引号和单引号。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            编码_HTML转义("演示参数1")
+            // 命令ID：编码_HTML反转义
+            // [30] 编码_HTML反转义(文本)
+            // 功能：还原本模块支持的常用 HTML 实体。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            编码_HTML反转义("演示参数1")
+        如果结束
+        调试输出("已查看 命令 16–30：编码_GB2312转文本 至 编码_HTML反转义；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

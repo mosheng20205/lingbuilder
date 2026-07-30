@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import './dataGrid.test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -55,6 +56,7 @@ import {
   saveControlToolboxExpansionState
 } from '../src/services/windowDesigner/controlToolboxModel';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
+import { LIST_VIEW_ADVANCED_API } from '../src/services/modules/listViewApiCatalog';
 import { EDGEVIEW_BROWSER_EVENTS } from '../src/services/modules/edgeViewBrowserEvents';
 import type { InstalledModule } from '../src/services/modules/types';
 import { getWindowEventHandlerName, WINDOW_EVENT_CATEGORIES, WINDOW_EVENT_DEFINITIONS } from '../src/services/windowDesigner/windowEventRegistry';
@@ -2982,6 +2984,8 @@ test('.lcpp 控件属性读写和集合命令通过模块 binding 确定性生�
     事件 _主窗口_创建完毕()
         控件_设置文本("保存按钮", "立即保存")
         控件_设置文本("保存按钮", 到文本(123))
+        控件_设置文本("保存按钮", 格式化文本("姓名：{}，年龄：{}，状态：{}", "小林", 18, 真))
+        调试输出(格式化文本("花括号：{{}}，缺少：{} {}", "已替换"))
         编辑框_表头.内容 = "1"
         控件_设置启用("保存按钮", 真)
         页面选项卡.设置选择项(到整数(编辑框_表头.内容))
@@ -2997,6 +3001,10 @@ test('.lcpp 控件属性读写和集合命令通过模块 binding 确定性生�
   assert.match(cpp, /控件_设置文本\(L"保存按钮", 到文本\(123\)\)/u);
   assert.match(cpp, /LingCppTextValue 到文本\(int value\) const/u);
   assert.match(cpp, /LingCppTextValue 到文本\(bool value\) const/u);
+  assert.match(cpp, /控件_设置文本\(L"保存按钮", 格式化文本\(L"姓名：\{\}，年龄：\{\}，状态：\{\}", L"小林", 18, true\)\)/u);
+  assert.match(cpp, /调试输出\(格式化文本\(L"花括号：\{\{\}\}，缺少：\{\} \{\}", L"已替换"\)\)/u);
+  assert.match(cpp, /template <typename\.\.\. Args> LingCppTextValue 格式化文本\(const std::wstring& format, const Args&\.\.\. args\) const/u);
+  assert.match(cpp, /else output \+= L"\{\}"/u);
   assert.match(cpp, /控件_设置文本\(L"编辑框_表头", L"1"\)/u);
   assert.match(cpp, /控件_设置启用\(L"保存按钮", true\)/u);
   assert.match(cpp, /控件_设置选择项\(L"页面选项卡", 到整数\(控件_取文本\(L"编辑框_表头"\)\)\)/u);
@@ -3010,6 +3018,106 @@ test('.lcpp 控件属性读写和集合命令通过模块 binding 确定性生�
   assert.match(cpp, /TabCtrl_AdjustRect\(runtime->hwnd, FALSE, &pageRect\)/u);
   assert.match(cpp, /const wchar_t\* name;/);
   assert.match(cpp, /return DefWindowProcW\(hwnd, message, wParam, lParam\);/);
+});
+
+test('ListView 完整数据接口、批量更新和 OWNERDATA 虚拟模式确定性生成', () => {
+  const normalList = {
+    ...createControl('normal-list', undefined, 'ListView'),
+    name: '普通列表',
+    properties: { columns: [{ title: '序号' }, { title: '名称' }, { title: '长度' }, { title: '项数' }], items: [], virtualMode: false }
+  };
+  const virtualList = {
+    ...createControl('virtual-list', undefined, 'ListView'),
+    name: '虚拟列表',
+    properties: { columns: [{ title: '序号' }, { title: '名称' }, { title: '长度' }, { title: '项数' }], items: [], virtualMode: true }
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'listview-api-demo',
+    name: 'ListView 完整接口',
+    resources: [],
+    windows: [{ id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: 'ListView 完整接口', width: 900, height: 620, background: '#202028', description: '', controls: [normalList, virtualList] }]
+  };
+  const enabledModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({ manifest: BUILTIN_MODULES.find(module => module.id === id)!, installPath: 'builtin', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
+  const commonControlsManifest = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.common-controls')!;
+  const listViewCommands = [
+    '列表视图_添加行', '列表视图_插入行', '列表视图_删除行', '列表视图_设置单元格', '列表视图_取单元格',
+    '列表视图_取行数', '列表视图_批量添加行', '列表视图_开始批量更新', '列表视图_结束批量更新', '列表视图_排序',
+    '列表视图_取最后单击列', '列表视图_取虚拟模式', '列表视图_设置虚拟行数', '列表视图_设置虚拟行'
+  ];
+  for (const commandName of listViewCommands) {
+    assert.ok(commonControlsManifest.contributes?.commands?.some(command => command.name === commandName), `${commandName} 必须提供补全贡献`);
+    assert.ok(commonControlsManifest.bindings?.commands?.some(command => command.command === commandName), `${commandName} 必须提供确定性 C++ binding`);
+  }
+  for (const advanced of LIST_VIEW_ADVANCED_API) {
+    assert.ok(commonControlsManifest.contributes?.commands?.some(command => command.name === advanced.name), `${advanced.name} 必须提供补全贡献`);
+    assert.ok(commonControlsManifest.bindings?.commands?.some(command => command.command === advanced.name), `${advanced.name} 必须提供确定性 C++ binding`);
+  }
+  const virtualMode = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'ListView')?.properties.find(property => property.key === 'virtualMode');
+  assert.equal(virtualMode?.defaultValue, false);
+  const source = `类 MainWindow : 公开 窗体
+    事件 _MainWindow_创建完毕()
+        局部 整数型 i = 1
+        局部 文本型 文本序号 = ""
+        文本序号 = 到文本(i)
+        控件_清空项目("普通列表")
+        列表视图_添加行("普通列表", 文本序号+"\\t代码段\\t128\\t5")
+        列表视图_插入行("普通列表", 0, "0\\t表头\\t0\\t0")
+        列表视图_设置单元格("普通列表", 0, 1, "已修改")
+        列表视图_取单元格("普通列表", 0, 1)
+        列表视图_取行数("普通列表")
+        列表视图_删除行("普通列表", 0)
+        列表视图_开始批量更新("普通列表")
+        列表视图_批量添加行("普通列表", "1\\t甲\\t1\\t1\\n2\\t乙\\t2\\t2")
+        列表视图_结束批量更新("普通列表")
+        列表视图_排序("普通列表", 1, 真)
+        列表视图_取最后单击列("普通列表")
+        列表视图_取虚拟模式("虚拟列表")
+        列表视图_设置虚拟行数("虚拟列表", 15000)
+        列表视图_设置虚拟行("虚拟列表", 0, "1\\t代码段\\t128\\t5")
+    结束
+结束类`;
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /LVS_OWNERDATA/u);
+  assert.match(cpp, /LVN_GETDISPINFOW/u);
+  assert.match(cpp, /ListView_SetItemCountEx/u);
+  assert.match(cpp, /WM_SETREDRAW/u);
+  assert.match(cpp, /列表视图_设置单元格\(L"普通列表", 0, 1, L"已修改"\)/u);
+  assert.match(cpp, /列表视图_设置虚拟行数\(L"虚拟列表", 15000\)/u);
+  assert.match(cpp, /列表视图_设置虚拟行\(L"虚拟列表", 0, L"1\\t代码段\\t128\\t5"\)/u);
+  assert.match(cpp, /LingCppTextValue operator\+\(const wchar_t\* value\) const/u);
+  assert.match(cpp, /列表视图_添加行\(const wchar_t\* controlName, const std::wstring& tabSeparatedCells\)/u);
+  assert.match(cpp, /列表视图_添加行\(L"普通列表", 文本序号\+L"\\t代码段\\t128\\t5"\)/u);
+  for (const advanced of LIST_VIEW_ADVANCED_API) assert.ok(cpp.includes(`${advanced.name}(`), `运行时缺少 ${advanced.name}`);
+});
+
+test('工作区 ListView 全方法示例可直接生成并用于源码包分享', async () => {
+  const project = JSON.parse(await fs.readFile(path.resolve('..', '.lingbuilder', 'projects', 'listview-api-demo', 'window-designer.json'), 'utf8')) as LingWindowProject;
+  const source = await fs.readFile(path.resolve('..', 'src', 'listview-api-demo', 'MainWindow.lcpp'), 'utf8');
+  const enabledModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({ manifest: BUILTIN_MODULES.find(module => module.id === id)!, installPath: 'builtin', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /列表视图_添加行\(L"普通列表", 文本序号\+L"\\t代码段\\t128\\t5"\)/u);
+  assert.match(cpp, /列表视图_设置虚拟行数\(L"虚拟列表", 15000\)/u);
+  assert.match(cpp, /列表视图_设置虚拟行\(L"虚拟列表", i-1, 文本序号\+L"\\t代码段\\t128\\t5"\)/u);
+  assert.match(cpp, /LVS_OWNERDATA/u);
+  assert.ok(project.windows[0].controls.some(control => control.name === '读取单元格按钮'));
+  assert.match(source, /_读取单元格按钮_被单击\(\)/u);
+  assert.match(source, /列表视图_取单元格\("普通列表", 选中行, 1\)/u);
+  assert.match(cpp, /信息框\(L"第 "\+到文本\(选中行\+1\)\+L" 行、第 2 列的值："\+单元格内容, 64, L"读取单元格"\)/u);
+  assert.ok(project.windows[0].controls.some(control => control.name === '读取选中行按钮'));
+  assert.equal(project.windows[0].controls.find(control => control.name === '普通列表')?.properties?.multiple, true);
+  assert.match(source, /选中行 = 控件_取选择项\("普通列表"\)/u);
+  assert.match(source, /选中行数 = 列表视图_取选中行数\("普通列表"\)/u);
+  assert.match(source, /首个选中行 = 列表视图_取下一个选中行\("普通列表", -1\)/u);
+  assert.match(cpp, /选中行文本\s*=\s*到文本\(选中行\)/u);
+  assert.match(cpp, /选中行数文本\s*=\s*到文本\(选中行数\)/u);
+  assert.match(cpp, /首个选中行文本\s*=\s*到文本\(首个选中行\)/u);
+  assert.match(cpp, /信息框\(L"控件_取选择项："\+选中行文本/u);
+  assert.match(cpp, /int 信息框\(const std::wstring& text, UINT flags, const std::wstring& title\)/u);
+  assert.match(cpp, /int 信息框\(const std::wstring& text, UINT flags, const wchar_t\* title\)/u);
+  for (const advanced of LIST_VIEW_ADVANCED_API) assert.ok(source.includes(`${advanced.name}(`), `示例源码缺少 ${advanced.name}`);
 });
 
 test('.lcpp 图片框设置图片方法确定性生成 Win32 运行时调用', () => {
@@ -3278,4 +3386,56 @@ test('颜色选择器支持可视入口和隐藏后由其他事件按名称打�
 
   const row = cpp.split('\n').find(line => line.includes('L"ColorPicker", L"颜色选择器1"')) || '';
   assert.match(row, /, 1610612736, L"ColorChanged=/u);
+});
+
+test('格式化文本完整能力演示项目覆盖四组选项卡并可生成原生工程', async () => {
+  const source = await fs.readFile(new URL('../../src/format-text-api-demo/MainWindow.lcpp', import.meta.url), 'utf8');
+  const project = JSON.parse(
+    await fs.readFile(new URL('../../.lingbuilder/projects/format-text-api-demo/window-designer.json', import.meta.url), 'utf8')
+  ) as LingWindowProject;
+  const enabledModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({
+    manifest: BUILTIN_MODULES.find(module => module.id === id)!,
+    installPath: 'builtin',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }));
+
+  const tabControl = project.windows[0]?.controls.find(control => control.type === 'TabControl');
+  const tabs = tabControl?.properties?.tabs;
+  assert.ok(tabControl);
+  assert.equal(Array.isArray(tabs) ? tabs.length : 0, 4);
+  assert.deepEqual(
+    project.windows[0]?.controls
+      .filter(control => control.parentId === tabControl.id)
+      .reduce<Record<string, number>>((counts, control) => {
+        const slot = control.containerSlot || '';
+        counts[slot] = (counts[slot] || 0) + 1;
+        return counts;
+      }, {}),
+    { 'page-basic': 8, 'page-types': 4, 'page-edge': 9, 'page-app': 10 }
+  );
+
+  assert.match(source, /格式化文本\("你好，\{\}！你今年 \{\} 岁/u);
+  assert.match(source, /文本=\{\} \| 整数=\{\} \| 长整数=\{\} \| 小数=\{\} \| 双精度=\{\} \| 真值=\{\} \| 假值=\{\}/u);
+  assert.match(source, /对象外观：\{\{/u);
+  assert.match(source, /不足：\{\} \/ \{\} \/ \{\}/u);
+  assert.match(source, /多余：\{\}/u);
+  assert.match(source, /这段模板没有占位符，会保持原样/u);
+  assert.match(source, /外层消息：\[\{\}\]/u);
+  assert.match(source, /信息框\(格式化文本/u);
+  assert.match(source, /调试输出\(格式化文本/u);
+
+  const generated = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: source,
+    lingCppSourceFilePath: 'src/format-text-api-demo/MainWindow.lcpp',
+    enabledModules
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  assert.match(cpp, /WC_TABCONTROL/u);
+  assert.match(cpp, /template <typename\.\.\. Args> LingCppTextValue 格式化文本/u);
+  assert.match(cpp, /信息框\(格式化文本\(L"当前订单摘要/u);
+  assert.match(cpp, /调试输出\(格式化文本\(L"\[格式化日志\]/u);
 });

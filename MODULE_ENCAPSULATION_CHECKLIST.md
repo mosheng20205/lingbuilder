@@ -1,8 +1,8 @@
 # LingBuilder 模块封装清单
 
-更新时间：2026-07-28
+更新时间：2026-07-30
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **60 个内置模块、497 条中文命令**；其中参考精易模块分类新增 **51 个模块、287 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **63 个内置模块、746 条中文命令**；其中参考精易模块分类新增 **51 个模块、287 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -73,12 +73,17 @@ SMTP 模块当前只支持普通 SMTP/局域网调试服务，不支持 STARTTLS
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
 | 已封装 | `lingbuilder.data.csv` | CSV 数据模块 | 5 |
-| 已封装 | `lingbuilder.crypto.hash` | 哈希摘要模块 | 5 |
+| 已封装 | `lingbuilder.crypto.hash` | 哈希摘要模块 | 15 |
+| 已封装 | `lingbuilder.crypto.password` | 密码哈希与派生模块 | 9 |
+| 已封装 | `lingbuilder.crypto.symmetric` | 对称加密模块 | 26 |
+| 已封装 | `lingbuilder.crypto.asymmetric` | 非对称加密模块 | 27 |
 | 已封装 | `lingbuilder.crypto.windows` | Windows 数据保护模块 | 4 |
 | 已封装 | `lingbuilder.database.odbc` | ODBC 数据库模块 | 8 |
 | 已封装（动态运行库） | `lingbuilder.database.sqlite` | SQLite 数据库桥接模块 | 7 |
 
 SQLite 模块不会静默假装数据库可用：项目需要提供 `sqlite3.dll`，通过 `SQLite_加载运行库` 检查导出函数；缺失时返回中文错误。后续可把官方 SQLite 运行库做成独立 `.lbmod` 包。
+
+通用加密模块由内置命令清单、确定性 C++ 运行时和只读 `lingbuilder.crypto.sdk` 原生资产共同组成。SDK 固定使用 Botan 3.12.0 与 BLAKE3 1.8.5，提供 Win32/x64 导入库和运行时 DLL；启用任一通用加密模块时，F5 与 Visual Studio 导出都会自动校验文件摘要、复制头文件与运行时，并要求 MSVC 和 C++20。旧式 RC2、RC4、DES、3DES、Blowfish 与 ElGamal 命令标记为高级兼容用途，新项目应优先采用 AEAD、Argon2id、RSA-OAEP/PSS、ECDSA/ECDH、SM2 或 X25519。
 
 ## 图像与媒体
 
@@ -110,8 +115,8 @@ SQLite 模块不会静默假装数据库可用：项目需要提供 `sqlite3.dll
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已有 | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 38 |
-| 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 25 |
+| 已有 | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 39 |
+| 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 112 |
 | 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 24 |
 | 已有 | `lingbuilder.cef3.browser` | CEF3浏览器模块 | 18 |
 | 已有 | `lingbuilder.fbro.browser` | FBro指纹浏览器模块（CEF 135 x64/C ABI） | 20 |
@@ -125,7 +130,7 @@ SQLite 模块不会静默假装数据库可用：项目需要提供 `sqlite3.dll
 ## 代码位置
 
 - 模块清单：`electron/src/services/modules/standardLibraryModules.ts`、`systemLibraryModules.ts`、`networkLibraryModules.ts`、`dataMediaModules.ts`、`platformAdvancedModules.ts`。
-- C++ 运行时：`electron/src/services/windowDesigner/standardLibraryRuntime.ts`、`systemLibraryRuntime.ts`、`networkLibraryRuntime.ts`、`dataMediaRuntime.ts`、`platformAdvancedRuntime.ts`。
+- C++ 运行时：`electron/src/services/windowDesigner/standardLibraryRuntime.ts`、`systemLibraryRuntime.ts`、`networkLibraryRuntime.ts`、`dataMediaRuntime.ts`、`cryptoRuntime.ts`、`platformAdvancedRuntime.ts`。
 - 聚合入口：`electron/src/services/modules/builtinModules.ts`。
 - 生成接入：`electron/src/services/windowDesigner/lingCppWin32Project.ts`。
 - 自动测试：`electron/tests/modules.test.ts`。

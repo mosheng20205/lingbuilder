@@ -1,0 +1,772 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.502Z",
+  "module": {
+    "id": "lingbuilder.crypto.symmetric",
+    "name": "对称加密模块",
+    "version": "1.0.0",
+    "description": "提供认证加密、传统分组加密和兼容流加密；密钥统一使用严格十六进制文本，密文使用带算法和随机数的自描述封装。"
+  },
+  "commandCount": 26,
+  "commands": [
+    {
+      "index": 1,
+      "name": "对称_生成密钥",
+      "signature": "对称_生成密钥(字节数)",
+      "description": "使用系统密码学随机源生成大写十六进制密钥。",
+      "insertText": "对称_生成密钥(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "对称_生成密钥",
+        "runtimeName": "对称_生成密钥",
+        "parameters": [
+          {
+            "name": "字节数",
+            "type": "int",
+            "description": "密钥字节数，范围 1～1024。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "对称_生成密钥(32)"
+      },
+      "demoInvocation": "对称_生成密钥(1)"
+    },
+    {
+      "index": 2,
+      "name": "对称_AES256GCM加密",
+      "signature": "对称_AES256GCM加密(明文, 密钥十六进制, 附加数据)",
+      "description": "使用 AES-256/GCM 加密并返回自描述密文。加密时自动生成随机 nonce，并验证认证标签。",
+      "insertText": "对称_AES256GCM加密(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "visibility": "default",
+      "binding": {
+        "command": "对称_AES256GCM加密",
+        "runtimeName": "对称_AES256GCM加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString",
+            "description": "按 UTF-8 编码的明文。"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 32 字节的十六进制密钥。"
+          },
+          {
+            "name": "附加数据",
+            "type": "wideString",
+            "description": "参与认证但不加密的 UTF-8 文本，可传空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_AES256GCM加密(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 3,
+      "name": "对称_AES256GCM解密",
+      "signature": "对称_AES256GCM解密(自描述密文, 密钥十六进制, 附加数据)",
+      "description": "解密 AES-256/GCM 自描述密文。认证或格式失败时返回空文本并记录错误。加密时自动生成随机 nonce，并验证认证标签。",
+      "insertText": "对称_AES256GCM解密(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "visibility": "default",
+      "binding": {
+        "command": "对称_AES256GCM解密",
+        "runtimeName": "对称_AES256GCM解密",
+        "parameters": [
+          {
+            "name": "自描述密文",
+            "type": "wideString"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 32 字节的十六进制密钥。"
+          },
+          {
+            "name": "附加数据",
+            "type": "wideString",
+            "description": "参与认证但不加密的 UTF-8 文本，可传空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_AES256GCM解密(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 4,
+      "name": "对称_ChaCha20Poly1305加密",
+      "signature": "对称_ChaCha20Poly1305加密(明文, 密钥十六进制, 附加数据)",
+      "description": "使用 ChaCha20-Poly1305 加密并返回自描述密文。加密时自动生成随机 nonce，并验证认证标签。",
+      "insertText": "对称_ChaCha20Poly1305加密(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "visibility": "default",
+      "binding": {
+        "command": "对称_ChaCha20Poly1305加密",
+        "runtimeName": "对称_ChaCha20Poly1305加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString",
+            "description": "按 UTF-8 编码的明文。"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 32 字节的十六进制密钥。"
+          },
+          {
+            "name": "附加数据",
+            "type": "wideString",
+            "description": "参与认证但不加密的 UTF-8 文本，可传空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_ChaCha20Poly1305加密(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 5,
+      "name": "对称_ChaCha20Poly1305解密",
+      "signature": "对称_ChaCha20Poly1305解密(自描述密文, 密钥十六进制, 附加数据)",
+      "description": "解密 ChaCha20-Poly1305 自描述密文。认证或格式失败时返回空文本并记录错误。加密时自动生成随机 nonce，并验证认证标签。",
+      "insertText": "对称_ChaCha20Poly1305解密(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "visibility": "default",
+      "binding": {
+        "command": "对称_ChaCha20Poly1305解密",
+        "runtimeName": "对称_ChaCha20Poly1305解密",
+        "parameters": [
+          {
+            "name": "自描述密文",
+            "type": "wideString"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 32 字节的十六进制密钥。"
+          },
+          {
+            "name": "附加数据",
+            "type": "wideString",
+            "description": "参与认证但不加密的 UTF-8 文本，可传空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_ChaCha20Poly1305解密(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 6,
+      "name": "对称_SM4GCM加密",
+      "signature": "对称_SM4GCM加密(明文, 密钥十六进制, 附加数据)",
+      "description": "使用 SM4/GCM 加密并返回自描述密文。加密时自动生成随机 nonce，并验证认证标签。",
+      "insertText": "对称_SM4GCM加密(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "visibility": "default",
+      "binding": {
+        "command": "对称_SM4GCM加密",
+        "runtimeName": "对称_SM4GCM加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString",
+            "description": "按 UTF-8 编码的明文。"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 16 字节的十六进制密钥。"
+          },
+          {
+            "name": "附加数据",
+            "type": "wideString",
+            "description": "参与认证但不加密的 UTF-8 文本，可传空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_SM4GCM加密(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 7,
+      "name": "对称_SM4GCM解密",
+      "signature": "对称_SM4GCM解密(自描述密文, 密钥十六进制, 附加数据)",
+      "description": "解密 SM4/GCM 自描述密文。认证或格式失败时返回空文本并记录错误。加密时自动生成随机 nonce，并验证认证标签。",
+      "insertText": "对称_SM4GCM解密(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "visibility": "default",
+      "binding": {
+        "command": "对称_SM4GCM解密",
+        "runtimeName": "对称_SM4GCM解密",
+        "parameters": [
+          {
+            "name": "自描述密文",
+            "type": "wideString"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 16 字节的十六进制密钥。"
+          },
+          {
+            "name": "附加数据",
+            "type": "wideString",
+            "description": "参与认证但不加密的 UTF-8 文本，可传空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_SM4GCM解密(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 8,
+      "name": "对称_Camellia256GCM加密",
+      "signature": "对称_Camellia256GCM加密(明文, 密钥十六进制, 附加数据)",
+      "description": "使用 Camellia-256/GCM 加密并返回自描述密文。加密时自动生成随机 nonce，并验证认证标签。",
+      "insertText": "对称_Camellia256GCM加密(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "visibility": "default",
+      "binding": {
+        "command": "对称_Camellia256GCM加密",
+        "runtimeName": "对称_Camellia256GCM加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString",
+            "description": "按 UTF-8 编码的明文。"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 32 字节的十六进制密钥。"
+          },
+          {
+            "name": "附加数据",
+            "type": "wideString",
+            "description": "参与认证但不加密的 UTF-8 文本，可传空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_Camellia256GCM加密(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 9,
+      "name": "对称_Camellia256GCM解密",
+      "signature": "对称_Camellia256GCM解密(自描述密文, 密钥十六进制, 附加数据)",
+      "description": "解密 Camellia-256/GCM 自描述密文。认证或格式失败时返回空文本并记录错误。加密时自动生成随机 nonce，并验证认证标签。",
+      "insertText": "对称_Camellia256GCM解密(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "visibility": "default",
+      "binding": {
+        "command": "对称_Camellia256GCM解密",
+        "runtimeName": "对称_Camellia256GCM解密",
+        "parameters": [
+          {
+            "name": "自描述密文",
+            "type": "wideString"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 32 字节的十六进制密钥。"
+          },
+          {
+            "name": "附加数据",
+            "type": "wideString",
+            "description": "参与认证但不加密的 UTF-8 文本，可传空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_Camellia256GCM解密(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 10,
+      "name": "对称_TwofishGCM加密",
+      "signature": "对称_TwofishGCM加密(明文, 密钥十六进制, 附加数据)",
+      "description": "使用 Twofish/GCM 加密并返回自描述密文。加密时自动生成随机 nonce，并验证认证标签。",
+      "insertText": "对称_TwofishGCM加密(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "visibility": "default",
+      "binding": {
+        "command": "对称_TwofishGCM加密",
+        "runtimeName": "对称_TwofishGCM加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString",
+            "description": "按 UTF-8 编码的明文。"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 32 字节的十六进制密钥。"
+          },
+          {
+            "name": "附加数据",
+            "type": "wideString",
+            "description": "参与认证但不加密的 UTF-8 文本，可传空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_TwofishGCM加密(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 11,
+      "name": "对称_TwofishGCM解密",
+      "signature": "对称_TwofishGCM解密(自描述密文, 密钥十六进制, 附加数据)",
+      "description": "解密 Twofish/GCM 自描述密文。认证或格式失败时返回空文本并记录错误。加密时自动生成随机 nonce，并验证认证标签。",
+      "insertText": "对称_TwofishGCM解密(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "visibility": "default",
+      "binding": {
+        "command": "对称_TwofishGCM解密",
+        "runtimeName": "对称_TwofishGCM解密",
+        "parameters": [
+          {
+            "name": "自描述密文",
+            "type": "wideString"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 32 字节的十六进制密钥。"
+          },
+          {
+            "name": "附加数据",
+            "type": "wideString",
+            "description": "参与认证但不加密的 UTF-8 文本，可传空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_TwofishGCM解密(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 12,
+      "name": "对称_SerpentGCM加密",
+      "signature": "对称_SerpentGCM加密(明文, 密钥十六进制, 附加数据)",
+      "description": "使用 Serpent/GCM 加密并返回自描述密文。加密时自动生成随机 nonce，并验证认证标签。",
+      "insertText": "对称_SerpentGCM加密(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "visibility": "default",
+      "binding": {
+        "command": "对称_SerpentGCM加密",
+        "runtimeName": "对称_SerpentGCM加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString",
+            "description": "按 UTF-8 编码的明文。"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 32 字节的十六进制密钥。"
+          },
+          {
+            "name": "附加数据",
+            "type": "wideString",
+            "description": "参与认证但不加密的 UTF-8 文本，可传空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_SerpentGCM加密(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 13,
+      "name": "对称_SerpentGCM解密",
+      "signature": "对称_SerpentGCM解密(自描述密文, 密钥十六进制, 附加数据)",
+      "description": "解密 Serpent/GCM 自描述密文。认证或格式失败时返回空文本并记录错误。加密时自动生成随机 nonce，并验证认证标签。",
+      "insertText": "对称_SerpentGCM解密(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "visibility": "default",
+      "binding": {
+        "command": "对称_SerpentGCM解密",
+        "runtimeName": "对称_SerpentGCM解密",
+        "parameters": [
+          {
+            "name": "自描述密文",
+            "type": "wideString"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 32 字节的十六进制密钥。"
+          },
+          {
+            "name": "附加数据",
+            "type": "wideString",
+            "description": "参与认证但不加密的 UTF-8 文本，可传空文本。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_SerpentGCM解密(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 14,
+      "name": "对称_AES256CBC加密",
+      "signature": "对称_AES256CBC加密(明文, 密钥十六进制)",
+      "description": "使用 AES-256/CBC 加密并返回自描述密文。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。",
+      "insertText": "对称_AES256CBC加密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "对称_AES256CBC加密",
+        "runtimeName": "对称_AES256CBC加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString",
+            "description": "按 UTF-8 编码的明文。"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 32 字节的十六进制密钥。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_AES256CBC加密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 15,
+      "name": "对称_AES256CBC解密",
+      "signature": "对称_AES256CBC解密(自描述密文, 密钥十六进制)",
+      "description": "解密 AES-256/CBC 自描述密文。认证或格式失败时返回空文本并记录错误。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。",
+      "insertText": "对称_AES256CBC解密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "对称_AES256CBC解密",
+        "runtimeName": "对称_AES256CBC解密",
+        "parameters": [
+          {
+            "name": "自描述密文",
+            "type": "wideString"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 32 字节的十六进制密钥。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_AES256CBC解密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 16,
+      "name": "对称_BlowfishCBC加密",
+      "signature": "对称_BlowfishCBC加密(明文, 密钥十六进制)",
+      "description": "使用 Blowfish/CBC 加密并返回自描述密文。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。",
+      "insertText": "对称_BlowfishCBC加密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "对称_BlowfishCBC加密",
+        "runtimeName": "对称_BlowfishCBC加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString",
+            "description": "按 UTF-8 编码的明文。"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 32 字节的十六进制密钥。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_BlowfishCBC加密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 17,
+      "name": "对称_BlowfishCBC解密",
+      "signature": "对称_BlowfishCBC解密(自描述密文, 密钥十六进制)",
+      "description": "解密 Blowfish/CBC 自描述密文。认证或格式失败时返回空文本并记录错误。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。",
+      "insertText": "对称_BlowfishCBC解密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "对称_BlowfishCBC解密",
+        "runtimeName": "对称_BlowfishCBC解密",
+        "parameters": [
+          {
+            "name": "自描述密文",
+            "type": "wideString"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 32 字节的十六进制密钥。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_BlowfishCBC解密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 18,
+      "name": "对称_DESCBC加密",
+      "signature": "对称_DESCBC加密(明文, 密钥十六进制)",
+      "description": "使用 DES/CBC 加密并返回自描述密文。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。",
+      "insertText": "对称_DESCBC加密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "对称_DESCBC加密",
+        "runtimeName": "对称_DESCBC加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString",
+            "description": "按 UTF-8 编码的明文。"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 8 字节的十六进制密钥。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_DESCBC加密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 19,
+      "name": "对称_DESCBC解密",
+      "signature": "对称_DESCBC解密(自描述密文, 密钥十六进制)",
+      "description": "解密 DES/CBC 自描述密文。认证或格式失败时返回空文本并记录错误。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。",
+      "insertText": "对称_DESCBC解密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "对称_DESCBC解密",
+        "runtimeName": "对称_DESCBC解密",
+        "parameters": [
+          {
+            "name": "自描述密文",
+            "type": "wideString"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 8 字节的十六进制密钥。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_DESCBC解密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 20,
+      "name": "对称_三DES_CBC加密",
+      "signature": "对称_三DES_CBC加密(明文, 密钥十六进制)",
+      "description": "使用 3DES/CBC 加密并返回自描述密文。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。",
+      "insertText": "对称_三DES_CBC加密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "对称_三DES_CBC加密",
+        "runtimeName": "对称_三DES_CBC加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString",
+            "description": "按 UTF-8 编码的明文。"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 24 字节的十六进制密钥。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_三DES_CBC加密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 21,
+      "name": "对称_三DES_CBC解密",
+      "signature": "对称_三DES_CBC解密(自描述密文, 密钥十六进制)",
+      "description": "解密 3DES/CBC 自描述密文。认证或格式失败时返回空文本并记录错误。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。",
+      "insertText": "对称_三DES_CBC解密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "对称_三DES_CBC解密",
+        "runtimeName": "对称_三DES_CBC解密",
+        "parameters": [
+          {
+            "name": "自描述密文",
+            "type": "wideString"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 24 字节的十六进制密钥。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_三DES_CBC解密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 22,
+      "name": "对称_RC4加密",
+      "signature": "对称_RC4加密(明文, 密钥十六进制)",
+      "description": "使用 RC4 加密并返回自描述密文。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。",
+      "insertText": "对称_RC4加密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "对称_RC4加密",
+        "runtimeName": "对称_RC4加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString",
+            "description": "按 UTF-8 编码的明文。"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 16 字节的十六进制密钥。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_RC4加密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 23,
+      "name": "对称_RC4解密",
+      "signature": "对称_RC4解密(自描述密文, 密钥十六进制)",
+      "description": "解密 RC4 自描述密文。认证或格式失败时返回空文本并记录错误。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。",
+      "insertText": "对称_RC4解密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "对称_RC4解密",
+        "runtimeName": "对称_RC4解密",
+        "parameters": [
+          {
+            "name": "自描述密文",
+            "type": "wideString"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 16 字节的十六进制密钥。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_RC4解密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 24,
+      "name": "对称_RC2CBC加密",
+      "signature": "对称_RC2CBC加密(明文, 密钥十六进制)",
+      "description": "使用 Windows CryptoAPI RC2-128/CBC 加密并返回自描述密文。该算法仅用于兼容旧数据，新项目不要使用。",
+      "insertText": "对称_RC2CBC加密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "对称_RC2CBC加密",
+        "runtimeName": "对称_RC2CBC加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString",
+            "description": "按 UTF-8 编码的明文。"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 16 字节的十六进制密钥。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_RC2CBC加密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 25,
+      "name": "对称_RC2CBC解密",
+      "signature": "对称_RC2CBC解密(自描述密文, 密钥十六进制)",
+      "description": "解密 RC2-128/CBC 自描述密文。该算法仅用于兼容旧数据，新项目不要使用。",
+      "insertText": "对称_RC2CBC解密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "对称_RC2CBC解密",
+        "runtimeName": "对称_RC2CBC解密",
+        "parameters": [
+          {
+            "name": "自描述密文",
+            "type": "wideString"
+          },
+          {
+            "name": "密钥十六进制",
+            "type": "wideString",
+            "description": "必须恰好为 16 字节的十六进制密钥。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_RC2CBC解密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 26,
+      "name": "对称_取错误",
+      "signature": "对称_取错误()",
+      "description": "读取最近一次对称加密或解密失败的中文错误。",
+      "insertText": "对称_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "对称_取错误",
+        "runtimeName": "对称_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "对称_取错误()"
+    }
+  ]
+}

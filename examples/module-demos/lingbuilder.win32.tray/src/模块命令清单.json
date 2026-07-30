@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.693Z",
+  "module": {
+    "id": "lingbuilder.win32.tray",
+    "name": "托盘图标模块",
+    "version": "1.0.0",
+    "description": "向通知区域添加、修改、显示气泡和删除托盘图标。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "托盘_添加",
+      "signature": "托盘_添加(窗口句柄, 编号, 提示文本)",
+      "description": "使用应用默认图标添加托盘图标。",
+      "insertText": "托盘_添加(0, 0, \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "托盘_添加",
+        "runtimeName": "托盘_添加",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          },
+          {
+            "name": "编号",
+            "type": "int"
+          },
+          {
+            "name": "提示文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "托盘_添加(0, 1, \"演示参数3\")"
+    },
+    {
+      "index": 2,
+      "name": "托盘_修改提示",
+      "signature": "托盘_修改提示(窗口句柄, 编号, 提示文本)",
+      "description": "修改托盘提示文本。",
+      "insertText": "托盘_修改提示(0, 0, \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "托盘_修改提示",
+        "runtimeName": "托盘_修改提示",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          },
+          {
+            "name": "编号",
+            "type": "int"
+          },
+          {
+            "name": "提示文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "托盘_修改提示(0, 1, \"演示参数3\")"
+    },
+    {
+      "index": 3,
+      "name": "托盘_显示通知",
+      "signature": "托盘_显示通知(窗口句柄, 编号, 标题, 内容)",
+      "description": "显示托盘气泡通知。",
+      "insertText": "托盘_显示通知(0, 0, \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "托盘_显示通知",
+        "runtimeName": "托盘_显示通知",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          },
+          {
+            "name": "编号",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          },
+          {
+            "name": "内容",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "托盘_显示通知(0, 1, \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 4,
+      "name": "托盘_删除",
+      "signature": "托盘_删除(窗口句柄, 编号)",
+      "description": "删除托盘图标。",
+      "insertText": "托盘_删除(0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "托盘_删除",
+        "runtimeName": "托盘_删除",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          },
+          {
+            "name": "编号",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "托盘_删除(0, 1)"
+    },
+    {
+      "index": 5,
+      "name": "托盘_取回调消息号",
+      "signature": "托盘_取回调消息号()",
+      "description": "返回固定回调消息 WM_APP+77。",
+      "insertText": "托盘_取回调消息号()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "托盘_取回调消息号",
+        "runtimeName": "托盘_取回调消息号",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "托盘_取回调消息号()"
+    }
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.552Z",
+  "module": {
+    "id": "lingbuilder.image.recognition",
+    "name": "基础识图模块",
+    "version": "1.0.0",
+    "description": "提供文件图像中的颜色查找和小模板匹配，结果坐标通过状态命令读取。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "识图_查找颜色",
+      "signature": "识图_查找颜色(图片路径, ARGB, 容差)",
+      "description": "从左到右、从上到下查找接近指定颜色的像素。",
+      "insertText": "识图_查找颜色(\"$1\", 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "识图_查找颜色",
+        "runtimeName": "识图_查找颜色",
+        "parameters": [
+          {
+            "name": "图片路径",
+            "type": "wideString"
+          },
+          {
+            "name": "ARGB",
+            "type": "longLong"
+          },
+          {
+            "name": "容差",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "识图_查找颜色(\"module-demo-temp.txt\", 1, 1)"
+    },
+    {
+      "index": 2,
+      "name": "识图_模板匹配",
+      "signature": "识图_模板匹配(图片路径, 模板路径, 容差)",
+      "description": "执行朴素像素模板匹配，适合小图和测试。",
+      "insertText": "识图_模板匹配(\"$1\", \"$2\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "识图_模板匹配",
+        "runtimeName": "识图_模板匹配",
+        "parameters": [
+          {
+            "name": "图片路径",
+            "type": "wideString"
+          },
+          {
+            "name": "模板路径",
+            "type": "wideString"
+          },
+          {
+            "name": "容差",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "识图_模板匹配(\"module-demo-temp.txt\", \"module-demo-temp.txt\", 1)"
+    },
+    {
+      "index": 3,
+      "name": "识图_取结果横坐标",
+      "signature": "识图_取结果横坐标()",
+      "description": "返回最近识图结果横坐标，失败为 -1。",
+      "insertText": "识图_取结果横坐标()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "识图_取结果横坐标",
+        "runtimeName": "识图_取结果横坐标",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "识图_取结果横坐标()"
+    },
+    {
+      "index": 4,
+      "name": "识图_取结果纵坐标",
+      "signature": "识图_取结果纵坐标()",
+      "description": "返回最近识图结果纵坐标，失败为 -1。",
+      "insertText": "识图_取结果纵坐标()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "识图_取结果纵坐标",
+        "runtimeName": "识图_取结果纵坐标",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "识图_取结果纵坐标()"
+    },
+    {
+      "index": 5,
+      "name": "识图_颜色相似度",
+      "signature": "识图_颜色相似度(ARGB一, ARGB二)",
+      "description": "返回 RGB 最大通道差值，0 表示完全相同。",
+      "insertText": "识图_颜色相似度(0, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "识图_颜色相似度",
+        "runtimeName": "识图_颜色相似度",
+        "parameters": [
+          {
+            "name": "ARGB一",
+            "type": "longLong"
+          },
+          {
+            "name": "ARGB二",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "识图_颜色相似度(1, 1)"
+    }
+  ]
+}

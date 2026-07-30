@@ -1,0 +1,149 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.594Z",
+  "module": {
+    "id": "lingbuilder.net.udp",
+    "name": "UDP通信模块",
+    "version": "1.0.0",
+    "description": "提供 UDP 绑定、UTF-8 数据报发送接收和关闭能力。"
+  },
+  "commandCount": 7,
+  "commands": [
+    {
+      "index": 1,
+      "name": "UDP_绑定",
+      "signature": "UDP_绑定(端口)",
+      "description": "在本机全部接口绑定 UDP 端口。",
+      "insertText": "UDP_绑定(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "UDP_绑定",
+        "runtimeName": "UDP_绑定",
+        "parameters": [
+          {
+            "name": "端口",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "UDP_绑定(1)"
+    },
+    {
+      "index": 2,
+      "name": "UDP_发送文本",
+      "signature": "UDP_发送文本(主机, 端口, 内容)",
+      "description": "发送一条 UTF-8 UDP 数据报。",
+      "insertText": "UDP_发送文本(\"$1\", 0, \"$3\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "UDP_发送文本",
+        "runtimeName": "UDP_发送文本",
+        "parameters": [
+          {
+            "name": "主机",
+            "type": "wideString"
+          },
+          {
+            "name": "端口",
+            "type": "int"
+          },
+          {
+            "name": "内容",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "UDP_发送文本(\"演示参数1\", 1, \"演示参数3\")"
+    },
+    {
+      "index": 3,
+      "name": "UDP_接收文本",
+      "signature": "UDP_接收文本(最大字节数, 超时毫秒)",
+      "description": "接收一条 UDP 数据报，超时返回空文本。",
+      "insertText": "UDP_接收文本(0, 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "UDP_接收文本",
+        "runtimeName": "UDP_接收文本",
+        "parameters": [
+          {
+            "name": "最大字节数",
+            "type": "int"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "UDP_接收文本(1, 1)"
+    },
+    {
+      "index": 4,
+      "name": "UDP_取来源地址",
+      "signature": "UDP_取来源地址()",
+      "description": "返回最近数据报来源 IP。",
+      "insertText": "UDP_取来源地址()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "UDP_取来源地址",
+        "runtimeName": "UDP_取来源地址",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "UDP_取来源地址()"
+    },
+    {
+      "index": 5,
+      "name": "UDP_取来源端口",
+      "signature": "UDP_取来源端口()",
+      "description": "返回最近数据报来源端口。",
+      "insertText": "UDP_取来源端口()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "UDP_取来源端口",
+        "runtimeName": "UDP_取来源端口",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "UDP_取来源端口()"
+    },
+    {
+      "index": 6,
+      "name": "UDP_取错误",
+      "signature": "UDP_取错误()",
+      "description": "返回最近 UDP 中文错误。",
+      "insertText": "UDP_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "UDP_取错误",
+        "runtimeName": "UDP_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "UDP_取错误()"
+    },
+    {
+      "index": 7,
+      "name": "UDP_关闭",
+      "signature": "UDP_关闭()",
+      "description": "关闭当前 UDP 套接字。",
+      "insertText": "UDP_关闭()",
+      "returnType": "空",
+      "binding": {
+        "command": "UDP_关闭",
+        "runtimeName": "UDP_关闭",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "UDP_关闭()"
+    }
+  ]
+}

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createLcppSourcePackageService, LCPP_SOURCE_PACKAGE_KIND } from '../electron/lcppSourcePackageService';
+import { createLcppSourcePackageService, LCPP_GENERATOR_CAPABILITIES, LCPP_SOURCE_PACKAGE_KIND } from '../electron/lcppSourcePackageService';
 import { DesktopWorkspaceService } from '../electron/workspaceService';
 import { createSolutionService, DEFAULT_PROJECT_ID } from '../src/services/solution/solutionService';
 
@@ -19,6 +19,16 @@ test('LCPP 源码包一键导出后可在独立目录完整导入', async t => {
   await fs.mkdir(path.join(workspace, 'assets'), { recursive: true });
   await fs.writeFile(path.join(workspace, 'assets', '说明.txt'), '资源内容', 'utf8');
   await fs.writeFile(path.join(workspace, 'src', '.env'), 'API_KEY=secret', 'utf8');
+  const unrelatedSdkRoot = path.join(workspace, '.lingbuilder', 'modules', 'lingbuilder.cef3.sdk');
+  await fs.mkdir(unrelatedSdkRoot, { recursive: true });
+  await fs.writeFile(path.join(unrelatedSdkRoot, 'lingbuilder.module.json'), JSON.stringify({
+    schemaVersion: 2,
+    id: 'lingbuilder.cef3.sdk',
+    name: '未使用的 CEF3 SDK',
+    version: '1.0.0',
+    category: '界面',
+    description: '未启用 CEF3 浏览器时不应进入源码包。'
+  }, null, 2), 'utf8');
 
   const packagePath = path.join(root, '带括号的导出目录 (分享)', '分享示例.lcpppkg');
   const service = createLcppSourcePackageService(workspace);
@@ -26,10 +36,13 @@ test('LCPP 源码包一键导出后可在独立目录完整导入', async t => {
   assert.equal(exported.ok, true);
   assert.equal(exported.lcppFileCount, 3);
   assert.ok(exported.manifest.excludedSensitiveFiles.includes('src/.env'));
+  assert.ok(!exported.manifest.bundledSupportModuleIds.includes('lingbuilder.cef3.sdk'));
   assert.ok((await fs.stat(packagePath)).isFile());
 
   const preview = await service.inspectPackage(packagePath);
   assert.equal(preview.manifest.kind, LCPP_SOURCE_PACKAGE_KIND);
+  assert.equal(preview.manifest.minimumGeneratorVersion, '0.2.5');
+  assert.deepEqual(preview.manifest.requiredCapabilities, []);
   assert.equal(preview.manifest.startupProjectId, DEFAULT_PROJECT_ID);
   assert.equal(preview.packageSha256.length, 64);
 
@@ -42,6 +55,88 @@ test('LCPP 源码包一键导出后可在独立目录完整导入', async t => {
   assert.ok(await exists(path.join(imported.workspacePath, '.lingbuilder', 'window-designer.json')));
   assert.ok(await exists(path.join(imported.workspacePath, '.lingbuilder', 'project-modules.json')));
   assert.ok(await exists(imported.solutionEntryPath));
+});
+
+test('LCPP 源码包会记录 ListView 高级 API 所需生成器能力', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-lcpp-capability-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, 'workspace');
+  await fs.mkdir(workspace, { recursive: true });
+  await createSolutionService(workspace).getSolution();
+  await fs.writeFile(path.join(workspace, 'src', 'MainWindow.lcpp'), [
+    '包 ListView能力示例',
+    '使用 Win32窗口基础模块',
+    '使用 Win32高级控件模块',
+    '',
+    '类 MainWindow : 窗体',
+    '    事件 _MainWindow_创建完毕()',
+    '        列表视图_添加列("列表", "名称", 120, "left")',
+    '    结束',
+    '结束类',
+    ''
+  ].join('\n'), 'utf8');
+
+  const packagePath = path.join(root, 'listview-capability.lcpppkg');
+  const exported = await createLcppSourcePackageService(workspace).exportProject(DEFAULT_PROJECT_ID, packagePath);
+  assert.deepEqual(exported.manifest.requiredCapabilities, [LCPP_GENERATOR_CAPABILITIES.listViewAdvancedApi]);
+  const preview = await createLcppSourcePackageService(workspace).inspectPackage(packagePath);
+  assert.deepEqual(preview.manifest.requiredCapabilities, [LCPP_GENERATOR_CAPABILITIES.listViewAdvancedApi]);
+});
+
+test('LCPP 源码包会记录 DataGrid v1 所需生成器能力', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-datagrid-capability-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, 'workspace');
+  await fs.mkdir(workspace, { recursive: true });
+  await createSolutionService(workspace).getSolution();
+  await fs.writeFile(path.join(workspace, 'src', 'MainWindow.lcpp'), [
+    '类 MainWindow : 窗体',
+    '    事件 _MainWindow_创建完毕()',
+    '        表格_添加行("订单表格", "order-1")',
+    '    结束',
+    '结束类',
+    ''
+  ].join('\n'), 'utf8');
+
+  const packagePath = path.join(root, 'datagrid-capability.lcpppkg');
+  const exported = await createLcppSourcePackageService(workspace).exportProject(DEFAULT_PROJECT_ID, packagePath);
+  assert.equal(exported.manifest.minimumGeneratorVersion, '0.2.5');
+  assert.deepEqual(exported.manifest.requiredCapabilities, [LCPP_GENERATOR_CAPABILITIES.dataGridV1]);
+});
+
+test('LCPP 源码包和项目构建会排除源码目录中误创建的嵌套工作区', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-nested-workspace-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, 'workspace');
+  await fs.mkdir(workspace, { recursive: true });
+  const solutionService = createSolutionService(workspace);
+  const solution = await solutionService.getSolution();
+  const project = solutionService.getProject(solution, DEFAULT_PROJECT_ID);
+  const nestedRoot = path.join(workspace, 'src');
+  await fs.mkdir(path.join(nestedRoot, '.lingbuilder'), { recursive: true });
+  await fs.mkdir(path.join(nestedRoot, 'src'), { recursive: true });
+  await fs.mkdir(path.join(nestedRoot, 'config'), { recursive: true });
+  await fs.writeFile(path.join(nestedRoot, '.lingbuilder', 'solution.json'), JSON.stringify({ schemaVersion: 2 }), 'utf8');
+  await fs.writeFile(path.join(nestedRoot, '未命名解决方案.lbsln'), JSON.stringify({ kind: 'lingbuilder-solution' }), 'utf8');
+  await fs.writeFile(path.join(nestedRoot, 'src', 'MainWindow.lcpp'), '类 MainWindow\n结束类\n', 'utf8');
+  await fs.writeFile(path.join(nestedRoot, 'config', 'config.ini'), '[project]\nname=nested\n', 'utf8');
+
+  const projectFiles = await solutionService.readProjectFiles(project);
+  assert.ok(projectFiles['src/MainWindow.lcpp']);
+  assert.ok(!projectFiles['src/src/MainWindow.lcpp']);
+  assert.ok(!projectFiles['src/.lingbuilder/solution.json']);
+
+  const packagePath = path.join(root, 'nested-filtered.lcpppkg');
+  const service = createLcppSourcePackageService(workspace);
+  const exported = await service.exportProject(DEFAULT_PROJECT_ID, packagePath);
+  assert.equal(exported.lcppFileCount, 3);
+  assert.ok(exported.warnings.some(warning => warning.includes('嵌套 LingBuilder 工作区')));
+  assert.ok(!exported.manifest.files.some(file => file.path.startsWith('src/src/')));
+  assert.ok(!exported.manifest.files.some(file => file.path.startsWith('src/.lingbuilder/')));
+
+  const imported = await service.importPackage(packagePath, path.join(root, 'imports'));
+  await assert.rejects(fs.access(path.join(imported.workspacePath, 'src', 'src', 'MainWindow.lcpp')));
+  await assert.rejects(fs.access(path.join(imported.workspacePath, 'src', '.lingbuilder', 'solution.json')));
 });
 
 test('LCPP 源码包隔离携带已启用的第三方模块', async t => {
@@ -61,21 +156,68 @@ test('LCPP 源码包隔离携带已启用的第三方模块', async t => {
     category: '其他',
     description: '验证源码包可携带第三方模块。'
   }, null, 2), 'utf8');
+  const supportModuleRoot = path.join(workspace, '.lingbuilder', 'modules', 'lingbuilder.fbro.sdk');
+  await fs.mkdir(supportModuleRoot, { recursive: true });
+  await fs.writeFile(path.join(supportModuleRoot, 'lingbuilder.module.json'), JSON.stringify({
+    schemaVersion: 2,
+    id: 'lingbuilder.fbro.sdk',
+    name: 'FBro 测试 SDK',
+    version: '1.0.0',
+    category: '界面',
+    description: '启用 FBro 浏览器时应随源码包携带。'
+  }, null, 2), 'utf8');
   await fs.writeFile(path.join(workspace, '.lingbuilder', 'project-modules.json'), JSON.stringify({
     schemaVersion: 1,
-    enabledModuleIds: ['lingbuilder.win32.basic', moduleId],
-    pinnedVersions: { 'lingbuilder.win32.basic': '1.0.0', [moduleId]: '1.2.3' }
+    enabledModuleIds: ['lingbuilder.win32.basic', 'lingbuilder.fbro.browser', moduleId],
+    pinnedVersions: { 'lingbuilder.win32.basic': '1.0.0', 'lingbuilder.fbro.browser': '1.0.0', [moduleId]: '1.2.3' }
   }, null, 2), 'utf8');
 
   const service = createLcppSourcePackageService(workspace);
   const packagePath = path.join(root, 'module-demo.lcpppkg');
   const exported = await service.exportProject(DEFAULT_PROJECT_ID, packagePath);
   assert.ok(exported.manifest.modules.some(module => module.id === moduleId && module.bundled));
+  assert.ok(exported.manifest.bundledSupportModuleIds.includes('lingbuilder.fbro.sdk'));
   const imported = await service.importPackage(packagePath, path.join(root, 'imports'));
   assert.ok(await exists(path.join(imported.workspacePath, '.lingbuilder', 'modules', moduleId, 'lingbuilder.module.json')));
+  assert.ok(await exists(path.join(imported.workspacePath, '.lingbuilder', 'modules', 'lingbuilder.fbro.sdk', 'lingbuilder.module.json')));
   const refs = JSON.parse(await fs.readFile(path.join(imported.workspacePath, '.lingbuilder', 'project-modules.json'), 'utf8'));
   assert.ok(refs.enabledModuleIds.includes(moduleId));
   assert.equal(refs.pinnedVersions[moduleId], '1.2.3');
+});
+
+test('通用密码学源码包自动携带只读密码学 SDK', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-lcpp-crypto-sdk-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, 'workspace');
+  await fs.mkdir(workspace, { recursive: true });
+  await createSolutionService(workspace).getSolution();
+  await fs.writeFile(path.join(workspace, 'src', 'MainWindow.lcpp'), [
+    '类 MainWindow : 窗体',
+    '    事件 _MainWindow_创建完毕()',
+    '        调试输出(哈希_SHA256文本("LingBuilder"))',
+    '    结束',
+    '结束类',
+    ''
+  ].join('\n'), 'utf8');
+  await fs.writeFile(path.join(workspace, '.lingbuilder', 'project-modules.json'), JSON.stringify({
+    schemaVersion: 1,
+    enabledModuleIds: ['lingbuilder.win32.basic', 'lingbuilder.crypto.hash'],
+    pinnedVersions: { 'lingbuilder.win32.basic': '1.0.0', 'lingbuilder.crypto.hash': '1.0.0' }
+  }, null, 2), 'utf8');
+  const sdkRoot = path.join(workspace, '.lingbuilder', 'modules', 'lingbuilder.crypto.sdk');
+  await fs.mkdir(sdkRoot, { recursive: true });
+  await fs.writeFile(path.join(sdkRoot, 'lingbuilder.module.json'), JSON.stringify({
+    schemaVersion: 2,
+    id: 'lingbuilder.crypto.sdk',
+    name: '密码学测试 SDK',
+    version: '1.0.0',
+    category: '系统',
+    description: '测试密码学消费者的源码包资产携带。'
+  }, null, 2), 'utf8');
+
+  const packagePath = path.join(root, 'crypto-demo.lcpppkg');
+  const exported = await createLcppSourcePackageService(workspace).exportProject(DEFAULT_PROJECT_ID, packagePath);
+  assert.ok(exported.manifest.bundledSupportModuleIds.includes('lingbuilder.crypto.sdk'));
 });
 
 test('双击关联的 .lcpppkg 会导入并解析为可直接打开的工作区', async t => {

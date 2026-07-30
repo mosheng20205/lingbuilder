@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.574Z",
+  "module": {
+    "id": "lingbuilder.net.dns",
+    "name": "DNS与IP模块",
+    "version": "1.0.0",
+    "description": "提供域名解析、本机名、IP 格式检查和反向查询。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "DNS_解析首个地址",
+      "signature": "DNS_解析首个地址(主机名)",
+      "description": "解析并返回首个 IPv4 或 IPv6 地址。",
+      "insertText": "DNS_解析首个地址(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "DNS_解析首个地址",
+        "runtimeName": "DNS_解析首个地址",
+        "parameters": [
+          {
+            "name": "主机名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "DNS_解析首个地址(\"example.com\")"
+      },
+      "demoInvocation": "DNS_解析首个地址(\"演示参数1\")"
+    },
+    {
+      "index": 2,
+      "name": "DNS_反向查询",
+      "signature": "DNS_反向查询(IP地址)",
+      "description": "对 IP 地址执行反向名称查询。",
+      "insertText": "DNS_反向查询(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "DNS_反向查询",
+        "runtimeName": "DNS_反向查询",
+        "parameters": [
+          {
+            "name": "IP地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "DNS_反向查询(\"https://example.com\")"
+    },
+    {
+      "index": 3,
+      "name": "网络_取本机名",
+      "signature": "网络_取本机名()",
+      "description": "返回 Winsock 本机主机名。",
+      "insertText": "网络_取本机名()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "网络_取本机名",
+        "runtimeName": "网络_取本机名",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "网络_取本机名()"
+    },
+    {
+      "index": 4,
+      "name": "网络_是否IPv4",
+      "signature": "网络_是否IPv4(地址)",
+      "description": "检查是否为合法 IPv4 文本。",
+      "insertText": "网络_是否IPv4(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "网络_是否IPv4",
+        "runtimeName": "网络_是否IPv4",
+        "parameters": [
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "网络_是否IPv4(\"https://example.com\")"
+    },
+    {
+      "index": 5,
+      "name": "网络_是否IPv6",
+      "signature": "网络_是否IPv6(地址)",
+      "description": "检查是否为合法 IPv6 文本。",
+      "insertText": "网络_是否IPv6(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "网络_是否IPv6",
+        "runtimeName": "网络_是否IPv6",
+        "parameters": [
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "网络_是否IPv6(\"https://example.com\")"
+    }
+  ]
+}

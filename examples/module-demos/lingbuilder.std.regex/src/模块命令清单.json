@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.639Z",
+  "module": {
+    "id": "lingbuilder.std.regex",
+    "name": "正则表达式模块",
+    "version": "1.0.0",
+    "description": "基于 C++ ECMAScript 正则语法提供匹配、查找和替换；非法表达式安全返回失败。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "正则_完全匹配",
+      "signature": "正则_完全匹配(文本, 表达式)",
+      "description": "判断整个文本是否匹配表达式。",
+      "insertText": "正则_完全匹配(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "正则_完全匹配",
+        "runtimeName": "正则_完全匹配",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "表达式",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "正则_完全匹配(\"123\", \"[0-9]+\")"
+      },
+      "demoInvocation": "正则_完全匹配(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 2,
+      "name": "正则_是否包含",
+      "signature": "正则_是否包含(文本, 表达式)",
+      "description": "判断文本中是否存在匹配内容。",
+      "insertText": "正则_是否包含(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "正则_是否包含",
+        "runtimeName": "正则_是否包含",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "表达式",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "正则_是否包含(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 3,
+      "name": "正则_取首个",
+      "signature": "正则_取首个(文本, 表达式)",
+      "description": "返回首个匹配文本，没有匹配或表达式非法时返回空文本。",
+      "insertText": "正则_取首个(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "正则_取首个",
+        "runtimeName": "正则_取首个",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "表达式",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "正则_取首个(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 4,
+      "name": "正则_替换",
+      "signature": "正则_替换(文本, 表达式, 替换内容)",
+      "description": "替换全部正则匹配。",
+      "insertText": "正则_替换(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "正则_替换",
+        "runtimeName": "正则_替换",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "表达式",
+            "type": "wideString"
+          },
+          {
+            "name": "替换内容",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "正则_替换(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 5,
+      "name": "正则_匹配数量",
+      "signature": "正则_匹配数量(文本, 表达式)",
+      "description": "返回不重叠匹配数量。",
+      "insertText": "正则_匹配数量(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "正则_匹配数量",
+        "runtimeName": "正则_匹配数量",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "表达式",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "正则_匹配数量(\"演示参数1\", \"演示参数2\")"
+    }
+  ]
+}

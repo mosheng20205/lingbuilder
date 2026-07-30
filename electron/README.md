@@ -1,5 +1,7 @@
 # LingBuilder Electron
 
+> 2026-07-30：新增完整通用密码学模块：哈希、密码哈希/派生、对称加密和非对称密码。运行时使用固定版本 Botan 3.12.0 与官方 BLAKE3 C 1.8.5；运行 `npm run module:crypto-sdk -- --install` 可生成并安装 Win32/x64 SDK 和 `.lbmod`，文件由 SHA-256 清单校验。启用任一通用加密模块后，F5、AI Bridge 构建和 VS 导出会自动物化头文件、BLAKE3 C 源、对应架构 `botan-3.lib`/DLL，并强制 MSVC、动态 CRT 与 C++20。`npm run smoke:crypto-native` 同时编译 Win32/x64，运行标准哈希向量、密码哈希、全部对称算法和 RSA/ECC/SM2/ElGamal 闭环。
+
 > 2026-07-28：修复 FBro 初始化/拖动窗口时的“未响应”。`LB_FBro_Resize` 不再阻塞等待 CEF 创建锁，且只调整宿主直接子窗口，避免递归移动 Chromium 内部 HWND。实际 `fbro` Debug exe 运行 12 秒保持响应，百度页面脚本成功执行。
 
 > 2026-07-28：修复 FBro 窗口改变大小后后退、前进、刷新与地址栏错位。示例的六个导航/浏览器控件现在统一按 `窗口_取事件DPI()` 换算位置和尺寸，避免 150% 等系统缩放下混用物理像素。
@@ -30,6 +32,8 @@
 - `.lcpppkg` 是可直接分享的单文件源码包。文件菜单、命令面板和项目右键菜单均提供“一键导出 LCPP 源码包”。
 - 导出前工作台会提交并保存当前草稿；包内包含目标项目的完整依赖闭包、源码、配置、设计器、项目资源、模块引用及已启用第三方模块。无命令、无 target 的 SDK/资产载体模块也会随包携带。
 - 每个包包含 `lingbuilder-source-package.json` 和独立 `workspace/`，清单记录全部文件大小及 SHA-256。导入拒绝路径越界、符号链接、额外文件、哈希不一致、超过 1GB 的包和超过 2GB 的解压内容。
+- 源码包清单版本 2 还记录最低生成器版本和 `requiredCapabilities`。导出项目使用 ListView 高级 API 时会记录 `win32.listview.advanced-api.v1`；导入会在生成 C++ 前检查能力，避免旧版 IDE 先生成源码、最后才在 MSVC 阶段集中报 `C3861`。
+- 旧版 v1 `.lcpppkg` 仍可由新版 IDE 安全迁移；导入时会重新扫描包内 `.lcpp`，补齐能力清单后再执行生成器能力校验。
 - 双击、拖入或选择 `.lcpppkg` 后，桌面宿主会把它导入“文档/LingBuilder/已导入源码”的唯一新目录并直接打开；不会覆盖已有工作区，第三方模块也只在新工作区内生效。
 - `.env`、PEM/PFX/P12/KEY、常见私钥文件以及 credentials/secrets/tokens JSON 默认排除，并在导出及导入提示中列明。
 
@@ -85,13 +89,14 @@ npm install
 npm run dev
 ```
 
-开发模式会先启动当前 Vite/React/TypeScript 原型服务，再打开 Electron 窗口加载：
+开发模式会先构建桌面主进程与可按工作区启动的服务入口，再启动当前 Vite/React/TypeScript 原型服务并打开 Electron 窗口：
 
 ```text
 http://127.0.0.1:3001/
 ```
 
 开发脚本显式传入工作区、规则手册、回环 host/port，并显式启用仅限 `development + loopback` 的无会话鉴权模式。生产/安装版不能关闭会话鉴权。
+开发模式从“打开工作区”“打开 LCPP 源码包”“关闭当前解决方案”或新窗口切换工作区时，Electron 会自动为目标工作区启动随机回环端口的受管 Vite 服务并切换窗口；失败会恢复原服务和工作区，不需要手工停止或重新执行 `npm run dev`。
 
 ## AI Bridge 连接中心
 
@@ -118,7 +123,7 @@ npm run package:win
 - `package:win` 会先从微软官方地址下载并校验 WebView2 Evergreen Bootstrapper，再冻结到 NSIS 资源；安装阶段仅在注册表未检测到 WebView2 Runtime 时补装，失败不会阻止 LingBuilder 本体安装，可稍后从“工具 → 环境修复中心”重试。
 - 安装版主进程先启动不可见的独立本地服务，显式传入工作区、renderer 静态目录、规则手册、`127.0.0.1` 随机端口和随机会话 token，收到 ready 信息后才加载窗口。
 - renderer 仍使用相对 `/api/*`，Electron 会自动注入本地会话 token；普通 IDE 服务拒绝 `0.0.0.0`，默认不挂载 `/api/ai-bridge/*`。
-- 首次运行会在“文档/LingBuilder/起始工作区”创建干净的“未命名解决方案 / 新建项目”，只复制安装包内置模块等必要资源，不会携带开发仓库项目；以后从安装版专用的 `userData/workspace-state.packaged.json` 恢复最近工作区，开发版继续使用独立的 `workspace-state.json`。文件菜单、命令面板、解决方案根节点右键菜单和载入失败页均可“关闭当前解决方案”，该操作保留原磁盘文件并切换到新的空白工作区。工具栏“打开”使用原生目录选择器并重启本地服务。
+- 首次运行会在“文档/LingBuilder/起始工作区”创建干净的“未命名解决方案 / 新建项目”，只复制安装包内置模块等必要资源，不会携带开发仓库项目；以后从安装版专用的 `userData/workspace-state.packaged.json` 恢复最近工作区，开发版继续使用独立的 `workspace-state.json`。文件菜单、命令面板、解决方案根节点右键菜单和载入失败页均可“关闭当前解决方案”，该操作保留原磁盘文件并切换到新的空白工作区。工具栏“打开”使用原生选择器并由主进程自动切换受管本地服务，开发版与安装版行为一致。
 - 规则手册、模块手册、renderer、server 和默认工作区模板均作为打包资源携带，不依赖安装目录或启动时的 `cwd`。
 
 ## 设计约定
@@ -133,6 +138,7 @@ npm run package:win
 
 - 控件唯一目录位于 `src/services/windowDesigner/win32ControlRegistry.ts`，不得再在 React、模块清单和 C++ 生成器分别维护名称/事件清单。
 - 新建项目默认启用 `lingbuilder.win32.basic`；ListView、TreeView、Tab、日期、工具栏、状态栏、RichEdit 和系统通用对话框来自可选 `lingbuilder.win32.common-controls`。
+- ListView 共公开 85 条确定性高层命令；其中 71 条高级命令集中在 `src/services/modules/listViewApiCatalog.ts`，模块 contribution、binding、成员补全和 C++ 生成回归测试必须保持同源。`src/listview-api-demo` 是全量调用和 `LVS_OWNERDATA` 15000 行虚拟列表的可分享示例。
 - 设计器项目保存为 `schemaVersion: 2`，控件专属数据位于 `properties`，旧无版本项目在读取时安全迁移。
 - 图片框“图片源”右侧按钮调用 Electron 原生文件对话框；选中的本地图片由 `src/services/windowDesigner/designerAssetService.ts` 复制到项目 `assets/`，模型只保存相对路径。受控预览 API、F5、原生导出及 AI Bridge 共用该服务；生成的 Visual Studio 工程会在构建后把图片复制到 exe 输出目录。
 - 解决方案资源管理器中右键项目并选择“添加资源…”也可导入图片；工作台命令会按所选项目自动复制到 `assets/`（默认项目）或 `assets/<projectId>/`（多项目）。项目树的“图片资源 (assets)”组会列出全部图片：单击图片可预览真实资源和尺寸，右键图片并选择“复制相对路径”即可获得可直接用于 `.lcpp` 的路径。
@@ -396,3 +402,31 @@ Visual C++ 项目使用固定的 `<sourceRoot>/项目数据类型.lcpp` 保存�
 
 复制、剪切、粘贴使用带 `LINGBUILDER_DESIGNER_CONTROLS:` 前缀的版本化 JSON 剪贴板。`DesignerContainerLayoutRegistry` 为窗口、GroupBox、Grid、Pager、TabControl 和 ReBar 注册内置适配，并向模块开放 absolute/flow/stack/grid/dock/slots/single/custom 布局描述。粘贴时只重新适配复制子树的顶层节点，内部父子关系、相对位置、插槽和引用保持不变。
 > 2026-07-28：修复 FBro F5 空白窗口。SDK 查找现在从任意深度构建目录向上识别 `.lingbuilder-build`，缺失/损坏依赖会在编译前阻断，不再启动空白占位程序；同时修正生成 C++ 的 Windows 路径分隔符转义，避免 CEF 缓存目录落到 `程序.exe` 下。F5 中间 VS 工程复用已校验 `bin`，便携 VS 导出携带完整 78 项 runtime 和增量脚本。真实 MSVC x64 冒烟测试已确认创建事件、网页加载完成事件、错误 VIP 中文诊断及无 Key 泄漏。
+
+# 云端系统 AI 供应商
+
+管理后台 `/admin` 的“系统 AI 供应商”用于配置 IDE“AI 智能编程助手 → 系统 AI”的云端模型通道。DeepSeek V4 预设会发布 `deepseek-v4-flash`、`deepseek-v4-pro`；自定义模式支持公开 HTTPS Base URL、Model Name、API Key，以及 OpenAI 兼容或 Anthropic Messages 协议。桌面端仍只读取云端 `/v1/ai/models` 暴露的逻辑模型别名并通过云端 AI 接口调用，不接收供应商 Base URL 或明文密钥。
+
+# Win32 DataGrid
+
+0.2.5 在“高级控件”提供独立 `DataGrid / 数据表格`。设计器使用结构化三页编辑器配置列、初始数据和单元格覆盖，支持文本、整数、小数、日期、选择框、Switch、图片、进度、组合框和多按钮列。原生生成使用独立 `LingBuilderDataGrid` HWND、双缓冲可见区域绘制和按需临时编辑器；不会为每个单元格创建 HWND。
+
+原生特殊单元格与设计器保持同一视觉语义：Switch 使用 GDI+ 抗锯齿圆角轨道和白色滑块，进度条使用抗锯齿圆角轨道、状态色填充和居中文字；组合框静态显示中文标签及下拉箭头，单击后创建并展开深色自绘的真实 `COMBOBOX`。项目图片路径相对 EXE 目录解析，F5 和 Visual Studio 导出会把非默认项目资源复制到 `assets/<项目ID>/`；图片显示方式支持 `tile/contain/cover/center/stretch`。
+
+接口目录现有 92 条命令，包括 `表格_取进度状态`、`表格_取行是否选中`，以及直接读写 `.xlsx` 的 `表格_导入Excel`、`表格_导出Excel`。XLSX 使用标准 SpreadsheetML 和 Windows 自带 ZIP Shell，无需安装 Excel；首版仅处理静态表格的第一个工作表，图片值按路径文本导入导出。CSV/TSV 接口继续使用可往返文本，便于配合文件模块自行持久化。
+
+命令目录位于 `src/services/modules/dataGridApiCatalog.ts`，模型规范化位于 `src/services/windowDesigner/dataGridModel.ts`，嵌入式 C++ 运行时位于 `src/services/windowDesigner/dataGridNativeRuntime.ts`。真实 x64 冒烟运行：
+
+```bash
+npm run smoke:datagrid-native
+```
+
+源码包会为 DataGrid 控件和 `表格_` 命令写入 `win32.datagrid.v1`，最低生成器版本为 0.2.5。旧 new_emoji Table 不自动转换后端。
+
+完整示例项目位于 `src/datagrid-api-demo/`，设计器模型位于 `.lingbuilder/projects/datagrid-api-demo/window-designer.json`，已加入当前解决方案。它覆盖全部 92 条 `表格_` 命令、16 个专属事件、10 种列类型和 100 万行虚拟数据。界面采用 9 个选项卡，86 个可直接调用接口各自拥有独立按钮且每个按钮处理器只调用一条 DataGrid 命令；事件上下文和校验拒绝放在对应生命周期事件中，避免用无效按钮误导新手。真实原生验收可运行：
+
+```bash
+npm run smoke:datagrid-demo
+```
+
+可直接分享的新手完整包位于根目录 `exports/LingBuilder-DataGrid-All-APIs.lcpppkg`。导出和项目构建会识别源码根目录中误创建的嵌套 LingBuilder 工作区，不会再把其中的第二份 `MainWindow.lcpp` 打入包或参与 F5 构建。

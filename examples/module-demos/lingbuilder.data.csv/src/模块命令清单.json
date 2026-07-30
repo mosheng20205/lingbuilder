@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.507Z",
+  "module": {
+    "id": "lingbuilder.data.csv",
+    "name": "CSV数据模块",
+    "version": "1.0.0",
+    "description": "提供 RFC 4180 风格的 CSV 字段转义、行生成和字段读取。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "CSV_转义字段",
+      "signature": "CSV_转义字段(字段)",
+      "description": "按需添加双引号并转义字段。",
+      "insertText": "CSV_转义字段(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CSV_转义字段",
+        "runtimeName": "CSV_转义字段",
+        "parameters": [
+          {
+            "name": "字段",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CSV_转义字段(\"演示参数1\")"
+    },
+    {
+      "index": 2,
+      "name": "CSV_生成两列",
+      "signature": "CSV_生成两列(第一列, 第二列)",
+      "description": "生成包含两个字段的一行 CSV。",
+      "insertText": "CSV_生成两列(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CSV_生成两列",
+        "runtimeName": "CSV_生成两列",
+        "parameters": [
+          {
+            "name": "第一列",
+            "type": "wideString"
+          },
+          {
+            "name": "第二列",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CSV_生成两列(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 3,
+      "name": "CSV_生成三列",
+      "signature": "CSV_生成三列(第一列, 第二列, 第三列)",
+      "description": "生成包含三个字段的一行 CSV。",
+      "insertText": "CSV_生成三列(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CSV_生成三列",
+        "runtimeName": "CSV_生成三列",
+        "parameters": [
+          {
+            "name": "第一列",
+            "type": "wideString"
+          },
+          {
+            "name": "第二列",
+            "type": "wideString"
+          },
+          {
+            "name": "第三列",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CSV_生成三列(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 4,
+      "name": "CSV_字段数量",
+      "signature": "CSV_字段数量(行文本)",
+      "description": "解析一行 CSV 并返回字段数。",
+      "insertText": "CSV_字段数量(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CSV_字段数量",
+        "runtimeName": "CSV_字段数量",
+        "parameters": [
+          {
+            "name": "行文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CSV_字段数量(\"演示参数1\")"
+    },
+    {
+      "index": 5,
+      "name": "CSV_取字段",
+      "signature": "CSV_取字段(行文本, 索引)",
+      "description": "按从 0 开始索引读取字段。",
+      "insertText": "CSV_取字段(\"$1\", 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CSV_取字段",
+        "runtimeName": "CSV_取字段",
+        "parameters": [
+          {
+            "name": "行文本",
+            "type": "wideString"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CSV_取字段(\"演示参数1\", 1)"
+    }
+  ]
+}

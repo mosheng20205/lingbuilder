@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.656Z",
+  "module": {
+    "id": "lingbuilder.system.shell",
+    "name": "系统外壳模块",
+    "version": "1.0.0",
+    "description": "提供打开文件或网址、资源管理器定位和常用系统目录读取。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "系统_打开",
+      "signature": "系统_打开(目标)",
+      "description": "使用系统默认程序打开文件、目录或网址。",
+      "insertText": "系统_打开(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "系统_打开",
+        "runtimeName": "系统_打开",
+        "parameters": [
+          {
+            "name": "目标",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "系统_打开(\"https://example.com\")"
+      },
+      "demoInvocation": "系统_打开(\"演示参数1\")"
+    },
+    {
+      "index": 2,
+      "name": "系统_定位文件",
+      "signature": "系统_定位文件(路径)",
+      "description": "在资源管理器中选中指定文件。",
+      "insertText": "系统_定位文件(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "系统_定位文件",
+        "runtimeName": "系统_定位文件",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "系统_定位文件(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 3,
+      "name": "系统_取临时目录",
+      "signature": "系统_取临时目录()",
+      "description": "返回当前用户临时目录。",
+      "insertText": "系统_取临时目录()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "系统_取临时目录",
+        "runtimeName": "系统_取临时目录",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "系统_取临时目录()"
+    },
+    {
+      "index": 4,
+      "name": "系统_取桌面目录",
+      "signature": "系统_取桌面目录()",
+      "description": "返回当前用户桌面目录。",
+      "insertText": "系统_取桌面目录()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "系统_取桌面目录",
+        "runtimeName": "系统_取桌面目录",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "系统_取桌面目录()"
+    },
+    {
+      "index": 5,
+      "name": "系统_取文档目录",
+      "signature": "系统_取文档目录()",
+      "description": "返回当前用户文档目录。",
+      "insertText": "系统_取文档目录()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "系统_取文档目录",
+        "runtimeName": "系统_取文档目录",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "系统_取文档目录()"
+    }
+  ]
+}

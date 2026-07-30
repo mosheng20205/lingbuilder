@@ -32,6 +32,7 @@ import {
 import { getLingCppSemanticDiagnostics } from "./src/services/lingCpp/languageService";
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from "./src/services/lingCpp/projectGlobalService";
 import { createProjectTypeContext, isProjectDataTypesFilePath } from "./src/services/lingCpp/projectDataTypeService";
+import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactRelativePath } from "./src/services/solution/nestedWorkspaceGuard";
 import {
   analyzeFunctionLibraryDependencyClosure,
   createFunctionLibraryTemplate,
@@ -2543,6 +2544,7 @@ async function resolveLingCppProjectSources(
   const solution = await solutionService.getSolution();
   const projectRef = solutionService.getProject(solution, projectId);
   const sourceRoot = projectRef.sourceRoot.replace(/\\/g, "/").replace(/\/+$/u, "");
+  const nestedWorkspacePlan = await detectNestedWorkspaceArtifacts(path.resolve(getRepoWorkspaceRoot(), sourceRoot));
   if (Array.isArray(explicitSources) && explicitSources.length > 0) {
     let totalSize = 0;
     const unique = new Map<string, LingCppProjectSourceFile>();
@@ -2557,6 +2559,8 @@ async function resolveLingCppProjectSources(
       if (filePath !== sourceRoot && !filePath.startsWith(`${sourceRoot}/`)) {
         throw new Error(`项目源码路径不属于当前项目源码目录：${source.filePath}`);
       }
+      const sourceRelativePath = filePath === sourceRoot ? '' : filePath.slice(sourceRoot.length + 1);
+      if (isNestedWorkspaceArtifactRelativePath(sourceRelativePath, nestedWorkspacePlan)) continue;
       totalSize += Buffer.byteLength(source.sourceCode, "utf8");
       if (totalSize > 8 * 1024 * 1024) throw new Error("项目 LCPP 源码集合超过 8 MB 限制。");
       unique.set(filePath.toLocaleLowerCase(), { filePath, sourceCode: source.sourceCode });
@@ -3400,7 +3404,8 @@ async function compileWin32Preview(
       exePath,
       "-luser32",
       "-lgdi32",
-      "-lcomctl32"
+      "-lcomctl32",
+      "-lole32"
     ];
 
   try {
@@ -3492,6 +3497,7 @@ async function compileMsvcPreviewWithModules(
     "user32.lib",
     "gdi32.lib",
     "comctl32.lib",
+    "ole32.lib",
     ...moduleLibs,
     ...(buildConfiguration.mode === "Debug" ? ["/DEBUG", "/INCREMENTAL:NO"] : [])
   ];

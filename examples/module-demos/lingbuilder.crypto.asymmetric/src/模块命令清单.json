@@ -1,0 +1,639 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.490Z",
+  "module": {
+    "id": "lingbuilder.crypto.asymmetric",
+    "name": "非对称密码模块",
+    "version": "1.0.0",
+    "description": "提供 RSA、ECDSA P-256、ECDH P-256、X25519、SM2 和 ElGamal 的密钥、加密、签名或协商能力。私钥使用 PKCS#8 PEM，公钥使用 X.509 PEM。"
+  },
+  "commandCount": 27,
+  "commands": [
+    {
+      "index": 1,
+      "name": "非对称_RSA生成私钥",
+      "signature": "非对称_RSA生成私钥(位数)",
+      "description": "生成 RSA PKCS#8 PEM 私钥。",
+      "insertText": "非对称_RSA生成私钥(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_RSA生成私钥",
+        "runtimeName": "非对称_RSA生成私钥",
+        "parameters": [
+          {
+            "name": "位数",
+            "type": "int",
+            "description": "允许 2048、3072 或 4096。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "非对称_RSA生成私钥(3072)"
+      },
+      "demoInvocation": "非对称_RSA生成私钥(1)"
+    },
+    {
+      "index": 2,
+      "name": "非对称_RSA取公钥",
+      "signature": "非对称_RSA取公钥(私钥PEM)",
+      "description": "从 RSA 私钥导出 X.509 PEM 公钥。",
+      "insertText": "非对称_RSA取公钥(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_RSA取公钥",
+        "runtimeName": "非对称_RSA取公钥",
+        "parameters": [
+          {
+            "name": "私钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_RSA取公钥(\"演示参数1\")"
+    },
+    {
+      "index": 3,
+      "name": "非对称_RSA_OAEP_SHA256加密",
+      "signature": "非对称_RSA_OAEP_SHA256加密(明文, 公钥PEM)",
+      "description": "使用 RSA-OAEP(SHA-256) 加密短文本并返回 Base64。",
+      "insertText": "非对称_RSA_OAEP_SHA256加密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_RSA_OAEP_SHA256加密",
+        "runtimeName": "非对称_RSA_OAEP_SHA256加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString"
+          },
+          {
+            "name": "公钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_RSA_OAEP_SHA256加密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 4,
+      "name": "非对称_RSA_OAEP_SHA256解密",
+      "signature": "非对称_RSA_OAEP_SHA256解密(Base64密文, 私钥PEM)",
+      "description": "使用 RSA-OAEP(SHA-256) 解密短文本。",
+      "insertText": "非对称_RSA_OAEP_SHA256解密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_RSA_OAEP_SHA256解密",
+        "runtimeName": "非对称_RSA_OAEP_SHA256解密",
+        "parameters": [
+          {
+            "name": "Base64密文",
+            "type": "wideString"
+          },
+          {
+            "name": "私钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_RSA_OAEP_SHA256解密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 5,
+      "name": "非对称_RSA_PSS_SHA256签名",
+      "signature": "非对称_RSA_PSS_SHA256签名(文本, 私钥PEM)",
+      "description": "使用 RSA-PSS(SHA-256) 签名并返回 Base64。",
+      "insertText": "非对称_RSA_PSS_SHA256签名(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_RSA_PSS_SHA256签名",
+        "runtimeName": "非对称_RSA_PSS_SHA256签名",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "私钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_RSA_PSS_SHA256签名(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 6,
+      "name": "非对称_RSA_PSS_SHA256验签",
+      "signature": "非对称_RSA_PSS_SHA256验签(文本, Base64签名, 公钥PEM)",
+      "description": "验证 RSA-PSS(SHA-256) 签名。",
+      "insertText": "非对称_RSA_PSS_SHA256验签(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "非对称_RSA_PSS_SHA256验签",
+        "runtimeName": "非对称_RSA_PSS_SHA256验签",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "Base64签名",
+            "type": "wideString"
+          },
+          {
+            "name": "公钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_RSA_PSS_SHA256验签(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 7,
+      "name": "非对称_ECDSA_P256生成私钥",
+      "signature": "非对称_ECDSA_P256生成私钥()",
+      "description": "生成 ECDSA secp256r1 PKCS#8 PEM 私钥。",
+      "insertText": "非对称_ECDSA_P256生成私钥()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_ECDSA_P256生成私钥",
+        "runtimeName": "非对称_ECDSA_P256生成私钥",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_ECDSA_P256生成私钥()"
+    },
+    {
+      "index": 8,
+      "name": "非对称_ECDSA_P256取公钥",
+      "signature": "非对称_ECDSA_P256取公钥(私钥PEM)",
+      "description": "从 ECDSA P-256 私钥导出公钥。",
+      "insertText": "非对称_ECDSA_P256取公钥(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_ECDSA_P256取公钥",
+        "runtimeName": "非对称_ECDSA_P256取公钥",
+        "parameters": [
+          {
+            "name": "私钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_ECDSA_P256取公钥(\"演示参数1\")"
+    },
+    {
+      "index": 9,
+      "name": "非对称_ECDSA_P256签名",
+      "signature": "非对称_ECDSA_P256签名(文本, 私钥PEM)",
+      "description": "使用 ECDSA P-256 与 SHA-256 签名。",
+      "insertText": "非对称_ECDSA_P256签名(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_ECDSA_P256签名",
+        "runtimeName": "非对称_ECDSA_P256签名",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "私钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_ECDSA_P256签名(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 10,
+      "name": "非对称_ECDSA_P256验签",
+      "signature": "非对称_ECDSA_P256验签(文本, Base64签名, 公钥PEM)",
+      "description": "验证 ECDSA P-256/SHA-256 签名。",
+      "insertText": "非对称_ECDSA_P256验签(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "非对称_ECDSA_P256验签",
+        "runtimeName": "非对称_ECDSA_P256验签",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "Base64签名",
+            "type": "wideString"
+          },
+          {
+            "name": "公钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_ECDSA_P256验签(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 11,
+      "name": "非对称_SM2生成私钥",
+      "signature": "非对称_SM2生成私钥()",
+      "description": "生成 SM2 P-256 PKCS#8 PEM 私钥。",
+      "insertText": "非对称_SM2生成私钥()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_SM2生成私钥",
+        "runtimeName": "非对称_SM2生成私钥",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_SM2生成私钥()"
+    },
+    {
+      "index": 12,
+      "name": "非对称_SM2取公钥",
+      "signature": "非对称_SM2取公钥(私钥PEM)",
+      "description": "从 SM2 私钥导出公钥。",
+      "insertText": "非对称_SM2取公钥(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_SM2取公钥",
+        "runtimeName": "非对称_SM2取公钥",
+        "parameters": [
+          {
+            "name": "私钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_SM2取公钥(\"演示参数1\")"
+    },
+    {
+      "index": 13,
+      "name": "非对称_SM2加密",
+      "signature": "非对称_SM2加密(明文, 公钥PEM)",
+      "description": "使用 SM2/SM3 加密文本并返回 Base64。",
+      "insertText": "非对称_SM2加密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_SM2加密",
+        "runtimeName": "非对称_SM2加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString"
+          },
+          {
+            "name": "公钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_SM2加密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 14,
+      "name": "非对称_SM2解密",
+      "signature": "非对称_SM2解密(Base64密文, 私钥PEM)",
+      "description": "使用 SM2/SM3 解密文本。",
+      "insertText": "非对称_SM2解密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_SM2解密",
+        "runtimeName": "非对称_SM2解密",
+        "parameters": [
+          {
+            "name": "Base64密文",
+            "type": "wideString"
+          },
+          {
+            "name": "私钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_SM2解密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 15,
+      "name": "非对称_SM2签名",
+      "signature": "非对称_SM2签名(文本, 私钥PEM, 用户标识)",
+      "description": "使用 SM2/SM3 签名。",
+      "insertText": "非对称_SM2签名(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_SM2签名",
+        "runtimeName": "非对称_SM2签名",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "私钥PEM",
+            "type": "wideString"
+          },
+          {
+            "name": "用户标识",
+            "type": "wideString",
+            "description": "没有协议要求时可使用 1234567812345678。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_SM2签名(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 16,
+      "name": "非对称_SM2验签",
+      "signature": "非对称_SM2验签(文本, Base64签名, 公钥PEM, 用户标识)",
+      "description": "验证 SM2/SM3 签名。",
+      "insertText": "非对称_SM2验签(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "非对称_SM2验签",
+        "runtimeName": "非对称_SM2验签",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "Base64签名",
+            "type": "wideString"
+          },
+          {
+            "name": "公钥PEM",
+            "type": "wideString"
+          },
+          {
+            "name": "用户标识",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_SM2验签(\"演示参数1\", \"演示参数2\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 17,
+      "name": "非对称_ECDH_P256生成私钥",
+      "signature": "非对称_ECDH_P256生成私钥()",
+      "description": "生成 ECDH secp256r1 私钥。",
+      "insertText": "非对称_ECDH_P256生成私钥()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_ECDH_P256生成私钥",
+        "runtimeName": "非对称_ECDH_P256生成私钥",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_ECDH_P256生成私钥()"
+    },
+    {
+      "index": 18,
+      "name": "非对称_ECDH_P256取公钥",
+      "signature": "非对称_ECDH_P256取公钥(私钥PEM)",
+      "description": "导出 ECDH P-256 公钥。",
+      "insertText": "非对称_ECDH_P256取公钥(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_ECDH_P256取公钥",
+        "runtimeName": "非对称_ECDH_P256取公钥",
+        "parameters": [
+          {
+            "name": "私钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_ECDH_P256取公钥(\"演示参数1\")"
+    },
+    {
+      "index": 19,
+      "name": "非对称_ECDH_P256协商",
+      "signature": "非对称_ECDH_P256协商(本方私钥PEM, 对方公钥PEM)",
+      "description": "执行 ECDH P-256 并经 HKDF-SHA256 导出 32 字节共享密钥十六进制。",
+      "insertText": "非对称_ECDH_P256协商(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_ECDH_P256协商",
+        "runtimeName": "非对称_ECDH_P256协商",
+        "parameters": [
+          {
+            "name": "本方私钥PEM",
+            "type": "wideString"
+          },
+          {
+            "name": "对方公钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_ECDH_P256协商(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 20,
+      "name": "非对称_X25519生成私钥",
+      "signature": "非对称_X25519生成私钥()",
+      "description": "生成 X25519 私钥。",
+      "insertText": "非对称_X25519生成私钥()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_X25519生成私钥",
+        "runtimeName": "非对称_X25519生成私钥",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_X25519生成私钥()"
+    },
+    {
+      "index": 21,
+      "name": "非对称_X25519取公钥",
+      "signature": "非对称_X25519取公钥(私钥PEM)",
+      "description": "导出 X25519 公钥。",
+      "insertText": "非对称_X25519取公钥(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_X25519取公钥",
+        "runtimeName": "非对称_X25519取公钥",
+        "parameters": [
+          {
+            "name": "私钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_X25519取公钥(\"演示参数1\")"
+    },
+    {
+      "index": 22,
+      "name": "非对称_X25519协商",
+      "signature": "非对称_X25519协商(本方私钥PEM, 对方公钥PEM)",
+      "description": "执行 X25519 并经 HKDF-SHA256 导出 32 字节共享密钥十六进制。",
+      "insertText": "非对称_X25519协商(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_X25519协商",
+        "runtimeName": "非对称_X25519协商",
+        "parameters": [
+          {
+            "name": "本方私钥PEM",
+            "type": "wideString"
+          },
+          {
+            "name": "对方公钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_X25519协商(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 23,
+      "name": "非对称_ElGamal生成私钥",
+      "signature": "非对称_ElGamal生成私钥(位数)",
+      "description": "生成 ElGamal PKCS#8 PEM 私钥；仅用于兼容。",
+      "insertText": "非对称_ElGamal生成私钥(0)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "非对称_ElGamal生成私钥",
+        "runtimeName": "非对称_ElGamal生成私钥",
+        "parameters": [
+          {
+            "name": "位数",
+            "type": "int",
+            "description": "允许 2048 或 3072。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_ElGamal生成私钥(1)"
+    },
+    {
+      "index": 24,
+      "name": "非对称_ElGamal取公钥",
+      "signature": "非对称_ElGamal取公钥(私钥PEM)",
+      "description": "从 ElGamal 私钥导出公钥。",
+      "insertText": "非对称_ElGamal取公钥(\"$1\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "非对称_ElGamal取公钥",
+        "runtimeName": "非对称_ElGamal取公钥",
+        "parameters": [
+          {
+            "name": "私钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_ElGamal取公钥(\"演示参数1\")"
+    },
+    {
+      "index": 25,
+      "name": "非对称_ElGamal加密",
+      "signature": "非对称_ElGamal加密(明文, 公钥PEM)",
+      "description": "使用 ElGamal/OAEP(SHA-256) 加密短文本；仅用于兼容。",
+      "insertText": "非对称_ElGamal加密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "非对称_ElGamal加密",
+        "runtimeName": "非对称_ElGamal加密",
+        "parameters": [
+          {
+            "name": "明文",
+            "type": "wideString"
+          },
+          {
+            "name": "公钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_ElGamal加密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 26,
+      "name": "非对称_ElGamal解密",
+      "signature": "非对称_ElGamal解密(Base64密文, 私钥PEM)",
+      "description": "解密 ElGamal/OAEP(SHA-256) 密文；仅用于兼容。",
+      "insertText": "非对称_ElGamal解密(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "非对称_ElGamal解密",
+        "runtimeName": "非对称_ElGamal解密",
+        "parameters": [
+          {
+            "name": "Base64密文",
+            "type": "wideString"
+          },
+          {
+            "name": "私钥PEM",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_ElGamal解密(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 27,
+      "name": "非对称_取错误",
+      "signature": "非对称_取错误()",
+      "description": "读取最近一次非对称操作失败的中文错误。",
+      "insertText": "非对称_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "非对称_取错误",
+        "runtimeName": "非对称_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "非对称_取错误()"
+    }
+  ]
+}

@@ -99,7 +99,11 @@ async function launchSmoke(name, documentsRoot, userDataRoot) {
   child.stderr.on('data', chunk => { stderr += String(chunk); });
 
   let result;
-  const deadline = Date.now() + 60_000;
+  // The packaged workspace carries the full CEF3/FBro SDKs and the managed
+  // Bridge may need to probe several ports on slower disks. Keep the harness
+  // alive long enough for the renderer's own bounded checks to report a
+  // useful result instead of terminating the application mid-probe.
+  const deadline = Date.now() + 240_000;
   try {
     while (Date.now() < deadline && !result) {
       try {
@@ -110,7 +114,10 @@ async function launchSmoke(name, documentsRoot, userDataRoot) {
       if (!result && child.exitCode !== null) break;
       if (!result) await delay(100);
     }
-    if (!result) throw new Error(`安装版冒烟未产生结果。exit=${child.exitCode}\n${stderr || stdout}`);
+    if (!result) {
+      const progress = await fs.readFile(`${resultPath}.progress`, 'utf8').catch(() => '未写入阶段进度');
+      throw new Error(`安装版冒烟未产生结果。exit=${child.exitCode}\n阶段：${progress}\n${stderr || stdout}`);
+    }
 
     while (child.exitCode === null && Date.now() < deadline) await delay(50);
     if (child.exitCode === null) throw new Error('安装版写入结果后未能在超时内自行退出。');

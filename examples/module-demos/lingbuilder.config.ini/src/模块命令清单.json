@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.483Z",
+  "module": {
+    "id": "lingbuilder.config.ini",
+    "name": "INI 配置模块",
+    "version": "1.0.0",
+    "description": "使用 Windows Unicode 配置 API 读取和写入 INI 文件。"
+  },
+  "commandCount": 6,
+  "commands": [
+    {
+      "index": 1,
+      "name": "INI_读文本",
+      "signature": "INI_读文本(文件, 节, 键, 默认值)",
+      "description": "读取 INI 文本值。",
+      "insertText": "INI_读文本(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "INI_读文本",
+        "runtimeName": "INI_读文本",
+        "parameters": [
+          {
+            "name": "文件",
+            "type": "wideString"
+          },
+          {
+            "name": "节",
+            "type": "wideString"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "默认值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "INI_读文本(\"module-demo-temp.txt\", \"演示参数2\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 2,
+      "name": "INI_读整数",
+      "signature": "INI_读整数(文件, 节, 键, 默认值)",
+      "description": "读取 INI 整数值。",
+      "insertText": "INI_读整数(\"$1\", \"$2\", \"$3\", 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "INI_读整数",
+        "runtimeName": "INI_读整数",
+        "parameters": [
+          {
+            "name": "文件",
+            "type": "wideString"
+          },
+          {
+            "name": "节",
+            "type": "wideString"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "默认值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "INI_读整数(\"module-demo-temp.txt\", \"演示参数2\", \"演示参数3\", 1)"
+    },
+    {
+      "index": 3,
+      "name": "INI_写文本",
+      "signature": "INI_写文本(文件, 节, 键, 值)",
+      "description": "写入 INI 文本值。",
+      "insertText": "INI_写文本(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "INI_写文本",
+        "runtimeName": "INI_写文本",
+        "parameters": [
+          {
+            "name": "文件",
+            "type": "wideString"
+          },
+          {
+            "name": "节",
+            "type": "wideString"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "INI_写文本(\"module-demo-temp.txt\", \"演示参数2\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 4,
+      "name": "INI_写整数",
+      "signature": "INI_写整数(文件, 节, 键, 值)",
+      "description": "写入 INI 整数值。",
+      "insertText": "INI_写整数(\"$1\", \"$2\", \"$3\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "INI_写整数",
+        "runtimeName": "INI_写整数",
+        "parameters": [
+          {
+            "name": "文件",
+            "type": "wideString"
+          },
+          {
+            "name": "节",
+            "type": "wideString"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "INI_写整数(\"module-demo-temp.txt\", \"演示参数2\", \"演示参数3\", 1)"
+    },
+    {
+      "index": 5,
+      "name": "INI_删除键",
+      "signature": "INI_删除键(文件, 节, 键)",
+      "description": "删除指定 INI 键。",
+      "insertText": "INI_删除键(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "INI_删除键",
+        "runtimeName": "INI_删除键",
+        "parameters": [
+          {
+            "name": "文件",
+            "type": "wideString"
+          },
+          {
+            "name": "节",
+            "type": "wideString"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "INI_删除键(\"module-demo-temp.txt\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 6,
+      "name": "INI_删除节",
+      "signature": "INI_删除节(文件, 节)",
+      "description": "删除整个 INI 节。",
+      "insertText": "INI_删除节(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "INI_删除节",
+        "runtimeName": "INI_删除节",
+        "parameters": [
+          {
+            "name": "文件",
+            "type": "wideString"
+          },
+          {
+            "name": "节",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "INI_删除节(\"module-demo-temp.txt\", \"演示参数2\")"
+    }
+  ]
+}

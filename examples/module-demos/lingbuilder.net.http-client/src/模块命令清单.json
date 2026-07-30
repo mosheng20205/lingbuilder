@@ -1,0 +1,155 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.582Z",
+  "module": {
+    "id": "lingbuilder.net.http-client",
+    "name": "HTTP客户端模块",
+    "version": "1.0.0",
+    "description": "基于 WinHTTP 提供同步 HTTP/HTTPS 请求，并保留状态码、响应正文和中文错误。"
+  },
+  "commandCount": 7,
+  "commands": [
+    {
+      "index": 1,
+      "name": "HTTP客户端_请求",
+      "signature": "HTTP客户端_请求(方法, 地址, 正文, 超时毫秒)",
+      "description": "发送一次 UTF-8 HTTP 请求。",
+      "insertText": "HTTP客户端_请求(\"$1\", \"$2\", \"$3\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "HTTP客户端_请求",
+        "runtimeName": "HTTP客户端_请求",
+        "parameters": [
+          {
+            "name": "方法",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "正文",
+            "type": "wideString"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "HTTP客户端_请求(\"演示参数1\", \"https://example.com\", \"演示参数3\", 1)"
+    },
+    {
+      "index": 2,
+      "name": "HTTP客户端_GET",
+      "signature": "HTTP客户端_GET(地址)",
+      "description": "发送 GET 请求。",
+      "insertText": "HTTP客户端_GET(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "HTTP客户端_GET",
+        "runtimeName": "HTTP客户端_GET",
+        "parameters": [
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_GET(\"https://example.com\")"
+      },
+      "demoInvocation": "HTTP客户端_GET(\"https://example.com\")"
+    },
+    {
+      "index": 3,
+      "name": "HTTP客户端_POST",
+      "signature": "HTTP客户端_POST(地址, 正文)",
+      "description": "发送 application/json UTF-8 POST 请求。",
+      "insertText": "HTTP客户端_POST(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "HTTP客户端_POST",
+        "runtimeName": "HTTP客户端_POST",
+        "parameters": [
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "正文",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "HTTP客户端_POST(\"https://example.com\", \"演示参数2\")"
+    },
+    {
+      "index": 4,
+      "name": "HTTP客户端_取状态码",
+      "signature": "HTTP客户端_取状态码()",
+      "description": "返回最近响应的 HTTP 状态码。",
+      "insertText": "HTTP客户端_取状态码()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "HTTP客户端_取状态码",
+        "runtimeName": "HTTP客户端_取状态码",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "HTTP客户端_取状态码()"
+    },
+    {
+      "index": 5,
+      "name": "HTTP客户端_取响应文本",
+      "signature": "HTTP客户端_取响应文本()",
+      "description": "返回最近响应正文，按 UTF-8 解码。",
+      "insertText": "HTTP客户端_取响应文本()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "HTTP客户端_取响应文本",
+        "runtimeName": "HTTP客户端_取响应文本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "HTTP客户端_取响应文本()"
+    },
+    {
+      "index": 6,
+      "name": "HTTP客户端_取错误",
+      "signature": "HTTP客户端_取错误()",
+      "description": "返回最近请求的中文错误信息。",
+      "insertText": "HTTP客户端_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "HTTP客户端_取错误",
+        "runtimeName": "HTTP客户端_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "HTTP客户端_取错误()"
+    },
+    {
+      "index": 7,
+      "name": "HTTP客户端_清空状态",
+      "signature": "HTTP客户端_清空状态()",
+      "description": "清空最近状态码、响应和错误。",
+      "insertText": "HTTP客户端_清空状态()",
+      "returnType": "空",
+      "binding": {
+        "command": "HTTP客户端_清空状态",
+        "runtimeName": "HTTP客户端_清空状态",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "HTTP客户端_清空状态()"
+    }
+  ]
+}

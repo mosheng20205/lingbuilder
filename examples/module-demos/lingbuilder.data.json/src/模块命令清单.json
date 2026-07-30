@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.510Z",
+  "module": {
+    "id": "lingbuilder.data.json",
+    "name": "JSON 数据模块",
+    "version": "1.0.0",
+    "description": "提供无第三方依赖的 JSON 合法性检查、字符串转义和顶层对象字段读取。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "JSON_是否有效",
+      "signature": "JSON_是否有效(JSON文本)",
+      "description": "严格检查 JSON 文本语法是否完整有效。",
+      "insertText": "JSON_是否有效(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "JSON_是否有效",
+        "runtimeName": "JSON_是否有效",
+        "parameters": [
+          {
+            "name": "JSON文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "JSON_是否有效(\"{\\\"name\\\":\\\"LingBuilder\\\"}\")"
+      },
+      "demoInvocation": "JSON_是否有效(\"{}\")"
+    },
+    {
+      "index": 2,
+      "name": "JSON_转义文本",
+      "signature": "JSON_转义文本(文本)",
+      "description": "把普通文本转义为可放入 JSON 字符串的内容，不包含外层引号。",
+      "insertText": "JSON_转义文本(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "JSON_转义文本",
+        "runtimeName": "JSON_转义文本",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_转义文本(\"演示参数1\")"
+    },
+    {
+      "index": 3,
+      "name": "JSON_取文本",
+      "signature": "JSON_取文本(JSON文本, 字段名)",
+      "description": "读取顶层对象中的字符串字段，缺失或类型不符返回空文本。",
+      "insertText": "JSON_取文本(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "JSON_取文本",
+        "runtimeName": "JSON_取文本",
+        "parameters": [
+          {
+            "name": "JSON文本",
+            "type": "wideString"
+          },
+          {
+            "name": "字段名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_取文本(\"{}\", \"演示参数2\")"
+    },
+    {
+      "index": 4,
+      "name": "JSON_取整数",
+      "signature": "JSON_取整数(JSON文本, 字段名, 默认值)",
+      "description": "读取顶层对象中的整数，缺失或类型不符返回默认值。",
+      "insertText": "JSON_取整数(\"$1\", \"$2\", 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "JSON_取整数",
+        "runtimeName": "JSON_取整数",
+        "parameters": [
+          {
+            "name": "JSON文本",
+            "type": "wideString"
+          },
+          {
+            "name": "字段名",
+            "type": "wideString"
+          },
+          {
+            "name": "默认值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_取整数(\"{}\", \"演示参数2\", 1)"
+    },
+    {
+      "index": 5,
+      "name": "JSON_取逻辑",
+      "signature": "JSON_取逻辑(JSON文本, 字段名, 默认值)",
+      "description": "读取顶层对象中的逻辑值，缺失或类型不符返回默认值。",
+      "insertText": "JSON_取逻辑(\"$1\", \"$2\", 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "JSON_取逻辑",
+        "runtimeName": "JSON_取逻辑",
+        "parameters": [
+          {
+            "name": "JSON文本",
+            "type": "wideString"
+          },
+          {
+            "name": "字段名",
+            "type": "wideString"
+          },
+          {
+            "name": "默认值",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "JSON_取逻辑(\"{}\", \"演示参数2\", 真)"
+    }
+  ]
+}

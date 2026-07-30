@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.585Z",
+  "module": {
+    "id": "lingbuilder.net.mail",
+    "name": "SMTP邮件模块",
+    "version": "1.0.0",
+    "description": "提供普通 SMTP 或局域网调试服务发送；当前版本不支持 TLS，遇到要求 STARTTLS 的服务会明确失败。"
+  },
+  "commandCount": 2,
+  "commands": [
+    {
+      "index": 1,
+      "name": "SMTP_发送普通邮件",
+      "signature": "SMTP_发送普通邮件(主机, 端口, 用户名, 密码, 发件人, 收件人, 主题, 正文)",
+      "description": "通过不加密 SMTP 发送 UTF-8 文本邮件。",
+      "insertText": "SMTP_发送普通邮件(\"$1\", 0, \"$3\", \"$4\", \"$5\", \"$6\", \"$7\", \"$8\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "SMTP_发送普通邮件",
+        "runtimeName": "SMTP_发送普通邮件",
+        "parameters": [
+          {
+            "name": "主机",
+            "type": "wideString"
+          },
+          {
+            "name": "端口",
+            "type": "int"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString"
+          },
+          {
+            "name": "密码",
+            "type": "wideString"
+          },
+          {
+            "name": "发件人",
+            "type": "wideString"
+          },
+          {
+            "name": "收件人",
+            "type": "wideString"
+          },
+          {
+            "name": "主题",
+            "type": "wideString"
+          },
+          {
+            "name": "正文",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SMTP_发送普通邮件(\"演示参数1\", 1, \"演示参数3\", \"演示参数4\", \"演示参数5\", \"演示参数6\", \"演示参数7\", \"演示参数8\")"
+    },
+    {
+      "index": 2,
+      "name": "SMTP_取错误",
+      "signature": "SMTP_取错误()",
+      "description": "返回最近 SMTP 错误或服务端响应。",
+      "insertText": "SMTP_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "SMTP_取错误",
+        "runtimeName": "SMTP_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "SMTP_取错误()"
+    }
+  ]
+}

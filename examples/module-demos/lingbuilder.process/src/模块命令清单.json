@@ -1,0 +1,126 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.621Z",
+  "module": {
+    "id": "lingbuilder.process",
+    "name": "进程管理模块",
+    "version": "1.0.0",
+    "description": "提供受控的程序启动、等待、进程状态和显式进程终止能力。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "程序_启动",
+      "signature": "程序_启动(命令行, 工作目录)",
+      "description": "启动程序并返回进程 ID，失败返回 0。",
+      "insertText": "程序_启动(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "程序_启动",
+        "runtimeName": "程序_启动",
+        "parameters": [
+          {
+            "name": "命令行",
+            "type": "wideString"
+          },
+          {
+            "name": "工作目录",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "程序_启动(\"演示参数1\", \".\")"
+    },
+    {
+      "index": 2,
+      "name": "程序_启动并等待",
+      "signature": "程序_启动并等待(命令行, 工作目录, 超时毫秒)",
+      "description": "启动程序并等待，返回退出码；超时或失败返回 -1。",
+      "insertText": "程序_启动并等待(\"$1\", \"$2\", 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "程序_启动并等待",
+        "runtimeName": "程序_启动并等待",
+        "parameters": [
+          {
+            "name": "命令行",
+            "type": "wideString"
+          },
+          {
+            "name": "工作目录",
+            "type": "wideString"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "程序_启动并等待(\"演示参数1\", \".\", 1)"
+    },
+    {
+      "index": 3,
+      "name": "进程_取当前ID",
+      "signature": "进程_取当前ID()",
+      "description": "返回当前进程 ID。",
+      "insertText": "进程_取当前ID()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "进程_取当前ID",
+        "runtimeName": "进程_取当前ID",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "进程_取当前ID()"
+    },
+    {
+      "index": 4,
+      "name": "进程_是否运行",
+      "signature": "进程_是否运行(进程ID)",
+      "description": "判断指定进程是否仍在运行。",
+      "insertText": "进程_是否运行(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进程_是否运行",
+        "runtimeName": "进程_是否运行",
+        "parameters": [
+          {
+            "name": "进程ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进程_是否运行(1)"
+    },
+    {
+      "index": 5,
+      "name": "进程_终止",
+      "signature": "进程_终止(进程ID, 退出码)",
+      "description": "显式终止指定进程；不能用于当前进程。",
+      "insertText": "进程_终止(0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进程_终止",
+        "runtimeName": "进程_终止",
+        "parameters": [
+          {
+            "name": "进程ID",
+            "type": "int"
+          },
+          {
+            "name": "退出码",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进程_终止(1, 1)"
+    }
+  ]
+}

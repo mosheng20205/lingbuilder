@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.567Z",
+  "module": {
+    "id": "lingbuilder.media.audio",
+    "name": "基础音频模块",
+    "version": "1.0.0",
+    "description": "使用 Windows 多媒体 API 异步播放 WAV 文件、系统声音并控制主音量。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "音频_播放WAV",
+      "signature": "音频_播放WAV(路径, 循环)",
+      "description": "异步播放 WAV 文件。",
+      "insertText": "音频_播放WAV(\"$1\", 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "音频_播放WAV",
+        "runtimeName": "音频_播放WAV",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          },
+          {
+            "name": "循环",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "音频_播放WAV(\"module-demo-temp.txt\", 真)"
+    },
+    {
+      "index": 2,
+      "name": "音频_停止",
+      "signature": "音频_停止()",
+      "description": "停止当前 PlaySound 音频。",
+      "insertText": "音频_停止()",
+      "returnType": "空",
+      "binding": {
+        "command": "音频_停止",
+        "runtimeName": "音频_停止",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "音频_停止()"
+    },
+    {
+      "index": 3,
+      "name": "音频_播放系统提示",
+      "signature": "音频_播放系统提示()",
+      "description": "播放系统通知声音。",
+      "insertText": "音频_播放系统提示()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "音频_播放系统提示",
+        "runtimeName": "音频_播放系统提示",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "音频_播放系统提示()"
+    },
+    {
+      "index": 4,
+      "name": "音频_取主音量",
+      "signature": "音频_取主音量()",
+      "description": "返回 waveOut 主音量 0 到 100。",
+      "insertText": "音频_取主音量()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "音频_取主音量",
+        "runtimeName": "音频_取主音量",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "音频_取主音量()"
+    },
+    {
+      "index": 5,
+      "name": "音频_设置主音量",
+      "signature": "音频_设置主音量(音量)",
+      "description": "设置 waveOut 主音量 0 到 100。",
+      "insertText": "音频_设置主音量(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "音频_设置主音量",
+        "runtimeName": "音频_设置主音量",
+        "parameters": [
+          {
+            "name": "音量",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "音频_设置主音量(1)"
+    }
+  ]
+}

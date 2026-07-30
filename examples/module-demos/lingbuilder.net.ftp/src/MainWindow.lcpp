@@ -1,0 +1,56 @@
+包 FTP客户端模块完整演示
+使用 Win32窗口基础模块
+使用 FTP客户端模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "FTP客户端模块：7 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.net.ftp")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–7：FTP_连接 至 FTP_关闭；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FTP_连接
+            // [1] FTP_连接(主机, 端口, 用户名, 密码, 安全连接)
+            // 功能：连接 FTP 或 FTPS 服务端。
+            // 参数：主机:wideString，端口:int，用户名:wideString，密码:wideString，安全连接:bool；返回：bool；可见性：default
+            FTP_连接("演示参数1", 1, "演示参数3", "演示参数4", 真)
+            // 命令ID：FTP_上传文件
+            // [2] FTP_上传文件(本地文件, 远程文件)
+            // 功能：以二进制模式上传文件。
+            // 参数：本地文件:wideString，远程文件:wideString；返回：bool；可见性：default
+            FTP_上传文件("module-demo-temp.txt", "module-demo-temp.txt")
+            // 命令ID：FTP_下载文件
+            // [3] FTP_下载文件(远程文件, 本地文件, 允许覆盖)
+            // 功能：以二进制模式下载文件。
+            // 参数：远程文件:wideString，本地文件:wideString，允许覆盖:bool；返回：bool；可见性：default
+            FTP_下载文件("module-demo-temp.txt", "module-demo-temp.txt", 真)
+            // 命令ID：FTP_删除文件
+            // [4] FTP_删除文件(远程文件)
+            // 功能：删除远程文件。
+            // 参数：远程文件:wideString；返回：bool；可见性：default
+            FTP_删除文件("module-demo-temp.txt")
+            // 命令ID：FTP_重命名
+            // [5] FTP_重命名(原名称, 新名称)
+            // 功能：重命名远程文件。
+            // 参数：原名称:wideString，新名称:wideString；返回：bool；可见性：default
+            FTP_重命名("演示参数1", "演示参数2")
+            // 命令ID：FTP_取错误
+            // [6] FTP_取错误()
+            // 功能：返回最近 FTP 中文错误。
+            // 参数：无；返回：wideString；可见性：default
+            FTP_取错误()
+            // 命令ID：FTP_关闭
+            // [7] FTP_关闭()
+            // 功能：关闭 FTP 连接和会话。
+            // 参数：无；返回：void；可见性：default
+            FTP_关闭()
+        如果结束
+        调试输出("已查看 命令 1–7：FTP_连接 至 FTP_关闭；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

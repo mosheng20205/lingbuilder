@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.570Z",
+  "module": {
+    "id": "lingbuilder.net.cookie",
+    "name": "Cookie文本模块",
+    "version": "1.0.0",
+    "description": "提供 Cookie 请求头文本的读取、设置、删除和存在性检查。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "Cookie_取值",
+      "signature": "Cookie_取值(Cookie文本, 名称)",
+      "description": "读取 Cookie 请求头中的指定值。",
+      "insertText": "Cookie_取值(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Cookie_取值",
+        "runtimeName": "Cookie_取值",
+        "parameters": [
+          {
+            "name": "Cookie文本",
+            "type": "wideString"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Cookie_取值(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 2,
+      "name": "Cookie_是否存在",
+      "signature": "Cookie_是否存在(Cookie文本, 名称)",
+      "description": "判断 Cookie 名称是否存在。",
+      "insertText": "Cookie_是否存在(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "Cookie_是否存在",
+        "runtimeName": "Cookie_是否存在",
+        "parameters": [
+          {
+            "name": "Cookie文本",
+            "type": "wideString"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Cookie_是否存在(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 3,
+      "name": "Cookie_设置",
+      "signature": "Cookie_设置(Cookie文本, 名称, 值)",
+      "description": "添加或替换 Cookie 值。",
+      "insertText": "Cookie_设置(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Cookie_设置",
+        "runtimeName": "Cookie_设置",
+        "parameters": [
+          {
+            "name": "Cookie文本",
+            "type": "wideString"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Cookie_设置(\"演示参数1\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 4,
+      "name": "Cookie_删除",
+      "signature": "Cookie_删除(Cookie文本, 名称)",
+      "description": "删除指定 Cookie。",
+      "insertText": "Cookie_删除(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Cookie_删除",
+        "runtimeName": "Cookie_删除",
+        "parameters": [
+          {
+            "name": "Cookie文本",
+            "type": "wideString"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Cookie_删除(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 5,
+      "name": "Cookie_生成响应项",
+      "signature": "Cookie_生成响应项(名称, 值, 路径, 最大秒数)",
+      "description": "生成一条 Set-Cookie 响应值。",
+      "insertText": "Cookie_生成响应项(\"$1\", \"$2\", \"$3\", 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "Cookie_生成响应项",
+        "runtimeName": "Cookie_生成响应项",
+        "parameters": [
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          },
+          {
+            "name": "路径",
+            "type": "wideString"
+          },
+          {
+            "name": "最大秒数",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "Cookie_生成响应项(\"演示参数1\", \"演示参数2\", \"module-demo-temp.txt\", 1)"
+    }
+  ]
+}

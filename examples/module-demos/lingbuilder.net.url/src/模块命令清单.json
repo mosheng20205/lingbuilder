@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.598Z",
+  "module": {
+    "id": "lingbuilder.net.url",
+    "name": "URL解析模块",
+    "version": "1.0.0",
+    "description": "使用 WinHTTP 解析 URL 的协议、主机、端口和路径。"
+  },
+  "commandCount": 6,
+  "commands": [
+    {
+      "index": 1,
+      "name": "URL_是否有效",
+      "signature": "URL_是否有效(地址)",
+      "description": "判断 URL 是否可被 WinHTTP 解析。",
+      "insertText": "URL_是否有效(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "URL_是否有效",
+        "runtimeName": "URL_是否有效",
+        "parameters": [
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "URL_是否有效(\"https://example.com\")"
+    },
+    {
+      "index": 2,
+      "name": "URL_取协议",
+      "signature": "URL_取协议(地址)",
+      "description": "返回 http 或 https 等协议名。",
+      "insertText": "URL_取协议(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "URL_取协议",
+        "runtimeName": "URL_取协议",
+        "parameters": [
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "URL_取协议(\"https://example.com\")"
+    },
+    {
+      "index": 3,
+      "name": "URL_取主机",
+      "signature": "URL_取主机(地址)",
+      "description": "返回 URL 主机名。",
+      "insertText": "URL_取主机(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "URL_取主机",
+        "runtimeName": "URL_取主机",
+        "parameters": [
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "URL_取主机(\"https://example.com\")"
+    },
+    {
+      "index": 4,
+      "name": "URL_取端口",
+      "signature": "URL_取端口(地址)",
+      "description": "返回 URL 端口。",
+      "insertText": "URL_取端口(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "URL_取端口",
+        "runtimeName": "URL_取端口",
+        "parameters": [
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "URL_取端口(\"https://example.com\")"
+    },
+    {
+      "index": 5,
+      "name": "URL_取路径",
+      "signature": "URL_取路径(地址)",
+      "description": "返回 URL 路径和附加信息。",
+      "insertText": "URL_取路径(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "URL_取路径",
+        "runtimeName": "URL_取路径",
+        "parameters": [
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "URL_取路径(\"https://example.com\")"
+    },
+    {
+      "index": 6,
+      "name": "URL_是否HTTPS",
+      "signature": "URL_是否HTTPS(地址)",
+      "description": "判断 URL 是否使用 HTTPS。",
+      "insertText": "URL_是否HTTPS(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "URL_是否HTTPS",
+        "runtimeName": "URL_是否HTTPS",
+        "parameters": [
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "URL_是否HTTPS(\"https://example.com\")"
+    }
+  ]
+}

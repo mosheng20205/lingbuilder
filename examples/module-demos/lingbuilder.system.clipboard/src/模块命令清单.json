@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.645Z",
+  "module": {
+    "id": "lingbuilder.system.clipboard",
+    "name": "剪贴板模块",
+    "version": "1.0.0",
+    "description": "提供 Unicode 文本剪贴板读写和状态查询。"
+  },
+  "commandCount": 4,
+  "commands": [
+    {
+      "index": 1,
+      "name": "剪贴板_置文本",
+      "signature": "剪贴板_置文本(文本)",
+      "description": "把 Unicode 文本写入系统剪贴板。",
+      "insertText": "剪贴板_置文本(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "剪贴板_置文本",
+        "runtimeName": "剪贴板_置文本",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "剪贴板_置文本(\"来自 LingBuilder\")"
+      },
+      "demoInvocation": "剪贴板_置文本(\"演示参数1\")"
+    },
+    {
+      "index": 2,
+      "name": "剪贴板_取文本",
+      "signature": "剪贴板_取文本()",
+      "description": "读取系统剪贴板中的 Unicode 文本。",
+      "insertText": "剪贴板_取文本()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "剪贴板_取文本",
+        "runtimeName": "剪贴板_取文本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "剪贴板_取文本()"
+    },
+    {
+      "index": 3,
+      "name": "剪贴板_是否有文本",
+      "signature": "剪贴板_是否有文本()",
+      "description": "判断剪贴板是否包含 Unicode 文本。",
+      "insertText": "剪贴板_是否有文本()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "剪贴板_是否有文本",
+        "runtimeName": "剪贴板_是否有文本",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "剪贴板_是否有文本()"
+    },
+    {
+      "index": 4,
+      "name": "剪贴板_清空",
+      "signature": "剪贴板_清空()",
+      "description": "清空系统剪贴板。",
+      "insertText": "剪贴板_清空()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "剪贴板_清空",
+        "runtimeName": "剪贴板_清空",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "剪贴板_清空()"
+    }
+  ]
+}

@@ -811,6 +811,25 @@ test('LingCpp 图片框提供设置图片方法补全', () => {
   assert.ok(completions.some(item => item.insertText === '图片框1.设置图片("$1")'));
 });
 
+test('LingCpp 图片框设置图片方法不会被功能库诊断误判', () => {
+  const designerProject: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'image-control-method-diagnostics',
+    name: '图片框方法诊断',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口', width: 640, height: 480,
+      background: '#ffffff', description: '', controls: [{
+        id: 'preview-image', type: 'Image', name: '图片框1', content: '', width: 180, height: 140,
+        x: 20, y: 20, fontSize: 12, background: '#ffffff', foreground: '#000000', isEnabled: true, visibility: 'Visible',
+        properties: { imageSource: '', stretch: 'uniform' }
+      }]
+    }]
+  };
+  const source = '类 MainWindow : 公开 窗体\n    事件 _主窗口_创建完毕()\n        图片框1.设置图片("assets/示例.png")\n    结束\n结束类';
+  const diagnostics = getLingCppSemanticDiagnostics(source, designerProject, 'src/MainWindow.lcpp');
+  assert.doesNotMatch(diagnostics.map(item => item.message).join('\n'), /找不到功能库/u);
+});
+
 test('LingCpp 新手控件补全覆盖注册表中的全部控件事件和可用命令', () => {
   const controls = WIN32_CONTROL_DEFINITIONS.map((definition, index) => ({
     id: `control-${index}`,

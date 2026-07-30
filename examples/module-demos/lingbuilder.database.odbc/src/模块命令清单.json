@@ -1,0 +1,157 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.516Z",
+  "module": {
+    "id": "lingbuilder.database.odbc",
+    "name": "ODBC数据库模块",
+    "version": "1.0.0",
+    "description": "提供单连接 ODBC 打开、执行、查询首值、事务和错误状态。"
+  },
+  "commandCount": 8,
+  "commands": [
+    {
+      "index": 1,
+      "name": "ODBC_连接",
+      "signature": "ODBC_连接(连接字符串)",
+      "description": "使用 ODBC 连接字符串打开数据库。",
+      "insertText": "ODBC_连接(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "ODBC_连接",
+        "runtimeName": "ODBC_连接",
+        "parameters": [
+          {
+            "name": "连接字符串",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "ODBC_连接(\"演示参数1\")"
+    },
+    {
+      "index": 2,
+      "name": "ODBC_执行",
+      "signature": "ODBC_执行(SQL语句)",
+      "description": "执行 SQL 并返回受影响行数，失败返回 -1。",
+      "insertText": "ODBC_执行(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "ODBC_执行",
+        "runtimeName": "ODBC_执行",
+        "parameters": [
+          {
+            "name": "SQL语句",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "ODBC_执行(\"演示参数1\")"
+    },
+    {
+      "index": 3,
+      "name": "ODBC_查询首值",
+      "signature": "ODBC_查询首值(SQL语句)",
+      "description": "执行查询并返回首行首列文本。",
+      "insertText": "ODBC_查询首值(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "ODBC_查询首值",
+        "runtimeName": "ODBC_查询首值",
+        "parameters": [
+          {
+            "name": "SQL语句",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "ODBC_查询首值(\"演示参数1\")"
+    },
+    {
+      "index": 4,
+      "name": "ODBC_设置自动提交",
+      "signature": "ODBC_设置自动提交(启用)",
+      "description": "启用或禁用自动提交。",
+      "insertText": "ODBC_设置自动提交(假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "ODBC_设置自动提交",
+        "runtimeName": "ODBC_设置自动提交",
+        "parameters": [
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "ODBC_设置自动提交(真)"
+    },
+    {
+      "index": 5,
+      "name": "ODBC_提交",
+      "signature": "ODBC_提交()",
+      "description": "提交当前事务。",
+      "insertText": "ODBC_提交()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "ODBC_提交",
+        "runtimeName": "ODBC_提交",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "ODBC_提交()"
+    },
+    {
+      "index": 6,
+      "name": "ODBC_回滚",
+      "signature": "ODBC_回滚()",
+      "description": "回滚当前事务。",
+      "insertText": "ODBC_回滚()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "ODBC_回滚",
+        "runtimeName": "ODBC_回滚",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "ODBC_回滚()"
+    },
+    {
+      "index": 7,
+      "name": "ODBC_取错误",
+      "signature": "ODBC_取错误()",
+      "description": "返回最近 ODBC 错误。",
+      "insertText": "ODBC_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "ODBC_取错误",
+        "runtimeName": "ODBC_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "ODBC_取错误()"
+    },
+    {
+      "index": 8,
+      "name": "ODBC_关闭",
+      "signature": "ODBC_关闭()",
+      "description": "关闭 ODBC 连接和环境。",
+      "insertText": "ODBC_关闭()",
+      "returnType": "空",
+      "binding": {
+        "command": "ODBC_关闭",
+        "runtimeName": "ODBC_关闭",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "ODBC_关闭()"
+    }
+  ]
+}

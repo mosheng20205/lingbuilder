@@ -33,6 +33,7 @@ import { generateLingCppNativeWin32Project } from '../windowDesigner/lingCppWin3
 import { exportVisualStudioProject } from '../windowDesigner/visualStudioProjectExporter';
 import { createDesignerAssetService } from '../windowDesigner/designerAssetService';
 import { LingWindowProject } from '../windowDesigner/types';
+import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactRelativePath } from '../solution/nestedWorkspaceGuard';
 import { createSolutionService, DEFAULT_PROJECT_ID, type LingBuilderSolutionProject } from '../solution/solutionService';
 import { AiBridgePermissionService } from './permissionService';
 import {
@@ -493,6 +494,7 @@ export class AiBridgeService {
       return [];
     }
     const sourceRoot = normalizeFilePath(projectRef.sourceRoot).replace(/\/+$/u, '');
+    const nestedWorkspacePlan = await detectNestedWorkspaceArtifacts(path.resolve(this.workspaceRoot, sourceRoot));
     if (Array.isArray(explicitSources) && explicitSources.length > 0) {
       let totalSize = 0;
       const unique = new Map<string, LingCppProjectSourceFile>();
@@ -501,6 +503,7 @@ export class AiBridgeService {
         const filePath = normalizeFilePath(source.filePath).replace(/^\.\//u, '');
         if (!filePath.toLocaleLowerCase().endsWith('.lcpp') || filePath.split('/').includes('..') || path.isAbsolute(filePath)) throw new Error(`项目源码路径不安全：${source.filePath}`);
         if (!filePath.startsWith(`${sourceRoot}/`)) throw new Error(`项目源码路径不属于当前项目源码目录：${source.filePath}`);
+        if (isNestedWorkspaceArtifactRelativePath(filePath.slice(sourceRoot.length + 1), nestedWorkspacePlan)) continue;
         totalSize += Buffer.byteLength(source.sourceCode, 'utf8');
         if (totalSize > 8 * 1024 * 1024) throw new Error('项目 LCPP 源码集合超过 8 MB 限制。');
         unique.set(filePath.toLocaleLowerCase(), { filePath, sourceCode: source.sourceCode });
@@ -1133,6 +1136,7 @@ async function compileWin32Preview(
         'user32.lib',
         'gdi32.lib',
         'comctl32.lib',
+        'ole32.lib',
         ...moduleLibs
       ]
     : [
@@ -1241,6 +1245,7 @@ async function compileMsvcPreviewWithModules(
     'user32.lib',
     'gdi32.lib',
     'comctl32.lib',
+    'ole32.lib',
     ...moduleLibs
   ];
 

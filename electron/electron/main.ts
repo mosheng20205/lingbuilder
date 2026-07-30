@@ -221,18 +221,18 @@ async function readModulePermitCache(): Promise<any[]> { try { if (!safeStorage.
 async function writeModulePermitCache(values: any[]): Promise<void> { if (!safeStorage.isEncryptionAvailable()) return; const file = modulePermitCachePath(); await fs.mkdir(path.dirname(file), { recursive: true }); const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(JSON.stringify(values.slice(-32)))); await fs.rename(temporary, file); }
 const cloudAccountService = new CloudAccountService(process.env.LINGBUILDER_CLOUD_API_URL || 'http://127.0.0.1:17900', readCloudRefresh, writeCloudRefresh);
 
-async function startPackagedRendererServer(workspaceRoot: string): Promise<ServerReadyInfo> {
+async function startManagedRendererServer(workspaceRoot: string): Promise<ServerReadyInfo> {
   await stopRendererServer();
   rendererSessionToken = crypto.randomBytes(32).toString('hex');
   const fbroVipCredential = await resolveFbroVipCredential();
 
   const child = utilityProcess.fork(serverEntryPath(), [], {
-    cwd: workspaceRoot,
+    cwd: app.isPackaged ? workspaceRoot : path.join(repoRoot(), 'electron'),
     serviceName: 'LingBuilder Local Service',
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env,
-      NODE_ENV: 'production',
+      NODE_ENV: app.isPackaged ? 'production' : 'development',
       HOST: '127.0.0.1',
       PORT: '0',
       LINGBUILDER_WORKSPACE_ROOT: workspaceRoot,
@@ -430,7 +430,9 @@ async function createMainWindow(): Promise<void> {
     mainWindow.webContents.send('window:close-requested');
   });
 
+  if (smokeTest) await writePackagedSmokeProgress('load-url:start');
   await mainWindow.loadURL(rendererOrigin);
+  if (smokeTest) await writePackagedSmokeProgress('load-url:done');
   if (!app.isPackaged && process.env.LINGBUILDER_OPEN_DEVTOOLS === 'true') {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
@@ -440,14 +442,16 @@ async function createMainWindow(): Promise<void> {
 async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
   const resultPath = getArgumentValue(process.argv, '--smoke-result');
   try {
+    await writePackagedSmokeProgress('renderer-smoke:start');
     const rendererResult = await window.webContents.executeJavaScript(`(async () => {
       const withTimeout = (promise, label, timeoutMs = 15000) => Promise.race([
         promise,
         new Promise((_, reject) => setTimeout(() => reject(new Error(label + '超时。')), timeoutMs))
       ]);
-      const healthResponse = await fetch('/api/health');
-      const modulesResponse = await fetch('/api/modules/installed?projectId=lingbuilder-ui-project');
-      const aiResponse = await fetch('/api/lingcpp/edit/propose', {
+      const timedFetch = (label, input, init) => withTimeout(fetch(input, init), label, 15000);
+      const healthResponse = await timedFetch('本地服务健康检查', '/api/health');
+      const modulesResponse = await timedFetch('已安装模块读取', '/api/modules/installed?projectId=lingbuilder-ui-project');
+      const aiResponse = await timedFetch('AI 本地安全提案', '/api/lingcpp/edit/propose', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -462,7 +466,7 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
           }
         })
       });
-      const bridgeResponse = await fetch('/api/ai-bridge/health');
+      const bridgeResponse = await timedFetch('共享 Bridge 路由隔离检查', '/api/ai-bridge/health');
       let managedBridgeStatus = 0;
       let managedMcpStatus = 0;
       let managedBridgeStopped = false;
@@ -498,7 +502,7 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
           // Preserve the original Bridge failure.
         }
       }
-      const terminalCreateResponse = await fetch('/api/terminal/sessions', {
+      const terminalCreateResponse = await timedFetch('创建终端会话', '/api/terminal/sessions', {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ profile: 'cmd', cols: 80, rows: 24 })
       });
@@ -507,20 +511,20 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
       let terminalResizeStatus = 0;
       let terminalCloseStatus = 0;
       if (terminalCreateResponse.ok && terminalCreate.session?.id) {
-        await fetch('/api/terminal/sessions/' + encodeURIComponent(terminalCreate.session.id) + '/input', {
+        await timedFetch('写入终端会话', '/api/terminal/sessions/' + encodeURIComponent(terminalCreate.session.id) + '/input', {
           method: 'POST', headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ data: 'echo LINGBUILDER_PACKAGED_PTY_OK\\r' })
         });
         for (let attempt = 0; attempt < 120; attempt += 1) {
-          const list = await (await fetch('/api/terminal/sessions')).json();
+          const list = await (await timedFetch('读取终端会话', '/api/terminal/sessions')).json();
           terminalSnapshot = list.sessions?.find(session => session.id === terminalCreate.session.id) || null;
           if (terminalSnapshot?.buffer?.includes('LINGBUILDER_PACKAGED_PTY_OK')) break;
           await new Promise(resolve => setTimeout(resolve, 50));
         }
-        terminalResizeStatus = (await fetch('/api/terminal/sessions/' + encodeURIComponent(terminalCreate.session.id) + '/resize', {
+        terminalResizeStatus = (await timedFetch('调整终端尺寸', '/api/terminal/sessions/' + encodeURIComponent(terminalCreate.session.id) + '/resize', {
           method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cols: 100, rows: 30 })
         })).status;
-        terminalCloseStatus = (await fetch('/api/terminal/sessions/' + encodeURIComponent(terminalCreate.session.id), { method: 'DELETE' })).status;
+        terminalCloseStatus = (await timedFetch('关闭终端会话', '/api/terminal/sessions/' + encodeURIComponent(terminalCreate.session.id), { method: 'DELETE' })).status;
       }
       const health = await healthResponse.json();
       const modules = await modulesResponse.json();
@@ -561,6 +565,7 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
         hasRoot: Boolean(document.getElementById('root'))
       };
     })()`);
+    await writePackagedSmokeProgress('renderer-smoke:done');
     const serviceInfo = rendererReadyInfo;
     await stopRendererServer();
     const result = {
@@ -589,13 +594,20 @@ async function runPackagedSmokeTest(window: BrowserWindow): Promise<void> {
   }
 }
 
+async function writePackagedSmokeProgress(stage: string): Promise<void> {
+  const resultPath = getArgumentValue(process.argv, '--smoke-result');
+  if (!resultPath) return;
+  await fs.writeFile(`${resultPath}.progress`, JSON.stringify({ stage, updatedAt: new Date().toISOString() }), 'utf8');
+}
+
 async function switchWorkspace(workspacePath: string): Promise<void> {
-  if (!app.isPackaged) throw new Error('开发模式切换工作区后请重新运行 npm run dev。');
   const candidateWorkspace = await workspaceService.validateWorkspace(workspacePath);
   const previousWorkspace = activeWorkspace;
+  const previousOrigin = rendererOrigin;
+  const previousServerWasManaged = rendererServer !== null;
   try {
     if (aiBridgeManager?.snapshot().state !== 'stopped') await aiBridgeManager.stop('工作区即将切换');
-    const ready = await startPackagedRendererServer(candidateWorkspace);
+    const ready = await startManagedRendererServer(candidateWorkspace);
     rendererOrigin = ready.origin;
     configureRendererSession(rendererOrigin, rendererSessionToken);
     await mainWindow?.loadURL(rendererOrigin);
@@ -603,8 +615,13 @@ async function switchWorkspace(workspacePath: string): Promise<void> {
   } catch (error) {
     let restoreError: unknown;
     try {
-      const restored = await startPackagedRendererServer(previousWorkspace);
-      rendererOrigin = restored.origin;
+      if (!app.isPackaged && !previousServerWasManaged) {
+        await stopRendererServer();
+        rendererOrigin = previousOrigin;
+      } else {
+        const restored = await startManagedRendererServer(previousWorkspace);
+        rendererOrigin = restored.origin;
+      }
       configureRendererSession(rendererOrigin, rendererSessionToken);
       await mainWindow?.loadURL(rendererOrigin);
       activeWorkspace = previousWorkspace;
@@ -642,6 +659,14 @@ function registerIpcHandlers(): void {
     window.close();
   });
   ipcMain.handle('shell:open-path', async (_event, targetPath: string) => targetPath ? shell.openPath(targetPath) : 'missing-path');
+  ipcMain.handle('community:open-qq-group', async () => {
+    try {
+      await shell.openExternal('https://qm.qq.com/q/q2VNHZXLXy');
+      return '';
+    } catch (error) {
+      return `无法打开交流QQ群链接：${error instanceof Error ? error.message : String(error)}`;
+    }
+  });
   ipcMain.handle('shell:reveal-workspace-path', async (_event, targetPath: string) => {
     try {
       if (!String(targetPath || '').trim()) return '没有可定位的路径。';
@@ -952,9 +977,6 @@ function registerIpcHandlers(): void {
   ipcMain.handle('workspace:list-recent', () => workspaceService.listRecentWorkspaces());
   ipcMain.handle('workspace:forget-recent', (_event, workspacePath: string) => workspaceService.forgetWorkspace(workspacePath));
   ipcMain.handle('workspace:close-current', async () => {
-    if (!app.isPackaged) {
-      return { ok: false, error: '开发模式不能在进程内关闭解决方案，请重新运行 npm run dev。' };
-    }
     const previousWorkspace = activeWorkspace;
     try {
       const freshWorkspace = await workspaceService.createFreshWorkspace();
@@ -1065,8 +1087,9 @@ app.whenReady().then(async () => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('ai-bridge:status-changed', snapshot);
   });
 
-  if (app.isPackaged) {
-    const ready = await startPackagedRendererServer(activeWorkspace);
+  const managedDevelopmentServer = !app.isPackaged && process.argv.includes('--managed-dev-server');
+  if (app.isPackaged || managedDevelopmentServer) {
+    const ready = await startManagedRendererServer(activeWorkspace);
     rendererOrigin = ready.origin;
     configureRendererSession(rendererOrigin, rendererSessionToken);
   } else {

@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.690Z",
+  "module": {
+    "id": "lingbuilder.win32.monitor",
+    "name": "显示器与DPI模块",
+    "version": "1.0.0",
+    "description": "读取显示器数量、主屏尺寸、工作区尺寸和系统 DPI。"
+  },
+  "commandCount": 6,
+  "commands": [
+    {
+      "index": 1,
+      "name": "显示器_数量",
+      "signature": "显示器_数量()",
+      "description": "返回当前桌面连接的显示器数量。",
+      "insertText": "显示器_数量()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "显示器_数量",
+        "runtimeName": "显示器_数量",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "显示器_数量()"
+    },
+    {
+      "index": 2,
+      "name": "显示器_主屏宽度",
+      "signature": "显示器_主屏宽度()",
+      "description": "返回主显示器像素宽度。",
+      "insertText": "显示器_主屏宽度()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "显示器_主屏宽度",
+        "runtimeName": "显示器_主屏宽度",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "显示器_主屏宽度()"
+    },
+    {
+      "index": 3,
+      "name": "显示器_主屏高度",
+      "signature": "显示器_主屏高度()",
+      "description": "返回主显示器像素高度。",
+      "insertText": "显示器_主屏高度()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "显示器_主屏高度",
+        "runtimeName": "显示器_主屏高度",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "显示器_主屏高度()"
+    },
+    {
+      "index": 4,
+      "name": "显示器_工作区宽度",
+      "signature": "显示器_工作区宽度()",
+      "description": "返回主显示器排除任务栏后的工作区宽度。",
+      "insertText": "显示器_工作区宽度()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "显示器_工作区宽度",
+        "runtimeName": "显示器_工作区宽度",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "显示器_工作区宽度()"
+    },
+    {
+      "index": 5,
+      "name": "显示器_工作区高度",
+      "signature": "显示器_工作区高度()",
+      "description": "返回主显示器排除任务栏后的工作区高度。",
+      "insertText": "显示器_工作区高度()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "显示器_工作区高度",
+        "runtimeName": "显示器_工作区高度",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "显示器_工作区高度()"
+    },
+    {
+      "index": 6,
+      "name": "显示器_系统DPI",
+      "signature": "显示器_系统DPI()",
+      "description": "返回系统 DPI，无法读取时返回 96。",
+      "insertText": "显示器_系统DPI()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "显示器_系统DPI",
+        "runtimeName": "显示器_系统DPI",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "显示器_系统DPI()"
+    }
+  ]
+}

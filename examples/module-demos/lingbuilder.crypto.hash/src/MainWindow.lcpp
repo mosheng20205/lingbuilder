@@ -1,0 +1,96 @@
+包 哈希摘要模块完整演示
+使用 Win32窗口基础模块
+使用 哈希摘要模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "哈希摘要模块：15 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.crypto.hash")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–15：哈希_MD5文本 至 哈希_安全随机十六进制；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：哈希_MD5文本
+            // [1] 哈希_MD5文本(文本)
+            // 功能：计算 UTF-8 文本的 MD5 大写十六进制摘要。128 位；仅用于兼容和文件校验，不得用于密码或数字签名。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            哈希_MD5文本("演示参数1")
+            // 命令ID：哈希_MD5文件
+            // [2] 哈希_MD5文件(路径)
+            // 功能：流式计算文件的 MD5 大写十六进制摘要。128 位；仅用于兼容和文件校验，不得用于密码或数字签名。
+            // 参数：路径:wideString；返回：wideString；可见性：default
+            哈希_MD5文件("module-demo-temp.txt")
+            // 命令ID：哈希_SHA1文本
+            // [3] 哈希_SHA1文本(文本)
+            // 功能：计算 UTF-8 文本的 SHA-1 大写十六进制摘要。160 位；仅用于兼容，不得用于新的安全协议或数字签名。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            哈希_SHA1文本("演示参数1")
+            // 命令ID：哈希_SHA1文件
+            // [4] 哈希_SHA1文件(路径)
+            // 功能：流式计算文件的 SHA-1 大写十六进制摘要。160 位；仅用于兼容，不得用于新的安全协议或数字签名。
+            // 参数：路径:wideString；返回：wideString；可见性：default
+            哈希_SHA1文件("module-demo-temp.txt")
+            // 命令ID：哈希_SHA256文本
+            // [5] 哈希_SHA256文本(文本)
+            // 功能：计算 UTF-8 文本的 SHA-256 大写十六进制摘要。256 位 SHA-2 摘要。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            哈希_SHA256文本("演示参数1")
+            // 命令ID：哈希_SHA256文件
+            // [6] 哈希_SHA256文件(路径)
+            // 功能：流式计算文件的 SHA-256 大写十六进制摘要。256 位 SHA-2 摘要。
+            // 参数：路径:wideString；返回：wideString；可见性：default
+            哈希_SHA256文件("module-demo-temp.txt")
+            // 命令ID：哈希_SHA3_256文本
+            // [7] 哈希_SHA3_256文本(文本)
+            // 功能：计算 UTF-8 文本的 SHA-3(256) 大写十六进制摘要。256 位 SHA-3 摘要。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            哈希_SHA3_256文本("演示参数1")
+            // 命令ID：哈希_SHA3_256文件
+            // [8] 哈希_SHA3_256文件(路径)
+            // 功能：流式计算文件的 SHA-3(256) 大写十六进制摘要。256 位 SHA-3 摘要。
+            // 参数：路径:wideString；返回：wideString；可见性：default
+            哈希_SHA3_256文件("module-demo-temp.txt")
+            // 命令ID：哈希_SM3文本
+            // [9] 哈希_SM3文本(文本)
+            // 功能：计算 UTF-8 文本的 SM3 大写十六进制摘要。256 位国产商用密码摘要。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            哈希_SM3文本("演示参数1")
+            // 命令ID：哈希_SM3文件
+            // [10] 哈希_SM3文件(路径)
+            // 功能：流式计算文件的 SM3 大写十六进制摘要。256 位国产商用密码摘要。
+            // 参数：路径:wideString；返回：wideString；可见性：default
+            哈希_SM3文件("module-demo-temp.txt")
+            // 命令ID：哈希_BLAKE2b文本
+            // [11] 哈希_BLAKE2b文本(文本)
+            // 功能：计算 UTF-8 文本的 BLAKE2b-512 大写十六进制摘要。512 位 BLAKE2b 摘要。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            哈希_BLAKE2b文本("演示参数1")
+            // 命令ID：哈希_BLAKE2b文件
+            // [12] 哈希_BLAKE2b文件(路径)
+            // 功能：流式计算文件的 BLAKE2b-512 大写十六进制摘要。512 位 BLAKE2b 摘要。
+            // 参数：路径:wideString；返回：wideString；可见性：default
+            哈希_BLAKE2b文件("module-demo-temp.txt")
+            // 命令ID：哈希_BLAKE3文本
+            // [13] 哈希_BLAKE3文本(文本)
+            // 功能：计算 UTF-8 文本的 BLAKE3-256 大写十六进制摘要。256 位 BLAKE3 摘要。
+            // 参数：文本:wideString；返回：wideString；可见性：default
+            哈希_BLAKE3文本("演示参数1")
+            // 命令ID：哈希_BLAKE3文件
+            // [14] 哈希_BLAKE3文件(路径)
+            // 功能：流式计算文件的 BLAKE3-256 大写十六进制摘要。256 位 BLAKE3 摘要。
+            // 参数：路径:wideString；返回：wideString；可见性：default
+            哈希_BLAKE3文件("module-demo-temp.txt")
+            // 命令ID：哈希_安全随机十六进制
+            // [15] 哈希_安全随机十六进制(字节数)
+            // 功能：使用系统加密随机源生成十六进制文本。
+            // 参数：字节数:int；返回：wideString；可见性：default
+            哈希_安全随机十六进制(1)
+        如果结束
+        调试输出("已查看 命令 1–15：哈希_MD5文本 至 哈希_安全随机十六进制；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

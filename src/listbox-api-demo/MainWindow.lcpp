@@ -1,0 +1,188 @@
+包 列表框ListBox完整接口示例
+使用 new_emoji 原生界面库
+
+类 MainWindow : 公开 窗体
+    // 设计器中的 ListBox 属性会覆盖创建、简单项目、项目扩展、选中项、选中 Key、选项、编辑、样式、滚动和虚拟项目接口。
+    // 下面的按钮用 @ 原生语句逐项调用其余 EU_* 接口。@ 只作为本示例的 ABI 演示入口，不改变 LingBuilder 的运行时边界。
+    事件 _MainWindow_创建完毕()
+        调试输出("ListBox 接口演示已启动")
+        控件_设置文本("状态标签", "状态：请选择右侧接口组；底层返回值写入输出面板。")
+    结束
+
+    事件 _接口01_基础数据_被点击()
+        局部 整数型 列表框ID = 0
+        @ const LB_NE_ElementRef* listBox = LB_NE_FindElement(L"演示列表框");
+        @ if (!listBox) return;
+        @ 列表框ID = listBox->id;
+        @ EU_SetListBoxItems(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("任务一|任务二|任务三|任务四"), static_cast<int>(sizeof("任务一|任务二|任务三|任务四") - 1));
+        @ EU_PostSetListBoxItems(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("任务一|任务二|任务三|任务四"), static_cast<int>(sizeof("任务一|任务二|任务三|任务四") - 1));
+        @ EU_SetListBoxItemsEx(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("task-1\t任务一\t开发\t0\ntask-2\t任务二\t设计\t0"), static_cast<int>(sizeof("task-1\t任务一\t开发\t0\ntask-2\t任务二\t设计\t0") - 1));
+        @ EU_PostSetListBoxItemsEx(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("task-1\t任务一\t开发\t0\ntask-2\t任务二\t设计\t0"), static_cast<int>(sizeof("task-1\t任务一\t开发\t0\ntask-2\t任务二\t设计\t0") - 1));
+        @ int added = EU_AddListBoxItem(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("追加项目"), 12);
+        @ int postedAdded = EU_PostAddListBoxItem(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("异步追加"), 12);
+        @ int inserted = EU_InsertListBoxItem(g_newEmojiWindow, 列表框ID, 1, reinterpret_cast<const unsigned char*>("插入项目"), 12);
+        @ int postedInserted = EU_PostInsertListBoxItem(g_newEmojiWindow, 列表框ID, 2, reinterpret_cast<const unsigned char*>("异步插入"), 12);
+        @ int updated = EU_UpdateListBoxItem(g_newEmojiWindow, 列表框ID, 0, reinterpret_cast<const unsigned char*>("更新后的任务一"), 18);
+        @ int postedUpdated = EU_PostUpdateListBoxItem(g_newEmojiWindow, 列表框ID, 1, reinterpret_cast<const unsigned char*>("异步更新"), 12);
+        调试输出("基础数据接口：添加、插入、更新及同步/异步版本已调用")
+        控件_设置文本("状态标签", "状态：基础数据接口已执行。")
+    结束
+
+    事件 _接口02_读取选择_被点击()
+        局部 整数型 列表框ID = 0
+        @ const LB_NE_ElementRef* listBox = LB_NE_FindElement(L"演示列表框");
+        @ if (!listBox) return;
+        @ 列表框ID = listBox->id;
+        @ unsigned char itemBuffer[4096] = {};
+        @ unsigned char itemsBuffer[16384] = {};
+        @ int count = EU_GetListBoxItemCount(g_newEmojiWindow, 列表框ID);
+        @ int itemSize = EU_GetListBoxItem(g_newEmojiWindow, 列表框ID, 0, itemBuffer, static_cast<int>(sizeof(itemBuffer)));
+        @ int itemsSize = EU_GetListBoxItems(g_newEmojiWindow, 列表框ID, itemsBuffer, static_cast<int>(sizeof(itemsBuffer)));
+        @ EU_SetListBoxSelectedIndex(g_newEmojiWindow, 列表框ID, 1);
+        @ int postedIndex = EU_PostSetListBoxSelectedIndex(g_newEmojiWindow, 列表框ID, 2);
+        @ int selectedIndex = EU_GetListBoxSelectedIndex(g_newEmojiWindow, 列表框ID);
+        @ unsigned char selectedKeysBuffer[4096] = {};
+        @ unsigned char selectedItemsBuffer[4096] = {};
+        @ int selectedKeysSize = EU_GetListBoxSelectedKeys(g_newEmojiWindow, 列表框ID, selectedKeysBuffer, static_cast<int>(sizeof(selectedKeysBuffer)));
+        @ int selectedItemsSize = EU_GetListBoxSelectedItems(g_newEmojiWindow, 列表框ID, selectedItemsBuffer, static_cast<int>(sizeof(selectedItemsBuffer)));
+        @ int postedKeys = EU_PostSetListBoxSelectedKeys(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("task-1|task-2"), static_cast<int>(sizeof("task-1|task-2") - 1));
+        调试输出("读取与选择接口：项目数、项目内容、选择索引、选择 Key 和选中项目已调用")
+        控件_设置文本("状态标签", "状态：读取/选择接口已执行；请查看输出面板中的返回值。")
+    结束
+
+    事件 _接口03_状态编辑_被点击()
+        局部 整数型 列表框ID = 0
+        @ const LB_NE_ElementRef* listBox = LB_NE_FindElement(L"演示列表框");
+        @ if (!listBox) return;
+        @ 列表框ID = listBox->id;
+        @ EU_SetListBoxItemDisabled(g_newEmojiWindow, 列表框ID, 2, 1);
+        @ int postedDisabled = EU_PostSetListBoxItemDisabled(g_newEmojiWindow, 列表框ID, 3, 0);
+        @ int disabled = EU_GetListBoxItemDisabled(g_newEmojiWindow, 列表框ID, 2);
+        @ EU_SetListBoxItemExpanded(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("task-1"), 6, 1);
+        @ int postedExpanded = EU_PostSetListBoxItemExpanded(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("task-1"), 6, 0);
+        @ int expanded = EU_GetListBoxItemExpanded(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("task-1"), 6);
+        @ EU_SetListBoxGroupCollapsed(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("开发"), 6, 1);
+        @ int postedGroup = EU_PostSetListBoxGroupCollapsed(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("开发"), 6, 0);
+        @ int groupCollapsed = EU_GetListBoxGroupCollapsed(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("开发"), 6);
+        @ int startedEdit = EU_StartListBoxEdit(g_newEmojiWindow, 列表框ID, 0, 1);
+        @ int postedStartEdit = EU_PostStartListBoxEdit(g_newEmojiWindow, 列表框ID, 0, 1);
+        @ int committedEdit = EU_CommitListBoxEdit(g_newEmojiWindow, 列表框ID);
+        @ int postedCommit = EU_PostCommitListBoxEdit(g_newEmojiWindow, 列表框ID);
+        @ EU_CancelListBoxEdit(g_newEmojiWindow, 列表框ID);
+        @ int postedCancel = EU_PostCancelListBoxEdit(g_newEmojiWindow, 列表框ID);
+        @ EU_SetListBoxEditOptions(g_newEmojiWindow, 列表框ID, 3, 1);
+        @ int postedEditOptions = EU_PostSetListBoxEditOptions(g_newEmojiWindow, 列表框ID, 3, 1);
+        调试输出("状态与编辑接口：禁用、展开、分组、开始/提交/取消编辑已调用")
+        控件_设置文本("状态标签", "状态：状态与编辑接口已执行。")
+    结束
+
+    事件 _接口04_外观滚动_被点击()
+        局部 整数型 列表框ID = 0
+        @ const LB_NE_ElementRef* listBox = LB_NE_FindElement(L"演示列表框");
+        @ if (!listBox) return;
+        @ 列表框ID = listBox->id;
+        @ EU_SetListBoxScroll(g_newEmojiWindow, 列表框ID, 48);
+        @ int postedScroll = EU_PostSetListBoxScroll(g_newEmojiWindow, 列表框ID, 0);
+        @ int scrollY = EU_GetListBoxScroll(g_newEmojiWindow, 列表框ID);
+        @ EU_SetListBoxOptions(g_newEmojiWindow, 列表框ID, 1, 2, 1, 1, 0, 1, 1, 1, 1, 1, 1);
+        @ int postedOptions = EU_PostSetListBoxOptions(g_newEmojiWindow, 列表框ID, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0);
+        @ int selectionMode = 0; int size = 0; int bordered = 0; int zebra = 0; int compact = 0; int showIcons = 0; int showDesc = 0; int showTags = 0; int treeMode = 0; int groupMode = 0; int dragSort = 0;
+        @ int optionsResult = EU_GetListBoxOptions(g_newEmojiWindow, 列表框ID, &selectionMode, &size, &bordered, &zebra, &compact, &showIcons, &showDesc, &showTags, &treeMode, &groupMode, &dragSort);
+        @ EU_SetListBoxStyle(g_newEmojiWindow, 列表框ID, 40, 20, 8, 12, 28, 12, 0, static_cast<Color>(0xff2563ebu), static_cast<Color>(0xff334155u));
+        @ int postedStyle = EU_PostSetListBoxStyle(g_newEmojiWindow, 列表框ID, 44, 18, 6, 10, 28, 12, 1, static_cast<Color>(0xff0e7490u), static_cast<Color>(0xff475569u));
+        @ unsigned char stateBuffer[32768] = {};
+        @ int stateSize = EU_GetListBoxFullState(g_newEmojiWindow, 列表框ID, stateBuffer, static_cast<int>(sizeof(stateBuffer)));
+        调试输出("外观与滚动接口：滚动、选项、样式和完整状态已调用")
+        控件_设置文本("状态标签", "状态：外观/滚动接口已执行。")
+    结束
+
+    事件 _接口05_虚拟项目_被点击()
+        局部 整数型 列表框ID = 0
+        @ const LB_NE_ElementRef* listBox = LB_NE_FindElement(L"演示列表框");
+        @ if (!listBox) return;
+        @ 列表框ID = listBox->id;
+        @ EU_SetListBoxVirtualItemCount(g_newEmojiWindow, 列表框ID, 5000);
+        @ int postedCount = EU_PostSetListBoxVirtualItemCount(g_newEmojiWindow, 列表框ID, 5000);
+        @ EU_SetListBoxVirtualItemProvider(g_newEmojiWindow, 列表框ID, nullptr);
+        @ EU_RefreshListBoxVirtualItems(g_newEmojiWindow, 列表框ID);
+        @ int postedRefresh = EU_PostRefreshListBoxVirtualItems(g_newEmojiWindow, 列表框ID);
+        调试输出("虚拟项目接口：虚拟行数、提供器设置和刷新接口已调用")
+        控件_设置文本("状态标签", "状态：已切换虚拟项目模式；提供器回调请通过原生扩展接入。")
+    结束
+
+    事件 _接口06_清理恢复_被点击()
+        局部 整数型 列表框ID = 0
+        @ const LB_NE_ElementRef* listBox = LB_NE_FindElement(L"演示列表框");
+        @ if (!listBox) return;
+        @ 列表框ID = listBox->id;
+        @ int postedDelete = EU_PostDeleteListBoxItem(g_newEmojiWindow, 列表框ID, 0);
+        @ int deleted = EU_DeleteListBoxItem(g_newEmojiWindow, 列表框ID, 0);
+        @ int postedClear = EU_PostClearListBoxItems(g_newEmojiWindow, 列表框ID);
+        @ int cleared = EU_ClearListBoxItems(g_newEmojiWindow, 列表框ID);
+        @ EU_SetListBoxItems(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("任务一|任务二|任务三|任务四"), static_cast<int>(sizeof("任务一|任务二|任务三|任务四") - 1));
+        @ EU_SetListBoxSelectedIndex(g_newEmojiWindow, 列表框ID, 0);
+        调试输出("清理接口：删除、清空和恢复初始项目已调用")
+        控件_设置文本("状态标签", "状态：列表框已清理并恢复初始数据。")
+    结束
+
+    // 列表框专属回调由设计器事件自动生成 EU_SetListBox*Callback 注册语句。
+    事件 _演示列表框_选择变化()
+        调试输出("事件：选择变化")
+    结束
+
+    事件 _演示列表框_项目点击()
+        调试输出("事件：项目点击")
+    结束
+
+    事件 _演示列表框_项目双击()
+        调试输出("事件：项目双击")
+    结束
+
+    事件 _演示列表框_项目编辑()
+        调试输出("事件：项目编辑")
+    结束
+
+    事件 _演示列表框_项目重排()
+        调试输出("事件：项目重排")
+    结束
+
+    事件 _演示列表框_项目右键菜单()
+        调试输出("事件：项目右键菜单")
+    结束
+
+    事件 _演示列表框_鼠标进入()
+        调试输出("事件：鼠标进入")
+    结束
+
+    事件 _演示列表框_鼠标离开()
+        调试输出("事件：鼠标离开")
+    结束
+
+    事件 _演示列表框_鼠标按下()
+        调试输出("事件：鼠标按下")
+    结束
+
+    事件 _演示列表框_鼠标抬起()
+        调试输出("事件：鼠标抬起")
+    结束
+
+    事件 _演示列表框_鼠标双击()
+        调试输出("事件：鼠标双击")
+    结束
+
+    事件 _演示列表框_鼠标移动()
+        调试输出("事件：鼠标移动")
+    结束
+
+    事件 _演示列表框_鼠标滚轮()
+        调试输出("事件：鼠标滚轮")
+    结束
+
+    事件 _演示列表框_获得焦点()
+        调试输出("事件：获得焦点")
+    结束
+
+    事件 _演示列表框_失去焦点()
+        调试输出("事件：失去焦点")
+    结束
+结束类

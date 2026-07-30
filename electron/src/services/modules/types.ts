@@ -128,7 +128,7 @@ export interface ModuleDesignerControlContribution {
   properties?: Array<{
     key: string;
     label: string;
-    type: 'text' | 'number' | 'boolean' | 'enum' | 'color' | 'file' | 'stringList' | 'columns' | 'treeNodes' | 'tabs' | 'date' | 'controlRef';
+    type: 'text' | 'number' | 'boolean' | 'enum' | 'color' | 'file' | 'stringList' | 'columns' | 'dataGridColumns' | 'dataGridRows' | 'treeNodes' | 'tabs' | 'date' | 'controlRef';
     defaultValue: unknown;
     options?: Array<{ value: string; label: string }>;
     min?: number;

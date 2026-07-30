@@ -11,6 +11,8 @@ export interface StandardCommandSpec {
   insertText: string;
   parameters?: Array<{ name: string; type: ModuleBindingValueType; description?: string }>;
   returnType: ModuleBindingValueType;
+  returnDescription?: string;
+  visibility?: 'default' | 'advanced' | 'internal';
   example?: string;
 }
 
@@ -53,7 +55,9 @@ export function createStandardModule(spec: StandardModuleSpec): LingBuilderModul
         signature: command.signature,
         description: command.description,
         insertText: command.insertText,
-        returnType: RETURN_TYPE_LABELS[command.returnType]
+        returnType: RETURN_TYPE_LABELS[command.returnType],
+        returnDescription: command.returnDescription,
+        visibility: command.visibility
       })),
       snippets: [{
         label: `${spec.name}快速示例`,

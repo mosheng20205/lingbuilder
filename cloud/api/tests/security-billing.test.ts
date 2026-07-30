@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BillingService } from '../src/billing/billing.service.js';
 import { AiController } from '../src/ai/ai.controller.js';
+import { AiService } from '../src/ai/ai.service.js';
 import { estimateCancellationUsage } from '../src/ai/usage-estimator.js';
 import { extractOpenAiDeltas } from '../src/ai/provider.service.js';
+import { DEEPSEEK_V4_MODELS, normalizeSystemAiProviderInput } from '../src/ai/system-ai-provider.service.js';
 import { isPrivateAddress, validateProviderUrl } from '../src/security/network-policy.js';
 import { SecretVaultService } from '../src/security/secret-vault.service.js';
 
@@ -33,6 +35,31 @@ test('secret vault encrypts with random authenticated ciphertext', () => {
 test('OpenAI-compatible reasoning deltas are kept separate from answer content', () => {
   assert.deepEqual(extractOpenAiDeltas({ choices: [{ delta: { reasoning_content: '推理', content: '答案' } }] }), { reasoning: '推理', content: '答案' });
   assert.deepEqual(extractOpenAiDeltas({ choices: [{ delta: {} }] }), { reasoning: '', content: '' });
+});
+
+test('system AI provider presets create both requested DeepSeek V4 model routes', () => {
+  const value = normalizeSystemAiProviderInput({ name: 'DeepSeek', preset: 'deepseek-v4', protocol: 'openai-compatible', baseUrl: 'https://api.deepseek.com', apiKey: 'secret' });
+  assert.deepEqual(value.models.map(model => model.modelName), DEEPSEEK_V4_MODELS.map(model => model.modelName));
+  assert.equal(value.kind, 'OPENAI_COMPATIBLE');
+  assert.throws(() => normalizeSystemAiProviderInput({ name: 'DeepSeek', preset: 'deepseek-v4', protocol: 'anthropic', baseUrl: 'https://api.deepseek.com', apiKey: 'secret' }), /OpenAI/u);
+});
+
+test('custom system AI providers accept OpenAI and Anthropic protocols with model names', () => {
+  const openAi = normalizeSystemAiProviderInput({ name: '自定义 OpenAI', preset: 'custom', protocol: 'openai-compatible', baseUrl: 'https://ai.example.com/v1', apiKey: 'secret', modelName: 'vendor/model-v1' });
+  const anthropic = normalizeSystemAiProviderInput({ name: '自定义 Anthropic', preset: 'custom', protocol: 'anthropic', baseUrl: 'https://ai.example.com', apiKey: 'secret', modelName: 'claude-custom' });
+  assert.equal(openAi.models[0]?.modelName, 'vendor/model-v1');
+  assert.equal(openAi.models[0]?.alias, 'vendor-model-v1');
+  assert.equal(anthropic.kind, 'ANTHROPIC');
+  assert.throws(() => normalizeSystemAiProviderInput({ name: '缺少模型', preset: 'custom', protocol: 'openai-compatible', baseUrl: 'https://ai.example.com', apiKey: 'secret' }), /Model Name/u);
+});
+
+test('system AI model catalog only exposes models with an enabled provider route', async () => {
+  let query: any;
+  const prisma = { logicalModel: { findMany: async (value: any) => { query = value; return []; } } };
+  const service = new AiService(prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never);
+  await service.models();
+  assert.equal(query.where.routes.some.enabled, true);
+  assert.equal(query.where.routes.some.provider.enabled, true);
 });
 
 test('cancel estimation includes the injected rulebook and streamed output', () => {

@@ -1,0 +1,158 @@
+包 对称加密模块完整演示
+使用 Win32窗口基础模块
+使用 对称加密模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "对称加密模块：26 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.crypto.symmetric")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–13：对称_生成密钥 至 对称_SerpentGCM解密；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：对称_生成密钥
+            // [1] 对称_生成密钥(字节数)
+            // 功能：使用系统密码学随机源生成大写十六进制密钥。
+            // 参数：字节数:int；返回：wideString；可见性：default
+            对称_生成密钥(1)
+            // 命令ID：对称_AES256GCM加密
+            // [2] 对称_AES256GCM加密(明文, 密钥十六进制, 附加数据)
+            // 功能：使用 AES-256/GCM 加密并返回自描述密文。加密时自动生成随机 nonce，并验证认证标签。
+            // 参数：明文:wideString，密钥十六进制:wideString，附加数据:wideString；返回：wideString；可见性：default
+            对称_AES256GCM加密("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：对称_AES256GCM解密
+            // [3] 对称_AES256GCM解密(自描述密文, 密钥十六进制, 附加数据)
+            // 功能：解密 AES-256/GCM 自描述密文。认证或格式失败时返回空文本并记录错误。加密时自动生成随机 nonce，并验证认证标签。
+            // 参数：自描述密文:wideString，密钥十六进制:wideString，附加数据:wideString；返回：wideString；可见性：default
+            对称_AES256GCM解密("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：对称_ChaCha20Poly1305加密
+            // [4] 对称_ChaCha20Poly1305加密(明文, 密钥十六进制, 附加数据)
+            // 功能：使用 ChaCha20-Poly1305 加密并返回自描述密文。加密时自动生成随机 nonce，并验证认证标签。
+            // 参数：明文:wideString，密钥十六进制:wideString，附加数据:wideString；返回：wideString；可见性：default
+            对称_ChaCha20Poly1305加密("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：对称_ChaCha20Poly1305解密
+            // [5] 对称_ChaCha20Poly1305解密(自描述密文, 密钥十六进制, 附加数据)
+            // 功能：解密 ChaCha20-Poly1305 自描述密文。认证或格式失败时返回空文本并记录错误。加密时自动生成随机 nonce，并验证认证标签。
+            // 参数：自描述密文:wideString，密钥十六进制:wideString，附加数据:wideString；返回：wideString；可见性：default
+            对称_ChaCha20Poly1305解密("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：对称_SM4GCM加密
+            // [6] 对称_SM4GCM加密(明文, 密钥十六进制, 附加数据)
+            // 功能：使用 SM4/GCM 加密并返回自描述密文。加密时自动生成随机 nonce，并验证认证标签。
+            // 参数：明文:wideString，密钥十六进制:wideString，附加数据:wideString；返回：wideString；可见性：default
+            对称_SM4GCM加密("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：对称_SM4GCM解密
+            // [7] 对称_SM4GCM解密(自描述密文, 密钥十六进制, 附加数据)
+            // 功能：解密 SM4/GCM 自描述密文。认证或格式失败时返回空文本并记录错误。加密时自动生成随机 nonce，并验证认证标签。
+            // 参数：自描述密文:wideString，密钥十六进制:wideString，附加数据:wideString；返回：wideString；可见性：default
+            对称_SM4GCM解密("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：对称_Camellia256GCM加密
+            // [8] 对称_Camellia256GCM加密(明文, 密钥十六进制, 附加数据)
+            // 功能：使用 Camellia-256/GCM 加密并返回自描述密文。加密时自动生成随机 nonce，并验证认证标签。
+            // 参数：明文:wideString，密钥十六进制:wideString，附加数据:wideString；返回：wideString；可见性：default
+            对称_Camellia256GCM加密("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：对称_Camellia256GCM解密
+            // [9] 对称_Camellia256GCM解密(自描述密文, 密钥十六进制, 附加数据)
+            // 功能：解密 Camellia-256/GCM 自描述密文。认证或格式失败时返回空文本并记录错误。加密时自动生成随机 nonce，并验证认证标签。
+            // 参数：自描述密文:wideString，密钥十六进制:wideString，附加数据:wideString；返回：wideString；可见性：default
+            对称_Camellia256GCM解密("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：对称_TwofishGCM加密
+            // [10] 对称_TwofishGCM加密(明文, 密钥十六进制, 附加数据)
+            // 功能：使用 Twofish/GCM 加密并返回自描述密文。加密时自动生成随机 nonce，并验证认证标签。
+            // 参数：明文:wideString，密钥十六进制:wideString，附加数据:wideString；返回：wideString；可见性：default
+            对称_TwofishGCM加密("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：对称_TwofishGCM解密
+            // [11] 对称_TwofishGCM解密(自描述密文, 密钥十六进制, 附加数据)
+            // 功能：解密 Twofish/GCM 自描述密文。认证或格式失败时返回空文本并记录错误。加密时自动生成随机 nonce，并验证认证标签。
+            // 参数：自描述密文:wideString，密钥十六进制:wideString，附加数据:wideString；返回：wideString；可见性：default
+            对称_TwofishGCM解密("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：对称_SerpentGCM加密
+            // [12] 对称_SerpentGCM加密(明文, 密钥十六进制, 附加数据)
+            // 功能：使用 Serpent/GCM 加密并返回自描述密文。加密时自动生成随机 nonce，并验证认证标签。
+            // 参数：明文:wideString，密钥十六进制:wideString，附加数据:wideString；返回：wideString；可见性：default
+            对称_SerpentGCM加密("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：对称_SerpentGCM解密
+            // [13] 对称_SerpentGCM解密(自描述密文, 密钥十六进制, 附加数据)
+            // 功能：解密 Serpent/GCM 自描述密文。认证或格式失败时返回空文本并记录错误。加密时自动生成随机 nonce，并验证认证标签。
+            // 参数：自描述密文:wideString，密钥十六进制:wideString，附加数据:wideString；返回：wideString；可见性：default
+            对称_SerpentGCM解密("演示参数1", "演示参数2", "演示参数3")
+        如果结束
+        调试输出("已查看 命令 1–13：对称_生成密钥 至 对称_SerpentGCM解密；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本("演示状态", "命令 14–26：对称_AES256CBC加密 至 对称_取错误；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：对称_AES256CBC加密
+            // [14] 对称_AES256CBC加密(明文, 密钥十六进制)
+            // 功能：使用 AES-256/CBC 加密并返回自描述密文。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。
+            // 参数：明文:wideString，密钥十六进制:wideString；返回：wideString；可见性：advanced
+            对称_AES256CBC加密("演示参数1", "演示参数2")
+            // 命令ID：对称_AES256CBC解密
+            // [15] 对称_AES256CBC解密(自描述密文, 密钥十六进制)
+            // 功能：解密 AES-256/CBC 自描述密文。认证或格式失败时返回空文本并记录错误。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。
+            // 参数：自描述密文:wideString，密钥十六进制:wideString；返回：wideString；可见性：advanced
+            对称_AES256CBC解密("演示参数1", "演示参数2")
+            // 命令ID：对称_BlowfishCBC加密
+            // [16] 对称_BlowfishCBC加密(明文, 密钥十六进制)
+            // 功能：使用 Blowfish/CBC 加密并返回自描述密文。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。
+            // 参数：明文:wideString，密钥十六进制:wideString；返回：wideString；可见性：advanced
+            对称_BlowfishCBC加密("演示参数1", "演示参数2")
+            // 命令ID：对称_BlowfishCBC解密
+            // [17] 对称_BlowfishCBC解密(自描述密文, 密钥十六进制)
+            // 功能：解密 Blowfish/CBC 自描述密文。认证或格式失败时返回空文本并记录错误。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。
+            // 参数：自描述密文:wideString，密钥十六进制:wideString；返回：wideString；可见性：advanced
+            对称_BlowfishCBC解密("演示参数1", "演示参数2")
+            // 命令ID：对称_DESCBC加密
+            // [18] 对称_DESCBC加密(明文, 密钥十六进制)
+            // 功能：使用 DES/CBC 加密并返回自描述密文。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。
+            // 参数：明文:wideString，密钥十六进制:wideString；返回：wideString；可见性：advanced
+            对称_DESCBC加密("演示参数1", "演示参数2")
+            // 命令ID：对称_DESCBC解密
+            // [19] 对称_DESCBC解密(自描述密文, 密钥十六进制)
+            // 功能：解密 DES/CBC 自描述密文。认证或格式失败时返回空文本并记录错误。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。
+            // 参数：自描述密文:wideString，密钥十六进制:wideString；返回：wideString；可见性：advanced
+            对称_DESCBC解密("演示参数1", "演示参数2")
+            // 命令ID：对称_三DES_CBC加密
+            // [20] 对称_三DES_CBC加密(明文, 密钥十六进制)
+            // 功能：使用 3DES/CBC 加密并返回自描述密文。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。
+            // 参数：明文:wideString，密钥十六进制:wideString；返回：wideString；可见性：advanced
+            对称_三DES_CBC加密("演示参数1", "演示参数2")
+            // 命令ID：对称_三DES_CBC解密
+            // [21] 对称_三DES_CBC解密(自描述密文, 密钥十六进制)
+            // 功能：解密 3DES/CBC 自描述密文。认证或格式失败时返回空文本并记录错误。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。
+            // 参数：自描述密文:wideString，密钥十六进制:wideString；返回：wideString；可见性：advanced
+            对称_三DES_CBC解密("演示参数1", "演示参数2")
+            // 命令ID：对称_RC4加密
+            // [22] 对称_RC4加密(明文, 密钥十六进制)
+            // 功能：使用 RC4 加密并返回自描述密文。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。
+            // 参数：明文:wideString，密钥十六进制:wideString；返回：wideString；可见性：advanced
+            对称_RC4加密("演示参数1", "演示参数2")
+            // 命令ID：对称_RC4解密
+            // [23] 对称_RC4解密(自描述密文, 密钥十六进制)
+            // 功能：解密 RC4 自描述密文。认证或格式失败时返回空文本并记录错误。该算法不提供完整性认证，仅用于兼容旧数据；新项目优先使用 AES-256/GCM 或 ChaCha20-Poly1305。
+            // 参数：自描述密文:wideString，密钥十六进制:wideString；返回：wideString；可见性：advanced
+            对称_RC4解密("演示参数1", "演示参数2")
+            // 命令ID：对称_RC2CBC加密
+            // [24] 对称_RC2CBC加密(明文, 密钥十六进制)
+            // 功能：使用 Windows CryptoAPI RC2-128/CBC 加密并返回自描述密文。该算法仅用于兼容旧数据，新项目不要使用。
+            // 参数：明文:wideString，密钥十六进制:wideString；返回：wideString；可见性：advanced
+            对称_RC2CBC加密("演示参数1", "演示参数2")
+            // 命令ID：对称_RC2CBC解密
+            // [25] 对称_RC2CBC解密(自描述密文, 密钥十六进制)
+            // 功能：解密 RC2-128/CBC 自描述密文。该算法仅用于兼容旧数据，新项目不要使用。
+            // 参数：自描述密文:wideString，密钥十六进制:wideString；返回：wideString；可见性：advanced
+            对称_RC2CBC解密("演示参数1", "演示参数2")
+            // 命令ID：对称_取错误
+            // [26] 对称_取错误()
+            // 功能：读取最近一次对称加密或解密失败的中文错误。
+            // 参数：无；返回：wideString；可见性：default
+            对称_取错误()
+        如果结束
+        调试输出("已查看 命令 14–26：对称_AES256CBC加密 至 对称_取错误；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

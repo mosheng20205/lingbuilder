@@ -5,7 +5,7 @@ export type LingControlType =
   | 'ListBox' | 'ComboBox' | 'GroupBox' | 'ScrollBar'
   | 'Image' | 'AnimatedImage' | 'ProgressBar' | 'Grid'
   | 'Upload' | 'DragUpload'
-  | 'ListView' | 'TreeView' | 'TabControl' | 'Header' | 'ComboBoxEx' | 'SysLink'
+  | 'ListView' | 'DataGrid' | 'TreeView' | 'TabControl' | 'Header' | 'ComboBoxEx' | 'SysLink'
   | 'DateTimePicker' | 'MonthCalendar' | 'TrackBar' | 'UpDown' | 'HotKey' | 'IPAddress'
   | 'ToolBar' | 'StatusBar' | 'ToolTip' | 'ReBar' | 'Pager' | 'RichEdit'
   | 'Animation' | 'VideoPlayer' | 'ColorPicker' | 'FlatScrollBar' | 'ImageList' | 'PropertySheet' | 'FileDialog'

@@ -1,0 +1,208 @@
+包 EdgeView浏览器模块完整演示
+使用 Win32窗口基础模块
+使用 EdgeView浏览器模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "EdgeView 浏览器模块：36 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.edgeview")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–18：EdgeView_创建 至 EdgeView_取事件数据；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：EdgeView_创建
+            // [1] EdgeView_创建(父组件句柄, 地址)
+            // 功能：在指定 HWND 组件客户区内创建 EdgeView；传 0 时嵌入当前窗口。成功返回 1。
+            // 参数：父组件句柄:longLong，地址:wideString；返回：int；可见性：default
+            EdgeView_创建(1, "https://example.com")
+            // 命令ID：EdgeView_创建实例
+            // [2] EdgeView_创建实例(实例编号, 父组件句柄, 地址, 独立缓存目录)
+            // 功能：创建具名 EdgeView 实例；不同缓存目录拥有独立 Cookie、存储和会话。
+            // 参数：实例编号:int，父组件句柄:longLong，地址:wideString，独立缓存目录:wideString；返回：int；可见性：default
+            EdgeView_创建实例(1, 1, "https://example.com", ".")
+            // 命令ID：EdgeView_创建实例代理
+            // [3] EdgeView_创建实例代理(实例编号, 父组件句柄, 地址, 独立缓存目录, 代理地址)
+            // 功能：创建使用独立代理的 EdgeView 实例；该代理覆盖全局代理。
+            // 参数：实例编号:int，父组件句柄:longLong，地址:wideString，独立缓存目录:wideString，代理地址:wideString；返回：int；可见性：default
+            EdgeView_创建实例代理(1, 1, "https://example.com", ".", "https://example.com")
+            // 命令ID：EdgeView_创建区域
+            // [4] EdgeView_创建区域(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录)
+            // 功能：在当前窗口指定区域创建独立承载 HWND 和 EdgeView 实例。
+            // 参数：实例编号:int，左:int，顶:int，宽:int，高:int，地址:wideString，独立缓存目录:wideString；返回：int；可见性：default
+            EdgeView_创建区域(1, 1, 1, 1, 1, "https://example.com", ".")
+            // 命令ID：EdgeView_创建区域代理
+            // [5] EdgeView_创建区域代理(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录, 代理地址)
+            // 功能：在指定区域创建使用独立代理的 EdgeView 实例。
+            // 参数：实例编号:int，左:int，顶:int，宽:int，高:int，地址:wideString，独立缓存目录:wideString，代理地址:wideString；返回：int；可见性：default
+            EdgeView_创建区域代理(1, 1, 1, 1, 1, "https://example.com", ".", "https://example.com")
+            // 命令ID：EdgeView_设置全局代理
+            // [6] EdgeView_设置全局代理(代理地址)
+            // 功能：设置后续新建 EdgeView 实例默认使用的 HTTP/HTTPS/SOCKS5 代理；现有实例不变。
+            // 参数：代理地址:wideString；返回：int；可见性：default
+            EdgeView_设置全局代理("https://example.com")
+            // 命令ID：EdgeView_清除全局代理
+            // [7] EdgeView_清除全局代理()
+            // 功能：清除后续新建实例的全局代理，现有实例不变。
+            // 参数：无；返回：void；可见性：default
+            EdgeView_清除全局代理()
+            // 命令ID：EdgeView_取全局代理
+            // [8] EdgeView_取全局代理()
+            // 功能：返回当前 EdgeView 全局代理设置。
+            // 参数：无；返回：wideString；可见性：default
+            EdgeView_取全局代理()
+            // 命令ID：EdgeView_取实例代理
+            // [9] EdgeView_取实例代理(实例编号)
+            // 功能：返回指定实例创建时实际采用的代理地址。
+            // 参数：实例编号:int；返回：wideString；可见性：default
+            EdgeView_取实例代理(1)
+            // 命令ID：EdgeView_绑定事件
+            // [10] EdgeView_绑定事件(实例编号, 事件名, 处理器名)
+            // 功能：绑定 WebView2 完整事件目录中的中文事件；当前目录共 62 项。
+            // 参数：实例编号:int，事件名:wideString，处理器名:wideString；返回：int；可见性：default
+            EdgeView_绑定事件(1, "演示事件", "演示参数3")
+            // 命令ID：EdgeView_监听开发者工具事件
+            // [11] EdgeView_监听开发者工具事件(实例编号, 协议事件名)
+            // 功能：监听指定 Chromium DevTools Protocol 事件，触发“开发者工具协议事件”。
+            // 参数：实例编号:int，协议事件名:wideString；返回：int；可见性：default
+            EdgeView_监听开发者工具事件(1, "演示事件")
+            // 命令ID：EdgeView_等待事件
+            // [12] EdgeView_等待事件(实例编号, 事件名, 超时毫秒)
+            // 功能：泵送窗口消息并等待指定浏览器事件，成功返回 1，超时返回 0。
+            // 参数：实例编号:int，事件名:wideString，超时毫秒:int；返回：int；可见性：default
+            EdgeView_等待事件(1, "演示事件", 1)
+            // 命令ID：EdgeView_导航
+            // [13] EdgeView_导航(地址)
+            // 功能：导航到 HTTP/HTTPS 地址或本地文件地址。
+            // 参数：地址:wideString；返回：int；可见性：default
+            EdgeView_导航("https://example.com")
+            // 命令ID：EdgeView_导航实例
+            // [14] EdgeView_导航实例(实例编号, 地址)
+            // 功能：让指定 EdgeView 实例导航。
+            // 参数：实例编号:int，地址:wideString；返回：int；可见性：default
+            EdgeView_导航实例(1, "https://example.com")
+            // 命令ID：EdgeView_执行JS
+            // [15] EdgeView_执行JS(脚本)
+            // 功能：执行 JavaScript 并等待异步回调，返回 WebView2 的 JSON 编码结果；失败返回空文本。
+            // 参数：脚本:wideString；返回：wideString；可见性：default
+            EdgeView_执行JS("演示参数1")
+            // 命令ID：EdgeView_执行JS实例
+            // [16] EdgeView_执行JS实例(实例编号, 脚本)
+            // 功能：在指定实例执行 JavaScript，并返回 WebView2 JSON 编码结果。
+            // 参数：实例编号:int，脚本:wideString；返回：wideString；可见性：default
+            EdgeView_执行JS实例(1, "演示参数2")
+            // 命令ID：EdgeView_取最近事件
+            // [17] EdgeView_取最近事件()
+            // 功能：返回最近触发的 WebView2 中文事件名。
+            // 参数：无；返回：wideString；可见性：default
+            EdgeView_取最近事件()
+            // 命令ID：EdgeView_取事件数据
+            // [18] EdgeView_取事件数据()
+            // 功能：返回最近事件携带的 UTF-16 JSON 对象文本。
+            // 参数：无；返回：wideString；可见性：default
+            EdgeView_取事件数据()
+        如果结束
+        调试输出("已查看 命令 1–18：EdgeView_创建 至 EdgeView_取事件数据；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本("演示状态", "命令 19–36：EdgeView_取最近事件实例 至 EdgeView_监听开发者工具事件控件；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：EdgeView_取最近事件实例
+            // [19] EdgeView_取最近事件实例(实例编号)
+            // 功能：返回指定浏览器实例最近事件名。
+            // 参数：实例编号:int；返回：wideString；可见性：default
+            EdgeView_取最近事件实例(1)
+            // 命令ID：EdgeView_取事件数据实例
+            // [20] EdgeView_取事件数据实例(实例编号)
+            // 功能：返回指定浏览器实例最近事件携带的数据。
+            // 参数：实例编号:int；返回：wideString；可见性：default
+            EdgeView_取事件数据实例(1)
+            // 命令ID：EdgeView_后退
+            // [21] EdgeView_后退()
+            // 功能：浏览器可以后退时返回上一页。
+            // 参数：无；返回：int；可见性：default
+            EdgeView_后退()
+            // 命令ID：EdgeView_前进
+            // [22] EdgeView_前进()
+            // 功能：浏览器可以前进时进入下一页。
+            // 参数：无；返回：int；可见性：default
+            EdgeView_前进()
+            // 命令ID：EdgeView_刷新
+            // [23] EdgeView_刷新()
+            // 功能：刷新当前网页。
+            // 参数：无；返回：void；可见性：default
+            EdgeView_刷新()
+            // 命令ID：EdgeView_关闭
+            // [24] EdgeView_关闭()
+            // 功能：关闭浏览器控制器并释放 WebView2 资源。
+            // 参数：无；返回：void；可见性：default
+            EdgeView_关闭()
+            // 命令ID：EdgeView_关闭实例
+            // [25] EdgeView_关闭实例(实例编号)
+            // 功能：关闭指定 EdgeView 实例并释放其承载窗口。
+            // 参数：实例编号:int；返回：void；可见性：default
+            EdgeView_关闭实例(1)
+            // 命令ID：EdgeView_创建控件
+            // [26] EdgeView_创建控件(控件名)
+            // 功能：使用设计器属性重新创建指定 Edge 浏览器控件；空文本创建当前窗口全部 Edge 浏览器控件。
+            // 参数：控件名:wideString；返回：int；可见性：default
+            EdgeView_创建控件("演示输出")
+            // 命令ID：EdgeView_导航控件
+            // [27] EdgeView_导航控件(控件名, 地址)
+            // 功能：让指定设计器 Edge 浏览器控件导航到新地址。
+            // 参数：控件名:wideString，地址:wideString；返回：int；可见性：default
+            EdgeView_导航控件("演示输出", "https://example.com")
+            // 命令ID：EdgeView_执行JS控件
+            // [28] EdgeView_执行JS控件(控件名, 脚本)
+            // 功能：在指定设计器 Edge 浏览器控件中执行 JavaScript 并返回 JSON 编码结果。
+            // 参数：控件名:wideString，脚本:wideString；返回：wideString；可见性：default
+            EdgeView_执行JS控件("演示输出", "演示参数2")
+            // 命令ID：EdgeView_取最近事件控件
+            // [29] EdgeView_取最近事件控件(控件名)
+            // 功能：读取指定设计器 Edge 浏览器控件最近触发的事件名。
+            // 参数：控件名:wideString；返回：wideString；可见性：default
+            EdgeView_取最近事件控件("演示输出")
+            // 命令ID：EdgeView_取事件数据控件
+            // [30] EdgeView_取事件数据控件(控件名)
+            // 功能：读取指定设计器 Edge 浏览器控件最近事件的数据。
+            // 参数：控件名:wideString；返回：wideString；可见性：default
+            EdgeView_取事件数据控件("演示输出")
+            // 命令ID：EdgeView_后退控件
+            // [31] EdgeView_后退控件(控件名)
+            // 功能：让指定设计器 Edge 浏览器控件后退。
+            // 参数：控件名:wideString；返回：int；可见性：default
+            EdgeView_后退控件("演示输出")
+            // 命令ID：EdgeView_前进控件
+            // [32] EdgeView_前进控件(控件名)
+            // 功能：让指定设计器 Edge 浏览器控件前进。
+            // 参数：控件名:wideString；返回：int；可见性：default
+            EdgeView_前进控件("演示输出")
+            // 命令ID：EdgeView_刷新控件
+            // [33] EdgeView_刷新控件(控件名)
+            // 功能：刷新指定设计器 Edge 浏览器控件。
+            // 参数：控件名:wideString；返回：void；可见性：default
+            EdgeView_刷新控件("演示输出")
+            // 命令ID：EdgeView_关闭控件
+            // [34] EdgeView_关闭控件(控件名)
+            // 功能：关闭指定设计器 Edge 浏览器控件并保留设计器宿主占位。
+            // 参数：控件名:wideString；返回：void；可见性：default
+            EdgeView_关闭控件("演示输出")
+            // 命令ID：EdgeView_绑定控件事件
+            // [35] EdgeView_绑定控件事件(控件名, 事件名, 处理器名)
+            // 功能：按控件名绑定 WebView2 完整事件目录中的中文事件；当前目录共 62 项。
+            // 参数：控件名:wideString，事件名:wideString，处理器名:wideString；返回：int；可见性：default
+            EdgeView_绑定控件事件("演示输出", "演示事件", "演示参数3")
+            // 命令ID：EdgeView_监听开发者工具事件控件
+            // [36] EdgeView_监听开发者工具事件控件(控件名, 协议事件名)
+            // 功能：按设计器控件名监听 Chromium DevTools Protocol 事件。
+            // 参数：控件名:wideString，协议事件名:wideString；返回：int；可见性：default
+            EdgeView_监听开发者工具事件控件("演示输出", "演示事件")
+        如果结束
+        调试输出("已查看 命令 19–36：EdgeView_取最近事件实例 至 EdgeView_监听开发者工具事件控件；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

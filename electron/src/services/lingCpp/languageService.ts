@@ -1,4 +1,6 @@
 import { LING_CPP_KEYWORDS, LING_CPP_TYPES, normalizeIdentifier, parseLingCpp } from './parser';
+import { LIST_VIEW_ADVANCED_API } from '../modules/listViewApiCatalog';
+import { DATA_GRID_API } from '../modules/dataGridApiCatalog';
 import {
   createLingCppCatalogItem,
   dedupeLingCppCompletionItems,
@@ -268,7 +270,8 @@ export function getLingCppSemanticDiagnostics(
     ...parsed.program.functionLibraries.map(library => ({ name: library.name, line: library.line, endLine: library.endLine, members: [], methods: library.methods }))
   ], moduleContext, effectiveConstants, effectiveGlobals, projectTypes));
   diagnostics.push(...getUnknownDeclaredTypeDiagnostics(parsed.program, moduleContext, projectTypes));
-  diagnostics.push(...getFunctionLibraryDiagnostics(source, filePath, projectFunctions));
+  const functionLibraryDiagnostics = getFunctionLibraryDiagnostics(source, filePath, projectFunctions);
+  diagnostics.push(...functionLibraryDiagnostics.filter(diagnostic => !isDesignerControlMethodDiagnostic(diagnostic, source, designerProject, filePath)));
 
   if (designerProject) {
     getLingCppDesignerBindings(source, designerProject, filePath, moduleContext).forEach(hint => {
@@ -1890,7 +1893,26 @@ function getDesignerControlCommandCompletions(
     commands.push(command('清空项目', '控件_清空项目', '', '清空控件中的项目'));
   }
   if (control.type === 'ListView') {
-    commands.push(command('添加行', '列表视图_添加行', '"$1"', '追加一行 Tab 分隔的单元格'));
+    commands.push(
+      command('添加行', '列表视图_添加行', '"$1"', '追加一行 Tab 分隔的单元格'),
+      command('插入行', '列表视图_插入行', '0, "$1"', '在零基行索引插入一行'),
+      command('删除行', '列表视图_删除行', '0', '删除零基行索引'),
+      command('设置单元格', '列表视图_设置单元格', '0, 0, "$1"', '设置零基行列单元格'),
+      command('取单元格', '列表视图_取单元格', '0, 0', '读取零基行列单元格'),
+      command('取行数', '列表视图_取行数', '', '读取当前数据行数'),
+      command('批量添加行', '列表视图_批量添加行', '"$1"', '追加换行分隔的多行 TSV 数据'),
+      command('开始批量更新', '列表视图_开始批量更新', '', '暂停重绘'),
+      command('结束批量更新', '列表视图_结束批量更新', '', '恢复重绘'),
+      command('排序', '列表视图_排序', '0, 真', '按列文本稳定排序'),
+      command('取最后单击列', '列表视图_取最后单击列', '', '读取最近表头单击列'),
+      command('取虚拟模式', '列表视图_取虚拟模式', '', '判断是否启用 LVS_OWNERDATA'),
+      command('设置虚拟行数', '列表视图_设置虚拟行数', '15000', '设置虚拟列表总行数'),
+      command('设置虚拟行', '列表视图_设置虚拟行', '0, "$1"', '设置虚拟列表指定行'),
+      ...LIST_VIEW_ADVANCED_API.map(item => command(item.memberName, item.name, item.memberArgs, item.description))
+    );
+  }
+  if (control.type === 'DataGrid') {
+    commands.push(...DATA_GRID_API.map(item => command(item.memberName, item.name, item.memberArgs, item.description)));
   }
   if (control.type === 'TreeView') {
     commands.push(command('添加节点', '树形框_添加节点', '"$1", "$2"', '向根级或指定父节点追加节点'));
@@ -2558,6 +2580,28 @@ function selectDesignerWindows(project: LingWindowProject, source: string, fileP
     const xmlSourceName = win.fileName.replace(/\.xml$/i, '.lcpp').toLowerCase();
     return normalizedPath.endsWith(classSourceName) || normalizedPath.endsWith(xmlSourceName);
   });
+}
+
+function isDesignerControlMethodDiagnostic(
+  diagnostic: LingCppDiagnostic,
+  source: string,
+  designerProject?: LingWindowProject,
+  filePath?: string
+): boolean {
+  if (!designerProject || !diagnostic.message.startsWith('找不到功能库“')) return false;
+  const lines = splitLines(source);
+  const lineIndex = Math.max(0, diagnostic.line - 1);
+  const nearbySource = lines.slice(Math.max(0, lineIndex - 1), lineIndex + 2).join('\n');
+  const candidates = [diagnostic.codeSnippet || '', nearbySource];
+  const calls = candidates.flatMap(candidate => [...candidate.matchAll(/([\p{L}_][\p{L}\p{N}_]*)\s*\.\s*([\p{L}_][\p{L}\p{N}_]*)\s*[（(]/gu)]);
+  const imageControlNames = new Set(selectDesignerWindows(designerProject, source, filePath)
+    .flatMap(window => window.controls)
+    .filter(control => control.type === 'Image')
+    .map(control => normalizeIdentifier(control.name)));
+  if (calls.length === 0) return false;
+  const call = calls.find(match => match[2] === '设置图片');
+  if (!call?.[1]) return false;
+  return imageControlNames.has(normalizeIdentifier(call[1]));
 }
 
 function collectDesignerEventBindings(windows: LingWindowModel[], resources: LingDesignerResource[] = []) {

@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.466Z",
+  "module": {
+    "id": "lingbuilder.advanced.hook",
+    "name": "键盘Hook模块",
+    "version": "1.0.0",
+    "description": "提供当前桌面低级键盘 Hook 状态读取；不支持注入或修改其他进程。"
+  },
+  "commandCount": 4,
+  "commands": [
+    {
+      "index": 1,
+      "name": "键盘钩子_启动",
+      "signature": "键盘钩子_启动()",
+      "description": "启动 WH_KEYBOARD_LL 钩子。",
+      "insertText": "键盘钩子_启动()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "键盘钩子_启动",
+        "runtimeName": "键盘钩子_启动",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘钩子_启动()"
+    },
+    {
+      "index": 2,
+      "name": "键盘钩子_取最后键码",
+      "signature": "键盘钩子_取最后键码()",
+      "description": "读取最近键盘消息虚拟键码。",
+      "insertText": "键盘钩子_取最后键码()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "键盘钩子_取最后键码",
+        "runtimeName": "键盘钩子_取最后键码",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "键盘钩子_取最后键码()"
+    },
+    {
+      "index": 3,
+      "name": "键盘钩子_取消息数量",
+      "signature": "键盘钩子_取消息数量()",
+      "description": "读取钩子收到的消息数量。",
+      "insertText": "键盘钩子_取消息数量()",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "键盘钩子_取消息数量",
+        "runtimeName": "键盘钩子_取消息数量",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "键盘钩子_取消息数量()"
+    },
+    {
+      "index": 4,
+      "name": "键盘钩子_停止",
+      "signature": "键盘钩子_停止()",
+      "description": "卸载键盘钩子。",
+      "insertText": "键盘钩子_停止()",
+      "returnType": "空",
+      "binding": {
+        "command": "键盘钩子_停止",
+        "runtimeName": "键盘钩子_停止",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "键盘钩子_停止()"
+    }
+  ]
+}

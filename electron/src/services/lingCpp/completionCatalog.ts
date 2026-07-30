@@ -50,6 +50,7 @@ export function getLingCppCompletionCatalog(contextKind: LingCppCompletionContex
   const common: LingCppCompletionCatalogItem[] = [
     catalogItem('信息框', 'function', '信息框("$1", 64, "提示")', '弹出一个提示框', ['MessageBox', 'msg', 'alert'], ['xxk', 'xinxikuang'], '信息框("你好", 64, "提示")', 'command', 30),
     catalogItem('调试输出', 'function', '调试输出("$1", $2)', '向输出面板写入任意数量参数，参数使用英文逗号分隔', ['DebugOutput', 'debug', 'trace', 'log'], ['ts', 'sc', 'tssc'], '调试输出("当前选择项", 控件_取选择项("列表框1"), 真)', 'command', 30),
+    catalogItem('格式化文本', 'function', '格式化文本("$1：{}", $2)', '按顺序用参数替换 {} 占位符，{{ 和 }} 表示字面量花括号', ['FormatText', 'format', 'template'], ['gshwb', 'gs'], '格式化文本("姓名：{}，年龄：{}", "小林", 18)', 'command', 30, true),
     catalogItem('结束', 'function', '结束()', '结束当前程序', ['Exit', 'Quit', 'CloseApp'], ['js', 'tc'], '结束()', 'command', 30),
     catalogItem('修改控件文字', 'snippet', '$1.文字 = "$2"', '修改按钮、标签或输入框显示文字', ['SetText', 'Text'], ['xgwz', 'wz'], '按钮1.文字 = "确定"', 'snippet', 50, true),
     catalogItem('打开窗口', 'function', '打开窗口("$1")', '打开另一个窗口', ['OpenWindow', 'ShowWindow', '窗口_打开', '载入窗口', '载入新窗口'], ['dkck', 'ck', 'zrck'], '打开窗口("设置窗体")', 'command', 30),

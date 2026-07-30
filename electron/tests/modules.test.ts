@@ -225,6 +225,18 @@ test('Win32 基础模块全局提供初级鼠标屏幕位置命令', () => {
   );
 });
 
+test('Win32 基础模块提供可变参数占位符文本格式化命令', () => {
+  const manifest = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!;
+  const contribution = manifest.contributes?.commands?.find(command => command.name === '格式化文本');
+  const binding = manifest.bindings?.commands?.find(command => command.command === '格式化文本');
+
+  assert.equal(contribution?.signature, '格式化文本(格式模板, 参数...)');
+  assert.match(contribution?.description || '', /\{\}.*\{\{.*\}\}/u);
+  assert.equal(binding?.runtimeName, '格式化文本');
+  assert.deepEqual(binding?.parameters?.map(parameter => parameter.type), ['wideString', 'raw']);
+  assert.equal(binding?.returnType, 'wideString');
+});
+
 test('网络基础模块提供请求、状态、错误和关闭闭环', () => {
   assert.deepEqual(NETWORK_LIBRARY_MODULES.map(module => module.id), [
     'lingbuilder.net.http-client', 'lingbuilder.net.tcp', 'lingbuilder.net.udp',
@@ -253,7 +265,7 @@ test('网络基础模块提供请求、状态、错误和关闭闭环', () => {
 });
 
 test('数据、数据库、加密、图像和媒体模块提供可生成实现', () => {
-  assert.equal(DATA_MEDIA_MODULES.length, 11);
+  assert.equal(DATA_MEDIA_MODULES.length, 14);
   for (const manifest of DATA_MEDIA_MODULES) {
     assert.equal(validateModuleManifest(manifest).diagnostics.length, 0, `${manifest.id} manifest 应通过校验`);
     assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), manifest.contributes?.commands?.map(command => command.name));
@@ -265,7 +277,11 @@ test('数据、数据库、加密、图像和媒体模块提供可生成实现',
   });
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
   assert.match(mainCpp, /const wchar_t\* CSV_取字段/u);
-  assert.match(mainCpp, /const wchar_t\* 哈希_SHA256文本/u);
+  assert.match(mainCpp, /LB_HASH_PAIR\(SHA256/u);
+  assert.match(mainCpp, /const wchar_t\* 哈希_BLAKE3文本/u);
+  assert.match(mainCpp, /const wchar_t\* 密码_Argon2id哈希/u);
+  assert.match(mainCpp, /LB_AEAD_WRAPPERS\(AES256GCM/u);
+  assert.match(mainCpp, /const wchar_t\* 非对称_RSA生成私钥/u);
   assert.match(mainCpp, /const wchar_t\* 数据保护_加密文本/u);
   assert.match(mainCpp, /bool ODBC_连接/u);
   assert.match(mainCpp, /bool SQLite_加载运行库/u);
@@ -295,7 +311,7 @@ test('模块封装清单覆盖实际内置模块注册表', async () => {
   assert.ok(checklist.includes(`${BUILTIN_MODULES.length} 个内置模块、${commandCount} 条中文命令`));
   assert.match(checklist, /51 个模块、287 条命令/u);
   assert.match(checklist, /`lingbuilder\.std\.encoding` \| 编码转换模块 \| 30/u);
-  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 38/u);
+  assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 39/u);
   for (const manifest of BUILTIN_MODULES) {
     assert.ok(checklist.includes(`\`${manifest.id}\``), `封装清单缺少 ${manifest.id}`);
   }
@@ -626,8 +642,12 @@ test('中文模块命令支持拼音首字母、全拼和中文拼音混合补�
     .find(item => item.label === '到整数');
   const textCompletion = getBeginnerModuleCodeCompletions(moduleContext)
     .find(item => item.label === '到文本');
+  const formatCompletion = getBeginnerModuleCodeCompletions(moduleContext)
+    .find(item => item.label === '格式化文本');
   assert.ok(integerCompletion?.aliases.includes('dzs'));
   assert.ok(textCompletion?.aliases.includes('dwb'));
+  assert.ok(formatCompletion?.aliases.includes('gshwb'));
+  assert.match(formatCompletion?.insertText || '', /格式化文本\("：\{\}"/u);
   assert.ok(getLingCppCompletions(
     { source: '', line: 1, column: 4, triggerText: 'dzs' },
     moduleContext
@@ -636,6 +656,10 @@ test('中文模块命令支持拼音首字母、全拼和中文拼音混合补�
     { source: '', line: 1, column: 4, triggerText: 'dwb' },
     moduleContext
   ).some(item => item.label === '到文本'));
+  assert.ok(getLingCppCompletions(
+    { source: '', line: 1, column: 5, triggerText: 'gshwb' },
+    moduleContext
+  ).some(item => item.label === '格式化文本'));
 });
 
 test('generateLingCppNativeWin32Project emits module dependency report', () => {
@@ -1325,6 +1349,7 @@ test('FBro module contributes a toolbox designer control and C ABI generated run
   });
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
   assert.match(cpp, /#include <LingBuilderFbroBridge\.h>/u);
+  assert.ok(cpp.indexOf('#define LINGBUILDER_FBRO_MODULE') < cpp.indexOf('#if defined(LINGBUILDER_FBRO_MODULE) && __has_include(<LingBuilderFbroBridge.h>)'));
   assert.match(cpp, /IsType\(control, L"FBroBrowser"\)/u);
   assert.match(cpp, /LB_FBro_Create/u);
   assert.match(cpp, /int FBro_导航\(const wchar_t\* controlName, const std::wstring& address\)/u);
@@ -1630,6 +1655,85 @@ test('generated new_emoji bridge completions match binding parameter counts', as
       ['允许拖拽', 'bool'], ['文件数量上限', 'int'], ['单文件上限KB', 'int'], ['允许文件类型', 'wideString']
     ]
   );
+});
+
+test('new_emoji Tabs can host one independent FBro HWND browser on each page', async () => {
+  const manifestPath = path.join(process.cwd(), '..', '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json');
+  const newEmojiManifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  const tabsContribution = newEmojiManifest.contributes.designerControls.find((control: { type: string }) => control.type === 'Tabs');
+  assert.ok(tabsContribution);
+  const fbroManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  assert.ok(fbroManifest);
+  const enabledModules: InstalledModule[] = [
+    {
+      manifest: newEmojiManifest,
+      installPath: path.dirname(manifestPath),
+      isInstalled: true,
+      isEnabledForProject: true,
+      diagnostics: []
+    },
+    {
+      manifest: fbroManifest,
+      installPath: 'builtin://lingbuilder.fbro.browser',
+      isBuiltin: true,
+      isInstalled: true,
+      isEnabledForProject: true,
+      diagnostics: []
+    }
+  ];
+  const tabs = {
+    id: 'browser-tabs', type: tabsContribution.previewType, designerType: tabsContribution.namespacedType,
+    name: '浏览器标签页', content: '浏览器标签页', x: 12, y: 12, width: 900, height: 600,
+    fontSize: 14, background: 'transparent', foreground: '#FFFFFFFF', isEnabled: true, visibility: 'Visible' as const,
+    properties: {
+      ...tabsContribution.defaultProps,
+      tabs: [
+        { id: 'page1', title: '浏览器一' },
+        { id: 'page2', title: '浏览器二' },
+        { id: 'page3', title: '浏览器三' }
+      ],
+      items: ['浏览器一', '浏览器二', '浏览器三'], activeIndex: 0, contentVisible: true
+    },
+    events: {}
+  };
+  const browsers = ['page1', 'page2', 'page3'].map((slot, index) => ({
+    id: `fbro-${index + 1}`, parentId: tabs.id, containerSlot: slot, type: 'FBroBrowser' as const,
+    name: `FBro浏览器${index + 1}`, content: 'FBro指纹浏览器', x: 20, y: 60, width: 884, height: 540,
+    fontSize: 12, background: '#FFFFFF', foreground: '#111827', isEnabled: true, visibility: 'Visible' as const,
+    properties: { url: `https://example.com/?tab=${index + 1}`, cacheDir: '', enableJs: true, loadImages: true },
+    events: {}
+  }));
+  const generated = generateLingCppNativeWin32Project({
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      designerBackend: 'new-emoji',
+      width: 940,
+      height: 660,
+      controls: [tabs, ...browsers]
+    }]
+  }, {
+    enabledModules,
+    lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        FBro_导航("FBro浏览器1", "https://example.com")\n        调试输出("三个 FBro 标签页已创建")\n    结束\n结束类'
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.equal(generated.blockingDiagnostics.length, 0);
+  assert.doesNotMatch(generated.diagnostics.join('\n'), /new_emoji 设计器暂不支持控件.*FBro/u);
+  assert.match(cpp, /#include <LingBuilderFbroBridge\.h>/u);
+  assert.equal((cpp.match(/LB_NE_RegisterFbro\(L"FBro浏览器/g) || []).length, 3);
+  assert.match(cpp, /LB_NE_RegisterFbro\(L"FBro浏览器1"[\s\S]*ne_element_1, 0, 1\);/u);
+  assert.match(cpp, /LB_NE_RegisterFbro\(L"FBro浏览器2"[\s\S]*ne_element_1, 1, 1\);/u);
+  assert.match(cpp, /LB_NE_RegisterFbro\(L"FBro浏览器3"[\s\S]*ne_element_1, 2, 1\);/u);
+  assert.match(cpp, /EU_SetTabsChangeCallback\(g_newEmojiWindow, ne_element_1, LB_NE_FbroTabs_1\)/u);
+  assert.match(cpp, /LB_NE_UpdateFbroTabVisibility\(element_id, value\)/u);
+  assert.match(cpp, /LB_FBro_CreateEx\(browser\.host/u);
+  assert.match(cpp, /FBro_导航\(L"FBro浏览器1", L"https:\/\/example\.com"\)/u);
+  assert.match(cpp, /ShowWindow\(browser\.host, visible \? SW_SHOW : SW_HIDE\)/u);
+  assert.match(cpp, /const UINT dpi = g_newEmojiWindow \? GetDpiForWindow\(g_newEmojiWindow\) : 96/u);
+  assert.match(cpp, /scale\(y \+ titleBarLogicalHeight\)/u);
+  assert.match(cpp, /wWinMain[\s\S]*CoInitializeEx\([^;]+\);\s*if \(!LB_NE_InitializeFbro\(\)\)[\s\S]*g_newEmojiWindow = NE_/u);
+  const browserGroup = createControlToolboxGroups(['FBroBrowser'], true).find(group => group.id === 'browser');
+  assert.deepEqual(browserGroup?.controlTypes, ['FBroBrowser']);
 });
 
 test('exportVisualStudioProject writes sln and vcxproj with module dependencies', async () => {

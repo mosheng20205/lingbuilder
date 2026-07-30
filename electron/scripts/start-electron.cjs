@@ -79,6 +79,9 @@ async function main() {
 
   const projectRoot = path.join(__dirname, '..');
   const npmInvocation = resolveNpmInvocation();
+  await run(npmInvocation.command, [...npmInvocation.args, 'run', 'build:server'], {
+    cwd: projectRoot,
+  });
   await run(npmInvocation.command, [...npmInvocation.args, 'run', 'build:electron'], {
     cwd: projectRoot,
   });

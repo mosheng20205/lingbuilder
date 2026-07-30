@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.472Z",
+  "module": {
+    "id": "lingbuilder.advanced.process-memory",
+    "name": "进程内存模块",
+    "version": "1.0.0",
+    "description": "显式打开目标进程并读写 32 位整数；属于高风险模块，不默认启用。"
+  },
+  "commandCount": 4,
+  "commands": [
+    {
+      "index": 1,
+      "name": "进程内存_打开",
+      "signature": "进程内存_打开(进程ID, 允许写入)",
+      "description": "打开目标进程句柄。",
+      "insertText": "进程内存_打开(0, 假)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "进程内存_打开",
+        "runtimeName": "进程内存_打开",
+        "parameters": [
+          {
+            "name": "进程ID",
+            "type": "int"
+          },
+          {
+            "name": "允许写入",
+            "type": "bool"
+          }
+        ],
+        "returnType": "handle"
+      },
+      "demoInvocation": "进程内存_打开(1, 真)"
+    },
+    {
+      "index": 2,
+      "name": "进程内存_读整数",
+      "signature": "进程内存_读整数(进程句柄, 地址, 默认值)",
+      "description": "读取目标地址 32 位整数。",
+      "insertText": "进程内存_读整数(0, 0, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "进程内存_读整数",
+        "runtimeName": "进程内存_读整数",
+        "parameters": [
+          {
+            "name": "进程句柄",
+            "type": "handle"
+          },
+          {
+            "name": "地址",
+            "type": "longLong"
+          },
+          {
+            "name": "默认值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "进程内存_读整数(0, 1, 1)"
+    },
+    {
+      "index": 3,
+      "name": "进程内存_写整数",
+      "signature": "进程内存_写整数(进程句柄, 地址, 数值)",
+      "description": "写入目标地址 32 位整数。",
+      "insertText": "进程内存_写整数(0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进程内存_写整数",
+        "runtimeName": "进程内存_写整数",
+        "parameters": [
+          {
+            "name": "进程句柄",
+            "type": "handle"
+          },
+          {
+            "name": "地址",
+            "type": "longLong"
+          },
+          {
+            "name": "数值",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进程内存_写整数(0, 1, 1)"
+    },
+    {
+      "index": 4,
+      "name": "进程内存_关闭",
+      "signature": "进程内存_关闭(进程句柄)",
+      "description": "关闭目标进程句柄。",
+      "insertText": "进程内存_关闭(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "进程内存_关闭",
+        "runtimeName": "进程内存_关闭",
+        "parameters": [
+          {
+            "name": "进程句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "进程内存_关闭(0)"
+    }
+  ]
+}

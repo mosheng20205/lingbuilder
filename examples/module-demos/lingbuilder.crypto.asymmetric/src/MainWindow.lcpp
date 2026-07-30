@@ -1,0 +1,163 @@
+包 非对称密码模块完整演示
+使用 Win32窗口基础模块
+使用 非对称密码模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "非对称密码模块：27 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.crypto.asymmetric")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–14：非对称_RSA生成私钥 至 非对称_SM2解密；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：非对称_RSA生成私钥
+            // [1] 非对称_RSA生成私钥(位数)
+            // 功能：生成 RSA PKCS#8 PEM 私钥。
+            // 参数：位数:int；返回：wideString；可见性：default
+            非对称_RSA生成私钥(1)
+            // 命令ID：非对称_RSA取公钥
+            // [2] 非对称_RSA取公钥(私钥PEM)
+            // 功能：从 RSA 私钥导出 X.509 PEM 公钥。
+            // 参数：私钥PEM:wideString；返回：wideString；可见性：default
+            非对称_RSA取公钥("演示参数1")
+            // 命令ID：非对称_RSA_OAEP_SHA256加密
+            // [3] 非对称_RSA_OAEP_SHA256加密(明文, 公钥PEM)
+            // 功能：使用 RSA-OAEP(SHA-256) 加密短文本并返回 Base64。
+            // 参数：明文:wideString，公钥PEM:wideString；返回：wideString；可见性：default
+            非对称_RSA_OAEP_SHA256加密("演示参数1", "演示参数2")
+            // 命令ID：非对称_RSA_OAEP_SHA256解密
+            // [4] 非对称_RSA_OAEP_SHA256解密(Base64密文, 私钥PEM)
+            // 功能：使用 RSA-OAEP(SHA-256) 解密短文本。
+            // 参数：Base64密文:wideString，私钥PEM:wideString；返回：wideString；可见性：default
+            非对称_RSA_OAEP_SHA256解密("演示参数1", "演示参数2")
+            // 命令ID：非对称_RSA_PSS_SHA256签名
+            // [5] 非对称_RSA_PSS_SHA256签名(文本, 私钥PEM)
+            // 功能：使用 RSA-PSS(SHA-256) 签名并返回 Base64。
+            // 参数：文本:wideString，私钥PEM:wideString；返回：wideString；可见性：default
+            非对称_RSA_PSS_SHA256签名("演示参数1", "演示参数2")
+            // 命令ID：非对称_RSA_PSS_SHA256验签
+            // [6] 非对称_RSA_PSS_SHA256验签(文本, Base64签名, 公钥PEM)
+            // 功能：验证 RSA-PSS(SHA-256) 签名。
+            // 参数：文本:wideString，Base64签名:wideString，公钥PEM:wideString；返回：bool；可见性：default
+            非对称_RSA_PSS_SHA256验签("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：非对称_ECDSA_P256生成私钥
+            // [7] 非对称_ECDSA_P256生成私钥()
+            // 功能：生成 ECDSA secp256r1 PKCS#8 PEM 私钥。
+            // 参数：无；返回：wideString；可见性：default
+            非对称_ECDSA_P256生成私钥()
+            // 命令ID：非对称_ECDSA_P256取公钥
+            // [8] 非对称_ECDSA_P256取公钥(私钥PEM)
+            // 功能：从 ECDSA P-256 私钥导出公钥。
+            // 参数：私钥PEM:wideString；返回：wideString；可见性：default
+            非对称_ECDSA_P256取公钥("演示参数1")
+            // 命令ID：非对称_ECDSA_P256签名
+            // [9] 非对称_ECDSA_P256签名(文本, 私钥PEM)
+            // 功能：使用 ECDSA P-256 与 SHA-256 签名。
+            // 参数：文本:wideString，私钥PEM:wideString；返回：wideString；可见性：default
+            非对称_ECDSA_P256签名("演示参数1", "演示参数2")
+            // 命令ID：非对称_ECDSA_P256验签
+            // [10] 非对称_ECDSA_P256验签(文本, Base64签名, 公钥PEM)
+            // 功能：验证 ECDSA P-256/SHA-256 签名。
+            // 参数：文本:wideString，Base64签名:wideString，公钥PEM:wideString；返回：bool；可见性：default
+            非对称_ECDSA_P256验签("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：非对称_SM2生成私钥
+            // [11] 非对称_SM2生成私钥()
+            // 功能：生成 SM2 P-256 PKCS#8 PEM 私钥。
+            // 参数：无；返回：wideString；可见性：default
+            非对称_SM2生成私钥()
+            // 命令ID：非对称_SM2取公钥
+            // [12] 非对称_SM2取公钥(私钥PEM)
+            // 功能：从 SM2 私钥导出公钥。
+            // 参数：私钥PEM:wideString；返回：wideString；可见性：default
+            非对称_SM2取公钥("演示参数1")
+            // 命令ID：非对称_SM2加密
+            // [13] 非对称_SM2加密(明文, 公钥PEM)
+            // 功能：使用 SM2/SM3 加密文本并返回 Base64。
+            // 参数：明文:wideString，公钥PEM:wideString；返回：wideString；可见性：default
+            非对称_SM2加密("演示参数1", "演示参数2")
+            // 命令ID：非对称_SM2解密
+            // [14] 非对称_SM2解密(Base64密文, 私钥PEM)
+            // 功能：使用 SM2/SM3 解密文本。
+            // 参数：Base64密文:wideString，私钥PEM:wideString；返回：wideString；可见性：default
+            非对称_SM2解密("演示参数1", "演示参数2")
+        如果结束
+        调试输出("已查看 命令 1–14：非对称_RSA生成私钥 至 非对称_SM2解密；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本("演示状态", "命令 15–27：非对称_SM2签名 至 非对称_取错误；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：非对称_SM2签名
+            // [15] 非对称_SM2签名(文本, 私钥PEM, 用户标识)
+            // 功能：使用 SM2/SM3 签名。
+            // 参数：文本:wideString，私钥PEM:wideString，用户标识:wideString；返回：wideString；可见性：default
+            非对称_SM2签名("演示参数1", "演示参数2", "演示参数3")
+            // 命令ID：非对称_SM2验签
+            // [16] 非对称_SM2验签(文本, Base64签名, 公钥PEM, 用户标识)
+            // 功能：验证 SM2/SM3 签名。
+            // 参数：文本:wideString，Base64签名:wideString，公钥PEM:wideString，用户标识:wideString；返回：bool；可见性：default
+            非对称_SM2验签("演示参数1", "演示参数2", "演示参数3", "演示参数4")
+            // 命令ID：非对称_ECDH_P256生成私钥
+            // [17] 非对称_ECDH_P256生成私钥()
+            // 功能：生成 ECDH secp256r1 私钥。
+            // 参数：无；返回：wideString；可见性：default
+            非对称_ECDH_P256生成私钥()
+            // 命令ID：非对称_ECDH_P256取公钥
+            // [18] 非对称_ECDH_P256取公钥(私钥PEM)
+            // 功能：导出 ECDH P-256 公钥。
+            // 参数：私钥PEM:wideString；返回：wideString；可见性：default
+            非对称_ECDH_P256取公钥("演示参数1")
+            // 命令ID：非对称_ECDH_P256协商
+            // [19] 非对称_ECDH_P256协商(本方私钥PEM, 对方公钥PEM)
+            // 功能：执行 ECDH P-256 并经 HKDF-SHA256 导出 32 字节共享密钥十六进制。
+            // 参数：本方私钥PEM:wideString，对方公钥PEM:wideString；返回：wideString；可见性：default
+            非对称_ECDH_P256协商("演示参数1", "演示参数2")
+            // 命令ID：非对称_X25519生成私钥
+            // [20] 非对称_X25519生成私钥()
+            // 功能：生成 X25519 私钥。
+            // 参数：无；返回：wideString；可见性：default
+            非对称_X25519生成私钥()
+            // 命令ID：非对称_X25519取公钥
+            // [21] 非对称_X25519取公钥(私钥PEM)
+            // 功能：导出 X25519 公钥。
+            // 参数：私钥PEM:wideString；返回：wideString；可见性：default
+            非对称_X25519取公钥("演示参数1")
+            // 命令ID：非对称_X25519协商
+            // [22] 非对称_X25519协商(本方私钥PEM, 对方公钥PEM)
+            // 功能：执行 X25519 并经 HKDF-SHA256 导出 32 字节共享密钥十六进制。
+            // 参数：本方私钥PEM:wideString，对方公钥PEM:wideString；返回：wideString；可见性：default
+            非对称_X25519协商("演示参数1", "演示参数2")
+            // 命令ID：非对称_ElGamal生成私钥
+            // [23] 非对称_ElGamal生成私钥(位数)
+            // 功能：生成 ElGamal PKCS#8 PEM 私钥；仅用于兼容。
+            // 参数：位数:int；返回：wideString；可见性：advanced
+            非对称_ElGamal生成私钥(1)
+            // 命令ID：非对称_ElGamal取公钥
+            // [24] 非对称_ElGamal取公钥(私钥PEM)
+            // 功能：从 ElGamal 私钥导出公钥。
+            // 参数：私钥PEM:wideString；返回：wideString；可见性：advanced
+            非对称_ElGamal取公钥("演示参数1")
+            // 命令ID：非对称_ElGamal加密
+            // [25] 非对称_ElGamal加密(明文, 公钥PEM)
+            // 功能：使用 ElGamal/OAEP(SHA-256) 加密短文本；仅用于兼容。
+            // 参数：明文:wideString，公钥PEM:wideString；返回：wideString；可见性：advanced
+            非对称_ElGamal加密("演示参数1", "演示参数2")
+            // 命令ID：非对称_ElGamal解密
+            // [26] 非对称_ElGamal解密(Base64密文, 私钥PEM)
+            // 功能：解密 ElGamal/OAEP(SHA-256) 密文；仅用于兼容。
+            // 参数：Base64密文:wideString，私钥PEM:wideString；返回：wideString；可见性：advanced
+            非对称_ElGamal解密("演示参数1", "演示参数2")
+            // 命令ID：非对称_取错误
+            // [27] 非对称_取错误()
+            // 功能：读取最近一次非对称操作失败的中文错误。
+            // 参数：无；返回：wideString；可见性：default
+            非对称_取错误()
+        如果结束
+        调试输出("已查看 命令 15–27：非对称_SM2签名 至 非对称_取错误；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

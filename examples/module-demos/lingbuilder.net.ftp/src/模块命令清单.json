@@ -1,0 +1,181 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.578Z",
+  "module": {
+    "id": "lingbuilder.net.ftp",
+    "name": "FTP客户端模块",
+    "version": "1.0.0",
+    "description": "基于 WinINet 提供 FTP/FTPS 连接、上传、下载、删除、改名和关闭。"
+  },
+  "commandCount": 7,
+  "commands": [
+    {
+      "index": 1,
+      "name": "FTP_连接",
+      "signature": "FTP_连接(主机, 端口, 用户名, 密码, 安全连接)",
+      "description": "连接 FTP 或 FTPS 服务端。",
+      "insertText": "FTP_连接(\"$1\", 0, \"$3\", \"$4\", 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "FTP_连接",
+        "runtimeName": "FTP_连接",
+        "parameters": [
+          {
+            "name": "主机",
+            "type": "wideString"
+          },
+          {
+            "name": "端口",
+            "type": "int"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString"
+          },
+          {
+            "name": "密码",
+            "type": "wideString"
+          },
+          {
+            "name": "安全连接",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FTP_连接(\"演示参数1\", 1, \"演示参数3\", \"演示参数4\", 真)"
+    },
+    {
+      "index": 2,
+      "name": "FTP_上传文件",
+      "signature": "FTP_上传文件(本地文件, 远程文件)",
+      "description": "以二进制模式上传文件。",
+      "insertText": "FTP_上传文件(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "FTP_上传文件",
+        "runtimeName": "FTP_上传文件",
+        "parameters": [
+          {
+            "name": "本地文件",
+            "type": "wideString"
+          },
+          {
+            "name": "远程文件",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FTP_上传文件(\"module-demo-temp.txt\", \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 3,
+      "name": "FTP_下载文件",
+      "signature": "FTP_下载文件(远程文件, 本地文件, 允许覆盖)",
+      "description": "以二进制模式下载文件。",
+      "insertText": "FTP_下载文件(\"$1\", \"$2\", 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "FTP_下载文件",
+        "runtimeName": "FTP_下载文件",
+        "parameters": [
+          {
+            "name": "远程文件",
+            "type": "wideString"
+          },
+          {
+            "name": "本地文件",
+            "type": "wideString"
+          },
+          {
+            "name": "允许覆盖",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FTP_下载文件(\"module-demo-temp.txt\", \"module-demo-temp.txt\", 真)"
+    },
+    {
+      "index": 4,
+      "name": "FTP_删除文件",
+      "signature": "FTP_删除文件(远程文件)",
+      "description": "删除远程文件。",
+      "insertText": "FTP_删除文件(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "FTP_删除文件",
+        "runtimeName": "FTP_删除文件",
+        "parameters": [
+          {
+            "name": "远程文件",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FTP_删除文件(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 5,
+      "name": "FTP_重命名",
+      "signature": "FTP_重命名(原名称, 新名称)",
+      "description": "重命名远程文件。",
+      "insertText": "FTP_重命名(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "FTP_重命名",
+        "runtimeName": "FTP_重命名",
+        "parameters": [
+          {
+            "name": "原名称",
+            "type": "wideString"
+          },
+          {
+            "name": "新名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FTP_重命名(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 6,
+      "name": "FTP_取错误",
+      "signature": "FTP_取错误()",
+      "description": "返回最近 FTP 中文错误。",
+      "insertText": "FTP_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FTP_取错误",
+        "runtimeName": "FTP_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FTP_取错误()"
+    },
+    {
+      "index": 7,
+      "name": "FTP_关闭",
+      "signature": "FTP_关闭()",
+      "description": "关闭 FTP 连接和会话。",
+      "insertText": "FTP_关闭()",
+      "returnType": "空",
+      "binding": {
+        "command": "FTP_关闭",
+        "runtimeName": "FTP_关闭",
+        "parameters": [],
+        "returnType": "void"
+      },
+      "demoInvocation": "FTP_关闭()"
+    }
+  ]
+}

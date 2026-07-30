@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.527Z",
+  "module": {
+    "id": "lingbuilder.fbro.sdk",
+    "name": "FBro 135 内置 SDK（x64）",
+    "version": "135.0.21.1.0.0",
+    "description": "FBro CEF 135 x64 只读资产模块，包含固定头文件、库、C ABI 桥接层、运行时与 SHA-256 清单；项目无需单独启用。"
+  },
+  "commandCount": 0,
+  "commands": []
+}

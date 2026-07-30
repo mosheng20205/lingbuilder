@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-lcpp-source-package",
+  "createdAt": "2026-07-26T08:39:25.251Z",
+  "createdBy": {
+    "product": "LingBuilder",
+    "version": "dev-verification"
+  },
+  "sourceSolution": {
+    "id": "official-demo",
+    "name": "官方demo"
+  },
+  "startupProjectId": "lingbuilder-ui-project",
+  "projects": [
+    {
+      "id": "lingbuilder-ui-project",
+      "name": "组件demo",
+      "sourceRoot": "src/component-demo",
+      "configRoot": "config/component-demo",
+      "designerPath": ".lingbuilder/window-designer.json"
+    }
+  ],
+  "modules": [
+    {
+      "projectId": "lingbuilder-ui-project",
+      "id": "lingbuilder.win32.basic",
+      "name": "lingbuilder.win32.basic",
+      "version": "1.0.0",
+      "builtin": true,
+      "bundled": false
+    },
+    {
+      "projectId": "lingbuilder-ui-project",
+      "id": "lingbuilder.win32.common-controls",
+      "name": "lingbuilder.win32.common-controls",
+      "version": "1.0.0",
+      "builtin": true,
+      "bundled": false
+    }
+  ],
+  "bundledSupportModuleIds": [],
+  "files": [
+    {
+      "path": ".lingbuilder/project-modules.json",
+      "size": 240,
+      "sha256": "eb5060333c31e5a792eb24f9a132333bfcc0641d1bf18a4799520ebf146a13e1"
+    },
+    {
+      "path": ".lingbuilder/solution.json",
+      "size": 501,
+      "sha256": "f26198c70bf4f3c76075b9b3dabfa7818155c40ac0444387c7ffa5883cc33847"
+    },
+    {
+      "path": ".lingbuilder/window-designer.json",
+      "size": 54649,
+      "sha256": "c11a1d4d5552d89ef68ebcea16a0f7246aed258f69f23d8e5cc3845334d609f8"
+    },
+    {
+      "path": "官方demo.lbsln",
+      "size": 454,
+      "sha256": "22e1bdc5348f440ed9f60026607c06f6f7007e99ded05db2f202b2d39c4e982f"
+    },
+    {
+      "path": "assets/lingbuilder-4/{7586C736-900E-C781-53CA-81F6682E0E3F}.gif",
+      "size": 2885359,
+      "sha256": "8c4c21c66490f62cfe944b80be6cfd6ebc407c480ff920ec0bd1fb2761220e70"
+    },
+    {
+      "path": "assets/lingbuilder-4/12543907.ico",
+      "size": 284334,
+      "sha256": "0c8eb549eaad88a66d0dab3ea40384d9b96290b954fa09e1fcddd82a8b2964b8"
+    },
+    {
+      "path": "assets/lingbuilder-4/微信图片_2026-04-12_212712_337.jpg",
+      "size": 79649,
+      "sha256": "1721c94d9755394db3c5e865441fd34a340e77b5bf959d2441a4c783482fd79b"
+    },
+    {
+      "path": "assets/lingbuilder-4/e56a634216f944f2bade2ad836511ef8.gif",
+      "size": 625574,
+      "sha256": "c574e8194b8c5d71a1e387c4d572393cc7e7523661970af44d325cf5f560ac57"
+    },
+    {
+      "path": "assets/lingbuilder-4/file_example_AVI_480_750kB.avi",
+      "size": 742478,
+      "sha256": "7c1d478794e328ec1d2426b48c6115cb1c364fdfcaa65afcc8dd9cd4301121d2"
+    },
+    {
+      "path": "assets/lingbuilder-4/ig_0c1e997361b6848c016a268ce6b62481999f8aa92176a00c14.png",
+      "size": 2318071,
+      "sha256": "6c8d91d7fcf84c8521855f95db0057498e056ef581838cc572f0ab4c6b86bc0a"
+    },
+    {
+      "path": "assets/lingbuilder-4/white_微信图片_2026-04-12_212712_337.png",
+      "size": 859053,
+      "sha256": "6cb37cceabdc4bbf7c2d58c3f1204e6123e69043f490bfeb5fcf7d0ecece47ae"
+    },
+    {
+      "path": "config/component-demo/config.ini",
+      "size": 52,
+      "sha256": "7800dbbd6b10ec6de3bafe095097ed0262acebfdefa48dc6ba4bec6568c76d81"
+    },
+    {
+      "path": "src/component-demo/MainWindow.lcpp",
+      "size": 2894,
+      "sha256": "043154952ed11924fa88dee3a86b7901fb97deca564c18423bd5c5e08f248664"
+    }
+  ],
+  "excludedSensitiveFiles": []
+}

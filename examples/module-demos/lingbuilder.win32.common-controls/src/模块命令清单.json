@@ -1,0 +1,5683 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.682Z",
+  "module": {
+    "id": "lingbuilder.win32.common-controls",
+    "name": "Win32高级控件模块",
+    "version": "1.0.0",
+    "description": "提供非可视文件对话框、列表视图、树形视图、选项卡、日期、工具栏、状态栏、富文本和系统通用对话框等标准 Win32 能力。"
+  },
+  "commandCount": 220,
+  "commands": [
+    {
+      "index": 1,
+      "name": "打开文件",
+      "signature": "打开文件(标题, 筛选器)",
+      "description": "显示 Windows 文件打开对话框并返回路径。",
+      "insertText": "打开文件(\"选择文件\", \"所有文件|*.*\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "打开文件",
+        "runtimeName": "打开文件",
+        "parameters": [
+          {
+            "name": "标题",
+            "type": "wideString"
+          },
+          {
+            "name": "筛选器",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "打开文件(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 2,
+      "name": "保存文件",
+      "signature": "保存文件(标题, 筛选器)",
+      "description": "显示 Windows 文件保存对话框并返回路径。",
+      "insertText": "保存文件(\"保存文件\", \"所有文件|*.*\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "保存文件",
+        "runtimeName": "保存文件",
+        "parameters": [
+          {
+            "name": "标题",
+            "type": "wideString"
+          },
+          {
+            "name": "筛选器",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "保存文件(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 3,
+      "name": "选择文件夹",
+      "signature": "选择文件夹(标题)",
+      "description": "显示 Windows 文件夹选择对话框并返回路径。",
+      "insertText": "选择文件夹(\"选择文件夹\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "选择文件夹",
+        "runtimeName": "选择文件夹",
+        "parameters": [
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "选择文件夹(\"演示参数1\")"
+    },
+    {
+      "index": 4,
+      "name": "选择颜色",
+      "signature": "选择颜色(默认颜色)",
+      "description": "显示系统颜色对话框并返回 COLORREF 整数。",
+      "insertText": "选择颜色(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "选择颜色",
+        "runtimeName": "选择颜色",
+        "parameters": [
+          {
+            "name": "默认颜色",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "选择颜色(1)"
+    },
+    {
+      "index": 5,
+      "name": "颜色选择器_打开",
+      "signature": "颜色选择器_打开(控件名)",
+      "description": "打开指定颜色选择器的系统选色窗口；控件设置为不可视时仍可由按钮或其他事件调用。",
+      "insertText": "颜色选择器_打开(\"颜色选择器1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "颜色选择器_打开",
+        "runtimeName": "颜色选择器_打开",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "颜色选择器_打开(\"演示输出\")"
+    },
+    {
+      "index": 6,
+      "name": "颜色选择器_置颜色",
+      "signature": "颜色选择器_置颜色(控件名, 颜色)",
+      "description": "设置颜色选择器当前 COLORREF 颜色，并在颜色变化时触发事件。",
+      "insertText": "颜色选择器_置颜色(\"颜色选择器1\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "颜色选择器_置颜色",
+        "runtimeName": "颜色选择器_置颜色",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "颜色",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "颜色选择器_置颜色(\"演示输出\", 1)"
+    },
+    {
+      "index": 7,
+      "name": "颜色选择器_取颜色",
+      "signature": "颜色选择器_取颜色(控件名)",
+      "description": "返回颜色选择器当前 COLORREF 整数。",
+      "insertText": "颜色选择器_取颜色(\"颜色选择器1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "颜色选择器_取颜色",
+        "runtimeName": "颜色选择器_取颜色",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "颜色选择器_取颜色(\"演示输出\")"
+    },
+    {
+      "index": 8,
+      "name": "选择字体",
+      "signature": "选择字体(默认字号)",
+      "description": "显示系统字体对话框并返回字体说明。",
+      "insertText": "选择字体(12)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "选择字体",
+        "runtimeName": "选择字体",
+        "parameters": [
+          {
+            "name": "默认字号",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "选择字体(1)"
+    },
+    {
+      "index": 9,
+      "name": "查找文本",
+      "signature": "查找文本(默认文本)",
+      "description": "显示系统查找对话框。",
+      "insertText": "查找文本(\"$1\")",
+      "returnType": "空",
+      "binding": {
+        "command": "查找文本",
+        "runtimeName": "查找文本",
+        "parameters": [
+          {
+            "name": "默认文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "void",
+        "encoding": "wide"
+      },
+      "demoInvocation": "查找文本(\"演示参数1\")"
+    },
+    {
+      "index": 10,
+      "name": "替换文本",
+      "signature": "替换文本(查找内容, 替换内容)",
+      "description": "显示系统替换对话框。",
+      "insertText": "替换文本(\"$1\", \"$2\")",
+      "returnType": "空",
+      "binding": {
+        "command": "替换文本",
+        "runtimeName": "替换文本",
+        "parameters": [
+          {
+            "name": "查找内容",
+            "type": "wideString"
+          },
+          {
+            "name": "替换内容",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "void",
+        "encoding": "wide"
+      },
+      "demoInvocation": "替换文本(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 11,
+      "name": "打印",
+      "signature": "打印()",
+      "description": "显示系统打印对话框。",
+      "insertText": "打印()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "打印",
+        "runtimeName": "打印",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "打印()"
+    },
+    {
+      "index": 12,
+      "name": "页面设置",
+      "signature": "页面设置()",
+      "description": "显示系统页面设置对话框。",
+      "insertText": "页面设置()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "页面设置",
+        "runtimeName": "页面设置",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "页面设置()"
+    },
+    {
+      "index": 13,
+      "name": "任务对话框",
+      "signature": "任务对话框(标题, 内容)",
+      "description": "显示 Windows Task Dialog。",
+      "insertText": "任务对话框(\"提示\", \"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "任务对话框",
+        "runtimeName": "任务对话框",
+        "parameters": [
+          {
+            "name": "标题",
+            "type": "wideString"
+          },
+          {
+            "name": "内容",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "任务对话框(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 14,
+      "name": "系统对话框_状态",
+      "signature": "系统对话框_状态()",
+      "description": "返回最近文件或目录对话框状态：1 成功、0 取消、-1 错误。",
+      "insertText": "系统对话框_状态()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "系统对话框_状态",
+        "runtimeName": "系统对话框_状态",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "系统对话框_状态()"
+    },
+    {
+      "index": 15,
+      "name": "工具栏_最后命令",
+      "signature": "工具栏_最后命令()",
+      "description": "返回最近点击的工具栏按钮命令 ID。",
+      "insertText": "工具栏_最后命令()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "工具栏_最后命令",
+        "runtimeName": "工具栏_最后命令",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "工具栏_最后命令()"
+    },
+    {
+      "index": 16,
+      "name": "状态栏_最后分区",
+      "signature": "状态栏_最后分区()",
+      "description": "返回最近双击的状态栏分区索引。",
+      "insertText": "状态栏_最后分区()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "状态栏_最后分区",
+        "runtimeName": "状态栏_最后分区",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "状态栏_最后分区()"
+    },
+    {
+      "index": 17,
+      "name": "查找替换_动作",
+      "signature": "查找替换_动作()",
+      "description": "返回最近查找替换动作。",
+      "insertText": "查找替换_动作()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "查找替换_动作",
+        "runtimeName": "查找替换_动作",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "查找替换_动作()"
+    },
+    {
+      "index": 18,
+      "name": "查找替换_查找内容",
+      "signature": "查找替换_查找内容()",
+      "description": "返回查找替换对话框中的查找文本。",
+      "insertText": "查找替换_查找内容()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "查找替换_查找内容",
+        "runtimeName": "查找替换_查找内容",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "查找替换_查找内容()"
+    },
+    {
+      "index": 19,
+      "name": "查找替换_替换内容",
+      "signature": "查找替换_替换内容()",
+      "description": "返回查找替换对话框中的替换文本。",
+      "insertText": "查找替换_替换内容()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "查找替换_替换内容",
+        "runtimeName": "查找替换_替换内容",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "查找替换_替换内容()"
+    },
+    {
+      "index": 20,
+      "name": "打印文本",
+      "signature": "打印文本(文档名, 文本)",
+      "description": "选择打印机并把指定文本作为真实打印文档输出。",
+      "insertText": "打印文本(\"文档\", \"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "打印文本",
+        "runtimeName": "打印文本",
+        "parameters": [
+          {
+            "name": "文档名",
+            "type": "wideString"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "打印文本(\"演示参数1\", \"演示参数2\")"
+    },
+    {
+      "index": 21,
+      "name": "页面设置_左边距",
+      "signature": "页面设置_左边距()",
+      "description": "返回最近页面设置的左边距。",
+      "insertText": "页面设置_左边距()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "页面设置_左边距",
+        "runtimeName": "页面设置_左边距",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "页面设置_左边距()"
+    },
+    {
+      "index": 22,
+      "name": "页面设置_上边距",
+      "signature": "页面设置_上边距()",
+      "description": "返回最近页面设置的上边距。",
+      "insertText": "页面设置_上边距()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "页面设置_上边距",
+        "runtimeName": "页面设置_上边距",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "页面设置_上边距()"
+    },
+    {
+      "index": 23,
+      "name": "页面设置_右边距",
+      "signature": "页面设置_右边距()",
+      "description": "返回最近页面设置的右边距。",
+      "insertText": "页面设置_右边距()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "页面设置_右边距",
+        "runtimeName": "页面设置_右边距",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "页面设置_右边距()"
+    },
+    {
+      "index": 24,
+      "name": "页面设置_下边距",
+      "signature": "页面设置_下边距()",
+      "description": "返回最近页面设置的下边距。",
+      "insertText": "页面设置_下边距()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "页面设置_下边距",
+        "runtimeName": "页面设置_下边距",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "页面设置_下边距()"
+    },
+    {
+      "index": 25,
+      "name": "属性页_显示",
+      "signature": "属性页_显示(资源ID)",
+      "description": "显示设计器资源中定义的顶层 Windows PropertySheet。",
+      "insertText": "属性页_显示(\"property-sheet-1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "属性页_显示",
+        "runtimeName": "属性页_显示",
+        "parameters": [
+          {
+            "name": "资源ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "属性页_显示(\"演示参数1\")"
+    },
+    {
+      "index": 26,
+      "name": "列表视图_添加行",
+      "signature": "列表视图_添加行(控件名, Tab分隔单元格)",
+      "description": "向 ListView 追加结构化行。",
+      "insertText": "列表视图_添加行(\"$1\", \"名称\\t状态\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_添加行",
+        "runtimeName": "列表视图_添加行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "Tab分隔单元格",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_添加行(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 27,
+      "name": "列表视图_插入行",
+      "signature": "列表视图_插入行(控件名, 行索引, Tab分隔单元格)",
+      "description": "在指定的零基行索引插入结构化行。",
+      "insertText": "列表视图_插入行(\"$1\", 0, \"名称\\t状态\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_插入行",
+        "runtimeName": "列表视图_插入行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          },
+          {
+            "name": "Tab分隔单元格",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_插入行(\"演示输出\", 1, \"演示参数3\")"
+    },
+    {
+      "index": 28,
+      "name": "列表视图_删除行",
+      "signature": "列表视图_删除行(控件名, 行索引)",
+      "description": "删除指定的零基行索引。",
+      "insertText": "列表视图_删除行(\"$1\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_删除行",
+        "runtimeName": "列表视图_删除行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_删除行(\"演示输出\", 1)"
+    },
+    {
+      "index": 29,
+      "name": "列表视图_设置单元格",
+      "signature": "列表视图_设置单元格(控件名, 行索引, 列索引, 文本)",
+      "description": "修改指定零基行、列索引的单元格。",
+      "insertText": "列表视图_设置单元格(\"$1\", 0, 1, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置单元格",
+        "runtimeName": "列表视图_设置单元格",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          },
+          {
+            "name": "列索引",
+            "type": "int"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置单元格(\"演示输出\", 1, 1, \"演示参数4\")"
+    },
+    {
+      "index": 30,
+      "name": "列表视图_取单元格",
+      "signature": "列表视图_取单元格(控件名, 行索引, 列索引)",
+      "description": "读取指定零基行、列索引的单元格文本。",
+      "insertText": "列表视图_取单元格(\"$1\", 0, 1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "列表视图_取单元格",
+        "runtimeName": "列表视图_取单元格",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          },
+          {
+            "name": "列索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取单元格(\"演示输出\", 1, 1)"
+    },
+    {
+      "index": 31,
+      "name": "列表视图_取行数",
+      "signature": "列表视图_取行数(控件名)",
+      "description": "返回列表视图当前数据行数。",
+      "insertText": "列表视图_取行数(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取行数",
+        "runtimeName": "列表视图_取行数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取行数(\"演示输出\")"
+    },
+    {
+      "index": 32,
+      "name": "列表视图_批量添加行",
+      "signature": "列表视图_批量添加行(控件名, 多行TSV文本)",
+      "description": "一次追加多行 TSV 数据；换行分隔行，Tab 分隔列，内部自动关闭并恢复重绘。",
+      "insertText": "列表视图_批量添加行(\"$1\", \"第一行\\t1\\n第二行\\t2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_批量添加行",
+        "runtimeName": "列表视图_批量添加行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "多行TSV文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_批量添加行(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 33,
+      "name": "列表视图_开始批量更新",
+      "signature": "列表视图_开始批量更新(控件名)",
+      "description": "暂停 ListView 重绘；必须与结束批量更新成对调用。",
+      "insertText": "列表视图_开始批量更新(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_开始批量更新",
+        "runtimeName": "列表视图_开始批量更新",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_开始批量更新(\"演示输出\")"
+    },
+    {
+      "index": 34,
+      "name": "列表视图_结束批量更新",
+      "signature": "列表视图_结束批量更新(控件名)",
+      "description": "结束一层批量更新，并在最外层结束时恢复重绘。",
+      "insertText": "列表视图_结束批量更新(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_结束批量更新",
+        "runtimeName": "列表视图_结束批量更新",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_结束批量更新(\"演示输出\")"
+    },
+    {
+      "index": 35,
+      "name": "列表视图_排序",
+      "signature": "列表视图_排序(控件名, 列索引, 升序)",
+      "description": "按指定列文本稳定排序，列索引从 0 开始。",
+      "insertText": "列表视图_排序(\"$1\", 0, 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_排序",
+        "runtimeName": "列表视图_排序",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列索引",
+            "type": "int"
+          },
+          {
+            "name": "升序",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_排序(\"演示输出\", 1, 真)"
+    },
+    {
+      "index": 36,
+      "name": "列表视图_取最后单击列",
+      "signature": "列表视图_取最后单击列(控件名)",
+      "description": "返回最近一次表头单击的零基列索引；尚未单击时返回 -1。",
+      "insertText": "列表视图_取最后单击列(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取最后单击列",
+        "runtimeName": "列表视图_取最后单击列",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取最后单击列(\"演示输出\")"
+    },
+    {
+      "index": 37,
+      "name": "列表视图_取虚拟模式",
+      "signature": "列表视图_取虚拟模式(控件名)",
+      "description": "返回控件是否以 Win32 LVS_OWNERDATA 虚拟模式创建。",
+      "insertText": "列表视图_取虚拟模式(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_取虚拟模式",
+        "runtimeName": "列表视图_取虚拟模式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取虚拟模式(\"演示输出\")"
+    },
+    {
+      "index": 38,
+      "name": "列表视图_设置虚拟行数",
+      "signature": "列表视图_设置虚拟行数(控件名, 行数)",
+      "description": "设置虚拟 ListView 的总行数；设计器必须先开启虚拟列表模式。",
+      "insertText": "列表视图_设置虚拟行数(\"$1\", 15000)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置虚拟行数",
+        "runtimeName": "列表视图_设置虚拟行数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行数",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置虚拟行数(\"演示输出\", 1)"
+    },
+    {
+      "index": 39,
+      "name": "列表视图_设置虚拟行",
+      "signature": "列表视图_设置虚拟行(控件名, 行索引, Tab分隔单元格)",
+      "description": "设置虚拟 ListView 指定行的数据，不创建真实行项目。",
+      "insertText": "列表视图_设置虚拟行(\"$1\", 0, \"1\\t代码段\\t128\\t5\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置虚拟行",
+        "runtimeName": "列表视图_设置虚拟行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          },
+          {
+            "name": "Tab分隔单元格",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置虚拟行(\"演示输出\", 1, \"演示参数3\")"
+    },
+    {
+      "index": 40,
+      "name": "列表视图_添加列",
+      "signature": "列表视图_添加列(控件名, 标题, 宽度, 对齐)",
+      "description": "在末尾添加详细信息视图列。对齐为 left/center/right。",
+      "insertText": "列表视图_添加列(\"$1\", \"$2\", 120, \"left\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_添加列",
+        "runtimeName": "列表视图_添加列",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "对齐",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_添加列(\"演示输出\", \"演示参数2\", 1, \"演示参数4\")"
+    },
+    {
+      "index": 41,
+      "name": "列表视图_插入列",
+      "signature": "列表视图_插入列(控件名, 列索引, 标题, 宽度, 对齐)",
+      "description": "在指定零基索引插入列。",
+      "insertText": "列表视图_插入列(\"$1\", 0, \"$2\", 120, \"left\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_插入列",
+        "runtimeName": "列表视图_插入列",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列索引",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "对齐",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_插入列(\"演示输出\", 1, \"演示参数3\", 1, \"演示参数5\")"
+    },
+    {
+      "index": 42,
+      "name": "列表视图_删除列",
+      "signature": "列表视图_删除列(控件名, 列索引)",
+      "description": "删除指定列并同步虚拟行数据。",
+      "insertText": "列表视图_删除列(\"$1\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_删除列",
+        "runtimeName": "列表视图_删除列",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_删除列(\"演示输出\", 1)"
+    },
+    {
+      "index": 43,
+      "name": "列表视图_设置列标题",
+      "signature": "列表视图_设置列标题(控件名, 列索引, 标题)",
+      "description": "修改列标题。",
+      "insertText": "列表视图_设置列标题(\"$1\", 0, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置列标题",
+        "runtimeName": "列表视图_设置列标题",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列索引",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置列标题(\"演示输出\", 1, \"演示参数3\")"
+    },
+    {
+      "index": 44,
+      "name": "列表视图_取列标题",
+      "signature": "列表视图_取列标题(控件名, 列索引)",
+      "description": "读取列标题。",
+      "insertText": "列表视图_取列标题(\"$1\", 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "列表视图_取列标题",
+        "runtimeName": "列表视图_取列标题",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取列标题(\"演示输出\", 1)"
+    },
+    {
+      "index": 45,
+      "name": "列表视图_设置列宽",
+      "signature": "列表视图_设置列宽(控件名, 列索引, 宽度)",
+      "description": "设置列宽；-1/-2 对应自动宽度。",
+      "insertText": "列表视图_设置列宽(\"$1\", 0, 120)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置列宽",
+        "runtimeName": "列表视图_设置列宽",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列索引",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置列宽(\"演示输出\", 1, 1)"
+    },
+    {
+      "index": 46,
+      "name": "列表视图_取列宽",
+      "signature": "列表视图_取列宽(控件名, 列索引)",
+      "description": "读取列宽。",
+      "insertText": "列表视图_取列宽(\"$1\", 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取列宽",
+        "runtimeName": "列表视图_取列宽",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取列宽(\"演示输出\", 1)"
+    },
+    {
+      "index": 47,
+      "name": "列表视图_取列数",
+      "signature": "列表视图_取列数(控件名)",
+      "description": "读取表头列数。",
+      "insertText": "列表视图_取列数(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取列数",
+        "runtimeName": "列表视图_取列数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取列数(\"演示输出\")"
+    },
+    {
+      "index": 48,
+      "name": "列表视图_设置行选中",
+      "signature": "列表视图_设置行选中(控件名, 行索引, 选中)",
+      "description": "设置行选择状态和焦点。",
+      "insertText": "列表视图_设置行选中(\"$1\", 0, 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置行选中",
+        "runtimeName": "列表视图_设置行选中",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          },
+          {
+            "name": "选中",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置行选中(\"演示输出\", 1, 真)"
+    },
+    {
+      "index": 49,
+      "name": "列表视图_取选中行数",
+      "signature": "列表视图_取选中行数(控件名)",
+      "description": "读取当前选中行数量。",
+      "insertText": "列表视图_取选中行数(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取选中行数",
+        "runtimeName": "列表视图_取选中行数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取选中行数(\"演示输出\")"
+    },
+    {
+      "index": 50,
+      "name": "列表视图_取下一个选中行",
+      "signature": "列表视图_取下一个选中行(控件名, 起始行)",
+      "description": "从起始行之后查找下一个选中行。",
+      "insertText": "列表视图_取下一个选中行(\"$1\", -1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取下一个选中行",
+        "runtimeName": "列表视图_取下一个选中行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "起始行",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取下一个选中行(\"演示输出\", 1)"
+    },
+    {
+      "index": 51,
+      "name": "列表视图_设置行勾选",
+      "signature": "列表视图_设置行勾选(控件名, 行索引, 勾选)",
+      "description": "启用复选框后设置行勾选状态。",
+      "insertText": "列表视图_设置行勾选(\"$1\", 0, 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置行勾选",
+        "runtimeName": "列表视图_设置行勾选",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          },
+          {
+            "name": "勾选",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置行勾选(\"演示输出\", 1, 真)"
+    },
+    {
+      "index": 52,
+      "name": "列表视图_取行勾选",
+      "signature": "列表视图_取行勾选(控件名, 行索引)",
+      "description": "读取行勾选状态。",
+      "insertText": "列表视图_取行勾选(\"$1\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_取行勾选",
+        "runtimeName": "列表视图_取行勾选",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取行勾选(\"演示输出\", 1)"
+    },
+    {
+      "index": 53,
+      "name": "列表视图_设置焦点行",
+      "signature": "列表视图_设置焦点行(控件名, 行索引)",
+      "description": "设置键盘焦点行。",
+      "insertText": "列表视图_设置焦点行(\"$1\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置焦点行",
+        "runtimeName": "列表视图_设置焦点行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置焦点行(\"演示输出\", 1)"
+    },
+    {
+      "index": 54,
+      "name": "列表视图_取焦点行",
+      "signature": "列表视图_取焦点行(控件名)",
+      "description": "读取键盘焦点行。",
+      "insertText": "列表视图_取焦点行(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取焦点行",
+        "runtimeName": "列表视图_取焦点行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取焦点行(\"演示输出\")"
+    },
+    {
+      "index": 55,
+      "name": "列表视图_设置行图像",
+      "signature": "列表视图_设置行图像(控件名, 行索引, 图像索引)",
+      "description": "设置普通行的小图标索引。",
+      "insertText": "列表视图_设置行图像(\"$1\", 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置行图像",
+        "runtimeName": "列表视图_设置行图像",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          },
+          {
+            "name": "图像索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置行图像(\"演示输出\", 1, 1)"
+    },
+    {
+      "index": 56,
+      "name": "列表视图_取行图像",
+      "signature": "列表视图_取行图像(控件名, 行索引)",
+      "description": "读取行图像索引。",
+      "insertText": "列表视图_取行图像(\"$1\", 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取行图像",
+        "runtimeName": "列表视图_取行图像",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取行图像(\"演示输出\", 1)"
+    },
+    {
+      "index": 57,
+      "name": "列表视图_设置行数据",
+      "signature": "列表视图_设置行数据(控件名, 行索引, 数据)",
+      "description": "设置 LVITEM lParam 应用数据。",
+      "insertText": "列表视图_设置行数据(\"$1\", 0, 1001)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置行数据",
+        "runtimeName": "列表视图_设置行数据",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          },
+          {
+            "name": "数据",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置行数据(\"演示输出\", 1, 1)"
+    },
+    {
+      "index": 58,
+      "name": "列表视图_取行数据",
+      "signature": "列表视图_取行数据(控件名, 行索引)",
+      "description": "读取 LVITEM lParam 应用数据。",
+      "insertText": "列表视图_取行数据(\"$1\", 0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "列表视图_取行数据",
+        "runtimeName": "列表视图_取行数据",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取行数据(\"演示输出\", 1)"
+    },
+    {
+      "index": 59,
+      "name": "列表视图_查找文本",
+      "signature": "列表视图_查找文本(控件名, 文本, 起始行, 部分匹配)",
+      "description": "使用 LVM_FINDITEM 查找行。",
+      "insertText": "列表视图_查找文本(\"$1\", \"$2\", -1, 假)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_查找文本",
+        "runtimeName": "列表视图_查找文本",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "起始行",
+            "type": "int"
+          },
+          {
+            "name": "部分匹配",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_查找文本(\"演示输出\", \"演示参数2\", 1, 真)"
+    },
+    {
+      "index": 60,
+      "name": "列表视图_命中测试行",
+      "signature": "列表视图_命中测试行(控件名, 横坐标, 纵坐标)",
+      "description": "返回客户区坐标处的行索引。",
+      "insertText": "列表视图_命中测试行(\"$1\", 20, 40)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_命中测试行",
+        "runtimeName": "列表视图_命中测试行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_命中测试行(\"演示输出\", 1, 1)"
+    },
+    {
+      "index": 61,
+      "name": "列表视图_命中测试列",
+      "signature": "列表视图_命中测试列(控件名, 横坐标, 纵坐标)",
+      "description": "返回客户区坐标处的子项列索引。",
+      "insertText": "列表视图_命中测试列(\"$1\", 20, 40)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_命中测试列",
+        "runtimeName": "列表视图_命中测试列",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_命中测试列(\"演示输出\", 1, 1)"
+    },
+    {
+      "index": 62,
+      "name": "列表视图_取行矩形",
+      "signature": "列表视图_取行矩形(控件名, 行索引, 部位)",
+      "description": "返回 left,top,width,height；部位为 bounds/icon/label/select。",
+      "insertText": "列表视图_取行矩形(\"$1\", 0, \"bounds\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "列表视图_取行矩形",
+        "runtimeName": "列表视图_取行矩形",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          },
+          {
+            "name": "部位",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取行矩形(\"演示输出\", 1, \"演示参数3\")"
+    },
+    {
+      "index": 63,
+      "name": "列表视图_取单元格矩形",
+      "signature": "列表视图_取单元格矩形(控件名, 行索引, 列索引)",
+      "description": "返回子项矩形 left,top,width,height。",
+      "insertText": "列表视图_取单元格矩形(\"$1\", 0, 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "列表视图_取单元格矩形",
+        "runtimeName": "列表视图_取单元格矩形",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          },
+          {
+            "name": "列索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取单元格矩形(\"演示输出\", 1, 1)"
+    },
+    {
+      "index": 64,
+      "name": "列表视图_保证可见",
+      "signature": "列表视图_保证可见(控件名, 行索引, 允许部分可见)",
+      "description": "滚动到指定行。",
+      "insertText": "列表视图_保证可见(\"$1\", 0, 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_保证可见",
+        "runtimeName": "列表视图_保证可见",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          },
+          {
+            "name": "允许部分可见",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_保证可见(\"演示输出\", 1, 真)"
+    },
+    {
+      "index": 65,
+      "name": "列表视图_是否可见",
+      "signature": "列表视图_是否可见(控件名, 行索引)",
+      "description": "判断行是否在可见区域。",
+      "insertText": "列表视图_是否可见(\"$1\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_是否可见",
+        "runtimeName": "列表视图_是否可见",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_是否可见(\"演示输出\", 1)"
+    },
+    {
+      "index": 66,
+      "name": "列表视图_滚动",
+      "signature": "列表视图_滚动(控件名, 横向像素, 纵向像素)",
+      "description": "滚动列表内容。",
+      "insertText": "列表视图_滚动(\"$1\", 0, 28)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_滚动",
+        "runtimeName": "列表视图_滚动",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "横向像素",
+            "type": "int"
+          },
+          {
+            "name": "纵向像素",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_滚动(\"演示输出\", 1, 1)"
+    },
+    {
+      "index": 67,
+      "name": "列表视图_取顶部行",
+      "signature": "列表视图_取顶部行(控件名)",
+      "description": "读取首个可见行。",
+      "insertText": "列表视图_取顶部行(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取顶部行",
+        "runtimeName": "列表视图_取顶部行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取顶部行(\"演示输出\")"
+    },
+    {
+      "index": 68,
+      "name": "列表视图_取每页行数",
+      "signature": "列表视图_取每页行数(控件名)",
+      "description": "读取一页完整可见行数。",
+      "insertText": "列表视图_取每页行数(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取每页行数",
+        "runtimeName": "列表视图_取每页行数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取每页行数(\"演示输出\")"
+    },
+    {
+      "index": 69,
+      "name": "列表视图_重绘行",
+      "signature": "列表视图_重绘行(控件名, 起始行, 结束行)",
+      "description": "重绘指定行范围。",
+      "insertText": "列表视图_重绘行(\"$1\", 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_重绘行",
+        "runtimeName": "列表视图_重绘行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "起始行",
+            "type": "int"
+          },
+          {
+            "name": "结束行",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_重绘行(\"演示输出\", 1, 1)"
+    },
+    {
+      "index": 70,
+      "name": "列表视图_更新行",
+      "signature": "列表视图_更新行(控件名, 行索引)",
+      "description": "发送 LVM_UPDATE 更新行。",
+      "insertText": "列表视图_更新行(\"$1\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_更新行",
+        "runtimeName": "列表视图_更新行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_更新行(\"演示输出\", 1)"
+    },
+    {
+      "index": 71,
+      "name": "列表视图_设置视图",
+      "signature": "列表视图_设置视图(控件名, 视图)",
+      "description": "运行时切换 details/list/icon/smallIcon/tile。",
+      "insertText": "列表视图_设置视图(\"$1\", \"details\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置视图",
+        "runtimeName": "列表视图_设置视图",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "视图",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置视图(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 72,
+      "name": "列表视图_取视图",
+      "signature": "列表视图_取视图(控件名)",
+      "description": "读取当前视图名称。",
+      "insertText": "列表视图_取视图(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "列表视图_取视图",
+        "runtimeName": "列表视图_取视图",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取视图(\"演示输出\")"
+    },
+    {
+      "index": 73,
+      "name": "列表视图_设置扩展样式",
+      "signature": "列表视图_设置扩展样式(控件名, 样式名, 启用)",
+      "description": "设置 gridLines/checkBoxes/fullRowSelect/doubleBuffer/headerDragDrop/infoTip/labelTip/trackSelect/borderSelect。",
+      "insertText": "列表视图_设置扩展样式(\"$1\", \"checkBoxes\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置扩展样式",
+        "runtimeName": "列表视图_设置扩展样式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "样式名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置扩展样式(\"演示输出\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 74,
+      "name": "列表视图_取扩展样式",
+      "signature": "列表视图_取扩展样式(控件名, 样式名)",
+      "description": "读取指定扩展样式状态。",
+      "insertText": "列表视图_取扩展样式(\"$1\", \"gridLines\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_取扩展样式",
+        "runtimeName": "列表视图_取扩展样式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "样式名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取扩展样式(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 75,
+      "name": "列表视图_设置背景色",
+      "signature": "列表视图_设置背景色(控件名, 红, 绿, 蓝)",
+      "description": "设置背景 COLORREF。",
+      "insertText": "列表视图_设置背景色(\"$1\", 15, 23, 42)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置背景色",
+        "runtimeName": "列表视图_设置背景色",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "红",
+            "type": "int"
+          },
+          {
+            "name": "绿",
+            "type": "int"
+          },
+          {
+            "name": "蓝",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置背景色(\"演示输出\", 1, 1, 1)"
+    },
+    {
+      "index": 76,
+      "name": "列表视图_取背景色",
+      "signature": "列表视图_取背景色(控件名)",
+      "description": "读取背景 COLORREF 整数。",
+      "insertText": "列表视图_取背景色(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取背景色",
+        "runtimeName": "列表视图_取背景色",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取背景色(\"演示输出\")"
+    },
+    {
+      "index": 77,
+      "name": "列表视图_设置文字色",
+      "signature": "列表视图_设置文字色(控件名, 红, 绿, 蓝)",
+      "description": "设置文字 COLORREF。",
+      "insertText": "列表视图_设置文字色(\"$1\", 15, 23, 42)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置文字色",
+        "runtimeName": "列表视图_设置文字色",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "红",
+            "type": "int"
+          },
+          {
+            "name": "绿",
+            "type": "int"
+          },
+          {
+            "name": "蓝",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置文字色(\"演示输出\", 1, 1, 1)"
+    },
+    {
+      "index": 78,
+      "name": "列表视图_取文字色",
+      "signature": "列表视图_取文字色(控件名)",
+      "description": "读取文字 COLORREF 整数。",
+      "insertText": "列表视图_取文字色(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取文字色",
+        "runtimeName": "列表视图_取文字色",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取文字色(\"演示输出\")"
+    },
+    {
+      "index": 79,
+      "name": "列表视图_设置文字背景色",
+      "signature": "列表视图_设置文字背景色(控件名, 红, 绿, 蓝)",
+      "description": "设置文字背景 COLORREF。",
+      "insertText": "列表视图_设置文字背景色(\"$1\", 15, 23, 42)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置文字背景色",
+        "runtimeName": "列表视图_设置文字背景色",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "红",
+            "type": "int"
+          },
+          {
+            "name": "绿",
+            "type": "int"
+          },
+          {
+            "name": "蓝",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置文字背景色(\"演示输出\", 1, 1, 1)"
+    },
+    {
+      "index": 80,
+      "name": "列表视图_取文字背景色",
+      "signature": "列表视图_取文字背景色(控件名)",
+      "description": "读取文字背景 COLORREF 整数。",
+      "insertText": "列表视图_取文字背景色(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取文字背景色",
+        "runtimeName": "列表视图_取文字背景色",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取文字背景色(\"演示输出\")"
+    },
+    {
+      "index": 81,
+      "name": "列表视图_启用分组",
+      "signature": "列表视图_启用分组(控件名, 启用)",
+      "description": "启用或关闭分组视图。",
+      "insertText": "列表视图_启用分组(\"$1\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_启用分组",
+        "runtimeName": "列表视图_启用分组",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_启用分组(\"演示输出\", 真)"
+    },
+    {
+      "index": 82,
+      "name": "列表视图_取分组启用",
+      "signature": "列表视图_取分组启用(控件名)",
+      "description": "读取分组视图状态。",
+      "insertText": "列表视图_取分组启用(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_取分组启用",
+        "runtimeName": "列表视图_取分组启用",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取分组启用(\"演示输出\")"
+    },
+    {
+      "index": 83,
+      "name": "列表视图_添加组",
+      "signature": "列表视图_添加组(控件名, 组ID, 标题)",
+      "description": "添加 LVGROUP。",
+      "insertText": "列表视图_添加组(\"$1\", 1, \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_添加组",
+        "runtimeName": "列表视图_添加组",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "组ID",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_添加组(\"演示输出\", 1, \"演示参数3\")"
+    },
+    {
+      "index": 84,
+      "name": "列表视图_删除组",
+      "signature": "列表视图_删除组(控件名, 组ID)",
+      "description": "删除指定组。",
+      "insertText": "列表视图_删除组(\"$1\", 1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_删除组",
+        "runtimeName": "列表视图_删除组",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "组ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_删除组(\"演示输出\", 1)"
+    },
+    {
+      "index": 85,
+      "name": "列表视图_清空组",
+      "signature": "列表视图_清空组(控件名)",
+      "description": "删除全部组。",
+      "insertText": "列表视图_清空组(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_清空组",
+        "runtimeName": "列表视图_清空组",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_清空组(\"演示输出\")"
+    },
+    {
+      "index": 86,
+      "name": "列表视图_取组数",
+      "signature": "列表视图_取组数(控件名)",
+      "description": "读取组数量。",
+      "insertText": "列表视图_取组数(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取组数",
+        "runtimeName": "列表视图_取组数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取组数(\"演示输出\")"
+    },
+    {
+      "index": 87,
+      "name": "列表视图_是否有组",
+      "signature": "列表视图_是否有组(控件名, 组ID)",
+      "description": "判断组是否存在。",
+      "insertText": "列表视图_是否有组(\"$1\", 1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_是否有组",
+        "runtimeName": "列表视图_是否有组",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "组ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_是否有组(\"演示输出\", 1)"
+    },
+    {
+      "index": 88,
+      "name": "列表视图_设置组标题",
+      "signature": "列表视图_设置组标题(控件名, 组ID, 标题)",
+      "description": "修改组标题。",
+      "insertText": "列表视图_设置组标题(\"$1\", 1, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置组标题",
+        "runtimeName": "列表视图_设置组标题",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "组ID",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置组标题(\"演示输出\", 1, \"演示参数3\")"
+    },
+    {
+      "index": 89,
+      "name": "列表视图_取组标题",
+      "signature": "列表视图_取组标题(控件名, 组ID)",
+      "description": "读取组标题。",
+      "insertText": "列表视图_取组标题(\"$1\", 1)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "列表视图_取组标题",
+        "runtimeName": "列表视图_取组标题",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "组ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取组标题(\"演示输出\", 1)"
+    },
+    {
+      "index": 90,
+      "name": "列表视图_设置行组",
+      "signature": "列表视图_设置行组(控件名, 行索引, 组ID)",
+      "description": "把普通行分配到组。",
+      "insertText": "列表视图_设置行组(\"$1\", 0, 1)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置行组",
+        "runtimeName": "列表视图_设置行组",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          },
+          {
+            "name": "组ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置行组(\"演示输出\", 1, 1)"
+    },
+    {
+      "index": 91,
+      "name": "列表视图_取行组",
+      "signature": "列表视图_取行组(控件名, 行索引)",
+      "description": "读取普通行组 ID。",
+      "insertText": "列表视图_取行组(\"$1\", 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取行组",
+        "runtimeName": "列表视图_取行组",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取行组(\"演示输出\", 1)"
+    },
+    {
+      "index": 92,
+      "name": "列表视图_设置标签可编辑",
+      "signature": "列表视图_设置标签可编辑(控件名, 可编辑)",
+      "description": "切换 LVS_EDITLABELS。",
+      "insertText": "列表视图_设置标签可编辑(\"$1\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置标签可编辑",
+        "runtimeName": "列表视图_设置标签可编辑",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "可编辑",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置标签可编辑(\"演示输出\", 真)"
+    },
+    {
+      "index": 93,
+      "name": "列表视图_开始标签编辑",
+      "signature": "列表视图_开始标签编辑(控件名, 行索引)",
+      "description": "开始原地编辑行标签。",
+      "insertText": "列表视图_开始标签编辑(\"$1\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_开始标签编辑",
+        "runtimeName": "列表视图_开始标签编辑",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_开始标签编辑(\"演示输出\", 1)"
+    },
+    {
+      "index": 94,
+      "name": "列表视图_取消标签编辑",
+      "signature": "列表视图_取消标签编辑(控件名)",
+      "description": "取消当前标签编辑。",
+      "insertText": "列表视图_取消标签编辑(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_取消标签编辑",
+        "runtimeName": "列表视图_取消标签编辑",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取消标签编辑(\"演示输出\")"
+    },
+    {
+      "index": 95,
+      "name": "列表视图_设置选择标记",
+      "signature": "列表视图_设置选择标记(控件名, 行索引)",
+      "description": "设置 selection mark。",
+      "insertText": "列表视图_设置选择标记(\"$1\", 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_设置选择标记",
+        "runtimeName": "列表视图_设置选择标记",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置选择标记(\"演示输出\", 1)"
+    },
+    {
+      "index": 96,
+      "name": "列表视图_取选择标记",
+      "signature": "列表视图_取选择标记(控件名)",
+      "description": "读取 selection mark。",
+      "insertText": "列表视图_取选择标记(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取选择标记",
+        "runtimeName": "列表视图_取选择标记",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取选择标记(\"演示输出\")"
+    },
+    {
+      "index": 97,
+      "name": "列表视图_设置热项",
+      "signature": "列表视图_设置热项(控件名, 行索引)",
+      "description": "设置 hot item。",
+      "insertText": "列表视图_设置热项(\"$1\", 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_设置热项",
+        "runtimeName": "列表视图_设置热项",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置热项(\"演示输出\", 1)"
+    },
+    {
+      "index": 98,
+      "name": "列表视图_取热项",
+      "signature": "列表视图_取热项(控件名)",
+      "description": "读取 hot item。",
+      "insertText": "列表视图_取热项(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取热项",
+        "runtimeName": "列表视图_取热项",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取热项(\"演示输出\")"
+    },
+    {
+      "index": 99,
+      "name": "列表视图_设置悬停时间",
+      "signature": "列表视图_设置悬停时间(控件名, 毫秒)",
+      "description": "设置热跟踪悬停时间。",
+      "insertText": "列表视图_设置悬停时间(\"$1\", 400)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_设置悬停时间",
+        "runtimeName": "列表视图_设置悬停时间",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置悬停时间(\"演示输出\", 1)"
+    },
+    {
+      "index": 100,
+      "name": "列表视图_取悬停时间",
+      "signature": "列表视图_取悬停时间(控件名)",
+      "description": "读取悬停时间。",
+      "insertText": "列表视图_取悬停时间(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取悬停时间",
+        "runtimeName": "列表视图_取悬停时间",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取悬停时间(\"演示输出\")"
+    },
+    {
+      "index": 101,
+      "name": "列表视图_设置图像列表",
+      "signature": "列表视图_设置图像列表(控件名, 图像列表ID, 类型)",
+      "description": "绑定设计器 ImageList；类型为 normal/small/state/group。",
+      "insertText": "列表视图_设置图像列表(\"$1\", \"$2\", \"small\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置图像列表",
+        "runtimeName": "列表视图_设置图像列表",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "图像列表ID",
+            "type": "wideString"
+          },
+          {
+            "name": "类型",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置图像列表(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 102,
+      "name": "列表视图_取表头句柄",
+      "signature": "列表视图_取表头句柄(控件名)",
+      "description": "读取 Header HWND 数值。",
+      "insertText": "列表视图_取表头句柄(\"$1\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "列表视图_取表头句柄",
+        "runtimeName": "列表视图_取表头句柄",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取表头句柄(\"演示输出\")"
+    },
+    {
+      "index": 103,
+      "name": "列表视图_取字符串宽度",
+      "signature": "列表视图_取字符串宽度(控件名, 文本)",
+      "description": "按当前字体测量文本宽度。",
+      "insertText": "列表视图_取字符串宽度(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "列表视图_取字符串宽度",
+        "runtimeName": "列表视图_取字符串宽度",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取字符串宽度(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 104,
+      "name": "列表视图_设置插入标记",
+      "signature": "列表视图_设置插入标记(控件名, 行索引, 在后方)",
+      "description": "设置插入标记。",
+      "insertText": "列表视图_设置插入标记(\"$1\", 0, 假)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置插入标记",
+        "runtimeName": "列表视图_设置插入标记",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          },
+          {
+            "name": "在后方",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置插入标记(\"演示输出\", 1, 真)"
+    },
+    {
+      "index": 105,
+      "name": "列表视图_取插入标记",
+      "signature": "列表视图_取插入标记(控件名)",
+      "description": "返回“行索引,在后方”。",
+      "insertText": "列表视图_取插入标记(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "列表视图_取插入标记",
+        "runtimeName": "列表视图_取插入标记",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取插入标记(\"演示输出\")"
+    },
+    {
+      "index": 106,
+      "name": "列表视图_设置项目位置",
+      "signature": "列表视图_设置项目位置(控件名, 行索引, 横坐标, 纵坐标)",
+      "description": "在图标视图移动项目。",
+      "insertText": "列表视图_设置项目位置(\"$1\", 0, 20, 20)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_设置项目位置",
+        "runtimeName": "列表视图_设置项目位置",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置项目位置(\"演示输出\", 1, 1, 1)"
+    },
+    {
+      "index": 107,
+      "name": "列表视图_取项目位置",
+      "signature": "列表视图_取项目位置(控件名, 行索引)",
+      "description": "返回“横坐标,纵坐标”。",
+      "insertText": "列表视图_取项目位置(\"$1\", 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "列表视图_取项目位置",
+        "runtimeName": "列表视图_取项目位置",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取项目位置(\"演示输出\", 1)"
+    },
+    {
+      "index": 108,
+      "name": "列表视图_排列图标",
+      "signature": "列表视图_排列图标(控件名, 排列)",
+      "description": "排列图标：default/left/top/snap。",
+      "insertText": "列表视图_排列图标(\"$1\", \"default\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "列表视图_排列图标",
+        "runtimeName": "列表视图_排列图标",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "排列",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_排列图标(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 109,
+      "name": "列表视图_设置图标间距",
+      "signature": "列表视图_设置图标间距(控件名, 水平, 垂直)",
+      "description": "设置图标视图间距。",
+      "insertText": "列表视图_设置图标间距(\"$1\", 100, 80)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "列表视图_设置图标间距",
+        "runtimeName": "列表视图_设置图标间距",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "水平",
+            "type": "int"
+          },
+          {
+            "name": "垂直",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_设置图标间距(\"演示输出\", 1, 1)"
+    },
+    {
+      "index": 110,
+      "name": "列表视图_取近似尺寸",
+      "signature": "列表视图_取近似尺寸(控件名, 行数, 宽度, 高度)",
+      "description": "返回容纳项目的近似“宽度,高度”。",
+      "insertText": "列表视图_取近似尺寸(\"$1\", 10, 400, 300)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "列表视图_取近似尺寸",
+        "runtimeName": "列表视图_取近似尺寸",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行数",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "列表视图_取近似尺寸(\"演示输出\", 1, 1, 1)"
+    },
+    {
+      "index": 111,
+      "name": "表格_添加列",
+      "signature": "表格_添加列(控件名, 列ID, 标题, 类型, 宽度)",
+      "description": "追加具有稳定列 ID 的强类型列。",
+      "insertText": "表格_添加列(\"$1\", \"$2\", \"$3\", \"$4\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_添加列",
+        "runtimeName": "表格_添加列",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          },
+          {
+            "name": "类型",
+            "type": "wideString"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_添加列(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\", 1)"
+    },
+    {
+      "index": 112,
+      "name": "表格_插入列",
+      "signature": "表格_插入列(控件名, 索引, 列ID, 标题, 类型, 宽度)",
+      "description": "在指定位置插入强类型列。",
+      "insertText": "表格_插入列(\"$1\", 0, \"$3\", \"$4\", \"$5\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_插入列",
+        "runtimeName": "表格_插入列",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          },
+          {
+            "name": "类型",
+            "type": "wideString"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_插入列(\"演示输出\", 1, \"演示参数3\", \"演示参数4\", \"演示参数5\", 1)"
+    },
+    {
+      "index": 113,
+      "name": "表格_删除列",
+      "signature": "表格_删除列(控件名, 列ID)",
+      "description": "删除列并同步删除全部行中的对应单元格。",
+      "insertText": "表格_删除列(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_删除列",
+        "runtimeName": "表格_删除列",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_删除列(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 114,
+      "name": "表格_设置列标题",
+      "signature": "表格_设置列标题(控件名, 列ID, 标题)",
+      "description": "设置列标题。",
+      "insertText": "表格_设置列标题(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置列标题",
+        "runtimeName": "表格_设置列标题",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置列标题(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 115,
+      "name": "表格_设置列宽度",
+      "signature": "表格_设置列宽度(控件名, 列ID, 宽度)",
+      "description": "设置列宽度。",
+      "insertText": "表格_设置列宽度(\"$1\", \"$2\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置列宽度",
+        "runtimeName": "表格_设置列宽度",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置列宽度(\"演示输出\", \"演示参数2\", 1)"
+    },
+    {
+      "index": 116,
+      "name": "表格_设置列对齐",
+      "signature": "表格_设置列对齐(控件名, 列ID, 对齐方式)",
+      "description": "设置列为 left/center/right（居左/居中/居右）。",
+      "insertText": "表格_设置列对齐(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置列对齐",
+        "runtimeName": "表格_设置列对齐",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "对齐方式",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置列对齐(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 117,
+      "name": "表格_设置列只读",
+      "signature": "表格_设置列只读(控件名, 列ID, 只读)",
+      "description": "设置列只读状态。",
+      "insertText": "表格_设置列只读(\"$1\", \"$2\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置列只读",
+        "runtimeName": "表格_设置列只读",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "只读",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置列只读(\"演示输出\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 118,
+      "name": "表格_设置列显示",
+      "signature": "表格_设置列显示(控件名, 列ID, 显示)",
+      "description": "设置列显示状态。",
+      "insertText": "表格_设置列显示(\"$1\", \"$2\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置列显示",
+        "runtimeName": "表格_设置列显示",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "显示",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置列显示(\"演示输出\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 119,
+      "name": "表格_设置列冻结",
+      "signature": "表格_设置列冻结(控件名, 列ID, 冻结)",
+      "description": "设置列冻结状态。",
+      "insertText": "表格_设置列冻结(\"$1\", \"$2\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置列冻结",
+        "runtimeName": "表格_设置列冻结",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "冻结",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置列冻结(\"演示输出\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 120,
+      "name": "表格_设置列格式",
+      "signature": "表格_设置列格式(控件名, 列ID, 格式)",
+      "description": "设置日期、数字等列的显示格式。",
+      "insertText": "表格_设置列格式(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置列格式",
+        "runtimeName": "表格_设置列格式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "格式",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置列格式(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 121,
+      "name": "表格_取列数",
+      "signature": "表格_取列数(控件名)",
+      "description": "返回当前列数。",
+      "insertText": "表格_取列数(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "表格_取列数",
+        "runtimeName": "表格_取列数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取列数(\"演示输出\")"
+    },
+    {
+      "index": 122,
+      "name": "表格_添加列选项",
+      "signature": "表格_添加列选项(控件名, 列ID, 值, 显示文字)",
+      "description": "向组合框列追加稳定值与中文显示文字。",
+      "insertText": "表格_添加列选项(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_添加列选项",
+        "runtimeName": "表格_添加列选项",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          },
+          {
+            "name": "显示文字",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_添加列选项(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 123,
+      "name": "表格_清空列选项",
+      "signature": "表格_清空列选项(控件名, 列ID)",
+      "description": "清空组合框列选项。",
+      "insertText": "表格_清空列选项(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_清空列选项",
+        "runtimeName": "表格_清空列选项",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_清空列选项(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 124,
+      "name": "表格_设置单元格组合框选项",
+      "signature": "表格_设置单元格组合框选项(控件名, 行键, 列ID, 选项TSV)",
+      "description": "用 TSV 覆盖单元格组合框选项。",
+      "insertText": "表格_设置单元格组合框选项(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置单元格组合框选项",
+        "runtimeName": "表格_设置单元格组合框选项",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "选项TSV",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置单元格组合框选项(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 125,
+      "name": "表格_设置选择框三态",
+      "signature": "表格_设置选择框三态(控件名, 列ID, 启用三态)",
+      "description": "允许选择框使用 null 作为第三态。",
+      "insertText": "表格_设置选择框三态(\"$1\", \"$2\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置选择框三态",
+        "runtimeName": "表格_设置选择框三态",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "启用三态",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置选择框三态(\"演示输出\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 126,
+      "name": "表格_设置开关文字",
+      "signature": "表格_设置开关文字(控件名, 列ID, 开启文字, 关闭文字)",
+      "description": "设置 Switch 的开启和关闭文字。",
+      "insertText": "表格_设置开关文字(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置开关文字",
+        "runtimeName": "表格_设置开关文字",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "开启文字",
+            "type": "wideString"
+          },
+          {
+            "name": "关闭文字",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置开关文字(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 127,
+      "name": "表格_设置图片显示方式",
+      "signature": "表格_设置图片显示方式(控件名, 列ID, 显示方式)",
+      "description": "设置 tile/contain/cover/center/stretch（平铺/等比完整/等比铺满/原始居中/拉伸）图片显示方式。",
+      "insertText": "表格_设置图片显示方式(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置图片显示方式",
+        "runtimeName": "表格_设置图片显示方式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "显示方式",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置图片显示方式(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 128,
+      "name": "表格_设置进度范围",
+      "signature": "表格_设置进度范围(控件名, 列ID, 最小值, 最大值, 显示文字)",
+      "description": "设置进度列范围及文字显示。",
+      "insertText": "表格_设置进度范围(\"$1\", \"$2\", 0.0, 0.0, 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置进度范围",
+        "runtimeName": "表格_设置进度范围",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "最小值",
+            "type": "double"
+          },
+          {
+            "name": "最大值",
+            "type": "double"
+          },
+          {
+            "name": "显示文字",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置进度范围(\"演示输出\", \"演示参数2\", 1.0, 1.0, 真)"
+    },
+    {
+      "index": 129,
+      "name": "表格_添加列按钮",
+      "signature": "表格_添加列按钮(控件名, 列ID, 按钮ID, 文字, 样式)",
+      "description": "向按钮列追加稳定按钮 ID。",
+      "insertText": "表格_添加列按钮(\"$1\", \"$2\", \"$3\", \"$4\", \"$5\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_添加列按钮",
+        "runtimeName": "表格_添加列按钮",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "按钮ID",
+            "type": "wideString"
+          },
+          {
+            "name": "文字",
+            "type": "wideString"
+          },
+          {
+            "name": "样式",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_添加列按钮(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\", \"演示参数5\")"
+    },
+    {
+      "index": 130,
+      "name": "表格_清空列按钮",
+      "signature": "表格_清空列按钮(控件名, 列ID)",
+      "description": "清空按钮列定义。",
+      "insertText": "表格_清空列按钮(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_清空列按钮",
+        "runtimeName": "表格_清空列按钮",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_清空列按钮(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 131,
+      "name": "表格_添加行",
+      "signature": "表格_添加行(控件名, 行键, 单元格TSV)",
+      "description": "追加稳定行键的数据行。",
+      "insertText": "表格_添加行(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_添加行",
+        "runtimeName": "表格_添加行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "单元格TSV",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_添加行(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 132,
+      "name": "表格_插入行",
+      "signature": "表格_插入行(控件名, 索引, 行键, 单元格TSV)",
+      "description": "在指定位置插入数据行。",
+      "insertText": "表格_插入行(\"$1\", 0, \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_插入行",
+        "runtimeName": "表格_插入行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "单元格TSV",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_插入行(\"演示输出\", 1, \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 133,
+      "name": "表格_删除行",
+      "signature": "表格_删除行(控件名, 行键)",
+      "description": "按稳定行键删除行。",
+      "insertText": "表格_删除行(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_删除行",
+        "runtimeName": "表格_删除行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_删除行(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 134,
+      "name": "表格_清空行",
+      "signature": "表格_清空行(控件名)",
+      "description": "清空全部静态数据行。",
+      "insertText": "表格_清空行(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_清空行",
+        "runtimeName": "表格_清空行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_清空行(\"演示输出\")"
+    },
+    {
+      "index": 135,
+      "name": "表格_取行数",
+      "signature": "表格_取行数(控件名)",
+      "description": "返回数据行数或虚拟总行数。",
+      "insertText": "表格_取行数(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "表格_取行数",
+        "runtimeName": "表格_取行数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取行数(\"演示输出\")"
+    },
+    {
+      "index": 136,
+      "name": "表格_取显示行键",
+      "signature": "表格_取显示行键(控件名, 索引)",
+      "description": "返回排序筛选后指定显示索引的稳定行键。",
+      "insertText": "表格_取显示行键(\"$1\", 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取显示行键",
+        "runtimeName": "表格_取显示行键",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取显示行键(\"演示输出\", 1)"
+    },
+    {
+      "index": 137,
+      "name": "表格_开始批量更新",
+      "signature": "表格_开始批量更新(控件名)",
+      "description": "进入可嵌套批量更新并暂停重绘。",
+      "insertText": "表格_开始批量更新(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_开始批量更新",
+        "runtimeName": "表格_开始批量更新",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_开始批量更新(\"演示输出\")"
+    },
+    {
+      "index": 138,
+      "name": "表格_结束批量更新",
+      "signature": "表格_结束批量更新(控件名)",
+      "description": "结束一层批量更新，最外层恢复重绘。",
+      "insertText": "表格_结束批量更新(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_结束批量更新",
+        "runtimeName": "表格_结束批量更新",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_结束批量更新(\"演示输出\")"
+    },
+    {
+      "index": 139,
+      "name": "表格_加载TSV",
+      "signature": "表格_加载TSV(控件名, TSV文本, 首行为标题)",
+      "description": "按明确的引号和换行规则加载 TSV。",
+      "insertText": "表格_加载TSV(\"$1\", \"$2\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_加载TSV",
+        "runtimeName": "表格_加载TSV",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "TSV文本",
+            "type": "wideString"
+          },
+          {
+            "name": "首行为标题",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_加载TSV(\"演示输出\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 140,
+      "name": "表格_导出TSV",
+      "signature": "表格_导出TSV(控件名, 包含标题)",
+      "description": "导出可往返的 TSV。",
+      "insertText": "表格_导出TSV(\"$1\", 真)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_导出TSV",
+        "runtimeName": "表格_导出TSV",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "包含标题",
+            "type": "bool"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_导出TSV(\"演示输出\", 真)"
+    },
+    {
+      "index": 141,
+      "name": "表格_导入CSV",
+      "signature": "表格_导入CSV(控件名, CSV文本, 首行为标题)",
+      "description": "按 RFC 4180 风格引号规则导入 CSV。",
+      "insertText": "表格_导入CSV(\"$1\", \"$2\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_导入CSV",
+        "runtimeName": "表格_导入CSV",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "CSV文本",
+            "type": "wideString"
+          },
+          {
+            "name": "首行为标题",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_导入CSV(\"演示输出\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 142,
+      "name": "表格_导出CSV",
+      "signature": "表格_导出CSV(控件名, 包含标题)",
+      "description": "导出可往返的 CSV。",
+      "insertText": "表格_导出CSV(\"$1\", 真)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_导出CSV",
+        "runtimeName": "表格_导出CSV",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "包含标题",
+            "type": "bool"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_导出CSV(\"演示输出\", 真)"
+    },
+    {
+      "index": 143,
+      "name": "表格_导入Excel",
+      "signature": "表格_导入Excel(控件名, 文件路径, 首行为标题)",
+      "description": "从 .xlsx 文件的第一个工作表导入数据，无需安装 Microsoft Excel。",
+      "insertText": "表格_导入Excel(\"$1\", \"$2\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_导入Excel",
+        "runtimeName": "表格_导入Excel",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString"
+          },
+          {
+            "name": "首行为标题",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_导入Excel(\"演示输出\", \"module-demo-temp.txt\", 真)"
+    },
+    {
+      "index": 144,
+      "name": "表格_导出Excel",
+      "signature": "表格_导出Excel(控件名, 文件路径, 包含标题)",
+      "description": "将静态数据导出为标准 .xlsx 文件，无需安装 Microsoft Excel。",
+      "insertText": "表格_导出Excel(\"$1\", \"$2\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_导出Excel",
+        "runtimeName": "表格_导出Excel",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString"
+          },
+          {
+            "name": "包含标题",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_导出Excel(\"演示输出\", \"module-demo-temp.txt\", 真)"
+    },
+    {
+      "index": 145,
+      "name": "表格_置文本",
+      "signature": "表格_置文本(控件名, 行键, 列ID, 文本)",
+      "description": "写入文本单元格。",
+      "insertText": "表格_置文本(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_置文本",
+        "runtimeName": "表格_置文本",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_置文本(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 146,
+      "name": "表格_取文本",
+      "signature": "表格_取文本(控件名, 行键, 列ID)",
+      "description": "读取单元格显示文本。",
+      "insertText": "表格_取文本(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取文本",
+        "runtimeName": "表格_取文本",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取文本(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 147,
+      "name": "表格_置整数",
+      "signature": "表格_置整数(控件名, 行键, 列ID, 数值)",
+      "description": "写入整数单元格。",
+      "insertText": "表格_置整数(\"$1\", \"$2\", \"$3\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_置整数",
+        "runtimeName": "表格_置整数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "数值",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_置整数(\"演示输出\", \"演示参数2\", \"演示参数3\", 1)"
+    },
+    {
+      "index": 148,
+      "name": "表格_取整数",
+      "signature": "表格_取整数(控件名, 行键, 列ID)",
+      "description": "读取整数单元格。",
+      "insertText": "表格_取整数(\"$1\", \"$2\", \"$3\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "表格_取整数",
+        "runtimeName": "表格_取整数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取整数(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 149,
+      "name": "表格_置小数",
+      "signature": "表格_置小数(控件名, 行键, 列ID, 数值)",
+      "description": "写入小数单元格。",
+      "insertText": "表格_置小数(\"$1\", \"$2\", \"$3\", 0.0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_置小数",
+        "runtimeName": "表格_置小数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "数值",
+            "type": "double"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_置小数(\"演示输出\", \"演示参数2\", \"演示参数3\", 1.0)"
+    },
+    {
+      "index": 150,
+      "name": "表格_取小数",
+      "signature": "表格_取小数(控件名, 行键, 列ID)",
+      "description": "读取小数单元格。",
+      "insertText": "表格_取小数(\"$1\", \"$2\", \"$3\")",
+      "returnType": "小数型",
+      "binding": {
+        "command": "表格_取小数",
+        "runtimeName": "表格_取小数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取小数(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 151,
+      "name": "表格_置逻辑",
+      "signature": "表格_置逻辑(控件名, 行键, 列ID, 数值)",
+      "description": "写入选择框或 Switch 单元格。",
+      "insertText": "表格_置逻辑(\"$1\", \"$2\", \"$3\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_置逻辑",
+        "runtimeName": "表格_置逻辑",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "数值",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_置逻辑(\"演示输出\", \"演示参数2\", \"演示参数3\", 真)"
+    },
+    {
+      "index": 152,
+      "name": "表格_取逻辑",
+      "signature": "表格_取逻辑(控件名, 行键, 列ID)",
+      "description": "读取逻辑单元格。",
+      "insertText": "表格_取逻辑(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_取逻辑",
+        "runtimeName": "表格_取逻辑",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取逻辑(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 153,
+      "name": "表格_置日期",
+      "signature": "表格_置日期(控件名, 行键, 列ID, 日期)",
+      "description": "写入 ISO 日期文本。",
+      "insertText": "表格_置日期(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_置日期",
+        "runtimeName": "表格_置日期",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "日期",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_置日期(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 154,
+      "name": "表格_取日期",
+      "signature": "表格_取日期(控件名, 行键, 列ID)",
+      "description": "读取日期文本。",
+      "insertText": "表格_取日期(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取日期",
+        "runtimeName": "表格_取日期",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取日期(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 155,
+      "name": "表格_置图片",
+      "signature": "表格_置图片(控件名, 行键, 列ID, 项目路径)",
+      "description": "设置项目资源或运行时文件路径图片。",
+      "insertText": "表格_置图片(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_置图片",
+        "runtimeName": "表格_置图片",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "项目路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_置图片(\"演示输出\", \"演示参数2\", \"演示参数3\", \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 156,
+      "name": "表格_置图像列表图片",
+      "signature": "表格_置图像列表图片(控件名, 行键, 列ID, 图像列表ID, 图片索引)",
+      "description": "设置 ImageList 图片引用。",
+      "insertText": "表格_置图像列表图片(\"$1\", \"$2\", \"$3\", \"$4\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_置图像列表图片",
+        "runtimeName": "表格_置图像列表图片",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "图像列表ID",
+            "type": "wideString"
+          },
+          {
+            "name": "图片索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_置图像列表图片(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\", 1)"
+    },
+    {
+      "index": 157,
+      "name": "表格_清除图片",
+      "signature": "表格_清除图片(控件名, 行键, 列ID)",
+      "description": "清除图片单元格。",
+      "insertText": "表格_清除图片(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_清除图片",
+        "runtimeName": "表格_清除图片",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_清除图片(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 158,
+      "name": "表格_置进度",
+      "signature": "表格_置进度(控件名, 行键, 列ID, 进度)",
+      "description": "设置进度值并限制到列范围。",
+      "insertText": "表格_置进度(\"$1\", \"$2\", \"$3\", 0.0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_置进度",
+        "runtimeName": "表格_置进度",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "进度",
+            "type": "double"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_置进度(\"演示输出\", \"演示参数2\", \"演示参数3\", 1.0)"
+    },
+    {
+      "index": 159,
+      "name": "表格_取进度",
+      "signature": "表格_取进度(控件名, 行键, 列ID)",
+      "description": "读取进度值。",
+      "insertText": "表格_取进度(\"$1\", \"$2\", \"$3\")",
+      "returnType": "小数型",
+      "binding": {
+        "command": "表格_取进度",
+        "runtimeName": "表格_取进度",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取进度(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 160,
+      "name": "表格_设置进度状态",
+      "signature": "表格_设置进度状态(控件名, 行键, 列ID, 状态)",
+      "description": "设置 normal/success/warning/error/paused/indeterminate 状态。",
+      "insertText": "表格_设置进度状态(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置进度状态",
+        "runtimeName": "表格_设置进度状态",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "状态",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置进度状态(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 161,
+      "name": "表格_取进度状态",
+      "signature": "表格_取进度状态(控件名, 行键, 列ID)",
+      "description": "读取进度单元格状态；未覆盖时返回 normal。",
+      "insertText": "表格_取进度状态(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取进度状态",
+        "runtimeName": "表格_取进度状态",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取进度状态(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 162,
+      "name": "表格_置组合框值",
+      "signature": "表格_置组合框值(控件名, 行键, 列ID, 值)",
+      "description": "按稳定值设置组合框单元格。",
+      "insertText": "表格_置组合框值(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_置组合框值",
+        "runtimeName": "表格_置组合框值",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_置组合框值(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 163,
+      "name": "表格_取组合框值",
+      "signature": "表格_取组合框值(控件名, 行键, 列ID)",
+      "description": "读取组合框稳定值。",
+      "insertText": "表格_取组合框值(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取组合框值",
+        "runtimeName": "表格_取组合框值",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取组合框值(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 164,
+      "name": "表格_取组合框文字",
+      "signature": "表格_取组合框文字(控件名, 行键, 列ID)",
+      "description": "读取组合框中文显示文字。",
+      "insertText": "表格_取组合框文字(\"$1\", \"$2\", \"$3\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取组合框文字",
+        "runtimeName": "表格_取组合框文字",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取组合框文字(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 165,
+      "name": "表格_设置按钮显示",
+      "signature": "表格_设置按钮显示(控件名, 行键, 列ID, 按钮ID, 显示)",
+      "description": "覆盖指定单元格按钮显示状态。",
+      "insertText": "表格_设置按钮显示(\"$1\", \"$2\", \"$3\", \"$4\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置按钮显示",
+        "runtimeName": "表格_设置按钮显示",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "按钮ID",
+            "type": "wideString"
+          },
+          {
+            "name": "显示",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置按钮显示(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\", 真)"
+    },
+    {
+      "index": 166,
+      "name": "表格_设置按钮启用",
+      "signature": "表格_设置按钮启用(控件名, 行键, 列ID, 按钮ID, 启用)",
+      "description": "覆盖指定单元格按钮启用状态。",
+      "insertText": "表格_设置按钮启用(\"$1\", \"$2\", \"$3\", \"$4\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置按钮启用",
+        "runtimeName": "表格_设置按钮启用",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "按钮ID",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置按钮启用(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\", 真)"
+    },
+    {
+      "index": 167,
+      "name": "表格_设置按钮文字",
+      "signature": "表格_设置按钮文字(控件名, 行键, 列ID, 按钮ID, 文字)",
+      "description": "覆盖指定单元格按钮文字。",
+      "insertText": "表格_设置按钮文字(\"$1\", \"$2\", \"$3\", \"$4\", \"$5\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置按钮文字",
+        "runtimeName": "表格_设置按钮文字",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "按钮ID",
+            "type": "wideString"
+          },
+          {
+            "name": "文字",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置按钮文字(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\", \"演示参数5\")"
+    },
+    {
+      "index": 168,
+      "name": "表格_设置按钮样式",
+      "signature": "表格_设置按钮样式(控件名, 行键, 列ID, 按钮ID, 样式)",
+      "description": "覆盖指定单元格按钮样式。",
+      "insertText": "表格_设置按钮样式(\"$1\", \"$2\", \"$3\", \"$4\", \"$5\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置按钮样式",
+        "runtimeName": "表格_设置按钮样式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "按钮ID",
+            "type": "wideString"
+          },
+          {
+            "name": "样式",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置按钮样式(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\", \"演示参数5\")"
+    },
+    {
+      "index": 169,
+      "name": "表格_开始编辑",
+      "signature": "表格_开始编辑(控件名, 行键, 列ID)",
+      "description": "开始单元格原地编辑。",
+      "insertText": "表格_开始编辑(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_开始编辑",
+        "runtimeName": "表格_开始编辑",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_开始编辑(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 170,
+      "name": "表格_提交编辑",
+      "signature": "表格_提交编辑(控件名)",
+      "description": "提交当前临时编辑器。",
+      "insertText": "表格_提交编辑(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_提交编辑",
+        "runtimeName": "表格_提交编辑",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_提交编辑(\"演示输出\")"
+    },
+    {
+      "index": 171,
+      "name": "表格_取消编辑",
+      "signature": "表格_取消编辑(控件名)",
+      "description": "取消当前临时编辑器。",
+      "insertText": "表格_取消编辑(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_取消编辑",
+        "runtimeName": "表格_取消编辑",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取消编辑(\"演示输出\")"
+    },
+    {
+      "index": 172,
+      "name": "表格_设置当前单元格",
+      "signature": "表格_设置当前单元格(控件名, 行键, 列ID)",
+      "description": "设置键盘当前单元格。",
+      "insertText": "表格_设置当前单元格(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置当前单元格",
+        "runtimeName": "表格_设置当前单元格",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置当前单元格(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 173,
+      "name": "表格_取当前行键",
+      "signature": "表格_取当前行键(控件名)",
+      "description": "读取当前单元格行键。",
+      "insertText": "表格_取当前行键(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取当前行键",
+        "runtimeName": "表格_取当前行键",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取当前行键(\"演示输出\")"
+    },
+    {
+      "index": 174,
+      "name": "表格_取当前列ID",
+      "signature": "表格_取当前列ID(控件名)",
+      "description": "读取当前单元格列 ID。",
+      "insertText": "表格_取当前列ID(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取当前列ID",
+        "runtimeName": "表格_取当前列ID",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取当前列ID(\"演示输出\")"
+    },
+    {
+      "index": 175,
+      "name": "表格_设置行选中",
+      "signature": "表格_设置行选中(控件名, 行键, 选中)",
+      "description": "设置行选择状态。",
+      "insertText": "表格_设置行选中(\"$1\", \"$2\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置行选中",
+        "runtimeName": "表格_设置行选中",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "选中",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置行选中(\"演示输出\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 176,
+      "name": "表格_取行是否选中",
+      "signature": "表格_取行是否选中(控件名, 行键)",
+      "description": "按稳定行键读取该行是否处于选中状态。",
+      "insertText": "表格_取行是否选中(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_取行是否选中",
+        "runtimeName": "表格_取行是否选中",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取行是否选中(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 177,
+      "name": "表格_取选中行数",
+      "signature": "表格_取选中行数(控件名)",
+      "description": "读取选中行数量。",
+      "insertText": "表格_取选中行数(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "表格_取选中行数",
+        "runtimeName": "表格_取选中行数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取选中行数(\"演示输出\")"
+    },
+    {
+      "index": 178,
+      "name": "表格_取选中行键",
+      "signature": "表格_取选中行键(控件名, 索引)",
+      "description": "读取第 N 个选中行键。",
+      "insertText": "表格_取选中行键(\"$1\", 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取选中行键",
+        "runtimeName": "表格_取选中行键",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取选中行键(\"演示输出\", 1)"
+    },
+    {
+      "index": 179,
+      "name": "表格_撤销",
+      "signature": "表格_撤销(控件名)",
+      "description": "撤销最近一次数据事务。",
+      "insertText": "表格_撤销(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_撤销",
+        "runtimeName": "表格_撤销",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_撤销(\"演示输出\")"
+    },
+    {
+      "index": 180,
+      "name": "表格_重做",
+      "signature": "表格_重做(控件名)",
+      "description": "重做最近一次数据事务。",
+      "insertText": "表格_重做(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_重做",
+        "runtimeName": "表格_重做",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_重做(\"演示输出\")"
+    },
+    {
+      "index": 181,
+      "name": "表格_设置排序",
+      "signature": "表格_设置排序(控件名, 列ID, 升序)",
+      "description": "替换为单列强类型排序。",
+      "insertText": "表格_设置排序(\"$1\", \"$2\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置排序",
+        "runtimeName": "表格_设置排序",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "升序",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置排序(\"演示输出\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 182,
+      "name": "表格_添加排序",
+      "signature": "表格_添加排序(控件名, 列ID, 升序)",
+      "description": "追加多列强类型排序。",
+      "insertText": "表格_添加排序(\"$1\", \"$2\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_添加排序",
+        "runtimeName": "表格_添加排序",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "升序",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_添加排序(\"演示输出\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 183,
+      "name": "表格_清除排序",
+      "signature": "表格_清除排序(控件名)",
+      "description": "清除排序状态。",
+      "insertText": "表格_清除排序(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_清除排序",
+        "runtimeName": "表格_清除排序",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_清除排序(\"演示输出\")"
+    },
+    {
+      "index": 184,
+      "name": "表格_设置列筛选",
+      "signature": "表格_设置列筛选(控件名, 列ID, 规则, 值)",
+      "description": "设置列筛选。",
+      "insertText": "表格_设置列筛选(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置列筛选",
+        "runtimeName": "表格_设置列筛选",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "规则",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置列筛选(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 185,
+      "name": "表格_清除列筛选",
+      "signature": "表格_清除列筛选(控件名, 列ID)",
+      "description": "清除指定列筛选。",
+      "insertText": "表格_清除列筛选(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_清除列筛选",
+        "runtimeName": "表格_清除列筛选",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_清除列筛选(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 186,
+      "name": "表格_清除全部筛选",
+      "signature": "表格_清除全部筛选(控件名)",
+      "description": "清除全部列筛选。",
+      "insertText": "表格_清除全部筛选(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_清除全部筛选",
+        "runtimeName": "表格_清除全部筛选",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_清除全部筛选(\"演示输出\")"
+    },
+    {
+      "index": 187,
+      "name": "表格_设置搜索文字",
+      "signature": "表格_设置搜索文字(控件名, 搜索文字)",
+      "description": "设置跨列搜索文字。",
+      "insertText": "表格_设置搜索文字(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置搜索文字",
+        "runtimeName": "表格_设置搜索文字",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "搜索文字",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置搜索文字(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 188,
+      "name": "表格_设置列必填",
+      "signature": "表格_设置列必填(控件名, 列ID, 必填)",
+      "description": "设置列必填校验。",
+      "insertText": "表格_设置列必填(\"$1\", \"$2\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置列必填",
+        "runtimeName": "表格_设置列必填",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "必填",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置列必填(\"演示输出\", \"演示参数2\", 真)"
+    },
+    {
+      "index": 189,
+      "name": "表格_设置列数值范围",
+      "signature": "表格_设置列数值范围(控件名, 列ID, 最小值, 最大值)",
+      "description": "设置整数、小数或进度列数值范围。",
+      "insertText": "表格_设置列数值范围(\"$1\", \"$2\", 0.0, 0.0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置列数值范围",
+        "runtimeName": "表格_设置列数值范围",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "最小值",
+            "type": "double"
+          },
+          {
+            "name": "最大值",
+            "type": "double"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置列数值范围(\"演示输出\", \"演示参数2\", 1.0, 1.0)"
+    },
+    {
+      "index": 190,
+      "name": "表格_设置列文本规则",
+      "signature": "表格_设置列文本规则(控件名, 列ID, 正则表达式)",
+      "description": "设置文本校验规则。",
+      "insertText": "表格_设置列文本规则(\"$1\", \"$2\", \"$3\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置列文本规则",
+        "runtimeName": "表格_设置列文本规则",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "列ID",
+            "type": "wideString"
+          },
+          {
+            "name": "正则表达式",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置列文本规则(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 191,
+      "name": "表格_拒绝本次编辑",
+      "signature": "表格_拒绝本次编辑(控件名, 原因)",
+      "description": "在正在验证事件中拒绝本次编辑。",
+      "insertText": "表格_拒绝本次编辑(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_拒绝本次编辑",
+        "runtimeName": "表格_拒绝本次编辑",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "原因",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_拒绝本次编辑(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 192,
+      "name": "表格_设置虚拟行数",
+      "signature": "表格_设置虚拟行数(控件名, 行数)",
+      "description": "设置虚拟数据总行数并清空过期缓存。",
+      "insertText": "表格_设置虚拟行数(\"$1\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_设置虚拟行数",
+        "runtimeName": "表格_设置虚拟行数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "行数",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_设置虚拟行数(\"演示输出\", 1)"
+    },
+    {
+      "index": 193,
+      "name": "表格_取请求起始行",
+      "signature": "表格_取请求起始行(控件名)",
+      "description": "读取当前异步虚拟数据请求起始行。",
+      "insertText": "表格_取请求起始行(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "表格_取请求起始行",
+        "runtimeName": "表格_取请求起始行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取请求起始行(\"演示输出\")"
+    },
+    {
+      "index": 194,
+      "name": "表格_取请求数量",
+      "signature": "表格_取请求数量(控件名)",
+      "description": "读取当前异步虚拟数据请求数量。",
+      "insertText": "表格_取请求数量(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "表格_取请求数量",
+        "runtimeName": "表格_取请求数量",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取请求数量(\"演示输出\")"
+    },
+    {
+      "index": 195,
+      "name": "表格_提交虚拟行",
+      "signature": "表格_提交虚拟行(控件名, 索引, 行键, 单元格TSV)",
+      "description": "提交一条虚拟缓存行。",
+      "insertText": "表格_提交虚拟行(\"$1\", 0, \"$3\", \"$4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_提交虚拟行",
+        "runtimeName": "表格_提交虚拟行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "行键",
+            "type": "wideString"
+          },
+          {
+            "name": "单元格TSV",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_提交虚拟行(\"演示输出\", 1, \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 196,
+      "name": "表格_清除虚拟缓存",
+      "signature": "表格_清除虚拟缓存(控件名)",
+      "description": "清除虚拟数据缓存。",
+      "insertText": "表格_清除虚拟缓存(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "表格_清除虚拟缓存",
+        "runtimeName": "表格_清除虚拟缓存",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_清除虚拟缓存(\"演示输出\")"
+    },
+    {
+      "index": 197,
+      "name": "表格_取事件行键",
+      "signature": "表格_取事件行键(控件名)",
+      "description": "从同步事件上下文栈读取行键。",
+      "insertText": "表格_取事件行键(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取事件行键",
+        "runtimeName": "表格_取事件行键",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取事件行键(\"演示输出\")"
+    },
+    {
+      "index": 198,
+      "name": "表格_取事件列ID",
+      "signature": "表格_取事件列ID(控件名)",
+      "description": "从同步事件上下文栈读取列 ID。",
+      "insertText": "表格_取事件列ID(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取事件列ID",
+        "runtimeName": "表格_取事件列ID",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取事件列ID(\"演示输出\")"
+    },
+    {
+      "index": 199,
+      "name": "表格_取事件按钮ID",
+      "signature": "表格_取事件按钮ID(控件名)",
+      "description": "从同步事件上下文栈读取按钮 ID。",
+      "insertText": "表格_取事件按钮ID(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取事件按钮ID",
+        "runtimeName": "表格_取事件按钮ID",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取事件按钮ID(\"演示输出\")"
+    },
+    {
+      "index": 200,
+      "name": "表格_取事件旧值",
+      "signature": "表格_取事件旧值(控件名)",
+      "description": "从同步事件上下文栈读取旧值。",
+      "insertText": "表格_取事件旧值(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取事件旧值",
+        "runtimeName": "表格_取事件旧值",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取事件旧值(\"演示输出\")"
+    },
+    {
+      "index": 201,
+      "name": "表格_取事件新值",
+      "signature": "表格_取事件新值(控件名)",
+      "description": "从同步事件上下文栈读取新值。",
+      "insertText": "表格_取事件新值(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取事件新值",
+        "runtimeName": "表格_取事件新值",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取事件新值(\"演示输出\")"
+    },
+    {
+      "index": 202,
+      "name": "表格_取最后错误",
+      "signature": "表格_取最后错误(控件名)",
+      "description": "读取最近一次失败的中文错误。",
+      "insertText": "表格_取最后错误(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "表格_取最后错误",
+        "runtimeName": "表格_取最后错误",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "表格_取最后错误(\"演示输出\")"
+    },
+    {
+      "index": 203,
+      "name": "树形框_添加节点",
+      "signature": "树形框_添加节点(控件名, 父节点文字, 节点文字)",
+      "description": "向 TreeView 根级或指定父节点追加节点。",
+      "insertText": "树形框_添加节点(\"$1\", \"\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "树形框_添加节点",
+        "runtimeName": "树形框_添加节点",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "父节点文字",
+            "type": "wideString"
+          },
+          {
+            "name": "节点文字",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "树形框_添加节点(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 204,
+      "name": "选项卡_添加页",
+      "signature": "选项卡_添加页(控件名, 标题)",
+      "description": "向 TabControl 追加标签页。",
+      "insertText": "选项卡_添加页(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "选项卡_添加页",
+        "runtimeName": "选项卡_添加页",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "选项卡_添加页(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 205,
+      "name": "选项卡_设置隐藏表头",
+      "signature": "选项卡_设置隐藏表头(控件名, 隐藏)",
+      "description": "运行时隐藏或显示 TabControl 的标签表头，并重新布局当前页面。",
+      "insertText": "选项卡_设置隐藏表头(\"$1\", 真)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "选项卡_设置隐藏表头",
+        "runtimeName": "选项卡_设置隐藏表头",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "隐藏",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "选项卡_设置隐藏表头(\"演示输出\", 真)"
+    },
+    {
+      "index": 206,
+      "name": "选项卡_取隐藏表头",
+      "signature": "选项卡_取隐藏表头(控件名)",
+      "description": "读取 TabControl 当前是否隐藏标签表头。",
+      "insertText": "选项卡_取隐藏表头(\"$1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "选项卡_取隐藏表头",
+        "runtimeName": "选项卡_取隐藏表头",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "选项卡_取隐藏表头(\"演示输出\")"
+    },
+    {
+      "index": 207,
+      "name": "文件对话框_打开",
+      "signature": "文件对话框_打开(组件名)",
+      "description": "打开设计器中配置的非可视文件对话框，并保存选择结果。",
+      "insertText": "文件对话框_打开(\"文件对话框1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件对话框_打开",
+        "runtimeName": "文件对话框_打开",
+        "parameters": [
+          {
+            "name": "组件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文件对话框_打开(\"演示参数1\")"
+    },
+    {
+      "index": 208,
+      "name": "文件对话框_清空",
+      "signature": "文件对话框_清空(组件名)",
+      "description": "清空文件对话框组件最近选择或拖入的文件。",
+      "insertText": "文件对话框_清空(\"文件对话框1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "文件对话框_清空",
+        "runtimeName": "文件对话框_清空",
+        "parameters": [
+          {
+            "name": "组件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文件对话框_清空(\"演示参数1\")"
+    },
+    {
+      "index": 209,
+      "name": "文件对话框_取文件数量",
+      "signature": "文件对话框_取文件数量(组件名)",
+      "description": "返回文件对话框组件最近选择或拖入的文件数量。",
+      "insertText": "文件对话框_取文件数量(\"文件对话框1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "文件对话框_取文件数量",
+        "runtimeName": "文件对话框_取文件数量",
+        "parameters": [
+          {
+            "name": "组件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文件对话框_取文件数量(\"演示参数1\")"
+    },
+    {
+      "index": 210,
+      "name": "文件对话框_取文件",
+      "signature": "文件对话框_取文件(组件名, 索引)",
+      "description": "返回文件对话框组件指定索引的完整文件路径。",
+      "insertText": "文件对话框_取文件(\"文件对话框1\", 0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "文件对话框_取文件",
+        "runtimeName": "文件对话框_取文件",
+        "parameters": [
+          {
+            "name": "组件名",
+            "type": "wideString"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "文件对话框_取文件(\"演示参数1\", 1)"
+    },
+    {
+      "index": 211,
+      "name": "上下文菜单_显示",
+      "signature": "上下文菜单_显示(组件名)",
+      "description": "在鼠标位置主动显示上下文菜单；绑定目标右键时无需手动调用。",
+      "insertText": "上下文菜单_显示(\"上下文菜单1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "上下文菜单_显示",
+        "runtimeName": "上下文菜单_显示",
+        "parameters": [
+          {
+            "name": "组件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "上下文菜单_显示(\"演示参数1\")"
+    },
+    {
+      "index": 212,
+      "name": "弹出菜单_显示",
+      "signature": "弹出菜单_显示(组件名)",
+      "description": "在当前鼠标位置显示弹出菜单。",
+      "insertText": "弹出菜单_显示(\"弹出菜单1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "弹出菜单_显示",
+        "runtimeName": "弹出菜单_显示",
+        "parameters": [
+          {
+            "name": "组件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "弹出菜单_显示(\"演示参数1\")"
+    },
+    {
+      "index": 213,
+      "name": "弹出菜单_在坐标显示",
+      "signature": "弹出菜单_在坐标显示(组件名, 横坐标, 纵坐标)",
+      "description": "在指定的屏幕像素坐标显示弹出菜单。",
+      "insertText": "弹出菜单_在坐标显示(\"弹出菜单1\", 取鼠标水平位置(), 取鼠标垂直位置())",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "弹出菜单_在坐标显示",
+        "runtimeName": "弹出菜单_在坐标显示",
+        "parameters": [
+          {
+            "name": "组件名",
+            "type": "wideString"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "弹出菜单_在坐标显示(\"演示参数1\", 1, 1)"
+    },
+    {
+      "index": 214,
+      "name": "菜单_取最后项目",
+      "signature": "菜单_取最后项目(组件名)",
+      "description": "返回指定上下文菜单或弹出菜单最近选择的稳定菜单项 ID。",
+      "insertText": "菜单_取最后项目(\"弹出菜单1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "菜单_取最后项目",
+        "runtimeName": "菜单_取最后项目",
+        "parameters": [
+          {
+            "name": "组件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "菜单_取最后项目(\"演示参数1\")"
+    },
+    {
+      "index": 215,
+      "name": "视频播放器_设置文件",
+      "signature": "视频播放器_设置文件(控件名, 视频路径)",
+      "description": "切换视频播放器的本地媒体文件；支持 MP4、WMV 等 Media Foundation 可解码格式。",
+      "insertText": "视频播放器_设置文件(\"视频播放器1\", \"assets/$1.mp4\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "视频播放器_设置文件",
+        "runtimeName": "视频播放器_设置文件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "视频路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "视频播放器_设置文件(\"演示输出\", \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 216,
+      "name": "视频播放器_播放",
+      "signature": "视频播放器_播放(控件名)",
+      "description": "播放或继续播放指定视频。",
+      "insertText": "视频播放器_播放(\"视频播放器1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "视频播放器_播放",
+        "runtimeName": "视频播放器_播放",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "视频播放器_播放(\"演示输出\")"
+    },
+    {
+      "index": 217,
+      "name": "视频播放器_暂停",
+      "signature": "视频播放器_暂停(控件名)",
+      "description": "暂停指定视频。",
+      "insertText": "视频播放器_暂停(\"视频播放器1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "视频播放器_暂停",
+        "runtimeName": "视频播放器_暂停",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "视频播放器_暂停(\"演示输出\")"
+    },
+    {
+      "index": 218,
+      "name": "视频播放器_停止",
+      "signature": "视频播放器_停止(控件名)",
+      "description": "停止指定视频。",
+      "insertText": "视频播放器_停止(\"视频播放器1\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "视频播放器_停止",
+        "runtimeName": "视频播放器_停止",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "视频播放器_停止(\"演示输出\")"
+    },
+    {
+      "index": 219,
+      "name": "视频播放器_设置音量",
+      "signature": "视频播放器_设置音量(控件名, 音量)",
+      "description": "设置视频音量，范围 0～100。",
+      "insertText": "视频播放器_设置音量(\"视频播放器1\", 100)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "视频播放器_设置音量",
+        "runtimeName": "视频播放器_设置音量",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "音量",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "视频播放器_设置音量(\"演示输出\", 1)"
+    },
+    {
+      "index": 220,
+      "name": "视频播放器_取状态",
+      "signature": "视频播放器_取状态(控件名)",
+      "description": "返回 Media Foundation 播放器状态；未创建时返回 -1。",
+      "insertText": "视频播放器_取状态(\"视频播放器1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "视频播放器_取状态",
+        "runtimeName": "视频播放器_取状态",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "视频播放器_取状态(\"演示输出\")"
+    }
+  ]
+}

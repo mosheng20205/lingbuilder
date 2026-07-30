@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "kind": "lingbuilder-solution",
+  "id": "lingbuilder-solution",
+  "name": "分组框接口完整演示",
+  "solutionFile": ".lingbuilder/solution.json",
+  "startupProjectId": "lingbuilder-ui-project",
+  "startupProjectIds": [
+    "lingbuilder-ui-project"
+  ],
+  "folders": [],
+  "projects": [
+    {
+      "id": "lingbuilder-ui-project",
+      "name": "分组框接口完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "src",
+      "references": []
+    }
+  ]
+}

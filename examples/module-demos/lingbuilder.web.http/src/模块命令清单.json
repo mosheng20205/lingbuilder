@@ -1,0 +1,381 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.663Z",
+  "module": {
+    "id": "lingbuilder.web.http",
+    "name": "网页访问模块",
+    "version": "1.1.1",
+    "description": "基于 Windows WinHTTP 封装易语言风格的网页_访问_对象命令，支持 GET、POST、Cookie、请求头、响应头、状态码、代理、超时和重定向控制。"
+  },
+  "commandCount": 12,
+  "commands": [
+    {
+      "index": 1,
+      "name": "网页_异步访问",
+      "signature": "网页_异步访问(网址, 访问方式, 完成处理器)",
+      "description": "在受控后台线程中访问网页，立即返回请求编号；完成处理器使用 &处理器名 引用，并在 UI 主线程执行。",
+      "insertText": "网页_异步访问(\"${1:https://example.com}\", 0, &${2:网页访问完成})",
+      "returnType": "整数型",
+      "returnDescription": "成功启动时返回大于 0 的请求编号，用于读取本次请求的文本、状态码和错误信息；返回 0 表示网址或完成处理器无效，或者后台线程未能启动。此返回值不是 HTTP 状态码。",
+      "binding": {
+        "command": "网页_异步访问",
+        "runtimeName": "网页_异步访问",
+        "parameters": [
+          {
+            "name": "网址",
+            "type": "wideString",
+            "description": "要访问的完整 HTTP/HTTPS 地址，例如 https://ipinfo.io/json。"
+          },
+          {
+            "name": "访问方式",
+            "type": "int",
+            "description": "0=GET，1=POST，2=HEAD，3=PUT，4=OPTIONS，5=DELETE，6=TRACE，7=CONNECT，8=PATCH"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "当前窗口中的无参数事件或方法引用，使用 &处理器名"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "targetIds": [
+          "windows-msvc-win32",
+          "windows-msvc-x64"
+        ],
+        "example": "网页_异步访问(\"https://example.com\", 0, &网页访问完成)"
+      },
+      "demoInvocation": "网页_异步访问(\"https://example.com\", 1, &模块演示回调)"
+    },
+    {
+      "index": 2,
+      "name": "网页_异步取返回文本",
+      "signature": "网页_异步取返回文本(请求编号)",
+      "description": "按请求编号读取异步网页访问的 UTF-8 文本结果。",
+      "insertText": "网页_异步取返回文本(${1:请求编号})",
+      "returnType": "文本型",
+      "binding": {
+        "command": "网页_异步取返回文本",
+        "runtimeName": "网页_异步取返回文本",
+        "parameters": [
+          {
+            "name": "请求编号",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "targetIds": [
+          "windows-msvc-win32",
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "网页_异步取返回文本(1)"
+    },
+    {
+      "index": 3,
+      "name": "网页_异步取状态代码",
+      "signature": "网页_异步取状态代码(请求编号)",
+      "description": "按请求编号读取 HTTP 状态代码。",
+      "insertText": "网页_异步取状态代码(${1:请求编号})",
+      "returnType": "整数型",
+      "binding": {
+        "command": "网页_异步取状态代码",
+        "runtimeName": "网页_异步取状态代码",
+        "parameters": [
+          {
+            "name": "请求编号",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-win32",
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "网页_异步取状态代码(1)"
+    },
+    {
+      "index": 4,
+      "name": "网页_异步取错误信息",
+      "signature": "网页_异步取错误信息(请求编号)",
+      "description": "按请求编号读取异步访问的中文错误信息。",
+      "insertText": "网页_异步取错误信息(${1:请求编号})",
+      "returnType": "文本型",
+      "binding": {
+        "command": "网页_异步取错误信息",
+        "runtimeName": "网页_异步取错误信息",
+        "parameters": [
+          {
+            "name": "请求编号",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString",
+        "targetIds": [
+          "windows-msvc-win32",
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "网页_异步取错误信息(1)"
+    },
+    {
+      "index": 5,
+      "name": "网页_异步取当前请求编号",
+      "signature": "网页_异步取当前请求编号()",
+      "description": "在异步完成处理器中读取当前正在分发的请求编号。",
+      "insertText": "网页_异步取当前请求编号()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "网页_异步取当前请求编号",
+        "runtimeName": "网页_异步取当前请求编号",
+        "parameters": [],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-win32",
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "网页_异步取当前请求编号()"
+    },
+    {
+      "index": 6,
+      "name": "网页_异步取消",
+      "signature": "网页_异步取消(请求编号)",
+      "description": "标记取消指定异步请求；当前 WinHTTP 请求返回后会以已取消状态分发完成处理器。",
+      "insertText": "网页_异步取消(${1:请求编号})",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "网页_异步取消",
+        "runtimeName": "网页_异步取消",
+        "parameters": [
+          {
+            "name": "请求编号",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "targetIds": [
+          "windows-msvc-win32",
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "网页_异步取消(1)"
+    },
+    {
+      "index": 7,
+      "name": "网页_访问_对象",
+      "signature": "网页_访问_对象(网址, 访问方式, 提交信息, 提交Cookies, 返回Cookies, 附加协议头, 返回协议头, 返回状态代码, 禁止重定向, 字节集提交, 代理地址, 超时, 代理用户名, 代理密码, 代理标识, 对象继承, 是否自动合并更新Cookie, 是否补全必要协议头, 是否处理协议头大小写)",
+      "description": "使用 WinHTTP 对象方式访问网页。访问方式：0=GET，1=POST，2=HEAD，3=PUT，4=OPTIONS，5=DELETE，6=TRACE，7=CONNECT，8=PATCH。",
+      "insertText": "网页_访问_对象(\"${1:https://example.com}\", 0)",
+      "returnType": "字节集",
+      "binding": {
+        "command": "网页_访问_对象",
+        "runtimeName": "网页_访问_对象",
+        "parameters": [
+          {
+            "name": "网址",
+            "type": "wideString",
+            "description": "完整网页地址，必须包含 http:// 或 https://"
+          },
+          {
+            "name": "访问方式",
+            "type": "int",
+            "description": "0=GET，1=POST，2=HEAD，3=PUT，4=OPTIONS，5=DELETE，6=TRACE，7=CONNECT，8=PATCH"
+          },
+          {
+            "name": "提交信息",
+            "type": "wideString",
+            "description": "POST 专用，自动 UTF-8 编码"
+          },
+          {
+            "name": "提交Cookies",
+            "type": "wideString",
+            "description": "设置提交时的 Cookie"
+          },
+          {
+            "name": "返回Cookies",
+            "type": "wideString",
+            "description": "当前生成器暂以最近一次结果函数读取"
+          },
+          {
+            "name": "附加协议头",
+            "type": "wideString",
+            "description": "一行一个协议头"
+          },
+          {
+            "name": "返回协议头",
+            "type": "wideString",
+            "description": "当前生成器暂以最近一次结果函数读取"
+          },
+          {
+            "name": "返回状态代码",
+            "type": "int",
+            "description": "当前生成器暂以最近一次结果函数读取"
+          },
+          {
+            "name": "禁止重定向",
+            "type": "bool"
+          },
+          {
+            "name": "字节集提交",
+            "type": "raw"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString",
+            "description": "格式如 8.8.8.8:88"
+          },
+          {
+            "name": "超时",
+            "type": "int",
+            "description": "秒，默认 15，-1 为无限等待"
+          },
+          {
+            "name": "代理用户名",
+            "type": "wideString"
+          },
+          {
+            "name": "代理密码",
+            "type": "wideString"
+          },
+          {
+            "name": "代理标识",
+            "type": "int",
+            "description": "默认 1，0 使用系统默认代理"
+          },
+          {
+            "name": "对象继承",
+            "type": "raw",
+            "description": "预留 WinHTTP 对象继承入口"
+          },
+          {
+            "name": "是否自动合并更新Cookie",
+            "type": "bool"
+          },
+          {
+            "name": "是否补全必要协议头",
+            "type": "bool"
+          },
+          {
+            "name": "是否处理协议头大小写",
+            "type": "bool"
+          }
+        ],
+        "returnType": "raw",
+        "encoding": "wide",
+        "targetIds": [
+          "windows-msvc-win32",
+          "windows-msvc-x64"
+        ],
+        "example": "网页_访问_对象(\"https://example.com\", 0)"
+      },
+      "demoInvocation": "网页_访问_对象(\"https://example.com\", 1, \"演示参数3\", \"演示参数4\", \"演示参数5\", \"演示参数6\", \"演示参数7\", 1, 真, 0, \"https://example.com\", 1, \"演示参数13\", \"演示参数14\", 1, 0, 真, 真, 真)"
+    },
+    {
+      "index": 8,
+      "name": "网页_取返回文本",
+      "signature": "网页_取返回文本()",
+      "description": "读取最近一次网页_访问_对象返回的 UTF-8 文本内容。",
+      "insertText": "网页_取返回文本()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "网页_取返回文本",
+        "runtimeName": "网页_取返回文本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "targetIds": [
+          "windows-msvc-win32",
+          "windows-msvc-x64"
+        ],
+        "example": "网页_取返回文本()"
+      },
+      "demoInvocation": "网页_取返回文本()"
+    },
+    {
+      "index": 9,
+      "name": "网页_取返回Cookies",
+      "signature": "网页_取返回Cookies()",
+      "description": "读取最近一次网页_访问_对象返回的 Cookie。",
+      "insertText": "网页_取返回Cookies()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "网页_取返回Cookies",
+        "runtimeName": "网页_取返回Cookies",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "targetIds": [
+          "windows-msvc-win32",
+          "windows-msvc-x64"
+        ],
+        "example": "网页_取返回Cookies()"
+      },
+      "demoInvocation": "网页_取返回Cookies()"
+    },
+    {
+      "index": 10,
+      "name": "网页_取返回协议头",
+      "signature": "网页_取返回协议头()",
+      "description": "读取最近一次网页_访问_对象返回的响应协议头。",
+      "insertText": "网页_取返回协议头()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "网页_取返回协议头",
+        "runtimeName": "网页_取返回协议头",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "targetIds": [
+          "windows-msvc-win32",
+          "windows-msvc-x64"
+        ],
+        "example": "网页_取返回协议头()"
+      },
+      "demoInvocation": "网页_取返回协议头()"
+    },
+    {
+      "index": 11,
+      "name": "网页_取返回状态代码",
+      "signature": "网页_取返回状态代码()",
+      "description": "读取最近一次网页_访问_对象返回的 HTTP 状态代码。",
+      "insertText": "网页_取返回状态代码()",
+      "returnType": "整数型",
+      "binding": {
+        "command": "网页_取返回状态代码",
+        "runtimeName": "网页_取返回状态代码",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "wide",
+        "targetIds": [
+          "windows-msvc-win32",
+          "windows-msvc-x64"
+        ],
+        "example": "网页_取返回状态代码()"
+      },
+      "demoInvocation": "网页_取返回状态代码()"
+    },
+    {
+      "index": 12,
+      "name": "网页_取错误信息",
+      "signature": "网页_取错误信息()",
+      "description": "读取最近一次网页访问失败时的中文错误信息。",
+      "insertText": "网页_取错误信息()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "网页_取错误信息",
+        "runtimeName": "网页_取错误信息",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "targetIds": [
+          "windows-msvc-win32",
+          "windows-msvc-x64"
+        ],
+        "example": "网页_取错误信息()"
+      },
+      "demoInvocation": "网页_取错误信息()"
+    }
+  ]
+}

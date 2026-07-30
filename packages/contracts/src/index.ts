@@ -123,6 +123,18 @@ export interface ProviderChannel {
   maxConcurrency: number;
   secretConfigured: boolean;
 }
+export interface SystemAiProviderConfigInput {
+  name: string;
+  preset: 'deepseek-v4' | 'custom';
+  protocol: Exclude<AiProviderKind, 'gemini'>;
+  baseUrl: string;
+  apiKey?: string;
+  modelName?: string;
+  displayName?: string;
+  enabled?: boolean;
+  timeoutMs?: number;
+  maxConcurrency?: number;
+}
 export interface ModelRoute {
   id: string;
   alias: string;

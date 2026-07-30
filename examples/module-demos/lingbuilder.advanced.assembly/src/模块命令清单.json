@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.455Z",
+  "module": {
+    "id": "lingbuilder.advanced.assembly",
+    "name": "CPU指令能力模块",
+    "version": "1.0.0",
+    "description": "提供 CPUID 和位运算封装，不执行用户提供的机器码。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "CPU_取厂商",
+      "signature": "CPU_取厂商()",
+      "description": "返回 CPUID 厂商标识。",
+      "insertText": "CPU_取厂商()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CPU_取厂商",
+        "runtimeName": "CPU_取厂商",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CPU_取厂商()"
+    },
+    {
+      "index": 2,
+      "name": "CPU_是否支持SSE2",
+      "signature": "CPU_是否支持SSE2()",
+      "description": "检查 SSE2。",
+      "insertText": "CPU_是否支持SSE2()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "CPU_是否支持SSE2",
+        "runtimeName": "CPU_是否支持SSE2",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CPU_是否支持SSE2()"
+    },
+    {
+      "index": 3,
+      "name": "CPU_是否支持AVX",
+      "signature": "CPU_是否支持AVX()",
+      "description": "检查 CPU 和操作系统是否启用 AVX。",
+      "insertText": "CPU_是否支持AVX()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "CPU_是否支持AVX",
+        "runtimeName": "CPU_是否支持AVX",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "CPU_是否支持AVX()"
+    },
+    {
+      "index": 4,
+      "name": "位运算_统计一位数量",
+      "signature": "位运算_统计一位数量(数值)",
+      "description": "统计 64 位数值中的 1 位数量。",
+      "insertText": "位运算_统计一位数量(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "位运算_统计一位数量",
+        "runtimeName": "位运算_统计一位数量",
+        "parameters": [
+          {
+            "name": "数值",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "位运算_统计一位数量(1)"
+    },
+    {
+      "index": 5,
+      "name": "位运算_循环左移",
+      "signature": "位运算_循环左移(数值, 位数)",
+      "description": "执行 64 位循环左移。",
+      "insertText": "位运算_循环左移(0, 0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "位运算_循环左移",
+        "runtimeName": "位运算_循环左移",
+        "parameters": [
+          {
+            "name": "数值",
+            "type": "longLong"
+          },
+          {
+            "name": "位数",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "位运算_循环左移(1, 1)"
+    }
+  ]
+}

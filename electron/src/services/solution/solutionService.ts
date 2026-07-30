@@ -8,6 +8,7 @@ import { ExternalProjectService, validateProperties, type ExternalProjectPropert
 import { writeSolutionEntry } from './solutionEntryFile';
 import { EMPTY_PROJECT_GLOBALS_SOURCE, PROJECT_GLOBALS_FILE_NAME } from '../lingCpp/projectGlobalService';
 import { EMPTY_PROJECT_DATA_TYPES_SOURCE, PROJECT_DATA_TYPES_FILE_NAME } from '../lingCpp/projectDataTypeService';
+import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactPath, type NestedWorkspaceArtifactPlan } from './nestedWorkspaceGuard';
 
 export const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
 export const DEFAULT_SOLUTION_ID = 'lingbuilder-solution';
@@ -222,9 +223,10 @@ export class SolutionService {
 
   async readProjectFileSnapshots(project: LingBuilderSolutionProject): Promise<Record<string, TextFileSnapshot>> {
     const files: Record<string, TextFileSnapshot> = {};
-    for (const relativeRoot of [project.sourceRoot, project.configRoot]) {
-      await collectTextFiles(this.workspaceRoot, this.resolveWorkspacePath(relativeRoot), files);
-    }
+    const sourceRoot = this.resolveWorkspacePath(project.sourceRoot);
+    const nestedWorkspacePlan = await detectNestedWorkspaceArtifacts(sourceRoot);
+    await collectTextFiles(this.workspaceRoot, sourceRoot, files, nestedWorkspacePlan);
+    await collectTextFiles(this.workspaceRoot, this.resolveWorkspacePath(project.configRoot), files);
     return files;
   }
 
@@ -430,15 +432,17 @@ function createDefaultLingCppSource(className: string): string {
 async function collectTextFiles(
   workspaceRoot: string,
   directory: string,
-  files: Record<string, TextFileSnapshot>
+  files: Record<string, TextFileSnapshot>,
+  nestedWorkspacePlan?: NestedWorkspaceArtifactPlan
 ): Promise<void> {
+  if (nestedWorkspacePlan && isNestedWorkspaceArtifactPath(directory, nestedWorkspacePlan)) return;
   if (!(await exists(directory))) return;
   const entries = await fs.readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.isSymbolicLink()) continue;
     const targetPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
-      await collectTextFiles(workspaceRoot, targetPath, files);
+      await collectTextFiles(workspaceRoot, targetPath, files, nestedWorkspacePlan);
       continue;
     }
     if (!/\.(cpp|h|rc|ini|lcpp|e|xml|json)$/i.test(entry.name)) continue;

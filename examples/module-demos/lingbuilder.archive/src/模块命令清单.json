@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.475Z",
+  "module": {
+    "id": "lingbuilder.archive",
+    "name": "ZIP压缩模块",
+    "version": "1.0.0",
+    "description": "通过 Windows 自带 tar.exe 的受控参数封装创建、解压和列出 ZIP，不开放任意命令行。"
+  },
+  "commandCount": 4,
+  "commands": [
+    {
+      "index": 1,
+      "name": "压缩_ZIP创建",
+      "signature": "压缩_ZIP创建(来源路径, ZIP路径)",
+      "description": "把文件或目录创建为 ZIP。",
+      "insertText": "压缩_ZIP创建(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "压缩_ZIP创建",
+        "runtimeName": "压缩_ZIP创建",
+        "parameters": [
+          {
+            "name": "来源路径",
+            "type": "wideString"
+          },
+          {
+            "name": "ZIP路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "压缩_ZIP创建(\"module-demo-temp.txt\", \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 2,
+      "name": "压缩_ZIP解压",
+      "signature": "压缩_ZIP解压(ZIP路径, 目标目录)",
+      "description": "解压 ZIP 到目标目录。",
+      "insertText": "压缩_ZIP解压(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "压缩_ZIP解压",
+        "runtimeName": "压缩_ZIP解压",
+        "parameters": [
+          {
+            "name": "ZIP路径",
+            "type": "wideString"
+          },
+          {
+            "name": "目标目录",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "压缩_ZIP解压(\"module-demo-temp.txt\", \".\")"
+    },
+    {
+      "index": 3,
+      "name": "压缩_ZIP列出",
+      "signature": "压缩_ZIP列出(ZIP路径)",
+      "description": "返回 ZIP 内文件列表。",
+      "insertText": "压缩_ZIP列出(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "压缩_ZIP列出",
+        "runtimeName": "压缩_ZIP列出",
+        "parameters": [
+          {
+            "name": "ZIP路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "压缩_ZIP列出(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 4,
+      "name": "压缩_取错误",
+      "signature": "压缩_取错误()",
+      "description": "返回最近压缩错误。",
+      "insertText": "压缩_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "压缩_取错误",
+        "runtimeName": "压缩_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "压缩_取错误()"
+    }
+  ]
+}

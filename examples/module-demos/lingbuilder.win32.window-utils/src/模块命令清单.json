@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.697Z",
+  "module": {
+    "id": "lingbuilder.win32.window-utils",
+    "name": "Win32窗口操作模块",
+    "version": "1.0.0",
+    "description": "通过 HWND 安全封装常用窗口查找、标题、显示和位置操作。"
+  },
+  "commandCount": 7,
+  "commands": [
+    {
+      "index": 1,
+      "name": "窗口_按标题查找",
+      "signature": "窗口_按标题查找(标题)",
+      "description": "按完整窗口标题查找顶层窗口。",
+      "insertText": "窗口_按标题查找(\"$1\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "窗口_按标题查找",
+        "runtimeName": "窗口_按标题查找",
+        "parameters": [
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "handle",
+        "encoding": "wide"
+      },
+      "demoInvocation": "窗口_按标题查找(\"演示参数1\")"
+    },
+    {
+      "index": 2,
+      "name": "窗口_句柄是否有效",
+      "signature": "窗口_句柄是否有效(窗口句柄)",
+      "description": "判断 HWND 是否仍然有效。",
+      "insertText": "窗口_句柄是否有效(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "窗口_句柄是否有效",
+        "runtimeName": "窗口_句柄是否有效",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "窗口_句柄是否有效(0)"
+    },
+    {
+      "index": 3,
+      "name": "窗口_取标题",
+      "signature": "窗口_取标题(窗口句柄)",
+      "description": "读取窗口标题。",
+      "insertText": "窗口_取标题(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "窗口_取标题",
+        "runtimeName": "窗口_取标题",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "窗口_取标题(0)"
+    },
+    {
+      "index": 4,
+      "name": "窗口_设置标题",
+      "signature": "窗口_设置标题(窗口句柄, 标题)",
+      "description": "设置窗口标题。",
+      "insertText": "窗口_设置标题(0, \"$2\")",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "窗口_设置标题",
+        "runtimeName": "窗口_设置标题",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "窗口_设置标题(0, \"演示参数2\")"
+    },
+    {
+      "index": 5,
+      "name": "窗口_显示",
+      "signature": "窗口_显示(窗口句柄, 显示方式)",
+      "description": "按 Win32 SW_* 编号显示、隐藏、最小化或最大化窗口。",
+      "insertText": "窗口_显示(0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "窗口_显示",
+        "runtimeName": "窗口_显示",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          },
+          {
+            "name": "显示方式",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "窗口_显示(0, 1)"
+    },
+    {
+      "index": 6,
+      "name": "窗口_移动",
+      "signature": "窗口_移动(窗口句柄, 横坐标, 纵坐标, 宽度, 高度)",
+      "description": "移动窗口并设置尺寸。",
+      "insertText": "窗口_移动(0, 0, 0, 0, 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "窗口_移动",
+        "runtimeName": "窗口_移动",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "窗口_移动(0, 1, 1, 1, 1)"
+    },
+    {
+      "index": 7,
+      "name": "窗口_置前台",
+      "signature": "窗口_置前台(窗口句柄)",
+      "description": "请求将窗口切换到前台。",
+      "insertText": "窗口_置前台(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "窗口_置前台",
+        "runtimeName": "窗口_置前台",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "窗口_置前台(0)"
+    }
+  ]
+}

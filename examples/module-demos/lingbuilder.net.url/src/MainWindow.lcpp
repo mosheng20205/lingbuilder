@@ -1,0 +1,51 @@
+包 URL解析模块完整演示
+使用 Win32窗口基础模块
+使用 URL解析模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "URL解析模块：6 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.net.url")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–6：URL_是否有效 至 URL_是否HTTPS；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：URL_是否有效
+            // [1] URL_是否有效(地址)
+            // 功能：判断 URL 是否可被 WinHTTP 解析。
+            // 参数：地址:wideString；返回：bool；可见性：default
+            URL_是否有效("https://example.com")
+            // 命令ID：URL_取协议
+            // [2] URL_取协议(地址)
+            // 功能：返回 http 或 https 等协议名。
+            // 参数：地址:wideString；返回：wideString；可见性：default
+            URL_取协议("https://example.com")
+            // 命令ID：URL_取主机
+            // [3] URL_取主机(地址)
+            // 功能：返回 URL 主机名。
+            // 参数：地址:wideString；返回：wideString；可见性：default
+            URL_取主机("https://example.com")
+            // 命令ID：URL_取端口
+            // [4] URL_取端口(地址)
+            // 功能：返回 URL 端口。
+            // 参数：地址:wideString；返回：int；可见性：default
+            URL_取端口("https://example.com")
+            // 命令ID：URL_取路径
+            // [5] URL_取路径(地址)
+            // 功能：返回 URL 路径和附加信息。
+            // 参数：地址:wideString；返回：wideString；可见性：default
+            URL_取路径("https://example.com")
+            // 命令ID：URL_是否HTTPS
+            // [6] URL_是否HTTPS(地址)
+            // 功能：判断 URL 是否使用 HTTPS。
+            // 参数：地址:wideString；返回：bool；可见性：default
+            URL_是否HTTPS("https://example.com")
+        如果结束
+        调试输出("已查看 命令 1–6：URL_是否有效 至 URL_是否HTTPS；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

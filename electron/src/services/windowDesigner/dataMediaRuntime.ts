@@ -1,4 +1,5 @@
 import { InstalledModule } from '../modules/types';
+import { generateCryptoRuntime } from './cryptoRuntime';
 
 const CSV_RUNTIME = String.raw`
 static std::wstring LB_CsvEscape(const std::wstring& field) { if (field.find_first_of(L",\"\r\n") == std::wstring::npos) return field; std::wstring escaped = field; LB_ReplaceAll(escaped, L"\"", L"\"\""); return L"\"" + escaped + L"\""; }
@@ -8,26 +9,6 @@ const wchar_t* CSV_生成两列(const wchar_t* first, const wchar_t* second) { r
 const wchar_t* CSV_生成三列(const wchar_t* first, const wchar_t* second, const wchar_t* third) { return LB_ReturnText(LB_CsvEscape(LB_Wide(first)) + L"," + LB_CsvEscape(LB_Wide(second)) + L"," + LB_CsvEscape(LB_Wide(third))); }
 int CSV_字段数量(const wchar_t* line) { return static_cast<int>(LB_CsvParse(line).size()); }
 const wchar_t* CSV_取字段(const wchar_t* line, int index) { auto fields = LB_CsvParse(line); return index >= 0 && static_cast<size_t>(index) < fields.size() ? LB_ReturnText(fields[static_cast<size_t>(index)]) : LB_ReturnText(L""); }
-`;
-
-const HASH_RUNTIME = String.raw`
-static std::wstring LB_BytesToHex(const std::vector<unsigned char>& bytes) { static constexpr wchar_t digits[] = L"0123456789ABCDEF"; std::wstring result; result.reserve(bytes.size() * 2); for (unsigned char byte : bytes) { result.push_back(digits[byte >> 4]); result.push_back(digits[byte & 15]); } return result; }
-
-static bool LB_HashBegin(const wchar_t* algorithm, BCRYPT_ALG_HANDLE& provider, BCRYPT_HASH_HANDLE& hash, std::vector<unsigned char>& object, DWORD& hashLength) {
-    provider = nullptr; hash = nullptr; if (BCryptOpenAlgorithmProvider(&provider, algorithm, nullptr, 0) < 0) return false; DWORD objectLength = 0, size = 0;
-    if (BCryptGetProperty(provider, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&objectLength), sizeof(objectLength), &size, 0) < 0 || BCryptGetProperty(provider, BCRYPT_HASH_LENGTH, reinterpret_cast<PUCHAR>(&hashLength), sizeof(hashLength), &size, 0) < 0) { BCryptCloseAlgorithmProvider(provider, 0); return false; }
-    object.resize(objectLength); if (BCryptCreateHash(provider, &hash, object.data(), objectLength, nullptr, 0, 0) < 0) { BCryptCloseAlgorithmProvider(provider, 0); return false; } return true;
-}
-
-static std::wstring LB_HashBytes(const wchar_t* algorithm, const unsigned char* data, size_t length) { BCRYPT_ALG_HANDLE provider = nullptr; BCRYPT_HASH_HANDLE hash = nullptr; std::vector<unsigned char> object; DWORD hashLength = 0; if (!LB_HashBegin(algorithm, provider, hash, object, hashLength)) return {}; bool success = BCryptHashData(hash, const_cast<PUCHAR>(data), static_cast<ULONG>(length), 0) >= 0; std::vector<unsigned char> digest(hashLength); if (success) success = BCryptFinishHash(hash, digest.data(), hashLength, 0) >= 0; BCryptDestroyHash(hash); BCryptCloseAlgorithmProvider(provider, 0); return success ? LB_BytesToHex(digest) : L""; }
-
-static std::wstring LB_HashFile(const wchar_t* algorithm, const wchar_t* path) { std::ifstream stream(std::filesystem::path(LB_Wide(path)), std::ios::binary); if (!stream) return {}; BCRYPT_ALG_HANDLE provider = nullptr; BCRYPT_HASH_HANDLE hash = nullptr; std::vector<unsigned char> object; DWORD hashLength = 0; if (!LB_HashBegin(algorithm, provider, hash, object, hashLength)) return {}; std::array<char, 64 * 1024> buffer = {}; bool success = true; while (stream) { stream.read(buffer.data(), buffer.size()); const std::streamsize count = stream.gcount(); if (count > 0 && BCryptHashData(hash, reinterpret_cast<PUCHAR>(buffer.data()), static_cast<ULONG>(count), 0) < 0) { success = false; break; } } std::vector<unsigned char> digest(hashLength); if (success) success = BCryptFinishHash(hash, digest.data(), hashLength, 0) >= 0; BCryptDestroyHash(hash); BCryptCloseAlgorithmProvider(provider, 0); return success ? LB_BytesToHex(digest) : L""; }
-
-const wchar_t* 哈希_SHA256文本(const wchar_t* text) { const std::string bytes = LB_WideToUtf8(text); return LB_ReturnText(LB_HashBytes(BCRYPT_SHA256_ALGORITHM, reinterpret_cast<const unsigned char*>(bytes.data()), bytes.size())); }
-const wchar_t* 哈希_MD5文本(const wchar_t* text) { const std::string bytes = LB_WideToUtf8(text); return LB_ReturnText(LB_HashBytes(BCRYPT_MD5_ALGORITHM, reinterpret_cast<const unsigned char*>(bytes.data()), bytes.size())); }
-const wchar_t* 哈希_SHA256文件(const wchar_t* path) { return LB_ReturnText(LB_HashFile(BCRYPT_SHA256_ALGORITHM, path)); }
-const wchar_t* 哈希_MD5文件(const wchar_t* path) { return LB_ReturnText(LB_HashFile(BCRYPT_MD5_ALGORITHM, path)); }
-const wchar_t* 哈希_安全随机十六进制(int byteCount) { const size_t size = static_cast<size_t>((std::max)(0, (std::min)(byteCount, 1024 * 1024))); std::vector<unsigned char> bytes(size); return BCryptGenRandom(nullptr, bytes.data(), static_cast<ULONG>(bytes.size()), BCRYPT_USE_SYSTEM_PREFERRED_RNG) >= 0 ? LB_ReturnText(LB_BytesToHex(bytes)) : LB_ReturnText(L""); }
 `;
 
 const CRYPTO_RUNTIME = String.raw`
@@ -131,7 +112,6 @@ bool 音频_设置主音量(int volume) { DWORD value = static_cast<DWORD>(((std
 
 const RUNTIMES: Record<string, string> = {
   'lingbuilder.data.csv': CSV_RUNTIME,
-  'lingbuilder.crypto.hash': HASH_RUNTIME,
   'lingbuilder.crypto.windows': CRYPTO_RUNTIME,
   'lingbuilder.database.odbc': ODBC_RUNTIME,
   'lingbuilder.database.sqlite': SQLITE_RUNTIME,
@@ -146,6 +126,7 @@ const RUNTIMES: Record<string, string> = {
 export function generateDataMediaRuntime(enabledModules: InstalledModule[]): string {
   const enabledIds = new Set(enabledModules.map(module => module.manifest.id));
   const fragments = Object.entries(RUNTIMES).filter(([moduleId]) => enabledIds.has(moduleId)).map(([, runtime]) => runtime);
+  const cryptoRuntime = generateCryptoRuntime(enabledIds);
   const needsImages = ['lingbuilder.image.core', 'lingbuilder.image.capture', 'lingbuilder.image.bitmap', 'lingbuilder.image.icon', 'lingbuilder.image.recognition'].some(moduleId => enabledIds.has(moduleId));
-  return [needsImages ? IMAGE_SUPPORT : '', ...fragments].filter(Boolean).join('\n');
+  return [needsImages ? IMAGE_SUPPORT : '', cryptoRuntime, ...fragments].filter(Boolean).join('\n');
 }

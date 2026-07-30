@@ -1,0 +1,23 @@
+模块: Win32窗口基础模块
+ID: lingbuilder.win32.basic
+版本: 1.0.0
+内置: 是
+目标: windows-msvc-win32 (windows/msvc/win32)
+命令数: 38
+控件数: 12
+头文件: 无
+源码: 无
+库: comctl32.lib
+运行时文件: 无
+
+模块: Win32高级控件模块
+ID: lingbuilder.win32.common-controls
+版本: 1.0.0
+内置: 是
+目标: windows-msvc-win32 (windows/msvc/win32)
+命令数: 220
+控件数: 26
+头文件: 无
+源码: 无
+库: comctl32.lib, comdlg32.lib, ole32.lib, shell32.lib, shlwapi.lib, mfplat.lib, mfplay.lib, mfuuid.lib
+运行时文件: 无

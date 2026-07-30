@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T13:00:31.648Z",
+  "module": {
+    "id": "lingbuilder.system.disk",
+    "name": "磁盘信息模块",
+    "version": "1.0.0",
+    "description": "读取磁盘容量、卷标、文件系统和驱动器类型。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "磁盘_总容量MB",
+      "signature": "磁盘_总容量MB(路径)",
+      "description": "返回路径所在卷的总容量 MB，失败返回 -1。",
+      "insertText": "磁盘_总容量MB(\"$1\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "磁盘_总容量MB",
+        "runtimeName": "磁盘_总容量MB",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_总容量MB(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 2,
+      "name": "磁盘_可用容量MB",
+      "signature": "磁盘_可用容量MB(路径)",
+      "description": "返回当前用户可用容量 MB，失败返回 -1。",
+      "insertText": "磁盘_可用容量MB(\"$1\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "磁盘_可用容量MB",
+        "runtimeName": "磁盘_可用容量MB",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_可用容量MB(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 3,
+      "name": "磁盘_取卷标",
+      "signature": "磁盘_取卷标(根路径)",
+      "description": "返回卷标，例如传入 C:\\。",
+      "insertText": "磁盘_取卷标(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "磁盘_取卷标",
+        "runtimeName": "磁盘_取卷标",
+        "parameters": [
+          {
+            "name": "根路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取卷标(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 4,
+      "name": "磁盘_取文件系统",
+      "signature": "磁盘_取文件系统(根路径)",
+      "description": "返回 NTFS、FAT32 等文件系统名称。",
+      "insertText": "磁盘_取文件系统(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "磁盘_取文件系统",
+        "runtimeName": "磁盘_取文件系统",
+        "parameters": [
+          {
+            "name": "根路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取文件系统(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 5,
+      "name": "磁盘_取驱动器类型",
+      "signature": "磁盘_取驱动器类型(根路径)",
+      "description": "返回 Win32 DRIVE_* 类型编号。",
+      "insertText": "磁盘_取驱动器类型(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "磁盘_取驱动器类型",
+        "runtimeName": "磁盘_取驱动器类型",
+        "parameters": [
+          {
+            "name": "根路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取驱动器类型(\"module-demo-temp.txt\")"
+    }
+  ]
+}

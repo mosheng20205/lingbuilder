@@ -1,0 +1,56 @@
+包 SQLite数据库桥接模块完整演示
+使用 Win32窗口基础模块
+使用 SQLite数据库桥接模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "SQLite数据库桥接模块：7 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.database.sqlite")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–7：SQLite_加载运行库 至 SQLite_关闭；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：SQLite_加载运行库
+            // [1] SQLite_加载运行库(DLL路径)
+            // 功能：加载 sqlite3.dll 并检查所需 API；空路径尝试系统搜索。
+            // 参数：DLL路径:wideString；返回：bool；可见性：default
+            SQLite_加载运行库("module-demo-temp.txt")
+            // 命令ID：SQLite_打开
+            // [2] SQLite_打开(数据库路径)
+            // 功能：以 UTF-8 路径打开 SQLite 数据库。
+            // 参数：数据库路径:wideString；返回：bool；可见性：default
+            SQLite_打开("module-demo-temp.txt")
+            // 命令ID：SQLite_执行
+            // [3] SQLite_执行(SQL语句)
+            // 功能：执行无结果 SQL。
+            // 参数：SQL语句:wideString；返回：bool；可见性：default
+            SQLite_执行("演示参数1")
+            // 命令ID：SQLite_查询首值
+            // [4] SQLite_查询首值(SQL语句)
+            // 功能：返回首行首列 UTF-8 文本。
+            // 参数：SQL语句:wideString；返回：wideString；可见性：default
+            SQLite_查询首值("演示参数1")
+            // 命令ID：SQLite_取更改行数
+            // [5] SQLite_取更改行数()
+            // 功能：返回最近语句更改的行数。
+            // 参数：无；返回：int；可见性：default
+            SQLite_取更改行数()
+            // 命令ID：SQLite_取错误
+            // [6] SQLite_取错误()
+            // 功能：返回最近 SQLite 或运行库加载错误。
+            // 参数：无；返回：wideString；可见性：default
+            SQLite_取错误()
+            // 命令ID：SQLite_关闭
+            // [7] SQLite_关闭()
+            // 功能：关闭数据库并卸载动态运行库。
+            // 参数：无；返回：void；可见性：default
+            SQLite_关闭()
+        如果结束
+        调试输出("已查看 命令 1–7：SQLite_加载运行库 至 SQLite_关闭；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

@@ -1,0 +1,133 @@
+包 FBro指纹浏览器模块完整演示
+使用 Win32窗口基础模块
+使用 FBro指纹浏览器模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "FBro指纹浏览器模块：21 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.fbro.browser")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–11：FBro_创建 至 FBro_取地址；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBro_创建
+            // [1] FBro_创建(控件名)
+            // 功能：使用设计器属性创建指定 FBro 浏览器；空控件名创建当前窗口全部 FBro 控件。
+            // 参数：控件名:wideString；返回：int；可见性：default
+            FBro_创建("演示输出")
+            // 命令ID：FBro_打开谷歌原生UI浏览器
+            // [2] FBro_打开谷歌原生UI浏览器(控件名, 地址)
+            // 功能：基于指定内嵌 FBro 实例的会话创建 Chrome Runtime 独立顶层浏览器；不接收或复用 LingBuilder 窗口句柄。
+            // 参数：控件名:wideString，地址:wideString；返回：int；可见性：default
+            FBro_打开谷歌原生UI浏览器("演示输出", "https://example.com")
+            // 命令ID：FBro_关闭
+            // [3] FBro_关闭(控件名)
+            // 功能：关闭指定 FBro 浏览器并释放实例。
+            // 参数：控件名:wideString；返回：void；可见性：default
+            FBro_关闭("演示输出")
+            // 命令ID：FBro_导航
+            // [4] FBro_导航(控件名, 地址)
+            // 功能：让指定 FBro 浏览器导航到目标地址。
+            // 参数：控件名:wideString，地址:wideString；返回：int；可见性：default
+            FBro_导航("演示输出", "https://example.com")
+            // 命令ID：FBro_刷新
+            // [5] FBro_刷新(控件名)
+            // 功能：刷新指定 FBro 浏览器。
+            // 参数：控件名:wideString；返回：void；可见性：default
+            FBro_刷新("演示输出")
+            // 命令ID：FBro_后退
+            // [6] FBro_后退(控件名)
+            // 功能：浏览器可以后退时返回上一页。
+            // 参数：控件名:wideString；返回：int；可见性：default
+            FBro_后退("演示输出")
+            // 命令ID：FBro_前进
+            // [7] FBro_前进(控件名)
+            // 功能：浏览器可以前进时进入下一页。
+            // 参数：控件名:wideString；返回：int；可见性：default
+            FBro_前进("演示输出")
+            // 命令ID：FBro_停止
+            // [8] FBro_停止(控件名)
+            // 功能：停止指定浏览器当前导航。
+            // 参数：控件名:wideString；返回：void；可见性：default
+            FBro_停止("演示输出")
+            // 命令ID：FBro_执行JS
+            // [9] FBro_执行JS(控件名, 脚本)
+            // 功能：通过桥接层执行 JavaScript，返回 UTF-16 结果或中文错误。
+            // 参数：控件名:wideString，脚本:wideString；返回：wideString；可见性：default
+            FBro_执行JS("演示输出", "演示参数2")
+            // 命令ID：FBro_取标题
+            // [10] FBro_取标题(控件名)
+            // 功能：返回最近一次标题事件记录的网页标题。
+            // 参数：控件名:wideString；返回：wideString；可见性：default
+            FBro_取标题("演示输出")
+            // 命令ID：FBro_取地址
+            // [11] FBro_取地址(控件名)
+            // 功能：返回指定浏览器当前地址。
+            // 参数：控件名:wideString；返回：wideString；可见性：default
+            FBro_取地址("演示输出")
+        如果结束
+        调试输出("已查看 命令 1–11：FBro_创建 至 FBro_取地址；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本("演示状态", "命令 12–21：FBro_设置代理 至 FBro_取最近错误；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBro_设置代理
+            // [12] FBro_设置代理(控件名, 代理地址)
+            // 功能：设置创建前使用的代理地址；空文本表示直连。
+            // 参数：控件名:wideString，代理地址:wideString；返回：int；可见性：default
+            FBro_设置代理("演示输出", "https://example.com")
+            // 命令ID：FBro_设置缓存目录
+            // [13] FBro_设置缓存目录(控件名, 目录)
+            // 功能：设置创建前使用的独立缓存目录。
+            // 参数：控件名:wideString，目录:wideString；返回：int；可见性：default
+            FBro_设置缓存目录("演示输出", ".")
+            // 命令ID：FBro_设置UserAgent
+            // [14] FBro_设置UserAgent(控件名, UserAgent)
+            // 功能：设置创建前使用的 User-Agent。
+            // 参数：控件名:wideString，UserAgent:wideString；返回：int；可见性：default
+            FBro_设置UserAgent("演示输出", "演示参数2")
+            // 命令ID：FBro_取Cookie
+            // [15] FBro_取Cookie(控件名, 地址)
+            // 功能：异步读取指定地址 Cookie；首版返回桥接层最近快照。
+            // 参数：控件名:wideString，地址:wideString；返回：wideString；可见性：default
+            FBro_取Cookie("演示输出", "https://example.com")
+            // 命令ID：FBro_清空Cookie
+            // [16] FBro_清空Cookie(控件名, 地址)
+            // 功能：删除指定地址的 Cookie。
+            // 参数：控件名:wideString，地址:wideString；返回：int；可见性：default
+            FBro_清空Cookie("演示输出", "https://example.com")
+            // 命令ID：FBro指纹_应用配置
+            // [17] FBro指纹_应用配置(控件名, JSON)
+            // 功能：应用结构化指纹 JSON；未配置 VIP 授权时返回 0 并记录中文错误。
+            // 参数：控件名:wideString，JSON:wideString；返回：int；可见性：default
+            FBro指纹_应用配置("演示输出", "{}")
+            // 命令ID：FBro指纹_取调用次数
+            // [18] FBro指纹_取调用次数(控件名)
+            // 功能：返回 FBro VIP 指纹调用次数。
+            // 参数：控件名:wideString；返回：wideString；可见性：default
+            FBro指纹_取调用次数("演示输出")
+            // 命令ID：FBro指纹_清空调用次数
+            // [19] FBro指纹_清空调用次数(控件名)
+            // 功能：清空指定浏览器的指纹调用次数。
+            // 参数：控件名:wideString；返回：int；可见性：default
+            FBro指纹_清空调用次数("演示输出")
+            // 命令ID：FBro_取最近事件
+            // [20] FBro_取最近事件(控件名)
+            // 功能：返回最近 FBro 浏览器事件名。
+            // 参数：控件名:wideString；返回：wideString；可见性：default
+            FBro_取最近事件("演示输出")
+            // 命令ID：FBro_取最近错误
+            // [21] FBro_取最近错误(控件名)
+            // 功能：返回桥接层最近中文错误。
+            // 参数：控件名:wideString；返回：wideString；可见性：default
+            FBro_取最近错误("演示输出")
+        如果结束
+        调试输出("已查看 命令 12–21：FBro_设置代理 至 FBro_取最近错误；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类
