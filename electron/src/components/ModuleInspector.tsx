@@ -241,14 +241,36 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
         if (!authorization?.ok) throw new Error((authorization as { error?: string })?.error || '模块授权检查失败，请稍后重试。');
         if (!authorization?.status?.allowed) throw new Error(authorization?.status?.reason || '当前账号没有该模块的有效权益。');
       }
+      const planResponse = await fetch('/api/modules/project/change-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, moduleId: module.manifest.id, action: enabled ? 'disable' : 'enable' })
+      });
+      const planResult = await planResponse.json();
+      if (!planResult.ok) throw new Error(planResult.error || '模块依赖计划生成失败');
+      const dependencyModuleIds: string[] = planResult.plan?.dependencyModuleIds || [];
+      const dependentModuleIds: string[] = planResult.plan?.dependentModuleIds || [];
+      if (!enabled && dependencyModuleIds.length > 0 && !window.confirm(
+        `启用“${module.manifest.name}”还会原子启用以下依赖：\n${dependencyModuleIds.join('\n')}\n\n是否继续？`
+      )) return;
+      const cascade = enabled && dependentModuleIds.length > 0;
+      if (cascade && !window.confirm(
+        `以下模块依赖“${module.manifest.name}”，必须一并禁用：\n${dependentModuleIds.join('\n')}\n\n是否级联禁用？`
+      )) return;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, moduleId: module.manifest.id })
+        body: JSON.stringify({ projectId, moduleId: module.manifest.id, cascade })
       });
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || '项目模块状态更新失败');
       onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块】${enabled ? '禁用' : '启用'} ${module.manifest.name}。`);
+      if (!enabled && dependencyModuleIds.length > 0) {
+        onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块依赖】已自动启用 ${dependencyModuleIds.join('、')}。`);
+      }
+      if (cascade) {
+        onAddLog(`> [${new Date().toLocaleTimeString()}] 【模块依赖】已级联禁用 ${dependentModuleIds.join('、')}。`);
+      }
       const compatibilityMessage = Array.isArray(result.messages) ? result.messages.join('；') : '';
       if (compatibilityMessage) {
         setStatusText(compatibilityMessage);

@@ -205,6 +205,8 @@ interface OpenControlEventCodeDetail {
   windowTitle: string;
 }
 
+type EdgeControlPreviewState = { status: 'idle' | 'preparing' | 'compiling' | 'running' | 'failed' | 'stopping'; message?: string; pid?: number };
+
 export interface WpfDesignerProps {
   isDarkMode: boolean;
   activeFile?: any;
@@ -316,6 +318,7 @@ export default function WpfDesigner({
     });
   });
   const [project, setProject] = useState<LingWindowProject>(() => initialDesignerState.project);
+  const [edgeControlPreview, setEdgeControlPreview] = useState<EdgeControlPreviewState>({ status: 'idle' });
   const currentProjectRef = useRef(project);
   const observedProjectRef = useRef(project);
   const suppressNextDirtySignalRef = useRef(false);
@@ -841,6 +844,41 @@ export default function WpfDesigner({
   const addLog = useCallback((message: string) => {
     window.dispatchEvent(new CustomEvent('add-app-log', { detail: { message } }));
   }, []);
+
+  const previewSelectedEdgeControl = useCallback(async () => {
+    const currentProject = currentProjectRef.current;
+    const windowId = activeWindowIdRef.current;
+    const currentWindow = currentProject.windows.find(item => item.id === windowId) || currentProject.windows[0];
+    const selectedId = selectedControlIdsRef.current.at(-1);
+    const control = currentWindow?.controls.find(item => item.id === selectedId);
+    if (!currentWindow || !control || control.type !== 'EdgeBrowser') throw new Error('请先选择一个 Edge 浏览器控件。');
+    setEdgeControlPreview({ status: 'preparing', message: '正在准备独立原生预览…' });
+    const response = await fetch('/api/window-designer/edge-control-preview', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project: currentProject, windowId: currentWindow.id, controlId: control.id })
+    });
+    const payload = await response.json() as { ok?: boolean; error?: string; message?: string; pid?: number; logs?: string[] };
+    (payload.logs || []).forEach(addLog);
+    if (!response.ok || !payload.ok) {
+      const message = payload.error || 'Edge 控件预览失败。';
+      setEdgeControlPreview({ status: 'failed', message });
+      throw new Error(message);
+    }
+    setEdgeControlPreview({ status: 'running', message: payload.message || '独立 Edge 控件预览正在运行。', pid: payload.pid });
+  }, [addLog]);
+
+  const stopEdgeControlPreview = useCallback(async () => {
+    setEdgeControlPreview(previous => ({ ...previous, status: 'stopping', message: '正在停止预览…' }));
+    const response = await fetch('/api/window-designer/edge-control-preview/stop', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId })
+    });
+    const payload = await response.json() as { ok?: boolean; error?: string; message?: string };
+    setEdgeControlPreview(response.ok && payload.ok ? { status: 'idle', message: payload.message || '预览已停止。' } : { status: 'failed', message: payload.error || '停止预览失败。' });
+  }, [projectId]);
+
+  useEffect(() => () => { void fetch('/api/window-designer/edge-control-preview/stop', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId })
+  }); }, [projectId]);
 
   useEffect(() => {
     if (project.id !== projectId) return;
@@ -1856,7 +1894,8 @@ export default function WpfDesigner({
     setLocked: setSelectionLocked,
     selectParent: selectParentControl,
     selectChildren: selectDirectChildren,
-    moveToRoot: () => handleReparentControls(getSelectedPersistedIds())
+    moveToRoot: () => handleReparentControls(getSelectedPersistedIds()),
+    previewEdgeControl: previewSelectedEdgeControl
   };
 
   useEffect(() => {
@@ -1882,7 +1921,8 @@ export default function WpfDesigner({
       setLocked: locked => designerActionsRef.current?.setLocked(locked),
       selectParent: () => designerActionsRef.current?.selectParent(),
       selectChildren: () => designerActionsRef.current?.selectChildren(),
-      moveToRoot: () => designerActionsRef.current?.moveToRoot()
+      moveToRoot: () => designerActionsRef.current?.moveToRoot(),
+      previewEdgeControl: async () => designerActionsRef.current?.previewEdgeControl()
     };
     const registration = activeDesignerCommandTargetService.register(target);
     activeDesignerCommandTargetService.activate(target.id);
@@ -2931,6 +2971,9 @@ export default function WpfDesigner({
                         .catch(error => addLog(`> 【模块授权】${error instanceof Error ? error.message : String(error)}`));
                     }}
                     onTabPagesChange={updateTabControlPages}
+                    edgePreviewState={edgeControlPreview}
+                    onPreviewEdge={() => void executeDesignerCommand('designer.edgeview.previewControl')}
+                    onStopEdgePreview={() => void stopEdgeControlPreview()}
                     onDelete={handleDeleteControl}
                   />
                 )}
@@ -4889,6 +4932,9 @@ function ControlProperties({
   moduleControl,
   onChange,
   onTabPagesChange,
+  edgePreviewState,
+  onPreviewEdge,
+  onStopEdgePreview,
   onDelete
 }: {
   projectId: string;
@@ -4899,6 +4945,9 @@ function ControlProperties({
   moduleControl?: ModuleDesignerControlContribution;
   onChange: (fields: Partial<LingControl>) => void;
   onTabPagesChange: (controlId: string, pages: TabControlPage[], mutation?: TabControlPageMutation) => void;
+  edgePreviewState: EdgeControlPreviewState;
+  onPreviewEdge: () => void;
+  onStopEdgePreview: () => void;
   onDelete: () => void;
 }) {
   const [listViewEditorKind, setListViewEditorKind] = useState<ListViewCollectionEditorKind | null>(null);
@@ -5002,6 +5051,21 @@ function ControlProperties({
 
   return (
     <div className="space-y-2">
+      {control.type === 'EdgeBrowser' && (
+        <PropertyGroup title="EdgeView / 独立原生预览" isDarkMode={isDarkMode}>
+          <div className="space-y-1.5">
+            <div role="status" className={`rounded border px-2 py-1.5 text-[10px] ${edgePreviewState.status === 'failed' ? 'border-red-500/30 text-red-400' : edgePreviewState.status === 'running' ? 'border-emerald-500/30 text-emerald-400' : 'border-slate-500/30 text-slate-500'}`}>
+              {edgePreviewState.message || '设计画布只显示安全占位；可在独立 Win32 窗口运行当前控件。'}
+              {edgePreviewState.pid ? `（PID ${edgePreviewState.pid}）` : ''}
+            </div>
+            <div className="rounded border border-amber-500/25 px-2 py-1 text-[9px] text-amber-500">缓存、Profile、隐私模式、语言及标注为创建期的属性，修改后需要重新运行预览或调用“重建控件”才会生效。</div>
+            <div className="flex gap-1.5">
+              <button type="button" onClick={onPreviewEdge} disabled={edgePreviewState.status === 'preparing' || edgePreviewState.status === 'compiling' || edgePreviewState.status === 'stopping'} className="flex flex-1 items-center justify-center gap-1 rounded border border-emerald-500/40 px-2 py-1 text-[10px] text-emerald-500 disabled:opacity-50"><Play className="h-3 w-3" />运行此 Edge 控件预览</button>
+              {(edgePreviewState.status === 'running' || edgePreviewState.status === 'failed') && <button type="button" onClick={onStopEdgePreview} className="rounded border border-red-500/30 px-2 py-1 text-[10px] text-red-400">停止</button>}
+            </div>
+          </div>
+        </PropertyGroup>
+      )}
       <PropertyGroup title="控件 / 布局" isDarkMode={isDarkMode}>
         {control.type !== ('MenuBar' as any) && control.type !== ('MenuItem' as any) && (
           <PropertyRow label="父级容器" isDarkMode={isDarkMode}>

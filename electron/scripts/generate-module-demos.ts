@@ -71,14 +71,18 @@ const skipExport = process.argv.includes('--skip-export');
 const deepVerify = process.argv.includes('--deep');
 const syncSolutionOnly = process.argv.includes('--sync-solution');
 const renamePackagesOnly = process.argv.includes('--rename-packages');
+const moduleArgumentIndex = process.argv.indexOf('--module');
+const selectedModuleId = moduleArgumentIndex >= 0 ? process.argv[moduleArgumentIndex + 1]?.trim() : undefined;
 
 async function main(): Promise<void> {
-  const modules = await loadAllModules();
+  const allModules = await loadAllModules();
+  const modules = selectedModuleId ? allModules.filter(module => module.manifest.id === selectedModuleId) : allModules;
+  if (selectedModuleId && modules.length === 0) throw new Error(`找不到模块：${selectedModuleId}`);
   const duplicateIds = duplicateValues(modules.map(module => module.manifest.id));
   if (duplicateIds.length) throw new Error(`模块 ID 重复：${duplicateIds.join('、')}`);
 
   if (verifyOnly) {
-    const verified = await verifyGeneratedDemos(modules, deepVerify);
+    const verified = await verifyGeneratedDemos(modules, deepVerify, allModules);
     console.log(`模块演示验证通过：${verified.length} 个项目，${verified.reduce((sum, item) => sum + item.commandCount, 0)} 条命令。`);
     return;
   }
@@ -112,21 +116,31 @@ async function main(): Promise<void> {
   await fs.mkdir(exportsRoot, { recursive: true });
   const entries: DemoIndexEntry[] = [];
   for (const module of modules) entries.push(await generateModuleDemo(module));
-  await updateRootSolution(entries);
-  await writeDemoIndex(entries);
+  if (!selectedModuleId) await updateRootSolution(entries);
+  let indexEntries = entries;
+  if (selectedModuleId) {
+    const indexPath = path.join(demosRoot, 'module-demo-index.json');
+    const existing = JSON.parse(await fs.readFile(indexPath, 'utf8')) as { modules?: DemoIndexEntry[] };
+    indexEntries = [...(existing.modules || []).filter(entry => entry.moduleId !== selectedModuleId), ...entries]
+      .sort((left, right) => left.moduleId.localeCompare(right.moduleId));
+  }
+  await writeDemoIndex(indexEntries);
 
   if (!skipExport) {
     const sourcePackages = createLcppSourcePackageService(workspaceRoot);
     for (const [index, entry] of entries.entries()) {
       const target = path.join(exportsRoot, entry.packageName);
-      const result = await sourcePackages.exportProject(entry.projectId, target, '0.2.6-module-demos');
+      const result = await sourcePackages.exportProject(entry.projectId, target, '0.2.8-module-demos');
       entry.packageBytes = (await fs.stat(result.packagePath)).size;
       console.log(`[${index + 1}/${entries.length}] 已导出 ${entry.moduleId} -> ${entry.packageName}`);
     }
-    await writeDemoIndex(entries);
+    if (selectedModuleId) {
+      const updated = indexEntries.map(entry => entry.moduleId === selectedModuleId ? entries[0] : entry);
+      await writeDemoIndex(updated);
+    } else await writeDemoIndex(entries);
   }
 
-  await verifyGeneratedDemos(modules, !skipExport);
+  await verifyGeneratedDemos(modules, !skipExport, allModules);
   console.log(`模块演示生成完成：${entries.length} 个项目，${entries.reduce((sum, item) => sum + item.commandCount, 0)} 条命令。`);
 }
 
@@ -161,6 +175,9 @@ async function generateModuleDemo(module: DemoModule): Promise<DemoIndexEntry> {
   await fs.mkdir(configRoot, { recursive: true });
   await fs.mkdir(designerRoot, { recursive: true });
   await fs.writeFile(path.join(sourceRoot, 'MainWindow.lcpp'), createSource(manifest, groups), 'utf8');
+  if (manifest.id === 'lingbuilder.edgeview') {
+    await fs.writeFile(path.join(sourceRoot, 'EdgeMultiControlWindow.lcpp'), createEdgeViewMultiControlSource(), 'utf8');
+  }
   await fs.writeFile(path.join(sourceRoot, '项目全局变量.lcpp'), '// 本模块演示不需要项目级全局变量。\n', 'utf8');
   await fs.writeFile(path.join(sourceRoot, '项目数据类型.lcpp'), '// 本模块演示不需要项目级自定义数据类型。\n', 'utf8');
   await fs.writeFile(path.join(sourceRoot, 'README.md'), createModuleReadme(manifest, groups, module.builtin), 'utf8');
@@ -238,6 +255,7 @@ function createSource(manifest: LingBuilderModuleManifest, groups: DemoGroup[]):
     '        控件_设置选择项("命令分组选项卡", 0)',
     `        控件_设置文本("演示状态", "${escapeLcppString(manifest.name)}：${(manifest.bindings?.commands || []).length} 条命令，默认处于安全预览模式。")`,
     `        调试输出("已加载模块演示：${escapeLcppString(manifest.id)}")`,
+    ...(manifest.id === 'lingbuilder.edgeview' ? ['        打开窗口("Edge 多控件安全示例", "居中")'] : []),
     '    结束',
     ''
   ];
@@ -343,17 +361,57 @@ function createDesigner(manifest: LingBuilderModuleManifest, groups: DemoGroup[]
       events: { Click: `_运行第${pad(group.index)}组_被单击` }
     }));
   }
+  const windows: Array<Record<string, unknown>> = [{
+    id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: `${manifest.name}完整演示`,
+    width: 1140, height: 760, background: '#0F172A', titleBarBackground: '#111827', titleBarForeground: '#F8FAFC',
+    description: `逐条覆盖 ${manifest.bindings?.commands?.length || 0} 条模块命令。`, designerBackend: newEmoji ? 'new-emoji' : 'win32',
+    openPlacement: 'center', resizable: true, maximizable: true, events: { Loaded: '_MainWindow_创建完毕' }, controls
+  }];
+  if (manifest.id === 'lingbuilder.edgeview') windows.push(createEdgeViewMultiControlWindow());
   return {
     schemaVersion: 2,
     id: projectIdFor(manifest.id),
     name: `${manifest.name}完整演示`,
     resources: [],
-    windows: [{
-      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: `${manifest.name}完整演示`,
-      width: 1140, height: 760, background: '#0F172A', titleBarBackground: '#111827', titleBarForeground: '#F8FAFC',
-      description: `逐条覆盖 ${manifest.bindings?.commands?.length || 0} 条模块命令。`, designerBackend: newEmoji ? 'new-emoji' : 'win32',
-      openPlacement: 'center', resizable: true, maximizable: true, events: { Loaded: '_MainWindow_创建完毕' }, controls
-    }]
+    windows
+  };
+}
+
+function createEdgeViewMultiControlSource(): string {
+  return [
+    '类 EdgeMultiControlWindow : 公开 窗口',
+    '    事件 _EdgeMultiControlWindow_创建完毕()',
+    '        EdgeView脚本_文档预注入异步("根级 Edge", "document.body.innerHTML=\'LingBuilder EdgeView root\'", &根级脚本完成)',
+    '    结束',
+    '',
+    '    事件 根级脚本完成()',
+    '        调试输出(EdgeView任务_取结果(EdgeView任务_取当前任务ID()))',
+    '        EdgeView任务_释放(EdgeView任务_取当前任务ID())',
+    '    结束',
+    '结束类',
+    ''
+  ].join('\n');
+}
+
+function createEdgeViewMultiControlWindow(): Record<string, unknown> {
+  return {
+    id: 'edge-multi-control-window', fileName: 'EdgeMultiControlWindow.xml', className: 'EdgeMultiControlWindow', title: 'Edge 多控件安全示例',
+    width: 1180, height: 760, background: '#111827', titleBarBackground: '#0F172A', titleBarForeground: '#F8FAFC',
+    description: '根级、分组框和选项卡页中的四个 Edge 控件均拥有独立 HWND、Profile 和 UDF。', designerBackend: 'win32',
+    openPlacement: 'center', resizable: true, maximizable: true, events: { Loaded: '_EdgeMultiControlWindow_创建完毕' },
+    controls: [
+      controlBase({ id: 'edge-root', type: 'EdgeBrowser', designerType: 'lingbuilder.edgeview/EdgeBrowser', name: '根级 Edge', x: 18, y: 18, width: 520, height: 300,
+        properties: { url: 'about:blank', cacheDir: '.edgeview/demo-root', userAgent: 'LingBuilder-EdgeView-Demo/1.1', enableScript: true, enableWebMessage: true, enableDevTools: false, enableContextMenu: true, enableStatusBar: true, zoomFactor: 100, muteAudio: false, defaultBackgroundColor: '#FFFFFF', allowExternalDrop: false, profileName: 'demo-root', inPrivate: false, language: 'zh-CN', trackingPrevention: 'balanced', enableAutofill: false, enablePasswordAutosave: false } }),
+      controlBase({ id: 'edge-group', type: 'GroupBox', name: 'Edge 分组框', content: '分组框内独立 Edge', x: 560, y: 18, width: 570, height: 320, background: '#1E293B' }),
+      controlBase({ id: 'edge-in-group', parentId: 'edge-group', type: 'EdgeBrowser', designerType: 'lingbuilder.edgeview/EdgeBrowser', name: '分组框 Edge', x: 16, y: 42, width: 530, height: 250,
+        properties: { url: 'about:blank', cacheDir: '.edgeview/demo-group', profileName: 'demo-group', muteAudio: true, enableDevTools: false } }),
+      controlBase({ id: 'edge-tabs', type: 'TabControl', name: 'Edge 选项卡', x: 18, y: 360, width: 1112, height: 330, background: '#1E293B',
+        properties: { tabs: [{ id: 'edge-page-a', title: '独立页面 A', image: -1 }, { id: 'edge-page-b', title: '独立页面 B', image: -1 }], selectedIndex: 0, hideHeader: false } }),
+      controlBase({ id: 'edge-in-tab-a', parentId: 'edge-tabs', containerSlot: 'edge-page-a', type: 'EdgeBrowser', designerType: 'lingbuilder.edgeview/EdgeBrowser', name: '选项卡 Edge A', x: 18, y: 48, width: 1040, height: 235,
+        properties: { url: 'about:blank', cacheDir: '.edgeview/demo-tab-a', profileName: 'demo-tab-a', enableDevTools: false } }),
+      controlBase({ id: 'edge-in-tab-b', parentId: 'edge-tabs', containerSlot: 'edge-page-b', type: 'EdgeBrowser', designerType: 'lingbuilder.edgeview/EdgeBrowser', name: '选项卡 Edge B', x: 18, y: 48, width: 1040, height: 235, visibility: 'Collapsed',
+        properties: { url: 'about:blank', cacheDir: '.edgeview/demo-tab-b', profileName: 'demo-tab-b', inPrivate: true, enableDevTools: false } })
+    ]
   };
 }
 
@@ -456,10 +514,10 @@ async function writeDemoIndex(entries: DemoIndexEntry[]): Promise<void> {
   await fs.writeFile(path.join(exportsRoot, 'module-demo-index.json'), JSON.stringify({ schemaVersion: 1, generatedAt: new Date().toISOString(), modules: entries }, null, 2), 'utf8');
 }
 
-async function verifyGeneratedDemos(modules: DemoModule[], requirePackages: boolean): Promise<DemoIndexEntry[]> {
+async function verifyGeneratedDemos(modules: DemoModule[], requirePackages: boolean, contextModules: DemoModule[] = modules): Promise<DemoIndexEntry[]> {
   const entries: DemoIndexEntry[] = [];
   const packageService = requirePackages ? createLcppSourcePackageService(workspaceRoot) : undefined;
-  const manifestsById = new Map(modules.map(module => [module.manifest.id, module]));
+  const manifestsById = new Map(contextModules.map(module => [module.manifest.id, module]));
   for (const module of modules) {
     const manifest = module.manifest;
     const projectId = projectIdFor(manifest.id);

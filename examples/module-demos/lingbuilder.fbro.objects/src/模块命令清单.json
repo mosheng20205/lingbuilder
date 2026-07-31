@@ -1,0 +1,3553 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.161Z",
+  "module": {
+    "id": "lingbuilder.fbro.objects",
+    "name": "FBro受管对象模块",
+    "version": "2.0.0",
+    "description": "提供任务、缓冲及 Value、Dictionary、List、Stream、Image、Certificate、DragData 的类型化不透明句柄 API。"
+  },
+  "commandCount": 132,
+  "commands": [
+    {
+      "index": 1,
+      "name": "FBro任务_取状态",
+      "aliases": [
+        "LB_FBro_TaskGetStatus"
+      ],
+      "signature": "FBro任务_取状态(任务ID)",
+      "description": "查询异步任务状态。",
+      "insertText": "FBro任务_取状态($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro任务_取状态",
+        "runtimeName": "FBro任务_取状态",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro任务_取状态(1)"
+    },
+    {
+      "index": 2,
+      "name": "FBro任务_取结果",
+      "aliases": [
+        "LB_FBro_TaskGetResult"
+      ],
+      "signature": "FBro任务_取结果(任务ID)",
+      "description": "取得异步任务 UTF-16 结果。",
+      "insertText": "FBro任务_取结果($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro任务_取结果",
+        "runtimeName": "FBro任务_取结果",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro任务_取结果(1)"
+    },
+    {
+      "index": 3,
+      "name": "FBro任务_取错误",
+      "aliases": [
+        "LB_FBro_TaskGetError"
+      ],
+      "signature": "FBro任务_取错误(任务ID)",
+      "description": "取得异步任务中文错误。",
+      "insertText": "FBro任务_取错误($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro任务_取错误",
+        "runtimeName": "FBro任务_取错误",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro任务_取错误(1)"
+    },
+    {
+      "index": 4,
+      "name": "FBro任务_等待",
+      "aliases": [
+        "LB_FBro_TaskWait"
+      ],
+      "signature": "FBro任务_等待(任务ID, 超时毫秒)",
+      "description": "等待任务进入完成、失败或取消状态，最长十分钟。",
+      "insertText": "FBro任务_等待($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro任务_等待",
+        "runtimeName": "FBro任务_等待",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro任务_等待(1, 1)"
+    },
+    {
+      "index": 5,
+      "name": "FBro任务_取对象",
+      "aliases": [
+        "LB_FBro_TaskGetObject"
+      ],
+      "signature": "FBro任务_取对象(任务ID)",
+      "description": "取得已完成任务返回的受管对象句柄。",
+      "insertText": "FBro任务_取对象($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro任务_取对象",
+        "runtimeName": "FBro任务_取对象",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro任务_取对象(1)"
+    },
+    {
+      "index": 6,
+      "name": "FBro任务_取缓冲",
+      "aliases": [
+        "LB_FBro_TaskGetBuffer"
+      ],
+      "signature": "FBro任务_取缓冲(任务ID)",
+      "description": "取得已完成任务返回的受管二进制缓冲句柄。",
+      "insertText": "FBro任务_取缓冲($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro任务_取缓冲",
+        "runtimeName": "FBro任务_取缓冲",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro任务_取缓冲(1)"
+    },
+    {
+      "index": 7,
+      "name": "FBro任务_取消",
+      "aliases": [
+        "LB_FBro_TaskCancel"
+      ],
+      "signature": "FBro任务_取消(任务ID)",
+      "description": "取消尚未完成的任务。",
+      "insertText": "FBro任务_取消($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro任务_取消",
+        "runtimeName": "FBro任务_取消",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro任务_取消(1)"
+    },
+    {
+      "index": 8,
+      "name": "FBro任务_释放",
+      "aliases": [
+        "LB_FBro_TaskRelease"
+      ],
+      "signature": "FBro任务_释放(任务ID)",
+      "description": "释放任务句柄。",
+      "insertText": "FBro任务_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro任务_释放",
+        "runtimeName": "FBro任务_释放",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro任务_释放(1)"
+    },
+    {
+      "index": 9,
+      "name": "FBro缓冲_从文本",
+      "aliases": [
+        "LB_FBro_BufferCreate"
+      ],
+      "signature": "FBro缓冲_从文本(文本)",
+      "description": "把 UTF-16 文本复制到受管二进制缓冲并返回句柄。",
+      "insertText": "FBro缓冲_从文本(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro缓冲_从文本",
+        "runtimeName": "FBro缓冲_从文本",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro缓冲_从文本(\"演示参数1\")"
+    },
+    {
+      "index": 10,
+      "name": "FBro缓冲_取大小",
+      "aliases": [
+        "LB_FBro_BufferGetSize"
+      ],
+      "signature": "FBro缓冲_取大小(缓冲句柄)",
+      "description": "取得受管缓冲字节数。",
+      "insertText": "FBro缓冲_取大小($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro缓冲_取大小",
+        "runtimeName": "FBro缓冲_取大小",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro缓冲_取大小(1)"
+    },
+    {
+      "index": 11,
+      "name": "FBro缓冲_转十六进制",
+      "aliases": [
+        "LB_FBro_BufferToHex"
+      ],
+      "signature": "FBro缓冲_转十六进制(缓冲句柄)",
+      "description": "把受管缓冲转换为十六进制文本。",
+      "insertText": "FBro缓冲_转十六进制($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro缓冲_转十六进制",
+        "runtimeName": "FBro缓冲_转十六进制",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro缓冲_转十六进制(1)"
+    },
+    {
+      "index": 12,
+      "name": "FBro缓冲_保存文件",
+      "aliases": [
+        "LB_FBro_BufferSaveFile"
+      ],
+      "signature": "FBro缓冲_保存文件(缓冲句柄, 路径)",
+      "description": "保存受管缓冲到文件。",
+      "insertText": "FBro缓冲_保存文件($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro缓冲_保存文件",
+        "runtimeName": "FBro缓冲_保存文件",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro缓冲_保存文件(1, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 13,
+      "name": "FBro缓冲_释放",
+      "aliases": [
+        "LB_FBro_BufferRelease"
+      ],
+      "signature": "FBro缓冲_释放(缓冲句柄)",
+      "description": "释放受管缓冲句柄。",
+      "insertText": "FBro缓冲_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro缓冲_释放",
+        "runtimeName": "FBro缓冲_释放",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro缓冲_释放(1)"
+    },
+    {
+      "index": 14,
+      "name": "FBro对象_取类型",
+      "aliases": [
+        "LB_FBro_ObjectGetType"
+      ],
+      "signature": "FBro对象_取类型(对象句柄)",
+      "description": "取得受管对象注册表类型。",
+      "insertText": "FBro对象_取类型($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro对象_取类型",
+        "runtimeName": "FBro对象_取类型",
+        "parameters": [
+          {
+            "name": "对象句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro对象_取类型(1)"
+    },
+    {
+      "index": 15,
+      "name": "FBro对象_释放",
+      "aliases": [
+        "LB_FBro_ObjectRelease"
+      ],
+      "signature": "FBro对象_释放(对象句柄)",
+      "description": "释放受管对象；重复释放返回稳定错误码。",
+      "insertText": "FBro对象_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro对象_释放",
+        "runtimeName": "FBro对象_释放",
+        "parameters": [
+          {
+            "name": "对象句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro对象_释放(1)"
+    },
+    {
+      "index": 16,
+      "name": "FBro值_创建",
+      "aliases": [
+        "FBroHsValue_Create"
+      ],
+      "signature": "FBro值_创建()",
+      "description": "创建受管 Value 对象并返回不透明句柄。",
+      "insertText": "FBro值_创建()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_创建",
+        "runtimeName": "FBro值_创建",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro值_创建()"
+    },
+    {
+      "index": 17,
+      "name": "FBro值_是否有效",
+      "aliases": [
+        "FBroHsValue_IsValid"
+      ],
+      "signature": "FBro值_是否有效(值句柄)",
+      "description": "检查 Value 对象是否有效。",
+      "insertText": "FBro值_是否有效($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_是否有效",
+        "runtimeName": "FBro值_是否有效",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_是否有效(1)"
+    },
+    {
+      "index": 18,
+      "name": "FBro值_是否被拥有",
+      "aliases": [
+        "FBroHsValue_IsOwned"
+      ],
+      "signature": "FBro值_是否被拥有(值句柄)",
+      "description": "检查 Value 对象是否已归属于其它容器。",
+      "insertText": "FBro值_是否被拥有($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_是否被拥有",
+        "runtimeName": "FBro值_是否被拥有",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_是否被拥有(1)"
+    },
+    {
+      "index": 19,
+      "name": "FBro值_是否只读",
+      "aliases": [
+        "FBroHsValue_IsReadOnly"
+      ],
+      "signature": "FBro值_是否只读(值句柄)",
+      "description": "检查 Value 对象是否只读。",
+      "insertText": "FBro值_是否只读($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_是否只读",
+        "runtimeName": "FBro值_是否只读",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_是否只读(1)"
+    },
+    {
+      "index": 20,
+      "name": "FBro值_是否同一对象",
+      "aliases": [
+        "FBroHsValue_IsSame"
+      ],
+      "signature": "FBro值_是否同一对象(值句柄, 另一值句柄)",
+      "description": "检查两个 Value 句柄是否引用同一官方对象。",
+      "insertText": "FBro值_是否同一对象($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_是否同一对象",
+        "runtimeName": "FBro值_是否同一对象",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_是否同一对象(1, 1)"
+    },
+    {
+      "index": 21,
+      "name": "FBro值_是否相等",
+      "aliases": [
+        "FBroHsValue_IsEqual"
+      ],
+      "signature": "FBro值_是否相等(值句柄, 另一值句柄)",
+      "description": "比较两个 Value 的内容。",
+      "insertText": "FBro值_是否相等($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_是否相等",
+        "runtimeName": "FBro值_是否相等",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_是否相等(1, 1)"
+    },
+    {
+      "index": 22,
+      "name": "FBro值_复制",
+      "aliases": [
+        "FBroHsValue_Copy"
+      ],
+      "signature": "FBro值_复制(值句柄)",
+      "description": "复制 Value 并返回独立受管句柄。",
+      "insertText": "FBro值_复制($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_复制",
+        "runtimeName": "FBro值_复制",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro值_复制(1)"
+    },
+    {
+      "index": 23,
+      "name": "FBro值_取类型",
+      "aliases": [
+        "FBroHsValue_GetType"
+      ],
+      "signature": "FBro值_取类型(值句柄)",
+      "description": "取得 Value 的官方值类型。",
+      "insertText": "FBro值_取类型($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_取类型",
+        "runtimeName": "FBro值_取类型",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_取类型(1)"
+    },
+    {
+      "index": 24,
+      "name": "FBro值_取逻辑",
+      "aliases": [
+        "FBroHsValue_GetBool"
+      ],
+      "signature": "FBro值_取逻辑(值句柄)",
+      "description": "读取逻辑值。",
+      "insertText": "FBro值_取逻辑($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_取逻辑",
+        "runtimeName": "FBro值_取逻辑",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_取逻辑(1)"
+    },
+    {
+      "index": 25,
+      "name": "FBro值_取整数",
+      "aliases": [
+        "FBroHsValue_GetInt"
+      ],
+      "signature": "FBro值_取整数(值句柄)",
+      "description": "读取整数值。",
+      "insertText": "FBro值_取整数($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_取整数",
+        "runtimeName": "FBro值_取整数",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_取整数(1)"
+    },
+    {
+      "index": 26,
+      "name": "FBro值_取小数",
+      "aliases": [
+        "FBroHsValue_GetDouble"
+      ],
+      "signature": "FBro值_取小数(值句柄)",
+      "description": "读取小数值。",
+      "insertText": "FBro值_取小数($1)",
+      "returnType": "小数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_取小数",
+        "runtimeName": "FBro值_取小数",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "double"
+      },
+      "demoInvocation": "FBro值_取小数(1)"
+    },
+    {
+      "index": 27,
+      "name": "FBro值_取文本",
+      "aliases": [
+        "FBroHsValue_GetString"
+      ],
+      "signature": "FBro值_取文本(值句柄)",
+      "description": "读取 UTF-16 文本值。",
+      "insertText": "FBro值_取文本($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_取文本",
+        "runtimeName": "FBro值_取文本",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro值_取文本(1)"
+    },
+    {
+      "index": 28,
+      "name": "FBro值_设为空",
+      "aliases": [
+        "FBroHsValue_SetNull"
+      ],
+      "signature": "FBro值_设为空(值句柄)",
+      "description": "把 Value 设置为空值。",
+      "insertText": "FBro值_设为空($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_设为空",
+        "runtimeName": "FBro值_设为空",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_设为空(1)"
+    },
+    {
+      "index": 29,
+      "name": "FBro值_设置逻辑",
+      "aliases": [
+        "FBroHsValue_SetBool"
+      ],
+      "signature": "FBro值_设置逻辑(值句柄, 值)",
+      "description": "写入逻辑值。",
+      "insertText": "FBro值_设置逻辑($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_设置逻辑",
+        "runtimeName": "FBro值_设置逻辑",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "值",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_设置逻辑(1, 真)"
+    },
+    {
+      "index": 30,
+      "name": "FBro值_设置整数",
+      "aliases": [
+        "FBroHsValue_SetInt"
+      ],
+      "signature": "FBro值_设置整数(值句柄, 值)",
+      "description": "写入整数值。",
+      "insertText": "FBro值_设置整数($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_设置整数",
+        "runtimeName": "FBro值_设置整数",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_设置整数(1, 1)"
+    },
+    {
+      "index": 31,
+      "name": "FBro值_设置小数",
+      "aliases": [
+        "FBroHsValue_SetDouble"
+      ],
+      "signature": "FBro值_设置小数(值句柄, 值)",
+      "description": "写入小数值。",
+      "insertText": "FBro值_设置小数($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_设置小数",
+        "runtimeName": "FBro值_设置小数",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "值",
+            "type": "double"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_设置小数(1, 1.0)"
+    },
+    {
+      "index": 32,
+      "name": "FBro值_设置文本",
+      "aliases": [
+        "FBroHsValue_SetString"
+      ],
+      "signature": "FBro值_设置文本(值句柄, 值)",
+      "description": "写入 UTF-16 文本值。",
+      "insertText": "FBro值_设置文本($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_设置文本",
+        "runtimeName": "FBro值_设置文本",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro值_设置文本(1, \"演示参数2\")"
+    },
+    {
+      "index": 33,
+      "name": "FBro值_取二进制",
+      "aliases": [
+        "FBroHsValue_GetBinary"
+      ],
+      "signature": "FBro值_取二进制(值句柄)",
+      "description": "复制二进制值到受管缓冲并返回句柄。",
+      "insertText": "FBro值_取二进制($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_取二进制",
+        "runtimeName": "FBro值_取二进制",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro值_取二进制(1)"
+    },
+    {
+      "index": 34,
+      "name": "FBro值_设置二进制",
+      "aliases": [
+        "FBroHsValue_SetBinary"
+      ],
+      "signature": "FBro值_设置二进制(值句柄, 缓冲句柄)",
+      "description": "从受管缓冲写入二进制值。",
+      "insertText": "FBro值_设置二进制($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_设置二进制",
+        "runtimeName": "FBro值_设置二进制",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_设置二进制(1, 1)"
+    },
+    {
+      "index": 35,
+      "name": "FBro值_取字典",
+      "aliases": [
+        "FBroHsValue_GetDictionary"
+      ],
+      "signature": "FBro值_取字典(值句柄)",
+      "description": "取得受父对象管理的 Dictionary 句柄。",
+      "insertText": "FBro值_取字典($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_取字典",
+        "runtimeName": "FBro值_取字典",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro值_取字典(1)"
+    },
+    {
+      "index": 36,
+      "name": "FBro值_取列表",
+      "aliases": [
+        "FBroHsValue_GetList"
+      ],
+      "signature": "FBro值_取列表(值句柄)",
+      "description": "取得受父对象管理的 List 句柄。",
+      "insertText": "FBro值_取列表($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_取列表",
+        "runtimeName": "FBro值_取列表",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro值_取列表(1)"
+    },
+    {
+      "index": 37,
+      "name": "FBro值_设置字典",
+      "aliases": [
+        "FBroHsValue_SetDictionary"
+      ],
+      "signature": "FBro值_设置字典(值句柄, 字典句柄)",
+      "description": "把 Dictionary 交由 Value 管理。",
+      "insertText": "FBro值_设置字典($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_设置字典",
+        "runtimeName": "FBro值_设置字典",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_设置字典(1, 1)"
+    },
+    {
+      "index": 38,
+      "name": "FBro值_设置列表",
+      "aliases": [
+        "FBroHsValue_SetList"
+      ],
+      "signature": "FBro值_设置列表(值句柄, 列表句柄)",
+      "description": "把 List 交由 Value 管理。",
+      "insertText": "FBro值_设置列表($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro值_设置列表",
+        "runtimeName": "FBro值_设置列表",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro值_设置列表(1, 1)"
+    },
+    {
+      "index": 39,
+      "name": "FBro字典_创建",
+      "aliases": [
+        "FBroHsDictionaryValue_Create"
+      ],
+      "signature": "FBro字典_创建()",
+      "description": "创建受管 Dictionary 对象。",
+      "insertText": "FBro字典_创建()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_创建",
+        "runtimeName": "FBro字典_创建",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro字典_创建()"
+    },
+    {
+      "index": 40,
+      "name": "FBro字典_是否有效",
+      "aliases": [
+        "FBroHsDictionaryValue_IsValid"
+      ],
+      "signature": "FBro字典_是否有效(字典句柄)",
+      "description": "检查 Dictionary 是否有效。",
+      "insertText": "FBro字典_是否有效($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_是否有效",
+        "runtimeName": "FBro字典_是否有效",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro字典_是否有效(1)"
+    },
+    {
+      "index": 41,
+      "name": "FBro字典_是否被拥有",
+      "aliases": [
+        "FBroHsDictionaryValue_IsOwned"
+      ],
+      "signature": "FBro字典_是否被拥有(字典句柄)",
+      "description": "检查 Dictionary 是否已被拥有。",
+      "insertText": "FBro字典_是否被拥有($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_是否被拥有",
+        "runtimeName": "FBro字典_是否被拥有",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro字典_是否被拥有(1)"
+    },
+    {
+      "index": 42,
+      "name": "FBro字典_是否只读",
+      "aliases": [
+        "FBroHsDictionaryValue_IsReadOnly"
+      ],
+      "signature": "FBro字典_是否只读(字典句柄)",
+      "description": "检查 Dictionary 是否只读。",
+      "insertText": "FBro字典_是否只读($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_是否只读",
+        "runtimeName": "FBro字典_是否只读",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro字典_是否只读(1)"
+    },
+    {
+      "index": 43,
+      "name": "FBro字典_是否同一对象",
+      "aliases": [
+        "FBroHsDictionaryValue_IsSame"
+      ],
+      "signature": "FBro字典_是否同一对象(字典句柄, 另一字典句柄)",
+      "description": "检查两个 Dictionary 句柄是否引用同一官方对象。",
+      "insertText": "FBro字典_是否同一对象($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_是否同一对象",
+        "runtimeName": "FBro字典_是否同一对象",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro字典_是否同一对象(1, 1)"
+    },
+    {
+      "index": 44,
+      "name": "FBro字典_是否相等",
+      "aliases": [
+        "FBroHsDictionaryValue_IsEqual"
+      ],
+      "signature": "FBro字典_是否相等(字典句柄, 另一字典句柄)",
+      "description": "比较两个 Dictionary 的内容。",
+      "insertText": "FBro字典_是否相等($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_是否相等",
+        "runtimeName": "FBro字典_是否相等",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro字典_是否相等(1, 1)"
+    },
+    {
+      "index": 45,
+      "name": "FBro字典_复制",
+      "aliases": [
+        "FBroHsDictionaryValue_Copy"
+      ],
+      "signature": "FBro字典_复制(字典句柄, 排除空子项)",
+      "description": "复制 Dictionary 并返回独立受管句柄。",
+      "insertText": "FBro字典_复制($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_复制",
+        "runtimeName": "FBro字典_复制",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "排除空子项",
+            "type": "bool"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro字典_复制(1, 真)"
+    },
+    {
+      "index": 46,
+      "name": "FBro字典_取数量",
+      "aliases": [
+        "FBroHsDictionaryValue_GetSize"
+      ],
+      "signature": "FBro字典_取数量(字典句柄)",
+      "description": "取得键数量。",
+      "insertText": "FBro字典_取数量($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_取数量",
+        "runtimeName": "FBro字典_取数量",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro字典_取数量(1)"
+    },
+    {
+      "index": 47,
+      "name": "FBro字典_清空",
+      "aliases": [
+        "FBroHsDictionaryValue_Clear"
+      ],
+      "signature": "FBro字典_清空(字典句柄)",
+      "description": "删除全部键。",
+      "insertText": "FBro字典_清空($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_清空",
+        "runtimeName": "FBro字典_清空",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro字典_清空(1)"
+    },
+    {
+      "index": 48,
+      "name": "FBro字典_是否存在键",
+      "aliases": [
+        "FBroHsDictionaryValue_HasKey"
+      ],
+      "signature": "FBro字典_是否存在键(字典句柄, 键)",
+      "description": "检查键是否存在。",
+      "insertText": "FBro字典_是否存在键($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_是否存在键",
+        "runtimeName": "FBro字典_是否存在键",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_是否存在键(1, \"演示参数2\")"
+    },
+    {
+      "index": 49,
+      "name": "FBro字典_删除",
+      "aliases": [
+        "FBroHsDictionaryValue_Remove"
+      ],
+      "signature": "FBro字典_删除(字典句柄, 键)",
+      "description": "删除指定键。",
+      "insertText": "FBro字典_删除($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_删除",
+        "runtimeName": "FBro字典_删除",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_删除(1, \"演示参数2\")"
+    },
+    {
+      "index": 50,
+      "name": "FBro字典_取类型",
+      "aliases": [
+        "FBroHsDictionaryValue_GetType"
+      ],
+      "signature": "FBro字典_取类型(字典句柄, 键)",
+      "description": "取得指定键的官方值类型。",
+      "insertText": "FBro字典_取类型($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_取类型",
+        "runtimeName": "FBro字典_取类型",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_取类型(1, \"演示参数2\")"
+    },
+    {
+      "index": 51,
+      "name": "FBro字典_取逻辑",
+      "aliases": [
+        "FBroHsDictionaryValue_GetBool"
+      ],
+      "signature": "FBro字典_取逻辑(字典句柄, 键)",
+      "description": "读取逻辑值。",
+      "insertText": "FBro字典_取逻辑($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_取逻辑",
+        "runtimeName": "FBro字典_取逻辑",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_取逻辑(1, \"演示参数2\")"
+    },
+    {
+      "index": 52,
+      "name": "FBro字典_取整数",
+      "aliases": [
+        "FBroHsDictionaryValue_GetInt"
+      ],
+      "signature": "FBro字典_取整数(字典句柄, 键)",
+      "description": "读取整数值。",
+      "insertText": "FBro字典_取整数($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_取整数",
+        "runtimeName": "FBro字典_取整数",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_取整数(1, \"演示参数2\")"
+    },
+    {
+      "index": 53,
+      "name": "FBro字典_取小数",
+      "aliases": [
+        "FBroHsDictionaryValue_GetDouble"
+      ],
+      "signature": "FBro字典_取小数(字典句柄, 键)",
+      "description": "读取小数值。",
+      "insertText": "FBro字典_取小数($1, \"$2\")",
+      "returnType": "小数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_取小数",
+        "runtimeName": "FBro字典_取小数",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_取小数(1, \"演示参数2\")"
+    },
+    {
+      "index": 54,
+      "name": "FBro字典_取文本",
+      "aliases": [
+        "FBroHsDictionaryValue_GetString"
+      ],
+      "signature": "FBro字典_取文本(字典句柄, 键)",
+      "description": "读取 UTF-16 文本值。",
+      "insertText": "FBro字典_取文本($1, \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_取文本",
+        "runtimeName": "FBro字典_取文本",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_取文本(1, \"演示参数2\")"
+    },
+    {
+      "index": 55,
+      "name": "FBro字典_取键列表JSON",
+      "aliases": [
+        "FBroHsDictionaryValue_GetKeys"
+      ],
+      "signature": "FBro字典_取键列表JSON(字典句柄)",
+      "description": "取得 UTF-16 JSON 键数组，不向源码暴露 StringList 或 STL。",
+      "insertText": "FBro字典_取键列表JSON($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_取键列表JSON",
+        "runtimeName": "FBro字典_取键列表JSON",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro字典_取键列表JSON(1)"
+    },
+    {
+      "index": 56,
+      "name": "FBro字典_取值对象",
+      "aliases": [
+        "FBroHsDictionaryValue_GetValue"
+      ],
+      "signature": "FBro字典_取值对象(字典句柄, 键)",
+      "description": "取得受字典管理的 Value 句柄。",
+      "insertText": "FBro字典_取值对象($1, \"$2\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_取值对象",
+        "runtimeName": "FBro字典_取值对象",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_取值对象(1, \"演示参数2\")"
+    },
+    {
+      "index": 57,
+      "name": "FBro字典_取二进制",
+      "aliases": [
+        "FBroHsDictionaryValue_GetBinary"
+      ],
+      "signature": "FBro字典_取二进制(字典句柄, 键)",
+      "description": "复制指定键的二进制值到受管缓冲。",
+      "insertText": "FBro字典_取二进制($1, \"$2\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_取二进制",
+        "runtimeName": "FBro字典_取二进制",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_取二进制(1, \"演示参数2\")"
+    },
+    {
+      "index": 58,
+      "name": "FBro字典_取字典",
+      "aliases": [
+        "FBroHsDictionaryValue_GetDictionary"
+      ],
+      "signature": "FBro字典_取字典(字典句柄, 键)",
+      "description": "取得受父字典管理的 Dictionary 句柄。",
+      "insertText": "FBro字典_取字典($1, \"$2\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_取字典",
+        "runtimeName": "FBro字典_取字典",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_取字典(1, \"演示参数2\")"
+    },
+    {
+      "index": 59,
+      "name": "FBro字典_取列表",
+      "aliases": [
+        "FBroHsDictionaryValue_GetList"
+      ],
+      "signature": "FBro字典_取列表(字典句柄, 键)",
+      "description": "取得受父字典管理的 List 句柄。",
+      "insertText": "FBro字典_取列表($1, \"$2\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_取列表",
+        "runtimeName": "FBro字典_取列表",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_取列表(1, \"演示参数2\")"
+    },
+    {
+      "index": 60,
+      "name": "FBro字典_设为空",
+      "aliases": [
+        "FBroHsDictionaryValue_SetNull"
+      ],
+      "signature": "FBro字典_设为空(字典句柄, 键)",
+      "description": "把指定键设置为空值。",
+      "insertText": "FBro字典_设为空($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_设为空",
+        "runtimeName": "FBro字典_设为空",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_设为空(1, \"演示参数2\")"
+    },
+    {
+      "index": 61,
+      "name": "FBro字典_设置逻辑",
+      "aliases": [
+        "FBroHsDictionaryValue_SetBool"
+      ],
+      "signature": "FBro字典_设置逻辑(字典句柄, 键, 值)",
+      "description": "写入逻辑值。",
+      "insertText": "FBro字典_设置逻辑($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_设置逻辑",
+        "runtimeName": "FBro字典_设置逻辑",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_设置逻辑(1, \"演示参数2\", 真)"
+    },
+    {
+      "index": 62,
+      "name": "FBro字典_设置整数",
+      "aliases": [
+        "FBroHsDictionaryValue_SetInt"
+      ],
+      "signature": "FBro字典_设置整数(字典句柄, 键, 值)",
+      "description": "写入整数值。",
+      "insertText": "FBro字典_设置整数($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_设置整数",
+        "runtimeName": "FBro字典_设置整数",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_设置整数(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 63,
+      "name": "FBro字典_设置小数",
+      "aliases": [
+        "FBroHsDictionaryValue_SetDouble"
+      ],
+      "signature": "FBro字典_设置小数(字典句柄, 键, 值)",
+      "description": "写入小数值。",
+      "insertText": "FBro字典_设置小数($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_设置小数",
+        "runtimeName": "FBro字典_设置小数",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "double"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_设置小数(1, \"演示参数2\", 1.0)"
+    },
+    {
+      "index": 64,
+      "name": "FBro字典_设置文本",
+      "aliases": [
+        "FBroHsDictionaryValue_SetString"
+      ],
+      "signature": "FBro字典_设置文本(字典句柄, 键, 值)",
+      "description": "写入 UTF-16 文本值。",
+      "insertText": "FBro字典_设置文本($1, \"$2\", \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_设置文本",
+        "runtimeName": "FBro字典_设置文本",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_设置文本(1, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 65,
+      "name": "FBro字典_设置值对象",
+      "aliases": [
+        "FBroHsDictionaryValue_SetValue"
+      ],
+      "signature": "FBro字典_设置值对象(字典句柄, 键, 值句柄)",
+      "description": "把 Value 交由指定键管理。",
+      "insertText": "FBro字典_设置值对象($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_设置值对象",
+        "runtimeName": "FBro字典_设置值对象",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_设置值对象(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 66,
+      "name": "FBro字典_设置二进制",
+      "aliases": [
+        "FBroHsDictionaryValue_SetBinary"
+      ],
+      "signature": "FBro字典_设置二进制(字典句柄, 键, 缓冲句柄)",
+      "description": "从受管缓冲写入指定键。",
+      "insertText": "FBro字典_设置二进制($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_设置二进制",
+        "runtimeName": "FBro字典_设置二进制",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_设置二进制(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 67,
+      "name": "FBro字典_设置字典",
+      "aliases": [
+        "FBroHsDictionaryValue_SetDictionary"
+      ],
+      "signature": "FBro字典_设置字典(字典句柄, 键, 子字典句柄)",
+      "description": "把子 Dictionary 交由指定键管理。",
+      "insertText": "FBro字典_设置字典($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_设置字典",
+        "runtimeName": "FBro字典_设置字典",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "子字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_设置字典(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 68,
+      "name": "FBro字典_设置列表",
+      "aliases": [
+        "FBroHsDictionaryValue_SetList"
+      ],
+      "signature": "FBro字典_设置列表(字典句柄, 键, 列表句柄)",
+      "description": "把 List 交由指定键管理。",
+      "insertText": "FBro字典_设置列表($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro字典_设置列表",
+        "runtimeName": "FBro字典_设置列表",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro字典_设置列表(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 69,
+      "name": "FBro列表_创建",
+      "aliases": [
+        "FBroHsListValue_Create"
+      ],
+      "signature": "FBro列表_创建()",
+      "description": "创建受管 List 对象。",
+      "insertText": "FBro列表_创建()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_创建",
+        "runtimeName": "FBro列表_创建",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro列表_创建()"
+    },
+    {
+      "index": 70,
+      "name": "FBro列表_是否有效",
+      "aliases": [
+        "FBroHsListValue_IsValid"
+      ],
+      "signature": "FBro列表_是否有效(列表句柄)",
+      "description": "检查 List 是否有效。",
+      "insertText": "FBro列表_是否有效($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_是否有效",
+        "runtimeName": "FBro列表_是否有效",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_是否有效(1)"
+    },
+    {
+      "index": 71,
+      "name": "FBro列表_是否被拥有",
+      "aliases": [
+        "FBroHsListValue_IsOwned"
+      ],
+      "signature": "FBro列表_是否被拥有(列表句柄)",
+      "description": "检查 List 是否已被拥有。",
+      "insertText": "FBro列表_是否被拥有($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_是否被拥有",
+        "runtimeName": "FBro列表_是否被拥有",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_是否被拥有(1)"
+    },
+    {
+      "index": 72,
+      "name": "FBro列表_是否只读",
+      "aliases": [
+        "FBroHsListValue_IsReadOnly"
+      ],
+      "signature": "FBro列表_是否只读(列表句柄)",
+      "description": "检查 List 是否只读。",
+      "insertText": "FBro列表_是否只读($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_是否只读",
+        "runtimeName": "FBro列表_是否只读",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_是否只读(1)"
+    },
+    {
+      "index": 73,
+      "name": "FBro列表_是否同一对象",
+      "aliases": [
+        "FBroHsListValue_IsSame"
+      ],
+      "signature": "FBro列表_是否同一对象(列表句柄, 另一列表句柄)",
+      "description": "检查两个 List 句柄是否引用同一官方对象。",
+      "insertText": "FBro列表_是否同一对象($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_是否同一对象",
+        "runtimeName": "FBro列表_是否同一对象",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_是否同一对象(1, 1)"
+    },
+    {
+      "index": 74,
+      "name": "FBro列表_是否相等",
+      "aliases": [
+        "FBroHsListValue_IsEqual"
+      ],
+      "signature": "FBro列表_是否相等(列表句柄, 另一列表句柄)",
+      "description": "比较两个 List 的内容。",
+      "insertText": "FBro列表_是否相等($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_是否相等",
+        "runtimeName": "FBro列表_是否相等",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_是否相等(1, 1)"
+    },
+    {
+      "index": 75,
+      "name": "FBro列表_复制",
+      "aliases": [
+        "FBroHsListValue_Copy"
+      ],
+      "signature": "FBro列表_复制(列表句柄)",
+      "description": "复制 List 并返回独立受管句柄。",
+      "insertText": "FBro列表_复制($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_复制",
+        "runtimeName": "FBro列表_复制",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro列表_复制(1)"
+    },
+    {
+      "index": 76,
+      "name": "FBro列表_设置数量",
+      "aliases": [
+        "FBroHsListValue_SetSize"
+      ],
+      "signature": "FBro列表_设置数量(列表句柄, 数量)",
+      "description": "设置列表长度。",
+      "insertText": "FBro列表_设置数量($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_设置数量",
+        "runtimeName": "FBro列表_设置数量",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "数量",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_设置数量(1, 1)"
+    },
+    {
+      "index": 77,
+      "name": "FBro列表_取数量",
+      "aliases": [
+        "FBroHsListValue_GetSize"
+      ],
+      "signature": "FBro列表_取数量(列表句柄)",
+      "description": "取得列表长度。",
+      "insertText": "FBro列表_取数量($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_取数量",
+        "runtimeName": "FBro列表_取数量",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_取数量(1)"
+    },
+    {
+      "index": 78,
+      "name": "FBro列表_清空",
+      "aliases": [
+        "FBroHsListValue_Clear"
+      ],
+      "signature": "FBro列表_清空(列表句柄)",
+      "description": "清空列表。",
+      "insertText": "FBro列表_清空($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_清空",
+        "runtimeName": "FBro列表_清空",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_清空(1)"
+    },
+    {
+      "index": 79,
+      "name": "FBro列表_删除",
+      "aliases": [
+        "FBroHsListValue_Remove"
+      ],
+      "signature": "FBro列表_删除(列表句柄, 索引)",
+      "description": "删除指定索引。",
+      "insertText": "FBro列表_删除($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_删除",
+        "runtimeName": "FBro列表_删除",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_删除(1, 1)"
+    },
+    {
+      "index": 80,
+      "name": "FBro列表_取类型",
+      "aliases": [
+        "FBroHsListValue_GetType"
+      ],
+      "signature": "FBro列表_取类型(列表句柄, 索引)",
+      "description": "取得指定索引的官方值类型。",
+      "insertText": "FBro列表_取类型($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_取类型",
+        "runtimeName": "FBro列表_取类型",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_取类型(1, 1)"
+    },
+    {
+      "index": 81,
+      "name": "FBro列表_取逻辑",
+      "aliases": [
+        "FBroHsListValue_GetBool"
+      ],
+      "signature": "FBro列表_取逻辑(列表句柄, 索引)",
+      "description": "读取逻辑值。",
+      "insertText": "FBro列表_取逻辑($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_取逻辑",
+        "runtimeName": "FBro列表_取逻辑",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_取逻辑(1, 1)"
+    },
+    {
+      "index": 82,
+      "name": "FBro列表_取整数",
+      "aliases": [
+        "FBroHsListValue_GetInt"
+      ],
+      "signature": "FBro列表_取整数(列表句柄, 索引)",
+      "description": "读取整数值。",
+      "insertText": "FBro列表_取整数($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_取整数",
+        "runtimeName": "FBro列表_取整数",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_取整数(1, 1)"
+    },
+    {
+      "index": 83,
+      "name": "FBro列表_取小数",
+      "aliases": [
+        "FBroHsListValue_GetDouble"
+      ],
+      "signature": "FBro列表_取小数(列表句柄, 索引)",
+      "description": "读取小数值。",
+      "insertText": "FBro列表_取小数($1, $2)",
+      "returnType": "小数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_取小数",
+        "runtimeName": "FBro列表_取小数",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "double"
+      },
+      "demoInvocation": "FBro列表_取小数(1, 1)"
+    },
+    {
+      "index": 84,
+      "name": "FBro列表_取文本",
+      "aliases": [
+        "FBroHsListValue_GetString"
+      ],
+      "signature": "FBro列表_取文本(列表句柄, 索引)",
+      "description": "读取 UTF-16 文本值。",
+      "insertText": "FBro列表_取文本($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_取文本",
+        "runtimeName": "FBro列表_取文本",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro列表_取文本(1, 1)"
+    },
+    {
+      "index": 85,
+      "name": "FBro列表_取值对象",
+      "aliases": [
+        "FBroHsListValue_GetValue"
+      ],
+      "signature": "FBro列表_取值对象(列表句柄, 索引)",
+      "description": "取得受列表管理的 Value 句柄。",
+      "insertText": "FBro列表_取值对象($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_取值对象",
+        "runtimeName": "FBro列表_取值对象",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro列表_取值对象(1, 1)"
+    },
+    {
+      "index": 86,
+      "name": "FBro列表_取二进制",
+      "aliases": [
+        "FBroHsListValue_GetBinary"
+      ],
+      "signature": "FBro列表_取二进制(列表句柄, 索引)",
+      "description": "复制指定项的二进制值到受管缓冲。",
+      "insertText": "FBro列表_取二进制($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_取二进制",
+        "runtimeName": "FBro列表_取二进制",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro列表_取二进制(1, 1)"
+    },
+    {
+      "index": 87,
+      "name": "FBro列表_取字典",
+      "aliases": [
+        "FBroHsListValue_GetDictionary"
+      ],
+      "signature": "FBro列表_取字典(列表句柄, 索引)",
+      "description": "取得受父列表管理的 Dictionary 句柄。",
+      "insertText": "FBro列表_取字典($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_取字典",
+        "runtimeName": "FBro列表_取字典",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro列表_取字典(1, 1)"
+    },
+    {
+      "index": 88,
+      "name": "FBro列表_取列表",
+      "aliases": [
+        "FBroHsListValue_GetList"
+      ],
+      "signature": "FBro列表_取列表(列表句柄, 索引)",
+      "description": "取得受父列表管理的 List 句柄。",
+      "insertText": "FBro列表_取列表($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_取列表",
+        "runtimeName": "FBro列表_取列表",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro列表_取列表(1, 1)"
+    },
+    {
+      "index": 89,
+      "name": "FBro列表_设为空",
+      "aliases": [
+        "FBroHsListValue_SetNull"
+      ],
+      "signature": "FBro列表_设为空(列表句柄, 索引)",
+      "description": "把指定索引设置为空值。",
+      "insertText": "FBro列表_设为空($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_设为空",
+        "runtimeName": "FBro列表_设为空",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_设为空(1, 1)"
+    },
+    {
+      "index": 90,
+      "name": "FBro列表_设置逻辑",
+      "aliases": [
+        "FBroHsListValue_SetBool"
+      ],
+      "signature": "FBro列表_设置逻辑(列表句柄, 索引, 值)",
+      "description": "写入逻辑值。",
+      "insertText": "FBro列表_设置逻辑($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_设置逻辑",
+        "runtimeName": "FBro列表_设置逻辑",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "值",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_设置逻辑(1, 1, 真)"
+    },
+    {
+      "index": 91,
+      "name": "FBro列表_设置整数",
+      "aliases": [
+        "FBroHsListValue_SetInt"
+      ],
+      "signature": "FBro列表_设置整数(列表句柄, 索引, 值)",
+      "description": "写入整数值。",
+      "insertText": "FBro列表_设置整数($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_设置整数",
+        "runtimeName": "FBro列表_设置整数",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_设置整数(1, 1, 1)"
+    },
+    {
+      "index": 92,
+      "name": "FBro列表_设置小数",
+      "aliases": [
+        "FBroHsListValue_SetDouble"
+      ],
+      "signature": "FBro列表_设置小数(列表句柄, 索引, 值)",
+      "description": "写入小数值。",
+      "insertText": "FBro列表_设置小数($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_设置小数",
+        "runtimeName": "FBro列表_设置小数",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "值",
+            "type": "double"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_设置小数(1, 1, 1.0)"
+    },
+    {
+      "index": 93,
+      "name": "FBro列表_设置文本",
+      "aliases": [
+        "FBroHsListValue_SetString"
+      ],
+      "signature": "FBro列表_设置文本(列表句柄, 索引, 值)",
+      "description": "写入 UTF-16 文本值。",
+      "insertText": "FBro列表_设置文本($1, $2, \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_设置文本",
+        "runtimeName": "FBro列表_设置文本",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro列表_设置文本(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 94,
+      "name": "FBro列表_设置值对象",
+      "aliases": [
+        "FBroHsListValue_SetValue"
+      ],
+      "signature": "FBro列表_设置值对象(列表句柄, 索引, 值句柄)",
+      "description": "把 Value 交由指定索引管理。",
+      "insertText": "FBro列表_设置值对象($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_设置值对象",
+        "runtimeName": "FBro列表_设置值对象",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_设置值对象(1, 1, 1)"
+    },
+    {
+      "index": 95,
+      "name": "FBro列表_设置二进制",
+      "aliases": [
+        "FBroHsListValue_SetBinary"
+      ],
+      "signature": "FBro列表_设置二进制(列表句柄, 索引, 缓冲句柄)",
+      "description": "从受管缓冲写入指定索引。",
+      "insertText": "FBro列表_设置二进制($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_设置二进制",
+        "runtimeName": "FBro列表_设置二进制",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_设置二进制(1, 1, 1)"
+    },
+    {
+      "index": 96,
+      "name": "FBro列表_设置字典",
+      "aliases": [
+        "FBroHsListValue_SetDictionary"
+      ],
+      "signature": "FBro列表_设置字典(列表句柄, 索引, 字典句柄)",
+      "description": "把 Dictionary 交由指定索引管理。",
+      "insertText": "FBro列表_设置字典($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_设置字典",
+        "runtimeName": "FBro列表_设置字典",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_设置字典(1, 1, 1)"
+    },
+    {
+      "index": 97,
+      "name": "FBro列表_设置列表",
+      "aliases": [
+        "FBroHsListValue_SetList"
+      ],
+      "signature": "FBro列表_设置列表(列表句柄, 索引, 子列表句柄)",
+      "description": "把子 List 交由指定索引管理。",
+      "insertText": "FBro列表_设置列表($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro列表_设置列表",
+        "runtimeName": "FBro列表_设置列表",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "子列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro列表_设置列表(1, 1, 1)"
+    },
+    {
+      "index": 98,
+      "name": "FBro流_从文件创建",
+      "aliases": [
+        "FBroStream_CreateForFile"
+      ],
+      "signature": "FBro流_从文件创建(路径)",
+      "description": "从文件创建受管只读 Stream 句柄。",
+      "insertText": "FBro流_从文件创建(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro流_从文件创建",
+        "runtimeName": "FBro流_从文件创建",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro流_从文件创建(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 99,
+      "name": "FBro流_从缓冲创建",
+      "aliases": [
+        "FBroStream_CreateForData"
+      ],
+      "signature": "FBro流_从缓冲创建(缓冲句柄)",
+      "description": "复制受管缓冲并创建内存 Stream，保证底层数据生命周期。",
+      "insertText": "FBro流_从缓冲创建($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro流_从缓冲创建",
+        "runtimeName": "FBro流_从缓冲创建",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro流_从缓冲创建(1)"
+    },
+    {
+      "index": 100,
+      "name": "FBro流_读取",
+      "aliases": [
+        "FBroStream_Read"
+      ],
+      "signature": "FBro流_读取(流句柄, 元素大小, 元素数量)",
+      "description": "读取数据并返回新的受管缓冲句柄，单次最多 256 MiB。",
+      "insertText": "FBro流_读取($1, $2, $3)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro流_读取",
+        "runtimeName": "FBro流_读取",
+        "parameters": [
+          {
+            "name": "流句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "元素大小",
+            "type": "longLong"
+          },
+          {
+            "name": "元素数量",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro流_读取(1, 1, 1)"
+    },
+    {
+      "index": 101,
+      "name": "FBro流_定位",
+      "aliases": [
+        "FBroStream_Seek"
+      ],
+      "signature": "FBro流_定位(流句柄, 偏移, 基准)",
+      "description": "按 0=开头、1=当前位置、2=结尾定位 Stream。",
+      "insertText": "FBro流_定位($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro流_定位",
+        "runtimeName": "FBro流_定位",
+        "parameters": [
+          {
+            "name": "流句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "偏移",
+            "type": "longLong"
+          },
+          {
+            "name": "基准",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro流_定位(1, 1, 1)"
+    },
+    {
+      "index": 102,
+      "name": "FBro流_取位置",
+      "aliases": [
+        "FBroStream_Tell"
+      ],
+      "signature": "FBro流_取位置(流句柄)",
+      "description": "取得当前字节位置。",
+      "insertText": "FBro流_取位置($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro流_取位置",
+        "runtimeName": "FBro流_取位置",
+        "parameters": [
+          {
+            "name": "流句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro流_取位置(1)"
+    },
+    {
+      "index": 103,
+      "name": "FBro流_是否结束",
+      "aliases": [
+        "FBroStream_Eof"
+      ],
+      "signature": "FBro流_是否结束(流句柄)",
+      "description": "检查 Stream 是否到达结尾。",
+      "insertText": "FBro流_是否结束($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro流_是否结束",
+        "runtimeName": "FBro流_是否结束",
+        "parameters": [
+          {
+            "name": "流句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro流_是否结束(1)"
+    },
+    {
+      "index": 104,
+      "name": "FBro流_是否可能阻塞",
+      "aliases": [
+        "FBroStream_MayBlock"
+      ],
+      "signature": "FBro流_是否可能阻塞(流句柄)",
+      "description": "查询该 Stream 操作是否可能阻塞。",
+      "insertText": "FBro流_是否可能阻塞($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro流_是否可能阻塞",
+        "runtimeName": "FBro流_是否可能阻塞",
+        "parameters": [
+          {
+            "name": "流句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro流_是否可能阻塞(1)"
+    },
+    {
+      "index": 105,
+      "name": "FBro图像_异步下载",
+      "aliases": [
+        "FBroHsBrowserHost_DownloadImage"
+      ],
+      "signature": "FBro图像_异步下载(控件名, 地址, 作为图标, 最大尺寸, 绕过缓存)",
+      "description": "通过当前浏览器会话异步下载图像并返回任务 ID。",
+      "insertText": "FBro图像_异步下载(\"$1\", \"$2\", $3, $4, $5)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro图像_异步下载",
+        "runtimeName": "FBro图像_异步下载",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "作为图标",
+            "type": "bool"
+          },
+          {
+            "name": "最大尺寸",
+            "type": "int"
+          },
+          {
+            "name": "绕过缓存",
+            "type": "bool"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro图像_异步下载(\"演示输出\", \"https://example.com\", 真, 1, 真)"
+    },
+    {
+      "index": 106,
+      "name": "FBro图像_是否为空",
+      "aliases": [
+        "FBroHsImage_IsEmpty"
+      ],
+      "signature": "FBro图像_是否为空(图像句柄)",
+      "description": "检查受管 Image 是否为空。",
+      "insertText": "FBro图像_是否为空($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro图像_是否为空",
+        "runtimeName": "FBro图像_是否为空",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro图像_是否为空(1)"
+    },
+    {
+      "index": 107,
+      "name": "FBro图像_取宽度",
+      "aliases": [
+        "FBroHsImage_GetWidth"
+      ],
+      "signature": "FBro图像_取宽度(图像句柄)",
+      "description": "取得图像 DIP 宽度。",
+      "insertText": "FBro图像_取宽度($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro图像_取宽度",
+        "runtimeName": "FBro图像_取宽度",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro图像_取宽度(1)"
+    },
+    {
+      "index": 108,
+      "name": "FBro图像_取高度",
+      "aliases": [
+        "FBroHsImage_GetHeight"
+      ],
+      "signature": "FBro图像_取高度(图像句柄)",
+      "description": "取得图像 DIP 高度。",
+      "insertText": "FBro图像_取高度($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro图像_取高度",
+        "runtimeName": "FBro图像_取高度",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro图像_取高度(1)"
+    },
+    {
+      "index": 109,
+      "name": "FBro图像_取表示信息JSON",
+      "aliases": [
+        "FBroHsImage_GetRepresentationInfo"
+      ],
+      "signature": "FBro图像_取表示信息JSON(图像句柄, 缩放因子)",
+      "description": "返回实际缩放、像素宽度和像素高度的 UTF-16 JSON。",
+      "insertText": "FBro图像_取表示信息JSON($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro图像_取表示信息JSON",
+        "runtimeName": "FBro图像_取表示信息JSON",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缩放因子",
+            "type": "double"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro图像_取表示信息JSON(1, 1.0)"
+    },
+    {
+      "index": 110,
+      "name": "FBro图像_转位图缓冲",
+      "aliases": [
+        "FBroHsImage_GetAsBitmap"
+      ],
+      "signature": "FBro图像_转位图缓冲(图像句柄, 缩放因子, 颜色类型, 透明类型)",
+      "description": "把最接近的位图表示复制到受管缓冲。",
+      "insertText": "FBro图像_转位图缓冲($1, $2, $3, $4)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro图像_转位图缓冲",
+        "runtimeName": "FBro图像_转位图缓冲",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缩放因子",
+            "type": "double"
+          },
+          {
+            "name": "颜色类型",
+            "type": "int"
+          },
+          {
+            "name": "透明类型",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro图像_转位图缓冲(1, 1.0, 1, 1)"
+    },
+    {
+      "index": 111,
+      "name": "FBro图像_转JPEG缓冲",
+      "aliases": [
+        "FBroHsImage_GetAsJPEG"
+      ],
+      "signature": "FBro图像_转JPEG缓冲(图像句柄, 缩放因子, 质量)",
+      "description": "把图像编码为 JPEG 受管缓冲。",
+      "insertText": "FBro图像_转JPEG缓冲($1, $2, $3)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro图像_转JPEG缓冲",
+        "runtimeName": "FBro图像_转JPEG缓冲",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缩放因子",
+            "type": "double"
+          },
+          {
+            "name": "质量",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro图像_转JPEG缓冲(1, 1.0, 1)"
+    },
+    {
+      "index": 112,
+      "name": "FBro图像_转PNG缓冲",
+      "aliases": [
+        "FBroHsImage_GetAsPNG"
+      ],
+      "signature": "FBro图像_转PNG缓冲(图像句柄, 缩放因子, 保留透明)",
+      "description": "把图像编码为 PNG 受管缓冲。",
+      "insertText": "FBro图像_转PNG缓冲($1, $2, $3)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro图像_转PNG缓冲",
+        "runtimeName": "FBro图像_转PNG缓冲",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缩放因子",
+            "type": "double"
+          },
+          {
+            "name": "保留透明",
+            "type": "bool"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro图像_转PNG缓冲(1, 1.0, 真)"
+    },
+    {
+      "index": 113,
+      "name": "FBro证书_异步取当前",
+      "aliases": [
+        "LB_FBro_GetCurrentCertificateAsync"
+      ],
+      "signature": "FBro证书_异步取当前(控件名)",
+      "description": "从当前可见导航项异步取得 TLS 证书任务。",
+      "insertText": "FBro证书_异步取当前(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书_异步取当前",
+        "runtimeName": "FBro证书_异步取当前",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro证书_异步取当前(\"演示输出\")"
+    },
+    {
+      "index": 114,
+      "name": "FBro证书_取主体",
+      "aliases": [
+        "FBroHsX509Certificate_GetSubject"
+      ],
+      "signature": "FBro证书_取主体(证书句柄)",
+      "description": "取得受证书管理的主体 Principal 句柄。",
+      "insertText": "FBro证书_取主体($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书_取主体",
+        "runtimeName": "FBro证书_取主体",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro证书_取主体(1)"
+    },
+    {
+      "index": 115,
+      "name": "FBro证书_取颁发者",
+      "aliases": [
+        "FBroHsX509Certificate_GetIssuer"
+      ],
+      "signature": "FBro证书_取颁发者(证书句柄)",
+      "description": "取得受证书管理的颁发者 Principal 句柄。",
+      "insertText": "FBro证书_取颁发者($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书_取颁发者",
+        "runtimeName": "FBro证书_取颁发者",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro证书_取颁发者(1)"
+    },
+    {
+      "index": 116,
+      "name": "FBro证书_取序列号缓冲",
+      "aliases": [
+        "FBroHsX509Certificate_GetSerialNumber"
+      ],
+      "signature": "FBro证书_取序列号缓冲(证书句柄)",
+      "description": "取得证书序列号受管缓冲。",
+      "insertText": "FBro证书_取序列号缓冲($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书_取序列号缓冲",
+        "runtimeName": "FBro证书_取序列号缓冲",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro证书_取序列号缓冲(1)"
+    },
+    {
+      "index": 117,
+      "name": "FBro证书_取DER缓冲",
+      "aliases": [
+        "FBroHsX509Certificate_GetDEREncoded"
+      ],
+      "signature": "FBro证书_取DER缓冲(证书句柄)",
+      "description": "取得 DER 编码证书受管缓冲。",
+      "insertText": "FBro证书_取DER缓冲($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书_取DER缓冲",
+        "runtimeName": "FBro证书_取DER缓冲",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro证书_取DER缓冲(1)"
+    },
+    {
+      "index": 118,
+      "name": "FBro证书_取PEM缓冲",
+      "aliases": [
+        "FBroHsX509Certificate_GetPEMEncoded"
+      ],
+      "signature": "FBro证书_取PEM缓冲(证书句柄)",
+      "description": "取得 PEM 编码证书受管缓冲。",
+      "insertText": "FBro证书_取PEM缓冲($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书_取PEM缓冲",
+        "runtimeName": "FBro证书_取PEM缓冲",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro证书_取PEM缓冲(1)"
+    },
+    {
+      "index": 119,
+      "name": "FBro证书_取生效时间",
+      "aliases": [
+        "FBroHsX509Certificate_GetValidStart"
+      ],
+      "signature": "FBro证书_取生效时间(证书句柄)",
+      "description": "取得证书生效 Unix 时间。",
+      "insertText": "FBro证书_取生效时间($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书_取生效时间",
+        "runtimeName": "FBro证书_取生效时间",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro证书_取生效时间(1)"
+    },
+    {
+      "index": 120,
+      "name": "FBro证书_取失效时间",
+      "aliases": [
+        "FBroHsX509Certificate_GetValidExpiry"
+      ],
+      "signature": "FBro证书_取失效时间(证书句柄)",
+      "description": "取得证书失效 Unix 时间。",
+      "insertText": "FBro证书_取失效时间($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书_取失效时间",
+        "runtimeName": "FBro证书_取失效时间",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro证书_取失效时间(1)"
+    },
+    {
+      "index": 121,
+      "name": "FBro证书_取颁发链数量",
+      "aliases": [
+        "FBroHsX509Certificate_GetIssuerChainSize"
+      ],
+      "signature": "FBro证书_取颁发链数量(证书句柄)",
+      "description": "取得颁发链数量。",
+      "insertText": "FBro证书_取颁发链数量($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书_取颁发链数量",
+        "runtimeName": "FBro证书_取颁发链数量",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro证书_取颁发链数量(1)"
+    },
+    {
+      "index": 122,
+      "name": "FBro证书_取DER颁发链项",
+      "aliases": [
+        "FBroHsX509Certificate_GetDEREncodedIssuerChain"
+      ],
+      "signature": "FBro证书_取DER颁发链项(证书句柄, 索引)",
+      "description": "取得指定颁发链项的 DER 受管缓冲。",
+      "insertText": "FBro证书_取DER颁发链项($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书_取DER颁发链项",
+        "runtimeName": "FBro证书_取DER颁发链项",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro证书_取DER颁发链项(1, 1)"
+    },
+    {
+      "index": 123,
+      "name": "FBro证书_取PEM颁发链项",
+      "aliases": [
+        "FBroHsX509Certificate_GetPEMEncodedIssuerChain"
+      ],
+      "signature": "FBro证书_取PEM颁发链项(证书句柄, 索引)",
+      "description": "取得指定颁发链项的 PEM 受管缓冲。",
+      "insertText": "FBro证书_取PEM颁发链项($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书_取PEM颁发链项",
+        "runtimeName": "FBro证书_取PEM颁发链项",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro证书_取PEM颁发链项(1, 1)"
+    },
+    {
+      "index": 124,
+      "name": "FBro证书主体_取显示名",
+      "aliases": [
+        "FBroHsX509CertPrincipal_GetDisplayName"
+      ],
+      "signature": "FBro证书主体_取显示名(主体句柄)",
+      "description": "取得证书主体显示名。",
+      "insertText": "FBro证书主体_取显示名($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书主体_取显示名",
+        "runtimeName": "FBro证书主体_取显示名",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro证书主体_取显示名(1)"
+    },
+    {
+      "index": 125,
+      "name": "FBro证书主体_取通用名",
+      "aliases": [
+        "FBroHsX509CertPrincipal_GetCommonName"
+      ],
+      "signature": "FBro证书主体_取通用名(主体句柄)",
+      "description": "取得证书主体通用名。",
+      "insertText": "FBro证书主体_取通用名($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书主体_取通用名",
+        "runtimeName": "FBro证书主体_取通用名",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro证书主体_取通用名(1)"
+    },
+    {
+      "index": 126,
+      "name": "FBro证书主体_取地区名",
+      "aliases": [
+        "FBroHsX509CertPrincipal_GetLocalityName"
+      ],
+      "signature": "FBro证书主体_取地区名(主体句柄)",
+      "description": "取得证书主体地区名。",
+      "insertText": "FBro证书主体_取地区名($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书主体_取地区名",
+        "runtimeName": "FBro证书主体_取地区名",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro证书主体_取地区名(1)"
+    },
+    {
+      "index": 127,
+      "name": "FBro证书主体_取省州名",
+      "aliases": [
+        "FBroHsX509CertPrincipal_GetStateOrProvinceName"
+      ],
+      "signature": "FBro证书主体_取省州名(主体句柄)",
+      "description": "取得证书主体省或州名。",
+      "insertText": "FBro证书主体_取省州名($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书主体_取省州名",
+        "runtimeName": "FBro证书主体_取省州名",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro证书主体_取省州名(1)"
+    },
+    {
+      "index": 128,
+      "name": "FBro证书主体_取国家名",
+      "aliases": [
+        "FBroHsX509CertPrincipal_GetCountryName"
+      ],
+      "signature": "FBro证书主体_取国家名(主体句柄)",
+      "description": "取得证书主体国家名。",
+      "insertText": "FBro证书主体_取国家名($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书主体_取国家名",
+        "runtimeName": "FBro证书主体_取国家名",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro证书主体_取国家名(1)"
+    },
+    {
+      "index": 129,
+      "name": "FBro证书主体_取组织JSON",
+      "aliases": [
+        "FBroHsX509CertPrincipal_GetOrganizationNames"
+      ],
+      "signature": "FBro证书主体_取组织JSON(主体句柄)",
+      "description": "取得组织名 UTF-16 JSON 数组。",
+      "insertText": "FBro证书主体_取组织JSON($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书主体_取组织JSON",
+        "runtimeName": "FBro证书主体_取组织JSON",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro证书主体_取组织JSON(1)"
+    },
+    {
+      "index": 130,
+      "name": "FBro证书主体_取组织单位JSON",
+      "aliases": [
+        "FBroHsX509CertPrincipal_GetOrganizationUnitNames"
+      ],
+      "signature": "FBro证书主体_取组织单位JSON(主体句柄)",
+      "description": "取得组织单位名 UTF-16 JSON 数组。",
+      "insertText": "FBro证书主体_取组织单位JSON($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro证书主体_取组织单位JSON",
+        "runtimeName": "FBro证书主体_取组织单位JSON",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro证书主体_取组织单位JSON(1)"
+    },
+    {
+      "index": 131,
+      "name": "FBro拖放数据_是否有图像",
+      "aliases": [
+        "FBroHsDragData_HasImage"
+      ],
+      "signature": "FBro拖放数据_是否有图像(拖放数据句柄)",
+      "description": "检查 DragEnter 事件对象是否携带图像。",
+      "insertText": "FBro拖放数据_是否有图像($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro拖放数据_是否有图像",
+        "runtimeName": "FBro拖放数据_是否有图像",
+        "parameters": [
+          {
+            "name": "拖放数据句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro拖放数据_是否有图像(1)"
+    },
+    {
+      "index": 132,
+      "name": "FBro拖放数据_取图像",
+      "aliases": [
+        "FBroHsDragData_GetImage"
+      ],
+      "signature": "FBro拖放数据_取图像(拖放数据句柄)",
+      "description": "从 DragEnter 事件对象取得受管 Image 句柄。",
+      "insertText": "FBro拖放数据_取图像($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro拖放数据_取图像",
+        "runtimeName": "FBro拖放数据_取图像",
+        "parameters": [
+          {
+            "name": "拖放数据句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro拖放数据_取图像(1)"
+    }
+  ]
+}

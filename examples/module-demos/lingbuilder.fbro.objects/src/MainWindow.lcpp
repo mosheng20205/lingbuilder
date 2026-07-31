@@ -1,0 +1,723 @@
+包 FBro受管对象模块完整演示
+使用 Win32窗口基础模块
+使用 FBro受管对象模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "FBro受管对象模块：132 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.fbro.objects")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–19：FBro任务_取状态 至 FBro值_是否只读；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBro任务_取状态
+            // [1] FBro任务_取状态(任务ID)
+            // 功能：查询异步任务状态。
+            // 参数：任务ID:longLong；返回：int；可见性：advanced
+            FBro任务_取状态(1)
+            // 命令ID：FBro任务_取结果
+            // [2] FBro任务_取结果(任务ID)
+            // 功能：取得异步任务 UTF-16 结果。
+            // 参数：任务ID:longLong；返回：wideString；可见性：advanced
+            FBro任务_取结果(1)
+            // 命令ID：FBro任务_取错误
+            // [3] FBro任务_取错误(任务ID)
+            // 功能：取得异步任务中文错误。
+            // 参数：任务ID:longLong；返回：wideString；可见性：advanced
+            FBro任务_取错误(1)
+            // 命令ID：FBro任务_等待
+            // [4] FBro任务_等待(任务ID, 超时毫秒)
+            // 功能：等待任务进入完成、失败或取消状态，最长十分钟。
+            // 参数：任务ID:longLong，超时毫秒:int；返回：int；可见性：advanced
+            FBro任务_等待(1, 1)
+            // 命令ID：FBro任务_取对象
+            // [5] FBro任务_取对象(任务ID)
+            // 功能：取得已完成任务返回的受管对象句柄。
+            // 参数：任务ID:longLong；返回：longLong；可见性：advanced
+            FBro任务_取对象(1)
+            // 命令ID：FBro任务_取缓冲
+            // [6] FBro任务_取缓冲(任务ID)
+            // 功能：取得已完成任务返回的受管二进制缓冲句柄。
+            // 参数：任务ID:longLong；返回：longLong；可见性：advanced
+            FBro任务_取缓冲(1)
+            // 命令ID：FBro任务_取消
+            // [7] FBro任务_取消(任务ID)
+            // 功能：取消尚未完成的任务。
+            // 参数：任务ID:longLong；返回：int；可见性：advanced
+            FBro任务_取消(1)
+            // 命令ID：FBro任务_释放
+            // [8] FBro任务_释放(任务ID)
+            // 功能：释放任务句柄。
+            // 参数：任务ID:longLong；返回：int；可见性：advanced
+            FBro任务_释放(1)
+            // 命令ID：FBro缓冲_从文本
+            // [9] FBro缓冲_从文本(文本)
+            // 功能：把 UTF-16 文本复制到受管二进制缓冲并返回句柄。
+            // 参数：文本:wideString；返回：longLong；可见性：advanced
+            FBro缓冲_从文本("演示参数1")
+            // 命令ID：FBro缓冲_取大小
+            // [10] FBro缓冲_取大小(缓冲句柄)
+            // 功能：取得受管缓冲字节数。
+            // 参数：缓冲句柄:longLong；返回：longLong；可见性：advanced
+            FBro缓冲_取大小(1)
+            // 命令ID：FBro缓冲_转十六进制
+            // [11] FBro缓冲_转十六进制(缓冲句柄)
+            // 功能：把受管缓冲转换为十六进制文本。
+            // 参数：缓冲句柄:longLong；返回：wideString；可见性：advanced
+            FBro缓冲_转十六进制(1)
+            // 命令ID：FBro缓冲_保存文件
+            // [12] FBro缓冲_保存文件(缓冲句柄, 路径)
+            // 功能：保存受管缓冲到文件。
+            // 参数：缓冲句柄:longLong，路径:wideString；返回：int；可见性：advanced
+            FBro缓冲_保存文件(1, "module-demo-temp.txt")
+            // 命令ID：FBro缓冲_释放
+            // [13] FBro缓冲_释放(缓冲句柄)
+            // 功能：释放受管缓冲句柄。
+            // 参数：缓冲句柄:longLong；返回：int；可见性：advanced
+            FBro缓冲_释放(1)
+            // 命令ID：FBro对象_取类型
+            // [14] FBro对象_取类型(对象句柄)
+            // 功能：取得受管对象注册表类型。
+            // 参数：对象句柄:longLong；返回：int；可见性：advanced
+            FBro对象_取类型(1)
+            // 命令ID：FBro对象_释放
+            // [15] FBro对象_释放(对象句柄)
+            // 功能：释放受管对象；重复释放返回稳定错误码。
+            // 参数：对象句柄:longLong；返回：int；可见性：advanced
+            FBro对象_释放(1)
+            // 命令ID：FBro值_创建
+            // [16] FBro值_创建()
+            // 功能：创建受管 Value 对象并返回不透明句柄。
+            // 参数：无；返回：longLong；可见性：advanced
+            FBro值_创建()
+            // 命令ID：FBro值_是否有效
+            // [17] FBro值_是否有效(值句柄)
+            // 功能：检查 Value 对象是否有效。
+            // 参数：值句柄:longLong；返回：int；可见性：advanced
+            FBro值_是否有效(1)
+            // 命令ID：FBro值_是否被拥有
+            // [18] FBro值_是否被拥有(值句柄)
+            // 功能：检查 Value 对象是否已归属于其它容器。
+            // 参数：值句柄:longLong；返回：int；可见性：advanced
+            FBro值_是否被拥有(1)
+            // 命令ID：FBro值_是否只读
+            // [19] FBro值_是否只读(值句柄)
+            // 功能：检查 Value 对象是否只读。
+            // 参数：值句柄:longLong；返回：int；可见性：advanced
+            FBro值_是否只读(1)
+        如果结束
+        调试输出("已查看 命令 1–19：FBro任务_取状态 至 FBro值_是否只读；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本("演示状态", "命令 20–38：FBro值_是否同一对象 至 FBro值_设置列表；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBro值_是否同一对象
+            // [20] FBro值_是否同一对象(值句柄, 另一值句柄)
+            // 功能：检查两个 Value 句柄是否引用同一官方对象。
+            // 参数：值句柄:longLong，另一值句柄:longLong；返回：int；可见性：advanced
+            FBro值_是否同一对象(1, 1)
+            // 命令ID：FBro值_是否相等
+            // [21] FBro值_是否相等(值句柄, 另一值句柄)
+            // 功能：比较两个 Value 的内容。
+            // 参数：值句柄:longLong，另一值句柄:longLong；返回：int；可见性：advanced
+            FBro值_是否相等(1, 1)
+            // 命令ID：FBro值_复制
+            // [22] FBro值_复制(值句柄)
+            // 功能：复制 Value 并返回独立受管句柄。
+            // 参数：值句柄:longLong；返回：longLong；可见性：advanced
+            FBro值_复制(1)
+            // 命令ID：FBro值_取类型
+            // [23] FBro值_取类型(值句柄)
+            // 功能：取得 Value 的官方值类型。
+            // 参数：值句柄:longLong；返回：int；可见性：advanced
+            FBro值_取类型(1)
+            // 命令ID：FBro值_取逻辑
+            // [24] FBro值_取逻辑(值句柄)
+            // 功能：读取逻辑值。
+            // 参数：值句柄:longLong；返回：int；可见性：advanced
+            FBro值_取逻辑(1)
+            // 命令ID：FBro值_取整数
+            // [25] FBro值_取整数(值句柄)
+            // 功能：读取整数值。
+            // 参数：值句柄:longLong；返回：int；可见性：advanced
+            FBro值_取整数(1)
+            // 命令ID：FBro值_取小数
+            // [26] FBro值_取小数(值句柄)
+            // 功能：读取小数值。
+            // 参数：值句柄:longLong；返回：double；可见性：advanced
+            FBro值_取小数(1)
+            // 命令ID：FBro值_取文本
+            // [27] FBro值_取文本(值句柄)
+            // 功能：读取 UTF-16 文本值。
+            // 参数：值句柄:longLong；返回：wideString；可见性：advanced
+            FBro值_取文本(1)
+            // 命令ID：FBro值_设为空
+            // [28] FBro值_设为空(值句柄)
+            // 功能：把 Value 设置为空值。
+            // 参数：值句柄:longLong；返回：int；可见性：advanced
+            FBro值_设为空(1)
+            // 命令ID：FBro值_设置逻辑
+            // [29] FBro值_设置逻辑(值句柄, 值)
+            // 功能：写入逻辑值。
+            // 参数：值句柄:longLong，值:bool；返回：int；可见性：advanced
+            FBro值_设置逻辑(1, 真)
+            // 命令ID：FBro值_设置整数
+            // [30] FBro值_设置整数(值句柄, 值)
+            // 功能：写入整数值。
+            // 参数：值句柄:longLong，值:int；返回：int；可见性：advanced
+            FBro值_设置整数(1, 1)
+            // 命令ID：FBro值_设置小数
+            // [31] FBro值_设置小数(值句柄, 值)
+            // 功能：写入小数值。
+            // 参数：值句柄:longLong，值:double；返回：int；可见性：advanced
+            FBro值_设置小数(1, 1.0)
+            // 命令ID：FBro值_设置文本
+            // [32] FBro值_设置文本(值句柄, 值)
+            // 功能：写入 UTF-16 文本值。
+            // 参数：值句柄:longLong，值:wideString；返回：int；可见性：advanced
+            FBro值_设置文本(1, "演示参数2")
+            // 命令ID：FBro值_取二进制
+            // [33] FBro值_取二进制(值句柄)
+            // 功能：复制二进制值到受管缓冲并返回句柄。
+            // 参数：值句柄:longLong；返回：longLong；可见性：advanced
+            FBro值_取二进制(1)
+            // 命令ID：FBro值_设置二进制
+            // [34] FBro值_设置二进制(值句柄, 缓冲句柄)
+            // 功能：从受管缓冲写入二进制值。
+            // 参数：值句柄:longLong，缓冲句柄:longLong；返回：int；可见性：advanced
+            FBro值_设置二进制(1, 1)
+            // 命令ID：FBro值_取字典
+            // [35] FBro值_取字典(值句柄)
+            // 功能：取得受父对象管理的 Dictionary 句柄。
+            // 参数：值句柄:longLong；返回：longLong；可见性：advanced
+            FBro值_取字典(1)
+            // 命令ID：FBro值_取列表
+            // [36] FBro值_取列表(值句柄)
+            // 功能：取得受父对象管理的 List 句柄。
+            // 参数：值句柄:longLong；返回：longLong；可见性：advanced
+            FBro值_取列表(1)
+            // 命令ID：FBro值_设置字典
+            // [37] FBro值_设置字典(值句柄, 字典句柄)
+            // 功能：把 Dictionary 交由 Value 管理。
+            // 参数：值句柄:longLong，字典句柄:longLong；返回：int；可见性：advanced
+            FBro值_设置字典(1, 1)
+            // 命令ID：FBro值_设置列表
+            // [38] FBro值_设置列表(值句柄, 列表句柄)
+            // 功能：把 List 交由 Value 管理。
+            // 参数：值句柄:longLong，列表句柄:longLong；返回：int；可见性：advanced
+            FBro值_设置列表(1, 1)
+        如果结束
+        调试输出("已查看 命令 20–38：FBro值_是否同一对象 至 FBro值_设置列表；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第03组_被单击()
+        控件_设置文本("演示状态", "命令 39–57：FBro字典_创建 至 FBro字典_取二进制；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBro字典_创建
+            // [39] FBro字典_创建()
+            // 功能：创建受管 Dictionary 对象。
+            // 参数：无；返回：longLong；可见性：advanced
+            FBro字典_创建()
+            // 命令ID：FBro字典_是否有效
+            // [40] FBro字典_是否有效(字典句柄)
+            // 功能：检查 Dictionary 是否有效。
+            // 参数：字典句柄:longLong；返回：int；可见性：advanced
+            FBro字典_是否有效(1)
+            // 命令ID：FBro字典_是否被拥有
+            // [41] FBro字典_是否被拥有(字典句柄)
+            // 功能：检查 Dictionary 是否已被拥有。
+            // 参数：字典句柄:longLong；返回：int；可见性：advanced
+            FBro字典_是否被拥有(1)
+            // 命令ID：FBro字典_是否只读
+            // [42] FBro字典_是否只读(字典句柄)
+            // 功能：检查 Dictionary 是否只读。
+            // 参数：字典句柄:longLong；返回：int；可见性：advanced
+            FBro字典_是否只读(1)
+            // 命令ID：FBro字典_是否同一对象
+            // [43] FBro字典_是否同一对象(字典句柄, 另一字典句柄)
+            // 功能：检查两个 Dictionary 句柄是否引用同一官方对象。
+            // 参数：字典句柄:longLong，另一字典句柄:longLong；返回：int；可见性：advanced
+            FBro字典_是否同一对象(1, 1)
+            // 命令ID：FBro字典_是否相等
+            // [44] FBro字典_是否相等(字典句柄, 另一字典句柄)
+            // 功能：比较两个 Dictionary 的内容。
+            // 参数：字典句柄:longLong，另一字典句柄:longLong；返回：int；可见性：advanced
+            FBro字典_是否相等(1, 1)
+            // 命令ID：FBro字典_复制
+            // [45] FBro字典_复制(字典句柄, 排除空子项)
+            // 功能：复制 Dictionary 并返回独立受管句柄。
+            // 参数：字典句柄:longLong，排除空子项:bool；返回：longLong；可见性：advanced
+            FBro字典_复制(1, 真)
+            // 命令ID：FBro字典_取数量
+            // [46] FBro字典_取数量(字典句柄)
+            // 功能：取得键数量。
+            // 参数：字典句柄:longLong；返回：int；可见性：advanced
+            FBro字典_取数量(1)
+            // 命令ID：FBro字典_清空
+            // [47] FBro字典_清空(字典句柄)
+            // 功能：删除全部键。
+            // 参数：字典句柄:longLong；返回：int；可见性：advanced
+            FBro字典_清空(1)
+            // 命令ID：FBro字典_是否存在键
+            // [48] FBro字典_是否存在键(字典句柄, 键)
+            // 功能：检查键是否存在。
+            // 参数：字典句柄:longLong，键:wideString；返回：int；可见性：advanced
+            FBro字典_是否存在键(1, "演示参数2")
+            // 命令ID：FBro字典_删除
+            // [49] FBro字典_删除(字典句柄, 键)
+            // 功能：删除指定键。
+            // 参数：字典句柄:longLong，键:wideString；返回：int；可见性：advanced
+            FBro字典_删除(1, "演示参数2")
+            // 命令ID：FBro字典_取类型
+            // [50] FBro字典_取类型(字典句柄, 键)
+            // 功能：取得指定键的官方值类型。
+            // 参数：字典句柄:longLong，键:wideString；返回：int；可见性：advanced
+            FBro字典_取类型(1, "演示参数2")
+            // 命令ID：FBro字典_取逻辑
+            // [51] FBro字典_取逻辑(字典句柄, 键)
+            // 功能：读取逻辑值。
+            // 参数：字典句柄:longLong，键:wideString；返回：int；可见性：advanced
+            FBro字典_取逻辑(1, "演示参数2")
+            // 命令ID：FBro字典_取整数
+            // [52] FBro字典_取整数(字典句柄, 键)
+            // 功能：读取整数值。
+            // 参数：字典句柄:longLong，键:wideString；返回：int；可见性：advanced
+            FBro字典_取整数(1, "演示参数2")
+            // 命令ID：FBro字典_取小数
+            // [53] FBro字典_取小数(字典句柄, 键)
+            // 功能：读取小数值。
+            // 参数：字典句柄:longLong，键:wideString；返回：double；可见性：advanced
+            FBro字典_取小数(1, "演示参数2")
+            // 命令ID：FBro字典_取文本
+            // [54] FBro字典_取文本(字典句柄, 键)
+            // 功能：读取 UTF-16 文本值。
+            // 参数：字典句柄:longLong，键:wideString；返回：wideString；可见性：advanced
+            FBro字典_取文本(1, "演示参数2")
+            // 命令ID：FBro字典_取键列表JSON
+            // [55] FBro字典_取键列表JSON(字典句柄)
+            // 功能：取得 UTF-16 JSON 键数组，不向源码暴露 StringList 或 STL。
+            // 参数：字典句柄:longLong；返回：wideString；可见性：advanced
+            FBro字典_取键列表JSON(1)
+            // 命令ID：FBro字典_取值对象
+            // [56] FBro字典_取值对象(字典句柄, 键)
+            // 功能：取得受字典管理的 Value 句柄。
+            // 参数：字典句柄:longLong，键:wideString；返回：longLong；可见性：advanced
+            FBro字典_取值对象(1, "演示参数2")
+            // 命令ID：FBro字典_取二进制
+            // [57] FBro字典_取二进制(字典句柄, 键)
+            // 功能：复制指定键的二进制值到受管缓冲。
+            // 参数：字典句柄:longLong，键:wideString；返回：longLong；可见性：advanced
+            FBro字典_取二进制(1, "演示参数2")
+        如果结束
+        调试输出("已查看 命令 39–57：FBro字典_创建 至 FBro字典_取二进制；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第04组_被单击()
+        控件_设置文本("演示状态", "命令 58–76：FBro字典_取字典 至 FBro列表_设置数量；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBro字典_取字典
+            // [58] FBro字典_取字典(字典句柄, 键)
+            // 功能：取得受父字典管理的 Dictionary 句柄。
+            // 参数：字典句柄:longLong，键:wideString；返回：longLong；可见性：advanced
+            FBro字典_取字典(1, "演示参数2")
+            // 命令ID：FBro字典_取列表
+            // [59] FBro字典_取列表(字典句柄, 键)
+            // 功能：取得受父字典管理的 List 句柄。
+            // 参数：字典句柄:longLong，键:wideString；返回：longLong；可见性：advanced
+            FBro字典_取列表(1, "演示参数2")
+            // 命令ID：FBro字典_设为空
+            // [60] FBro字典_设为空(字典句柄, 键)
+            // 功能：把指定键设置为空值。
+            // 参数：字典句柄:longLong，键:wideString；返回：int；可见性：advanced
+            FBro字典_设为空(1, "演示参数2")
+            // 命令ID：FBro字典_设置逻辑
+            // [61] FBro字典_设置逻辑(字典句柄, 键, 值)
+            // 功能：写入逻辑值。
+            // 参数：字典句柄:longLong，键:wideString，值:bool；返回：int；可见性：advanced
+            FBro字典_设置逻辑(1, "演示参数2", 真)
+            // 命令ID：FBro字典_设置整数
+            // [62] FBro字典_设置整数(字典句柄, 键, 值)
+            // 功能：写入整数值。
+            // 参数：字典句柄:longLong，键:wideString，值:int；返回：int；可见性：advanced
+            FBro字典_设置整数(1, "演示参数2", 1)
+            // 命令ID：FBro字典_设置小数
+            // [63] FBro字典_设置小数(字典句柄, 键, 值)
+            // 功能：写入小数值。
+            // 参数：字典句柄:longLong，键:wideString，值:double；返回：int；可见性：advanced
+            FBro字典_设置小数(1, "演示参数2", 1.0)
+            // 命令ID：FBro字典_设置文本
+            // [64] FBro字典_设置文本(字典句柄, 键, 值)
+            // 功能：写入 UTF-16 文本值。
+            // 参数：字典句柄:longLong，键:wideString，值:wideString；返回：int；可见性：advanced
+            FBro字典_设置文本(1, "演示参数2", "演示参数3")
+            // 命令ID：FBro字典_设置值对象
+            // [65] FBro字典_设置值对象(字典句柄, 键, 值句柄)
+            // 功能：把 Value 交由指定键管理。
+            // 参数：字典句柄:longLong，键:wideString，值句柄:longLong；返回：int；可见性：advanced
+            FBro字典_设置值对象(1, "演示参数2", 1)
+            // 命令ID：FBro字典_设置二进制
+            // [66] FBro字典_设置二进制(字典句柄, 键, 缓冲句柄)
+            // 功能：从受管缓冲写入指定键。
+            // 参数：字典句柄:longLong，键:wideString，缓冲句柄:longLong；返回：int；可见性：advanced
+            FBro字典_设置二进制(1, "演示参数2", 1)
+            // 命令ID：FBro字典_设置字典
+            // [67] FBro字典_设置字典(字典句柄, 键, 子字典句柄)
+            // 功能：把子 Dictionary 交由指定键管理。
+            // 参数：字典句柄:longLong，键:wideString，子字典句柄:longLong；返回：int；可见性：advanced
+            FBro字典_设置字典(1, "演示参数2", 1)
+            // 命令ID：FBro字典_设置列表
+            // [68] FBro字典_设置列表(字典句柄, 键, 列表句柄)
+            // 功能：把 List 交由指定键管理。
+            // 参数：字典句柄:longLong，键:wideString，列表句柄:longLong；返回：int；可见性：advanced
+            FBro字典_设置列表(1, "演示参数2", 1)
+            // 命令ID：FBro列表_创建
+            // [69] FBro列表_创建()
+            // 功能：创建受管 List 对象。
+            // 参数：无；返回：longLong；可见性：advanced
+            FBro列表_创建()
+            // 命令ID：FBro列表_是否有效
+            // [70] FBro列表_是否有效(列表句柄)
+            // 功能：检查 List 是否有效。
+            // 参数：列表句柄:longLong；返回：int；可见性：advanced
+            FBro列表_是否有效(1)
+            // 命令ID：FBro列表_是否被拥有
+            // [71] FBro列表_是否被拥有(列表句柄)
+            // 功能：检查 List 是否已被拥有。
+            // 参数：列表句柄:longLong；返回：int；可见性：advanced
+            FBro列表_是否被拥有(1)
+            // 命令ID：FBro列表_是否只读
+            // [72] FBro列表_是否只读(列表句柄)
+            // 功能：检查 List 是否只读。
+            // 参数：列表句柄:longLong；返回：int；可见性：advanced
+            FBro列表_是否只读(1)
+            // 命令ID：FBro列表_是否同一对象
+            // [73] FBro列表_是否同一对象(列表句柄, 另一列表句柄)
+            // 功能：检查两个 List 句柄是否引用同一官方对象。
+            // 参数：列表句柄:longLong，另一列表句柄:longLong；返回：int；可见性：advanced
+            FBro列表_是否同一对象(1, 1)
+            // 命令ID：FBro列表_是否相等
+            // [74] FBro列表_是否相等(列表句柄, 另一列表句柄)
+            // 功能：比较两个 List 的内容。
+            // 参数：列表句柄:longLong，另一列表句柄:longLong；返回：int；可见性：advanced
+            FBro列表_是否相等(1, 1)
+            // 命令ID：FBro列表_复制
+            // [75] FBro列表_复制(列表句柄)
+            // 功能：复制 List 并返回独立受管句柄。
+            // 参数：列表句柄:longLong；返回：longLong；可见性：advanced
+            FBro列表_复制(1)
+            // 命令ID：FBro列表_设置数量
+            // [76] FBro列表_设置数量(列表句柄, 数量)
+            // 功能：设置列表长度。
+            // 参数：列表句柄:longLong，数量:int；返回：int；可见性：advanced
+            FBro列表_设置数量(1, 1)
+        如果结束
+        调试输出("已查看 命令 58–76：FBro字典_取字典 至 FBro列表_设置数量；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第05组_被单击()
+        控件_设置文本("演示状态", "命令 77–95：FBro列表_取数量 至 FBro列表_设置二进制；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBro列表_取数量
+            // [77] FBro列表_取数量(列表句柄)
+            // 功能：取得列表长度。
+            // 参数：列表句柄:longLong；返回：int；可见性：advanced
+            FBro列表_取数量(1)
+            // 命令ID：FBro列表_清空
+            // [78] FBro列表_清空(列表句柄)
+            // 功能：清空列表。
+            // 参数：列表句柄:longLong；返回：int；可见性：advanced
+            FBro列表_清空(1)
+            // 命令ID：FBro列表_删除
+            // [79] FBro列表_删除(列表句柄, 索引)
+            // 功能：删除指定索引。
+            // 参数：列表句柄:longLong，索引:int；返回：int；可见性：advanced
+            FBro列表_删除(1, 1)
+            // 命令ID：FBro列表_取类型
+            // [80] FBro列表_取类型(列表句柄, 索引)
+            // 功能：取得指定索引的官方值类型。
+            // 参数：列表句柄:longLong，索引:int；返回：int；可见性：advanced
+            FBro列表_取类型(1, 1)
+            // 命令ID：FBro列表_取逻辑
+            // [81] FBro列表_取逻辑(列表句柄, 索引)
+            // 功能：读取逻辑值。
+            // 参数：列表句柄:longLong，索引:int；返回：int；可见性：advanced
+            FBro列表_取逻辑(1, 1)
+            // 命令ID：FBro列表_取整数
+            // [82] FBro列表_取整数(列表句柄, 索引)
+            // 功能：读取整数值。
+            // 参数：列表句柄:longLong，索引:int；返回：int；可见性：advanced
+            FBro列表_取整数(1, 1)
+            // 命令ID：FBro列表_取小数
+            // [83] FBro列表_取小数(列表句柄, 索引)
+            // 功能：读取小数值。
+            // 参数：列表句柄:longLong，索引:int；返回：double；可见性：advanced
+            FBro列表_取小数(1, 1)
+            // 命令ID：FBro列表_取文本
+            // [84] FBro列表_取文本(列表句柄, 索引)
+            // 功能：读取 UTF-16 文本值。
+            // 参数：列表句柄:longLong，索引:int；返回：wideString；可见性：advanced
+            FBro列表_取文本(1, 1)
+            // 命令ID：FBro列表_取值对象
+            // [85] FBro列表_取值对象(列表句柄, 索引)
+            // 功能：取得受列表管理的 Value 句柄。
+            // 参数：列表句柄:longLong，索引:int；返回：longLong；可见性：advanced
+            FBro列表_取值对象(1, 1)
+            // 命令ID：FBro列表_取二进制
+            // [86] FBro列表_取二进制(列表句柄, 索引)
+            // 功能：复制指定项的二进制值到受管缓冲。
+            // 参数：列表句柄:longLong，索引:int；返回：longLong；可见性：advanced
+            FBro列表_取二进制(1, 1)
+            // 命令ID：FBro列表_取字典
+            // [87] FBro列表_取字典(列表句柄, 索引)
+            // 功能：取得受父列表管理的 Dictionary 句柄。
+            // 参数：列表句柄:longLong，索引:int；返回：longLong；可见性：advanced
+            FBro列表_取字典(1, 1)
+            // 命令ID：FBro列表_取列表
+            // [88] FBro列表_取列表(列表句柄, 索引)
+            // 功能：取得受父列表管理的 List 句柄。
+            // 参数：列表句柄:longLong，索引:int；返回：longLong；可见性：advanced
+            FBro列表_取列表(1, 1)
+            // 命令ID：FBro列表_设为空
+            // [89] FBro列表_设为空(列表句柄, 索引)
+            // 功能：把指定索引设置为空值。
+            // 参数：列表句柄:longLong，索引:int；返回：int；可见性：advanced
+            FBro列表_设为空(1, 1)
+            // 命令ID：FBro列表_设置逻辑
+            // [90] FBro列表_设置逻辑(列表句柄, 索引, 值)
+            // 功能：写入逻辑值。
+            // 参数：列表句柄:longLong，索引:int，值:bool；返回：int；可见性：advanced
+            FBro列表_设置逻辑(1, 1, 真)
+            // 命令ID：FBro列表_设置整数
+            // [91] FBro列表_设置整数(列表句柄, 索引, 值)
+            // 功能：写入整数值。
+            // 参数：列表句柄:longLong，索引:int，值:int；返回：int；可见性：advanced
+            FBro列表_设置整数(1, 1, 1)
+            // 命令ID：FBro列表_设置小数
+            // [92] FBro列表_设置小数(列表句柄, 索引, 值)
+            // 功能：写入小数值。
+            // 参数：列表句柄:longLong，索引:int，值:double；返回：int；可见性：advanced
+            FBro列表_设置小数(1, 1, 1.0)
+            // 命令ID：FBro列表_设置文本
+            // [93] FBro列表_设置文本(列表句柄, 索引, 值)
+            // 功能：写入 UTF-16 文本值。
+            // 参数：列表句柄:longLong，索引:int，值:wideString；返回：int；可见性：advanced
+            FBro列表_设置文本(1, 1, "演示参数3")
+            // 命令ID：FBro列表_设置值对象
+            // [94] FBro列表_设置值对象(列表句柄, 索引, 值句柄)
+            // 功能：把 Value 交由指定索引管理。
+            // 参数：列表句柄:longLong，索引:int，值句柄:longLong；返回：int；可见性：advanced
+            FBro列表_设置值对象(1, 1, 1)
+            // 命令ID：FBro列表_设置二进制
+            // [95] FBro列表_设置二进制(列表句柄, 索引, 缓冲句柄)
+            // 功能：从受管缓冲写入指定索引。
+            // 参数：列表句柄:longLong，索引:int，缓冲句柄:longLong；返回：int；可见性：advanced
+            FBro列表_设置二进制(1, 1, 1)
+        如果结束
+        调试输出("已查看 命令 77–95：FBro列表_取数量 至 FBro列表_设置二进制；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第06组_被单击()
+        控件_设置文本("演示状态", "命令 96–114：FBro列表_设置字典 至 FBro证书_取主体；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBro列表_设置字典
+            // [96] FBro列表_设置字典(列表句柄, 索引, 字典句柄)
+            // 功能：把 Dictionary 交由指定索引管理。
+            // 参数：列表句柄:longLong，索引:int，字典句柄:longLong；返回：int；可见性：advanced
+            FBro列表_设置字典(1, 1, 1)
+            // 命令ID：FBro列表_设置列表
+            // [97] FBro列表_设置列表(列表句柄, 索引, 子列表句柄)
+            // 功能：把子 List 交由指定索引管理。
+            // 参数：列表句柄:longLong，索引:int，子列表句柄:longLong；返回：int；可见性：advanced
+            FBro列表_设置列表(1, 1, 1)
+            // 命令ID：FBro流_从文件创建
+            // [98] FBro流_从文件创建(路径)
+            // 功能：从文件创建受管只读 Stream 句柄。
+            // 参数：路径:wideString；返回：longLong；可见性：advanced
+            FBro流_从文件创建("module-demo-temp.txt")
+            // 命令ID：FBro流_从缓冲创建
+            // [99] FBro流_从缓冲创建(缓冲句柄)
+            // 功能：复制受管缓冲并创建内存 Stream，保证底层数据生命周期。
+            // 参数：缓冲句柄:longLong；返回：longLong；可见性：advanced
+            FBro流_从缓冲创建(1)
+            // 命令ID：FBro流_读取
+            // [100] FBro流_读取(流句柄, 元素大小, 元素数量)
+            // 功能：读取数据并返回新的受管缓冲句柄，单次最多 256 MiB。
+            // 参数：流句柄:longLong，元素大小:longLong，元素数量:longLong；返回：longLong；可见性：advanced
+            FBro流_读取(1, 1, 1)
+            // 命令ID：FBro流_定位
+            // [101] FBro流_定位(流句柄, 偏移, 基准)
+            // 功能：按 0=开头、1=当前位置、2=结尾定位 Stream。
+            // 参数：流句柄:longLong，偏移:longLong，基准:int；返回：int；可见性：advanced
+            FBro流_定位(1, 1, 1)
+            // 命令ID：FBro流_取位置
+            // [102] FBro流_取位置(流句柄)
+            // 功能：取得当前字节位置。
+            // 参数：流句柄:longLong；返回：longLong；可见性：advanced
+            FBro流_取位置(1)
+            // 命令ID：FBro流_是否结束
+            // [103] FBro流_是否结束(流句柄)
+            // 功能：检查 Stream 是否到达结尾。
+            // 参数：流句柄:longLong；返回：int；可见性：advanced
+            FBro流_是否结束(1)
+            // 命令ID：FBro流_是否可能阻塞
+            // [104] FBro流_是否可能阻塞(流句柄)
+            // 功能：查询该 Stream 操作是否可能阻塞。
+            // 参数：流句柄:longLong；返回：int；可见性：advanced
+            FBro流_是否可能阻塞(1)
+            // 命令ID：FBro图像_异步下载
+            // [105] FBro图像_异步下载(控件名, 地址, 作为图标, 最大尺寸, 绕过缓存)
+            // 功能：通过当前浏览器会话异步下载图像并返回任务 ID。
+            // 参数：控件名:wideString，地址:wideString，作为图标:bool，最大尺寸:int，绕过缓存:bool；返回：longLong；可见性：advanced
+            FBro图像_异步下载("演示输出", "https://example.com", 真, 1, 真)
+            // 命令ID：FBro图像_是否为空
+            // [106] FBro图像_是否为空(图像句柄)
+            // 功能：检查受管 Image 是否为空。
+            // 参数：图像句柄:longLong；返回：int；可见性：advanced
+            FBro图像_是否为空(1)
+            // 命令ID：FBro图像_取宽度
+            // [107] FBro图像_取宽度(图像句柄)
+            // 功能：取得图像 DIP 宽度。
+            // 参数：图像句柄:longLong；返回：int；可见性：advanced
+            FBro图像_取宽度(1)
+            // 命令ID：FBro图像_取高度
+            // [108] FBro图像_取高度(图像句柄)
+            // 功能：取得图像 DIP 高度。
+            // 参数：图像句柄:longLong；返回：int；可见性：advanced
+            FBro图像_取高度(1)
+            // 命令ID：FBro图像_取表示信息JSON
+            // [109] FBro图像_取表示信息JSON(图像句柄, 缩放因子)
+            // 功能：返回实际缩放、像素宽度和像素高度的 UTF-16 JSON。
+            // 参数：图像句柄:longLong，缩放因子:double；返回：wideString；可见性：advanced
+            FBro图像_取表示信息JSON(1, 1.0)
+            // 命令ID：FBro图像_转位图缓冲
+            // [110] FBro图像_转位图缓冲(图像句柄, 缩放因子, 颜色类型, 透明类型)
+            // 功能：把最接近的位图表示复制到受管缓冲。
+            // 参数：图像句柄:longLong，缩放因子:double，颜色类型:int，透明类型:int；返回：longLong；可见性：advanced
+            FBro图像_转位图缓冲(1, 1.0, 1, 1)
+            // 命令ID：FBro图像_转JPEG缓冲
+            // [111] FBro图像_转JPEG缓冲(图像句柄, 缩放因子, 质量)
+            // 功能：把图像编码为 JPEG 受管缓冲。
+            // 参数：图像句柄:longLong，缩放因子:double，质量:int；返回：longLong；可见性：advanced
+            FBro图像_转JPEG缓冲(1, 1.0, 1)
+            // 命令ID：FBro图像_转PNG缓冲
+            // [112] FBro图像_转PNG缓冲(图像句柄, 缩放因子, 保留透明)
+            // 功能：把图像编码为 PNG 受管缓冲。
+            // 参数：图像句柄:longLong，缩放因子:double，保留透明:bool；返回：longLong；可见性：advanced
+            FBro图像_转PNG缓冲(1, 1.0, 真)
+            // 命令ID：FBro证书_异步取当前
+            // [113] FBro证书_异步取当前(控件名)
+            // 功能：从当前可见导航项异步取得 TLS 证书任务。
+            // 参数：控件名:wideString；返回：longLong；可见性：advanced
+            FBro证书_异步取当前("演示输出")
+            // 命令ID：FBro证书_取主体
+            // [114] FBro证书_取主体(证书句柄)
+            // 功能：取得受证书管理的主体 Principal 句柄。
+            // 参数：证书句柄:longLong；返回：longLong；可见性：advanced
+            FBro证书_取主体(1)
+        如果结束
+        调试输出("已查看 命令 96–114：FBro列表_设置字典 至 FBro证书_取主体；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第07组_被单击()
+        控件_设置文本("演示状态", "命令 115–132：FBro证书_取颁发者 至 FBro拖放数据_取图像；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBro证书_取颁发者
+            // [115] FBro证书_取颁发者(证书句柄)
+            // 功能：取得受证书管理的颁发者 Principal 句柄。
+            // 参数：证书句柄:longLong；返回：longLong；可见性：advanced
+            FBro证书_取颁发者(1)
+            // 命令ID：FBro证书_取序列号缓冲
+            // [116] FBro证书_取序列号缓冲(证书句柄)
+            // 功能：取得证书序列号受管缓冲。
+            // 参数：证书句柄:longLong；返回：longLong；可见性：advanced
+            FBro证书_取序列号缓冲(1)
+            // 命令ID：FBro证书_取DER缓冲
+            // [117] FBro证书_取DER缓冲(证书句柄)
+            // 功能：取得 DER 编码证书受管缓冲。
+            // 参数：证书句柄:longLong；返回：longLong；可见性：advanced
+            FBro证书_取DER缓冲(1)
+            // 命令ID：FBro证书_取PEM缓冲
+            // [118] FBro证书_取PEM缓冲(证书句柄)
+            // 功能：取得 PEM 编码证书受管缓冲。
+            // 参数：证书句柄:longLong；返回：longLong；可见性：advanced
+            FBro证书_取PEM缓冲(1)
+            // 命令ID：FBro证书_取生效时间
+            // [119] FBro证书_取生效时间(证书句柄)
+            // 功能：取得证书生效 Unix 时间。
+            // 参数：证书句柄:longLong；返回：longLong；可见性：advanced
+            FBro证书_取生效时间(1)
+            // 命令ID：FBro证书_取失效时间
+            // [120] FBro证书_取失效时间(证书句柄)
+            // 功能：取得证书失效 Unix 时间。
+            // 参数：证书句柄:longLong；返回：longLong；可见性：advanced
+            FBro证书_取失效时间(1)
+            // 命令ID：FBro证书_取颁发链数量
+            // [121] FBro证书_取颁发链数量(证书句柄)
+            // 功能：取得颁发链数量。
+            // 参数：证书句柄:longLong；返回：int；可见性：advanced
+            FBro证书_取颁发链数量(1)
+            // 命令ID：FBro证书_取DER颁发链项
+            // [122] FBro证书_取DER颁发链项(证书句柄, 索引)
+            // 功能：取得指定颁发链项的 DER 受管缓冲。
+            // 参数：证书句柄:longLong，索引:int；返回：longLong；可见性：advanced
+            FBro证书_取DER颁发链项(1, 1)
+            // 命令ID：FBro证书_取PEM颁发链项
+            // [123] FBro证书_取PEM颁发链项(证书句柄, 索引)
+            // 功能：取得指定颁发链项的 PEM 受管缓冲。
+            // 参数：证书句柄:longLong，索引:int；返回：longLong；可见性：advanced
+            FBro证书_取PEM颁发链项(1, 1)
+            // 命令ID：FBro证书主体_取显示名
+            // [124] FBro证书主体_取显示名(主体句柄)
+            // 功能：取得证书主体显示名。
+            // 参数：主体句柄:longLong；返回：wideString；可见性：advanced
+            FBro证书主体_取显示名(1)
+            // 命令ID：FBro证书主体_取通用名
+            // [125] FBro证书主体_取通用名(主体句柄)
+            // 功能：取得证书主体通用名。
+            // 参数：主体句柄:longLong；返回：wideString；可见性：advanced
+            FBro证书主体_取通用名(1)
+            // 命令ID：FBro证书主体_取地区名
+            // [126] FBro证书主体_取地区名(主体句柄)
+            // 功能：取得证书主体地区名。
+            // 参数：主体句柄:longLong；返回：wideString；可见性：advanced
+            FBro证书主体_取地区名(1)
+            // 命令ID：FBro证书主体_取省州名
+            // [127] FBro证书主体_取省州名(主体句柄)
+            // 功能：取得证书主体省或州名。
+            // 参数：主体句柄:longLong；返回：wideString；可见性：advanced
+            FBro证书主体_取省州名(1)
+            // 命令ID：FBro证书主体_取国家名
+            // [128] FBro证书主体_取国家名(主体句柄)
+            // 功能：取得证书主体国家名。
+            // 参数：主体句柄:longLong；返回：wideString；可见性：advanced
+            FBro证书主体_取国家名(1)
+            // 命令ID：FBro证书主体_取组织JSON
+            // [129] FBro证书主体_取组织JSON(主体句柄)
+            // 功能：取得组织名 UTF-16 JSON 数组。
+            // 参数：主体句柄:longLong；返回：wideString；可见性：advanced
+            FBro证书主体_取组织JSON(1)
+            // 命令ID：FBro证书主体_取组织单位JSON
+            // [130] FBro证书主体_取组织单位JSON(主体句柄)
+            // 功能：取得组织单位名 UTF-16 JSON 数组。
+            // 参数：主体句柄:longLong；返回：wideString；可见性：advanced
+            FBro证书主体_取组织单位JSON(1)
+            // 命令ID：FBro拖放数据_是否有图像
+            // [131] FBro拖放数据_是否有图像(拖放数据句柄)
+            // 功能：检查 DragEnter 事件对象是否携带图像。
+            // 参数：拖放数据句柄:longLong；返回：int；可见性：advanced
+            FBro拖放数据_是否有图像(1)
+            // 命令ID：FBro拖放数据_取图像
+            // [132] FBro拖放数据_取图像(拖放数据句柄)
+            // 功能：从 DragEnter 事件对象取得受管 Image 句柄。
+            // 参数：拖放数据句柄:longLong；返回：longLong；可见性：advanced
+            FBro拖放数据_取图像(1)
+        如果结束
+        调试输出("已查看 命令 115–132：FBro证书_取颁发者 至 FBro拖放数据_取图像；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

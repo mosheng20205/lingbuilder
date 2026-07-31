@@ -53,11 +53,12 @@ export function inferLingCppExpressionType(
   if (knownReturnType) return normalizeLingCppValueType(knownReturnType);
 
   for (const module of moduleContext?.enabledModules || []) {
-    const contribution = (module.manifest.contributes?.commands || []).find(command => command.name === commandName);
+    const contribution = (module.manifest.contributes?.commands || []).find(command =>
+      command.name === commandName || (command.aliases || []).includes(commandName));
     const contributionType = normalizeLingCppValueType(contribution?.returnType);
     if (contributionType) return contributionType;
 
-    const binding = (module.manifest.bindings?.commands || []).find(command => command.command === commandName);
+    const binding = (module.manifest.bindings?.commands || []).find(command => command.command === contribution?.name);
     const bindingType = normalizeLingCppValueType(binding?.returnType);
     if (bindingType) return bindingType;
   }

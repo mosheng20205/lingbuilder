@@ -104,6 +104,45 @@ test('LCPP 源码包会记录 DataGrid v1 所需生成器能力', async t => {
   assert.deepEqual(exported.manifest.requiredCapabilities, [LCPP_GENERATOR_CAPABILITIES.dataGridV1]);
 });
 
+test('LCPP 源码包使用 EdgeView v1 命令时声明 safe-api.v1 和 0.2.7', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-edgeview-capability-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, 'workspace');
+  await fs.mkdir(workspace, { recursive: true });
+  await createSolutionService(workspace).getSolution();
+  await fs.writeFile(path.join(workspace, 'src', 'MainWindow.lcpp'), [
+    '类 MainWindow : 窗体',
+    '    事件 _MainWindow_创建完毕()',
+    '        EdgeView脚本_执行异步("浏览器1", "document.title", &浏览器1_JS完成)',
+    '    结束',
+    '结束类',
+    ''
+  ].join('\n'), 'utf8');
+  const packagePath = path.join(root, 'edgeview-capability.lcpppkg');
+  const exported = await createLcppSourcePackageService(workspace).exportProject(DEFAULT_PROJECT_ID, packagePath);
+  assert.equal(exported.manifest.minimumGeneratorVersion, '0.2.7');
+  assert.deepEqual(exported.manifest.requiredCapabilities, [LCPP_GENERATOR_CAPABILITIES.edgeViewSafeApiV1]);
+});
+
+test('LCPP 源码包使用 EdgeView v2 命令时声明 safe-api.v2 和 0.2.8', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-edgeview-v2-capability-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, 'workspace');
+  await fs.mkdir(workspace, { recursive: true });
+  await createSolutionService(workspace).getSolution();
+  await fs.writeFile(path.join(workspace, 'src', 'MainWindow.lcpp'), [
+    '类 MainWindow : 窗体',
+    '    事件 _MainWindow_创建完毕()',
+    '        EdgeView工作线程_枚举异步("浏览器1", 2, &浏览器1_线程完成)',
+    '    结束',
+    '结束类',
+    ''
+  ].join('\n'), 'utf8');
+  const exported = await createLcppSourcePackageService(workspace).exportProject(DEFAULT_PROJECT_ID, path.join(root, 'edgeview-v2.lcpppkg'));
+  assert.equal(exported.manifest.minimumGeneratorVersion, '0.2.8');
+  assert.ok(exported.manifest.requiredCapabilities.includes(LCPP_GENERATOR_CAPABILITIES.edgeViewSafeApiV2));
+});
+
 test('LCPP 源码包和项目构建会排除源码目录中误创建的嵌套工作区', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-nested-workspace-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

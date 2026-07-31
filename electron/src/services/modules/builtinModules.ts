@@ -7,8 +7,11 @@ import { DATA_MEDIA_MODULES } from './dataMediaModules';
 import { PLATFORM_ADVANCED_MODULES } from './platformAdvancedModules';
 import { CEF3_BROWSER_EVENT_NAMES } from './cef3BrowserEvents';
 import { EDGEVIEW_BROWSER_EVENT_NAMES } from './edgeViewBrowserEvents';
+import { EDGEVIEW_SAFE_API_BINDINGS, EDGEVIEW_SAFE_API_COMMANDS } from './edgeViewApiCatalog';
 import { LIST_VIEW_ADVANCED_BINDINGS, LIST_VIEW_ADVANCED_COMMANDS } from './listViewApiCatalog';
 import { DATA_GRID_BINDINGS, DATA_GRID_COMMANDS } from './dataGridApiCatalog';
+import { FBRO_SUBMODULES } from './fbroModules';
+import { CEF3_SUBMODULES } from './cef3Modules';
 
 function createControlContributions(moduleId: Win32ControlModuleId) {
   return getWin32ControlsForModule(moduleId).map(definition => ({
@@ -362,7 +365,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     schemaVersion: 2,
     id: 'lingbuilder.edgeview',
     name: 'EdgeView 浏览器模块',
-    version: '1.0.0',
+    version: '1.2.0',
+    minLingBuilderVersion: '0.2.8',
     category: '界面',
     description: '基于 Microsoft Edge WebView2，把浏览器嵌入任意 Win32 窗口组件句柄，并提供导航、网页消息、浏览器事件和 JavaScript 返回值。',
     author: 'LingBuilder',
@@ -370,6 +374,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     contributes: {
       designerControls: createControlContributions('lingbuilder.edgeview'),
       commands: [
+        ...EDGEVIEW_SAFE_API_COMMANDS,
         { name: 'EdgeView_创建', signature: 'EdgeView_创建(父组件句柄, 地址)', description: '在指定 HWND 组件客户区内创建 EdgeView；传 0 时嵌入当前窗口。成功返回 1。', insertText: 'EdgeView_创建(0, "https://example.com")', returnType: '整数型' },
         { name: 'EdgeView_创建实例', signature: 'EdgeView_创建实例(实例编号, 父组件句柄, 地址, 独立缓存目录)', description: '创建具名 EdgeView 实例；不同缓存目录拥有独立 Cookie、存储和会话。', insertText: 'EdgeView_创建实例(1, 0, "https://example.com", ".edgeview/cache-1")', returnType: '整数型' },
         { name: 'EdgeView_创建实例代理', signature: 'EdgeView_创建实例代理(实例编号, 父组件句柄, 地址, 独立缓存目录, 代理地址)', description: '创建使用独立代理的 EdgeView 实例；该代理覆盖全局代理。', insertText: 'EdgeView_创建实例代理(1, 0, "https://example.com", ".edgeview/cache-1", "http://127.0.0.1:7890")', returnType: '整数型' },
@@ -379,7 +384,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'EdgeView_清除全局代理', signature: 'EdgeView_清除全局代理()', description: '清除后续新建实例的全局代理，现有实例不变。', insertText: 'EdgeView_清除全局代理()', returnType: '空' },
         { name: 'EdgeView_取全局代理', signature: 'EdgeView_取全局代理()', description: '返回当前 EdgeView 全局代理设置。', insertText: 'EdgeView_取全局代理()', returnType: '文本型' },
         { name: 'EdgeView_取实例代理', signature: 'EdgeView_取实例代理(实例编号)', description: '返回指定实例创建时实际采用的代理地址。', insertText: 'EdgeView_取实例代理(1)', returnType: '文本型' },
-        { name: 'EdgeView_绑定事件', signature: 'EdgeView_绑定事件(实例编号, 事件名, 处理器名)', description: `绑定 WebView2 完整事件目录中的中文事件；当前目录共 ${EDGEVIEW_BROWSER_EVENT_NAMES.length} 项。`, insertText: 'EdgeView_绑定事件(1, "导航完成", "浏览器1_导航完成")', returnType: '整数型' },
+        { name: 'EdgeView_绑定事件', signature: 'EdgeView_绑定事件(实例编号, 事件名, &处理器名)', description: `绑定 WebView2 完整事件目录中的中文事件；当前目录共 ${EDGEVIEW_BROWSER_EVENT_NAMES.length} 项。旧字符串处理器仍兼容，但会产生迁移警告。`, insertText: 'EdgeView_绑定事件(1, "导航完成", &$1)', returnType: '整数型' },
         { name: 'EdgeView_监听开发者工具事件', signature: 'EdgeView_监听开发者工具事件(实例编号, 协议事件名)', description: '监听指定 Chromium DevTools Protocol 事件，触发“开发者工具协议事件”。', insertText: 'EdgeView_监听开发者工具事件(1, "Console.messageAdded")', returnType: '整数型' },
         { name: 'EdgeView_等待事件', signature: 'EdgeView_等待事件(实例编号, 事件名, 超时毫秒)', description: '泵送窗口消息并等待指定浏览器事件，成功返回 1，超时返回 0。', insertText: 'EdgeView_等待事件(1, "导航完成", 15000)', returnType: '整数型' },
         { name: 'EdgeView_导航', signature: 'EdgeView_导航(地址)', description: '导航到 HTTP/HTTPS 地址或本地文件地址。', insertText: 'EdgeView_导航("https://example.com")', returnType: '整数型' },
@@ -404,7 +409,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: 'EdgeView_前进控件', signature: 'EdgeView_前进控件(控件名)', description: '让指定设计器 Edge 浏览器控件前进。', insertText: 'EdgeView_前进控件("$1")', returnType: '整数型' }
         ,{ name: 'EdgeView_刷新控件', signature: 'EdgeView_刷新控件(控件名)', description: '刷新指定设计器 Edge 浏览器控件。', insertText: 'EdgeView_刷新控件("$1")', returnType: '空' }
         ,{ name: 'EdgeView_关闭控件', signature: 'EdgeView_关闭控件(控件名)', description: '关闭指定设计器 Edge 浏览器控件并保留设计器宿主占位。', insertText: 'EdgeView_关闭控件("$1")', returnType: '空' }
-        ,{ name: 'EdgeView_绑定控件事件', signature: 'EdgeView_绑定控件事件(控件名, 事件名, 处理器名)', description: `按控件名绑定 WebView2 完整事件目录中的中文事件；当前目录共 ${EDGEVIEW_BROWSER_EVENT_NAMES.length} 项。`, insertText: 'EdgeView_绑定控件事件("$1", "导航完成", "$1_导航完成")', returnType: '整数型' }
+        ,{ name: 'EdgeView_绑定控件事件', signature: 'EdgeView_绑定控件事件(控件名, 事件名, &处理器名)', description: `按控件名绑定 WebView2 完整事件目录中的中文事件；当前目录共 ${EDGEVIEW_BROWSER_EVENT_NAMES.length} 项。旧字符串处理器仍兼容，但会产生迁移警告。`, insertText: 'EdgeView_绑定控件事件("$1", "导航完成", &$2)', returnType: '整数型' }
         ,{ name: 'EdgeView_监听开发者工具事件控件', signature: 'EdgeView_监听开发者工具事件控件(控件名, 协议事件名)', description: '按设计器控件名监听 Chromium DevTools Protocol 事件。', insertText: 'EdgeView_监听开发者工具事件控件("$1", "Console.messageAdded")', returnType: '整数型' }
       ],
       types: [{ name: 'EdgeView浏览器', description: '嵌入 Win32 HWND 的 Microsoft Edge WebView2 浏览器。', cppType: 'ICoreWebView2*' }],
@@ -415,6 +420,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/WebView2.h', 'include/WebView2EnvironmentOptions.h'], libs: ['ole32.lib'], runtimeFiles: ['bin/x64/WebView2Loader.dll'], defines: ['LINGBUILDER_EDGEVIEW_MODULE'] }
     ],
     bindings: { commands: [
+      ...EDGEVIEW_SAFE_API_BINDINGS,
       { command: 'EdgeView_创建', runtimeName: 'EdgeView_创建', parameters: [{ name: '父组件句柄', type: 'longLong' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'EdgeView_创建实例', runtimeName: 'EdgeView_创建实例', parameters: [{ name: '实例编号', type: 'int' }, { name: '父组件句柄', type: 'longLong' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'EdgeView_创建实例代理', runtimeName: 'EdgeView_创建实例代理', parameters: [{ name: '实例编号', type: 'int' }, { name: '父组件句柄', type: 'longLong' }, { name: '地址', type: 'wideString' }, { name: '独立缓存目录', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
@@ -424,7 +430,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'EdgeView_清除全局代理', runtimeName: 'EdgeView_清除全局代理', parameters: [], returnType: 'void' },
       { command: 'EdgeView_取全局代理', runtimeName: 'EdgeView_取全局代理', parameters: [], returnType: 'wideString', encoding: 'wide' },
       { command: 'EdgeView_取实例代理', runtimeName: 'EdgeView_取实例代理', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
-      { command: 'EdgeView_绑定事件', runtimeName: 'EdgeView_绑定事件', parameters: [{ name: '实例编号', type: 'int' }, { name: '事件名', type: 'wideString' }, { name: '处理器名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'EdgeView_绑定事件', runtimeName: 'EdgeView_绑定事件', parameters: [{ name: '实例编号', type: 'int' }, { name: '事件名', type: 'wideString' }, { name: '处理器名', type: 'handler', description: '新代码必须使用 &处理器名；旧字符串写法仅兼容迁移。' }], returnType: 'int', encoding: 'wide' },
       { command: 'EdgeView_监听开发者工具事件', runtimeName: 'EdgeView_监听开发者工具事件', parameters: [{ name: '实例编号', type: 'int' }, { name: '协议事件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'EdgeView_等待事件', runtimeName: 'EdgeView_等待事件', parameters: [{ name: '实例编号', type: 'int' }, { name: '事件名', type: 'wideString' }, { name: '超时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide' },
       { command: 'EdgeView_导航', runtimeName: 'EdgeView_导航', parameters: [{ name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
@@ -449,7 +455,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       ,{ command: 'EdgeView_前进控件', runtimeName: 'EdgeView_前进控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
       ,{ command: 'EdgeView_刷新控件', runtimeName: 'EdgeView_刷新控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' }
       ,{ command: 'EdgeView_关闭控件', runtimeName: 'EdgeView_关闭控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' }
-      ,{ command: 'EdgeView_绑定控件事件', runtimeName: 'EdgeView_绑定控件事件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '事件名', type: 'wideString' }, { name: '处理器名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_绑定控件事件', runtimeName: 'EdgeView_绑定控件事件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '事件名', type: 'wideString' }, { name: '处理器名', type: 'handler', description: '新代码必须使用 &处理器名；旧字符串写法仅兼容迁移。' }], returnType: 'int', encoding: 'wide' }
       ,{ command: 'EdgeView_监听开发者工具事件控件', runtimeName: 'EdgeView_监听开发者工具事件控件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '协议事件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
     ] }
   },
@@ -457,9 +463,9 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     schemaVersion: 2,
     id: 'lingbuilder.cef3.browser',
     name: 'CEF3浏览器模块',
-    version: '2.0.0',
+    version: '3.0.0-alpha.2',
     category: '界面',
-    description: '基于 Chromium Embedded Framework 3，提供设计器浏览器控件、中文命令和完整 CefClient 浏览器事件体系。',
+    description: '基于 Chromium Embedded Framework 3，提供设计器浏览器控件、中文命令和集中式浏览器事件目录。',
     author: 'LingBuilder',
     tags: ['内置', 'CEF3', 'Chromium', '浏览器', 'JavaScript'],
     compatibility: {
@@ -470,15 +476,15 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       commands: [
         { name: 'CEF3_导航', signature: 'CEF3_导航(控件名, 地址)', description: '让指定 CEF3 浏览器控件导航到 HTTP/HTTPS 地址或本地文件地址。', insertText: 'CEF3_导航("$1", "https://www.baidu.com")', returnType: '整数型' },
         { name: 'CEF3_打开原生UI浏览器', signature: 'CEF3_打开原生UI浏览器(控件名, 地址)', description: '使用 CEF Chrome Runtime 创建带原生地址栏和浏览器界面的独立顶层窗口，并纳入指定内嵌控件的 popup 生命周期管理。', insertText: 'CEF3_打开原生UI浏览器("$1", "https://www.baidu.com")', returnType: '整数型' },
-        { name: 'CEF3_执行JS', signature: 'CEF3_执行JS(控件名, 脚本)', description: '在指定 CEF3 浏览器控件中执行 JavaScript 并等待结果，返回 JSON 编码结果文本。', insertText: 'CEF3_执行JS("$1", "document.title")', returnType: '文本型' },
+        { name: 'CEF3_执行JS', aliases: ['Runtime.evaluate'], signature: 'CEF3_执行JS(控件名, 脚本)', description: '通过 DevTools Runtime.evaluate 执行 JavaScript，最多等待 5 秒并返回 JSON 结果；新代码优先使用异步任务接口。', insertText: 'CEF3_执行JS("$1", "document.title")', returnType: '文本型' },
         { name: 'CEF3_后退', signature: 'CEF3_后退(控件名)', description: '指定 CEF3 浏览器控件可以后退时返回上一页，成功返回 1。', insertText: 'CEF3_后退("$1")', returnType: '整数型' },
         { name: 'CEF3_前进', signature: 'CEF3_前进(控件名)', description: '指定 CEF3 浏览器控件可以前进时进入下一页，成功返回 1。', insertText: 'CEF3_前进("$1")', returnType: '整数型' },
         { name: 'CEF3_刷新', signature: 'CEF3_刷新(控件名)', description: '刷新指定 CEF3 浏览器控件的当前网页。', insertText: 'CEF3_刷新("$1")', returnType: '空' },
         { name: 'CEF3_停止', signature: 'CEF3_停止(控件名)', description: '停止指定 CEF3 浏览器控件的当前导航。', insertText: 'CEF3_停止("$1")', returnType: '空' },
         { name: 'CEF3_取标题', signature: 'CEF3_取标题(控件名)', description: '返回指定 CEF3 浏览器控件当前网页标题。', insertText: 'CEF3_取标题("$1")', returnType: '文本型' },
         { name: 'CEF3_取地址', signature: 'CEF3_取地址(控件名)', description: '返回指定 CEF3 浏览器控件当前网页地址。', insertText: 'CEF3_取地址("$1")', returnType: '文本型' },
-        { name: 'CEF3_设置缓存目录', signature: 'CEF3_设置缓存目录(控件名, 目录)', description: '设置指定 CEF3 浏览器控件的缓存目录；不同缓存目录拥有独立 Cookie、LocalStorage 和会话。需在创建前设置。', insertText: 'CEF3_设置缓存目录("$1", ".cef3/cache-2")', returnType: '整数型' },
-        { name: 'CEF3_设置代理', signature: 'CEF3_设置代理(控件名, 代理地址)', description: '为指定 CEF3 浏览器控件设置 HTTP/HTTPS/SOCKS5 代理；空文本恢复直连。需在创建前设置。', insertText: 'CEF3_设置代理("$1", "http://127.0.0.1:7890")', returnType: '整数型' },
+        { name: 'CEF3_设置缓存目录', aliases: ['CefRequestContext::CreateContext'], signature: 'CEF3_设置缓存目录(控件名, 目录)', description: '设置实例独立 RequestContext 的缓存目录标识；实际目录被安全映射到全局 root_cache_path 的直接子目录。需在创建前设置。', insertText: 'CEF3_设置缓存目录("$1", "cache-2")', returnType: '整数型' },
+        { name: 'CEF3_设置代理', aliases: ['CefPreferenceManager::SetPreference'], signature: 'CEF3_设置代理(控件名, 代理地址)', description: '为实例独立 RequestContext 设置 HTTP/HTTPS/SOCKS5 代理；空文本使用直连。需在创建前设置。', insertText: 'CEF3_设置代理("$1", "http://127.0.0.1:7890")', returnType: '整数型' },
         { name: 'CEF3_创建', signature: 'CEF3_创建(控件名)', description: '使用属性面板配置的地址、缓存目录和代理参数初始化指定 CEF3 浏览器控件；传空控件名时初始化当前窗口全部 CEF3 控件。成功返回 1。', insertText: 'CEF3_创建("$1")', returnType: '整数型' },
         { name: 'CEF3_关闭', signature: 'CEF3_关闭(控件名)', description: '关闭指定 CEF3 浏览器控件并释放 Chromium 资源。', insertText: 'CEF3_关闭("$1")', returnType: '空' },
         { name: 'CEF3_取最近事件', signature: 'CEF3_取最近事件(控件名)', description: `返回最近 CEF3 事件名；当前目录包含 ${CEF3_BROWSER_EVENT_NAMES.length} 个浏览器回调。`, insertText: 'CEF3_取最近事件("$1")', returnType: '文本型' },
@@ -486,19 +492,18 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'CEF3_取事件字段', signature: 'CEF3_取事件字段(控件名, 字段名)', description: '读取最近事件的命名字段，例如 url、frameId、statusCode、progress、commandId。', insertText: 'CEF3_取事件字段("$1", "url")', returnType: '文本型' },
         { name: 'CEF3_设置事件结果', signature: 'CEF3_设置事件结果(控件名, 结果)', description: '设置当前同步事件结果：0=默认、1=允许/继续、2=拒绝/取消、3=已处理。', insertText: 'CEF3_设置事件结果("$1", 1)', returnType: '整数型' },
         { name: 'CEF3_设置事件返回文本', signature: 'CEF3_设置事件返回文本(控件名, 文本)', description: '设置当前事件的返回文本，例如修改后的 URL、下载路径、对话框输入或身份验证信息。', insertText: 'CEF3_设置事件返回文本("$1", "$2")', returnType: '整数型' },
-        { name: 'CEF3_绑定事件', signature: 'CEF3_绑定事件(控件名, 事件名, 处理器名)', description: `绑定完整 CEF3 浏览器事件目录（${CEF3_BROWSER_EVENT_NAMES.length} 项）到当前窗口无参数中文事件或方法。`, insertText: 'CEF3_绑定事件("$1", "加载完成", "$1_加载完成")', returnType: '整数型' },
+        { name: 'CEF3_绑定事件', signature: 'CEF3_绑定事件(控件名, 事件名, 处理器)', description: `绑定 CEF3 浏览器事件目录（${CEF3_BROWSER_EVENT_NAMES.length} 项）到当前窗口无参数中文事件或方法；处理器必须使用 &处理器名。`, insertText: 'CEF3_绑定事件("$1", "加载完成", &$2)', returnType: '整数型' },
         { name: 'CEF3_是否可后退', signature: 'CEF3_是否可后退(控件名)', description: '指定 CEF3 浏览器控件可以后退时返回 1。', insertText: 'CEF3_是否可后退("$1")', returnType: '整数型' },
         { name: 'CEF3_是否可前进', signature: 'CEF3_是否可前进(控件名)', description: '指定 CEF3 浏览器控件可以前进时返回 1。', insertText: 'CEF3_是否可前进("$1")', returnType: '整数型' },
         { name: 'CEF3_是否加载中', signature: 'CEF3_是否加载中(控件名)', description: '指定 CEF3 浏览器控件正在加载网页时返回 1。', insertText: 'CEF3_是否加载中("$1")', returnType: '整数型' }
       ],
-      types: [{ name: 'CEF3浏览器', description: '嵌入 Win32 窗口的 Chromium Embedded Framework 3 浏览器控件。', cppType: 'CefRefPtr<CefBrowser>' }],
+      types: [{ name: 'CEF3浏览器', description: '由 LingBuilderCefBridge 管理的 CEF 150 浏览器句柄。', cppType: 'LB_CEF3_HANDLE' }],
       snippets: [{ label: 'CEF3 浏览器导航与 JS 返回值', insertText: 'CEF3_导航("浏览器1", "https://www.baidu.com")\n调试输出(CEF3_执行JS("浏览器1", "document.title"))\n调试输出(CEF3_取最近事件("浏览器1"))', description: '在 CEF3 浏览器控件中导航，并读取网页标题与最近事件。' }],
       docs: [{ title: 'CEF3 模块说明', path: 'README.md' }],
       examples: [{ title: '双浏览器示例', path: 'examples/双浏览器示例.lcpp', description: '在同一窗口创建两个独立缓存目录的 CEF3 浏览器控件。' }]
     },
     targets: [
-      { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/cef_app.h'], libs: ['modules/lingbuilder.cef3.browser/lib/Win32/libcef.lib', 'modules/lingbuilder.cef3.browser/lib/Win32/libcef_dll_wrapper.lib'], runtimeFiles: ['bin/Win32/libcef.dll', 'bin/Win32/chrome_elf.dll'], defines: ['LINGBUILDER_CEF3_MODULE'] },
-      { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/cef_app.h'], libs: ['modules/lingbuilder.cef3.browser/lib/x64/libcef.lib', 'modules/lingbuilder.cef3.browser/lib/x64/libcef_dll_wrapper.lib'], runtimeFiles: ['bin/x64/libcef.dll', 'bin/x64/chrome_elf.dll'], defines: ['LINGBUILDER_CEF3_MODULE'] }
+      { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/LingBuilderCefBridge.h'], libs: ['modules/lingbuilder.cef3.browser/lib/x64/LingBuilderCefBridge.lib'], runtimeFiles: ['bin/x64/libcef.dll', 'bin/x64/chrome_elf.dll', 'bin/x64/LingBuilderCefBridge.dll'], defines: ['LINGBUILDER_CEF3_MODULE'] }
     ],
     bindings: { commands: [
       { command: 'CEF3_导航', runtimeName: 'CEF3_导航', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_导航("浏览器1", "https://www.baidu.com")' },
@@ -519,17 +524,18 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'CEF3_取事件字段', runtimeName: 'CEF3_取事件字段', parameters: [{ name: '控件名', type: 'wideString' }, { name: '字段名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
       { command: 'CEF3_设置事件结果', runtimeName: 'CEF3_设置事件结果', parameters: [{ name: '控件名', type: 'wideString' }, { name: '结果', type: 'int' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_设置事件返回文本', runtimeName: 'CEF3_设置事件返回文本', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'CEF3_绑定事件', runtimeName: 'CEF3_绑定事件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '事件名', type: 'wideString', description: '事件名 / 回调 handler' }, { name: '处理器名', type: 'wideString', description: '当前窗口中的无参数事件/方法名 / 回调 handler' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_绑定事件', runtimeName: 'CEF3_绑定事件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '事件名', type: 'wideString', description: '事件名' }, { name: '处理器', type: 'handler', description: '必须使用 &处理器名' }], returnType: 'int', encoding: 'wide', example: 'CEF3_绑定事件("浏览器1", "加载完成", &浏览器1_加载完成)' },
       { command: 'CEF3_是否可后退', runtimeName: 'CEF3_是否可后退', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_是否可前进', runtimeName: 'CEF3_是否可前进', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'CEF3_是否加载中', runtimeName: 'CEF3_是否加载中', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
     ] }
   },
+  ...CEF3_SUBMODULES,
   {
     schemaVersion: 2,
     id: 'lingbuilder.fbro.browser',
     name: 'FBro指纹浏览器模块',
-    version: '1.0.0',
+    version: '2.0.0',
     category: '界面',
     description: '通过隔离的 C ABI 桥接层使用 FBro/FBrowser CEF 135 x64，提供设计器浏览器控件、基础浏览器控制和结构化指纹配置。',
     author: 'LingBuilder',
@@ -540,27 +546,48 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     contributes: {
       designerControls: createControlContributions('lingbuilder.fbro.browser'),
       commands: [
-        { name: 'FBro_创建', signature: 'FBro_创建(控件名)', description: '使用设计器属性创建指定 FBro 浏览器；空控件名创建当前窗口全部 FBro 控件。', insertText: 'FBro_创建("$1")', returnType: '整数型' },
-        { name: 'FBro_打开谷歌原生UI浏览器', signature: 'FBro_打开谷歌原生UI浏览器(控件名, 地址)', description: '基于指定内嵌 FBro 实例的会话创建 Chrome Runtime 独立顶层浏览器；不接收或复用 LingBuilder 窗口句柄。', insertText: 'FBro_打开谷歌原生UI浏览器("$1", "https://www.baidu.com")', returnType: '整数型' },
-        { name: 'FBro_关闭', signature: 'FBro_关闭(控件名)', description: '关闭指定 FBro 浏览器并释放实例。', insertText: 'FBro_关闭("$1")', returnType: '空' },
-        { name: 'FBro_导航', signature: 'FBro_导航(控件名, 地址)', description: '让指定 FBro 浏览器导航到目标地址。', insertText: 'FBro_导航("$1", "https://www.baidu.com")', returnType: '整数型' },
-        { name: 'FBro_刷新', signature: 'FBro_刷新(控件名)', description: '刷新指定 FBro 浏览器。', insertText: 'FBro_刷新("$1")', returnType: '空' },
-        { name: 'FBro_后退', signature: 'FBro_后退(控件名)', description: '浏览器可以后退时返回上一页。', insertText: 'FBro_后退("$1")', returnType: '整数型' },
-        { name: 'FBro_前进', signature: 'FBro_前进(控件名)', description: '浏览器可以前进时进入下一页。', insertText: 'FBro_前进("$1")', returnType: '整数型' },
-        { name: 'FBro_停止', signature: 'FBro_停止(控件名)', description: '停止指定浏览器当前导航。', insertText: 'FBro_停止("$1")', returnType: '空' },
-        { name: 'FBro_执行JS', signature: 'FBro_执行JS(控件名, 脚本)', description: '通过桥接层执行 JavaScript，返回 UTF-16 结果或中文错误。', insertText: 'FBro_执行JS("$1", "document.title")', returnType: '文本型' },
-        { name: 'FBro_取标题', signature: 'FBro_取标题(控件名)', description: '返回最近一次标题事件记录的网页标题。', insertText: 'FBro_取标题("$1")', returnType: '文本型' },
-        { name: 'FBro_取地址', signature: 'FBro_取地址(控件名)', description: '返回指定浏览器当前地址。', insertText: 'FBro_取地址("$1")', returnType: '文本型' },
-        { name: 'FBro_设置代理', signature: 'FBro_设置代理(控件名, 代理地址)', description: '设置创建前使用的代理地址；空文本表示直连。', insertText: 'FBro_设置代理("$1", "$2")', returnType: '整数型' },
-        { name: 'FBro_设置缓存目录', signature: 'FBro_设置缓存目录(控件名, 目录)', description: '设置创建前使用的独立缓存目录。', insertText: 'FBro_设置缓存目录("$1", "$2")', returnType: '整数型' },
-        { name: 'FBro_设置UserAgent', signature: 'FBro_设置UserAgent(控件名, UserAgent)', description: '设置创建前使用的 User-Agent。', insertText: 'FBro_设置UserAgent("$1", "$2")', returnType: '整数型' },
-        { name: 'FBro_取Cookie', signature: 'FBro_取Cookie(控件名, 地址)', description: '异步读取指定地址 Cookie；首版返回桥接层最近快照。', insertText: 'FBro_取Cookie("$1", "$2")', returnType: '文本型' },
-        { name: 'FBro_清空Cookie', signature: 'FBro_清空Cookie(控件名, 地址)', description: '删除指定地址的 Cookie。', insertText: 'FBro_清空Cookie("$1", "$2")', returnType: '整数型' },
-        { name: 'FBro指纹_应用配置', signature: 'FBro指纹_应用配置(控件名, JSON)', description: '应用结构化指纹 JSON；未配置 VIP 授权时返回 0 并记录中文错误。', insertText: 'FBro指纹_应用配置("$1", "$2")', returnType: '整数型' },
-        { name: 'FBro指纹_取调用次数', signature: 'FBro指纹_取调用次数(控件名)', description: '返回 FBro VIP 指纹调用次数。', insertText: 'FBro指纹_取调用次数("$1")', returnType: '文本型' },
-        { name: 'FBro指纹_清空调用次数', signature: 'FBro指纹_清空调用次数(控件名)', description: '清空指定浏览器的指纹调用次数。', insertText: 'FBro指纹_清空调用次数("$1")', returnType: '整数型' },
-        { name: 'FBro_取最近事件', signature: 'FBro_取最近事件(控件名)', description: '返回最近 FBro 浏览器事件名。', insertText: 'FBro_取最近事件("$1")', returnType: '文本型' },
-        { name: 'FBro_取最近错误', signature: 'FBro_取最近错误(控件名)', description: '返回桥接层最近中文错误。', insertText: 'FBro_取最近错误("$1")', returnType: '文本型' }
+        { name: 'FBro_创建', aliases: ['LB_FBro_Create', 'LB_FBro_CreateEx'], signature: 'FBro_创建(控件名)', description: '使用设计器属性创建指定 FBro 浏览器；空控件名创建当前窗口全部 FBro 控件。', insertText: 'FBro_创建("$1")', returnType: '整数型' },
+        { name: 'FBro_打开谷歌原生UI浏览器', aliases: ['LB_FBro_CreateChromeUi'], signature: 'FBro_打开谷歌原生UI浏览器(控件名, 地址)', description: '基于指定内嵌 FBro 实例的会话创建 Chrome Runtime 独立顶层浏览器；不接收或复用 LingBuilder 窗口句柄。', insertText: 'FBro_打开谷歌原生UI浏览器("$1", "https://www.baidu.com")', returnType: '整数型' },
+        { name: 'FBro_关闭', aliases: ['LB_FBro_Close'], signature: 'FBro_关闭(控件名)', description: '关闭指定 FBro 浏览器并释放实例。', insertText: 'FBro_关闭("$1")', returnType: '空' },
+        { name: 'FBro_导航', aliases: ['LB_FBro_Navigate'], signature: 'FBro_导航(控件名, 地址)', description: '让指定 FBro 浏览器导航到目标地址。', insertText: 'FBro_导航("$1", "https://www.baidu.com")', returnType: '整数型' },
+        { name: 'FBro_刷新', aliases: ['LB_FBro_Reload'], signature: 'FBro_刷新(控件名)', description: '刷新指定 FBro 浏览器。', insertText: 'FBro_刷新("$1")', returnType: '空' },
+        { name: 'FBro_后退', aliases: ['LB_FBro_GoBack'], signature: 'FBro_后退(控件名)', description: '浏览器可以后退时返回上一页。', insertText: 'FBro_后退("$1")', returnType: '整数型' },
+        { name: 'FBro_前进', aliases: ['LB_FBro_GoForward'], signature: 'FBro_前进(控件名)', description: '浏览器可以前进时进入下一页。', insertText: 'FBro_前进("$1")', returnType: '整数型' },
+        { name: 'FBro_停止', aliases: ['LB_FBro_Stop'], signature: 'FBro_停止(控件名)', description: '停止指定浏览器当前导航。', insertText: 'FBro_停止("$1")', returnType: '空' },
+        { name: 'FBro_是否可后退', aliases: ['LB_FBro_CanGoBack'], signature: 'FBro_是否可后退(控件名)', description: '返回指定浏览器当前是否存在可后退的历史记录。', insertText: 'FBro_是否可后退("$1")', returnType: '整数型' },
+        { name: 'FBro_是否可前进', aliases: ['LB_FBro_CanGoForward'], signature: 'FBro_是否可前进(控件名)', description: '返回指定浏览器当前是否存在可前进的历史记录。', insertText: 'FBro_是否可前进("$1")', returnType: '整数型' },
+        { name: 'FBro_是否加载中', aliases: ['LB_FBro_IsLoading'], signature: 'FBro_是否加载中(控件名)', description: '返回指定浏览器是否正在加载页面。', insertText: 'FBro_是否加载中("$1")', returnType: '整数型' },
+        { name: 'FBro_取缩放级别', aliases: ['LB_FBro_GetZoomLevel'], signature: 'FBro_取缩放级别(控件名)', description: '读取浏览器宿主当前缩放级别。', insertText: 'FBro_取缩放级别("$1")', returnType: '小数型' },
+        { name: 'FBro_设置缩放级别', aliases: ['LB_FBro_SetZoomLevel'], signature: 'FBro_设置缩放级别(控件名, 级别)', description: '设置浏览器宿主缩放级别。', insertText: 'FBro_设置缩放级别("$1", 0)', returnType: '整数型' },
+        { name: 'FBro_是否静音', aliases: ['LB_FBro_IsAudioMuted'], signature: 'FBro_是否静音(控件名)', description: '返回指定浏览器是否已静音。', insertText: 'FBro_是否静音("$1")', returnType: '整数型' },
+        { name: 'FBro_设置静音', aliases: ['LB_FBro_SetAudioMuted'], signature: 'FBro_设置静音(控件名, 是否静音)', description: '设置指定浏览器的音频静音状态。', insertText: 'FBro_设置静音("$1", 真)', returnType: '整数型' },
+        { name: 'FBro_设置焦点', aliases: ['LB_FBro_SendFocusEvent'], signature: 'FBro_设置焦点(控件名, 是否聚焦)', description: '向浏览器宿主发送焦点状态。', insertText: 'FBro_设置焦点("$1", 真)', returnType: '整数型' },
+        { name: 'FBro_查找', aliases: ['LB_FBro_Find'], signature: 'FBro_查找(控件名, 文本, 向前, 区分大小写, 查找下一个)', description: '在当前页面中查找文本。', insertText: 'FBro_查找("$1", "$2", 真, 假, 假)', returnType: '整数型' },
+        { name: 'FBro_停止查找', aliases: ['LB_FBro_StopFinding'], signature: 'FBro_停止查找(控件名, 清除选择)', description: '停止页面查找并可选清除当前选择。', insertText: 'FBro_停止查找("$1", 真)', returnType: '整数型' },
+        { name: 'FBro_是否打开开发者工具', aliases: ['LB_FBro_HasDevTools'], signature: 'FBro_是否打开开发者工具(控件名)', description: '返回指定浏览器是否已有 DevTools 实例。', insertText: 'FBro_是否打开开发者工具("$1")', returnType: '整数型' },
+        { name: 'FBro_关闭开发者工具', aliases: ['LB_FBro_CloseDevTools'], signature: 'FBro_关闭开发者工具(控件名)', description: '关闭指定浏览器的 DevTools。', insertText: 'FBro_关闭开发者工具("$1")', returnType: '整数型' },
+        { name: 'FBro_强制刷新', aliases: ['LB_FBro_ReloadIgnoreCache'], signature: 'FBro_强制刷新(控件名)', description: '忽略缓存重新加载当前页面。', insertText: 'FBro_强制刷新("$1")', returnType: '整数型' },
+        { name: 'FBro_取浏览器标识', aliases: ['LB_FBro_GetIdentifier'], signature: 'FBro_取浏览器标识(控件名)', description: '返回 FBro/CEF 分配的浏览器标识。', insertText: 'FBro_取浏览器标识("$1")', returnType: '整数型' },
+        { name: 'FBro_是否同一实例', aliases: ['LB_FBro_IsSame'], signature: 'FBro_是否同一实例(控件名, 另一控件名)', description: '判断两个受管控件是否引用同一个底层浏览器。', insertText: 'FBro_是否同一实例("$1", "$2")', returnType: '整数型' },
+        { name: 'FBro_是否弹出窗口', aliases: ['LB_FBro_IsPopup'], signature: 'FBro_是否弹出窗口(控件名)', description: '返回底层浏览器是否为 popup。', insertText: 'FBro_是否弹出窗口("$1")', returnType: '整数型' },
+        { name: 'FBro_是否有文档', aliases: ['LB_FBro_HasDocument'], signature: 'FBro_是否有文档(控件名)', description: '返回浏览器是否已加载文档。', insertText: 'FBro_是否有文档("$1")', returnType: '整数型' },
+        { name: 'FBro_尝试关闭', aliases: ['LB_FBro_TryCloseBrowser'], signature: 'FBro_尝试关闭(控件名)', description: '请求浏览器按官方关闭协议完成关闭。', insertText: 'FBro_尝试关闭("$1")', returnType: '整数型' },
+        { name: 'FBro_设置宿主焦点', aliases: ['LB_FBro_SetFocus'], signature: 'FBro_设置宿主焦点(控件名, 是否聚焦)', description: '设置浏览器宿主的焦点状态。', insertText: 'FBro_设置宿主焦点("$1", 真)', returnType: '整数型' },
+        { name: 'FBro_是否有视图', aliases: ['LB_FBro_HasView'], signature: 'FBro_是否有视图(控件名)', description: '返回浏览器宿主是否具有可用视图。', insertText: 'FBro_是否有视图("$1")', returnType: '整数型' },
+        { name: 'FBro_设置自动调整大小', aliases: ['LB_FBro_SetAutoResizeEnabled'], signature: 'FBro_设置自动调整大小(控件名, 启用, 最小高度, 最小宽度, 最大高度, 最大宽度)', description: '设置官方宿主自动调整大小范围；范围必须非负且最大值不小于最小值。', insertText: 'FBro_设置自动调整大小("$1", 真, 100, 100, 1080, 1920)', returnType: '整数型' },
+        { name: 'FBro_执行JS', aliases: ['LB_FBro_ExecuteJs'], signature: 'FBro_执行JS(控件名, 脚本)', description: '通过桥接层执行 JavaScript，返回 UTF-16 结果或中文错误。', insertText: 'FBro_执行JS("$1", "document.title")', returnType: '文本型' },
+        { name: 'FBro_取标题', aliases: ['LB_FBro_GetTitle'], signature: 'FBro_取标题(控件名)', description: '返回最近一次标题事件记录的网页标题。', insertText: 'FBro_取标题("$1")', returnType: '文本型' },
+        { name: 'FBro_取地址', aliases: ['LB_FBro_GetUrl'], signature: 'FBro_取地址(控件名)', description: '返回指定浏览器当前地址。', insertText: 'FBro_取地址("$1")', returnType: '文本型' },
+        { name: 'FBro_设置代理', aliases: ['LB_FBro_SetProxy'], signature: 'FBro_设置代理(控件名, 代理地址)', description: '设置创建前使用的代理地址；空文本表示直连。', insertText: 'FBro_设置代理("$1", "$2")', returnType: '整数型' },
+        { name: 'FBro_设置缓存目录', aliases: ['LB_FBro_SetProfileDirectory'], signature: 'FBro_设置缓存目录(控件名, 目录)', description: '设置创建前使用的独立缓存目录。', insertText: 'FBro_设置缓存目录("$1", "$2")', returnType: '整数型' },
+        { name: 'FBro_设置UserAgent', aliases: ['LB_FBro_SetUserAgent'], signature: 'FBro_设置UserAgent(控件名, UserAgent)', description: '设置创建前使用的 User-Agent。', insertText: 'FBro_设置UserAgent("$1", "$2")', returnType: '整数型' },
+        { name: 'FBro_取Cookie', aliases: ['LB_FBro_GetCookies'], signature: 'FBro_取Cookie(控件名, 地址)', description: '异步读取指定地址 Cookie；首版返回桥接层最近快照。', insertText: 'FBro_取Cookie("$1", "$2")', returnType: '文本型' },
+        { name: 'FBro_清空Cookie', aliases: ['LB_FBro_ClearCookies'], signature: 'FBro_清空Cookie(控件名, 地址)', description: '删除指定地址的 Cookie。', insertText: 'FBro_清空Cookie("$1", "$2")', returnType: '整数型' },
+        { name: 'FBro指纹_应用配置', aliases: ['LB_FBro_ApplyFingerprintJson'], signature: 'FBro指纹_应用配置(控件名, JSON)', description: '应用结构化指纹 JSON；未配置 VIP 授权时返回 0 并记录中文错误。', insertText: 'FBro指纹_应用配置("$1", "$2")', returnType: '整数型' },
+        { name: 'FBro指纹_取调用次数', aliases: ['LB_FBro_GetFingerprintCallCount'], signature: 'FBro指纹_取调用次数(控件名)', description: '返回 FBro VIP 指纹调用次数。', insertText: 'FBro指纹_取调用次数("$1")', returnType: '文本型' },
+        { name: 'FBro指纹_清空调用次数', aliases: ['LB_FBro_ClearFingerprintCallCount'], signature: 'FBro指纹_清空调用次数(控件名)', description: '清空指定浏览器的指纹调用次数。', insertText: 'FBro指纹_清空调用次数("$1")', returnType: '整数型' },
+        { name: 'FBro_取最近事件', aliases: ['LB_FBro_GetLastEvent'], signature: 'FBro_取最近事件(控件名)', description: '返回最近 FBro 浏览器事件名。', insertText: 'FBro_取最近事件("$1")', returnType: '文本型' },
+        { name: 'FBro_取最近错误', aliases: ['LB_FBro_GetLastError'], signature: 'FBro_取最近错误(控件名)', description: '返回桥接层最近中文错误。', insertText: 'FBro_取最近错误("$1")', returnType: '文本型' }
       ],
       types: [{ name: 'FBro浏览器', description: '由 LingBuilderFbroBridge 管理的不透明 FBro 浏览器句柄。', cppType: 'LB_FBRO_HANDLE' }],
       snippets: [{ label: 'FBro 指纹浏览器基础操作', insertText: 'FBro_创建("FBro浏览器1")\nFBro_导航("FBro浏览器1", "https://www.baidu.com")\n调试输出(FBro_取地址("FBro浏览器1"))', description: '创建 FBro 控件并导航。' }]
@@ -580,6 +607,27 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'FBro_后退', runtimeName: 'FBro_后退', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'FBro_前进', runtimeName: 'FBro_前进', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
       { command: 'FBro_停止', runtimeName: 'FBro_停止', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
+      { command: 'FBro_是否可后退', runtimeName: 'FBro_是否可后退', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否可前进', runtimeName: 'FBro_是否可前进', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否加载中', runtimeName: 'FBro_是否加载中', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_取缩放级别', runtimeName: 'FBro_取缩放级别', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'double', encoding: 'wide' },
+      { command: 'FBro_设置缩放级别', runtimeName: 'FBro_设置缩放级别', parameters: [{ name: '控件名', type: 'wideString' }, { name: '级别', type: 'double' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否静音', runtimeName: 'FBro_是否静音', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_设置静音', runtimeName: 'FBro_设置静音', parameters: [{ name: '控件名', type: 'wideString' }, { name: '是否静音', type: 'bool' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_设置焦点', runtimeName: 'FBro_设置焦点', parameters: [{ name: '控件名', type: 'wideString' }, { name: '是否聚焦', type: 'bool' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_查找', runtimeName: 'FBro_查找', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }, { name: '向前', type: 'bool' }, { name: '区分大小写', type: 'bool' }, { name: '查找下一个', type: 'bool' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_停止查找', runtimeName: 'FBro_停止查找', parameters: [{ name: '控件名', type: 'wideString' }, { name: '清除选择', type: 'bool' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否打开开发者工具', runtimeName: 'FBro_是否打开开发者工具', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_关闭开发者工具', runtimeName: 'FBro_关闭开发者工具', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_强制刷新', runtimeName: 'FBro_强制刷新', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_取浏览器标识', runtimeName: 'FBro_取浏览器标识', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否同一实例', runtimeName: 'FBro_是否同一实例', parameters: [{ name: '控件名', type: 'wideString' }, { name: '另一控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否弹出窗口', runtimeName: 'FBro_是否弹出窗口', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否有文档', runtimeName: 'FBro_是否有文档', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_尝试关闭', runtimeName: 'FBro_尝试关闭', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_设置宿主焦点', runtimeName: 'FBro_设置宿主焦点', parameters: [{ name: '控件名', type: 'wideString' }, { name: '是否聚焦', type: 'bool' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否有视图', runtimeName: 'FBro_是否有视图', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_设置自动调整大小', runtimeName: 'FBro_设置自动调整大小', parameters: [{ name: '控件名', type: 'wideString' }, { name: '启用', type: 'bool' }, { name: '最小高度', type: 'int' }, { name: '最小宽度', type: 'int' }, { name: '最大高度', type: 'int' }, { name: '最大宽度', type: 'int' }], returnType: 'int', encoding: 'wide' },
       { command: 'FBro_执行JS', runtimeName: 'FBro_执行JS', parameters: [{ name: '控件名', type: 'wideString' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
       { command: 'FBro_取标题', runtimeName: 'FBro_取标题', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
       { command: 'FBro_取地址', runtimeName: 'FBro_取地址', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
@@ -595,6 +643,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'FBro_取最近错误', runtimeName: 'FBro_取最近错误', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' }
     ] }
   },
+  ...FBRO_SUBMODULES,
   {
     schemaVersion: 2,
     id: 'lingbuilder.threading',

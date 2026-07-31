@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-30T13:00:31.518Z",
+  "generatedAt": "2026-07-31T09:57:36.143Z",
   "module": {
     "id": "lingbuilder.database.sqlite",
     "name": "SQLite数据库桥接模块",

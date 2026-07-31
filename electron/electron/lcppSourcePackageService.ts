@@ -15,6 +15,8 @@ export const LCPP_SOURCE_PACKAGE_MANIFEST = 'lingbuilder-source-package.json';
 const PACKAGE_SCHEMA_VERSION = 2;
 const LEGACY_PACKAGE_SCHEMA_VERSION = 1;
 const MINIMUM_GENERATOR_VERSION = '0.2.5';
+const EDGEVIEW_SAFE_API_MINIMUM_GENERATOR_VERSION = '0.2.7';
+const EDGEVIEW_SAFE_API_V2_MINIMUM_GENERATOR_VERSION = '0.2.8';
 const MAX_PACKAGE_BYTES = 1024 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_FILE_BYTES = 512 * 1024 * 1024;
@@ -23,13 +25,17 @@ const DEFAULT_PROJECT_ID = 'lingbuilder-ui-project';
 
 export const LCPP_GENERATOR_CAPABILITIES = {
   listViewAdvancedApi: 'win32.listview.advanced-api.v1',
-  dataGridV1: 'win32.datagrid.v1'
+  dataGridV1: 'win32.datagrid.v1',
+  edgeViewSafeApiV1: 'edgeview.safe-api.v1',
+  edgeViewSafeApiV2: 'edgeview.safe-api.v2'
 } as const;
 
 const SUPPORTED_GENERATOR_CAPABILITIES = new Set<string>(Object.values(LCPP_GENERATOR_CAPABILITIES));
 const GENERATOR_CAPABILITY_LABELS: Record<string, string> = {
   [LCPP_GENERATOR_CAPABILITIES.listViewAdvancedApi]: 'Win32 ListView 85 条高层命令（含列、状态、分组和布局接口）',
-  [LCPP_GENERATOR_CAPABILITIES.dataGridV1]: 'Win32 数据表格 v1（强类型列、虚拟数据和单元格交互）'
+  [LCPP_GENERATOR_CAPABILITIES.dataGridV1]: 'Win32 数据表格 v1（强类型列、虚拟数据和单元格交互）',
+  [LCPP_GENERATOR_CAPABILITIES.edgeViewSafeApiV1]: 'EdgeView WebView2 安全 API v1（受管任务、设置、会话、下载、查找、打印与资源控制）',
+  [LCPP_GENERATOR_CAPABILITIES.edgeViewSafeApiV2]: 'EdgeView WebView2 双基线安全 API v2（受管对象、Frame、Worker、扩展、通知和安全决策）'
 };
 const LIST_VIEW_DATA_COMMANDS = new Set([
   '列表视图_添加行', '列表视图_插入行', '列表视图_删除行', '列表视图_设置单元格', '列表视图_取单元格',
@@ -38,6 +44,8 @@ const LIST_VIEW_DATA_COMMANDS = new Set([
 ]);
 const LIST_VIEW_COMMAND_PATTERN = /列表视图_[\p{L}\p{N}_]+\s*\(/gu;
 const DATA_GRID_COMMAND_PATTERN = /表格_[\p{L}\p{N}_]+\s*\(/gu;
+const EDGEVIEW_SAFE_COMMAND_PATTERN = /EdgeView(?:任务|导航|脚本|设置|会话|下载|查找|打印|媒体|开发者工具|资源|事件)_[\p{L}\p{N}_]+\s*\(/gu;
+const EDGEVIEW_SAFE_V2_COMMAND_PATTERN = /EdgeView(?:创建选项|对象|框架|工作线程|扩展|权限|通知|缓冲|安全)_[\p{L}\p{N}_]+\s*\(/gu;
 
 interface PortableSolutionProject {
   id: string;
@@ -244,7 +252,10 @@ export class LcppSourcePackageService {
         createdBy: { product: 'LingBuilder', version: ideVersion },
         sourceSolution: { id: solution.id, name: solution.name },
         startupProjectId: selectedProject.id,
-        minimumGeneratorVersion: MINIMUM_GENERATOR_VERSION,
+        minimumGeneratorVersion: requiredCapabilities.includes(LCPP_GENERATOR_CAPABILITIES.edgeViewSafeApiV2)
+          ? EDGEVIEW_SAFE_API_V2_MINIMUM_GENERATOR_VERSION
+          : requiredCapabilities.includes(LCPP_GENERATOR_CAPABILITIES.edgeViewSafeApiV1)
+            ? EDGEVIEW_SAFE_API_MINIMUM_GENERATOR_VERSION : MINIMUM_GENERATOR_VERSION,
         requiredCapabilities,
         projects: projects.map(project => ({
           id: project.id,
@@ -686,6 +697,10 @@ async function collectRequiredGeneratorCapabilities(
       }
       if (DATA_GRID_COMMAND_PATTERN.test(sourceCode)) required.add(LCPP_GENERATOR_CAPABILITIES.dataGridV1);
       DATA_GRID_COMMAND_PATTERN.lastIndex = 0;
+      if (EDGEVIEW_SAFE_COMMAND_PATTERN.test(sourceCode)) required.add(LCPP_GENERATOR_CAPABILITIES.edgeViewSafeApiV1);
+      EDGEVIEW_SAFE_COMMAND_PATTERN.lastIndex = 0;
+      if (EDGEVIEW_SAFE_V2_COMMAND_PATTERN.test(sourceCode)) required.add(LCPP_GENERATOR_CAPABILITIES.edgeViewSafeApiV2);
+      EDGEVIEW_SAFE_V2_COMMAND_PATTERN.lastIndex = 0;
     }
     try {
       const designerPath = resolveWithin(workspaceRoot, project.designerPath);

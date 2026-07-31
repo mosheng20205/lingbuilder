@@ -22,6 +22,7 @@ import { getLingCppSemanticDiagnostics } from '../lingCpp/languageService';
 import { createProjectFunctionContext } from '../lingCpp/functionLibraryService';
 import { CEF3_BROWSER_EVENTS } from '../modules/cef3BrowserEvents';
 import { EDGEVIEW_BROWSER_EVENTS } from '../modules/edgeViewBrowserEvents';
+import { EDGEVIEW_FULL_RUNTIME_MAJOR, EDGEVIEW_MINIMUM_RUNTIME_MAJOR, EDGEVIEW_SAFE_API_CATALOG, EDGEVIEW_SDK_VERSION } from '../modules/edgeViewApiCatalog';
 import { BUILTIN_LIBRARY_COMMON_RUNTIME, generateStandardLibraryRuntime } from './standardLibraryRuntime';
 import { generateSystemLibraryRuntime } from './systemLibraryRuntime';
 import { generateNetworkLibraryRuntime } from './networkLibraryRuntime';
@@ -43,6 +44,7 @@ import { normalizeControlFont } from './controlFont';
 import { reconcileRebarBands } from './designerOperations';
 import { normalizeDataGridModel } from './dataGridModel';
 import { DATA_GRID_NATIVE_GLOBALS, DATA_GRID_NATIVE_METHODS } from './dataGridNativeRuntime';
+import { EDGEVIEW_SAFE_API_NATIVE_MEMBERS } from './edgeViewRuntime';
 import { getControlTabSlot, getTabControlPages, isNewEmojiTabsControl } from './tabControlModel';
 import {
   parseEplControlMemberAssignmentRule,
@@ -116,6 +118,7 @@ export function generateLingCppNativeWin32Project(
   const sourceFilePath = options.lingCppSourceFilePath || getLingWindowSourceFileName(selectedWindow.fileName, selectedWindow.className);
   const newEmojiModuleEnabled = enabledModules.some(module => module.manifest.id === NEW_EMOJI_MODULE_ID);
   const selectedBackendId = selectedWindow.designerBackend || (newEmojiModuleEnabled ? NEW_EMOJI_UI_BACKEND_ID : WIN32_UI_BACKEND_ID);
+  const edgeViewApiUsage = collectEdgeViewApiUsage(aggregate.program.source);
   const usesNewEmojiDesigner = selectedBackendId === NEW_EMOJI_UI_BACKEND_ID;
   const hasNativeLayoutGenerator = selectedBackendId === WIN32_UI_BACKEND_ID || usesNewEmojiDesigner;
   const mainCppContent = usesNewEmojiDesigner
@@ -129,7 +132,7 @@ export function generateLingCppNativeWin32Project(
     ? []
     : [`UI 后端“${selectedBackendId}”尚未注册原生 C++ 布局生成器，已阻止回退到错误的 Win32 实现。`];
   const sourceMap = generateLingCppNativeSourceMap(mainCppContent, project, aggregate.program, sourceFilePath, aggregate.classSourceFiles, aggregate.functionLibrarySourceFiles, aggregate.globalSourceFile, aggregate.dataTypeSourceFile);
-  const manifestContent = generateNativeManifest(project, selectedWindow, enabledModules, sourceFilePath, sourceMap);
+  const manifestContent = generateNativeManifest(project, selectedWindow, enabledModules, sourceFilePath, sourceMap, edgeViewApiUsage);
   const moduleTargetDiagnostics = enabledModules
     .filter(module => !module.isBuiltin)
     .map(module => getUnsupportedModuleTargetDiagnostic(module))
@@ -1029,7 +1032,7 @@ static void 结束() {
     }
 }
 
-${generateNewEmojiFbroRuntime(fbroModuleEnabled)}
+${generateNewEmojiFbroRuntime(fbroModuleEnabled, fbroControls, program, enabledModules)}
 
 ${newEmojiFunctionLibraries}
 
@@ -1046,6 +1049,7 @@ ${fbroModuleEnabled ? `    if (!LB_NE_InitializeFbro()) {
         return 3;
     }` : ''}
     g_newEmojiWindow = ${createWindow}(L"${escapeWideString(window.title)}", ${window.openPlacement === 'custom' ? int(window.openX ?? 120) : 120}, ${window.openPlacement === 'custom' ? int(window.openY ?? 80) : 80}, ${Math.max(360, int(window.width))}, ${Math.max(220, int(window.height))});
+${fbroModuleEnabled ? '    LB_NE_AttachFbroEventWindow();' : ''}
     if (!g_newEmojiWindow) {
         MessageBoxW(nullptr, L"new_emoji 原生窗口创建失败，请确认 new_emoji.dll 与 exe 位于同一目录。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
         LB_NE_ShutdownFbro();
@@ -1070,6 +1074,109 @@ ${iconCleanup}
     return exitCode;
 }
 `;
+}
+
+/**
+ * CEF3 3.x application projects consume only the stable Bridge ABI. The legacy
+ * inline implementation remains in this generator while the migration is in
+ * progress, but it must never leak CEF headers or CefRefPtr types into generated
+ * user projects.
+ */
+function createBridgeOnlyCef3Source(source: string): string {
+  const cefHeaderBlock = /#if defined\(LINGBUILDER_CEF3_MODULE\) && __has_include\(<include\/cef_app\.h>\)[\s\S]*?#endif\r?\n#if LINGBUILDER_CEF3_AVAILABLE && __has_include\(<LingBuilderCefBridge\.h>\)[\s\S]*?#endif/u;
+  const bridgeHeaderBlock = `#if defined(LINGBUILDER_CEF3_MODULE) && __has_include(<LingBuilderCefBridge.h>)
+#include <LingBuilderCefBridge.h>
+#define LINGBUILDER_CEF3_BRIDGE_AVAILABLE 1
+#else
+#define LINGBUILDER_CEF3_BRIDGE_AVAILABLE 0
+#endif
+#define LINGBUILDER_CEF3_AVAILABLE 0`;
+  const bridgeSource = source.replace(cefHeaderBlock, bridgeHeaderBlock);
+  if (bridgeSource === source) throw new Error('CEF3 Bridge-only 生成失败：未定位到旧 CEF 头文件块。');
+  return selectKnownCef3Branches(bridgeSource);
+}
+
+function selectKnownCef3Branches(source: string): string {
+  type ConditionalFrame = {
+    parentActive: boolean;
+    active: boolean;
+    branchTaken: boolean;
+    known: boolean;
+    originalDirective: string;
+  };
+  const output: string[] = [];
+  const stack: ConditionalFrame[] = [];
+  const lines = source.split(/\r?\n/u);
+  const parentActive = () => stack.every(frame => frame.active);
+  const evaluate = (expression: string): boolean => {
+    if (/LINGBUILDER_CEF3_BRIDGE_AVAILABLE/u.test(expression)) return true;
+    return false;
+  };
+  const containsBridgeBranch = (startIndex: number): boolean => {
+    let depth = 0;
+    for (let index = startIndex + 1; index < lines.length; index += 1) {
+      if (depth === 0 && /^\s*#if\s+LINGBUILDER_CEF3_BRIDGE_AVAILABLE\b/u.test(lines[index])) return true;
+      if (/^\s*#if(?:n?def)?\b/u.test(lines[index])) depth += 1;
+      else if (/^\s*#endif\b/u.test(lines[index])) {
+        if (depth === 0) return false;
+        depth -= 1;
+      }
+    }
+    return false;
+  };
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const line = lines[lineIndex];
+    const ifMatch = line.match(/^\s*#if\s+(.+)$/u);
+    const ifdefMatch = line.match(/^\s*#ifdef\s+(.+)$/u);
+    const ifndefMatch = line.match(/^\s*#ifndef\s+(.+)$/u);
+    const condition = ifMatch?.[1] || ifdefMatch?.[1] || ifndefMatch?.[1] || '';
+    if (condition) {
+      const known = /LINGBUILDER_CEF3_(?:BRIDGE_)?AVAILABLE/u.test(condition);
+      const parent = parentActive();
+      let value = known ? (ifndefMatch ? !evaluate(condition) : evaluate(condition)) : true;
+      if (known && /^LINGBUILDER_CEF3_AVAILABLE$/u.test(condition.trim())) {
+        value = containsBridgeBranch(lineIndex);
+      }
+      stack.push({ parentActive: parent, active: parent && value, branchTaken: value, known, originalDirective: line });
+      if (!known && parent) output.push(line);
+      continue;
+    }
+    const elifMatch = line.match(/^\s*#elif\s+(.+)$/u);
+    if (elifMatch) {
+      const frame = stack.at(-1);
+      if (!frame) throw new Error('CEF3 Bridge-only 生成失败：发现孤立的 #elif。');
+      if (!frame.known) {
+        if (frame.parentActive) output.push(line);
+      } else {
+        const value = !frame.branchTaken && evaluate(elifMatch[1]);
+        frame.active = frame.parentActive && value;
+        frame.branchTaken ||= value;
+      }
+      continue;
+    }
+    if (/^\s*#else\b/u.test(line)) {
+      const frame = stack.at(-1);
+      if (!frame) throw new Error('CEF3 Bridge-only 生成失败：发现孤立的 #else。');
+      if (!frame.known) {
+        if (frame.parentActive) output.push(line);
+      } else {
+        const value = !frame.branchTaken;
+        frame.active = frame.parentActive && value;
+        frame.branchTaken = true;
+      }
+      continue;
+    }
+    if (/^\s*#endif\b/u.test(line)) {
+      const frame = stack.pop();
+      if (!frame) throw new Error('CEF3 Bridge-only 生成失败：发现孤立的 #endif。');
+      if (!frame.known && frame.parentActive) output.push(line);
+      continue;
+    }
+    if (parentActive()) output.push(line);
+  }
+  if (stack.length > 0) throw new Error('CEF3 Bridge-only 生成失败：条件编译块未闭合。');
+  return output.join('\n');
 }
 
 function generateNewEmojiMethodBody(method: LingCppMethod, enabledModules: InstalledModule[], dataTypes: LingCppDataType[]): string {
@@ -1129,10 +1236,233 @@ function generateNewEmojiFbroCreateLines(
   return lines;
 }
 
-function generateNewEmojiFbroRuntime(enabled: boolean): string {
+function generateNewEmojiFbroEventDispatch(
+  controls: LingControl[],
+  program: LingCppProgram | undefined,
+  enabledModules: InstalledModule[]
+): string {
+  if (!program) return 'static int LB_NE_DispatchFbroHandler(const wchar_t*) { return 0; }\nstatic void LB_NE_DispatchFbroEvent(const wchar_t*, const wchar_t*) {}';
+  const blocks: string[] = [];
+  const cases: string[] = [];
+  const handlerCases: string[] = [];
+  const methods = new Map<string, LingCppMethod>();
+  program.classes.forEach(lingClass => lingClass.methods.forEach(method => methods.set(method.name, method)));
+  [...methods.values()].forEach((method, index) => {
+    const callbackName = `LB_NE_FbroDynamicHandler_${index + 1}`;
+    blocks.push(`static void ${callbackName}() {\n${generateNewEmojiMethodBody(method, enabledModules, program.dataTypes)}\n}`);
+    handlerCases.push(`    if (wcscmp(handlerName, L"${escapeWideString(method.name)}") == 0) { ${callbackName}(); return 1; }`);
+  });
+  controls.forEach(control => {
+    Object.entries(control.events || {}).forEach(([eventName, handlerName]) => {
+      if (!handlerName || !methods.has(handlerName)) return;
+      cases.push(`    if (wcscmp(controlName, L"${escapeWideString(control.name)}") == 0 && wcscmp(eventName, L"${escapeWideString(eventName)}") == 0) { LB_NE_DispatchFbroHandler(L"${escapeWideString(handlerName)}"); return; }`);
+    });
+  });
+  return `${blocks.join('\n\n')}\n\nstatic int LB_NE_DispatchFbroHandler(const wchar_t* handlerName) {\n    if (!handlerName) return 0;\n${handlerCases.join('\n')}\n    return 0;\n}\n\nstatic void LB_NE_DispatchFbroEvent(const wchar_t* controlName, const wchar_t* eventName) {\n    if (!controlName || !eventName) return;\n${cases.join('\n')}\n}`;
+}
+
+function generateFbroObjectRuntime(availabilityMacro: string, staticFunctions: boolean): string {
+  type Definition = { returnType: string; name: string; parameters: string; body: string; fallback: string };
+  const definitions: Definition[] = [];
+  const add = (returnType: string, name: string, parameters: string, body: string, fallback = 'return 0;') => {
+    definitions.push({ returnType, name, parameters, body, fallback });
+  };
+  const handle = 'static_cast<LB_FBRO_OBJECT_HANDLE>(object)';
+  const addHandleResult = (name: string, apiName: string, parameters = '', argumentsText = '') => {
+    add('long long', name, parameters, `return static_cast<long long>(${apiName}(${argumentsText}));`);
+  };
+  const addInt = (name: string, apiName: string, parameters: string, argumentsText: string) => {
+    add('int', name, parameters, `return ${apiName}(${argumentsText});`);
+  };
+  const addDoubleOut = (name: string, apiName: string, parameters: string, argumentsText: string) => {
+    add('double', name, parameters, `double value = 0.0; ${apiName}(${argumentsText}, &value); return value;`, 'return 0.0;');
+  };
+  const addIntOut = (name: string, apiName: string, parameters: string, argumentsText: string) => {
+    add('int', name, parameters, `int value = 0; ${apiName}(${argumentsText}, &value); return value;`);
+  };
+  const addStringOut = (name: string, apiName: string, parameters: string, argumentsText: string) => {
+    add('std::wstring', name, parameters, `wchar_t value[16384] = {}; ${apiName}(${argumentsText}, value, 16384); return value;`, 'return L"";');
+  };
+
+  addInt('FBro对象_取类型', 'LB_FBro_ObjectGetType', 'long long object', handle);
+  addInt('FBro对象_释放', 'LB_FBro_ObjectRelease', 'long long object', handle);
+
+  for (const [name, apiName] of [
+    ['FBro框架_是否有效', 'LB_FBro_FrameIsValid'],
+    ['FBro框架_是否主框架', 'LB_FBro_FrameIsMain'],
+    ['FBro框架_是否焦点框架', 'LB_FBro_FrameIsFocused'],
+    ['FBro框架_撤销', 'LB_FBro_FrameUndo'],
+    ['FBro框架_重做', 'LB_FBro_FrameRedo'],
+    ['FBro框架_剪切', 'LB_FBro_FrameCut'],
+    ['FBro框架_复制', 'LB_FBro_FrameCopy'],
+    ['FBro框架_粘贴', 'LB_FBro_FramePaste'],
+    ['FBro框架_删除', 'LB_FBro_FrameDelete'],
+    ['FBro框架_全选', 'LB_FBro_FrameSelectAll'],
+    ['FBro框架_查看源代码', 'LB_FBro_FrameViewSource']
+  ]) addInt(name, apiName, 'long long object', handle);
+  addStringOut('FBro框架_取地址', 'LB_FBro_FrameGetUrl', 'long long object', handle);
+  addStringOut('FBro框架_取名称', 'LB_FBro_FrameGetName', 'long long object', handle);
+  addStringOut('FBro框架_取标识', 'LB_FBro_FrameGetIdentifier', 'long long object', handle);
+  addHandleResult('FBro框架_取父框架', 'LB_FBro_FrameGetParent', 'long long object', handle);
+  addHandleResult('FBro框架_取浏览器实例', 'LB_FBro_FrameGetBrowser', 'long long object', handle);
+  addInt('FBro框架_载入地址', 'LB_FBro_FrameLoadUrl', 'long long object, const std::wstring& url', `${handle}, url.c_str()`);
+  addInt('FBro框架_执行JS', 'LB_FBro_FrameExecuteJavaScript', 'long long object, const std::wstring& code, const std::wstring& scriptUrl, int startLine', `${handle}, code.c_str(), scriptUrl.c_str(), startLine`);
+
+  addHandleResult('FBro值_创建', 'LB_FBro_ValueCreate');
+  for (const [name, apiName] of [
+    ['FBro值_是否有效', 'LB_FBro_ValueIsValid'],
+    ['FBro值_是否被拥有', 'LB_FBro_ValueIsOwned'],
+    ['FBro值_是否只读', 'LB_FBro_ValueIsReadOnly'],
+    ['FBro值_取类型', 'LB_FBro_ValueGetType'],
+    ['FBro值_取逻辑', 'LB_FBro_ValueGetBool'],
+    ['FBro值_设为空', 'LB_FBro_ValueSetNull']
+  ]) addInt(name, apiName, 'long long object', handle);
+  addHandleResult('FBro值_复制', 'LB_FBro_ValueCopy', 'long long object', handle);
+  addInt('FBro值_是否同一对象', 'LB_FBro_ValueIsSame', 'long long object, long long other', `${handle}, static_cast<LB_FBRO_OBJECT_HANDLE>(other)`);
+  addInt('FBro值_是否相等', 'LB_FBro_ValueIsEqual', 'long long object, long long other', `${handle}, static_cast<LB_FBRO_OBJECT_HANDLE>(other)`);
+  addIntOut('FBro值_取整数', 'LB_FBro_ValueGetInt', 'long long object', handle);
+  addDoubleOut('FBro值_取小数', 'LB_FBro_ValueGetDouble', 'long long object', handle);
+  addStringOut('FBro值_取文本', 'LB_FBro_ValueGetString', 'long long object', handle);
+  addInt('FBro值_设置逻辑', 'LB_FBro_ValueSetBool', 'long long object, bool value', `${handle}, value ? 1 : 0`);
+  addInt('FBro值_设置整数', 'LB_FBro_ValueSetInt', 'long long object, int value', `${handle}, value`);
+  addInt('FBro值_设置小数', 'LB_FBro_ValueSetDouble', 'long long object, double value', `${handle}, value`);
+  addInt('FBro值_设置文本', 'LB_FBro_ValueSetString', 'long long object, const wchar_t* value', `${handle}, value`);
+  addHandleResult('FBro值_取二进制', 'LB_FBro_ValueGetBinary', 'long long object', handle);
+  addInt('FBro值_设置二进制', 'LB_FBro_ValueSetBinary', 'long long object, long long buffer', `${handle}, static_cast<LB_FBRO_BUFFER_HANDLE>(buffer)`);
+  addHandleResult('FBro值_取字典', 'LB_FBro_ValueGetDictionary', 'long long object', handle);
+  addHandleResult('FBro值_取列表', 'LB_FBro_ValueGetList', 'long long object', handle);
+  addInt('FBro值_设置字典', 'LB_FBro_ValueSetDictionary', 'long long object, long long dictionary', `${handle}, static_cast<LB_FBRO_OBJECT_HANDLE>(dictionary)`);
+  addInt('FBro值_设置列表', 'LB_FBro_ValueSetList', 'long long object, long long list', `${handle}, static_cast<LB_FBRO_OBJECT_HANDLE>(list)`);
+
+  addHandleResult('FBro字典_创建', 'LB_FBro_DictionaryCreate');
+  for (const [name, apiName] of [
+    ['FBro字典_是否有效', 'LB_FBro_DictionaryIsValid'],
+    ['FBro字典_是否被拥有', 'LB_FBro_DictionaryIsOwned'],
+    ['FBro字典_是否只读', 'LB_FBro_DictionaryIsReadOnly'],
+    ['FBro字典_取数量', 'LB_FBro_DictionaryGetSize'],
+    ['FBro字典_清空', 'LB_FBro_DictionaryClear']
+  ]) addInt(name, apiName, 'long long object', handle);
+  addHandleResult('FBro字典_复制', 'LB_FBro_DictionaryCopy', 'long long object, bool excludeEmptyChildren', `${handle}, excludeEmptyChildren ? 1 : 0`);
+  addInt('FBro字典_是否同一对象', 'LB_FBro_DictionaryIsSame', 'long long object, long long other', `${handle}, static_cast<LB_FBRO_OBJECT_HANDLE>(other)`);
+  addInt('FBro字典_是否相等', 'LB_FBro_DictionaryIsEqual', 'long long object, long long other', `${handle}, static_cast<LB_FBRO_OBJECT_HANDLE>(other)`);
+  for (const [name, apiName] of [
+    ['FBro字典_是否存在键', 'LB_FBro_DictionaryHasKey'],
+    ['FBro字典_删除', 'LB_FBro_DictionaryRemove'],
+    ['FBro字典_取类型', 'LB_FBro_DictionaryGetType'],
+    ['FBro字典_取逻辑', 'LB_FBro_DictionaryGetBool'],
+    ['FBro字典_设为空', 'LB_FBro_DictionarySetNull']
+  ]) addInt(name, apiName, 'long long object, const wchar_t* key', `${handle}, key`);
+  addIntOut('FBro字典_取整数', 'LB_FBro_DictionaryGetInt', 'long long object, const wchar_t* key', `${handle}, key`);
+  addDoubleOut('FBro字典_取小数', 'LB_FBro_DictionaryGetDouble', 'long long object, const wchar_t* key', `${handle}, key`);
+  addStringOut('FBro字典_取文本', 'LB_FBro_DictionaryGetString', 'long long object, const wchar_t* key', `${handle}, key`);
+  addStringOut('FBro字典_取键列表JSON', 'LB_FBro_DictionaryGetKeysJson', 'long long object', handle);
+  addHandleResult('FBro字典_取值对象', 'LB_FBro_DictionaryGetValue', 'long long object, const wchar_t* key', `${handle}, key`);
+  addHandleResult('FBro字典_取二进制', 'LB_FBro_DictionaryGetBinary', 'long long object, const wchar_t* key', `${handle}, key`);
+  addHandleResult('FBro字典_取字典', 'LB_FBro_DictionaryGetDictionary', 'long long object, const wchar_t* key', `${handle}, key`);
+  addHandleResult('FBro字典_取列表', 'LB_FBro_DictionaryGetList', 'long long object, const wchar_t* key', `${handle}, key`);
+  addInt('FBro字典_设置逻辑', 'LB_FBro_DictionarySetBool', 'long long object, const wchar_t* key, bool value', `${handle}, key, value ? 1 : 0`);
+  addInt('FBro字典_设置整数', 'LB_FBro_DictionarySetInt', 'long long object, const wchar_t* key, int value', `${handle}, key, value`);
+  addInt('FBro字典_设置小数', 'LB_FBro_DictionarySetDouble', 'long long object, const wchar_t* key, double value', `${handle}, key, value`);
+  addInt('FBro字典_设置文本', 'LB_FBro_DictionarySetString', 'long long object, const wchar_t* key, const wchar_t* value', `${handle}, key, value`);
+  addInt('FBro字典_设置值对象', 'LB_FBro_DictionarySetValue', 'long long object, const wchar_t* key, long long value', `${handle}, key, static_cast<LB_FBRO_OBJECT_HANDLE>(value)`);
+  addInt('FBro字典_设置二进制', 'LB_FBro_DictionarySetBinary', 'long long object, const wchar_t* key, long long buffer', `${handle}, key, static_cast<LB_FBRO_BUFFER_HANDLE>(buffer)`);
+  addInt('FBro字典_设置字典', 'LB_FBro_DictionarySetDictionary', 'long long object, const wchar_t* key, long long dictionary', `${handle}, key, static_cast<LB_FBRO_OBJECT_HANDLE>(dictionary)`);
+  addInt('FBro字典_设置列表', 'LB_FBro_DictionarySetList', 'long long object, const wchar_t* key, long long list', `${handle}, key, static_cast<LB_FBRO_OBJECT_HANDLE>(list)`);
+
+  addHandleResult('FBro列表_创建', 'LB_FBro_ListCreate');
+  for (const [name, apiName] of [
+    ['FBro列表_是否有效', 'LB_FBro_ListIsValid'],
+    ['FBro列表_是否被拥有', 'LB_FBro_ListIsOwned'],
+    ['FBro列表_是否只读', 'LB_FBro_ListIsReadOnly'],
+    ['FBro列表_取数量', 'LB_FBro_ListGetSize'],
+    ['FBro列表_清空', 'LB_FBro_ListClear']
+  ]) addInt(name, apiName, 'long long object', handle);
+  addHandleResult('FBro列表_复制', 'LB_FBro_ListCopy', 'long long object', handle);
+  addInt('FBro列表_是否同一对象', 'LB_FBro_ListIsSame', 'long long object, long long other', `${handle}, static_cast<LB_FBRO_OBJECT_HANDLE>(other)`);
+  addInt('FBro列表_是否相等', 'LB_FBro_ListIsEqual', 'long long object, long long other', `${handle}, static_cast<LB_FBRO_OBJECT_HANDLE>(other)`);
+  addInt('FBro列表_设置数量', 'LB_FBro_ListSetSize', 'long long object, int size', `${handle}, size`);
+  for (const [name, apiName] of [
+    ['FBro列表_删除', 'LB_FBro_ListRemove'],
+    ['FBro列表_取类型', 'LB_FBro_ListGetType'],
+    ['FBro列表_取逻辑', 'LB_FBro_ListGetBool'],
+    ['FBro列表_设为空', 'LB_FBro_ListSetNull']
+  ]) addInt(name, apiName, 'long long object, int index', `${handle}, index`);
+  addIntOut('FBro列表_取整数', 'LB_FBro_ListGetInt', 'long long object, int index', `${handle}, index`);
+  addDoubleOut('FBro列表_取小数', 'LB_FBro_ListGetDouble', 'long long object, int index', `${handle}, index`);
+  addStringOut('FBro列表_取文本', 'LB_FBro_ListGetString', 'long long object, int index', `${handle}, index`);
+  addHandleResult('FBro列表_取值对象', 'LB_FBro_ListGetValue', 'long long object, int index', `${handle}, index`);
+  addHandleResult('FBro列表_取二进制', 'LB_FBro_ListGetBinary', 'long long object, int index', `${handle}, index`);
+  addHandleResult('FBro列表_取字典', 'LB_FBro_ListGetDictionary', 'long long object, int index', `${handle}, index`);
+  addHandleResult('FBro列表_取列表', 'LB_FBro_ListGetList', 'long long object, int index', `${handle}, index`);
+  addInt('FBro列表_设置逻辑', 'LB_FBro_ListSetBool', 'long long object, int index, bool value', `${handle}, index, value ? 1 : 0`);
+  addInt('FBro列表_设置整数', 'LB_FBro_ListSetInt', 'long long object, int index, int value', `${handle}, index, value`);
+  addInt('FBro列表_设置小数', 'LB_FBro_ListSetDouble', 'long long object, int index, double value', `${handle}, index, value`);
+  addInt('FBro列表_设置文本', 'LB_FBro_ListSetString', 'long long object, int index, const wchar_t* value', `${handle}, index, value`);
+  addInt('FBro列表_设置值对象', 'LB_FBro_ListSetValue', 'long long object, int index, long long value', `${handle}, index, static_cast<LB_FBRO_OBJECT_HANDLE>(value)`);
+  addInt('FBro列表_设置二进制', 'LB_FBro_ListSetBinary', 'long long object, int index, long long buffer', `${handle}, index, static_cast<LB_FBRO_BUFFER_HANDLE>(buffer)`);
+  addInt('FBro列表_设置字典', 'LB_FBro_ListSetDictionary', 'long long object, int index, long long dictionary', `${handle}, index, static_cast<LB_FBRO_OBJECT_HANDLE>(dictionary)`);
+  addInt('FBro列表_设置列表', 'LB_FBro_ListSetList', 'long long object, int index, long long list', `${handle}, index, static_cast<LB_FBRO_OBJECT_HANDLE>(list)`);
+
+  addHandleResult('FBro流_从文件创建', 'LB_FBro_StreamCreateForFile', 'const wchar_t* path', 'path');
+  addHandleResult('FBro流_从缓冲创建', 'LB_FBro_StreamCreateForBuffer', 'long long buffer', 'static_cast<LB_FBRO_BUFFER_HANDLE>(buffer)');
+  add('long long', 'FBro流_读取', 'long long object, long long size, long long count', `if (size < 0 || count < 0) return 0; return static_cast<long long>(LB_FBro_StreamRead(${handle}, static_cast<size_t>(size), static_cast<size_t>(count)));`);
+  addInt('FBro流_定位', 'LB_FBro_StreamSeek', 'long long object, long long offset, int whence', `${handle}, static_cast<int64_t>(offset), whence`);
+  add('long long', 'FBro流_取位置', 'long long object', `int64_t position = 0; return LB_FBro_StreamTell(${handle}, &position) > 0 ? static_cast<long long>(position) : -1;`, 'return -1;');
+  addInt('FBro流_是否结束', 'LB_FBro_StreamEof', 'long long object', handle);
+  addInt('FBro流_是否可能阻塞', 'LB_FBro_StreamMayBlock', 'long long object', handle);
+
+  addInt('FBro任务_等待', 'LB_FBro_TaskWait', 'long long task, int timeoutMilliseconds', 'static_cast<LB_FBRO_TASK_HANDLE>(task), timeoutMilliseconds');
+  addHandleResult('FBro任务_取对象', 'LB_FBro_TaskGetObject', 'long long task', 'static_cast<LB_FBRO_TASK_HANDLE>(task)');
+  addHandleResult('FBro任务_取缓冲', 'LB_FBro_TaskGetBuffer', 'long long task', 'static_cast<LB_FBRO_TASK_HANDLE>(task)');
+
+  addInt('FBro图像_是否为空', 'LB_FBro_ImageIsEmpty', 'long long object', handle);
+  addInt('FBro图像_取宽度', 'LB_FBro_ImageGetWidth', 'long long object', handle);
+  addInt('FBro图像_取高度', 'LB_FBro_ImageGetHeight', 'long long object', handle);
+  add('std::wstring', 'FBro图像_取表示信息JSON', 'long long object, double scaleFactor', `float actualScale = 0.0f; int pixelWidth = 0; int pixelHeight = 0; if (LB_FBro_ImageGetRepresentationInfo(${handle}, static_cast<float>(scaleFactor), &actualScale, &pixelWidth, &pixelHeight) <= 0) return L"{}"; wchar_t json[256] = {}; swprintf_s(json, L"{\\\"actualScaleFactor\\\":%.6g,\\\"pixelWidth\\\":%d,\\\"pixelHeight\\\":%d}", static_cast<double>(actualScale), pixelWidth, pixelHeight); return json;`, 'return L"{}";');
+  add('long long', 'FBro图像_转位图缓冲', 'long long object, double scaleFactor, int colorType, int alphaType', `int pixelWidth = 0; int pixelHeight = 0; return static_cast<long long>(LB_FBro_ImageGetAsBitmap(${handle}, static_cast<float>(scaleFactor), colorType, alphaType, &pixelWidth, &pixelHeight));`);
+  add('long long', 'FBro图像_转JPEG缓冲', 'long long object, double scaleFactor, int quality', `int pixelWidth = 0; int pixelHeight = 0; return static_cast<long long>(LB_FBro_ImageGetAsJpeg(${handle}, static_cast<float>(scaleFactor), quality, &pixelWidth, &pixelHeight));`);
+  add('long long', 'FBro图像_转PNG缓冲', 'long long object, double scaleFactor, bool withTransparency', `int pixelWidth = 0; int pixelHeight = 0; return static_cast<long long>(LB_FBro_ImageGetAsPng(${handle}, static_cast<float>(scaleFactor), withTransparency ? 1 : 0, &pixelWidth, &pixelHeight));`);
+
+  addHandleResult('FBro证书_取主体', 'LB_FBro_CertificateGetSubject', 'long long object', handle);
+  addHandleResult('FBro证书_取颁发者', 'LB_FBro_CertificateGetIssuer', 'long long object', handle);
+  addHandleResult('FBro证书_取序列号缓冲', 'LB_FBro_CertificateGetSerialNumber', 'long long object', handle);
+  addHandleResult('FBro证书_取DER缓冲', 'LB_FBro_CertificateGetDerEncoded', 'long long object', handle);
+  addHandleResult('FBro证书_取PEM缓冲', 'LB_FBro_CertificateGetPemEncoded', 'long long object', handle);
+  add('long long', 'FBro证书_取生效时间', 'long long object', `int64_t value = 0; return LB_FBro_CertificateGetValidStart(${handle}, &value) > 0 ? static_cast<long long>(value) : 0;`);
+  add('long long', 'FBro证书_取失效时间', 'long long object', `int64_t value = 0; return LB_FBro_CertificateGetValidExpiry(${handle}, &value) > 0 ? static_cast<long long>(value) : 0;`);
+  addInt('FBro证书_取颁发链数量', 'LB_FBro_CertificateGetIssuerChainSize', 'long long object', handle);
+  addHandleResult('FBro证书_取DER颁发链项', 'LB_FBro_CertificateGetDerIssuerChainItem', 'long long object, int index', `${handle}, index`);
+  addHandleResult('FBro证书_取PEM颁发链项', 'LB_FBro_CertificateGetPemIssuerChainItem', 'long long object, int index', `${handle}, index`);
+  addStringOut('FBro证书主体_取显示名', 'LB_FBro_PrincipalGetDisplayName', 'long long object', handle);
+  addStringOut('FBro证书主体_取通用名', 'LB_FBro_PrincipalGetCommonName', 'long long object', handle);
+  addStringOut('FBro证书主体_取地区名', 'LB_FBro_PrincipalGetLocalityName', 'long long object', handle);
+  addStringOut('FBro证书主体_取省州名', 'LB_FBro_PrincipalGetStateOrProvinceName', 'long long object', handle);
+  addStringOut('FBro证书主体_取国家名', 'LB_FBro_PrincipalGetCountryName', 'long long object', handle);
+  addStringOut('FBro证书主体_取组织JSON', 'LB_FBro_PrincipalGetOrganizationNamesJson', 'long long object', handle);
+  addStringOut('FBro证书主体_取组织单位JSON', 'LB_FBro_PrincipalGetOrganizationUnitNamesJson', 'long long object', handle);
+  addInt('FBro拖放数据_是否有图像', 'LB_FBro_DragDataHasImage', 'long long object', handle);
+  addHandleResult('FBro拖放数据_取图像', 'LB_FBro_DragDataGetImage', 'long long object', handle);
+
+  const prefix = staticFunctions ? 'static ' : '';
+  return definitions.map(definition => `${prefix}${definition.returnType} ${definition.name}(${definition.parameters}) {
+#if ${availabilityMacro}
+    ${definition.body}
+#else
+    ${definition.fallback}
+#endif
+}`).join('\n');
+}
+
+function generateNewEmojiFbroRuntime(
+  enabled: boolean,
+  controls: LingControl[] = [],
+  program?: LingCppProgram,
+  enabledModules: InstalledModule[] = []
+): string {
   if (!enabled) {
     return `static void LB_NE_UpdateFbroTabVisibility(int, int) {}\nstatic void LB_NE_ShutdownFbro() {}`;
   }
+  const dispatch = generateNewEmojiFbroEventDispatch(controls, program, enabledModules);
   return String.raw`
 struct LB_NE_FbroBrowserInstance {
     std::wstring name;
@@ -1144,8 +1474,15 @@ struct LB_NE_FbroBrowserInstance {
     std::wstring proxyServer;
     std::wstring fingerprintJson;
     std::wstring lastEvent;
+    std::wstring lastEventData;
+    std::wstring lastEventJson;
+    LB_FBRO_OBJECT_HANDLE lastEventObject = 0;
     std::wstring lastError;
-    std::vector<LB_FBRO_HANDLE> chromeUiHandles;
+    int eventAction = 0;
+    std::wstring eventResultText;
+    std::map<std::wstring, std::wstring> handlers;
+    struct PopupState { std::wstring lastEvent; std::wstring lastEventData; std::wstring lastEventJson; LB_FBRO_OBJECT_HANDLE lastEventObject = 0; std::wstring lastError; };
+    std::map<LB_FBRO_HANDLE, PopupState> chromeUiInstances;
     unsigned int flags = 0;
     int tabElementId = 0;
     int tabIndex = -1;
@@ -1153,6 +1490,40 @@ struct LB_NE_FbroBrowserInstance {
 };
 static std::vector<LB_NE_FbroBrowserInstance> g_newEmojiFbroBrowsers;
 static bool g_newEmojiFbroInitialized = false;
+static constexpr UINT WM_LINGBUILDER_NE_FBRO_EVENT = WM_APP + 0x51;
+
+struct LB_NE_FbroEventPacket {
+    LB_FBRO_HANDLE handle = 0;
+    int eventCode = 0;
+    std::wstring eventName;
+    std::wstring data;
+    std::wstring dataJson;
+    LB_FBRO_OBJECT_HANDLE object = 0;
+    int action = 0;
+    std::wstring resultText;
+    bool synchronous = false;
+};
+
+static std::wstring LB_NE_ReadFbroJsonField(const std::wstring& json, const wchar_t* fieldName) {
+    if (!fieldName) return L"";
+    const std::wstring needle = L"\\\"" + std::wstring(fieldName) + L"\\\":";
+    size_t position = json.find(needle);
+    if (position == std::wstring::npos) return L"";
+    position += needle.size(); while (position < json.size() && iswspace(json[position])) ++position;
+    if (position >= json.size()) return L"";
+    if (json[position] != L'"') { size_t end = json.find_first_of(L",}", position); return json.substr(position, end - position); }
+    std::wstring value;
+    for (++position; position < json.size(); ++position) {
+        wchar_t character = json[position]; if (character == L'"') break;
+        if (character == L'\\\\' && position + 1 < json.size()) {
+            wchar_t escaped = json[++position]; value += escaped == L'n' ? L'\\n' : escaped == L'r' ? L'\\r' : escaped == L't' ? L'\\t' : escaped;
+        } else value += character;
+    }
+    return value;
+}
+
+static void LB_NE_DispatchFbroEvent(const wchar_t* controlName, const wchar_t* eventName);
+static int LB_NE_DispatchFbroHandler(const wchar_t* handlerName);
 
 static LB_NE_FbroBrowserInstance* LB_NE_FindFbro(const wchar_t* controlName) {
     if (!controlName || !*controlName) return nullptr;
@@ -1165,10 +1536,83 @@ static void __stdcall LB_NE_FbroEvent(LB_FBRO_HANDLE handle, int eventCode, cons
         if (browser.handle != handle) continue;
         browser.lastEvent = eventCode == 1 ? L"Created" : eventCode == 2 ? L"LoadEnd" :
             eventCode == 3 ? L"AddressChanged" : eventCode == 4 ? L"TitleChanged" :
-            eventCode == 5 ? L"Closed" : eventCode == 7 ? L"BeforePopup" : L"Error";
-        if (eventCode == 6) browser.lastError = data ? data : L"";
+            eventCode == 5 ? L"Closed" : eventCode == 7 ? L"BeforePopup" :
+            eventCode == 8 ? L"CertificateError" : eventCode == 9 ? L"DragEnter" : L"Error";
+        browser.lastEventData = data ? data : L"";
+        if (eventCode == 6) browser.lastError = browser.lastEventData;
+        auto handler = browser.handlers.find(browser.lastEvent);
+        if (handler != browser.handlers.end()) LB_NE_DispatchFbroHandler(handler->second.c_str());
+        else LB_NE_DispatchFbroEvent(browser.name.c_str(), browser.lastEvent.c_str());
         return;
     }
+}
+
+static int __stdcall LB_NE_FbroEventV2(const LB_FBRO_EVENT_PACKET_V2* source,
+                                       wchar_t* resultText, size_t resultCapacity, void*) {
+    if (!source || source->struct_size < sizeof(LB_FBRO_EVENT_PACKET_V2)
+        || source->abi_version != LB_FBRO_ABI_VERSION_V2 || !g_newEmojiWindow || !IsWindow(g_newEmojiWindow)) return 0;
+    auto fill = [source](LB_NE_FbroEventPacket& packet) {
+        packet.handle = source->browser;
+        packet.eventCode = source->event_code;
+        packet.eventName = source->event_name ? source->event_name : L"Unknown";
+        packet.dataJson = source->data_json ? source->data_json : L"{}";
+        packet.data = LB_NE_ReadFbroJsonField(packet.dataJson, L"data");
+        packet.object = source->object;
+    };
+    if (source->event_code != LB_FBRO_EVENT_BEFORE_POPUP && source->event_code != LB_FBRO_EVENT_CERTIFICATE_ERROR) {
+        auto* packet = new LB_NE_FbroEventPacket(); fill(*packet);
+        if (!PostMessageW(g_newEmojiWindow, WM_LINGBUILDER_NE_FBRO_EVENT, 0, reinterpret_cast<LPARAM>(packet))) delete packet;
+        return 0;
+    }
+    LB_NE_FbroEventPacket packet; fill(packet); packet.synchronous = true;
+    DWORD_PTR ignored = 0;
+    if (!SendMessageTimeoutW(g_newEmojiWindow, WM_LINGBUILDER_NE_FBRO_EVENT, 0, reinterpret_cast<LPARAM>(&packet),
+                             SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &ignored)) return 0;
+    if (resultText && resultCapacity > 0) wcsncpy_s(resultText, resultCapacity, packet.resultText.c_str(), _TRUNCATE);
+    return packet.action;
+}
+
+static LRESULT CALLBACK LB_NE_FbroWindowSubclass(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam,
+                                                  UINT_PTR subclassId, DWORD_PTR) {
+    if (message == WM_LINGBUILDER_NE_FBRO_EVENT) {
+        auto* packet = reinterpret_cast<LB_NE_FbroEventPacket*>(lParam);
+        if (!packet) return 0;
+        for (auto& browser : g_newEmojiFbroBrowsers) {
+            if (browser.handle == packet->handle) {
+                browser.eventAction = 0;
+                browser.eventResultText.clear();
+                browser.lastEvent = packet->eventName;
+                browser.lastEventData = packet->data;
+                browser.lastEventJson = packet->dataJson;
+                browser.lastEventObject = packet->object;
+                if (packet->eventCode == LB_FBRO_EVENT_ERROR) browser.lastError = packet->data;
+                auto handler = browser.handlers.find(browser.lastEvent);
+                if (handler != browser.handlers.end()) LB_NE_DispatchFbroHandler(handler->second.c_str());
+                else LB_NE_DispatchFbroEvent(browser.name.c_str(), browser.lastEvent.c_str());
+                packet->action = browser.eventAction;
+                packet->resultText = browser.eventResultText;
+                break;
+            }
+            auto popup = browser.chromeUiInstances.find(packet->handle);
+            if (popup == browser.chromeUiInstances.end()) continue;
+            popup->second.lastEvent = packet->eventName;
+            popup->second.lastEventData = packet->data;
+            popup->second.lastEventJson = packet->dataJson;
+            popup->second.lastEventObject = packet->object;
+            if (packet->eventCode == LB_FBRO_EVENT_ERROR) popup->second.lastError = packet->data;
+            LB_NE_DispatchFbroEvent(browser.name.c_str(), packet->eventName.c_str());
+            if (packet->eventCode == LB_FBRO_EVENT_CLOSED) browser.chromeUiInstances.erase(popup);
+            break;
+        }
+        if (!packet->synchronous) delete packet;
+        return 0;
+    }
+    if (message == WM_NCDESTROY) RemoveWindowSubclass(hwnd, LB_NE_FbroWindowSubclass, subclassId);
+    return DefSubclassProc(hwnd, message, wParam, lParam);
+}
+
+static void LB_NE_AttachFbroEventWindow() {
+    if (g_newEmojiWindow) SetWindowSubclass(g_newEmojiWindow, LB_NE_FbroWindowSubclass, 0xFB20, 0);
 }
 
 static void LB_NE_RegisterFbro(const wchar_t* name, int x, int y, int width, int height,
@@ -1182,9 +1626,13 @@ static void LB_NE_RegisterFbro(const wchar_t* name, int x, int y, int width, int
     HWND host = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
         scale(x), scale(y + titleBarLogicalHeight), (std::max)(1, scale(width)), (std::max)(1, scale(height)),
         g_newEmojiWindow, nullptr, GetModuleHandleW(nullptr), nullptr);
-    g_newEmojiFbroBrowsers.push_back({ name ? name : L"", host, 0, url ? url : L"about:blank",
-        profile ? profile : L"", userAgent ? userAgent : L"", proxy ? proxy : L"",
-        fingerprint ? fingerprint : L"", L"", L"", {}, flags, tabElementId, tabIndex, visible != 0 });
+    LB_NE_FbroBrowserInstance browser;
+    browser.name = name ? name : L""; browser.host = host; browser.url = url ? url : L"about:blank";
+    browser.profileDirectory = profile ? profile : L""; browser.userAgent = userAgent ? userAgent : L"";
+    browser.proxyServer = proxy ? proxy : L""; browser.fingerprintJson = fingerprint ? fingerprint : L"";
+    browser.flags = flags; browser.tabElementId = tabElementId; browser.tabIndex = tabIndex;
+    browser.configuredVisible = visible != 0;
+    g_newEmojiFbroBrowsers.push_back(std::move(browser));
 }
 
 static void LB_NE_UpdateFbroTabVisibility(int elementId, int activeIndex) {
@@ -1228,6 +1676,7 @@ static int FBro_创建(const wchar_t* controlName) {
         browser.handle = LB_FBro_CreateEx(browser.host, browser.url.c_str(), browser.profileDirectory.c_str(),
             browser.userAgent.c_str(), browser.flags, LB_NE_FbroEvent, nullptr);
         if (!browser.handle) { browser.lastError = L"创建 FBro 浏览器句柄失败"; continue; }
+        LB_FBro_SetEventCallbackV2(browser.handle, LB_NE_FbroEventV2, nullptr);
         if (!browser.proxyServer.empty()) LB_FBro_SetProxy(browser.handle, browser.proxyServer.c_str(), L"", L"");
         if (!browser.fingerprintJson.empty()) LB_FBro_ApplyFingerprintJson(browser.handle, browser.fingerprintJson.c_str());
         ++created;
@@ -1249,7 +1698,10 @@ static int FBro_打开谷歌原生UI浏览器(const wchar_t* name, const wchar_t
 #if LINGBUILDER_NE_FBRO_AVAILABLE
     auto* browser = LB_NE_FindFbro(name); if (!browser || !browser->handle) return 0;
     LB_FBRO_HANDLE popup = LB_FBro_CreateChromeUi(browser->handle, address && *address ? address : browser->url.c_str(), LB_NE_FbroEvent, nullptr);
-    if (popup) browser->chromeUiHandles.push_back(popup);
+    if (popup) {
+        browser->chromeUiInstances.emplace(popup, LB_NE_FbroBrowserInstance::PopupState{});
+        LB_FBro_SetEventCallbackV2(popup, LB_NE_FbroEventV2, nullptr);
+    }
     return popup ? 1 : 0;
 #else
     (void)name; (void)address; return 0;
@@ -1284,6 +1736,157 @@ static void FBro_停止(const wchar_t* name) {
     (void)name;
 #endif
 }
+static int FBro_是否可后退(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_CanGoBack(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static int FBro_是否可前进(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_CanGoForward(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static int FBro_是否加载中(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_IsLoading(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static double FBro_取缩放级别(const wchar_t* name) {
+    double result = 0.0;
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle) LB_FBro_GetZoomLevel(browser->handle, &result);
+#else
+    (void)name;
+#endif
+    return result;
+}
+static int FBro_设置缩放级别(const wchar_t* name, double level) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_SetZoomLevel(browser->handle, level) : 0;
+#else
+    (void)name; (void)level; return 0;
+#endif
+}
+static int FBro_是否静音(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_IsAudioMuted(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static int FBro_设置静音(const wchar_t* name, bool muted) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_SetAudioMuted(browser->handle, muted ? 1 : 0) : 0;
+#else
+    (void)name; (void)muted; return 0;
+#endif
+}
+static int FBro_设置焦点(const wchar_t* name, bool focused) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_SendFocusEvent(browser->handle, focused ? 1 : 0) : 0;
+#else
+    (void)name; (void)focused; return 0;
+#endif
+}
+static int FBro_查找(const wchar_t* name, const wchar_t* text, bool forward, bool matchCase, bool findNext) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_Find(browser->handle, text, forward, matchCase, findNext) : 0;
+#else
+    (void)name; (void)text; (void)forward; (void)matchCase; (void)findNext; return 0;
+#endif
+}
+static int FBro_停止查找(const wchar_t* name, bool clearSelection) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_StopFinding(browser->handle, clearSelection) : 0;
+#else
+    (void)name; (void)clearSelection; return 0;
+#endif
+}
+static int FBro_是否打开开发者工具(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_HasDevTools(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static int FBro_关闭开发者工具(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_CloseDevTools(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static int FBro_强制刷新(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_ReloadIgnoreCache(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static int FBro_取浏览器标识(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_GetIdentifier(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static int FBro_是否同一实例(const wchar_t* name, const wchar_t* otherName) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); auto* other = LB_NE_FindFbro(otherName);
+    return browser && browser->handle && other && other->handle ? LB_FBro_IsSame(browser->handle, other->handle) : 0;
+#else
+    (void)name; (void)otherName; return 0;
+#endif
+}
+static int FBro_是否弹出窗口(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_IsPopup(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static int FBro_是否有文档(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_HasDocument(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static int FBro_尝试关闭(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_TryCloseBrowser(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static int FBro_设置宿主焦点(const wchar_t* name, bool focused) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_SetFocus(browser->handle, focused) : 0;
+#else
+    (void)name; (void)focused; return 0;
+#endif
+}
+static int FBro_是否有视图(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_HasView(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static int FBro_设置自动调整大小(const wchar_t* name, bool enabled, int minHeight, int minWidth, int maxHeight, int maxWidth) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle
+        ? LB_FBro_SetAutoResizeEnabled(browser->handle, enabled, minHeight, minWidth, maxHeight, maxWidth) : 0;
+#else
+    (void)name; (void)enabled; (void)minHeight; (void)minWidth; (void)maxHeight; (void)maxWidth; return 0;
+#endif
+}
 static std::wstring LB_NE_ReadFbroText(const wchar_t* name, int kind) {
     wchar_t result[16384] = {};
 #if LINGBUILDER_NE_FBRO_AVAILABLE
@@ -1306,16 +1909,278 @@ static std::wstring FBro_执行JS(const wchar_t* name, const wchar_t* script) {
 #endif
     return L"";
 }
+static long long FBro自动化_执行JS异步(const wchar_t* name, const wchar_t* script) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    return browser && browser->handle ? static_cast<long long>(LB_FBro_ExecuteJsAsync(browser->handle, script, nullptr, nullptr)) : 0;
+#else
+    (void)name; (void)script; return 0;
+#endif
+}
+static long long FBro框架_取主框架(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_BrowserGetMainFrame(browser->handle)) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static long long FBro框架_取焦点框架(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_BrowserGetFocusedFrame(browser->handle)) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static long long FBro框架_按标识取框架(const wchar_t* name, const std::wstring& identifier) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_BrowserGetFrameByIdentifier(browser->handle, identifier.c_str())) : 0;
+#else
+    (void)name; (void)identifier; return 0;
+#endif
+}
+static long long FBro框架_按名称取框架(const wchar_t* name, const std::wstring& frameName) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_BrowserGetFrameByName(browser->handle, frameName.c_str())) : 0;
+#else
+    (void)name; (void)frameName; return 0;
+#endif
+}
+static std::wstring LB_NE_ReadFbroFrameList(const wchar_t* name, bool identifiers) {
+    wchar_t result[16384] = {};
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); if (!browser || !browser->handle) return L"[]";
+    if (identifiers) LB_FBro_BrowserGetFrameIdentifiersJson(browser->handle, result, 16384);
+    else LB_FBro_BrowserGetFrameNamesJson(browser->handle, result, 16384);
+#else
+    (void)name; (void)identifiers;
+#endif
+    return result[0] ? result : L"[]";
+}
+static std::wstring FBro框架_取标识列表JSON(const wchar_t* name) { return LB_NE_ReadFbroFrameList(name, true); }
+static std::wstring FBro框架_取名称列表JSON(const wchar_t* name) { return LB_NE_ReadFbroFrameList(name, false); }
+static long long FBro图像_异步下载(const wchar_t* name, const wchar_t* url, bool isFavicon, int maxImageSize, bool bypassCache) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    return browser && browser->handle && url && maxImageSize >= 0
+        ? static_cast<long long>(LB_FBro_DownloadImageAsync(browser->handle, url, isFavicon ? 1 : 0,
+            static_cast<uint32_t>(maxImageSize), bypassCache ? 1 : 0, nullptr, nullptr)) : 0;
+#else
+    (void)name; (void)url; (void)isFavicon; (void)maxImageSize; (void)bypassCache; return 0;
+#endif
+}
+static long long FBro证书_异步取当前(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name);
+    return browser && browser->handle
+        ? static_cast<long long>(LB_FBro_GetCurrentCertificateAsync(browser->handle, nullptr, nullptr)) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static int FBro任务_取状态(long long task) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return LB_FBro_TaskGetStatus(static_cast<LB_FBRO_TASK_HANDLE>(task));
+#else
+    (void)task; return 3;
+#endif
+}
+static std::wstring FBro任务_取结果(long long task) {
+    wchar_t result[16384] = {};
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    LB_FBro_TaskGetResult(static_cast<LB_FBRO_TASK_HANDLE>(task), result, 16384);
+#else
+    (void)task;
+#endif
+    return result;
+}
+static std::wstring FBro任务_取错误(long long task) {
+    wchar_t result[4096] = {};
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    LB_FBro_TaskGetError(static_cast<LB_FBRO_TASK_HANDLE>(task), result, 4096);
+#else
+    (void)task;
+#endif
+    return result;
+}
+static int FBro任务_取消(long long task) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return LB_FBro_TaskCancel(static_cast<LB_FBRO_TASK_HANDLE>(task));
+#else
+    (void)task; return 0;
+#endif
+}
+static int FBro任务_释放(long long task) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return LB_FBro_TaskRelease(static_cast<LB_FBRO_TASK_HANDLE>(task));
+#else
+    (void)task; return 0;
+#endif
+}
+static long long FBro缓冲_从文本(const wchar_t* value) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    const wchar_t* text = value ? value : L"";
+    return static_cast<long long>(LB_FBro_BufferCreate(text, wcslen(text) * sizeof(wchar_t)));
+#else
+    (void)value; return 0;
+#endif
+}
+static long long FBro缓冲_取大小(long long buffer) {
+    uint64_t size = 0;
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return LB_FBro_BufferGetSize(static_cast<LB_FBRO_BUFFER_HANDLE>(buffer), &size) > 0 ? static_cast<long long>(size) : -1;
+#else
+    (void)buffer; return -1;
+#endif
+}
+static std::wstring FBro缓冲_转十六进制(long long buffer) {
+    wchar_t result[32768] = {};
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    LB_FBro_BufferToHex(static_cast<LB_FBRO_BUFFER_HANDLE>(buffer), result, 32768);
+#else
+    (void)buffer;
+#endif
+    return result;
+}
+static int FBro缓冲_保存文件(long long buffer, const wchar_t* path) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return LB_FBro_BufferSaveFile(static_cast<LB_FBRO_BUFFER_HANDLE>(buffer), path);
+#else
+    (void)buffer; (void)path; return 0;
+#endif
+}
+static int FBro缓冲_释放(long long buffer) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return LB_FBro_BufferRelease(static_cast<LB_FBRO_BUFFER_HANDLE>(buffer));
+#else
+    (void)buffer; return 0;
+#endif
+}
+${generateFbroObjectRuntime('LINGBUILDER_NE_FBRO_AVAILABLE', true)}
 static std::wstring FBro_取标题(const wchar_t* name) { return LB_NE_ReadFbroText(name, 1); }
 static std::wstring FBro_取地址(const wchar_t* name) { return LB_NE_ReadFbroText(name, 2); }
 static std::wstring FBro_取最近事件(const wchar_t* name) { return LB_NE_ReadFbroText(name, 3); }
 static std::wstring FBro_取最近错误(const wchar_t* name) { return LB_NE_ReadFbroText(name, 4); }
+static std::wstring FBro_取事件数据(const wchar_t* name) { auto* browser = LB_NE_FindFbro(name); return browser ? browser->lastEventData : L""; }
+static long long FBro_取事件对象(const wchar_t* name) {
+    auto* browser = LB_NE_FindFbro(name); if (!browser) return 0;
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return static_cast<long long>(browser->lastEventObject ? browser->lastEventObject : LB_FBro_GetLastEventObject(browser->handle));
+#else
+    return static_cast<long long>(browser->lastEventObject);
+#endif
+}
+static std::wstring FBro_取事件字段(const wchar_t* name, const wchar_t* fieldName) {
+    auto* browser = LB_NE_FindFbro(name); return browser && fieldName ? LB_NE_ReadFbroJsonField(browser->lastEventJson, fieldName) : L"";
+}
+static int FBro_设置事件结果(const wchar_t* name, int action) {
+    auto* browser = LB_NE_FindFbro(name); if (!browser || action < 0 || action > 3) return 0; browser->eventAction = action; return 1;
+}
+static int FBro_设置事件返回文本(const wchar_t* name, const wchar_t* value) {
+    auto* browser = LB_NE_FindFbro(name); if (!browser) return 0; browser->eventResultText = value ? value : L""; return 1;
+}
+static int FBro_绑定事件(const wchar_t* name, const wchar_t* eventName, const wchar_t* handler) {
+    auto* browser = LB_NE_FindFbro(name);
+    if (!browser || !eventName || !*eventName || !handler || !*handler) return 0;
+    browser->handlers[eventName] = handler; return 1;
+}
 static int FBro_设置代理(const wchar_t* name, const wchar_t* proxy) {
     auto* browser = LB_NE_FindFbro(name); if (!browser) return 0; browser->proxyServer = proxy ? proxy : L"";
 #if LINGBUILDER_NE_FBRO_AVAILABLE
     return browser->handle ? LB_FBro_SetProxy(browser->handle, browser->proxyServer.c_str(), L"", L"") : 1;
 #else
     return 0;
+#endif
+}
+static int FBro会话_设置代理认证(const wchar_t* name, const wchar_t* proxy, const wchar_t* user, const wchar_t* password) {
+    auto* browser = LB_NE_FindFbro(name); if (!browser) return 0; browser->proxyServer = proxy ? proxy : L"";
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return browser->handle ? LB_FBro_SetProxy(browser->handle, browser->proxyServer.c_str(), user, password) : 1;
+#else
+    (void)user; (void)password; return 0;
+#endif
+}
+static long long FBro会话_异步取全部Cookie(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_CookieVisitAllAsync(browser->handle, nullptr, nullptr)) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static long long FBro会话_异步取地址Cookie(const wchar_t* name, const wchar_t* address, int includeHttpOnly) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_CookieVisitUrlAsync(browser->handle, address, includeHttpOnly, nullptr, nullptr)) : 0;
+#else
+    (void)name; (void)address; (void)includeHttpOnly; return 0;
+#endif
+}
+static long long FBro会话_异步设置Cookie(const wchar_t* name, const wchar_t* address, const wchar_t* cookieName, const wchar_t* value, const wchar_t* domain, const wchar_t* path, int secure, int httpOnly) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_CookieSetAsync(browser->handle, address, cookieName, value, domain, path, secure, httpOnly, nullptr, nullptr)) : 0;
+#else
+    (void)name; (void)address; (void)cookieName; (void)value; (void)domain; (void)path; (void)secure; (void)httpOnly; return 0;
+#endif
+}
+static long long FBro会话_异步删除Cookie(const wchar_t* name, const wchar_t* address, const wchar_t* cookieName) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_CookieDeleteAsync(browser->handle, address, cookieName, nullptr, nullptr)) : 0;
+#else
+    (void)name; (void)address; (void)cookieName; return 0;
+#endif
+}
+static long long FBro会话_异步刷新Cookie存储(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_CookieFlushAsync(browser->handle, nullptr, nullptr)) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static long long FBro会话_异步清理缓存(const wchar_t* name, const wchar_t* origin, int removeFlags, int quotaFlags) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_ClearCacheAsync(browser->handle, origin, static_cast<uint32_t>(removeFlags), static_cast<uint32_t>(quotaFlags), nullptr, nullptr)) : 0;
+#else
+    (void)name; (void)origin; (void)removeFlags; (void)quotaFlags; return 0;
+#endif
+}
+static long long FBro会话_异步清理全局缓存(const wchar_t* origin, int removeFlags, int quotaFlags) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return static_cast<long long>(LB_FBro_ClearGlobalCacheAsync(origin, static_cast<uint32_t>(removeFlags), static_cast<uint32_t>(quotaFlags), nullptr, nullptr));
+#else
+    (void)origin; (void)removeFlags; (void)quotaFlags; return 0;
+#endif
+}
+static int FBro传输_开始下载(const wchar_t* name, const wchar_t* address) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_StartDownload(browser->handle, address) : 0;
+#else
+    (void)name; (void)address; return 0;
+#endif
+}
+static int FBro传输_打印(const wchar_t* name) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? LB_FBro_Print(browser->handle) : 0;
+#else
+    (void)name; return 0;
+#endif
+}
+static long long FBro传输_异步生成PDF(const wchar_t* name, const wchar_t* path, const wchar_t* settingsJson) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_PrintToPdfAsync(browser->handle, path, settingsJson, nullptr, nullptr)) : 0;
+#else
+    (void)name; (void)path; (void)settingsJson; return 0;
+#endif
+}
+static long long FBro传输_异步打开文件对话框(const wchar_t* name, int mode, const wchar_t* title, const wchar_t* defaultPath, const wchar_t* filtersJson) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_RunFileDialogAsync(browser->handle, mode, title, defaultPath, filtersJson, nullptr, nullptr)) : 0;
+#else
+    (void)name; (void)mode; (void)title; (void)defaultPath; (void)filtersJson; return 0;
+#endif
+}
+static long long FBro传输_异步截图(const wchar_t* name, const wchar_t* format, int quality, int x, int y, int width, int height, int scale, bool fromSurface, bool captureBeyondViewport) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_CaptureScreenshotAsync(browser->handle, format, quality, x, y, width, height, scale, fromSurface ? 1 : 0, captureBeyondViewport ? 1 : 0, nullptr, nullptr)) : 0;
+#else
+    (void)name; (void)format; (void)quality; (void)x; (void)y; (void)width; (void)height; (void)scale; (void)fromSurface; (void)captureBeyondViewport; return 0;
 #endif
 }
 static int FBro_设置缓存目录(const wchar_t* name, const wchar_t* directory) { auto* browser = LB_NE_FindFbro(name); if (!browser || browser->handle) return 0; browser->profileDirectory = directory ? directory : L""; return 1; }
@@ -1377,7 +2242,7 @@ static void FBro_关闭(const wchar_t* name) {
 static void LB_NE_ShutdownFbro() {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
     for (auto& browser : g_newEmojiFbroBrowsers) {
-        for (LB_FBRO_HANDLE popup : browser.chromeUiHandles) if (popup) LB_FBro_Close(popup);
+        for (const auto& popup : browser.chromeUiInstances) if (popup.first) LB_FBro_Close(popup.first);
         if (browser.handle) LB_FBro_Close(browser.handle);
     }
     if (g_newEmojiFbroInitialized) LB_FBro_Shutdown();
@@ -1385,6 +2250,8 @@ static void LB_NE_ShutdownFbro() {
     g_newEmojiFbroBrowsers.clear();
     g_newEmojiFbroInitialized = false;
 }
+
+${dispatch}
 `;
 }
 
@@ -1879,7 +2746,7 @@ function generateMainCpp(
     : '';
   const moduleFeatureDefines = [
     enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview')
-      ? '#ifndef LINGBUILDER_EDGEVIEW_MODULE\n#define LINGBUILDER_EDGEVIEW_MODULE\n#endif'
+      ? `#ifndef LINGBUILDER_EDGEVIEW_MODULE\n#define LINGBUILDER_EDGEVIEW_MODULE\n#endif\n#define LINGBUILDER_EDGEVIEW_REQUIRED_RUNTIME_MAJOR ${collectEdgeViewApiUsage(program.source).minimumRuntimeMajor}`
       : '',
     enabledModules.some(module => module.manifest.id === 'lingbuilder.cef3.browser')
       ? '#ifndef LINGBUILDER_CEF3_MODULE\n#define LINGBUILDER_CEF3_MODULE\n#endif'
@@ -1901,7 +2768,7 @@ function generateMainCpp(
     ? 'RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW'
     : 'RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW';
 
-  return `#ifndef UNICODE
+  const generatedSource = `#ifndef UNICODE
 #define UNICODE
 #endif
 #ifndef _UNICODE
@@ -1953,12 +2820,25 @@ ${moduleFeatureDefines}
 #include <include/cef_app.h>
 #include <include/cef_browser.h>
 #include <include/cef_client.h>
+#include <include/cef_command_ids.h>
 #include <include/cef_command_line.h>
+#include <include/cef_devtools_message_observer.h>
 #include <include/cef_parser.h>
+#include <include/cef_request_context.h>
+#include <include/cef_request_context_handler.h>
+#include <include/cef_task.h>
+#include <include/cef_values.h>
+#include <include/cef_version.h>
 #include <include/wrapper/cef_helpers.h>
 #define LINGBUILDER_CEF3_AVAILABLE 1
 #else
 #define LINGBUILDER_CEF3_AVAILABLE 0
+#endif
+#if LINGBUILDER_CEF3_AVAILABLE && __has_include(<LingBuilderCefBridge.h>)
+#include <LingBuilderCefBridge.h>
+#define LINGBUILDER_CEF3_BRIDGE_AVAILABLE 1
+#else
+#define LINGBUILDER_CEF3_BRIDGE_AVAILABLE 0
 #endif
 #if defined(LINGBUILDER_FBRO_MODULE) && __has_include(<LingBuilderFbroBridge.h>)
 #include <LingBuilderFbroBridge.h>
@@ -1966,11 +2846,13 @@ ${moduleFeatureDefines}
 #else
 #define LINGBUILDER_FBRO_AVAILABLE 0
 using LB_FBRO_HANDLE = UINT_PTR;
+using LB_FBRO_OBJECT_HANDLE = UINT_PTR;
 #endif
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cmath>
 #include <cctype>
 #include <cstdint>
@@ -2284,8 +3166,42 @@ struct LingCefEventPacket {
 struct LingFbroEventPacket {
     LB_FBRO_HANDLE handle = 0;
     int eventCode = 0;
+    int instanceKind = 0;
+    std::wstring eventName;
     std::wstring data;
+    std::wstring dataJson;
+    LB_FBRO_OBJECT_HANDLE object = 0;
+    int action = 0;
+    std::wstring resultText;
+    bool synchronous = false;
 };
+
+static std::wstring FBro_读取JSON字段(const std::wstring& json, const std::wstring& fieldName) {
+    if (fieldName.empty()) return L"";
+    const std::wstring needle = L"\\\"" + fieldName + L"\\\":";
+    size_t position = json.find(needle);
+    if (position == std::wstring::npos) return L"";
+    position += needle.size();
+    while (position < json.size() && iswspace(json[position])) ++position;
+    if (position >= json.size()) return L"";
+    if (json[position] != L'"') {
+        const size_t end = json.find_first_of(L",}", position);
+        return json.substr(position, end == std::wstring::npos ? std::wstring::npos : end - position);
+    }
+    std::wstring value;
+    for (++position; position < json.size(); ++position) {
+        wchar_t character = json[position];
+        if (character == L'"') break;
+        if (character == L'\\\\' && position + 1 < json.size()) {
+            const wchar_t escaped = json[++position];
+            if (escaped == L'n') value += L'\\n';
+            else if (escaped == L'r') value += L'\\r';
+            else if (escaped == L't') value += L'\\t';
+            else value += escaped;
+        } else value += character;
+    }
+    return value;
+}
 
 class LingVideoPlayerCallback final : public IMFPMediaPlayerCallback {
 public:
@@ -2689,9 +3605,292 @@ static const wchar_t* GENERATED_WINDOW_CLASS = L"LingBuilderChineseCppWindowClas
 
 class LingWindowBase;
 static LingWindowBase* CreateWindowObject(int windowIndex);
+struct LingCefAsyncState {
+    std::mutex mutex;
+    std::condition_variable changed;
+    int status = 0; // 0等待、1运行、2成功、3失败、4取消
+    int messageId = 0;
+    std::wstring result;
+    std::wstring error;
+#if LINGBUILDER_CEF3_AVAILABLE
+    CefRefPtr<CefRegistration> registration;
+#else
+    void* registration = nullptr;
+#endif
+};
+
 #if LINGBUILDER_CEF3_AVAILABLE
 class LingCefClient;
 CefRefPtr<CefClient> LingCreateCefClient(LingWindowBase* owner, int controlId);
+
+static std::wstring LingCefUtf8ToWide(const void* data, size_t size) {
+    if (!data || size == 0 || size > static_cast<size_t>(INT_MAX)) return L"";
+    const char* bytes = static_cast<const char*>(data);
+    int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes, static_cast<int>(size), nullptr, 0);
+    if (count <= 0) return L"";
+    std::wstring result(static_cast<size_t>(count), L'\\0');
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes, static_cast<int>(size), result.data(), count);
+    return result;
+}
+
+class LingCefEvalObserver final : public CefDevToolsMessageObserver {
+public:
+    explicit LingCefEvalObserver(std::shared_ptr<LingCefAsyncState> state) : state_(std::move(state)) {}
+    bool OnDevToolsMessage(CefRefPtr<CefBrowser>, const void* message, size_t messageSize) override {
+        CefRefPtr<CefValue> root = CefParseJSON(message, messageSize, JSON_PARSER_RFC);
+        if (!root || root->GetType() != VTYPE_DICTIONARY) return false;
+        CefRefPtr<CefDictionaryValue> dictionary = root->GetDictionary();
+        if (!dictionary || !dictionary->HasKey(L"id")) return false;
+        const int messageId = dictionary->GetInt(L"id");
+        if (dictionary->HasKey(L"result")) {
+            CefRefPtr<CefValue> value = dictionary->GetValue(L"result");
+            std::wstring json = value ? CefWriteJSON(value->Copy(), JSON_WRITER_DEFAULT).ToWString() : L"{}";
+            Complete(messageId, true, json.empty() ? LingCefUtf8ToWide(message, messageSize) : json);
+            return true;
+        }
+        if (dictionary->HasKey(L"error")) {
+            CefRefPtr<CefValue> value = dictionary->GetValue(L"error");
+            std::wstring json = value ? CefWriteJSON(value->Copy(), JSON_WRITER_DEFAULT).ToWString() : L"{}";
+            Complete(messageId, false, json.empty() ? LingCefUtf8ToWide(message, messageSize) : json);
+            return true;
+        }
+        return false;
+    }
+    void OnDevToolsMethodResult(CefRefPtr<CefBrowser>, int messageId, bool success,
+                                const void* result, size_t resultSize) override {
+        Complete(messageId, success, LingCefUtf8ToWide(result, resultSize));
+    }
+private:
+    void Complete(int messageId, bool success, std::wstring payload) {
+        CefRefPtr<CefRegistration> release;
+        {
+            std::lock_guard<std::mutex> lock(state_->mutex);
+            if (state_->status >= 2 || (state_->messageId != 0 && state_->messageId != messageId)) return;
+            state_->messageId = messageId;
+            if (success) { state_->result = std::move(payload); state_->status = 2; }
+            else { state_->error = std::move(payload); state_->status = 3; }
+            release = state_->registration;
+            state_->registration = nullptr;
+        }
+        state_->changed.notify_all();
+    }
+    IMPLEMENT_REFCOUNTING(LingCefEvalObserver);
+    std::shared_ptr<LingCefAsyncState> state_;
+};
+
+class LingCefEvalTask final : public CefTask {
+public:
+    LingCefEvalTask(CefRefPtr<CefBrowser> browser, std::wstring script,
+                    std::shared_ptr<LingCefAsyncState> state)
+        : browser_(std::move(browser)), script_(std::move(script)), state_(std::move(state)) {}
+    void Execute() override {
+        {
+            std::lock_guard<std::mutex> lock(state_->mutex);
+            if (state_->status == 4) { state_->changed.notify_all(); return; }
+            state_->status = 1;
+        }
+        if (!browser_ || !browser_->GetHost()) { Fail(L"CEF3浏览器实例不可用。"); return; }
+        CefRefPtr<LingCefEvalObserver> observer = new LingCefEvalObserver(state_);
+        CefRefPtr<CefRegistration> registration = browser_->GetHost()->AddDevToolsMessageObserver(observer);
+        CefRefPtr<CefDictionaryValue> parameters = CefDictionaryValue::Create();
+        parameters->SetString(L"expression", script_);
+        parameters->SetBool(L"returnByValue", true);
+        parameters->SetBool(L"awaitPromise", true);
+        int messageId = browser_->GetHost()->ExecuteDevToolsMethod(0, L"Runtime.evaluate", parameters);
+        if (messageId <= 0 || !registration) { Fail(L"CEF3提交Runtime.evaluate失败。"); return; }
+        std::lock_guard<std::mutex> lock(state_->mutex);
+        if (state_->status == 2 || state_->status == 3 || state_->status == 4) return;
+        state_->messageId = messageId;
+        state_->registration = registration;
+    }
+private:
+    void Fail(const wchar_t* message) {
+        {
+            std::lock_guard<std::mutex> lock(state_->mutex);
+            if (state_->status != 4) { state_->status = 3; state_->error = message ? message : L"CEF3异步任务失败。"; }
+        }
+        state_->changed.notify_all();
+    }
+    IMPLEMENT_REFCOUNTING(LingCefEvalTask);
+    CefRefPtr<CefBrowser> browser_;
+    std::wstring script_;
+    std::shared_ptr<LingCefAsyncState> state_;
+};
+
+static bool LingStartCefEvaluation(CefRefPtr<CefBrowser> browser, const wchar_t* script,
+                                   const std::shared_ptr<LingCefAsyncState>& state) {
+    if (!browser || !script || !state) return false;
+    CefRefPtr<CefTask> task = new LingCefEvalTask(browser, script, state);
+    if (CefCurrentlyOn(TID_UI)) { task->Execute(); return true; }
+    if (CefPostTask(TID_UI, task)) return true;
+    std::lock_guard<std::mutex> lock(state->mutex);
+    state->status = 3; state->error = L"CEF3无法投递到UI线程。"; state->changed.notify_all();
+    return false;
+}
+
+struct LingCefPreferenceState {
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool done = false;
+    bool success = false;
+    std::wstring error;
+};
+
+struct LingCefRequestContextInitState {
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool initialized = false;
+    bool proxyApplied = false;
+    std::wstring error;
+};
+
+static bool LingSetCefProxyPreference(CefRefPtr<CefRequestContext> context, const std::wstring& mode,
+                                     const std::wstring& server, std::wstring& errorText) {
+    if (!context) { errorText = L"CEF3 RequestContext无效。"; return false; }
+    CefString error;
+    bool success = false;
+    if (mode == L"system") {
+        success = context->SetPreference(L"proxy", nullptr, error);
+    } else {
+        CefRefPtr<CefDictionaryValue> proxy = CefDictionaryValue::Create();
+        proxy->SetString(L"mode", mode);
+        if (mode == L"fixed_servers") proxy->SetString(L"server", server);
+        CefRefPtr<CefValue> value = CefValue::Create();
+        value->SetDictionary(proxy);
+        success = context->SetPreference(L"proxy", value, error);
+    }
+    errorText = error.ToWString();
+    if (!success && errorText.empty()) errorText = L"CEF3不允许修改当前RequestContext的proxy preference。";
+    return success;
+}
+
+class LingCefRequestContextInitHandler final : public CefRequestContextHandler {
+public:
+    LingCefRequestContextInitHandler(std::shared_ptr<LingCefRequestContextInitState> state,
+                                    std::wstring mode, std::wstring server)
+        : state_(std::move(state)), mode_(std::move(mode)), server_(std::move(server)) {}
+    void OnRequestContextInitialized(CefRefPtr<CefRequestContext> context) override {
+        std::wstring error;
+        const bool applied = LingSetCefProxyPreference(context, mode_, server_, error);
+        {
+            std::lock_guard<std::mutex> lock(state_->mutex);
+            state_->initialized = true;
+            state_->proxyApplied = applied;
+            state_->error = std::move(error);
+        }
+        state_->changed.notify_all();
+    }
+private:
+    IMPLEMENT_REFCOUNTING(LingCefRequestContextInitHandler);
+    std::shared_ptr<LingCefRequestContextInitState> state_;
+    std::wstring mode_;
+    std::wstring server_;
+};
+
+class LingCefProxyPreferenceTask final : public CefTask {
+public:
+    LingCefProxyPreferenceTask(CefRefPtr<CefRequestContext> context, std::wstring mode,
+                               std::wstring server, std::shared_ptr<LingCefPreferenceState> state)
+        : context_(std::move(context)), mode_(std::move(mode)), server_(std::move(server)), state_(std::move(state)) {}
+    void Execute() override {
+        std::wstring error;
+        bool success = LingSetCefProxyPreference(context_, mode_, server_, error);
+        {
+            std::lock_guard<std::mutex> lock(state_->mutex);
+            state_->success = success;
+            state_->error = std::move(error);
+            state_->done = true;
+        }
+        state_->changed.notify_all();
+    }
+private:
+    IMPLEMENT_REFCOUNTING(LingCefProxyPreferenceTask);
+    CefRefPtr<CefRequestContext> context_;
+    std::wstring mode_;
+    std::wstring server_;
+    std::shared_ptr<LingCefPreferenceState> state_;
+};
+
+static bool LingApplyCefProxy(CefRefPtr<CefRequestContext> context, const std::wstring& mode,
+                              const std::wstring& server, std::wstring& error) {
+    auto state = std::make_shared<LingCefPreferenceState>();
+    CefRefPtr<CefTask> task = new LingCefProxyPreferenceTask(context, mode, server, state);
+    if (CefCurrentlyOn(TID_UI)) task->Execute();
+    else if (!CefPostTask(TID_UI, task)) { error = L"CEF3无法投递代理设置任务。"; return false; }
+    std::unique_lock<std::mutex> lock(state->mutex);
+    if (!state->changed.wait_for(lock, std::chrono::seconds(2), [&] { return state->done; })) {
+        error = L"CEF3设置代理超时。"; return false;
+    }
+    error = state->error;
+    return state->success;
+}
+
+enum class LingCefHostAction { StartDownload, Print, ShowDevTools, CloseDevTools };
+class LingCefHostActionTask final : public CefTask {
+public:
+    LingCefHostActionTask(CefRefPtr<CefBrowser> browser, CefRefPtr<CefClient> client,
+                          LingCefHostAction action, std::wstring text)
+        : browser_(std::move(browser)), client_(std::move(client)), action_(action), text_(std::move(text)) {}
+    void Execute() override {
+        if (!browser_ || !browser_->GetHost()) return;
+        if (action_ == LingCefHostAction::StartDownload) browser_->GetHost()->StartDownload(text_);
+        else if (action_ == LingCefHostAction::Print) browser_->GetHost()->Print();
+        else if (action_ == LingCefHostAction::CloseDevTools) browser_->GetHost()->CloseDevTools();
+        else {
+            CefWindowInfo windowInfo = {};
+            windowInfo.SetAsPopup(nullptr, L"CEF3开发者工具");
+            CefBrowserSettings settings = {}; settings.size = sizeof(settings);
+            browser_->GetHost()->ShowDevTools(windowInfo, client_, settings, CefPoint());
+        }
+    }
+private:
+    IMPLEMENT_REFCOUNTING(LingCefHostActionTask);
+    CefRefPtr<CefBrowser> browser_;
+    CefRefPtr<CefClient> client_;
+    LingCefHostAction action_;
+    std::wstring text_;
+};
+
+static bool LingPostCefHostAction(CefRefPtr<CefBrowser> browser, CefRefPtr<CefClient> client,
+                                  LingCefHostAction action, const wchar_t* text = nullptr) {
+    if (!browser || !browser->GetHost()) return false;
+    CefRefPtr<CefTask> task = new LingCefHostActionTask(browser, client, action, text ? text : L"");
+    if (CefCurrentlyOn(TID_UI)) { task->Execute(); return true; }
+    return CefPostTask(TID_UI, task);
+}
+
+struct LingCefBoolQueryState {
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool done = false;
+    bool value = false;
+};
+class LingCefHasDevToolsTask final : public CefTask {
+public:
+    LingCefHasDevToolsTask(CefRefPtr<CefBrowser> browser, std::shared_ptr<LingCefBoolQueryState> state)
+        : browser_(std::move(browser)), state_(std::move(state)) {}
+    void Execute() override {
+        {
+            std::lock_guard<std::mutex> lock(state_->mutex);
+            state_->value = browser_ && browser_->GetHost() && browser_->GetHost()->HasDevTools();
+            state_->done = true;
+        }
+        state_->changed.notify_all();
+    }
+private:
+    IMPLEMENT_REFCOUNTING(LingCefHasDevToolsTask);
+    CefRefPtr<CefBrowser> browser_;
+    std::shared_ptr<LingCefBoolQueryState> state_;
+};
+static bool LingCefHasDevTools(CefRefPtr<CefBrowser> browser) {
+    if (!browser || !browser->GetHost()) return false;
+    auto state = std::make_shared<LingCefBoolQueryState>();
+    CefRefPtr<CefTask> task = new LingCefHasDevToolsTask(browser, state);
+    if (CefCurrentlyOn(TID_UI)) task->Execute();
+    else if (!CefPostTask(TID_UI, task)) return false;
+    std::unique_lock<std::mutex> lock(state->mutex);
+    return state->changed.wait_for(lock, std::chrono::seconds(2), [&] { return state->done; }) && state->value;
+}
 #endif
 
 ${imageListSpecs}
@@ -3304,6 +4503,8 @@ protected:
     struct EdgeViewInstance {
         int id = 0;
         int controlId = 0;
+        unsigned long long generation = 1;
+        bool closed = false;
         HWND host = nullptr;
         bool ownsHost = false;
         std::wstring cacheDirectory;
@@ -3312,24 +4513,57 @@ protected:
         std::wstring lastEventData;
         std::map<std::wstring, std::wstring> handlers;
         std::map<std::wstring, UINT64> eventCounts;
+        std::map<std::wstring, std::wstring> eventFields;
+        int eventAction = 0;
+        std::wstring eventResultText;
+        long long eventObjectSelection = 0;
+        bool eventDecisionActive = false;
+        long long nextDownloadId = 1;
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
         Microsoft::WRL::ComPtr<ICoreWebView2Environment> environment;
         Microsoft::WRL::ComPtr<ICoreWebView2Controller> controller;
         Microsoft::WRL::ComPtr<ICoreWebView2> webView;
+        Microsoft::WRL::ComPtr<ICoreWebView2PrintSettings> printSettings;
         std::vector<Microsoft::WRL::ComPtr<IUnknown>> eventSources;
+        std::map<long long, Microsoft::WRL::ComPtr<ICoreWebView2DownloadOperation>> downloads;
 #endif
+    };
+    struct EdgeViewCustomSchemeSpec {
+        std::wstring name;
+        bool hasAuthority = false;
+        bool treatAsSecure = false;
+        std::vector<std::wstring> allowedOrigins;
+    };
+    struct EdgeViewCreationOptions {
+        bool exclusiveUserDataFolderAccess = false;
+        bool customCrashReporting = false;
+        bool trackingPrevention = true;
+        bool browserExtensions = false;
+        int channelSearchKind = 0;
+        unsigned int releaseChannels = 15;
+        int scrollBarStyle = 0;
+        std::wstring scriptLocale;
+        int defaultBackgroundArgb = static_cast<int>(0xFFFFFFFFu);
+        bool allowHostInputProcessing = false;
+        std::vector<EdgeViewCustomSchemeSpec> customSchemes;
     };
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
     HMODULE edgeViewLoader_ = nullptr;
 #endif
-    std::map<int, std::unique_ptr<EdgeViewInstance>> edgeViews_;
+    std::map<int, std::shared_ptr<EdgeViewInstance>> edgeViews_;
+    std::vector<std::shared_ptr<EdgeViewInstance>> retiredEdgeViews_;
     std::wstring edgeViewGlobalProxy_;
+    std::map<std::wstring, EdgeViewCreationOptions> edgeViewCreationOptions_;
 
     struct CefBrowserInstance {
         int controlId = 0;
+        unsigned long long bridgeHandle = 0;
+        std::vector<unsigned long long> bridgePopupHandles;
         HWND host = nullptr;
         std::wstring url;
         std::wstring cacheDirectory;
+        std::wstring effectiveCacheDirectory;
+        std::wstring proxyMode = L"system";
         std::wstring proxyServer;
         std::wstring userAgent;
         std::wstring lastEvent;
@@ -3351,10 +4585,17 @@ protected:
         std::map<std::wstring, std::wstring> handlers;
 #if LINGBUILDER_CEF3_AVAILABLE
         CefRefPtr<CefBrowser> browser;
+        CefRefPtr<CefClient> client;
+        CefRefPtr<CefRequestContext> requestContext;
         std::vector<CefRefPtr<CefBrowser>> popupBrowsers;
 #endif
     };
     std::map<int, std::unique_ptr<CefBrowserInstance>> cefBrowsers_;
+#if LINGBUILDER_CEF3_AVAILABLE
+    std::map<long long, std::shared_ptr<LingCefAsyncState>> cefTasks_;
+#endif
+    long long nextCefTaskId_ = 1;
+    std::wstring cefRootCachePath_;
     bool cefInitialized_ = false;
 
     struct FbroBrowserInstance {
@@ -3367,8 +4608,24 @@ protected:
         std::wstring proxyServer;
         std::wstring fingerprintJson;
         std::wstring lastEvent;
+        std::wstring lastEventData;
+        std::wstring lastEventJson;
+        LB_FBRO_OBJECT_HANDLE lastEventObject = 0;
         std::wstring lastError;
-        std::vector<LB_FBRO_HANDLE> chromeUiHandles;
+        int eventAction = 0;
+        std::wstring eventResultText;
+        std::map<std::wstring, std::wstring> handlers;
+        struct PopupState {
+            std::wstring lastEvent;
+            std::wstring lastEventData;
+            std::wstring lastEventJson;
+            LB_FBRO_OBJECT_HANDLE lastEventObject = 0;
+            std::wstring lastError;
+            int eventAction = 0;
+            std::wstring eventResultText;
+            std::map<std::wstring, std::wstring> handlers;
+        };
+        std::map<LB_FBRO_HANDLE, PopupState> chromeUiInstances;
     };
     std::map<int, std::unique_ptr<FbroBrowserInstance>> fbroBrowsers_;
     bool fbroInitialized_ = false;
@@ -3803,17 +5060,61 @@ ${edgeViewEventIdCases}
             EdgeView_关闭实例(control.id);
             std::wstring cacheDirectory;
             std::wstring proxyServer = edgeViewGlobalProxy_;
+            std::vector<std::wstring> edgeProperties;
             if (control.data2 && control.data2[0]) {
-                auto records = DecodeControlRecords(control.data2, 3);
+                auto records = DecodeControlRecords(control.data2, 28);
+                if (records.empty()) records = DecodeControlRecords(control.data2, 19);
+                if (records.empty()) records = DecodeControlRecords(control.data2, 3);
                 if (!records.empty()) {
                     const auto& fields = records[0];
+                    edgeProperties = fields;
                     if (fields.size() > 0) cacheDirectory = fields[0];
                     if (fields.size() > 2 && fields[1] == L"custom") proxyServer = fields[2];
                 }
             }
-            if (!EdgeView_创建核心(control.id, runtime->hwnd, false, control.data, cacheDirectory.c_str(), proxyServer.c_str())) continue;
+            const wchar_t* language = edgeProperties.size() > 15 ? edgeProperties[15].c_str() : L"zh-CN";
+            const wchar_t* profileName = edgeProperties.size() > 13 ? edgeProperties[13].c_str() : L"默认";
+            const bool inPrivate = edgeProperties.size() > 14 && edgeProperties[14] == L"true";
+            auto& creationOptions = edgeViewCreationOptions_[control.name];
+            auto creationEnabled = [&edgeProperties](size_t index, bool fallback) { return edgeProperties.size() > index ? edgeProperties[index] == L"true" : fallback; };
+            creationOptions.exclusiveUserDataFolderAccess = creationEnabled(19, false);
+            creationOptions.customCrashReporting = creationEnabled(20, false);
+            creationOptions.trackingPrevention = creationEnabled(21, true);
+            creationOptions.browserExtensions = creationEnabled(22, false);
+            creationOptions.channelSearchKind = edgeProperties.size() > 23 && edgeProperties[23] == L"least-stable-first" ? 1 : 0;
+            creationOptions.releaseChannels = edgeProperties.size() > 24 ? static_cast<unsigned int>(std::max(0, std::min(15, _wtoi(edgeProperties[24].c_str())))) : 15u;
+            creationOptions.scrollBarStyle = edgeProperties.size() > 25 && edgeProperties[25] == L"fluent-overlay" ? 1 : 0;
+            creationOptions.scriptLocale = edgeProperties.size() > 26 ? edgeProperties[26] : L"";
+            creationOptions.allowHostInputProcessing = creationEnabled(27, false);
+            if (edgeProperties.size() > 11 && edgeProperties[11].size() == 7 && edgeProperties[11][0] == L'#') creationOptions.defaultBackgroundArgb = static_cast<int>(0xFF000000ul | wcstoul(edgeProperties[11].c_str() + 1, nullptr, 16));
+            if (!EdgeView_创建核心(control.id, runtime->hwnd, false, control.data, cacheDirectory.c_str(), proxyServer.c_str(), language, profileName, inPrivate, control.name)) continue;
             EdgeViewInstance* instance = EdgeView_查找(control.id);
-            if (instance) instance->controlId = control.id;
+            if (instance) {
+                instance->controlId = control.id;
+                const wchar_t* name = control.name;
+                auto enabled = [&edgeProperties](size_t index, bool fallback) { return edgeProperties.size() > index ? edgeProperties[index] == L"true" : fallback; };
+                if (edgeProperties.size() > 3 && !edgeProperties[3].empty()) EdgeView设置_置用户代理(name, edgeProperties[3].c_str());
+                EdgeView设置_置脚本执行(name, enabled(4, true)); EdgeView设置_置网页消息(name, enabled(5, true));
+                EdgeView设置_置开发者工具(name, enabled(6, true)); EdgeView设置_置右键菜单(name, enabled(7, true)); EdgeView设置_置状态栏(name, enabled(8, true));
+                if (edgeProperties.size() > 9) EdgeView设置_置缩放(name, std::max(0.25, _wtof(edgeProperties[9].c_str()) / 100.0));
+                EdgeView设置_置静音(name, enabled(10, false));
+                if (edgeProperties.size() > 11 && edgeProperties[11].size() == 7 && edgeProperties[11][0] == L'#') {
+                    const unsigned long rgb = wcstoul(edgeProperties[11].c_str() + 1, nullptr, 16); EdgeView设置_置背景色(name, static_cast<int>(0xFF000000ul | rgb));
+                }
+                Microsoft::WRL::ComPtr<ICoreWebView2Controller4> controller4;
+                if (instance->controller && SUCCEEDED(instance->controller.As(&controller4)) && controller4) controller4->put_AllowExternalDrop(enabled(12, true) ? TRUE : FALSE);
+                Microsoft::WRL::ComPtr<ICoreWebView2_13> webView13;
+                Microsoft::WRL::ComPtr<ICoreWebView2Profile> profile;
+                Microsoft::WRL::ComPtr<ICoreWebView2Profile3> profile3;
+                if (instance->webView && SUCCEEDED(instance->webView.As(&webView13)) && webView13 && SUCCEEDED(webView13->get_Profile(&profile)) && profile && SUCCEEDED(profile.As(&profile3)) && profile3) {
+                    COREWEBVIEW2_TRACKING_PREVENTION_LEVEL level = COREWEBVIEW2_TRACKING_PREVENTION_LEVEL_BALANCED;
+                    if (edgeProperties.size() > 16 && edgeProperties[16] == L"none") level = COREWEBVIEW2_TRACKING_PREVENTION_LEVEL_NONE;
+                    else if (edgeProperties.size() > 16 && edgeProperties[16] == L"basic") level = COREWEBVIEW2_TRACKING_PREVENTION_LEVEL_BASIC;
+                    else if (edgeProperties.size() > 16 && edgeProperties[16] == L"strict") level = COREWEBVIEW2_TRACKING_PREVENTION_LEVEL_STRICT;
+                    profile3->put_PreferredTrackingPreventionLevel(level);
+                }
+                EdgeView设置_置通用自动填充(name, enabled(17, true)); EdgeView设置_置密码自动保存(name, enabled(18, true));
+            }
             ++created;
         }
         return created > 0 ? 1 : 0;
@@ -3922,7 +5223,7 @@ ${edgeViewEventIdCases}
         if (FAILED(instance->webView->GetDevToolsProtocolEventReceiver(protocolEventName, &receiver)) || !receiver || !EdgeView_保留事件源(*instance, receiver.Get())) return 0;
         const std::wstring eventName = protocolEventName;
         EdgeViewInstance* raw = instance; EventRegistrationToken token = {};
-        HRESULT result = receiver->add_DevToolsProtocolEventReceived(Microsoft::WRL::Callback<ICoreWebView2DevToolsProtocolEventReceivedEventHandler>([this, raw, eventName](ICoreWebView2*, ICoreWebView2DevToolsProtocolEventReceivedEventArgs* args) -> HRESULT { LPWSTR json = nullptr; args->get_ParameterObjectAsJson(&json); std::wstring data = EdgeView_事件数据({{L"protocolEvent", eventName}, {L"parameters", EdgeView_接管字符串(json)}}); EdgeView_记录事件(*raw, L"开发者工具协议事件", data.c_str()); return S_OK; }).Get(), &token);
+        HRESULT result = receiver->add_DevToolsProtocolEventReceived(Microsoft::WRL::Callback<ICoreWebView2DevToolsProtocolEventReceivedEventHandler>([this, raw, eventName](ICoreWebView2*, ICoreWebView2DevToolsProtocolEventReceivedEventArgs* args) -> HRESULT { LPWSTR json = nullptr, session = nullptr; args->get_ParameterObjectAsJson(&json); Microsoft::WRL::ComPtr<ICoreWebView2DevToolsProtocolEventReceivedEventArgs2> args2; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args2))) && args2) args2->get_SessionId(&session); std::wstring data = EdgeView_事件数据({{L"protocolEvent", eventName}, {L"sessionId", EdgeView_接管字符串(session)}, {L"parameters", EdgeView_接管字符串(json)}}); EdgeView_记录事件(*raw, L"开发者工具协议事件", data.c_str()); return S_OK; }).Get(), &token);
         return SUCCEEDED(result) ? 1 : 0;
 #else
         (void)instanceId; (void)protocolEventName; return 0;
@@ -3963,19 +5264,22 @@ ${edgeViewEventIdCases}
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
         EdgeViewInstance* instance = EdgeView_查找(instanceId);
         if (!instance || !instance->webView || !script) return L"";
-        bool completed = false;
-        std::wstring value;
+        auto task = EdgeView任务_新建(instance, L"");
+        if (!task) return L"";
         HRESULT result = instance->webView->ExecuteScript(script, Microsoft::WRL::Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
-            [&completed, &value](HRESULT error, LPCWSTR json) -> HRESULT {
-                if (SUCCEEDED(error) && json) value = json;
-                completed = true;
-                return S_OK;
-            }).Get());
-        if (FAILED(result) || !EdgeView_等待(&completed, 15000)) {
+            [this, task](HRESULT error, LPCWSTR json) -> HRESULT { EdgeView任务_完成(task, error, json); return S_OK; }).Get());
+        if (FAILED(result)) EdgeView任务_完成(task, result, L"");
+        DWORD started = GetTickCount(); MSG message = {};
+        while (task->status == 0 && GetTickCount() - started < 15000) {
+            while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&message); DispatchMessageW(&message); }
+            MsgWaitForMultipleObjects(0, nullptr, FALSE, 10, QS_ALLINPUT);
+        }
+        if (task->status != 1) {
+            if (task->status == 0) { task->cancelled = true; task->status = 3; task->error = L"兼容等待超时；迟到回调将被拒绝。"; }
             调试输出(L"EdgeView 执行 JavaScript 失败或等待返回值超时。");
             return L"";
         }
-        return value;
+        return task->result;
 #else
         (void)instanceId; (void)script; return L"";
 #endif
@@ -4058,64 +5362,126 @@ ${edgeViewEventIdCases}
     void EdgeView_关闭实例(int instanceId) {
         auto found = edgeViews_.find(instanceId);
         if (found == edgeViews_.end()) return;
+        std::shared_ptr<EdgeViewInstance> retiring = found->second;
+        retiring->closed = true;
+        ++retiring->generation;
+        for (auto& task : edgeViewTasks_) {
+            if (task.second && task.second->instanceId == instanceId && task.second->status == 0) {
+                task.second->cancelled = true; task.second->status = 3; task.second->error = L"控件关闭，任务已取消。";
+            }
+        }
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
-        if (found->second->controller) found->second->controller->Close();
+        EdgeView对象_释放控件(instanceId);
+        if (retiring->controller) retiring->controller->Close();
+        retiring->eventSources.clear(); retiring->downloads.clear();
+        retiring->printSettings.Reset(); retiring->webView.Reset(); retiring->controller.Reset(); retiring->environment.Reset();
 #endif
-        if (found->second->ownsHost && found->second->host && IsWindow(found->second->host)) DestroyWindow(found->second->host);
+        if (retiring->ownsHost && retiring->host && IsWindow(retiring->host)) DestroyWindow(retiring->host);
         edgeViews_.erase(found);
-#if LINGBUILDER_EDGEVIEW_AVAILABLE
-        if (edgeViews_.empty() && edgeViewLoader_) { FreeLibrary(edgeViewLoader_); edgeViewLoader_ = nullptr; }
-#endif
+        retiredEdgeViews_.push_back(std::move(retiring));
     }
     void EdgeView_关闭() {
         while (!edgeViews_.empty()) EdgeView_关闭实例(edgeViews_.begin()->first);
     }
 
 #if LINGBUILDER_EDGEVIEW_AVAILABLE
-    int EdgeView_创建核心(int instanceId, HWND host, bool ownsHost, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer) {
+    int EdgeView_创建核心(int instanceId, HWND host, bool ownsHost, const wchar_t* address, const wchar_t* cacheDirectory, const wchar_t* proxyServer,
+        const wchar_t* language = nullptr, const wchar_t* profileName = nullptr, bool inPrivate = false, const wchar_t* creationOptionsKey = nullptr) {
         if (!EdgeView_代理有效(proxyServer)) {
             调试输出(L"EdgeView 创建失败：代理地址无效。");
             return 0;
         }
         if (!edgeViewLoader_) edgeViewLoader_ = LoadLibraryW(L"WebView2Loader.dll");
         if (!edgeViewLoader_) { 调试输出(L"EdgeView 创建失败：exe 同目录缺少 WebView2Loader.dll。"); return 0; }
+        if (!EdgeView_检查运行时版本()) return 0;
         using CreateEnvironmentProc = HRESULT (STDAPICALLTYPE*)(PCWSTR, PCWSTR, ICoreWebView2EnvironmentOptions*, ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler*);
         auto createEnvironment = reinterpret_cast<CreateEnvironmentProc>(GetProcAddress(edgeViewLoader_, "CreateCoreWebView2EnvironmentWithOptions"));
         if (!createEnvironment) { 调试输出(L"EdgeView 创建失败：Loader 入口无效。"); return 0; }
-        auto instance = std::make_unique<EdgeViewInstance>();
+        auto instance = std::make_shared<EdgeViewInstance>();
         instance->id = instanceId; instance->host = host; instance->ownsHost = ownsHost;
         instance->cacheDirectory = cacheDirectory ? cacheDirectory : L"";
         instance->proxyServer = proxyServer ? proxyServer : L"";
-        EdgeViewInstance* raw = instance.get(); edgeViews_[instanceId] = std::move(instance);
-        bool completed = false; HRESULT asyncResult = E_FAIL;
+        const std::wstring createLanguage = language ? language : L"";
+        const std::wstring createProfileName = profileName ? profileName : L"";
+        const std::wstring createOptionsKey = creationOptionsKey ? creationOptionsKey : L"";
+        const EdgeViewCreationOptions creationOptions = edgeViewCreationOptions_[createOptionsKey];
+        const bool useControllerOptions = !createProfileName.empty() || inPrivate || !createOptionsKey.empty();
+        EdgeViewInstance* raw = instance.get(); edgeViews_[instanceId] = instance;
+        struct EdgeViewCreateContext { bool completed = false; HRESULT result = E_FAIL; unsigned long long generation = 0; };
+        auto context = std::make_shared<EdgeViewCreateContext>(); context->generation = instance->generation;
         auto environmentCallback = Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
-            [this, raw, &completed, &asyncResult](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
-                asyncResult = result;
-                if (FAILED(result) || !environment) { completed = true; return S_OK; }
-                raw->environment = environment;
-                return environment->CreateCoreWebView2Controller(raw->host, Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-                    [this, raw, &completed, &asyncResult](HRESULT result, ICoreWebView2Controller* controller) -> HRESULT {
-                        asyncResult = result;
-                        if (SUCCEEDED(result) && controller) {
-                            raw->controller = controller; controller->get_CoreWebView2(&raw->webView);
+            [this, instance, context, createProfileName, inPrivate, creationOptions, useControllerOptions](HRESULT result, ICoreWebView2Environment* environment) -> HRESULT {
+                context->result = result;
+                if (instance->closed || instance->generation != context->generation || FAILED(result) || !environment) { context->completed = true; return S_OK; }
+                instance->environment = environment;
+                auto controllerCallback = Microsoft::WRL::Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+                    [this, instance, context](HRESULT result, ICoreWebView2Controller* controller) -> HRESULT {
+                        context->result = result;
+                        if (!instance->closed && instance->generation == context->generation && SUCCEEDED(result) && controller) {
+                            instance->controller = controller; controller->get_CoreWebView2(&instance->webView);
                             controller->put_IsVisible(TRUE);
-                            EdgeView_调整大小(*raw); EdgeView_注册事件(*raw);
-                            ShowWindow(raw->host, SW_SHOW);
-                            SetWindowPos(raw->host, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-                            InvalidateRect(raw->host, nullptr, TRUE);
-                            UpdateWindow(raw->host);
+                            EdgeView_调整大小(*instance); EdgeView_注册事件(*instance);
+                            ShowWindow(instance->host, SW_SHOW);
+                            SetWindowPos(instance->host, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                            InvalidateRect(instance->host, nullptr, TRUE);
+                            UpdateWindow(instance->host);
                         }
-                        completed = true; return S_OK;
-                    }).Get());
+                        context->completed = true; return S_OK;
+                    });
+                if (useControllerOptions) {
+                    Microsoft::WRL::ComPtr<ICoreWebView2Environment10> environment10;
+                    Microsoft::WRL::ComPtr<ICoreWebView2ControllerOptions> controllerOptions;
+                    if (FAILED(environment->QueryInterface(IID_PPV_ARGS(&environment10))) || !environment10 ||
+                        FAILED(environment10->CreateCoreWebView2ControllerOptions(&controllerOptions)) || !controllerOptions) {
+                        context->result = E_NOINTERFACE; context->completed = true; return S_OK;
+                    }
+                    if (!createProfileName.empty()) controllerOptions->put_ProfileName(createProfileName.c_str());
+                    controllerOptions->put_IsInPrivateModeEnabled(inPrivate ? TRUE : FALSE);
+                    Microsoft::WRL::ComPtr<ICoreWebView2ControllerOptions2> controllerOptions2; if (SUCCEEDED(controllerOptions.As(&controllerOptions2)) && controllerOptions2 && !creationOptions.scriptLocale.empty()) controllerOptions2->put_ScriptLocale(creationOptions.scriptLocale.c_str());
+                    Microsoft::WRL::ComPtr<ICoreWebView2ControllerOptions3> controllerOptions3; if (SUCCEEDED(controllerOptions.As(&controllerOptions3)) && controllerOptions3) { COREWEBVIEW2_COLOR color = { static_cast<BYTE>((creationOptions.defaultBackgroundArgb >> 24) & 255), static_cast<BYTE>((creationOptions.defaultBackgroundArgb >> 16) & 255), static_cast<BYTE>((creationOptions.defaultBackgroundArgb >> 8) & 255), static_cast<BYTE>(creationOptions.defaultBackgroundArgb & 255) }; controllerOptions3->put_DefaultBackgroundColor(color); }
+                    Microsoft::WRL::ComPtr<ICoreWebView2ControllerOptions4> controllerOptions4; if (SUCCEEDED(controllerOptions.As(&controllerOptions4)) && controllerOptions4) controllerOptions4->put_AllowHostInputProcessing(creationOptions.allowHostInputProcessing ? TRUE : FALSE);
+                    if (controllerOptions2) { LPWSTR value = nullptr; controllerOptions2->get_ScriptLocale(&value); CoTaskMemFree(value); }
+                    if (controllerOptions3) { COREWEBVIEW2_COLOR value = {}; controllerOptions3->get_DefaultBackgroundColor(&value); }
+                    if (controllerOptions4) { BOOL value = FALSE; controllerOptions4->get_AllowHostInputProcessing(&value); }
+                    return environment10->CreateCoreWebView2ControllerWithOptions(instance->host, controllerOptions.Get(), controllerCallback.Get());
+                }
+                return environment->CreateCoreWebView2Controller(instance->host, controllerCallback.Get());
             });
         Microsoft::WRL::ComPtr<CoreWebView2EnvironmentOptions> environmentOptions;
-        if (!raw->proxyServer.empty()) {
-            environmentOptions = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
-            std::wstring arguments = L"--proxy-server=" + raw->proxyServer;
-            environmentOptions->put_AdditionalBrowserArguments(arguments.c_str());
+        environmentOptions = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
+        if (environmentOptions) {
+            if (!raw->proxyServer.empty()) {
+                std::wstring arguments = L"--proxy-server=" + raw->proxyServer;
+                environmentOptions->put_AdditionalBrowserArguments(arguments.c_str());
+            }
+            if (!createLanguage.empty()) environmentOptions->put_Language(createLanguage.c_str());
+            environmentOptions->put_ExclusiveUserDataFolderAccess(creationOptions.exclusiveUserDataFolderAccess ? TRUE : FALSE);
+            environmentOptions->put_IsCustomCrashReportingEnabled(creationOptions.customCrashReporting ? TRUE : FALSE);
+            environmentOptions->put_EnableTrackingPrevention(creationOptions.trackingPrevention ? TRUE : FALSE);
+            environmentOptions->put_AreBrowserExtensionsEnabled(creationOptions.browserExtensions ? TRUE : FALSE);
+            environmentOptions->put_ChannelSearchKind(static_cast<COREWEBVIEW2_CHANNEL_SEARCH_KIND>(creationOptions.channelSearchKind));
+            environmentOptions->put_ReleaseChannels(static_cast<COREWEBVIEW2_RELEASE_CHANNELS>(creationOptions.releaseChannels));
+            environmentOptions->put_ScrollBarStyle(static_cast<COREWEBVIEW2_SCROLLBAR_STYLE>(creationOptions.scrollBarStyle));
+            BOOL verifiedBool = FALSE; COREWEBVIEW2_CHANNEL_SEARCH_KIND verifiedChannel = static_cast<COREWEBVIEW2_CHANNEL_SEARCH_KIND>(0); COREWEBVIEW2_RELEASE_CHANNELS verifiedChannels = static_cast<COREWEBVIEW2_RELEASE_CHANNELS>(0); COREWEBVIEW2_SCROLLBAR_STYLE verifiedScrollbars = static_cast<COREWEBVIEW2_SCROLLBAR_STYLE>(0);
+            environmentOptions->get_ExclusiveUserDataFolderAccess(&verifiedBool); environmentOptions->get_IsCustomCrashReportingEnabled(&verifiedBool); environmentOptions->get_EnableTrackingPrevention(&verifiedBool); environmentOptions->get_AreBrowserExtensionsEnabled(&verifiedBool); environmentOptions->get_ChannelSearchKind(&verifiedChannel); environmentOptions->get_ReleaseChannels(&verifiedChannels); environmentOptions->get_ScrollBarStyle(&verifiedScrollbars);
+            std::vector<Microsoft::WRL::ComPtr<ICoreWebView2CustomSchemeRegistration>> registrations;
+            std::vector<ICoreWebView2CustomSchemeRegistration*> registrationPointers;
+            for (const auto& scheme : creationOptions.customSchemes) {
+                auto registration = Microsoft::WRL::Make<CoreWebView2CustomSchemeRegistration>(scheme.name.c_str());
+                if (!registration) continue;
+                registration->put_HasAuthorityComponent(scheme.hasAuthority ? TRUE : FALSE); registration->put_TreatAsSecure(scheme.treatAsSecure ? TRUE : FALSE);
+                std::vector<LPCWSTR> origins; for (const auto& origin : scheme.allowedOrigins) origins.push_back(origin.c_str());
+                registration->SetAllowedOrigins(static_cast<UINT32>(origins.size()), origins.empty() ? nullptr : origins.data());
+                LPWSTR verifiedName = nullptr; BOOL verifiedAuthority = FALSE, verifiedSecure = FALSE; UINT32 verifiedOriginCount = 0; LPWSTR* verifiedOrigins = nullptr;
+                registration->get_SchemeName(&verifiedName); registration->get_HasAuthorityComponent(&verifiedAuthority); registration->get_TreatAsSecure(&verifiedSecure); registration->GetAllowedOrigins(&verifiedOriginCount, &verifiedOrigins);
+                CoTaskMemFree(verifiedName); if (verifiedOrigins) { for (UINT32 index = 0; index < verifiedOriginCount; ++index) CoTaskMemFree(verifiedOrigins[index]); CoTaskMemFree(verifiedOrigins); }
+                registrations.push_back(registration); registrationPointers.push_back(registration.Get());
+            }
+            environmentOptions->SetCustomSchemeRegistrations(static_cast<UINT32>(registrationPointers.size()), registrationPointers.empty() ? nullptr : registrationPointers.data());
+            UINT32 verifiedRegistrationCount = 0; ICoreWebView2CustomSchemeRegistration** verifiedRegistrations = nullptr; environmentOptions->GetCustomSchemeRegistrations(&verifiedRegistrationCount, &verifiedRegistrations); if (verifiedRegistrations) { for (UINT32 index = 0; index < verifiedRegistrationCount; ++index) verifiedRegistrations[index]->Release(); CoTaskMemFree(verifiedRegistrations); }
         }
         HRESULT startResult = createEnvironment(nullptr, raw->cacheDirectory.empty() ? nullptr : raw->cacheDirectory.c_str(), environmentOptions.Get(), environmentCallback.Get());
-        if (FAILED(startResult) || !EdgeView_等待(&completed, 15000) || FAILED(asyncResult) || !raw->webView) {
+        if (FAILED(startResult) || !EdgeView_等待(&context->completed, 15000) || FAILED(context->result) || instance->closed || !instance->webView) {
             调试输出(L"EdgeView 创建失败：WebView2 环境初始化失败或超时。"); EdgeView_关闭实例(instanceId); return 0;
         }
         EdgeView_记录事件(*raw, L"浏览器创建完成", raw->cacheDirectory.c_str());
@@ -4140,7 +5506,10 @@ ${edgeViewEventIdCases}
     }
     void EdgeView_调整全部大小() { for (auto& item : edgeViews_) EdgeView_调整大小(*item.second); }
     void EdgeView_记录事件(EdgeViewInstance& instance, const wchar_t* name, const wchar_t* data) {
+        if (instance.closed) return;
         instance.lastEvent = name ? name : L""; instance.lastEventData = data ? data : L"";
+        instance.eventFields.clear(); instance.eventFields[L"json"] = instance.lastEventData;
+        instance.eventAction = 0; instance.eventResultText.clear(); instance.eventObjectSelection = 0; instance.eventDecisionActive = true;
         ++instance.eventCounts[instance.lastEvent];
         auto handler = instance.handlers.find(instance.lastEvent);
         std::wstring callback = handler == instance.handlers.end() ? L"" : handler->second;
@@ -4149,6 +5518,7 @@ ${edgeViewEventIdCases}
             if (control) callback = GetEventHandler(*control, EdgeView_取设计器事件ID(instance.lastEvent.c_str()));
         }
         if (!callback.empty()) DispatchEdgeViewEvent(callback.c_str(), instance.id, instance.lastEvent.c_str(), instance.lastEventData.c_str());
+        instance.eventDecisionActive = false;
     }
     static std::wstring EdgeView_接管字符串(LPWSTR value) {
         std::wstring result = value ? value : L"";
@@ -4190,36 +5560,45 @@ ${edgeViewEventIdCases}
     }
     void EdgeView_注册事件(EdgeViewInstance& instance) {
         EventRegistrationToken token = {}; EdgeViewInstance* raw = &instance;
-        instance.webView->add_NavigationStarting(Microsoft::WRL::Callback<ICoreWebView2NavigationStartingEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT { LPWSTR uri = nullptr; BOOL user = FALSE, redirected = FALSE; UINT64 navigationId = 0; args->get_Uri(&uri); args->get_IsUserInitiated(&user); args->get_IsRedirected(&redirected); args->get_NavigationId(&navigationId); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"userInitiated", EdgeView_布尔值(user)}, {L"redirected", EdgeView_布尔值(redirected)}, {L"navigationId", EdgeView_数值(navigationId)}}); EdgeView_记录事件(*raw, L"导航开始", data.c_str()); return S_OK; }).Get(), &token);
+        instance.webView->add_NavigationStarting(Microsoft::WRL::Callback<ICoreWebView2NavigationStartingEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT { LPWSTR uri = nullptr, ancestors = nullptr; BOOL user = FALSE, redirected = FALSE; UINT64 navigationId = 0; COREWEBVIEW2_NAVIGATION_KIND navigationKind = static_cast<COREWEBVIEW2_NAVIGATION_KIND>(0); args->get_Uri(&uri); args->get_IsUserInitiated(&user); args->get_IsRedirected(&redirected); args->get_NavigationId(&navigationId); Microsoft::WRL::ComPtr<ICoreWebView2NavigationStartingEventArgs2> args2; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args2))) && args2) args2->get_AdditionalAllowedFrameAncestors(&ancestors); Microsoft::WRL::ComPtr<ICoreWebView2NavigationStartingEventArgs3> args3; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args3))) && args3) args3->get_NavigationKind(&navigationKind); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"userInitiated", EdgeView_布尔值(user)}, {L"redirected", EdgeView_布尔值(redirected)}, {L"navigationId", EdgeView_数值(navigationId)}, {L"allowedFrameAncestors", EdgeView_接管字符串(ancestors)}, {L"navigationKind", EdgeView_数值(navigationKind)}}); EdgeView_记录事件(*raw, L"导航开始", data.c_str()); if (args2 && !raw->eventResultText.empty()) args2->put_AdditionalAllowedFrameAncestors(raw->eventResultText.c_str()); if (raw->eventAction == 2) args->put_Cancel(TRUE); return S_OK; }).Get(), &token);
         instance.webView->add_ContentLoading(Microsoft::WRL::Callback<ICoreWebView2ContentLoadingEventHandler>([this, raw](ICoreWebView2* sender, ICoreWebView2ContentLoadingEventArgs* args) -> HRESULT { BOOL errorPage = FALSE; UINT64 navigationId = 0; args->get_IsErrorPage(&errorPage); args->get_NavigationId(&navigationId); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_当前地址(sender)}, {L"errorPage", EdgeView_布尔值(errorPage)}, {L"navigationId", EdgeView_数值(navigationId)}}); EdgeView_记录事件(*raw, L"内容加载", data.c_str()); return S_OK; }).Get(), &token);
         instance.webView->add_SourceChanged(Microsoft::WRL::Callback<ICoreWebView2SourceChangedEventHandler>([this, raw](ICoreWebView2* sender, ICoreWebView2SourceChangedEventArgs* args) -> HRESULT { BOOL newDocument = FALSE; args->get_IsNewDocument(&newDocument); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_当前地址(sender)}, {L"newDocument", EdgeView_布尔值(newDocument)}}); EdgeView_记录事件(*raw, L"地址改变", data.c_str()); return S_OK; }).Get(), &token);
         instance.webView->add_HistoryChanged(Microsoft::WRL::Callback<ICoreWebView2HistoryChangedEventHandler>([this, raw](ICoreWebView2* sender, IUnknown*) -> HRESULT { BOOL back = FALSE, forward = FALSE; sender->get_CanGoBack(&back); sender->get_CanGoForward(&forward); std::wstring data = EdgeView_事件数据({{L"canGoBack", EdgeView_布尔值(back)}, {L"canGoForward", EdgeView_布尔值(forward)}}); EdgeView_记录事件(*raw, L"历史记录改变", data.c_str()); return S_OK; }).Get(), &token);
-        instance.webView->add_NavigationCompleted(Microsoft::WRL::Callback<ICoreWebView2NavigationCompletedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT { BOOL ok = FALSE; COREWEBVIEW2_WEB_ERROR_STATUS status = COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN; UINT64 navigationId = 0; args->get_IsSuccess(&ok); args->get_WebErrorStatus(&status); args->get_NavigationId(&navigationId); std::wstring data = EdgeView_事件数据({{L"success", EdgeView_布尔值(ok)}, {L"webErrorStatus", EdgeView_数值(status)}, {L"navigationId", EdgeView_数值(navigationId)}}); EdgeView_记录事件(*raw, L"导航完成", data.c_str()); return S_OK; }).Get(), &token);
+        instance.webView->add_NavigationCompleted(Microsoft::WRL::Callback<ICoreWebView2NavigationCompletedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT { BOOL ok = FALSE; COREWEBVIEW2_WEB_ERROR_STATUS status = COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN; UINT64 navigationId = 0; INT32 httpStatus = 0; args->get_IsSuccess(&ok); args->get_WebErrorStatus(&status); args->get_NavigationId(&navigationId); Microsoft::WRL::ComPtr<ICoreWebView2NavigationCompletedEventArgs2> args2; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args2))) && args2) args2->get_HttpStatusCode(&httpStatus); std::wstring data = EdgeView_事件数据({{L"success", EdgeView_布尔值(ok)}, {L"webErrorStatus", EdgeView_数值(status)}, {L"navigationId", EdgeView_数值(navigationId)}, {L"httpStatusCode", EdgeView_数值(httpStatus)}}); EdgeView_记录事件(*raw, L"导航完成", data.c_str()); return S_OK; }).Get(), &token);
         instance.webView->add_FrameNavigationStarting(Microsoft::WRL::Callback<ICoreWebView2NavigationStartingEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT { LPWSTR uri = nullptr; args->get_Uri(&uri); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}}); EdgeView_记录事件(*raw, L"框架导航开始", data.c_str()); return S_OK; }).Get(), &token);
         instance.webView->add_FrameNavigationCompleted(Microsoft::WRL::Callback<ICoreWebView2NavigationCompletedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs* args) -> HRESULT { BOOL ok = FALSE; args->get_IsSuccess(&ok); std::wstring data = EdgeView_事件数据({{L"success", EdgeView_布尔值(ok)}}); EdgeView_记录事件(*raw, L"框架导航完成", data.c_str()); return S_OK; }).Get(), &token);
-        instance.webView->add_ScriptDialogOpening(Microsoft::WRL::Callback<ICoreWebView2ScriptDialogOpeningEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2ScriptDialogOpeningEventArgs* args) -> HRESULT { LPWSTR uri = nullptr, message = nullptr; COREWEBVIEW2_SCRIPT_DIALOG_KIND kind = COREWEBVIEW2_SCRIPT_DIALOG_KIND_ALERT; args->get_Uri(&uri); args->get_Message(&message); args->get_Kind(&kind); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"message", EdgeView_接管字符串(message)}, {L"kind", EdgeView_数值(kind)}}); EdgeView_记录事件(*raw, L"脚本对话框打开", data.c_str()); return S_OK; }).Get(), &token);
-        instance.webView->add_PermissionRequested(Microsoft::WRL::Callback<ICoreWebView2PermissionRequestedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2PermissionRequestedEventArgs* args) -> HRESULT { LPWSTR uri = nullptr; COREWEBVIEW2_PERMISSION_KIND kind = COREWEBVIEW2_PERMISSION_KIND_UNKNOWN_PERMISSION; BOOL user = FALSE; args->get_Uri(&uri); args->get_PermissionKind(&kind); args->get_IsUserInitiated(&user); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"kind", EdgeView_数值(kind)}, {L"userInitiated", EdgeView_布尔值(user)}}); EdgeView_记录事件(*raw, L"权限请求", data.c_str()); return S_OK; }).Get(), &token);
-        instance.webView->add_ProcessFailed(Microsoft::WRL::Callback<ICoreWebView2ProcessFailedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) -> HRESULT { COREWEBVIEW2_PROCESS_FAILED_KIND kind = COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED; args->get_ProcessFailedKind(&kind); std::wstring data = EdgeView_事件数据({{L"kind", EdgeView_数值(kind)}}); EdgeView_记录事件(*raw, L"进程失败", data.c_str()); return S_OK; }).Get(), &token);
-        instance.webView->add_WebMessageReceived(Microsoft::WRL::Callback<ICoreWebView2WebMessageReceivedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT { LPWSTR source = nullptr, message = nullptr; args->get_Source(&source); if (FAILED(args->TryGetWebMessageAsString(&message))) args->get_WebMessageAsJson(&message); std::wstring data = EdgeView_事件数据({{L"source", EdgeView_接管字符串(source)}, {L"message", EdgeView_接管字符串(message)}}); EdgeView_记录事件(*raw, L"网页消息", data.c_str()); return S_OK; }).Get(), &token);
-        instance.webView->add_NewWindowRequested(Microsoft::WRL::Callback<ICoreWebView2NewWindowRequestedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* args) -> HRESULT { LPWSTR uri = nullptr; BOOL user = FALSE; args->get_Uri(&uri); args->get_IsUserInitiated(&user); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"userInitiated", EdgeView_布尔值(user)}}); EdgeView_记录事件(*raw, L"新窗口请求", data.c_str()); return S_OK; }).Get(), &token);
+        instance.webView->add_ScriptDialogOpening(Microsoft::WRL::Callback<ICoreWebView2ScriptDialogOpeningEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2ScriptDialogOpeningEventArgs* args) -> HRESULT { LPWSTR uri = nullptr, message = nullptr; COREWEBVIEW2_SCRIPT_DIALOG_KIND kind = COREWEBVIEW2_SCRIPT_DIALOG_KIND_ALERT; args->get_Uri(&uri); args->get_Message(&message); args->get_Kind(&kind); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"message", EdgeView_接管字符串(message)}, {L"kind", EdgeView_数值(kind)}}); EdgeView_记录事件(*raw, L"脚本对话框打开", data.c_str()); if (!raw->eventResultText.empty()) args->put_ResultText(raw->eventResultText.c_str()); if (raw->eventAction == 1) args->Accept(); return S_OK; }).Get(), &token);
+        instance.webView->add_PermissionRequested(Microsoft::WRL::Callback<ICoreWebView2PermissionRequestedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2PermissionRequestedEventArgs* args) -> HRESULT { LPWSTR uri = nullptr; COREWEBVIEW2_PERMISSION_KIND kind = COREWEBVIEW2_PERMISSION_KIND_UNKNOWN_PERMISSION; BOOL user = FALSE, handled = FALSE, saves = FALSE; args->get_Uri(&uri); args->get_PermissionKind(&kind); args->get_IsUserInitiated(&user); Microsoft::WRL::ComPtr<ICoreWebView2PermissionRequestedEventArgs2> args2; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args2))) && args2) args2->get_Handled(&handled); Microsoft::WRL::ComPtr<ICoreWebView2PermissionRequestedEventArgs3> args3; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args3))) && args3) args3->get_SavesInProfile(&saves); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"kind", EdgeView_数值(kind)}, {L"userInitiated", EdgeView_布尔值(user)}, {L"handled", EdgeView_布尔值(handled)}, {L"savesInProfile", EdgeView_布尔值(saves)}}); EdgeView_记录事件(*raw, L"权限请求", data.c_str()); if (raw->eventAction == 1) { args->put_State(COREWEBVIEW2_PERMISSION_STATE_ALLOW); if (args2) args2->put_Handled(TRUE); } else if (raw->eventAction == 2) { args->put_State(COREWEBVIEW2_PERMISSION_STATE_DENY); if (args2) args2->put_Handled(TRUE); } if (args3 && !raw->eventResultText.empty()) args3->put_SavesInProfile(raw->eventResultText != L"false" ? TRUE : FALSE); return S_OK; }).Get(), &token);
+        instance.webView->add_ProcessFailed(Microsoft::WRL::Callback<ICoreWebView2ProcessFailedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* args) -> HRESULT { COREWEBVIEW2_PROCESS_FAILED_KIND kind = COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED; args->get_ProcessFailedKind(&kind); INT32 exitCode = 0; COREWEBVIEW2_PROCESS_FAILED_REASON reason = static_cast<COREWEBVIEW2_PROCESS_FAILED_REASON>(0); LPWSTR description = nullptr, sourceModule = nullptr; UINT32 failedFrameCount = 0; Microsoft::WRL::ComPtr<ICoreWebView2ProcessFailedEventArgs2> args2; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args2))) && args2) { args2->get_ExitCode(&exitCode); args2->get_Reason(&reason); args2->get_ProcessDescription(&description); Microsoft::WRL::ComPtr<ICoreWebView2FrameInfoCollection> frames; args2->get_FrameInfosForFailedProcess(&frames); if (frames) { Microsoft::WRL::ComPtr<ICoreWebView2FrameInfoCollectionIterator> iterator; frames->GetIterator(&iterator); BOOL has = FALSE; while (iterator && SUCCEEDED(iterator->get_HasCurrent(&has)) && has) { ++failedFrameCount; BOOL moved = FALSE; iterator->MoveNext(&moved); if (!moved) break; } } } Microsoft::WRL::ComPtr<ICoreWebView2ProcessFailedEventArgs3> args3; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args3))) && args3) args3->get_FailureSourceModulePath(&sourceModule); std::wstring data = EdgeView_事件数据({{L"kind", EdgeView_数值(kind)}, {L"exitCode", EdgeView_数值(exitCode)}, {L"reason", EdgeView_数值(reason)}, {L"description", EdgeView_接管字符串(description)}, {L"sourceModule", EdgeView_接管字符串(sourceModule)}, {L"failedFrameCount", EdgeView_数值(failedFrameCount)}}); EdgeView_记录事件(*raw, L"进程失败", data.c_str()); return S_OK; }).Get(), &token);
+        instance.webView->add_WebMessageReceived(Microsoft::WRL::Callback<ICoreWebView2WebMessageReceivedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT { LPWSTR source = nullptr, message = nullptr; args->get_Source(&source); if (FAILED(args->TryGetWebMessageAsString(&message))) args->get_WebMessageAsJson(&message); std::wstring handles; Microsoft::WRL::ComPtr<ICoreWebView2WebMessageReceivedEventArgs2> args2; Microsoft::WRL::ComPtr<ICoreWebView2ObjectCollectionView> objects; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args2))) && args2) args2->get_AdditionalObjects(&objects); UINT32 count = 0; if (objects) objects->get_Count(&count); for (UINT32 index = 0; index < count; ++index) { Microsoft::WRL::ComPtr<IUnknown> object; objects->GetValueAtIndex(index, &object); std::wstring type = L"AdditionalObject"; Microsoft::WRL::ComPtr<ICoreWebView2File> file; Microsoft::WRL::ComPtr<ICoreWebView2FileSystemHandle> fileSystem; if (object && SUCCEEDED(object.As(&file)) && file) type = L"File"; else if (object && SUCCEEDED(object.As(&fileSystem)) && fileSystem) type = L"FileSystemHandle"; long long handle = EdgeView对象_注册(raw, type.c_str(), object.Get()); if (!handles.empty()) handles += L","; handles += EdgeView_数值(handle); } std::wstring data = EdgeView_事件数据({{L"source", EdgeView_接管字符串(source)}, {L"message", EdgeView_接管字符串(message)}, {L"additionalObjectHandles", handles}}); EdgeView_记录事件(*raw, L"网页消息", data.c_str()); return S_OK; }).Get(), &token);
+        instance.webView->add_NewWindowRequested(Microsoft::WRL::Callback<ICoreWebView2NewWindowRequestedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* args) -> HRESULT { LPWSTR uri = nullptr, name = nullptr, sourceFrameName = nullptr, sourceFrameUri = nullptr; BOOL user = FALSE; args->get_Uri(&uri); args->get_IsUserInitiated(&user); Microsoft::WRL::ComPtr<ICoreWebView2NewWindowRequestedEventArgs2> args2; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args2))) && args2) args2->get_Name(&name); Microsoft::WRL::ComPtr<ICoreWebView2NewWindowRequestedEventArgs3> args3; Microsoft::WRL::ComPtr<ICoreWebView2FrameInfo> sourceFrame; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args3))) && args3) args3->get_OriginalSourceFrameInfo(&sourceFrame); if (sourceFrame) { sourceFrame->get_Name(&sourceFrameName); sourceFrame->get_Source(&sourceFrameUri); } Microsoft::WRL::ComPtr<ICoreWebView2WindowFeatures> features; args->get_WindowFeatures(&features); BOOL hasPosition = FALSE, hasSize = FALSE, menu = FALSE, scroll = FALSE, status = FALSE, toolbar = FALSE; UINT32 left = 0, top = 0, width = 0, height = 0; if (features) { features->get_HasPosition(&hasPosition); features->get_HasSize(&hasSize); features->get_Left(&left); features->get_Top(&top); features->get_Width(&width); features->get_Height(&height); features->get_ShouldDisplayMenuBar(&menu); features->get_ShouldDisplayScrollBars(&scroll); features->get_ShouldDisplayStatus(&status); features->get_ShouldDisplayToolbar(&toolbar); } std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"name", EdgeView_接管字符串(name)}, {L"sourceFrameName", EdgeView_接管字符串(sourceFrameName)}, {L"sourceFrameUri", EdgeView_接管字符串(sourceFrameUri)}, {L"userInitiated", EdgeView_布尔值(user)}, {L"hasPosition", EdgeView_布尔值(hasPosition)}, {L"hasSize", EdgeView_布尔值(hasSize)}, {L"left", EdgeView_数值(left)}, {L"top", EdgeView_数值(top)}, {L"width", EdgeView_数值(width)}, {L"height", EdgeView_数值(height)}, {L"showMenuBar", EdgeView_布尔值(menu)}, {L"showScrollBars", EdgeView_布尔值(scroll)}, {L"showStatus", EdgeView_布尔值(status)}, {L"showToolbar", EdgeView_布尔值(toolbar)}}); EdgeView_记录事件(*raw, L"新窗口请求", data.c_str()); if (raw->eventAction == 1) args->put_Handled(TRUE); return S_OK; }).Get(), &token);
         instance.webView->add_DocumentTitleChanged(Microsoft::WRL::Callback<ICoreWebView2DocumentTitleChangedEventHandler>([this, raw](ICoreWebView2* sender, IUnknown*) -> HRESULT { LPWSTR value = nullptr; sender->get_DocumentTitle(&value); std::wstring data = EdgeView_事件数据({{L"title", EdgeView_接管字符串(value)}}); EdgeView_记录事件(*raw, L"标题改变", data.c_str()); return S_OK; }).Get(), &token);
         instance.webView->add_ContainsFullScreenElementChanged(Microsoft::WRL::Callback<ICoreWebView2ContainsFullScreenElementChangedEventHandler>([this, raw](ICoreWebView2* sender, IUnknown*) -> HRESULT { BOOL value = FALSE; sender->get_ContainsFullScreenElement(&value); std::wstring data = EdgeView_事件数据({{L"containsFullScreenElement", EdgeView_布尔值(value)}}); EdgeView_记录事件(*raw, L"全屏元素状态改变", data.c_str()); return S_OK; }).Get(), &token);
         instance.webView->AddWebResourceRequestedFilter(L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
-        instance.webView->add_WebResourceRequested(Microsoft::WRL::Callback<ICoreWebView2WebResourceRequestedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2WebResourceRequest> request; LPWSTR uri = nullptr, method = nullptr; COREWEBVIEW2_WEB_RESOURCE_CONTEXT context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL; args->get_Request(&request); args->get_ResourceContext(&context); if (request) { request->get_Uri(&uri); request->get_Method(&method); } std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"method", EdgeView_接管字符串(method)}, {L"context", EdgeView_数值(context)}}); EdgeView_记录事件(*raw, L"Web资源请求", data.c_str()); return S_OK; }).Get(), &token);
+        instance.webView->add_WebResourceRequested(Microsoft::WRL::Callback<ICoreWebView2WebResourceRequestedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2WebResourceRequestedEventArgs* args) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2WebResourceRequest> request; LPWSTR uri = nullptr, method = nullptr; COREWEBVIEW2_WEB_RESOURCE_CONTEXT context = COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL; COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS sourceKind = COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS_NONE; args->get_Request(&request); args->get_ResourceContext(&context); Microsoft::WRL::ComPtr<ICoreWebView2WebResourceRequestedEventArgs2> args2; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args2))) && args2) args2->get_RequestedSourceKind(&sourceKind); if (request) { request->get_Uri(&uri); request->get_Method(&method); } long long requestHandle = EdgeView对象_注册(raw, L"WebResourceRequest", request.Get()); std::wstring data = EdgeView_事件数据({{L"requestHandle", EdgeView_数值(requestHandle)}, {L"uri", EdgeView_接管字符串(uri)}, {L"method", EdgeView_接管字符串(method)}, {L"context", EdgeView_数值(context)}, {L"sourceKind", EdgeView_数值(sourceKind)}}); EdgeView_记录事件(*raw, L"Web资源请求", data.c_str()); if (raw->eventAction == 1 && raw->eventFields.count(L"responseStatus")) { const std::wstring body = raw->eventFields[L"responseBody"]; const int byteCount = body.empty() ? 0 : WideCharToMultiByte(CP_UTF8, 0, body.c_str(), static_cast<int>(body.size()), nullptr, 0, nullptr, nullptr); HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, static_cast<SIZE_T>(byteCount)); Microsoft::WRL::ComPtr<IStream> stream; if (memory) { if (byteCount > 0) { void* target = GlobalLock(memory); WideCharToMultiByte(CP_UTF8, 0, body.c_str(), static_cast<int>(body.size()), static_cast<char*>(target), byteCount, nullptr, nullptr); GlobalUnlock(memory); } CreateStreamOnHGlobal(memory, TRUE, &stream); } Microsoft::WRL::ComPtr<ICoreWebView2WebResourceResponse> response; const int status = _wtoi(raw->eventFields[L"responseStatus"].c_str()); if (raw->environment && SUCCEEDED(raw->environment->CreateWebResourceResponse(stream.Get(), status, raw->eventFields[L"responseReason"].c_str(), raw->eventFields[L"responseHeaders"].c_str(), &response)) && response) args->put_Response(response.Get()); } return S_OK; }).Get(), &token);
         instance.webView->add_WindowCloseRequested(Microsoft::WRL::Callback<ICoreWebView2WindowCloseRequestedEventHandler>([this, raw](ICoreWebView2*, IUnknown*) -> HRESULT { EdgeView_记录事件(*raw, L"窗口关闭请求", L"{}"); return S_OK; }).Get(), &token);
         Microsoft::WRL::ComPtr<ICoreWebView2_2> webView2;
         if (SUCCEEDED(instance.webView.As(&webView2)) && webView2) {
-            webView2->add_WebResourceResponseReceived(Microsoft::WRL::Callback<ICoreWebView2WebResourceResponseReceivedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2WebResourceResponseReceivedEventArgs* args) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2WebResourceRequest> request; Microsoft::WRL::ComPtr<ICoreWebView2WebResourceResponseView> response; LPWSTR uri = nullptr; int status = 0; args->get_Request(&request); args->get_Response(&response); if (request) request->get_Uri(&uri); if (response) response->get_StatusCode(&status); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"statusCode", EdgeView_数值(status)}}); EdgeView_记录事件(*raw, L"Web资源响应收到", data.c_str()); return S_OK; }).Get(), &token);
+            webView2->add_WebResourceResponseReceived(Microsoft::WRL::Callback<ICoreWebView2WebResourceResponseReceivedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2WebResourceResponseReceivedEventArgs* args) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2WebResourceRequest> request; Microsoft::WRL::ComPtr<ICoreWebView2WebResourceResponseView> response; LPWSTR uri = nullptr, reason = nullptr; int status = 0; args->get_Request(&request); args->get_Response(&response); if (request) request->get_Uri(&uri); if (response) { response->get_StatusCode(&status); response->get_ReasonPhrase(&reason); } long long requestHandle = EdgeView对象_注册(raw, L"WebResourceRequest", request.Get()); long long responseHandle = EdgeView对象_注册(raw, L"WebResourceResponseView", response.Get()); std::wstring data = EdgeView_事件数据({{L"requestHandle", EdgeView_数值(requestHandle)}, {L"responseHandle", EdgeView_数值(responseHandle)}, {L"uri", EdgeView_接管字符串(uri)}, {L"statusCode", EdgeView_数值(status)}, {L"reason", EdgeView_接管字符串(reason)}}); EdgeView_记录事件(*raw, L"Web资源响应收到", data.c_str()); return S_OK; }).Get(), &token);
             webView2->add_DOMContentLoaded(Microsoft::WRL::Callback<ICoreWebView2DOMContentLoadedEventHandler>([this, raw](ICoreWebView2* sender, ICoreWebView2DOMContentLoadedEventArgs* args) -> HRESULT { UINT64 navigationId = 0; args->get_NavigationId(&navigationId); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_当前地址(sender)}, {L"navigationId", EdgeView_数值(navigationId)}}); EdgeView_记录事件(*raw, L"DOM加载完成", data.c_str()); return S_OK; }).Get(), &token);
         }
         Microsoft::WRL::ComPtr<ICoreWebView2_4> webView4;
         if (SUCCEEDED(instance.webView.As(&webView4)) && webView4) {
-            webView4->add_FrameCreated(Microsoft::WRL::Callback<ICoreWebView2FrameCreatedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2FrameCreatedEventArgs* args) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2Frame> frame; args->get_Frame(&frame); EdgeView_附加框架事件(*raw, frame.Get()); LPWSTR name = nullptr; if (frame) frame->get_Name(&name); std::wstring data = EdgeView_事件数据({{L"name", EdgeView_接管字符串(name)}}); EdgeView_记录事件(*raw, L"框架创建", data.c_str()); return S_OK; }).Get(), &token);
-            webView4->add_DownloadStarting(Microsoft::WRL::Callback<ICoreWebView2DownloadStartingEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2DownloadStartingEventArgs* args) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2DownloadOperation> operation; args->get_DownloadOperation(&operation); EdgeView_附加下载事件(*raw, operation.Get()); LPWSTR uri = nullptr, path = nullptr; if (operation) operation->get_Uri(&uri); args->get_ResultFilePath(&path); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"resultFilePath", EdgeView_接管字符串(path)}}); EdgeView_记录事件(*raw, L"下载开始", data.c_str()); return S_OK; }).Get(), &token);
+            webView4->add_FrameCreated(Microsoft::WRL::Callback<ICoreWebView2FrameCreatedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2FrameCreatedEventArgs* args) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2Frame> frame; args->get_Frame(&frame); EdgeView_附加框架事件(*raw, frame.Get()); long long handle = EdgeView对象_注册(raw, L"Frame", frame.Get()); LPWSTR name = nullptr; if (frame) frame->get_Name(&name); std::wstring data = EdgeView_事件数据({{L"handle", EdgeView_数值(handle)}, {L"name", EdgeView_接管字符串(name)}}); EdgeView_记录事件(*raw, L"框架创建", data.c_str()); return S_OK; }).Get(), &token);
+            webView4->add_DownloadStarting(Microsoft::WRL::Callback<ICoreWebView2DownloadStartingEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2DownloadStartingEventArgs* args) -> HRESULT {
+                Microsoft::WRL::ComPtr<ICoreWebView2DownloadOperation> operation; args->get_DownloadOperation(&operation);
+                const long long downloadId = raw->nextDownloadId++; if (operation) raw->downloads[downloadId] = operation;
+                EdgeView_附加下载事件(*raw, operation.Get()); LPWSTR uri = nullptr, path = nullptr; if (operation) operation->get_Uri(&uri); args->get_ResultFilePath(&path);
+                std::wstring data = EdgeView_事件数据({{L"downloadId", EdgeView_数值(downloadId)}, {L"uri", EdgeView_接管字符串(uri)}, {L"resultFilePath", EdgeView_接管字符串(path)}});
+                EdgeView_记录事件(*raw, L"下载开始", data.c_str());
+                if (raw->eventAction == 1) args->put_Cancel(TRUE);
+                else if (!raw->eventResultText.empty()) args->put_ResultFilePath(raw->eventResultText.c_str());
+                return S_OK;
+            }).Get(), &token);
         }
         Microsoft::WRL::ComPtr<ICoreWebView2_5> webView5;
         if (SUCCEEDED(instance.webView.As(&webView5)) && webView5) {
-            webView5->add_ClientCertificateRequested(Microsoft::WRL::Callback<ICoreWebView2ClientCertificateRequestedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2ClientCertificateRequestedEventArgs* args) -> HRESULT { LPWSTR host = nullptr; INT32 port = 0; BOOL proxy = FALSE; args->get_Host(&host); args->get_Port(&port); args->get_IsProxy(&proxy); std::wstring data = EdgeView_事件数据({{L"host", EdgeView_接管字符串(host)}, {L"port", EdgeView_数值(port)}, {L"isProxy", EdgeView_布尔值(proxy)}}); EdgeView_记录事件(*raw, L"客户端证书请求", data.c_str()); return S_OK; }).Get(), &token);
+            webView5->add_ClientCertificateRequested(Microsoft::WRL::Callback<ICoreWebView2ClientCertificateRequestedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2ClientCertificateRequestedEventArgs* args) -> HRESULT { LPWSTR host = nullptr; INT32 port = 0; BOOL proxy = FALSE; args->get_Host(&host); args->get_Port(&port); args->get_IsProxy(&proxy); Microsoft::WRL::ComPtr<ICoreWebView2ClientCertificateCollection> certificates; args->get_MutuallyTrustedCertificates(&certificates); UINT32 count = 0; if (certificates) certificates->get_Count(&count); std::wstring handles; for (UINT32 index = 0; index < count; ++index) { Microsoft::WRL::ComPtr<ICoreWebView2ClientCertificate> certificate; certificates->GetValueAtIndex(index, &certificate); long long handle = EdgeView对象_注册(raw, L"ClientCertificate", certificate.Get()); if (!handles.empty()) handles += L","; handles += EdgeView_数值(handle); } std::wstring data = EdgeView_事件数据({{L"host", EdgeView_接管字符串(host)}, {L"port", EdgeView_数值(port)}, {L"isProxy", EdgeView_布尔值(proxy)}, {L"certificateHandles", handles}}); EdgeView_记录事件(*raw, L"客户端证书请求", data.c_str()); if (raw->eventAction == 1 && raw->eventObjectSelection) { Microsoft::WRL::ComPtr<ICoreWebView2ClientCertificate> certificate; auto selected = edgeViewManagedObjects_.find(raw->eventObjectSelection); if (selected != edgeViewManagedObjects_.end() && selected->second && selected->second->instanceId == raw->id && selected->second->generation == raw->generation && selected->second->type == L"ClientCertificate") selected->second->object.As(&certificate); if (certificate) { args->put_SelectedCertificate(certificate.Get()); args->put_Handled(TRUE); } } else if (raw->eventAction == 2) { args->put_Cancel(TRUE); args->put_Handled(TRUE); } return S_OK; }).Get(), &token);
         }
         Microsoft::WRL::ComPtr<ICoreWebView2_8> webView8;
         if (SUCCEEDED(instance.webView.As(&webView8)) && webView8) {
@@ -4232,17 +5611,20 @@ ${edgeViewEventIdCases}
         }
         Microsoft::WRL::ComPtr<ICoreWebView2_10> webView10;
         if (SUCCEEDED(instance.webView.As(&webView10)) && webView10) {
-            webView10->add_BasicAuthenticationRequested(Microsoft::WRL::Callback<ICoreWebView2BasicAuthenticationRequestedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2BasicAuthenticationRequestedEventArgs* args) -> HRESULT { LPWSTR uri = nullptr, challenge = nullptr; args->get_Uri(&uri); args->get_Challenge(&challenge); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"challenge", EdgeView_接管字符串(challenge)}}); EdgeView_记录事件(*raw, L"基本身份验证请求", data.c_str()); return S_OK; }).Get(), &token);
+            webView10->add_BasicAuthenticationRequested(Microsoft::WRL::Callback<ICoreWebView2BasicAuthenticationRequestedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2BasicAuthenticationRequestedEventArgs* args) -> HRESULT { LPWSTR uri = nullptr, challenge = nullptr; args->get_Uri(&uri); args->get_Challenge(&challenge); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"challenge", EdgeView_接管字符串(challenge)}}); EdgeView_记录事件(*raw, L"基本身份验证请求", data.c_str()); if (raw->eventAction == 1) { Microsoft::WRL::ComPtr<ICoreWebView2BasicAuthenticationResponse> response; args->get_Response(&response); if (response) { response->put_UserName(raw->eventFields[L"username"].c_str()); response->put_Password(raw->eventFields[L"password"].c_str()); } } else if (raw->eventAction == 2) args->put_Cancel(TRUE); return S_OK; }).Get(), &token);
         }
         Microsoft::WRL::ComPtr<ICoreWebView2_11> webView11;
         if (SUCCEEDED(instance.webView.As(&webView11)) && webView11) {
             webView11->add_ContextMenuRequested(Microsoft::WRL::Callback<ICoreWebView2ContextMenuRequestedEventHandler>(
                 [this, raw](ICoreWebView2*, ICoreWebView2ContextMenuRequestedEventArgs* args) -> HRESULT {
                     POINT location = {}; args->get_Location(&location);
-                    std::wstring eventData = EdgeView_事件数据({{L"x", EdgeView_数值(location.x)}, {L"y", EdgeView_数值(location.y)}});
+                    Microsoft::WRL::ComPtr<ICoreWebView2ContextMenuTarget> target; args->get_ContextMenuTarget(&target);
+                    Microsoft::WRL::ComPtr<ICoreWebView2ContextMenuItemCollection> menuItems; args->get_MenuItems(&menuItems); std::wstring menuHandles; UINT32 originalMenuCount = 0; if (menuItems) menuItems->get_Count(&originalMenuCount); for (UINT32 index = 0; index < originalMenuCount; ++index) { Microsoft::WRL::ComPtr<ICoreWebView2ContextMenuItem> item; menuItems->GetValueAtIndex(index, &item); long long handle = EdgeView对象_注册(raw, L"ContextMenuItem", item.Get()); if (!menuHandles.empty()) menuHandles += L","; menuHandles += EdgeView_数值(handle); }
+                    COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND targetKind = COREWEBVIEW2_CONTEXT_MENU_TARGET_KIND_PAGE; BOOL hasLinkUri = FALSE, hasLinkText = FALSE, hasSourceUri = FALSE, hasSelection = FALSE, editable = FALSE, mainFrame = FALSE; LPWSTR pageUri = nullptr, frameUri = nullptr, linkUri = nullptr, linkText = nullptr, sourceUri = nullptr, selection = nullptr;
+                    if (target) { target->get_Kind(&targetKind); target->get_PageUri(&pageUri); target->get_FrameUri(&frameUri); target->get_HasLinkUri(&hasLinkUri); target->get_LinkUri(&linkUri); target->get_HasLinkText(&hasLinkText); target->get_LinkText(&linkText); target->get_HasSourceUri(&hasSourceUri); target->get_SourceUri(&sourceUri); target->get_HasSelection(&hasSelection); target->get_SelectionText(&selection); target->get_IsEditable(&editable); target->get_IsRequestedForMainFrame(&mainFrame); }
+                    std::wstring eventData = EdgeView_事件数据({{L"x", EdgeView_数值(location.x)}, {L"y", EdgeView_数值(location.y)}, {L"menuItemHandles", menuHandles}, {L"kind", EdgeView_数值(targetKind)}, {L"pageUri", EdgeView_接管字符串(pageUri)}, {L"frameUri", EdgeView_接管字符串(frameUri)}, {L"hasLinkUri", EdgeView_布尔值(hasLinkUri)}, {L"linkUri", EdgeView_接管字符串(linkUri)}, {L"hasLinkText", EdgeView_布尔值(hasLinkText)}, {L"linkText", EdgeView_接管字符串(linkText)}, {L"hasSourceUri", EdgeView_布尔值(hasSourceUri)}, {L"sourceUri", EdgeView_接管字符串(sourceUri)}, {L"hasSelection", EdgeView_布尔值(hasSelection)}, {L"selectionText", EdgeView_接管字符串(selection)}, {L"isEditable", EdgeView_布尔值(editable)}, {L"isMainFrame", EdgeView_布尔值(mainFrame)}});
                     EdgeView_记录事件(*raw, L"右键菜单请求", eventData.c_str());
-                    Microsoft::WRL::ComPtr<ICoreWebView2ContextMenuItemCollection> menuItems;
-                    if (FAILED(args->get_MenuItems(&menuItems)) || !menuItems) return S_OK;
+                    if (!menuItems) return S_OK;
                     Microsoft::WRL::ComPtr<ICoreWebView2Environment9> environment9;
                     if (!raw->environment || FAILED(raw->environment.As(&environment9)) || !environment9) return S_OK;
                     Microsoft::WRL::ComPtr<ICoreWebView2ContextMenuItem> refreshItem;
@@ -4267,7 +5649,7 @@ ${edgeViewEventIdCases}
         }
         Microsoft::WRL::ComPtr<ICoreWebView2_14> webView14;
         if (SUCCEEDED(instance.webView.As(&webView14)) && webView14) {
-            webView14->add_ServerCertificateErrorDetected(Microsoft::WRL::Callback<ICoreWebView2ServerCertificateErrorDetectedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2ServerCertificateErrorDetectedEventArgs* args) -> HRESULT { LPWSTR uri = nullptr; COREWEBVIEW2_WEB_ERROR_STATUS status = COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN; args->get_RequestUri(&uri); args->get_ErrorStatus(&status); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"errorStatus", EdgeView_数值(status)}}); EdgeView_记录事件(*raw, L"服务器证书错误", data.c_str()); return S_OK; }).Get(), &token);
+            webView14->add_ServerCertificateErrorDetected(Microsoft::WRL::Callback<ICoreWebView2ServerCertificateErrorDetectedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2ServerCertificateErrorDetectedEventArgs* args) -> HRESULT { LPWSTR uri = nullptr; COREWEBVIEW2_WEB_ERROR_STATUS status = COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN; Microsoft::WRL::ComPtr<ICoreWebView2Certificate> certificate; args->get_RequestUri(&uri); args->get_ErrorStatus(&status); args->get_ServerCertificate(&certificate); long long handle = EdgeView对象_注册(raw, L"Certificate", certificate.Get()); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"errorStatus", EdgeView_数值(status)}, {L"certificateHandle", EdgeView_数值(handle)}}); EdgeView_记录事件(*raw, L"服务器证书错误", data.c_str()); if (raw->eventAction == 1) args->put_Action(COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_ALWAYS_ALLOW); else if (raw->eventAction == 2) args->put_Action(COREWEBVIEW2_SERVER_CERTIFICATE_ERROR_ACTION_CANCEL); return S_OK; }).Get(), &token);
         }
         Microsoft::WRL::ComPtr<ICoreWebView2_15> webView15;
         if (SUCCEEDED(instance.webView.As(&webView15)) && webView15) {
@@ -4275,23 +5657,27 @@ ${edgeViewEventIdCases}
         }
         Microsoft::WRL::ComPtr<ICoreWebView2_18> webView18;
         if (SUCCEEDED(instance.webView.As(&webView18)) && webView18) {
-            webView18->add_LaunchingExternalUriScheme(Microsoft::WRL::Callback<ICoreWebView2LaunchingExternalUriSchemeEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2LaunchingExternalUriSchemeEventArgs* args) -> HRESULT { LPWSTR uri = nullptr; BOOL user = FALSE; args->get_Uri(&uri); args->get_IsUserInitiated(&user); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"userInitiated", EdgeView_布尔值(user)}}); EdgeView_记录事件(*raw, L"外部URI方案启动", data.c_str()); return S_OK; }).Get(), &token);
+            webView18->add_LaunchingExternalUriScheme(Microsoft::WRL::Callback<ICoreWebView2LaunchingExternalUriSchemeEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2LaunchingExternalUriSchemeEventArgs* args) -> HRESULT { LPWSTR uri = nullptr, origin = nullptr; BOOL user = FALSE; args->get_Uri(&uri); args->get_InitiatingOrigin(&origin); args->get_IsUserInitiated(&user); std::wstring data = EdgeView_事件数据({{L"uri", EdgeView_接管字符串(uri)}, {L"origin", EdgeView_接管字符串(origin)}, {L"userInitiated", EdgeView_布尔值(user)}}); EdgeView_记录事件(*raw, L"外部URI方案启动", data.c_str()); if (raw->eventAction == 2) args->put_Cancel(TRUE); return S_OK; }).Get(), &token);
         }
         Microsoft::WRL::ComPtr<ICoreWebView2_24> webView24;
         if (SUCCEEDED(instance.webView.As(&webView24)) && webView24) {
-            webView24->add_NotificationReceived(Microsoft::WRL::Callback<ICoreWebView2NotificationReceivedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2NotificationReceivedEventArgs* args) -> HRESULT { LPWSTR origin = nullptr; Microsoft::WRL::ComPtr<ICoreWebView2Notification> notification; args->get_SenderOrigin(&origin); args->get_Notification(&notification); EdgeView_附加通知事件(*raw, notification.Get()); std::wstring data = EdgeView_事件数据({{L"origin", EdgeView_接管字符串(origin)}}); EdgeView_记录事件(*raw, L"网页通知收到", data.c_str()); return S_OK; }).Get(), &token);
+            webView24->add_NotificationReceived(Microsoft::WRL::Callback<ICoreWebView2NotificationReceivedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2NotificationReceivedEventArgs* args) -> HRESULT { LPWSTR origin = nullptr; Microsoft::WRL::ComPtr<ICoreWebView2Notification> notification; args->get_SenderOrigin(&origin); args->get_Notification(&notification); EdgeView_附加通知事件(*raw, notification.Get()); long long handle = EdgeView对象_注册(raw, L"Notification", notification.Get()); std::wstring data = EdgeView_事件数据({{L"handle", EdgeView_数值(handle)}, {L"origin", EdgeView_接管字符串(origin)}}); EdgeView_记录事件(*raw, L"网页通知收到", data.c_str()); return S_OK; }).Get(), &token);
         }
         Microsoft::WRL::ComPtr<ICoreWebView2_25> webView25;
         if (SUCCEEDED(instance.webView.As(&webView25)) && webView25) {
-            webView25->add_SaveAsUIShowing(Microsoft::WRL::Callback<ICoreWebView2SaveAsUIShowingEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2SaveAsUIShowingEventArgs* args) -> HRESULT { LPWSTR mime = nullptr, path = nullptr; BOOL allowReplace = FALSE; COREWEBVIEW2_SAVE_AS_KIND kind = COREWEBVIEW2_SAVE_AS_KIND_DEFAULT; args->get_ContentMimeType(&mime); args->get_SaveAsFilePath(&path); args->get_AllowReplace(&allowReplace); args->get_Kind(&kind); std::wstring data = EdgeView_事件数据({{L"mimeType", EdgeView_接管字符串(mime)}, {L"saveAsFilePath", EdgeView_接管字符串(path)}, {L"allowReplace", EdgeView_布尔值(allowReplace)}, {L"kind", EdgeView_数值(kind)}}); EdgeView_记录事件(*raw, L"另存为界面显示", data.c_str()); return S_OK; }).Get(), &token);
+            webView25->add_SaveAsUIShowing(Microsoft::WRL::Callback<ICoreWebView2SaveAsUIShowingEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2SaveAsUIShowingEventArgs* args) -> HRESULT { LPWSTR mime = nullptr, path = nullptr; BOOL allowReplace = FALSE; COREWEBVIEW2_SAVE_AS_KIND kind = COREWEBVIEW2_SAVE_AS_KIND_DEFAULT; args->get_ContentMimeType(&mime); args->get_SaveAsFilePath(&path); args->get_AllowReplace(&allowReplace); args->get_Kind(&kind); std::wstring data = EdgeView_事件数据({{L"mimeType", EdgeView_接管字符串(mime)}, {L"saveAsFilePath", EdgeView_接管字符串(path)}, {L"allowReplace", EdgeView_布尔值(allowReplace)}, {L"kind", EdgeView_数值(kind)}}); EdgeView_记录事件(*raw, L"另存为界面显示", data.c_str()); if (!raw->eventResultText.empty()) { args->put_SaveAsFilePath(raw->eventResultText.c_str()); args->put_AllowReplace(TRUE); } if (raw->eventAction == 2) args->put_Cancel(TRUE); return S_OK; }).Get(), &token);
         }
         Microsoft::WRL::ComPtr<ICoreWebView2_26> webView26;
         if (SUCCEEDED(instance.webView.As(&webView26)) && webView26) {
-            webView26->add_SaveFileSecurityCheckStarting(Microsoft::WRL::Callback<ICoreWebView2SaveFileSecurityCheckStartingEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2SaveFileSecurityCheckStartingEventArgs* args) -> HRESULT { BOOL cancel = FALSE; args->get_CancelSave(&cancel); std::wstring data = EdgeView_事件数据({{L"cancelSave", EdgeView_布尔值(cancel)}}); EdgeView_记录事件(*raw, L"保存文件安全检查开始", data.c_str()); return S_OK; }).Get(), &token);
+            webView26->add_SaveFileSecurityCheckStarting(Microsoft::WRL::Callback<ICoreWebView2SaveFileSecurityCheckStartingEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2SaveFileSecurityCheckStartingEventArgs* args) -> HRESULT { BOOL cancel = FALSE, suppress = FALSE; LPWSTR origin = nullptr, extension = nullptr, filePath = nullptr; args->get_CancelSave(&cancel); args->get_SuppressDefaultPolicy(&suppress); args->get_DocumentOriginUri(&origin); args->get_FileExtension(&extension); args->get_FilePath(&filePath); std::wstring data = EdgeView_事件数据({{L"cancelSave", EdgeView_布尔值(cancel)}, {L"suppressDefaultPolicy", EdgeView_布尔值(suppress)}, {L"origin", EdgeView_接管字符串(origin)}, {L"extension", EdgeView_接管字符串(extension)}, {L"filePath", EdgeView_接管字符串(filePath)}}); EdgeView_记录事件(*raw, L"保存文件安全检查开始", data.c_str()); if (raw->eventAction == 1) { args->put_CancelSave(FALSE); args->put_SuppressDefaultPolicy(TRUE); } else if (raw->eventAction == 2) args->put_CancelSave(TRUE); return S_OK; }).Get(), &token);
         }
         Microsoft::WRL::ComPtr<ICoreWebView2_27> webView27;
         if (SUCCEEDED(instance.webView.As(&webView27)) && webView27) {
-            webView27->add_ScreenCaptureStarting(Microsoft::WRL::Callback<ICoreWebView2ScreenCaptureStartingEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2ScreenCaptureStartingEventArgs* args) -> HRESULT { BOOL cancel = FALSE; args->get_Cancel(&cancel); std::wstring data = EdgeView_事件数据({{L"cancel", EdgeView_布尔值(cancel)}}); EdgeView_记录事件(*raw, L"屏幕捕获开始", data.c_str()); return S_OK; }).Get(), &token);
+            webView27->add_ScreenCaptureStarting(Microsoft::WRL::Callback<ICoreWebView2ScreenCaptureStartingEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2ScreenCaptureStartingEventArgs* args) -> HRESULT { BOOL cancel = FALSE; args->get_Cancel(&cancel); std::wstring data = EdgeView_事件数据({{L"cancel", EdgeView_布尔值(cancel)}}); EdgeView_记录事件(*raw, L"屏幕捕获开始", data.c_str()); if (raw->eventAction == 2) { args->put_Cancel(TRUE); args->put_Handled(TRUE); } return S_OK; }).Get(), &token);
+        }
+        Microsoft::WRL::ComPtr<ICoreWebView2_29> webView29;
+        if (SUCCEEDED(instance.webView.As(&webView29)) && webView29) {
+            webView29->add_DedicatedWorkerCreated(Microsoft::WRL::Callback<ICoreWebView2DedicatedWorkerCreatedEventHandler>([this, raw](ICoreWebView2*, ICoreWebView2DedicatedWorkerCreatedEventArgs* args) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2DedicatedWorker> worker; args->get_Worker(&worker); EdgeView_附加专用工作线程事件(*raw, worker.Get()); long long handle = EdgeView对象_注册(raw, L"DedicatedWorker", worker.Get()); LPWSTR uri = nullptr; if (worker) worker->get_ScriptUri(&uri); std::wstring data = EdgeView_事件数据({{L"handle", EdgeView_数值(handle)}, {L"scriptUri", EdgeView_接管字符串(uri)}}); EdgeView_记录事件(*raw, L"专用工作线程创建", data.c_str()); return S_OK; }).Get(), &token);
         }
         EdgeView_附加控制器事件(instance);
         EdgeView_附加环境事件(instance);
@@ -4309,6 +5695,26 @@ ${edgeViewEventIdCases}
         if (!EdgeView_保留事件源(instance, notification)) return;
         EventRegistrationToken token = {}; EdgeViewInstance* raw = &instance;
         notification->add_CloseRequested(Microsoft::WRL::Callback<ICoreWebView2NotificationCloseRequestedEventHandler>([this, raw](ICoreWebView2Notification*, IUnknown*) -> HRESULT { EdgeView_记录事件(*raw, L"网页通知关闭请求", L"{}"); return S_OK; }).Get(), &token);
+    }
+    void EdgeView_附加专用工作线程事件(EdgeViewInstance& instance, ICoreWebView2DedicatedWorker* worker) {
+        if (!worker || !EdgeView_保留事件源(instance, worker)) return; EventRegistrationToken token = {}; EdgeViewInstance* raw = &instance;
+        worker->add_Destroying(Microsoft::WRL::Callback<ICoreWebView2DedicatedWorkerDestroyingEventHandler>([this, raw](ICoreWebView2DedicatedWorker* sender, IUnknown*) -> HRESULT { LPWSTR uri = nullptr; sender->get_ScriptUri(&uri); std::wstring data = EdgeView_事件数据({{L"scriptUri", EdgeView_接管字符串(uri)}}); EdgeView_记录事件(*raw, L"专用工作线程销毁", data.c_str()); return S_OK; }).Get(), &token);
+        worker->add_WebMessageReceived(Microsoft::WRL::Callback<ICoreWebView2DedicatedWorkerWebMessageReceivedEventHandler>([this, raw](ICoreWebView2DedicatedWorker* sender, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT { LPWSTR uri = nullptr, message = nullptr; sender->get_ScriptUri(&uri); if (FAILED(args->TryGetWebMessageAsString(&message))) args->get_WebMessageAsJson(&message); std::wstring data = EdgeView_事件数据({{L"scriptUri", EdgeView_接管字符串(uri)}, {L"message", EdgeView_接管字符串(message)}}); EdgeView_记录事件(*raw, L"专用工作线程消息", data.c_str()); return S_OK; }).Get(), &token);
+        worker->add_DedicatedWorkerCreated(Microsoft::WRL::Callback<ICoreWebView2DedicatedWorkerDedicatedWorkerCreatedEventHandler>([this, raw](ICoreWebView2DedicatedWorker*, ICoreWebView2DedicatedWorkerCreatedEventArgs* args) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2DedicatedWorker> child; args->get_Worker(&child); EdgeView_附加专用工作线程事件(*raw, child.Get()); long long handle = EdgeView对象_注册(raw, L"DedicatedWorker", child.Get()); LPWSTR uri = nullptr; if (child) child->get_ScriptUri(&uri); std::wstring data = EdgeView_事件数据({{L"handle", EdgeView_数值(handle)}, {L"scriptUri", EdgeView_接管字符串(uri)}}); EdgeView_记录事件(*raw, L"专用工作线程创建", data.c_str()); return S_OK; }).Get(), &token);
+    }
+    void EdgeView_附加共享工作线程事件(EdgeViewInstance& instance, ICoreWebView2SharedWorker* worker) {
+        if (!worker || !EdgeView_保留事件源(instance, worker)) return; EventRegistrationToken token = {}; EdgeViewInstance* raw = &instance;
+        worker->add_Destroying(Microsoft::WRL::Callback<ICoreWebView2SharedWorkerDestroyingEventHandler>([this, raw](ICoreWebView2SharedWorker* sender, IUnknown*) -> HRESULT { LPWSTR uri = nullptr, origin = nullptr; sender->get_ScriptUri(&uri); sender->get_Origin(&origin); std::wstring data = EdgeView_事件数据({{L"scriptUri", EdgeView_接管字符串(uri)}, {L"origin", EdgeView_接管字符串(origin)}}); EdgeView_记录事件(*raw, L"共享工作线程销毁", data.c_str()); return S_OK; }).Get(), &token);
+    }
+    void EdgeView_附加服务工作线程事件(EdgeViewInstance& instance, ICoreWebView2ServiceWorker* worker) {
+        if (!worker || !EdgeView_保留事件源(instance, worker)) return; EventRegistrationToken token = {}; EdgeViewInstance* raw = &instance;
+        worker->add_Destroying(Microsoft::WRL::Callback<ICoreWebView2ServiceWorkerDestroyingEventHandler>([this, raw](ICoreWebView2ServiceWorker* sender, IUnknown*) -> HRESULT { LPWSTR uri = nullptr; sender->get_ScriptUri(&uri); std::wstring data = EdgeView_事件数据({{L"scriptUri", EdgeView_接管字符串(uri)}}); EdgeView_记录事件(*raw, L"服务工作线程销毁", data.c_str()); return S_OK; }).Get(), &token);
+        worker->add_WebMessageReceived(Microsoft::WRL::Callback<ICoreWebView2ServiceWorkerWebMessageReceivedEventHandler>([this, raw](ICoreWebView2ServiceWorker* sender, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT { LPWSTR uri = nullptr, message = nullptr; sender->get_ScriptUri(&uri); if (FAILED(args->TryGetWebMessageAsString(&message))) args->get_WebMessageAsJson(&message); std::wstring data = EdgeView_事件数据({{L"scriptUri", EdgeView_接管字符串(uri)}, {L"message", EdgeView_接管字符串(message)}}); EdgeView_记录事件(*raw, L"服务工作线程消息", data.c_str()); return S_OK; }).Get(), &token);
+    }
+    void EdgeView_附加服务工作线程注册事件(EdgeViewInstance& instance, ICoreWebView2ServiceWorkerRegistration* registration) {
+        if (!registration || !EdgeView_保留事件源(instance, registration)) return; EventRegistrationToken token = {}; EdgeViewInstance* raw = &instance;
+        registration->add_ServiceWorkerActivated(Microsoft::WRL::Callback<ICoreWebView2ServiceWorkerActivatedEventHandler>([this, raw](ICoreWebView2ServiceWorkerRegistration*, ICoreWebView2ServiceWorkerActivatedEventArgs* args) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2ServiceWorker> worker; args->get_ActiveServiceWorker(&worker); EdgeView_附加服务工作线程事件(*raw, worker.Get()); long long handle = EdgeView对象_注册(raw, L"ServiceWorker", worker.Get()); std::wstring data = EdgeView_事件数据({{L"handle", EdgeView_数值(handle)}}); EdgeView_记录事件(*raw, L"服务工作线程激活", data.c_str()); return S_OK; }).Get(), &token);
+        registration->add_Unregistering(Microsoft::WRL::Callback<ICoreWebView2ServiceWorkerRegistrationUnregisteringEventHandler>([this, raw](ICoreWebView2ServiceWorkerRegistration* sender, IUnknown*) -> HRESULT { LPWSTR scope = nullptr; sender->get_ScopeUri(&scope); std::wstring data = EdgeView_事件数据({{L"scopeUri", EdgeView_接管字符串(scope)}}); EdgeView_记录事件(*raw, L"服务工作线程注销", data.c_str()); return S_OK; }).Get(), &token);
     }
     static std::wstring EdgeView_框架名称(ICoreWebView2Frame* frame) {
         LPWSTR value = nullptr; if (frame) frame->get_Name(&value); return EdgeView_接管字符串(value);
@@ -4329,9 +5735,11 @@ ${edgeViewEventIdCases}
         Microsoft::WRL::ComPtr<ICoreWebView2Frame3> frame3;
         if (SUCCEEDED(frame->QueryInterface(IID_PPV_ARGS(&frame3))) && frame3) frame3->add_PermissionRequested(Microsoft::WRL::Callback<ICoreWebView2FramePermissionRequestedEventHandler>([this, raw](ICoreWebView2Frame* sender, ICoreWebView2PermissionRequestedEventArgs* args) -> HRESULT { COREWEBVIEW2_PERMISSION_KIND kind = COREWEBVIEW2_PERMISSION_KIND_UNKNOWN_PERMISSION; args->get_PermissionKind(&kind); std::wstring data = EdgeView_事件数据({{L"frame", EdgeView_框架名称(sender)}, {L"kind", EdgeView_数值(kind)}}); EdgeView_记录事件(*raw, L"子框架权限请求", data.c_str()); return S_OK; }).Get(), &token);
         Microsoft::WRL::ComPtr<ICoreWebView2Frame6> frame6;
-        if (SUCCEEDED(frame->QueryInterface(IID_PPV_ARGS(&frame6))) && frame6) frame6->add_ScreenCaptureStarting(Microsoft::WRL::Callback<ICoreWebView2FrameScreenCaptureStartingEventHandler>([this, raw](ICoreWebView2Frame* sender, ICoreWebView2ScreenCaptureStartingEventArgs* args) -> HRESULT { BOOL cancel = FALSE; args->get_Cancel(&cancel); std::wstring data = EdgeView_事件数据({{L"frame", EdgeView_框架名称(sender)}, {L"cancel", EdgeView_布尔值(cancel)}}); EdgeView_记录事件(*raw, L"子框架屏幕捕获开始", data.c_str()); return S_OK; }).Get(), &token);
+        if (SUCCEEDED(frame->QueryInterface(IID_PPV_ARGS(&frame6))) && frame6) frame6->add_ScreenCaptureStarting(Microsoft::WRL::Callback<ICoreWebView2FrameScreenCaptureStartingEventHandler>([this, raw](ICoreWebView2Frame* sender, ICoreWebView2ScreenCaptureStartingEventArgs* args) -> HRESULT { BOOL cancel = FALSE; args->get_Cancel(&cancel); std::wstring data = EdgeView_事件数据({{L"frame", EdgeView_框架名称(sender)}, {L"cancel", EdgeView_布尔值(cancel)}}); EdgeView_记录事件(*raw, L"子框架屏幕捕获开始", data.c_str()); if (raw->eventAction == 2) { args->put_Cancel(TRUE); args->put_Handled(TRUE); } return S_OK; }).Get(), &token);
         Microsoft::WRL::ComPtr<ICoreWebView2Frame7> frame7;
-        if (SUCCEEDED(frame->QueryInterface(IID_PPV_ARGS(&frame7))) && frame7) frame7->add_FrameCreated(Microsoft::WRL::Callback<ICoreWebView2FrameChildFrameCreatedEventHandler>([this, raw](ICoreWebView2Frame* sender, ICoreWebView2FrameCreatedEventArgs* args) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2Frame> child; args->get_Frame(&child); EdgeView_附加框架事件(*raw, child.Get()); std::wstring data = EdgeView_事件数据({{L"parent", EdgeView_框架名称(sender)}, {L"child", EdgeView_框架名称(child.Get())}}); EdgeView_记录事件(*raw, L"嵌套子框架创建", data.c_str()); return S_OK; }).Get(), &token);
+        if (SUCCEEDED(frame->QueryInterface(IID_PPV_ARGS(&frame7))) && frame7) frame7->add_FrameCreated(Microsoft::WRL::Callback<ICoreWebView2FrameChildFrameCreatedEventHandler>([this, raw](ICoreWebView2Frame* sender, ICoreWebView2FrameCreatedEventArgs* args) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2Frame> child; args->get_Frame(&child); EdgeView_附加框架事件(*raw, child.Get()); long long handle = EdgeView对象_注册(raw, L"Frame", child.Get()); std::wstring data = EdgeView_事件数据({{L"handle", EdgeView_数值(handle)}, {L"parent", EdgeView_框架名称(sender)}, {L"child", EdgeView_框架名称(child.Get())}}); EdgeView_记录事件(*raw, L"嵌套子框架创建", data.c_str()); return S_OK; }).Get(), &token);
+        Microsoft::WRL::ComPtr<ICoreWebView2Frame8> frame8;
+        if (SUCCEEDED(frame->QueryInterface(IID_PPV_ARGS(&frame8))) && frame8) frame8->add_DedicatedWorkerCreated(Microsoft::WRL::Callback<ICoreWebView2FrameDedicatedWorkerCreatedEventHandler>([this, raw](ICoreWebView2Frame* sender, ICoreWebView2DedicatedWorkerCreatedEventArgs* args) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2DedicatedWorker> worker; args->get_Worker(&worker); EdgeView_附加专用工作线程事件(*raw, worker.Get()); long long handle = EdgeView对象_注册(raw, L"DedicatedWorker", worker.Get()); LPWSTR uri = nullptr; if (worker) worker->get_ScriptUri(&uri); std::wstring data = EdgeView_事件数据({{L"handle", EdgeView_数值(handle)}, {L"frame", EdgeView_框架名称(sender)}, {L"scriptUri", EdgeView_接管字符串(uri)}}); EdgeView_记录事件(*raw, L"框架专用工作线程创建", data.c_str()); return S_OK; }).Get(), &token);
     }
     void EdgeView_附加控制器事件(EdgeViewInstance& instance) {
         if (!instance.controller) return;
@@ -4340,7 +5748,7 @@ ${edgeViewEventIdCases}
         instance.controller->add_MoveFocusRequested(Microsoft::WRL::Callback<ICoreWebView2MoveFocusRequestedEventHandler>([this, raw](ICoreWebView2Controller*, ICoreWebView2MoveFocusRequestedEventArgs* args) -> HRESULT { COREWEBVIEW2_MOVE_FOCUS_REASON reason = COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC; args->get_Reason(&reason); std::wstring data = EdgeView_事件数据({{L"reason", EdgeView_数值(reason)}}); EdgeView_记录事件(*raw, L"移动焦点请求", data.c_str()); return S_OK; }).Get(), &token);
         instance.controller->add_GotFocus(Microsoft::WRL::Callback<ICoreWebView2FocusChangedEventHandler>([this, raw](ICoreWebView2Controller*, IUnknown*) -> HRESULT { EdgeView_记录事件(*raw, L"浏览器获得焦点", L"{}"); return S_OK; }).Get(), &token);
         instance.controller->add_LostFocus(Microsoft::WRL::Callback<ICoreWebView2FocusChangedEventHandler>([this, raw](ICoreWebView2Controller*, IUnknown*) -> HRESULT { EdgeView_记录事件(*raw, L"浏览器失去焦点", L"{}"); return S_OK; }).Get(), &token);
-        instance.controller->add_AcceleratorKeyPressed(Microsoft::WRL::Callback<ICoreWebView2AcceleratorKeyPressedEventHandler>([this, raw](ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs* args) -> HRESULT { UINT key = 0; COREWEBVIEW2_KEY_EVENT_KIND kind = COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN; args->get_VirtualKey(&key); args->get_KeyEventKind(&kind); std::wstring data = EdgeView_事件数据({{L"virtualKey", EdgeView_数值(key)}, {L"kind", EdgeView_数值(kind)}}); EdgeView_记录事件(*raw, L"浏览器快捷键按下", data.c_str()); return S_OK; }).Get(), &token);
+        instance.controller->add_AcceleratorKeyPressed(Microsoft::WRL::Callback<ICoreWebView2AcceleratorKeyPressedEventHandler>([this, raw](ICoreWebView2Controller*, ICoreWebView2AcceleratorKeyPressedEventArgs* args) -> HRESULT { UINT key = 0; INT lParam = 0; BOOL handled = FALSE, browserAccelerator = TRUE; COREWEBVIEW2_KEY_EVENT_KIND kind = COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN; COREWEBVIEW2_PHYSICAL_KEY_STATUS physical = {}; args->get_VirtualKey(&key); args->get_KeyEventKind(&kind); args->get_KeyEventLParam(&lParam); args->get_PhysicalKeyStatus(&physical); args->get_Handled(&handled); Microsoft::WRL::ComPtr<ICoreWebView2AcceleratorKeyPressedEventArgs2> args2; if (SUCCEEDED(args->QueryInterface(IID_PPV_ARGS(&args2))) && args2) args2->get_IsBrowserAcceleratorKeyEnabled(&browserAccelerator); std::wstring data = EdgeView_事件数据({{L"virtualKey", EdgeView_数值(key)}, {L"kind", EdgeView_数值(kind)}, {L"lParam", EdgeView_数值(lParam)}, {L"handled", EdgeView_布尔值(handled)}, {L"browserAcceleratorEnabled", EdgeView_布尔值(browserAccelerator)}, {L"repeatCount", EdgeView_数值(physical.RepeatCount)}, {L"scanCode", EdgeView_数值(physical.ScanCode)}, {L"isExtendedKey", EdgeView_布尔值(physical.IsExtendedKey)}, {L"isMenuKeyDown", EdgeView_布尔值(physical.IsMenuKeyDown)}, {L"wasKeyDown", EdgeView_布尔值(physical.WasKeyDown)}, {L"isKeyReleased", EdgeView_布尔值(physical.IsKeyReleased)}}); EdgeView_记录事件(*raw, L"浏览器快捷键按下", data.c_str()); if (raw->eventAction == 1) args->put_Handled(TRUE); else if (raw->eventAction == 2 && args2) args2->put_IsBrowserAcceleratorKeyEnabled(FALSE); return S_OK; }).Get(), &token);
         Microsoft::WRL::ComPtr<ICoreWebView2Controller3> controller3;
         if (SUCCEEDED(instance.controller.As(&controller3)) && controller3) controller3->add_RasterizationScaleChanged(Microsoft::WRL::Callback<ICoreWebView2RasterizationScaleChangedEventHandler>([this, raw](ICoreWebView2Controller* sender, IUnknown*) -> HRESULT { Microsoft::WRL::ComPtr<ICoreWebView2Controller3> current; double value = 1.0; if (SUCCEEDED(sender->QueryInterface(IID_PPV_ARGS(&current))) && current) current->get_RasterizationScale(&value); std::wstring data = EdgeView_事件数据({{L"rasterizationScale", std::to_wstring(value)}}); EdgeView_记录事件(*raw, L"光栅化缩放改变", data.c_str()); return S_OK; }).Get(), &token);
     }
@@ -4372,6 +5780,8 @@ ${edgeViewEventIdCases}
 #else
     void EdgeView_调整全部大小() {}
 #endif
+
+${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
 
     // ================= FBro 指纹浏览器模块运行时 =================
     FbroBrowserInstance* FBro_查找实例(const wchar_t* controlName) {
@@ -4418,8 +5828,43 @@ ${edgeViewEventIdCases}
         auto* packet = new LingFbroEventPacket();
         packet->handle = handle;
         packet->eventCode = eventCode;
+        packet->eventName = eventCode == 1 ? L"Created" : eventCode == 2 ? L"LoadEnd" :
+            eventCode == 3 ? L"AddressChanged" : eventCode == 4 ? L"TitleChanged" :
+            eventCode == 5 ? L"Closed" : eventCode == 7 ? L"BeforePopup" :
+            eventCode == 8 ? L"CertificateError" : eventCode == 9 ? L"DragEnter" : L"Error";
         packet->data = data ? data : L"";
         if (!PostMessageW(self->hwnd_, WM_LINGBUILDER_FBRO_EVENT, 0, reinterpret_cast<LPARAM>(packet))) delete packet;
+    }
+    static int __stdcall FBro_桥接事件V2(const LB_FBRO_EVENT_PACKET_V2* source,
+                                         wchar_t* resultText, size_t resultCapacity, void* userData) {
+        auto* self = static_cast<LingWindowBase*>(userData);
+        if (!source || source->struct_size < sizeof(LB_FBRO_EVENT_PACKET_V2)
+            || source->abi_version != LB_FBRO_ABI_VERSION_V2 || !self || !self->hwnd_ || !IsWindow(self->hwnd_)) return 0;
+        auto fillPacket = [source](LingFbroEventPacket& packet) {
+            packet.handle = source->browser;
+            packet.eventCode = source->event_code;
+            packet.instanceKind = source->instance_kind;
+            packet.eventName = source->event_name ? source->event_name : L"Unknown";
+            packet.dataJson = source->data_json ? source->data_json : L"{}";
+            packet.data = FBro_读取JSON字段(packet.dataJson, L"data");
+            packet.object = source->object;
+        };
+        const bool synchronous = source->event_code == LB_FBRO_EVENT_BEFORE_POPUP
+            || source->event_code == LB_FBRO_EVENT_CERTIFICATE_ERROR;
+        if (!synchronous) {
+            auto* packet = new LingFbroEventPacket();
+            fillPacket(*packet);
+            if (!PostMessageW(self->hwnd_, WM_LINGBUILDER_FBRO_EVENT, 0, reinterpret_cast<LPARAM>(packet))) delete packet;
+            return 0;
+        }
+        LingFbroEventPacket packet;
+        fillPacket(packet);
+        packet.synchronous = true;
+        DWORD_PTR ignored = 0;
+        if (!SendMessageTimeoutW(self->hwnd_, WM_LINGBUILDER_FBRO_EVENT, 0, reinterpret_cast<LPARAM>(&packet),
+                                 SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &ignored)) return 0;
+        if (resultText && resultCapacity > 0) wcsncpy_s(resultText, resultCapacity, packet.resultText.c_str(), _TRUNCATE);
+        return packet.action;
     }
 #endif
 
@@ -4449,6 +5894,7 @@ ${edgeViewEventIdCases}
                 instance->lastError = L"创建 FBro 浏览器句柄失败";
                 continue;
             }
+            LB_FBro_SetEventCallbackV2(instance->handle, FBro_桥接事件V2, this);
             if (!instance->proxyServer.empty()) LB_FBro_SetProxy(instance->handle, instance->proxyServer.c_str(), L"", L"");
             if (!instance->fingerprintJson.empty()) LB_FBro_ApplyFingerprintJson(instance->handle, instance->fingerprintJson.c_str());
             ++created;
@@ -4466,7 +5912,7 @@ ${edgeViewEventIdCases}
         (void)controlName; (void)address; return 0;
 #endif
     }
-    int FBro_打开谷歌原生UI浏览器(const wchar_t* controlName, const wchar_t* address) {
+    long long FBro_打开谷歌原生UI浏览器Ex(const wchar_t* controlName, const wchar_t* address) {
 #if LINGBUILDER_FBRO_AVAILABLE
         auto* instance = FBro_查找实例(controlName);
         if (!instance || !instance->handle) {
@@ -4480,13 +5926,17 @@ ${edgeViewEventIdCases}
             调试输出(L"FBro 谷歌原生UI浏览器创建请求失败：内嵌浏览器可能尚未创建完成。");
             return 0;
         }
-        instance->chromeUiHandles.push_back(popup);
-        return 1;
+        instance->chromeUiInstances.emplace(popup, FbroBrowserInstance::PopupState{});
+        LB_FBro_SetEventCallbackV2(popup, FBro_桥接事件V2, this);
+        return static_cast<long long>(popup);
 #else
         (void)controlName; (void)address;
         调试输出(L"FBro 不可用：无法创建谷歌原生UI浏览器。");
         return 0;
 #endif
+    }
+    int FBro_打开谷歌原生UI浏览器(const wchar_t* controlName, const wchar_t* address) {
+        return FBro_打开谷歌原生UI浏览器Ex(controlName, address) > 0 ? 1 : 0;
     }
     int FBro_打开谷歌原生UI浏览器(const wchar_t* controlName, const std::wstring& address) {
         return FBro_打开谷歌原生UI浏览器(controlName, address.c_str());
@@ -4519,6 +5969,157 @@ ${edgeViewEventIdCases}
         (void)controlName;
 #endif
     }
+    int FBro_是否可后退(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_CanGoBack(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_是否可前进(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_CanGoForward(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_是否加载中(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_IsLoading(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    double FBro_取缩放级别(const wchar_t* controlName) {
+        double result = 0.0;
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); if (instance && instance->handle) LB_FBro_GetZoomLevel(instance->handle, &result);
+#else
+        (void)controlName;
+#endif
+        return result;
+    }
+    int FBro_设置缩放级别(const wchar_t* controlName, double level) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_SetZoomLevel(instance->handle, level) : 0;
+#else
+        (void)controlName; (void)level; return 0;
+#endif
+    }
+    int FBro_是否静音(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_IsAudioMuted(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_设置静音(const wchar_t* controlName, bool muted) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_SetAudioMuted(instance->handle, muted ? 1 : 0) : 0;
+#else
+        (void)controlName; (void)muted; return 0;
+#endif
+    }
+    int FBro_设置焦点(const wchar_t* controlName, bool focused) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_SendFocusEvent(instance->handle, focused ? 1 : 0) : 0;
+#else
+        (void)controlName; (void)focused; return 0;
+#endif
+    }
+    int FBro_查找(const wchar_t* controlName, const wchar_t* text, bool forward, bool matchCase, bool findNext) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_Find(instance->handle, text, forward, matchCase, findNext) : 0;
+#else
+        (void)controlName; (void)text; (void)forward; (void)matchCase; (void)findNext; return 0;
+#endif
+    }
+    int FBro_停止查找(const wchar_t* controlName, bool clearSelection) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_StopFinding(instance->handle, clearSelection) : 0;
+#else
+        (void)controlName; (void)clearSelection; return 0;
+#endif
+    }
+    int FBro_是否打开开发者工具(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_HasDevTools(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_关闭开发者工具(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_CloseDevTools(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_强制刷新(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_ReloadIgnoreCache(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_取浏览器标识(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_GetIdentifier(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_是否同一实例(const wchar_t* controlName, const wchar_t* otherControlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); auto* other = FBro_查找实例(otherControlName);
+        return instance && instance->handle && other && other->handle ? LB_FBro_IsSame(instance->handle, other->handle) : 0;
+#else
+        (void)controlName; (void)otherControlName; return 0;
+#endif
+    }
+    int FBro_是否弹出窗口(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_IsPopup(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_是否有文档(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_HasDocument(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_尝试关闭(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_TryCloseBrowser(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_设置宿主焦点(const wchar_t* controlName, bool focused) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_SetFocus(instance->handle, focused) : 0;
+#else
+        (void)controlName; (void)focused; return 0;
+#endif
+    }
+    int FBro_是否有视图(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_HasView(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro_设置自动调整大小(const wchar_t* controlName, bool enabled, int minHeight, int minWidth, int maxHeight, int maxWidth) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle
+            ? LB_FBro_SetAutoResizeEnabled(instance->handle, enabled, minHeight, minWidth, maxHeight, maxWidth) : 0;
+#else
+        (void)controlName; (void)enabled; (void)minHeight; (void)minWidth; (void)maxHeight; (void)maxWidth; return 0;
+#endif
+    }
     std::wstring FBro_执行JS(const wchar_t* controlName, const wchar_t* script) {
         wchar_t result[8192] = {};
 #if LINGBUILDER_FBRO_AVAILABLE
@@ -4529,10 +6130,228 @@ ${edgeViewEventIdCases}
 #endif
         return L"FBro JavaScript 执行失败";
     }
+    long long FBro自动化_执行JS异步(const wchar_t* controlName, const wchar_t* script) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        return instance && instance->handle ? static_cast<long long>(LB_FBro_ExecuteJsAsync(instance->handle, script, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; (void)script; return 0;
+#endif
+    }
+    long long FBro框架_取主框架(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_BrowserGetMainFrame(instance->handle)) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    long long FBro框架_取焦点框架(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_BrowserGetFocusedFrame(instance->handle)) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    long long FBro框架_按标识取框架(const wchar_t* controlName, const std::wstring& identifier) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_BrowserGetFrameByIdentifier(instance->handle, identifier.c_str())) : 0;
+#else
+        (void)controlName; (void)identifier; return 0;
+#endif
+    }
+    long long FBro框架_按名称取框架(const wchar_t* controlName, const std::wstring& frameName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_BrowserGetFrameByName(instance->handle, frameName.c_str())) : 0;
+#else
+        (void)controlName; (void)frameName; return 0;
+#endif
+    }
+    std::wstring FBro_读取框架列表(const wchar_t* controlName, bool identifiers) {
+        wchar_t result[16384] = {};
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); if (!instance || !instance->handle) return L"[]";
+        if (identifiers) LB_FBro_BrowserGetFrameIdentifiersJson(instance->handle, result, 16384);
+        else LB_FBro_BrowserGetFrameNamesJson(instance->handle, result, 16384);
+#else
+        (void)controlName; (void)identifiers;
+#endif
+        return result[0] ? result : L"[]";
+    }
+    std::wstring FBro框架_取标识列表JSON(const wchar_t* controlName) { return FBro_读取框架列表(controlName, true); }
+    std::wstring FBro框架_取名称列表JSON(const wchar_t* controlName) { return FBro_读取框架列表(controlName, false); }
+    long long FBro图像_异步下载(const wchar_t* controlName, const wchar_t* url, bool isFavicon, int maxImageSize, bool bypassCache) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        return instance && instance->handle && url && maxImageSize >= 0
+            ? static_cast<long long>(LB_FBro_DownloadImageAsync(instance->handle, url, isFavicon ? 1 : 0,
+                static_cast<uint32_t>(maxImageSize), bypassCache ? 1 : 0, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; (void)url; (void)isFavicon; (void)maxImageSize; (void)bypassCache; return 0;
+#endif
+    }
+    long long FBro证书_异步取当前(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        return instance && instance->handle
+            ? static_cast<long long>(LB_FBro_GetCurrentCertificateAsync(instance->handle, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    int FBro任务_取状态(long long task) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return LB_FBro_TaskGetStatus(static_cast<LB_FBRO_TASK_HANDLE>(task));
+#else
+        (void)task; return 3;
+#endif
+    }
+    std::wstring FBro任务_取结果(long long task) {
+        wchar_t result[16384] = {};
+#if LINGBUILDER_FBRO_AVAILABLE
+        LB_FBro_TaskGetResult(static_cast<LB_FBRO_TASK_HANDLE>(task), result, 16384);
+#else
+        (void)task;
+#endif
+        return result;
+    }
+    std::wstring FBro任务_取错误(long long task) {
+        wchar_t result[4096] = {};
+#if LINGBUILDER_FBRO_AVAILABLE
+        LB_FBro_TaskGetError(static_cast<LB_FBRO_TASK_HANDLE>(task), result, 4096);
+#else
+        (void)task;
+#endif
+        return result;
+    }
+    int FBro任务_取消(long long task) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return LB_FBro_TaskCancel(static_cast<LB_FBRO_TASK_HANDLE>(task));
+#else
+        (void)task; return 0;
+#endif
+    }
+    int FBro任务_释放(long long task) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return LB_FBro_TaskRelease(static_cast<LB_FBRO_TASK_HANDLE>(task));
+#else
+        (void)task; return 0;
+#endif
+    }
+    long long FBro缓冲_从文本(const wchar_t* value) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        const wchar_t* text = value ? value : L"";
+        return static_cast<long long>(LB_FBro_BufferCreate(text, wcslen(text) * sizeof(wchar_t)));
+#else
+        (void)value; return 0;
+#endif
+    }
+    long long FBro缓冲_取大小(long long buffer) {
+        uint64_t size = 0;
+#if LINGBUILDER_FBRO_AVAILABLE
+        return LB_FBro_BufferGetSize(static_cast<LB_FBRO_BUFFER_HANDLE>(buffer), &size) > 0 ? static_cast<long long>(size) : -1;
+#else
+        (void)buffer; return -1;
+#endif
+    }
+    std::wstring FBro缓冲_转十六进制(long long buffer) {
+        wchar_t result[32768] = {};
+#if LINGBUILDER_FBRO_AVAILABLE
+        LB_FBro_BufferToHex(static_cast<LB_FBRO_BUFFER_HANDLE>(buffer), result, 32768);
+#else
+        (void)buffer;
+#endif
+        return result;
+    }
+    int FBro缓冲_保存文件(long long buffer, const wchar_t* path) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return LB_FBro_BufferSaveFile(static_cast<LB_FBRO_BUFFER_HANDLE>(buffer), path);
+#else
+        (void)buffer; (void)path; return 0;
+#endif
+    }
+    int FBro缓冲_释放(long long buffer) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return LB_FBro_BufferRelease(static_cast<LB_FBRO_BUFFER_HANDLE>(buffer));
+#else
+        (void)buffer; return 0;
+#endif
+    }
+${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
     std::wstring FBro_取标题(const wchar_t* controlName) { return FBro_读取文本(controlName, 1); }
     std::wstring FBro_取地址(const wchar_t* controlName) { return FBro_读取文本(controlName, 2); }
     std::wstring FBro_取最近事件(const wchar_t* controlName) { return FBro_读取文本(controlName, 3); }
     std::wstring FBro_取最近错误(const wchar_t* controlName) { return FBro_读取文本(controlName, 4); }
+    std::wstring FBro_取事件数据(const wchar_t* controlName) {
+        auto* instance = FBro_查找实例(controlName); return instance ? instance->lastEventData : L"";
+    }
+    long long FBro_取事件对象(const wchar_t* controlName) {
+        auto* instance = FBro_查找实例(controlName); if (!instance) return 0;
+#if LINGBUILDER_FBRO_AVAILABLE
+        return static_cast<long long>(instance->lastEventObject ? instance->lastEventObject : LB_FBro_GetLastEventObject(instance->handle));
+#else
+        return static_cast<long long>(instance->lastEventObject);
+#endif
+    }
+    std::wstring FBro_取事件字段(const wchar_t* controlName, const wchar_t* fieldName) {
+        auto* instance = FBro_查找实例(controlName);
+        return instance && fieldName ? FBro_读取JSON字段(instance->lastEventJson, fieldName) : L"";
+    }
+    int FBro_设置事件结果(const wchar_t* controlName, int action) {
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance || action < 0 || action > 3) return 0;
+        instance->eventAction = action; return 1;
+    }
+    int FBro_设置事件返回文本(const wchar_t* controlName, const wchar_t* value) {
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance) return 0;
+        instance->eventResultText = value ? value : L""; return 1;
+    }
+    int FBro_绑定事件(const wchar_t* controlName, const wchar_t* eventName, const wchar_t* handler) {
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance || !eventName || !*eventName || !handler || !*handler) return 0;
+        instance->handlers[eventName] = handler; return 1;
+    }
+    int FBro_实例导航(long long instanceId, const wchar_t* address) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return instanceId > 0 && address ? LB_FBro_Navigate(static_cast<LB_FBRO_HANDLE>(instanceId), address) : 0;
+#else
+        (void)instanceId; (void)address; return 0;
+#endif
+    }
+    std::wstring FBro_实例取事件数据(long long instanceId) {
+        const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
+        for (auto& item : fbroBrowsers_) {
+            auto found = item.second->chromeUiInstances.find(handle);
+            if (found != item.second->chromeUiInstances.end()) return found->second.lastEventData;
+        }
+        return L"";
+    }
+    std::wstring FBro_实例取最近事件(long long instanceId) {
+        const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
+        for (auto& item : fbroBrowsers_) {
+            auto found = item.second->chromeUiInstances.find(handle);
+            if (found != item.second->chromeUiInstances.end()) return found->second.lastEvent;
+        }
+        return L"";
+    }
+    int FBro_实例绑定事件(long long instanceId, const wchar_t* eventName, const wchar_t* handler) {
+        if (!eventName || !*eventName || !handler || !*handler) return 0;
+        const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
+        for (auto& item : fbroBrowsers_) {
+            auto found = item.second->chromeUiInstances.find(handle);
+            if (found == item.second->chromeUiInstances.end()) continue;
+            found->second.handlers[eventName] = handler; return 1;
+        }
+        return 0;
+    }
+    void FBro_实例关闭(long long instanceId) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        const LB_FBRO_HANDLE handle = static_cast<LB_FBRO_HANDLE>(instanceId);
+        if (handle) LB_FBro_Close(handle);
+#else
+        (void)instanceId;
+#endif
+    }
     std::wstring FBro_读取文本(const wchar_t* controlName, int kind) {
         wchar_t result[8192] = {};
 #if LINGBUILDER_FBRO_AVAILABLE
@@ -4554,6 +6373,99 @@ ${edgeViewEventIdCases}
         return instance->handle ? LB_FBro_SetProxy(instance->handle, instance->proxyServer.c_str(), L"", L"") : 1;
 #else
         return 0;
+#endif
+    }
+    int FBro会话_设置代理认证(const wchar_t* controlName, const wchar_t* proxy, const wchar_t* user, const wchar_t* password) {
+        auto* instance = FBro_查找实例(controlName); if (!instance) return 0;
+        instance->proxyServer = proxy ? proxy : L"";
+#if LINGBUILDER_FBRO_AVAILABLE
+        return instance->handle ? LB_FBro_SetProxy(instance->handle, instance->proxyServer.c_str(), user, password) : 1;
+#else
+        (void)user; (void)password; return 0;
+#endif
+    }
+    long long FBro会话_异步取全部Cookie(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_CookieVisitAllAsync(instance->handle, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    long long FBro会话_异步取地址Cookie(const wchar_t* controlName, const wchar_t* address, int includeHttpOnly) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_CookieVisitUrlAsync(instance->handle, address, includeHttpOnly, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; (void)address; (void)includeHttpOnly; return 0;
+#endif
+    }
+    long long FBro会话_异步设置Cookie(const wchar_t* controlName, const wchar_t* address, const wchar_t* cookieName, const wchar_t* value, const wchar_t* domain, const wchar_t* path, int secure, int httpOnly) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_CookieSetAsync(instance->handle, address, cookieName, value, domain, path, secure, httpOnly, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; (void)address; (void)cookieName; (void)value; (void)domain; (void)path; (void)secure; (void)httpOnly; return 0;
+#endif
+    }
+    long long FBro会话_异步删除Cookie(const wchar_t* controlName, const wchar_t* address, const wchar_t* cookieName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_CookieDeleteAsync(instance->handle, address, cookieName, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; (void)address; (void)cookieName; return 0;
+#endif
+    }
+    long long FBro会话_异步刷新Cookie存储(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_CookieFlushAsync(instance->handle, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    long long FBro会话_异步清理缓存(const wchar_t* controlName, const wchar_t* origin, int removeFlags, int quotaFlags) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_ClearCacheAsync(instance->handle, origin, static_cast<uint32_t>(removeFlags), static_cast<uint32_t>(quotaFlags), nullptr, nullptr)) : 0;
+#else
+        (void)controlName; (void)origin; (void)removeFlags; (void)quotaFlags; return 0;
+#endif
+    }
+    long long FBro会话_异步清理全局缓存(const wchar_t* origin, int removeFlags, int quotaFlags) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return static_cast<long long>(LB_FBro_ClearGlobalCacheAsync(origin, static_cast<uint32_t>(removeFlags), static_cast<uint32_t>(quotaFlags), nullptr, nullptr));
+#else
+        (void)origin; (void)removeFlags; (void)quotaFlags; return 0;
+#endif
+    }
+    int FBro传输_开始下载(const wchar_t* controlName, const wchar_t* address) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_StartDownload(instance->handle, address) : 0;
+#else
+        (void)controlName; (void)address; return 0;
+#endif
+    }
+    int FBro传输_打印(const wchar_t* controlName) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? LB_FBro_Print(instance->handle) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+    long long FBro传输_异步生成PDF(const wchar_t* controlName, const wchar_t* path, const wchar_t* settingsJson) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_PrintToPdfAsync(instance->handle, path, settingsJson, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; (void)path; (void)settingsJson; return 0;
+#endif
+    }
+    long long FBro传输_异步打开文件对话框(const wchar_t* controlName, int mode, const wchar_t* title, const wchar_t* defaultPath, const wchar_t* filtersJson) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_RunFileDialogAsync(instance->handle, mode, title, defaultPath, filtersJson, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; (void)mode; (void)title; (void)defaultPath; (void)filtersJson; return 0;
+#endif
+    }
+    long long FBro传输_异步截图(const wchar_t* controlName, const wchar_t* format, int quality, int x, int y, int width, int height, int scale, bool fromSurface, bool captureBeyondViewport) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_CaptureScreenshotAsync(instance->handle, format, quality, x, y, width, height, scale, fromSurface ? 1 : 0, captureBeyondViewport ? 1 : 0, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; (void)format; (void)quality; (void)x; (void)y; (void)width; (void)height; (void)scale; (void)fromSurface; (void)captureBeyondViewport; return 0;
 #endif
     }
     int FBro_设置缓存目录(const wchar_t* controlName, const wchar_t* directory) {
@@ -4628,36 +6540,163 @@ ${edgeViewEventIdCases}
     void FBro_关闭全部() {
 #if LINGBUILDER_FBRO_AVAILABLE
         for (auto& item : fbroBrowsers_) {
-            for (LB_FBRO_HANDLE popup : item.second->chromeUiHandles) if (popup) LB_FBro_Close(popup);
+            for (const auto& popup : item.second->chromeUiInstances) if (popup.first) LB_FBro_Close(popup.first);
             if (item.second->handle) LB_FBro_Close(item.second->handle);
         }
 #endif
         fbroBrowsers_.clear();
     }
-    void FBro_处理事件包(const LingFbroEventPacket& packet) {
+    void FBro_处理事件包(LingFbroEventPacket& packet) {
         for (auto& item : fbroBrowsers_) {
             FbroBrowserInstance& instance = *item.second;
             const bool isEmbedded = instance.handle == packet.handle;
-            auto chromeUi = std::find(instance.chromeUiHandles.begin(), instance.chromeUiHandles.end(), packet.handle);
-            if (!isEmbedded && chromeUi == instance.chromeUiHandles.end()) continue;
+            auto chromeUi = instance.chromeUiInstances.find(packet.handle);
+            if (!isEmbedded && chromeUi == instance.chromeUiInstances.end()) continue;
             if (!isEmbedded) {
-                if (packet.eventCode == 6) instance.lastError = packet.data;
-                if (packet.eventCode == 5) instance.chromeUiHandles.erase(chromeUi);
+                auto& popup = chromeUi->second;
+                popup.lastEvent = packet.eventName;
+                popup.lastEventData = packet.data;
+                popup.lastEventJson = packet.dataJson;
+                popup.lastEventObject = packet.object;
+                popup.eventAction = 0;
+                popup.eventResultText.clear();
+                if (packet.eventCode == 6) popup.lastError = packet.data;
+                auto handler = popup.handlers.find(packet.eventName);
+                if (handler != popup.handlers.end()) DispatchFbroBrowserEvent(handler->second.c_str(), instance.controlId,
+                    packet.handle, packet.eventName.c_str(), packet.data.c_str());
+                if (packet.synchronous) {
+                    packet.action = popup.eventAction;
+                    packet.resultText = popup.eventResultText;
+                }
+                if (packet.eventCode == 5) instance.chromeUiInstances.erase(chromeUi);
                 return;
             }
             const ControlSpec* control = FindControl(instance.controlId);
             if (!control) return;
-            const wchar_t* eventName = packet.eventCode == 1 ? L"Created" : packet.eventCode == 2 ? L"LoadEnd" :
-                packet.eventCode == 3 ? L"AddressChanged" : packet.eventCode == 4 ? L"TitleChanged" :
-                packet.eventCode == 5 ? L"Closed" : packet.eventCode == 7 ? L"BeforePopup" : L"Error";
-            instance.lastEvent = eventName;
+            instance.eventAction = 0;
+            instance.eventResultText.clear();
+            instance.lastEvent = packet.eventName;
+            instance.lastEventData = packet.data;
+            instance.lastEventJson = packet.dataJson;
+            instance.lastEventObject = packet.object;
             if (packet.eventCode == 6) instance.lastError = packet.data;
-            DispatchLingEvent(*control, eventName);
+            auto handler = instance.handlers.find(instance.lastEvent);
+            if (handler != instance.handlers.end()) {
+                DispatchFbroBrowserEvent(handler->second.c_str(), instance.controlId, packet.handle,
+                    instance.lastEvent.c_str(), instance.lastEventData.c_str());
+            } else DispatchLingEvent(*control, instance.lastEvent.c_str());
+            if (packet.synchronous) {
+                packet.action = instance.eventAction;
+                packet.resultText = instance.eventResultText;
+            }
             return;
         }
     }
 
+    virtual void DispatchFbroBrowserEvent(const wchar_t* handler, int controlId, LB_FBRO_HANDLE instanceId,
+                                          const wchar_t* eventName, const wchar_t* data) {
+        std::wstring message = L"FBro 事件未绑定到中文处理器：";
+        message += handler ? handler : L"";
+        message += L" / ";
+        message += eventName ? eventName : L"";
+        调试输出(message.c_str());
+        (void)controlId; (void)instanceId; (void)data;
+    }
+
     // ================= CEF3 浏览器模块运行时 =================
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+    static void LB_CEF3_CALL CEF3_Bridge事件回调(const LB_CEF3_EVENT_PACKET_V3* packet,
+                                                 LB_CEF3_EVENT_RESPONSE_V3* response,
+                                                 void* userData) {
+        auto* owner = static_cast<LingWindowBase*>(userData);
+        if (!owner || !packet || packet->abi_version != LB_CEF3_ABI_VERSION_V3) return;
+        owner->CEF3_处理Bridge事件(*packet, response);
+    }
+
+    using CEF3_Bridge文本读取器 = int(LB_CEF3_CALL*)(LB_CEF3_HANDLE, wchar_t*, size_t, size_t*);
+    static std::wstring CEF3_Bridge读取文本(LB_CEF3_HANDLE handle, CEF3_Bridge文本读取器 getter) {
+        if (!handle || !getter) return L"";
+        size_t required = 0;
+        getter(handle, nullptr, 0, &required);
+        if (required == 0) return L"";
+        std::vector<wchar_t> value(required, L'\\0');
+        return getter(handle, value.data(), value.size(), &required) == LB_CEF3_OK ? std::wstring(value.data()) : L"";
+    }
+
+    static std::map<std::wstring, std::wstring> CEF3_解析Bridge事件字段(const wchar_t* json) {
+        std::map<std::wstring, std::wstring> fields;
+        if (!json) return fields;
+        const wchar_t* cursor = json;
+        auto skip = [&]() { while (*cursor && iswspace(*cursor)) ++cursor; };
+        auto quoted = [&]() {
+            std::wstring value;
+            if (*cursor != L'\"') return value;
+            ++cursor;
+            while (*cursor && *cursor != L'\"') {
+                if (*cursor == L'\\\\' && cursor[1]) {
+                    ++cursor;
+                    if (*cursor == L'n') value += L'\\n';
+                    else if (*cursor == L'r') value += L'\\r';
+                    else if (*cursor == L't') value += L'\\t';
+                    else value += *cursor;
+                } else value += *cursor;
+                ++cursor;
+            }
+            if (*cursor == L'\"') ++cursor;
+            return value;
+        };
+        skip(); if (*cursor == L'{') ++cursor;
+        while (*cursor) {
+            skip(); if (*cursor == L'}') break;
+            std::wstring key = quoted();
+            skip(); if (*cursor != L':') break; ++cursor; skip();
+            std::wstring value;
+            if (*cursor == L'\"') value = quoted();
+            else {
+                const wchar_t* start = cursor;
+                while (*cursor && *cursor != L',' && *cursor != L'}') ++cursor;
+                value.assign(start, cursor);
+                while (!value.empty() && iswspace(value.back())) value.pop_back();
+            }
+            if (!key.empty()) fields[key] = value;
+            skip(); if (*cursor == L',') ++cursor; else if (*cursor == L'}') break; else if (!*cursor) break;
+        }
+        fields[L"json"] = json;
+        return fields;
+    }
+
+    void CEF3_处理Bridge事件(const LB_CEF3_EVENT_PACKET_V3& packet, LB_CEF3_EVENT_RESPONSE_V3* response) {
+        const int controlId = static_cast<int>(packet.user_token);
+        auto found = cefBrowsers_.find(controlId);
+        if (found == cefBrowsers_.end() || found->second->bridgeHandle != packet.browser) return;
+        CefBrowserInstance& instance = *found->second;
+        const wchar_t* eventName = packet.event_name ? packet.event_name : L"";
+        const wchar_t* fieldsJson = packet.fields_json ? packet.fields_json : L"{}";
+        if (TextEquals(eventName, L"加载状态改变")) instance.isLoading = std::wcsstr(fieldsJson, L"\\\"loading\\\":true") != nullptr;
+        auto fields = CEF3_解析Bridge事件字段(fieldsJson);
+        if ((packet.flags & 1u) != 0) {
+            LingCefEventPacket eventPacket;
+            eventPacket.controlId = controlId;
+            eventPacket.name = eventName;
+            eventPacket.data = fields.count(L"message") ? fields[L"message"]
+                : fields.count(L"url") ? fields[L"url"] : fieldsJson;
+            eventPacket.fields = std::move(fields);
+            eventPacket.synchronous = true;
+            CEF3_发送事件(eventPacket);
+            if (response) {
+                response->action = eventPacket.action;
+                response->response_json = instance.eventResultText.empty() ? nullptr : instance.eventResultText.c_str();
+            }
+        } else {
+            CEF3_投递事件(controlId, eventName, fieldsJson, std::move(fields));
+            if (response) {
+                response->action = 0;
+                response->response_json = nullptr;
+            }
+        }
+    }
+#endif
+
     CefBrowserInstance* CEF3_查找实例(const wchar_t* controlName) {
         if (!controlName) return nullptr;
         for (auto& item : cefBrowsers_) {
@@ -4685,17 +6724,17 @@ ${edgeViewEventIdCases}
         std::wstring resourcesDir = modulePath;
         size_t lastSlash = resourcesDir.find_last_of(L"\\\\/");
         if (lastSlash != std::wstring::npos) resourcesDir = resourcesDir.substr(0, lastSlash);
-        std::wstring cachePath;
-        for (int i = 0; i < spec_.controlCount && cachePath.empty(); ++i) {
-            const ControlSpec& control = spec_.controls[i];
-            if (!IsType(control, L"CefBrowser") || !control.data2 || !control.data2[0]) continue;
-            auto records = DecodeControlRecords(control.data2, 4);
-            if (!records.empty() && !records[0].empty() && !records[0][0].empty()) cachePath = records[0][0];
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (LB_CEF3_GetAbiVersion() != LB_CEF3_ABI_VERSION_V3
+            || LB_CEF3_SetAllowedFileRoot(resourcesDir.c_str()) != LB_CEF3_OK) {
+            调试输出(L"CEF3 Bridge ABI或文件根目录初始化失败。");
+            return 0;
         }
-        if (cachePath.empty()) cachePath = L".cef3\\\\cache";
+#endif
+        cefRootCachePath_ = resourcesDir + L"\\\\.cef3-profiles";
         wchar_t absoluteCache[MAX_PATH] = {};
-        if (GetFullPathNameW(cachePath.c_str(), MAX_PATH, absoluteCache, nullptr) > 0) cachePath = absoluteCache;
-        CreateDirectoryW(cachePath.c_str(), nullptr);
+        if (GetFullPathNameW(cefRootCachePath_.c_str(), MAX_PATH, absoluteCache, nullptr) > 0) cefRootCachePath_ = absoluteCache;
+        CreateDirectoryW(cefRootCachePath_.c_str(), nullptr);
         std::wstring globalUserAgent;
         for (int i = 0; i < spec_.controlCount && globalUserAgent.empty(); ++i) {
             const ControlSpec& control = spec_.controls[i];
@@ -4703,13 +6742,29 @@ ${edgeViewEventIdCases}
             auto records = DecodeControlRecords(control.data2, 4);
             if (!records.empty() && records[0].size() > 1 && !records[0][1].empty()) globalUserAgent = records[0][1];
         }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        LB_CEF3_INITIALIZE_CONFIG_V3 bridgeConfig = {};
+        bridgeConfig.struct_size = sizeof(bridgeConfig);
+        bridgeConfig.abi_version = LB_CEF3_ABI_VERSION_V3;
+        bridgeConfig.application_instance = reinterpret_cast<uint64_t>(GetModuleHandleW(nullptr));
+        bridgeConfig.root_cache_path = cefRootCachePath_.c_str();
+        bridgeConfig.resources_path = resourcesDir.c_str();
+        std::wstring localesDir = resourcesDir + L"\\\\locales";
+        bridgeConfig.locales_path = localesDir.c_str();
+        bridgeConfig.subprocess_path = modulePath;
+        bridgeConfig.user_agent = globalUserAgent.c_str();
+        const int bridgeResult = LB_CEF3_Initialize(&bridgeConfig);
+        cefInitialized_ = bridgeResult == LB_CEF3_OK;
+        if (!cefInitialized_) 调试输出(L"CEF3 Bridge初始化失败：请检查ABI、CEF 150运行时和资源目录。");
+        return cefInitialized_ ? 1 : 0;
+#else
         CefMainArgs mainArgs(GetModuleHandleW(nullptr));
         CefSettings settings = {};
         settings.size = sizeof(settings);
         settings.no_sandbox = true;
         settings.multi_threaded_message_loop = true;
         settings.windowless_rendering_enabled = false;
-        CefString(&settings.cache_path).FromWString(cachePath);
+        CefString(&settings.root_cache_path).FromWString(cefRootCachePath_);
         CefString(&settings.resources_dir_path).FromWString(resourcesDir);
         CefString(&settings.locales_dir_path).FromWString(resourcesDir + L"\\\\locales");
         if (!globalUserAgent.empty()) CefString(&settings.user_agent).FromWString(globalUserAgent);
@@ -4717,11 +6772,42 @@ ${edgeViewEventIdCases}
         cefInitialized_ = CefInitialize(mainArgs, settings, nullptr, nullptr);
         if (!cefInitialized_) 调试输出(L"CEF3 初始化失败：请确认 exe 同目录存在 libcef.dll 和资源文件。");
         return cefInitialized_ ? 1 : 0;
+#endif
 #else
         调试输出(L"CEF3 不可用：构建环境缺少 CEF3 SDK 头文件，请恢复 Chromium Embedded Framework SDK。");
         return 0;
 #endif
     }
+
+#if LINGBUILDER_CEF3_AVAILABLE
+    std::wstring CEF3_准备实例缓存目录(CefBrowserInstance& instance) {
+        const std::wstring requested = instance.cacheDirectory.empty()
+            ? (L"control-" + std::to_wstring(instance.controlId)) : instance.cacheDirectory;
+        const size_t digest = std::hash<std::wstring>{}(requested);
+        instance.effectiveCacheDirectory = cefRootCachePath_ + L"\\\\profile-" + std::to_wstring(instance.controlId)
+            + L"-" + std::to_wstring(static_cast<unsigned long long>(digest));
+        CreateDirectoryW(instance.effectiveCacheDirectory.c_str(), nullptr);
+        return instance.effectiveCacheDirectory;
+    }
+
+    bool CEF3_准备实例上下文(CefBrowserInstance& instance) {
+        if (instance.requestContext) return true;
+        CefRequestContextSettings contextSettings = {};
+        contextSettings.size = sizeof(contextSettings);
+        CefString(&contextSettings.cache_path).FromWString(CEF3_准备实例缓存目录(instance));
+        std::wstring mode = instance.proxyMode == L"custom" && !instance.proxyServer.empty()
+            ? L"fixed_servers" : instance.proxyMode == L"none" || (instance.proxyMode == L"custom" && instance.proxyServer.empty())
+                ? L"direct" : L"system";
+        auto initState = std::make_shared<LingCefRequestContextInitState>();
+        CefRefPtr<CefRequestContextHandler> initHandler = new LingCefRequestContextInitHandler(
+            initState, mode, instance.proxyServer);
+        instance.requestContext = CefRequestContext::CreateContext(contextSettings, initHandler);
+        if (!instance.requestContext) { 调试输出(L"CEF3创建独立RequestContext失败。"); return false; }
+        // 初始化回调由 CEF UI 线程异步触发；不能在创建浏览器前同步等待。
+        // 每实例代理在该回调内、首次请求开始前应用。
+        return true;
+    }
+#endif
 
     int CEF3_创建(const wchar_t* controlName) {
         bool hasTarget = false;
@@ -4733,7 +6819,7 @@ ${edgeViewEventIdCases}
             break;
         }
         if (!hasTarget) return 0;
-#if LINGBUILDER_CEF3_AVAILABLE
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE || LINGBUILDER_CEF3_AVAILABLE
         if (!CEF3_初始化()) return 0;
         int created = 0;
         for (int i = 0; i < spec_.controlCount; ++i) {
@@ -4755,7 +6841,36 @@ ${edgeViewEventIdCases}
         RuntimeControl* runtime = FindRuntimeControl(control.id);
         if (!runtime || !runtime->hwnd || !IsWindow(runtime->hwnd)) return 0;
         CefBrowserInstance* instance = CEF3_确保实例(control.id);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (instance->created && instance->bridgeHandle) return 1;
+        instance->host = runtime->hwnd;
+        if (instance->url.empty() && control.data && control.data[0]) instance->url = control.data;
+        LB_CEF3_BROWSER_CONFIG_V3 bridgeConfig = {};
+        bridgeConfig.struct_size = sizeof(bridgeConfig);
+        bridgeConfig.abi_version = LB_CEF3_ABI_VERSION_V3;
+        bridgeConfig.parent_window = reinterpret_cast<uint64_t>(instance->host);
+        bridgeConfig.user_token = static_cast<uint64_t>(control.id);
+        bridgeConfig.flags = (instance->enableJs ? LB_CEF3_BROWSER_JAVASCRIPT : 0)
+            | (instance->loadImages ? LB_CEF3_BROWSER_IMAGES : 0)
+            | (instance->enableWebGL ? LB_CEF3_BROWSER_WEBGL : 0)
+            | (instance->enableDevTools ? LB_CEF3_BROWSER_DEVTOOLS : 0);
+        std::wstring initialUrl = instance->url.empty() ? L"about:blank" : instance->url;
+        std::wstring profileKey = instance->cacheDirectory.empty() ? (control.name ? control.name : L"") : instance->cacheDirectory;
+        bridgeConfig.initial_url = initialUrl.c_str();
+        bridgeConfig.profile_key = profileKey.c_str();
+        bridgeConfig.proxy_mode = instance->proxyMode.c_str();
+        bridgeConfig.proxy_server = instance->proxyServer.c_str();
+        bridgeConfig.event_callback = &LingWindowBase::CEF3_Bridge事件回调;
+        bridgeConfig.event_user_data = this;
+        instance->bridgeHandle = LB_CEF3_BrowserCreate(&bridgeConfig);
+        instance->created = instance->bridgeHandle != 0;
+        instance->currentUrl = initialUrl;
+        if (instance->created && instance->muteAudio) LB_CEF3_BrowserSetAudioMuted(instance->bridgeHandle, 1);
+        if (!instance->created) 调试输出(L"CEF3 Bridge创建浏览器请求失败。");
+        return instance->created ? 1 : 0;
+#else
         if (instance->created && instance->browser) return 1;
+        if (!CEF3_准备实例上下文(*instance)) return 0;
         instance->host = runtime->hwnd;
         if (instance->url.empty() && control.data && control.data[0]) instance->url = control.data;
         RECT bounds = {};
@@ -4769,12 +6884,14 @@ ${edgeViewEventIdCases}
         if (!instance->loadImages) browserSettings.image_loading = STATE_DISABLED;
         if (!instance->enableWebGL) browserSettings.webgl = STATE_DISABLED;
         CefRefPtr<CefClient> client = LingCreateCefClient(this, control.id);
+        instance->client = client;
         std::wstring url = instance->url.empty() ? L"about:blank" : instance->url;
         instance->currentUrl = url;
         instance->created = true;
-        bool requested = CefBrowserHost::CreateBrowser(windowInfo, client, url, browserSettings, nullptr, nullptr);
+        bool requested = CefBrowserHost::CreateBrowser(windowInfo, client, url, browserSettings, nullptr, instance->requestContext);
         if (!requested) { 调试输出(L"CEF3 创建浏览器请求失败。"); instance->created = false; return 0; }
         return 1;
+#endif
     }
 #else
     int CEF3_创建单个(const ControlSpec&) { return 0; }
@@ -4784,6 +6901,17 @@ ${edgeViewEventIdCases}
 #if LINGBUILDER_CEF3_AVAILABLE
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
         if (!instance) { 调试输出(L"CEF3 导航失败：找不到浏览器控件。"); return 0; }
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (!address || !address[0]) return 0;
+        if (!instance->created || !instance->bridgeHandle) {
+            const ControlSpec* control = FindControl(instance->controlId);
+            if (control) { instance->url = address; return CEF3_创建单个(*control); }
+            return 0;
+        }
+        const int result = LB_CEF3_BrowserLoadUrl(instance->bridgeHandle, address);
+        if (result == LB_CEF3_OK) instance->currentUrl = address;
+        return result == LB_CEF3_OK ? 1 : 0;
+#else
         if (!instance->created || !instance->browser) {
             const ControlSpec* control = FindControl(instance->controlId);
             if (control) { instance->url = address ? address : L""; return CEF3_创建单个(*control); }
@@ -4793,6 +6921,7 @@ ${edgeViewEventIdCases}
         instance->browser->GetMainFrame()->LoadURL(address);
         instance->currentUrl = address;
         return 1;
+#endif
 #else
         (void)controlName; (void)address; return 0;
 #endif
@@ -4801,12 +6930,32 @@ ${edgeViewEventIdCases}
     int CEF3_打开原生UI浏览器(const wchar_t* controlName, const wchar_t* address) {
 #if LINGBUILDER_CEF3_AVAILABLE
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
-        if (!instance || !instance->created || !instance->browser) {
+        if (!instance || !instance->created) {
             调试输出(L"CEF3 打开原生UI浏览器失败：请先创建内嵌浏览器控件。");
             return 0;
         }
         std::wstring url = address && address[0] ? address : instance->currentUrl;
         if (url.empty()) url = L"about:blank";
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        LB_CEF3_BROWSER_CONFIG_V3 bridgeConfig = {};
+        bridgeConfig.struct_size = sizeof(bridgeConfig);
+        bridgeConfig.abi_version = LB_CEF3_ABI_VERSION_V3;
+        bridgeConfig.user_token = static_cast<uint64_t>(instance->controlId);
+        bridgeConfig.flags = LB_CEF3_BROWSER_CHROME_RUNTIME
+            | (instance->enableJs ? LB_CEF3_BROWSER_JAVASCRIPT : 0)
+            | (instance->loadImages ? LB_CEF3_BROWSER_IMAGES : 0)
+            | (instance->enableWebGL ? LB_CEF3_BROWSER_WEBGL : 0)
+            | (instance->enableDevTools ? LB_CEF3_BROWSER_DEVTOOLS : 0);
+        bridgeConfig.initial_url = url.c_str();
+        bridgeConfig.profile_key = instance->cacheDirectory.c_str();
+        bridgeConfig.proxy_mode = instance->proxyMode.c_str();
+        bridgeConfig.proxy_server = instance->proxyServer.c_str();
+        bridgeConfig.event_callback = &LingWindowBase::CEF3_Bridge事件回调;
+        bridgeConfig.event_user_data = this;
+        LB_CEF3_HANDLE popupHandle = LB_CEF3_BrowserCreateChrome(&bridgeConfig);
+        if (popupHandle) instance->bridgePopupHandles.push_back(popupHandle);
+        return popupHandle ? 1 : 0;
+#else
         CefWindowInfo windowInfo = {};
         // Chrome Runtime 不能复用 LingBuilder 主窗口 HWND，否则 Chrome UI 会覆盖到内嵌宿主中。
         // 使用空父句柄和 WS_EX_APPWINDOW，强制 CEF 创建拥有独立根 HWND 的桌面顶层窗口。
@@ -4821,9 +6970,10 @@ ${edgeViewEventIdCases}
         if (!instance->loadImages) browserSettings.image_loading = STATE_DISABLED;
         if (!instance->enableWebGL) browserSettings.webgl = STATE_DISABLED;
         CefRefPtr<CefClient> client = LingCreateCefClient(this, instance->controlId);
-        bool requested = CefBrowserHost::CreateBrowser(windowInfo, client, url, browserSettings, nullptr, nullptr);
+        bool requested = CefBrowserHost::CreateBrowser(windowInfo, client, url, browserSettings, nullptr, instance->requestContext);
         if (!requested) 调试输出(L"CEF3 谷歌原生UI浏览器创建请求失败。");
         return requested ? 1 : 0;
+#endif
 #else
         (void)controlName; (void)address;
         调试输出(L"CEF3 不可用：无法创建谷歌原生UI浏览器。");
@@ -4838,22 +6988,155 @@ ${edgeViewEventIdCases}
     std::wstring CEF3_执行JS(const wchar_t* controlName, const wchar_t* script) {
 #if LINGBUILDER_CEF3_AVAILABLE
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
-        if (!instance || !instance->created || !instance->browser || !script) return L"";
-        std::wstring wrapped = L"(function(){ try { var __r = (";
-        wrapped += script;
-        wrapped += L"); return (__r === undefined ? '' : String(__r)); } catch(e) { return 'JS错误: ' + e.message; } })();";
-        instance->browser->GetMainFrame()->ExecuteJavaScript(wrapped, instance->currentUrl, 0);
-        return L"";
+        if (!instance || !instance->created || !script) return L"";
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        LB_CEF3_TASK_HANDLE task = LB_CEF3_BrowserEvaluateJavaScript(instance->bridgeHandle, script);
+        if (!task) return L"";
+        const ULONGLONG deadline = GetTickCount64() + 5000;
+        int status = LB_CEF3_TaskGetStatus(task);
+        while ((status == LB_CEF3_TASK_PENDING || status == LB_CEF3_TASK_RUNNING) && GetTickCount64() < deadline) {
+            Sleep(10);
+            status = LB_CEF3_TaskGetStatus(task);
+        }
+        std::wstring value = status == LB_CEF3_TASK_SUCCEEDED
+            ? CEF3_Bridge读取文本(task, LB_CEF3_TaskGetResult)
+            : status == LB_CEF3_TASK_FAILED ? CEF3_Bridge读取文本(task, LB_CEF3_TaskGetError)
+            : L"CEF3 JavaScript执行超过5秒。";
+        if (status == LB_CEF3_TASK_PENDING || status == LB_CEF3_TASK_RUNNING) LB_CEF3_TaskCancel(task);
+        LB_CEF3_TaskRelease(task);
+        return value;
+#else
+        if (!instance->browser) return L"";
+        auto state = std::make_shared<LingCefAsyncState>();
+        if (!LingStartCefEvaluation(instance->browser, script, state)) return L"";
+        std::unique_lock<std::mutex> lock(state->mutex);
+        if (!state->changed.wait_for(lock, std::chrono::seconds(5), [&] { return state->status >= 2; })) {
+            state->status = 4;
+            state->error = L"CEF3 JavaScript执行超过5秒。";
+            state->registration = nullptr;
+            return state->error;
+        }
+        return state->status == 2 ? state->result : state->error;
+#endif
 #else
         (void)controlName; (void)script; return L"";
+#endif
+    }
+
+    long long CEF3自动化_执行JS异步(const wchar_t* controlName, const wchar_t* script) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance || !instance->created || !script) return 0;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_BrowserEvaluateJavaScript(instance->bridgeHandle, script));
+#else
+        if (!instance->browser) return 0;
+        auto state = std::make_shared<LingCefAsyncState>();
+        const long long taskId = nextCefTaskId_++;
+        cefTasks_[taskId] = state;
+        if (!LingStartCefEvaluation(instance->browser, script, state)) return taskId;
+        return taskId;
+#endif
+#else
+        (void)controlName; (void)script; return 0;
+#endif
+    }
+
+    int CEF3任务_取状态(long long taskId) {
+#if LINGBUILDER_CEF3_AVAILABLE
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_TaskGetStatus(static_cast<LB_CEF3_TASK_HANDLE>(taskId));
+#else
+        auto found = cefTasks_.find(taskId);
+        if (found == cefTasks_.end()) return -1;
+        std::lock_guard<std::mutex> lock(found->second->mutex);
+        return found->second->status;
+#endif
+#else
+        (void)taskId; return -1;
+#endif
+    }
+
+    std::wstring CEF3任务_取结果(long long taskId) {
+#if LINGBUILDER_CEF3_AVAILABLE
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_TASK_HANDLE>(taskId), LB_CEF3_TaskGetResult);
+#else
+        auto found = cefTasks_.find(taskId);
+        if (found == cefTasks_.end()) return L"";
+        std::lock_guard<std::mutex> lock(found->second->mutex);
+        return found->second->status == 2 ? found->second->result : L"";
+#endif
+#else
+        (void)taskId; return L"";
+#endif
+    }
+
+    std::wstring CEF3任务_取错误(long long taskId) {
+#if LINGBUILDER_CEF3_AVAILABLE
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_TASK_HANDLE>(taskId), LB_CEF3_TaskGetError);
+#else
+        auto found = cefTasks_.find(taskId);
+        if (found == cefTasks_.end()) return L"CEF3任务不存在或已释放。";
+        std::lock_guard<std::mutex> lock(found->second->mutex);
+        return found->second->error;
+#endif
+#else
+        (void)taskId; return L"CEF3不可用";
+#endif
+    }
+
+    int CEF3任务_取消(long long taskId) {
+#if LINGBUILDER_CEF3_AVAILABLE
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_TaskCancel(static_cast<LB_CEF3_TASK_HANDLE>(taskId)) == LB_CEF3_OK ? 1 : 0;
+#else
+        auto found = cefTasks_.find(taskId);
+        if (found == cefTasks_.end()) return 0;
+        std::lock_guard<std::mutex> lock(found->second->mutex);
+        if (found->second->status >= 2) return 0;
+        found->second->status = 4;
+        found->second->error = L"CEF3任务已取消。";
+        found->second->registration = nullptr;
+        found->second->changed.notify_all();
+        return 1;
+#endif
+#else
+        (void)taskId; return 0;
+#endif
+    }
+
+    int CEF3任务_释放(long long taskId) {
+#if LINGBUILDER_CEF3_AVAILABLE
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_TaskRelease(static_cast<LB_CEF3_TASK_HANDLE>(taskId)) == LB_CEF3_OK ? 1 : 0;
+#else
+        auto found = cefTasks_.find(taskId);
+        if (found == cefTasks_.end()) return 0;
+        {
+            std::lock_guard<std::mutex> lock(found->second->mutex);
+            if (found->second->status < 2) return 0;
+            found->second->registration = nullptr;
+        }
+        cefTasks_.erase(found);
+        return 1;
+#endif
+#else
+        (void)taskId; return 0;
 #endif
     }
 
     int CEF3_后退(const wchar_t* controlName) {
 #if LINGBUILDER_CEF3_AVAILABLE
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && instance->bridgeHandle && LB_CEF3_BrowserCanGoBack(instance->bridgeHandle) > 0
+            && LB_CEF3_BrowserGoBack(instance->bridgeHandle) == LB_CEF3_OK ? 1 : 0;
+#else
         if (!instance || !instance->browser || !instance->browser->CanGoBack()) return 0;
         instance->browser->GoBack(); return 1;
+#endif
 #else
         (void)controlName; return 0;
 #endif
@@ -4862,8 +7145,13 @@ ${edgeViewEventIdCases}
     int CEF3_前进(const wchar_t* controlName) {
 #if LINGBUILDER_CEF3_AVAILABLE
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && instance->bridgeHandle && LB_CEF3_BrowserCanGoForward(instance->bridgeHandle) > 0
+            && LB_CEF3_BrowserGoForward(instance->bridgeHandle) == LB_CEF3_OK ? 1 : 0;
+#else
         if (!instance || !instance->browser || !instance->browser->CanGoForward()) return 0;
         instance->browser->GoForward(); return 1;
+#endif
 #else
         (void)controlName; return 0;
 #endif
@@ -4872,7 +7160,11 @@ ${edgeViewEventIdCases}
     void CEF3_刷新(const wchar_t* controlName) {
 #if LINGBUILDER_CEF3_AVAILABLE
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (instance && instance->bridgeHandle) LB_CEF3_BrowserReload(instance->bridgeHandle);
+#else
         if (instance && instance->browser) instance->browser->Reload();
+#endif
 #else
         (void)controlName;
 #endif
@@ -4881,7 +7173,11 @@ ${edgeViewEventIdCases}
     void CEF3_停止(const wchar_t* controlName) {
 #if LINGBUILDER_CEF3_AVAILABLE
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (instance && instance->bridgeHandle) LB_CEF3_BrowserStopLoad(instance->bridgeHandle);
+#else
         if (instance && instance->browser) instance->browser->StopLoad();
+#endif
 #else
         (void)controlName;
 #endif
@@ -4889,12 +7185,20 @@ ${edgeViewEventIdCases}
 
     std::wstring CEF3_取标题(const wchar_t* controlName) {
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? CEF3_Bridge读取文本(instance->bridgeHandle, LB_CEF3_BrowserGetTitle) : L"";
+#else
         return instance ? instance->currentTitle : L"";
+#endif
     }
 
     std::wstring CEF3_取地址(const wchar_t* controlName) {
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? CEF3_Bridge读取文本(instance->bridgeHandle, LB_CEF3_BrowserGetUrl) : L"";
+#else
         return instance ? instance->currentUrl : L"";
+#endif
     }
 
     int CEF3_设置缓存目录(const wchar_t* controlName, const wchar_t* directory) {
@@ -4902,6 +7206,7 @@ ${edgeViewEventIdCases}
         if (!instance) return 0;
         if (instance->created) { 调试输出(L"CEF3 设置缓存目录需在创建前调用。"); return 0; }
         instance->cacheDirectory = directory ? directory : L"";
+        instance->effectiveCacheDirectory.clear();
         return 1;
     }
 
@@ -4910,7 +7215,1721 @@ ${edgeViewEventIdCases}
         if (!instance) return 0;
         if (instance->created) { 调试输出(L"CEF3 设置代理需在创建前调用。"); return 0; }
         instance->proxyServer = proxy ? proxy : L"";
+        instance->proxyMode = instance->proxyServer.empty() ? L"none" : L"custom";
         return 1;
+    }
+
+    std::wstring CEF3会话_取缓存目录(const wchar_t* controlName) {
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance) return L"";
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(instance->bridgeHandle, LB_CEF3_BrowserGetProfilePath);
+#else
+#if LINGBUILDER_CEF3_AVAILABLE
+        if (instance->effectiveCacheDirectory.empty() && cefInitialized_) CEF3_准备实例缓存目录(*instance);
+#endif
+        return instance->effectiveCacheDirectory;
+#endif
+    }
+
+    std::wstring CEF3会话_取代理(const wchar_t* controlName) {
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance ? CEF3_Bridge读取文本(instance->bridgeHandle, LB_CEF3_BrowserGetProxy) : L"";
+#else
+        return instance ? instance->proxyServer : L"";
+#endif
+    }
+
+    long long CEF3会话_取上下文(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance ? static_cast<long long>(LB_CEF3_BrowserGetRequestContext(instance->bridgeHandle)) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    std::wstring CEF3会话_上下文取缓存目录(long long contextHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(contextHandle), LB_CEF3_RequestContextGetCachePath);
+#else
+        (void)contextHandle; return L"";
+#endif
+    }
+
+    int CEF3会话_是否有首选项(long long contextHandle, const wchar_t* name) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_RequestContextHasPreference(static_cast<LB_CEF3_HANDLE>(contextHandle), name);
+#else
+        (void)contextHandle; (void)name; return 0;
+#endif
+    }
+
+    int CEF3会话_首选项是否可写(long long contextHandle, const wchar_t* name) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_RequestContextCanSetPreference(static_cast<LB_CEF3_HANDLE>(contextHandle), name);
+#else
+        (void)contextHandle; (void)name; return 0;
+#endif
+    }
+
+    long long CEF3会话_取首选项(long long contextHandle, const wchar_t* name) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_RequestContextGetPreference(static_cast<LB_CEF3_HANDLE>(contextHandle), name));
+#else
+        (void)contextHandle; (void)name; return 0;
+#endif
+    }
+
+    long long CEF3会话_取全部首选项(long long contextHandle, bool includeDefaults) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_RequestContextGetAllPreferences(
+            static_cast<LB_CEF3_HANDLE>(contextHandle), includeDefaults ? 1 : 0));
+#else
+        (void)contextHandle; (void)includeDefaults; return 0;
+#endif
+    }
+
+    int CEF3会话_设置首选项(long long contextHandle, const wchar_t* name, long long valueHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_RequestContextSetPreference(static_cast<LB_CEF3_HANDLE>(contextHandle), name,
+            static_cast<LB_CEF3_HANDLE>(valueHandle));
+#else
+        (void)contextHandle; (void)name; (void)valueHandle; return 0;
+#endif
+    }
+
+    long long CEF3会话_清理HTTP缓存(long long contextHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_RequestContextClearHttpCache(static_cast<LB_CEF3_HANDLE>(contextHandle)));
+#else
+        (void)contextHandle; return 0;
+#endif
+    }
+
+    long long CEF3会话_清理证书例外(long long contextHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_RequestContextClearCertificateExceptions(static_cast<LB_CEF3_HANDLE>(contextHandle)));
+#else
+        (void)contextHandle; return 0;
+#endif
+    }
+
+    long long CEF3会话_清理HTTP认证(long long contextHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_RequestContextClearHttpAuthCredentials(static_cast<LB_CEF3_HANDLE>(contextHandle)));
+#else
+        (void)contextHandle; return 0;
+#endif
+    }
+
+    long long CEF3会话_关闭全部连接(long long contextHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_RequestContextCloseAllConnections(static_cast<LB_CEF3_HANDLE>(contextHandle)));
+#else
+        (void)contextHandle; return 0;
+#endif
+    }
+
+    long long CEF3会话_Cookie读取全部(long long contextHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CookieVisitAll(static_cast<LB_CEF3_HANDLE>(contextHandle)));
+#else
+        (void)contextHandle; return 0;
+#endif
+    }
+
+    long long CEF3会话_Cookie按地址读取(long long contextHandle, const wchar_t* address, bool includeHttpOnly) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CookieVisitUrl(
+            static_cast<LB_CEF3_HANDLE>(contextHandle), address, includeHttpOnly ? 1 : 0));
+#else
+        (void)contextHandle; (void)address; (void)includeHttpOnly; return 0;
+#endif
+    }
+
+    long long CEF3会话_Cookie设置(long long contextHandle, const wchar_t* address, const wchar_t* name,
+                                  const wchar_t* value, const wchar_t* domain, const wchar_t* path,
+                                  bool secure, bool httpOnly, long long expiresUnixSeconds) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CookieSet(
+            static_cast<LB_CEF3_HANDLE>(contextHandle), address, name, value, domain, path,
+            secure ? 1 : 0, httpOnly ? 1 : 0, static_cast<int64_t>(expiresUnixSeconds)));
+#else
+        (void)contextHandle; (void)address; (void)name; (void)value; (void)domain; (void)path;
+        (void)secure; (void)httpOnly; (void)expiresUnixSeconds; return 0;
+#endif
+    }
+
+    long long CEF3会话_Cookie删除(long long contextHandle, const wchar_t* address, const wchar_t* name) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CookieDelete(static_cast<LB_CEF3_HANDLE>(contextHandle), address, name));
+#else
+        (void)contextHandle; (void)address; (void)name; return 0;
+#endif
+    }
+
+    long long CEF3会话_Cookie落盘(long long contextHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CookieFlush(static_cast<LB_CEF3_HANDLE>(contextHandle)));
+#else
+        (void)contextHandle; return 0;
+#endif
+    }
+
+    int CEF3会话_释放上下文(long long contextHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_RequestContextRelease(static_cast<LB_CEF3_HANDLE>(contextHandle));
+#else
+        (void)contextHandle; return 0;
+#endif
+    }
+
+    int CEF3传输_开始下载(const wchar_t* controlName, const wchar_t* address) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && address && address[0]
+            && LB_CEF3_BrowserStartDownload(instance->bridgeHandle, address) == LB_CEF3_OK ? 1 : 0;
+#else
+        return instance && address && address[0]
+            && LingPostCefHostAction(instance->browser, instance->client, LingCefHostAction::StartDownload, address) ? 1 : 0;
+#endif
+#else
+        (void)controlName; (void)address; return 0;
+#endif
+    }
+
+    int CEF3传输_打印(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserPrint(instance->bridgeHandle) == LB_CEF3_OK ? 1 : 0;
+#else
+        return instance && LingPostCefHostAction(instance->browser, instance->client, LingCefHostAction::Print) ? 1 : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3开发工具_打开(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        if (!instance || !instance->enableDevTools) return 0;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_BrowserShowDevTools(instance->bridgeHandle) == LB_CEF3_OK ? 1 : 0;
+#else
+        return LingPostCefHostAction(instance->browser, instance->client, LingCefHostAction::ShowDevTools) ? 1 : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3开发工具_关闭(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserCloseDevTools(instance->bridgeHandle) == LB_CEF3_OK ? 1 : 0;
+#else
+        return instance && LingPostCefHostAction(instance->browser, instance->client, LingCefHostAction::CloseDevTools) ? 1 : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3开发工具_是否打开(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserHasDevTools(instance->bridgeHandle) > 0 ? 1 : 0;
+#else
+        return instance && LingCefHasDevTools(instance->browser) ? 1 : 0;
+#endif
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    bool CEF3_允许开发者工具(int controlId) const {
+        auto found = cefBrowsers_.find(controlId);
+        return found != cefBrowsers_.end() && found->second->enableDevTools;
+    }
+
+    long long CEF3缓冲_从十六进制(const wchar_t* hexText) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (!hexText) return 0;
+        std::wstring text = hexText;
+        if ((text.size() % 2) != 0) return 0;
+        std::vector<unsigned char> bytes;
+        bytes.reserve(text.size() / 2);
+        auto digit = [](wchar_t value) -> int {
+            if (value >= L'0' && value <= L'9') return value - L'0';
+            if (value >= L'a' && value <= L'f') return value - L'a' + 10;
+            if (value >= L'A' && value <= L'F') return value - L'A' + 10;
+            return -1;
+        };
+        for (size_t index = 0; index < text.size(); index += 2) {
+            int high = digit(text[index]); int low = digit(text[index + 1]);
+            if (high < 0 || low < 0) return 0;
+            bytes.push_back(static_cast<unsigned char>((high << 4) | low));
+        }
+        return static_cast<long long>(LB_CEF3_BufferCreate(bytes.data(), bytes.size()));
+#else
+        (void)hexText; return 0;
+#endif
+    }
+
+    long long CEF3缓冲_复制(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_BufferClone(static_cast<LB_CEF3_BUFFER_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+    int CEF3缓冲_是否有效(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_BufferIsValid(static_cast<LB_CEF3_BUFFER_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+    int CEF3缓冲_是否被拥有(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_BufferIsOwned(static_cast<LB_CEF3_BUFFER_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+    int CEF3缓冲_是否同一对象(long long handle, long long otherHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_BufferIsSame(static_cast<LB_CEF3_BUFFER_HANDLE>(handle), static_cast<LB_CEF3_BUFFER_HANDLE>(otherHandle));
+#else
+        (void)handle; (void)otherHandle; return 0;
+#endif
+    }
+    int CEF3缓冲_是否相等(long long handle, long long otherHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_BufferIsEqual(static_cast<LB_CEF3_BUFFER_HANDLE>(handle), static_cast<LB_CEF3_BUFFER_HANDLE>(otherHandle));
+#else
+        (void)handle; (void)otherHandle; return 0;
+#endif
+    }
+
+    long long CEF3缓冲_从文件(const wchar_t* path) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_BufferLoadFile(path));
+#else
+        (void)path; return 0;
+#endif
+    }
+
+    long long CEF3缓冲_取大小(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        uint64_t size = 0;
+        return LB_CEF3_BufferGetSize(static_cast<LB_CEF3_BUFFER_HANDLE>(handle), &size) == LB_CEF3_OK
+            ? static_cast<long long>(size) : -1;
+#else
+        (void)handle; return -1;
+#endif
+    }
+
+    std::wstring CEF3缓冲_到十六进制(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        LB_CEF3_BufferToHex(static_cast<LB_CEF3_BUFFER_HANDLE>(handle), nullptr, 0, &required);
+        if (required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_BufferToHex(static_cast<LB_CEF3_BUFFER_HANDLE>(handle), result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"";
+#else
+        (void)handle; return L"";
+#endif
+    }
+
+    int CEF3缓冲_保存文件(long long handle, const wchar_t* path) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_BufferSaveFile(static_cast<LB_CEF3_BUFFER_HANDLE>(handle), path) == LB_CEF3_OK ? 1 : 0;
+#else
+        (void)handle; (void)path; return 0;
+#endif
+    }
+
+    int CEF3缓冲_释放(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_BufferRelease(static_cast<LB_CEF3_BUFFER_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3值_创建() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ValueCreate());
+#else
+        return 0;
+#endif
+    }
+
+    long long CEF3值_复制(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ValueCopy(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3值_是否有效(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueIsValid(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3值_是否被拥有(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueIsOwned(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3值_是否只读(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueIsReadOnly(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3值_是否同一对象(long long handle, long long otherHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueIsSame(static_cast<LB_CEF3_HANDLE>(handle), static_cast<LB_CEF3_HANDLE>(otherHandle));
+#else
+        (void)handle; (void)otherHandle; return 0;
+#endif
+    }
+
+    int CEF3值_是否相等(long long handle, long long otherHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueIsEqual(static_cast<LB_CEF3_HANDLE>(handle), static_cast<LB_CEF3_HANDLE>(otherHandle));
+#else
+        (void)handle; (void)otherHandle; return 0;
+#endif
+    }
+
+    int CEF3值_取类型(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueGetType(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return -1;
+#endif
+    }
+
+    int CEF3值_设为空(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueSetNull(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3值_设逻辑(long long handle, bool value) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueSetBool(static_cast<LB_CEF3_HANDLE>(handle), value ? 1 : 0);
+#else
+        (void)handle; (void)value; return 0;
+#endif
+    }
+
+    int CEF3值_设整数(long long handle, int value) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueSetInt(static_cast<LB_CEF3_HANDLE>(handle), value);
+#else
+        (void)handle; (void)value; return 0;
+#endif
+    }
+
+    int CEF3值_设小数(long long handle, double value) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueSetDouble(static_cast<LB_CEF3_HANDLE>(handle), value);
+#else
+        (void)handle; (void)value; return 0;
+#endif
+    }
+
+    int CEF3值_设文本(long long handle, const wchar_t* value) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueSetString(static_cast<LB_CEF3_HANDLE>(handle), value);
+#else
+        (void)handle; (void)value; return 0;
+#endif
+    }
+
+    int CEF3值_设缓冲(long long handle, long long bufferHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueSetBuffer(static_cast<LB_CEF3_HANDLE>(handle), static_cast<LB_CEF3_BUFFER_HANDLE>(bufferHandle));
+#else
+        (void)handle; (void)bufferHandle; return 0;
+#endif
+    }
+
+    int CEF3值_设字典(long long handle, long long dictionaryHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueSetDictionary(static_cast<LB_CEF3_HANDLE>(handle), static_cast<LB_CEF3_HANDLE>(dictionaryHandle));
+#else
+        (void)handle; (void)dictionaryHandle; return 0;
+#endif
+    }
+
+    int CEF3值_设列表(long long handle, long long listHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueSetList(static_cast<LB_CEF3_HANDLE>(handle), static_cast<LB_CEF3_HANDLE>(listHandle));
+#else
+        (void)handle; (void)listHandle; return 0;
+#endif
+    }
+
+    int CEF3值_取逻辑(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueGetBool(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return -1;
+#endif
+    }
+
+    int CEF3值_取整数(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        int value = 0;
+        return LB_CEF3_ValueGetInt(static_cast<LB_CEF3_HANDLE>(handle), &value) == LB_CEF3_OK ? value : 0;
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    double CEF3值_取小数(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        double value = 0.0;
+        return LB_CEF3_ValueGetDouble(static_cast<LB_CEF3_HANDLE>(handle), &value) == LB_CEF3_OK ? value : 0.0;
+#else
+        (void)handle; return 0.0;
+#endif
+    }
+
+    std::wstring CEF3值_取文本(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_ValueGetString);
+#else
+        (void)handle; return L"";
+#endif
+    }
+
+    long long CEF3值_取缓冲(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ValueGetBuffer(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3值_取字典(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ValueGetDictionary(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3值_取列表(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ValueGetList(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    std::wstring CEF3值_到JSON(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_ValueToJson);
+#else
+        (void)handle; return L"";
+#endif
+    }
+
+    int CEF3值_释放(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ValueRelease(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3字典_创建() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_DictionaryCreate());
+#else
+        return 0;
+#endif
+    }
+
+    long long CEF3字典_复制(long long handle, bool excludeEmptyChildren) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_DictionaryCopy(static_cast<LB_CEF3_HANDLE>(handle), excludeEmptyChildren ? 1 : 0));
+#else
+        (void)handle; (void)excludeEmptyChildren; return 0;
+#endif
+    }
+
+    int CEF3字典_是否有效(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_DictionaryIsValid(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3字典_是否被拥有(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_DictionaryIsOwned(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3字典_是否只读(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_DictionaryIsReadOnly(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3字典_是否同一对象(long long handle, long long otherHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_DictionaryIsSame(static_cast<LB_CEF3_HANDLE>(handle), static_cast<LB_CEF3_HANDLE>(otherHandle));
+#else
+        (void)handle; (void)otherHandle; return 0;
+#endif
+    }
+
+    int CEF3字典_是否相等(long long handle, long long otherHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_DictionaryIsEqual(static_cast<LB_CEF3_HANDLE>(handle), static_cast<LB_CEF3_HANDLE>(otherHandle));
+#else
+        (void)handle; (void)otherHandle; return 0;
+#endif
+    }
+
+    long long CEF3字典_取数量(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_DictionaryGetSize(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return -1;
+#endif
+    }
+
+    int CEF3字典_是否存在(long long handle, const wchar_t* key) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_DictionaryHasKey(static_cast<LB_CEF3_HANDLE>(handle), key);
+#else
+        (void)handle; (void)key; return 0;
+#endif
+    }
+
+    std::wstring CEF3字典_取键列表(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_DictionaryGetKeysJson);
+#else
+        (void)handle; return L"[]";
+#endif
+    }
+
+    int CEF3字典_取类型(long long handle, const wchar_t* key) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_DictionaryGetType(static_cast<LB_CEF3_HANDLE>(handle), key);
+#else
+        (void)handle; (void)key; return -1;
+#endif
+    }
+
+    int CEF3字典_设值(long long handle, const wchar_t* key, long long valueHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_DictionarySetValue(static_cast<LB_CEF3_HANDLE>(handle), key, static_cast<LB_CEF3_HANDLE>(valueHandle));
+#else
+        (void)handle; (void)key; (void)valueHandle; return 0;
+#endif
+    }
+
+    long long CEF3字典_取值(long long handle, const wchar_t* key) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_DictionaryGetValue(static_cast<LB_CEF3_HANDLE>(handle), key));
+#else
+        (void)handle; (void)key; return 0;
+#endif
+    }
+
+    int CEF3字典_删除(long long handle, const wchar_t* key) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_DictionaryRemove(static_cast<LB_CEF3_HANDLE>(handle), key);
+#else
+        (void)handle; (void)key; return 0;
+#endif
+    }
+
+    int CEF3字典_清空(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_DictionaryClear(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    std::wstring CEF3字典_到JSON(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_DictionaryToJson);
+#else
+        (void)handle; return L"{}";
+#endif
+    }
+
+    int CEF3字典_释放(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_DictionaryRelease(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3列表_创建() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ListCreate());
+#else
+        return 0;
+#endif
+    }
+
+    long long CEF3列表_复制(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ListCopy(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3列表_是否有效(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ListIsValid(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3列表_是否被拥有(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ListIsOwned(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3列表_是否只读(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ListIsReadOnly(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3列表_是否同一对象(long long handle, long long otherHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ListIsSame(static_cast<LB_CEF3_HANDLE>(handle), static_cast<LB_CEF3_HANDLE>(otherHandle));
+#else
+        (void)handle; (void)otherHandle; return 0;
+#endif
+    }
+
+    int CEF3列表_是否相等(long long handle, long long otherHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ListIsEqual(static_cast<LB_CEF3_HANDLE>(handle), static_cast<LB_CEF3_HANDLE>(otherHandle));
+#else
+        (void)handle; (void)otherHandle; return 0;
+#endif
+    }
+
+    long long CEF3列表_取数量(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ListGetSize(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return -1;
+#endif
+    }
+
+    int CEF3列表_设数量(long long handle, long long size) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return size < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT
+            : LB_CEF3_ListSetSize(static_cast<LB_CEF3_HANDLE>(handle), static_cast<uint64_t>(size));
+#else
+        (void)handle; (void)size; return 0;
+#endif
+    }
+
+    int CEF3列表_取类型(long long handle, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT
+            : LB_CEF3_ListGetType(static_cast<LB_CEF3_HANDLE>(handle), static_cast<uint64_t>(index));
+#else
+        (void)handle; (void)index; return -1;
+#endif
+    }
+
+    int CEF3列表_设值(long long handle, long long index, long long valueHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT
+            : LB_CEF3_ListSetValue(static_cast<LB_CEF3_HANDLE>(handle), static_cast<uint64_t>(index), static_cast<LB_CEF3_HANDLE>(valueHandle));
+#else
+        (void)handle; (void)index; (void)valueHandle; return 0;
+#endif
+    }
+
+    long long CEF3列表_取值(long long handle, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? 0
+            : static_cast<long long>(LB_CEF3_ListGetValue(static_cast<LB_CEF3_HANDLE>(handle), static_cast<uint64_t>(index)));
+#else
+        (void)handle; (void)index; return 0;
+#endif
+    }
+
+    int CEF3列表_删除(long long handle, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT
+            : LB_CEF3_ListRemove(static_cast<LB_CEF3_HANDLE>(handle), static_cast<uint64_t>(index));
+#else
+        (void)handle; (void)index; return 0;
+#endif
+    }
+
+    int CEF3列表_清空(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ListClear(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    std::wstring CEF3列表_到JSON(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_ListToJson);
+#else
+        (void)handle; return L"[]";
+#endif
+    }
+
+    int CEF3列表_释放(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ListRelease(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3菜单_创建() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_MenuCreate());
+#else
+        return 0;
+#endif
+    }
+    int CEF3菜单_是否子菜单(long long h) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuIsSubMenu(static_cast<LB_CEF3_HANDLE>(h));
+#else
+        (void)h; return 0;
+#endif
+    }
+    int CEF3菜单_清空(long long h) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuClear(static_cast<LB_CEF3_HANDLE>(h));
+#else
+        (void)h; return 0;
+#endif
+    }
+    long long CEF3菜单_取数量(long long h) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_MenuGetCount(static_cast<LB_CEF3_HANDLE>(h)));
+#else
+        (void)h; return -1;
+#endif
+    }
+    int CEF3菜单_添加分隔线(long long h) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuAddSeparator(static_cast<LB_CEF3_HANDLE>(h));
+#else
+        (void)h; return 0;
+#endif
+    }
+    int CEF3菜单_添加项目(long long h, int commandId, const wchar_t* label) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuAddItem(static_cast<LB_CEF3_HANDLE>(h), commandId, label);
+#else
+        (void)h; (void)commandId; (void)label; return 0;
+#endif
+    }
+    int CEF3菜单_添加勾选项目(long long h, int commandId, const wchar_t* label) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuAddCheckItem(static_cast<LB_CEF3_HANDLE>(h), commandId, label);
+#else
+        (void)h; (void)commandId; (void)label; return 0;
+#endif
+    }
+    int CEF3菜单_添加单选项目(long long h, int commandId, const wchar_t* label, int groupId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuAddRadioItem(static_cast<LB_CEF3_HANDLE>(h), commandId, label, groupId);
+#else
+        (void)h; (void)commandId; (void)label; (void)groupId; return 0;
+#endif
+    }
+    long long CEF3菜单_添加子菜单(long long h, int commandId, const wchar_t* label) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_MenuAddSubMenu(static_cast<LB_CEF3_HANDLE>(h), commandId, label));
+#else
+        (void)h; (void)commandId; (void)label; return 0;
+#endif
+    }
+    int CEF3菜单_删除项目(long long h, int commandId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuRemove(static_cast<LB_CEF3_HANDLE>(h), commandId);
+#else
+        (void)h; (void)commandId; return 0;
+#endif
+    }
+    int CEF3菜单_取索引(long long h, int commandId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuGetIndexOf(static_cast<LB_CEF3_HANDLE>(h), commandId);
+#else
+        (void)h; (void)commandId; return -1;
+#endif
+    }
+    int CEF3菜单_按索引取命令ID(long long h, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuGetCommandIdAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index));
+#else
+        (void)h; (void)index; return -1;
+#endif
+    }
+    int CEF3菜单_按索引设命令ID(long long h, long long index, int commandId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuSetCommandIdAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), commandId);
+#else
+        (void)h; (void)index; (void)commandId; return 0;
+#endif
+    }
+    std::wstring CEF3菜单_取标题(long long h, int commandId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        LB_CEF3_MenuGetLabel(static_cast<LB_CEF3_HANDLE>(h), commandId, nullptr, 0, &required);
+        if (required == 0) return L"";
+    std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_MenuGetLabel(static_cast<LB_CEF3_HANDLE>(h), commandId, result.data(), result.size(), &required) == LB_CEF3_OK ? std::wstring(result.data()) : L"";
+#else
+        (void)h; (void)commandId; return L"";
+#endif
+    }
+    int CEF3菜单_设标题(long long h, int commandId, const wchar_t* label) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuSetLabel(static_cast<LB_CEF3_HANDLE>(h), commandId, label);
+#else
+        (void)h; (void)commandId; (void)label; return 0;
+#endif
+    }
+    int CEF3菜单_取类型(long long h, int commandId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuGetType(static_cast<LB_CEF3_HANDLE>(h), commandId);
+#else
+        (void)h; (void)commandId; return 0;
+#endif
+    }
+    int CEF3菜单_取组ID(long long h, int commandId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuGetGroupId(static_cast<LB_CEF3_HANDLE>(h), commandId);
+#else
+        (void)h; (void)commandId; return -1;
+#endif
+    }
+    int CEF3菜单_设组ID(long long h, int commandId, int groupId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuSetGroupId(static_cast<LB_CEF3_HANDLE>(h), commandId, groupId);
+#else
+        (void)h; (void)commandId; (void)groupId; return 0;
+#endif
+    }
+    long long CEF3菜单_取子菜单(long long h, int commandId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_MenuGetSubMenu(static_cast<LB_CEF3_HANDLE>(h), commandId));
+#else
+        (void)h; (void)commandId; return 0;
+#endif
+    }
+    int CEF3菜单_是否可见(long long h, int commandId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuIsVisible(static_cast<LB_CEF3_HANDLE>(h), commandId);
+#else
+        (void)h; (void)commandId; return 0;
+#endif
+    }
+    int CEF3菜单_设置可见(long long h, int commandId, bool value) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuSetVisible(static_cast<LB_CEF3_HANDLE>(h), commandId, value ? 1 : 0);
+#else
+        (void)h; (void)commandId; (void)value; return 0;
+#endif
+    }
+    int CEF3菜单_是否启用(long long h, int commandId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuIsEnabled(static_cast<LB_CEF3_HANDLE>(h), commandId);
+#else
+        (void)h; (void)commandId; return 0;
+#endif
+    }
+    int CEF3菜单_设置启用(long long h, int commandId, bool value) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuSetEnabled(static_cast<LB_CEF3_HANDLE>(h), commandId, value ? 1 : 0);
+#else
+        (void)h; (void)commandId; (void)value; return 0;
+#endif
+    }
+    int CEF3菜单_是否勾选(long long h, int commandId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuIsChecked(static_cast<LB_CEF3_HANDLE>(h), commandId);
+#else
+        (void)h; (void)commandId; return 0;
+#endif
+    }
+    int CEF3菜单_设置勾选(long long h, int commandId, bool value) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuSetChecked(static_cast<LB_CEF3_HANDLE>(h), commandId, value ? 1 : 0);
+#else
+        (void)h; (void)commandId; (void)value; return 0;
+#endif
+    }
+    int CEF3菜单_按索引插入分隔线(long long h, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuInsertSeparatorAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index));
+#else
+        (void)h; (void)index; return 0;
+#endif
+    }
+    int CEF3菜单_按索引插入项目(long long h, long long index, int commandId, const wchar_t* label) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuInsertItemAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), commandId, label);
+#else
+        (void)h; (void)index; (void)commandId; (void)label; return 0;
+#endif
+    }
+    int CEF3菜单_按索引插入勾选项目(long long h, long long index, int commandId, const wchar_t* label) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuInsertCheckItemAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), commandId, label);
+#else
+        (void)h; (void)index; (void)commandId; (void)label; return 0;
+#endif
+    }
+    int CEF3菜单_按索引插入单选项目(long long h, long long index, int commandId, const wchar_t* label, int groupId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuInsertRadioItemAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), commandId, label, groupId);
+#else
+        (void)h; (void)index; (void)commandId; (void)label; (void)groupId; return 0;
+#endif
+    }
+    long long CEF3菜单_按索引插入子菜单(long long h, long long index, int commandId, const wchar_t* label) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? 0 : static_cast<long long>(LB_CEF3_MenuInsertSubMenuAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), commandId, label));
+#else
+        (void)h; (void)index; (void)commandId; (void)label; return 0;
+#endif
+    }
+    int CEF3菜单_按索引删除(long long h, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuRemoveAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index));
+#else
+        (void)h; (void)index; return 0;
+#endif
+    }
+    std::wstring CEF3菜单_按索引取标题(long long h, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (index < 0) return L""; size_t required = 0;
+        LB_CEF3_MenuGetLabelAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), nullptr, 0, &required);
+  if (!required) return L""; std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_MenuGetLabelAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), result.data(), result.size(), &required) == LB_CEF3_OK ? std::wstring(result.data()) : L"";
+#else
+        (void)h; (void)index; return L"";
+#endif
+    }
+    int CEF3菜单_按索引设标题(long long h, long long index, const wchar_t* label) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuSetLabelAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), label);
+#else
+        (void)h; (void)index; (void)label; return 0;
+#endif
+    }
+    int CEF3菜单_按索引取类型(long long h, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuGetTypeAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index));
+#else
+        (void)h; (void)index; return 0;
+#endif
+    }
+    int CEF3菜单_按索引取组ID(long long h, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuGetGroupIdAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index));
+#else
+        (void)h; (void)index; return -1;
+#endif
+    }
+    int CEF3菜单_按索引设组ID(long long h, long long index, int groupId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuSetGroupIdAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), groupId);
+#else
+        (void)h; (void)index; (void)groupId; return 0;
+#endif
+    }
+    long long CEF3菜单_按索引取子菜单(long long h, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? 0 : static_cast<long long>(LB_CEF3_MenuGetSubMenuAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index)));
+#else
+        (void)h; (void)index; return 0;
+#endif
+    }
+    int CEF3菜单_按索引是否可见(long long h, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuIsVisibleAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index));
+#else
+        (void)h; (void)index; return 0;
+#endif
+    }
+    int CEF3菜单_按索引设置可见(long long h, long long index, bool value) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuSetVisibleAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), value ? 1 : 0);
+#else
+        (void)h; (void)index; (void)value; return 0;
+#endif
+    }
+    int CEF3菜单_按索引是否启用(long long h, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuIsEnabledAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index));
+#else
+        (void)h; (void)index; return 0;
+#endif
+    }
+    int CEF3菜单_按索引设置启用(long long h, long long index, bool value) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuSetEnabledAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), value ? 1 : 0);
+#else
+        (void)h; (void)index; (void)value; return 0;
+#endif
+    }
+    int CEF3菜单_按索引是否勾选(long long h, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuIsCheckedAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index));
+#else
+        (void)h; (void)index; return 0;
+#endif
+    }
+    int CEF3菜单_按索引设置勾选(long long h, long long index, bool value) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuSetCheckedAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), value ? 1 : 0);
+#else
+        (void)h; (void)index; (void)value; return 0;
+#endif
+    }
+    int CEF3菜单_是否有快捷键(long long h, int commandId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuHasAccelerator(static_cast<LB_CEF3_HANDLE>(h), commandId);
+#else
+        (void)h; (void)commandId; return 0;
+#endif
+    }
+    int CEF3菜单_按索引是否有快捷键(long long h, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuHasAcceleratorAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index));
+#else
+        (void)h; (void)index; return 0;
+#endif
+    }
+    int CEF3菜单_设置快捷键(long long h, int commandId, int keyCode, bool shift, bool control, bool alt) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuSetAccelerator(static_cast<LB_CEF3_HANDLE>(h), commandId, keyCode, shift, control, alt);
+#else
+        (void)h; (void)commandId; (void)keyCode; (void)shift; (void)control; (void)alt; return 0;
+#endif
+    }
+    int CEF3菜单_按索引设置快捷键(long long h, long long index, int keyCode, bool shift, bool control, bool alt) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuSetAcceleratorAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), keyCode, shift, control, alt);
+#else
+        (void)h; (void)index; (void)keyCode; (void)shift; (void)control; (void)alt; return 0;
+#endif
+    }
+    int CEF3菜单_删除快捷键(long long h, int commandId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuRemoveAccelerator(static_cast<LB_CEF3_HANDLE>(h), commandId);
+#else
+        (void)h; (void)commandId; return 0;
+#endif
+    }
+    int CEF3菜单_按索引删除快捷键(long long h, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuRemoveAcceleratorAt(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index));
+#else
+        (void)h; (void)index; return 0;
+#endif
+    }
+    std::wstring CEF3菜单_取快捷键JSON(long long h, int commandId) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0; LB_CEF3_MenuGetAcceleratorJson(static_cast<LB_CEF3_HANDLE>(h), commandId, nullptr, 0, &required);
+  if (!required) return L""; std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_MenuGetAcceleratorJson(static_cast<LB_CEF3_HANDLE>(h), commandId, result.data(), result.size(), &required) == LB_CEF3_OK ? std::wstring(result.data()) : L"";
+#else
+        (void)h; (void)commandId; return L"";
+#endif
+    }
+    std::wstring CEF3菜单_按索引取快捷键JSON(long long h, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        if (index < 0) return L""; size_t required = 0; LB_CEF3_MenuGetAcceleratorAtJson(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), nullptr, 0, &required);
+  if (!required) return L""; std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_MenuGetAcceleratorAtJson(static_cast<LB_CEF3_HANDLE>(h), static_cast<uint64_t>(index), result.data(), result.size(), &required) == LB_CEF3_OK ? std::wstring(result.data()) : L"";
+#else
+        (void)h; (void)index; return L"";
+#endif
+    }
+    int CEF3菜单_设置颜色(long long h, int commandId, int colorType, long long color) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return color < 0 || color > 0xffffffffLL ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuSetColor(static_cast<LB_CEF3_HANDLE>(h), commandId, colorType, static_cast<uint32_t>(color));
+#else
+        (void)h; (void)commandId; (void)colorType; (void)color; return 0;
+#endif
+    }
+    int CEF3菜单_按索引设置颜色(long long h, int index, int colorType, long long color) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return color < 0 || color > 0xffffffffLL ? LB_CEF3_ERROR_INVALID_ARGUMENT : LB_CEF3_MenuSetColorAt(static_cast<LB_CEF3_HANDLE>(h), index, colorType, static_cast<uint32_t>(color));
+#else
+        (void)h; (void)index; (void)colorType; (void)color; return 0;
+#endif
+    }
+    long long CEF3菜单_取颜色(long long h, int commandId, int colorType) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_MenuGetColor(static_cast<LB_CEF3_HANDLE>(h), commandId, colorType));
+#else
+        (void)h; (void)commandId; (void)colorType; return -1;
+#endif
+    }
+    long long CEF3菜单_按索引取颜色(long long h, int index, int colorType) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_MenuGetColorAt(static_cast<LB_CEF3_HANDLE>(h), index, colorType));
+#else
+        (void)h; (void)index; (void)colorType; return -1;
+#endif
+    }
+    int CEF3菜单_设置字体(long long h, int commandId, const wchar_t* fontList) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuSetFontList(static_cast<LB_CEF3_HANDLE>(h), commandId, fontList);
+#else
+        (void)h; (void)commandId; (void)fontList; return 0;
+#endif
+    }
+    int CEF3菜单_按索引设置字体(long long h, int index, const wchar_t* fontList) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuSetFontListAt(static_cast<LB_CEF3_HANDLE>(h), index, fontList);
+#else
+        (void)h; (void)index; (void)fontList; return 0;
+#endif
+    }
+    int CEF3菜单_释放(long long h) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_MenuRelease(static_cast<LB_CEF3_HANDLE>(h));
+#else
+        (void)h; return 0;
+#endif
+    }
+
+    long long CEF3图像_创建() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ImageCreate());
+#else
+        return 0;
+#endif
+    }
+
+    int CEF3图像_是否为空(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ImageIsEmpty(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3图像_是否相同(long long handle, long long otherHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ImageIsSame(static_cast<LB_CEF3_HANDLE>(handle), static_cast<LB_CEF3_HANDLE>(otherHandle));
+#else
+        (void)handle; (void)otherHandle; return 0;
+#endif
+    }
+
+    int CEF3图像_添加位图(long long handle, double scaleFactor, int pixelWidth, int pixelHeight,
+                         int colorType, int alphaType, long long bufferHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ImageAddBitmap(static_cast<LB_CEF3_HANDLE>(handle), scaleFactor, pixelWidth, pixelHeight,
+            colorType, alphaType, static_cast<LB_CEF3_BUFFER_HANDLE>(bufferHandle));
+#else
+        (void)handle; (void)scaleFactor; (void)pixelWidth; (void)pixelHeight;
+        (void)colorType; (void)alphaType; (void)bufferHandle; return 0;
+#endif
+    }
+
+    int CEF3图像_添加PNG(long long handle, double scaleFactor, long long bufferHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ImageAddPng(static_cast<LB_CEF3_HANDLE>(handle), scaleFactor,
+            static_cast<LB_CEF3_BUFFER_HANDLE>(bufferHandle));
+#else
+        (void)handle; (void)scaleFactor; (void)bufferHandle; return 0;
+#endif
+    }
+
+    int CEF3图像_添加JPEG(long long handle, double scaleFactor, long long bufferHandle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ImageAddJpeg(static_cast<LB_CEF3_HANDLE>(handle), scaleFactor,
+            static_cast<LB_CEF3_BUFFER_HANDLE>(bufferHandle));
+#else
+        (void)handle; (void)scaleFactor; (void)bufferHandle; return 0;
+#endif
+    }
+
+    long long CEF3图像_取宽度(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ImageGetWidth(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3图像_取高度(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ImageGetHeight(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3图像_是否有表示(long long handle, double scaleFactor) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ImageHasRepresentation(static_cast<LB_CEF3_HANDLE>(handle), scaleFactor);
+#else
+        (void)handle; (void)scaleFactor; return 0;
+#endif
+    }
+
+    int CEF3图像_删除表示(long long handle, double scaleFactor) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ImageRemoveRepresentation(static_cast<LB_CEF3_HANDLE>(handle), scaleFactor);
+#else
+        (void)handle; (void)scaleFactor; return 0;
+#endif
+    }
+
+    std::wstring CEF3图像_取表示信息(long long handle, double scaleFactor) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        LB_CEF3_ImageGetRepresentationInfo(static_cast<LB_CEF3_HANDLE>(handle), scaleFactor, nullptr, 0, &required);
+        if (required == 0) return L"";
+        std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_ImageGetRepresentationInfo(static_cast<LB_CEF3_HANDLE>(handle), scaleFactor,
+            result.data(), result.size(), &required) == LB_CEF3_OK ? std::wstring(result.data()) : L"";
+#else
+        (void)handle; (void)scaleFactor; return L"";
+#endif
+    }
+
+    long long CEF3图像_取位图缓冲(long long handle, double scaleFactor, int colorType, int alphaType) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ImageGetAsBitmap(static_cast<LB_CEF3_HANDLE>(handle),
+            scaleFactor, colorType, alphaType));
+#else
+        (void)handle; (void)scaleFactor; (void)colorType; (void)alphaType; return 0;
+#endif
+    }
+
+    long long CEF3图像_取PNG缓冲(long long handle, double scaleFactor, bool withTransparency) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ImageGetAsPng(static_cast<LB_CEF3_HANDLE>(handle),
+            scaleFactor, withTransparency ? 1 : 0));
+#else
+        (void)handle; (void)scaleFactor; (void)withTransparency; return 0;
+#endif
+    }
+
+    long long CEF3图像_取JPEG缓冲(long long handle, double scaleFactor, int quality) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_ImageGetAsJpeg(static_cast<LB_CEF3_HANDLE>(handle),
+            scaleFactor, quality));
+#else
+        (void)handle; (void)scaleFactor; (void)quality; return 0;
+#endif
+    }
+
+    int CEF3图像_释放(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_ImageRelease(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3导航项_取当前可见(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance ? static_cast<long long>(LB_CEF3_BrowserGetVisibleNavigationEntry(instance->bridgeHandle)) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    long long CEF3导航项_读取历史(const wchar_t* controlName, bool currentOnly) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance ? static_cast<long long>(LB_CEF3_BrowserGetNavigationEntries(instance->bridgeHandle, currentOnly ? 1 : 0)) : 0;
+#else
+        (void)controlName; (void)currentOnly; return 0;
+#endif
+    }
+
+    int CEF3导航项_是否有效(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_NavigationEntryIsValid(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    std::wstring CEF3导航项_取地址(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_NavigationEntryGetUrl);
+#else
+        (void)handle; return L"";
+#endif
+    }
+
+    std::wstring CEF3导航项_取显示地址(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_NavigationEntryGetDisplayUrl);
+#else
+        (void)handle; return L"";
+#endif
+    }
+
+    std::wstring CEF3导航项_取原始地址(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_NavigationEntryGetOriginalUrl);
+#else
+        (void)handle; return L"";
+#endif
+    }
+
+    std::wstring CEF3导航项_取标题(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_NavigationEntryGetTitle);
+#else
+        (void)handle; return L"";
+#endif
+    }
+
+    int CEF3导航项_取跳转类型(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_NavigationEntryGetTransitionType(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3导航项_是否含提交数据(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_NavigationEntryHasPostData(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    double CEF3导航项_取完成时间(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_NavigationEntryGetCompletionTime(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0.0;
+#endif
+    }
+
+    int CEF3导航项_取HTTP状态码(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_NavigationEntryGetHttpStatusCode(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    int CEF3导航项_释放(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_NavigationEntryRelease(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3证书_取当前(const wchar_t* controlName) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        CefBrowserInstance* instance = CEF3_查找实例(controlName);
+        return instance ? static_cast<long long>(LB_CEF3_BrowserGetCurrentCertificate(instance->bridgeHandle)) : 0;
+#else
+        (void)controlName; return 0;
+#endif
+    }
+
+    int CEF3证书_是否安全连接(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CertificateIsSecureConnection(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+    long long CEF3证书_取证书状态(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CertificateGetCertStatus(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return -1;
+#endif
+    }
+    int CEF3证书_取SSL版本(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CertificateGetSslVersion(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return -1;
+#endif
+    }
+    long long CEF3证书_取内容状态(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CertificateGetContentStatus(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return -1;
+#endif
+    }
+
+    long long CEF3证书_取主体(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CertificateGetSubject(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3证书_取颁发者(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CertificateGetIssuer(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3证书_取序列号缓冲(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CertificateGetSerialNumber(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3证书_取DER缓冲(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CertificateGetDerEncoded(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3证书_取PEM缓冲(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CertificateGetPemEncoded(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3证书_取生效时间(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CertificateGetValidStart(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3证书_取失效时间(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CertificateGetValidExpiry(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3证书_取颁发链数量(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return static_cast<long long>(LB_CEF3_CertificateGetIssuerChainSize(static_cast<LB_CEF3_HANDLE>(handle)));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    long long CEF3证书_取DER颁发链项(long long handle, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? 0 : static_cast<long long>(LB_CEF3_CertificateGetDerIssuerChainItem(
+            static_cast<LB_CEF3_HANDLE>(handle), static_cast<uint64_t>(index)));
+#else
+        (void)handle; (void)index; return 0;
+#endif
+    }
+
+    long long CEF3证书_取PEM颁发链项(long long handle, long long index) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return index < 0 ? 0 : static_cast<long long>(LB_CEF3_CertificateGetPemIssuerChainItem(
+            static_cast<LB_CEF3_HANDLE>(handle), static_cast<uint64_t>(index)));
+#else
+        (void)handle; (void)index; return 0;
+#endif
+    }
+
+    int CEF3证书_释放(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CertificateRelease(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    std::wstring CEF3证书主体_取显示名(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_CertificatePrincipalGetDisplayName);
+#else
+        (void)handle; return L"";
+#endif
+    }
+
+    std::wstring CEF3证书主体_取通用名(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_CertificatePrincipalGetCommonName);
+#else
+        (void)handle; return L"";
+#endif
+    }
+
+    std::wstring CEF3证书主体_取地区名(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_CertificatePrincipalGetLocalityName);
+#else
+        (void)handle; return L"";
+#endif
+    }
+
+    std::wstring CEF3证书主体_取省州名(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_CertificatePrincipalGetStateOrProvinceName);
+#else
+        (void)handle; return L"";
+#endif
+    }
+
+    std::wstring CEF3证书主体_取国家名(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_CertificatePrincipalGetCountryName);
+#else
+        (void)handle; return L"";
+#endif
+    }
+
+    std::wstring CEF3证书主体_取组织JSON(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_CertificatePrincipalGetOrganizationNamesJson);
+#else
+        (void)handle; return L"[]";
+#endif
+    }
+
+    std::wstring CEF3证书主体_取组织单位JSON(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return CEF3_Bridge读取文本(static_cast<LB_CEF3_HANDLE>(handle), LB_CEF3_CertificatePrincipalGetOrganizationUnitNamesJson);
+#else
+        (void)handle; return L"[]";
+#endif
+    }
+
+    int CEF3证书主体_释放(long long handle) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return LB_CEF3_CertificatePrincipalRelease(static_cast<LB_CEF3_HANDLE>(handle));
+#else
+        (void)handle; return 0;
+#endif
+    }
+
+    std::wstring CEF3平台_取版本() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        LB_CEF3_GetCefVersion(nullptr, 0, &required);
+        if (required == 0) return L"CEF3 Bridge版本读取失败";
+        std::vector<wchar_t> result(required, L'\\0');
+        if (LB_CEF3_GetCefVersion(result.data(), result.size(), &required) != LB_CEF3_OK) return L"CEF3 Bridge版本读取失败";
+        return std::wstring(result.data()) + L" / Bridge ABI 3";
+#elif LINGBUILDER_CEF3_AVAILABLE
+        return LingCppUtf8ToWide(CEF_VERSION) + L" / Chromium " + std::to_wstring(CHROME_VERSION_MAJOR);
+#else
+        return L"CEF3不可用";
+#endif
+    }
+
+    std::wstring CEF3平台_取MIME扩展名(const wchar_t* mimeType) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        LB_CEF3_GetExtensionsForMimeType(mimeType, nullptr, 0, &required);
+        if (required == 0) return L"[]";
+    std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_GetExtensionsForMimeType(mimeType, result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"[]";
+#else
+        (void)mimeType; return L"[]";
+#endif
+    }
+
+    std::wstring CEF3平台_取Chrome实验开关() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        LB_CEF3_GetChromeVariationsAsSwitches(nullptr, 0, &required);
+        if (required == 0) return L"[]";
+    std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_GetChromeVariationsAsSwitches(result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"[]";
+#else
+        return L"[]";
+#endif
+    }
+
+    std::wstring CEF3平台_取Chrome实验说明() {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        size_t required = 0;
+        LB_CEF3_GetChromeVariationsAsStrings(nullptr, 0, &required);
+        if (required == 0) return L"[]";
+    std::vector<wchar_t> result(required, L'\\0');
+        return LB_CEF3_GetChromeVariationsAsStrings(result.data(), result.size(), &required) == LB_CEF3_OK
+            ? std::wstring(result.data()) : L"[]";
+#else
+        return L"[]";
+#endif
     }
 
     void CEF3_关闭(const wchar_t* controlName) {
@@ -4919,11 +8938,24 @@ ${edgeViewEventIdCases}
             const ControlSpec* control = FindControl(it->second->controlId);
             bool match = !controlName || !controlName[0] || (control && TextEquals(control->name, controlName));
             if (match) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+                for (auto popup : it->second->bridgePopupHandles) {
+                    LB_CEF3_BrowserClose(popup, 1);
+                    LB_CEF3_HandleRelease(popup);
+                }
+                it->second->bridgePopupHandles.clear();
+                if (it->second->bridgeHandle) {
+                    LB_CEF3_BrowserClose(it->second->bridgeHandle, 1);
+                    LB_CEF3_HandleRelease(it->second->bridgeHandle);
+                    it->second->bridgeHandle = 0;
+                }
+#else
                 for (auto& popup : it->second->popupBrowsers) {
                     if (popup && popup->GetHost()) popup->GetHost()->CloseBrowser(true);
                 }
                 it->second->popupBrowsers.clear();
                 if (it->second->browser) it->second->browser->GetHost()->CloseBrowser(true);
+#endif
                 it = cefBrowsers_.erase(it);
             } else ++it;
         }
@@ -4973,7 +9005,11 @@ ${edgeViewEventIdCases}
     int CEF3_是否可后退(const wchar_t* controlName) {
 #if LINGBUILDER_CEF3_AVAILABLE
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserCanGoBack(instance->bridgeHandle) > 0 ? 1 : 0;
+#else
         return instance && instance->browser && instance->browser->CanGoBack() ? 1 : 0;
+#endif
 #else
         (void)controlName; return 0;
 #endif
@@ -4982,7 +9018,11 @@ ${edgeViewEventIdCases}
     int CEF3_是否可前进(const wchar_t* controlName) {
 #if LINGBUILDER_CEF3_AVAILABLE
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserCanGoForward(instance->bridgeHandle) > 0 ? 1 : 0;
+#else
         return instance && instance->browser && instance->browser->CanGoForward() ? 1 : 0;
+#endif
 #else
         (void)controlName; return 0;
 #endif
@@ -4991,7 +9031,11 @@ ${edgeViewEventIdCases}
     int CEF3_是否加载中(const wchar_t* controlName) {
 #if LINGBUILDER_CEF3_AVAILABLE
         CefBrowserInstance* instance = CEF3_查找实例(controlName);
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+        return instance && LB_CEF3_BrowserIsLoading(instance->bridgeHandle) > 0 ? 1 : 0;
+#else
         return instance && instance->browser && instance->browser->IsLoading() ? 1 : 0;
+#endif
 #else
         (void)controlName; return 0;
 #endif
@@ -5067,10 +9111,14 @@ ${edgeViewEventIdCases}
 #if LINGBUILDER_CEF3_AVAILABLE
         for (auto& item : cefBrowsers_) {
             if (!item.second->created || !item.second->host) continue;
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+            if (item.second->bridgeHandle) LB_CEF3_BrowserResize(item.second->bridgeHandle);
+#else
             RECT bounds = {};
             GetClientRect(item.second->host, &bounds);
             HWND browserHwnd = item.second->browser ? item.second->browser->GetHost()->GetWindowHandle() : nullptr;
             if (browserHwnd && IsWindow(browserHwnd)) SetWindowPos(browserHwnd, nullptr, 0, 0, bounds.right, bounds.bottom, SWP_NOZORDER | SWP_NOACTIVATE);
+#endif
         }
 #endif
     }
@@ -5078,11 +9126,22 @@ ${edgeViewEventIdCases}
     void CEF3_关闭全部() {
 #if LINGBUILDER_CEF3_AVAILABLE
         for (auto& item : cefBrowsers_) {
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+            for (auto popup : item.second->bridgePopupHandles) {
+                LB_CEF3_BrowserClose(popup, 1);
+                LB_CEF3_HandleRelease(popup);
+            }
+            if (item.second->bridgeHandle) {
+                LB_CEF3_BrowserClose(item.second->bridgeHandle, 1);
+                LB_CEF3_HandleRelease(item.second->bridgeHandle);
+            }
+#else
             for (auto& popup : item.second->popupBrowsers) {
                 if (popup && popup->GetHost()) popup->GetHost()->CloseBrowser(true);
             }
             item.second->popupBrowsers.clear();
             if (item.second->browser) item.second->browser->GetHost()->CloseBrowser(true);
+#endif
         }
         cefBrowsers_.clear();
 #endif
@@ -10038,7 +14097,8 @@ private:
                     const auto& fields = records[0];
                     if (fields.size() > 0 && !fields[0].empty()) instance->cacheDirectory = fields[0];
                     if (fields.size() > 1 && !fields[1].empty()) instance->userAgent = fields[1];
-                    if (fields.size() > 3 && !fields[3].empty() && fields[2] == L"custom") instance->proxyServer = fields[3];
+                    if (fields.size() > 2 && !fields[2].empty()) instance->proxyMode = fields[2];
+                    if (fields.size() > 3 && !fields[3].empty() && instance->proxyMode == L"custom") instance->proxyServer = fields[3];
                 }
             }
             instance->enableJs = (control.value & 1) != 0;
@@ -10170,8 +14230,10 @@ private:
             return 0;
         }
         case WM_LINGBUILDER_FBRO_EVENT: {
-            std::unique_ptr<LingFbroEventPacket> packet(reinterpret_cast<LingFbroEventPacket*>(lParam));
-            if (packet) FBro_处理事件包(*packet);
+            auto* packet = reinterpret_cast<LingFbroEventPacket*>(lParam);
+            if (!packet) return 0;
+            FBro_处理事件包(*packet);
+            if (!packet->synchronous) delete packet;
             return 0;
         }
         case WM_LINGBUILDER_LAYOUT_DATE_PICKER: {
@@ -10987,6 +15049,10 @@ public:
     void OnDocumentAvailableInMainFrame(CefRefPtr<CefBrowser>) override { Async(L"主文档可用", L""); }
 
     bool OnChromeCommand(CefRefPtr<CefBrowser>, int commandId, cef_window_open_disposition_t disposition) override {
+        if ((commandId == IDC_DEV_TOOLS || commandId == IDC_DEV_TOOLS_CONSOLE || commandId == IDC_DEV_TOOLS_DEVICES
+             || commandId == IDC_DEV_TOOLS_INSPECT || commandId == IDC_DEV_TOOLS_TOGGLE
+             || commandId == IDC_CONTENT_CONTEXT_INSPECTELEMENT_WITH_DEVTOOLS)
+            && owner_ && !owner_->CEF3_允许开发者工具(controlId_)) return true;
         return Sync(L"Chrome命令", I(commandId), {{L"commandId", I(commandId)}, {L"disposition", I(disposition)}}).action == 3;
     }
     bool IsChromeAppMenuItemVisible(CefRefPtr<CefBrowser>, int commandId) override { return VisibilityDecision(L"应用菜单项可见性查询", commandId, true); }
@@ -11131,7 +15197,10 @@ static HWND OpenGeneratedWindowByName(const wchar_t* windowName, int showCommand
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
-#if LINGBUILDER_CEF3_AVAILABLE
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+    int cefExitCode = LB_CEF3_ExecuteSubProcess(reinterpret_cast<uint64_t>(instance));
+    if (cefExitCode >= 0) return cefExitCode;
+#elif LINGBUILDER_CEF3_AVAILABLE
     CefMainArgs cefMainArgs(instance);
     int cefExitCode = CefExecuteProcess(cefMainArgs, nullptr, nullptr);
     if (cefExitCode >= 0) return cefExitCode;
@@ -11192,7 +15261,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     }
     if (SUCCEEDED(mediaFoundationResult)) MFShutdown();
     if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken);
-#if LINGBUILDER_CEF3_AVAILABLE
+#if LINGBUILDER_CEF3_BRIDGE_AVAILABLE
+    LB_CEF3_Shutdown();
+#elif LINGBUILDER_CEF3_AVAILABLE
     CefShutdown();
 #endif
 #if LINGBUILDER_FBRO_AVAILABLE
@@ -11202,6 +15273,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
     return static_cast<int>(message.wParam);
 }
 `;
+  return enabledModules.some(module => module.manifest.id === 'lingbuilder.cef3.browser')
+    ? createBridgeOnlyCef3Source(generatedSource)
+    : generatedSource;
 }
 
 function generateNativeManifest(
@@ -11209,7 +15283,8 @@ function generateNativeManifest(
   selectedWindow: LingWindowModel,
   enabledModules: InstalledModule[],
   sourceFilePath: string,
-  sourceMap: LingCppNativeSourceMapEntry[]
+  sourceMap: LingCppNativeSourceMapEntry[],
+  edgeViewApiUsage: EdgeViewApiUsage
 ): string {
   return JSON.stringify({
     schemaVersion: 1,
@@ -11231,6 +15306,12 @@ function generateNativeManifest(
       version: module.manifest.version,
       builtin: Boolean(module.isBuiltin)
     })),
+    edgeView: enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview') ? {
+      sdk: EDGEVIEW_SDK_VERSION,
+      minimumRuntimeMajor: edgeViewApiUsage.minimumRuntimeMajor,
+      capability: edgeViewApiUsage.minimumRuntimeMajor >= EDGEVIEW_FULL_RUNTIME_MAJOR ? 'edgeview.safe-api.v2' : 'edgeview.safe-api.v1',
+      usedCommands: edgeViewApiUsage.commands
+    } : undefined,
     files: ['main.cpp', 'layout.json', 'module-dependencies.txt', 'README.txt', 'lingbuilder-native-manifest.json'],
     sourceMap
   }, null, 2);
@@ -11659,6 +15740,18 @@ function generateModuleCppPreamble(enabledModules: InstalledModule[]): string {
   return lines.join('\n');
 }
 
+interface EdgeViewApiUsage {
+  commands: string[];
+  minimumRuntimeMajor: number;
+}
+
+function collectEdgeViewApiUsage(source: string): EdgeViewApiUsage {
+  const known = new Map(EDGEVIEW_SAFE_API_CATALOG.map(entry => [entry.command.name, entry.minimumRuntimeMajor]));
+  const commands = Array.from(new Set([...source.matchAll(/\b(EdgeView[\p{L}\p{N}_]+)\s*\(/gu)].map(match => match[1]))).sort((left, right) => left.localeCompare(right, 'zh-CN'));
+  const minimumRuntimeMajor = commands.reduce((required, command) => Math.max(required, known.get(command) || EDGEVIEW_MINIMUM_RUNTIME_MAJOR), EDGEVIEW_MINIMUM_RUNTIME_MAJOR);
+  return { commands, minimumRuntimeMajor };
+}
+
 function appendModuleLibraryPragmas(
   lines: string[],
   module: InstalledModule,
@@ -11792,6 +15885,11 @@ ${edgeDispatchCases || '        (void)callback;'}
         std::wstring callback = handler ? handler : L"";
 ${edgeDispatchCases || '        (void)callback;'}
         LingWindowBase::DispatchCefBrowserEvent(handler, controlId, eventName, data);
+    }
+    void DispatchFbroBrowserEvent(const wchar_t* handler, int controlId, LB_FBRO_HANDLE instanceId, const wchar_t* eventName, const wchar_t* data) override {
+        std::wstring callback = handler ? handler : L"";
+${edgeDispatchCases || '        (void)callback;'}
+        LingWindowBase::DispatchFbroBrowserEvent(handler, controlId, instanceId, eventName, data);
     }
 ${protectedUserMethodBlock}
 
@@ -12259,7 +16357,8 @@ function translateStatement(statement: string, enabledModules: InstalledModule[]
     const binding = findModuleCommandBinding(callStatement.name, enabledModules);
     if (binding) return `${toCppIdentifier(binding.runtimeName)}(${translateModuleCallArguments(callStatement.argumentsText, binding, enabledModules)});`;
     const looksLikeModuleCommand = enabledModules.some(module =>
-      (module.manifest.contributes?.commands || []).some(command => command.name === callStatement.name)
+      (module.manifest.contributes?.commands || []).some(command =>
+        command.name === callStatement.name || (command.aliases || []).includes(callStatement.name))
     );
     if (looksLikeModuleCommand) {
       return `// 模块命令缺少 v2 binding，无法生成确定性 C++ 调用：${escapeCppComment(callStatement.name)}`;
@@ -12272,7 +16371,9 @@ function translateStatement(statement: string, enabledModules: InstalledModule[]
 
 function findModuleCommandBinding(commandName: string, enabledModules: InstalledModule[]) {
   for (const module of enabledModules) {
-    const binding = (module.manifest.bindings?.commands || []).find(item => item.command === commandName);
+    const canonicalName = (module.manifest.contributes?.commands || []).find(command =>
+      command.name === commandName || (command.aliases || []).includes(commandName))?.name;
+    const binding = (module.manifest.bindings?.commands || []).find(item => item.command === (canonicalName || commandName));
     if (binding) return binding;
   }
   return undefined;
@@ -13061,7 +17162,26 @@ function serializeControlData(control: LingControl, controlIds: Map<string, numb
       : `.edgeview/${fallbackCacheId}`;
     const proxyMode = typeof properties.proxyMode === 'string' ? properties.proxyMode : 'system';
     const proxyServer = typeof properties.proxyServer === 'string' ? properties.proxyServer : '';
-    return [url, encodeControlFields([cacheDir, proxyMode, proxyServer])];
+    const boolText = (value: unknown, fallback: boolean) => (typeof value === 'boolean' ? value : fallback) ? 'true' : 'false';
+    return [url, encodeControlFields([
+      cacheDir, proxyMode, proxyServer,
+      typeof properties.userAgent === 'string' ? properties.userAgent : '',
+      boolText(properties.enableScript, true), boolText(properties.enableWebMessage, true), boolText(properties.enableDevTools, true),
+      boolText(properties.enableContextMenu, true), boolText(properties.enableStatusBar, true),
+      String(typeof properties.zoomFactor === 'number' ? properties.zoomFactor : 100), boolText(properties.muteAudio, false),
+      typeof properties.defaultBackgroundColor === 'string' ? properties.defaultBackgroundColor : '#FFFFFF',
+      boolText(properties.allowExternalDrop, true), typeof properties.profileName === 'string' ? properties.profileName : '默认',
+      boolText(properties.inPrivate, false), typeof properties.language === 'string' ? properties.language : 'zh-CN',
+      typeof properties.trackingPrevention === 'string' ? properties.trackingPrevention : 'balanced',
+      boolText(properties.enableAutofill, true), boolText(properties.enablePasswordAutosave, true),
+      boolText(properties.exclusiveUserDataFolderAccess, false), boolText(properties.customCrashReporting, false),
+      boolText(properties.environmentTrackingPrevention, true), boolText(properties.browserExtensionsEnabled, false),
+      typeof properties.channelSearchKind === 'string' ? properties.channelSearchKind : 'stable-first',
+      String(typeof properties.releaseChannels === 'number' ? properties.releaseChannels : 15),
+      typeof properties.scrollBarStyle === 'string' ? properties.scrollBarStyle : 'default',
+      typeof properties.scriptLocale === 'string' ? properties.scriptLocale : '',
+      boolText(properties.allowHostInputProcessing, false)
+    ])];
   }
   const scalar = properties.imageSource ?? properties.gifSource ?? properties.aviSource ?? properties.videoSource ?? properties.url ?? properties.address ?? properties.hotKey
     ?? (typeof properties.value === 'string' ? properties.value : undefined);

@@ -11,6 +11,7 @@ import { getLingCppCompletions, getLingCppSemanticDiagnostics } from '../src/ser
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import { CEF3_BROWSER_EVENTS } from '../src/services/modules/cef3BrowserEvents';
 import { EDGEVIEW_BROWSER_EVENTS, EDGEVIEW_COMPOSITION_ONLY_EVENTS } from '../src/services/modules/edgeViewBrowserEvents';
+import { EDGEVIEW_SAFE_API_CATALOG, validateEdgeViewApiCatalog } from '../src/services/modules/edgeViewApiCatalog';
 import { STANDARD_LIBRARY_MODULES } from '../src/services/modules/standardLibraryModules';
 import { SYSTEM_LIBRARY_MODULES } from '../src/services/modules/systemLibraryModules';
 import { NETWORK_LIBRARY_MODULES } from '../src/services/modules/networkLibraryModules';
@@ -413,6 +414,287 @@ test('module enable plan is side-effect free and can join a source copy transact
   assert.match(plan.targetPath, /projects[\\/]project-a[\\/]project-modules\.json$/u);
   assert.ok(JSON.parse(plan.sourceCode).enabledModuleIds.includes(manifest.id));
   assert.ok(!(await service.getEnabledProjectModules('project-a')).some(module => module.manifest.id === manifest.id));
+});
+
+test('FBro submodules recursively enable the v2 core and require confirmed cascade disable', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-fbro-dependencies-'));
+  await writeSolutionFixture(root, ['project-a']);
+  const service = createModuleService(root);
+
+  const plan = await service.planEnableModulesForProject('project-a', ['lingbuilder.fbro.objects', 'lingbuilder.fbro.events']);
+  assert.deepEqual(plan.requestedModuleIds, ['lingbuilder.fbro.objects', 'lingbuilder.fbro.events']);
+  assert.deepEqual(plan.dependencyModuleIds, ['lingbuilder.fbro.browser']);
+  assert.equal(plan.addedModuleIds[0], 'lingbuilder.fbro.browser');
+  await service.enableModuleForProject('project-a', 'lingbuilder.fbro.objects');
+  await service.enableModuleForProject('project-a', 'lingbuilder.fbro.events');
+
+  const disablePlan = await service.planDisableModuleForProject('project-a', 'lingbuilder.fbro.browser');
+  assert.deepEqual(new Set(disablePlan.dependentModuleIds), new Set(['lingbuilder.fbro.objects', 'lingbuilder.fbro.events']));
+  await assert.rejects(() => service.disableModuleForProject('project-a', 'lingbuilder.fbro.browser'), /级联禁用/u);
+  await service.disableModuleForProject('project-a', 'lingbuilder.fbro.browser', { cascade: true });
+  const enabled = await service.getEnabledProjectModules('project-a');
+  assert.ok(!enabled.some(item => item.manifest.id.startsWith('lingbuilder.fbro.')));
+});
+
+test('module dependency planning blocks insufficient versions and cycles before writing', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-dependency-errors-'));
+  await writeSolutionFixture(root, ['project-a']);
+  const moduleDirectory = (id: string) => path.join(root, '.lingbuilder', 'modules', id, 'lingbuilder.module.json');
+  const base = (id: string, version: string, dependencies: Array<{ moduleId: string; minimumVersion: string }> = []) => ({
+    schemaVersion: 2,
+    id,
+    name: id,
+    version,
+    category: '其他',
+    description: `${id} test module`,
+    dependencies
+  });
+  await writeFixture(moduleDirectory('com.example.dep-core'), JSON.stringify(base('com.example.dep-core', '1.9.0'), null, 2));
+  await writeFixture(moduleDirectory('com.example.dep-feature'), JSON.stringify(base('com.example.dep-feature', '1.0.0', [
+    { moduleId: 'com.example.dep-core', minimumVersion: '2.0.0' }
+  ]), null, 2));
+  const service = createModuleService(root);
+  await assert.rejects(
+    () => service.planEnableModulesForProject('project-a', ['com.example.dep-feature']),
+    /需要 com\.example\.dep-core@>=2\.0\.0/u
+  );
+  await writeFixture(moduleDirectory('com.example.dep-core'), JSON.stringify(base('com.example.dep-core', '2.0.0', [
+    { moduleId: 'com.example.dep-feature', minimumVersion: '1.0.0' }
+  ]), null, 2));
+  await assert.rejects(
+    () => service.planEnableModulesForProject('project-a', ['com.example.dep-feature']),
+    /依赖循环/u
+  );
+  const projectModulesPath = path.join(root, '.lingbuilder', 'projects', 'project-a', 'project-modules.json');
+  assert.ok(!(await exists(projectModulesPath)), '失败的依赖计划不得写入项目模块文件');
+});
+
+test('FBro English aliases participate in completion and deterministic binding resolution', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  assert.ok(manifest);
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.fbro.browser',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const completions = getLingCppCompletions(
+    { source: 'LB_FBro_Nav', line: 1, column: 12 },
+    { enabledModules: [module], availableModules: [module] }
+  );
+  assert.ok(completions.some(item => item.label === 'FBro_导航' && item.aliases?.includes('LB_FBro_Navigate')));
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules: [module],
+    lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        LB_FBro_Navigate("FBro浏览器1", "https://example.com")\n    结束\n结束类'
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /FBro_导航\(L"FBro浏览器1", L"https:\/\/example\.com"\);/u);
+});
+
+test('FBro official SDK coverage catalog remains complete and classified', async () => {
+  await execFileAsync(process.execPath, ['scripts/generate-fbro-api-coverage.cjs', '--check'], { cwd: path.resolve(import.meta.dirname, '..') });
+  const catalog = JSON.parse(await fs.readFile(path.resolve(import.meta.dirname, '..', 'src', 'services', 'modules', 'fbroApiCoverage.generated.json'), 'utf8')) as {
+    headerCount: number;
+    signatureCount: number;
+    rawDeclarationCount: number;
+    eventCatalog: Array<{ officialName: string; synchronous: boolean; timeoutMilliseconds: number; maxHz: number; bridgeStatus: string }>;
+    signatures: Array<{
+      officialName: string;
+      chineseName: string;
+      wrapperSymbol: string;
+      overloadCount: number;
+      overloads: Array<{ overloadId: string; returnCodec: { codec: string }; parameters: Array<{ codec: string }> }>;
+      classification: string;
+      implementationStatus: string;
+      classificationReason: string;
+    }>;
+  };
+  assert.equal(catalog.headerCount, 77);
+  assert.equal(catalog.signatureCount, 1079);
+  assert.equal(catalog.rawDeclarationCount, 1091);
+  assert.equal(catalog.signatures.length, 1079);
+  assert.ok(catalog.signatures.every(item => ['highLevel', 'advancedSafe', 'internal'].includes(item.classification)
+    && ['implemented', 'planned', 'notApplicable'].includes(item.implementationStatus)
+    && item.classificationReason.length > 0));
+  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'implemented').length, 162);
+  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'planned').length, 857);
+  assert.equal(catalog.signatures.filter(item => item.implementationStatus === 'notApplicable').length, 4);
+  assert.match(catalog.signatures.find(item => item.officialName === 'FBroHsBrowserHost_RunFileDialog')?.classificationReason || '', /阻塞/u);
+  assert.ok(catalog.signatures.filter(item => item.classification === 'highLevel').every(item => item.implementationStatus === 'implemented'));
+  assert.ok(catalog.signatures.every(item => /^LB_FBroV2_[0-9a-f]{16}$/u.test(item.wrapperSymbol)
+    && item.overloads.length === item.overloadCount
+    && item.overloads.every(overload => overload.overloadId && overload.returnCodec.codec
+      && overload.parameters.every(parameter => parameter.codec))));
+  assert.ok(catalog.signatures.every(item => !/功能[0-9A-F]{4}/u.test(item.chineseName)));
+  assert.equal(catalog.eventCatalog.length, 158);
+  assert.equal(catalog.eventCatalog.filter(item => item.bridgeStatus === 'implemented').length, 9);
+  assert.ok(catalog.eventCatalog.filter(item => item.synchronous).every(item => item.timeoutMilliseconds === 2000));
+  assert.ok(catalog.eventCatalog.filter(item => /Paint/u.test(item.officialName)).every(item => item.maxHz === 60));
+});
+
+test('FBro Frame 使用类型化句柄并由普通 Win32 与 New_Emoji 共用官方调用', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.automation');
+  assert.ok(manifest);
+  assert.equal(manifest.contributes?.commands?.length, 25);
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'FBro框架_取主框架'
+    && command.aliases?.includes('FBroHsBrowser_GetMainFrame')));
+  assert.ok(manifest.contributes?.commands?.some(command => command.name === 'FBro框架_取标识'
+    && command.aliases?.includes('FBroHsBrowserFrame_GetIdentifier')));
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules: [{ manifest, installPath: 'builtin://lingbuilder.fbro.automation', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }],
+    lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        FBro框架_取主框架("FBro浏览器1")\n    结束\n结束类'
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /LB_FBro_BrowserGetMainFrame/u);
+  assert.match(cpp, /LB_FBro_FrameGetIdentifier/u);
+  assert.match(cpp, /LB_FBro_FrameExecuteJavaScript/u);
+  assert.match(cpp, /LB_FBro_ObjectRelease/u);
+});
+
+test('FBro Session CookieManager 与缓存清理使用受管异步任务和官方 Bridge 调用', async () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.session');
+  assert.ok(manifest);
+  assert.equal(manifest.contributes?.commands?.length, 10);
+  for (const [command, alias] of [
+    ['FBro会话_异步取全部Cookie', 'LB_FBro_CookieVisitAllAsync'],
+    ['FBro会话_异步取地址Cookie', 'LB_FBro_CookieVisitUrlAsync'],
+    ['FBro会话_异步设置Cookie', 'LB_FBro_CookieSetAsync'],
+    ['FBro会话_异步删除Cookie', 'LB_FBro_CookieDeleteAsync'],
+    ['FBro会话_异步刷新Cookie存储', 'LB_FBro_CookieFlushAsync'],
+    ['FBro会话_异步清理缓存', 'LB_FBro_ClearCacheAsync'],
+    ['FBro会话_异步清理全局缓存', 'LB_FBro_ClearGlobalCacheAsync']
+  ]) {
+    assert.ok(manifest.contributes?.commands?.some(item => item.name === command && item.aliases?.includes(alias)));
+  }
+  const bridge = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8');
+  for (const symbol of [
+    'FBroHsBrowserHost_GetRequestContext', 'FBroHsRequestContext_GetCookieManager',
+    'FBroHsCookieManager_GetGlobalManager', 'FBroHsCookieManager_VisitAllCookies',
+    'FBroHsCookieManager_VisitUrlCookies', 'FBroHsCookieManager_SetCookie',
+    'FBroHsCookieManager_DeleteCookies', 'FBroHsCookieManager_FlushStore',
+    'FBroHsBrowser_ClearCacheData', 'FBroHsBrowser_ClearGlobalCacheData',
+    'FBroHsBrowserHost_StartDownload', 'FBroHsBrowserHost_Print'
+  ]) assert.match(bridge, new RegExp(`\\b${symbol}\\b`, 'u'));
+  const bridgeHeader = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.h'), 'utf8');
+  const sessionDeclarations = bridgeHeader.match(/LB_FBro_(?:Cookie\w+Async|Clear(?:Global)?CacheAsync)\([^;]+;/gu) || [];
+  assert.equal(sessionDeclarations.length, 7);
+  assert.ok(sessionDeclarations.every(declaration => !/CefRefPtr|std::|CefCookieManager/u.test(declaration)));
+  assert.match(bridge, /LB_FBro_TaskRelease[\s\S]*?status = LB_FBRO_TASK_CANCELLED;[\s\S]*?callback = nullptr;/u);
+});
+
+test('FBro Transfer PDF、文件对话框与 VIP 截图使用任务和受管缓冲', async () => {
+  const transfer = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.transfer');
+  const objects = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.objects');
+  assert.ok(transfer);
+  assert.ok(objects);
+  assert.equal(transfer.contributes?.commands?.length, 5);
+  assert.ok(objects.contributes?.commands?.some(item => item.name === 'FBro任务_取缓冲' && item.aliases?.includes('LB_FBro_TaskGetBuffer')));
+  for (const [command, alias] of [
+    ['FBro传输_异步生成PDF', 'LB_FBro_PrintToPdfAsync'],
+    ['FBro传输_异步打开文件对话框', 'LB_FBro_RunFileDialogAsync'],
+    ['FBro传输_异步截图', 'LB_FBro_CaptureScreenshotAsync']
+  ]) assert.ok(transfer.contributes?.commands?.some(item => item.name === command && item.aliases?.includes(alias)));
+  const bridge = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8');
+  for (const symbol of [
+    'FBroHsBrowserHost_PrintToPDF', 'IFileOpenDialog', 'CLSID_FileSaveDialog', 'CoCreateInstance',
+    'FBroHsVIPControl_PageCaptureScreenshot', 'CefBase64Decode'
+  ]) assert.match(bridge, new RegExp(`\\b${symbol}\\b`, 'u'));
+  assert.doesNotMatch(bridge, /FBroHsBrowserHost_RunFileDialog|FBroCefStringList_(?:Creat|Add)|GetHost\(\)->RunFileDialog/u);
+  assert.match(bridge, /std::thread\(RunWindowsFileDialog[\s\S]*?\.detach\(\)/u);
+  assert.match(bridge, /FBro 截图需要有效 VIP Key/u);
+  const bridgeHeader = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.h'), 'utf8');
+  const declarations = bridgeHeader.match(/LB_FBro_(?:PrintToPdf|RunFileDialog|CaptureScreenshot)Async\([^;]+;/gu) || [];
+  assert.equal(declarations.length, 3);
+  assert.ok(declarations.every(declaration => !/CefRefPtr|std::|FBroPdfPrintSettings|FBroCefStringList/u.test(declaration)));
+});
+
+test('FBro Value、Dictionary、List、Stream、Image、Certificate 使用类型化受管句柄并生成真实 Bridge 调用', async () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.objects');
+  assert.ok(manifest);
+  assert.equal(manifest.contributes?.commands?.length, 132);
+  assert.deepEqual(
+    manifest.bindings?.commands?.map(binding => binding.command),
+    manifest.contributes?.commands?.map(command => command.name)
+  );
+  for (const [command, alias] of [
+    ['FBro值_创建', 'FBroHsValue_Create'],
+    ['FBro值_设置字典', 'FBroHsValue_SetDictionary'],
+    ['FBro字典_取键列表JSON', 'FBroHsDictionaryValue_GetKeys'],
+    ['FBro字典_设置文本', 'FBroHsDictionaryValue_SetString'],
+    ['FBro列表_取整数', 'FBroHsListValue_GetInt'],
+    ['FBro列表_设置二进制', 'FBroHsListValue_SetBinary'],
+    ['FBro流_从缓冲创建', 'FBroStream_CreateForData'],
+    ['FBro图像_异步下载', 'FBroHsBrowserHost_DownloadImage'],
+    ['FBro证书_取DER缓冲', 'FBroHsX509Certificate_GetDEREncoded'],
+    ['FBro证书主体_取通用名', 'FBroHsX509CertPrincipal_GetCommonName'],
+    ['FBro拖放数据_取图像', 'FBroHsDragData_GetImage']
+  ]) {
+    assert.ok(manifest.contributes?.commands?.some(item => item.name === command && item.aliases?.includes(alias)));
+  }
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.fbro.objects',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules: [module],
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        局部 长整数型 值 = FBro值_创建()',
+      '        FBro值_设置整数(值, 42)',
+      '        局部 长整数型 字典 = FBro字典_创建()',
+      '        FBro字典_设置文本(字典, "name", "LingBuilder")',
+      '        局部 长整数型 列表 = FBro列表_创建()',
+      '        FBro列表_设置数量(列表, 1)',
+      '        FBro字典_设置列表(字典, "items", 列表)',
+      '        局部 长整数型 键列表 = FBro字典_取列表(字典, "items")',
+      '        局部 长整数型 缓冲 = FBro缓冲_从文本("AB")',
+      '        FBro列表_设置二进制(列表, 0, 缓冲)',
+      '        局部 长整数型 流 = FBro流_从缓冲创建(缓冲)',
+      '        局部 长整数型 已读 = FBro流_读取(流, 1, 2)',
+      '        FBro对象_释放(值)',
+      '    结束',
+      '结束类'
+    ].join('\n')
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  for (const symbol of [
+    'LB_FBro_ValueCreate', 'LB_FBro_ValueSetInt',
+    'LB_FBro_ValueSetDictionary', 'LB_FBro_ValueGetBinary',
+    'LB_FBro_DictionaryCreate', 'LB_FBro_DictionarySetString', 'LB_FBro_DictionaryGetKeysJson',
+    'LB_FBro_ListCreate', 'LB_FBro_ListSetSize', 'LB_FBro_ListSetBinary',
+    'LB_FBro_StreamCreateForBuffer', 'LB_FBro_StreamRead',
+    'LB_FBro_TaskWait', 'LB_FBro_TaskGetObject',
+    'LB_FBro_DownloadImageAsync', 'LB_FBro_ImageGetAsPng',
+    'LB_FBro_GetCurrentCertificateAsync', 'LB_FBro_CertificateGetDerEncoded',
+    'LB_FBro_PrincipalGetCommonName', 'LB_FBro_GetLastEventObject',
+    'LB_FBro_DragDataGetImage', 'LB_FBro_ObjectRelease'
+  ]) assert.ok(cpp.includes(symbol), `生成运行时缺少 ${symbol}`);
+
+  const bridge = await fs.readFile(path.resolve('native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8');
+  assert.match(bridge, /std::unordered_map<LB_FBRO_OBJECT_HANDLE, std::shared_ptr<ObjectState>> g_objects/u);
+  assert.match(bridge, /owner_thread != GetCurrentThreadId\(\)/u);
+  assert.match(bridge, /type != expected_type/u);
+  assert.match(bridge, /EraseObjectTree\(object\)/u);
+  assert.match(bridge, /FBroHsValue_Create\(\)/u);
+  assert.match(bridge, /FBroHsDictionaryValue_Create\(\)/u);
+  assert.match(bridge, /FBroHsListValue_Create\(\)/u);
+  assert.match(bridge, /FBroHsBinaryValue_Create\(/u);
+  assert.match(bridge, /FBroStream_CreateForData\(/u);
+  assert.match(bridge, /FBroHsBrowserHost_DownloadImage\(/u);
+  assert.match(bridge, /FBroHsImage_GetAsPNG\(/u);
+  assert.match(bridge, /GetVisibleNavigationEntry\(\)/u);
+  assert.match(bridge, /FBroHsX509Certificate_GetDEREncoded\(/u);
+  assert.match(bridge, /FBroHsX509CertPrincipal_GetCommonName\(/u);
+  assert.match(bridge, /FBroHsDragData_Clone\(/u);
+  assert.match(bridge, /LB_FBRO_EVENT_CERTIFICATE_ERROR/u);
+  assert.match(bridge, /LB_FBRO_EVENT_DRAG_ENTER/u);
 });
 
 test('uninstall removes module references from every solution project', async () => {
@@ -821,8 +1103,8 @@ test('built-in EdgeView module contributes HWND embedding, browser events and Ja
   assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
   const designer = manifest.contributes?.designerControls?.find(control => control.type === 'EdgeBrowser');
   assert.equal(designer?.nativeAdapter, 'edgeview-browser');
-  assert.equal(EDGEVIEW_BROWSER_EVENTS.length, 62);
-  assert.equal(EDGEVIEW_BROWSER_EVENTS.length + EDGEVIEW_COMPOSITION_ONLY_EVENTS.length, 64);
+  assert.equal(EDGEVIEW_BROWSER_EVENTS.length, 71);
+  assert.equal(EDGEVIEW_BROWSER_EVENTS.length + EDGEVIEW_COMPOSITION_ONLY_EVENTS.length, 73);
   assert.equal(new Set(EDGEVIEW_BROWSER_EVENTS.map(event => event.id)).size, EDGEVIEW_BROWSER_EVENTS.length);
   assert.equal(new Set(EDGEVIEW_BROWSER_EVENTS.map(event => event.name)).size, EDGEVIEW_BROWSER_EVENTS.length);
   assert.deepEqual(
@@ -850,6 +1132,8 @@ test('built-in EdgeView module contributes HWND embedding, browser events and Ja
   assert.ok(completions.some(item => item.label === 'EdgeView_导航控件'));
   assert.ok(completions.some(item => item.label === 'EdgeView_监听开发者工具事件'));
   assert.ok(completions.some(item => item.label === 'EdgeView_监听开发者工具事件控件'));
+  assert.ok(completions.some(item => item.label === 'EdgeView脚本_执行异步'));
+  assert.ok(completions.some(item => item.label === 'EdgeView会话_取Cookie异步'));
   assert.ok(completions.some(item => item.label === 'EdgeView 嵌入与 JS 返回值'));
   const generated = generateLingCppNativeWin32Project(sampleProject, {
     enabledModules: [module],
@@ -872,7 +1156,9 @@ test('built-in EdgeView module contributes HWND embedding, browser events and Ja
   assert.ok(mainCpp.includes('#define LINGBUILDER_EDGEVIEW_MODULE'));
   assert.ok(mainCpp.includes('int EdgeView_创建实例(int instanceId'));
   assert.ok(mainCpp.includes('int EdgeView_创建区域(int instanceId'));
-  assert.ok(mainCpp.includes('std::map<int, std::unique_ptr<EdgeViewInstance>> edgeViews_'));
+  assert.ok(mainCpp.includes('std::map<int, std::shared_ptr<EdgeViewInstance>> edgeViews_'));
+  assert.ok(mainCpp.includes('std::shared_ptr<EdgeViewTaskState> EdgeView任务_新建'));
+  assert.ok(mainCpp.includes('控件已经关闭或重建，已拒绝迟到回调'));
   assert.ok(mainCpp.includes('std::wstring EdgeView_执行JS实例'));
   assert.ok(mainCpp.includes('add_NavigationCompleted'));
   assert.ok(mainCpp.includes('add_WebMessageReceived'));
@@ -897,10 +1183,31 @@ test('built-in EdgeView module contributes HWND embedding, browser events and Ja
   assert.ok(mainCpp.includes('WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN | WS_CLIPSIBLINGS'));
   assert.ok(mainCpp.includes('controller->put_IsVisible(TRUE);'));
   assert.ok(mainCpp.includes('instance.controller->NotifyParentWindowPositionChanged();'));
-  assert.ok(mainCpp.includes('SetWindowPos(raw->host, HWND_TOP'));
+  assert.ok(mainCpp.includes('SetWindowPos(instance->host, HWND_TOP'));
   assert.ok(mainCpp.includes('if (callback == L"浏览器1_导航完成") { 浏览器1_导航完成(); return; }'));
   assert.ok(mainCpp.includes('EdgeView_创建区域(1, 10, 10, 300, 400, L"https://example.com", L".edgeview/cache-1");'));
   assert.ok(mainCpp.includes('EdgeView_监听开发者工具事件(1, L"Console.messageAdded");'));
+});
+
+test('EdgeView 安全 API 目录、binding、处理器补全和运行时符号保持一一对应', () => {
+  assert.deepEqual(validateEdgeViewApiCatalog(), []);
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
+  assert.ok(manifest);
+  assert.equal(manifest.version, '1.2.0');
+  assert.equal(manifest.minLingBuilderVersion, '0.2.8');
+  const commandNames = new Set(manifest.contributes?.commands?.map(command => command.name));
+  const bindings = new Map(manifest.bindings?.commands?.map(binding => [binding.command, binding]));
+  for (const entry of EDGEVIEW_SAFE_API_CATALOG) {
+    assert.ok(commandNames.has(entry.command.name), `缺少 contribution：${entry.command.name}`);
+    assert.ok(bindings.has(entry.command.name), `缺少 binding：${entry.command.name}`);
+  }
+  const bindEvent = bindings.get('EdgeView_绑定控件事件');
+  assert.equal(bindEvent?.parameters?.at(-1)?.type, 'handler');
+  const module: InstalledModule = { manifest, installPath: 'builtin://lingbuilder.edgeview', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  const modern = getLingCppSemanticDiagnostics('EdgeView_绑定控件事件("浏览器1", "导航完成", &浏览器1_导航完成)', undefined, undefined, { enabledModules: [module], availableModules: [module] });
+  assert.ok(!modern.some(item => item.id.includes('handler-reference-migration')));
+  const legacy = getLingCppSemanticDiagnostics('EdgeView_绑定控件事件("浏览器1", "导航完成", "浏览器1_导航完成")', undefined, undefined, { enabledModules: [module], availableModules: [module] });
+  assert.ok(legacy.some(item => item.id.includes('handler-reference-migration') && item.suggestion?.includes('&浏览器1_导航完成')));
 });
 
 test('EdgeView designer controls create multiple WebView2 children and bind to generated parent HWNDs', () => {
@@ -1118,9 +1425,10 @@ test('materializeModuleNativeDependencies copies module source, libs and runtime
   assert.ok(await exists(path.join(binDir, 'new_emoji.dll')));
 });
 
-test('EdgeView native dependencies restore headers and architecture loader from NuGet cache', async () => {
+test('EdgeView native dependencies reject an arbitrary latest NuGet cache version', async () => {
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-edgeview-sdk-'));
   const previousNugetPackages = process.env.NUGET_PACKAGES;
+  const previousUserProfile = process.env.USERPROFILE;
   try {
     const packageRoot = path.join(tempRoot, 'packages', 'microsoft.web.webview2', '1.0.9999.1', 'build', 'native');
     await fs.mkdir(path.join(packageRoot, 'include'), { recursive: true });
@@ -1131,6 +1439,7 @@ test('EdgeView native dependencies restore headers and architecture loader from 
     await fs.writeFile(path.join(packageRoot, 'x86', 'WebView2Loader.dll'), Buffer.from([1, 2, 3]));
     await fs.writeFile(path.join(packageRoot, 'x64', 'WebView2Loader.dll'), Buffer.from([4, 5, 6, 7]));
     process.env.NUGET_PACKAGES = path.join(tempRoot, 'packages');
+    process.env.USERPROFILE = tempRoot;
     const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
     assert.ok(manifest);
     const module: InstalledModule = { manifest, installPath: 'builtin://lingbuilder.edgeview', isBuiltin: true, isInstalled: true, diagnostics: [] };
@@ -1141,14 +1450,14 @@ test('EdgeView native dependencies restore headers and architecture loader from 
       exportDir: path.join(tempRoot, 'export'),
       preferredTargetId: 'windows-msvc-win32'
     });
-    assert.equal(plan.diagnostics.length, 0);
-    assert.ok(plan.includeDirs.some(item => item.endsWith(path.join('lingbuilder.edgeview', 'include'))));
-    assert.equal(await fs.readFile(path.join(tempRoot, 'bin', 'WebView2Loader.dll')).then(value => value.length), 3);
-    assert.equal(await fs.readFile(path.join(tempRoot, 'export', 'modules', 'lingbuilder.edgeview', 'include', 'WebView2.h'), 'utf8'), '// header');
-    assert.equal(await fs.readFile(path.join(tempRoot, 'export', 'modules', 'lingbuilder.edgeview', 'bin', 'x64', 'WebView2Loader.dll')).then(value => value.length), 4);
+    assert.ok(plan.diagnostics.some(item => item.includes('固定版本 Microsoft.Web.WebView2 1.0.4078.44')));
+    assert.equal(plan.includeDirs.some(item => item.endsWith(path.join('lingbuilder.edgeview', 'include'))), false);
+    assert.equal(await exists(path.join(tempRoot, 'bin', 'WebView2Loader.dll')), false);
   } finally {
     if (previousNugetPackages === undefined) delete process.env.NUGET_PACKAGES;
     else process.env.NUGET_PACKAGES = previousNugetPackages;
+    if (previousUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = previousUserProfile;
     await fs.rm(tempRoot, { recursive: true, force: true });
   }
 });
@@ -1266,6 +1575,73 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_设置事件结果'));
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'CEF3_打开原生UI浏览器'));
   assert.ok(manifest.compatibility?.conflicts?.some(item => item.moduleId === 'lingbuilder.fbro.browser'));
+  assert.equal(manifest.version, '3.0.0-alpha.2');
+  assert.deepEqual(manifest.targets?.map(target => target.id), ['windows-msvc-x64']);
+  assert.ok(manifest.targets?.[0]?.libs?.some(item => item.endsWith('LingBuilderCefBridge.lib')));
+  assert.ok(!manifest.targets?.[0]?.libs?.some(item => item.endsWith('libcef.lib')));
+  assert.ok(!manifest.targets?.[0]?.libs?.some(item => item.endsWith('libcef_dll_wrapper.lib')));
+  assert.deepEqual(manifest.targets?.[0]?.headers, ['include/LingBuilderCefBridge.h']);
+  assert.ok(manifest.targets?.[0]?.runtimeFiles?.some(item => item.endsWith('LingBuilderCefBridge.dll')));
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === 'CEF3_绑定事件')?.parameters?.[2]?.type, 'handler');
+  for (const id of ['lingbuilder.cef3.events', 'lingbuilder.cef3.objects', 'lingbuilder.cef3.session',
+    'lingbuilder.cef3.network', 'lingbuilder.cef3.transfer', 'lingbuilder.cef3.automation',
+    'lingbuilder.cef3.devtools', 'lingbuilder.cef3.views', 'lingbuilder.cef3.platform']) {
+    const submodule = BUILTIN_MODULES.find(item => item.id === id);
+    assert.ok(submodule, `缺少CEF3子模块：${id}`);
+    assert.equal(validateModuleManifest(submodule).diagnostics.length, 0);
+    assert.ok((submodule.contributes?.commands?.length || 0) > 0, `${id} 不得注册为空模块`);
+  }
+  const objects = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.objects');
+  for (const command of ['CEF3缓冲_从十六进制', 'CEF3缓冲_从文件', 'CEF3缓冲_取大小',
+    'CEF3缓冲_到十六进制', 'CEF3缓冲_保存文件', 'CEF3缓冲_释放',
+    'CEF3缓冲_复制', 'CEF3缓冲_是否有效', 'CEF3缓冲_是否被拥有',
+    'CEF3缓冲_是否同一对象', 'CEF3缓冲_是否相等',
+    'CEF3值_创建', 'CEF3值_复制', 'CEF3值_是否有效', 'CEF3值_是否被拥有', 'CEF3值_是否只读',
+    'CEF3值_是否同一对象', 'CEF3值_是否相等', 'CEF3值_设文本', 'CEF3值_设字典', 'CEF3值_设列表',
+    'CEF3值_取文本', 'CEF3值_取字典', 'CEF3值_取列表', 'CEF3值_到JSON', 'CEF3值_释放',
+    'CEF3字典_创建', 'CEF3字典_复制', 'CEF3字典_是否有效', 'CEF3字典_是否被拥有',
+    'CEF3字典_是否只读', 'CEF3字典_是否同一对象', 'CEF3字典_是否相等',
+    'CEF3字典_设值', 'CEF3字典_取值', 'CEF3字典_到JSON', 'CEF3字典_释放',
+    'CEF3列表_创建', 'CEF3列表_复制', 'CEF3列表_是否有效', 'CEF3列表_是否被拥有',
+    'CEF3列表_是否只读', 'CEF3列表_是否同一对象', 'CEF3列表_是否相等',
+    'CEF3列表_设值', 'CEF3列表_取值', 'CEF3列表_到JSON', 'CEF3列表_释放',
+    'CEF3菜单_创建', 'CEF3菜单_是否子菜单', 'CEF3菜单_清空', 'CEF3菜单_取数量',
+    'CEF3菜单_添加分隔线', 'CEF3菜单_添加项目', 'CEF3菜单_添加勾选项目',
+    'CEF3菜单_添加单选项目', 'CEF3菜单_添加子菜单', 'CEF3菜单_删除项目',
+    'CEF3菜单_取索引', 'CEF3菜单_按索引取命令ID', 'CEF3菜单_按索引设命令ID',
+    'CEF3菜单_取标题', 'CEF3菜单_设标题', 'CEF3菜单_取类型', 'CEF3菜单_取组ID',
+    'CEF3菜单_设组ID', 'CEF3菜单_取子菜单', 'CEF3菜单_是否可见', 'CEF3菜单_设置可见',
+    'CEF3菜单_是否启用', 'CEF3菜单_设置启用', 'CEF3菜单_是否勾选', 'CEF3菜单_设置勾选',
+    'CEF3菜单_释放',
+    'CEF3图像_创建', 'CEF3图像_添加位图', 'CEF3图像_添加PNG', 'CEF3图像_添加JPEG',
+    'CEF3图像_取表示信息', 'CEF3图像_取位图缓冲', 'CEF3图像_取PNG缓冲',
+    'CEF3图像_取JPEG缓冲', 'CEF3图像_释放',
+    'CEF3导航项_取当前可见', 'CEF3导航项_是否有效', 'CEF3导航项_取地址',
+    'CEF3导航项_读取历史',
+    'CEF3导航项_取显示地址', 'CEF3导航项_取原始地址', 'CEF3导航项_取标题',
+    'CEF3导航项_取跳转类型', 'CEF3导航项_是否含提交数据', 'CEF3导航项_取完成时间',
+    'CEF3导航项_取HTTP状态码', 'CEF3导航项_释放',
+    'CEF3证书_取当前', 'CEF3证书_取主体', 'CEF3证书_取颁发者', 'CEF3证书_取序列号缓冲',
+    'CEF3证书_是否安全连接', 'CEF3证书_取证书状态', 'CEF3证书_取SSL版本', 'CEF3证书_取内容状态',
+    'CEF3证书_取DER缓冲', 'CEF3证书_取PEM缓冲', 'CEF3证书_取生效时间', 'CEF3证书_取失效时间',
+    'CEF3证书_取颁发链数量', 'CEF3证书_取DER颁发链项', 'CEF3证书_取PEM颁发链项', 'CEF3证书_释放',
+    'CEF3证书主体_取显示名', 'CEF3证书主体_取通用名', 'CEF3证书主体_取地区名',
+    'CEF3证书主体_取省州名', 'CEF3证书主体_取国家名', 'CEF3证书主体_取组织JSON',
+    'CEF3证书主体_取组织单位JSON', 'CEF3证书主体_释放']) {
+    assert.ok(objects?.contributes?.commands?.some(item => item.name === command), `CEF3 objects 缺少 ${command}`);
+    assert.ok(objects?.bindings?.commands?.some(item => item.command === command), `CEF3 objects 缺少 ${command} binding`);
+  }
+  const session = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.cef3.session');
+  assert.ok(session?.dependencies?.some(item => item.moduleId === 'lingbuilder.cef3.objects'));
+  for (const command of ['CEF3会话_取上下文', 'CEF3会话_上下文取缓存目录', 'CEF3会话_清理HTTP缓存',
+    'CEF3会话_是否有首选项', 'CEF3会话_首选项是否可写', 'CEF3会话_取首选项',
+    'CEF3会话_取全部首选项', 'CEF3会话_设置首选项', 'CEF3会话_清理证书例外',
+    'CEF3会话_清理HTTP认证', 'CEF3会话_关闭全部连接',
+    'CEF3会话_Cookie读取全部', 'CEF3会话_Cookie按地址读取', 'CEF3会话_Cookie设置',
+    'CEF3会话_Cookie删除', 'CEF3会话_Cookie落盘', 'CEF3会话_释放上下文']) {
+    assert.ok(session?.contributes?.commands?.some(item => item.name === command), `CEF3 session 缺少 ${command}`);
+    assert.ok(session?.bindings?.commands?.some(item => item.command === command), `CEF3 session 缺少 ${command} binding`);
+  }
 
   const module: InstalledModule = {
     manifest,
@@ -1287,29 +1663,69 @@ test('CEF3 module exposes the complete event catalog and generates thread-safe h
       }]
     }]
   };
-  const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 浏览器1_控制台消息()\n    调试输出(CEF3_取事件字段("浏览器1", "message"))\n  结束\n结束类`;
+  const source = `包 测试\n使用 CEF3浏览器模块\n类 MainWindow : 窗口\n公开\n  事件 _MainWindow_创建完毕()\n    CEF3_绑定事件("浏览器1", "控制台消息", &浏览器1_控制台消息)\n  结束\n  事件 浏览器1_控制台消息()\n    调试输出(CEF3_取事件字段("浏览器1", "message"))\n  结束\n结束类`;
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
-  assert.match(cpp, /public CefAudioHandler/);
-  assert.match(cpp, /public CefResourceRequestHandler/);
   assert.match(cpp, /WM_LINGBUILDER_CEF_EVENT/);
   for (const event of CEF3_BROWSER_EVENTS) {
     assert.ok(cpp.includes(`L"${event.name}"`), `生成运行时缺少 CEF3 事件：${event.name}`);
   }
   assert.match(cpp, /CEF3_取事件字段/);
-  assert.match(cpp, /windowInfo\.runtime_style = CEF_RUNTIME_STYLE_CHROME;/);
-  assert.match(cpp, /windowInfo\.SetAsPopup\(nullptr, L"谷歌原生UI浏览器"\);/);
-  assert.match(cpp, /windowInfo\.parent_window = nullptr;/);
-  assert.match(cpp, /windowInfo\.ex_style \|= WS_EX_APPWINDOW;/);
-  assert.doesNotMatch(cpp, /windowInfo\.SetAsPopup\(hwnd_, L"谷歌原生UI浏览器"\);/);
+  assert.match(cpp, /CEF3_绑定事件\(L"浏览器1", L"控制台消息", L"浏览器1_控制台消息"\)/);
+  assert.match(cpp, /#include <LingBuilderCefBridge\.h>/);
+  assert.match(cpp, /LB_CEF3_GetAbiVersion/);
+  assert.match(cpp, /LB_CEF3_ExecuteSubProcess/);
+  assert.match(cpp, /LB_CEF3_Initialize/);
+  assert.match(cpp, /LB_CEF3_BrowserCreate/);
+  assert.match(cpp, /LB_CEF3_BrowserEvaluateJavaScript/);
+  assert.match(cpp, /LB_CEF3_BufferCreate/);
+  assert.match(cpp, /LB_CEF3_BufferClone/);
+  assert.match(cpp, /LB_CEF3_BufferSaveFile/);
+  assert.match(cpp, /LB_CEF3_ValueCreate/);
+  assert.match(cpp, /LB_CEF3_ValueCopy/);
+  assert.match(cpp, /LB_CEF3_ValueSetDictionary/);
+  assert.match(cpp, /LB_CEF3_ValueGetList/);
+  assert.match(cpp, /LB_CEF3_DictionaryCopy/);
+  assert.match(cpp, /LB_CEF3_DictionarySetValue/);
+  assert.match(cpp, /LB_CEF3_ListCopy/);
+  assert.match(cpp, /LB_CEF3_ListSetValue/);
+  assert.match(cpp, /LB_CEF3_MenuCreate/);
+  assert.match(cpp, /LB_CEF3_MenuAddSubMenu/);
+  assert.match(cpp, /LB_CEF3_MenuInsertSubMenuAt/);
+  assert.match(cpp, /LB_CEF3_MenuGetAcceleratorAtJson/);
+  assert.match(cpp, /LB_CEF3_MenuSetColorAt/);
+  assert.match(cpp, /LB_CEF3_MenuSetFontListAt/);
+  assert.match(cpp, /LB_CEF3_MenuSetChecked/);
+  assert.match(cpp, /LB_CEF3_MenuRelease/);
+  assert.match(cpp, /LB_CEF3_ImageCreate/);
+  assert.match(cpp, /LB_CEF3_ImageAddBitmap/);
+  assert.match(cpp, /LB_CEF3_ImageGetAsPng/);
+  assert.match(cpp, /LB_CEF3_ImageRelease/);
+  assert.match(cpp, /LB_CEF3_BrowserGetVisibleNavigationEntry/);
+  assert.match(cpp, /LB_CEF3_BrowserGetNavigationEntries/);
+  assert.match(cpp, /LB_CEF3_NavigationEntryGetUrl/);
+  assert.match(cpp, /LB_CEF3_NavigationEntryRelease/);
+  assert.match(cpp, /LB_CEF3_BrowserGetCurrentCertificate/);
+  assert.match(cpp, /LB_CEF3_CertificateGetSslVersion/);
+  assert.match(cpp, /LB_CEF3_CertificateGetDerEncoded/);
+  assert.match(cpp, /LB_CEF3_CertificatePrincipalGetCommonName/);
+  assert.match(cpp, /LB_CEF3_CertificateRelease/);
+  assert.match(cpp, /LB_CEF3_BrowserGetRequestContext/);
+  assert.match(cpp, /LB_CEF3_RequestContextGetPreference/);
+  assert.match(cpp, /LB_CEF3_RequestContextSetPreference/);
+  assert.match(cpp, /LB_CEF3_RequestContextClearHttpCache/);
+  assert.match(cpp, /LB_CEF3_RequestContextClearCertificateExceptions/);
+  assert.match(cpp, /LB_CEF3_RequestContextCloseAllConnections/);
+  assert.match(cpp, /LB_CEF3_CookieSet/);
+  assert.match(cpp, /LB_CEF3_CookieVisitUrl/);
+  assert.doesNotMatch(cpp, /CEF3等待独立RequestContext初始化超时/);
+  assert.doesNotMatch(cpp, /#include <include\/cef_/);
+  assert.doesNotMatch(cpp, /CefRefPtr|CefClient|CefBrowserHost|CefExecuteProcess|CefShutdown/);
   assert.match(cpp, /int CEF3_打开原生UI浏览器\(const wchar_t\* controlName, const wchar_t\* address\)/);
   assert.match(cpp, /int CEF3_打开原生UI浏览器\(const wchar_t\* controlName, const std::wstring& address\)/);
-  assert.match(cpp, /std::vector<CefRefPtr<CefBrowser>> popupBrowsers;/);
-  assert.match(cpp, /if \(isPrimary\) \{\s*instance\.browser = browser;/u);
-  assert.match(cpp, /if \(!alreadyTracked\) instance\.popupBrowsers\.push_back\(browser\);/);
-  assert.match(cpp, /owner_->CEF3_通知关闭\(controlId_, browser\);/);
-  assert.match(cpp, /for \(auto& popup : item\.second->popupBrowsers\)/);
-  assert.match(cpp, /if \(!IsPrimary\(browser\)\) return;/);
+  assert.match(cpp, /std::vector<unsigned long long> bridgePopupHandles;/);
+  assert.match(cpp, /LB_CEF3_BrowserCreateChrome/);
+  assert.match(cpp, /LB_CEF3_BrowserClose/);
 });
 
 test('FBro module contributes a toolbox designer control and C ABI generated runtime', () => {
@@ -1319,10 +1735,20 @@ test('FBro module contributes a toolbox designer control and C ABI generated run
   assert.deepEqual(manifest.targets?.map(target => target.id), ['windows-msvc-x64']);
   assert.ok(manifest.compatibility?.conflicts?.some(item => item.moduleId === 'lingbuilder.cef3.browser'));
   assert.ok(manifest.contributes?.commands?.some(command => command.name === 'FBro_打开谷歌原生UI浏览器'));
+  for (const name of ['FBro_是否可后退', 'FBro_是否可前进', 'FBro_是否加载中', 'FBro_取缩放级别',
+    'FBro_设置缩放级别', 'FBro_是否静音', 'FBro_设置静音', 'FBro_设置焦点', 'FBro_查找',
+    'FBro_停止查找', 'FBro_是否打开开发者工具', 'FBro_关闭开发者工具', 'FBro_强制刷新',
+    'FBro_取浏览器标识', 'FBro_是否同一实例', 'FBro_是否弹出窗口', 'FBro_是否有文档',
+    'FBro_尝试关闭', 'FBro_设置宿主焦点', 'FBro_是否有视图', 'FBro_设置自动调整大小']) {
+    assert.ok(manifest.contributes?.commands?.some(command => command.name === name), `缺少 ${name} contribution`);
+    assert.ok(manifest.bindings?.commands?.some(binding => binding.command === name), `缺少 ${name} binding`);
+  }
   const designer = manifest.contributes?.designerControls?.find(control => control.type === 'FBroBrowser');
   assert.equal(designer?.label, 'FBro指纹浏览器');
   assert.equal(designer?.nativeAdapter, 'fbro-browser');
-  assert.deepEqual(designer?.events?.map(event => event.name), ['Created', 'LoadEnd', 'AddressChanged', 'BeforePopup', 'TitleChanged', 'Closed', 'Error']);
+  assert.deepEqual(designer?.events?.map(event => event.name), [
+    'Created', 'LoadEnd', 'AddressChanged', 'BeforePopup', 'TitleChanged', 'Closed', 'Error', 'CertificateError', 'DragEnter'
+  ]);
   const browserGroup = createControlToolboxGroups(['Button', 'FBroBrowser'], false).find(group => group.id === 'browser');
   assert.deepEqual(browserGroup?.controlTypes, ['FBroBrowser']);
 
@@ -1345,7 +1771,7 @@ test('FBro module contributes a toolbox designer control and C ABI generated run
   };
   const generated = generateLingCppNativeWin32Project(project, {
     enabledModules: [module],
-    lingCppSourceCode: '类 MainWindow\n    事件 FBro浏览器1_创建完成()\n        FBro_导航("FBro浏览器1", "https://example.com")\n        FBro_打开谷歌原生UI浏览器("FBro浏览器1", "https://example.com")\n    结束\n结束类'
+    lingCppSourceCode: '类 MainWindow\n    事件 FBro浏览器1_创建完成()\n        FBro_导航("FBro浏览器1", "https://example.com")\n        FBro_设置缩放级别("FBro浏览器1", 1.25)\n        FBro_设置静音("FBro浏览器1", 真)\n        FBro_设置焦点("FBro浏览器1", 真)\n        FBro_查找("FBro浏览器1", "LingBuilder", 真, 假, 假)\n        FBro_停止查找("FBro浏览器1", 真)\n        调试输出(FBro_是否可后退("FBro浏览器1"), FBro_是否可前进("FBro浏览器1"), FBro_是否加载中("FBro浏览器1"), FBro_取缩放级别("FBro浏览器1"), FBro_是否静音("FBro浏览器1"), FBro_是否打开开发者工具("FBro浏览器1"))\n        FBro_关闭开发者工具("FBro浏览器1")\n        FBro_打开谷歌原生UI浏览器("FBro浏览器1", "https://example.com")\n    结束\n结束类'
   });
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
   assert.match(cpp, /#include <LingBuilderFbroBridge\.h>/u);
@@ -1356,8 +1782,19 @@ test('FBro module contributes a toolbox designer control and C ABI generated run
   assert.match(cpp, /LB_FBro_CreateChromeUi/u);
   assert.match(cpp, /int FBro_打开谷歌原生UI浏览器\(const wchar_t\* controlName, const wchar_t\* address\)/u);
   assert.match(cpp, /int FBro_打开谷歌原生UI浏览器\(const wchar_t\* controlName, const std::wstring& address\)/u);
-  assert.match(cpp, /std::vector<LB_FBRO_HANDLE> chromeUiHandles;/u);
-  assert.match(cpp, /for \(LB_FBRO_HANDLE popup : item\.second->chromeUiHandles\)/u);
+  assert.match(cpp, /std::map<LB_FBRO_HANDLE, PopupState> chromeUiInstances;/u);
+  assert.match(cpp, /for \(const auto& popup : item\.second->chromeUiInstances\)/u);
+  assert.match(cpp, /LB_FBro_SetEventCallbackV2/u);
+  assert.match(cpp, /SendMessageTimeoutW/u);
+  assert.match(cpp, /FBro_取事件字段/u);
+  for (const symbol of ['LB_FBro_CanGoBack', 'LB_FBro_CanGoForward', 'LB_FBro_IsLoading', 'LB_FBro_GetZoomLevel',
+    'LB_FBro_SetZoomLevel', 'LB_FBro_IsAudioMuted', 'LB_FBro_SetAudioMuted', 'LB_FBro_SendFocusEvent',
+    'LB_FBro_Find', 'LB_FBro_StopFinding', 'LB_FBro_HasDevTools', 'LB_FBro_CloseDevTools',
+    'LB_FBro_ReloadIgnoreCache', 'LB_FBro_GetIdentifier', 'LB_FBro_IsSame', 'LB_FBro_IsPopup',
+    'LB_FBro_HasDocument', 'LB_FBro_TryCloseBrowser', 'LB_FBro_SetFocus', 'LB_FBro_HasView',
+    'LB_FBro_SetAutoResizeEnabled']) {
+    assert.match(cpp, new RegExp(symbol, 'u'), `生成运行时缺少 ${symbol}`);
+  }
   assert.match(cpp, /WM_LINGBUILDER_FBRO_EVENT/u);
   assert.match(cpp, /\.fbro-global-cache\/profile-fbro-1/u);
   assert.doesNotMatch(cpp, /CefRefPtr<FBro/u);
@@ -1371,7 +1808,9 @@ test('FBro bridge serializes browser creation onto the CEF UI thread and contain
   assert.doesNotMatch(bridgeSource, /g_browsers\.emplace\(handle, std::move\(state\)\);\s*StartBrowser\(\*raw\)/u);
   assert.match(bridgeSource, /LB_FBRO_EVENT_BEFORE_POPUP/u);
   assert.match(bridgeSource, /Notify\(\*state, LB_FBRO_EVENT_BEFORE_POPUP, target_url\.ToWString\(\)\)/u);
-  assert.match(bridgeSource, /return true;\s*\}\s*void OnBeforeClose/u, '即将打开新窗口必须取消弹窗，由 LCPP 决定在当前实例导航');
+  assert.match(bridgeSource, /return action != 1;\s*\}\s*void OnBeforeClose/u, '即将打开新窗口默认取消；同步事件显式放行时才创建弹窗');
+  assert.match(bridgeSource, /LB_FBRO_EVENT_PACKET_V2/u);
+  assert.match(bridgeSource, /LB_FBro_SetEventCallbackV2/u);
   assert.match(bridgeSource, /LB_FBro_CreateChromeUi/u);
   assert.match(bridgeSource, /window\.runtime_style = CEF_RUNTIME_STYLE_CHROME;/u);
   assert.match(bridgeSource, /window\.parent_window = nullptr;/u);

@@ -18,6 +18,29 @@ export interface LingBuilderReleaseNote {
 
 export const LINGBUILDER_RELEASE_NOTES: readonly LingBuilderReleaseNote[] = [
   {
+    version: '0.2.8',
+    date: '2026-07-31',
+    title: 'EdgeView 官方稳定 API 双基线封装',
+    sections: [
+      {
+        title: '新增',
+        items: [
+          'EdgeView 1.2.0 固定 WebView2 SDK 1.0.4078.44，并以 Runtime 141/150 建立兼容与完整覆盖双基线。',
+          '新增带控件 generation 和线程校验的受管对象表，以及 Frame、Worker、扩展、权限、通知和共享缓冲安全命令。',
+          '设计器新增 Edge 控件独立原生预览，并补齐 User-Agent、Profile、隐私模式、语言、跟踪保护、自动填充等稳定属性。',
+          '覆盖生成器不再自动把未知方法归为 internal；双基线差异、pending 和真实运行时符号均进入严格门禁。'
+        ]
+      },
+      {
+        title: '安全与兼容',
+        items: [
+          '异步回调使用等待、成功、失败、取消、超时五态任务；新处理器统一使用 &处理器名，旧字符串写法继续兼容并给出迁移警告。',
+          '不暴露裸 COM、内存地址、任意 Host Object 或 CompositionController；二进制结果只写入显式文件路径。'
+        ]
+      }
+    ]
+  },
+  {
     version: '0.2.6',
     date: '2026-07-30',
     title: '密码学模块与中文编程示例',

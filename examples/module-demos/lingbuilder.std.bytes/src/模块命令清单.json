@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-30T13:00:31.625Z",
+  "generatedAt": "2026-07-31T09:57:36.242Z",
   "module": {
     "id": "lingbuilder.std.bytes",
     "name": "字节与十六进制模块",

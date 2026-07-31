@@ -7,6 +7,7 @@ export type EdgeViewEventSource =
   | 'frame'
   | 'notification'
   | 'profile'
+  | 'worker'
   | 'devTools'
   | 'contextMenuItem';
 
@@ -39,7 +40,7 @@ const define = (
 }));
 
 /**
- * Stable add_* events exposed by Microsoft.Web.WebView2 1.0.3537.50 for a
+ * Stable add_* events exposed by Microsoft.Web.WebView2 1.0.4078.44 for a
  * windowed HWND controller and the event objects reachable from it.
  * CompositionController-only CursorChanged/NonClientRegionChanged are not
  * listed because LingBuilder deliberately uses ICoreWebView2Controller.
@@ -119,13 +120,24 @@ export const EDGEVIEW_BROWSER_EVENTS: readonly EdgeViewBrowserEventDefinition[] 
     ['Frame.WebMessageReceived', '子框架网页消息', '收到指定子框架发送的网页消息。'],
     ['Frame.PermissionRequested', '子框架权限请求', '指定子框架请求网页权限。'],
     ['Frame.ScreenCaptureStarting', '子框架屏幕捕获开始', '指定子框架即将被屏幕捕获。'],
-    ['Frame.FrameCreated', '嵌套子框架创建', '指定子框架创建了嵌套子框架。']
+    ['Frame.FrameCreated', '嵌套子框架创建', '指定子框架创建了嵌套子框架。'],
+    ['Frame.DedicatedWorkerCreated', '框架专用工作线程创建', '指定子框架创建了 Dedicated Worker。']
   ]),
   ...define('关联对象', 'notification', [
     ['Notification.CloseRequested', '网页通知关闭请求', '网页通知对象请求关闭。']
   ]),
   ...define('关联对象', 'profile', [
     ['Profile.Deleted', '浏览器配置删除', '当前 WebView2 Profile 已删除。']
+  ]),
+  ...define('工作线程', 'worker', [
+    ['DedicatedWorkerCreated', '专用工作线程创建', '当前 WebView 创建了 Dedicated Worker。'],
+    ['DedicatedWorker.Destroying', '专用工作线程销毁', 'Dedicated Worker 即将销毁。'],
+    ['DedicatedWorker.WebMessageReceived', '专用工作线程消息', '收到 Dedicated Worker 网页消息。'],
+    ['ServiceWorker.ServiceWorkerRegistered', '服务工作线程注册', 'Service Worker 注册可用。'],
+    ['ServiceWorker.ServiceWorkerActivated', '服务工作线程激活', 'Service Worker 已激活。'],
+    ['ServiceWorker.Unregistering', '服务工作线程注销', 'Service Worker 注册即将注销。'],
+    ['SharedWorker.SharedWorkerCreated', '共享工作线程创建', 'Shared Worker 已创建。'],
+    ['SharedWorker.Destroying', '共享工作线程销毁', 'Shared Worker 即将销毁。']
   ]),
   ...define('关联对象', 'devTools', [
     ['DevToolsProtocolEventReceived', '开发者工具协议事件', '收到已监听的 Chromium DevTools Protocol 事件。']

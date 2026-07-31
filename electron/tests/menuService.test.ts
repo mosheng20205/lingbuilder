@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { createCommandService } from '../src/services/commands/commandService';
 import { MenuService } from '../src/services/menus/menuService';
 import { validateModuleManifest } from '../src/services/modules/manifest';
-import { SOLUTION_EXPLORER_CONTEXT_MENU, SOLUTION_PROJECT_CONTEXT_MENU } from '../src/services/menus/types';
+import { DESIGNER_CONTROL_CONTEXT_MENU, SOLUTION_EXPLORER_CONTEXT_MENU, SOLUTION_PROJECT_CONTEXT_MENU } from '../src/services/menus/types';
 import {
   CREATE_SOLUTION_FOLDER_COMMAND,
   RENAME_SOLUTION_PROJECT_COMMAND,
   registerSolutionExplorerMenu
 } from '../src/services/solution/solutionExplorerMenu';
+import { acquireDesignerCommands, activeDesignerCommandTargetService } from '../src/services/windowDesigner/designerCommandTargetService';
 
 test('MenuService resolves commands, groups, submenus and dynamic disposal', async () => {
   const commands = createCommandService();
@@ -90,4 +91,28 @@ test('module v2 validates declarative menus and container layouts', () => {
   assert.deepEqual(valid.diagnostics, []);
   const invalid = validateModuleManifest({ ...base, contributes: { menus: [{ menu: 'designer/control/context', command: 'a', submenu: 'b' }] } });
   assert.ok(invalid.diagnostics.some(item => item.includes('且只能')));
+});
+
+test('EdgeView preview command is visible only for an EdgeBrowser selection and invokes the active designer', async () => {
+  const commands = createCommandService();
+  const menus = new MenuService(commands);
+  const commandRegistration = acquireDesignerCommands(commands, menus);
+  let previewed = 0;
+  const noop = () => undefined;
+  const targetRegistration = activeDesignerCommandTargetService.register({
+    id: 'edge-preview-test', getContext: () => ({}), openDefaultEvent: noop, openProperties: noop,
+    copy: async () => undefined, cut: async () => undefined, paste: async () => undefined, duplicate: async () => undefined,
+    deleteSelection: noop, deleteResource: noop, selectAll: noop, applyLayout: noop, reorder: noop, setLocked: noop,
+    selectParent: noop, selectChildren: noop, moveToRoot: noop, previewEdgeControl: async () => { previewed += 1; }
+  });
+  const edgeContext = { 'designer.active': true, 'designer.hasSelection': true, 'designer.control.type': 'EdgeBrowser' };
+  const buttonContext = { ...edgeContext, 'designer.control.type': 'Button' };
+  assert.equal(commands.getCommandState('designer.edgeview.previewControl', edgeContext).enabled, true);
+  assert.equal(commands.getCommandState('designer.edgeview.previewControl', buttonContext).enabled, false);
+  const edgeMenu = menus.resolveMenu(DESIGNER_CONTROL_CONTEXT_MENU, edgeContext, { includeDisabled: true });
+  assert.ok(edgeMenu.some(item => item.kind === 'command' && item.command.id === 'designer.edgeview.previewControl' && item.command.enabled));
+  await commands.executeCommand('designer.edgeview.previewControl', edgeContext);
+  assert.equal(previewed, 1);
+  targetRegistration.dispose();
+  commandRegistration.dispose();
 });

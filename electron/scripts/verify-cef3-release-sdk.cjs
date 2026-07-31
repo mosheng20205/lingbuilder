@@ -23,7 +23,11 @@ const CRITICAL_FILES = new Map([
   ['sdk/Resources/icudtl.dat', 8 * 1024 * 1024],
   ['sdk/Resources/resources.pak', 12 * 1024 * 1024],
   ['sdk/Resources/locales/zh-CN.pak', 400_000],
-  ['sdk/Resources/locales/en-US.pak', 400_000]
+  ['sdk/Resources/locales/en-US.pak', 400_000],
+  ['sdk/bridge/x64/LingBuilderCefBridge.h', 4_000],
+  ['sdk/bridge/x64/LingBuilderCefBridge.lib', 1_000],
+  ['sdk/bridge/x64/LingBuilderCefBridge.dll', 10_000],
+  ['sdk/bridge/x64/VERSION.json', 300]
 ]);
 
 const CRC_TABLE = createCrcTable();
@@ -64,9 +68,11 @@ async function verifySourceSdk(projectRoot = path.resolve(__dirname, '..', '..')
       throw new Error(`CEF3 SDK 关键文件不完整：${relativePath}（${stat.size} bytes，最少 ${minimumBytes}）。`);
     }
   }
+  await verifyBridgeMetadata(path.join(moduleRoot, 'sdk', 'bridge', 'x64'), headerVersion);
   await Promise.all([
     assertPeX64(path.join(moduleRoot, 'sdk', 'Release', 'libcef.dll')),
-    assertPeX64(path.join(moduleRoot, 'sdk', 'Release', 'chrome_elf.dll'))
+    assertPeX64(path.join(moduleRoot, 'sdk', 'Release', 'chrome_elf.dll')),
+    assertPeX64(path.join(moduleRoot, 'sdk', 'bridge', 'x64', 'LingBuilderCefBridge.dll'))
   ]);
 
   const inventory = await collectDirectoryInventory(moduleRoot);
@@ -202,6 +208,26 @@ async function assertPeX64(filePath) {
   } finally {
     await handle.close();
   }
+}
+
+async function verifyBridgeMetadata(bridgeRoot, cefVersion) {
+  const metadata = await readJson(path.join(bridgeRoot, 'VERSION.json'), 'CEF3 Bridge 缺少版本与校验清单');
+  if (metadata.bridgeAbi !== '3.0.0' || metadata.platform !== 'windows-msvc-x64' || metadata.cefVersion !== cefVersion) {
+    throw new Error(`CEF3 Bridge 元数据不匹配：ABI=${metadata.bridgeAbi}，CEF=${metadata.cefVersion}，平台=${metadata.platform}。`);
+  }
+  for (const name of ['LingBuilderCefBridge.h', 'LingBuilderCefBridge.lib', 'LingBuilderCefBridge.dll']) {
+    const expected = metadata.files?.[name];
+    if (!/^[0-9a-f]{64}$/iu.test(expected || '')) throw new Error(`CEF3 Bridge 校验清单缺少 ${name}。`);
+    const actual = await sha256File(path.join(bridgeRoot, name));
+    if (actual !== expected.toLowerCase()) throw new Error(`CEF3 Bridge SHA-256 不匹配：${name}。`);
+  }
+}
+
+async function sha256File(filePath) {
+  const hash = require('node:crypto').createHash('sha256');
+  const stream = fs.createReadStream(filePath);
+  for await (const chunk of stream) hash.update(chunk);
+  return hash.digest('hex');
 }
 
 async function findSevenZip() {

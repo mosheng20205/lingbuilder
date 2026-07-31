@@ -827,6 +827,134 @@
       "sourceRoot": "examples/module-demos/lingbuilder.win32.window-utils/src",
       "solutionFolderId": "module-complete-demos",
       "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.fbro.automation",
+      "name": "FBro自动化模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.fbro.automation/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.fbro.events",
+      "name": "FBro事件模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.fbro.events/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.fbro.network",
+      "name": "FBro高级网络模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.fbro.network/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.fbro.objects",
+      "name": "FBro受管对象模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.fbro.objects/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.fbro.session",
+      "name": "FBro会话模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.fbro.session/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.fbro.transfer",
+      "name": "FBro传输模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.fbro.transfer/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.fbro.vip",
+      "name": "FBro VIP 指纹模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.fbro.vip/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.cef3.automation",
+      "name": "CEF3自动化模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.cef3.automation/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.cef3.devtools",
+      "name": "CEF3开发者工具模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.cef3.devtools/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.cef3.events",
+      "name": "CEF3事件模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.cef3.events/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.cef3.network",
+      "name": "CEF3网络模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.cef3.network/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.cef3.objects",
+      "name": "CEF3受管对象模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.cef3.objects/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.cef3.platform",
+      "name": "CEF3平台工具模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.cef3.platform/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.cef3.session",
+      "name": "CEF3会话模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.cef3.session/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.cef3.transfer",
+      "name": "CEF3传输模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.cef3.transfer/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.cef3.views",
+      "name": "CEF3视图模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.cef3.views/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
     }
   ]
 }

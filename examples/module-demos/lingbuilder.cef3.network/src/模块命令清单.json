@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.089Z",
+  "module": {
+    "id": "lingbuilder.cef3.network",
+    "name": "CEF3网络模块",
+    "version": "3.0.0-alpha.2",
+    "description": "提供实例级代理及后续请求/响应扩展入口。"
+  },
+  "commandCount": 1,
+  "commands": [
+    {
+      "index": 1,
+      "name": "CEF3网络_设置代理",
+      "aliases": [
+        "LB_CEF3_SetProxy"
+      ],
+      "signature": "CEF3网络_设置代理(控件名, 代理地址)",
+      "description": "在浏览器创建前设置实例RequestContext代理；空文本表示直连。",
+      "insertText": "CEF3网络_设置代理(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3网络_设置代理",
+        "runtimeName": "CEF3_设置代理",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3网络_设置代理(\"演示输出\", \"https://example.com\")"
+    }
+  ]
+}

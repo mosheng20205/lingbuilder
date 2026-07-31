@@ -1,12 +1,12 @@
 # LingBuilder 模块封装清单
 
-更新时间：2026-07-30
+更新时间：2026-07-31
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **63 个内置模块、746 条中文命令**；其中参考精易模块分类新增 **51 个模块、287 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **79 个内置模块、1405 条中文命令**；其中参考精易模块分类新增 **51 个模块、287 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
-- 同时声明 `windows-msvc-win32` 与 `windows-msvc-x64` 精确 target。
+- 按真实原生资产声明精确 target；CEF3 150 与 FBro 当前只声明已验证的 `windows-msvc-x64`。
 - 只有项目明确启用模块后才进入 Monaco 补全、诊断和 C++ 生成上下文。
 - C++ 运行时按启用模块注入，不依赖 React 临时逻辑。
 
@@ -117,9 +117,25 @@ SQLite 模块不会静默假装数据库可用：项目需要提供 `sqlite3.dll
 |---|---|---|---:|
 | 已有 | `lingbuilder.win32.basic` | Win32 窗口基础模块 | 39 |
 | 已有 | `lingbuilder.win32.common-controls` | Win32 高级控件模块 | 112 |
-| 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 24 |
-| 已有 | `lingbuilder.cef3.browser` | CEF3浏览器模块 | 18 |
-| 已有 | `lingbuilder.fbro.browser` | FBro指纹浏览器模块（CEF 135 x64/C ABI） | 20 |
+| 已有 | `lingbuilder.edgeview` | EdgeView 浏览器模块 | 271 |
+| 3.0预览 | `lingbuilder.cef3.browser` | CEF3核心浏览器模块（CEF 150 x64） | 22 |
+| 3.0预览 | `lingbuilder.cef3.events` | CEF3事件绑定模块 | 6 |
+| 3.0预览 | `lingbuilder.cef3.objects` | CEF3受管对象、Menu、证书与导航历史模块 | 183 |
+| 3.0预览 | `lingbuilder.cef3.session` | CEF3独立RequestContext、Preference与Cookie会话模块 | 19 |
+| 3.0预览 | `lingbuilder.cef3.network` | CEF3实例网络配置模块 | 1 |
+| 3.0预览 | `lingbuilder.cef3.transfer` | CEF3下载与打印模块 | 2 |
+| 3.0预览 | `lingbuilder.cef3.automation` | CEF3异步JavaScript自动化模块 | 1 |
+| 3.0预览 | `lingbuilder.cef3.devtools` | CEF3开发者工具模块 | 3 |
+| 3.0预览 | `lingbuilder.cef3.views` | CEF3 Chrome Runtime视图模块 | 1 |
+| 3.0预览 | `lingbuilder.cef3.platform` | CEF3版本、MIME与Chrome Variations工具模块 | 4 |
+| 已封装 | `lingbuilder.fbro.browser` | FBro核心浏览器模块（CEF 135 x64/C ABI v2，兼容 v1） | 42 |
+| 已封装 | `lingbuilder.fbro.events` | FBro结构化事件、同步决策与受管事件对象模块 | 6 |
+| 已封装 | `lingbuilder.fbro.session` | FBro会话、Cookie 与代理认证模块 | 10 |
+| 已封装 | `lingbuilder.fbro.transfer` | FBro下载、打印、PDF、文件对话框与截图模块 | 5 |
+| 已封装 | `lingbuilder.fbro.automation` | FBro受管异步及 Frame 自动化模块 | 25 |
+| 已封装 | `lingbuilder.fbro.objects` | FBro任务、缓冲及 Value/Dictionary/List/Stream/Image/Certificate/DragData 受管对象模块 | 132 |
+| 已封装 | `lingbuilder.fbro.network` | FBro高级网络模块 | 2 |
+| 已封装 | `lingbuilder.fbro.vip` | FBro VIP 指纹模块 | 3 |
 | 已有 | `lingbuilder.threading` | 多线程模块 | 5 |
 | 已有 | `lingbuilder.websocket.client` | WebSocket 客户端模块 | 5 |
 | 已有 | `lingbuilder.http.server` | HTTP 服务端模块 | 5 |

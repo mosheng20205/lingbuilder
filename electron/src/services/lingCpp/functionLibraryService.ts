@@ -382,7 +382,7 @@ function detectModuleDependencies(sourceCode: string, moduleContext?: LingCppMod
   return [...new Set((moduleContext?.enabledModules || []).filter(module => {
     const commands = module.manifest.contributes?.commands || [];
     const types = module.manifest.contributes?.types || [];
-    return commands.some(command => hasCall(sourceCode, command.name))
+    return commands.some(command => [command.name, ...(command.aliases || [])].some(name => hasCall(sourceCode, name)))
       || types.some(type => hasIdentifier(sourceCode, type.name));
   }).map(module => module.manifest.id))];
 }

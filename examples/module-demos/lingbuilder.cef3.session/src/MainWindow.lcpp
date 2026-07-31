@@ -1,0 +1,116 @@
+包 CEF3会话模块完整演示
+使用 Win32窗口基础模块
+使用 CEF3会话模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "CEF3会话模块：19 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.cef3.session")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–19：CEF3会话_取缓存目录 至 CEF3会话_释放上下文；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：CEF3会话_取缓存目录
+            // [1] CEF3会话_取缓存目录(控件名)
+            // 功能：取得实例实际使用的独立缓存目录。
+            // 参数：控件名:wideString；返回：wideString；可见性：default
+            CEF3会话_取缓存目录("演示输出")
+            // 命令ID：CEF3会话_取代理
+            // [2] CEF3会话_取代理(控件名)
+            // 功能：取得实例创建时应用的代理地址。
+            // 参数：控件名:wideString；返回：wideString；可见性：default
+            CEF3会话_取代理("演示输出")
+            // 命令ID：CEF3会话_取上下文
+            // [3] CEF3会话_取上下文(控件名)
+            // 功能：取得浏览器独立RequestContext的类型化受管句柄。
+            // 参数：控件名:wideString；返回：longLong；可见性：advanced
+            CEF3会话_取上下文("演示输出")
+            // 命令ID：CEF3会话_上下文取缓存目录
+            // [4] CEF3会话_上下文取缓存目录(上下文句柄)
+            // 功能：从RequestContext读取实际缓存目录。
+            // 参数：上下文句柄:longLong；返回：wideString；可见性：advanced
+            CEF3会话_上下文取缓存目录(1)
+            // 命令ID：CEF3会话_是否有首选项
+            // [5] CEF3会话_是否有首选项(上下文句柄, 名称)
+            // 功能：在CEF UI线程判断当前隔离会话是否存在指定Preference。
+            // 参数：上下文句柄:longLong，名称:wideString；返回：int；可见性：advanced
+            CEF3会话_是否有首选项(1, "演示参数2")
+            // 命令ID：CEF3会话_首选项是否可写
+            // [6] CEF3会话_首选项是否可写(上下文句柄, 名称)
+            // 功能：判断指定Preference能否在运行时修改。
+            // 参数：上下文句柄:longLong，名称:wideString；返回：int；可见性：advanced
+            CEF3会话_首选项是否可写(1, "演示参数2")
+            // 命令ID：CEF3会话_取首选项
+            // [7] CEF3会话_取首选项(上下文句柄, 名称)
+            // 功能：读取Preference副本并返回CEF值受管句柄。
+            // 参数：上下文句柄:longLong，名称:wideString；返回：longLong；可见性：advanced
+            CEF3会话_取首选项(1, "演示参数2")
+            // 命令ID：CEF3会话_取全部首选项
+            // [8] CEF3会话_取全部首选项(上下文句柄, 包含默认值)
+            // 功能：读取全部Preference副本并返回CEF字典受管句柄。
+            // 参数：上下文句柄:longLong，包含默认值:bool；返回：longLong；可见性：advanced
+            CEF3会话_取全部首选项(1, 真)
+            // 命令ID：CEF3会话_设置首选项
+            // [9] CEF3会话_设置首选项(上下文句柄, 名称, 值句柄)
+            // 功能：设置隔离会话Preference；值句柄为0时恢复默认。
+            // 参数：上下文句柄:longLong，名称:wideString，值句柄:longLong；返回：int；可见性：advanced
+            CEF3会话_设置首选项(1, "演示参数2", 1)
+            // 命令ID：CEF3会话_清理HTTP缓存
+            // [10] CEF3会话_清理HTTP缓存(上下文句柄)
+            // 功能：异步清理当前隔离会话的HTTP缓存并返回任务ID。
+            // 参数：上下文句柄:longLong；返回：longLong；可见性：advanced
+            CEF3会话_清理HTTP缓存(1)
+            // 命令ID：CEF3会话_清理证书例外
+            // [11] CEF3会话_清理证书例外(上下文句柄)
+            // 功能：异步清理当前隔离会话的证书例外并返回任务ID。
+            // 参数：上下文句柄:longLong；返回：longLong；可见性：advanced
+            CEF3会话_清理证书例外(1)
+            // 命令ID：CEF3会话_清理HTTP认证
+            // [12] CEF3会话_清理HTTP认证(上下文句柄)
+            // 功能：异步清理当前隔离会话保存的HTTP认证凭据。
+            // 参数：上下文句柄:longLong；返回：longLong；可见性：advanced
+            CEF3会话_清理HTTP认证(1)
+            // 命令ID：CEF3会话_关闭全部连接
+            // [13] CEF3会话_关闭全部连接(上下文句柄)
+            // 功能：异步关闭当前隔离会话的活动与空闲连接。
+            // 参数：上下文句柄:longLong；返回：longLong；可见性：advanced
+            CEF3会话_关闭全部连接(1)
+            // 命令ID：CEF3会话_Cookie读取全部
+            // [14] CEF3会话_Cookie读取全部(上下文句柄)
+            // 功能：异步读取当前隔离会话全部Cookie，任务结果为UTF-16 JSON数组。
+            // 参数：上下文句柄:longLong；返回：longLong；可见性：advanced
+            CEF3会话_Cookie读取全部(1)
+            // 命令ID：CEF3会话_Cookie按地址读取
+            // [15] CEF3会话_Cookie按地址读取(上下文句柄, 地址, 包含HttpOnly)
+            // 功能：异步读取指定地址Cookie。
+            // 参数：上下文句柄:longLong，地址:wideString，包含HttpOnly:bool；返回：longLong；可见性：advanced
+            CEF3会话_Cookie按地址读取(1, "https://example.com", 真)
+            // 命令ID：CEF3会话_Cookie设置
+            // [16] CEF3会话_Cookie设置(上下文句柄, 地址, 名称, 值, 域, 路径, 安全, HttpOnly, 过期Unix秒)
+            // 功能：异步写入Cookie；过期时间小于等于0时创建会话Cookie。
+            // 参数：上下文句柄:longLong，地址:wideString，名称:wideString，值:wideString，域:wideString，路径:wideString，安全:bool，HttpOnly:bool，过期Unix秒:longLong；返回：longLong；可见性：advanced
+            CEF3会话_Cookie设置(1, "https://example.com", "演示参数3", "演示参数4", "演示参数5", "module-demo-temp.txt", 真, 真, 1)
+            // 命令ID：CEF3会话_Cookie删除
+            // [17] CEF3会话_Cookie删除(上下文句柄, 地址, 名称)
+            // 功能：异步删除匹配Cookie，任务结果包含删除数量。
+            // 参数：上下文句柄:longLong，地址:wideString，名称:wideString；返回：longLong；可见性：advanced
+            CEF3会话_Cookie删除(1, "https://example.com", "演示参数3")
+            // 命令ID：CEF3会话_Cookie落盘
+            // [18] CEF3会话_Cookie落盘(上下文句柄)
+            // 功能：异步把当前会话Cookie写入独立存储。
+            // 参数：上下文句柄:longLong；返回：longLong；可见性：advanced
+            CEF3会话_Cookie落盘(1)
+            // 命令ID：CEF3会话_释放上下文
+            // [19] CEF3会话_释放上下文(上下文句柄)
+            // 功能：释放RequestContext受管句柄。
+            // 参数：上下文句柄:longLong；返回：int；可见性：advanced
+            CEF3会话_释放上下文(1)
+        如果结束
+        调试输出("已查看 命令 1–19：CEF3会话_取缓存目录 至 CEF3会话_释放上下文；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

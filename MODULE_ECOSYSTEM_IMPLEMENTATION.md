@@ -1,10 +1,18 @@
 # LingBuilder 模块生态实现说明
 
+> 2026-07-31 补充：CEF 150 安全全覆盖工程处于 `3.0.0-alpha.2`，Alpha.3 正在实施。覆盖 v2 扫描 287 个 SDK 头并登记 1577 项能力记录；当前为 265 `implemented`、8 `internal`、185 `notApplicable`、1119 `planned`，169 个 `include/capi/test/**` 签名逐项排除。`lingbuilder.cef3.objects` 与 `lingbuilder.cef3.session` 的覆盖项已分别清零 `planned`：objects 现有 183 条命令，除 Value/Dictionary/List/Binary、Image、NavigationEntry 外，已完整接入 MenuModel 的创建、增删、索引、子菜单、快捷键、颜色和字体，TLS 证书/Principal/SSLStatus 快照及异步导航历史；session 现有 19 条命令，覆盖独立 RequestContext、Preference、Cookie、缓存、证书例外、HTTP 认证与连接清理。全局 Cookie/Preference 和初始化期注册器被明确归为内部替代，避免绕过实例隔离。Bridge 原生测试使用真实 CEF 150 x64 验证 HTTPS 证书、导航历史、对象深复制、菜单状态和会话隔离。Bridge 已编译 27 个事件签名的真实 override，事件模块仍有 86 项待接通；其它 network/transfer/automation/OSR/Views/platform 能力继续保持 `planned`。生成应用只包含/链接 `LingBuilderCefBridge`，`planned` 或 `needsReview` 未清零前禁止发布 3.0.0。
+
+> 2026-07-31 补充：FBro 升级为 `2.0.0` 双层封装基础。核心模块新增官方英文调用别名，拆出 `events/session/transfer/automation/objects/network/vip` 七个可调用子模块；子模块使用 `dependencies[{ moduleId, minimumVersion }]` 递归启用 `lingbuilder.fbro.browser@2.0.0`。模块服务会在写入前检查缺失版本、依赖循环和 CEF3 冲突，管理器展示自动启用计划；禁用核心时默认阻断，只有用户确认后才原子级联禁用。英文别名与中文主名共同参与补全、禁用诊断、类型推断和 C++ binding 解析。
+
+> 2026-07-31 补充：`LingBuilderFbroBridge` C ABI 升级到 v2，同时保留全部 v1 导出。v2 使用版本化 POD 事件包、类型化不透明句柄、任务注册表、受管缓冲和稳定错误码；`.lcpp` 不接触裸指针、`CefRefPtr` 或 STL。普通 Win32 与 New_Emoji 共用 `LB_FBro_SetEventCallbackV2` 事件协议，事件数据保存为 UTF-16 JSON，事件包可附带受管对象句柄，`BeforePopup` 与 `CertificateError` 使用 2 秒同步决策超时；Chrome UI 每个实例分别保存事件、错误、事件对象和处理器状态。官方 FBro 5.38.49 / CEF 135.0.21 的 77 个公共头、1079 个签名及 158 个事件/回调签名由 `npm run module:fbro-coverage` 生成稳定 ID、签名哈希、默认动作、超时/限流和实现状态，`--check` 在漂移或未分类时失败。当前实际接通 9 个事件，其余目录项保持 `planned`，不得误报为已实现。
+
+> 2026-07-31 补充：FBro 覆盖目录已升级为可执行 wrapper 规范：每个 API 家族记录 `LB_FBroV2_<签名哈希前16位>` 符号、稳定 overloadId、参数/返回 codec、线程、同步方式和所有权；未知术语标记 `needsReview`，不再生成 `功能XXXX` 占位名。核心已接入 21 个真实官方浏览器调用；objects 进一步接入 Value、Dictionary、List、Binary、StringList、Stream、Image、X509Certificate、X509CertPrincipal 与 DragData。`DownloadImage` 和当前导航项 TLS 证书任务可产生真实 Image/Certificate 句柄，`CertificateError`/`DragEnter` 事件可产生 Certificate/DragData 句柄；Image 编码、证书 DER/PEM/颁发链与 Principal 文本均转换为受管缓冲或 UTF-16。嵌套对象使用进程内不复用的类型化父子句柄，父对象释放会级联失效借用/交付的子句柄。session 新增 7 条异步命令，通过官方 BrowserHost/RequestContext/CookieManager 完成全部 Cookie 遍历、按地址遍历、设置、删除和存储刷新，并通过官方缓存回调完成实例/全局缓存清理；结果只进入受管任务的 UTF-16 JSON。transfer 现有 5 条命令：下载、打印、异步 PDF、异步文件对话框和 VIP 异步截图；PDF/文件对话框使用任务 JSON，截图 Base64 解码后登记为受管缓冲，并可通过 `FBro任务_取缓冲` 取得。automation 现有 25 条命令，Frame 通过类型 16 的受管句柄提供主/焦点/按标识/按名称查找、属性、父框架、编辑动作、加载和脚本执行。FBro 5.38.49 的 `FBroHsBrowserHost_RunFileDialog` 实测会阻塞 CEF UI 且不创建窗口，故该上游辅助项有理由标记 `notApplicable`；高层命令改由独立 STA `IFileDialog` 实现，避免阻塞 FBro。核心模块为 42 条命令，objects 子模块为 132 条命令，session 子模块为 10 条命令；目录当前为 218 个 `implemented`、857 个 `planned`、3 个内部 `notApplicable` 和 1 个高级替代 `notApplicable`。普通 Win32 已实机验证 PDF、Frame、文件对话框参数门禁、无效 VIP Key 截图任务错误、图像、证书及 CookieManager；交互式文件对话框 smoke 由 `LINGBUILDER_FBRO_INTERACTIVE_FILE_DIALOG=1` 显式启用，有效截图由 `LINGBUILDER_FBRO_VIP_KEY` 门控。只有 Bridge 调用、binding、生成运行时和原生链接测试同时存在才允许改为 `implemented`。
+
 > 2026-07-31 补充：官网命令资料支持从模块 v2 manifest 同步。`electron/scripts/export-website-command-manifests.ts` 会从实际 `BUILTIN_MODULES` 导出 `.lingbuilder/website-command-manifests.json`，命令为 `cd electron && npm run module:web-docs`。官网后台按 `模块 ID + 命令名` 稳定更新 contribution/binding 资料；重新同步时，清单中不再存在的旧模块命令标记为 `DEPRECATED`，不静默删除历史资料。该导出只读取模块清单，不建立第二套命令定义来源。
 
 > 2026-07-31 补充：官方收费模块发布改为云端受保护制品链路。管理后台上传 `.lbmod` 后，API 校验安全 ZIP 路径及 v2 manifest 的模块 ID/版本，计算 SHA-256，并使用与 Permit 相同的稳定 Ed25519 信任根签名制品元数据；IDE 必须先验权、再验签和下载哈希，最后复用 `ModuleService.previewPackageInstall -> installPackage` 完成可确认、可回滚的安装或更新。公开安装包明确排除 `lingbuilder.new_emoji.ui`，匿名商品目录已取消。新增官方收费模块时必须同步发布过滤规则，不能把二进制放回默认工作区。
 
-> 2026-07-30 补充：仓库新增清单驱动的全模块演示生成器 `electron/scripts/generate-module-demos.ts`。它按实际 `BUILTIN_MODULES` 与已安装外置模块生成 68 个独立演示项目，逐条覆盖 contribution/binding 中的 2357 条命令；命令较多时最多使用 12 个 TabControl 页面分组，并通过“允许实际执行”开关避免网络、文件、进程、驱动等调用被误触发。演示源码位于 `examples/module-demos/`，可分享包统一以中文模块名称导出到 `exports/`。新增或删除模块、命令后应运行 `cd electron && npm run module:demos`，并以 `npm run module:demos:verify:deep` 对全部源码包做解压、哈希、模块引用和启动项目校验。
+> 2026-07-30 补充：仓库新增清单驱动的全模块演示生成器 `electron/scripts/generate-module-demos.ts`。2026-07-31 随 CEF3/FBro/EdgeView 能力扩展重新生成后，现按实际 `BUILTIN_MODULES` 与已安装外置模块生成 84 个独立演示项目；当前全量命令总数为 3016。命令较多时最多使用 12 个 TabControl 页面分组，并通过“允许实际执行”开关避免网络、文件、进程、驱动等调用被误触发。演示源码位于 `examples/module-demos/`，可分享包统一以中文模块名称导出到 `exports/`。新增或删除模块、命令后应运行 `cd electron && npm run module:demos`；只更新一个模块可使用 `npm run module:demos -- --module <模块ID>`，并以 `npm run module:demos:verify:deep` 对全部源码包做解压、哈希、模块引用和启动项目校验。
 
 > 2026-07-30 补充：LCPP 源码包对只读原生资产的自动携带范围包含 CEF3、FBro 与密码学 SDK。启用 `lingbuilder.crypto.hash/password/symmetric/asymmetric` 中任一模块时，导出服务必须自动携带 `lingbuilder.crypto.sdk`，与 CEF3/FBro 消费模块使用同一隔离打包逻辑，避免源码包在作者机器可构建、导入后因缺少 Botan/BLAKE3 资产失败。
 
@@ -54,7 +62,7 @@
 
 > 2026-07-24 补充：内置 `lingbuilder.win32.common-controls` 已注册 `VideoPlayer` /“视频播放器”控件。该控件的 Media Foundation 依赖声明为 `mfplat.lib`、`mfplay.lib`、`mfuuid.lib`，中文播放命令同时存在于 `contributes.commands` 与 `bindings.commands`；设计器、语言服务和 C++ 生成器必须继续从同一模块清单消费这些定义。
 
-> 2026-07-25 补充：新增内置 `lingbuilder.cef3.browser`（CEF3浏览器模块），按 v2 `contributes.designerControls` 注册 `CefBrowser` /“CEF3浏览器”可视控件（`nativeAdapter: cef3-browser`，依赖 `libcef.lib`、`libcef_dll_wrapper.lib`）。控件支持多实例、属性面板 `url`/`cacheDir`/`userAgent`/JavaScript/图片/WebGL/代理配置；当前 21 条 `CEF3_*` 中文命令同时存在于 `contributes.commands` 与 `bindings.commands`。CEF3 SDK 由 `nativeDependencyService.ts` 受控发现复制；CEF3 为单进程框架，同 exe 全部控件共享缓存，需要会话隔离时使用 `lingbuilder.edgeview`。
+> 2026-07-25 补充（2026-07-31 已由 3.0 alpha 取代部分约束）：新增内置 `lingbuilder.cef3.browser`（CEF3浏览器模块），按 v2 `contributes.designerControls` 注册 `CefBrowser` /“CEF3浏览器”可视控件（`nativeAdapter: cef3-browser`，依赖 `libcef.lib`、`libcef_dll_wrapper.lib`）。控件支持多实例、属性面板 `url`/`cacheDir`/`userAgent`/JavaScript/图片/WebGL/代理配置；兼容核心现为 22 条命令。CEF3 SDK 由 `nativeDependencyService.ts` 受控发现复制；同 exe 共享 Chromium 进程，但缓存和 RequestContext 已改为每控件隔离。
 
 > 2026-07-26 补充：新增 CEF3 内核 SDK 离线载体模块 `lingbuilder.cef3.sdk`（x64），这是首个“纯二进制资产模块”参考实现：v2 manifest 只有基础字段（无 commands/designerControls/targets），安装到 `.lingbuilder/modules/lingbuilder.cef3.sdk/` 即生效，无需为项目启用；`findCef3SdkRoot` 新增该路径候选。打包脚本为 `electron/scripts/generate-cef3-sdk-module.cjs`（`npm run module:cef3-sdk -- --install`），把 CEF 官方包 `include/Release/Resources` 与预编译 /MD `libcef_dll_wrapper.lib` 打成 `cef3-sdk-x64.lbmod`（实测 184MB，版本自动读 `cef_version.h`）；为此 `moduleService.ts` 的 `.lbmod` 包上限从 100MB 放宽到 1GB。用户安装该模块后构建 CEF3 项目免下载 SDK、免 CMake 编译。
 
@@ -303,8 +311,12 @@ lingbuilder.module.json
 - 每个设计器控件生成独立 STATIC 宿主和 WebView2 Controller；`parentId` 由通用 Win32 控件层级解析为窗口、容器或选项卡页面 HWND，不在 React 中模拟浏览器运行。
 - 控件内部实例编号使用稳定生成 control ID，用户代码优先通过中文控件名调用 EdgeView 控件命令；旧数字实例和区域 API 保持兼容。空缓存目录必须确定性生成独立 `.edgeview/<controlId>`，避免多控件默认共享会话目录。
 - WebView2 SDK/Loader 仍由 `nativeDependencyService` 受控发现和复制；设计器只保存模型，不直接读取 NuGet 或启动原生浏览器。
-- EdgeView 事件目录集中维护在 `electron/src/services/modules/edgeViewBrowserEvents.ts`，以稳定 SDK `Microsoft.Web.WebView2 1.0.3537.50` 的 64 个 `add_*` 入口为审计依据。窗口化 HWND 控件接入其中可达的 62 项；`CompositionController` 独占的 `CursorChanged` / `NonClientRegionChanged` 明确不适用。注册表、模块补全、设计器事件面板、中文事件映射和生成器覆盖测试必须消费同一目录，新增 SDK 版本时不得只补 UI 或只补 C++。
+- EdgeView 事件目录集中维护在 `electron/src/services/modules/edgeViewBrowserEvents.ts`，按 `1.0.3537.50` 与 `1.0.4078.44` 双基线审计。普通 HWND 控件接入 71 项可达事件；`CompositionController` 独占的 2 项事件明确排除。注册表、模块补全、设计器事件面板、中文事件映射和生成器覆盖测试必须消费同一目录，新增 SDK 版本时不得只补 UI 或只补 C++。
 - 事件运行时通过 `QueryInterface` 逐级启用 WebView2 版本接口，并级联保存 Download、Frame、Notification、Find、Profile、DevTools receiver 等事件源。事件数据统一为 UTF-16 JSON；等待事件按事件名计数，避免高频资源/下载事件覆盖最近值后造成漏判。
+- 2026-07-31 起模块升级到 `1.2.0` / 最低 LingBuilder `0.2.8`：`edgeViewApiCatalog.ts` 集中生成 235 条安全 API contribution 与 binding，连同 36 条兼容命令共 271 条。覆盖清单固定审计 SDK `1.0.3537.50`（Runtime 141）和 `1.0.4078.44`（Runtime 150）：新基线 995 个稳定方法已归为 330 个公开实现、565 个内部适配和 100 个批准排除，`pending=0`。`module:edgeview-coverage:complete` 同时验证双头文件哈希、中文名、binding、运行时符号和测试 ID。
+- v2 创建期选项包括独占 UDF、崩溃报告、环境跟踪保护、扩展开关、通道搜索、发布通道、滚动条样式、脚本区域、背景色和宿主输入处理。属性修改后必须显式重建；运行期以 `QueryInterface` 检测接口，使用 v2 命令时生成物要求 Runtime 150。CompositionController、PointerInfo、AutomationProvider、实验 API、裸 COM/指针、Host Object 注入继续排除。
+- 新增 API 只接受文本、数字、JSON、明确文件路径和受管任务/下载 ID；CompositionController、PointerInfo、AutomationProvider、任意 Host Object 注入、裸 COM/指针和内存地址继续明确排除。异步操作统一返回任务 ID，并通过 `&处理器名` 在所属窗口线程完成；实例关闭或重建会增加 generation、取消任务并拒绝迟到回调。
+- 设计器继续只绘制安全占位。统一命令 `designer.edgeview.previewControl` 会生成只含当前 Edge 控件、不执行项目用户代码的独立 Win32 临时项目，通过 MSVC 和受管进程启动；再次预览、停止或切换项目会回收旧进程。
 
 ## 分类内置模块库（2026-07）
 

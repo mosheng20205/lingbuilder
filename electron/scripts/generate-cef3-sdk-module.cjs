@@ -33,6 +33,11 @@ async function main() {
   await copyDirectory(path.join(sourceRoot, 'Resources'), path.join(sdkRoot, 'Resources'));
   await fs.mkdir(path.dirname(path.join(sdkRoot, WRAPPER_RELATIVE)), { recursive: true });
   await fs.copyFile(path.join(sourceRoot, WRAPPER_RELATIVE), path.join(sdkRoot, WRAPPER_RELATIVE));
+  await execFileAsync(process.execPath, [
+    path.join(scriptDir, 'build-cef3-bridge.cjs'),
+    '--sdk', sourceRoot,
+    '--output', path.join(sdkRoot, 'bridge', 'x64')
+  ], { windowsHide: true, maxBuffer: 1024 * 1024 * 10 });
   for (const licenseName of ['LICENSE.txt', 'LICENSE', 'README.txt']) {
     try {
       await fs.copyFile(path.join(sourceRoot, licenseName), path.join(sdkRoot, licenseName));
@@ -113,7 +118,7 @@ function buildManifest(cefVersion) {
     category: '界面',
     description:
       'CEF3（Chromium Embedded Framework）内核 SDK 离线载体模块（x64）：内含头文件、libcef.lib、预编译 /MD libcef_dll_wrapper.lib、' +
-      '全部运行时 DLL（含 v8_context_snapshot.bin、GPU/软渲染组件）与资源文件。安装后 CEF3浏览器模块（lingbuilder.cef3.browser）' +
+      '全部运行时 DLL（含 v8_context_snapshot.bin、GPU/软渲染组件）、资源文件及 LingBuilderCefBridge v3 C ABI。安装后 CEF3浏览器模块（lingbuilder.cef3.browser）' +
       '构建时自动从本模块发现 SDK，用户免下载、免 CMake、免编译。本模块只承载二进制资产，不提供中文命令或设计器控件，无需为项目单独启用。'
   };
 }
@@ -142,6 +147,7 @@ function moduleReadme(cefVersion) {
     '  Release/                                                    # libcef.lib + 全部运行时 DLL',
     '  Resources/                                                  # icudtl.dat、*.pak、locales/',
     '  build_wrapper_x64_md/libcef_dll_wrapper/Release/            # 预编译 /MD libcef_dll_wrapper.lib',
+    '  bridge/x64/                                                  # Bridge DLL、导入库、头文件、版本与 SHA-256 清单',
     '```',
     '',
     '升级内核时用新版 CEF 官方包重新运行 `npm run module:cef3-sdk`（需先重新编译 wrapper），',

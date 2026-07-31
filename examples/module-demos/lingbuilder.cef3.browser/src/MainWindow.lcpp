@@ -26,7 +26,7 @@
             CEF3_打开原生UI浏览器("演示输出", "https://example.com")
             // 命令ID：CEF3_执行JS
             // [3] CEF3_执行JS(控件名, 脚本)
-            // 功能：在指定 CEF3 浏览器控件中执行 JavaScript 并等待结果，返回 JSON 编码结果文本。
+            // 功能：通过 DevTools Runtime.evaluate 执行 JavaScript，最多等待 5 秒并返回 JSON 结果；新代码优先使用异步任务接口。
             // 参数：控件名:wideString，脚本:wideString；返回：wideString；可见性：default
             CEF3_执行JS("演示输出", "演示参数2")
             // 命令ID：CEF3_后退
@@ -61,12 +61,12 @@
             CEF3_取地址("演示输出")
             // 命令ID：CEF3_设置缓存目录
             // [10] CEF3_设置缓存目录(控件名, 目录)
-            // 功能：设置指定 CEF3 浏览器控件的缓存目录；不同缓存目录拥有独立 Cookie、LocalStorage 和会话。需在创建前设置。
+            // 功能：设置实例独立 RequestContext 的缓存目录标识；实际目录被安全映射到全局 root_cache_path 的直接子目录。需在创建前设置。
             // 参数：控件名:wideString，目录:wideString；返回：int；可见性：default
             CEF3_设置缓存目录("演示输出", ".")
             // 命令ID：CEF3_设置代理
             // [11] CEF3_设置代理(控件名, 代理地址)
-            // 功能：为指定 CEF3 浏览器控件设置 HTTP/HTTPS/SOCKS5 代理；空文本恢复直连。需在创建前设置。
+            // 功能：为实例独立 RequestContext 设置 HTTP/HTTPS/SOCKS5 代理；空文本使用直连。需在创建前设置。
             // 参数：控件名:wideString，代理地址:wideString；返回：int；可见性：default
             CEF3_设置代理("演示输出", "https://example.com")
         如果结束
@@ -112,10 +112,10 @@
             // 参数：控件名:wideString，文本:wideString；返回：int；可见性：default
             CEF3_设置事件返回文本("演示输出", "演示参数2")
             // 命令ID：CEF3_绑定事件
-            // [19] CEF3_绑定事件(控件名, 事件名, 处理器名)
-            // 功能：绑定完整 CEF3 浏览器事件目录（92 项）到当前窗口无参数中文事件或方法。
-            // 参数：控件名:wideString，事件名:wideString，处理器名:wideString；返回：int；可见性：default
-            CEF3_绑定事件("演示输出", "演示事件", "演示参数3")
+            // [19] CEF3_绑定事件(控件名, 事件名, 处理器)
+            // 功能：绑定 CEF3 浏览器事件目录（92 项）到当前窗口无参数中文事件或方法；处理器必须使用 &处理器名。
+            // 参数：控件名:wideString，事件名:wideString，处理器:handler；返回：int；可见性：default
+            CEF3_绑定事件("演示输出", "演示事件", &模块演示回调)
             // 命令ID：CEF3_是否可后退
             // [20] CEF3_是否可后退(控件名)
             // 功能：指定 CEF3 浏览器控件可以后退时返回 1。
@@ -133,6 +133,10 @@
             CEF3_是否加载中("演示输出")
         如果结束
         调试输出("已查看 命令 12–22：CEF3_创建 至 CEF3_是否加载中；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 模块演示回调()
+        调试输出("模块演示回调已触发。")
     结束
 
 结束类

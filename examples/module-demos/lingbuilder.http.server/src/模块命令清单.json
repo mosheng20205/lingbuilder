@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-30T13:00:31.536Z",
+  "generatedAt": "2026-07-31T09:57:36.179Z",
   "module": {
     "id": "lingbuilder.http.server",
     "name": "HTTP 服务端模块",

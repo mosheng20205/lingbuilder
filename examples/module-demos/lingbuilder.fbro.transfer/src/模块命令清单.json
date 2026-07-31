@@ -1,0 +1,197 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.169Z",
+  "module": {
+    "id": "lingbuilder.fbro.transfer",
+    "name": "FBro传输模块",
+    "version": "2.0.0",
+    "description": "提供下载与原生打印高层能力。"
+  },
+  "commandCount": 5,
+  "commands": [
+    {
+      "index": 1,
+      "name": "FBro传输_开始下载",
+      "aliases": [
+        "LB_FBro_StartDownload"
+      ],
+      "signature": "FBro传输_开始下载(控件名, 地址)",
+      "description": "使用当前浏览器会话开始下载。",
+      "insertText": "FBro传输_开始下载(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro传输_开始下载",
+        "runtimeName": "FBro传输_开始下载",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro传输_开始下载(\"演示输出\", \"https://example.com\")"
+    },
+    {
+      "index": 2,
+      "name": "FBro传输_打印",
+      "aliases": [
+        "LB_FBro_Print"
+      ],
+      "signature": "FBro传输_打印(控件名)",
+      "description": "打开当前浏览器页面的原生打印流程。",
+      "insertText": "FBro传输_打印(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro传输_打印",
+        "runtimeName": "FBro传输_打印",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro传输_打印(\"演示输出\")"
+    },
+    {
+      "index": 3,
+      "name": "FBro传输_异步生成PDF",
+      "aliases": [
+        "LB_FBro_PrintToPdfAsync"
+      ],
+      "signature": "FBro传输_异步生成PDF(控件名, 输出路径, 设置JSON)",
+      "description": "异步生成 PDF；设置使用 UTF-16 JSON，任务结果包含成功状态和绝对路径。",
+      "insertText": "FBro传输_异步生成PDF(\"$1\", \"$2\", \"$3\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro传输_异步生成PDF",
+        "runtimeName": "FBro传输_异步生成PDF",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "输出路径",
+            "type": "wideString"
+          },
+          {
+            "name": "设置JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro传输_异步生成PDF(\"演示输出\", \"module-demo-temp.txt\", \"{}\")"
+    },
+    {
+      "index": 4,
+      "name": "FBro传输_异步打开文件对话框",
+      "aliases": [
+        "LB_FBro_RunFileDialogAsync"
+      ],
+      "signature": "FBro传输_异步打开文件对话框(控件名, 模式, 标题, 默认路径, 筛选器JSON)",
+      "description": "调用独立 STA Windows 安全文件对话框；模式为 0打开、1多选、2文件夹、3保存，任务返回 cancelled 和 paths UTF-16 JSON 字段。",
+      "insertText": "FBro传输_异步打开文件对话框(\"$1\", $2, \"$3\", \"$4\", \"$5\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro传输_异步打开文件对话框",
+        "runtimeName": "FBro传输_异步打开文件对话框",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "模式",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          },
+          {
+            "name": "默认路径",
+            "type": "wideString"
+          },
+          {
+            "name": "筛选器JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro传输_异步打开文件对话框(\"演示输出\", 1, \"演示参数3\", \"module-demo-temp.txt\", \"{}\")"
+    },
+    {
+      "index": 5,
+      "name": "FBro传输_异步截图",
+      "aliases": [
+        "LB_FBro_CaptureScreenshotAsync"
+      ],
+      "signature": "FBro传输_异步截图(控件名, 格式, 质量, 横坐标, 纵坐标, 宽度, 高度, 缩放, 来自表面, 超出视口)",
+      "description": "通过 FBro VIP Page.captureScreenshot 异步截图；任务结果通过受管缓冲返回。",
+      "insertText": "FBro传输_异步截图(\"$1\", \"$2\", $3, $4, $5, $6, $7, $8, $9, $10)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro传输_异步截图",
+        "runtimeName": "FBro传输_异步截图",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "格式",
+            "type": "wideString"
+          },
+          {
+            "name": "质量",
+            "type": "int"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          },
+          {
+            "name": "缩放",
+            "type": "int"
+          },
+          {
+            "name": "来自表面",
+            "type": "bool"
+          },
+          {
+            "name": "超出视口",
+            "type": "bool"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro传输_异步截图(\"演示输出\", \"演示参数2\", 1, 1, 1, 1, 1, 1, 真, 真)"
+    }
+  ]
+}

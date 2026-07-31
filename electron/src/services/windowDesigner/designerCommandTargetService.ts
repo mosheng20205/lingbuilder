@@ -24,6 +24,7 @@ export interface DesignerCommandTarget {
   selectParent(): void;
   selectChildren(): void;
   moveToRoot(): void;
+  previewEdgeControl(): Promise<void>;
 }
 
 class ActiveDesignerCommandTargetService {
@@ -82,6 +83,7 @@ export function acquireDesignerCommands(commands: CommandService, menus: MenuSer
     command('designer.action.selectParent', '选择父控件', [], enabled('designer.hasParent'), target => target.selectParent()),
     command('designer.action.selectChildren', '选择直接子控件', [], enabled('designer.hasChildren'), target => target.selectChildren()),
     command('designer.action.moveToRoot', '移至窗口根级', [], enabled('designer.canMoveToRoot'), target => target.moveToRoot()),
+    command('designer.edgeview.previewControl', '运行此 Edge 控件预览', [], context => enabled('designer.hasSelection')(context) && context['designer.control.type'] === 'EdgeBrowser', target => target.previewEdgeControl()),
     ...layoutCommands()
   ]);
   const submenuRegistration = menus.registerSubmenus([
@@ -92,6 +94,7 @@ export function acquireDesignerCommands(commands: CommandService, menus: MenuSer
   const menuRegistration = menus.registerMenuItems([
     item(DESIGNER_CONTROL_CONTEXT_MENU, 'designer.action.openDefaultEvent', 'navigation', 10),
     item(DESIGNER_CONTROL_CONTEXT_MENU, 'designer.action.openProperties', 'navigation', 20),
+    item(DESIGNER_CONTROL_CONTEXT_MENU, 'designer.edgeview.previewControl', 'navigation', 30),
     item(DESIGNER_CONTROL_CONTEXT_MENU, 'designer.action.cut', 'clipboard', 10),
     item(DESIGNER_CONTROL_CONTEXT_MENU, 'designer.action.copy', 'clipboard', 20),
     item(DESIGNER_CONTROL_CONTEXT_MENU, 'designer.action.paste', 'clipboard', 30),

@@ -34,8 +34,17 @@ export interface ProjectModuleEnablePlan {
   projectId: string;
   targetPath: string;
   sourceCode: string;
+  requestedModuleIds: string[];
+  dependencyModuleIds: string[];
   addedModuleIds: string[];
   reusedModuleIds: string[];
+}
+
+export interface ProjectModuleDisablePlan {
+  projectId: string;
+  requestedModuleId: string;
+  removedModuleIds: string[];
+  dependentModuleIds: string[];
 }
 
 export class ModuleService {
@@ -101,26 +110,9 @@ export class ModuleService {
   }
 
   async enableModuleForProject(projectId: string, moduleId: string): Promise<void> {
-    await this.assertProjectExists(projectId);
-    const modules = await this.scanInstalledModules(projectId);
-    const target = modules.find(module => module.manifest.id === moduleId);
-    if (!target) throw new Error(`模块不存在：${moduleId}`);
-    if (target.diagnostics.length > 0) throw new Error(`模块校验未通过，不能启用：${target.diagnostics.join('；')}`);
-
-    const refs = await this.readProjectModules(projectId);
-    assertNoModuleCompatibilityConflicts(modules, [...refs.enabledModuleIds, moduleId]);
-    if (!refs.enabledModuleIds.includes(moduleId)) refs.enabledModuleIds.push(moduleId);
-    refs.pinnedVersions[moduleId] = target.manifest.version;
-    await this.writeProjectModules(projectId, refs);
-    await this.appendHistory({
-      action: 'enable',
-      moduleId,
-      moduleName: target.manifest.name,
-      version: target.manifest.version,
-      status: 'success',
-      summary: `已为项目启用模块 ${target.manifest.name}`,
-      details: `项目 ${projectId} 已引用 ${moduleId}@${target.manifest.version}。`
-    });
+    const plan = await this.planEnableModulesForProject(projectId, [moduleId]);
+    await this.writeTextAtomically(plan.targetPath, plan.sourceCode);
+    await this.recordProjectModuleEnablePlan(plan);
   }
 
   /**
@@ -137,9 +129,11 @@ export class ModuleService {
       enabledModuleIds: [...refs.enabledModuleIds],
       pinnedVersions: { ...refs.pinnedVersions }
     };
+    const requestedModuleIds = [...new Set(moduleIds)];
+    const orderedModuleIds = resolveModuleDependencyOrder(requestedModuleIds, installedById);
     const addedModuleIds: string[] = [];
     const reusedModuleIds: string[] = [];
-    for (const moduleId of [...new Set(moduleIds)]) {
+    for (const moduleId of orderedModuleIds) {
       const module = installedById.get(moduleId);
       if (!module) throw new Error(`功能库依赖的模块尚未安装：${moduleId}`);
       if (module.diagnostics.length > 0) throw new Error(`功能库依赖的模块校验未通过：${moduleId}：${module.diagnostics.join('；')}`);
@@ -156,6 +150,8 @@ export class ModuleService {
       projectId,
       targetPath: this.projectModulesPath(projectId),
       sourceCode: `${JSON.stringify(nextRefs, null, 2)}\n`,
+      requestedModuleIds,
+      dependencyModuleIds: orderedModuleIds.filter(moduleId => !requestedModuleIds.includes(moduleId)),
       addedModuleIds,
       reusedModuleIds
     };
@@ -176,20 +172,51 @@ export class ModuleService {
     }
   }
 
-  async disableModuleForProject(projectId: string, moduleId: string): Promise<void> {
+  async planDisableModuleForProject(projectId: string, moduleId: string): Promise<ProjectModuleDisablePlan> {
     if (moduleId === BASIC_MODULE_ID) throw new Error('Win32窗口基础模块是普通 Win32 项目的默认基础能力，不能禁用。');
     await this.assertProjectExists(projectId);
     const refs = await this.readProjectModules(projectId);
-    refs.enabledModuleIds = refs.enabledModuleIds.filter(id => id !== moduleId);
-    delete refs.pinnedVersions[moduleId];
+    const modules = await this.scanInstalledModules(projectId);
+    const enabled = new Set(refs.enabledModuleIds);
+    const removed = new Set<string>(enabled.has(moduleId) ? [moduleId] : []);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const module of modules) {
+        if (!enabled.has(module.manifest.id) || removed.has(module.manifest.id)) continue;
+        if ((module.manifest.dependencies || []).some(dependency => removed.has(dependency.moduleId))) {
+          removed.add(module.manifest.id);
+          changed = true;
+        }
+      }
+    }
+    return {
+      projectId,
+      requestedModuleId: moduleId,
+      removedModuleIds: [...removed],
+      dependentModuleIds: [...removed].filter(id => id !== moduleId)
+    };
+  }
+
+  async disableModuleForProject(projectId: string, moduleId: string, options: { cascade?: boolean } = {}): Promise<void> {
+    const plan = await this.planDisableModuleForProject(projectId, moduleId);
+    if (plan.dependentModuleIds.length > 0 && !options.cascade) {
+      throw new Error(`模块仍被以下已启用模块依赖：${plan.dependentModuleIds.join('、')}。请确认后级联禁用。`);
+    }
+    const refs = await this.readProjectModules(projectId);
+    const removed = new Set(plan.removedModuleIds);
+    refs.enabledModuleIds = refs.enabledModuleIds.filter(id => !removed.has(id));
+    plan.removedModuleIds.forEach(id => delete refs.pinnedVersions[id]);
     await this.writeProjectModules(projectId, refs);
-    await this.appendHistory({
-      action: 'disable',
-      moduleId,
-      status: 'success',
-      summary: `已从项目禁用模块 ${moduleId}`,
-      details: `项目 ${projectId} 不再引用 ${moduleId}。`
-    });
+    for (const removedModuleId of plan.removedModuleIds) {
+      await this.appendHistory({
+        action: 'disable',
+        moduleId: removedModuleId,
+        status: 'success',
+        summary: `已从项目禁用模块 ${removedModuleId}`,
+        details: `项目 ${projectId} 不再引用 ${removedModuleId}${removedModuleId === moduleId ? '' : '（依赖级联）'}。`
+      });
+    }
   }
 
   async previewPackageInstall(packagePath: string): Promise<ModuleInstallPreview> {
@@ -388,8 +415,36 @@ export class ModuleService {
 
   private async writeProjectModules(_projectId: string, refs: LingBuilderProjectModules): Promise<void> {
     const targetPath = this.projectModulesPath(_projectId);
+    await this.writeTextAtomically(targetPath, `${JSON.stringify(refs, null, 2)}\n`);
+  }
+
+  private async writeTextAtomically(targetPath: string, content: string): Promise<void> {
     await fs.mkdir(path.dirname(targetPath), { recursive: true });
-    await fs.writeFile(targetPath, JSON.stringify(refs, null, 2), 'utf8');
+    const suffix = `${process.pid}-${crypto.randomBytes(4).toString('hex')}`;
+    const tempPath = `${targetPath}.tmp-${suffix}`;
+    const backupPath = `${targetPath}.bak-${suffix}`;
+    await fs.writeFile(tempPath, content, 'utf8');
+    try {
+      await fs.rename(tempPath, targetPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== 'EEXIST' && (error as NodeJS.ErrnoException)?.code !== 'EPERM') throw error;
+      let originalMoved = false;
+      try {
+        await fs.rename(targetPath, backupPath);
+        originalMoved = true;
+        await fs.rename(tempPath, targetPath);
+        await fs.rm(backupPath, { force: true });
+      } catch (replaceError) {
+        if (originalMoved) {
+          await fs.rm(targetPath, { force: true });
+          await fs.rename(backupPath, targetPath);
+        }
+        throw replaceError;
+      }
+    } finally {
+      await fs.rm(tempPath, { force: true });
+      await fs.rm(backupPath, { force: true });
+    }
   }
 
   private async removeModuleFromAllProjects(moduleId: string): Promise<number> {
@@ -518,6 +573,61 @@ function assertNoModuleCompatibilityConflicts(modules: InstalledModule[], enable
       throw new Error(`模块不兼容：${module.manifest.name} 与 ${other?.manifest.name || conflict.moduleId} 不能在同一项目中启用。${conflict.reason}`);
     }
   }
+}
+
+function resolveModuleDependencyOrder(
+  requestedModuleIds: readonly string[],
+  installedById: ReadonlyMap<string, InstalledModule>
+): string[] {
+  const ordered: string[] = [];
+  const state = new Map<string, 'visiting' | 'visited'>();
+  const stack: string[] = [];
+
+  const visit = (moduleId: string): void => {
+    if (state.get(moduleId) === 'visited') return;
+    if (state.get(moduleId) === 'visiting') {
+      const cycleStart = stack.indexOf(moduleId);
+      const cycle = [...stack.slice(Math.max(0, cycleStart)), moduleId];
+      throw new Error(`检测到模块依赖循环：${cycle.join(' -> ')}`);
+    }
+    const module = installedById.get(moduleId);
+    if (!module) throw new Error(`模块依赖尚未安装：${moduleId}`);
+    if (module.diagnostics.length > 0) throw new Error(`模块校验未通过，不能启用 ${moduleId}：${module.diagnostics.join('；')}`);
+
+    state.set(moduleId, 'visiting');
+    stack.push(moduleId);
+    for (const dependency of module.manifest.dependencies || []) {
+      const installedDependency = installedById.get(dependency.moduleId);
+      if (!installedDependency) {
+        throw new Error(`模块 ${module.manifest.name} 缺少依赖：${dependency.moduleId}@>=${dependency.minimumVersion}`);
+      }
+      if (compareModuleVersions(installedDependency.manifest.version, dependency.minimumVersion) < 0) {
+        throw new Error(`模块 ${module.manifest.name} 需要 ${dependency.moduleId}@>=${dependency.minimumVersion}，当前安装版本为 ${installedDependency.manifest.version}。`);
+      }
+      visit(dependency.moduleId);
+    }
+    stack.pop();
+    state.set(moduleId, 'visited');
+    ordered.push(moduleId);
+  };
+
+  requestedModuleIds.forEach(visit);
+  return ordered;
+}
+
+function compareModuleVersions(left: string, right: string): number {
+  const numericParts = (value: string) => value.split('-', 1)[0].split('.').map(part => Number.parseInt(part, 10) || 0);
+  const leftParts = numericParts(left);
+  const rightParts = numericParts(right);
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const difference = (leftParts[index] || 0) - (rightParts[index] || 0);
+    if (difference !== 0) return difference < 0 ? -1 : 1;
+  }
+  const leftPrerelease = left.includes('-');
+  const rightPrerelease = right.includes('-');
+  if (leftPrerelease === rightPrerelease) return 0;
+  return leftPrerelease ? -1 : 1;
 }
 
 export function createModuleService(workspaceRoot: string): ModuleService {

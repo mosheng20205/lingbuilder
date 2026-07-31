@@ -626,9 +626,9 @@ async function materializeEdgeViewSdk(
   layout: ModuleNativeDependencyLayout,
   plan: ModuleNativeDependencyPlan
 ): Promise<void> {
-  const packageRoot = await findLatestWebView2Package();
+  const packageRoot = await findWebView2Package(EDGEVIEW_WEBVIEW2_SDK_VERSION);
   if (!packageRoot) {
-    plan.diagnostics.push('EdgeView 模块缺少 Microsoft.Web.WebView2 NuGet SDK。请先恢复该包后重新构建。');
+    plan.diagnostics.push(`EdgeView 模块缺少固定版本 Microsoft.Web.WebView2 ${EDGEVIEW_WEBVIEW2_SDK_VERSION}。请恢复该 NuGet 包；构建不会自动改用其它缓存版本。`);
     plan.requiresMsvc = true;
     return;
   }
@@ -642,6 +642,10 @@ async function materializeEdgeViewSdk(
     path.join(layout.exportDir, moduleRoot)
   ]);
   try {
+    const actualHeaderSha256 = await sha256File(path.join(includeSource, 'WebView2.h'));
+    if (actualHeaderSha256 !== EDGEVIEW_WEBVIEW2_HEADER_SHA256) {
+      throw new Error(`WebView2.h 哈希不匹配：期望 ${EDGEVIEW_WEBVIEW2_HEADER_SHA256}，实际 ${actualHeaderSha256}`);
+    }
     for (const root of roots) {
       await fs.mkdir(path.join(root, 'include'), { recursive: true });
       await fs.copyFile(path.join(includeSource, 'WebView2.h'), path.join(root, 'include', 'WebView2.h'));
@@ -682,38 +686,36 @@ async function materializeCef3Sdk(
   const moduleRoot = path.join('modules', 'lingbuilder.cef3.browser');
   const architecture = layout.preferredTargetId === 'windows-msvc-x64' ? 'x64' : 'Win32';
   const isOfficialLayout = await pathExists(path.join(sdkRoot, 'Release', 'libcef.dll'));
-  const includeSource = path.join(sdkRoot, 'include');
   const roots = unique([
     path.join(layout.buildDir, moduleRoot),
     path.join(layout.sourceDir, moduleRoot),
     path.join(layout.exportDir, moduleRoot)
   ]);
   try {
-    for (const root of roots) {
-      await copyDirectoryRecursive(includeSource, path.join(root, 'include'));
-    }
-
-    const libcefLibSource = isOfficialLayout
-      ? path.join(sdkRoot, 'Release', 'libcef.lib')
-      : path.join(sdkRoot, 'lib', architecture, 'libcef.lib');
     const dllSource = isOfficialLayout
       ? path.join(sdkRoot, 'Release')
       : path.join(sdkRoot, 'bin', architecture);
 
-    let wrapperLibSource: string | null;
-    if (isOfficialLayout) {
-      wrapperLibSource = await ensureCefDllWrapper(sdkRoot, architecture, plan);
-    } else {
-      wrapperLibSource = path.join(sdkRoot, 'lib', architecture, 'libcef_dll_wrapper.lib');
-    }
-
     const libTargetDir = path.join(layout.buildDir, moduleRoot, 'lib', architecture);
     await fs.mkdir(libTargetDir, { recursive: true });
-    await fs.copyFile(libcefLibSource, path.join(libTargetDir, 'libcef.lib'));
-    if (wrapperLibSource && await pathExists(wrapperLibSource)) {
-      await fs.copyFile(wrapperLibSource, path.join(libTargetDir, 'libcef_dll_wrapper.lib'));
+    const bridgeRoot = path.join(sdkRoot, 'bridge', 'x64');
+    const bridgeHeader = path.join(bridgeRoot, 'LingBuilderCefBridge.h');
+    const bridgeLib = path.join(bridgeRoot, 'LingBuilderCefBridge.lib');
+    const bridgeDll = path.join(bridgeRoot, 'LingBuilderCefBridge.dll');
+    if (architecture !== 'x64') {
+      plan.diagnostics.push('CEF3 Bridge 仅支持 windows-msvc-x64，当前架构不受支持。');
+    } else if (!await pathExists(bridgeHeader) || !await pathExists(bridgeLib) || !await pathExists(bridgeDll)) {
+      plan.diagnostics.push('CEF3 SDK 缺少 LingBuilderCefBridge x64 资产。请运行 npm run module:cef3-bridge -- --install 重新生成 Bridge。');
     } else {
-      plan.diagnostics.push('CEF3 缺少 libcef_dll_wrapper.lib，链接将失败。请确认 SDK 完整或 CMake 可用。');
+      for (const root of roots) {
+        await fs.mkdir(path.join(root, 'include'), { recursive: true });
+        await fs.copyFile(bridgeHeader, path.join(root, 'include', 'LingBuilderCefBridge.h'));
+      }
+      await fs.copyFile(bridgeLib, path.join(libTargetDir, 'LingBuilderCefBridge.lib'));
+      const bridgeRuntime = path.join(layout.binDir, 'LingBuilderCefBridge.dll');
+      await fs.copyFile(bridgeDll, bridgeRuntime);
+      plan.libFiles.push(path.join(libTargetDir, 'LingBuilderCefBridge.lib'));
+      plan.runtimeFiles.push(bridgeRuntime);
     }
 
     await fs.mkdir(layout.binDir, { recursive: true });
@@ -745,8 +747,6 @@ async function materializeCef3Sdk(
     }
     plan.includeDirs.push(path.join(layout.sourceDir, moduleRoot, 'include'));
     plan.includeDirs.push(path.join(layout.sourceDir, moduleRoot));
-    plan.libFiles.push(path.join(libTargetDir, 'libcef.lib'));
-    plan.libFiles.push(path.join(libTargetDir, 'libcef_dll_wrapper.lib'));
   } catch (error) {
     plan.diagnostics.push(`准备 CEF3 SDK 失败：${errorMessage(error)}`);
   }
@@ -903,22 +903,16 @@ async function copyDirectoryRecursive(source: string, target: string): Promise<v
   }
 }
 
-async function findLatestWebView2Package(): Promise<string | null> {
+async function findWebView2Package(version: string): Promise<string | null> {
   const candidates = unique([
     process.env.NUGET_PACKAGES ? path.join(process.env.NUGET_PACKAGES, 'microsoft.web.webview2') : '',
     process.env.USERPROFILE ? path.join(process.env.USERPROFILE, '.nuget', 'packages', 'microsoft.web.webview2') : ''
   ].filter(Boolean));
   for (const root of candidates) {
     try {
-      const versions = (await fs.readdir(root, { withFileTypes: true }))
-        .filter(entry => entry.isDirectory())
-        .map(entry => entry.name)
-        .sort((left, right) => right.localeCompare(left, undefined, { numeric: true }));
-      for (const version of versions) {
-        const packageRoot = path.join(root, version);
-        await fs.access(path.join(packageRoot, 'build', 'native', 'include', 'WebView2.h'));
-        return packageRoot;
-      }
+      const packageRoot = path.join(root, version);
+      await fs.access(path.join(packageRoot, 'build', 'native', 'include', 'WebView2.h'));
+      return packageRoot;
     } catch {
       // Try the next configured NuGet package root.
     }
@@ -962,3 +956,5 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+const EDGEVIEW_WEBVIEW2_SDK_VERSION = '1.0.4078.44';
+const EDGEVIEW_WEBVIEW2_HEADER_SHA256 = 'dff1e3181ec7ec203a34ef6efa966590e0ef0ba1a5c3fe3b69da6508c2f8a02e';

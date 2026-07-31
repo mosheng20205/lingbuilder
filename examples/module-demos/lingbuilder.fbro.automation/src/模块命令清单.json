@@ -1,0 +1,650 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.151Z",
+  "module": {
+    "id": "lingbuilder.fbro.automation",
+    "name": "FBro自动化模块",
+    "version": "2.0.0",
+    "description": "提供受管异步 JavaScript 任务与类型化 Frame 操作。"
+  },
+  "commandCount": 25,
+  "commands": [
+    {
+      "index": 1,
+      "name": "FBro自动化_执行JS异步",
+      "aliases": [
+        "LB_FBro_ExecuteJsAsync"
+      ],
+      "signature": "FBro自动化_执行JS异步(控件名, 脚本)",
+      "description": "异步执行 JavaScript 并返回受管任务 ID。",
+      "insertText": "FBro自动化_执行JS异步(\"$1\", \"$2\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro自动化_执行JS异步",
+        "runtimeName": "FBro自动化_执行JS异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "脚本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro自动化_执行JS异步(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 2,
+      "name": "FBro框架_取主框架",
+      "aliases": [
+        "FBroHsBrowser_GetMainFrame"
+      ],
+      "signature": "FBro框架_取主框架(控件名)",
+      "description": "取得浏览器主框架的受管句柄。",
+      "insertText": "FBro框架_取主框架(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_取主框架",
+        "runtimeName": "FBro框架_取主框架",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro框架_取主框架(\"演示输出\")"
+    },
+    {
+      "index": 3,
+      "name": "FBro框架_取焦点框架",
+      "aliases": [
+        "FBroHsBrowser_GetFocusedFrame"
+      ],
+      "signature": "FBro框架_取焦点框架(控件名)",
+      "description": "取得当前焦点框架的受管句柄。",
+      "insertText": "FBro框架_取焦点框架(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_取焦点框架",
+        "runtimeName": "FBro框架_取焦点框架",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro框架_取焦点框架(\"演示输出\")"
+    },
+    {
+      "index": 4,
+      "name": "FBro框架_按标识取框架",
+      "aliases": [
+        "FBroHsBrowser_GetFrameById"
+      ],
+      "signature": "FBro框架_按标识取框架(控件名, 标识)",
+      "description": "按官方字符串标识取得受管框架句柄。",
+      "insertText": "FBro框架_按标识取框架(\"$1\", \"$2\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_按标识取框架",
+        "runtimeName": "FBro框架_按标识取框架",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "标识",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro框架_按标识取框架(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 5,
+      "name": "FBro框架_按名称取框架",
+      "aliases": [
+        "FBroHsBrowser_GetFrameByName"
+      ],
+      "signature": "FBro框架_按名称取框架(控件名, 名称)",
+      "description": "按框架名称取得受管框架句柄。",
+      "insertText": "FBro框架_按名称取框架(\"$1\", \"$2\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_按名称取框架",
+        "runtimeName": "FBro框架_按名称取框架",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro框架_按名称取框架(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 6,
+      "name": "FBro框架_取标识列表JSON",
+      "aliases": [
+        "FBroHsBrowser_GetFrameIdentifiers"
+      ],
+      "signature": "FBro框架_取标识列表JSON(控件名)",
+      "description": "取得全部框架标识的 UTF-16 JSON 数组。",
+      "insertText": "FBro框架_取标识列表JSON(\"$1\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_取标识列表JSON",
+        "runtimeName": "FBro框架_取标识列表JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro框架_取标识列表JSON(\"演示输出\")"
+    },
+    {
+      "index": 7,
+      "name": "FBro框架_取名称列表JSON",
+      "aliases": [
+        "FBroHsBrowser_GetFrameNames"
+      ],
+      "signature": "FBro框架_取名称列表JSON(控件名)",
+      "description": "取得全部框架名称的 UTF-16 JSON 数组。",
+      "insertText": "FBro框架_取名称列表JSON(\"$1\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_取名称列表JSON",
+        "runtimeName": "FBro框架_取名称列表JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro框架_取名称列表JSON(\"演示输出\")"
+    },
+    {
+      "index": 8,
+      "name": "FBro框架_是否有效",
+      "aliases": [
+        "FBroHsBrowserFrame_IsValid"
+      ],
+      "signature": "FBro框架_是否有效(框架句柄)",
+      "description": "检查受管框架是否仍有效。",
+      "insertText": "FBro框架_是否有效($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_是否有效",
+        "runtimeName": "FBro框架_是否有效",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro框架_是否有效(1)"
+    },
+    {
+      "index": 9,
+      "name": "FBro框架_是否主框架",
+      "aliases": [
+        "FBroHsBrowserFrame_IsMain"
+      ],
+      "signature": "FBro框架_是否主框架(框架句柄)",
+      "description": "检查是否为主框架。",
+      "insertText": "FBro框架_是否主框架($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_是否主框架",
+        "runtimeName": "FBro框架_是否主框架",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro框架_是否主框架(1)"
+    },
+    {
+      "index": 10,
+      "name": "FBro框架_是否焦点框架",
+      "aliases": [
+        "FBroHsBrowserFrame_IsFocused"
+      ],
+      "signature": "FBro框架_是否焦点框架(框架句柄)",
+      "description": "检查框架是否拥有焦点。",
+      "insertText": "FBro框架_是否焦点框架($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_是否焦点框架",
+        "runtimeName": "FBro框架_是否焦点框架",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro框架_是否焦点框架(1)"
+    },
+    {
+      "index": 11,
+      "name": "FBro框架_取地址",
+      "aliases": [
+        "FBroHsBrowserFrame_GetURL"
+      ],
+      "signature": "FBro框架_取地址(框架句柄)",
+      "description": "取得框架当前地址。",
+      "insertText": "FBro框架_取地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_取地址",
+        "runtimeName": "FBro框架_取地址",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro框架_取地址(1)"
+    },
+    {
+      "index": 12,
+      "name": "FBro框架_取名称",
+      "aliases": [
+        "FBroHsBrowserFrame_GetName"
+      ],
+      "signature": "FBro框架_取名称(框架句柄)",
+      "description": "取得框架名称。",
+      "insertText": "FBro框架_取名称($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_取名称",
+        "runtimeName": "FBro框架_取名称",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro框架_取名称(1)"
+    },
+    {
+      "index": 13,
+      "name": "FBro框架_取标识",
+      "aliases": [
+        "FBroHsBrowserFrame_GetIdentifier"
+      ],
+      "signature": "FBro框架_取标识(框架句柄)",
+      "description": "取得框架官方字符串标识。",
+      "insertText": "FBro框架_取标识($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_取标识",
+        "runtimeName": "FBro框架_取标识",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "FBro框架_取标识(1)"
+    },
+    {
+      "index": 14,
+      "name": "FBro框架_取父框架",
+      "aliases": [
+        "FBroHsBrowserFrame_GetParent"
+      ],
+      "signature": "FBro框架_取父框架(框架句柄)",
+      "description": "取得父框架受管句柄；主框架返回零。",
+      "insertText": "FBro框架_取父框架($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_取父框架",
+        "runtimeName": "FBro框架_取父框架",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro框架_取父框架(1)"
+    },
+    {
+      "index": 15,
+      "name": "FBro框架_取浏览器实例",
+      "aliases": [
+        "FBroHsBrowserFrame_GetBrowser"
+      ],
+      "signature": "FBro框架_取浏览器实例(框架句柄)",
+      "description": "取得框架所属的 LingBuilder 浏览器实例 ID。",
+      "insertText": "FBro框架_取浏览器实例($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_取浏览器实例",
+        "runtimeName": "FBro框架_取浏览器实例",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "FBro框架_取浏览器实例(1)"
+    },
+    {
+      "index": 16,
+      "name": "FBro框架_撤销",
+      "aliases": [
+        "FBroHsBrowserFrame_Undo"
+      ],
+      "signature": "FBro框架_撤销(框架句柄)",
+      "description": "在框架中执行撤销。",
+      "insertText": "FBro框架_撤销($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_撤销",
+        "runtimeName": "FBro框架_撤销",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro框架_撤销(1)"
+    },
+    {
+      "index": 17,
+      "name": "FBro框架_重做",
+      "aliases": [
+        "FBroHsBrowserFrame_Redo"
+      ],
+      "signature": "FBro框架_重做(框架句柄)",
+      "description": "在框架中执行重做。",
+      "insertText": "FBro框架_重做($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_重做",
+        "runtimeName": "FBro框架_重做",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro框架_重做(1)"
+    },
+    {
+      "index": 18,
+      "name": "FBro框架_剪切",
+      "aliases": [
+        "FBroHsBrowserFrame_Cut"
+      ],
+      "signature": "FBro框架_剪切(框架句柄)",
+      "description": "剪切框架当前选择。",
+      "insertText": "FBro框架_剪切($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_剪切",
+        "runtimeName": "FBro框架_剪切",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro框架_剪切(1)"
+    },
+    {
+      "index": 19,
+      "name": "FBro框架_复制",
+      "aliases": [
+        "FBroHsBrowserFrame_Copy"
+      ],
+      "signature": "FBro框架_复制(框架句柄)",
+      "description": "复制框架当前选择。",
+      "insertText": "FBro框架_复制($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_复制",
+        "runtimeName": "FBro框架_复制",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro框架_复制(1)"
+    },
+    {
+      "index": 20,
+      "name": "FBro框架_粘贴",
+      "aliases": [
+        "FBroHsBrowserFrame_Paste"
+      ],
+      "signature": "FBro框架_粘贴(框架句柄)",
+      "description": "在框架中粘贴。",
+      "insertText": "FBro框架_粘贴($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_粘贴",
+        "runtimeName": "FBro框架_粘贴",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro框架_粘贴(1)"
+    },
+    {
+      "index": 21,
+      "name": "FBro框架_删除",
+      "aliases": [
+        "FBroHsBrowserFrame_Delete"
+      ],
+      "signature": "FBro框架_删除(框架句柄)",
+      "description": "删除框架当前选择。",
+      "insertText": "FBro框架_删除($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_删除",
+        "runtimeName": "FBro框架_删除",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro框架_删除(1)"
+    },
+    {
+      "index": 22,
+      "name": "FBro框架_全选",
+      "aliases": [
+        "FBroHsBrowserFrame_SelectAll"
+      ],
+      "signature": "FBro框架_全选(框架句柄)",
+      "description": "全选框架内容。",
+      "insertText": "FBro框架_全选($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_全选",
+        "runtimeName": "FBro框架_全选",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro框架_全选(1)"
+    },
+    {
+      "index": 23,
+      "name": "FBro框架_查看源代码",
+      "aliases": [
+        "FBroHsBrowserFrame_ViewSource"
+      ],
+      "signature": "FBro框架_查看源代码(框架句柄)",
+      "description": "打开框架源代码查看器。",
+      "insertText": "FBro框架_查看源代码($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_查看源代码",
+        "runtimeName": "FBro框架_查看源代码",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro框架_查看源代码(1)"
+    },
+    {
+      "index": 24,
+      "name": "FBro框架_载入地址",
+      "aliases": [
+        "FBroHsBrowserFrame_LoadURL"
+      ],
+      "signature": "FBro框架_载入地址(框架句柄, 地址)",
+      "description": "让指定框架载入地址。",
+      "insertText": "FBro框架_载入地址($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_载入地址",
+        "runtimeName": "FBro框架_载入地址",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro框架_载入地址(1, \"https://example.com\")"
+    },
+    {
+      "index": 25,
+      "name": "FBro框架_执行JS",
+      "aliases": [
+        "FBroHsBrowserFrame_ExecuteJavaScript"
+      ],
+      "signature": "FBro框架_执行JS(框架句柄, 脚本, 脚本地址, 起始行)",
+      "description": "在指定框架执行 JavaScript，不等待返回值。",
+      "insertText": "FBro框架_执行JS($1, \"$2\", \"$3\", $4)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro框架_执行JS",
+        "runtimeName": "FBro框架_执行JS",
+        "parameters": [
+          {
+            "name": "框架句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "脚本",
+            "type": "wideString"
+          },
+          {
+            "name": "脚本地址",
+            "type": "wideString"
+          },
+          {
+            "name": "起始行",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro框架_执行JS(1, \"演示参数2\", \"https://example.com\", 1)"
+    }
+  ]
+}

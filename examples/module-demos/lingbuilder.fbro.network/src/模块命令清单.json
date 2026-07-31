@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.158Z",
+  "module": {
+    "id": "lingbuilder.fbro.network",
+    "name": "FBro高级网络模块",
+    "version": "2.0.0",
+    "description": "提供显式启用的代理与认证高级 API。"
+  },
+  "commandCount": 2,
+  "commands": [
+    {
+      "index": 1,
+      "name": "FBro网络_设置代理",
+      "aliases": [
+        "LB_FBro_SetProxy"
+      ],
+      "signature": "FBro网络_设置代理(控件名, 代理地址)",
+      "description": "设置当前 FBro RequestContext 的代理。",
+      "insertText": "FBro网络_设置代理(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro网络_设置代理",
+        "runtimeName": "FBro_设置代理",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro网络_设置代理(\"演示输出\", \"https://example.com\")"
+    },
+    {
+      "index": 2,
+      "name": "FBro网络_设置代理认证",
+      "aliases": [
+        "LB_FBro_SetProxyAuthentication"
+      ],
+      "signature": "FBro网络_设置代理认证(控件名, 代理地址, 用户名, 密码)",
+      "description": "设置代理与认证信息。",
+      "insertText": "FBro网络_设置代理认证(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro网络_设置代理认证",
+        "runtimeName": "FBro会话_设置代理认证",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString"
+          },
+          {
+            "name": "密码",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro网络_设置代理认证(\"演示输出\", \"https://example.com\", \"演示参数3\", \"演示参数4\")"
+    }
+  ]
+}

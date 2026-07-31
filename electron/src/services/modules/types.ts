@@ -10,6 +10,8 @@ export type LingBuilderModuleCategory =
 
 export interface ModuleCommandContribution {
   name: string;
+  /** 官方英文名、历史名称或其它稳定调用别名；别名参与补全、诊断、重命名和 binding 解析。 */
+  aliases?: string[];
   signature: string;
   description: string;
   insertText?: string;
@@ -237,6 +239,11 @@ export interface ModuleCompatibilityContribution {
   conflicts?: ModuleConflictContribution[];
 }
 
+export interface ModuleDependencyContribution {
+  moduleId: string;
+  minimumVersion: string;
+}
+
 export interface LingBuilderModuleManifest {
   schemaVersion: 2;
   id: string;
@@ -249,6 +256,8 @@ export interface LingBuilderModuleManifest {
   license?: string;
   tags?: string[];
   minLingBuilderVersion?: string;
+  /** 启用本模块前必须递归启用的模块；顺序由 ModuleService 确定性解析。 */
+  dependencies?: ModuleDependencyContribution[];
   contributes?: {
     commands?: ModuleCommandContribution[];
     menus?: ModuleMenuContribution[];

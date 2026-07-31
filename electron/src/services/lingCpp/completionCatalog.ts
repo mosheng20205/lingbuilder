@@ -130,6 +130,7 @@ export function getLingCppModuleCompletionItems(moduleContext?: LingCppModuleCon
       signature: command.signature,
       returnType: command.returnType,
       documentation: command.description,
+      aliases: command.aliases || [],
       category: 'module',
       source: 'module',
       sortRank: 20,

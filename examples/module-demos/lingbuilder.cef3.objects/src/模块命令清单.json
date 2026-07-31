@@ -1,0 +1,4988 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.092Z",
+  "module": {
+    "id": "lingbuilder.cef3.objects",
+    "name": "CEF3受管对象模块",
+    "version": "3.0.0-alpha.2",
+    "description": "提供任务、缓冲、Value、Dictionary、List、Image、NavigationEntry和证书类型化对象的安全生命周期接口。"
+  },
+  "commandCount": 183,
+  "commands": [
+    {
+      "index": 1,
+      "name": "CEF3任务_取状态",
+      "aliases": [
+        "LB_CEF3_TaskGetStatus"
+      ],
+      "signature": "CEF3任务_取状态(任务ID)",
+      "description": "取得异步任务状态。",
+      "insertText": "CEF3任务_取状态($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3任务_取状态",
+        "runtimeName": "CEF3任务_取状态",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3任务_取状态(1)"
+    },
+    {
+      "index": 2,
+      "name": "CEF3任务_取结果",
+      "aliases": [
+        "LB_CEF3_TaskGetResult"
+      ],
+      "signature": "CEF3任务_取结果(任务ID)",
+      "description": "取得异步任务UTF-16结果。",
+      "insertText": "CEF3任务_取结果($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3任务_取结果",
+        "runtimeName": "CEF3任务_取结果",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3任务_取结果(1)"
+    },
+    {
+      "index": 3,
+      "name": "CEF3任务_取错误",
+      "aliases": [
+        "LB_CEF3_TaskGetError"
+      ],
+      "signature": "CEF3任务_取错误(任务ID)",
+      "description": "取得异步任务中文错误。",
+      "insertText": "CEF3任务_取错误($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3任务_取错误",
+        "runtimeName": "CEF3任务_取错误",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3任务_取错误(1)"
+    },
+    {
+      "index": 4,
+      "name": "CEF3任务_取消",
+      "aliases": [
+        "LB_CEF3_TaskCancel"
+      ],
+      "signature": "CEF3任务_取消(任务ID)",
+      "description": "取消尚未完成的任务。",
+      "insertText": "CEF3任务_取消($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3任务_取消",
+        "runtimeName": "CEF3任务_取消",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3任务_取消(1)"
+    },
+    {
+      "index": 5,
+      "name": "CEF3任务_释放",
+      "aliases": [
+        "LB_CEF3_TaskRelease"
+      ],
+      "signature": "CEF3任务_释放(任务ID)",
+      "description": "释放异步任务及其结果。",
+      "insertText": "CEF3任务_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3任务_释放",
+        "runtimeName": "CEF3任务_释放",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3任务_释放(1)"
+    },
+    {
+      "index": 6,
+      "name": "CEF3缓冲_从十六进制",
+      "aliases": [
+        "LB_CEF3_BufferCreate"
+      ],
+      "signature": "CEF3缓冲_从十六进制(十六进制)",
+      "description": "从偶数长度十六进制文本创建 Bridge 受管缓冲并返回类型化句柄。",
+      "insertText": "CEF3缓冲_从十六进制(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3缓冲_从十六进制",
+        "runtimeName": "CEF3缓冲_从十六进制",
+        "parameters": [
+          {
+            "name": "十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3缓冲_从十六进制(\"演示参数1\")"
+    },
+    {
+      "index": 7,
+      "name": "CEF3缓冲_复制",
+      "aliases": [
+        "CefBinaryValue::Copy"
+      ],
+      "signature": "CEF3缓冲_复制(缓冲句柄)",
+      "description": "复制受管二进制缓冲并返回独立句柄。",
+      "insertText": "CEF3缓冲_复制($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3缓冲_复制",
+        "runtimeName": "CEF3缓冲_复制",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3缓冲_复制(1)"
+    },
+    {
+      "index": 8,
+      "name": "CEF3缓冲_是否有效",
+      "aliases": [
+        "CefBinaryValue::IsValid"
+      ],
+      "signature": "CEF3缓冲_是否有效(缓冲句柄)",
+      "description": "判断受管缓冲句柄是否有效。",
+      "insertText": "CEF3缓冲_是否有效($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3缓冲_是否有效",
+        "runtimeName": "CEF3缓冲_是否有效",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3缓冲_是否有效(1)"
+    },
+    {
+      "index": 9,
+      "name": "CEF3缓冲_是否被拥有",
+      "aliases": [
+        "CefBinaryValue::IsOwned"
+      ],
+      "signature": "CEF3缓冲_是否被拥有(缓冲句柄)",
+      "description": "Bridge缓冲始终独立拥有，合法句柄返回0。",
+      "insertText": "CEF3缓冲_是否被拥有($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3缓冲_是否被拥有",
+        "runtimeName": "CEF3缓冲_是否被拥有",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3缓冲_是否被拥有(1)"
+    },
+    {
+      "index": 10,
+      "name": "CEF3缓冲_是否同一对象",
+      "aliases": [
+        "CefBinaryValue::IsSame"
+      ],
+      "signature": "CEF3缓冲_是否同一对象(缓冲句柄, 另一缓冲句柄)",
+      "description": "判断两个受管句柄是否引用同一缓冲。",
+      "insertText": "CEF3缓冲_是否同一对象($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3缓冲_是否同一对象",
+        "runtimeName": "CEF3缓冲_是否同一对象",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3缓冲_是否同一对象(1, 1)"
+    },
+    {
+      "index": 11,
+      "name": "CEF3缓冲_是否相等",
+      "aliases": [
+        "CefBinaryValue::IsEqual"
+      ],
+      "signature": "CEF3缓冲_是否相等(缓冲句柄, 另一缓冲句柄)",
+      "description": "逐字节比较两个受管缓冲。",
+      "insertText": "CEF3缓冲_是否相等($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3缓冲_是否相等",
+        "runtimeName": "CEF3缓冲_是否相等",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3缓冲_是否相等(1, 1)"
+    },
+    {
+      "index": 12,
+      "name": "CEF3缓冲_从文件",
+      "aliases": [
+        "LB_CEF3_BufferLoadFile"
+      ],
+      "signature": "CEF3缓冲_从文件(路径)",
+      "description": "从允许文件根目录内读取文件并创建受管缓冲；越界路径返回0。",
+      "insertText": "CEF3缓冲_从文件(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3缓冲_从文件",
+        "runtimeName": "CEF3缓冲_从文件",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3缓冲_从文件(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 13,
+      "name": "CEF3缓冲_取大小",
+      "aliases": [
+        "LB_CEF3_BufferGetSize"
+      ],
+      "signature": "CEF3缓冲_取大小(缓冲句柄)",
+      "description": "返回受管缓冲字节数，无效或类型错误返回-1。",
+      "insertText": "CEF3缓冲_取大小($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3缓冲_取大小",
+        "runtimeName": "CEF3缓冲_取大小",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3缓冲_取大小(1)"
+    },
+    {
+      "index": 14,
+      "name": "CEF3缓冲_到十六进制",
+      "aliases": [
+        "LB_CEF3_BufferToHex"
+      ],
+      "signature": "CEF3缓冲_到十六进制(缓冲句柄)",
+      "description": "把受管缓冲转换为小写十六进制文本。",
+      "insertText": "CEF3缓冲_到十六进制($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3缓冲_到十六进制",
+        "runtimeName": "CEF3缓冲_到十六进制",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3缓冲_到十六进制(1)"
+    },
+    {
+      "index": 15,
+      "name": "CEF3缓冲_保存文件",
+      "aliases": [
+        "LB_CEF3_BufferSaveFile"
+      ],
+      "signature": "CEF3缓冲_保存文件(缓冲句柄, 路径)",
+      "description": "把受管缓冲写入允许文件根目录；拒绝目录穿越和任意路径写入。",
+      "insertText": "CEF3缓冲_保存文件($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3缓冲_保存文件",
+        "runtimeName": "CEF3缓冲_保存文件",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3缓冲_保存文件(1, \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 16,
+      "name": "CEF3缓冲_释放",
+      "aliases": [
+        "LB_CEF3_BufferRelease"
+      ],
+      "signature": "CEF3缓冲_释放(缓冲句柄)",
+      "description": "释放受管缓冲；重复释放返回稳定错误码。",
+      "insertText": "CEF3缓冲_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3缓冲_释放",
+        "runtimeName": "CEF3缓冲_释放",
+        "parameters": [
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3缓冲_释放(1)"
+    },
+    {
+      "index": 17,
+      "name": "CEF3值_创建",
+      "aliases": [
+        "CefValue::Create"
+      ],
+      "signature": "CEF3值_创建()",
+      "description": "创建独立拥有的CEF值对象并返回类型化受管句柄。",
+      "insertText": "CEF3值_创建()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_创建",
+        "runtimeName": "CEF3值_创建",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3值_创建()"
+    },
+    {
+      "index": 18,
+      "name": "CEF3值_复制",
+      "aliases": [
+        "CefValue::Copy"
+      ],
+      "signature": "CEF3值_复制(值句柄)",
+      "description": "深复制CEF值并返回独立受管句柄。",
+      "insertText": "CEF3值_复制($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_复制",
+        "runtimeName": "CEF3值_复制",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3值_复制(1)"
+    },
+    {
+      "index": 19,
+      "name": "CEF3值_是否有效",
+      "aliases": [
+        "CefValue::IsValid"
+      ],
+      "signature": "CEF3值_是否有效(值句柄)",
+      "description": "判断CEF值当前是否有效。",
+      "insertText": "CEF3值_是否有效($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_是否有效",
+        "runtimeName": "CEF3值_是否有效",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_是否有效(1)"
+    },
+    {
+      "index": 20,
+      "name": "CEF3值_是否被拥有",
+      "aliases": [
+        "CefValue::IsOwned"
+      ],
+      "signature": "CEF3值_是否被拥有(值句柄)",
+      "description": "判断CEF值是否被其它CEF对象拥有。",
+      "insertText": "CEF3值_是否被拥有($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_是否被拥有",
+        "runtimeName": "CEF3值_是否被拥有",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_是否被拥有(1)"
+    },
+    {
+      "index": 21,
+      "name": "CEF3值_是否只读",
+      "aliases": [
+        "CefValue::IsReadOnly"
+      ],
+      "signature": "CEF3值_是否只读(值句柄)",
+      "description": "判断CEF值是否只读。",
+      "insertText": "CEF3值_是否只读($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_是否只读",
+        "runtimeName": "CEF3值_是否只读",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_是否只读(1)"
+    },
+    {
+      "index": 22,
+      "name": "CEF3值_是否同一对象",
+      "aliases": [
+        "CefValue::IsSame"
+      ],
+      "signature": "CEF3值_是否同一对象(值句柄, 另一值句柄)",
+      "description": "判断两个句柄是否引用同一CEF值对象。",
+      "insertText": "CEF3值_是否同一对象($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_是否同一对象",
+        "runtimeName": "CEF3值_是否同一对象",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_是否同一对象(1, 1)"
+    },
+    {
+      "index": 23,
+      "name": "CEF3值_是否相等",
+      "aliases": [
+        "CefValue::IsEqual"
+      ],
+      "signature": "CEF3值_是否相等(值句柄, 另一值句柄)",
+      "description": "深度比较两个CEF值的内容。",
+      "insertText": "CEF3值_是否相等($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_是否相等",
+        "runtimeName": "CEF3值_是否相等",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_是否相等(1, 1)"
+    },
+    {
+      "index": 24,
+      "name": "CEF3值_取类型",
+      "aliases": [
+        "CefValue::GetType"
+      ],
+      "signature": "CEF3值_取类型(值句柄)",
+      "description": "取得CEF值类型枚举。",
+      "insertText": "CEF3值_取类型($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_取类型",
+        "runtimeName": "CEF3值_取类型",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_取类型(1)"
+    },
+    {
+      "index": 25,
+      "name": "CEF3值_设为空",
+      "aliases": [
+        "CefValue::SetNull"
+      ],
+      "signature": "CEF3值_设为空(值句柄)",
+      "description": "把CEF值设为空。",
+      "insertText": "CEF3值_设为空($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_设为空",
+        "runtimeName": "CEF3值_设为空",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_设为空(1)"
+    },
+    {
+      "index": 26,
+      "name": "CEF3值_设逻辑",
+      "aliases": [
+        "CefValue::SetBool"
+      ],
+      "signature": "CEF3值_设逻辑(值句柄, 值)",
+      "description": "设置CEF逻辑值。",
+      "insertText": "CEF3值_设逻辑($1, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_设逻辑",
+        "runtimeName": "CEF3值_设逻辑",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "值",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_设逻辑(1, 真)"
+    },
+    {
+      "index": 27,
+      "name": "CEF3值_设整数",
+      "aliases": [
+        "CefValue::SetInt"
+      ],
+      "signature": "CEF3值_设整数(值句柄, 值)",
+      "description": "设置CEF整数值。",
+      "insertText": "CEF3值_设整数($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_设整数",
+        "runtimeName": "CEF3值_设整数",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_设整数(1, 1)"
+    },
+    {
+      "index": 28,
+      "name": "CEF3值_设小数",
+      "aliases": [
+        "CefValue::SetDouble"
+      ],
+      "signature": "CEF3值_设小数(值句柄, 值)",
+      "description": "设置CEF双精度值。",
+      "insertText": "CEF3值_设小数($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_设小数",
+        "runtimeName": "CEF3值_设小数",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "值",
+            "type": "double"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_设小数(1, 1.0)"
+    },
+    {
+      "index": 29,
+      "name": "CEF3值_设文本",
+      "aliases": [
+        "CefValue::SetString"
+      ],
+      "signature": "CEF3值_设文本(值句柄, 值)",
+      "description": "设置UTF-16文本值。",
+      "insertText": "CEF3值_设文本($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_设文本",
+        "runtimeName": "CEF3值_设文本",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3值_设文本(1, \"演示参数2\")"
+    },
+    {
+      "index": 30,
+      "name": "CEF3值_设缓冲",
+      "aliases": [
+        "CefValue::SetBinary"
+      ],
+      "signature": "CEF3值_设缓冲(值句柄, 缓冲句柄)",
+      "description": "复制受管缓冲并设置为CEF二进制值。",
+      "insertText": "CEF3值_设缓冲($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_设缓冲",
+        "runtimeName": "CEF3值_设缓冲",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_设缓冲(1, 1)"
+    },
+    {
+      "index": 31,
+      "name": "CEF3值_设字典",
+      "aliases": [
+        "CefValue::SetDictionary"
+      ],
+      "signature": "CEF3值_设字典(值句柄, 字典句柄)",
+      "description": "深复制字典并设置为CEF字典值。",
+      "insertText": "CEF3值_设字典($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_设字典",
+        "runtimeName": "CEF3值_设字典",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_设字典(1, 1)"
+    },
+    {
+      "index": 32,
+      "name": "CEF3值_设列表",
+      "aliases": [
+        "CefValue::SetList"
+      ],
+      "signature": "CEF3值_设列表(值句柄, 列表句柄)",
+      "description": "深复制列表并设置为CEF列表值。",
+      "insertText": "CEF3值_设列表($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_设列表",
+        "runtimeName": "CEF3值_设列表",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_设列表(1, 1)"
+    },
+    {
+      "index": 33,
+      "name": "CEF3值_取逻辑",
+      "aliases": [
+        "CefValue::GetBool"
+      ],
+      "signature": "CEF3值_取逻辑(值句柄)",
+      "description": "取得CEF逻辑值，类型不匹配时返回稳定负错误码。",
+      "insertText": "CEF3值_取逻辑($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_取逻辑",
+        "runtimeName": "CEF3值_取逻辑",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_取逻辑(1)"
+    },
+    {
+      "index": 34,
+      "name": "CEF3值_取整数",
+      "aliases": [
+        "CefValue::GetInt"
+      ],
+      "signature": "CEF3值_取整数(值句柄)",
+      "description": "取得CEF整数值。",
+      "insertText": "CEF3值_取整数($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_取整数",
+        "runtimeName": "CEF3值_取整数",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_取整数(1)"
+    },
+    {
+      "index": 35,
+      "name": "CEF3值_取小数",
+      "aliases": [
+        "CefValue::GetDouble"
+      ],
+      "signature": "CEF3值_取小数(值句柄)",
+      "description": "取得CEF双精度值。",
+      "insertText": "CEF3值_取小数($1)",
+      "returnType": "双精度小数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_取小数",
+        "runtimeName": "CEF3值_取小数",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "double"
+      },
+      "demoInvocation": "CEF3值_取小数(1)"
+    },
+    {
+      "index": 36,
+      "name": "CEF3值_取文本",
+      "aliases": [
+        "CefValue::GetString"
+      ],
+      "signature": "CEF3值_取文本(值句柄)",
+      "description": "取得CEF UTF-16文本值。",
+      "insertText": "CEF3值_取文本($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_取文本",
+        "runtimeName": "CEF3值_取文本",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3值_取文本(1)"
+    },
+    {
+      "index": 37,
+      "name": "CEF3值_取缓冲",
+      "aliases": [
+        "CefValue::GetBinary"
+      ],
+      "signature": "CEF3值_取缓冲(值句柄)",
+      "description": "复制CEF二进制值并返回独立受管缓冲句柄。",
+      "insertText": "CEF3值_取缓冲($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_取缓冲",
+        "runtimeName": "CEF3值_取缓冲",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3值_取缓冲(1)"
+    },
+    {
+      "index": 38,
+      "name": "CEF3值_取字典",
+      "aliases": [
+        "CefValue::GetDictionary"
+      ],
+      "signature": "CEF3值_取字典(值句柄)",
+      "description": "深复制CEF字典值并返回独立受管字典句柄。",
+      "insertText": "CEF3值_取字典($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_取字典",
+        "runtimeName": "CEF3值_取字典",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3值_取字典(1)"
+    },
+    {
+      "index": 39,
+      "name": "CEF3值_取列表",
+      "aliases": [
+        "CefValue::GetList"
+      ],
+      "signature": "CEF3值_取列表(值句柄)",
+      "description": "深复制CEF列表值并返回独立受管列表句柄。",
+      "insertText": "CEF3值_取列表($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_取列表",
+        "runtimeName": "CEF3值_取列表",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3值_取列表(1)"
+    },
+    {
+      "index": 40,
+      "name": "CEF3值_到JSON",
+      "aliases": [
+        "LB_CEF3_ValueToJson"
+      ],
+      "signature": "CEF3值_到JSON(值句柄)",
+      "description": "把CEF值安全序列化为JSON。",
+      "insertText": "CEF3值_到JSON($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_到JSON",
+        "runtimeName": "CEF3值_到JSON",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3值_到JSON(1)"
+    },
+    {
+      "index": 41,
+      "name": "CEF3值_释放",
+      "aliases": [
+        "LB_CEF3_ValueRelease"
+      ],
+      "signature": "CEF3值_释放(值句柄)",
+      "description": "释放CEF值受管句柄。",
+      "insertText": "CEF3值_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3值_释放",
+        "runtimeName": "CEF3值_释放",
+        "parameters": [
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3值_释放(1)"
+    },
+    {
+      "index": 42,
+      "name": "CEF3字典_创建",
+      "aliases": [
+        "CefDictionaryValue::Create"
+      ],
+      "signature": "CEF3字典_创建()",
+      "description": "创建CEF字典受管句柄。",
+      "insertText": "CEF3字典_创建()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_创建",
+        "runtimeName": "CEF3字典_创建",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3字典_创建()"
+    },
+    {
+      "index": 43,
+      "name": "CEF3字典_复制",
+      "aliases": [
+        "CefDictionaryValue::Copy"
+      ],
+      "signature": "CEF3字典_复制(字典句柄, 排除空子项)",
+      "description": "深复制CEF字典，可选择排除空子对象。",
+      "insertText": "CEF3字典_复制($1, 假)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_复制",
+        "runtimeName": "CEF3字典_复制",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "排除空子项",
+            "type": "bool"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3字典_复制(1, 真)"
+    },
+    {
+      "index": 44,
+      "name": "CEF3字典_是否有效",
+      "aliases": [
+        "CefDictionaryValue::IsValid"
+      ],
+      "signature": "CEF3字典_是否有效(字典句柄)",
+      "description": "判断CEF字典当前是否有效。",
+      "insertText": "CEF3字典_是否有效($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_是否有效",
+        "runtimeName": "CEF3字典_是否有效",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3字典_是否有效(1)"
+    },
+    {
+      "index": 45,
+      "name": "CEF3字典_是否被拥有",
+      "aliases": [
+        "CefDictionaryValue::IsOwned"
+      ],
+      "signature": "CEF3字典_是否被拥有(字典句柄)",
+      "description": "判断CEF字典是否被其它CEF对象拥有。",
+      "insertText": "CEF3字典_是否被拥有($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_是否被拥有",
+        "runtimeName": "CEF3字典_是否被拥有",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3字典_是否被拥有(1)"
+    },
+    {
+      "index": 46,
+      "name": "CEF3字典_是否只读",
+      "aliases": [
+        "CefDictionaryValue::IsReadOnly"
+      ],
+      "signature": "CEF3字典_是否只读(字典句柄)",
+      "description": "判断CEF字典是否只读。",
+      "insertText": "CEF3字典_是否只读($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_是否只读",
+        "runtimeName": "CEF3字典_是否只读",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3字典_是否只读(1)"
+    },
+    {
+      "index": 47,
+      "name": "CEF3字典_是否同一对象",
+      "aliases": [
+        "CefDictionaryValue::IsSame"
+      ],
+      "signature": "CEF3字典_是否同一对象(字典句柄, 另一字典句柄)",
+      "description": "判断两个句柄是否引用同一CEF字典。",
+      "insertText": "CEF3字典_是否同一对象($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_是否同一对象",
+        "runtimeName": "CEF3字典_是否同一对象",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3字典_是否同一对象(1, 1)"
+    },
+    {
+      "index": 48,
+      "name": "CEF3字典_是否相等",
+      "aliases": [
+        "CefDictionaryValue::IsEqual"
+      ],
+      "signature": "CEF3字典_是否相等(字典句柄, 另一字典句柄)",
+      "description": "深度比较两个CEF字典的内容。",
+      "insertText": "CEF3字典_是否相等($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_是否相等",
+        "runtimeName": "CEF3字典_是否相等",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3字典_是否相等(1, 1)"
+    },
+    {
+      "index": 49,
+      "name": "CEF3字典_取数量",
+      "aliases": [
+        "CefDictionaryValue::GetSize"
+      ],
+      "signature": "CEF3字典_取数量(字典句柄)",
+      "description": "取得字典键数量。",
+      "insertText": "CEF3字典_取数量($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_取数量",
+        "runtimeName": "CEF3字典_取数量",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3字典_取数量(1)"
+    },
+    {
+      "index": 50,
+      "name": "CEF3字典_是否存在",
+      "aliases": [
+        "CefDictionaryValue::HasKey"
+      ],
+      "signature": "CEF3字典_是否存在(字典句柄, 键)",
+      "description": "判断字典键是否存在。",
+      "insertText": "CEF3字典_是否存在($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_是否存在",
+        "runtimeName": "CEF3字典_是否存在",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3字典_是否存在(1, \"演示参数2\")"
+    },
+    {
+      "index": 51,
+      "name": "CEF3字典_取键列表",
+      "aliases": [
+        "CefDictionaryValue::GetKeys"
+      ],
+      "signature": "CEF3字典_取键列表(字典句柄)",
+      "description": "以JSON数组返回全部字典键。",
+      "insertText": "CEF3字典_取键列表($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_取键列表",
+        "runtimeName": "CEF3字典_取键列表",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3字典_取键列表(1)"
+    },
+    {
+      "index": 52,
+      "name": "CEF3字典_取类型",
+      "aliases": [
+        "CefDictionaryValue::GetType"
+      ],
+      "signature": "CEF3字典_取类型(字典句柄, 键)",
+      "description": "取得指定键的CEF值类型。",
+      "insertText": "CEF3字典_取类型($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_取类型",
+        "runtimeName": "CEF3字典_取类型",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3字典_取类型(1, \"演示参数2\")"
+    },
+    {
+      "index": 53,
+      "name": "CEF3字典_设值",
+      "aliases": [
+        "CefDictionaryValue::SetValue"
+      ],
+      "signature": "CEF3字典_设值(字典句柄, 键, 值句柄)",
+      "description": "深复制值并写入字典，避免跨所有权边界悬空。",
+      "insertText": "CEF3字典_设值($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_设值",
+        "runtimeName": "CEF3字典_设值",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          },
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3字典_设值(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 54,
+      "name": "CEF3字典_取值",
+      "aliases": [
+        "CefDictionaryValue::GetValue"
+      ],
+      "signature": "CEF3字典_取值(字典句柄, 键)",
+      "description": "返回字典值的独立深复制受管句柄。",
+      "insertText": "CEF3字典_取值($1, \"$2\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_取值",
+        "runtimeName": "CEF3字典_取值",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3字典_取值(1, \"演示参数2\")"
+    },
+    {
+      "index": 55,
+      "name": "CEF3字典_删除",
+      "aliases": [
+        "CefDictionaryValue::Remove"
+      ],
+      "signature": "CEF3字典_删除(字典句柄, 键)",
+      "description": "删除指定字典键。",
+      "insertText": "CEF3字典_删除($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_删除",
+        "runtimeName": "CEF3字典_删除",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "键",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3字典_删除(1, \"演示参数2\")"
+    },
+    {
+      "index": 56,
+      "name": "CEF3字典_清空",
+      "aliases": [
+        "CefDictionaryValue::Clear"
+      ],
+      "signature": "CEF3字典_清空(字典句柄)",
+      "description": "清空CEF字典。",
+      "insertText": "CEF3字典_清空($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_清空",
+        "runtimeName": "CEF3字典_清空",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3字典_清空(1)"
+    },
+    {
+      "index": 57,
+      "name": "CEF3字典_到JSON",
+      "aliases": [
+        "LB_CEF3_DictionaryToJson"
+      ],
+      "signature": "CEF3字典_到JSON(字典句柄)",
+      "description": "把CEF字典深复制并序列化为JSON。",
+      "insertText": "CEF3字典_到JSON($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_到JSON",
+        "runtimeName": "CEF3字典_到JSON",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3字典_到JSON(1)"
+    },
+    {
+      "index": 58,
+      "name": "CEF3字典_释放",
+      "aliases": [
+        "LB_CEF3_DictionaryRelease"
+      ],
+      "signature": "CEF3字典_释放(字典句柄)",
+      "description": "释放CEF字典受管句柄。",
+      "insertText": "CEF3字典_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3字典_释放",
+        "runtimeName": "CEF3字典_释放",
+        "parameters": [
+          {
+            "name": "字典句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3字典_释放(1)"
+    },
+    {
+      "index": 59,
+      "name": "CEF3列表_创建",
+      "aliases": [
+        "CefListValue::Create"
+      ],
+      "signature": "CEF3列表_创建()",
+      "description": "创建CEF列表受管句柄。",
+      "insertText": "CEF3列表_创建()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_创建",
+        "runtimeName": "CEF3列表_创建",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3列表_创建()"
+    },
+    {
+      "index": 60,
+      "name": "CEF3列表_复制",
+      "aliases": [
+        "CefListValue::Copy"
+      ],
+      "signature": "CEF3列表_复制(列表句柄)",
+      "description": "深复制CEF列表并返回独立受管句柄。",
+      "insertText": "CEF3列表_复制($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_复制",
+        "runtimeName": "CEF3列表_复制",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3列表_复制(1)"
+    },
+    {
+      "index": 61,
+      "name": "CEF3列表_是否有效",
+      "aliases": [
+        "CefListValue::IsValid"
+      ],
+      "signature": "CEF3列表_是否有效(列表句柄)",
+      "description": "判断CEF列表当前是否有效。",
+      "insertText": "CEF3列表_是否有效($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_是否有效",
+        "runtimeName": "CEF3列表_是否有效",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3列表_是否有效(1)"
+    },
+    {
+      "index": 62,
+      "name": "CEF3列表_是否被拥有",
+      "aliases": [
+        "CefListValue::IsOwned"
+      ],
+      "signature": "CEF3列表_是否被拥有(列表句柄)",
+      "description": "判断CEF列表是否被其它CEF对象拥有。",
+      "insertText": "CEF3列表_是否被拥有($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_是否被拥有",
+        "runtimeName": "CEF3列表_是否被拥有",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3列表_是否被拥有(1)"
+    },
+    {
+      "index": 63,
+      "name": "CEF3列表_是否只读",
+      "aliases": [
+        "CefListValue::IsReadOnly"
+      ],
+      "signature": "CEF3列表_是否只读(列表句柄)",
+      "description": "判断CEF列表是否只读。",
+      "insertText": "CEF3列表_是否只读($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_是否只读",
+        "runtimeName": "CEF3列表_是否只读",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3列表_是否只读(1)"
+    },
+    {
+      "index": 64,
+      "name": "CEF3列表_是否同一对象",
+      "aliases": [
+        "CefListValue::IsSame"
+      ],
+      "signature": "CEF3列表_是否同一对象(列表句柄, 另一列表句柄)",
+      "description": "判断两个句柄是否引用同一CEF列表。",
+      "insertText": "CEF3列表_是否同一对象($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_是否同一对象",
+        "runtimeName": "CEF3列表_是否同一对象",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3列表_是否同一对象(1, 1)"
+    },
+    {
+      "index": 65,
+      "name": "CEF3列表_是否相等",
+      "aliases": [
+        "CefListValue::IsEqual"
+      ],
+      "signature": "CEF3列表_是否相等(列表句柄, 另一列表句柄)",
+      "description": "深度比较两个CEF列表的内容。",
+      "insertText": "CEF3列表_是否相等($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_是否相等",
+        "runtimeName": "CEF3列表_是否相等",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3列表_是否相等(1, 1)"
+    },
+    {
+      "index": 66,
+      "name": "CEF3列表_取数量",
+      "aliases": [
+        "CefListValue::GetSize"
+      ],
+      "signature": "CEF3列表_取数量(列表句柄)",
+      "description": "取得列表元素数量。",
+      "insertText": "CEF3列表_取数量($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_取数量",
+        "runtimeName": "CEF3列表_取数量",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3列表_取数量(1)"
+    },
+    {
+      "index": 67,
+      "name": "CEF3列表_设数量",
+      "aliases": [
+        "CefListValue::SetSize"
+      ],
+      "signature": "CEF3列表_设数量(列表句柄, 数量)",
+      "description": "调整CEF列表大小。",
+      "insertText": "CEF3列表_设数量($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_设数量",
+        "runtimeName": "CEF3列表_设数量",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "数量",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3列表_设数量(1, 1)"
+    },
+    {
+      "index": 68,
+      "name": "CEF3列表_取类型",
+      "aliases": [
+        "CefListValue::GetType"
+      ],
+      "signature": "CEF3列表_取类型(列表句柄, 索引)",
+      "description": "取得指定索引的CEF值类型。",
+      "insertText": "CEF3列表_取类型($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_取类型",
+        "runtimeName": "CEF3列表_取类型",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3列表_取类型(1, 1)"
+    },
+    {
+      "index": 69,
+      "name": "CEF3列表_设值",
+      "aliases": [
+        "CefListValue::SetValue"
+      ],
+      "signature": "CEF3列表_设值(列表句柄, 索引, 值句柄)",
+      "description": "深复制值并写入列表。",
+      "insertText": "CEF3列表_设值($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_设值",
+        "runtimeName": "CEF3列表_设值",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          },
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3列表_设值(1, 1, 1)"
+    },
+    {
+      "index": 70,
+      "name": "CEF3列表_取值",
+      "aliases": [
+        "CefListValue::GetValue"
+      ],
+      "signature": "CEF3列表_取值(列表句柄, 索引)",
+      "description": "返回列表值的独立深复制受管句柄。",
+      "insertText": "CEF3列表_取值($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_取值",
+        "runtimeName": "CEF3列表_取值",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3列表_取值(1, 1)"
+    },
+    {
+      "index": 71,
+      "name": "CEF3列表_删除",
+      "aliases": [
+        "CefListValue::Remove"
+      ],
+      "signature": "CEF3列表_删除(列表句柄, 索引)",
+      "description": "删除指定索引。",
+      "insertText": "CEF3列表_删除($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_删除",
+        "runtimeName": "CEF3列表_删除",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3列表_删除(1, 1)"
+    },
+    {
+      "index": 72,
+      "name": "CEF3列表_清空",
+      "aliases": [
+        "CefListValue::Clear"
+      ],
+      "signature": "CEF3列表_清空(列表句柄)",
+      "description": "清空CEF列表。",
+      "insertText": "CEF3列表_清空($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_清空",
+        "runtimeName": "CEF3列表_清空",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3列表_清空(1)"
+    },
+    {
+      "index": 73,
+      "name": "CEF3列表_到JSON",
+      "aliases": [
+        "LB_CEF3_ListToJson"
+      ],
+      "signature": "CEF3列表_到JSON(列表句柄)",
+      "description": "把CEF列表深复制并序列化为JSON。",
+      "insertText": "CEF3列表_到JSON($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_到JSON",
+        "runtimeName": "CEF3列表_到JSON",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3列表_到JSON(1)"
+    },
+    {
+      "index": 74,
+      "name": "CEF3列表_释放",
+      "aliases": [
+        "LB_CEF3_ListRelease"
+      ],
+      "signature": "CEF3列表_释放(列表句柄)",
+      "description": "释放CEF列表受管句柄。",
+      "insertText": "CEF3列表_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3列表_释放",
+        "runtimeName": "CEF3列表_释放",
+        "parameters": [
+          {
+            "name": "列表句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3列表_释放(1)"
+    },
+    {
+      "index": 75,
+      "name": "CEF3菜单_创建",
+      "aliases": [
+        "CefMenuModel::CreateMenuModel"
+      ],
+      "signature": "CEF3菜单_创建()",
+      "description": "在CEF UI线程创建菜单模型并返回受管句柄。",
+      "insertText": "CEF3菜单_创建()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_创建",
+        "runtimeName": "CEF3菜单_创建",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3菜单_创建()"
+    },
+    {
+      "index": 76,
+      "name": "CEF3菜单_是否子菜单",
+      "aliases": [
+        "CefMenuModel::IsSubMenu"
+      ],
+      "signature": "CEF3菜单_是否子菜单(菜单句柄)",
+      "description": "判断菜单是否为子菜单。",
+      "insertText": "CEF3菜单_是否子菜单($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_是否子菜单",
+        "runtimeName": "CEF3菜单_是否子菜单",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_是否子菜单(1)"
+    },
+    {
+      "index": 77,
+      "name": "CEF3菜单_清空",
+      "aliases": [
+        "CefMenuModel::Clear"
+      ],
+      "signature": "CEF3菜单_清空(菜单句柄)",
+      "description": "清空菜单项目。",
+      "insertText": "CEF3菜单_清空($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_清空",
+        "runtimeName": "CEF3菜单_清空",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_清空(1)"
+    },
+    {
+      "index": 78,
+      "name": "CEF3菜单_取数量",
+      "aliases": [
+        "CefMenuModel::GetCount"
+      ],
+      "signature": "CEF3菜单_取数量(菜单句柄)",
+      "description": "取得菜单项目数量。",
+      "insertText": "CEF3菜单_取数量($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_取数量",
+        "runtimeName": "CEF3菜单_取数量",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3菜单_取数量(1)"
+    },
+    {
+      "index": 79,
+      "name": "CEF3菜单_添加分隔线",
+      "aliases": [
+        "CefMenuModel::AddSeparator"
+      ],
+      "signature": "CEF3菜单_添加分隔线(菜单句柄)",
+      "description": "在菜单末尾添加分隔线。",
+      "insertText": "CEF3菜单_添加分隔线($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_添加分隔线",
+        "runtimeName": "CEF3菜单_添加分隔线",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_添加分隔线(1)"
+    },
+    {
+      "index": 80,
+      "name": "CEF3菜单_添加项目",
+      "aliases": [
+        "CefMenuModel::AddItem"
+      ],
+      "signature": "CEF3菜单_添加项目(菜单句柄, 命令ID, 标题)",
+      "description": "添加普通菜单项目。",
+      "insertText": "CEF3菜单_添加项目($1, $2, \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_添加项目",
+        "runtimeName": "CEF3菜单_添加项目",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3菜单_添加项目(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 81,
+      "name": "CEF3菜单_添加勾选项目",
+      "aliases": [
+        "CefMenuModel::AddCheckItem"
+      ],
+      "signature": "CEF3菜单_添加勾选项目(菜单句柄, 命令ID, 标题)",
+      "description": "添加勾选菜单项目。",
+      "insertText": "CEF3菜单_添加勾选项目($1, $2, \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_添加勾选项目",
+        "runtimeName": "CEF3菜单_添加勾选项目",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3菜单_添加勾选项目(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 82,
+      "name": "CEF3菜单_添加单选项目",
+      "aliases": [
+        "CefMenuModel::AddRadioItem"
+      ],
+      "signature": "CEF3菜单_添加单选项目(菜单句柄, 命令ID, 标题, 组ID)",
+      "description": "添加单选菜单项目。",
+      "insertText": "CEF3菜单_添加单选项目($1, $2, \"$3\", $4)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_添加单选项目",
+        "runtimeName": "CEF3菜单_添加单选项目",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          },
+          {
+            "name": "组ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3菜单_添加单选项目(1, 1, \"演示参数3\", 1)"
+    },
+    {
+      "index": 83,
+      "name": "CEF3菜单_添加子菜单",
+      "aliases": [
+        "CefMenuModel::AddSubMenu"
+      ],
+      "signature": "CEF3菜单_添加子菜单(菜单句柄, 命令ID, 标题)",
+      "description": "添加子菜单并返回独立受管句柄。",
+      "insertText": "CEF3菜单_添加子菜单($1, $2, \"$3\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_添加子菜单",
+        "runtimeName": "CEF3菜单_添加子菜单",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3菜单_添加子菜单(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 84,
+      "name": "CEF3菜单_按索引插入分隔线",
+      "aliases": [
+        "CefMenuModel::InsertSeparatorAt"
+      ],
+      "signature": "CEF3菜单_按索引插入分隔线(菜单句柄, 索引)",
+      "description": "在指定索引插入分隔线。",
+      "insertText": "CEF3菜单_按索引插入分隔线($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引插入分隔线",
+        "runtimeName": "CEF3菜单_按索引插入分隔线",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引插入分隔线(1, 1)"
+    },
+    {
+      "index": 85,
+      "name": "CEF3菜单_按索引插入项目",
+      "aliases": [
+        "CefMenuModel::InsertItemAt"
+      ],
+      "signature": "CEF3菜单_按索引插入项目(菜单句柄, 索引, 命令ID, 标题)",
+      "description": "在指定索引插入普通项目。",
+      "insertText": "CEF3菜单_按索引插入项目($1, $2, $3, \"$4\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引插入项目",
+        "runtimeName": "CEF3菜单_按索引插入项目",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3菜单_按索引插入项目(1, 1, 1, \"演示参数4\")"
+    },
+    {
+      "index": 86,
+      "name": "CEF3菜单_按索引插入勾选项目",
+      "aliases": [
+        "CefMenuModel::InsertCheckItemAt"
+      ],
+      "signature": "CEF3菜单_按索引插入勾选项目(菜单句柄, 索引, 命令ID, 标题)",
+      "description": "在指定索引插入勾选项目。",
+      "insertText": "CEF3菜单_按索引插入勾选项目($1, $2, $3, \"$4\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引插入勾选项目",
+        "runtimeName": "CEF3菜单_按索引插入勾选项目",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3菜单_按索引插入勾选项目(1, 1, 1, \"演示参数4\")"
+    },
+    {
+      "index": 87,
+      "name": "CEF3菜单_按索引插入单选项目",
+      "aliases": [
+        "CefMenuModel::InsertRadioItemAt"
+      ],
+      "signature": "CEF3菜单_按索引插入单选项目(菜单句柄, 索引, 命令ID, 标题, 组ID)",
+      "description": "在指定索引插入单选项目。",
+      "insertText": "CEF3菜单_按索引插入单选项目($1, $2, $3, \"$4\", $5)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引插入单选项目",
+        "runtimeName": "CEF3菜单_按索引插入单选项目",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          },
+          {
+            "name": "组ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3菜单_按索引插入单选项目(1, 1, 1, \"演示参数4\", 1)"
+    },
+    {
+      "index": 88,
+      "name": "CEF3菜单_按索引插入子菜单",
+      "aliases": [
+        "CefMenuModel::InsertSubMenuAt"
+      ],
+      "signature": "CEF3菜单_按索引插入子菜单(菜单句柄, 索引, 命令ID, 标题)",
+      "description": "在指定索引插入子菜单并返回受管句柄。",
+      "insertText": "CEF3菜单_按索引插入子菜单($1, $2, $3, \"$4\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引插入子菜单",
+        "runtimeName": "CEF3菜单_按索引插入子菜单",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3菜单_按索引插入子菜单(1, 1, 1, \"演示参数4\")"
+    },
+    {
+      "index": 89,
+      "name": "CEF3菜单_删除项目",
+      "aliases": [
+        "CefMenuModel::Remove"
+      ],
+      "signature": "CEF3菜单_删除项目(菜单句柄, 命令ID)",
+      "description": "按命令ID删除菜单项目。",
+      "insertText": "CEF3菜单_删除项目($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_删除项目",
+        "runtimeName": "CEF3菜单_删除项目",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_删除项目(1, 1)"
+    },
+    {
+      "index": 90,
+      "name": "CEF3菜单_按索引删除",
+      "aliases": [
+        "CefMenuModel::RemoveAt"
+      ],
+      "signature": "CEF3菜单_按索引删除(菜单句柄, 索引)",
+      "description": "按索引删除菜单项目。",
+      "insertText": "CEF3菜单_按索引删除($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引删除",
+        "runtimeName": "CEF3菜单_按索引删除",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引删除(1, 1)"
+    },
+    {
+      "index": 91,
+      "name": "CEF3菜单_取索引",
+      "aliases": [
+        "CefMenuModel::GetIndexOf"
+      ],
+      "signature": "CEF3菜单_取索引(菜单句柄, 命令ID)",
+      "description": "取得命令ID对应索引。",
+      "insertText": "CEF3菜单_取索引($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_取索引",
+        "runtimeName": "CEF3菜单_取索引",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_取索引(1, 1)"
+    },
+    {
+      "index": 92,
+      "name": "CEF3菜单_按索引取命令ID",
+      "aliases": [
+        "CefMenuModel::GetCommandIdAt"
+      ],
+      "signature": "CEF3菜单_按索引取命令ID(菜单句柄, 索引)",
+      "description": "取得指定索引的命令ID。",
+      "insertText": "CEF3菜单_按索引取命令ID($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引取命令ID",
+        "runtimeName": "CEF3菜单_按索引取命令ID",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引取命令ID(1, 1)"
+    },
+    {
+      "index": 93,
+      "name": "CEF3菜单_按索引设命令ID",
+      "aliases": [
+        "CefMenuModel::SetCommandIdAt"
+      ],
+      "signature": "CEF3菜单_按索引设命令ID(菜单句柄, 索引, 命令ID)",
+      "description": "修改指定索引的命令ID。",
+      "insertText": "CEF3菜单_按索引设命令ID($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引设命令ID",
+        "runtimeName": "CEF3菜单_按索引设命令ID",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引设命令ID(1, 1, 1)"
+    },
+    {
+      "index": 94,
+      "name": "CEF3菜单_取标题",
+      "aliases": [
+        "CefMenuModel::GetLabel"
+      ],
+      "signature": "CEF3菜单_取标题(菜单句柄, 命令ID)",
+      "description": "按命令ID取得菜单标题。",
+      "insertText": "CEF3菜单_取标题($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_取标题",
+        "runtimeName": "CEF3菜单_取标题",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3菜单_取标题(1, 1)"
+    },
+    {
+      "index": 95,
+      "name": "CEF3菜单_按索引取标题",
+      "aliases": [
+        "CefMenuModel::GetLabelAt"
+      ],
+      "signature": "CEF3菜单_按索引取标题(菜单句柄, 索引)",
+      "description": "按索引取得菜单标题。",
+      "insertText": "CEF3菜单_按索引取标题($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引取标题",
+        "runtimeName": "CEF3菜单_按索引取标题",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3菜单_按索引取标题(1, 1)"
+    },
+    {
+      "index": 96,
+      "name": "CEF3菜单_设标题",
+      "aliases": [
+        "CefMenuModel::SetLabel"
+      ],
+      "signature": "CEF3菜单_设标题(菜单句柄, 命令ID, 标题)",
+      "description": "按命令ID修改菜单标题。",
+      "insertText": "CEF3菜单_设标题($1, $2, \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_设标题",
+        "runtimeName": "CEF3菜单_设标题",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3菜单_设标题(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 97,
+      "name": "CEF3菜单_按索引设标题",
+      "aliases": [
+        "CefMenuModel::SetLabelAt"
+      ],
+      "signature": "CEF3菜单_按索引设标题(菜单句柄, 索引, 标题)",
+      "description": "按索引修改菜单标题。",
+      "insertText": "CEF3菜单_按索引设标题($1, $2, \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引设标题",
+        "runtimeName": "CEF3菜单_按索引设标题",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          },
+          {
+            "name": "标题",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3菜单_按索引设标题(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 98,
+      "name": "CEF3菜单_取类型",
+      "aliases": [
+        "CefMenuModel::GetType"
+      ],
+      "signature": "CEF3菜单_取类型(菜单句柄, 命令ID)",
+      "description": "取得菜单项目类型枚举。",
+      "insertText": "CEF3菜单_取类型($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_取类型",
+        "runtimeName": "CEF3菜单_取类型",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_取类型(1, 1)"
+    },
+    {
+      "index": 99,
+      "name": "CEF3菜单_按索引取类型",
+      "aliases": [
+        "CefMenuModel::GetTypeAt"
+      ],
+      "signature": "CEF3菜单_按索引取类型(菜单句柄, 索引)",
+      "description": "按索引取得菜单项目类型。",
+      "insertText": "CEF3菜单_按索引取类型($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引取类型",
+        "runtimeName": "CEF3菜单_按索引取类型",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引取类型(1, 1)"
+    },
+    {
+      "index": 100,
+      "name": "CEF3菜单_取组ID",
+      "aliases": [
+        "CefMenuModel::GetGroupId"
+      ],
+      "signature": "CEF3菜单_取组ID(菜单句柄, 命令ID)",
+      "description": "取得单选项目组ID。",
+      "insertText": "CEF3菜单_取组ID($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_取组ID",
+        "runtimeName": "CEF3菜单_取组ID",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_取组ID(1, 1)"
+    },
+    {
+      "index": 101,
+      "name": "CEF3菜单_按索引取组ID",
+      "aliases": [
+        "CefMenuModel::GetGroupIdAt"
+      ],
+      "signature": "CEF3菜单_按索引取组ID(菜单句柄, 索引)",
+      "description": "按索引取得单选项目组ID。",
+      "insertText": "CEF3菜单_按索引取组ID($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引取组ID",
+        "runtimeName": "CEF3菜单_按索引取组ID",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引取组ID(1, 1)"
+    },
+    {
+      "index": 102,
+      "name": "CEF3菜单_设组ID",
+      "aliases": [
+        "CefMenuModel::SetGroupId"
+      ],
+      "signature": "CEF3菜单_设组ID(菜单句柄, 命令ID, 组ID)",
+      "description": "修改单选项目组ID。",
+      "insertText": "CEF3菜单_设组ID($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_设组ID",
+        "runtimeName": "CEF3菜单_设组ID",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "组ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_设组ID(1, 1, 1)"
+    },
+    {
+      "index": 103,
+      "name": "CEF3菜单_按索引设组ID",
+      "aliases": [
+        "CefMenuModel::SetGroupIdAt"
+      ],
+      "signature": "CEF3菜单_按索引设组ID(菜单句柄, 索引, 组ID)",
+      "description": "按索引修改单选项目组ID。",
+      "insertText": "CEF3菜单_按索引设组ID($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引设组ID",
+        "runtimeName": "CEF3菜单_按索引设组ID",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          },
+          {
+            "name": "组ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引设组ID(1, 1, 1)"
+    },
+    {
+      "index": 104,
+      "name": "CEF3菜单_取子菜单",
+      "aliases": [
+        "CefMenuModel::GetSubMenu"
+      ],
+      "signature": "CEF3菜单_取子菜单(菜单句柄, 命令ID)",
+      "description": "按命令ID取得子菜单受管句柄。",
+      "insertText": "CEF3菜单_取子菜单($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_取子菜单",
+        "runtimeName": "CEF3菜单_取子菜单",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3菜单_取子菜单(1, 1)"
+    },
+    {
+      "index": 105,
+      "name": "CEF3菜单_按索引取子菜单",
+      "aliases": [
+        "CefMenuModel::GetSubMenuAt"
+      ],
+      "signature": "CEF3菜单_按索引取子菜单(菜单句柄, 索引)",
+      "description": "按索引取得子菜单受管句柄。",
+      "insertText": "CEF3菜单_按索引取子菜单($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引取子菜单",
+        "runtimeName": "CEF3菜单_按索引取子菜单",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3菜单_按索引取子菜单(1, 1)"
+    },
+    {
+      "index": 106,
+      "name": "CEF3菜单_是否可见",
+      "aliases": [
+        "CefMenuModel::IsVisible"
+      ],
+      "signature": "CEF3菜单_是否可见(菜单句柄, 命令ID)",
+      "description": "判断菜单项目是否可见。",
+      "insertText": "CEF3菜单_是否可见($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_是否可见",
+        "runtimeName": "CEF3菜单_是否可见",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_是否可见(1, 1)"
+    },
+    {
+      "index": 107,
+      "name": "CEF3菜单_按索引是否可见",
+      "aliases": [
+        "CefMenuModel::IsVisibleAt"
+      ],
+      "signature": "CEF3菜单_按索引是否可见(菜单句柄, 索引)",
+      "description": "按索引判断菜单项目是否可见。",
+      "insertText": "CEF3菜单_按索引是否可见($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引是否可见",
+        "runtimeName": "CEF3菜单_按索引是否可见",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引是否可见(1, 1)"
+    },
+    {
+      "index": 108,
+      "name": "CEF3菜单_设置可见",
+      "aliases": [
+        "CefMenuModel::SetVisible"
+      ],
+      "signature": "CEF3菜单_设置可见(菜单句柄, 命令ID, 可见)",
+      "description": "设置菜单项目可见状态。",
+      "insertText": "CEF3菜单_设置可见($1, $2, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_设置可见",
+        "runtimeName": "CEF3菜单_设置可见",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "可见",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_设置可见(1, 1, 真)"
+    },
+    {
+      "index": 109,
+      "name": "CEF3菜单_按索引设置可见",
+      "aliases": [
+        "CefMenuModel::SetVisibleAt"
+      ],
+      "signature": "CEF3菜单_按索引设置可见(菜单句柄, 索引, 可见)",
+      "description": "按索引设置菜单项目可见状态。",
+      "insertText": "CEF3菜单_按索引设置可见($1, $2, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引设置可见",
+        "runtimeName": "CEF3菜单_按索引设置可见",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          },
+          {
+            "name": "可见",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引设置可见(1, 1, 真)"
+    },
+    {
+      "index": 110,
+      "name": "CEF3菜单_是否启用",
+      "aliases": [
+        "CefMenuModel::IsEnabled"
+      ],
+      "signature": "CEF3菜单_是否启用(菜单句柄, 命令ID)",
+      "description": "判断菜单项目是否启用。",
+      "insertText": "CEF3菜单_是否启用($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_是否启用",
+        "runtimeName": "CEF3菜单_是否启用",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_是否启用(1, 1)"
+    },
+    {
+      "index": 111,
+      "name": "CEF3菜单_按索引是否启用",
+      "aliases": [
+        "CefMenuModel::IsEnabledAt"
+      ],
+      "signature": "CEF3菜单_按索引是否启用(菜单句柄, 索引)",
+      "description": "按索引判断菜单项目是否启用。",
+      "insertText": "CEF3菜单_按索引是否启用($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引是否启用",
+        "runtimeName": "CEF3菜单_按索引是否启用",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引是否启用(1, 1)"
+    },
+    {
+      "index": 112,
+      "name": "CEF3菜单_设置启用",
+      "aliases": [
+        "CefMenuModel::SetEnabled"
+      ],
+      "signature": "CEF3菜单_设置启用(菜单句柄, 命令ID, 启用)",
+      "description": "设置菜单项目启用状态。",
+      "insertText": "CEF3菜单_设置启用($1, $2, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_设置启用",
+        "runtimeName": "CEF3菜单_设置启用",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_设置启用(1, 1, 真)"
+    },
+    {
+      "index": 113,
+      "name": "CEF3菜单_按索引设置启用",
+      "aliases": [
+        "CefMenuModel::SetEnabledAt"
+      ],
+      "signature": "CEF3菜单_按索引设置启用(菜单句柄, 索引, 启用)",
+      "description": "按索引设置菜单项目启用状态。",
+      "insertText": "CEF3菜单_按索引设置启用($1, $2, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引设置启用",
+        "runtimeName": "CEF3菜单_按索引设置启用",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引设置启用(1, 1, 真)"
+    },
+    {
+      "index": 114,
+      "name": "CEF3菜单_是否勾选",
+      "aliases": [
+        "CefMenuModel::IsChecked"
+      ],
+      "signature": "CEF3菜单_是否勾选(菜单句柄, 命令ID)",
+      "description": "判断勾选或单选项目是否选中。",
+      "insertText": "CEF3菜单_是否勾选($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_是否勾选",
+        "runtimeName": "CEF3菜单_是否勾选",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_是否勾选(1, 1)"
+    },
+    {
+      "index": 115,
+      "name": "CEF3菜单_按索引是否勾选",
+      "aliases": [
+        "CefMenuModel::IsCheckedAt"
+      ],
+      "signature": "CEF3菜单_按索引是否勾选(菜单句柄, 索引)",
+      "description": "按索引判断项目是否勾选。",
+      "insertText": "CEF3菜单_按索引是否勾选($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引是否勾选",
+        "runtimeName": "CEF3菜单_按索引是否勾选",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引是否勾选(1, 1)"
+    },
+    {
+      "index": 116,
+      "name": "CEF3菜单_设置勾选",
+      "aliases": [
+        "CefMenuModel::SetChecked"
+      ],
+      "signature": "CEF3菜单_设置勾选(菜单句柄, 命令ID, 勾选)",
+      "description": "设置勾选或单选项目状态。",
+      "insertText": "CEF3菜单_设置勾选($1, $2, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_设置勾选",
+        "runtimeName": "CEF3菜单_设置勾选",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "勾选",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_设置勾选(1, 1, 真)"
+    },
+    {
+      "index": 117,
+      "name": "CEF3菜单_按索引设置勾选",
+      "aliases": [
+        "CefMenuModel::SetCheckedAt"
+      ],
+      "signature": "CEF3菜单_按索引设置勾选(菜单句柄, 索引, 勾选)",
+      "description": "按索引设置项目勾选状态。",
+      "insertText": "CEF3菜单_按索引设置勾选($1, $2, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引设置勾选",
+        "runtimeName": "CEF3菜单_按索引设置勾选",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          },
+          {
+            "name": "勾选",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引设置勾选(1, 1, 真)"
+    },
+    {
+      "index": 118,
+      "name": "CEF3菜单_是否有快捷键",
+      "aliases": [
+        "CefMenuModel::HasAccelerator"
+      ],
+      "signature": "CEF3菜单_是否有快捷键(菜单句柄, 命令ID)",
+      "description": "判断项目是否有键盘快捷键。",
+      "insertText": "CEF3菜单_是否有快捷键($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_是否有快捷键",
+        "runtimeName": "CEF3菜单_是否有快捷键",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_是否有快捷键(1, 1)"
+    },
+    {
+      "index": 119,
+      "name": "CEF3菜单_按索引是否有快捷键",
+      "aliases": [
+        "CefMenuModel::HasAcceleratorAt"
+      ],
+      "signature": "CEF3菜单_按索引是否有快捷键(菜单句柄, 索引)",
+      "description": "按索引判断项目是否有键盘快捷键。",
+      "insertText": "CEF3菜单_按索引是否有快捷键($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引是否有快捷键",
+        "runtimeName": "CEF3菜单_按索引是否有快捷键",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引是否有快捷键(1, 1)"
+    },
+    {
+      "index": 120,
+      "name": "CEF3菜单_设置快捷键",
+      "aliases": [
+        "CefMenuModel::SetAccelerator"
+      ],
+      "signature": "CEF3菜单_设置快捷键(菜单句柄, 命令ID, 键码, Shift, Ctrl, Alt)",
+      "description": "设置项目键盘快捷键。",
+      "insertText": "CEF3菜单_设置快捷键($1, $2, $3, 假, 假, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_设置快捷键",
+        "runtimeName": "CEF3菜单_设置快捷键",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "键码",
+            "type": "int"
+          },
+          {
+            "name": "Shift",
+            "type": "bool"
+          },
+          {
+            "name": "Ctrl",
+            "type": "bool"
+          },
+          {
+            "name": "Alt",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_设置快捷键(1, 1, 1, 真, 真, 真)"
+    },
+    {
+      "index": 121,
+      "name": "CEF3菜单_按索引设置快捷键",
+      "aliases": [
+        "CefMenuModel::SetAcceleratorAt"
+      ],
+      "signature": "CEF3菜单_按索引设置快捷键(菜单句柄, 索引, 键码, Shift, Ctrl, Alt)",
+      "description": "按索引设置项目键盘快捷键。",
+      "insertText": "CEF3菜单_按索引设置快捷键($1, $2, $3, 假, 假, 假)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引设置快捷键",
+        "runtimeName": "CEF3菜单_按索引设置快捷键",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          },
+          {
+            "name": "键码",
+            "type": "int"
+          },
+          {
+            "name": "Shift",
+            "type": "bool"
+          },
+          {
+            "name": "Ctrl",
+            "type": "bool"
+          },
+          {
+            "name": "Alt",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引设置快捷键(1, 1, 1, 真, 真, 真)"
+    },
+    {
+      "index": 122,
+      "name": "CEF3菜单_删除快捷键",
+      "aliases": [
+        "CefMenuModel::RemoveAccelerator"
+      ],
+      "signature": "CEF3菜单_删除快捷键(菜单句柄, 命令ID)",
+      "description": "删除项目键盘快捷键。",
+      "insertText": "CEF3菜单_删除快捷键($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_删除快捷键",
+        "runtimeName": "CEF3菜单_删除快捷键",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_删除快捷键(1, 1)"
+    },
+    {
+      "index": 123,
+      "name": "CEF3菜单_按索引删除快捷键",
+      "aliases": [
+        "CefMenuModel::RemoveAcceleratorAt"
+      ],
+      "signature": "CEF3菜单_按索引删除快捷键(菜单句柄, 索引)",
+      "description": "按索引删除项目键盘快捷键。",
+      "insertText": "CEF3菜单_按索引删除快捷键($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引删除快捷键",
+        "runtimeName": "CEF3菜单_按索引删除快捷键",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引删除快捷键(1, 1)"
+    },
+    {
+      "index": 124,
+      "name": "CEF3菜单_取快捷键JSON",
+      "aliases": [
+        "CefMenuModel::GetAccelerator"
+      ],
+      "signature": "CEF3菜单_取快捷键JSON(菜单句柄, 命令ID)",
+      "description": "以JSON返回键码及Shift/Ctrl/Alt状态。",
+      "insertText": "CEF3菜单_取快捷键JSON($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_取快捷键JSON",
+        "runtimeName": "CEF3菜单_取快捷键JSON",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3菜单_取快捷键JSON(1, 1)"
+    },
+    {
+      "index": 125,
+      "name": "CEF3菜单_按索引取快捷键JSON",
+      "aliases": [
+        "CefMenuModel::GetAcceleratorAt"
+      ],
+      "signature": "CEF3菜单_按索引取快捷键JSON(菜单句柄, 索引)",
+      "description": "按索引以JSON返回快捷键。",
+      "insertText": "CEF3菜单_按索引取快捷键JSON($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引取快捷键JSON",
+        "runtimeName": "CEF3菜单_按索引取快捷键JSON",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3菜单_按索引取快捷键JSON(1, 1)"
+    },
+    {
+      "index": 126,
+      "name": "CEF3菜单_设置颜色",
+      "aliases": [
+        "CefMenuModel::SetColor"
+      ],
+      "signature": "CEF3菜单_设置颜色(菜单句柄, 命令ID, 颜色类型, 颜色)",
+      "description": "设置项目显式CEF颜色值。",
+      "insertText": "CEF3菜单_设置颜色($1, $2, $3, $4)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_设置颜色",
+        "runtimeName": "CEF3菜单_设置颜色",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "颜色类型",
+            "type": "int"
+          },
+          {
+            "name": "颜色",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_设置颜色(1, 1, 1, 1)"
+    },
+    {
+      "index": 127,
+      "name": "CEF3菜单_按索引设置颜色",
+      "aliases": [
+        "CefMenuModel::SetColorAt"
+      ],
+      "signature": "CEF3菜单_按索引设置颜色(菜单句柄, 索引, 颜色类型, 颜色)",
+      "description": "按索引设置显式CEF颜色值；索引-1表示默认颜色。",
+      "insertText": "CEF3菜单_按索引设置颜色($1, $2, $3, $4)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引设置颜色",
+        "runtimeName": "CEF3菜单_按索引设置颜色",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "颜色类型",
+            "type": "int"
+          },
+          {
+            "name": "颜色",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_按索引设置颜色(1, 1, 1, 1)"
+    },
+    {
+      "index": 128,
+      "name": "CEF3菜单_取颜色",
+      "aliases": [
+        "CefMenuModel::GetColor"
+      ],
+      "signature": "CEF3菜单_取颜色(菜单句柄, 命令ID, 颜色类型)",
+      "description": "取得项目显式CEF颜色值。",
+      "insertText": "CEF3菜单_取颜色($1, $2, $3)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_取颜色",
+        "runtimeName": "CEF3菜单_取颜色",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "颜色类型",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3菜单_取颜色(1, 1, 1)"
+    },
+    {
+      "index": 129,
+      "name": "CEF3菜单_按索引取颜色",
+      "aliases": [
+        "CefMenuModel::GetColorAt"
+      ],
+      "signature": "CEF3菜单_按索引取颜色(菜单句柄, 索引, 颜色类型)",
+      "description": "按索引取得显式CEF颜色值。",
+      "insertText": "CEF3菜单_按索引取颜色($1, $2, $3)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引取颜色",
+        "runtimeName": "CEF3菜单_按索引取颜色",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "颜色类型",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3菜单_按索引取颜色(1, 1, 1)"
+    },
+    {
+      "index": 130,
+      "name": "CEF3菜单_设置字体",
+      "aliases": [
+        "CefMenuModel::SetFontList"
+      ],
+      "signature": "CEF3菜单_设置字体(菜单句柄, 命令ID, 字体描述)",
+      "description": "设置项目CEF字体描述。",
+      "insertText": "CEF3菜单_设置字体($1, $2, \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_设置字体",
+        "runtimeName": "CEF3菜单_设置字体",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "命令ID",
+            "type": "int"
+          },
+          {
+            "name": "字体描述",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3菜单_设置字体(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 131,
+      "name": "CEF3菜单_按索引设置字体",
+      "aliases": [
+        "CefMenuModel::SetFontListAt"
+      ],
+      "signature": "CEF3菜单_按索引设置字体(菜单句柄, 索引, 字体描述)",
+      "description": "按索引设置CEF字体描述；索引-1表示默认字体。",
+      "insertText": "CEF3菜单_按索引设置字体($1, $2, \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_按索引设置字体",
+        "runtimeName": "CEF3菜单_按索引设置字体",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          },
+          {
+            "name": "字体描述",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3菜单_按索引设置字体(1, 1, \"演示参数3\")"
+    },
+    {
+      "index": 132,
+      "name": "CEF3菜单_释放",
+      "aliases": [
+        "LB_CEF3_MenuRelease"
+      ],
+      "signature": "CEF3菜单_释放(菜单句柄)",
+      "description": "在CEF UI线程释放菜单受管句柄。",
+      "insertText": "CEF3菜单_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3菜单_释放",
+        "runtimeName": "CEF3菜单_释放",
+        "parameters": [
+          {
+            "name": "菜单句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3菜单_释放(1)"
+    },
+    {
+      "index": 133,
+      "name": "CEF3图像_创建",
+      "aliases": [
+        "CefImage::CreateImage"
+      ],
+      "signature": "CEF3图像_创建()",
+      "description": "在CEF UI线程创建空图像并返回类型化受管句柄。",
+      "insertText": "CEF3图像_创建()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_创建",
+        "runtimeName": "CEF3图像_创建",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3图像_创建()"
+    },
+    {
+      "index": 134,
+      "name": "CEF3图像_是否为空",
+      "aliases": [
+        "CefImage::IsEmpty"
+      ],
+      "signature": "CEF3图像_是否为空(图像句柄)",
+      "description": "判断图像是否不含任何缩放表示。",
+      "insertText": "CEF3图像_是否为空($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_是否为空",
+        "runtimeName": "CEF3图像_是否为空",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3图像_是否为空(1)"
+    },
+    {
+      "index": 135,
+      "name": "CEF3图像_是否相同",
+      "aliases": [
+        "CefImage::IsSame"
+      ],
+      "signature": "CEF3图像_是否相同(图像句柄, 另一图像句柄)",
+      "description": "比较两个CEF图像对象。",
+      "insertText": "CEF3图像_是否相同($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_是否相同",
+        "runtimeName": "CEF3图像_是否相同",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "另一图像句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3图像_是否相同(1, 1)"
+    },
+    {
+      "index": 136,
+      "name": "CEF3图像_添加位图",
+      "aliases": [
+        "CefImage::AddBitmap"
+      ],
+      "signature": "CEF3图像_添加位图(图像句柄, 缩放, 像素宽度, 像素高度, 颜色类型, 透明类型, 像素缓冲)",
+      "description": "从受管BGRA/RGBA像素缓冲添加缩放表示，缓冲大小必须为宽×高×4。",
+      "insertText": "CEF3图像_添加位图($1, $2, $3, $4, $5, $6, $7)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_添加位图",
+        "runtimeName": "CEF3图像_添加位图",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缩放",
+            "type": "double"
+          },
+          {
+            "name": "像素宽度",
+            "type": "int"
+          },
+          {
+            "name": "像素高度",
+            "type": "int"
+          },
+          {
+            "name": "颜色类型",
+            "type": "int"
+          },
+          {
+            "name": "透明类型",
+            "type": "int"
+          },
+          {
+            "name": "像素缓冲",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3图像_添加位图(1, 1.0, 1, 1, 1, 1, 1)"
+    },
+    {
+      "index": 137,
+      "name": "CEF3图像_添加PNG",
+      "aliases": [
+        "CefImage::AddPNG"
+      ],
+      "signature": "CEF3图像_添加PNG(图像句柄, 缩放, PNG缓冲)",
+      "description": "从受管PNG缓冲添加缩放表示。",
+      "insertText": "CEF3图像_添加PNG($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_添加PNG",
+        "runtimeName": "CEF3图像_添加PNG",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缩放",
+            "type": "double"
+          },
+          {
+            "name": "PNG缓冲",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3图像_添加PNG(1, 1.0, 1)"
+    },
+    {
+      "index": 138,
+      "name": "CEF3图像_添加JPEG",
+      "aliases": [
+        "CefImage::AddJPEG"
+      ],
+      "signature": "CEF3图像_添加JPEG(图像句柄, 缩放, JPEG缓冲)",
+      "description": "从受管JPEG缓冲添加缩放表示。",
+      "insertText": "CEF3图像_添加JPEG($1, $2, $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_添加JPEG",
+        "runtimeName": "CEF3图像_添加JPEG",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缩放",
+            "type": "double"
+          },
+          {
+            "name": "JPEG缓冲",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3图像_添加JPEG(1, 1.0, 1)"
+    },
+    {
+      "index": 139,
+      "name": "CEF3图像_取宽度",
+      "aliases": [
+        "CefImage::GetWidth"
+      ],
+      "signature": "CEF3图像_取宽度(图像句柄)",
+      "description": "取得图像的设备无关宽度。",
+      "insertText": "CEF3图像_取宽度($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_取宽度",
+        "runtimeName": "CEF3图像_取宽度",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3图像_取宽度(1)"
+    },
+    {
+      "index": 140,
+      "name": "CEF3图像_取高度",
+      "aliases": [
+        "CefImage::GetHeight"
+      ],
+      "signature": "CEF3图像_取高度(图像句柄)",
+      "description": "取得图像的设备无关高度。",
+      "insertText": "CEF3图像_取高度($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_取高度",
+        "runtimeName": "CEF3图像_取高度",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3图像_取高度(1)"
+    },
+    {
+      "index": 141,
+      "name": "CEF3图像_是否有表示",
+      "aliases": [
+        "CefImage::HasRepresentation"
+      ],
+      "signature": "CEF3图像_是否有表示(图像句柄, 缩放)",
+      "description": "判断指定缩放表示是否存在。",
+      "insertText": "CEF3图像_是否有表示($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_是否有表示",
+        "runtimeName": "CEF3图像_是否有表示",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缩放",
+            "type": "double"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3图像_是否有表示(1, 1.0)"
+    },
+    {
+      "index": 142,
+      "name": "CEF3图像_删除表示",
+      "aliases": [
+        "CefImage::RemoveRepresentation"
+      ],
+      "signature": "CEF3图像_删除表示(图像句柄, 缩放)",
+      "description": "删除指定缩放表示。",
+      "insertText": "CEF3图像_删除表示($1, $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_删除表示",
+        "runtimeName": "CEF3图像_删除表示",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缩放",
+            "type": "double"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3图像_删除表示(1, 1.0)"
+    },
+    {
+      "index": 143,
+      "name": "CEF3图像_取表示信息",
+      "aliases": [
+        "CefImage::GetRepresentationInfo"
+      ],
+      "signature": "CEF3图像_取表示信息(图像句柄, 缩放)",
+      "description": "以JSON返回最接近缩放表示的实际缩放、像素宽度和高度。",
+      "insertText": "CEF3图像_取表示信息($1, $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_取表示信息",
+        "runtimeName": "CEF3图像_取表示信息",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缩放",
+            "type": "double"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3图像_取表示信息(1, 1.0)"
+    },
+    {
+      "index": 144,
+      "name": "CEF3图像_取位图缓冲",
+      "aliases": [
+        "CefImage::GetAsBitmap"
+      ],
+      "signature": "CEF3图像_取位图缓冲(图像句柄, 缩放, 颜色类型, 透明类型)",
+      "description": "导出指定缩放表示为受管位图缓冲。",
+      "insertText": "CEF3图像_取位图缓冲($1, $2, $3, $4)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_取位图缓冲",
+        "runtimeName": "CEF3图像_取位图缓冲",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缩放",
+            "type": "double"
+          },
+          {
+            "name": "颜色类型",
+            "type": "int"
+          },
+          {
+            "name": "透明类型",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3图像_取位图缓冲(1, 1.0, 1, 1)"
+    },
+    {
+      "index": 145,
+      "name": "CEF3图像_取PNG缓冲",
+      "aliases": [
+        "CefImage::GetAsPNG"
+      ],
+      "signature": "CEF3图像_取PNG缓冲(图像句柄, 缩放, 保留透明)",
+      "description": "导出指定缩放表示为受管PNG缓冲。",
+      "insertText": "CEF3图像_取PNG缓冲($1, $2, 假)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_取PNG缓冲",
+        "runtimeName": "CEF3图像_取PNG缓冲",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缩放",
+            "type": "double"
+          },
+          {
+            "name": "保留透明",
+            "type": "bool"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3图像_取PNG缓冲(1, 1.0, 真)"
+    },
+    {
+      "index": 146,
+      "name": "CEF3图像_取JPEG缓冲",
+      "aliases": [
+        "CefImage::GetAsJPEG"
+      ],
+      "signature": "CEF3图像_取JPEG缓冲(图像句柄, 缩放, 质量)",
+      "description": "导出指定缩放表示为受管JPEG缓冲，质量范围0到100。",
+      "insertText": "CEF3图像_取JPEG缓冲($1, $2, $3)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_取JPEG缓冲",
+        "runtimeName": "CEF3图像_取JPEG缓冲",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "缩放",
+            "type": "double"
+          },
+          {
+            "name": "质量",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3图像_取JPEG缓冲(1, 1.0, 1)"
+    },
+    {
+      "index": 147,
+      "name": "CEF3图像_释放",
+      "aliases": [
+        "LB_CEF3_ImageRelease"
+      ],
+      "signature": "CEF3图像_释放(图像句柄)",
+      "description": "在CEF UI线程释放图像对象受管句柄。",
+      "insertText": "CEF3图像_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3图像_释放",
+        "runtimeName": "CEF3图像_释放",
+        "parameters": [
+          {
+            "name": "图像句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3图像_释放(1)"
+    },
+    {
+      "index": 148,
+      "name": "CEF3导航项_取当前可见",
+      "aliases": [
+        "CefBrowserHost::GetVisibleNavigationEntry"
+      ],
+      "signature": "CEF3导航项_取当前可见(控件名)",
+      "description": "在CEF UI线程快照当前可见导航项并返回类型化受管句柄。",
+      "insertText": "CEF3导航项_取当前可见(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3导航项_取当前可见",
+        "runtimeName": "CEF3导航项_取当前可见",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3导航项_取当前可见(\"演示输出\")"
+    },
+    {
+      "index": 149,
+      "name": "CEF3导航项_读取历史",
+      "aliases": [
+        "CefBrowserHost::GetNavigationEntries"
+      ],
+      "signature": "CEF3导航项_读取历史(控件名, 仅当前项)",
+      "description": "异步读取导航历史并返回结果为JSON数组的任务ID。",
+      "insertText": "CEF3导航项_读取历史(\"$1\", 假)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3导航项_读取历史",
+        "runtimeName": "CEF3导航项_读取历史",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "仅当前项",
+            "type": "bool"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3导航项_读取历史(\"演示输出\", 真)"
+    },
+    {
+      "index": 150,
+      "name": "CEF3导航项_是否有效",
+      "aliases": [
+        "CefNavigationEntry::IsValid"
+      ],
+      "signature": "CEF3导航项_是否有效(导航项句柄)",
+      "description": "判断导航项快照是否有效。",
+      "insertText": "CEF3导航项_是否有效($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3导航项_是否有效",
+        "runtimeName": "CEF3导航项_是否有效",
+        "parameters": [
+          {
+            "name": "导航项句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3导航项_是否有效(1)"
+    },
+    {
+      "index": 151,
+      "name": "CEF3导航项_取地址",
+      "aliases": [
+        "CefNavigationEntry::GetURL"
+      ],
+      "signature": "CEF3导航项_取地址(导航项句柄)",
+      "description": "取得导航项实际URL。",
+      "insertText": "CEF3导航项_取地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3导航项_取地址",
+        "runtimeName": "CEF3导航项_取地址",
+        "parameters": [
+          {
+            "name": "导航项句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3导航项_取地址(1)"
+    },
+    {
+      "index": 152,
+      "name": "CEF3导航项_取显示地址",
+      "aliases": [
+        "CefNavigationEntry::GetDisplayURL"
+      ],
+      "signature": "CEF3导航项_取显示地址(导航项句柄)",
+      "description": "取得适合显示的URL。",
+      "insertText": "CEF3导航项_取显示地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3导航项_取显示地址",
+        "runtimeName": "CEF3导航项_取显示地址",
+        "parameters": [
+          {
+            "name": "导航项句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3导航项_取显示地址(1)"
+    },
+    {
+      "index": 153,
+      "name": "CEF3导航项_取原始地址",
+      "aliases": [
+        "CefNavigationEntry::GetOriginalURL"
+      ],
+      "signature": "CEF3导航项_取原始地址(导航项句柄)",
+      "description": "取得重定向前的原始URL。",
+      "insertText": "CEF3导航项_取原始地址($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3导航项_取原始地址",
+        "runtimeName": "CEF3导航项_取原始地址",
+        "parameters": [
+          {
+            "name": "导航项句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3导航项_取原始地址(1)"
+    },
+    {
+      "index": 154,
+      "name": "CEF3导航项_取标题",
+      "aliases": [
+        "CefNavigationEntry::GetTitle"
+      ],
+      "signature": "CEF3导航项_取标题(导航项句柄)",
+      "description": "取得导航项页面标题。",
+      "insertText": "CEF3导航项_取标题($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3导航项_取标题",
+        "runtimeName": "CEF3导航项_取标题",
+        "parameters": [
+          {
+            "name": "导航项句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3导航项_取标题(1)"
+    },
+    {
+      "index": 155,
+      "name": "CEF3导航项_取跳转类型",
+      "aliases": [
+        "CefNavigationEntry::GetTransitionType"
+      ],
+      "signature": "CEF3导航项_取跳转类型(导航项句柄)",
+      "description": "取得导航跳转类型枚举。",
+      "insertText": "CEF3导航项_取跳转类型($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3导航项_取跳转类型",
+        "runtimeName": "CEF3导航项_取跳转类型",
+        "parameters": [
+          {
+            "name": "导航项句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3导航项_取跳转类型(1)"
+    },
+    {
+      "index": 156,
+      "name": "CEF3导航项_是否含提交数据",
+      "aliases": [
+        "CefNavigationEntry::HasPostData"
+      ],
+      "signature": "CEF3导航项_是否含提交数据(导航项句柄)",
+      "description": "判断本次导航是否包含POST数据。",
+      "insertText": "CEF3导航项_是否含提交数据($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3导航项_是否含提交数据",
+        "runtimeName": "CEF3导航项_是否含提交数据",
+        "parameters": [
+          {
+            "name": "导航项句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3导航项_是否含提交数据(1)"
+    },
+    {
+      "index": 157,
+      "name": "CEF3导航项_取完成时间",
+      "aliases": [
+        "CefNavigationEntry::GetCompletionTime"
+      ],
+      "signature": "CEF3导航项_取完成时间(导航项句柄)",
+      "description": "取得最后成功完成导航的Unix秒时间，未完成时为0。",
+      "insertText": "CEF3导航项_取完成时间($1)",
+      "returnType": "双精度小数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3导航项_取完成时间",
+        "runtimeName": "CEF3导航项_取完成时间",
+        "parameters": [
+          {
+            "name": "导航项句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "double"
+      },
+      "demoInvocation": "CEF3导航项_取完成时间(1)"
+    },
+    {
+      "index": 158,
+      "name": "CEF3导航项_取HTTP状态码",
+      "aliases": [
+        "CefNavigationEntry::GetHttpStatusCode"
+      ],
+      "signature": "CEF3导航项_取HTTP状态码(导航项句柄)",
+      "description": "取得最后成功导航响应的HTTP状态码。",
+      "insertText": "CEF3导航项_取HTTP状态码($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3导航项_取HTTP状态码",
+        "runtimeName": "CEF3导航项_取HTTP状态码",
+        "parameters": [
+          {
+            "name": "导航项句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3导航项_取HTTP状态码(1)"
+    },
+    {
+      "index": 159,
+      "name": "CEF3导航项_释放",
+      "aliases": [
+        "LB_CEF3_NavigationEntryRelease"
+      ],
+      "signature": "CEF3导航项_释放(导航项句柄)",
+      "description": "释放导航项快照受管句柄。",
+      "insertText": "CEF3导航项_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3导航项_释放",
+        "runtimeName": "CEF3导航项_释放",
+        "parameters": [
+          {
+            "name": "导航项句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3导航项_释放(1)"
+    },
+    {
+      "index": 160,
+      "name": "CEF3证书_取当前",
+      "aliases": [
+        "CefSSLStatus::GetX509Certificate"
+      ],
+      "signature": "CEF3证书_取当前(控件名)",
+      "description": "在CEF UI线程读取当前可见导航项的TLS证书并返回不可变受管快照。",
+      "insertText": "CEF3证书_取当前(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_取当前",
+        "runtimeName": "CEF3证书_取当前",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3证书_取当前(\"演示输出\")"
+    },
+    {
+      "index": 161,
+      "name": "CEF3证书_是否安全连接",
+      "aliases": [
+        "CefSSLStatus::IsSecureConnection"
+      ],
+      "signature": "CEF3证书_是否安全连接(证书句柄)",
+      "description": "判断证书快照对应导航是否为安全TLS连接。",
+      "insertText": "CEF3证书_是否安全连接($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_是否安全连接",
+        "runtimeName": "CEF3证书_是否安全连接",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3证书_是否安全连接(1)"
+    },
+    {
+      "index": 162,
+      "name": "CEF3证书_取证书状态",
+      "aliases": [
+        "CefSSLStatus::GetCertStatus"
+      ],
+      "signature": "CEF3证书_取证书状态(证书句柄)",
+      "description": "取得证书验证问题位掩码。",
+      "insertText": "CEF3证书_取证书状态($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_取证书状态",
+        "runtimeName": "CEF3证书_取证书状态",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3证书_取证书状态(1)"
+    },
+    {
+      "index": 163,
+      "name": "CEF3证书_取SSL版本",
+      "aliases": [
+        "CefSSLStatus::GetSSLVersion"
+      ],
+      "signature": "CEF3证书_取SSL版本(证书句柄)",
+      "description": "取得TLS连接版本枚举。",
+      "insertText": "CEF3证书_取SSL版本($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_取SSL版本",
+        "runtimeName": "CEF3证书_取SSL版本",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3证书_取SSL版本(1)"
+    },
+    {
+      "index": 164,
+      "name": "CEF3证书_取内容状态",
+      "aliases": [
+        "CefSSLStatus::GetContentStatus"
+      ],
+      "signature": "CEF3证书_取内容状态(证书句柄)",
+      "description": "取得页面安全内容状态位掩码。",
+      "insertText": "CEF3证书_取内容状态($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_取内容状态",
+        "runtimeName": "CEF3证书_取内容状态",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3证书_取内容状态(1)"
+    },
+    {
+      "index": 165,
+      "name": "CEF3证书_取主体",
+      "aliases": [
+        "CefX509Certificate::GetSubject"
+      ],
+      "signature": "CEF3证书_取主体(证书句柄)",
+      "description": "取得证书主体受管快照句柄。",
+      "insertText": "CEF3证书_取主体($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_取主体",
+        "runtimeName": "CEF3证书_取主体",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3证书_取主体(1)"
+    },
+    {
+      "index": 166,
+      "name": "CEF3证书_取颁发者",
+      "aliases": [
+        "CefX509Certificate::GetIssuer"
+      ],
+      "signature": "CEF3证书_取颁发者(证书句柄)",
+      "description": "取得证书颁发者受管快照句柄。",
+      "insertText": "CEF3证书_取颁发者($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_取颁发者",
+        "runtimeName": "CEF3证书_取颁发者",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3证书_取颁发者(1)"
+    },
+    {
+      "index": 167,
+      "name": "CEF3证书_取序列号缓冲",
+      "aliases": [
+        "CefX509Certificate::GetSerialNumber"
+      ],
+      "signature": "CEF3证书_取序列号缓冲(证书句柄)",
+      "description": "复制证书DER序列号并返回受管缓冲。",
+      "insertText": "CEF3证书_取序列号缓冲($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_取序列号缓冲",
+        "runtimeName": "CEF3证书_取序列号缓冲",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3证书_取序列号缓冲(1)"
+    },
+    {
+      "index": 168,
+      "name": "CEF3证书_取DER缓冲",
+      "aliases": [
+        "CefX509Certificate::GetDEREncoded"
+      ],
+      "signature": "CEF3证书_取DER缓冲(证书句柄)",
+      "description": "复制DER编码证书并返回受管缓冲。",
+      "insertText": "CEF3证书_取DER缓冲($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_取DER缓冲",
+        "runtimeName": "CEF3证书_取DER缓冲",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3证书_取DER缓冲(1)"
+    },
+    {
+      "index": 169,
+      "name": "CEF3证书_取PEM缓冲",
+      "aliases": [
+        "CefX509Certificate::GetPEMEncoded"
+      ],
+      "signature": "CEF3证书_取PEM缓冲(证书句柄)",
+      "description": "复制PEM编码证书并返回受管缓冲。",
+      "insertText": "CEF3证书_取PEM缓冲($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_取PEM缓冲",
+        "runtimeName": "CEF3证书_取PEM缓冲",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3证书_取PEM缓冲(1)"
+    },
+    {
+      "index": 170,
+      "name": "CEF3证书_取生效时间",
+      "aliases": [
+        "CefX509Certificate::GetValidStart"
+      ],
+      "signature": "CEF3证书_取生效时间(证书句柄)",
+      "description": "取得证书生效Unix秒时间。",
+      "insertText": "CEF3证书_取生效时间($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_取生效时间",
+        "runtimeName": "CEF3证书_取生效时间",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3证书_取生效时间(1)"
+    },
+    {
+      "index": 171,
+      "name": "CEF3证书_取失效时间",
+      "aliases": [
+        "CefX509Certificate::GetValidExpiry"
+      ],
+      "signature": "CEF3证书_取失效时间(证书句柄)",
+      "description": "取得证书失效Unix秒时间。",
+      "insertText": "CEF3证书_取失效时间($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_取失效时间",
+        "runtimeName": "CEF3证书_取失效时间",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3证书_取失效时间(1)"
+    },
+    {
+      "index": 172,
+      "name": "CEF3证书_取颁发链数量",
+      "aliases": [
+        "CefX509Certificate::GetIssuerChainSize"
+      ],
+      "signature": "CEF3证书_取颁发链数量(证书句柄)",
+      "description": "取得证书颁发链项目数量。",
+      "insertText": "CEF3证书_取颁发链数量($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_取颁发链数量",
+        "runtimeName": "CEF3证书_取颁发链数量",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3证书_取颁发链数量(1)"
+    },
+    {
+      "index": 173,
+      "name": "CEF3证书_取DER颁发链项",
+      "aliases": [
+        "CefX509Certificate::GetDEREncodedIssuerChain"
+      ],
+      "signature": "CEF3证书_取DER颁发链项(证书句柄, 索引)",
+      "description": "复制指定DER颁发链项并返回受管缓冲。",
+      "insertText": "CEF3证书_取DER颁发链项($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_取DER颁发链项",
+        "runtimeName": "CEF3证书_取DER颁发链项",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3证书_取DER颁发链项(1, 1)"
+    },
+    {
+      "index": 174,
+      "name": "CEF3证书_取PEM颁发链项",
+      "aliases": [
+        "CefX509Certificate::GetPEMEncodedIssuerChain"
+      ],
+      "signature": "CEF3证书_取PEM颁发链项(证书句柄, 索引)",
+      "description": "复制指定PEM颁发链项并返回受管缓冲。",
+      "insertText": "CEF3证书_取PEM颁发链项($1, $2)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_取PEM颁发链项",
+        "runtimeName": "CEF3证书_取PEM颁发链项",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "索引",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3证书_取PEM颁发链项(1, 1)"
+    },
+    {
+      "index": 175,
+      "name": "CEF3证书_释放",
+      "aliases": [
+        "LB_CEF3_CertificateRelease"
+      ],
+      "signature": "CEF3证书_释放(证书句柄)",
+      "description": "释放证书受管快照。",
+      "insertText": "CEF3证书_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书_释放",
+        "runtimeName": "CEF3证书_释放",
+        "parameters": [
+          {
+            "name": "证书句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3证书_释放(1)"
+    },
+    {
+      "index": 176,
+      "name": "CEF3证书主体_取显示名",
+      "aliases": [
+        "CefX509CertPrincipal::GetDisplayName"
+      ],
+      "signature": "CEF3证书主体_取显示名(主体句柄)",
+      "description": "取得证书主体显示名。",
+      "insertText": "CEF3证书主体_取显示名($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书主体_取显示名",
+        "runtimeName": "CEF3证书主体_取显示名",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3证书主体_取显示名(1)"
+    },
+    {
+      "index": 177,
+      "name": "CEF3证书主体_取通用名",
+      "aliases": [
+        "CefX509CertPrincipal::GetCommonName"
+      ],
+      "signature": "CEF3证书主体_取通用名(主体句柄)",
+      "description": "取得证书主体通用名。",
+      "insertText": "CEF3证书主体_取通用名($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书主体_取通用名",
+        "runtimeName": "CEF3证书主体_取通用名",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3证书主体_取通用名(1)"
+    },
+    {
+      "index": 178,
+      "name": "CEF3证书主体_取地区名",
+      "aliases": [
+        "CefX509CertPrincipal::GetLocalityName"
+      ],
+      "signature": "CEF3证书主体_取地区名(主体句柄)",
+      "description": "取得证书主体地区名。",
+      "insertText": "CEF3证书主体_取地区名($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书主体_取地区名",
+        "runtimeName": "CEF3证书主体_取地区名",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3证书主体_取地区名(1)"
+    },
+    {
+      "index": 179,
+      "name": "CEF3证书主体_取省州名",
+      "aliases": [
+        "CefX509CertPrincipal::GetStateOrProvinceName"
+      ],
+      "signature": "CEF3证书主体_取省州名(主体句柄)",
+      "description": "取得证书主体省或州名。",
+      "insertText": "CEF3证书主体_取省州名($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书主体_取省州名",
+        "runtimeName": "CEF3证书主体_取省州名",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3证书主体_取省州名(1)"
+    },
+    {
+      "index": 180,
+      "name": "CEF3证书主体_取国家名",
+      "aliases": [
+        "CefX509CertPrincipal::GetCountryName"
+      ],
+      "signature": "CEF3证书主体_取国家名(主体句柄)",
+      "description": "取得证书主体国家名。",
+      "insertText": "CEF3证书主体_取国家名($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书主体_取国家名",
+        "runtimeName": "CEF3证书主体_取国家名",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3证书主体_取国家名(1)"
+    },
+    {
+      "index": 181,
+      "name": "CEF3证书主体_取组织JSON",
+      "aliases": [
+        "CefX509CertPrincipal::GetOrganizationNames"
+      ],
+      "signature": "CEF3证书主体_取组织JSON(主体句柄)",
+      "description": "取得组织名称UTF-16 JSON数组。",
+      "insertText": "CEF3证书主体_取组织JSON($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书主体_取组织JSON",
+        "runtimeName": "CEF3证书主体_取组织JSON",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3证书主体_取组织JSON(1)"
+    },
+    {
+      "index": 182,
+      "name": "CEF3证书主体_取组织单位JSON",
+      "aliases": [
+        "CefX509CertPrincipal::GetOrganizationUnitNames"
+      ],
+      "signature": "CEF3证书主体_取组织单位JSON(主体句柄)",
+      "description": "取得组织单位名称UTF-16 JSON数组。",
+      "insertText": "CEF3证书主体_取组织单位JSON($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书主体_取组织单位JSON",
+        "runtimeName": "CEF3证书主体_取组织单位JSON",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3证书主体_取组织单位JSON(1)"
+    },
+    {
+      "index": 183,
+      "name": "CEF3证书主体_释放",
+      "aliases": [
+        "LB_CEF3_CertificatePrincipalRelease"
+      ],
+      "signature": "CEF3证书主体_释放(主体句柄)",
+      "description": "释放证书主体受管快照。",
+      "insertText": "CEF3证书主体_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3证书主体_释放",
+        "runtimeName": "CEF3证书主体_释放",
+        "parameters": [
+          {
+            "name": "主体句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3证书主体_释放(1)"
+    }
+  ]
+}

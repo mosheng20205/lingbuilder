@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.104Z",
+  "module": {
+    "id": "lingbuilder.cef3.transfer",
+    "name": "CEF3传输模块",
+    "version": "3.0.0-alpha.2",
+    "description": "提供下载和打印能力。"
+  },
+  "commandCount": 2,
+  "commands": [
+    {
+      "index": 1,
+      "name": "CEF3传输_开始下载",
+      "aliases": [
+        "CefBrowserHost::StartDownload"
+      ],
+      "signature": "CEF3传输_开始下载(控件名, 地址)",
+      "description": "使用当前实例会话开始下载。",
+      "insertText": "CEF3传输_开始下载(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3传输_开始下载",
+        "runtimeName": "CEF3传输_开始下载",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3传输_开始下载(\"演示输出\", \"https://example.com\")"
+    },
+    {
+      "index": 2,
+      "name": "CEF3传输_打印",
+      "aliases": [
+        "CefBrowserHost::Print"
+      ],
+      "signature": "CEF3传输_打印(控件名)",
+      "description": "打开当前页面的原生打印流程。",
+      "insertText": "CEF3传输_打印(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3传输_打印",
+        "runtimeName": "CEF3传输_打印",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3传输_打印(\"演示输出\")"
+    }
+  ]
+}

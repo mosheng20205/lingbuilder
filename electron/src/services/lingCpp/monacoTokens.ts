@@ -8,7 +8,8 @@ export function getLingCppModuleCommandNames(moduleContext?: LingCppModuleContex
     (moduleContext?.enabledModules || [])
       .filter(module => module.diagnostics.length === 0)
       .flatMap(module => module.manifest.contributes?.commands || [])
-      .map(command => command.name.trim())
+      .flatMap(command => [command.name, ...(command.aliases || [])])
+      .map(commandName => commandName.trim())
       .filter(Boolean)
   )];
 }

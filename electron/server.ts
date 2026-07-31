@@ -173,6 +173,19 @@ const projectFilePersistenceService = createProjectFilePersistenceService();
 const hotExitRecoveryService = new HotExitRecoveryService(serverRuntimeConfig.workspaceRoot);
 const workspaceSearchService = createWorkspaceSearchService(serverRuntimeConfig.workspaceRoot);
 const managedProcessService = createManagedProcessService();
+let activeEdgeControlPreviewProcessKey: string | undefined;
+const edgeControlPreviewBuildDirs = new Map<string, string>();
+
+async function cleanupEdgeControlPreviewBuild(processKey: string): Promise<void> {
+  const buildDir = edgeControlPreviewBuildDirs.get(processKey);
+  if (!buildDir) return;
+  const previewRoot = path.resolve(getRepoWorkspaceRoot(), ".lingbuilder-build", "edgeview-control-preview");
+  const resolvedBuildDir = path.resolve(buildDir);
+  if (resolvedBuildDir !== previewRoot && resolvedBuildDir.startsWith(`${previewRoot}${path.sep}`)) {
+    await fs.rm(resolvedBuildDir, { recursive: true, force: true });
+  }
+  edgeControlPreviewBuildDirs.delete(processKey);
+}
 const taskService = new TaskService();
 const environmentRepairService = new EnvironmentRepairService();
 const buildConfigurationService = new BuildConfigurationService(serverRuntimeConfig.workspaceRoot);
@@ -803,10 +816,12 @@ app.post("/api/modules/project/enable", async (req, res) => {
     if (!moduleId) return res.status(400).json({ ok: false, error: "缺少 moduleId" });
     const validatedProjectId = await requireExistingProject(projectId);
     moduleAccessService.assertAccess(moduleId);
+    const plan = await getModuleService().planEnableModulesForProject(validatedProjectId, [moduleId]);
+    plan.addedModuleIds.forEach(dependencyModuleId => moduleAccessService.assertAccess(dependencyModuleId));
     await getModuleService().enableModuleForProject(validatedProjectId, moduleId);
     const enabledModules = await getModuleService().getEnabledProjectModules(validatedProjectId);
     const compatibility = await buildConfigurationService.ensureCompatibleWithModules(enabledModules.map(module => module.manifest.id));
-    res.json({ ok: true, buildConfiguration: compatibility.configuration, buildConfigurationChanged: compatibility.changed, messages: compatibility.messages });
+    res.json({ ok: true, plan, buildConfiguration: compatibility.configuration, buildConfigurationChanged: compatibility.changed, messages: compatibility.messages });
   } catch (error: any) {
     res.status(error?.status || 500).json({ ok: false, code: error?.code, error: error?.message || "启用模块失败" });
   }
@@ -814,13 +829,34 @@ app.post("/api/modules/project/enable", async (req, res) => {
 
 app.post("/api/modules/project/disable", async (req, res) => {
   try {
-    const { projectId, moduleId } = req.body as { projectId?: string; moduleId?: string };
+    const { projectId, moduleId, cascade = false } = req.body as { projectId?: string; moduleId?: string; cascade?: boolean };
     if (!moduleId) return res.status(400).json({ ok: false, error: "缺少 moduleId" });
     const validatedProjectId = await requireExistingProject(projectId);
-    await getModuleService().disableModuleForProject(validatedProjectId, moduleId);
-    res.json({ ok: true });
+    const plan = await getModuleService().planDisableModuleForProject(validatedProjectId, moduleId);
+    await getModuleService().disableModuleForProject(validatedProjectId, moduleId, { cascade });
+    res.json({ ok: true, plan });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "禁用模块失败" });
+  }
+});
+
+app.post("/api/modules/project/change-plan", async (req, res) => {
+  try {
+    const { projectId, moduleId, action } = req.body as { projectId?: string; moduleId?: string; action?: 'enable' | 'disable' };
+    if (!moduleId) return res.status(400).json({ ok: false, error: "缺少 moduleId" });
+    const validatedProjectId = await requireExistingProject(projectId);
+    if (action === 'enable') {
+      moduleAccessService.assertAccess(moduleId);
+      const plan = await getModuleService().planEnableModulesForProject(validatedProjectId, [moduleId]);
+      plan.addedModuleIds.forEach(dependencyModuleId => moduleAccessService.assertAccess(dependencyModuleId));
+      return res.json({ ok: true, plan });
+    }
+    if (action === 'disable') {
+      return res.json({ ok: true, plan: await getModuleService().planDisableModuleForProject(validatedProjectId, moduleId) });
+    }
+    return res.status(400).json({ ok: false, error: "action 必须是 enable 或 disable" });
+  } catch (error: any) {
+    res.status(error?.status || 500).json({ ok: false, code: error?.code, error: error?.message || "模块变更计划生成失败" });
   }
 });
 
@@ -1379,6 +1415,80 @@ app.get("/api/window-designer/assets/content", async (req, res) => {
     res.send(image.bytes);
   } catch (error: any) {
     res.status(404).send(error?.message || "图片资源不存在。");
+  }
+});
+
+app.post("/api/window-designer/edge-control-preview", async (req, res) => {
+  const { project, windowId, controlId } = req.body as { project?: LingWindowProject; windowId?: string; controlId?: string };
+  if (!project || !isNonEmptyString(project.id) || !isNonEmptyString(windowId) || !isNonEmptyString(controlId)) {
+    return res.status(400).json({ ok: false, stage: "prepare", error: "缺少 Edge 控件预览所需的项目、窗口或控件标识。" });
+  }
+  const sourceWindow = project.windows.find(item => item.id === windowId);
+  const sourceControl = sourceWindow?.controls.find(item => item.id === controlId);
+  if (!sourceWindow || !sourceControl || sourceControl.type !== "EdgeBrowser") {
+    return res.status(400).json({ ok: false, stage: "prepare", error: "当前选择不是可预览的 Edge 浏览器控件。" });
+  }
+  const projectId = project.id.trim();
+  const processKey = `edgeview-control-preview:${projectId}`;
+  try {
+    if (activeEdgeControlPreviewProcessKey) {
+      await managedProcessService.stop(activeEdgeControlPreviewProcessKey);
+      await cleanupEdgeControlPreviewBuild(activeEdgeControlPreviewProcessKey);
+      activeEdgeControlPreviewProcessKey = undefined;
+    }
+    const previewControl = { ...sourceControl, parentId: undefined, containerSlot: undefined, x: 12, y: 12 };
+    const previewWindow = {
+      ...sourceWindow,
+      id: `${sourceWindow.id}-edge-control-preview`, fileName: "EdgeViewControlPreview.xml", className: "EdgeViewControlPreviewWindow",
+      title: `EdgeView 控件预览 - ${sourceControl.name}`,
+      width: Math.max(360, sourceControl.width + 24), height: Math.max(240, sourceControl.height + 64),
+      controls: [previewControl], events: {}, menuEvents: {}
+    };
+    const previewProject: LingWindowProject = { ...project, windows: [previewWindow] };
+    const enabledModules = await getModuleService().getEnabledProjectModules(projectId);
+    assertEnabledModuleAccess(enabledModules);
+    if (!enabledModules.some(module => module.manifest.id === "lingbuilder.edgeview")) throw new Error("当前项目尚未启用 lingbuilder.edgeview 模块。");
+    const compatibility = await buildConfigurationService.ensureCompatibleWithModules(enabledModules.map(module => module.manifest.id));
+    const buildConfiguration = compatibility.configuration;
+    const generated = generateLingCppNativeWin32Project(previewProject, {
+      activeWindowId: previewWindow.id, lingCppSourceCode: "", lingCppSources: [], enabledModules
+    });
+    assertNoBlockingLingCppDiagnostics(generated.blockingDiagnostics);
+    const repoRoot = getRepoWorkspaceRoot();
+    const buildDir = path.join(repoRoot, ".lingbuilder-build", "edgeview-control-preview", sanitizeFilename(projectId));
+    edgeControlPreviewBuildDirs.set(processKey, buildDir);
+    const sourceDir = path.join(buildDir, "src"); const binDir = path.join(buildDir, "bin"); const objDir = path.join(buildDir, "obj"); const exportDir = path.join(buildDir, "export");
+    await Promise.all([sourceDir, binDir, objDir, exportDir].map(directory => fs.mkdir(directory, { recursive: true })));
+    await writeGeneratedProjectFiles(sourceDir, generated.files);
+    const modulePlan = await materializeModuleNativeDependencies(enabledModules, {
+      buildDir, sourceDir, binDir, exportDir, preferredTargetId: getModuleTargetId(buildConfiguration)
+    });
+    if (modulePlan.blockingDiagnostics.length) return res.status(200).json({ ok: false, stage: "native-dependencies", error: modulePlan.blockingDiagnostics.join("\n"), logs: modulePlan.diagnostics });
+    const compiler = await detectCompiler(buildConfiguration);
+    if (!compiler || compiler.kind !== "msvc") return res.status(200).json({ ok: false, stage: "compiler", error: "EdgeView 独立预览需要 Visual Studio Build Tools / MSVC。", logs: compatibility.messages });
+    const exePath = path.join(binDir, "EdgeViewControlPreview.exe");
+    const compile = await compileWin32Preview(compiler, path.join(sourceDir, "main.cpp"), exePath, objDir, buildDir, modulePlan, buildConfiguration);
+    const logs = [...compatibility.messages, ...generated.diagnostics, ...modulePlan.diagnostics, ...compile.logs];
+    if (!compile.ok) return res.status(200).json({ ok: false, stage: "compile", error: "EdgeView 控件预览编译失败。", logs, buildDir });
+    const started = await managedProcessService.start(processKey, exePath, { cwd: binDir, detached: false, windowsHide: false, logFilePath: path.join(buildDir, "run.log") });
+    activeEdgeControlPreviewProcessKey = processKey;
+    res.json({ ok: true, stage: "run", pid: started.pid, buildDir, exePath, message: `正在独立窗口预览 ${sourceControl.name}。`, logs: [...logs, `已启动 EdgeView 控件预览（PID ${started.pid}）。`] });
+  } catch (error) {
+    res.status(500).json({ ok: false, stage: "server", error: error instanceof Error ? error.message : "EdgeView 控件预览失败。" });
+  }
+});
+
+app.post("/api/window-designer/edge-control-preview/stop", async (req, res) => {
+  const projectId = isNonEmptyString(req.body?.projectId) ? req.body.projectId.trim() : undefined;
+  const processKey = projectId ? `edgeview-control-preview:${projectId}` : activeEdgeControlPreviewProcessKey;
+  if (!processKey) return res.json({ ok: true, message: "当前没有运行中的 EdgeView 控件预览。" });
+  try {
+    const result = await managedProcessService.stop(processKey);
+    if (activeEdgeControlPreviewProcessKey === processKey) activeEdgeControlPreviewProcessKey = undefined;
+    await cleanupEdgeControlPreviewBuild(processKey);
+    res.json({ ok: true, message: result.message });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error instanceof Error ? error.message : "停止 EdgeView 控件预览失败。" });
   }
 });
 

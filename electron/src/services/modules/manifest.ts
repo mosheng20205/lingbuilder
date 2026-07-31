@@ -42,10 +42,22 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
     if (!Array.isArray(contributes.commands)) diagnostics.push('contributes.commands 必须是数组。');
     else {
       const seen = new Set<string>();
+      const seenAliases = new Set<string>();
       contributes.commands.forEach((command: any, index: number) => {
         if (typeof command?.name !== 'string' || !command.name.trim()) diagnostics.push(`第 ${index + 1} 个命令缺少 name。`);
-        if (seen.has(command?.name)) diagnostics.push(`命令重复：${command.name}`);
+        if (seen.has(command?.name) || seenAliases.has(command?.name)) diagnostics.push(`命令名称或别名重复：${command.name}`);
         seen.add(command?.name);
+        if (command?.aliases !== undefined) {
+          if (!Array.isArray(command.aliases) || command.aliases.some((alias: unknown) => typeof alias !== 'string' || !alias.trim())) {
+            diagnostics.push(`命令 ${command?.name || index + 1} 的 aliases 必须是非空文本数组。`);
+          } else {
+            command.aliases.forEach((alias: string) => {
+              if (alias === command.name) diagnostics.push(`命令 ${command.name} 的别名不能与主名称相同。`);
+              if (seen.has(alias) || seenAliases.has(alias)) diagnostics.push(`命令名称或别名重复：${alias}`);
+              seenAliases.add(alias);
+            });
+          }
+        }
         if (typeof command?.signature !== 'string' || !command.signature.trim()) diagnostics.push(`命令 ${command?.name || index + 1} 缺少 signature。`);
         if (typeof command?.description !== 'string' || !command.description.trim()) diagnostics.push(`命令 ${command?.name || index + 1} 缺少 description。`);
         if (command?.visibility !== undefined && !['default', 'advanced', 'internal'].includes(command.visibility)) diagnostics.push(`命令 ${command?.name || index + 1} 的 visibility 无效。`);
@@ -116,12 +128,34 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
 
   validatePathArray(contributes?.docs?.map((doc: any) => doc?.path), 'docs.path', diagnostics);
   validatePathArray(contributes?.examples?.map((example: any) => example?.path), 'examples.path', diagnostics);
+  validateDependencies(raw.dependencies, raw.id, diagnostics);
   validateTargets(raw.targets, diagnostics);
   validateBindings(raw.bindings, contributes?.commands || [], raw.targets || [], diagnostics);
   validateCompatibility(raw.compatibility, raw.id, diagnostics);
 
   if (diagnostics.length > 0) return { diagnostics };
   return { manifest: raw as LingBuilderModuleManifest, diagnostics };
+}
+
+function validateDependencies(dependencies: unknown, moduleId: string, diagnostics: string[]): void {
+  if (dependencies === undefined) return;
+  if (!Array.isArray(dependencies)) {
+    diagnostics.push('dependencies 必须是数组。');
+    return;
+  }
+  const seen = new Set<string>();
+  dependencies.forEach((dependency: any, index: number) => {
+    if (typeof dependency?.moduleId !== 'string' || !MODULE_ID_RE.test(dependency.moduleId)) {
+      diagnostics.push(`dependencies[${index}].moduleId 不是有效模块 ID。`);
+      return;
+    }
+    if (dependency.moduleId === moduleId) diagnostics.push(`模块不能依赖自身：${moduleId}`);
+    if (seen.has(dependency.moduleId)) diagnostics.push(`重复的模块依赖：${dependency.moduleId}`);
+    seen.add(dependency.moduleId);
+    if (typeof dependency?.minimumVersion !== 'string' || !/^\d+(?:\.\d+){0,3}(?:-[0-9A-Za-z.-]+)?$/u.test(dependency.minimumVersion)) {
+      diagnostics.push(`dependencies[${index}].minimumVersion 必须是可比较的版本号。`);
+    }
+  });
 }
 
 function validateCompatibility(compatibility: unknown, moduleId: string, diagnostics: string[]): void {

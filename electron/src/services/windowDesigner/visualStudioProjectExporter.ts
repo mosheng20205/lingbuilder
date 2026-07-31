@@ -276,7 +276,7 @@ function generateVcxproj(options: {
     <OutDir>$(ProjectDir)$(Platform)\\$(Configuration)\\bin\\</OutDir>
     <IntDir>$(ProjectDir)obj\\$(Platform)\\$(Configuration)\\</IntDir>
   </PropertyGroup>
-  ${options.hasFbro ? `<Target Name="ValidateFbroArchitecture" BeforeTargets="PrepareForBuild" Condition="'$(Platform)'!='x64'">
+${options.hasFbro ? `  <Target Name="ValidateFbroArchitecture" BeforeTargets="PrepareForBuild" Condition="'$(Platform)'!='x64'">
     <Error Text="FBro 浏览器仅支持 Windows MSVC x64，请切换到 x64 配置。" />
   </Target>` : ''}
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">

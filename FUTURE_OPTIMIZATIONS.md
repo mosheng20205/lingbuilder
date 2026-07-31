@@ -1,6 +1,10 @@
 # LingBuilder 后期优化事项
 
-- 已完成（2026-07-30）：新增全模块演示项目与源码包自动生成链路。生成器从内置及已安装模块清单读取真实 contribution/binding，为 68 个唯一模块建立独立项目，逐条覆盖 2357 条命令；大型模块最多拆成 12 个 TabControl 分组，界面统一提供默认关闭的实际执行开关，资产 SDK 则展示版本、用途和消费边界而不伪造命令。项目源码集中在 `examples/module-demos/`，68 个 `.lcpppkg` 输出到根目录 `exports/`，并提供静态覆盖及逐包深度校验命令。后续新增模块或命令时应重新生成并检查命令数量漂移，避免演示清单与运行时 binding 分叉。
+- CEF 150 安全全覆盖进行中（2026-07-31）：`3.0.0-alpha.2` 的覆盖 v2 当前为 265 implemented、8 internal、185 notApplicable、1119 planned（1577 项记录）。objects 与 session 已清零各自 `planned`：183 条 objects 命令覆盖 Value/Dictionary/List/Binary、Image、NavigationEntry、完整 MenuModel、X509Certificate/Principal/SSLStatus 和导航历史；19 条 session 命令覆盖独立 RequestContext、Preference、Cookie、缓存、证书例外、HTTP 认证与连接回收。Bridge 原生 MSVC x64 测试验证真实 HTTPS 证书、历史 JSON、菜单索引/快捷键/颜色/字体、对象深复制和双会话隔离。全局 Cookie/Preference 与初始化注册器有明确内部替代，不允许破坏实例隔离。当前仍有 86 个事件签名以及 network/transfer/automation/DevTools/OSR/Views/platform 等 1119 项待完成；下一步优先接通剩余 Handler 的专用响应 schema，再进入 Scheme/ResourceHandler/Filter、下载/PDF、DOM/V8/进程消息、DevTools 订阅、真实 OSR、Views 和平台工具。`module:cef3-coverage:complete` 在 planned/needsReview 清零前仍必须失败。
+
+- FBro 全功能封装进行中（2026-07-31）：已完成 5.38.49 / CEF 135.0.21 / MSVC x64 的 77 头文件、1079 签名确定性覆盖清单，模块递归依赖与级联禁用预览，官方英文别名解析，C ABI v2 的 POD 事件包、任务/缓冲/对象不透明句柄和稳定错误码；普通 Win32 与 New_Emoji 已共用 v2 事件协议。对象层覆盖 Value、Dictionary、List、Binary、StringList、Stream、Image、X509Certificate、X509CertPrincipal、DragData 与 Frame。Frame 已接通主/焦点/按标识/按名称查找、标识/名称列表、有效性、地址、名称、标识、父框架、所属浏览器、编辑动作、加载地址和执行脚本，共形成 25 条 automation 命令；句柄类型固定为 16。session 和 transfer 已分别完成 10 条与 5 条命令。当前统计为 218 implemented、857 planned、3 internal notApplicable、1 advanced notApplicable，事件已接通 9/158；普通 Win32 MSVC x64 原生运行已验证 Frame 回查与生命周期，New_Emoji 联合 smoke 也通过。有效 Key 截图仍由 `LINGBUILDER_FBRO_VIP_KEY` 门控。尚未完成的门禁项还包括 857 个高级签名、149 个未接通事件/回调、Frame visitor/DOM/V8/完整 DevTools、全量网络/VIP 其余能力，以及具有像素帧、输入、IME 和拖放的真实 OSR 控件；这些项目完成前不得误报为全覆盖，也不得注册空 OSR 模块。
+
+- 已完成（2026-07-30，2026-07-31 随 CEF3/FBro/EdgeView 扩展复测）：新增全模块演示项目与源码包自动生成链路。生成器从内置及已安装模块清单读取真实 contribution/binding，当前为 84 个唯一模块建立独立项目，逐条覆盖 3016 条命令；大型模块最多拆成 12 个 TabControl 分组，界面统一提供默认关闭的实际执行开关，资产 SDK 则展示版本、用途和消费边界而不伪造命令。项目源码集中在 `examples/module-demos/`，84 个 `.lcpppkg` 输出到根目录 `exports/`，并提供静态覆盖及逐包深度校验命令。后续新增或删除模块、命令时应重新生成并检查命令数量漂移，避免演示清单与运行时 binding 分叉。
 
 - 已修复（2026-07-30）：LCPP 源码包过去只会随 CEF3/FBro 消费模块自动携带对应 SDK，四个通用密码学模块导出后可能缺少 `lingbuilder.crypto.sdk`。现在哈希、密码派生、对称和非对称模块均会自动携带 Botan/BLAKE3 只读资产，并新增专项回归测试。
 
@@ -105,7 +109,7 @@
 
 - 已修复（2026-07-26）：标准库 C++ 运行时的十六进制字符解析辅助函数 `LB_HexDigit` 移入所有内置运行时片段共享的公共区；项目只启用“编码转换模块”或“JSON 数据模块”、未启用“字节与十六进制模块”时，F5/导出不再因生成代码调用未声明辅助函数而触发 MSVC C3861。新增独立模块组合回归测试，确保辅助函数先定义且只生成一次。
 
-- 已完成（2026-07-25，2026-07-28 扩展）：新增内置 `CEF3浏览器模块`（模块 ID：`lingbuilder.cef3.browser`），按 v2 manifest 提供设计器控件高级贡献；当前 22 条 `CEF3_*` 中文命令与 92 项 CEF 150 浏览器回调同时进入模块上下文和确定性 C++ 运行时，其中 `CEF3_打开原生UI浏览器` 可确定性创建 Chrome Runtime 顶层窗口。构建链路受控发现 CEF3 SDK 并复制头文件、库、DLL 与资源。后续优化保留每实例会话隔离和缓存清理；下载、权限与新窗口回调已纳入完整事件体系。
+- 已完成基础闭环（2026-07-25，2026-07-31 扩展）：新增内置 `CEF3浏览器模块`（模块 ID：`lingbuilder.cef3.browser`），按 v2 manifest 提供设计器控件高级贡献；22 条兼容核心命令与 92 项浏览器侧事件目录进入模块上下文和确定性 C++ 运行时，其中 `CEF3_打开原生UI浏览器` 可创建 Chrome Runtime 顶层窗口。2026-07-31 已完成每实例 RequestContext/缓存子目录和真实 JavaScript JSON 返回。这里的“基础闭环”不等于 1564 个上游签名全覆盖；完整状态和剩余项以文件顶部的 CEF 安全覆盖条目为准。
 
 - 已修复（2026-07-25）：安装版工作区恢复状态与开发版状态分文件保存，首次安装或升级不再继承开发仓库的 `UI_CppLocProj` / `GameClient` 解决方案；安装包默认工作区也不再直接打包仓库根目录的 `src`、`config` 和设计器项目状态，而是在用户文档目录新的“起始工作区”中确定性创建“未命名解决方案 / 新建项目”，避免继续复用旧安装版的“示例工作区”残留。工作台新增“关闭当前解决方案”命令、文件菜单入口、解决方案树右键入口和载入失败页入口；关闭只切换到新的空白工作区并从最近记录移除旧工作区，不删除用户磁盘文件。
 
@@ -514,7 +518,11 @@
 - 已完成：增加 EdgeView 全局默认代理与单实例覆盖代理，使用受校验的 `--proxy-server` Environment 参数，支持 HTTP、HTTPS、SOCKS5，并明确现有实例需重建后生效。
 - 已完成（2026-07-26）：`lingbuilder.edgeview` 按 v2 `contributes.designerControls` 贡献 `Edge浏览器 (EdgeBrowser)`。模块启用后工具箱可添加多个可视占位，设计器 `parentId` 会在生成阶段解析为窗口、容器或选项卡页的真实父 HWND；每个控件使用独立 STATIC 宿主和 WebView2 Controller，空缓存配置按稳定控件 ID 自动生成独立 `.edgeview/<controlId>` 目录。新增按中文控件名创建、导航、JS、事件读取、前进后退、刷新、关闭和动态事件绑定命令，保留原数字实例/区域 API 兼容旧项目；DPI 重建和窗口销毁前会先释放设计器控制器。
 - 已完成（2026-07-26）：以 `Microsoft.Web.WebView2 1.0.3537.50` 稳定头文件的 64 个 `add_*` 入口为审计基线，接入普通 HWND 控件可达的 62 项事件，覆盖 WebView、Controller、Environment、Download、Find、Frame、Notification、Profile、DevTools Protocol 和自定义菜单项；2 项 CompositionController 专属事件明确不适用。事件目录集中驱动设计器和模块清单，生成器按版本接口安全降级，事件数据统一为 UTF-16 JSON，等待事件改用分事件计数。完整 x64 MSVC/WebView2Loader 冒烟编译已通过。
-- 后续优化：增加非阻塞 Promise/取消令牌、同步决策事件的统一取消/已处理/权限状态返回接口，以及缓存清理和 WebView2 Runtime/SDK 版本锁定策略；当前同步 JS/等待事件封装会泵送消息并有超时。
+- 已完成（2026-07-31）：EdgeView `1.2.0` 增加受管任务五态、取消/释放、`shared_ptr + generation` 实例失效检查和关闭后迟到回调拒绝；旧同步 JS 兼容入口复用任务状态。受管对象表覆盖 Frame、Worker、Notification、Extension、Certificate、SharedBuffer、文件系统句柄和资源对象，句柄永不复用并按控件级联释放。Loader 保持到进程退出。
+- 已完成（2026-07-31）：新增设置、会话/Cookie、下载、查找、打印/PDF、截图/Favicon、网页消息、DevTools、资源过滤和同步事件动作接口。导航取消、权限允许/拒绝、脚本对话框、认证、新窗口和下载路径会消费事件结果；未设置结果时保持 WebView2 默认行为。
+- 已完成（2026-07-31）：覆盖门禁升级为 SDK `1.0.3537.50` / Runtime 141 与 SDK `1.0.4078.44` / Runtime 150 双基线。995 个稳定方法已分类为 public 330、internal 565、excluded 100、pending 0；禁止未匹配项自动归为 internal。安全层固定排除 CompositionController、PointerInfo、AutomationProvider、实验 API、任意 Host Object 与裸 COM/指针。设计器独立原生预览和 Win32/x64 Release MSVC 冒烟均通过。
+- 已完成（2026-07-31）：补齐 Environment/Controller 创建选项、Frame/Worker、Profile/Cookie/扩展/权限、下载/查找/打印、PDF 流、通知、DevTools、资源响应、证书、共享缓冲与附加文件对象。设计器创建期属性明确提示重建；F5 和原生清单按源码调用计算 Runtime 141/150 最低要求，v2 源码包声明 `edgeview.safe-api.v2`。
+- 后续优化：打印设置和查找选项目前接受稳定 JSON 入口但只应用安全默认值，后续可在不改变命令签名的前提下扩充完整字段解析；浏览器扩展安装仍需增加明确的用户确认 UI 和签名来源提示。
 # 2026-07-11：内置多线程模块基础闭环
 
 - 已完成：新增 `lingbuilder.threading` 内置 v2 模块，统一贡献补全、中文诊断、代码片段和确定性 C++ binding。

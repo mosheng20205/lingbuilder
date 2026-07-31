@@ -1,6 +1,6 @@
 # LingBuilder 全模块演示项目
 
-本目录由 `npm run module:demos -w lingbuilder-electron` 根据实际模块清单生成，共 68 个独立项目。
+本目录由 `npm run module:demos -w lingbuilder-electron` 根据实际模块清单生成，共 84 个独立项目。
 
 每个项目逐条覆盖目标模块全部 binding 命令；命令较多时使用 TabControl 分组。源码包输出到仓库根目录 `exports/`。
 
@@ -13,8 +13,17 @@
 | `lingbuilder.advanced.memory` 受控内存模块 | `module-demo-lingbuilder.advanced.memory` | 6 | 0 | 1 | `受控内存模块完整演示.lcpppkg` |
 | `lingbuilder.advanced.process-memory` 进程内存模块 | `module-demo-lingbuilder.advanced.process-memory` | 4 | 0 | 1 | `进程内存模块完整演示.lcpppkg` |
 | `lingbuilder.archive` ZIP压缩模块 | `module-demo-lingbuilder.archive` | 4 | 0 | 1 | `ZIP压缩模块完整演示.lcpppkg` |
+| `lingbuilder.cef3.automation` CEF3自动化模块 | `module-demo-lingbuilder.cef3.automation` | 1 | 0 | 1 | `CEF3自动化模块完整演示.lcpppkg` |
 | `lingbuilder.cef3.browser` CEF3浏览器模块 | `module-demo-lingbuilder.cef3.browser` | 22 | 1 | 2 | `CEF3浏览器模块完整演示.lcpppkg` |
+| `lingbuilder.cef3.devtools` CEF3开发者工具模块 | `module-demo-lingbuilder.cef3.devtools` | 3 | 0 | 1 | `CEF3开发者工具模块完整演示.lcpppkg` |
+| `lingbuilder.cef3.events` CEF3事件模块 | `module-demo-lingbuilder.cef3.events` | 6 | 0 | 1 | `CEF3事件模块完整演示.lcpppkg` |
+| `lingbuilder.cef3.network` CEF3网络模块 | `module-demo-lingbuilder.cef3.network` | 1 | 0 | 1 | `CEF3网络模块完整演示.lcpppkg` |
+| `lingbuilder.cef3.objects` CEF3受管对象模块 | `module-demo-lingbuilder.cef3.objects` | 183 | 0 | 10 | `CEF3受管对象模块完整演示.lcpppkg` |
+| `lingbuilder.cef3.platform` CEF3平台工具模块 | `module-demo-lingbuilder.cef3.platform` | 4 | 0 | 1 | `CEF3平台工具模块完整演示.lcpppkg` |
 | `lingbuilder.cef3.sdk` CEF3 内核SDK包 (x64) | `module-demo-lingbuilder.cef3.sdk` | 0 | 0 | 1 | `CEF3内核SDK包（64位）完整演示.lcpppkg` |
+| `lingbuilder.cef3.session` CEF3会话模块 | `module-demo-lingbuilder.cef3.session` | 19 | 0 | 1 | `CEF3会话模块完整演示.lcpppkg` |
+| `lingbuilder.cef3.transfer` CEF3传输模块 | `module-demo-lingbuilder.cef3.transfer` | 2 | 0 | 1 | `CEF3传输模块完整演示.lcpppkg` |
+| `lingbuilder.cef3.views` CEF3视图模块 | `module-demo-lingbuilder.cef3.views` | 1 | 0 | 1 | `CEF3视图模块完整演示.lcpppkg` |
 | `lingbuilder.config.ini` INI 配置模块 | `module-demo-lingbuilder.config.ini` | 6 | 0 | 1 | `INI配置模块完整演示.lcpppkg` |
 | `lingbuilder.config.registry` 用户注册表模块 | `module-demo-lingbuilder.config.registry` | 6 | 0 | 1 | `用户注册表模块完整演示.lcpppkg` |
 | `lingbuilder.crypto.asymmetric` 非对称密码模块 | `module-demo-lingbuilder.crypto.asymmetric` | 27 | 0 | 2 | `非对称密码模块完整演示.lcpppkg` |
@@ -28,9 +37,16 @@
 | `lingbuilder.data.xml` XML 文本模块 | `module-demo-lingbuilder.data.xml` | 5 | 0 | 1 | `XML文本模块完整演示.lcpppkg` |
 | `lingbuilder.database.odbc` ODBC数据库模块 | `module-demo-lingbuilder.database.odbc` | 8 | 0 | 1 | `ODBC数据库模块完整演示.lcpppkg` |
 | `lingbuilder.database.sqlite` SQLite数据库桥接模块 | `module-demo-lingbuilder.database.sqlite` | 7 | 0 | 1 | `SQLite数据库桥接模块完整演示.lcpppkg` |
-| `lingbuilder.edgeview` EdgeView 浏览器模块 | `module-demo-lingbuilder.edgeview` | 36 | 1 | 2 | `EdgeView浏览器模块完整演示.lcpppkg` |
-| `lingbuilder.fbro.browser` FBro指纹浏览器模块 | `module-demo-lingbuilder.fbro.browser` | 21 | 1 | 2 | `FBro指纹浏览器模块完整演示.lcpppkg` |
+| `lingbuilder.edgeview` EdgeView 浏览器模块 | `module-demo-lingbuilder.edgeview` | 271 | 1 | 12 | `EdgeView浏览器模块完整演示.lcpppkg` |
+| `lingbuilder.fbro.automation` FBro自动化模块 | `module-demo-lingbuilder.fbro.automation` | 25 | 0 | 2 | `FBro自动化模块完整演示.lcpppkg` |
+| `lingbuilder.fbro.browser` FBro指纹浏览器模块 | `module-demo-lingbuilder.fbro.browser` | 42 | 1 | 3 | `FBro指纹浏览器模块完整演示.lcpppkg` |
+| `lingbuilder.fbro.events` FBro事件模块 | `module-demo-lingbuilder.fbro.events` | 6 | 0 | 1 | `FBro事件模块完整演示.lcpppkg` |
+| `lingbuilder.fbro.network` FBro高级网络模块 | `module-demo-lingbuilder.fbro.network` | 2 | 0 | 1 | `FBro高级网络模块完整演示.lcpppkg` |
+| `lingbuilder.fbro.objects` FBro受管对象模块 | `module-demo-lingbuilder.fbro.objects` | 132 | 0 | 7 | `FBro受管对象模块完整演示.lcpppkg` |
 | `lingbuilder.fbro.sdk` FBro 135 内置 SDK（x64） | `module-demo-lingbuilder.fbro.sdk` | 0 | 0 | 1 | `FBro135内置SDK（64位）完整演示.lcpppkg` |
+| `lingbuilder.fbro.session` FBro会话模块 | `module-demo-lingbuilder.fbro.session` | 10 | 0 | 1 | `FBro会话模块完整演示.lcpppkg` |
+| `lingbuilder.fbro.transfer` FBro传输模块 | `module-demo-lingbuilder.fbro.transfer` | 5 | 0 | 1 | `FBro传输模块完整演示.lcpppkg` |
+| `lingbuilder.fbro.vip` FBro VIP 指纹模块 | `module-demo-lingbuilder.fbro.vip` | 3 | 0 | 1 | `FBroVIP指纹模块完整演示.lcpppkg` |
 | `lingbuilder.fs.core` 文件目录模块 | `module-demo-lingbuilder.fs.core` | 11 | 0 | 1 | `文件目录模块完整演示.lcpppkg` |
 | `lingbuilder.fs.path` 路径处理模块 | `module-demo-lingbuilder.fs.path` | 7 | 0 | 1 | `路径处理模块完整演示.lcpppkg` |
 | `lingbuilder.http.server` HTTP 服务端模块 | `module-demo-lingbuilder.http.server` | 5 | 0 | 1 | `HTTP服务端模块完整演示.lcpppkg` |

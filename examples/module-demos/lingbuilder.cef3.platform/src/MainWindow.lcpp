@@ -1,0 +1,41 @@
+包 CEF3平台工具模块完整演示
+使用 Win32窗口基础模块
+使用 CEF3平台工具模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项("命令分组选项卡", 0)
+        控件_设置文本("演示状态", "CEF3平台工具模块：4 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.cef3.platform")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本("演示状态", "命令 1–4：CEF3平台_取版本 至 CEF3平台_取Chrome实验说明；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：CEF3平台_取版本
+            // [1] CEF3平台_取版本()
+            // 功能：返回编译时CEF与Chromium版本。
+            // 参数：无；返回：wideString；可见性：default
+            CEF3平台_取版本()
+            // 命令ID：CEF3平台_取MIME扩展名
+            // [2] CEF3平台_取MIME扩展名(MIME类型)
+            // 功能：以JSON数组返回指定小写MIME类型关联的扩展名。
+            // 参数：MIME类型:wideString；返回：wideString；可见性：advanced
+            CEF3平台_取MIME扩展名("演示参数1")
+            // 命令ID：CEF3平台_取Chrome实验开关
+            // [3] CEF3平台_取Chrome实验开关()
+            // 功能：以JSON数组返回当前Chrome Variations命令行开关。
+            // 参数：无；返回：wideString；可见性：advanced
+            CEF3平台_取Chrome实验开关()
+            // 命令ID：CEF3平台_取Chrome实验说明
+            // [4] CEF3平台_取Chrome实验说明()
+            // 功能：以JSON数组返回当前Chrome Variations可读说明。
+            // 参数：无；返回：wideString；可见性：advanced
+            CEF3平台_取Chrome实验说明()
+        如果结束
+        调试输出("已查看 命令 1–4：CEF3平台_取版本 至 CEF3平台_取Chrome实验说明；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

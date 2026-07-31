@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.172Z",
+  "module": {
+    "id": "lingbuilder.fbro.vip",
+    "name": "FBro VIP 指纹模块",
+    "version": "2.0.0",
+    "description": "提供不泄露授权信息的结构化 VIP 指纹入口。"
+  },
+  "commandCount": 3,
+  "commands": [
+    {
+      "index": 1,
+      "name": "FBroVIP_应用指纹JSON",
+      "aliases": [
+        "LB_FBro_ApplyFingerprintJson"
+      ],
+      "signature": "FBroVIP_应用指纹JSON(控件名, JSON)",
+      "description": "通过 UTF-16 JSON 应用受控 VIP 指纹配置；不会暴露 Key。",
+      "insertText": "FBroVIP_应用指纹JSON(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBroVIP_应用指纹JSON",
+        "runtimeName": "FBro指纹_应用配置",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBroVIP_应用指纹JSON(\"演示输出\", \"{}\")"
+    },
+    {
+      "index": 2,
+      "name": "FBroVIP_取调用次数",
+      "aliases": [
+        "LB_FBro_GetFingerprintCallCount"
+      ],
+      "signature": "FBroVIP_取调用次数(控件名)",
+      "description": "查询 VIP 指纹调用次数。",
+      "insertText": "FBroVIP_取调用次数(\"$1\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBroVIP_取调用次数",
+        "runtimeName": "FBro指纹_取调用次数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBroVIP_取调用次数(\"演示输出\")"
+    },
+    {
+      "index": 3,
+      "name": "FBroVIP_清空调用次数",
+      "aliases": [
+        "LB_FBro_ClearFingerprintCallCount"
+      ],
+      "signature": "FBroVIP_清空调用次数(控件名)",
+      "description": "清空 VIP 指纹调用次数。",
+      "insertText": "FBroVIP_清空调用次数(\"$1\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBroVIP_清空调用次数",
+        "runtimeName": "FBro指纹_清空调用次数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBroVIP_清空调用次数(\"演示输出\")"
+    }
+  ]
+}

@@ -1,0 +1,339 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.167Z",
+  "module": {
+    "id": "lingbuilder.fbro.session",
+    "name": "FBro会话模块",
+    "version": "2.0.0",
+    "description": "提供隔离 Profile、Cookie 和代理认证高层能力。"
+  },
+  "commandCount": 10,
+  "commands": [
+    {
+      "index": 1,
+      "name": "FBro会话_取Cookie",
+      "aliases": [
+        "LB_FBro_GetCookies"
+      ],
+      "signature": "FBro会话_取Cookie(控件名, 地址)",
+      "description": "读取指定 RequestContext 中的 Cookie。",
+      "insertText": "FBro会话_取Cookie(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro会话_取Cookie",
+        "runtimeName": "FBro_取Cookie",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro会话_取Cookie(\"演示输出\", \"https://example.com\")"
+    },
+    {
+      "index": 2,
+      "name": "FBro会话_清空Cookie",
+      "aliases": [
+        "LB_FBro_ClearCookies"
+      ],
+      "signature": "FBro会话_清空Cookie(控件名, 地址)",
+      "description": "清空指定地址 Cookie。",
+      "insertText": "FBro会话_清空Cookie(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro会话_清空Cookie",
+        "runtimeName": "FBro_清空Cookie",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro会话_清空Cookie(\"演示输出\", \"https://example.com\")"
+    },
+    {
+      "index": 3,
+      "name": "FBro会话_设置代理认证",
+      "aliases": [
+        "LB_FBro_SetProxy"
+      ],
+      "signature": "FBro会话_设置代理认证(控件名, 代理地址, 用户名, 密码)",
+      "description": "设置隔离会话代理及认证信息。",
+      "insertText": "FBro会话_设置代理认证(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro会话_设置代理认证",
+        "runtimeName": "FBro会话_设置代理认证",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString"
+          },
+          {
+            "name": "密码",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro会话_设置代理认证(\"演示输出\", \"https://example.com\", \"演示参数3\", \"演示参数4\")"
+    },
+    {
+      "index": 4,
+      "name": "FBro会话_异步取全部Cookie",
+      "aliases": [
+        "LB_FBro_CookieVisitAllAsync"
+      ],
+      "signature": "FBro会话_异步取全部Cookie(控件名)",
+      "description": "异步读取当前 RequestContext 的全部 Cookie，任务结果为 UTF-16 JSON 数组。",
+      "insertText": "FBro会话_异步取全部Cookie(\"$1\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro会话_异步取全部Cookie",
+        "runtimeName": "FBro会话_异步取全部Cookie",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro会话_异步取全部Cookie(\"演示输出\")"
+    },
+    {
+      "index": 5,
+      "name": "FBro会话_异步取地址Cookie",
+      "aliases": [
+        "LB_FBro_CookieVisitUrlAsync"
+      ],
+      "signature": "FBro会话_异步取地址Cookie(控件名, 地址, 包含HttpOnly)",
+      "description": "异步读取指定地址 Cookie，任务结果为 UTF-16 JSON 数组。",
+      "insertText": "FBro会话_异步取地址Cookie(\"$1\", \"$2\", $3)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro会话_异步取地址Cookie",
+        "runtimeName": "FBro会话_异步取地址Cookie",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "包含HttpOnly",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro会话_异步取地址Cookie(\"演示输出\", \"https://example.com\", 1)"
+    },
+    {
+      "index": 6,
+      "name": "FBro会话_异步设置Cookie",
+      "aliases": [
+        "LB_FBro_CookieSetAsync"
+      ],
+      "signature": "FBro会话_异步设置Cookie(控件名, 地址, 名称, 值, 域, 路径, 安全, 仅HTTP)",
+      "description": "通过官方 CookieManager 异步设置 Cookie，并返回受管任务 ID。",
+      "insertText": "FBro会话_异步设置Cookie(\"$1\", \"$2\", \"$3\", \"$4\", \"$5\", \"$6\", $7, $8)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro会话_异步设置Cookie",
+        "runtimeName": "FBro会话_异步设置Cookie",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          },
+          {
+            "name": "域",
+            "type": "wideString"
+          },
+          {
+            "name": "路径",
+            "type": "wideString"
+          },
+          {
+            "name": "安全",
+            "type": "int"
+          },
+          {
+            "name": "仅HTTP",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro会话_异步设置Cookie(\"演示输出\", \"https://example.com\", \"演示参数3\", \"演示参数4\", \"演示参数5\", \"module-demo-temp.txt\", 1, 1)"
+    },
+    {
+      "index": 7,
+      "name": "FBro会话_异步删除Cookie",
+      "aliases": [
+        "LB_FBro_CookieDeleteAsync"
+      ],
+      "signature": "FBro会话_异步删除Cookie(控件名, 地址, 名称)",
+      "description": "异步删除指定 Cookie；名称留空时删除该地址全部 Cookie。",
+      "insertText": "FBro会话_异步删除Cookie(\"$1\", \"$2\", \"$3\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro会话_异步删除Cookie",
+        "runtimeName": "FBro会话_异步删除Cookie",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro会话_异步删除Cookie(\"演示输出\", \"https://example.com\", \"演示参数3\")"
+    },
+    {
+      "index": 8,
+      "name": "FBro会话_异步刷新Cookie存储",
+      "aliases": [
+        "LB_FBro_CookieFlushAsync"
+      ],
+      "signature": "FBro会话_异步刷新Cookie存储(控件名)",
+      "description": "异步请求 FBro 将 Cookie 写入持久化存储。",
+      "insertText": "FBro会话_异步刷新Cookie存储(\"$1\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "FBro会话_异步刷新Cookie存储",
+        "runtimeName": "FBro会话_异步刷新Cookie存储",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro会话_异步刷新Cookie存储(\"演示输出\")"
+    },
+    {
+      "index": 9,
+      "name": "FBro会话_异步清理缓存",
+      "aliases": [
+        "LB_FBro_ClearCacheAsync"
+      ],
+      "signature": "FBro会话_异步清理缓存(控件名, 来源, 移除标志, 配额标志)",
+      "description": "异步清理当前浏览器实例指定来源的缓存数据。",
+      "insertText": "FBro会话_异步清理缓存(\"$1\", \"$2\", $3, $4)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro会话_异步清理缓存",
+        "runtimeName": "FBro会话_异步清理缓存",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "来源",
+            "type": "wideString"
+          },
+          {
+            "name": "移除标志",
+            "type": "int"
+          },
+          {
+            "name": "配额标志",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro会话_异步清理缓存(\"演示输出\", \"演示参数2\", 1, 1)"
+    },
+    {
+      "index": 10,
+      "name": "FBro会话_异步清理全局缓存",
+      "aliases": [
+        "LB_FBro_ClearGlobalCacheAsync"
+      ],
+      "signature": "FBro会话_异步清理全局缓存(来源, 移除标志, 配额标志)",
+      "description": "异步清理所有 FBro 实例共享的全局缓存数据。",
+      "insertText": "FBro会话_异步清理全局缓存(\"$1\", $2, $3)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro会话_异步清理全局缓存",
+        "runtimeName": "FBro会话_异步清理全局缓存",
+        "parameters": [
+          {
+            "name": "来源",
+            "type": "wideString"
+          },
+          {
+            "name": "移除标志",
+            "type": "int"
+          },
+          {
+            "name": "配额标志",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro会话_异步清理全局缓存(\"演示参数1\", 1, 1)"
+    }
+  ]
+}

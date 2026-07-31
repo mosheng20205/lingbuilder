@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.085Z",
+  "module": {
+    "id": "lingbuilder.cef3.devtools",
+    "name": "CEF3开发者工具模块",
+    "version": "3.0.0-alpha.2",
+    "description": "提供受设计器策略控制的DevTools入口。"
+  },
+  "commandCount": 3,
+  "commands": [
+    {
+      "index": 1,
+      "name": "CEF3开发工具_打开",
+      "aliases": [
+        "CefBrowserHost::ShowDevTools"
+      ],
+      "signature": "CEF3开发工具_打开(控件名)",
+      "description": "打开指定实例的开发者工具；设计器禁止开发者工具时返回0。",
+      "insertText": "CEF3开发工具_打开(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3开发工具_打开",
+        "runtimeName": "CEF3开发工具_打开",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3开发工具_打开(\"演示输出\")"
+    },
+    {
+      "index": 2,
+      "name": "CEF3开发工具_关闭",
+      "aliases": [
+        "CefBrowserHost::CloseDevTools"
+      ],
+      "signature": "CEF3开发工具_关闭(控件名)",
+      "description": "关闭指定实例的开发者工具。",
+      "insertText": "CEF3开发工具_关闭(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3开发工具_关闭",
+        "runtimeName": "CEF3开发工具_关闭",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3开发工具_关闭(\"演示输出\")"
+    },
+    {
+      "index": 3,
+      "name": "CEF3开发工具_是否打开",
+      "aliases": [
+        "CefBrowserHost::HasDevTools"
+      ],
+      "signature": "CEF3开发工具_是否打开(控件名)",
+      "description": "返回指定实例是否已打开开发者工具。",
+      "insertText": "CEF3开发工具_是否打开(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3开发工具_是否打开",
+        "runtimeName": "CEF3开发工具_是否打开",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3开发工具_是否打开(\"演示输出\")"
+    }
+  ]
+}

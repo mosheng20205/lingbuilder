@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.156Z",
+  "module": {
+    "id": "lingbuilder.fbro.events",
+    "name": "FBro事件模块",
+    "version": "2.0.0",
+    "description": "提供 UTF-16 JSON 事件包、同步决策与动态处理器绑定。"
+  },
+  "commandCount": 6,
+  "commands": [
+    {
+      "index": 1,
+      "name": "FBro_取事件数据",
+      "aliases": [
+        "LB_FBro_GetLastEventData"
+      ],
+      "signature": "FBro_取事件数据(控件名)",
+      "description": "取得当前处理中的事件主数据。",
+      "insertText": "FBro_取事件数据(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_取事件数据",
+        "runtimeName": "FBro_取事件数据",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取事件数据(\"演示输出\")"
+    },
+    {
+      "index": 2,
+      "name": "FBro_取事件字段",
+      "aliases": [
+        "LB_FBro_GetEventField"
+      ],
+      "signature": "FBro_取事件字段(控件名, 字段名)",
+      "description": "从 UTF-16 JSON 事件包读取结构化字段。",
+      "insertText": "FBro_取事件字段(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "FBro_取事件字段",
+        "runtimeName": "FBro_取事件字段",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "字段名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取事件字段(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 3,
+      "name": "FBro_设置事件结果",
+      "aliases": [
+        "LB_FBro_SetEventResult"
+      ],
+      "signature": "FBro_设置事件结果(控件名, 动作)",
+      "description": "设置同步事件动作；未设置时使用事件目录默认动作。",
+      "insertText": "FBro_设置事件结果(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_设置事件结果",
+        "runtimeName": "FBro_设置事件结果",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "动作",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_设置事件结果(\"演示输出\", 1)"
+    },
+    {
+      "index": 4,
+      "name": "FBro_设置事件返回文本",
+      "aliases": [
+        "LB_FBro_SetEventResultText"
+      ],
+      "signature": "FBro_设置事件返回文本(控件名, 文本)",
+      "description": "设置同步事件返回文本。",
+      "insertText": "FBro_设置事件返回文本(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_设置事件返回文本",
+        "runtimeName": "FBro_设置事件返回文本",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_设置事件返回文本(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 5,
+      "name": "FBro_取事件对象",
+      "aliases": [
+        "LB_FBro_GetLastEventObject"
+      ],
+      "signature": "FBro_取事件对象(控件名)",
+      "description": "取得 CertificateError 或 DragEnter 事件携带的受管对象句柄。",
+      "insertText": "FBro_取事件对象(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro_取事件对象",
+        "runtimeName": "FBro_取事件对象",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取事件对象(\"演示输出\")"
+    },
+    {
+      "index": 6,
+      "name": "FBro_绑定事件",
+      "aliases": [
+        "LB_FBro_BindEvent"
+      ],
+      "signature": "FBro_绑定事件(控件名, 事件名, 处理器)",
+      "description": "动态绑定 FBro 事件处理器。",
+      "insertText": "FBro_绑定事件(\"FBro浏览器1\", \"BeforePopup\", &$1)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_绑定事件",
+        "runtimeName": "FBro_绑定事件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "事件名",
+            "type": "wideString"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "FBro_绑定事件(\"FBro浏览器1\", \"BeforePopup\", &$1)"
+      },
+      "demoInvocation": "FBro_绑定事件(\"演示输出\", \"演示事件\", &模块演示回调)"
+    }
+  ]
+}

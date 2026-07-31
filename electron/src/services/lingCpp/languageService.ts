@@ -263,6 +263,7 @@ export function getLingCppSemanticDiagnostics(
   diagnostics.push(...getProjectGlobalDiagnostics(source, filePath, moduleContext, getProjectDataTypeNames(projectTypes)));
   diagnostics.push(...getProjectDataTypeDiagnostics(source, filePath, moduleContext, parsed.program.classes.map(cls => cls.name)));
   diagnostics.push(...getModuleUsageDiagnostics(source, moduleContext));
+  diagnostics.push(...getLegacyModuleHandlerDiagnostics(source, moduleContext));
   const effectiveConstants = isProjectGlobalsFilePath(filePath) ? parsed.program.constants : (projectGlobals?.constants || []);
   const effectiveGlobals = isProjectGlobalsFilePath(filePath) ? parsed.program.globals : (projectGlobals?.globals || []);
   diagnostics.push(...getVariableDiagnostics([
@@ -2412,19 +2413,49 @@ function getModuleUsageDiagnostics(source: string, moduleContext?: LingCppModule
     .filter(module => !enabledIds.has(module.manifest.id))
     .forEach(module => {
       (module.manifest.contributes?.commands || []).forEach(command => {
-        const lineIndex = lines.findIndex(line => containsCommandInvocation(line, command.name));
+        const invokedName = [command.name, ...(command.aliases || [])]
+          .find(name => lines.some(line => containsCommandInvocation(line, name)));
+        const lineIndex = invokedName ? lines.findIndex(line => containsCommandInvocation(line, invokedName)) : -1;
         if (lineIndex < 0) return;
         diagnostics.push({
           id: `lingcpp-module-disabled-${module.manifest.id}-${command.name}-${lineIndex + 1}`,
           line: lineIndex + 1,
           level: 'warning',
-          message: `命令 ${command.name} 来自 ${module.manifest.name}，当前项目尚未引用该模块。`,
+          message: `命令 ${invokedName || command.name} 来自 ${module.manifest.name}，当前项目尚未引用该模块。`,
           codeSnippet: lines[lineIndex],
           suggestion: `请在模块页启用 ${module.manifest.name}，或移除该命令调用。`
         });
       });
     });
 
+  return diagnostics;
+}
+
+function getLegacyModuleHandlerDiagnostics(source: string, moduleContext?: LingCppModuleContext): LingCppDiagnostic[] {
+  const diagnostics: LingCppDiagnostic[] = [];
+  const lines = splitLines(source);
+  getEnabledLingCppModuleContributions(moduleContext).forEach(module => {
+    (module.manifest.bindings?.commands || []).forEach(binding => {
+      const handlerIndexes = (binding.parameters || []).map((parameter, index) => parameter.type === 'handler' ? index : -1).filter(index => index >= 0);
+      if (handlerIndexes.length === 0) return;
+      const aliases = (module.manifest.contributes?.commands || []).find(command => command.name === binding.command)?.aliases || [];
+      [binding.command, ...aliases].forEach(commandName => lines.forEach((line, lineIndex) => {
+        extractCommandInvocationArguments(line, commandName).forEach(args => handlerIndexes.forEach(index => {
+          const value = args[index]?.trim();
+          const legacy = parseStringLiteralArgument(value);
+          if (!legacy || value?.startsWith('&')) return;
+          diagnostics.push({
+            id: `lingcpp-handler-reference-migration-${binding.command}-${lineIndex + 1}-${index}`,
+            line: lineIndex + 1,
+            level: 'warning',
+            message: `命令 ${binding.command} 的处理器字符串写法仅用于旧项目兼容。`,
+            codeSnippet: line,
+            suggestion: `请改为 &${legacy}，以便补全、诊断、跳转、重命名和 C++ 生成统一识别处理器引用。`
+          });
+        }));
+      }));
+    });
+  });
   return diagnostics;
 }
 
@@ -2443,7 +2474,9 @@ function collectModuleCallbackHandlerNames(source: string, moduleContext?: LingC
         .filter(index => index >= 0);
       if (callbackParameterIndexes.length === 0) return;
 
-      extractCommandInvocationArguments(source, binding.command).forEach(args => {
+      const aliases = (module.manifest.contributes?.commands || [])
+        .find(command => command.name === binding.command)?.aliases || [];
+      [binding.command, ...aliases].flatMap(commandName => extractCommandInvocationArguments(source, commandName)).forEach(args => {
         callbackParameterIndexes.forEach(index => {
           const handlerName = parseModuleHandlerArgument(args[index]);
           if (handlerName) handlers.add(normalizeIdentifier(handlerName));

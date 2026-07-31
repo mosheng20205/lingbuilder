@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.106Z",
+  "module": {
+    "id": "lingbuilder.cef3.views",
+    "name": "CEF3视图模块",
+    "version": "3.0.0-alpha.2",
+    "description": "提供Chrome Runtime独立窗口入口。"
+  },
+  "commandCount": 1,
+  "commands": [
+    {
+      "index": 1,
+      "name": "CEF3视图_打开Chrome窗口",
+      "aliases": [
+        "CefBrowserHost::CreateBrowser"
+      ],
+      "signature": "CEF3视图_打开Chrome窗口(控件名, 地址)",
+      "description": "使用实例会话创建Chrome Runtime独立顶层窗口。",
+      "insertText": "CEF3视图_打开Chrome窗口(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "CEF3视图_打开Chrome窗口",
+        "runtimeName": "CEF3_打开原生UI浏览器",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3视图_打开Chrome窗口(\"演示输出\", \"https://example.com\")"
+    }
+  ]
+}

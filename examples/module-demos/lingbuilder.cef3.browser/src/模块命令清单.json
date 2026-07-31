@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-30T13:00:31.477Z",
+  "generatedAt": "2026-07-31T09:57:36.082Z",
   "module": {
     "id": "lingbuilder.cef3.browser",
     "name": "CEF3浏览器模块",
-    "version": "2.0.0",
-    "description": "基于 Chromium Embedded Framework 3，提供设计器浏览器控件、中文命令和完整 CefClient 浏览器事件体系。"
+    "version": "3.0.0-alpha.2",
+    "description": "基于 Chromium Embedded Framework 3，提供设计器浏览器控件、中文命令和集中式浏览器事件目录。"
   },
   "commandCount": 22,
   "commands": [
@@ -64,8 +64,11 @@
     {
       "index": 3,
       "name": "CEF3_执行JS",
+      "aliases": [
+        "Runtime.evaluate"
+      ],
       "signature": "CEF3_执行JS(控件名, 脚本)",
-      "description": "在指定 CEF3 浏览器控件中执行 JavaScript 并等待结果，返回 JSON 编码结果文本。",
+      "description": "通过 DevTools Runtime.evaluate 执行 JavaScript，最多等待 5 秒并返回 JSON 结果；新代码优先使用异步任务接口。",
       "insertText": "CEF3_执行JS(\"$1\", \"document.title\")",
       "returnType": "文本型",
       "binding": {
@@ -216,9 +219,12 @@
     {
       "index": 10,
       "name": "CEF3_设置缓存目录",
+      "aliases": [
+        "CefRequestContext::CreateContext"
+      ],
       "signature": "CEF3_设置缓存目录(控件名, 目录)",
-      "description": "设置指定 CEF3 浏览器控件的缓存目录；不同缓存目录拥有独立 Cookie、LocalStorage 和会话。需在创建前设置。",
-      "insertText": "CEF3_设置缓存目录(\"$1\", \".cef3/cache-2\")",
+      "description": "设置实例独立 RequestContext 的缓存目录标识；实际目录被安全映射到全局 root_cache_path 的直接子目录。需在创建前设置。",
+      "insertText": "CEF3_设置缓存目录(\"$1\", \"cache-2\")",
       "returnType": "整数型",
       "binding": {
         "command": "CEF3_设置缓存目录",
@@ -241,8 +247,11 @@
     {
       "index": 11,
       "name": "CEF3_设置代理",
+      "aliases": [
+        "CefPreferenceManager::SetPreference"
+      ],
       "signature": "CEF3_设置代理(控件名, 代理地址)",
-      "description": "为指定 CEF3 浏览器控件设置 HTTP/HTTPS/SOCKS5 代理；空文本恢复直连。需在创建前设置。",
+      "description": "为实例独立 RequestContext 设置 HTTP/HTTPS/SOCKS5 代理；空文本使用直连。需在创建前设置。",
       "insertText": "CEF3_设置代理(\"$1\", \"http://127.0.0.1:7890\")",
       "returnType": "整数型",
       "binding": {
@@ -425,9 +434,9 @@
     {
       "index": 19,
       "name": "CEF3_绑定事件",
-      "signature": "CEF3_绑定事件(控件名, 事件名, 处理器名)",
-      "description": "绑定完整 CEF3 浏览器事件目录（92 项）到当前窗口无参数中文事件或方法。",
-      "insertText": "CEF3_绑定事件(\"$1\", \"加载完成\", \"$1_加载完成\")",
+      "signature": "CEF3_绑定事件(控件名, 事件名, 处理器)",
+      "description": "绑定 CEF3 浏览器事件目录（92 项）到当前窗口无参数中文事件或方法；处理器必须使用 &处理器名。",
+      "insertText": "CEF3_绑定事件(\"$1\", \"加载完成\", &$2)",
       "returnType": "整数型",
       "binding": {
         "command": "CEF3_绑定事件",
@@ -440,18 +449,19 @@
           {
             "name": "事件名",
             "type": "wideString",
-            "description": "事件名 / 回调 handler"
+            "description": "事件名"
           },
           {
-            "name": "处理器名",
-            "type": "wideString",
-            "description": "当前窗口中的无参数事件/方法名 / 回调 handler"
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名"
           }
         ],
         "returnType": "int",
-        "encoding": "wide"
+        "encoding": "wide",
+        "example": "CEF3_绑定事件(\"浏览器1\", \"加载完成\", &浏览器1_加载完成)"
       },
-      "demoInvocation": "CEF3_绑定事件(\"演示输出\", \"演示事件\", \"演示参数3\")"
+      "demoInvocation": "CEF3_绑定事件(\"演示输出\", \"演示事件\", &模块演示回调)"
     },
     {
       "index": 20,

@@ -1,0 +1,549 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.101Z",
+  "module": {
+    "id": "lingbuilder.cef3.session",
+    "name": "CEF3会话模块",
+    "version": "3.0.0-alpha.2",
+    "description": "提供每实例RequestContext、缓存和Cookie隔离会话能力。"
+  },
+  "commandCount": 19,
+  "commands": [
+    {
+      "index": 1,
+      "name": "CEF3会话_取缓存目录",
+      "aliases": [
+        "LB_CEF3_GetProfilePath"
+      ],
+      "signature": "CEF3会话_取缓存目录(控件名)",
+      "description": "取得实例实际使用的独立缓存目录。",
+      "insertText": "CEF3会话_取缓存目录(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3会话_取缓存目录",
+        "runtimeName": "CEF3会话_取缓存目录",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3会话_取缓存目录(\"演示输出\")"
+    },
+    {
+      "index": 2,
+      "name": "CEF3会话_取代理",
+      "aliases": [
+        "LB_CEF3_GetProxy"
+      ],
+      "signature": "CEF3会话_取代理(控件名)",
+      "description": "取得实例创建时应用的代理地址。",
+      "insertText": "CEF3会话_取代理(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3会话_取代理",
+        "runtimeName": "CEF3会话_取代理",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3会话_取代理(\"演示输出\")"
+    },
+    {
+      "index": 3,
+      "name": "CEF3会话_取上下文",
+      "aliases": [
+        "CefBrowserHost::GetRequestContext"
+      ],
+      "signature": "CEF3会话_取上下文(控件名)",
+      "description": "取得浏览器独立RequestContext的类型化受管句柄。",
+      "insertText": "CEF3会话_取上下文(\"$1\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_取上下文",
+        "runtimeName": "CEF3会话_取上下文",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3会话_取上下文(\"演示输出\")"
+    },
+    {
+      "index": 4,
+      "name": "CEF3会话_上下文取缓存目录",
+      "aliases": [
+        "CefRequestContext::GetCachePath"
+      ],
+      "signature": "CEF3会话_上下文取缓存目录(上下文句柄)",
+      "description": "从RequestContext读取实际缓存目录。",
+      "insertText": "CEF3会话_上下文取缓存目录($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_上下文取缓存目录",
+        "runtimeName": "CEF3会话_上下文取缓存目录",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3会话_上下文取缓存目录(1)"
+    },
+    {
+      "index": 5,
+      "name": "CEF3会话_是否有首选项",
+      "aliases": [
+        "CefPreferenceManager::HasPreference"
+      ],
+      "signature": "CEF3会话_是否有首选项(上下文句柄, 名称)",
+      "description": "在CEF UI线程判断当前隔离会话是否存在指定Preference。",
+      "insertText": "CEF3会话_是否有首选项($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_是否有首选项",
+        "runtimeName": "CEF3会话_是否有首选项",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3会话_是否有首选项(1, \"演示参数2\")"
+    },
+    {
+      "index": 6,
+      "name": "CEF3会话_首选项是否可写",
+      "aliases": [
+        "CefPreferenceManager::CanSetPreference"
+      ],
+      "signature": "CEF3会话_首选项是否可写(上下文句柄, 名称)",
+      "description": "判断指定Preference能否在运行时修改。",
+      "insertText": "CEF3会话_首选项是否可写($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_首选项是否可写",
+        "runtimeName": "CEF3会话_首选项是否可写",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3会话_首选项是否可写(1, \"演示参数2\")"
+    },
+    {
+      "index": 7,
+      "name": "CEF3会话_取首选项",
+      "aliases": [
+        "CefPreferenceManager::GetPreference"
+      ],
+      "signature": "CEF3会话_取首选项(上下文句柄, 名称)",
+      "description": "读取Preference副本并返回CEF值受管句柄。",
+      "insertText": "CEF3会话_取首选项($1, \"$2\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_取首选项",
+        "runtimeName": "CEF3会话_取首选项",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3会话_取首选项(1, \"演示参数2\")"
+    },
+    {
+      "index": 8,
+      "name": "CEF3会话_取全部首选项",
+      "aliases": [
+        "CefPreferenceManager::GetAllPreferences"
+      ],
+      "signature": "CEF3会话_取全部首选项(上下文句柄, 包含默认值)",
+      "description": "读取全部Preference副本并返回CEF字典受管句柄。",
+      "insertText": "CEF3会话_取全部首选项($1, 假)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_取全部首选项",
+        "runtimeName": "CEF3会话_取全部首选项",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "包含默认值",
+            "type": "bool"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3会话_取全部首选项(1, 真)"
+    },
+    {
+      "index": 9,
+      "name": "CEF3会话_设置首选项",
+      "aliases": [
+        "CefPreferenceManager::SetPreference"
+      ],
+      "signature": "CEF3会话_设置首选项(上下文句柄, 名称, 值句柄)",
+      "description": "设置隔离会话Preference；值句柄为0时恢复默认。",
+      "insertText": "CEF3会话_设置首选项($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_设置首选项",
+        "runtimeName": "CEF3会话_设置首选项",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "值句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3会话_设置首选项(1, \"演示参数2\", 1)"
+    },
+    {
+      "index": 10,
+      "name": "CEF3会话_清理HTTP缓存",
+      "aliases": [
+        "CefRequestContext::ClearHttpCache"
+      ],
+      "signature": "CEF3会话_清理HTTP缓存(上下文句柄)",
+      "description": "异步清理当前隔离会话的HTTP缓存并返回任务ID。",
+      "insertText": "CEF3会话_清理HTTP缓存($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_清理HTTP缓存",
+        "runtimeName": "CEF3会话_清理HTTP缓存",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3会话_清理HTTP缓存(1)"
+    },
+    {
+      "index": 11,
+      "name": "CEF3会话_清理证书例外",
+      "aliases": [
+        "CefRequestContext::ClearCertificateExceptions"
+      ],
+      "signature": "CEF3会话_清理证书例外(上下文句柄)",
+      "description": "异步清理当前隔离会话的证书例外并返回任务ID。",
+      "insertText": "CEF3会话_清理证书例外($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_清理证书例外",
+        "runtimeName": "CEF3会话_清理证书例外",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3会话_清理证书例外(1)"
+    },
+    {
+      "index": 12,
+      "name": "CEF3会话_清理HTTP认证",
+      "aliases": [
+        "CefRequestContext::ClearHttpAuthCredentials"
+      ],
+      "signature": "CEF3会话_清理HTTP认证(上下文句柄)",
+      "description": "异步清理当前隔离会话保存的HTTP认证凭据。",
+      "insertText": "CEF3会话_清理HTTP认证($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_清理HTTP认证",
+        "runtimeName": "CEF3会话_清理HTTP认证",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3会话_清理HTTP认证(1)"
+    },
+    {
+      "index": 13,
+      "name": "CEF3会话_关闭全部连接",
+      "aliases": [
+        "CefRequestContext::CloseAllConnections"
+      ],
+      "signature": "CEF3会话_关闭全部连接(上下文句柄)",
+      "description": "异步关闭当前隔离会话的活动与空闲连接。",
+      "insertText": "CEF3会话_关闭全部连接($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_关闭全部连接",
+        "runtimeName": "CEF3会话_关闭全部连接",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3会话_关闭全部连接(1)"
+    },
+    {
+      "index": 14,
+      "name": "CEF3会话_Cookie读取全部",
+      "aliases": [
+        "CefCookieManager::VisitAllCookies"
+      ],
+      "signature": "CEF3会话_Cookie读取全部(上下文句柄)",
+      "description": "异步读取当前隔离会话全部Cookie，任务结果为UTF-16 JSON数组。",
+      "insertText": "CEF3会话_Cookie读取全部($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_Cookie读取全部",
+        "runtimeName": "CEF3会话_Cookie读取全部",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3会话_Cookie读取全部(1)"
+    },
+    {
+      "index": 15,
+      "name": "CEF3会话_Cookie按地址读取",
+      "aliases": [
+        "CefCookieManager::VisitUrlCookies"
+      ],
+      "signature": "CEF3会话_Cookie按地址读取(上下文句柄, 地址, 包含HttpOnly)",
+      "description": "异步读取指定地址Cookie。",
+      "insertText": "CEF3会话_Cookie按地址读取($1, \"$2\", 假)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_Cookie按地址读取",
+        "runtimeName": "CEF3会话_Cookie按地址读取",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "包含HttpOnly",
+            "type": "bool"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3会话_Cookie按地址读取(1, \"https://example.com\", 真)"
+    },
+    {
+      "index": 16,
+      "name": "CEF3会话_Cookie设置",
+      "aliases": [
+        "CefCookieManager::SetCookie"
+      ],
+      "signature": "CEF3会话_Cookie设置(上下文句柄, 地址, 名称, 值, 域, 路径, 安全, HttpOnly, 过期Unix秒)",
+      "description": "异步写入Cookie；过期时间小于等于0时创建会话Cookie。",
+      "insertText": "CEF3会话_Cookie设置($1, \"$2\", \"$3\", \"$4\", \"$5\", \"$6\", 假, 假, $9)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_Cookie设置",
+        "runtimeName": "CEF3会话_Cookie设置",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          },
+          {
+            "name": "域",
+            "type": "wideString"
+          },
+          {
+            "name": "路径",
+            "type": "wideString"
+          },
+          {
+            "name": "安全",
+            "type": "bool"
+          },
+          {
+            "name": "HttpOnly",
+            "type": "bool"
+          },
+          {
+            "name": "过期Unix秒",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3会话_Cookie设置(1, \"https://example.com\", \"演示参数3\", \"演示参数4\", \"演示参数5\", \"module-demo-temp.txt\", 真, 真, 1)"
+    },
+    {
+      "index": 17,
+      "name": "CEF3会话_Cookie删除",
+      "aliases": [
+        "CefCookieManager::DeleteCookies"
+      ],
+      "signature": "CEF3会话_Cookie删除(上下文句柄, 地址, 名称)",
+      "description": "异步删除匹配Cookie，任务结果包含删除数量。",
+      "insertText": "CEF3会话_Cookie删除($1, \"$2\", \"$3\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_Cookie删除",
+        "runtimeName": "CEF3会话_Cookie删除",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3会话_Cookie删除(1, \"https://example.com\", \"演示参数3\")"
+    },
+    {
+      "index": 18,
+      "name": "CEF3会话_Cookie落盘",
+      "aliases": [
+        "CefCookieManager::FlushStore"
+      ],
+      "signature": "CEF3会话_Cookie落盘(上下文句柄)",
+      "description": "异步把当前会话Cookie写入独立存储。",
+      "insertText": "CEF3会话_Cookie落盘($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_Cookie落盘",
+        "runtimeName": "CEF3会话_Cookie落盘",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "CEF3会话_Cookie落盘(1)"
+    },
+    {
+      "index": 19,
+      "name": "CEF3会话_释放上下文",
+      "aliases": [
+        "LB_CEF3_RequestContextRelease"
+      ],
+      "signature": "CEF3会话_释放上下文(上下文句柄)",
+      "description": "释放RequestContext受管句柄。",
+      "insertText": "CEF3会话_释放上下文($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3会话_释放上下文",
+        "runtimeName": "CEF3会话_释放上下文",
+        "parameters": [
+          {
+            "name": "上下文句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "CEF3会话_释放上下文(1)"
+    }
+  ]
+}

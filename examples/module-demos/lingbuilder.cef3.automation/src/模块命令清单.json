@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.079Z",
+  "module": {
+    "id": "lingbuilder.cef3.automation",
+    "name": "CEF3自动化模块",
+    "version": "3.0.0-alpha.2",
+    "description": "提供异步JavaScript任务及后续DOM/V8能力。"
+  },
+  "commandCount": 1,
+  "commands": [
+    {
+      "index": 1,
+      "name": "CEF3自动化_执行JS异步",
+      "aliases": [
+        "Runtime.evaluate"
+      ],
+      "signature": "CEF3自动化_执行JS异步(控件名, 脚本)",
+      "description": "通过DevTools Runtime.evaluate异步执行JavaScript，返回受管任务ID。",
+      "insertText": "CEF3自动化_执行JS异步(\"$1\", \"$2\")",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3自动化_执行JS异步",
+        "runtimeName": "CEF3自动化_执行JS异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "脚本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3自动化_执行JS异步(\"演示输出\", \"演示参数2\")"
+    }
+  ]
+}

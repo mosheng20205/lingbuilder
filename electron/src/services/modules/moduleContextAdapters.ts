@@ -64,6 +64,14 @@ export function getBeginnerModuleCommandHints(moduleContext?: LingCppModuleConte
         parameters: parseCommandParameters(command, binding),
         example: normalizeSnippetPlaceholders(command.insertText || command.signature || `${command.name}()`).text
       };
+      (command.aliases || []).forEach(alias => {
+        hints[alias] = {
+          ...hints[command.name],
+          command: alias,
+          signature: command.signature.replace(command.name, alias),
+          summary: `${command.description}（${command.name} 的官方别名）`
+        };
+      });
     });
   });
   return hints;

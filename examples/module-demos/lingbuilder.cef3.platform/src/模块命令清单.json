@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T09:57:36.096Z",
+  "module": {
+    "id": "lingbuilder.cef3.platform",
+    "name": "CEF3平台工具模块",
+    "version": "3.0.0-alpha.2",
+    "description": "提供CEF版本与平台工具能力。"
+  },
+  "commandCount": 4,
+  "commands": [
+    {
+      "index": 1,
+      "name": "CEF3平台_取版本",
+      "aliases": [
+        "cef_version_info"
+      ],
+      "signature": "CEF3平台_取版本()",
+      "description": "返回编译时CEF与Chromium版本。",
+      "insertText": "CEF3平台_取版本()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "CEF3平台_取版本",
+        "runtimeName": "CEF3平台_取版本",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3平台_取版本()"
+    },
+    {
+      "index": 2,
+      "name": "CEF3平台_取MIME扩展名",
+      "aliases": [
+        "CefGetExtensionsForMimeType"
+      ],
+      "signature": "CEF3平台_取MIME扩展名(MIME类型)",
+      "description": "以JSON数组返回指定小写MIME类型关联的扩展名。",
+      "insertText": "CEF3平台_取MIME扩展名(\"$1\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_取MIME扩展名",
+        "runtimeName": "CEF3平台_取MIME扩展名",
+        "parameters": [
+          {
+            "name": "MIME类型",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "CEF3平台_取MIME扩展名(\"演示参数1\")"
+    },
+    {
+      "index": 3,
+      "name": "CEF3平台_取Chrome实验开关",
+      "aliases": [
+        "CefPreferenceManager::GetChromeVariationsAsSwitches"
+      ],
+      "signature": "CEF3平台_取Chrome实验开关()",
+      "description": "以JSON数组返回当前Chrome Variations命令行开关。",
+      "insertText": "CEF3平台_取Chrome实验开关()",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_取Chrome实验开关",
+        "runtimeName": "CEF3平台_取Chrome实验开关",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3平台_取Chrome实验开关()"
+    },
+    {
+      "index": 4,
+      "name": "CEF3平台_取Chrome实验说明",
+      "aliases": [
+        "CefPreferenceManager::GetChromeVariationsAsStrings"
+      ],
+      "signature": "CEF3平台_取Chrome实验说明()",
+      "description": "以JSON数组返回当前Chrome Variations可读说明。",
+      "insertText": "CEF3平台_取Chrome实验说明()",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "CEF3平台_取Chrome实验说明",
+        "runtimeName": "CEF3平台_取Chrome实验说明",
+        "parameters": [],
+        "returnType": "wideString"
+      },
+      "demoInvocation": "CEF3平台_取Chrome实验说明()"
+    }
+  ]
+}

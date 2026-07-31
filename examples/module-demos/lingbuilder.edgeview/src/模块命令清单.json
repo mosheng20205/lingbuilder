@@ -1,16 +1,5838 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-30T13:00:31.521Z",
+  "generatedAt": "2026-07-31T09:57:36.147Z",
   "module": {
     "id": "lingbuilder.edgeview",
     "name": "EdgeView 浏览器模块",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "description": "基于 Microsoft Edge WebView2，把浏览器嵌入任意 Win32 窗口组件句柄，并提供导航、网页消息、浏览器事件和 JavaScript 返回值。"
   },
-  "commandCount": 36,
+  "commandCount": 271,
   "commands": [
     {
       "index": 1,
+      "name": "EdgeView任务_取当前任务ID",
+      "signature": "EdgeView任务_取当前任务ID()",
+      "description": "取得当前 EdgeView 完成处理器正在消费的任务 ID。",
+      "insertText": "EdgeView任务_取当前任务ID()",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView任务_取当前任务ID",
+        "runtimeName": "EdgeView任务_取当前任务ID",
+        "parameters": [],
+        "returnType": "longLong"
+      },
+      "demoInvocation": "EdgeView任务_取当前任务ID()"
+    },
+    {
+      "index": 2,
+      "name": "EdgeView任务_取状态",
+      "signature": "EdgeView任务_取状态(任务ID)",
+      "description": "取得任务状态：0等待、1成功、2失败、3已取消、4已超时。",
+      "insertText": "EdgeView任务_取状态($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView任务_取状态",
+        "runtimeName": "EdgeView任务_取状态",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "EdgeView任务_取状态(1)"
+    },
+    {
+      "index": 3,
+      "name": "EdgeView任务_取结果",
+      "signature": "EdgeView任务_取结果(任务ID)",
+      "description": "取得任务 UTF-16 文本或 JSON 结果。",
+      "insertText": "EdgeView任务_取结果($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView任务_取结果",
+        "runtimeName": "EdgeView任务_取结果",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView任务_取结果(1)"
+    },
+    {
+      "index": 4,
+      "name": "EdgeView任务_取错误",
+      "signature": "EdgeView任务_取错误(任务ID)",
+      "description": "取得任务的中文错误信息和 HRESULT。",
+      "insertText": "EdgeView任务_取错误($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView任务_取错误",
+        "runtimeName": "EdgeView任务_取错误",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView任务_取错误(1)"
+    },
+    {
+      "index": 5,
+      "name": "EdgeView任务_取消",
+      "signature": "EdgeView任务_取消(任务ID)",
+      "description": "取消尚未完成的任务；迟到回调将被代际检查拒绝。",
+      "insertText": "EdgeView任务_取消($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView任务_取消",
+        "runtimeName": "EdgeView任务_取消",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "EdgeView任务_取消(1)"
+    },
+    {
+      "index": 6,
+      "name": "EdgeView任务_释放",
+      "signature": "EdgeView任务_释放(任务ID)",
+      "description": "释放任务及结果；运行中的任务会先取消。",
+      "insertText": "EdgeView任务_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView任务_释放",
+        "runtimeName": "EdgeView任务_释放",
+        "parameters": [
+          {
+            "name": "任务ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "EdgeView任务_释放(1)"
+    },
+    {
+      "index": 7,
+      "name": "EdgeView导航_HTML",
+      "signature": "EdgeView导航_HTML(控件名, HTML)",
+      "description": "让指定控件导航到内存 HTML。",
+      "insertText": "EdgeView导航_HTML(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView导航_HTML",
+        "runtimeName": "EdgeView导航_HTML",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "HTML",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView导航_HTML(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 8,
+      "name": "EdgeView导航_请求",
+      "signature": "EdgeView导航_请求(控件名, 地址, 方法, 请求头, 正文)",
+      "description": "使用文本请求头和 UTF-8 正文导航，不暴露 IStream。",
+      "insertText": "EdgeView导航_请求(\"$1\", \"$2\", \"$3\", \"$4\", \"$5\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView导航_请求",
+        "runtimeName": "EdgeView导航_请求",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "方法",
+            "type": "wideString"
+          },
+          {
+            "name": "请求头",
+            "type": "wideString"
+          },
+          {
+            "name": "正文",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView导航_请求(\"演示输出\", \"https://example.com\", \"演示参数3\", \"演示参数4\", \"演示参数5\")"
+    },
+    {
+      "index": 9,
+      "name": "EdgeView导航_停止",
+      "signature": "EdgeView导航_停止(控件名)",
+      "description": "停止指定控件当前导航。",
+      "insertText": "EdgeView导航_停止(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView导航_停止",
+        "runtimeName": "EdgeView导航_停止",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView导航_停止(\"演示输出\")"
+    },
+    {
+      "index": 10,
+      "name": "EdgeView导航_取地址",
+      "signature": "EdgeView导航_取地址(控件名)",
+      "description": "取得当前页面地址。",
+      "insertText": "EdgeView导航_取地址(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView导航_取地址",
+        "runtimeName": "EdgeView导航_取地址",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView导航_取地址(\"演示输出\")"
+    },
+    {
+      "index": 11,
+      "name": "EdgeView导航_取标题",
+      "signature": "EdgeView导航_取标题(控件名)",
+      "description": "取得当前文档标题。",
+      "insertText": "EdgeView导航_取标题(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView导航_取标题",
+        "runtimeName": "EdgeView导航_取标题",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView导航_取标题(\"演示输出\")"
+    },
+    {
+      "index": 12,
+      "name": "EdgeView导航_取状态JSON",
+      "signature": "EdgeView导航_取状态JSON(控件名)",
+      "description": "取得后退、前进、挂起、主 Frame、进程、用户数据和故障报告目录状态 JSON。",
+      "insertText": "EdgeView导航_取状态JSON(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView导航_取状态JSON",
+        "runtimeName": "EdgeView导航_取状态JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView导航_取状态JSON(\"演示输出\")"
+    },
+    {
+      "index": 13,
+      "name": "EdgeView导航_取进程信息异步",
+      "signature": "EdgeView导航_取进程信息异步(控件名, 完成处理器)",
+      "description": "异步取得进程 ID、类型和关联 Frame 数量 JSON；旧 Runtime 使用基础进程集合。",
+      "insertText": "EdgeView导航_取进程信息异步(\"$1\", &$2)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView导航_取进程信息异步",
+        "runtimeName": "EdgeView导航_取进程信息异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView导航_取进程信息异步(\"演示输出\", &模块演示回调)"
+    },
+    {
+      "index": 14,
+      "name": "EdgeView导航_挂起异步",
+      "signature": "EdgeView导航_挂起异步(控件名, 完成处理器)",
+      "description": "异步挂起 WebView，返回任务 ID。",
+      "insertText": "EdgeView导航_挂起异步(\"$1\", &$2)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView导航_挂起异步",
+        "runtimeName": "EdgeView导航_挂起异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView导航_挂起异步(\"演示输出\", &模块演示回调)"
+    },
+    {
+      "index": 15,
+      "name": "EdgeView导航_恢复",
+      "signature": "EdgeView导航_恢复(控件名)",
+      "description": "恢复已挂起的 WebView。",
+      "insertText": "EdgeView导航_恢复(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView导航_恢复",
+        "runtimeName": "EdgeView导航_恢复",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView导航_恢复(\"演示输出\")"
+    },
+    {
+      "index": 16,
+      "name": "EdgeView导航_设置虚拟主机",
+      "signature": "EdgeView导航_设置虚拟主机(控件名, 主机名, 目录, 访问模式)",
+      "description": "把虚拟主机映射到明确目录。",
+      "insertText": "EdgeView导航_设置虚拟主机(\"$1\", \"$2\", \"$3\", $4)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView导航_设置虚拟主机",
+        "runtimeName": "EdgeView导航_设置虚拟主机",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "主机名",
+            "type": "wideString"
+          },
+          {
+            "name": "目录",
+            "type": "wideString"
+          },
+          {
+            "name": "访问模式",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView导航_设置虚拟主机(\"演示输出\", \"演示参数2\", \".\", 1)"
+    },
+    {
+      "index": 17,
+      "name": "EdgeView导航_清除虚拟主机",
+      "signature": "EdgeView导航_清除虚拟主机(控件名, 主机名)",
+      "description": "清除指定虚拟主机映射。",
+      "insertText": "EdgeView导航_清除虚拟主机(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView导航_清除虚拟主机",
+        "runtimeName": "EdgeView导航_清除虚拟主机",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "主机名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView导航_清除虚拟主机(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 18,
+      "name": "EdgeView脚本_文档预注入异步",
+      "signature": "EdgeView脚本_文档预注入异步(控件名, 脚本, 完成处理器)",
+      "description": "注册文档创建前执行脚本，任务结果为脚本 ID。",
+      "insertText": "EdgeView脚本_文档预注入异步(\"$1\", \"$2\", &$3)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView脚本_文档预注入异步",
+        "runtimeName": "EdgeView脚本_文档预注入异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "脚本",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView脚本_文档预注入异步(\"演示输出\", \"演示参数2\", &模块演示回调)"
+    },
+    {
+      "index": 19,
+      "name": "EdgeView脚本_移除文档预注入",
+      "signature": "EdgeView脚本_移除文档预注入(控件名, 脚本ID)",
+      "description": "移除文档预注入脚本。",
+      "insertText": "EdgeView脚本_移除文档预注入(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView脚本_移除文档预注入",
+        "runtimeName": "EdgeView脚本_移除文档预注入",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "脚本ID",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView脚本_移除文档预注入(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 20,
+      "name": "EdgeView脚本_执行异步",
+      "signature": "EdgeView脚本_执行异步(控件名, 脚本, 完成处理器)",
+      "description": "异步执行 JavaScript，任务结果为 JSON。",
+      "insertText": "EdgeView脚本_执行异步(\"$1\", \"$2\", &$3)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView脚本_执行异步",
+        "runtimeName": "EdgeView脚本_执行异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "脚本",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView脚本_执行异步(\"演示输出\", \"演示参数2\", &模块演示回调)"
+    },
+    {
+      "index": 21,
+      "name": "EdgeView脚本_执行详情异步",
+      "signature": "EdgeView脚本_执行详情异步(控件名, 脚本, 完成处理器)",
+      "description": "异步执行 JavaScript，返回成功、JSON、字符串结果和异常详情。",
+      "insertText": "EdgeView脚本_执行详情异步(\"$1\", \"$2\", &$3)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView脚本_执行详情异步",
+        "runtimeName": "EdgeView脚本_执行详情异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "脚本",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView脚本_执行详情异步(\"演示输出\", \"演示参数2\", &模块演示回调)"
+    },
+    {
+      "index": 22,
+      "name": "EdgeView脚本_发送字符串消息",
+      "signature": "EdgeView脚本_发送字符串消息(控件名, 消息)",
+      "description": "向网页发送字符串消息。",
+      "insertText": "EdgeView脚本_发送字符串消息(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView脚本_发送字符串消息",
+        "runtimeName": "EdgeView脚本_发送字符串消息",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "消息",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView脚本_发送字符串消息(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 23,
+      "name": "EdgeView脚本_发送JSON消息",
+      "signature": "EdgeView脚本_发送JSON消息(控件名, JSON)",
+      "description": "向网页发送 JSON 消息。",
+      "insertText": "EdgeView脚本_发送JSON消息(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView脚本_发送JSON消息",
+        "runtimeName": "EdgeView脚本_发送JSON消息",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView脚本_发送JSON消息(\"演示输出\", \"{}\")"
+    },
+    {
+      "index": 24,
+      "name": "EdgeView设置_置脚本执行",
+      "signature": "EdgeView设置_置脚本执行(控件名, 启用)",
+      "description": "设置 脚本执行。",
+      "insertText": "EdgeView设置_置脚本执行(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置脚本执行",
+        "runtimeName": "EdgeView设置_置脚本执行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置脚本执行(\"演示输出\", 真)"
+    },
+    {
+      "index": 25,
+      "name": "EdgeView设置_取脚本执行",
+      "signature": "EdgeView设置_取脚本执行(控件名)",
+      "description": "取得 脚本执行 状态。",
+      "insertText": "EdgeView设置_取脚本执行(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取脚本执行",
+        "runtimeName": "EdgeView设置_取脚本执行",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取脚本执行(\"演示输出\")"
+    },
+    {
+      "index": 26,
+      "name": "EdgeView设置_置网页消息",
+      "signature": "EdgeView设置_置网页消息(控件名, 启用)",
+      "description": "设置 网页消息。",
+      "insertText": "EdgeView设置_置网页消息(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置网页消息",
+        "runtimeName": "EdgeView设置_置网页消息",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置网页消息(\"演示输出\", 真)"
+    },
+    {
+      "index": 27,
+      "name": "EdgeView设置_取网页消息",
+      "signature": "EdgeView设置_取网页消息(控件名)",
+      "description": "取得 网页消息 状态。",
+      "insertText": "EdgeView设置_取网页消息(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取网页消息",
+        "runtimeName": "EdgeView设置_取网页消息",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取网页消息(\"演示输出\")"
+    },
+    {
+      "index": 28,
+      "name": "EdgeView设置_置脚本对话框",
+      "signature": "EdgeView设置_置脚本对话框(控件名, 启用)",
+      "description": "设置 脚本对话框。",
+      "insertText": "EdgeView设置_置脚本对话框(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置脚本对话框",
+        "runtimeName": "EdgeView设置_置脚本对话框",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置脚本对话框(\"演示输出\", 真)"
+    },
+    {
+      "index": 29,
+      "name": "EdgeView设置_取脚本对话框",
+      "signature": "EdgeView设置_取脚本对话框(控件名)",
+      "description": "取得 脚本对话框 状态。",
+      "insertText": "EdgeView设置_取脚本对话框(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取脚本对话框",
+        "runtimeName": "EdgeView设置_取脚本对话框",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取脚本对话框(\"演示输出\")"
+    },
+    {
+      "index": 30,
+      "name": "EdgeView设置_置状态栏",
+      "signature": "EdgeView设置_置状态栏(控件名, 启用)",
+      "description": "设置 状态栏。",
+      "insertText": "EdgeView设置_置状态栏(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置状态栏",
+        "runtimeName": "EdgeView设置_置状态栏",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置状态栏(\"演示输出\", 真)"
+    },
+    {
+      "index": 31,
+      "name": "EdgeView设置_取状态栏",
+      "signature": "EdgeView设置_取状态栏(控件名)",
+      "description": "取得 状态栏 状态。",
+      "insertText": "EdgeView设置_取状态栏(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取状态栏",
+        "runtimeName": "EdgeView设置_取状态栏",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取状态栏(\"演示输出\")"
+    },
+    {
+      "index": 32,
+      "name": "EdgeView设置_置开发者工具",
+      "signature": "EdgeView设置_置开发者工具(控件名, 启用)",
+      "description": "设置 开发者工具。",
+      "insertText": "EdgeView设置_置开发者工具(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置开发者工具",
+        "runtimeName": "EdgeView设置_置开发者工具",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置开发者工具(\"演示输出\", 真)"
+    },
+    {
+      "index": 33,
+      "name": "EdgeView设置_取开发者工具",
+      "signature": "EdgeView设置_取开发者工具(控件名)",
+      "description": "取得 开发者工具 状态。",
+      "insertText": "EdgeView设置_取开发者工具(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取开发者工具",
+        "runtimeName": "EdgeView设置_取开发者工具",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取开发者工具(\"演示输出\")"
+    },
+    {
+      "index": 34,
+      "name": "EdgeView设置_置右键菜单",
+      "signature": "EdgeView设置_置右键菜单(控件名, 启用)",
+      "description": "设置 右键菜单。",
+      "insertText": "EdgeView设置_置右键菜单(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置右键菜单",
+        "runtimeName": "EdgeView设置_置右键菜单",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置右键菜单(\"演示输出\", 真)"
+    },
+    {
+      "index": 35,
+      "name": "EdgeView设置_取右键菜单",
+      "signature": "EdgeView设置_取右键菜单(控件名)",
+      "description": "取得 右键菜单 状态。",
+      "insertText": "EdgeView设置_取右键菜单(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取右键菜单",
+        "runtimeName": "EdgeView设置_取右键菜单",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取右键菜单(\"演示输出\")"
+    },
+    {
+      "index": 36,
+      "name": "EdgeView设置_置缩放控制",
+      "signature": "EdgeView设置_置缩放控制(控件名, 启用)",
+      "description": "设置 缩放控制。",
+      "insertText": "EdgeView设置_置缩放控制(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置缩放控制",
+        "runtimeName": "EdgeView设置_置缩放控制",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置缩放控制(\"演示输出\", 真)"
+    },
+    {
+      "index": 37,
+      "name": "EdgeView设置_取缩放控制",
+      "signature": "EdgeView设置_取缩放控制(控件名)",
+      "description": "取得 缩放控制 状态。",
+      "insertText": "EdgeView设置_取缩放控制(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取缩放控制",
+        "runtimeName": "EdgeView设置_取缩放控制",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取缩放控制(\"演示输出\")"
+    },
+    {
+      "index": 38,
+      "name": "EdgeView设置_置内置错误页",
+      "signature": "EdgeView设置_置内置错误页(控件名, 启用)",
+      "description": "设置 内置错误页。",
+      "insertText": "EdgeView设置_置内置错误页(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置内置错误页",
+        "runtimeName": "EdgeView设置_置内置错误页",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置内置错误页(\"演示输出\", 真)"
+    },
+    {
+      "index": 39,
+      "name": "EdgeView设置_取内置错误页",
+      "signature": "EdgeView设置_取内置错误页(控件名)",
+      "description": "取得 内置错误页 状态。",
+      "insertText": "EdgeView设置_取内置错误页(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取内置错误页",
+        "runtimeName": "EdgeView设置_取内置错误页",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取内置错误页(\"演示输出\")"
+    },
+    {
+      "index": 40,
+      "name": "EdgeView设置_置快捷键",
+      "signature": "EdgeView设置_置快捷键(控件名, 启用)",
+      "description": "设置 快捷键。",
+      "insertText": "EdgeView设置_置快捷键(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置快捷键",
+        "runtimeName": "EdgeView设置_置快捷键",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置快捷键(\"演示输出\", 真)"
+    },
+    {
+      "index": 41,
+      "name": "EdgeView设置_取快捷键",
+      "signature": "EdgeView设置_取快捷键(控件名)",
+      "description": "取得 快捷键 状态。",
+      "insertText": "EdgeView设置_取快捷键(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取快捷键",
+        "runtimeName": "EdgeView设置_取快捷键",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取快捷键(\"演示输出\")"
+    },
+    {
+      "index": 42,
+      "name": "EdgeView设置_置密码自动保存",
+      "signature": "EdgeView设置_置密码自动保存(控件名, 启用)",
+      "description": "设置 密码自动保存。",
+      "insertText": "EdgeView设置_置密码自动保存(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置密码自动保存",
+        "runtimeName": "EdgeView设置_置密码自动保存",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置密码自动保存(\"演示输出\", 真)"
+    },
+    {
+      "index": 43,
+      "name": "EdgeView设置_取密码自动保存",
+      "signature": "EdgeView设置_取密码自动保存(控件名)",
+      "description": "取得 密码自动保存 状态。",
+      "insertText": "EdgeView设置_取密码自动保存(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取密码自动保存",
+        "runtimeName": "EdgeView设置_取密码自动保存",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取密码自动保存(\"演示输出\")"
+    },
+    {
+      "index": 44,
+      "name": "EdgeView设置_置通用自动填充",
+      "signature": "EdgeView设置_置通用自动填充(控件名, 启用)",
+      "description": "设置 通用自动填充。",
+      "insertText": "EdgeView设置_置通用自动填充(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置通用自动填充",
+        "runtimeName": "EdgeView设置_置通用自动填充",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置通用自动填充(\"演示输出\", 真)"
+    },
+    {
+      "index": 45,
+      "name": "EdgeView设置_取通用自动填充",
+      "signature": "EdgeView设置_取通用自动填充(控件名)",
+      "description": "取得 通用自动填充 状态。",
+      "insertText": "EdgeView设置_取通用自动填充(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取通用自动填充",
+        "runtimeName": "EdgeView设置_取通用自动填充",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取通用自动填充(\"演示输出\")"
+    },
+    {
+      "index": 46,
+      "name": "EdgeView设置_置捏合缩放",
+      "signature": "EdgeView设置_置捏合缩放(控件名, 启用)",
+      "description": "设置 捏合缩放。",
+      "insertText": "EdgeView设置_置捏合缩放(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置捏合缩放",
+        "runtimeName": "EdgeView设置_置捏合缩放",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置捏合缩放(\"演示输出\", 真)"
+    },
+    {
+      "index": 47,
+      "name": "EdgeView设置_取捏合缩放",
+      "signature": "EdgeView设置_取捏合缩放(控件名)",
+      "description": "取得 捏合缩放 状态。",
+      "insertText": "EdgeView设置_取捏合缩放(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取捏合缩放",
+        "runtimeName": "EdgeView设置_取捏合缩放",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取捏合缩放(\"演示输出\")"
+    },
+    {
+      "index": 48,
+      "name": "EdgeView设置_置滑动导航",
+      "signature": "EdgeView设置_置滑动导航(控件名, 启用)",
+      "description": "设置 滑动导航。",
+      "insertText": "EdgeView设置_置滑动导航(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置滑动导航",
+        "runtimeName": "EdgeView设置_置滑动导航",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置滑动导航(\"演示输出\", 真)"
+    },
+    {
+      "index": 49,
+      "name": "EdgeView设置_取滑动导航",
+      "signature": "EdgeView设置_取滑动导航(控件名)",
+      "description": "取得 滑动导航 状态。",
+      "insertText": "EdgeView设置_取滑动导航(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取滑动导航",
+        "runtimeName": "EdgeView设置_取滑动导航",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取滑动导航(\"演示输出\")"
+    },
+    {
+      "index": 50,
+      "name": "EdgeView设置_置用户代理",
+      "signature": "EdgeView设置_置用户代理(控件名, 用户代理)",
+      "description": "设置控件 User-Agent。",
+      "insertText": "EdgeView设置_置用户代理(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置用户代理",
+        "runtimeName": "EdgeView设置_置用户代理",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "用户代理",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置用户代理(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 51,
+      "name": "EdgeView设置_取用户代理",
+      "signature": "EdgeView设置_取用户代理(控件名)",
+      "description": "取得控件 User-Agent。",
+      "insertText": "EdgeView设置_取用户代理(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView设置_取用户代理",
+        "runtimeName": "EdgeView设置_取用户代理",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取用户代理(\"演示输出\")"
+    },
+    {
+      "index": 52,
+      "name": "EdgeView设置_置缩放",
+      "signature": "EdgeView设置_置缩放(控件名, 缩放倍数)",
+      "description": "设置控制器缩放倍数。",
+      "insertText": "EdgeView设置_置缩放(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置缩放",
+        "runtimeName": "EdgeView设置_置缩放",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "缩放倍数",
+            "type": "double"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置缩放(\"演示输出\", 1.0)"
+    },
+    {
+      "index": 53,
+      "name": "EdgeView设置_取缩放",
+      "signature": "EdgeView设置_取缩放(控件名)",
+      "description": "取得控制器缩放倍数。",
+      "insertText": "EdgeView设置_取缩放(\"$1\")",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "EdgeView设置_取缩放",
+        "runtimeName": "EdgeView设置_取缩放",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取缩放(\"演示输出\")"
+    },
+    {
+      "index": 54,
+      "name": "EdgeView设置_置静音",
+      "signature": "EdgeView设置_置静音(控件名, 静音)",
+      "description": "设置网页静音状态。",
+      "insertText": "EdgeView设置_置静音(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置静音",
+        "runtimeName": "EdgeView设置_置静音",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "静音",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置静音(\"演示输出\", 真)"
+    },
+    {
+      "index": 55,
+      "name": "EdgeView设置_取静音",
+      "signature": "EdgeView设置_取静音(控件名)",
+      "description": "取得网页静音状态。",
+      "insertText": "EdgeView设置_取静音(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取静音",
+        "runtimeName": "EdgeView设置_取静音",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取静音(\"演示输出\")"
+    },
+    {
+      "index": 56,
+      "name": "EdgeView设置_置背景色",
+      "signature": "EdgeView设置_置背景色(控件名, ARGB)",
+      "description": "设置控制器默认背景色。",
+      "insertText": "EdgeView设置_置背景色(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置背景色",
+        "runtimeName": "EdgeView设置_置背景色",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "ARGB",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置背景色(\"演示输出\", 1)"
+    },
+    {
+      "index": 57,
+      "name": "EdgeView设置_置可见",
+      "signature": "EdgeView设置_置可见(控件名, 可见)",
+      "description": "设置控制器可见性。",
+      "insertText": "EdgeView设置_置可见(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置可见",
+        "runtimeName": "EdgeView设置_置可见",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "可见",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置可见(\"演示输出\", 真)"
+    },
+    {
+      "index": 58,
+      "name": "EdgeView设置_取可见",
+      "signature": "EdgeView设置_取可见(控件名)",
+      "description": "取得控制器可见性。",
+      "insertText": "EdgeView设置_取可见(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取可见",
+        "runtimeName": "EdgeView设置_取可见",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取可见(\"演示输出\")"
+    },
+    {
+      "index": 59,
+      "name": "EdgeView设置_置边界",
+      "signature": "EdgeView设置_置边界(控件名, 左, 顶, 宽, 高)",
+      "description": "设置控制器边界。",
+      "insertText": "EdgeView设置_置边界(\"$1\", $2, $3, $4, $5)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置边界",
+        "runtimeName": "EdgeView设置_置边界",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "左",
+            "type": "int"
+          },
+          {
+            "name": "顶",
+            "type": "int"
+          },
+          {
+            "name": "宽",
+            "type": "int"
+          },
+          {
+            "name": "高",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置边界(\"演示输出\", 1, 1, 1, 1)"
+    },
+    {
+      "index": 60,
+      "name": "EdgeView设置_取边界JSON",
+      "signature": "EdgeView设置_取边界JSON(控件名)",
+      "description": "取得控制器边界 JSON。",
+      "insertText": "EdgeView设置_取边界JSON(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView设置_取边界JSON",
+        "runtimeName": "EdgeView设置_取边界JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取边界JSON(\"演示输出\")"
+    },
+    {
+      "index": 61,
+      "name": "EdgeView设置_移动焦点",
+      "signature": "EdgeView设置_移动焦点(控件名, 原因)",
+      "description": "按 WebView2 原因枚举移动焦点。",
+      "insertText": "EdgeView设置_移动焦点(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_移动焦点",
+        "runtimeName": "EdgeView设置_移动焦点",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "原因",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_移动焦点(\"演示输出\", 1)"
+    },
+    {
+      "index": 62,
+      "name": "EdgeView设置_置光栅化缩放",
+      "signature": "EdgeView设置_置光栅化缩放(控件名, 缩放)",
+      "description": "设置控制器光栅化缩放。",
+      "insertText": "EdgeView设置_置光栅化缩放(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置光栅化缩放",
+        "runtimeName": "EdgeView设置_置光栅化缩放",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "缩放",
+            "type": "double"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置光栅化缩放(\"演示输出\", 1.0)"
+    },
+    {
+      "index": 63,
+      "name": "EdgeView设置_取光栅化缩放",
+      "signature": "EdgeView设置_取光栅化缩放(控件名)",
+      "description": "取得控制器光栅化缩放。",
+      "insertText": "EdgeView设置_取光栅化缩放(\"$1\")",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "EdgeView设置_取光栅化缩放",
+        "runtimeName": "EdgeView设置_取光栅化缩放",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取光栅化缩放(\"演示输出\")"
+    },
+    {
+      "index": 64,
+      "name": "EdgeView设置_置自动检测显示器缩放",
+      "signature": "EdgeView设置_置自动检测显示器缩放(控件名, 启用)",
+      "description": "设置是否自动检测显示器缩放。",
+      "insertText": "EdgeView设置_置自动检测显示器缩放(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置自动检测显示器缩放",
+        "runtimeName": "EdgeView设置_置自动检测显示器缩放",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置自动检测显示器缩放(\"演示输出\", 真)"
+    },
+    {
+      "index": 65,
+      "name": "EdgeView设置_取自动检测显示器缩放",
+      "signature": "EdgeView设置_取自动检测显示器缩放(控件名)",
+      "description": "取得自动检测显示器缩放状态。",
+      "insertText": "EdgeView设置_取自动检测显示器缩放(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取自动检测显示器缩放",
+        "runtimeName": "EdgeView设置_取自动检测显示器缩放",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取自动检测显示器缩放(\"演示输出\")"
+    },
+    {
+      "index": 66,
+      "name": "EdgeView设置_置边界模式",
+      "signature": "EdgeView设置_置边界模式(控件名, 模式)",
+      "description": "设置控制器边界模式。",
+      "insertText": "EdgeView设置_置边界模式(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置边界模式",
+        "runtimeName": "EdgeView设置_置边界模式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "模式",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置边界模式(\"演示输出\", 1)"
+    },
+    {
+      "index": 67,
+      "name": "EdgeView设置_取边界模式",
+      "signature": "EdgeView设置_取边界模式(控件名)",
+      "description": "取得控制器边界模式。",
+      "insertText": "EdgeView设置_取边界模式(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取边界模式",
+        "runtimeName": "EdgeView设置_取边界模式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取边界模式(\"演示输出\")"
+    },
+    {
+      "index": 68,
+      "name": "EdgeView设置_置允许外部拖放",
+      "signature": "EdgeView设置_置允许外部拖放(控件名, 启用)",
+      "description": "设置是否允许外部拖放。",
+      "insertText": "EdgeView设置_置允许外部拖放(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置允许外部拖放",
+        "runtimeName": "EdgeView设置_置允许外部拖放",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置允许外部拖放(\"演示输出\", 真)"
+    },
+    {
+      "index": 69,
+      "name": "EdgeView设置_取允许外部拖放",
+      "signature": "EdgeView设置_取允许外部拖放(控件名)",
+      "description": "取得是否允许外部拖放。",
+      "insertText": "EdgeView设置_取允许外部拖放(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取允许外部拖放",
+        "runtimeName": "EdgeView设置_取允许外部拖放",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取允许外部拖放(\"演示输出\")"
+    },
+    {
+      "index": 70,
+      "name": "EdgeView设置_置PDF工具栏隐藏项",
+      "signature": "EdgeView设置_置PDF工具栏隐藏项(控件名, 掩码)",
+      "description": "设置 PDF 工具栏隐藏项掩码。",
+      "insertText": "EdgeView设置_置PDF工具栏隐藏项(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置PDF工具栏隐藏项",
+        "runtimeName": "EdgeView设置_置PDF工具栏隐藏项",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "掩码",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置PDF工具栏隐藏项(\"演示输出\", 1)"
+    },
+    {
+      "index": 71,
+      "name": "EdgeView设置_取PDF工具栏隐藏项",
+      "signature": "EdgeView设置_取PDF工具栏隐藏项(控件名)",
+      "description": "取得 PDF 工具栏隐藏项掩码。",
+      "insertText": "EdgeView设置_取PDF工具栏隐藏项(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取PDF工具栏隐藏项",
+        "runtimeName": "EdgeView设置_取PDF工具栏隐藏项",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取PDF工具栏隐藏项(\"演示输出\")"
+    },
+    {
+      "index": 72,
+      "name": "EdgeView设置_置信誉检查",
+      "signature": "EdgeView设置_置信誉检查(控件名, 启用)",
+      "description": "设置是否要求 SmartScreen 信誉检查。",
+      "insertText": "EdgeView设置_置信誉检查(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置信誉检查",
+        "runtimeName": "EdgeView设置_置信誉检查",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置信誉检查(\"演示输出\", 真)"
+    },
+    {
+      "index": 73,
+      "name": "EdgeView设置_取信誉检查",
+      "signature": "EdgeView设置_取信誉检查(控件名)",
+      "description": "取得信誉检查状态。",
+      "insertText": "EdgeView设置_取信誉检查(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取信誉检查",
+        "runtimeName": "EdgeView设置_取信誉检查",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取信誉检查(\"演示输出\")"
+    },
+    {
+      "index": 74,
+      "name": "EdgeView设置_置内存目标级别",
+      "signature": "EdgeView设置_置内存目标级别(控件名, 级别)",
+      "description": "设置 WebView 内存使用目标级别。",
+      "insertText": "EdgeView设置_置内存目标级别(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_置内存目标级别",
+        "runtimeName": "EdgeView设置_置内存目标级别",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "级别",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_置内存目标级别(\"演示输出\", 1)"
+    },
+    {
+      "index": 75,
+      "name": "EdgeView设置_取内存目标级别",
+      "signature": "EdgeView设置_取内存目标级别(控件名)",
+      "description": "取得 WebView 内存使用目标级别。",
+      "insertText": "EdgeView设置_取内存目标级别(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView设置_取内存目标级别",
+        "runtimeName": "EdgeView设置_取内存目标级别",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView设置_取内存目标级别(\"演示输出\")"
+    },
+    {
+      "index": 76,
+      "name": "EdgeView创建选项_置独占用户目录",
+      "signature": "EdgeView创建选项_置独占用户目录(控件名, 启用)",
+      "description": "设置创建期独占 UDF；修改后必须重建控件。",
+      "insertText": "EdgeView创建选项_置独占用户目录(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_置独占用户目录",
+        "runtimeName": "EdgeView创建选项_置独占用户目录",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_置独占用户目录(\"演示输出\", 真)"
+    },
+    {
+      "index": 77,
+      "name": "EdgeView创建选项_取独占用户目录",
+      "signature": "EdgeView创建选项_取独占用户目录(控件名)",
+      "description": "取得创建期独占 UDF 设置。",
+      "insertText": "EdgeView创建选项_取独占用户目录(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_取独占用户目录",
+        "runtimeName": "EdgeView创建选项_取独占用户目录",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_取独占用户目录(\"演示输出\")"
+    },
+    {
+      "index": 78,
+      "name": "EdgeView创建选项_置自定义崩溃报告",
+      "signature": "EdgeView创建选项_置自定义崩溃报告(控件名, 启用)",
+      "description": "设置创建期自定义崩溃报告开关。",
+      "insertText": "EdgeView创建选项_置自定义崩溃报告(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_置自定义崩溃报告",
+        "runtimeName": "EdgeView创建选项_置自定义崩溃报告",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_置自定义崩溃报告(\"演示输出\", 真)"
+    },
+    {
+      "index": 79,
+      "name": "EdgeView创建选项_取自定义崩溃报告",
+      "signature": "EdgeView创建选项_取自定义崩溃报告(控件名)",
+      "description": "取得创建期自定义崩溃报告开关。",
+      "insertText": "EdgeView创建选项_取自定义崩溃报告(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_取自定义崩溃报告",
+        "runtimeName": "EdgeView创建选项_取自定义崩溃报告",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_取自定义崩溃报告(\"演示输出\")"
+    },
+    {
+      "index": 80,
+      "name": "EdgeView创建选项_置跟踪保护",
+      "signature": "EdgeView创建选项_置跟踪保护(控件名, 启用)",
+      "description": "设置创建期跟踪保护开关。",
+      "insertText": "EdgeView创建选项_置跟踪保护(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_置跟踪保护",
+        "runtimeName": "EdgeView创建选项_置跟踪保护",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_置跟踪保护(\"演示输出\", 真)"
+    },
+    {
+      "index": 81,
+      "name": "EdgeView创建选项_取跟踪保护",
+      "signature": "EdgeView创建选项_取跟踪保护(控件名)",
+      "description": "取得创建期跟踪保护开关。",
+      "insertText": "EdgeView创建选项_取跟踪保护(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_取跟踪保护",
+        "runtimeName": "EdgeView创建选项_取跟踪保护",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_取跟踪保护(\"演示输出\")"
+    },
+    {
+      "index": 82,
+      "name": "EdgeView创建选项_置浏览器扩展",
+      "signature": "EdgeView创建选项_置浏览器扩展(控件名, 启用)",
+      "description": "设置创建期浏览器扩展开关。",
+      "insertText": "EdgeView创建选项_置浏览器扩展(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_置浏览器扩展",
+        "runtimeName": "EdgeView创建选项_置浏览器扩展",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_置浏览器扩展(\"演示输出\", 真)"
+    },
+    {
+      "index": 83,
+      "name": "EdgeView创建选项_取浏览器扩展",
+      "signature": "EdgeView创建选项_取浏览器扩展(控件名)",
+      "description": "取得创建期浏览器扩展开关。",
+      "insertText": "EdgeView创建选项_取浏览器扩展(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_取浏览器扩展",
+        "runtimeName": "EdgeView创建选项_取浏览器扩展",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_取浏览器扩展(\"演示输出\")"
+    },
+    {
+      "index": 84,
+      "name": "EdgeView创建选项_置通道搜索方式",
+      "signature": "EdgeView创建选项_置通道搜索方式(控件名, 方式)",
+      "description": "设置创建期 Runtime 通道搜索方式。",
+      "insertText": "EdgeView创建选项_置通道搜索方式(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_置通道搜索方式",
+        "runtimeName": "EdgeView创建选项_置通道搜索方式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "方式",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_置通道搜索方式(\"演示输出\", 1)"
+    },
+    {
+      "index": 85,
+      "name": "EdgeView创建选项_取通道搜索方式",
+      "signature": "EdgeView创建选项_取通道搜索方式(控件名)",
+      "description": "取得创建期 Runtime 通道搜索方式。",
+      "insertText": "EdgeView创建选项_取通道搜索方式(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_取通道搜索方式",
+        "runtimeName": "EdgeView创建选项_取通道搜索方式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_取通道搜索方式(\"演示输出\")"
+    },
+    {
+      "index": 86,
+      "name": "EdgeView创建选项_置发布通道",
+      "signature": "EdgeView创建选项_置发布通道(控件名, 通道掩码)",
+      "description": "设置创建期允许的 Runtime 发布通道掩码。",
+      "insertText": "EdgeView创建选项_置发布通道(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_置发布通道",
+        "runtimeName": "EdgeView创建选项_置发布通道",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "通道掩码",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_置发布通道(\"演示输出\", 1)"
+    },
+    {
+      "index": 87,
+      "name": "EdgeView创建选项_取发布通道",
+      "signature": "EdgeView创建选项_取发布通道(控件名)",
+      "description": "取得创建期 Runtime 发布通道掩码。",
+      "insertText": "EdgeView创建选项_取发布通道(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_取发布通道",
+        "runtimeName": "EdgeView创建选项_取发布通道",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_取发布通道(\"演示输出\")"
+    },
+    {
+      "index": 88,
+      "name": "EdgeView创建选项_置滚动条样式",
+      "signature": "EdgeView创建选项_置滚动条样式(控件名, 样式)",
+      "description": "设置创建期滚动条样式。",
+      "insertText": "EdgeView创建选项_置滚动条样式(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_置滚动条样式",
+        "runtimeName": "EdgeView创建选项_置滚动条样式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "样式",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_置滚动条样式(\"演示输出\", 1)"
+    },
+    {
+      "index": 89,
+      "name": "EdgeView创建选项_取滚动条样式",
+      "signature": "EdgeView创建选项_取滚动条样式(控件名)",
+      "description": "取得创建期滚动条样式。",
+      "insertText": "EdgeView创建选项_取滚动条样式(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_取滚动条样式",
+        "runtimeName": "EdgeView创建选项_取滚动条样式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_取滚动条样式(\"演示输出\")"
+    },
+    {
+      "index": 90,
+      "name": "EdgeView创建选项_置脚本区域",
+      "signature": "EdgeView创建选项_置脚本区域(控件名, 区域)",
+      "description": "设置创建期脚本区域；修改后必须重建。",
+      "insertText": "EdgeView创建选项_置脚本区域(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_置脚本区域",
+        "runtimeName": "EdgeView创建选项_置脚本区域",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "区域",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_置脚本区域(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 91,
+      "name": "EdgeView创建选项_取脚本区域",
+      "signature": "EdgeView创建选项_取脚本区域(控件名)",
+      "description": "取得创建期脚本区域。",
+      "insertText": "EdgeView创建选项_取脚本区域(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView创建选项_取脚本区域",
+        "runtimeName": "EdgeView创建选项_取脚本区域",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_取脚本区域(\"演示输出\")"
+    },
+    {
+      "index": 92,
+      "name": "EdgeView创建选项_置默认背景色",
+      "signature": "EdgeView创建选项_置默认背景色(控件名, ARGB)",
+      "description": "设置控制器创建期默认背景色。",
+      "insertText": "EdgeView创建选项_置默认背景色(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_置默认背景色",
+        "runtimeName": "EdgeView创建选项_置默认背景色",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "ARGB",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_置默认背景色(\"演示输出\", 1)"
+    },
+    {
+      "index": 93,
+      "name": "EdgeView创建选项_取默认背景色",
+      "signature": "EdgeView创建选项_取默认背景色(控件名)",
+      "description": "取得控制器创建期默认背景色。",
+      "insertText": "EdgeView创建选项_取默认背景色(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_取默认背景色",
+        "runtimeName": "EdgeView创建选项_取默认背景色",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_取默认背景色(\"演示输出\")"
+    },
+    {
+      "index": 94,
+      "name": "EdgeView创建选项_置宿主输入处理",
+      "signature": "EdgeView创建选项_置宿主输入处理(控件名, 启用)",
+      "description": "设置控制器创建期宿主输入处理开关。",
+      "insertText": "EdgeView创建选项_置宿主输入处理(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_置宿主输入处理",
+        "runtimeName": "EdgeView创建选项_置宿主输入处理",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_置宿主输入处理(\"演示输出\", 真)"
+    },
+    {
+      "index": 95,
+      "name": "EdgeView创建选项_取宿主输入处理",
+      "signature": "EdgeView创建选项_取宿主输入处理(控件名)",
+      "description": "取得控制器创建期宿主输入处理开关。",
+      "insertText": "EdgeView创建选项_取宿主输入处理(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_取宿主输入处理",
+        "runtimeName": "EdgeView创建选项_取宿主输入处理",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_取宿主输入处理(\"演示输出\")"
+    },
+    {
+      "index": 96,
+      "name": "EdgeView创建选项_添加自定义协议",
+      "signature": "EdgeView创建选项_添加自定义协议(控件名, 协议名, 含权限部分, 视为安全, 允许来源)",
+      "description": "添加安全的自定义协议注册；允许来源以分号分隔，修改后必须重建。",
+      "insertText": "EdgeView创建选项_添加自定义协议(\"$1\", \"$2\", 真, 真, \"$5\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_添加自定义协议",
+        "runtimeName": "EdgeView创建选项_添加自定义协议",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "协议名",
+            "type": "wideString"
+          },
+          {
+            "name": "含权限部分",
+            "type": "bool"
+          },
+          {
+            "name": "视为安全",
+            "type": "bool"
+          },
+          {
+            "name": "允许来源",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_添加自定义协议(\"演示输出\", \"演示参数2\", 真, 真, \"演示参数5\")"
+    },
+    {
+      "index": 97,
+      "name": "EdgeView创建选项_清除自定义协议",
+      "signature": "EdgeView创建选项_清除自定义协议(控件名)",
+      "description": "清除当前控件的创建期自定义协议注册。",
+      "insertText": "EdgeView创建选项_清除自定义协议(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_清除自定义协议",
+        "runtimeName": "EdgeView创建选项_清除自定义协议",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_清除自定义协议(\"演示输出\")"
+    },
+    {
+      "index": 98,
+      "name": "EdgeView创建选项_重建控件",
+      "signature": "EdgeView创建选项_重建控件(控件名)",
+      "description": "应用创建期选项并显式重建指定 Edge 控件。",
+      "insertText": "EdgeView创建选项_重建控件(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView创建选项_重建控件",
+        "runtimeName": "EdgeView创建选项_重建控件",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView创建选项_重建控件(\"演示输出\")"
+    },
+    {
+      "index": 99,
+      "name": "EdgeView会话_取ProfileJSON",
+      "signature": "EdgeView会话_取ProfileJSON(控件名)",
+      "description": "取得 Profile 名称、路径、隐私模式和下载目录 JSON。",
+      "insertText": "EdgeView会话_取ProfileJSON(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView会话_取ProfileJSON",
+        "runtimeName": "EdgeView会话_取ProfileJSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_取ProfileJSON(\"演示输出\")"
+    },
+    {
+      "index": 100,
+      "name": "EdgeView会话_取Cookie异步",
+      "signature": "EdgeView会话_取Cookie异步(控件名, 地址, 完成处理器)",
+      "description": "异步取得 Cookie 列表 JSON。",
+      "insertText": "EdgeView会话_取Cookie异步(\"$1\", \"$2\", &$3)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView会话_取Cookie异步",
+        "runtimeName": "EdgeView会话_取Cookie异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_取Cookie异步(\"演示输出\", \"https://example.com\", &模块演示回调)"
+    },
+    {
+      "index": 101,
+      "name": "EdgeView会话_置Cookie",
+      "signature": "EdgeView会话_置Cookie(控件名, 名称, 值, 域, 路径)",
+      "description": "创建或更新 Cookie。",
+      "insertText": "EdgeView会话_置Cookie(\"$1\", \"$2\", \"$3\", \"$4\", \"$5\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView会话_置Cookie",
+        "runtimeName": "EdgeView会话_置Cookie",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          },
+          {
+            "name": "域",
+            "type": "wideString"
+          },
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_置Cookie(\"演示输出\", \"演示参数2\", \"演示参数3\", \"演示参数4\", \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 102,
+      "name": "EdgeView会话_删除Cookie",
+      "signature": "EdgeView会话_删除Cookie(控件名, 名称, 域, 路径)",
+      "description": "按名称、域和路径删除 Cookie。",
+      "insertText": "EdgeView会话_删除Cookie(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView会话_删除Cookie",
+        "runtimeName": "EdgeView会话_删除Cookie",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "域",
+            "type": "wideString"
+          },
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_删除Cookie(\"演示输出\", \"演示参数2\", \"演示参数3\", \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 103,
+      "name": "EdgeView会话_删除全部Cookie",
+      "signature": "EdgeView会话_删除全部Cookie(控件名)",
+      "description": "删除当前 Profile 全部 Cookie。",
+      "insertText": "EdgeView会话_删除全部Cookie(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView会话_删除全部Cookie",
+        "runtimeName": "EdgeView会话_删除全部Cookie",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_删除全部Cookie(\"演示输出\")"
+    },
+    {
+      "index": 104,
+      "name": "EdgeView会话_清理浏览数据异步",
+      "signature": "EdgeView会话_清理浏览数据异步(控件名, 数据类型掩码, 完成处理器)",
+      "description": "按 WebView2 数据类型掩码清理浏览数据。",
+      "insertText": "EdgeView会话_清理浏览数据异步(\"$1\", $2, &$3)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView会话_清理浏览数据异步",
+        "runtimeName": "EdgeView会话_清理浏览数据异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "数据类型掩码",
+            "type": "longLong"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_清理浏览数据异步(\"演示输出\", 1, &模块演示回调)"
+    },
+    {
+      "index": 105,
+      "name": "EdgeView会话_清理全部浏览数据异步",
+      "signature": "EdgeView会话_清理全部浏览数据异步(控件名, 完成处理器)",
+      "description": "清理当前 Profile 全部浏览数据。",
+      "insertText": "EdgeView会话_清理全部浏览数据异步(\"$1\", &$2)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView会话_清理全部浏览数据异步",
+        "runtimeName": "EdgeView会话_清理全部浏览数据异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_清理全部浏览数据异步(\"演示输出\", &模块演示回调)"
+    },
+    {
+      "index": 106,
+      "name": "EdgeView会话_按时间清理浏览数据异步",
+      "signature": "EdgeView会话_按时间清理浏览数据异步(控件名, 数据类型掩码, 开始时间, 结束时间, 完成处理器)",
+      "description": "按 Unix 秒时间范围清理浏览数据。",
+      "insertText": "EdgeView会话_按时间清理浏览数据异步(\"$1\", $2, $3, $4, &$5)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView会话_按时间清理浏览数据异步",
+        "runtimeName": "EdgeView会话_按时间清理浏览数据异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "数据类型掩码",
+            "type": "longLong"
+          },
+          {
+            "name": "开始时间",
+            "type": "double"
+          },
+          {
+            "name": "结束时间",
+            "type": "double"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_按时间清理浏览数据异步(\"演示输出\", 1, 1.0, 1.0, &模块演示回调)"
+    },
+    {
+      "index": 107,
+      "name": "EdgeView会话_置下载目录",
+      "signature": "EdgeView会话_置下载目录(控件名, 目录)",
+      "description": "设置 Profile 默认下载目录。",
+      "insertText": "EdgeView会话_置下载目录(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView会话_置下载目录",
+        "runtimeName": "EdgeView会话_置下载目录",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "目录",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_置下载目录(\"演示输出\", \".\")"
+    },
+    {
+      "index": 108,
+      "name": "EdgeView会话_取下载目录",
+      "signature": "EdgeView会话_取下载目录(控件名)",
+      "description": "取得 Profile 默认下载目录。",
+      "insertText": "EdgeView会话_取下载目录(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView会话_取下载目录",
+        "runtimeName": "EdgeView会话_取下载目录",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_取下载目录(\"演示输出\")"
+    },
+    {
+      "index": 109,
+      "name": "EdgeView会话_置配色方案",
+      "signature": "EdgeView会话_置配色方案(控件名, 方案)",
+      "description": "设置 Profile 首选配色方案。",
+      "insertText": "EdgeView会话_置配色方案(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView会话_置配色方案",
+        "runtimeName": "EdgeView会话_置配色方案",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "方案",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_置配色方案(\"演示输出\", 1)"
+    },
+    {
+      "index": 110,
+      "name": "EdgeView会话_取配色方案",
+      "signature": "EdgeView会话_取配色方案(控件名)",
+      "description": "取得 Profile 首选配色方案。",
+      "insertText": "EdgeView会话_取配色方案(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView会话_取配色方案",
+        "runtimeName": "EdgeView会话_取配色方案",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_取配色方案(\"演示输出\")"
+    },
+    {
+      "index": 111,
+      "name": "EdgeView会话_置跟踪保护",
+      "signature": "EdgeView会话_置跟踪保护(控件名, 级别)",
+      "description": "设置 Profile 跟踪保护级别。",
+      "insertText": "EdgeView会话_置跟踪保护(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView会话_置跟踪保护",
+        "runtimeName": "EdgeView会话_置跟踪保护",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "级别",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_置跟踪保护(\"演示输出\", 1)"
+    },
+    {
+      "index": 112,
+      "name": "EdgeView会话_取跟踪保护",
+      "signature": "EdgeView会话_取跟踪保护(控件名)",
+      "description": "取得 Profile 跟踪保护级别。",
+      "insertText": "EdgeView会话_取跟踪保护(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView会话_取跟踪保护",
+        "runtimeName": "EdgeView会话_取跟踪保护",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_取跟踪保护(\"演示输出\")"
+    },
+    {
+      "index": 113,
+      "name": "EdgeView会话_置密码保存",
+      "signature": "EdgeView会话_置密码保存(控件名, 启用)",
+      "description": "设置 Profile 密码自动保存。",
+      "insertText": "EdgeView会话_置密码保存(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView会话_置密码保存",
+        "runtimeName": "EdgeView会话_置密码保存",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_置密码保存(\"演示输出\", 真)"
+    },
+    {
+      "index": 114,
+      "name": "EdgeView会话_取密码保存",
+      "signature": "EdgeView会话_取密码保存(控件名)",
+      "description": "取得 Profile 密码自动保存状态。",
+      "insertText": "EdgeView会话_取密码保存(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView会话_取密码保存",
+        "runtimeName": "EdgeView会话_取密码保存",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_取密码保存(\"演示输出\")"
+    },
+    {
+      "index": 115,
+      "name": "EdgeView会话_置自动填充",
+      "signature": "EdgeView会话_置自动填充(控件名, 启用)",
+      "description": "设置 Profile 通用自动填充。",
+      "insertText": "EdgeView会话_置自动填充(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView会话_置自动填充",
+        "runtimeName": "EdgeView会话_置自动填充",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_置自动填充(\"演示输出\", 真)"
+    },
+    {
+      "index": 116,
+      "name": "EdgeView会话_取自动填充",
+      "signature": "EdgeView会话_取自动填充(控件名)",
+      "description": "取得 Profile 通用自动填充状态。",
+      "insertText": "EdgeView会话_取自动填充(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView会话_取自动填充",
+        "runtimeName": "EdgeView会话_取自动填充",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_取自动填充(\"演示输出\")"
+    },
+    {
+      "index": 117,
+      "name": "EdgeView会话_删除Profile",
+      "signature": "EdgeView会话_删除Profile(控件名)",
+      "description": "删除当前 Profile；删除完成事件通过事件目录通知。",
+      "insertText": "EdgeView会话_删除Profile(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView会话_删除Profile",
+        "runtimeName": "EdgeView会话_删除Profile",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView会话_删除Profile(\"演示输出\")"
+    },
+    {
+      "index": 118,
+      "name": "EdgeView下载_取状态JSON",
+      "signature": "EdgeView下载_取状态JSON(控件名, 下载ID)",
+      "description": "取得受管下载状态、地址、MIME、进度、可恢复性和中断原因 JSON。",
+      "insertText": "EdgeView下载_取状态JSON(\"$1\", $2)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView下载_取状态JSON",
+        "runtimeName": "EdgeView下载_取状态JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "下载ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView下载_取状态JSON(\"演示输出\", 1)"
+    },
+    {
+      "index": 119,
+      "name": "EdgeView下载_暂停",
+      "signature": "EdgeView下载_暂停(控件名, 下载ID)",
+      "description": "暂停受管下载。",
+      "insertText": "EdgeView下载_暂停(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView下载_暂停",
+        "runtimeName": "EdgeView下载_暂停",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "下载ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView下载_暂停(\"演示输出\", 1)"
+    },
+    {
+      "index": 120,
+      "name": "EdgeView下载_恢复",
+      "signature": "EdgeView下载_恢复(控件名, 下载ID)",
+      "description": "恢复受管下载。",
+      "insertText": "EdgeView下载_恢复(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView下载_恢复",
+        "runtimeName": "EdgeView下载_恢复",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "下载ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView下载_恢复(\"演示输出\", 1)"
+    },
+    {
+      "index": 121,
+      "name": "EdgeView下载_取消",
+      "signature": "EdgeView下载_取消(控件名, 下载ID)",
+      "description": "取消受管下载。",
+      "insertText": "EdgeView下载_取消(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView下载_取消",
+        "runtimeName": "EdgeView下载_取消",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "下载ID",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView下载_取消(\"演示输出\", 1)"
+    },
+    {
+      "index": 122,
+      "name": "EdgeView下载_显示默认窗口",
+      "signature": "EdgeView下载_显示默认窗口(控件名)",
+      "description": "打开默认下载窗口。",
+      "insertText": "EdgeView下载_显示默认窗口(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView下载_显示默认窗口",
+        "runtimeName": "EdgeView下载_显示默认窗口",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView下载_显示默认窗口(\"演示输出\")"
+    },
+    {
+      "index": 123,
+      "name": "EdgeView下载_关闭默认窗口",
+      "signature": "EdgeView下载_关闭默认窗口(控件名)",
+      "description": "关闭默认下载窗口。",
+      "insertText": "EdgeView下载_关闭默认窗口(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView下载_关闭默认窗口",
+        "runtimeName": "EdgeView下载_关闭默认窗口",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView下载_关闭默认窗口(\"演示输出\")"
+    },
+    {
+      "index": 124,
+      "name": "EdgeView下载_置窗口角对齐",
+      "signature": "EdgeView下载_置窗口角对齐(控件名, 对齐)",
+      "description": "设置默认下载窗口角对齐。",
+      "insertText": "EdgeView下载_置窗口角对齐(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView下载_置窗口角对齐",
+        "runtimeName": "EdgeView下载_置窗口角对齐",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "对齐",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView下载_置窗口角对齐(\"演示输出\", 1)"
+    },
+    {
+      "index": 125,
+      "name": "EdgeView下载_取窗口角对齐",
+      "signature": "EdgeView下载_取窗口角对齐(控件名)",
+      "description": "取得默认下载窗口角对齐。",
+      "insertText": "EdgeView下载_取窗口角对齐(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView下载_取窗口角对齐",
+        "runtimeName": "EdgeView下载_取窗口角对齐",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView下载_取窗口角对齐(\"演示输出\")"
+    },
+    {
+      "index": 126,
+      "name": "EdgeView下载_置窗口边距",
+      "signature": "EdgeView下载_置窗口边距(控件名, 横向, 纵向)",
+      "description": "设置默认下载窗口边距。",
+      "insertText": "EdgeView下载_置窗口边距(\"$1\", $2, $3)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView下载_置窗口边距",
+        "runtimeName": "EdgeView下载_置窗口边距",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "横向",
+            "type": "int"
+          },
+          {
+            "name": "纵向",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView下载_置窗口边距(\"演示输出\", 1, 1)"
+    },
+    {
+      "index": 127,
+      "name": "EdgeView下载_取窗口边距JSON",
+      "signature": "EdgeView下载_取窗口边距JSON(控件名)",
+      "description": "取得默认下载窗口边距 JSON。",
+      "insertText": "EdgeView下载_取窗口边距JSON(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView下载_取窗口边距JSON",
+        "runtimeName": "EdgeView下载_取窗口边距JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView下载_取窗口边距JSON(\"演示输出\")"
+    },
+    {
+      "index": 128,
+      "name": "EdgeView查找_开始异步",
+      "signature": "EdgeView查找_开始异步(控件名, 文本, 选项JSON, 完成处理器)",
+      "description": "开始页内查找，结果为匹配状态 JSON。",
+      "insertText": "EdgeView查找_开始异步(\"$1\", \"$2\", \"$3\", &$4)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView查找_开始异步",
+        "runtimeName": "EdgeView查找_开始异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          },
+          {
+            "name": "选项JSON",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView查找_开始异步(\"演示输出\", \"演示参数2\", \"{}\", &模块演示回调)"
+    },
+    {
+      "index": 129,
+      "name": "EdgeView查找_下一项",
+      "signature": "EdgeView查找_下一项(控件名)",
+      "description": "移动到下一匹配项。",
+      "insertText": "EdgeView查找_下一项(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView查找_下一项",
+        "runtimeName": "EdgeView查找_下一项",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView查找_下一项(\"演示输出\")"
+    },
+    {
+      "index": 130,
+      "name": "EdgeView查找_上一项",
+      "signature": "EdgeView查找_上一项(控件名)",
+      "description": "移动到上一匹配项。",
+      "insertText": "EdgeView查找_上一项(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView查找_上一项",
+        "runtimeName": "EdgeView查找_上一项",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView查找_上一项(\"演示输出\")"
+    },
+    {
+      "index": 131,
+      "name": "EdgeView查找_停止",
+      "signature": "EdgeView查找_停止(控件名)",
+      "description": "停止页内查找并清除高亮。",
+      "insertText": "EdgeView查找_停止(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView查找_停止",
+        "runtimeName": "EdgeView查找_停止",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView查找_停止(\"演示输出\")"
+    },
+    {
+      "index": 132,
+      "name": "EdgeView查找_取状态JSON",
+      "signature": "EdgeView查找_取状态JSON(控件名)",
+      "description": "取得匹配数量和当前索引 JSON。",
+      "insertText": "EdgeView查找_取状态JSON(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView查找_取状态JSON",
+        "runtimeName": "EdgeView查找_取状态JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView查找_取状态JSON(\"演示输出\")"
+    },
+    {
+      "index": 133,
+      "name": "EdgeView打印_置方向",
+      "signature": "EdgeView打印_置方向(控件名, 值)",
+      "description": "设置打印方向。",
+      "insertText": "EdgeView打印_置方向(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置方向",
+        "runtimeName": "EdgeView打印_置方向",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置方向(\"演示输出\", 1)"
+    },
+    {
+      "index": 134,
+      "name": "EdgeView打印_取方向",
+      "signature": "EdgeView打印_取方向(控件名)",
+      "description": "取得打印方向。",
+      "insertText": "EdgeView打印_取方向(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_取方向",
+        "runtimeName": "EdgeView打印_取方向",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取方向(\"演示输出\")"
+    },
+    {
+      "index": 135,
+      "name": "EdgeView打印_置每面页数",
+      "signature": "EdgeView打印_置每面页数(控件名, 值)",
+      "description": "设置打印每面页数。",
+      "insertText": "EdgeView打印_置每面页数(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置每面页数",
+        "runtimeName": "EdgeView打印_置每面页数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置每面页数(\"演示输出\", 1)"
+    },
+    {
+      "index": 136,
+      "name": "EdgeView打印_取每面页数",
+      "signature": "EdgeView打印_取每面页数(控件名)",
+      "description": "取得打印每面页数。",
+      "insertText": "EdgeView打印_取每面页数(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_取每面页数",
+        "runtimeName": "EdgeView打印_取每面页数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取每面页数(\"演示输出\")"
+    },
+    {
+      "index": 137,
+      "name": "EdgeView打印_置份数",
+      "signature": "EdgeView打印_置份数(控件名, 值)",
+      "description": "设置打印份数。",
+      "insertText": "EdgeView打印_置份数(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置份数",
+        "runtimeName": "EdgeView打印_置份数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置份数(\"演示输出\", 1)"
+    },
+    {
+      "index": 138,
+      "name": "EdgeView打印_取份数",
+      "signature": "EdgeView打印_取份数(控件名)",
+      "description": "取得打印份数。",
+      "insertText": "EdgeView打印_取份数(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_取份数",
+        "runtimeName": "EdgeView打印_取份数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取份数(\"演示输出\")"
+    },
+    {
+      "index": 139,
+      "name": "EdgeView打印_置逐份打印",
+      "signature": "EdgeView打印_置逐份打印(控件名, 值)",
+      "description": "设置打印逐份打印。",
+      "insertText": "EdgeView打印_置逐份打印(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置逐份打印",
+        "runtimeName": "EdgeView打印_置逐份打印",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置逐份打印(\"演示输出\", 1)"
+    },
+    {
+      "index": 140,
+      "name": "EdgeView打印_取逐份打印",
+      "signature": "EdgeView打印_取逐份打印(控件名)",
+      "description": "取得打印逐份打印。",
+      "insertText": "EdgeView打印_取逐份打印(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_取逐份打印",
+        "runtimeName": "EdgeView打印_取逐份打印",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取逐份打印(\"演示输出\")"
+    },
+    {
+      "index": 141,
+      "name": "EdgeView打印_置颜色模式",
+      "signature": "EdgeView打印_置颜色模式(控件名, 值)",
+      "description": "设置打印颜色模式。",
+      "insertText": "EdgeView打印_置颜色模式(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置颜色模式",
+        "runtimeName": "EdgeView打印_置颜色模式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置颜色模式(\"演示输出\", 1)"
+    },
+    {
+      "index": 142,
+      "name": "EdgeView打印_取颜色模式",
+      "signature": "EdgeView打印_取颜色模式(控件名)",
+      "description": "取得打印颜色模式。",
+      "insertText": "EdgeView打印_取颜色模式(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_取颜色模式",
+        "runtimeName": "EdgeView打印_取颜色模式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取颜色模式(\"演示输出\")"
+    },
+    {
+      "index": 143,
+      "name": "EdgeView打印_置双面模式",
+      "signature": "EdgeView打印_置双面模式(控件名, 值)",
+      "description": "设置打印双面模式。",
+      "insertText": "EdgeView打印_置双面模式(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置双面模式",
+        "runtimeName": "EdgeView打印_置双面模式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置双面模式(\"演示输出\", 1)"
+    },
+    {
+      "index": 144,
+      "name": "EdgeView打印_取双面模式",
+      "signature": "EdgeView打印_取双面模式(控件名)",
+      "description": "取得打印双面模式。",
+      "insertText": "EdgeView打印_取双面模式(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_取双面模式",
+        "runtimeName": "EdgeView打印_取双面模式",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取双面模式(\"演示输出\")"
+    },
+    {
+      "index": 145,
+      "name": "EdgeView打印_置纸张类型",
+      "signature": "EdgeView打印_置纸张类型(控件名, 值)",
+      "description": "设置打印纸张类型。",
+      "insertText": "EdgeView打印_置纸张类型(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置纸张类型",
+        "runtimeName": "EdgeView打印_置纸张类型",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置纸张类型(\"演示输出\", 1)"
+    },
+    {
+      "index": 146,
+      "name": "EdgeView打印_取纸张类型",
+      "signature": "EdgeView打印_取纸张类型(控件名)",
+      "description": "取得打印纸张类型。",
+      "insertText": "EdgeView打印_取纸张类型(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_取纸张类型",
+        "runtimeName": "EdgeView打印_取纸张类型",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取纸张类型(\"演示输出\")"
+    },
+    {
+      "index": 147,
+      "name": "EdgeView打印_置缩放倍数",
+      "signature": "EdgeView打印_置缩放倍数(控件名, 值)",
+      "description": "设置打印缩放倍数。",
+      "insertText": "EdgeView打印_置缩放倍数(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置缩放倍数",
+        "runtimeName": "EdgeView打印_置缩放倍数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "double"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置缩放倍数(\"演示输出\", 1.0)"
+    },
+    {
+      "index": 148,
+      "name": "EdgeView打印_取缩放倍数",
+      "signature": "EdgeView打印_取缩放倍数(控件名)",
+      "description": "取得打印缩放倍数。",
+      "insertText": "EdgeView打印_取缩放倍数(\"$1\")",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "EdgeView打印_取缩放倍数",
+        "runtimeName": "EdgeView打印_取缩放倍数",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取缩放倍数(\"演示输出\")"
+    },
+    {
+      "index": 149,
+      "name": "EdgeView打印_置纸张宽度",
+      "signature": "EdgeView打印_置纸张宽度(控件名, 值)",
+      "description": "设置打印纸张宽度。",
+      "insertText": "EdgeView打印_置纸张宽度(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置纸张宽度",
+        "runtimeName": "EdgeView打印_置纸张宽度",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "double"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置纸张宽度(\"演示输出\", 1.0)"
+    },
+    {
+      "index": 150,
+      "name": "EdgeView打印_取纸张宽度",
+      "signature": "EdgeView打印_取纸张宽度(控件名)",
+      "description": "取得打印纸张宽度。",
+      "insertText": "EdgeView打印_取纸张宽度(\"$1\")",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "EdgeView打印_取纸张宽度",
+        "runtimeName": "EdgeView打印_取纸张宽度",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取纸张宽度(\"演示输出\")"
+    },
+    {
+      "index": 151,
+      "name": "EdgeView打印_置纸张高度",
+      "signature": "EdgeView打印_置纸张高度(控件名, 值)",
+      "description": "设置打印纸张高度。",
+      "insertText": "EdgeView打印_置纸张高度(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置纸张高度",
+        "runtimeName": "EdgeView打印_置纸张高度",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "double"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置纸张高度(\"演示输出\", 1.0)"
+    },
+    {
+      "index": 152,
+      "name": "EdgeView打印_取纸张高度",
+      "signature": "EdgeView打印_取纸张高度(控件名)",
+      "description": "取得打印纸张高度。",
+      "insertText": "EdgeView打印_取纸张高度(\"$1\")",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "EdgeView打印_取纸张高度",
+        "runtimeName": "EdgeView打印_取纸张高度",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取纸张高度(\"演示输出\")"
+    },
+    {
+      "index": 153,
+      "name": "EdgeView打印_置上边距",
+      "signature": "EdgeView打印_置上边距(控件名, 值)",
+      "description": "设置打印上边距。",
+      "insertText": "EdgeView打印_置上边距(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置上边距",
+        "runtimeName": "EdgeView打印_置上边距",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "double"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置上边距(\"演示输出\", 1.0)"
+    },
+    {
+      "index": 154,
+      "name": "EdgeView打印_取上边距",
+      "signature": "EdgeView打印_取上边距(控件名)",
+      "description": "取得打印上边距。",
+      "insertText": "EdgeView打印_取上边距(\"$1\")",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "EdgeView打印_取上边距",
+        "runtimeName": "EdgeView打印_取上边距",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取上边距(\"演示输出\")"
+    },
+    {
+      "index": 155,
+      "name": "EdgeView打印_置下边距",
+      "signature": "EdgeView打印_置下边距(控件名, 值)",
+      "description": "设置打印下边距。",
+      "insertText": "EdgeView打印_置下边距(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置下边距",
+        "runtimeName": "EdgeView打印_置下边距",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "double"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置下边距(\"演示输出\", 1.0)"
+    },
+    {
+      "index": 156,
+      "name": "EdgeView打印_取下边距",
+      "signature": "EdgeView打印_取下边距(控件名)",
+      "description": "取得打印下边距。",
+      "insertText": "EdgeView打印_取下边距(\"$1\")",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "EdgeView打印_取下边距",
+        "runtimeName": "EdgeView打印_取下边距",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取下边距(\"演示输出\")"
+    },
+    {
+      "index": 157,
+      "name": "EdgeView打印_置左边距",
+      "signature": "EdgeView打印_置左边距(控件名, 值)",
+      "description": "设置打印左边距。",
+      "insertText": "EdgeView打印_置左边距(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置左边距",
+        "runtimeName": "EdgeView打印_置左边距",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "double"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置左边距(\"演示输出\", 1.0)"
+    },
+    {
+      "index": 158,
+      "name": "EdgeView打印_取左边距",
+      "signature": "EdgeView打印_取左边距(控件名)",
+      "description": "取得打印左边距。",
+      "insertText": "EdgeView打印_取左边距(\"$1\")",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "EdgeView打印_取左边距",
+        "runtimeName": "EdgeView打印_取左边距",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取左边距(\"演示输出\")"
+    },
+    {
+      "index": 159,
+      "name": "EdgeView打印_置右边距",
+      "signature": "EdgeView打印_置右边距(控件名, 值)",
+      "description": "设置打印右边距。",
+      "insertText": "EdgeView打印_置右边距(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置右边距",
+        "runtimeName": "EdgeView打印_置右边距",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "double"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置右边距(\"演示输出\", 1.0)"
+    },
+    {
+      "index": 160,
+      "name": "EdgeView打印_取右边距",
+      "signature": "EdgeView打印_取右边距(控件名)",
+      "description": "取得打印右边距。",
+      "insertText": "EdgeView打印_取右边距(\"$1\")",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "EdgeView打印_取右边距",
+        "runtimeName": "EdgeView打印_取右边距",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取右边距(\"演示输出\")"
+    },
+    {
+      "index": 161,
+      "name": "EdgeView打印_置打印背景",
+      "signature": "EdgeView打印_置打印背景(控件名, 启用)",
+      "description": "设置是否打印背景。",
+      "insertText": "EdgeView打印_置打印背景(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置打印背景",
+        "runtimeName": "EdgeView打印_置打印背景",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置打印背景(\"演示输出\", 真)"
+    },
+    {
+      "index": 162,
+      "name": "EdgeView打印_取打印背景",
+      "signature": "EdgeView打印_取打印背景(控件名)",
+      "description": "取得是否打印背景。",
+      "insertText": "EdgeView打印_取打印背景(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_取打印背景",
+        "runtimeName": "EdgeView打印_取打印背景",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取打印背景(\"演示输出\")"
+    },
+    {
+      "index": 163,
+      "name": "EdgeView打印_置仅打印选区",
+      "signature": "EdgeView打印_置仅打印选区(控件名, 启用)",
+      "description": "设置是否仅打印选区。",
+      "insertText": "EdgeView打印_置仅打印选区(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置仅打印选区",
+        "runtimeName": "EdgeView打印_置仅打印选区",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置仅打印选区(\"演示输出\", 真)"
+    },
+    {
+      "index": 164,
+      "name": "EdgeView打印_取仅打印选区",
+      "signature": "EdgeView打印_取仅打印选区(控件名)",
+      "description": "取得是否仅打印选区。",
+      "insertText": "EdgeView打印_取仅打印选区(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_取仅打印选区",
+        "runtimeName": "EdgeView打印_取仅打印选区",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取仅打印选区(\"演示输出\")"
+    },
+    {
+      "index": 165,
+      "name": "EdgeView打印_置打印页眉页脚",
+      "signature": "EdgeView打印_置打印页眉页脚(控件名, 启用)",
+      "description": "设置是否打印页眉页脚。",
+      "insertText": "EdgeView打印_置打印页眉页脚(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置打印页眉页脚",
+        "runtimeName": "EdgeView打印_置打印页眉页脚",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置打印页眉页脚(\"演示输出\", 真)"
+    },
+    {
+      "index": 166,
+      "name": "EdgeView打印_取打印页眉页脚",
+      "signature": "EdgeView打印_取打印页眉页脚(控件名)",
+      "description": "取得是否打印页眉页脚。",
+      "insertText": "EdgeView打印_取打印页眉页脚(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_取打印页眉页脚",
+        "runtimeName": "EdgeView打印_取打印页眉页脚",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取打印页眉页脚(\"演示输出\")"
+    },
+    {
+      "index": 167,
+      "name": "EdgeView打印_置页眉标题",
+      "signature": "EdgeView打印_置页眉标题(控件名, 文本)",
+      "description": "设置打印页眉标题。",
+      "insertText": "EdgeView打印_置页眉标题(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置页眉标题",
+        "runtimeName": "EdgeView打印_置页眉标题",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置页眉标题(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 168,
+      "name": "EdgeView打印_取页眉标题",
+      "signature": "EdgeView打印_取页眉标题(控件名)",
+      "description": "取得打印页眉标题。",
+      "insertText": "EdgeView打印_取页眉标题(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView打印_取页眉标题",
+        "runtimeName": "EdgeView打印_取页眉标题",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取页眉标题(\"演示输出\")"
+    },
+    {
+      "index": 169,
+      "name": "EdgeView打印_置页脚地址",
+      "signature": "EdgeView打印_置页脚地址(控件名, 文本)",
+      "description": "设置打印页脚地址。",
+      "insertText": "EdgeView打印_置页脚地址(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置页脚地址",
+        "runtimeName": "EdgeView打印_置页脚地址",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置页脚地址(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 170,
+      "name": "EdgeView打印_取页脚地址",
+      "signature": "EdgeView打印_取页脚地址(控件名)",
+      "description": "取得打印页脚地址。",
+      "insertText": "EdgeView打印_取页脚地址(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView打印_取页脚地址",
+        "runtimeName": "EdgeView打印_取页脚地址",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取页脚地址(\"演示输出\")"
+    },
+    {
+      "index": 171,
+      "name": "EdgeView打印_置页面范围",
+      "signature": "EdgeView打印_置页面范围(控件名, 文本)",
+      "description": "设置打印页面范围。",
+      "insertText": "EdgeView打印_置页面范围(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置页面范围",
+        "runtimeName": "EdgeView打印_置页面范围",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置页面范围(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 172,
+      "name": "EdgeView打印_取页面范围",
+      "signature": "EdgeView打印_取页面范围(控件名)",
+      "description": "取得打印页面范围。",
+      "insertText": "EdgeView打印_取页面范围(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView打印_取页面范围",
+        "runtimeName": "EdgeView打印_取页面范围",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取页面范围(\"演示输出\")"
+    },
+    {
+      "index": 173,
+      "name": "EdgeView打印_置打印机名称",
+      "signature": "EdgeView打印_置打印机名称(控件名, 文本)",
+      "description": "设置打印打印机名称。",
+      "insertText": "EdgeView打印_置打印机名称(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_置打印机名称",
+        "runtimeName": "EdgeView打印_置打印机名称",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_置打印机名称(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 174,
+      "name": "EdgeView打印_取打印机名称",
+      "signature": "EdgeView打印_取打印机名称(控件名)",
+      "description": "取得打印打印机名称。",
+      "insertText": "EdgeView打印_取打印机名称(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView打印_取打印机名称",
+        "runtimeName": "EdgeView打印_取打印机名称",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_取打印机名称(\"演示输出\")"
+    },
+    {
+      "index": 175,
+      "name": "EdgeView打印_显示界面",
+      "signature": "EdgeView打印_显示界面(控件名, 界面类型)",
+      "description": "显示系统或浏览器打印界面。",
+      "insertText": "EdgeView打印_显示界面(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView打印_显示界面",
+        "runtimeName": "EdgeView打印_显示界面",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "界面类型",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_显示界面(\"演示输出\", 1)"
+    },
+    {
+      "index": 176,
+      "name": "EdgeView打印_PDF异步",
+      "signature": "EdgeView打印_PDF异步(控件名, 文件路径, 设置JSON, 完成处理器)",
+      "description": "把当前页面打印到明确 PDF 文件路径。",
+      "insertText": "EdgeView打印_PDF异步(\"$1\", \"$2\", \"$3\", &$4)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView打印_PDF异步",
+        "runtimeName": "EdgeView打印_PDF异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString"
+          },
+          {
+            "name": "设置JSON",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_PDF异步(\"演示输出\", \"module-demo-temp.txt\", \"{}\", &模块演示回调)"
+    },
+    {
+      "index": 177,
+      "name": "EdgeView打印_PDF流到文件异步",
+      "signature": "EdgeView打印_PDF流到文件异步(控件名, 文件路径, 完成处理器)",
+      "description": "使用 PrintToPdfStream 后把二进制结果写入明确文件路径。",
+      "insertText": "EdgeView打印_PDF流到文件异步(\"$1\", \"$2\", &$3)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView打印_PDF流到文件异步",
+        "runtimeName": "EdgeView打印_PDF流到文件异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_PDF流到文件异步(\"演示输出\", \"module-demo-temp.txt\", &模块演示回调)"
+    },
+    {
+      "index": 178,
+      "name": "EdgeView打印_打印异步",
+      "signature": "EdgeView打印_打印异步(控件名, 设置JSON, 完成处理器)",
+      "description": "使用类型化 JSON 打印设置异步打印。",
+      "insertText": "EdgeView打印_打印异步(\"$1\", \"$2\", &$3)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView打印_打印异步",
+        "runtimeName": "EdgeView打印_打印异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "设置JSON",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView打印_打印异步(\"演示输出\", \"{}\", &模块演示回调)"
+    },
+    {
+      "index": 179,
+      "name": "EdgeView媒体_截图异步",
+      "signature": "EdgeView媒体_截图异步(控件名, 文件路径, 格式, 完成处理器)",
+      "description": "把截图写入明确文件路径，不暴露 IStream。",
+      "insertText": "EdgeView媒体_截图异步(\"$1\", \"$2\", $3, &$4)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView媒体_截图异步",
+        "runtimeName": "EdgeView媒体_截图异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString"
+          },
+          {
+            "name": "格式",
+            "type": "int"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView媒体_截图异步(\"演示输出\", \"module-demo-temp.txt\", 1, &模块演示回调)"
+    },
+    {
+      "index": 180,
+      "name": "EdgeView媒体_取Favicon异步",
+      "signature": "EdgeView媒体_取Favicon异步(控件名, 文件路径, 完成处理器)",
+      "description": "把 Favicon 写入明确文件路径。",
+      "insertText": "EdgeView媒体_取Favicon异步(\"$1\", \"$2\", &$3)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView媒体_取Favicon异步",
+        "runtimeName": "EdgeView媒体_取Favicon异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView媒体_取Favicon异步(\"演示输出\", \"module-demo-temp.txt\", &模块演示回调)"
+    },
+    {
+      "index": 181,
+      "name": "EdgeView媒体_取全屏状态",
+      "signature": "EdgeView媒体_取全屏状态(控件名)",
+      "description": "取得页面是否含全屏元素。",
+      "insertText": "EdgeView媒体_取全屏状态(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView媒体_取全屏状态",
+        "runtimeName": "EdgeView媒体_取全屏状态",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView媒体_取全屏状态(\"演示输出\")"
+    },
+    {
+      "index": 182,
+      "name": "EdgeView媒体_取音频状态",
+      "signature": "EdgeView媒体_取音频状态(控件名)",
+      "description": "取得页面是否正在播放音频。",
+      "insertText": "EdgeView媒体_取音频状态(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView媒体_取音频状态",
+        "runtimeName": "EdgeView媒体_取音频状态",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView媒体_取音频状态(\"演示输出\")"
+    },
+    {
+      "index": 183,
+      "name": "EdgeView开发者工具_打开",
+      "signature": "EdgeView开发者工具_打开(控件名)",
+      "description": "打开开发者工具窗口。",
+      "insertText": "EdgeView开发者工具_打开(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView开发者工具_打开",
+        "runtimeName": "EdgeView开发者工具_打开",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView开发者工具_打开(\"演示输出\")"
+    },
+    {
+      "index": 184,
+      "name": "EdgeView开发者工具_打开任务管理器",
+      "signature": "EdgeView开发者工具_打开任务管理器(控件名)",
+      "description": "打开 WebView2 任务管理器。",
+      "insertText": "EdgeView开发者工具_打开任务管理器(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView开发者工具_打开任务管理器",
+        "runtimeName": "EdgeView开发者工具_打开任务管理器",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView开发者工具_打开任务管理器(\"演示输出\")"
+    },
+    {
+      "index": 185,
+      "name": "EdgeView开发者工具_调用异步",
+      "signature": "EdgeView开发者工具_调用异步(控件名, 方法, 参数JSON, 完成处理器)",
+      "description": "调用 DevTools Protocol 方法，结果为 JSON。",
+      "insertText": "EdgeView开发者工具_调用异步(\"$1\", \"$2\", \"$3\", &$4)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView开发者工具_调用异步",
+        "runtimeName": "EdgeView开发者工具_调用异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "方法",
+            "type": "wideString"
+          },
+          {
+            "name": "参数JSON",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView开发者工具_调用异步(\"演示输出\", \"演示参数2\", \"{}\", &模块演示回调)"
+    },
+    {
+      "index": 186,
+      "name": "EdgeView开发者工具_调用会话异步",
+      "signature": "EdgeView开发者工具_调用会话异步(控件名, 会话ID, 方法, 参数JSON, 完成处理器)",
+      "description": "在指定 DevTools 会话调用协议方法。",
+      "insertText": "EdgeView开发者工具_调用会话异步(\"$1\", \"$2\", \"$3\", \"$4\", &$5)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView开发者工具_调用会话异步",
+        "runtimeName": "EdgeView开发者工具_调用会话异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "会话ID",
+            "type": "wideString"
+          },
+          {
+            "name": "方法",
+            "type": "wideString"
+          },
+          {
+            "name": "参数JSON",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView开发者工具_调用会话异步(\"演示输出\", \"演示参数2\", \"演示参数3\", \"{}\", &模块演示回调)"
+    },
+    {
+      "index": 187,
+      "name": "EdgeView资源_添加过滤器",
+      "signature": "EdgeView资源_添加过滤器(控件名, URI模式, 上下文, 来源类型)",
+      "description": "添加带请求来源类型的资源过滤器。",
+      "insertText": "EdgeView资源_添加过滤器(\"$1\", \"$2\", $3, $4)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView资源_添加过滤器",
+        "runtimeName": "EdgeView资源_添加过滤器",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "URI模式",
+            "type": "wideString"
+          },
+          {
+            "name": "上下文",
+            "type": "int"
+          },
+          {
+            "name": "来源类型",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView资源_添加过滤器(\"演示输出\", \"演示参数2\", 1, 1)"
+    },
+    {
+      "index": 188,
+      "name": "EdgeView资源_移除过滤器",
+      "signature": "EdgeView资源_移除过滤器(控件名, URI模式, 上下文)",
+      "description": "移除资源过滤器。",
+      "insertText": "EdgeView资源_移除过滤器(\"$1\", \"$2\", $3)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView资源_移除过滤器",
+        "runtimeName": "EdgeView资源_移除过滤器",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "URI模式",
+            "type": "wideString"
+          },
+          {
+            "name": "上下文",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView资源_移除过滤器(\"演示输出\", \"演示参数2\", 1)"
+    },
+    {
+      "index": 189,
+      "name": "EdgeView资源_移除来源过滤器",
+      "signature": "EdgeView资源_移除来源过滤器(控件名, URI模式, 上下文, 来源类型)",
+      "description": "移除带请求来源类型的资源过滤器。",
+      "insertText": "EdgeView资源_移除来源过滤器(\"$1\", \"$2\", $3, $4)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView资源_移除来源过滤器",
+        "runtimeName": "EdgeView资源_移除来源过滤器",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "URI模式",
+            "type": "wideString"
+          },
+          {
+            "name": "上下文",
+            "type": "int"
+          },
+          {
+            "name": "来源类型",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView资源_移除来源过滤器(\"演示输出\", \"演示参数2\", 1, 1)"
+    },
+    {
+      "index": 190,
+      "name": "EdgeView资源_设置事件响应文本",
+      "signature": "EdgeView资源_设置事件响应文本(控件名, 状态码, 原因, 响应头, 正文)",
+      "description": "在 Web资源请求同步事件中以限长 UTF-8 正文替换响应。",
+      "insertText": "EdgeView资源_设置事件响应文本(\"$1\", $2, \"$3\", \"$4\", \"$5\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView资源_设置事件响应文本",
+        "runtimeName": "EdgeView资源_设置事件响应文本",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "状态码",
+            "type": "int"
+          },
+          {
+            "name": "原因",
+            "type": "wideString"
+          },
+          {
+            "name": "响应头",
+            "type": "wideString"
+          },
+          {
+            "name": "正文",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView资源_设置事件响应文本(\"演示输出\", 1, \"演示参数3\", \"演示参数4\", \"演示参数5\")"
+    },
+    {
+      "index": 191,
+      "name": "EdgeView资源_读响应正文异步",
+      "signature": "EdgeView资源_读响应正文异步(控件名, 响应句柄, 最大字节数, 完成处理器)",
+      "description": "把响应流限长读取为十六进制 JSON，不暴露 IStream。",
+      "insertText": "EdgeView资源_读响应正文异步(\"$1\", $2, $3, &$4)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView资源_读响应正文异步",
+        "runtimeName": "EdgeView资源_读响应正文异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "响应句柄",
+            "type": "handle"
+          },
+          {
+            "name": "最大字节数",
+            "type": "longLong"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView资源_读响应正文异步(\"演示输出\", 0, 1, &模块演示回调)"
+    },
+    {
+      "index": 192,
+      "name": "EdgeView事件_取字段",
+      "signature": "EdgeView事件_取字段(控件名, 字段名)",
+      "description": "取得当前同步事件字段；右键菜单目标等复合参数会预先转换为字段。",
+      "insertText": "EdgeView事件_取字段(\"$1\", \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView事件_取字段",
+        "runtimeName": "EdgeView事件_取字段",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "字段名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView事件_取字段(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 193,
+      "name": "EdgeView事件_设置动作",
+      "signature": "EdgeView事件_设置动作(控件名, 动作)",
+      "description": "设置当前同步事件动作；未设置时保持 WebView2 默认行为。",
+      "insertText": "EdgeView事件_设置动作(\"$1\", $2)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView事件_设置动作",
+        "runtimeName": "EdgeView事件_设置动作",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "动作",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView事件_设置动作(\"演示输出\", 1)"
+    },
+    {
+      "index": 194,
+      "name": "EdgeView事件_设置返回文本",
+      "signature": "EdgeView事件_设置返回文本(控件名, 文本)",
+      "description": "设置脚本对话框、认证或下载等事件返回文本。",
+      "insertText": "EdgeView事件_设置返回文本(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView事件_设置返回文本",
+        "runtimeName": "EdgeView事件_设置返回文本",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文本",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView事件_设置返回文本(\"演示输出\", \"演示参数2\")"
+    },
+    {
+      "index": 195,
+      "name": "EdgeView事件_设置认证",
+      "signature": "EdgeView事件_设置认证(控件名, 用户名, 密码)",
+      "description": "设置当前基本身份验证请求凭据。",
+      "insertText": "EdgeView事件_设置认证(\"$1\", \"$2\", \"$3\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView事件_设置认证",
+        "runtimeName": "EdgeView事件_设置认证",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString"
+          },
+          {
+            "name": "密码",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView事件_设置认证(\"演示输出\", \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 196,
+      "name": "EdgeView事件_设置下载路径",
+      "signature": "EdgeView事件_设置下载路径(控件名, 文件路径)",
+      "description": "设置当前下载开始事件的目标文件路径。",
+      "insertText": "EdgeView事件_设置下载路径(\"$1\", \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView事件_设置下载路径",
+        "runtimeName": "EdgeView事件_设置下载路径",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView事件_设置下载路径(\"演示输出\", \"module-demo-temp.txt\")"
+    },
+    {
+      "index": 197,
+      "name": "EdgeView事件_取菜单项JSON",
+      "signature": "EdgeView事件_取菜单项JSON(控件名, 菜单项句柄)",
+      "description": "取得受管 WebView2 菜单项名称、标签、命令 ID、类型、状态、快捷键、图标存在性和子项句柄。",
+      "insertText": "EdgeView事件_取菜单项JSON(\"$1\", $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView事件_取菜单项JSON",
+        "runtimeName": "EdgeView事件_取菜单项JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "菜单项句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView事件_取菜单项JSON(\"演示输出\", 0)"
+    },
+    {
+      "index": 198,
+      "name": "EdgeView事件_置菜单项勾选",
+      "signature": "EdgeView事件_置菜单项勾选(控件名, 菜单项句柄, 勾选)",
+      "description": "设置受管菜单项勾选状态。",
+      "insertText": "EdgeView事件_置菜单项勾选(\"$1\", $2, 真)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView事件_置菜单项勾选",
+        "runtimeName": "EdgeView事件_置菜单项勾选",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "菜单项句柄",
+            "type": "handle"
+          },
+          {
+            "name": "勾选",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView事件_置菜单项勾选(\"演示输出\", 0, 真)"
+    },
+    {
+      "index": 199,
+      "name": "EdgeView事件_置菜单项启用",
+      "signature": "EdgeView事件_置菜单项启用(控件名, 菜单项句柄, 启用)",
+      "description": "设置受管菜单项启用状态。",
+      "insertText": "EdgeView事件_置菜单项启用(\"$1\", $2, 真)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView事件_置菜单项启用",
+        "runtimeName": "EdgeView事件_置菜单项启用",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "菜单项句柄",
+            "type": "handle"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView事件_置菜单项启用(\"演示输出\", 0, 真)"
+    },
+    {
+      "index": 200,
+      "name": "EdgeView对象_取状态JSON",
+      "signature": "EdgeView对象_取状态JSON(对象句柄)",
+      "description": "取得受管对象类型、所属控件、generation、线程和生命周期状态。",
+      "insertText": "EdgeView对象_取状态JSON($1)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView对象_取状态JSON",
+        "runtimeName": "EdgeView对象_取状态JSON",
+        "parameters": [
+          {
+            "name": "对象句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView对象_取状态JSON(0)"
+    },
+    {
+      "index": 201,
+      "name": "EdgeView对象_释放",
+      "signature": "EdgeView对象_释放(对象句柄)",
+      "description": "显式释放受管对象；句柄不会被复用。",
+      "insertText": "EdgeView对象_释放($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView对象_释放",
+        "runtimeName": "EdgeView对象_释放",
+        "parameters": [
+          {
+            "name": "对象句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "EdgeView对象_释放(0)"
+    },
+    {
+      "index": 202,
+      "name": "EdgeView框架_枚举JSON",
+      "signature": "EdgeView框架_枚举JSON(控件名)",
+      "description": "枚举当前控件已发现的 Frame 受管句柄和层级信息。",
+      "insertText": "EdgeView框架_枚举JSON(\"$1\")",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView框架_枚举JSON",
+        "runtimeName": "EdgeView框架_枚举JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView框架_枚举JSON(\"演示输出\")"
+    },
+    {
+      "index": 203,
+      "name": "EdgeView框架_取信息JSON",
+      "signature": "EdgeView框架_取信息JSON(控件名, 框架句柄)",
+      "description": "取得 Frame ID、名称、来源和生命周期信息。",
+      "insertText": "EdgeView框架_取信息JSON(\"$1\", $2)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView框架_取信息JSON",
+        "runtimeName": "EdgeView框架_取信息JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "框架句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView框架_取信息JSON(\"演示输出\", 0)"
+    },
+    {
+      "index": 204,
+      "name": "EdgeView框架_执行脚本异步",
+      "signature": "EdgeView框架_执行脚本异步(控件名, 框架句柄, 脚本, 完成处理器)",
+      "description": "在受管 Frame 中异步执行 JavaScript。",
+      "insertText": "EdgeView框架_执行脚本异步(\"$1\", $2, \"$3\", &$4)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView框架_执行脚本异步",
+        "runtimeName": "EdgeView框架_执行脚本异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "框架句柄",
+            "type": "handle"
+          },
+          {
+            "name": "脚本",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView框架_执行脚本异步(\"演示输出\", 0, \"演示参数3\", &模块演示回调)"
+    },
+    {
+      "index": 205,
+      "name": "EdgeView框架_发送字符串消息",
+      "signature": "EdgeView框架_发送字符串消息(控件名, 框架句柄, 消息)",
+      "description": "向受管 Frame 发送字符串消息。",
+      "insertText": "EdgeView框架_发送字符串消息(\"$1\", $2, \"$3\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView框架_发送字符串消息",
+        "runtimeName": "EdgeView框架_发送字符串消息",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "框架句柄",
+            "type": "handle"
+          },
+          {
+            "name": "消息",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView框架_发送字符串消息(\"演示输出\", 0, \"演示参数3\")"
+    },
+    {
+      "index": 206,
+      "name": "EdgeView框架_发送JSON消息",
+      "signature": "EdgeView框架_发送JSON消息(控件名, 框架句柄, JSON)",
+      "description": "向受管 Frame 发送 JSON 消息。",
+      "insertText": "EdgeView框架_发送JSON消息(\"$1\", $2, \"$3\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView框架_发送JSON消息",
+        "runtimeName": "EdgeView框架_发送JSON消息",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "框架句柄",
+            "type": "handle"
+          },
+          {
+            "name": "JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView框架_发送JSON消息(\"演示输出\", 0, \"{}\")"
+    },
+    {
+      "index": 207,
+      "name": "EdgeView框架_发送共享缓冲",
+      "signature": "EdgeView框架_发送共享缓冲(控件名, 框架句柄, 缓冲句柄, 访问模式, 附加JSON)",
+      "description": "把受管共享缓冲发送到指定 Frame。",
+      "insertText": "EdgeView框架_发送共享缓冲(\"$1\", $2, $3, $4, \"$5\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView框架_发送共享缓冲",
+        "runtimeName": "EdgeView框架_发送共享缓冲",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "框架句柄",
+            "type": "handle"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "handle"
+          },
+          {
+            "name": "访问模式",
+            "type": "int"
+          },
+          {
+            "name": "附加JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView框架_发送共享缓冲(\"演示输出\", 0, 0, 1, \"{}\")"
+    },
+    {
+      "index": 208,
+      "name": "EdgeView工作线程_枚举异步",
+      "signature": "EdgeView工作线程_枚举异步(控件名, 类型, 完成处理器)",
+      "description": "枚举 Shared Worker 或 Service Worker；结果为受管句柄 JSON。",
+      "insertText": "EdgeView工作线程_枚举异步(\"$1\", $2, &$3)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView工作线程_枚举异步",
+        "runtimeName": "EdgeView工作线程_枚举异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "类型",
+            "type": "int"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView工作线程_枚举异步(\"演示输出\", 1, &模块演示回调)"
+    },
+    {
+      "index": 209,
+      "name": "EdgeView工作线程_取信息JSON",
+      "signature": "EdgeView工作线程_取信息JSON(控件名, 工作线程句柄)",
+      "description": "取得 Dedicated、Shared 或 Service Worker 类型及 URI 信息。",
+      "insertText": "EdgeView工作线程_取信息JSON(\"$1\", $2)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView工作线程_取信息JSON",
+        "runtimeName": "EdgeView工作线程_取信息JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "工作线程句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView工作线程_取信息JSON(\"演示输出\", 0)"
+    },
+    {
+      "index": 210,
+      "name": "EdgeView工作线程_发送字符串消息",
+      "signature": "EdgeView工作线程_发送字符串消息(控件名, 工作线程句柄, 消息)",
+      "description": "向支持消息的 Dedicated 或 Service Worker 发送字符串消息。",
+      "insertText": "EdgeView工作线程_发送字符串消息(\"$1\", $2, \"$3\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView工作线程_发送字符串消息",
+        "runtimeName": "EdgeView工作线程_发送字符串消息",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "工作线程句柄",
+            "type": "handle"
+          },
+          {
+            "name": "消息",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView工作线程_发送字符串消息(\"演示输出\", 0, \"演示参数3\")"
+    },
+    {
+      "index": 211,
+      "name": "EdgeView工作线程_发送JSON消息",
+      "signature": "EdgeView工作线程_发送JSON消息(控件名, 工作线程句柄, JSON)",
+      "description": "向支持消息的 Dedicated 或 Service Worker 发送 JSON 消息。",
+      "insertText": "EdgeView工作线程_发送JSON消息(\"$1\", $2, \"$3\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView工作线程_发送JSON消息",
+        "runtimeName": "EdgeView工作线程_发送JSON消息",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "工作线程句柄",
+            "type": "handle"
+          },
+          {
+            "name": "JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView工作线程_发送JSON消息(\"演示输出\", 0, \"{}\")"
+    },
+    {
+      "index": 212,
+      "name": "EdgeView工作线程_置ServiceWorker脚本API",
+      "signature": "EdgeView工作线程_置ServiceWorker脚本API(控件名, 启用)",
+      "description": "设置 Service Worker 是否允许 WebView 脚本 API。",
+      "insertText": "EdgeView工作线程_置ServiceWorker脚本API(\"$1\", 真)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView工作线程_置ServiceWorker脚本API",
+        "runtimeName": "EdgeView工作线程_置ServiceWorker脚本API",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView工作线程_置ServiceWorker脚本API(\"演示输出\", 真)"
+    },
+    {
+      "index": 213,
+      "name": "EdgeView工作线程_取ServiceWorker脚本API",
+      "signature": "EdgeView工作线程_取ServiceWorker脚本API(控件名)",
+      "description": "取得 Service Worker 的 WebView 脚本 API 开关。",
+      "insertText": "EdgeView工作线程_取ServiceWorker脚本API(\"$1\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView工作线程_取ServiceWorker脚本API",
+        "runtimeName": "EdgeView工作线程_取ServiceWorker脚本API",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView工作线程_取ServiceWorker脚本API(\"演示输出\")"
+    },
+    {
+      "index": 214,
+      "name": "EdgeView扩展_安装异步",
+      "signature": "EdgeView扩展_安装异步(控件名, 扩展目录, 完成处理器)",
+      "description": "从显式目录安装浏览器扩展，结果为受管扩展句柄。",
+      "insertText": "EdgeView扩展_安装异步(\"$1\", \"$2\", &$3)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView扩展_安装异步",
+        "runtimeName": "EdgeView扩展_安装异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "扩展目录",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView扩展_安装异步(\"演示输出\", \".\", &模块演示回调)"
+    },
+    {
+      "index": 215,
+      "name": "EdgeView扩展_枚举异步",
+      "signature": "EdgeView扩展_枚举异步(控件名, 完成处理器)",
+      "description": "枚举当前 Profile 的浏览器扩展。",
+      "insertText": "EdgeView扩展_枚举异步(\"$1\", &$2)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView扩展_枚举异步",
+        "runtimeName": "EdgeView扩展_枚举异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView扩展_枚举异步(\"演示输出\", &模块演示回调)"
+    },
+    {
+      "index": 216,
+      "name": "EdgeView扩展_置启用异步",
+      "signature": "EdgeView扩展_置启用异步(控件名, 扩展句柄, 启用, 完成处理器)",
+      "description": "异步启用或禁用受管浏览器扩展。",
+      "insertText": "EdgeView扩展_置启用异步(\"$1\", $2, 真, &$4)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView扩展_置启用异步",
+        "runtimeName": "EdgeView扩展_置启用异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "扩展句柄",
+            "type": "handle"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView扩展_置启用异步(\"演示输出\", 0, 真, &模块演示回调)"
+    },
+    {
+      "index": 217,
+      "name": "EdgeView扩展_删除异步",
+      "signature": "EdgeView扩展_删除异步(控件名, 扩展句柄, 完成处理器)",
+      "description": "异步删除受管浏览器扩展。",
+      "insertText": "EdgeView扩展_删除异步(\"$1\", $2, &$3)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView扩展_删除异步",
+        "runtimeName": "EdgeView扩展_删除异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "扩展句柄",
+            "type": "handle"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView扩展_删除异步(\"演示输出\", 0, &模块演示回调)"
+    },
+    {
+      "index": 218,
+      "name": "EdgeView权限_枚举异步",
+      "signature": "EdgeView权限_枚举异步(控件名, 完成处理器)",
+      "description": "枚举当前 Profile 的非默认权限设置。",
+      "insertText": "EdgeView权限_枚举异步(\"$1\", &$2)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView权限_枚举异步",
+        "runtimeName": "EdgeView权限_枚举异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView权限_枚举异步(\"演示输出\", &模块演示回调)"
+    },
+    {
+      "index": 219,
+      "name": "EdgeView权限_设置异步",
+      "signature": "EdgeView权限_设置异步(控件名, 权限类型, 来源, 状态, 完成处理器)",
+      "description": "异步设置指定来源的权限状态。",
+      "insertText": "EdgeView权限_设置异步(\"$1\", $2, \"$3\", $4, &$5)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView权限_设置异步",
+        "runtimeName": "EdgeView权限_设置异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "权限类型",
+            "type": "int"
+          },
+          {
+            "name": "来源",
+            "type": "wideString"
+          },
+          {
+            "name": "状态",
+            "type": "int"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView权限_设置异步(\"演示输出\", 1, \"演示参数3\", 1, &模块演示回调)"
+    },
+    {
+      "index": 220,
+      "name": "EdgeView通知_取信息JSON",
+      "signature": "EdgeView通知_取信息JSON(控件名, 通知句柄)",
+      "description": "取得受管通知的标题、正文、语言和状态；来源由“通知收到”事件提供。",
+      "insertText": "EdgeView通知_取信息JSON(\"$1\", $2)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView通知_取信息JSON",
+        "runtimeName": "EdgeView通知_取信息JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "通知句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView通知_取信息JSON(\"演示输出\", 0)"
+    },
+    {
+      "index": 221,
+      "name": "EdgeView通知_报告已显示",
+      "signature": "EdgeView通知_报告已显示(控件名, 通知句柄)",
+      "description": "向 WebView2 报告自定义通知已显示。",
+      "insertText": "EdgeView通知_报告已显示(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView通知_报告已显示",
+        "runtimeName": "EdgeView通知_报告已显示",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "通知句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView通知_报告已显示(\"演示输出\", 0)"
+    },
+    {
+      "index": 222,
+      "name": "EdgeView通知_报告单击",
+      "signature": "EdgeView通知_报告单击(控件名, 通知句柄)",
+      "description": "向 WebView2 报告通知被单击。",
+      "insertText": "EdgeView通知_报告单击(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView通知_报告单击",
+        "runtimeName": "EdgeView通知_报告单击",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "通知句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView通知_报告单击(\"演示输出\", 0)"
+    },
+    {
+      "index": 223,
+      "name": "EdgeView通知_报告关闭",
+      "signature": "EdgeView通知_报告关闭(控件名, 通知句柄)",
+      "description": "向 WebView2 报告通知已关闭。",
+      "insertText": "EdgeView通知_报告关闭(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView通知_报告关闭",
+        "runtimeName": "EdgeView通知_报告关闭",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "通知句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView通知_报告关闭(\"演示输出\", 0)"
+    },
+    {
+      "index": 224,
+      "name": "EdgeView缓冲_创建",
+      "signature": "EdgeView缓冲_创建(控件名, 字节数)",
+      "description": "创建不超过 16 MiB 的受管共享缓冲。",
+      "insertText": "EdgeView缓冲_创建(\"$1\", $2)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView缓冲_创建",
+        "runtimeName": "EdgeView缓冲_创建",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "字节数",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "handle",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView缓冲_创建(\"演示输出\", 1)"
+    },
+    {
+      "index": 225,
+      "name": "EdgeView缓冲_取大小",
+      "signature": "EdgeView缓冲_取大小(控件名, 缓冲句柄)",
+      "description": "取得受管共享缓冲大小。",
+      "insertText": "EdgeView缓冲_取大小(\"$1\", $2)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView缓冲_取大小",
+        "runtimeName": "EdgeView缓冲_取大小",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView缓冲_取大小(\"演示输出\", 0)"
+    },
+    {
+      "index": 226,
+      "name": "EdgeView缓冲_写十六进制",
+      "signature": "EdgeView缓冲_写十六进制(控件名, 缓冲句柄, 十六进制)",
+      "description": "把限长十六进制数据写入受管共享缓冲。",
+      "insertText": "EdgeView缓冲_写十六进制(\"$1\", $2, \"$3\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView缓冲_写十六进制",
+        "runtimeName": "EdgeView缓冲_写十六进制",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "handle"
+          },
+          {
+            "name": "十六进制",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView缓冲_写十六进制(\"演示输出\", 0, \"演示参数3\")"
+    },
+    {
+      "index": 227,
+      "name": "EdgeView缓冲_读十六进制",
+      "signature": "EdgeView缓冲_读十六进制(控件名, 缓冲句柄, 最大字节数)",
+      "description": "从受管共享缓冲读取限长十六进制。",
+      "insertText": "EdgeView缓冲_读十六进制(\"$1\", $2, $3)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView缓冲_读十六进制",
+        "runtimeName": "EdgeView缓冲_读十六进制",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "handle"
+          },
+          {
+            "name": "最大字节数",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView缓冲_读十六进制(\"演示输出\", 0, 1)"
+    },
+    {
+      "index": 228,
+      "name": "EdgeView缓冲_发送到网页",
+      "signature": "EdgeView缓冲_发送到网页(控件名, 缓冲句柄, 访问模式, 附加JSON)",
+      "description": "把共享缓冲以只读或读写模式发送到网页。",
+      "insertText": "EdgeView缓冲_发送到网页(\"$1\", $2, $3, \"$4\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView缓冲_发送到网页",
+        "runtimeName": "EdgeView缓冲_发送到网页",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "缓冲句柄",
+            "type": "handle"
+          },
+          {
+            "name": "访问模式",
+            "type": "int"
+          },
+          {
+            "name": "附加JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView缓冲_发送到网页(\"演示输出\", 0, 1, \"{}\")"
+    },
+    {
+      "index": 229,
+      "name": "EdgeView安全_取证书JSON",
+      "signature": "EdgeView安全_取证书JSON(控件名, 证书句柄)",
+      "description": "取得受管客户端或服务器证书的主题、签发者、有效期、序列号、显示名和 PEM。",
+      "insertText": "EdgeView安全_取证书JSON(\"$1\", $2)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "EdgeView安全_取证书JSON",
+        "runtimeName": "EdgeView安全_取证书JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "证书句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView安全_取证书JSON(\"演示输出\", 0)"
+    },
+    {
+      "index": 230,
+      "name": "EdgeView安全_选择客户端证书",
+      "signature": "EdgeView安全_选择客户端证书(控件名, 证书句柄)",
+      "description": "在客户端证书同步决策事件中选择受管证书。",
+      "insertText": "EdgeView安全_选择客户端证书(\"$1\", $2)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "EdgeView安全_选择客户端证书",
+        "runtimeName": "EdgeView安全_选择客户端证书",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "证书句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView安全_选择客户端证书(\"演示输出\", 0)"
+    },
+    {
+      "index": 231,
+      "name": "EdgeView安全_清除证书错误决策异步",
+      "signature": "EdgeView安全_清除证书错误决策异步(控件名, 完成处理器)",
+      "description": "清除当前 WebView 的服务器证书错误持久决策。",
+      "insertText": "EdgeView安全_清除证书错误决策异步(\"$1\", &$2)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView安全_清除证书错误决策异步",
+        "runtimeName": "EdgeView安全_清除证书错误决策异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView安全_清除证书错误决策异步(\"演示输出\", &模块演示回调)"
+    },
+    {
+      "index": 232,
+      "name": "EdgeView安全_显示另存为界面异步",
+      "signature": "EdgeView安全_显示另存为界面异步(控件名, 完成处理器)",
+      "description": "显示 WebView2 另存为界面并返回状态。",
+      "insertText": "EdgeView安全_显示另存为界面异步(\"$1\", &$2)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "EdgeView安全_显示另存为界面异步",
+        "runtimeName": "EdgeView安全_显示另存为界面异步",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView安全_显示另存为界面异步(\"演示输出\", &模块演示回调)"
+    },
+    {
+      "index": 233,
+      "name": "EdgeView对象_取文件路径",
+      "signature": "EdgeView对象_取文件路径(控件名, 对象句柄)",
+      "description": "从受管 File 对象取得安全文件路径。",
+      "insertText": "EdgeView对象_取文件路径(\"$1\", $2)",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView对象_取文件路径",
+        "runtimeName": "EdgeView对象_取文件路径",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "对象句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView对象_取文件路径(\"演示输出\", 0)"
+    },
+    {
+      "index": 234,
+      "name": "EdgeView对象_创建文件系统句柄",
+      "signature": "EdgeView对象_创建文件系统句柄(控件名, 路径, 目录, 权限)",
+      "description": "从绝对路径创建受管文件或目录句柄；拒绝相对路径和不存在路径。",
+      "insertText": "EdgeView对象_创建文件系统句柄(\"$1\", \"$2\", 真, $4)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView对象_创建文件系统句柄",
+        "runtimeName": "EdgeView对象_创建文件系统句柄",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "路径",
+            "type": "wideString"
+          },
+          {
+            "name": "目录",
+            "type": "bool"
+          },
+          {
+            "name": "权限",
+            "type": "int"
+          }
+        ],
+        "returnType": "handle",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView对象_创建文件系统句柄(\"演示输出\", \"module-demo-temp.txt\", 真, 1)"
+    },
+    {
+      "index": 235,
+      "name": "EdgeView脚本_发送附加对象JSON",
+      "signature": "EdgeView脚本_发送附加对象JSON(控件名, JSON, 对象句柄)",
+      "description": "向网页发送 JSON 与一个受管文件系统附加对象。",
+      "insertText": "EdgeView脚本_发送附加对象JSON(\"$1\", \"$2\", $3)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "EdgeView脚本_发送附加对象JSON",
+        "runtimeName": "EdgeView脚本_发送附加对象JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "wideString"
+          },
+          {
+            "name": "JSON",
+            "type": "wideString"
+          },
+          {
+            "name": "对象句柄",
+            "type": "handle"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "EdgeView脚本_发送附加对象JSON(\"演示输出\", \"{}\", 0)"
+    },
+    {
+      "index": 236,
       "name": "EdgeView_创建",
       "signature": "EdgeView_创建(父组件句柄, 地址)",
       "description": "在指定 HWND 组件客户区内创建 EdgeView；传 0 时嵌入当前窗口。成功返回 1。",
@@ -35,7 +5857,7 @@
       "demoInvocation": "EdgeView_创建(1, \"https://example.com\")"
     },
     {
-      "index": 2,
+      "index": 237,
       "name": "EdgeView_创建实例",
       "signature": "EdgeView_创建实例(实例编号, 父组件句柄, 地址, 独立缓存目录)",
       "description": "创建具名 EdgeView 实例；不同缓存目录拥有独立 Cookie、存储和会话。",
@@ -68,7 +5890,7 @@
       "demoInvocation": "EdgeView_创建实例(1, 1, \"https://example.com\", \".\")"
     },
     {
-      "index": 3,
+      "index": 238,
       "name": "EdgeView_创建实例代理",
       "signature": "EdgeView_创建实例代理(实例编号, 父组件句柄, 地址, 独立缓存目录, 代理地址)",
       "description": "创建使用独立代理的 EdgeView 实例；该代理覆盖全局代理。",
@@ -105,7 +5927,7 @@
       "demoInvocation": "EdgeView_创建实例代理(1, 1, \"https://example.com\", \".\", \"https://example.com\")"
     },
     {
-      "index": 4,
+      "index": 239,
       "name": "EdgeView_创建区域",
       "signature": "EdgeView_创建区域(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录)",
       "description": "在当前窗口指定区域创建独立承载 HWND 和 EdgeView 实例。",
@@ -150,7 +5972,7 @@
       "demoInvocation": "EdgeView_创建区域(1, 1, 1, 1, 1, \"https://example.com\", \".\")"
     },
     {
-      "index": 5,
+      "index": 240,
       "name": "EdgeView_创建区域代理",
       "signature": "EdgeView_创建区域代理(实例编号, 左, 顶, 宽, 高, 地址, 独立缓存目录, 代理地址)",
       "description": "在指定区域创建使用独立代理的 EdgeView 实例。",
@@ -199,7 +6021,7 @@
       "demoInvocation": "EdgeView_创建区域代理(1, 1, 1, 1, 1, \"https://example.com\", \".\", \"https://example.com\")"
     },
     {
-      "index": 6,
+      "index": 241,
       "name": "EdgeView_设置全局代理",
       "signature": "EdgeView_设置全局代理(代理地址)",
       "description": "设置后续新建 EdgeView 实例默认使用的 HTTP/HTTPS/SOCKS5 代理；现有实例不变。",
@@ -220,7 +6042,7 @@
       "demoInvocation": "EdgeView_设置全局代理(\"https://example.com\")"
     },
     {
-      "index": 7,
+      "index": 242,
       "name": "EdgeView_清除全局代理",
       "signature": "EdgeView_清除全局代理()",
       "description": "清除后续新建实例的全局代理，现有实例不变。",
@@ -235,7 +6057,7 @@
       "demoInvocation": "EdgeView_清除全局代理()"
     },
     {
-      "index": 8,
+      "index": 243,
       "name": "EdgeView_取全局代理",
       "signature": "EdgeView_取全局代理()",
       "description": "返回当前 EdgeView 全局代理设置。",
@@ -251,7 +6073,7 @@
       "demoInvocation": "EdgeView_取全局代理()"
     },
     {
-      "index": 9,
+      "index": 244,
       "name": "EdgeView_取实例代理",
       "signature": "EdgeView_取实例代理(实例编号)",
       "description": "返回指定实例创建时实际采用的代理地址。",
@@ -272,11 +6094,11 @@
       "demoInvocation": "EdgeView_取实例代理(1)"
     },
     {
-      "index": 10,
+      "index": 245,
       "name": "EdgeView_绑定事件",
-      "signature": "EdgeView_绑定事件(实例编号, 事件名, 处理器名)",
-      "description": "绑定 WebView2 完整事件目录中的中文事件；当前目录共 62 项。",
-      "insertText": "EdgeView_绑定事件(1, \"导航完成\", \"浏览器1_导航完成\")",
+      "signature": "EdgeView_绑定事件(实例编号, 事件名, &处理器名)",
+      "description": "绑定 WebView2 完整事件目录中的中文事件；当前目录共 71 项。旧字符串处理器仍兼容，但会产生迁移警告。",
+      "insertText": "EdgeView_绑定事件(1, \"导航完成\", &$1)",
       "returnType": "整数型",
       "binding": {
         "command": "EdgeView_绑定事件",
@@ -292,16 +6114,17 @@
           },
           {
             "name": "处理器名",
-            "type": "wideString"
+            "type": "handler",
+            "description": "新代码必须使用 &处理器名；旧字符串写法仅兼容迁移。"
           }
         ],
         "returnType": "int",
         "encoding": "wide"
       },
-      "demoInvocation": "EdgeView_绑定事件(1, \"演示事件\", \"演示参数3\")"
+      "demoInvocation": "EdgeView_绑定事件(1, \"演示事件\", &模块演示回调)"
     },
     {
-      "index": 11,
+      "index": 246,
       "name": "EdgeView_监听开发者工具事件",
       "signature": "EdgeView_监听开发者工具事件(实例编号, 协议事件名)",
       "description": "监听指定 Chromium DevTools Protocol 事件，触发“开发者工具协议事件”。",
@@ -326,7 +6149,7 @@
       "demoInvocation": "EdgeView_监听开发者工具事件(1, \"演示事件\")"
     },
     {
-      "index": 12,
+      "index": 247,
       "name": "EdgeView_等待事件",
       "signature": "EdgeView_等待事件(实例编号, 事件名, 超时毫秒)",
       "description": "泵送窗口消息并等待指定浏览器事件，成功返回 1，超时返回 0。",
@@ -355,7 +6178,7 @@
       "demoInvocation": "EdgeView_等待事件(1, \"演示事件\", 1)"
     },
     {
-      "index": 13,
+      "index": 248,
       "name": "EdgeView_导航",
       "signature": "EdgeView_导航(地址)",
       "description": "导航到 HTTP/HTTPS 地址或本地文件地址。",
@@ -376,7 +6199,7 @@
       "demoInvocation": "EdgeView_导航(\"https://example.com\")"
     },
     {
-      "index": 14,
+      "index": 249,
       "name": "EdgeView_导航实例",
       "signature": "EdgeView_导航实例(实例编号, 地址)",
       "description": "让指定 EdgeView 实例导航。",
@@ -401,7 +6224,7 @@
       "demoInvocation": "EdgeView_导航实例(1, \"https://example.com\")"
     },
     {
-      "index": 15,
+      "index": 250,
       "name": "EdgeView_执行JS",
       "signature": "EdgeView_执行JS(脚本)",
       "description": "执行 JavaScript 并等待异步回调，返回 WebView2 的 JSON 编码结果；失败返回空文本。",
@@ -422,7 +6245,7 @@
       "demoInvocation": "EdgeView_执行JS(\"演示参数1\")"
     },
     {
-      "index": 16,
+      "index": 251,
       "name": "EdgeView_执行JS实例",
       "signature": "EdgeView_执行JS实例(实例编号, 脚本)",
       "description": "在指定实例执行 JavaScript，并返回 WebView2 JSON 编码结果。",
@@ -447,7 +6270,7 @@
       "demoInvocation": "EdgeView_执行JS实例(1, \"演示参数2\")"
     },
     {
-      "index": 17,
+      "index": 252,
       "name": "EdgeView_取最近事件",
       "signature": "EdgeView_取最近事件()",
       "description": "返回最近触发的 WebView2 中文事件名。",
@@ -463,7 +6286,7 @@
       "demoInvocation": "EdgeView_取最近事件()"
     },
     {
-      "index": 18,
+      "index": 253,
       "name": "EdgeView_取事件数据",
       "signature": "EdgeView_取事件数据()",
       "description": "返回最近事件携带的 UTF-16 JSON 对象文本。",
@@ -479,7 +6302,7 @@
       "demoInvocation": "EdgeView_取事件数据()"
     },
     {
-      "index": 19,
+      "index": 254,
       "name": "EdgeView_取最近事件实例",
       "signature": "EdgeView_取最近事件实例(实例编号)",
       "description": "返回指定浏览器实例最近事件名。",
@@ -500,7 +6323,7 @@
       "demoInvocation": "EdgeView_取最近事件实例(1)"
     },
     {
-      "index": 20,
+      "index": 255,
       "name": "EdgeView_取事件数据实例",
       "signature": "EdgeView_取事件数据实例(实例编号)",
       "description": "返回指定浏览器实例最近事件携带的数据。",
@@ -521,7 +6344,7 @@
       "demoInvocation": "EdgeView_取事件数据实例(1)"
     },
     {
-      "index": 21,
+      "index": 256,
       "name": "EdgeView_后退",
       "signature": "EdgeView_后退()",
       "description": "浏览器可以后退时返回上一页。",
@@ -536,7 +6359,7 @@
       "demoInvocation": "EdgeView_后退()"
     },
     {
-      "index": 22,
+      "index": 257,
       "name": "EdgeView_前进",
       "signature": "EdgeView_前进()",
       "description": "浏览器可以前进时进入下一页。",
@@ -551,7 +6374,7 @@
       "demoInvocation": "EdgeView_前进()"
     },
     {
-      "index": 23,
+      "index": 258,
       "name": "EdgeView_刷新",
       "signature": "EdgeView_刷新()",
       "description": "刷新当前网页。",
@@ -566,7 +6389,7 @@
       "demoInvocation": "EdgeView_刷新()"
     },
     {
-      "index": 24,
+      "index": 259,
       "name": "EdgeView_关闭",
       "signature": "EdgeView_关闭()",
       "description": "关闭浏览器控制器并释放 WebView2 资源。",
@@ -581,7 +6404,7 @@
       "demoInvocation": "EdgeView_关闭()"
     },
     {
-      "index": 25,
+      "index": 260,
       "name": "EdgeView_关闭实例",
       "signature": "EdgeView_关闭实例(实例编号)",
       "description": "关闭指定 EdgeView 实例并释放其承载窗口。",
@@ -601,7 +6424,7 @@
       "demoInvocation": "EdgeView_关闭实例(1)"
     },
     {
-      "index": 26,
+      "index": 261,
       "name": "EdgeView_创建控件",
       "signature": "EdgeView_创建控件(控件名)",
       "description": "使用设计器属性重新创建指定 Edge 浏览器控件；空文本创建当前窗口全部 Edge 浏览器控件。",
@@ -622,7 +6445,7 @@
       "demoInvocation": "EdgeView_创建控件(\"演示输出\")"
     },
     {
-      "index": 27,
+      "index": 262,
       "name": "EdgeView_导航控件",
       "signature": "EdgeView_导航控件(控件名, 地址)",
       "description": "让指定设计器 Edge 浏览器控件导航到新地址。",
@@ -647,7 +6470,7 @@
       "demoInvocation": "EdgeView_导航控件(\"演示输出\", \"https://example.com\")"
     },
     {
-      "index": 28,
+      "index": 263,
       "name": "EdgeView_执行JS控件",
       "signature": "EdgeView_执行JS控件(控件名, 脚本)",
       "description": "在指定设计器 Edge 浏览器控件中执行 JavaScript 并返回 JSON 编码结果。",
@@ -672,7 +6495,7 @@
       "demoInvocation": "EdgeView_执行JS控件(\"演示输出\", \"演示参数2\")"
     },
     {
-      "index": 29,
+      "index": 264,
       "name": "EdgeView_取最近事件控件",
       "signature": "EdgeView_取最近事件控件(控件名)",
       "description": "读取指定设计器 Edge 浏览器控件最近触发的事件名。",
@@ -693,7 +6516,7 @@
       "demoInvocation": "EdgeView_取最近事件控件(\"演示输出\")"
     },
     {
-      "index": 30,
+      "index": 265,
       "name": "EdgeView_取事件数据控件",
       "signature": "EdgeView_取事件数据控件(控件名)",
       "description": "读取指定设计器 Edge 浏览器控件最近事件的数据。",
@@ -714,7 +6537,7 @@
       "demoInvocation": "EdgeView_取事件数据控件(\"演示输出\")"
     },
     {
-      "index": 31,
+      "index": 266,
       "name": "EdgeView_后退控件",
       "signature": "EdgeView_后退控件(控件名)",
       "description": "让指定设计器 Edge 浏览器控件后退。",
@@ -735,7 +6558,7 @@
       "demoInvocation": "EdgeView_后退控件(\"演示输出\")"
     },
     {
-      "index": 32,
+      "index": 267,
       "name": "EdgeView_前进控件",
       "signature": "EdgeView_前进控件(控件名)",
       "description": "让指定设计器 Edge 浏览器控件前进。",
@@ -756,7 +6579,7 @@
       "demoInvocation": "EdgeView_前进控件(\"演示输出\")"
     },
     {
-      "index": 33,
+      "index": 268,
       "name": "EdgeView_刷新控件",
       "signature": "EdgeView_刷新控件(控件名)",
       "description": "刷新指定设计器 Edge 浏览器控件。",
@@ -777,7 +6600,7 @@
       "demoInvocation": "EdgeView_刷新控件(\"演示输出\")"
     },
     {
-      "index": 34,
+      "index": 269,
       "name": "EdgeView_关闭控件",
       "signature": "EdgeView_关闭控件(控件名)",
       "description": "关闭指定设计器 Edge 浏览器控件并保留设计器宿主占位。",
@@ -798,11 +6621,11 @@
       "demoInvocation": "EdgeView_关闭控件(\"演示输出\")"
     },
     {
-      "index": 35,
+      "index": 270,
       "name": "EdgeView_绑定控件事件",
-      "signature": "EdgeView_绑定控件事件(控件名, 事件名, 处理器名)",
-      "description": "按控件名绑定 WebView2 完整事件目录中的中文事件；当前目录共 62 项。",
-      "insertText": "EdgeView_绑定控件事件(\"$1\", \"导航完成\", \"$1_导航完成\")",
+      "signature": "EdgeView_绑定控件事件(控件名, 事件名, &处理器名)",
+      "description": "按控件名绑定 WebView2 完整事件目录中的中文事件；当前目录共 71 项。旧字符串处理器仍兼容，但会产生迁移警告。",
+      "insertText": "EdgeView_绑定控件事件(\"$1\", \"导航完成\", &$2)",
       "returnType": "整数型",
       "binding": {
         "command": "EdgeView_绑定控件事件",
@@ -818,16 +6641,17 @@
           },
           {
             "name": "处理器名",
-            "type": "wideString"
+            "type": "handler",
+            "description": "新代码必须使用 &处理器名；旧字符串写法仅兼容迁移。"
           }
         ],
         "returnType": "int",
         "encoding": "wide"
       },
-      "demoInvocation": "EdgeView_绑定控件事件(\"演示输出\", \"演示事件\", \"演示参数3\")"
+      "demoInvocation": "EdgeView_绑定控件事件(\"演示输出\", \"演示事件\", &模块演示回调)"
     },
     {
-      "index": 36,
+      "index": 271,
       "name": "EdgeView_监听开发者工具事件控件",
       "signature": "EdgeView_监听开发者工具事件控件(控件名, 协议事件名)",
       "description": "按设计器控件名监听 Chromium DevTools Protocol 事件。",
