@@ -46,7 +46,7 @@
 | `lingbuilder.fbro.sdk` FBro 135 内置 SDK（x64） | `module-demo-lingbuilder.fbro.sdk` | 0 | 0 | 1 | `FBro135内置SDK（64位）完整演示.lcpppkg` |
 | `lingbuilder.fbro.session` FBro会话模块 | `module-demo-lingbuilder.fbro.session` | 10 | 0 | 1 | `FBro会话模块完整演示.lcpppkg` |
 | `lingbuilder.fbro.transfer` FBro传输模块 | `module-demo-lingbuilder.fbro.transfer` | 5 | 0 | 1 | `FBro传输模块完整演示.lcpppkg` |
-| `lingbuilder.fbro.vip` FBro VIP 指纹模块 | `module-demo-lingbuilder.fbro.vip` | 3 | 0 | 1 | `FBroVIP指纹模块完整演示.lcpppkg` |
+| `lingbuilder.fbro.vip` FBro VIP 指纹模块 | `module-demo-lingbuilder.fbro.vip` | 198 | 0 | 10 | `FBroVIP指纹模块完整演示.lcpppkg` |
 | `lingbuilder.fs.core` 文件目录模块 | `module-demo-lingbuilder.fs.core` | 11 | 0 | 1 | `文件目录模块完整演示.lcpppkg` |
 | `lingbuilder.fs.path` 路径处理模块 | `module-demo-lingbuilder.fs.path` | 7 | 0 | 1 | `路径处理模块完整演示.lcpppkg` |
 | `lingbuilder.http.server` HTTP 服务端模块 | `module-demo-lingbuilder.http.server` | 5 | 0 | 1 | `HTTP服务端模块完整演示.lcpppkg` |

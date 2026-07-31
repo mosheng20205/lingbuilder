@@ -40,7 +40,8 @@ async function main() {
       isEnabledForProject: true,
       diagnostics: []
     },
-    builtin('lingbuilder.fbro.browser')
+    builtin('lingbuilder.fbro.browser'),
+    builtin('lingbuilder.fbro.vip')
   ];
   const project = JSON.parse(await fs.readFile(
     path.join(repoRoot, '.lingbuilder', 'projects', projectId, 'window-designer.json'),

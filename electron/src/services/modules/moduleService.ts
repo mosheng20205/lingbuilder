@@ -110,9 +110,14 @@ export class ModuleService {
   }
 
   async enableModuleForProject(projectId: string, moduleId: string): Promise<void> {
-    const plan = await this.planEnableModulesForProject(projectId, [moduleId]);
+    await this.enableModulesForProject(projectId, [moduleId]);
+  }
+
+  async enableModulesForProject(projectId: string, moduleIds: readonly string[]): Promise<ProjectModuleEnablePlan> {
+    const plan = await this.planEnableModulesForProject(projectId, moduleIds);
     await this.writeTextAtomically(plan.targetPath, plan.sourceCode);
     await this.recordProjectModuleEnablePlan(plan);
+    return plan;
   }
 
   /**

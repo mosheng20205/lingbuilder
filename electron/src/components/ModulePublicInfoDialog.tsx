@@ -16,6 +16,8 @@ import {
   Wrench,
   X
 } from 'lucide-react';
+import type { ModuleFamilyDefinition, ModuleFamilyFeatureDefinition } from '../services/modules/moduleFamilies';
+import { normalizeModulePublicInfoSearchText } from '../services/modules/modulePublicInfoSearch';
 import type { InstalledModule, ModuleTargetContribution } from '../services/modules/types';
 
 type PublicGroupId = 'types' | 'commands' | 'controls' | 'snippets' | 'dependencies' | 'docs';
@@ -23,6 +25,7 @@ type PublicItemKind = '类型/类' | '命令接口' | '设计器控件' | '代�
 
 interface PublicInfoItem {
   id: string;
+  sourceModuleId: string;
   groupId: PublicGroupId;
   kind: PublicItemKind;
   name: string;
@@ -31,11 +34,19 @@ interface PublicInfoItem {
   searchText: string;
   copyText?: string;
   fields?: Array<{ label: string; value: string }>;
+  commandCategory?: string;
+  capabilityKind?: 'single' | 'aggregate' | 'managed' | 'secureReplacement';
+  officialCapability?: boolean;
 }
 
 interface ModulePublicInfoDialogProps {
   module: InstalledModule;
+  familyDefinition?: ModuleFamilyDefinition;
+  familyModules?: InstalledModule[];
+  familyFeatures?: readonly ModuleFamilyFeatureDefinition[];
   isDarkMode: boolean;
+  isChangingFeature?: boolean;
+  onToggleFeature?: (module: InstalledModule) => void;
   onClose: () => void;
 }
 
@@ -44,11 +55,17 @@ const OVERVIEW_ROW_LIMIT = 400;
 
 export default function ModulePublicInfoDialog({
   module,
+  familyDefinition,
+  familyModules,
+  familyFeatures,
   isDarkMode,
+  isChangingFeature = false,
+  onToggleFeature,
   onClose
 }: ModulePublicInfoDialogProps) {
   const [searchText, setSearchText] = useState('');
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [selectedFeatureId, setSelectedFeatureId] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<PublicGroupId, boolean>>({
     types: true,
     commands: true,
@@ -57,14 +74,34 @@ export default function ModulePublicInfoDialog({
     dependencies: false,
     docs: false
   });
+  const [expandedFeatures, setExpandedFeatures] = useState<Record<string, boolean>>(() => Object.fromEntries(
+    (familyFeatures || []).map((feature, index) => [feature.moduleId, index === 0])
+  ));
   const manifest = module.manifest;
-  const allItems = useMemo(() => collectPublicInfoItems(module), [module]);
-  const normalizedSearch = searchText.trim().toLocaleLowerCase('zh-CN');
-  const visibleItems = useMemo(
+  const infoModules = useMemo(
+    () => familyModules?.length ? familyModules : [module],
+    [familyModules, module]
+  );
+  const familyModuleById = useMemo(
+    () => new Map(infoModules.map(item => [item.manifest.id, item])),
+    [infoModules]
+  );
+  const allItems = useMemo(
+    () => infoModules.flatMap(item => collectPublicInfoItems(item)),
+    [infoModules]
+  );
+  const normalizedSearch = normalizeModulePublicInfoSearchText(searchText);
+  const searchedItems = useMemo(
     () => normalizedSearch
       ? allItems.filter(item => item.searchText.includes(normalizedSearch))
       : allItems,
     [allItems, normalizedSearch]
+  );
+  const visibleItems = useMemo(
+    () => selectedFeatureId
+      ? searchedItems.filter(item => item.sourceModuleId === selectedFeatureId)
+      : searchedItems,
+    [searchedItems, selectedFeatureId]
   );
   const selectedItem = allItems.find(item => item.id === selectedItemId) || null;
   const groups = getPublicInfoGroups(visibleItems);
@@ -79,6 +116,18 @@ export default function ModulePublicInfoDialog({
     : 'border-slate-300 bg-white text-slate-900';
   const borderClass = isDarkMode ? 'border-[#3c3c3c]' : 'border-slate-200';
   const subtleClass = isDarkMode ? 'text-slate-400' : 'text-slate-500';
+  const isFamilyView = Boolean(familyFeatures?.length);
+  const standardFamilyModules = isFamilyView
+    ? (familyFeatures || [])
+      .filter(feature => feature.tier === 'standard')
+      .map(feature => familyModuleById.get(feature.moduleId))
+      .filter((item): item is InstalledModule => Boolean(item))
+    : [module];
+  const standardFamilyEnabled = standardFamilyModules.length > 0
+    && standardFamilyModules.every(item => item.isEnabledForProject);
+  const familyCommandCount = allItems.filter(item => item.groupId === 'commands').length;
+  const familySupportingItemCount = allItems.length - familyCommandCount;
+  const familyDisplayName = familyDefinition?.displayName || manifest.name;
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -106,7 +155,8 @@ export default function ModulePublicInfoDialog({
       dependencies: true,
       docs: true
     });
-  }, [normalizedSearch]);
+    setExpandedFeatures(Object.fromEntries((familyFeatures || []).map(feature => [feature.moduleId, true])));
+  }, [familyFeatures, normalizedSearch]);
 
   if (typeof document === 'undefined') return null;
 
@@ -132,7 +182,7 @@ export default function ModulePublicInfoDialog({
               模块公开信息 - {manifest.name}
             </h2>
             <div className={`truncate text-xs ${subtleClass}`}>
-              {manifest.id} · v{manifest.version} · {manifest.category}
+              {isFamilyView ? `${manifest.id} · v${manifest.version} · ${familyFeatures?.length || 0} 个功能域` : `${manifest.id} · v${manifest.version} · ${manifest.category}`}
               {manifest.author ? ` · ${manifest.author}` : ''}
             </div>
           </div>
@@ -178,19 +228,56 @@ export default function ModulePublicInfoDialog({
             <nav className="min-h-0 flex-1 overflow-y-auto p-2" aria-label="模块公开信息分类">
               <button
                 type="button"
-                onClick={() => setSelectedItemId(null)}
+                onClick={() => {
+                  setSelectedItemId(null);
+                  setSelectedFeatureId(null);
+                }}
                 className={`mb-1 flex w-full min-w-0 items-center gap-2 rounded px-2 py-1.5 text-left text-xs ${
-                  selectedItemId === null
+                  selectedItemId === null && selectedFeatureId === null
                     ? isDarkMode ? 'bg-sky-500/20 text-sky-100' : 'bg-sky-100 text-sky-900'
                     : isDarkMode ? 'hover:bg-white/5' : 'hover:bg-slate-100'
                 }`}
               >
                 <Package className="h-4 w-4 shrink-0 text-violet-400" />
                 <span className="min-w-0 flex-1 truncate font-semibold">{manifest.name}</span>
-                <span className={subtleClass}>{visibleItems.length}</span>
+                <span className={subtleClass}>{isFamilyView ? familyCommandCount : visibleItems.length}</span>
               </button>
 
-              {groups.map(group => (
+              {isFamilyView && (
+                <div className="mb-2 min-w-0" aria-label={`${familyDisplayName} 功能分类`}>
+                  <div className={`px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${subtleClass}`}>功能分类</div>
+                  {(familyFeatures || []).map(feature => {
+                    const featureModule = familyModuleById.get(feature.moduleId);
+                    if (!featureModule) return null;
+                    return (
+                      <ModuleFamilyFeatureTreeGroup
+                        key={feature.moduleId}
+                        feature={feature}
+                        module={featureModule}
+                        items={searchedItems.filter(item => item.sourceModuleId === feature.moduleId)}
+                        isOpen={Boolean(expandedFeatures[feature.moduleId])}
+                        isDarkMode={isDarkMode}
+                        selectedFeatureId={selectedFeatureId}
+                        selectedItemId={selectedItemId}
+                        onToggle={() => {
+                          setSelectedItemId(null);
+                          setSelectedFeatureId(feature.moduleId);
+                          setExpandedFeatures(previous => ({
+                            ...previous,
+                            [feature.moduleId]: !previous[feature.moduleId]
+                          }));
+                        }}
+                        onSelectItem={item => {
+                          setSelectedFeatureId(feature.moduleId);
+                          setSelectedItemId(item.id);
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+
+              {!isFamilyView && groups.map(group => (
                 <PublicInfoTreeGroup
                   key={group.id}
                   group={group}
@@ -223,25 +310,259 @@ export default function ModulePublicInfoDialog({
             {selectedItem ? (
               <PublicInfoDetail item={selectedItem} isDarkMode={isDarkMode} />
             ) : (
-              <ModulePublicOverview
-                items={overviewItems}
-                dependencyItems={visibleItems.filter(item => item.groupId === 'dependencies')}
-                docItems={visibleItems.filter(item => item.groupId === 'docs')}
-                isDarkMode={isDarkMode}
-              />
+              <div className="space-y-4">
+                {isFamilyView && (
+                  <ModuleFamilyFeaturePanel
+                    family={familyDefinition}
+                    features={familyFeatures || []}
+                    moduleById={familyModuleById}
+                    isDarkMode={isDarkMode}
+                    isChanging={isChangingFeature}
+                    onToggleFeature={onToggleFeature}
+                  />
+                )}
+                <ModulePublicOverview
+                  items={overviewItems}
+                  dependencyItems={visibleItems.filter(item => item.groupId === 'dependencies')}
+                  docItems={visibleItems.filter(item => item.groupId === 'docs')}
+                  isDarkMode={isDarkMode}
+                />
+              </div>
             )}
           </main>
         </div>
 
         <footer className={`flex items-center justify-between gap-4 border-t px-4 py-2 text-xs ${borderClass} ${subtleClass}`}>
           <span className="truncate">
-            状态：{normalizedSearch ? `已筛选 ${visibleItems.length} 项` : `共 ${allItems.length} 项公开能力`}
+            状态：{normalizedSearch
+              ? `已筛选 ${visibleItems.length} 项`
+              : isFamilyView
+                ? `共 ${familyCommandCount} 条接口命令，另有 ${familySupportingItemCount} 项类型、控件或构建信息`
+                : `共 ${allItems.length} 项公开能力`}
           </span>
-          <span className="shrink-0">{module.isEnabledForProject ? '当前项目已引用' : '当前项目未引用'}</span>
+          <span className="shrink-0">{standardFamilyEnabled ? '标准功能已启用' : isFamilyView ? '标准功能未完整启用' : module.isEnabledForProject ? '当前项目已引用' : '当前项目未引用'}</span>
         </footer>
       </section>
     </div>,
     document.body
+  );
+}
+
+function ModuleFamilyFeatureTreeGroup({
+  feature,
+  module,
+  items,
+  isOpen,
+  isDarkMode,
+  selectedFeatureId,
+  selectedItemId,
+  onToggle,
+  onSelectItem
+}: {
+  feature: ModuleFamilyFeatureDefinition;
+  module: InstalledModule;
+  items: PublicInfoItem[];
+  isOpen: boolean;
+  isDarkMode: boolean;
+  selectedFeatureId: string | null;
+  selectedItemId: string | null;
+  onToggle: () => void;
+  onSelectItem: (item: PublicInfoItem) => void;
+}) {
+  const commandItems = items.filter(item => item.groupId === 'commands');
+  const supportingItems = items.filter(item => item.groupId !== 'commands');
+  const commandCategories = Array.from(commandItems.reduce((groups, item) => {
+    const category = item.commandCategory || '其他接口';
+    const current = groups.get(category) || [];
+    current.push(item);
+    groups.set(category, current);
+    return groups;
+  }, new Map<string, PublicInfoItem[]>()));
+  const officialCount = commandItems.filter(item => item.officialCapability).length;
+  const aggregateCount = commandItems.filter(item => item.capabilityKind === 'aggregate').length;
+  const isSelected = selectedFeatureId === feature.moduleId && selectedItemId === null;
+  return (
+    <div className="min-w-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`flex min-h-9 w-full min-w-0 items-center gap-1.5 rounded px-1.5 py-1.5 text-left text-xs transition-colors ${
+          isSelected
+            ? isDarkMode ? 'bg-sky-500/20 text-sky-100' : 'bg-sky-100 text-sky-900'
+            : isDarkMode ? 'hover:bg-white/5' : 'hover:bg-slate-100'
+        }`}
+        aria-expanded={isOpen}
+      >
+        {isOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-400" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+        <span className={`h-2 w-2 shrink-0 rounded-full ${module.isEnabledForProject ? 'bg-emerald-400' : 'bg-slate-600'}`} aria-hidden="true" />
+        <span className="sr-only">{module.isEnabledForProject ? '已启用' : '未启用'}</span>
+        <span className="min-w-0 flex-1 truncate font-semibold">{feature.label}</span>
+        {feature.tier === 'advanced' && <span className="rounded bg-amber-500/15 px-1 py-0.5 text-[9px] text-amber-300">高级</span>}
+        <span className={isDarkMode ? 'text-slate-500' : 'text-slate-400'}>{officialCount || commandItems.length}</span>
+        {aggregateCount > 0 && <span className="text-[9px] text-slate-500">+{aggregateCount}批量</span>}
+      </button>
+      {isOpen && (
+        <div className="ml-4 border-l border-slate-500/25 pl-1">
+          {commandCategories.length > 1 || commandCategories.some(([category]) => category !== '其他接口')
+            ? commandCategories.map(([category, categoryItems]) => (
+              <ModuleFeatureCommandCategory
+                key={category}
+                category={category}
+                items={categoryItems}
+                isDarkMode={isDarkMode}
+                selectedItemId={selectedItemId}
+                onSelectItem={onSelectItem}
+              />
+            ))
+            : commandItems.slice(0, TREE_ITEM_LIMIT).map(item => (
+              <PublicInfoTreeItem
+                key={item.id}
+                item={item}
+                isDarkMode={isDarkMode}
+                isSelected={selectedItemId === item.id}
+                onSelect={() => onSelectItem(item)}
+              />
+            ))}
+          {commandItems.length === 0 && supportingItems.length === 0 && (
+            <div className="px-2 py-1 text-[11px] text-slate-500">暂无匹配的接口命令</div>
+          )}
+          {commandItems.length > TREE_ITEM_LIMIT && (
+            <div className="px-2 py-1 text-[10px] text-slate-500">仅显示前 {TREE_ITEM_LIMIT} 条命令，请使用搜索缩小范围。</div>
+          )}
+          {supportingItems.length > 0 && (
+            <div className="mt-1 border-t border-slate-500/20 pt-1">
+              <div className="px-2 py-1 text-[9px] font-semibold text-slate-500">其他公开信息</div>
+              {supportingItems.slice(0, 24).map(item => (
+                <PublicInfoTreeItem
+                  key={item.id}
+                  item={item}
+                  isDarkMode={isDarkMode}
+                  isSelected={selectedItemId === item.id}
+                  onSelect={() => onSelectItem(item)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModuleFeatureCommandCategory({
+  category,
+  items,
+  isDarkMode,
+  selectedItemId,
+  onSelectItem
+}: {
+  category: string;
+  items: PublicInfoItem[];
+  isDarkMode: boolean;
+  selectedItemId: string | null;
+  onSelectItem: (item: PublicInfoItem) => void;
+}) {
+  const officialCount = items.filter(item => item.officialCapability).length;
+  const managedCount = items.filter(item => item.capabilityKind === 'managed').length;
+  const replacementCount = items.filter(item => item.capabilityKind === 'secureReplacement').length;
+  return (
+    <details className="group/category min-w-0" open={Boolean(selectedItemId && items.some(item => item.id === selectedItemId)) || undefined}>
+      <summary className={`flex min-h-8 cursor-pointer list-none items-center gap-1.5 rounded px-2 py-1 text-[11px] font-semibold marker:content-none ${isDarkMode ? 'text-slate-300 hover:bg-white/5' : 'text-slate-700 hover:bg-slate-100'}`}>
+        <ChevronRight className="h-3 w-3 shrink-0 text-slate-500 transition-transform group-open/category:rotate-90" />
+        <span className="min-w-0 flex-1 truncate">{category}</span>
+        {managedCount > 0 && <span className="rounded bg-slate-500/15 px-1 py-0.5 text-[9px] text-slate-400">托管 {managedCount}</span>}
+        {replacementCount > 0 && <span className="rounded bg-amber-500/15 px-1 py-0.5 text-[9px] text-amber-300">替代 {replacementCount}</span>}
+        <span className="text-[10px] text-slate-500">{officialCount || items.length}</span>
+      </summary>
+      <div className="ml-3 border-l border-slate-500/20 pl-1">
+        {items.slice(0, TREE_ITEM_LIMIT).map(item => (
+          <PublicInfoTreeItem
+            key={item.id}
+            item={item}
+            isDarkMode={isDarkMode}
+            isSelected={selectedItemId === item.id}
+            onSelect={() => onSelectItem(item)}
+          />
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function ModuleFamilyFeaturePanel({
+  family,
+  features,
+  moduleById,
+  isDarkMode,
+  isChanging,
+  onToggleFeature
+}: {
+  family?: ModuleFamilyDefinition;
+  features: readonly ModuleFamilyFeatureDefinition[];
+  moduleById: ReadonlyMap<string, InstalledModule>;
+  isDarkMode: boolean;
+  isChanging: boolean;
+  onToggleFeature?: (module: InstalledModule) => void;
+}) {
+  const borderClass = isDarkMode ? 'border-[#3c3c3c]' : 'border-slate-200';
+  const subtleClass = isDarkMode ? 'text-slate-400' : 'text-slate-500';
+  return (
+    <section className={`overflow-hidden rounded-md border ${borderClass}`} aria-labelledby="module-family-features-title">
+      <div className={`border-b px-3 py-2 ${borderClass}`}>
+        <h3 id="module-family-features-title" className="text-sm font-semibold">{family?.displayName || '模块'} 功能范围</h3>
+        <p className={`mt-0.5 text-xs leading-5 ${subtleClass}`}>
+          {family?.featurePanelDescription || '标准功能随主模块一键启用；高级功能需要单独确认。'}
+        </p>
+      </div>
+      <div className="grid gap-px bg-white/10 sm:grid-cols-2 xl:grid-cols-4">
+        {features.map(feature => {
+          const featureModule = moduleById.get(feature.moduleId);
+          if (!featureModule) return null;
+          const enabled = Boolean(featureModule.isEnabledForProject);
+          const commands = featureModule.manifest.contributes?.commands || [];
+          const officialCount = commands.filter(command => command.officialCapability).length;
+          const singleCount = commands.filter(command => command.capabilityKind === 'single').length;
+          const managedCount = commands.filter(command => command.capabilityKind === 'managed').length;
+          const replacementCount = commands.filter(command => command.capabilityKind === 'secureReplacement').length;
+          const aggregateCount = commands.filter(command => command.capabilityKind === 'aggregate').length;
+          const commandCount = commands.length;
+          return (
+            <div key={feature.moduleId} className={`min-w-0 p-3 ${isDarkMode ? 'bg-[#242424]' : 'bg-white'}`}>
+              <div className="flex min-w-0 items-center gap-2">
+                <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${enabled ? 'bg-emerald-400' : 'bg-slate-500'}`} aria-hidden="true" />
+                <strong className="min-w-0 flex-1 truncate text-xs">{feature.label}</strong>
+                <span className={`text-[10px] ${subtleClass}`}>{officialCount ? `${officialCount} 官方能力` : `${commandCount} 命令`}</span>
+              </div>
+              <p className={`mt-1 min-h-10 text-[11px] leading-5 ${subtleClass}`}>{feature.description}</p>
+              {officialCount > 0 && (
+                <p className={`mt-1 text-[10px] leading-4 ${subtleClass}`}>
+                  {singleCount} 个单项命令 · {managedCount} 个自动管理 · {replacementCount} 个安全替代 · {aggregateCount} 个批量入口
+                </p>
+              )}
+              {feature.tier === 'advanced' ? (
+                <button
+                  type="button"
+                  disabled={isChanging}
+                  onClick={() => onToggleFeature?.(featureModule)}
+                  className={`mt-2 min-h-9 w-full rounded border px-2 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                    enabled
+                      ? 'border-rose-500/40 text-rose-300 hover:bg-rose-500/10'
+                      : 'border-sky-500/40 text-sky-300 hover:bg-sky-500/10'
+                  }`}
+                  aria-pressed={enabled}
+                >
+                  {enabled ? '禁用高级功能' : '启用高级功能'}
+                </button>
+              ) : (
+                <div className={`mt-2 flex min-h-9 items-center justify-center rounded border px-2 text-[11px] ${enabled ? 'border-emerald-500/30 text-emerald-300' : `${borderClass} ${subtleClass}`}`}>
+                  {enabled ? '已随标准功能启用' : '等待启用标准功能'}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -279,23 +600,13 @@ function PublicInfoTreeGroup({
           {items.length === 0 ? (
             <div className="px-2 py-1 text-[11px] text-slate-500">暂无公开项</div>
           ) : items.map(item => (
-            <button
+            <PublicInfoTreeItem
               key={item.id}
-              type="button"
-              onClick={() => onSelect(item.id)}
-              className={`flex w-full min-w-0 items-start gap-1.5 rounded px-2 py-1 text-left ${
-                selectedItemId === item.id
-                  ? isDarkMode ? 'bg-sky-500/25 text-sky-100' : 'bg-sky-100 text-sky-900'
-                  : isDarkMode ? 'text-slate-300 hover:bg-sky-500/15 hover:text-sky-200' : 'text-slate-700 hover:bg-sky-50 hover:text-sky-800'
-              }`}
-              title={`${item.name}\n${item.declaration}`}
-            >
-              <FileCode className="mt-0.5 h-3 w-3 shrink-0 text-cyan-300" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[11px]">{item.name}</span>
-                <span className="block truncate text-[9px] text-slate-500">{item.declaration}</span>
-              </span>
-            </button>
+              item={item}
+              isDarkMode={isDarkMode}
+              isSelected={selectedItemId === item.id}
+              onSelect={() => onSelect(item.id)}
+            />
           ))}
           {group.items.length > TREE_ITEM_LIMIT && (
             <div className="px-2 py-1 text-[10px] text-slate-500">
@@ -305,6 +616,42 @@ function PublicInfoTreeGroup({
         </div>
       )}
     </div>
+  );
+}
+
+function PublicInfoTreeItem({
+  item,
+  isDarkMode,
+  isSelected,
+  onSelect
+}: {
+  item: PublicInfoItem;
+  isDarkMode: boolean;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`flex w-full min-w-0 items-start gap-1.5 rounded px-2 py-1 text-left ${
+        isSelected
+          ? isDarkMode ? 'bg-sky-500/25 text-sky-100' : 'bg-sky-100 text-sky-900'
+          : isDarkMode ? 'text-slate-300 hover:bg-sky-500/15 hover:text-sky-200' : 'text-slate-700 hover:bg-sky-50 hover:text-sky-800'
+      }`}
+      title={`${item.name}\n${item.declaration}`}
+    >
+      {item.groupId === 'commands'
+        ? <FileCode className="mt-0.5 h-3 w-3 shrink-0 text-cyan-300" />
+        : getGroupIcon(item.groupId)}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[11px]">{item.name}</span>
+        {item.capabilityKind === 'managed' && <span className="mr-1 inline rounded bg-slate-500/15 px-1 text-[8px] text-slate-400">Bridge 自动管理</span>}
+        {item.capabilityKind === 'secureReplacement' && <span className="mr-1 inline rounded bg-amber-500/15 px-1 text-[8px] text-amber-300">安全替代</span>}
+        {item.capabilityKind === 'aggregate' && <span className="mr-1 inline rounded bg-violet-500/15 px-1 text-[8px] text-violet-300">批量入口</span>}
+        <span className="block truncate text-[9px] text-slate-500">{item.declaration}</span>
+      </span>
+    </button>
   );
 }
 
@@ -451,7 +798,8 @@ function collectPublicInfoItems(module: InstalledModule): PublicInfoItem[] {
 
   for (const type of contributes.types || []) {
     items.push(createItem({
-      id: `type:${type.name}`,
+      id: `${manifest.id}:type:${type.name}`,
+      sourceModuleId: manifest.id,
       groupId: 'types',
       kind: '类型/类',
       name: type.name,
@@ -464,14 +812,20 @@ function collectPublicInfoItems(module: InstalledModule): PublicInfoItem[] {
   for (const command of contributes.commands || []) {
     const binding = bindings.find(candidate => candidate.command === command.name);
     items.push(createItem({
-      id: `command:${command.name}:${command.signature}`,
+      id: `${manifest.id}:command:${command.name}:${command.signature}`,
+      sourceModuleId: manifest.id,
       groupId: 'commands',
       kind: '命令接口',
       name: command.name,
       declaration: command.signature,
       description: command.description,
       copyText: command.insertText || command.signature,
+      commandCategory: command.category,
+      capabilityKind: command.capabilityKind,
+      officialCapability: command.officialCapability,
       fields: [
+        ...(command.category ? [{ label: '功能分类', value: command.category }] : []),
+        ...(command.aliases?.length ? [{ label: '官方接口', value: command.aliases.join('、') }] : []),
         ...(command.returnType ? [{ label: '返回值', value: command.returnType }] : []),
         ...(command.returnDescription ? [{ label: '返回值说明', value: command.returnDescription }] : []),
         ...(binding ? [
@@ -487,7 +841,8 @@ function collectPublicInfoItems(module: InstalledModule): PublicInfoItem[] {
   }
   for (const control of contributes.designerControls || []) {
     items.push(createItem({
-      id: `control:${control.type}`,
+      id: `${manifest.id}:control:${control.type}`,
+      sourceModuleId: manifest.id,
       groupId: 'controls',
       kind: '设计器控件',
       name: control.label,
@@ -503,7 +858,8 @@ function collectPublicInfoItems(module: InstalledModule): PublicInfoItem[] {
   }
   for (const snippet of contributes.snippets || []) {
     items.push(createItem({
-      id: `snippet:${snippet.label}`,
+      id: `${manifest.id}:snippet:${snippet.label}`,
+      sourceModuleId: manifest.id,
       groupId: 'snippets',
       kind: '代码片段',
       name: snippet.label,
@@ -514,7 +870,8 @@ function collectPublicInfoItems(module: InstalledModule): PublicInfoItem[] {
   }
   for (const dependency of collectTargetDependencies(manifest.targets || [])) {
     items.push(createItem({
-      id: dependency.id,
+      id: `${manifest.id}:${dependency.id}`,
+      sourceModuleId: manifest.id,
       groupId: 'dependencies',
       kind: 'C++ 依赖',
       name: dependency.label,
@@ -525,7 +882,8 @@ function collectPublicInfoItems(module: InstalledModule): PublicInfoItem[] {
   }
   for (const doc of contributes.docs || []) {
     items.push(createItem({
-      id: `doc:${doc.path}`,
+      id: `${manifest.id}:doc:${doc.path}`,
+      sourceModuleId: manifest.id,
       groupId: 'docs',
       kind: '文档',
       name: doc.title,
@@ -546,7 +904,7 @@ function createItem(item: Omit<PublicInfoItem, 'searchText'>): PublicInfoItem {
       item.declaration,
       item.description,
       ...(item.fields || []).flatMap(field => [field.label, field.value])
-    ].join(' ').toLocaleLowerCase('zh-CN')
+    ].map(normalizeModulePublicInfoSearchText).join(' ')
   };
 }
 

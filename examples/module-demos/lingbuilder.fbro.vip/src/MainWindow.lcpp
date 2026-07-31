@@ -7,30 +7,1068 @@
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
         控件_设置选择项("命令分组选项卡", 0)
-        控件_设置文本("演示状态", "FBro VIP 指纹模块：3 条命令，默认处于安全预览模式。")
+        控件_设置文本("演示状态", "FBro VIP 指纹模块：198 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.fbro.vip")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本("演示状态", "命令 1–3：FBroVIP_应用指纹JSON 至 FBroVIP_清空调用次数；源码内含完整签名、参数、返回值与调用。")
+        控件_设置文本("演示状态", "命令 1–20：FBroVIP_授权状态_是否已配置授权密钥 至 FBroVIP_DOM_查询全部选择器；源码内含完整签名、参数、返回值与调用。")
         如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBroVIP_授权状态_是否已配置授权密钥
+            // [1] FBroVIP_授权状态_是否已配置授权密钥(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT BOOL TEXPORTS FBroBrowser_IsLicenceKey()。返回脱敏授权 JSON，由调用方读取对应字段；不会返回或记录授权 Key。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_授权状态_是否已配置授权密钥("演示输出", "{}")
+            // 命令ID：FBroVIP_授权状态_取授权到期时间
+            // [2] FBroVIP_授权状态_取授权到期时间(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsBrowser_GetExpirationTime()。返回脱敏授权 JSON，由调用方读取对应字段；不会返回或记录授权 Key。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_授权状态_取授权到期时间("演示输出", "{}")
+            // 命令ID：FBroVIP_授权状态_取授权功能
+            // [3] FBroVIP_授权状态_取授权功能(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsBrowser_GetFunctionStr()。返回脱敏授权 JSON，由调用方读取对应字段；不会返回或记录授权 Key。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_授权状态_取授权功能("演示输出", "{}")
+            // 命令ID：FBroVIP_授权状态_取机器码
+            // [4] FBroVIP_授权状态_取机器码(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsBrowser_GetMachineCode()。返回脱敏授权 JSON，由调用方读取对应字段；不会返回或记录授权 Key。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_授权状态_取机器码("演示输出", "{}")
+            // 命令ID：FBroVIP_授权状态_取授权注册时间
+            // [5] FBroVIP_授权状态_取授权注册时间(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsBrowser_GetRegistrationTime()。返回脱敏授权 JSON，由调用方读取对应字段；不会返回或记录授权 Key。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_授权状态_取授权注册时间("演示输出", "{}")
+            // 命令ID：FBroVIP_授权状态_取授权版本
+            // [6] FBroVIP_授权状态_取授权版本(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsBrowser_GetVersionStr()。返回脱敏授权 JSON，由调用方读取对应字段；不会返回或记录授权 Key。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_授权状态_取授权版本("演示输出", "{}")
+            // 命令ID：FBroVIP_Bridge自动管理_取VIP控件状态
+            // [7] FBroVIP_Bridge自动管理_取VIP控件状态(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroVIPControl> TEXPORTS FBroHsBrowser_GetVIPControl(CefRefPtr<CefBrowser> browser)。该项由 LingBuilder FBro Bridge 自动管理，详情命令返回托管说明，不暴露 SDK 对象、CefRefPtr 或生命周期指针。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：internal
+            FBroVIP_Bridge自动管理_取VIP控件状态("演示输出", "{}")
+            // 命令ID：FBroVIP_授权状态_设置授权密钥
+            // [8] FBroVIP_授权状态_设置授权密钥(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsBrowser_SetLicenceKey(const CefString& keydata)。该原始入口涉及授权 Key、代理凭据或初始化时序，已由“浏览器凭据设置中心”或现有安全高级入口替代；不会把 Key 写入 .lcpp。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：internal
+            FBroVIP_授权状态_设置授权密钥("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_禁用
+            // [9] FBroVIP_DOM_禁用(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_disable(CefRefPtr<CefBrowser> browser)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_禁用("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_丢弃搜索结果
+            // [10] FBroVIP_DOM_丢弃搜索结果(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_discardSearchResults(CefRefPtr<CefBrowser> browser, const CefString& searchId)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_丢弃搜索结果("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_启用
+            // [11] FBroVIP_DOM_启用(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_enable(CefRefPtr<CefBrowser> browser, const CefString& includeWhitespace)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_启用("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_聚焦元素
+            // [12] FBroVIP_DOM_聚焦元素(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_focusElement(CefRefPtr<CefBrowser> browser, int nodeId)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_聚焦元素("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_取属性
+            // [13] FBroVIP_DOM_取属性(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_getAttributes(CefRefPtr<CefBrowser> browser, int nodeId, CefRefPtr<FBroHsGeneralResultCallback> object, HANDLE callback, M_POINTER arg)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_取属性("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_取节点容器
+            // [14] FBroVIP_DOM_取节点容器(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_getContainerForNode(CefRefPtr<CefBrowser> browser, int nodeId, const CefString& containerName, CefRefPtr<FBroHsGeneralResultCallback> object, HANDLE callback, M_POINTER arg)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_取节点容器("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_取文档
+            // [15] FBroVIP_DOM_取文档(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_getDocument(CefRefPtr<CefBrowser> browser, int depth, BOOL pierce, CefRefPtr<FBroHsGeneralResultCallback> object, HANDLE callback, M_POINTER arg)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_取文档("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_取外部HTML
+            // [16] FBroVIP_DOM_取外部HTML(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_getOuterHTML(CefRefPtr<CefBrowser> browser, int nodeId, CefRefPtr<FBroHsGeneralResultCallback> object, HANDLE callback, M_POINTER arg)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_取外部HTML("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_取搜索结果
+            // [17] FBroVIP_DOM_取搜索结果(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_getSearchResults(CefRefPtr<CefBrowser> browser, const CefString& searchId, int fromIndex, int toIndex, CefRefPtr<FBroHsGeneralResultCallback> object, HANDLE callback, M_POINTER arg)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_取搜索结果("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_执行搜索
+            // [18] FBroVIP_DOM_执行搜索(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_performSearch(CefRefPtr<CefBrowser> browser, const CefString& query, BOOL includeUserAgentShadowDOM, CefRefPtr<FBroHsGeneralResultCallback> object, HANDLE callback, M_POINTER arg)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_执行搜索("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_查询选择器
+            // [19] FBroVIP_DOM_查询选择器(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_querySelector(CefRefPtr<CefBrowser> browser, int nodeId, const CefString& selector, CefRefPtr<FBroHsGeneralResultCallback> object, HANDLE callback, M_POINTER arg)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_查询选择器("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_查询全部选择器
+            // [20] FBroVIP_DOM_查询全部选择器(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_querySelectorAll(CefRefPtr<CefBrowser> browser, int nodeId, const CefString& selector, CefRefPtr<FBroHsGeneralResultCallback> object, HANDLE callback, M_POINTER arg)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_查询全部选择器("演示输出", "{}")
+        如果结束
+        调试输出("已查看 命令 1–20：FBroVIP_授权状态_是否已配置授权密钥 至 FBroVIP_DOM_查询全部选择器；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本("演示状态", "命令 21–40：FBroVIP_DOM_删除属性 至 FBroVIP_响应过滤_添加实例响应替换；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBroVIP_DOM_删除属性
+            // [21] FBroVIP_DOM_删除属性(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_removeAttribute(CefRefPtr<CefBrowser> browser, int nodeId, const CefString& name)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_删除属性("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_删除节点
+            // [22] FBroVIP_DOM_删除节点(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_removeNode(CefRefPtr<CefBrowser> browser, int nodeId)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_删除节点("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_按文本设置属性
+            // [23] FBroVIP_DOM_按文本设置属性(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_setAttributesAsText(CefRefPtr<CefBrowser> browser, int nodeId, const CefString& text, const CefString& name)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_按文本设置属性("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_设置属性值
+            // [24] FBroVIP_DOM_设置属性值(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_setAttributeValue(CefRefPtr<CefBrowser> browser, int nodeId, const CefString& name, const CefString& value)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_设置属性值("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_设置节点名
+            // [25] FBroVIP_DOM_设置节点名(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_setNodeName(CefRefPtr<CefBrowser> browser, int nodeId, const CefString& name, CefRefPtr<FBroHsGeneralResultCallback> object, HANDLE callback, M_POINTER arg)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_设置节点名("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_设置节点值
+            // [26] FBroVIP_DOM_设置节点值(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_setNodeValue(CefRefPtr<CefBrowser> browser, int nodeId, const CefString& value)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_设置节点值("演示输出", "{}")
+            // 命令ID：FBroVIP_DOM_设置外部HTML
+            // [27] FBroVIP_DOM_设置外部HTML(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsDevToolsDOM_setOuterHTML(CefRefPtr<CefBrowser> browser, int nodeId, const CefString& outerHTML)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM_设置外部HTML("演示输出", "{}")
+            // 命令ID：FBroVIP_授权状态_取在线授权错误
+            // [28] FBroVIP_授权状态_取在线授权错误(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsOnlineLicenseControl_GetError()。返回脱敏授权 JSON，由调用方读取对应字段；不会返回或记录授权 Key。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_授权状态_取在线授权错误("演示输出", "{}")
+            // 命令ID：FBroVIP_授权状态_取开发者工具授权
+            // [29] FBroVIP_授权状态_取开发者工具授权(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsOnlineLicenseControl_GetShowLicenseDevTool()。返回脱敏授权 JSON，由调用方读取对应字段；不会返回或记录授权 Key。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_授权状态_取开发者工具授权("演示输出", "{}")
+            // 命令ID：FBroVIP_授权状态_取授权结束日期
+            // [30] FBroVIP_授权状态_取授权结束日期(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsOnlineLicenseControl_GetShowLicenseEndDate()。返回脱敏授权 JSON，由调用方读取对应字段；不会返回或记录授权 Key。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_授权状态_取授权结束日期("演示输出", "{}")
+            // 命令ID：FBroVIP_授权状态_取授权功能范围
+            // [31] FBroVIP_授权状态_取授权功能范围(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsOnlineLicenseControl_GetShowLicenseFunction()。返回脱敏授权 JSON，由调用方读取对应字段；不会返回或记录授权 Key。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_授权状态_取授权功能范围("演示输出", "{}")
+            // 命令ID：FBroVIP_授权状态_取授权开始日期
+            // [32] FBroVIP_授权状态_取授权开始日期(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsOnlineLicenseControl_GetShowLicenseStartDate()。返回脱敏授权 JSON，由调用方读取对应字段；不会返回或记录授权 Key。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_授权状态_取授权开始日期("演示输出", "{}")
+            // 命令ID：FBroVIP_授权状态_取授权系统版本
+            // [33] FBroVIP_授权状态_取授权系统版本(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsOnlineLicenseControl_GetShowLicenseSysVersion()。返回脱敏授权 JSON，由调用方读取对应字段；不会返回或记录授权 Key。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_授权状态_取授权系统版本("演示输出", "{}")
+            // 命令ID：FBroVIP_授权状态_取授权类型
+            // [34] FBroVIP_授权状态_取授权类型(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsOnlineLicenseControl_GetShowLicenseType()。返回脱敏授权 JSON，由调用方读取对应字段；不会返回或记录授权 Key。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_授权状态_取授权类型("演示输出", "{}")
+            // 命令ID：FBroVIP_授权状态_设置在线授权密钥
+            // [35] FBroVIP_授权状态_设置在线授权密钥(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT BOOL TEXPORTS FBroHsOnlineLicenseControl_SetKey(const CefString& key)。该原始入口涉及授权 Key、代理凭据或初始化时序，已由“浏览器凭据设置中心”或现有安全高级入口替代；不会把 Key 写入 .lcpp。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：internal
+            FBroVIP_授权状态_设置在线授权密钥("演示输出", "{}")
+            // 命令ID：FBroVIP_网络代理_设置启动代理
+            // [36] FBroVIP_网络代理_设置启动代理(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPCommandLine_SetProxy(CefRefPtr<CefCommandLine> cmd, const CefString& url, const CefString& user, const CefString& password)。该原始入口涉及授权 Key、代理凭据或初始化时序，已由“浏览器凭据设置中心”或现有安全高级入口替代；不会把 Key 写入 .lcpp。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：internal
+            FBroVIP_网络代理_设置启动代理("演示输出", "{}")
+            // 命令ID：FBroVIP_DevTools输入_添加消息观察器
+            // [37] FBroVIP_DevTools输入_添加消息观察器(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT BOOL TEXPORTS FBroHsVIPControl_AddDevToolsMessageObserver(CefRefPtr<FBroVIPControl> vipcontrol, CefRefPtr<FBroHsDevToolsMessageObserver> event)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DevTools输入_添加消息观察器("演示输出", "{}")
+            // 命令ID：FBroVIP_资源替换_添加实例资源缓冲替换
+            // [38] FBroVIP_资源替换_添加实例资源缓冲替换(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_AddResourceHandlerChangeData(CefRefPtr<FBroVIPControl> vipcontrol, int find_type, const CefString& url, const CefString& mini_type, CefRefPtr<FBroDoubleString> header_map, void* change_data, size_t data_size)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_资源替换_添加实例资源缓冲替换("演示输出", "{}")
+            // 命令ID：FBroVIP_资源替换_添加实例资源文件替换
+            // [39] FBroVIP_资源替换_添加实例资源文件替换(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_AddResourceHandlerChangeFile(CefRefPtr<FBroVIPControl> vipcontrol, int find_type, const CefString& url, const CefString& mini_type, CefRefPtr<FBroDoubleString> header_map, const CefString& file_path)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_资源替换_添加实例资源文件替换("演示输出", "{}")
+            // 命令ID：FBroVIP_响应过滤_添加实例响应替换
+            // [40] FBroVIP_响应过滤_添加实例响应替换(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_AddResponseFilterChangeData(CefRefPtr<FBroVIPControl> vipcontrol, int find_type, const CefString& url, int change_type, const CefString& key, const CefString& change_data)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_响应过滤_添加实例响应替换("演示输出", "{}")
+        如果结束
+        调试输出("已查看 命令 21–40：FBroVIP_DOM_删除属性 至 FBroVIP_响应过滤_添加实例响应替换；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第03组_被单击()
+        控件_设置文本("演示状态", "命令 41–60：FBroVIP_DevTools输入_添加标签页 至 FBroVIP_DevTools输入_启用Runtime；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBroVIP_DevTools输入_添加标签页
+            // [41] FBroVIP_DevTools输入_添加标签页(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_AddTabAt(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& url, int index, BOOL foreground, CefRefPtr<CefDictionaryValue> extrainfo, CefRefPtr<FBroHsBroEvent> hsbroevent, Event_Disable_Control* eventContrl, const CefString& user_flag)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DevTools输入_添加标签页("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置清空全部数据
+            // [42] FBroVIP_浏览器指纹_设置清空全部数据(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_ClearAllData(CefRefPtr<FBroVIPControl> vipcontrol)。这是独立的安全指纹命令；参数JSON为路径 clearAllData 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置清空全部数据("演示输出", "{}")
+            // 命令ID：FBroVIP_调用统计_清空调用次数
+            // [43] FBroVIP_调用统计_清空调用次数(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_ClearFingerCount(CefRefPtr<FBroVIPControl> vipcontrol)。复用受控 VIP 调用统计接口。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_调用统计_清空调用次数("演示输出", "{}")
+            // 命令ID：FBroVIP_网络代理_设置清空S5认证
+            // [44] FBroVIP_网络代理_设置清空S5认证(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_ClearS5Auth(CefRefPtr<FBroVIPControl> vipcontrol)。这是独立的安全指纹命令；参数JSON为路径 clearS5Auth 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_网络代理_设置清空S5认证("演示输出", "{}")
+            // 命令ID：FBroVIP_DevTools输入_删除消息观察器
+            // [45] FBroVIP_DevTools输入_删除消息观察器(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT BOOL TEXPORTS FBroHsVIPControl_DeleteDevToolsMessageObserver(CefRefPtr<FBroVIPControl> vipcontrol)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DevTools输入_删除消息观察器("演示输出", "{}")
+            // 命令ID：FBroVIP_资源替换_清空实例资源替换
+            // [46] FBroVIP_资源替换_清空实例资源替换(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_DeleteResourceHandlerAllData(CefRefPtr<FBroVIPControl> vipcontrol)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_资源替换_清空实例资源替换("演示输出", "{}")
+            // 命令ID：FBroVIP_资源替换_删除实例资源替换
+            // [47] FBroVIP_资源替换_删除实例资源替换(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_DeleteResourceHandlerChangeData(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& url)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_资源替换_删除实例资源替换("演示输出", "{}")
+            // 命令ID：FBroVIP_响应过滤_清空实例响应替换
+            // [48] FBroVIP_响应过滤_清空实例响应替换(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_DeleteResponseFilterAllData(CefRefPtr<FBroVIPControl> vipcontrol)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_响应过滤_清空实例响应替换("演示输出", "{}")
+            // 命令ID：FBroVIP_响应过滤_删除实例响应替换
+            // [49] FBroVIP_响应过滤_删除实例响应替换(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_DeletResponseFiltereChangeData(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& url)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_响应过滤_删除实例响应替换("演示输出", "{}")
+            // 命令ID：FBroVIP_DevTools输入_发送键盘事件
+            // [50] FBroVIP_DevTools输入_发送键盘事件(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_DispatchKeyEvent(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& type, int modifiers, const CefString& text, const CefString& unmodifiedText, const CefString& keyIdentifier, const CefString& code, const CefString& key, int windowsVirtualKeyCode, int nativeVirtualKeyCode, BOOL autoRepeat, BOOL isKeypad, BOOL isSystemKey, int location)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DevTools输入_发送键盘事件("演示输出", "{}")
+            // 命令ID：FBroVIP_DevTools输入_发送鼠标事件
+            // [51] FBroVIP_DevTools输入_发送鼠标事件(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_DispatchMouseEvent(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& type, int x, int y, int modifiers, const CefString& button, int buttons, int clickCount, int deltaX, int deltaY, const CefString& pointerType)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DevTools输入_发送鼠标事件("演示输出", "{}")
+            // 命令ID：FBroVIP_DevTools输入_发送触摸事件
+            // [52] FBroVIP_DevTools输入_发送触摸事件(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_DispatchTouchEvent(CefRefPtr<FBroVIPControl> vipcontrol, int type, E_DEV_TOUCHPOINT* touchPoints, int modifiers)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DevTools输入_发送触摸事件("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置启用WebSocket客户端钩子
+            // [53] FBroVIP_浏览器指纹_设置启用WebSocket客户端钩子(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_EnableWebsocketClientHook(CefRefPtr<FBroVIPControl> vipcontrol)。这是独立的安全指纹命令；参数JSON为路径 enableWebsocketClientHook 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置启用WebSocket客户端钩子("演示输出", "{}")
+            // 命令ID：FBroVIP_DevTools输入_执行DevTools方法
+            // [54] FBroVIP_DevTools输入_执行DevTools方法(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_ExecuteDevToolsMethod(CefRefPtr<FBroVIPControl> vipcontrol, int message_id, const CefString& method, CefRefPtr<CefDictionaryValue> params)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DevTools输入_执行DevTools方法("演示输出", "{}")
+            // 命令ID：FBroVIP_Bridge自动管理_取所属浏览器状态
+            // [55] FBroVIP_Bridge自动管理_取所属浏览器状态(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<CefBrowser> TEXPORTS FBroHsVIPControl_GetBrowser(CefRefPtr<FBroVIPControl> vipcontrol)。该项由 LingBuilder FBro Bridge 自动管理，详情命令返回托管说明，不暴露 SDK 对象、CefRefPtr 或生命周期指针。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：internal
+            FBroVIP_Bridge自动管理_取所属浏览器状态("演示输出", "{}")
+            // 命令ID：FBroVIP_调用统计_取调用次数
+            // [56] FBroVIP_调用统计_取调用次数(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPControl_GetFingerCount(CefRefPtr<FBroVIPControl> vipcontrol)。复用受控 VIP 调用统计接口。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_调用统计_取调用次数("演示输出", "{}")
+            // 命令ID：FBroVIP_Bridge自动管理_检查VIP控件可用性
+            // [57] FBroVIP_Bridge自动管理_检查VIP控件可用性(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT BOOL TEXPORTS FBroHsVIPControl_IsNULL(CefRefPtr<FBroVIPControl> vipcontrol)。该项由 LingBuilder FBro Bridge 自动管理，详情命令返回托管说明，不暴露 SDK 对象、CefRefPtr 或生命周期指针。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：internal
+            FBroVIP_Bridge自动管理_检查VIP控件可用性("演示输出", "{}")
+            // 命令ID：FBroVIP_屏幕视口_页面截图
+            // [58] FBroVIP_屏幕视口_页面截图(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_PageCaptureScreenshot(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& format, int quality, VIEWPORT_POINT viewport, BOOL fromSurface, BOOL captureBeyondViewport, CefRefPtr<FBroHsGeneralResultCallback> object, HANDLE callback, M_POINTER arg)。该项由 LingBuilder FBro Bridge 自动管理，详情命令返回托管说明，不暴露 SDK 对象、CefRefPtr 或生命周期指针。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：internal
+            FBroVIP_屏幕视口_页面截图("演示输出", "{}")
+            // 命令ID：FBroVIP_DevTools输入_取页面上下文ID
+            // [59] FBroVIP_DevTools输入_取页面上下文ID(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<CefListValue> TEXPORTS FBroHsVIPControl_PageGetContextID(CefRefPtr<FBroVIPControl> vipcontrol)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DevTools输入_取页面上下文ID("演示输出", "{}")
+            // 命令ID：FBroVIP_DevTools输入_启用Runtime
+            // [60] FBroVIP_DevTools输入_启用Runtime(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_RuntimeEnable(CefRefPtr<FBroVIPControl> vipcontrol, BOOL enable)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DevTools输入_启用Runtime("演示输出", "{}")
+        如果结束
+        调试输出("已查看 命令 41–60：FBroVIP_DevTools输入_添加标签页 至 FBroVIP_DevTools输入_启用Runtime；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第04组_被单击()
+        控件_设置文本("演示状态", "命令 61–80：FBroVIP_DevTools输入_执行表达式 至 FBroVIP_内核反检测_设置禁用ConsoleTime；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBroVIP_DevTools输入_执行表达式
+            // [61] FBroVIP_DevTools输入_执行表达式(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_RuntimeEvaluate(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& expression, BOOL includeCommandLineAPI, int contextId, BOOL silent, BOOL userGesture, int timeout, BOOL disableBreaks, BOOL replMode, CefRefPtr<FBroHsGeneralResultCallback> object, HANDLE callback, M_POINTER arg)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DevTools输入_执行表达式("演示输出", "{}")
+            // 命令ID：FBroVIP_DevTools输入_按框架执行表达式
+            // [62] FBroVIP_DevTools输入_按框架执行表达式(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_RuntimeEvaluate_FrameID(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& expression, BOOL includeCommandLineAPI, int type, int frameNum, const CefString& frameId, BOOL silent, BOOL userGesture, int timeout, BOOL disableBreaks, BOOL replMode, CefRefPtr<FBroHsGeneralResultCallback> object, HANDLE callback, M_POINTER arg)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DevTools输入_按框架执行表达式("演示输出", "{}")
+            // 命令ID：FBroVIP_DevTools输入_发送DevTools消息
+            // [63] FBroVIP_DevTools输入_发送DevTools消息(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SendDevToolsMessage(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& message)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DevTools输入_发送DevTools消息("演示输出", "{}")
+            // 命令ID：FBroVIP_Canvas字体音频指纹_设置音频固定指纹
+            // [64] FBroVIP_Canvas字体音频指纹_设置音频固定指纹(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetAudioFingerPrint_constant(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 fingerprints.audio.constant 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_Canvas字体音频指纹_设置音频固定指纹("演示输出", "{}")
+            // 命令ID：FBroVIP_Canvas字体音频指纹_设置音频随机指纹
+            // [65] FBroVIP_Canvas字体音频指纹_设置音频随机指纹(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPControl_SetAudioFingerPrint_random(CefRefPtr<FBroVIPControl> vipcontrol, int minipoint, int maxpoint, int srand)。这是独立的安全指纹命令；参数JSON为路径 fingerprints.audio 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_Canvas字体音频指纹_设置音频随机指纹("演示输出", "{}")
+            // 命令ID：FBroVIP_Canvas字体音频指纹_设置Canvas固定指纹
+            // [66] FBroVIP_Canvas字体音频指纹_设置Canvas固定指纹(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetCanvasFingerPrint_constant(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 fingerprints.canvas.constant 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_Canvas字体音频指纹_设置Canvas固定指纹("演示输出", "{}")
+            // 命令ID：FBroVIP_Canvas字体音频指纹_设置Canvas随机指纹
+            // [67] FBroVIP_Canvas字体音频指纹_设置Canvas随机指纹(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPControl_SetCanvasFingerPrint_random(CefRefPtr<FBroVIPControl> vipcontrol, int minipoint, int maxpoint, int srand)。这是独立的安全指纹命令；参数JSON为路径 fingerprints.canvas 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_Canvas字体音频指纹_设置Canvas随机指纹("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置CSS内核
+            // [68] FBroVIP_内核反检测_设置CSS内核(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetCSSKernel(CefRefPtr<FBroVIPControl> vipcontrol, int kernel)。这是独立的安全指纹命令；参数JSON为路径 cssKernel 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置CSS内核("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置禁用ConsoleAssert
+            // [69] FBroVIP_内核反检测_设置禁用ConsoleAssert(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableConsoleAssert(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableConsoleAssert 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用ConsoleAssert("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置禁用ConsoleClear
+            // [70] FBroVIP_内核反检测_设置禁用ConsoleClear(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableConsoleClear(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableConsoleClear 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用ConsoleClear("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置禁用ConsoleCount
+            // [71] FBroVIP_内核反检测_设置禁用ConsoleCount(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableConsoleCount(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableConsoleCount 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用ConsoleCount("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置禁用ConsoleDebug
+            // [72] FBroVIP_内核反检测_设置禁用ConsoleDebug(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableConsoleDebug(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableConsoleDebug 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用ConsoleDebug("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置禁用ConsoleDir
+            // [73] FBroVIP_内核反检测_设置禁用ConsoleDir(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableConsoleDir(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableConsoleDir 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用ConsoleDir("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置禁用ConsoleError
+            // [74] FBroVIP_内核反检测_设置禁用ConsoleError(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableConsoleError(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableConsoleError 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用ConsoleError("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置禁用ConsoleGroup
+            // [75] FBroVIP_内核反检测_设置禁用ConsoleGroup(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableConsoleGroup(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableConsoleGroup 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用ConsoleGroup("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置禁用ConsoleInfo
+            // [76] FBroVIP_内核反检测_设置禁用ConsoleInfo(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableConsoleInfo(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableConsoleInfo 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用ConsoleInfo("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置禁用ConsoleLog
+            // [77] FBroVIP_内核反检测_设置禁用ConsoleLog(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableConsoleLog(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableConsoleLog 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用ConsoleLog("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置禁用ConsoleProfile
+            // [78] FBroVIP_内核反检测_设置禁用ConsoleProfile(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableConsoleProfile(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableConsoleProfile 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用ConsoleProfile("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置禁用ConsoleTable
+            // [79] FBroVIP_内核反检测_设置禁用ConsoleTable(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableConsoleTable(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableConsoleTable 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用ConsoleTable("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置禁用ConsoleTime
+            // [80] FBroVIP_内核反检测_设置禁用ConsoleTime(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableConsoleTime(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableConsoleTime 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用ConsoleTime("演示输出", "{}")
+        如果结束
+        调试输出("已查看 命令 61–80：FBroVIP_DevTools输入_执行表达式 至 FBroVIP_内核反检测_设置禁用ConsoleTime；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第05组_被单击()
+        控件_设置文本("演示状态", "命令 81–100：FBroVIP_内核反检测_设置禁用ConsoleTrace 至 FBroVIP_电池_设置电池电量；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBroVIP_内核反检测_设置禁用ConsoleTrace
+            // [81] FBroVIP_内核反检测_设置禁用ConsoleTrace(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableConsoleTrace(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableConsoleTrace 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用ConsoleTrace("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置禁用ConsoleWarn
+            // [82] FBroVIP_内核反检测_设置禁用ConsoleWarn(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableConsoleWarn(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableConsoleWarn 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用ConsoleWarn("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置禁用调试器
+            // [83] FBroVIP_内核反检测_设置禁用调试器(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisableDebugger(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 disableDebugger 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置禁用调试器("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置性能检查范围
+            // [84] FBroVIP_内核反检测_设置性能检查范围(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetDisablePerformanceCheck(CefRefPtr<FBroVIPControl> vipcontrol, BOOL disable, double min, double max)。这是独立的安全指纹命令；参数JSON为路径 performanceCheck 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置性能检查范围("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置鼠标模拟触摸事件
+            // [85] FBroVIP_内核反检测_设置鼠标模拟触摸事件(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetEmitTouchEventsForMouse(CefRefPtr<FBroVIPControl> vipcontrol, BOOL enable, int configuration)。这是独立的安全指纹命令；参数JSON为路径 emitTouchEventsForMouse 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置鼠标模拟触摸事件("演示输出", "{}")
+            // 命令ID：FBroVIP_设备插件_设置插件指纹
+            // [86] FBroVIP_设备插件_设置插件指纹(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetPlugins(CefRefPtr<FBroVIPControl> vipcontrol, int changetype, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 plugins 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_设备插件_设置插件指纹("演示输出", "{}")
+            // 命令ID：FBroVIP_网络代理_设置S5代理认证
+            // [87] FBroVIP_网络代理_设置S5代理认证(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetS5Auth(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& url, const CefString& username, const CefString& password, BOOL closeMsg)。这是独立的安全指纹命令；参数JSON为路径 s5Auth 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_网络代理_设置S5代理认证("演示输出", "{}")
+            // 命令ID：FBroVIP_网络代理_设置SSL密码套件
+            // [88] FBroVIP_网络代理_设置SSL密码套件(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetSSLCipher(CefRefPtr<FBroVIPControl> vipcontrol, int min_version, int max_version, const CefString& cipher_command)。这是独立的安全指纹命令；参数JSON为路径 sslCipher 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_网络代理_设置SSL密码套件("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置触摸事件模拟
+            // [89] FBroVIP_内核反检测_设置触摸事件模拟(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetTouchEventEmulationEnabled(CefRefPtr<FBroVIPControl> vipcontrol, BOOL enabled, int maxTouchPoints)。这是独立的安全指纹命令；参数JSON为路径 touchEmulation 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置触摸事件模拟("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置V8内核
+            // [90] FBroVIP_内核反检测_设置V8内核(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetV8Kernel(CefRefPtr<FBroVIPControl> vipcontrol, int kernel)。这是独立的安全指纹命令；参数JSON为路径 v8Kernel 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置V8内核("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置接受语言
+            // [91] FBroVIP_浏览器指纹_设置接受语言(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAcceptlanguages(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 acceptLanguages 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置接受语言("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置应用代码名
+            // [92] FBroVIP_浏览器指纹_设置应用代码名(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAppCodeName(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 appCodeName 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置应用代码名("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置应用名
+            // [93] FBroVIP_浏览器指纹_设置应用名(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAppName(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 appName 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置应用名("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置应用版本
+            // [94] FBroVIP_浏览器指纹_设置应用版本(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAppVersion(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 appVersion 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置应用版本("演示输出", "{}")
+            // 命令ID：FBroVIP_设备插件_设置音频输入设备
+            // [95] FBroVIP_设备插件_设置音频输入设备(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAudioInput(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 audioInput 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_设备插件_设置音频输入设备("演示输出", "{}")
+            // 命令ID：FBroVIP_设备插件_设置音频输出设备
+            // [96] FBroVIP_设备插件_设置音频输出设备(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirAudioOutput(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 audioOutput 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_设备插件_设置音频输出设备("演示输出", "{}")
+            // 命令ID：FBroVIP_电池_设置电池充电状态
+            // [97] FBroVIP_电池_设置电池充电状态(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirBatteryManagerCharging(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 battery.charging 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_电池_设置电池充电状态("演示输出", "{}")
+            // 命令ID：FBroVIP_电池_设置电池充电时间
+            // [98] FBroVIP_电池_设置电池充电时间(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirBatteryManagerChargingTime(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 battery.chargingTime 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_电池_设置电池充电时间("演示输出", "{}")
+            // 命令ID：FBroVIP_电池_设置电池放电时间
+            // [99] FBroVIP_电池_设置电池放电时间(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirBatteryManagerDischargingTime(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 battery.dischargingTime 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_电池_设置电池放电时间("演示输出", "{}")
+            // 命令ID：FBroVIP_电池_设置电池电量
+            // [100] FBroVIP_电池_设置电池电量(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirBatteryManagerLevel(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 battery.level 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_电池_设置电池电量("演示输出", "{}")
+        如果结束
+        调试输出("已查看 命令 81–100：FBroVIP_内核反检测_设置禁用ConsoleTrace 至 FBroVIP_电池_设置电池电量；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第06组_被单击()
+        控件_设置文本("演示状态", "命令 101–120：FBroVIP_Canvas字体音频指纹_设置Canvas字体指纹 至 FBroVIP_屏幕视口_设置屏幕方向；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBroVIP_Canvas字体音频指纹_设置Canvas字体指纹
+            // [101] FBroVIP_Canvas字体音频指纹_设置Canvas字体指纹(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirCanvas2DFontFingerprint(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 canvas2dFontFingerprint 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_Canvas字体音频指纹_设置Canvas字体指纹("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置Cookie启用状态
+            // [102] FBroVIP_浏览器指纹_设置Cookie启用状态(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirCookieEnabled(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 cookieEnabled 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置Cookie启用状态("演示输出", "{}")
+            // 命令ID：FBroVIP_Canvas字体音频指纹_设置CSS字体指纹
+            // [103] FBroVIP_Canvas字体音频指纹_设置CSS字体指纹(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirCSSFontFingerprint(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata, int x, int y)。这是独立的安全指纹命令；参数JSON为路径 cssFontFingerprint 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_Canvas字体音频指纹_设置CSS字体指纹("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置设备内存
+            // [104] FBroVIP_浏览器指纹_设置设备内存(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirDeviceMemory(CefRefPtr<FBroVIPControl> vipcontrol, int indata)。这是独立的安全指纹命令；参数JSON为路径 deviceMemory 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置设备内存("演示输出", "{}")
+            // 命令ID：FBroVIP_屏幕视口_设置设备像素比
+            // [105] FBroVIP_屏幕视口_设置设备像素比(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirDevicePixelRatio(CefRefPtr<FBroVIPControl> vipcontrol, double indata)。这是独立的安全指纹命令；参数JSON为路径 devicePixelRatio 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_屏幕视口_设置设备像素比("演示输出", "{}")
+            // 命令ID：FBroVIP_GPUWebGL_设置GPU架构
+            // [106] FBroVIP_GPUWebGL_设置GPU架构(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUArchitecture(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 gpuArchitecture 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_GPUWebGL_设置GPU架构("演示输出", "{}")
+            // 命令ID：FBroVIP_GPUWebGL_设置GPU描述
+            // [107] FBroVIP_GPUWebGL_设置GPU描述(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUDescription(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 gpuDescription 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_GPUWebGL_设置GPU描述("演示输出", "{}")
+            // 命令ID：FBroVIP_GPUWebGL_设置GPU设备
+            // [108] FBroVIP_GPUWebGL_设置GPU设备(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUDevice(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 gpuDevice 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_GPUWebGL_设置GPU设备("演示输出", "{}")
+            // 命令ID：FBroVIP_GPUWebGL_设置GPU限制
+            // [109] FBroVIP_GPUWebGL_设置GPU限制(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPULimits(CefRefPtr<FBroVIPControl> vipcontrol, int type, int64_t indata)。这是独立的安全指纹命令；参数JSON为路径 gpuLimits 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_GPUWebGL_设置GPU限制("演示输出", "{}")
+            // 命令ID：FBroVIP_GPUWebGL_设置GPU子组最大值
+            // [110] FBroVIP_GPUWebGL_设置GPU子组最大值(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUSubgroupMaxSize(CefRefPtr<FBroVIPControl> vipcontrol, unsigned indata)。这是独立的安全指纹命令；参数JSON为路径 gpuSubgroupMaxSize 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_GPUWebGL_设置GPU子组最大值("演示输出", "{}")
+            // 命令ID：FBroVIP_GPUWebGL_设置GPU子组最小值
+            // [111] FBroVIP_GPUWebGL_设置GPU子组最小值(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUSubgroupMinSize(CefRefPtr<FBroVIPControl> vipcontrol, unsigned indata)。这是独立的安全指纹命令；参数JSON为路径 gpuSubgroupMinSize 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_GPUWebGL_设置GPU子组最小值("演示输出", "{}")
+            // 命令ID：FBroVIP_GPUWebGL_设置GPU厂商
+            // [112] FBroVIP_GPUWebGL_设置GPU厂商(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirGPUVendor(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 gpuVendor 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_GPUWebGL_设置GPU厂商("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置硬件并发数
+            // [113] FBroVIP_浏览器指纹_设置硬件并发数(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirHardwareConcurrency(CefRefPtr<FBroVIPControl> vipcontrol, int indata)。这是独立的安全指纹命令；参数JSON为路径 hardwareConcurrency 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置硬件并发数("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置可信事件标记
+            // [114] FBroVIP_内核反检测_设置可信事件标记(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirisTrusted(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 isTrusted 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置可信事件标记("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置Java启用状态
+            // [115] FBroVIP_浏览器指纹_设置Java启用状态(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirJavaEnabled(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 javaEnabled 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置Java启用状态("演示输出", "{}")
+            // 命令ID：FBroVIP_内核反检测_设置浏览器内核
+            // [116] FBroVIP_内核反检测_设置浏览器内核(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirKernel(CefRefPtr<FBroVIPControl> vipcontrol, int kernel)。这是独立的安全指纹命令；参数JSON为路径 kernel 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置浏览器内核("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置语言列表
+            // [117] FBroVIP_浏览器指纹_设置语言列表(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirLanguages(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 languages 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置语言列表("演示输出", "{}")
+            // 命令ID：FBroVIP_位置时区_设置地理位置
+            // [118] FBroVIP_位置时区_设置地理位置(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirLongitudeAndLatitude(CefRefPtr<FBroVIPControl> vipcontrol, double longitude, double latitude, double altitude, double accuracy, double altitude_accuracy, double heading, double speed)。这是独立的安全指纹命令；参数JSON为路径 geolocation 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_位置时区_设置地理位置("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置在线状态
+            // [119] FBroVIP_浏览器指纹_设置在线状态(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirOnLine(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 online 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置在线状态("演示输出", "{}")
+            // 命令ID：FBroVIP_屏幕视口_设置屏幕方向
+            // [120] FBroVIP_屏幕视口_设置屏幕方向(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirOrientation(CefRefPtr<FBroVIPControl> vipcontrol, int orientation, int orientation_type)。这是独立的安全指纹命令；参数JSON为路径 orientation 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_屏幕视口_设置屏幕方向("演示输出", "{}")
+        如果结束
+        调试输出("已查看 命令 101–120：FBroVIP_Canvas字体音频指纹_设置Canvas字体指纹 至 FBroVIP_屏幕视口_设置屏幕方向；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第07组_被单击()
+        控件_设置文本("演示状态", "命令 121–140：FBroVIP_浏览器指纹_设置平台 至 FBroVIP_网络代理_设置WebRTC地址；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBroVIP_浏览器指纹_设置平台
+            // [121] FBroVIP_浏览器指纹_设置平台(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirPlatform(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 platform 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置平台("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置产品名
+            // [122] FBroVIP_浏览器指纹_设置产品名(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirProduct(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 product 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置产品名("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置产品子版本
+            // [123] FBroVIP_浏览器指纹_设置产品子版本(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirProductSub(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 productSub 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置产品子版本("演示输出", "{}")
+            // 命令ID：FBroVIP_Canvas字体音频指纹_设置矩形指纹
+            // [124] FBroVIP_Canvas字体音频指纹_设置矩形指纹(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirRectFingerprint(CefRefPtr<FBroVIPControl> vipcontrol, int x, int y, int w, int h)。这是独立的安全指纹命令；参数JSON为路径 rectFingerprint 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_Canvas字体音频指纹_设置矩形指纹("演示输出", "{}")
+            // 命令ID：FBroVIP_屏幕视口_设置可用屏幕高度与宽度
+            // [125] FBroVIP_屏幕视口_设置可用屏幕高度与宽度(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreenavailHeightAndWidth(CefRefPtr<FBroVIPControl> vipcontrol, int H, int W)。这是独立的安全指纹命令；参数JSON为该接口对应的完整指纹配置补丁，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_屏幕视口_设置可用屏幕高度与宽度("演示输出", "{}")
+            // 命令ID：FBroVIP_屏幕视口_设置屏幕颜色深度
+            // [126] FBroVIP_屏幕视口_设置屏幕颜色深度(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreencolorDepth(CefRefPtr<FBroVIPControl> vipcontrol, int indata)。这是独立的安全指纹命令；参数JSON为路径 screenColorDepth 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_屏幕视口_设置屏幕颜色深度("演示输出", "{}")
+            // 命令ID：FBroVIP_屏幕视口_设置屏幕高度与宽度
+            // [127] FBroVIP_屏幕视口_设置屏幕高度与宽度(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreenHeightAndWidth(CefRefPtr<FBroVIPControl> vipcontrol, int H, int W)。这是独立的安全指纹命令；参数JSON为该接口对应的完整指纹配置补丁，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_屏幕视口_设置屏幕高度与宽度("演示输出", "{}")
+            // 命令ID：FBroVIP_屏幕视口_设置屏幕像素深度
+            // [128] FBroVIP_屏幕视口_设置屏幕像素深度(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreenpixelDepth(CefRefPtr<FBroVIPControl> vipcontrol, int indata)。这是独立的安全指纹命令；参数JSON为路径 screenPixelDepth 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_屏幕视口_设置屏幕像素深度("演示输出", "{}")
+            // 命令ID：FBroVIP_屏幕视口_设置屏幕坐标
+            // [129] FBroVIP_屏幕视口_设置屏幕坐标(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirScreenXAndY(CefRefPtr<FBroVIPControl> vipcontrol, int X, int Y)。这是独立的安全指纹命令；参数JSON为该接口对应的完整指纹配置补丁，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_屏幕视口_设置屏幕坐标("演示输出", "{}")
+            // 命令ID：FBroVIP_设备插件_设置语音合成声音
+            // [130] FBroVIP_设备插件_设置语音合成声音(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirSpeechSynthesisVoices(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 speechSynthesisVoices 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_设备插件_设置语音合成声音("演示输出", "{}")
+            // 命令ID：FBroVIP_位置时区_设置时区
+            // [131] FBroVIP_位置时区_设置时区(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirTimeZone(CefRefPtr<FBroVIPControl> vipcontrol, int timezonehour, int timezonemin, const CefString& timezonename, const CefString& standardtimezonename)。这是独立的安全指纹命令；参数JSON为路径 timeZone 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_位置时区_设置时区("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgentData_设置UserAgentData
+            // [132] FBroVIP_UserAgentData_设置UserAgentData(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirUserAgent(CefRefPtr<FBroVIPControl> vipcontrol, CefRefPtr<FBroVIPUserAgentData> userAgentData)。这是独立的安全指纹命令；参数JSON为路径 userAgent 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgentData_设置UserAgentData("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置厂商
+            // [133] FBroVIP_浏览器指纹_设置厂商(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirVendor(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 vendor 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置厂商("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置厂商子版本
+            // [134] FBroVIP_浏览器指纹_设置厂商子版本(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirVendorSub(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 vendorSub 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置厂商子版本("演示输出", "{}")
+            // 命令ID：FBroVIP_设备插件_设置视频输入设备
+            // [135] FBroVIP_设备插件_设置视频输入设备(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirVideoInput(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 videoInput 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_设备插件_设置视频输入设备("演示输出", "{}")
+            // 命令ID：FBroVIP_屏幕视口_设置视口
+            // [136] FBroVIP_屏幕视口_设置视口(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirViewport(CefRefPtr<FBroVIPControl> vipcontrol, int x, int y, int w, int h)。这是独立的安全指纹命令；参数JSON为路径 viewport 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_屏幕视口_设置视口("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器指纹_设置WebDriver标记
+            // [137] FBroVIP_浏览器指纹_设置WebDriver标记(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirWebdriver(CefRefPtr<FBroVIPControl> vipcontrol, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 webdriver 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_浏览器指纹_设置WebDriver标记("演示输出", "{}")
+            // 命令ID：FBroVIP_GPUWebGL_设置WebGL渲染器
+            // [138] FBroVIP_GPUWebGL_设置WebGL渲染器(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirWebglrenderer(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 webglRenderer 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_GPUWebGL_设置WebGL渲染器("演示输出", "{}")
+            // 命令ID：FBroVIP_GPUWebGL_设置WebGL厂商
+            // [139] FBroVIP_GPUWebGL_设置WebGL厂商(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirWebglvendor(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 webglVendor 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_GPUWebGL_设置WebGL厂商("演示输出", "{}")
+            // 命令ID：FBroVIP_网络代理_设置WebRTC地址
+            // [140] FBroVIP_网络代理_设置WebRTC地址(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetVirWebrtcIP(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& publicip, const CefString& localip, const CefString& host,BOOL disable)。这是独立的安全指纹命令；参数JSON为路径 webrtc 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_网络代理_设置WebRTC地址("演示输出", "{}")
+        如果结束
+        调试输出("已查看 命令 121–140：FBroVIP_浏览器指纹_设置平台 至 FBroVIP_网络代理_设置WebRTC地址；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第08组_被单击()
+        控件_设置文本("演示状态", "命令 141–160：FBroVIP_内核反检测_设置Web功能内核 至 FBroVIP_UserAgent_取架构；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBroVIP_内核反检测_设置Web功能内核
+            // [141] FBroVIP_内核反检测_设置Web功能内核(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetWebFeatureKernel(CefRefPtr<FBroVIPControl> vipcontrol, int kernel)。这是独立的安全指纹命令；参数JSON为路径 webFeatureKernel 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_内核反检测_设置Web功能内核("演示输出", "{}")
+            // 命令ID：FBroVIP_GPUWebGL_设置WebGL固定指纹
+            // [142] FBroVIP_GPUWebGL_设置WebGL固定指纹(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPControl_SetWebGLFingerPrint_constant(CefRefPtr<FBroVIPControl> vipcontrol, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 fingerprints.webgl.constant 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_GPUWebGL_设置WebGL固定指纹("演示输出", "{}")
+            // 命令ID：FBroVIP_GPUWebGL_设置WebGL随机指纹
+            // [143] FBroVIP_GPUWebGL_设置WebGL随机指纹(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPControl_SetWebGLFingerPrint_random(CefRefPtr<FBroVIPControl> vipcontrol, int minipoint, int maxpoint, int srand)。这是独立的安全指纹命令；参数JSON为路径 fingerprints.webgl 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_GPUWebGL_设置WebGL随机指纹("演示输出", "{}")
+            // 命令ID：FBroVIP_网络代理_设置全局S5代理认证
+            // [144] FBroVIP_网络代理_设置全局S5代理认证(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPGlobal_SetS5Auth(const CefString& username, const CefString& password, BOOL closeMsg)。这是独立的安全指纹命令；参数JSON为路径 s5Auth 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_网络代理_设置全局S5代理认证("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器扩展_启用扩展增强
+            // [145] FBroVIP_浏览器扩展_启用扩展增强(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPRequestContext_EnableExtensionPlus()。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_浏览器扩展_启用扩展增强("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器扩展_取扩展名称
+            // [146] FBroVIP_浏览器扩展_取扩展名称(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPRequestContext_GetExtensionName(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_浏览器扩展_取扩展名称("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器扩展_取扩展路径
+            // [147] FBroVIP_浏览器扩展_取扩展路径(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPRequestContext_GetExtensionPath(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_浏览器扩展_取扩展路径("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器扩展_取扩展地址
+            // [148] FBroVIP_浏览器扩展_取扩展地址(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPRequestContext_GetExtensionURL(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_浏览器扩展_取扩展地址("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器扩展_安装CRX
+            // [149] FBroVIP_浏览器扩展_安装CRX(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPRequestContext_InstallCrx(CefRefPtr<CefRequestContext> requestContext, const CefString& filePath)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_浏览器扩展_安装CRX("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器扩展_加载扩展目录
+            // [150] FBroVIP_浏览器扩展_加载扩展目录(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPRequestContext_LoadExtension(CefRefPtr<CefRequestContext> requestContext, const CefString& path)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_浏览器扩展_加载扩展目录("演示输出", "{}")
+            // 命令ID：FBroVIP_浏览器扩展_卸载扩展
+            // [151] FBroVIP_浏览器扩展_卸载扩展(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPRequestContext_UnstallExtension(CefRefPtr<CefRequestContext> requestContext, const CefString& extensionID)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_浏览器扩展_卸载扩展("演示输出", "{}")
+            // 命令ID：FBroVIP_资源替换_添加缓冲替换
+            // [152] FBroVIP_资源替换_添加缓冲替换(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResourceHandler_AddChangeData(int find_type, const CefString& url, const CefString& mini_type, CefRefPtr<FBroDoubleString> header_map, void* change_data, size_t data_size)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_资源替换_添加缓冲替换("演示输出", "{}")
+            // 命令ID：FBroVIP_资源替换_添加文件替换
+            // [153] FBroVIP_资源替换_添加文件替换(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResourceHandler_AddChangeFile(int find_type, const CefString& url, const CefString& mini_type, CefRefPtr<FBroDoubleString> header_map, const CefString& file_path)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_资源替换_添加文件替换("演示输出", "{}")
+            // 命令ID：FBroVIP_资源替换_清空替换规则
+            // [154] FBroVIP_资源替换_清空替换规则(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResourceHandler_DeleteAllData()。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_资源替换_清空替换规则("演示输出", "{}")
+            // 命令ID：FBroVIP_资源替换_删除替换规则
+            // [155] FBroVIP_资源替换_删除替换规则(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResourceHandler_DeleteChangeData(const CefString& url)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_资源替换_删除替换规则("演示输出", "{}")
+            // 命令ID：FBroVIP_响应过滤_添加缓冲替换
+            // [156] FBroVIP_响应过滤_添加缓冲替换(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResponseFilter_AddChangeData(int find_type, const CefString& url, int change_type, const CefString& key, const CefString& change_data)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_响应过滤_添加缓冲替换("演示输出", "{}")
+            // 命令ID：FBroVIP_响应过滤_清空替换规则
+            // [157] FBroVIP_响应过滤_清空替换规则(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResponseFilter_DeleteAllData()。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_响应过滤_清空替换规则("演示输出", "{}")
+            // 命令ID：FBroVIP_响应过滤_删除替换规则
+            // [158] FBroVIP_响应过滤_删除替换规则(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPResponseFilter_DeleteChangeData(const CefString& url)。命令名已固定官方动作，调用时只需传参数JSON，不再手工填写分发命令字符串；异步结果使用 FBro任务_* 读取。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_响应过滤_删除替换规则("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgentData_创建UserAgentData
+            // [159] FBroVIP_UserAgentData_创建UserAgentData(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroVIPUserAgentData> TEXPORTS FBroHsVIPUserAgentData_Create()。该项由 LingBuilder FBro Bridge 自动管理，详情命令返回托管说明，不暴露 SDK 对象、CefRefPtr 或生命周期指针。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：internal
+            FBroVIP_UserAgentData_创建UserAgentData("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_取架构
+            // [160] FBroVIP_UserAgent_取架构(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetArchitecture(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_UserAgent_取架构("演示输出", "{}")
+        如果结束
+        调试输出("已查看 命令 141–160：FBroVIP_内核反检测_设置Web功能内核 至 FBroVIP_UserAgent_取架构；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第09组_被单击()
+        控件_设置文本("演示状态", "命令 161–180：FBroVIP_UserAgent_取系统位数 至 FBroVIP_UserAgent_设置主接受语言；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBroVIP_UserAgent_取系统位数
+            // [161] FBroVIP_UserAgent_取系统位数(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetBitness(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_UserAgent_取系统位数("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_取品牌列表
+            // [162] FBroVIP_UserAgent_取品牌列表(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroDoubleString> TEXPORTS FBroHsVIPUserAgentData_GetBrands(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_UserAgent_取品牌列表("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_取设备形态列表
+            // [163] FBroVIP_UserAgent_取设备形态列表(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroCefStringList> TEXPORTS FBroHsVIPUserAgentData_GetFormFactors(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_UserAgent_取设备形态列表("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_取完整版本
+            // [164] FBroVIP_UserAgent_取完整版本(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetFullVersion(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_UserAgent_取完整版本("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_取完整版本列表
+            // [165] FBroVIP_UserAgent_取完整版本列表(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroDoubleString> TEXPORTS FBroHsVIPUserAgentData_GetFullVersionList(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_UserAgent_取完整版本列表("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_取主接受语言
+            // [166] FBroVIP_UserAgent_取主接受语言(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetMainAcceptLanguage(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_UserAgent_取主接受语言("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_取主平台
+            // [167] FBroVIP_UserAgent_取主平台(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetMainPlatform(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_UserAgent_取主平台("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_取主UserAgent
+            // [168] FBroVIP_UserAgent_取主UserAgent(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetMainUserAgent(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_UserAgent_取主UserAgent("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_取移动设备标记
+            // [169] FBroVIP_UserAgent_取移动设备标记(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT BOOL TEXPORTS FBroHsVIPUserAgentData_GetMobile(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_UserAgent_取移动设备标记("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_取设备型号
+            // [170] FBroVIP_UserAgent_取设备型号(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetModel(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_UserAgent_取设备型号("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_取平台
+            // [171] FBroVIP_UserAgent_取平台(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetPlatform(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_UserAgent_取平台("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_取平台版本
+            // [172] FBroVIP_UserAgent_取平台版本(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT CefRefPtr<FBroString> TEXPORTS FBroHsVIPUserAgentData_GetPlatformVersion(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_UserAgent_取平台版本("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_取WOW64标记
+            // [173] FBroVIP_UserAgent_取WOW64标记(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT BOOL TEXPORTS FBroHsVIPUserAgentData_GetWow64(CefRefPtr<FBroVIPUserAgentData> userAgentData)。返回最近一次已应用配置 JSON，可直接读取该 User-Agent Data 字段；不返回 SDK 对象。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：advanced
+            FBroVIP_UserAgent_取WOW64标记("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_设置架构
+            // [174] FBroVIP_UserAgent_设置架构(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetArchitecture(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.architecture 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgent_设置架构("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_设置系统位数
+            // [175] FBroVIP_UserAgent_设置系统位数(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetBitness(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.bitness 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgent_设置系统位数("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_设置品牌列表
+            // [176] FBroVIP_UserAgent_设置品牌列表(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetBrands(CefRefPtr<FBroVIPUserAgentData> userAgentData, CefRefPtr<FBroDoubleString> indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.brands 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgent_设置品牌列表("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_设置设备形态列表
+            // [177] FBroVIP_UserAgent_设置设备形态列表(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetFormFactors(CefRefPtr<FBroVIPUserAgentData> userAgentData, CefRefPtr<FBroCefStringList> indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.formFactors 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgent_设置设备形态列表("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_设置完整版本
+            // [178] FBroVIP_UserAgent_设置完整版本(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetFullVersion(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.fullVersion 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgent_设置完整版本("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_设置完整版本列表
+            // [179] FBroVIP_UserAgent_设置完整版本列表(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetFullVersionList(CefRefPtr<FBroVIPUserAgentData> userAgentData, CefRefPtr<FBroDoubleString> indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.fullVersionList 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgent_设置完整版本列表("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_设置主接受语言
+            // [180] FBroVIP_UserAgent_设置主接受语言(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetMainAcceptLanguage(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.mainAcceptLanguage 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgent_设置主接受语言("演示输出", "{}")
+        如果结束
+        调试输出("已查看 命令 161–180：FBroVIP_UserAgent_取系统位数 至 FBroVIP_UserAgent_设置主接受语言；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第10组_被单击()
+        控件_设置文本("演示状态", "命令 181–198：FBroVIP_UserAgent_设置主平台 至 FBroVIP_设置启动代理；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选("允许实际执行"))
+            // 命令ID：FBroVIP_UserAgent_设置主平台
+            // [181] FBroVIP_UserAgent_设置主平台(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetMainPlatform(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.mainPlatform 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgent_设置主平台("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_设置主UserAgent
+            // [182] FBroVIP_UserAgent_设置主UserAgent(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetMainUserAgent(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.mainUserAgent 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgent_设置主UserAgent("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_设置移动设备标记
+            // [183] FBroVIP_UserAgent_设置移动设备标记(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetMobile(CefRefPtr<FBroVIPUserAgentData> userAgentData, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.mobile 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgent_设置移动设备标记("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_设置设备型号
+            // [184] FBroVIP_UserAgent_设置设备型号(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetModel(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.model 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgent_设置设备型号("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_设置平台
+            // [185] FBroVIP_UserAgent_设置平台(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetPlatform(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.platform 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgent_设置平台("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_设置平台版本
+            // [186] FBroVIP_UserAgent_设置平台版本(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetPlatformVersion(CefRefPtr<FBroVIPUserAgentData> userAgentData, const CefString& indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.platformVersion 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgent_设置平台版本("演示输出", "{}")
+            // 命令ID：FBroVIP_UserAgent_设置WOW64标记
+            // [187] FBroVIP_UserAgent_设置WOW64标记(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroHsVIPUserAgentData_SetWow64(CefRefPtr<FBroVIPUserAgentData> userAgentData, BOOL indata)。这是独立的安全指纹命令；参数JSON为路径 userAgent.wow64 对应的完整 JSON 值，Bridge 仍使用 UTF-16 JSON 和受控 VIP 实例。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：int；可见性：advanced
+            FBroVIP_UserAgent_设置WOW64标记("演示输出", "{}")
+            // 命令ID：FBroVIP_Bridge自动管理_设置VIP事件适配器
+            // [188] FBroVIP_Bridge自动管理_设置VIP事件适配器(控件名, 参数JSON)
+            // 功能：官方接口：DLLEXPORT void TEXPORTS FBroSetVipEvent(CefRefPtr<FBroVIPEvent> vip_event)。该项由 LingBuilder FBro Bridge 自动管理，详情命令返回托管说明，不暴露 SDK 对象、CefRefPtr 或生命周期指针。
+            // 参数：控件名:wideString，参数JSON:wideString；返回：wideString；可见性：internal
+            FBroVIP_Bridge自动管理_设置VIP事件适配器("演示输出", "{}")
             // 命令ID：FBroVIP_应用指纹JSON
-            // [1] FBroVIP_应用指纹JSON(控件名, JSON)
-            // 功能：通过 UTF-16 JSON 应用受控 VIP 指纹配置；不会暴露 Key。
+            // [189] FBroVIP_应用指纹JSON(控件名, JSON)
+            // 功能：通过 UTF-16 JSON 批量应用完整直接指纹配置，覆盖浏览器、屏幕、GPU、WebRTC、时区、电池、位置、设备、Canvas/WebGL/Audio 和 User-Agent Data；不会暴露 Key。
             // 参数：控件名:wideString，JSON:wideString；返回：int；可见性：advanced
             FBroVIP_应用指纹JSON("演示输出", "{}")
+            // 命令ID：FBroVIP_取已应用配置JSON
+            // [190] FBroVIP_取已应用配置JSON(控件名)
+            // 功能：取得最近一次成功应用的规范化指纹配置与 User-Agent Data JSON。
+            // 参数：控件名:wideString；返回：wideString；可见性：advanced
+            FBroVIP_取已应用配置JSON("演示输出")
+            // 命令ID：FBroVIP_取授权信息JSON
+            // [191] FBroVIP_取授权信息JSON()
+            // 功能：读取脱敏的 VIP 授权状态、版本、授权范围和有效期；不返回 Key。
+            // 参数：无；返回：wideString；可见性：advanced
+            FBroVIP_取授权信息JSON()
             // 命令ID：FBroVIP_取调用次数
-            // [2] FBroVIP_取调用次数(控件名)
+            // [192] FBroVIP_取调用次数(控件名)
             // 功能：查询 VIP 指纹调用次数。
             // 参数：控件名:wideString；返回：wideString；可见性：advanced
             FBroVIP_取调用次数("演示输出")
             // 命令ID：FBroVIP_清空调用次数
-            // [3] FBroVIP_清空调用次数(控件名)
+            // [193] FBroVIP_清空调用次数(控件名)
             // 功能：清空 VIP 指纹调用次数。
             // 参数：控件名:wideString；返回：int；可见性：advanced
             FBroVIP_清空调用次数("演示输出")
+            // 命令ID：FBroVIP_DOM异步命令
+            // [194] FBroVIP_DOM异步命令(控件名, 命令, 参数JSON)
+            // 功能：DOM 批量高级分发入口；单项 DOM 命令已经在 DOM 分类中分别公开。
+            // 参数：控件名:wideString，命令:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_DOM异步命令("演示输出", "演示参数2", "{}")
+            // 命令ID：FBroVIP_扩展异步命令
+            // [195] FBroVIP_扩展异步命令(控件名, 命令, 参数JSON)
+            // 功能：扩展批量高级分发入口；文件路径必须位于生成程序目录内。
+            // 参数：控件名:wideString，命令:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_扩展异步命令("演示输出", "演示参数2", "{}")
+            // 命令ID：FBroVIP_资源规则异步命令
+            // [196] FBroVIP_资源规则异步命令(控件名, 命令, 参数JSON)
+            // 功能：资源与响应规则批量高级分发入口；二进制数据只接受 FBro 受管缓冲句柄。
+            // 参数：控件名:wideString，命令:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_资源规则异步命令("演示输出", "演示参数2", "{}")
+            // 命令ID：FBroVIP_开发者工具异步命令
+            // [197] FBroVIP_开发者工具异步命令(控件名, 命令, 参数JSON)
+            // 功能：DevTools、Runtime 与输入批量高级分发入口；单项命令已经分别公开。
+            // 参数：控件名:wideString，命令:wideString，参数JSON:wideString；返回：longLong；可见性：advanced
+            FBroVIP_开发者工具异步命令("演示输出", "演示参数2", "{}")
+            // 命令ID：FBroVIP_设置启动代理
+            // [198] FBroVIP_设置启动代理(地址, 用户名, 密码)
+            // 功能：配置 VIP 启动代理；必须在首个 FBro 运行时初始化前调用，凭据只保存在 Bridge 内存中。
+            // 参数：地址:wideString，用户名:wideString，密码:wideString；返回：int；可见性：advanced
+            FBroVIP_设置启动代理("https://example.com", "演示参数2", "演示参数3")
         如果结束
-        调试输出("已查看 命令 1–3：FBroVIP_应用指纹JSON 至 FBroVIP_清空调用次数；勾选允许实际执行后会使用演示参数调用。")
+        调试输出("已查看 命令 181–198：FBroVIP_UserAgent_设置主平台 至 FBroVIP_设置启动代理；勾选允许实际执行后会使用演示参数调用。")
     结束
 
 结束类

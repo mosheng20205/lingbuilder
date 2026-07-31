@@ -25,6 +25,18 @@ import {
   ModuleHistoryEntry,
   ModuleInstallPreview
 } from '../services/modules/types';
+import {
+  countModuleCommands,
+  getModuleFamilyDefinition,
+  getModuleFamilyModules,
+  getModuleFamilySearchText,
+  getModuleFamilyStandardModuleIds,
+  isAnyModuleFamilyFeatureEnabled,
+  isModuleHiddenByFamily,
+  isModuleFamilyStandardEnabled,
+  MODULE_FAMILIES,
+  type ModuleFamilyDefinition
+} from '../services/modules/moduleFamilies';
 import ModulePublicInfoDialog from './ModulePublicInfoDialog';
 
 type ModuleSectionId = 'installed' | 'packageInstall' | 'packageExport' | 'developer' | 'market' | 'history';
@@ -34,6 +46,15 @@ interface ModuleInspectorProps {
   projectId: string;
   isDarkMode?: boolean;
   selectedModuleId?: string | null;
+}
+
+interface ModuleFamilyState {
+  definition: ModuleFamilyDefinition;
+  modules: InstalledModule[];
+  standardEnabled: boolean;
+  anyFeatureEnabled: boolean;
+  searchText: string;
+  categories: Set<string>;
 }
 
 export function formatModuleOperationError(error: unknown): string {
@@ -137,16 +158,41 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     refresh();
   }, [projectId, refresh]);
 
+  const moduleFamilyStates = useMemo<ModuleFamilyState[]>(() => MODULE_FAMILIES.map(definition => {
+    const modules = getModuleFamilyModules(installedModules, definition);
+    return {
+      definition,
+      modules,
+      standardEnabled: isModuleFamilyStandardEnabled(definition, modules),
+      anyFeatureEnabled: isAnyModuleFamilyFeatureEnabled(modules),
+      searchText: getModuleFamilySearchText(definition, modules),
+      categories: new Set(modules.map(module => module.manifest.category))
+    };
+  }), [installedModules]);
+  const moduleFamilyStateByRootId = useMemo(
+    () => new Map(moduleFamilyStates.map(state => [state.definition.rootModuleId, state])),
+    [moduleFamilyStates]
+  );
+  const visibleInstalledModules = useMemo(
+    () => installedModules.filter(module => !isModuleHiddenByFamily(module.manifest.id)),
+    [installedModules]
+  );
+
   const filteredInstalledModules = useMemo(() => {
     const search = searchText.trim().toLowerCase();
-    return installedModules.filter(module => {
+    return visibleInstalledModules.filter(module => {
       const manifest = module.manifest;
-      const text = [manifest.id, manifest.name, manifest.description, ...(manifest.tags || [])].join(' ').toLowerCase();
+      const familyState = moduleFamilyStateByRootId.get(manifest.id);
+      const text = familyState
+        ? familyState.searchText
+        : [manifest.id, manifest.name, manifest.description, ...(manifest.tags || [])].join(' ').toLowerCase();
       const matchesSearch = !search || text.includes(search);
-      const matchesCategory = categoryFilter === '全部' || manifest.category === categoryFilter;
+      const matchesCategory = categoryFilter === '全部'
+        || manifest.category === categoryFilter
+        || Boolean(familyState?.categories.has(categoryFilter));
       return matchesSearch && matchesCategory;
     });
-  }, [installedModules, searchText, categoryFilter]);
+  }, [visibleInstalledModules, moduleFamilyStateByRootId, searchText, categoryFilter]);
 
   const filteredMarketModules = useMemo(() => {
     const search = searchText.trim().toLowerCase();
@@ -160,8 +206,13 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
 
   const selectedModule = useMemo(() => {
     if (!selectedModuleId) return null;
+    const family = getModuleFamilyDefinition(selectedModuleId);
+    if (family) return installedModules.find(module => module.manifest.id === family.rootModuleId) || null;
     return installedModules.find(module => module.manifest.id === selectedModuleId) || null;
   }, [installedModules, selectedModuleId]);
+  const selectedModuleFamilyState = selectedModule
+    ? moduleFamilyStateByRootId.get(selectedModule.manifest.id)
+    : undefined;
 
   const inspectModule = useCallback((moduleId: string) => {
     setSelectedModuleId(moduleId);
@@ -280,6 +331,49 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       await refresh();
     } catch (error) {
       setStatusText(`项目模块状态更新失败：${formatModuleOperationError(error)}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleModuleFamily = async (familyState: ModuleFamilyState) => {
+    const { definition, modules, standardEnabled } = familyState;
+    const coreModule = modules.find(module => module.manifest.id === definition.rootModuleId);
+    if (!coreModule) {
+      setStatusText(`${definition.displayName} 核心模块未安装，无法更新功能状态。`);
+      return;
+    }
+    if (standardEnabled) {
+      await toggleProjectModule(coreModule);
+      return;
+    }
+
+    const standardModuleIds = getModuleFamilyStandardModuleIds(definition);
+    setIsLoading(true);
+    try {
+      const planResponse = await fetch('/api/modules/project/change-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, moduleIds: standardModuleIds, action: 'enable' })
+      });
+      const planResult = await planResponse.json();
+      if (!planResult.ok) throw new Error(planResult.error || `${definition.displayName} 标准功能启用计划生成失败`);
+      const response = await fetch('/api/modules/project/enable', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, moduleIds: standardModuleIds })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || `${definition.displayName} 标准功能启用失败`);
+      const addedModuleIds: string[] = result.plan?.addedModuleIds || [];
+      setStatusText(`${definition.displayName} 标准功能已启用；高级功能可在“接口”详情中按需开启。`);
+      onAddLog(`> [${new Date().toLocaleTimeString()}] 【${definition.displayName}】已原子启用标准功能：${addedModuleIds.join('、') || '无需新增引用'}。`);
+      const compatibilityMessage = Array.isArray(result.messages) ? result.messages.join('；') : '';
+      if (compatibilityMessage) onAddLog(`> [${new Date().toLocaleTimeString()}] 【构建配置】${compatibilityMessage}`);
+      dispatchModulesChanged(projectId, definition.rootModuleId, 'project');
+      await refresh();
+    } catch (error) {
+      setStatusText(`${definition.displayName} 标准功能更新失败：${formatModuleOperationError(error)}`);
     } finally {
       setIsLoading(false);
     }
@@ -582,7 +676,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
           className={cardClass}
           icon={<Package size={16} />}
           title="本地模块"
-          desc={`${installedModules.length} 个模块已索引，勾选状态代表当前项目引用。`}
+          desc={`${visibleInstalledModules.length} 个用户模块入口，内部依赖和只读 SDK 已自动收起。`}
           isOpen={expandedSections.installed}
           onToggle={() => toggleSection('installed')}
         >
@@ -606,18 +700,30 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
           <div className="divide-y divide-white/10">
             {filteredInstalledModules.length === 0 ? (
               <Empty text="没有匹配的本地模块。" />
-            ) : filteredInstalledModules.map(module => (
-              <ModuleRow
-                key={module.manifest.id}
-                module={module}
-                isDarkMode={isDarkMode}
-                onToggle={() => toggleProjectModule(module)}
-                onUninstall={() => uninstallModule(module)}
-                onInspect={() => inspectModule(module.manifest.id)}
-                commerce={commerceProducts.find(product => product.moduleId === module.manifest.id)}
-                onPurchase={provider => purchaseModule(module.manifest.id, provider)}
-              />
-            ))}
+            ) : filteredInstalledModules.map(module => {
+              const familyState = moduleFamilyStateByRootId.get(module.manifest.id);
+              return (
+                <ModuleRow
+                  key={module.manifest.id}
+                  module={module}
+                  isDarkMode={isDarkMode}
+                  enabledOverride={familyState?.standardEnabled}
+                  statusLabel={familyState
+                    ? familyState.standardEnabled ? '标准功能已启用' : familyState.anyFeatureEnabled ? '部分功能已启用' : undefined
+                    : undefined}
+                  capabilityText={familyState
+                    ? `${countModuleCommands(familyState.modules)} 条命令 · ${familyState.definition.features.length} 个功能域`
+                    : undefined}
+                  descriptionOverride={familyState?.definition.managerDescription}
+                  toggleLabel={familyState && !familyState.standardEnabled && familyState.anyFeatureEnabled ? '补全启用' : undefined}
+                  onToggle={() => familyState ? toggleModuleFamily(familyState) : toggleProjectModule(module)}
+                  onUninstall={() => uninstallModule(module)}
+                  onInspect={() => inspectModule(module.manifest.id)}
+                  commerce={commerceProducts.find(product => product.moduleId === module.manifest.id)}
+                  onPurchase={provider => purchaseModule(module.manifest.id, provider)}
+                />
+              );
+            })}
           </div>
         </CollapsibleSection>
 
@@ -762,7 +868,12 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
       {selectedModule && (
         <ModulePublicInfoDialog
           module={selectedModule}
+          familyDefinition={selectedModuleFamilyState?.definition}
+          familyModules={selectedModuleFamilyState?.modules}
+          familyFeatures={selectedModuleFamilyState?.definition.features}
           isDarkMode={isDarkMode}
+          isChangingFeature={isLoading}
+          onToggleFeature={toggleProjectModule}
           onClose={() => setSelectedModuleId(null)}
         />
       )}
@@ -869,10 +980,15 @@ function CollapsibleSection({
   );
 }
 
-function ModuleRow({ module, isDarkMode, onToggle, onUninstall, onInspect, commerce, onPurchase }: {
+function ModuleRow({ module, isDarkMode, enabledOverride, statusLabel, capabilityText, descriptionOverride, toggleLabel, onToggle, onUninstall, onInspect, commerce, onPurchase }: {
   key?: React.Key;
   module: InstalledModule;
   isDarkMode: boolean;
+  enabledOverride?: boolean;
+  statusLabel?: string;
+  capabilityText?: string;
+  descriptionOverride?: string;
+  toggleLabel?: string;
   onToggle: () => void;
   onUninstall: () => void;
   onInspect: () => void;
@@ -882,6 +998,7 @@ function ModuleRow({ module, isDarkMode, onToggle, onUninstall, onInspect, comme
   const manifest = module.manifest;
   const subtleClass = isDarkMode ? 'text-slate-400' : 'text-slate-500';
   const isBasicModule = manifest.id === 'lingbuilder.win32.basic';
+  const isEnabled = enabledOverride ?? Boolean(module.isEnabledForProject);
   const capabilityCount = (manifest.contributes?.commands?.length || 0)
     + (manifest.contributes?.types?.length || 0)
     + (manifest.contributes?.designerControls?.length || 0);
@@ -893,11 +1010,11 @@ function ModuleRow({ module, isDarkMode, onToggle, onUninstall, onInspect, comme
           <span className="min-w-0 break-words text-sm font-semibold leading-5">{manifest.name}</span>
           <span className="shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300">{manifest.category}</span>
           {module.isBuiltin && <span className="shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300">内置</span>}
-          {module.isEnabledForProject && <span className="shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300">项目已引用</span>}
+          {(statusLabel || isEnabled) && <span className="shrink-0 whitespace-nowrap text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300">{statusLabel || '项目已引用'}</span>}
           {commerce && <span className="shrink-0 rounded bg-rose-500/15 px-1.5 py-0.5 text-[10px] text-rose-300"><LockKeyhole size={10} className="mr-1 inline" />{commerce.access?.allowed ? '账号已授权' : commerce.freeWindow ? '限时免费' : `¥${((Number(commerce.offers?.[0]?.priceMinor) || 0) / 100).toFixed(2)}`}</span>}
         </div>
-        <div className={`mt-1 break-all text-[11px] leading-4 ${subtleClass}`}>{manifest.id} · {manifest.version} · 能力 {capabilityCount} 项</div>
-        <div className={`mt-1 break-words text-xs leading-5 ${subtleClass}`}>{manifest.description}</div>
+        <div className={`mt-1 break-all text-[11px] leading-4 ${subtleClass}`}>{manifest.id} · {manifest.version} · {capabilityText || `能力 ${capabilityCount} 项`}</div>
+        <div className={`mt-1 break-words text-xs leading-5 ${subtleClass}`}>{descriptionOverride || manifest.description}</div>
         {module.diagnostics.length > 0 && (
           <div className="mt-2 text-[11px] text-red-300 whitespace-pre-wrap">{module.diagnostics.join('\n')}</div>
         )}
@@ -913,8 +1030,8 @@ function ModuleRow({ module, isDarkMode, onToggle, onUninstall, onInspect, comme
           title={isBasicModule ? 'Win32窗口基础模块是普通项目的默认基础能力，不能禁用。' : undefined}
           className="h-8 min-w-0 flex-1 px-1.5 rounded border border-sky-500/40 text-sky-300 text-xs inline-flex items-center justify-center gap-1 cursor-pointer transition-colors hover:bg-sky-500/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap"
         >
-          {isBasicModule || !module.isEnabledForProject ? <Check size={14} /> : <X size={14} />}
-          {isBasicModule ? '基础' : module.isEnabledForProject ? '禁用' : '启用'}
+          {isBasicModule || !isEnabled ? <Check size={14} /> : <X size={14} />}
+          {isBasicModule ? '基础' : toggleLabel || (isEnabled ? '禁用' : '启用')}
         </button>
         <button onClick={onUninstall} disabled={module.isBuiltin} className="h-8 min-w-0 flex-1 px-1.5 rounded border border-red-500/40 text-red-300 text-xs inline-flex items-center justify-center gap-1 cursor-pointer transition-colors hover:bg-red-500/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap">
           <Trash2 size={14} />

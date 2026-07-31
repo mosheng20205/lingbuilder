@@ -92,6 +92,50 @@ const IMPLEMENTED_ADVANCED_EXPORTS = new Set([
   'FBroHsBrowserFrame_GetParent', 'FBroHsBrowserFrame_GetBrowser'
 ]);
 
+const IMPLEMENTED_VIP_EXPORT_PATTERNS = [
+  /^FBroHsVIPControl_SetVir/u,
+  /^FBroHsVIPUserAgentData_/u,
+  /^FBroHsVIPControl_Set(?:Audio|Canvas|WebGL)FingerPrint_(?:constant|random)$/u,
+  /^FBroHsVIPControl_SetDisable/u,
+  /^FBroHsDevToolsDOM_/u,
+  /^FBroHsVIPRequestContext_/u,
+  /^FBroHsVIPResourceHandler_/u,
+  /^FBroHsVIPResponseFilter_/u,
+  /^FBroHsOnlineLicenseControl_GetShowLicense/u
+];
+
+const IMPLEMENTED_VIP_SUPPORT_EXPORTS = new Set([
+  'FBroHsVIPControl_SetPlugins', 'FBroHsVIPControl_SetSSLCipher',
+  'FBroHsVIPControl_SetTouchEventEmulationEnabled', 'FBroHsVIPControl_SetWebFeatureKernel',
+  'FBroBrowser_IsLicenceKey', 'FBroHsBrowser_GetExpirationTime', 'FBroHsBrowser_GetFunctionStr',
+  'FBroHsBrowser_GetMachineCode', 'FBroHsBrowser_GetRegistrationTime', 'FBroHsBrowser_GetVersionStr',
+  'FBroHsBrowser_SetLicenceKey', 'FBroHsVIPControl_ClearAllData', 'FBroHsVIPControl_ClearS5Auth',
+  'FBroHsVIPControl_EnableWebsocketClientHook', 'FBroHsVIPControl_GetBrowser',
+  'FBroHsVIPControl_SetCSSKernel', 'FBroHsVIPControl_SetEmitTouchEventsForMouse',
+  'FBroHsVIPControl_SetS5Auth', 'FBroHsVIPControl_SetV8Kernel', 'FBroHsVIPGlobal_SetS5Auth',
+  'FBroHsVIPControl_AddResourceHandlerChangeData', 'FBroHsVIPControl_AddResourceHandlerChangeFile',
+  'FBroHsVIPControl_DeleteResourceHandlerChangeData', 'FBroHsVIPControl_DeleteResourceHandlerAllData',
+  'FBroHsVIPControl_AddResponseFilterChangeData', 'FBroHsVIPControl_DeletResponseFiltereChangeData',
+  'FBroHsVIPControl_DeleteResponseFilterAllData',
+  'FBroHsVIPControl_AddDevToolsMessageObserver', 'FBroHsVIPControl_DeleteDevToolsMessageObserver',
+  'FBroHsVIPControl_AddTabAt', 'FBroHsVIPControl_DispatchKeyEvent',
+  'FBroHsVIPControl_DispatchMouseEvent', 'FBroHsVIPControl_DispatchTouchEvent',
+  'FBroHsVIPControl_ExecuteDevToolsMethod', 'FBroHsVIPControl_PageGetContextID',
+  'FBroHsVIPControl_RuntimeEnable', 'FBroHsVIPControl_RuntimeEvaluate',
+  'FBroHsVIPControl_RuntimeEvaluate_FrameID', 'FBroHsVIPControl_SendDevToolsMessage',
+  'FBroSetVipEvent', 'FBroHsVIPCommandLine_SetProxy',
+  'FBroCefStringList_Creat', 'FBroCefStringList_Add',
+  'FBroDoubleString_Creat', 'FBroDoubleString_Add', 'FBroDoubleString_Size',
+  'FBroDoubleString_ToBegin', 'FBroDoubleString_ToNext',
+  'FBroDoubleString_GetCurrentData_Key', 'FBroDoubleString_GetCurrentData_Value'
+]);
+
+function isImplementedAdvancedExport(officialName) {
+  return IMPLEMENTED_ADVANCED_EXPORTS.has(officialName)
+    || IMPLEMENTED_VIP_SUPPORT_EXPORTS.has(officialName)
+    || IMPLEMENTED_VIP_EXPORT_PATTERNS.some(pattern => pattern.test(officialName));
+}
+
 const NOT_APPLICABLE_EXPORTS = new Map([
   ['FBroHsBrowserHost_RunFileDialog', 'FBro 5.38.49 的辅助导出在 CEF UI 线程实测会阻塞且不创建对话框；Windows x64 高层命令改用独立 STA IFileDialog 和受管任务回调。']
 ]);
@@ -158,7 +202,7 @@ async function main() {
   const outputPath = path.resolve(args.output || path.join(repoRoot, 'electron', 'src', 'services', 'modules', 'fbroApiCoverage.generated.json'));
   const markdownPath = path.resolve(args.markdown || path.join(repoRoot, 'FBRO_API_COVERAGE.md'));
   const bridgeSource = await fs.readFile(path.join(repoRoot, 'electron', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8');
-  for (const officialName of [...HIGH_LEVEL_EXPORTS, ...IMPLEMENTED_ADVANCED_EXPORTS]) {
+  for (const officialName of [...HIGH_LEVEL_EXPORTS, ...IMPLEMENTED_ADVANCED_EXPORTS, ...IMPLEMENTED_VIP_SUPPORT_EXPORTS]) {
     if (!bridgeSource.includes(officialName)) throw new Error(`已实现封装标记缺少真实 Bridge 调用：${officialName}`);
   }
 
@@ -190,6 +234,11 @@ async function main() {
     left.header.localeCompare(right.header, 'en')
       || left.officialName.localeCompare(right.officialName, 'en')
       || left.officialSignature.localeCompare(right.officialSignature, 'en'));
+  for (const item of sorted) {
+    if (isImplementedAdvancedExport(item.officialName) && !bridgeSource.includes(item.officialName)) {
+      throw new Error(`已实现封装标记缺少真实 Bridge 调用：${item.officialName}`);
+    }
+  }
   const signatureGroups = new Map();
   for (const item of sorted) {
     const group = signatureGroups.get(item.officialName) || [];
@@ -225,7 +274,7 @@ async function main() {
       untranslatedTokens: terminology.untranslatedTokens,
       englishAliases: [item.officialName],
       classification: classification.kind,
-      implementationStatus: classification.kind === 'highLevel' || IMPLEMENTED_ADVANCED_EXPORTS.has(item.officialName)
+      implementationStatus: classification.kind === 'highLevel' || isImplementedAdvancedExport(item.officialName)
         ? 'implemented'
         : NOT_APPLICABLE_EXPORTS.has(item.officialName) ? 'notApplicable'
         : classification.kind === 'internal' ? 'notApplicable' : 'planned',
@@ -470,7 +519,7 @@ function classifyCoverage(officialName) {
   if (NOT_APPLICABLE_EXPORTS.has(officialName)) {
     return { kind: 'advancedSafe', reason: NOT_APPLICABLE_EXPORTS.get(officialName) };
   }
-  if (IMPLEMENTED_ADVANCED_EXPORTS.has(officialName)) {
+  if (isImplementedAdvancedExport(officialName)) {
     return { kind: 'advancedSafe', reason: '已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。' };
   }
   return { kind: 'advancedSafe', reason: '已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。' };

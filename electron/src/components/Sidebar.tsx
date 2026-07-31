@@ -55,6 +55,12 @@ import {
 } from '../services/windowDesigner/designerAssetClient';
 import type { InstalledModule, ModuleHintContent, ModuleTargetContribution } from '../services/modules/types';
 import { BUILTIN_MODULES } from '../services/modules/builtinModules';
+import {
+  getModuleFamilyModules,
+  getModuleFamilySearchText,
+  isModuleHiddenByFamily,
+  MODULE_FAMILIES
+} from '../services/modules/moduleFamilies';
 import type { SolutionFolder, SolutionModel, SolutionProject } from '../services/solution/solutionClient';
 import type { CommandService } from '../services/commands/commandService';
 import { getMenuService } from '../services/menus/menuService';
@@ -320,38 +326,55 @@ export default function Sidebar({
     windowModel.className,
     getLingWindowSourceFileName(windowModel.fileName, windowModel.className)
   ));
-  const filteredProjectModules = projectModules.filter(module => includesSearch(
-    module.manifest.name,
-    module.manifest.id,
-    module.manifest.description,
-    module.manifest.category,
-    ...(module.manifest.tags || []),
-    ...(module.manifest.contributes?.commands || []).flatMap(command => [
-      command.name,
-      command.signature,
-      command.description,
-      command.returnType
-    ]),
-    ...(module.manifest.contributes?.types || []).flatMap(type => [type.name, type.description, type.cppType]),
-    ...(module.manifest.contributes?.designerControls || []).flatMap(control => [
-      control.label,
-      control.type,
-      ...(control.events || []).flatMap(event => [event.label, event.handlerPattern])
-    ]),
-    ...(module.manifest.contributes?.snippets || []).flatMap(snippet => [snippet.label, snippet.description]),
-    ...(module.manifest.contributes?.docs || []).flatMap(doc => [doc.title, doc.path]),
-    ...(module.manifest.targets || []).flatMap(target => [
-      target.id,
-      target.platform,
-      target.arch,
-      target.toolchain,
-      ...(target.headers || []),
-      ...(target.sources || []),
-      ...(target.libs || []),
-      ...(target.runtimeFiles || [])
-    ]),
-    ...(module.manifest.bindings?.commands || []).flatMap(binding => [binding.command, binding.runtimeName])
-  ));
+  const projectModuleFamilyStates = MODULE_FAMILIES.map(definition => {
+    const modules = getModuleFamilyModules(projectModules, definition);
+    return {
+      definition,
+      modules,
+      searchText: getModuleFamilySearchText(definition, modules),
+      capabilityCount: modules.reduce((total, familyModule) => total + getModuleCapabilityCount(familyModule), 0)
+    };
+  });
+  const projectModuleFamilyStateByRootId = new Map(
+    projectModuleFamilyStates.map(state => [state.definition.rootModuleId, state])
+  );
+  const visibleProjectModules = projectModules.filter(module => !isModuleHiddenByFamily(module.manifest.id));
+  const filteredProjectModules = visibleProjectModules.filter(module => {
+    const familyState = projectModuleFamilyStateByRootId.get(module.manifest.id);
+    if (familyState) return includesSearch(familyState.searchText);
+    return includesSearch(
+      module.manifest.name,
+      module.manifest.id,
+      module.manifest.description,
+      module.manifest.category,
+      ...(module.manifest.tags || []),
+      ...(module.manifest.contributes?.commands || []).flatMap(command => [
+        command.name,
+        command.signature,
+        command.description,
+        command.returnType
+      ]),
+      ...(module.manifest.contributes?.types || []).flatMap(type => [type.name, type.description, type.cppType]),
+      ...(module.manifest.contributes?.designerControls || []).flatMap(control => [
+        control.label,
+        control.type,
+        ...(control.events || []).flatMap(event => [event.label, event.handlerPattern])
+      ]),
+      ...(module.manifest.contributes?.snippets || []).flatMap(snippet => [snippet.label, snippet.description]),
+      ...(module.manifest.contributes?.docs || []).flatMap(doc => [doc.title, doc.path]),
+      ...(module.manifest.targets || []).flatMap(target => [
+        target.id,
+        target.platform,
+        target.arch,
+        target.toolchain,
+        ...(target.headers || []),
+        ...(target.sources || []),
+        ...(target.libs || []),
+        ...(target.runtimeFiles || [])
+      ]),
+      ...(module.manifest.bindings?.commands || []).flatMap(binding => [binding.command, binding.runtimeName])
+    );
+  });
 
   const refreshProjectModules = useCallback(async () => {
     const projectId = moduleProjectId;
@@ -1790,7 +1813,7 @@ export default function Sidebar({
                           <span className={`ml-auto text-[9px] px-1 rounded border ${
                             isDarkMode ? 'border-violet-500/20 text-violet-300 bg-violet-500/5' : 'border-violet-200 text-violet-700 bg-violet-50'
                           }`}>
-                            {projectModules.length}
+                            {visibleProjectModules.length}
                           </span>
                         </div>
                         {isProjectModulesOpen && (
@@ -1816,7 +1839,8 @@ export default function Sidebar({
                               filteredProjectModules.map(module => {
                                 const moduleId = module.manifest.id;
                                 const isModuleExpanded = Boolean(expandedModuleIds[moduleId]);
-                                const capabilityCount = getModuleCapabilityCount(module);
+                                const familyState = projectModuleFamilyStateByRootId.get(moduleId);
+                                const capabilityCount = familyState?.capabilityCount || getModuleCapabilityCount(module);
                                 return (
                                   <div key={moduleId} className="min-w-0">
                                     <div

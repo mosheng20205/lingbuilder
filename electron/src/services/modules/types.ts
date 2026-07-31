@@ -17,6 +17,12 @@ export interface ModuleCommandContribution {
   insertText?: string;
   returnType?: string;
   returnDescription?: string;
+  /** 模块详情中的直接功能分类；命令应归入真实功能域，不额外套“命令接口”层。 */
+  category?: string;
+  /** 区分单项接口、批量入口、Bridge 自动管理能力和设置中心安全替代。 */
+  capabilityKind?: 'single' | 'aggregate' | 'managed' | 'secureReplacement';
+  /** 标记该命令是否对应覆盖目录中的一项官方能力。 */
+  officialCapability?: boolean;
   /** 默认命令进入常规补全；advanced 仅在显式开启底层 API 时展示；internal 不进入用户补全。 */
   visibility?: 'default' | 'advanced' | 'internal';
 }

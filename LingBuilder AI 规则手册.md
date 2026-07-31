@@ -13,6 +13,9 @@
 - FBro 2.0 子模块固定为 `lingbuilder.fbro.events/session/transfer/automation/objects/network/vip`，均依赖 `lingbuilder.fbro.browser >= 2.0.0`。AI 请求启用能力模块时必须使用模块服务的递归计划，不得手工只写子模块 ID；禁用核心前必须展示依赖它的模块并取得级联确认。
 - FBro 中文命令可以有官方英文 `aliases`，两者必须解析到同一个 binding。专业模式 API 只在 `showAdvancedApi=true` 时进入补全；字符串和注释里的别名不得被当作真实调用。
 - FBro C ABI v2 只允许版本化 POD、UTF-16 字符串/JSON、类型化整数句柄、任务 ID 和受管缓冲。AI 不得生成裸内存地址、`void*`、`CefRefPtr`、STL 跨 DLL 参数或让 `.lcpp` 释放 SDK 对象。任务和缓冲使用后必须调用对应释放命令。
+- `lingbuilder.fbro.vip` 的官方 VIP 目录已为 188/188 implemented、planned=0。188 项官方能力逐项公开为 179 条单项命令、6 条 Bridge 自动管理能力和 3 条凭据中心/安全入口替代能力，另保留 10 条“批量与通用高级入口”，模块清单共 198 条。AI 应优先生成固定官方动作的单项命令，例如 `FBroVIP_DOM_取文档(控件名, 参数JSON)`，不得让用户再传“命令名称”字符串；只有批量或通用高级场景才使用 `FBroVIP_DOM异步命令`、`FBroVIP_扩展异步命令`、`FBroVIP_资源规则异步命令`、`FBroVIP_开发者工具异步命令`。异步调用必须保存任务 ID，并按“等待 → 取结果/错误 → 释放”使用。自动管理与安全替代项为 `internal`，可在模块详情说明，但不得进入 Monaco 普通补全。不得因为 VIP 子模块完成而宣称整个 FBro 1079 项目录完成；全目录仍有其它模块的 `planned`。
+- VIP 资源替换的二进制只能传受管缓冲句柄，不能生成地址、裸字节指针或 Base64 冒充内存。扩展目录、CRX 和资源文件必须位于生成程序目录内；路径越界时必须保留 Bridge 阻断诊断。DevTools 观察器事件已经复制为 UTF-16 JSON，AI 不得生成 SDK observer、callback、触摸点指针或 `CefDictionaryValue`。
+- `FBroVIP_设置启动代理` 仅在首个 FBro 运行时初始化前有效。可视化窗口通常会在窗口创建代码执行前初始化 FBro，因此 AI 不得把该命令机械插入“创建完毕”事件后声称生效；需要启动代理时应使用宿主启动配置或受控子进程环境。代理密码和 VIP Key 都不得进入日志、AI 上下文或模块清单，VIP Key 更不得进入 `.lcpp` 明文。
 - 动态事件统一使用 `FBro_绑定事件(控件名, 事件名, &处理器名)`；处理器参数必须带 `&`。事件字段从 UTF-16 JSON 读取，同步事件通过 `FBro_设置事件结果` / `FBro_设置事件返回文本` 决策，2 秒超时后使用目录默认动作。
 - Chrome UI 创建返回的实例 ID 与内嵌控件状态隔离；导航、查询事件、绑定和关闭必须针对相应实例，不能用最后一个 popup 覆盖所属内嵌实例状态。普通 Win32 和 New_Emoji 必须共用同一事件协议。
 - FBro 核心现有 42 条高层命令。浏览器状态、缩放、静音、焦点、页内查找和 DevTools 状态/关闭必须使用对应 `FBro_` 命令；忽略缓存刷新、浏览器标识、实例比较、popup/文档/视图状态、关闭协商和自动尺寸也已有 `FBro_强制刷新`、`FBro_取浏览器标识`、`FBro_是否同一实例`、`FBro_是否弹出窗口/是否有文档/是否有视图`、`FBro_尝试关闭` 与 `FBro_设置自动调整大小`。不要用 JavaScript 模拟这些已存在的宿主 API。尚为 `planned` 的覆盖目录项不得生成伪命令或宣称可运行。

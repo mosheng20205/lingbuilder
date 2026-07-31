@@ -54,8 +54,8 @@
     "highLevel": 56,
     "advancedSafe": 1020,
     "internal": 3,
-    "implemented": 218,
-    "planned": 857,
+    "implemented": 397,
+    "planned": 678,
     "notApplicable": 4,
     "modules": {
       "lingbuilder.fbro.events": 56,
@@ -27187,8 +27187,8 @@
         "FBroCefStringList_Add"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -27292,8 +27292,8 @@
         "FBroCefStringList_Creat"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -28232,8 +28232,8 @@
         "FBroDoubleString_Add"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -28356,8 +28356,8 @@
         "FBroDoubleString_Creat"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -28506,8 +28506,8 @@
         "FBroDoubleString_GetCurrentData_Key"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -28553,8 +28553,8 @@
         "FBroDoubleString_GetCurrentData_Value"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -28696,8 +28696,8 @@
         "FBroDoubleString_Size"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -28744,8 +28744,8 @@
         "FBroDoubleString_ToBegin"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -28840,8 +28840,8 @@
         "FBroDoubleString_ToNext"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -46792,8 +46792,8 @@
         "FBroSetVipEvent"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -46833,8 +46833,8 @@
         "FBroBrowser_IsLicenceKey"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -46876,8 +46876,8 @@
         "FBroHsBrowser_GetExpirationTime"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -46919,8 +46919,8 @@
         "FBroHsBrowser_GetFunctionStr"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -46961,8 +46961,8 @@
         "FBroHsBrowser_GetMachineCode"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47004,8 +47004,8 @@
         "FBroHsBrowser_GetRegistrationTime"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47047,8 +47047,8 @@
         "FBroHsBrowser_GetVersionStr"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47143,8 +47143,8 @@
         "FBroHsBrowser_SetLicenceKey"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47191,8 +47191,8 @@
         "FBroHsDevToolsDOM_disable"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47246,8 +47246,8 @@
         "FBroHsDevToolsDOM_discardSearchResults"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47299,8 +47299,8 @@
         "FBroHsDevToolsDOM_enable"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47353,8 +47353,8 @@
         "FBroHsDevToolsDOM_focusElement"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47423,8 +47423,8 @@
         "FBroHsDevToolsDOM_getAttributes"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47500,8 +47500,8 @@
         "FBroHsDevToolsDOM_getContainerForNode"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47574,8 +47574,8 @@
         "FBroHsDevToolsDOM_getDocument"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47644,8 +47644,8 @@
         "FBroHsDevToolsDOM_getOuterHTML"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47725,8 +47725,8 @@
         "FBroHsDevToolsDOM_getSearchResults"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47800,8 +47800,8 @@
         "FBroHsDevToolsDOM_performSearch"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47875,8 +47875,8 @@
         "FBroHsDevToolsDOM_querySelector"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -47950,8 +47950,8 @@
         "FBroHsDevToolsDOM_querySelectorAll"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48009,8 +48009,8 @@
         "FBroHsDevToolsDOM_removeAttribute"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48063,8 +48063,8 @@
         "FBroHsDevToolsDOM_removeNode"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48128,8 +48128,8 @@
         "FBroHsDevToolsDOM_setAttributesAsText"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48192,8 +48192,8 @@
         "FBroHsDevToolsDOM_setAttributeValue"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48267,8 +48267,8 @@
         "FBroHsDevToolsDOM_setNodeName"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48326,8 +48326,8 @@
         "FBroHsDevToolsDOM_setNodeValue"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48385,8 +48385,8 @@
         "FBroHsDevToolsDOM_setOuterHTML"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48470,8 +48470,8 @@
         "FBroHsOnlineLicenseControl_GetShowLicenseDevTool"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48515,8 +48515,8 @@
         "FBroHsOnlineLicenseControl_GetShowLicenseEndDate"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48559,8 +48559,8 @@
         "FBroHsOnlineLicenseControl_GetShowLicenseFunction"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48603,8 +48603,8 @@
         "FBroHsOnlineLicenseControl_GetShowLicenseStartDate"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48648,8 +48648,8 @@
         "FBroHsOnlineLicenseControl_GetShowLicenseSysVersion"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48691,8 +48691,8 @@
         "FBroHsOnlineLicenseControl_GetShowLicenseType"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48797,8 +48797,8 @@
         "FBroHsVIPCommandLine_SetProxy"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48853,8 +48853,8 @@
         "FBroHsVIPControl_AddDevToolsMessageObserver"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -48932,8 +48932,8 @@
         "FBroHsVIPControl_AddResourceHandlerChangeData"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49006,8 +49006,8 @@
         "FBroHsVIPControl_AddResourceHandlerChangeFile"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49080,8 +49080,8 @@
         "FBroHsVIPControl_AddResponseFilterChangeData"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49167,8 +49167,8 @@
         "FBroHsVIPControl_AddTabAt"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49213,8 +49213,8 @@
         "FBroHsVIPControl_ClearAllData"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49309,8 +49309,8 @@
         "FBroHsVIPControl_ClearS5Auth"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49359,8 +49359,8 @@
         "FBroHsVIPControl_DeleteDevToolsMessageObserver"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49405,8 +49405,8 @@
         "FBroHsVIPControl_DeleteResourceHandlerAllData"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49458,8 +49458,8 @@
         "FBroHsVIPControl_DeleteResourceHandlerChangeData"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49506,8 +49506,8 @@
         "FBroHsVIPControl_DeleteResponseFilterAllData"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49561,8 +49561,8 @@
         "FBroHsVIPControl_DeletResponseFiltereChangeData"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49674,8 +49674,8 @@
         "FBroHsVIPControl_DispatchKeyEvent"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49772,8 +49772,8 @@
         "FBroHsVIPControl_DispatchMouseEvent"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49837,8 +49837,8 @@
         "FBroHsVIPControl_DispatchTouchEvent"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49888,8 +49888,8 @@
         "FBroHsVIPControl_EnableWebsocketClientHook"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -49954,8 +49954,8 @@
         "FBroHsVIPControl_ExecuteDevToolsMethod"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -50001,8 +50001,8 @@
         "FBroHsVIPControl_GetBrowser"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -50237,8 +50237,8 @@
         "FBroHsVIPControl_PageGetContextID"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -50291,8 +50291,8 @@
         "FBroHsVIPControl_RuntimeEnable"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -50396,8 +50396,8 @@
         "FBroHsVIPControl_RuntimeEvaluate"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -50508,8 +50508,8 @@
         "FBroHsVIPControl_RuntimeEvaluate_FrameID"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -50562,8 +50562,8 @@
         "FBroHsVIPControl_SendDevToolsMessage"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -50615,8 +50615,8 @@
         "FBroHsVIPControl_SetAudioFingerPrint_constant"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -50730,8 +50730,8 @@
         "FBroHsVIPControl_SetCanvasFingerPrint_constant"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -50845,8 +50845,8 @@
         "FBroHsVIPControl_SetCSSKernel"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -50900,8 +50900,8 @@
         "FBroHsVIPControl_SetDisableConsoleAssert"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -50954,8 +50954,8 @@
         "FBroHsVIPControl_SetDisableConsoleClear"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51008,8 +51008,8 @@
         "FBroHsVIPControl_SetDisableConsoleCount"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51063,8 +51063,8 @@
         "FBroHsVIPControl_SetDisableConsoleDebug"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51118,8 +51118,8 @@
         "FBroHsVIPControl_SetDisableConsoleDir"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51172,8 +51172,8 @@
         "FBroHsVIPControl_SetDisableConsoleError"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51227,8 +51227,8 @@
         "FBroHsVIPControl_SetDisableConsoleGroup"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51281,8 +51281,8 @@
         "FBroHsVIPControl_SetDisableConsoleInfo"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51336,8 +51336,8 @@
         "FBroHsVIPControl_SetDisableConsoleLog"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51391,8 +51391,8 @@
         "FBroHsVIPControl_SetDisableConsoleProfile"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51446,8 +51446,8 @@
         "FBroHsVIPControl_SetDisableConsoleTable"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51501,8 +51501,8 @@
         "FBroHsVIPControl_SetDisableConsoleTime"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51556,8 +51556,8 @@
         "FBroHsVIPControl_SetDisableConsoleTrace"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51611,8 +51611,8 @@
         "FBroHsVIPControl_SetDisableConsoleWarn"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51665,8 +51665,8 @@
         "FBroHsVIPControl_SetDisableDebugger"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51730,8 +51730,8 @@
         "FBroHsVIPControl_SetDisablePerformanceCheck"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51791,8 +51791,8 @@
         "FBroHsVIPControl_SetEmitTouchEventsForMouse"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51849,8 +51849,8 @@
         "FBroHsVIPControl_SetPlugins"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51917,8 +51917,8 @@
         "FBroHsVIPControl_SetS5Auth"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -51980,8 +51980,8 @@
         "FBroHsVIPControl_SetSSLCipher"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52040,8 +52040,8 @@
         "FBroHsVIPControl_SetTouchEventEmulationEnabled"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52094,8 +52094,8 @@
         "FBroHsVIPControl_SetV8Kernel"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52148,8 +52148,8 @@
         "FBroHsVIPControl_SetVirAcceptlanguages"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52202,8 +52202,8 @@
         "FBroHsVIPControl_SetVirAppCodeName"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52256,8 +52256,8 @@
         "FBroHsVIPControl_SetVirAppName"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52311,8 +52311,8 @@
         "FBroHsVIPControl_SetVirAppVersion"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52365,8 +52365,8 @@
         "FBroHsVIPControl_SetVirAudioInput"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52419,8 +52419,8 @@
         "FBroHsVIPControl_SetVirAudioOutput"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52475,8 +52475,8 @@
         "FBroHsVIPControl_SetVirBatteryManagerCharging"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52532,8 +52532,8 @@
         "FBroHsVIPControl_SetVirBatteryManagerChargingTime"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52589,8 +52589,8 @@
         "FBroHsVIPControl_SetVirBatteryManagerDischargingTime"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52644,8 +52644,8 @@
         "FBroHsVIPControl_SetVirBatteryManagerLevel"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52700,8 +52700,8 @@
         "FBroHsVIPControl_SetVirCanvas2DFontFingerprint"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52754,8 +52754,8 @@
         "FBroHsVIPControl_SetVirCookieEnabled"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52819,8 +52819,8 @@
         "FBroHsVIPControl_SetVirCSSFontFingerprint"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -52981,8 +52981,8 @@
         "FBroHsVIPControl_SetVirGPUArchitecture"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -53035,8 +53035,8 @@
         "FBroHsVIPControl_SetVirGPUDescription"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -53089,8 +53089,8 @@
         "FBroHsVIPControl_SetVirGPUDevice"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -53148,8 +53148,8 @@
         "FBroHsVIPControl_SetVirGPULimits"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -53203,8 +53203,8 @@
         "FBroHsVIPControl_SetVirGPUSubgroupMaxSize"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -53258,8 +53258,8 @@
         "FBroHsVIPControl_SetVirGPUSubgroupMinSize"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -53312,8 +53312,8 @@
         "FBroHsVIPControl_SetVirGPUVendor"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -53421,8 +53421,8 @@
         "FBroHsVIPControl_SetVirisTrusted"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -53476,8 +53476,8 @@
         "FBroHsVIPControl_SetVirJavaEnabled"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -53530,8 +53530,8 @@
         "FBroHsVIPControl_SetVirKernel"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -53670,8 +53670,8 @@
         "FBroHsVIPControl_SetVirLongitudeAndLatitude"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -53725,8 +53725,8 @@
         "FBroHsVIPControl_SetVirOnLine"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -53784,8 +53784,8 @@
         "FBroHsVIPControl_SetVirOrientation"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -53892,8 +53892,8 @@
         "FBroHsVIPControl_SetVirProduct"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -53947,8 +53947,8 @@
         "FBroHsVIPControl_SetVirProductSub"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -54017,8 +54017,8 @@
         "FBroHsVIPControl_SetVirRectFingerprint"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -54079,8 +54079,8 @@
         "FBroHsVIPControl_SetVirScreenavailHeightAndWidth"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -54134,8 +54134,8 @@
         "FBroHsVIPControl_SetVirScreencolorDepth"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -54251,8 +54251,8 @@
         "FBroHsVIPControl_SetVirScreenpixelDepth"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -54312,8 +54312,8 @@
         "FBroHsVIPControl_SetVirScreenXAndY"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -54368,8 +54368,8 @@
         "FBroHsVIPControl_SetVirSpeechSynthesisVoices"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -54438,8 +54438,8 @@
         "FBroHsVIPControl_SetVirTimeZone"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -54494,8 +54494,8 @@
         "FBroHsVIPControl_SetVirUserAgent"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -54548,8 +54548,8 @@
         "FBroHsVIPControl_SetVirVendor"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -54603,8 +54603,8 @@
         "FBroHsVIPControl_SetVirVendorSub"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -54657,8 +54657,8 @@
         "FBroHsVIPControl_SetVirVideoInput"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -54726,8 +54726,8 @@
         "FBroHsVIPControl_SetVirViewport"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -54780,8 +54780,8 @@
         "FBroHsVIPControl_SetVirWebdriver"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -54957,8 +54957,8 @@
         "FBroHsVIPControl_SetVirWebrtcIP"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55012,8 +55012,8 @@
         "FBroHsVIPControl_SetWebFeatureKernel"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55065,8 +55065,8 @@
         "FBroHsVIPControl_SetWebGLFingerPrint_constant"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55184,8 +55184,8 @@
         "FBroHsVIPGlobal_SetS5Auth"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55226,8 +55226,8 @@
         "FBroHsVIPRequestContext_EnableExtensionPlus"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55278,8 +55278,8 @@
         "FBroHsVIPRequestContext_GetExtensionName"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55330,8 +55330,8 @@
         "FBroHsVIPRequestContext_GetExtensionPath"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55382,8 +55382,8 @@
         "FBroHsVIPRequestContext_GetExtensionURL"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55436,8 +55436,8 @@
         "FBroHsVIPRequestContext_InstallCrx"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55487,8 +55487,8 @@
         "FBroHsVIPRequestContext_LoadExtension"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55540,8 +55540,8 @@
         "FBroHsVIPRequestContext_UnstallExtension"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55613,8 +55613,8 @@
         "FBroHsVIPResourceHandler_AddChangeData"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55681,8 +55681,8 @@
         "FBroHsVIPResourceHandler_AddChangeFile"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55720,8 +55720,8 @@
         "FBroHsVIPResourceHandler_DeleteAllData"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55767,8 +55767,8 @@
         "FBroHsVIPResourceHandler_DeleteChangeData"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55834,8 +55834,8 @@
         "FBroHsVIPResponseFilter_AddChangeData"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55873,8 +55873,8 @@
         "FBroHsVIPResponseFilter_DeleteAllData"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55920,8 +55920,8 @@
         "FBroHsVIPResponseFilter_DeleteChangeData"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -55960,8 +55960,8 @@
         "FBroHsVIPUserAgentData_Create"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56009,8 +56009,8 @@
         "FBroHsVIPUserAgentData_GetArchitecture"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56058,8 +56058,8 @@
         "FBroHsVIPUserAgentData_GetBitness"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56107,8 +56107,8 @@
         "FBroHsVIPUserAgentData_GetBrands"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56157,8 +56157,8 @@
         "FBroHsVIPUserAgentData_GetFormFactors"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56207,8 +56207,8 @@
         "FBroHsVIPUserAgentData_GetFullVersion"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56257,8 +56257,8 @@
         "FBroHsVIPUserAgentData_GetFullVersionList"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56307,8 +56307,8 @@
         "FBroHsVIPUserAgentData_GetMainAcceptLanguage"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56356,8 +56356,8 @@
         "FBroHsVIPUserAgentData_GetMainPlatform"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56406,8 +56406,8 @@
         "FBroHsVIPUserAgentData_GetMainUserAgent"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56454,8 +56454,8 @@
         "FBroHsVIPUserAgentData_GetMobile"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56503,8 +56503,8 @@
         "FBroHsVIPUserAgentData_GetModel"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56552,8 +56552,8 @@
         "FBroHsVIPUserAgentData_GetPlatform"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56602,8 +56602,8 @@
         "FBroHsVIPUserAgentData_GetPlatformVersion"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56650,8 +56650,8 @@
         "FBroHsVIPUserAgentData_GetWow64"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56703,8 +56703,8 @@
         "FBroHsVIPUserAgentData_SetArchitecture"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56756,8 +56756,8 @@
         "FBroHsVIPUserAgentData_SetBitness"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56810,8 +56810,8 @@
         "FBroHsVIPUserAgentData_SetBrands"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56865,8 +56865,8 @@
         "FBroHsVIPUserAgentData_SetFormFactors"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56919,8 +56919,8 @@
         "FBroHsVIPUserAgentData_SetFullVersion"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -56974,8 +56974,8 @@
         "FBroHsVIPUserAgentData_SetFullVersionList"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -57028,8 +57028,8 @@
         "FBroHsVIPUserAgentData_SetMainAcceptLanguage"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -57081,8 +57081,8 @@
         "FBroHsVIPUserAgentData_SetMainPlatform"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -57135,8 +57135,8 @@
         "FBroHsVIPUserAgentData_SetMainUserAgent"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -57188,8 +57188,8 @@
         "FBroHsVIPUserAgentData_SetMobile"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -57241,8 +57241,8 @@
         "FBroHsVIPUserAgentData_SetModel"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -57294,8 +57294,8 @@
         "FBroHsVIPUserAgentData_SetPlatform"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -57348,8 +57348,8 @@
         "FBroHsVIPUserAgentData_SetPlatformVersion"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {
@@ -57401,8 +57401,8 @@
         "FBroHsVIPUserAgentData_SetWow64"
       ],
       "classification": "advancedSafe",
-      "implementationStatus": "planned",
-      "classificationReason": "已归入安全高级封装目标；必须通过 C ABI v2 类型化对象句柄、UTF-16 JSON、任务或受管缓冲逐项实现，当前不可据此视为已有运行时 wrapper。",
+      "implementationStatus": "implemented",
+      "classificationReason": "已通过 C ABI v2 类型化对象句柄完成安全高级封装，并具有 contribution、binding、真实 Bridge 调用和原生测试。",
       "safetyBoundary": "仅允许 UTF-16 JSON、类型化不透明句柄和受管缓冲区；禁止裸指针、CefRefPtr、STL 与任意地址。"
     },
     {

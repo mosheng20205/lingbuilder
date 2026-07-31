@@ -4,6 +4,10 @@ import type {
   ModuleCommandBinding,
   ModuleCommandContribution
 } from './types';
+import {
+  FBRO_VIP_AGGREGATE_CATEGORY,
+  FBRO_VIP_OFFICIAL_ENTRIES
+} from './fbroVipApiCatalog';
 
 const CORE_DEPENDENCY = [{ moduleId: 'lingbuilder.fbro.browser', minimumVersion: '2.0.0' }];
 const TARGET = [{
@@ -21,7 +25,13 @@ function api(
   parameters: Parameter[],
   returnType: ModuleBindingValueType,
   description: string,
-  options: { runtimeName?: string; visibility?: 'default' | 'advanced'; example?: string } = {}
+  options: {
+    runtimeName?: string;
+    visibility?: 'default' | 'advanced';
+    example?: string;
+    category?: string;
+    capabilityKind?: ModuleCommandContribution['capabilityKind'];
+  } = {}
 ): { command: ModuleCommandContribution; binding: ModuleCommandBinding } {
   const signature = `${name}(${parameters.map(item => item.name).join(', ')})`;
   return {
@@ -32,6 +42,8 @@ function api(
       description,
       insertText: options.example || `${name}(${parameters.map((item, index) => item.type === 'wideString' || item.type === 'handler' ? `"$${index + 1}"` : `$${index + 1}`).join(', ')})`,
       returnType: returnType === 'void' ? '空' : returnType === 'wideString' ? '文本型' : returnType === 'longLong' || returnType === 'handle' ? '长整数型' : returnType === 'double' ? '小数型' : returnType === 'bool' ? '逻辑型' : '整数型',
+      category: options.category,
+      capabilityKind: options.capabilityKind,
       visibility: options.visibility
     },
     binding: {
@@ -276,10 +288,24 @@ const networkEntries = [
   api('FBro网络_设置代理认证', 'LB_FBro_SetProxyAuthentication', [{ name: '控件名', type: 'wideString' }, { name: '代理地址', type: 'wideString' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], 'int', '设置代理与认证信息。', { runtimeName: 'FBro会话_设置代理认证', visibility: 'advanced' })
 ];
 
+const vipAggregateOptions = {
+  visibility: 'advanced' as const,
+  category: FBRO_VIP_AGGREGATE_CATEGORY,
+  capabilityKind: 'aggregate' as const
+};
+
 const vipEntries = [
-  api('FBroVIP_应用指纹JSON', 'LB_FBro_ApplyFingerprintJson', [{ name: '控件名', type: 'wideString' }, { name: 'JSON', type: 'wideString' }], 'int', '通过 UTF-16 JSON 应用受控 VIP 指纹配置；不会暴露 Key。', { runtimeName: 'FBro指纹_应用配置', visibility: 'advanced' }),
-  api('FBroVIP_取调用次数', 'LB_FBro_GetFingerprintCallCount', [{ name: '控件名', type: 'wideString' }], 'wideString', '查询 VIP 指纹调用次数。', { runtimeName: 'FBro指纹_取调用次数', visibility: 'advanced' }),
-  api('FBroVIP_清空调用次数', 'LB_FBro_ClearFingerprintCallCount', [{ name: '控件名', type: 'wideString' }], 'int', '清空 VIP 指纹调用次数。', { runtimeName: 'FBro指纹_清空调用次数', visibility: 'advanced' })
+  ...FBRO_VIP_OFFICIAL_ENTRIES,
+  api('FBroVIP_应用指纹JSON', 'LB_FBro_ApplyFingerprintJson', [{ name: '控件名', type: 'wideString' }, { name: 'JSON', type: 'wideString' }], 'int', '通过 UTF-16 JSON 批量应用完整直接指纹配置，覆盖浏览器、屏幕、GPU、WebRTC、时区、电池、位置、设备、Canvas/WebGL/Audio 和 User-Agent Data；不会暴露 Key。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_应用配置' }),
+  api('FBroVIP_取已应用配置JSON', 'LB_FBro_GetAppliedFingerprintJson', [{ name: '控件名', type: 'wideString' }], 'wideString', '取得最近一次成功应用的规范化指纹配置与 User-Agent Data JSON。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_取已应用配置' }),
+  api('FBroVIP_取授权信息JSON', 'LB_FBro_GetVipLicenseInfoJson', [], 'wideString', '读取脱敏的 VIP 授权状态、版本、授权范围和有效期；不返回 Key。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_取授权信息' }),
+  api('FBroVIP_取调用次数', 'LB_FBro_GetFingerprintCallCount', [{ name: '控件名', type: 'wideString' }], 'wideString', '查询 VIP 指纹调用次数。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_取调用次数' }),
+  api('FBroVIP_清空调用次数', 'LB_FBro_ClearFingerprintCallCount', [{ name: '控件名', type: 'wideString' }], 'int', '清空 VIP 指纹调用次数。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_清空调用次数' }),
+  api('FBroVIP_DOM异步命令', 'LB_FBro_VipDomCommandAsync', [{ name: '控件名', type: 'wideString' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', 'DOM 批量高级分发入口；单项 DOM 命令已经在 DOM 分类中分别公开。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_DOM异步命令' }),
+  api('FBroVIP_扩展异步命令', 'LB_FBro_VipExtensionCommandAsync', [{ name: '控件名', type: 'wideString' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', '扩展批量高级分发入口；文件路径必须位于生成程序目录内。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_扩展异步命令' }),
+  api('FBroVIP_资源规则异步命令', 'LB_FBro_VipResourceCommandAsync', [{ name: '控件名', type: 'wideString' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', '资源与响应规则批量高级分发入口；二进制数据只接受 FBro 受管缓冲句柄。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_资源规则异步命令' }),
+  api('FBroVIP_开发者工具异步命令', 'LB_FBro_VipDevToolsCommandAsync', [{ name: '控件名', type: 'wideString' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', 'DevTools、Runtime 与输入批量高级分发入口；单项命令已经分别公开。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_开发者工具异步命令' }),
+  api('FBroVIP_设置启动代理', 'LB_FBro_SetVipStartupProxy', [{ name: '地址', type: 'wideString' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], 'int', '配置 VIP 启动代理；必须在首个 FBro 运行时初始化前调用，凭据只保存在 Bridge 内存中。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_设置启动代理' })
 ];
 
 export const FBRO_SUBMODULES: LingBuilderModuleManifest[] = [

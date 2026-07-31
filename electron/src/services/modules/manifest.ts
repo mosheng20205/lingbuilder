@@ -61,6 +61,15 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
         if (typeof command?.signature !== 'string' || !command.signature.trim()) diagnostics.push(`命令 ${command?.name || index + 1} 缺少 signature。`);
         if (typeof command?.description !== 'string' || !command.description.trim()) diagnostics.push(`命令 ${command?.name || index + 1} 缺少 description。`);
         if (command?.visibility !== undefined && !['default', 'advanced', 'internal'].includes(command.visibility)) diagnostics.push(`命令 ${command?.name || index + 1} 的 visibility 无效。`);
+        if (command?.category !== undefined && (typeof command.category !== 'string' || !command.category.trim())) {
+          diagnostics.push(`命令 ${command?.name || index + 1} 的 category 必须是非空文本。`);
+        }
+        if (command?.capabilityKind !== undefined && !['single', 'aggregate', 'managed', 'secureReplacement'].includes(command.capabilityKind)) {
+          diagnostics.push(`命令 ${command?.name || index + 1} 的 capabilityKind 无效。`);
+        }
+        if (command?.officialCapability !== undefined && typeof command.officialCapability !== 'boolean') {
+          diagnostics.push(`命令 ${command?.name || index + 1} 的 officialCapability 必须是逻辑值。`);
+        }
         if (command?.returnDescription !== undefined && (typeof command.returnDescription !== 'string' || !command.returnDescription.trim())) {
           diagnostics.push(`命令 ${command?.name || index + 1} 的 returnDescription 必须是非空文本。`);
         }

@@ -45,6 +45,7 @@ import { reconcileRebarBands } from './designerOperations';
 import { normalizeDataGridModel } from './dataGridModel';
 import { DATA_GRID_NATIVE_GLOBALS, DATA_GRID_NATIVE_METHODS } from './dataGridNativeRuntime';
 import { EDGEVIEW_SAFE_API_NATIVE_MEMBERS } from './edgeViewRuntime';
+import { generateFbroVipIndividualRuntime } from '../modules/fbroVipApiCatalog';
 import { getControlTabSlot, getTabControlPages, isNewEmojiTabsControl } from './tabControlModel';
 import {
   parseEplControlMemberAssignmentRule,
@@ -2216,6 +2217,22 @@ static int FBro指纹_应用配置(const wchar_t* name, const wchar_t* json) {
     return 0;
 #endif
 }
+static std::wstring FBro指纹_取已应用配置(const wchar_t* name) {
+    wchar_t result[32768] = {};
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle) LB_FBro_GetAppliedFingerprintJson(browser->handle, result, std::size(result));
+#else
+    (void)name;
+#endif
+    return result;
+}
+static std::wstring FBro指纹_取授权信息() {
+    wchar_t result[32768] = {};
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    LB_FBro_GetVipLicenseInfoJson(result, std::size(result));
+#endif
+    return result;
+}
 static std::wstring FBro指纹_取调用次数(const wchar_t* name) {
     wchar_t result[4096] = {};
 #if LINGBUILDER_NE_FBRO_AVAILABLE
@@ -2232,6 +2249,42 @@ static int FBro指纹_清空调用次数(const wchar_t* name) {
     (void)name; return 0;
 #endif
 }
+static long long FBro指纹_DOM异步命令(const wchar_t* name, const wchar_t* command, const wchar_t* argsJson) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_VipDomCommandAsync(browser->handle, command, argsJson, nullptr, nullptr)) : 0;
+#else
+    (void)name; (void)command; (void)argsJson; return 0;
+#endif
+}
+static long long FBro指纹_扩展异步命令(const wchar_t* name, const wchar_t* command, const wchar_t* argsJson) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_VipExtensionCommandAsync(browser->handle, command, argsJson, nullptr, nullptr)) : 0;
+#else
+    (void)name; (void)command; (void)argsJson; return 0;
+#endif
+}
+static long long FBro指纹_资源规则异步命令(const wchar_t* name, const wchar_t* command, const wchar_t* argsJson) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_VipResourceCommandAsync(browser->handle, command, argsJson, nullptr, nullptr)) : 0;
+#else
+    (void)name; (void)command; (void)argsJson; return 0;
+#endif
+}
+static long long FBro指纹_开发者工具异步命令(const wchar_t* name, const wchar_t* command, const wchar_t* argsJson) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle ? static_cast<long long>(LB_FBro_VipDevToolsCommandAsync(browser->handle, command, argsJson, nullptr, nullptr)) : 0;
+#else
+    (void)name; (void)command; (void)argsJson; return 0;
+#endif
+}
+static int FBro指纹_设置启动代理(const wchar_t* url, const wchar_t* user, const wchar_t* password) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return LB_FBro_SetVipStartupProxy(url, user, password) > 0 ? 1 : 0;
+#else
+    (void)url; (void)user; (void)password; return 0;
+#endif
+}
+${generateFbroVipIndividualRuntime(true)}
 static void FBro_关闭(const wchar_t* name) {
 #if LINGBUILDER_NE_FBRO_AVAILABLE
     auto* browser = LB_NE_FindFbro(name); if (browser && browser->handle) LB_FBro_Close(browser->handle);
@@ -6509,6 +6562,23 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
         return 0;
 #endif
     }
+    std::wstring FBro指纹_取已应用配置(const wchar_t* controlName) {
+        wchar_t result[32768] = {};
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        if (instance && instance->handle) LB_FBro_GetAppliedFingerprintJson(instance->handle, result, std::size(result));
+#else
+        (void)controlName;
+#endif
+        return result;
+    }
+    std::wstring FBro指纹_取授权信息() {
+        wchar_t result[32768] = {};
+#if LINGBUILDER_FBRO_AVAILABLE
+        LB_FBro_GetVipLicenseInfoJson(result, std::size(result));
+#endif
+        return result;
+    }
     std::wstring FBro指纹_取调用次数(const wchar_t* controlName) {
         wchar_t result[4096] = {};
 #if LINGBUILDER_FBRO_AVAILABLE
@@ -6525,6 +6595,42 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
         (void)controlName; return 0;
 #endif
     }
+    long long FBro指纹_DOM异步命令(const wchar_t* controlName, const wchar_t* command, const wchar_t* argsJson) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_VipDomCommandAsync(instance->handle, command, argsJson, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; (void)command; (void)argsJson; return 0;
+#endif
+    }
+    long long FBro指纹_扩展异步命令(const wchar_t* controlName, const wchar_t* command, const wchar_t* argsJson) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_VipExtensionCommandAsync(instance->handle, command, argsJson, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; (void)command; (void)argsJson; return 0;
+#endif
+    }
+    long long FBro指纹_资源规则异步命令(const wchar_t* controlName, const wchar_t* command, const wchar_t* argsJson) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_VipResourceCommandAsync(instance->handle, command, argsJson, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; (void)command; (void)argsJson; return 0;
+#endif
+    }
+    long long FBro指纹_开发者工具异步命令(const wchar_t* controlName, const wchar_t* command, const wchar_t* argsJson) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName); return instance && instance->handle ? static_cast<long long>(LB_FBro_VipDevToolsCommandAsync(instance->handle, command, argsJson, nullptr, nullptr)) : 0;
+#else
+        (void)controlName; (void)command; (void)argsJson; return 0;
+#endif
+    }
+    int FBro指纹_设置启动代理(const wchar_t* url, const wchar_t* user, const wchar_t* password) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return LB_FBro_SetVipStartupProxy(url, user, password) > 0 ? 1 : 0;
+#else
+        (void)url; (void)user; (void)password; return 0;
+#endif
+    }
+${generateFbroVipIndividualRuntime(false)}
     void FBro_关闭(const wchar_t* controlName) {
 #if LINGBUILDER_FBRO_AVAILABLE
         auto* instance = FBro_查找实例(controlName); if (instance && instance->handle) LB_FBro_Close(instance->handle);

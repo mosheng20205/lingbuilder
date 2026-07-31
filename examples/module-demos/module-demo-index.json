@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T09:59:58.220Z",
+  "generatedAt": "2026-07-31T14:57:25.450Z",
   "modules": [
     {
       "moduleId": "lingbuilder.advanced.assembly",
@@ -486,13 +486,13 @@
       "moduleId": "lingbuilder.fbro.vip",
       "moduleName": "FBro VIP 指纹模块",
       "projectId": "module-demo-lingbuilder.fbro.vip",
-      "commandCount": 3,
+      "commandCount": 198,
       "controlCount": 0,
-      "groupCount": 1,
+      "groupCount": 10,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.fbro.vip/src",
       "packageName": "FBroVIP指纹模块完整演示.lcpppkg",
-      "packageBytes": 8635
+      "packageBytes": 46322
     },
     {
       "moduleId": "lingbuilder.fs.core",

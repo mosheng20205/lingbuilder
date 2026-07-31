@@ -2,7 +2,7 @@
 
 更新时间：2026-07-31
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **79 个内置模块、1405 条中文命令**；其中参考精易模块分类新增 **51 个模块、287 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **79 个内置模块、1600 条中文命令**；其中参考精易模块分类新增 **51 个模块、287 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -135,7 +135,7 @@ SQLite 模块不会静默假装数据库可用：项目需要提供 `sqlite3.dll
 | 已封装 | `lingbuilder.fbro.automation` | FBro受管异步及 Frame 自动化模块 | 25 |
 | 已封装 | `lingbuilder.fbro.objects` | FBro任务、缓冲及 Value/Dictionary/List/Stream/Image/Certificate/DragData 受管对象模块 | 132 |
 | 已封装 | `lingbuilder.fbro.network` | FBro高级网络模块 | 2 |
-| 已封装 | `lingbuilder.fbro.vip` | FBro VIP 指纹模块 | 3 |
+| 已封装 | `lingbuilder.fbro.vip` | FBro VIP 指纹模块（188 项官方能力逐项公开，另保留 10 个批量入口） | 198 |
 | 已有 | `lingbuilder.threading` | 多线程模块 | 5 |
 | 已有 | `lingbuilder.websocket.client` | WebSocket 客户端模块 | 5 |
 | 已有 | `lingbuilder.http.server` | HTTP 服务端模块 | 5 |

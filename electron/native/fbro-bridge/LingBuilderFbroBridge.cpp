@@ -25,8 +25,10 @@
 #include "FBroX509CertPrincipal.h"
 #include "FBroVIPStruct.h"
 #include "FBroVIPControl.h"
+#include "FBroVIPEvent.h"
 #include "FBroVIPEventInterface.h"
 #include "FBroVIPInterface.h"
+#include "FBroVIPUserAgentData.h"
 #include "include/cef_parser.h"
 #include "include/cef_navigation_entry.h"
 #include "include/cef_ssl_status.h"
@@ -38,6 +40,9 @@
 #include <atomic>
 #include <condition_variable>
 #include <chrono>
+#include <climits>
+#include <cstring>
+#include <cwchar>
 #include <cwctype>
 #include <filesystem>
 #include <fstream>
@@ -55,6 +60,12 @@ namespace {
 
 struct BrowserState;
 class BridgeBrowserEvent;
+void NotifyVipBrowser(CefRefPtr<CefBrowser> browser, int code, const std::wstring& data);
+
+struct VipResourcePayload {
+  std::vector<unsigned char> bytes;
+  CefRefPtr<FBroDoubleString> headers;
+};
 
 std::recursive_mutex g_mutex;
 std::condition_variable_any g_close_condition;
@@ -69,9 +80,14 @@ std::atomic<bool> g_license_attempted{false};
 std::atomic<bool> g_license_valid{false};
 bool g_winsock_started = false;
 CefRefPtr<FBroHsInitEvent> g_init_event;
+CefRefPtr<FBroVIPEvent> g_vip_event;
 std::filesystem::path g_runtime_directory;
 std::filesystem::path g_root_cache_directory;
 std::wstring g_license_error;
+std::wstring g_vip_proxy_url;
+std::wstring g_vip_proxy_user;
+std::wstring g_vip_proxy_password;
+std::unordered_map<std::wstring, std::shared_ptr<VipResourcePayload>> g_global_vip_resource_payloads;
 
 struct TaskState {
   LB_FBRO_TASK_HANDLE handle = 0;
@@ -119,6 +135,7 @@ struct BrowserState {
   std::wstring user_agent;
   std::wstring last_event;
   std::wstring last_event_json;
+  std::wstring last_fingerprint_json;
   LB_FBRO_OBJECT_HANDLE last_event_object = 0;
   std::wstring last_error;
   LB_FBRO_EVENT_CALLBACK callback = nullptr;
@@ -128,6 +145,8 @@ struct BrowserState {
   CefRefPtr<CefBrowser> browser;
   CefRefPtr<CefRequestContext> request_context;
   CefRefPtr<BridgeBrowserEvent> event;
+  CefRefPtr<FBroHsDevToolsMessageObserver> devtools_observer;
+  std::unordered_map<std::wstring, std::shared_ptr<VipResourcePayload>> vip_resource_payloads;
   bool create_started = false;
   bool chrome_ui = false;
   unsigned int flags = 7;
@@ -166,6 +185,24 @@ std::wstring FromUtf8(const char* value) {
   std::wstring result(static_cast<size_t>(size), L'\0');
   MultiByteToWideChar(code_page, flags, value, -1, result.data(), size);
   result.pop_back();
+  return result;
+}
+
+std::wstring FromUtf8Bytes(const void* data, size_t size) {
+  if (!data || size == 0 || size > static_cast<size_t>(INT_MAX)) return {};
+  const char* bytes = static_cast<const char*>(data);
+  int required = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes,
+                                     static_cast<int>(size), nullptr, 0);
+  UINT code_page = CP_UTF8;
+  DWORD flags = MB_ERR_INVALID_CHARS;
+  if (required <= 0) {
+    code_page = CP_ACP;
+    flags = 0;
+    required = MultiByteToWideChar(code_page, flags, bytes, static_cast<int>(size), nullptr, 0);
+  }
+  if (required <= 0) return {};
+  std::wstring result(static_cast<size_t>(required), L'\0');
+  MultiByteToWideChar(code_page, flags, bytes, static_cast<int>(size), result.data(), required);
   return result;
 }
 
@@ -373,6 +410,12 @@ const wchar_t* EventName(int code) {
     case LB_FBRO_EVENT_BEFORE_POPUP: return L"BeforePopup";
     case LB_FBRO_EVENT_CERTIFICATE_ERROR: return L"CertificateError";
     case LB_FBRO_EVENT_DRAG_ENTER: return L"DragEnter";
+    case LB_FBRO_EVENT_VIP_DEVTOOLS_MESSAGE: return L"VipDevToolsMessage";
+    case LB_FBRO_EVENT_VIP_DEVTOOLS_RESULT: return L"VipDevToolsResult";
+    case LB_FBRO_EVENT_VIP_DEVTOOLS_EVENT: return L"VipDevToolsEvent";
+    case LB_FBRO_EVENT_VIP_DEVTOOLS_ATTACHED: return L"VipDevToolsAttached";
+    case LB_FBRO_EVENT_VIP_DEVTOOLS_DETACHED: return L"VipDevToolsDetached";
+    case LB_FBRO_EVENT_VIP_LIFECYCLE: return L"VipLifecycle";
     default: return L"Unknown";
   }
 }
@@ -476,6 +519,35 @@ bool IsChildPath(const std::filesystem::path& root, const std::filesystem::path&
   return candidate_text.size() > root_text.size()
       && candidate_text.compare(0, root_text.size(), root_text) == 0
       && candidate_text[root_text.size()] == L'\\';
+}
+
+bool ResolveRuntimeAssetPath(const std::wstring& supplied, bool require_directory,
+                             std::filesystem::path& resolved, std::wstring& error) {
+  if (supplied.empty()) {
+    error = L"路径不能为空";
+    return false;
+  }
+  std::error_code path_error;
+  const auto runtime_root = std::filesystem::weakly_canonical(g_runtime_directory, path_error);
+  const auto safe_root = path_error ? AbsoluteNormalizedPath(g_runtime_directory) : runtime_root;
+  std::filesystem::path candidate(supplied);
+  if (candidate.is_relative()) candidate = safe_root / candidate;
+  path_error.clear();
+  const auto canonical = std::filesystem::weakly_canonical(candidate, path_error);
+  resolved = path_error ? AbsoluteNormalizedPath(candidate) : canonical;
+  if (resolved != safe_root && !IsChildPath(safe_root, resolved)) {
+    error = L"路径必须位于当前生成程序目录内";
+    return false;
+  }
+  path_error.clear();
+  const bool valid_type = require_directory
+      ? std::filesystem::is_directory(resolved, path_error)
+      : std::filesystem::is_regular_file(resolved, path_error);
+  if (path_error || !valid_type) {
+    error = require_directory ? L"扩展目录不存在或不可访问" : L"文件不存在或不可访问";
+    return false;
+  }
+  return true;
 }
 
 std::filesystem::path ResolveProfileDirectory(const std::wstring& profile, LB_FBRO_HANDLE handle,
@@ -716,12 +788,54 @@ class BridgeInitEvent final : public FBroHsInitEvent {
   BridgeInitEvent() { type_ = InitEventType; }
   static void* operator new(size_t size) { return FBroMallocManger_New(size); }
   static void operator delete(void* pointer) noexcept { if (pointer) FBroMallocManger_Free(pointer); }
+  void OnBeforeCommandLineProcessing(const CefString&,
+                                     CefRefPtr<CefCommandLine> command_line) override {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    if (command_line && !g_vip_proxy_url.empty()) {
+      FBroHsVIPCommandLine_SetProxy(command_line, g_vip_proxy_url,
+                                    g_vip_proxy_user, g_vip_proxy_password);
+    }
+  }
   void OnContextInitialized() override {
     g_ready = true;
     StartPendingBrowsers();
   }
  private:
   IMPLEMENT_REFCOUNTING(BridgeInitEvent);
+};
+
+class BridgeVipEvent final : public FBroVIPEvent {
+ public:
+  void OnContextInitialized() override {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    for (auto& [handle, state] : g_browsers) {
+      (void)handle;
+      Notify(*state, LB_FBRO_EVENT_VIP_LIFECYCLE, L"{\"phase\":\"contextInitialized\"}");
+    }
+  }
+  void OnAfterCreated(CefRefPtr<CefBrowser> browser, CefRefPtr<CefBrowser>) override {
+    NotifyVipBrowser(browser, LB_FBRO_EVENT_VIP_LIFECYCLE, L"{\"phase\":\"afterCreated\"}");
+  }
+  void AfterCreated(CefRefPtr<CefBrowser> browser) override {
+    NotifyVipBrowser(browser, LB_FBRO_EVENT_VIP_LIFECYCLE, L"{\"phase\":\"created\"}");
+  }
+  bool OnBeforePopup(CefRefPtr<CefBrowser> browser) override {
+    NotifyVipBrowser(browser, LB_FBRO_EVENT_VIP_LIFECYCLE, L"{\"phase\":\"beforePopup\"}");
+    return false;
+  }
+  void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
+    NotifyVipBrowser(browser, LB_FBRO_EVENT_VIP_LIFECYCLE, L"{\"phase\":\"beforeClose\"}");
+  }
+  void Shutdown() override {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    for (auto& [handle, state] : g_browsers) {
+      (void)handle;
+      Notify(*state, LB_FBRO_EVENT_VIP_LIFECYCLE, L"{\"phase\":\"shutdown\"}");
+    }
+  }
+
+ private:
+  IMPLEMENT_REFCOUNTING(BridgeVipEvent);
 };
 
 int WithBrowser(LB_FBRO_HANDLE handle, const std::function<void(CefRefPtr<CefBrowser>)>& action) {
@@ -1162,10 +1276,627 @@ int ReadJsonBool(CefRefPtr<CefDictionaryValue> value, const char* key, int fallb
   return fallback;
 }
 
+uint64_t ReadJsonUInt64(CefRefPtr<CefDictionaryValue> value, const char* key, uint64_t fallback = 0) {
+  if (!value || !value->HasKey(key)) return fallback;
+  const auto type = value->GetType(key);
+  if (type == VTYPE_INT) return static_cast<uint64_t>(std::max(0, value->GetInt(key)));
+  if (type == VTYPE_DOUBLE) {
+    const double number = value->GetDouble(key);
+    return number >= 0 ? static_cast<uint64_t>(number) : fallback;
+  }
+  if (type == VTYPE_STRING) {
+    try { return std::stoull(value->GetString(key).ToWString()); } catch (...) { return fallback; }
+  }
+  return fallback;
+}
+
 std::string ReadJsonUtf8(CefRefPtr<CefDictionaryValue> value, const char* key) {
   if (!value || value->GetType(key) != VTYPE_STRING) return {};
   return ToUtf8(value->GetString(key).ToWString());
 }
+
+std::wstring ReadJsonWide(CefRefPtr<CefDictionaryValue> value, const char* key) {
+  if (!value || value->GetType(key) != VTYPE_STRING) return {};
+  return value->GetString(key).ToWString();
+}
+
+CefRefPtr<CefDictionaryValue> ReadJsonDictionary(CefRefPtr<CefDictionaryValue> value, const char* key) {
+  return value && value->GetType(key) == VTYPE_DICTIONARY ? value->GetDictionary(key) : nullptr;
+}
+
+CefRefPtr<CefListValue> ReadJsonList(CefRefPtr<CefDictionaryValue> value, const char* key) {
+  return value && value->GetType(key) == VTYPE_LIST ? value->GetList(key) : nullptr;
+}
+
+CefRefPtr<CefDictionaryValue> ParseVipArgs(const std::wstring& json, std::wstring& error) {
+  if (json.empty()) return CefDictionaryValue::Create();
+  auto parsed = CefParseJSON(CefString(json), JSON_PARSER_ALLOW_TRAILING_COMMAS);
+  if (!parsed || parsed->GetType() != VTYPE_DICTIONARY) {
+    error = L"VIP 命令参数必须是 UTF-16 JSON 对象";
+    return nullptr;
+  }
+  return parsed->GetDictionary();
+}
+
+std::wstring NormalizeVipCommand(std::wstring command, const wchar_t* prefix) {
+  if (prefix && command.rfind(prefix, 0) == 0) command.erase(0, wcslen(prefix));
+  std::transform(command.begin(), command.end(), command.begin(), ::towlower);
+  return command;
+}
+
+std::wstring JsonFromRawData(const void* data, size_t size) {
+  if (!data || size == 0) return L"{}";
+  auto parsed = CefParseJSON(data, size, JSON_PARSER_RFC);
+  if (parsed) {
+    const auto json = CefWriteJSON(parsed, JSON_WRITER_DEFAULT).ToWString();
+    if (!json.empty()) return json;
+  }
+  return L"{\"raw\":\"" + JsonEscape(FromUtf8Bytes(data, size)) + L"\"}";
+}
+
+std::wstring JsonFromList(CefRefPtr<CefListValue> list) {
+  if (!list) return L"[]";
+  auto value = CefValue::Create();
+  value->SetList(list);
+  const auto json = CefWriteJSON(value, JSON_WRITER_DEFAULT).ToWString();
+  return json.empty() ? L"[]" : json;
+}
+
+CefRefPtr<FBroDoubleString> CreateDoubleStringFromJson(CefRefPtr<CefDictionaryValue> value,
+                                                        const char* key) {
+  auto entries = ReadJsonList(value, key);
+  if (!entries) return nullptr;
+  auto result = FBroDoubleString_Creat();
+  if (!result) return nullptr;
+  for (size_t index = 0; index < entries->GetSize(); ++index) {
+    if (entries->GetType(index) != VTYPE_DICTIONARY) continue;
+    auto entry = entries->GetDictionary(index);
+    if (!entry || entry->GetType("name") != VTYPE_STRING || entry->GetType("value") != VTYPE_STRING) continue;
+    FBroDoubleString_Add(result, entry->GetString("name"), entry->GetString("value"));
+  }
+  return result;
+}
+
+CefRefPtr<FBroCefStringList> CreateStringListFromJson(CefRefPtr<CefDictionaryValue> value,
+                                                       const char* key) {
+  auto entries = ReadJsonList(value, key);
+  if (!entries) return nullptr;
+  auto result = FBroCefStringList_Creat();
+  if (!result) return nullptr;
+  for (size_t index = 0; index < entries->GetSize(); ++index) {
+    if (entries->GetType(index) == VTYPE_STRING) FBroCefStringList_Add(result, entries->GetString(index));
+  }
+  return result;
+}
+
+std::wstring DoubleStringJson(CefRefPtr<FBroDoubleString> values) {
+  std::wstring json = L"[";
+  const int count = values ? FBroDoubleString_Size(values) : 0;
+  if (count > 0) FBroDoubleString_ToBegin(values);
+  for (int index = 0; index < count; ++index) {
+    if (index > 0) json += L",";
+    json += L"{\"name\":\"" + JsonEscape(FromFbroString(FBroDoubleString_GetCurrentData_Key(values)))
+        + L"\",\"value\":\"" + JsonEscape(FromFbroString(FBroDoubleString_GetCurrentData_Value(values))) + L"\"}";
+    if (index + 1 < count) FBroDoubleString_ToNext(values);
+  }
+  json += L"]";
+  return json;
+}
+
+std::wstring VipUserAgentJson(CefRefPtr<FBroVIPUserAgentData> value) {
+  if (!value) return L"{}";
+  std::wstring json = L"{";
+  json += L"\"mainUserAgent\":\"" + JsonEscape(FromFbroString(FBroHsVIPUserAgentData_GetMainUserAgent(value))) + L"\",";
+  json += L"\"mainAcceptLanguage\":\"" + JsonEscape(FromFbroString(FBroHsVIPUserAgentData_GetMainAcceptLanguage(value))) + L"\",";
+  json += L"\"mainPlatform\":\"" + JsonEscape(FromFbroString(FBroHsVIPUserAgentData_GetMainPlatform(value))) + L"\",";
+  json += L"\"brands\":" + DoubleStringJson(FBroHsVIPUserAgentData_GetBrands(value)) + L",";
+  json += L"\"fullVersionList\":" + DoubleStringJson(FBroHsVIPUserAgentData_GetFullVersionList(value)) + L",";
+  json += L"\"fullVersion\":\"" + JsonEscape(FromFbroString(FBroHsVIPUserAgentData_GetFullVersion(value))) + L"\",";
+  json += L"\"platform\":\"" + JsonEscape(FromFbroString(FBroHsVIPUserAgentData_GetPlatform(value))) + L"\",";
+  json += L"\"platformVersion\":\"" + JsonEscape(FromFbroString(FBroHsVIPUserAgentData_GetPlatformVersion(value))) + L"\",";
+  json += L"\"architecture\":\"" + JsonEscape(FromFbroString(FBroHsVIPUserAgentData_GetArchitecture(value))) + L"\",";
+  json += L"\"model\":\"" + JsonEscape(FromFbroString(FBroHsVIPUserAgentData_GetModel(value))) + L"\",";
+  json += L"\"mobile\":" + std::wstring(FBroHsVIPUserAgentData_GetMobile(value) ? L"true" : L"false") + L",";
+  json += L"\"bitness\":\"" + JsonEscape(FromFbroString(FBroHsVIPUserAgentData_GetBitness(value))) + L"\",";
+  json += L"\"wow64\":" + std::wstring(FBroHsVIPUserAgentData_GetWow64(value) ? L"true" : L"false") + L",";
+  json += L"\"formFactors\":" + StringListJson(FBroHsVIPUserAgentData_GetFormFactors(value));
+  json += L"}";
+  return json;
+}
+
+void NotifyVipBrowser(CefRefPtr<CefBrowser> browser, int code, const std::wstring& data) {
+  if (!browser) return;
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  for (auto& [handle, state] : g_browsers) {
+    (void)handle;
+    if (state->browser && state->browser->IsSame(browser)) {
+      Notify(*state, code, data);
+      return;
+    }
+  }
+}
+
+class BridgeVipResultCallback final : public FBroHsGeneralResultCallback {
+ public:
+  explicit BridgeVipResultCallback(std::shared_ptr<TaskState> task) : task_(std::move(task)) {
+    type_ = GeneralResultCallbackType;
+  }
+  static void* operator new(size_t size) { return FBroMallocManger_New(size); }
+  static void operator delete(void* pointer) noexcept { if (pointer) FBroMallocManger_Free(pointer); }
+  void Callback_Data(CefRefPtr<CefBrowser>, int message_id, bool success,
+                     const void* data, size_t size) override {
+    if (!success) {
+      CompleteTextTask(task_, L"", L"FBro VIP 异步命令执行失败");
+      return;
+    }
+    CompleteTextTask(task_, L"{\"messageId\":" + std::to_wstring(message_id)
+        + L",\"success\":true,\"result\":" + JsonFromRawData(data, size) + L"}");
+  }
+  void Callback_ListData(CefRefPtr<CefBrowser>, int message_id, bool success,
+                         CefRefPtr<CefListValue> list) override {
+    if (!success) {
+      CompleteTextTask(task_, L"", L"FBro VIP 异步命令执行失败");
+      return;
+    }
+    CompleteTextTask(task_, L"{\"messageId\":" + std::to_wstring(message_id)
+        + L",\"success\":true,\"result\":" + JsonFromList(list) + L"}");
+  }
+
+ private:
+  std::shared_ptr<TaskState> task_;
+  IMPLEMENT_REFCOUNTING(BridgeVipResultCallback);
+};
+
+class BridgeDevToolsObserver final : public FBroHsDevToolsMessageObserver {
+ public:
+  BridgeDevToolsObserver() { type_ = DevToolsMessageObserverType; }
+  static void* operator new(size_t size) { return FBroMallocManger_New(size); }
+  static void operator delete(void* pointer) noexcept { if (pointer) FBroMallocManger_Free(pointer); }
+  bool OnDevToolsMessage(CefRefPtr<CefBrowser> browser, const void* message,
+                         size_t message_size) override {
+    NotifyVipBrowser(browser, LB_FBRO_EVENT_VIP_DEVTOOLS_MESSAGE,
+                     JsonFromRawData(message, message_size));
+    return false;
+  }
+  void OnDevToolsMethodResult(CefRefPtr<CefBrowser> browser, int message_id, bool success,
+                              const void* result, size_t result_size) override {
+    NotifyVipBrowser(browser, LB_FBRO_EVENT_VIP_DEVTOOLS_RESULT,
+        L"{\"messageId\":" + std::to_wstring(message_id)
+        + L",\"success\":" + std::wstring(success ? L"true" : L"false")
+        + L",\"result\":" + JsonFromRawData(result, result_size) + L"}");
+  }
+  void OnDevToolsEvent(CefRefPtr<CefBrowser> browser, const CefString& method,
+                       const void* params, size_t params_size) override {
+    NotifyVipBrowser(browser, LB_FBRO_EVENT_VIP_DEVTOOLS_EVENT,
+        L"{\"method\":\"" + JsonEscape(method.ToWString())
+        + L"\",\"params\":" + JsonFromRawData(params, params_size) + L"}");
+  }
+  void OnDevToolsAgentAttached(CefRefPtr<CefBrowser> browser) override {
+    NotifyVipBrowser(browser, LB_FBRO_EVENT_VIP_DEVTOOLS_ATTACHED, L"{}");
+  }
+  void OnDevToolsAgentDetached(CefRefPtr<CefBrowser> browser) override {
+    NotifyVipBrowser(browser, LB_FBRO_EVENT_VIP_DEVTOOLS_DETACHED, L"{}");
+  }
+
+ private:
+  IMPLEMENT_REFCOUNTING(BridgeDevToolsObserver);
+};
+
+class BridgeVipDomTask final : public CefTask {
+ public:
+  BridgeVipDomTask(LB_FBRO_HANDLE browser, std::wstring command, std::wstring args_json,
+                   std::shared_ptr<TaskState> task)
+      : browser_(browser), command_(std::move(command)), args_json_(std::move(args_json)),
+        task_(std::move(task)) {}
+  void Execute() override {
+    CefRefPtr<CefBrowser> browser;
+    {
+      std::lock_guard<std::recursive_mutex> lock(g_mutex);
+      if (auto* state = Find(browser_)) browser = state->browser;
+    }
+    if (!browser) {
+      CompleteTextTask(task_, L"", L"浏览器尚未创建");
+      return;
+    }
+    std::wstring error;
+    auto args = ParseVipArgs(args_json_, error);
+    if (!args) {
+      CompleteTextTask(task_, L"", error);
+      return;
+    }
+    const std::wstring action = NormalizeVipCommand(command_, L"FBroHsDevToolsDOM_");
+    const int node_id = static_cast<int>(ReadJsonNumber(args, "nodeId", 0));
+    auto complete = [&] { CompleteTextTask(task_, L"{\"success\":true}"); };
+    CefRefPtr<BridgeVipResultCallback> callback = new BridgeVipResultCallback(task_);
+    if (action == L"enable") {
+      FBroHsDevToolsDOM_enable(browser, ReadJsonWide(args, "includeWhitespace")); complete();
+    } else if (action == L"disable") {
+      FBroHsDevToolsDOM_disable(browser); complete();
+    } else if (action == L"focuselement") {
+      FBroHsDevToolsDOM_focusElement(browser, node_id); complete();
+    } else if (action == L"removeattribute") {
+      FBroHsDevToolsDOM_removeAttribute(browser, node_id, ReadJsonWide(args, "name")); complete();
+    } else if (action == L"removenode") {
+      FBroHsDevToolsDOM_removeNode(browser, node_id); complete();
+    } else if (action == L"setattributesastext") {
+      FBroHsDevToolsDOM_setAttributesAsText(browser, node_id, ReadJsonWide(args, "text"),
+                                             ReadJsonWide(args, "name")); complete();
+    } else if (action == L"setattributevalue") {
+      FBroHsDevToolsDOM_setAttributeValue(browser, node_id, ReadJsonWide(args, "name"),
+                                           ReadJsonWide(args, "value")); complete();
+    } else if (action == L"setnodevalue") {
+      FBroHsDevToolsDOM_setNodeValue(browser, node_id, ReadJsonWide(args, "value")); complete();
+    } else if (action == L"setouterhtml") {
+      FBroHsDevToolsDOM_setOuterHTML(browser, node_id, ReadJsonWide(args, "outerHTML")); complete();
+    } else if (action == L"discardsearchresults") {
+      FBroHsDevToolsDOM_discardSearchResults(browser, ReadJsonWide(args, "searchId")); complete();
+    } else if (action == L"getdocument") {
+      FBroHsDevToolsDOM_getDocument(browser, static_cast<int>(ReadJsonNumber(args, "depth", -1)),
+          ReadJsonBool(args, "pierce", 0) ? TRUE : FALSE, callback, nullptr, 0);
+    } else if (action == L"getattributes") {
+      FBroHsDevToolsDOM_getAttributes(browser, node_id, callback, nullptr, 0);
+    } else if (action == L"getouterhtml") {
+      FBroHsDevToolsDOM_getOuterHTML(browser, node_id, callback, nullptr, 0);
+    } else if (action == L"queryselector") {
+      FBroHsDevToolsDOM_querySelector(browser, node_id, ReadJsonWide(args, "selector"), callback, nullptr, 0);
+    } else if (action == L"queryselectorall") {
+      FBroHsDevToolsDOM_querySelectorAll(browser, node_id, ReadJsonWide(args, "selector"), callback, nullptr, 0);
+    } else if (action == L"setnodename") {
+      FBroHsDevToolsDOM_setNodeName(browser, node_id, ReadJsonWide(args, "name"), callback, nullptr, 0);
+    } else if (action == L"getcontainerfornode") {
+      FBroHsDevToolsDOM_getContainerForNode(browser, node_id, ReadJsonWide(args, "containerName"), callback, nullptr, 0);
+    } else if (action == L"performsearch") {
+      FBroHsDevToolsDOM_performSearch(browser, ReadJsonWide(args, "query"),
+          ReadJsonBool(args, "includeUserAgentShadowDOM", 0) ? TRUE : FALSE, callback, nullptr, 0);
+    } else if (action == L"getsearchresults") {
+      FBroHsDevToolsDOM_getSearchResults(browser, ReadJsonWide(args, "searchId"),
+          static_cast<int>(ReadJsonNumber(args, "fromIndex", 0)),
+          static_cast<int>(ReadJsonNumber(args, "toIndex", 0)), callback, nullptr, 0);
+    } else {
+      CompleteTextTask(task_, L"", L"未知的 FBro VIP DOM 命令");
+    }
+  }
+
+ private:
+  LB_FBRO_HANDLE browser_;
+  std::wstring command_;
+  std::wstring args_json_;
+  std::shared_ptr<TaskState> task_;
+  IMPLEMENT_REFCOUNTING(BridgeVipDomTask);
+};
+
+class BridgeVipExtensionTask final : public CefTask {
+ public:
+  BridgeVipExtensionTask(LB_FBRO_HANDLE browser, std::wstring command, std::wstring args_json,
+                         std::shared_ptr<TaskState> task)
+      : browser_(browser), command_(std::move(command)), args_json_(std::move(args_json)),
+        task_(std::move(task)) {}
+  void Execute() override {
+    CefRefPtr<CefBrowser> browser;
+    CefRefPtr<CefRequestContext> context;
+    {
+      std::lock_guard<std::recursive_mutex> lock(g_mutex);
+      if (auto* state = Find(browser_)) {
+        browser = state->browser;
+        context = state->request_context;
+      }
+    }
+    if (!browser) {
+      CompleteTextTask(task_, L"", L"浏览器尚未创建");
+      return;
+    }
+    if (!context) context = FBroHsBrowserHost_GetRequestContext(browser);
+    if (!context) {
+      CompleteTextTask(task_, L"", L"无法取得浏览器 RequestContext");
+      return;
+    }
+    std::wstring error;
+    auto args = ParseVipArgs(args_json_, error);
+    if (!args) { CompleteTextTask(task_, L"", error); return; }
+    const std::wstring action = NormalizeVipCommand(command_, L"FBroHsVIPRequestContext_");
+    const std::wstring extension_id = ReadJsonWide(args, "extensionId");
+    if (action == L"enableextensionplus") {
+      FBroHsVIPRequestContext_EnableExtensionPlus();
+      CompleteTextTask(task_, L"{\"success\":true}");
+    } else if (action == L"loadextension" || action == L"installcrx") {
+      std::filesystem::path path;
+      const bool directory = action == L"loadextension";
+      if (!ResolveRuntimeAssetPath(ReadJsonWide(args, "path"), directory, path, error)) {
+        CompleteTextTask(task_, L"", error); return;
+      }
+      if (directory) FBroHsVIPRequestContext_LoadExtension(context, path.wstring());
+      else FBroHsVIPRequestContext_InstallCrx(context, path.wstring());
+      CompleteTextTask(task_, L"{\"success\":true,\"path\":\"" + JsonEscape(path.wstring()) + L"\"}");
+    } else if (action == L"unstallextension") {
+      FBroHsVIPRequestContext_UnstallExtension(context, extension_id);
+      CompleteTextTask(task_, L"{\"success\":true}");
+    } else if (action == L"getextensionpath") {
+      CompleteTextTask(task_, L"{\"value\":\"" + JsonEscape(FromFbroString(
+          FBroHsVIPRequestContext_GetExtensionPath(context, extension_id))) + L"\"}");
+    } else if (action == L"getextensionurl") {
+      CompleteTextTask(task_, L"{\"value\":\"" + JsonEscape(FromFbroString(
+          FBroHsVIPRequestContext_GetExtensionURL(context, extension_id))) + L"\"}");
+    } else if (action == L"getextensionname") {
+      CompleteTextTask(task_, L"{\"value\":\"" + JsonEscape(FromFbroString(
+          FBroHsVIPRequestContext_GetExtensionName(context, extension_id))) + L"\"}");
+    } else {
+      CompleteTextTask(task_, L"", L"未知的 FBro VIP 扩展命令");
+    }
+  }
+
+ private:
+  LB_FBRO_HANDLE browser_;
+  std::wstring command_;
+  std::wstring args_json_;
+  std::shared_ptr<TaskState> task_;
+  IMPLEMENT_REFCOUNTING(BridgeVipExtensionTask);
+};
+
+class BridgeVipResourceTask final : public CefTask {
+ public:
+  BridgeVipResourceTask(LB_FBRO_HANDLE browser, std::wstring command, std::wstring args_json,
+                        std::shared_ptr<TaskState> task)
+      : browser_(browser), command_(std::move(command)), args_json_(std::move(args_json)),
+        task_(std::move(task)) {}
+  void Execute() override {
+    std::wstring error;
+    auto args = ParseVipArgs(args_json_, error);
+    if (!args) { CompleteTextTask(task_, L"", error); return; }
+    if (!g_license_valid) {
+      CompleteTextTask(task_, L"", L"资源规则需要有效的 FBro VIP Key");
+      return;
+    }
+    const bool global = ReadJsonBool(args, "global", 0) != 0;
+    CefRefPtr<FBroVIPControl> vip;
+    if (!global) {
+      CefRefPtr<CefBrowser> browser;
+      {
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
+        if (auto* state = Find(browser_)) browser = state->browser;
+      }
+      if (!browser) { CompleteTextTask(task_, L"", L"浏览器尚未创建"); return; }
+      vip = FBroHsBrowser_GetVIPControl(browser);
+      if (!vip || FBroHsVIPControl_IsNULL(vip)) {
+        CompleteTextTask(task_, L"", L"当前浏览器没有可用的 VIP 控制器"); return;
+      }
+    }
+    const std::wstring action = NormalizeVipCommand(command_, nullptr);
+    const std::wstring url = ReadJsonWide(args, "url");
+    const int find_type = static_cast<int>(ReadJsonNumber(args, "findType", 0));
+    const std::wstring resource_key = L"resource|" + url;
+    const std::wstring response_key = L"response|" + url;
+    auto store_payload = [&](const std::wstring& key, const std::shared_ptr<VipResourcePayload>& payload) {
+      std::lock_guard<std::recursive_mutex> lock(g_mutex);
+      if (global) g_global_vip_resource_payloads[key] = payload;
+      else if (auto* state = Find(browser_)) state->vip_resource_payloads[key] = payload;
+    };
+    auto erase_payload = [&](const std::wstring& key) {
+      std::lock_guard<std::recursive_mutex> lock(g_mutex);
+      if (global) g_global_vip_resource_payloads.erase(key);
+      else if (auto* state = Find(browser_)) state->vip_resource_payloads.erase(key);
+    };
+    auto clear_payloads = [&](const std::wstring& prefix) {
+      std::lock_guard<std::recursive_mutex> lock(g_mutex);
+      auto clear_matching = [&](auto& values) {
+        for (auto iterator = values.begin(); iterator != values.end();) {
+          if (iterator->first.rfind(prefix, 0) == 0) iterator = values.erase(iterator);
+          else ++iterator;
+        }
+      };
+      if (global) clear_matching(g_global_vip_resource_payloads);
+      else if (auto* state = Find(browser_)) clear_matching(state->vip_resource_payloads);
+    };
+    if (action == L"addresourcedata") {
+      int status = LB_FBRO_OK;
+      auto buffer = GetBuffer(ReadJsonUInt64(args, "bufferHandle"), status);
+      if (!buffer || buffer->bytes.empty()) {
+        CompleteTextTask(task_, L"", L"资源替换需要有效的非空受管缓冲句柄"); return;
+      }
+      auto payload = std::make_shared<VipResourcePayload>();
+      payload->bytes = buffer->bytes;
+      payload->headers = CreateDoubleStringFromJson(args, "headers");
+      if (global) {
+        FBroHsVIPResourceHandler_AddChangeData(find_type, url, ReadJsonWide(args, "mimeType"),
+            payload->headers, payload->bytes.data(), payload->bytes.size());
+      } else {
+        FBroHsVIPControl_AddResourceHandlerChangeData(vip, find_type, url, ReadJsonWide(args, "mimeType"),
+            payload->headers, payload->bytes.data(), payload->bytes.size());
+      }
+      store_payload(resource_key, payload);
+      CompleteTextTask(task_, L"{\"success\":true,\"bytes\":" + std::to_wstring(payload->bytes.size()) + L"}");
+    } else if (action == L"addresourcefile") {
+      std::filesystem::path path;
+      if (!ResolveRuntimeAssetPath(ReadJsonWide(args, "path"), false, path, error)) {
+        CompleteTextTask(task_, L"", error); return;
+      }
+      auto payload = std::make_shared<VipResourcePayload>();
+      payload->headers = CreateDoubleStringFromJson(args, "headers");
+      if (global) FBroHsVIPResourceHandler_AddChangeFile(find_type, url, ReadJsonWide(args, "mimeType"), payload->headers, path.wstring());
+      else FBroHsVIPControl_AddResourceHandlerChangeFile(vip, find_type, url, ReadJsonWide(args, "mimeType"), payload->headers, path.wstring());
+      store_payload(resource_key, payload);
+      CompleteTextTask(task_, L"{\"success\":true,\"path\":\"" + JsonEscape(path.wstring()) + L"\"}");
+    } else if (action == L"deleteresource") {
+      if (global) FBroHsVIPResourceHandler_DeleteChangeData(url);
+      else FBroHsVIPControl_DeleteResourceHandlerChangeData(vip, url);
+      erase_payload(resource_key);
+      CompleteTextTask(task_, L"{\"success\":true}");
+    } else if (action == L"clearresources") {
+      if (global) FBroHsVIPResourceHandler_DeleteAllData();
+      else FBroHsVIPControl_DeleteResourceHandlerAllData(vip);
+      clear_payloads(L"resource|");
+      CompleteTextTask(task_, L"{\"success\":true}");
+    } else if (action == L"addresponsefilter") {
+      if (global) {
+        FBroHsVIPResponseFilter_AddChangeData(find_type, url,
+            static_cast<int>(ReadJsonNumber(args, "changeType", 0)),
+            ReadJsonWide(args, "key"), ReadJsonWide(args, "data"));
+      } else {
+        FBroHsVIPControl_AddResponseFilterChangeData(vip, find_type, url,
+            static_cast<int>(ReadJsonNumber(args, "changeType", 0)),
+            ReadJsonWide(args, "key"), ReadJsonWide(args, "data"));
+      }
+      store_payload(response_key, std::make_shared<VipResourcePayload>());
+      CompleteTextTask(task_, L"{\"success\":true}");
+    } else if (action == L"deleteresponsefilter") {
+      if (global) FBroHsVIPResponseFilter_DeleteChangeData(url);
+      else FBroHsVIPControl_DeletResponseFiltereChangeData(vip, url);
+      erase_payload(response_key);
+      CompleteTextTask(task_, L"{\"success\":true}");
+    } else if (action == L"clearresponsefilters") {
+      if (global) FBroHsVIPResponseFilter_DeleteAllData();
+      else FBroHsVIPControl_DeleteResponseFilterAllData(vip);
+      clear_payloads(L"response|");
+      CompleteTextTask(task_, L"{\"success\":true}");
+    } else {
+      CompleteTextTask(task_, L"", L"未知的 FBro VIP 资源规则命令");
+    }
+  }
+
+ private:
+  LB_FBRO_HANDLE browser_;
+  std::wstring command_;
+  std::wstring args_json_;
+  std::shared_ptr<TaskState> task_;
+  IMPLEMENT_REFCOUNTING(BridgeVipResourceTask);
+};
+
+class BridgeVipDevToolsTask final : public CefTask {
+ public:
+  BridgeVipDevToolsTask(LB_FBRO_HANDLE browser, std::wstring command, std::wstring args_json,
+                        std::shared_ptr<TaskState> task)
+      : browser_(browser), command_(std::move(command)), args_json_(std::move(args_json)),
+        task_(std::move(task)) {}
+  void Execute() override {
+    CefRefPtr<CefBrowser> browser;
+    CefRefPtr<FBroHsBroEvent> browser_event;
+    {
+      std::lock_guard<std::recursive_mutex> lock(g_mutex);
+      if (auto* state = Find(browser_)) {
+        browser = state->browser;
+        browser_event = state->event;
+      }
+    }
+    if (!browser) { CompleteTextTask(task_, L"", L"浏览器尚未创建"); return; }
+    auto vip = FBroHsBrowser_GetVIPControl(browser);
+    if (!vip || FBroHsVIPControl_IsNULL(vip)) {
+      CompleteTextTask(task_, L"", L"当前浏览器没有可用的 VIP 控制器"); return;
+    }
+    std::wstring error;
+    auto args = ParseVipArgs(args_json_, error);
+    if (!args) { CompleteTextTask(task_, L"", error); return; }
+    const std::wstring action = NormalizeVipCommand(command_, L"FBroHsVIPControl_");
+    auto complete = [&] { CompleteTextTask(task_, L"{\"success\":true}"); };
+    CefRefPtr<BridgeVipResultCallback> callback = new BridgeVipResultCallback(task_);
+    if (action == L"senddevtoolsmessage") {
+      FBroHsVIPControl_SendDevToolsMessage(vip, ReadJsonWide(args, "message")); complete();
+    } else if (action == L"executedevtoolsmethod") {
+      auto params = ReadJsonDictionary(args, "params");
+      FBroHsVIPControl_ExecuteDevToolsMethod(vip,
+          static_cast<int>(ReadJsonNumber(args, "messageId", 1)), ReadJsonWide(args, "method"),
+          params ? params->Copy(false) : CefDictionaryValue::Create()); complete();
+    } else if (action == L"adddevtoolsmessageobserver") {
+      CefRefPtr<BridgeDevToolsObserver> observer = new BridgeDevToolsObserver();
+      if (!FBroHsVIPControl_AddDevToolsMessageObserver(vip, observer)) {
+        CompleteTextTask(task_, L"", L"FBro 拒绝注册 DevTools 消息观察器"); return;
+      }
+      {
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
+        if (auto* state = Find(browser_)) state->devtools_observer = observer;
+      }
+      complete();
+    } else if (action == L"deletedevtoolsmessageobserver") {
+      const BOOL removed = FBroHsVIPControl_DeleteDevToolsMessageObserver(vip);
+      {
+        std::lock_guard<std::recursive_mutex> lock(g_mutex);
+        if (auto* state = Find(browser_)) state->devtools_observer = nullptr;
+      }
+      if (removed) complete(); else CompleteTextTask(task_, L"", L"FBro 未删除 DevTools 消息观察器");
+    } else if (action == L"runtimeenable") {
+      FBroHsVIPControl_RuntimeEnable(vip, ReadJsonBool(args, "enabled", 1) ? TRUE : FALSE); complete();
+    } else if (action == L"pagegetcontextid") {
+      CompleteTextTask(task_, L"{\"success\":true,\"result\":"
+          + JsonFromList(FBroHsVIPControl_PageGetContextID(vip)) + L"}");
+    } else if (action == L"runtimeevaluate") {
+      FBroHsVIPControl_RuntimeEvaluate(vip, ReadJsonWide(args, "expression"),
+          ReadJsonBool(args, "includeCommandLineAPI", 0) ? TRUE : FALSE,
+          static_cast<int>(ReadJsonNumber(args, "contextId", 0)),
+          ReadJsonBool(args, "silent", 0) ? TRUE : FALSE,
+          ReadJsonBool(args, "userGesture", 0) ? TRUE : FALSE,
+          std::clamp(static_cast<int>(ReadJsonNumber(args, "timeout", 30000)), 0, 600000),
+          ReadJsonBool(args, "disableBreaks", 0) ? TRUE : FALSE,
+          ReadJsonBool(args, "replMode", 0) ? TRUE : FALSE, callback, nullptr, 0);
+    } else if (action == L"runtimeevaluate_frameid") {
+      FBroHsVIPControl_RuntimeEvaluate_FrameID(vip, ReadJsonWide(args, "expression"),
+          ReadJsonBool(args, "includeCommandLineAPI", 0) ? TRUE : FALSE,
+          static_cast<int>(ReadJsonNumber(args, "type", 0)),
+          static_cast<int>(ReadJsonNumber(args, "frameNumber", 0)), ReadJsonWide(args, "frameId"),
+          ReadJsonBool(args, "silent", 0) ? TRUE : FALSE,
+          ReadJsonBool(args, "userGesture", 0) ? TRUE : FALSE,
+          std::clamp(static_cast<int>(ReadJsonNumber(args, "timeout", 30000)), 0, 600000),
+          ReadJsonBool(args, "disableBreaks", 0) ? TRUE : FALSE,
+          ReadJsonBool(args, "replMode", 0) ? TRUE : FALSE, callback, nullptr, 0);
+    } else if (action == L"dispatchtouchevent") {
+      auto points_json = ReadJsonList(args, "touchPoints");
+      std::vector<E_DEV_TOUCHPOINT> points;
+      if (points_json) {
+        points.reserve(std::min<size_t>(points_json->GetSize(), 16));
+        for (size_t index = 0; index < points_json->GetSize() && index < 16; ++index) {
+          if (points_json->GetType(index) != VTYPE_DICTIONARY) continue;
+          auto point = points_json->GetDictionary(index);
+          E_DEV_TOUCHPOINT value{};
+          value.x = static_cast<int>(ReadJsonNumber(point, "x", 0));
+          value.y = static_cast<int>(ReadJsonNumber(point, "y", 0));
+          value.radiusX = static_cast<int>(ReadJsonNumber(point, "radiusX", 1));
+          value.radiusY = static_cast<int>(ReadJsonNumber(point, "radiusY", 1));
+          value.rotationAngle = static_cast<int>(ReadJsonNumber(point, "rotationAngle", 0));
+          value.force = static_cast<int>(ReadJsonNumber(point, "force", 1));
+          value.id = static_cast<int>(ReadJsonNumber(point, "id", static_cast<double>(index)));
+          points.push_back(value);
+        }
+      }
+      FBroHsVIPControl_DispatchTouchEvent(vip,
+          static_cast<int>(ReadJsonNumber(args, "type", 0)), points.empty() ? nullptr : points.data(),
+          static_cast<int>(ReadJsonNumber(args, "modifiers", 0))); complete();
+    } else if (action == L"dispatchkeyevent") {
+      FBroHsVIPControl_DispatchKeyEvent(vip, ReadJsonWide(args, "type"),
+          static_cast<int>(ReadJsonNumber(args, "modifiers", 0)), ReadJsonWide(args, "text"),
+          ReadJsonWide(args, "unmodifiedText"), ReadJsonWide(args, "keyIdentifier"),
+          ReadJsonWide(args, "code"), ReadJsonWide(args, "key"),
+          static_cast<int>(ReadJsonNumber(args, "windowsVirtualKeyCode", 0)),
+          static_cast<int>(ReadJsonNumber(args, "nativeVirtualKeyCode", 0)),
+          ReadJsonBool(args, "autoRepeat", 0) ? TRUE : FALSE,
+          ReadJsonBool(args, "isKeypad", 0) ? TRUE : FALSE,
+          ReadJsonBool(args, "isSystemKey", 0) ? TRUE : FALSE,
+          static_cast<int>(ReadJsonNumber(args, "location", 0))); complete();
+    } else if (action == L"dispatchmouseevent") {
+      FBroHsVIPControl_DispatchMouseEvent(vip, ReadJsonWide(args, "type"),
+          static_cast<int>(ReadJsonNumber(args, "x", 0)),
+          static_cast<int>(ReadJsonNumber(args, "y", 0)),
+          static_cast<int>(ReadJsonNumber(args, "modifiers", 0)), ReadJsonWide(args, "button"),
+          static_cast<int>(ReadJsonNumber(args, "buttons", 0)),
+          static_cast<int>(ReadJsonNumber(args, "clickCount", 1)),
+          static_cast<int>(ReadJsonNumber(args, "deltaX", 0)),
+          static_cast<int>(ReadJsonNumber(args, "deltaY", 0)), ReadJsonWide(args, "pointerType")); complete();
+    } else if (action == L"addtabat") {
+      auto extra = ReadJsonDictionary(args, "extraInfo");
+      Event_Disable_Control event_control{};
+      FBroHsVIPControl_AddTabAt(vip, ReadJsonWide(args, "url"),
+          static_cast<int>(ReadJsonNumber(args, "index", -1)),
+          ReadJsonBool(args, "foreground", 1) ? TRUE : FALSE,
+          extra ? extra->Copy(false) : CefDictionaryValue::Create(), browser_event, &event_control,
+          ReadJsonWide(args, "userFlag")); complete();
+    } else {
+      CompleteTextTask(task_, L"", L"未知的 FBro VIP DevTools/输入命令");
+    }
+  }
+
+ private:
+  LB_FBRO_HANDLE browser_;
+  std::wstring command_;
+  std::wstring args_json_;
+  std::shared_ptr<TaskState> task_;
+  IMPLEMENT_REFCOUNTING(BridgeVipDevToolsTask);
+};
 
 bool ParsePdfPrintOptions(const wchar_t* json, PdfPrintOptions& options, std::wstring& error) {
   if (!json || !*json) return true;
@@ -1602,6 +2333,21 @@ class BridgeCurrentCertificateTask final : public CefTask {
 
 uint32_t __stdcall LB_FBro_GetAbiVersion(void) { return LB_FBRO_ABI_VERSION_V2; }
 
+int __stdcall LB_FBro_SetVipStartupProxy(const wchar_t* url,
+                                         const wchar_t* user,
+                                         const wchar_t* password) {
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  if (g_initialized) return LB_FBRO_ERROR_OPERATION_FAILED;
+  if (!g_vip_proxy_password.empty()) {
+    SecureZeroMemory(g_vip_proxy_password.data(),
+                     g_vip_proxy_password.size() * sizeof(wchar_t));
+  }
+  g_vip_proxy_url = url ? url : L"";
+  g_vip_proxy_user = user ? user : L"";
+  g_vip_proxy_password = password ? password : L"";
+  return LB_FBRO_OK;
+}
+
 int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory) {
   if (g_initialized) return 1;
   if (!runtime_directory || !*runtime_directory) return -1;
@@ -1625,11 +2371,23 @@ int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory) {
   const std::string cache_ansi = ToAnsi(cache.wstring());
   const std::string log_ansi = ToAnsi(log.wstring());
   const std::string locales_ansi = ToAnsi(locales.wstring());
+  wchar_t proxy_url[4096]{};
+  wchar_t proxy_user[4096]{};
+  wchar_t proxy_password[4096]{};
+  if (GetEnvironmentVariableW(L"LINGBUILDER_FBRO_VIP_PROXY_URL", proxy_url, 4096) > 0) {
+    g_vip_proxy_url = proxy_url;
+    GetEnvironmentVariableW(L"LINGBUILDER_FBRO_VIP_PROXY_USER", proxy_user, 4096);
+    GetEnvironmentVariableW(L"LINGBUILDER_FBRO_VIP_PROXY_PASSWORD", proxy_password, 4096);
+    g_vip_proxy_user = proxy_user;
+    g_vip_proxy_password = proxy_password;
+  }
+  SecureZeroMemory(proxy_password, sizeof(proxy_password));
   // DPI awareness is owned by the generated host and must be set before it creates any HWND.
   FBroSetV8DefaultsHeapSize(4, 2048);
   wchar_t vip_key[4096]{};
   if (GetEnvironmentVariableW(L"LINGBUILDER_FBRO_VIP_KEY", vip_key, 4096) > 0) {
     g_license_attempted = true;
+    FBroHsBrowser_SetLicenceKey(CefString(vip_key));
     const BOOL license_result = FBroHsOnlineLicenseControl_SetKey(CefString(vip_key));
     g_license_valid = license_result == TRUE;
     if (!g_license_valid) {
@@ -1663,8 +2421,11 @@ int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory) {
   settings.locales_dir_path = const_cast<char*>(locales_ansi.c_str());
   settings.enable_auto_multiple = TRUE;
   g_init_event = new BridgeInitEvent();
+  g_vip_event = new BridgeVipEvent();
+  FBroSetVipEvent(g_vip_event);
   if (!FBroHsInitPro(&settings, g_init_event, 1024)) {
     g_init_event = nullptr;
+    g_vip_event = nullptr;
     WSACleanup();
     g_winsock_started = false;
     return -2;
@@ -1674,6 +2435,27 @@ int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory) {
 }
 
 int __stdcall LB_FBro_IsReady(void) { return g_ready ? 1 : 0; }
+
+int __stdcall LB_FBro_GetVipLicenseInfoJson(wchar_t* result, size_t capacity) {
+  const auto text = [](CefRefPtr<FBroString> value) { return JsonEscape(FromFbroString(value)); };
+  std::wstring json = L"{";
+  json += L"\"licenseAttempted\":" + std::wstring(g_license_attempted ? L"true" : L"false") + L",";
+  json += L"\"licenseValid\":" + std::wstring(g_license_valid ? L"true" : L"false") + L",";
+  json += L"\"sdkReportsLicense\":" + std::wstring(FBroBrowser_IsLicenceKey() ? L"true" : L"false") + L",";
+  json += L"\"machineCode\":\"" + text(FBroHsBrowser_GetMachineCode()) + L"\",";
+  json += L"\"expirationTime\":\"" + text(FBroHsBrowser_GetExpirationTime()) + L"\",";
+  json += L"\"registrationTime\":\"" + text(FBroHsBrowser_GetRegistrationTime()) + L"\",";
+  json += L"\"version\":\"" + text(FBroHsBrowser_GetVersionStr()) + L"\",";
+  json += L"\"functions\":\"" + text(FBroHsBrowser_GetFunctionStr()) + L"\",";
+  json += L"\"licenseType\":\"" + text(FBroHsOnlineLicenseControl_GetShowLicenseType()) + L"\",";
+  json += L"\"licenseStartDate\":\"" + text(FBroHsOnlineLicenseControl_GetShowLicenseStartDate()) + L"\",";
+  json += L"\"licenseEndDate\":\"" + text(FBroHsOnlineLicenseControl_GetShowLicenseEndDate()) + L"\",";
+  json += L"\"devTools\":\"" + text(FBroHsOnlineLicenseControl_GetShowLicenseDevTool()) + L"\",";
+  json += L"\"licensedFunctions\":\"" + text(FBroHsOnlineLicenseControl_GetShowLicenseFunction()) + L"\",";
+  json += L"\"systemVersion\":\"" + text(FBroHsOnlineLicenseControl_GetShowLicenseSysVersion()) + L"\",";
+  json += L"\"error\":\"" + JsonEscape(g_license_error) + L"\"}";
+  return CopyResult(json, result, capacity);
+}
 
 LB_FBRO_HANDLE __stdcall LB_FBro_Create(HWND host, const wchar_t* url,
                                         const wchar_t* profile_directory,
@@ -3155,20 +3937,237 @@ int __stdcall LB_FBro_ApplyFingerprintJson(LB_FBRO_HANDLE browser, const wchar_t
     return -4;
   }
   auto dict = parsed->GetDictionary();
-  if (dict->HasKey("platform")) FBroHsVIPControl_SetVirPlatform(vip, dict->GetString("platform"));
-  if (dict->HasKey("languages")) FBroHsVIPControl_SetVirLanguages(vip, dict->GetString("languages"));
-  if (dict->HasKey("hardwareConcurrency")) FBroHsVIPControl_SetVirHardwareConcurrency(vip, dict->GetInt("hardwareConcurrency"));
-  if (dict->HasKey("deviceMemory")) FBroHsVIPControl_SetVirDeviceMemory(vip, dict->GetInt("deviceMemory"));
+
+#define LB_FBRO_APPLY_STRING(key, fn) \
+  if (dict->GetType(key) == VTYPE_STRING) fn(vip, dict->GetString(key))
+#define LB_FBRO_APPLY_INT(key, fn) \
+  if (dict->GetType(key) == VTYPE_INT) fn(vip, dict->GetInt(key))
+#define LB_FBRO_APPLY_NUMBER(key, fn) \
+  if (dict->HasKey(key)) fn(vip, ReadJsonNumber(dict, key, 0))
+#define LB_FBRO_APPLY_BOOL(key, fn) \
+  if (dict->HasKey(key)) fn(vip, ReadJsonBool(dict, key, 0) ? TRUE : FALSE)
+
+  LB_FBRO_APPLY_STRING("productSub", FBroHsVIPControl_SetVirProductSub);
+  LB_FBRO_APPLY_STRING("vendor", FBroHsVIPControl_SetVirVendor);
+  LB_FBRO_APPLY_STRING("vendorSub", FBroHsVIPControl_SetVirVendorSub);
+  LB_FBRO_APPLY_STRING("platform", FBroHsVIPControl_SetVirPlatform);
+  LB_FBRO_APPLY_STRING("acceptLanguages", FBroHsVIPControl_SetVirAcceptlanguages);
+  LB_FBRO_APPLY_STRING("languages", FBroHsVIPControl_SetVirLanguages);
+  LB_FBRO_APPLY_STRING("appCodeName", FBroHsVIPControl_SetVirAppCodeName);
+  LB_FBRO_APPLY_STRING("appName", FBroHsVIPControl_SetVirAppName);
+  LB_FBRO_APPLY_STRING("appVersion", FBroHsVIPControl_SetVirAppVersion);
+  LB_FBRO_APPLY_STRING("product", FBroHsVIPControl_SetVirProduct);
+  LB_FBRO_APPLY_INT("hardwareConcurrency", FBroHsVIPControl_SetVirHardwareConcurrency);
+  LB_FBRO_APPLY_BOOL("cookieEnabled", FBroHsVIPControl_SetVirCookieEnabled);
+  LB_FBRO_APPLY_INT("deviceMemory", FBroHsVIPControl_SetVirDeviceMemory);
+  LB_FBRO_APPLY_BOOL("javaEnabled", FBroHsVIPControl_SetVirJavaEnabled);
+  LB_FBRO_APPLY_BOOL("webdriver", FBroHsVIPControl_SetVirWebdriver);
+  LB_FBRO_APPLY_BOOL("online", FBroHsVIPControl_SetVirOnLine);
+  LB_FBRO_APPLY_NUMBER("canvas2dFontFingerprint", FBroHsVIPControl_SetVirCanvas2DFontFingerprint);
+  LB_FBRO_APPLY_INT("screenColorDepth", FBroHsVIPControl_SetVirScreencolorDepth);
+  LB_FBRO_APPLY_INT("screenPixelDepth", FBroHsVIPControl_SetVirScreenpixelDepth);
+  LB_FBRO_APPLY_NUMBER("devicePixelRatio", FBroHsVIPControl_SetVirDevicePixelRatio);
+  LB_FBRO_APPLY_STRING("webglVendor", FBroHsVIPControl_SetVirWebglvendor);
+  LB_FBRO_APPLY_STRING("webglRenderer", FBroHsVIPControl_SetVirWebglrenderer);
+  LB_FBRO_APPLY_STRING("audioInput", FBroHsVIPControl_SetVirAudioInput);
+  LB_FBRO_APPLY_STRING("videoInput", FBroHsVIPControl_SetVirVideoInput);
+  LB_FBRO_APPLY_STRING("audioOutput", FBroHsVIPControl_SetVirAudioOutput);
+  LB_FBRO_APPLY_INT("kernel", FBroHsVIPControl_SetVirKernel);
+  LB_FBRO_APPLY_STRING("speechSynthesisVoices", FBroHsVIPControl_SetVirSpeechSynthesisVoices);
+  LB_FBRO_APPLY_STRING("gpuVendor", FBroHsVIPControl_SetVirGPUVendor);
+  LB_FBRO_APPLY_STRING("gpuArchitecture", FBroHsVIPControl_SetVirGPUArchitecture);
+  LB_FBRO_APPLY_STRING("gpuDevice", FBroHsVIPControl_SetVirGPUDevice);
+  LB_FBRO_APPLY_STRING("gpuDescription", FBroHsVIPControl_SetVirGPUDescription);
+  if (dict->GetType("gpuSubgroupMinSize") == VTYPE_INT)
+    FBroHsVIPControl_SetVirGPUSubgroupMinSize(vip, static_cast<unsigned>(std::max(0, dict->GetInt("gpuSubgroupMinSize"))));
+  if (dict->GetType("gpuSubgroupMaxSize") == VTYPE_INT)
+    FBroHsVIPControl_SetVirGPUSubgroupMaxSize(vip, static_cast<unsigned>(std::max(0, dict->GetInt("gpuSubgroupMaxSize"))));
+  LB_FBRO_APPLY_BOOL("isTrusted", FBroHsVIPControl_SetVirisTrusted);
+  LB_FBRO_APPLY_INT("webFeatureKernel", FBroHsVIPControl_SetWebFeatureKernel);
+  LB_FBRO_APPLY_INT("cssKernel", FBroHsVIPControl_SetCSSKernel);
+  LB_FBRO_APPLY_INT("v8Kernel", FBroHsVIPControl_SetV8Kernel);
+  LB_FBRO_APPLY_BOOL("disableDebugger", FBroHsVIPControl_SetDisableDebugger);
+  LB_FBRO_APPLY_BOOL("disableConsoleDebug", FBroHsVIPControl_SetDisableConsoleDebug);
+  LB_FBRO_APPLY_BOOL("disableConsoleWarn", FBroHsVIPControl_SetDisableConsoleWarn);
+  LB_FBRO_APPLY_BOOL("disableConsoleError", FBroHsVIPControl_SetDisableConsoleError);
+  LB_FBRO_APPLY_BOOL("disableConsoleInfo", FBroHsVIPControl_SetDisableConsoleInfo);
+  LB_FBRO_APPLY_BOOL("disableConsoleLog", FBroHsVIPControl_SetDisableConsoleLog);
+  LB_FBRO_APPLY_BOOL("disableConsoleAssert", FBroHsVIPControl_SetDisableConsoleAssert);
+  LB_FBRO_APPLY_BOOL("disableConsoleDir", FBroHsVIPControl_SetDisableConsoleDir);
+  LB_FBRO_APPLY_BOOL("disableConsoleTable", FBroHsVIPControl_SetDisableConsoleTable);
+  LB_FBRO_APPLY_BOOL("disableConsoleGroup", FBroHsVIPControl_SetDisableConsoleGroup);
+  LB_FBRO_APPLY_BOOL("disableConsoleTime", FBroHsVIPControl_SetDisableConsoleTime);
+  LB_FBRO_APPLY_BOOL("disableConsoleProfile", FBroHsVIPControl_SetDisableConsoleProfile);
+  LB_FBRO_APPLY_BOOL("disableConsoleCount", FBroHsVIPControl_SetDisableConsoleCount);
+  LB_FBRO_APPLY_BOOL("disableConsoleTrace", FBroHsVIPControl_SetDisableConsoleTrace);
+  LB_FBRO_APPLY_BOOL("disableConsoleClear", FBroHsVIPControl_SetDisableConsoleClear);
+  if (ReadJsonBool(dict, "enableWebsocketClientHook", 0)) FBroHsVIPControl_EnableWebsocketClientHook(vip);
+  if (ReadJsonBool(dict, "clearAllData", 0)) FBroHsVIPControl_ClearAllData(vip);
+  if (ReadJsonBool(dict, "clearS5Auth", 0)) FBroHsVIPControl_ClearS5Auth(vip);
+
+  auto vip_browser = FBroHsVIPControl_GetBrowser(vip);
+  if (!vip_browser || !FBroHsBrowser_IsSame(vip_browser, state->browser)) {
+    state->last_error = L"FBro VIP 控件返回了不一致的浏览器实例";
+    return -7;
+  }
+  if (auto value = ReadJsonDictionary(dict, "emitTouchEventsForMouse")) {
+    FBroHsVIPControl_SetEmitTouchEventsForMouse(vip, ReadJsonBool(value, "enabled", 0) ? TRUE : FALSE,
+      static_cast<int>(ReadJsonNumber(value, "configuration", 0)));
+  }
+  if (auto value = ReadJsonDictionary(dict, "performanceCheck")) {
+    FBroHsVIPControl_SetDisablePerformanceCheck(vip, ReadJsonBool(value, "disabled", 0) ? TRUE : FALSE,
+      ReadJsonNumber(value, "minimum", 0), ReadJsonNumber(value, "maximum", 0));
+  }
+  if (auto value = ReadJsonDictionary(dict, "s5Auth")) {
+    const auto url = ReadJsonWide(value, "url");
+    const auto username = ReadJsonWide(value, "username");
+    const auto password = ReadJsonWide(value, "password");
+    const BOOL close_message = ReadJsonBool(value, "closeMessage", 1) ? TRUE : FALSE;
+    if (ReadJsonBool(value, "global", 0)) FBroHsVIPGlobal_SetS5Auth(username, password, close_message);
+    else FBroHsVIPControl_SetS5Auth(vip, url, username, password, close_message);
+  }
+
+  if (dict->GetType("plugins") == VTYPE_DICTIONARY) {
+    auto value = dict->GetDictionary("plugins");
+    FBroHsVIPControl_SetPlugins(vip, static_cast<int>(ReadJsonNumber(value, "changeType", 0)), ReadJsonWide(value, "data"));
+  }
+  if (dict->GetType("cssFontFingerprint") == VTYPE_DICTIONARY) {
+    auto value = dict->GetDictionary("cssFontFingerprint");
+    FBroHsVIPControl_SetVirCSSFontFingerprint(vip, ReadJsonWide(value, "data"),
+      static_cast<int>(ReadJsonNumber(value, "x", 0)), static_cast<int>(ReadJsonNumber(value, "y", 0)));
+  }
+  if (dict->HasKey("screenX") && dict->HasKey("screenY"))
+    FBroHsVIPControl_SetVirScreenXAndY(vip, static_cast<int>(ReadJsonNumber(dict, "screenX", 0)),
+      static_cast<int>(ReadJsonNumber(dict, "screenY", 0)));
   if (dict->HasKey("screenWidth") && dict->HasKey("screenHeight"))
-    FBroHsVIPControl_SetVirScreenHeightAndWidth(vip, dict->GetInt("screenHeight"), dict->GetInt("screenWidth"));
-  if (dict->HasKey("devicePixelRatio")) FBroHsVIPControl_SetVirDevicePixelRatio(vip, dict->GetDouble("devicePixelRatio"));
-  if (dict->HasKey("webglVendor")) FBroHsVIPControl_SetVirWebglvendor(vip, dict->GetString("webglVendor"));
-  if (dict->HasKey("webglRenderer")) FBroHsVIPControl_SetVirWebglrenderer(vip, dict->GetString("webglRenderer"));
-  const int seed = dict->HasKey("seed") ? dict->GetInt("seed") : 128;
-  FBroHsVIPControl_SetCanvasFingerPrint_random(vip, 1, 16, seed);
-  FBroHsVIPControl_SetWebGLFingerPrint_random(vip, 1, 100, seed + 17);
-  FBroHsVIPControl_SetAudioFingerPrint_random(vip, 100, 1000, seed + 31);
+    FBroHsVIPControl_SetVirScreenHeightAndWidth(vip, static_cast<int>(ReadJsonNumber(dict, "screenHeight", 0)),
+      static_cast<int>(ReadJsonNumber(dict, "screenWidth", 0)));
+  if (dict->HasKey("screenAvailWidth") && dict->HasKey("screenAvailHeight"))
+    FBroHsVIPControl_SetVirScreenavailHeightAndWidth(vip, static_cast<int>(ReadJsonNumber(dict, "screenAvailHeight", 0)),
+      static_cast<int>(ReadJsonNumber(dict, "screenAvailWidth", 0)));
+
+  if (auto value = ReadJsonDictionary(dict, "rectFingerprint")) {
+    FBroHsVIPControl_SetVirRectFingerprint(vip, static_cast<int>(ReadJsonNumber(value, "x", 0)),
+      static_cast<int>(ReadJsonNumber(value, "y", 0)), static_cast<int>(ReadJsonNumber(value, "width", 0)),
+      static_cast<int>(ReadJsonNumber(value, "height", 0)));
+  }
+  if (auto value = ReadJsonDictionary(dict, "webrtc")) {
+    FBroHsVIPControl_SetVirWebrtcIP(vip, ReadJsonWide(value, "publicIp"), ReadJsonWide(value, "localIp"),
+      ReadJsonWide(value, "host"), ReadJsonBool(value, "disable", 0) ? TRUE : FALSE);
+  }
+  if (auto value = ReadJsonDictionary(dict, "timeZone")) {
+    FBroHsVIPControl_SetVirTimeZone(vip, static_cast<int>(ReadJsonNumber(value, "hour", 0)),
+      static_cast<int>(ReadJsonNumber(value, "minute", 0)), ReadJsonWide(value, "name"),
+      ReadJsonWide(value, "standardName"));
+  }
+  if (auto value = ReadJsonDictionary(dict, "touchEmulation")) {
+    FBroHsVIPControl_SetTouchEventEmulationEnabled(vip, ReadJsonBool(value, "enabled", 0) ? TRUE : FALSE,
+      static_cast<int>(ReadJsonNumber(value, "maxTouchPoints", 1)));
+  }
+  if (auto value = ReadJsonDictionary(dict, "battery")) {
+    if (value->HasKey("charging")) FBroHsVIPControl_SetVirBatteryManagerCharging(vip, ReadJsonBool(value, "charging", 0) ? TRUE : FALSE);
+    if (value->HasKey("chargingTime")) FBroHsVIPControl_SetVirBatteryManagerChargingTime(vip, ReadJsonNumber(value, "chargingTime", 0));
+    if (value->HasKey("dischargingTime")) FBroHsVIPControl_SetVirBatteryManagerDischargingTime(vip, ReadJsonNumber(value, "dischargingTime", 0));
+    if (value->HasKey("level")) FBroHsVIPControl_SetVirBatteryManagerLevel(vip, ReadJsonNumber(value, "level", 0));
+  }
+  if (auto value = ReadJsonDictionary(dict, "geolocation")) {
+    FBroHsVIPControl_SetVirLongitudeAndLatitude(vip, ReadJsonNumber(value, "longitude", 0),
+      ReadJsonNumber(value, "latitude", 0), ReadJsonNumber(value, "altitude", 0),
+      ReadJsonNumber(value, "accuracy", 0), ReadJsonNumber(value, "altitudeAccuracy", 0),
+      ReadJsonNumber(value, "heading", 0), ReadJsonNumber(value, "speed", 0));
+  }
+  if (auto value = ReadJsonDictionary(dict, "viewport")) {
+    FBroHsVIPControl_SetVirViewport(vip, static_cast<int>(ReadJsonNumber(value, "x", 0)),
+      static_cast<int>(ReadJsonNumber(value, "y", 0)), static_cast<int>(ReadJsonNumber(value, "width", 0)),
+      static_cast<int>(ReadJsonNumber(value, "height", 0)));
+  }
+  if (auto value = ReadJsonDictionary(dict, "sslCipher")) {
+    FBroHsVIPControl_SetSSLCipher(vip, static_cast<int>(ReadJsonNumber(value, "minimumVersion", 0)),
+      static_cast<int>(ReadJsonNumber(value, "maximumVersion", 0)), ReadJsonWide(value, "command"));
+  }
+  if (auto value = ReadJsonDictionary(dict, "orientation")) {
+    FBroHsVIPControl_SetVirOrientation(vip, static_cast<int>(ReadJsonNumber(value, "angle", 0)),
+      static_cast<int>(ReadJsonNumber(value, "type", 0)));
+  }
+  if (auto limits = ReadJsonList(dict, "gpuLimits")) {
+    for (size_t index = 0; index < limits->GetSize(); ++index) {
+      if (limits->GetType(index) != VTYPE_DICTIONARY) continue;
+      auto value = limits->GetDictionary(index);
+      const int type = static_cast<int>(ReadJsonNumber(value, "type", 0));
+      int64_t limit = static_cast<int64_t>(ReadJsonNumber(value, "value", 0));
+      if (value->GetType("value") == VTYPE_STRING) {
+        try { limit = std::stoll(value->GetString("value").ToWString()); } catch (...) { continue; }
+      }
+      FBroHsVIPControl_SetVirGPULimits(vip, type, limit);
+    }
+  }
+
+  const int seed = static_cast<int>(ReadJsonNumber(dict, "seed", 128));
+  auto fingerprints = ReadJsonDictionary(dict, "fingerprints");
+  auto apply_fingerprint = [&](const char* name, int default_min, int default_max, int seed_offset) {
+    auto value = ReadJsonDictionary(fingerprints, name);
+    const std::wstring constant = ReadJsonWide(value, "constant");
+    if (!constant.empty()) {
+      if (strcmp(name, "canvas") == 0) FBroHsVIPControl_SetCanvasFingerPrint_constant(vip, constant);
+      else if (strcmp(name, "webgl") == 0) FBroHsVIPControl_SetWebGLFingerPrint_constant(vip, constant);
+      else FBroHsVIPControl_SetAudioFingerPrint_constant(vip, constant);
+      return;
+    }
+    const int minimum = static_cast<int>(ReadJsonNumber(value, "minimum", default_min));
+    const int maximum = static_cast<int>(ReadJsonNumber(value, "maximum", default_max));
+    const int value_seed = static_cast<int>(ReadJsonNumber(value, "seed", seed + seed_offset));
+    if (strcmp(name, "canvas") == 0) FBroHsVIPControl_SetCanvasFingerPrint_random(vip, minimum, maximum, value_seed);
+    else if (strcmp(name, "webgl") == 0) FBroHsVIPControl_SetWebGLFingerPrint_random(vip, minimum, maximum, value_seed);
+    else FBroHsVIPControl_SetAudioFingerPrint_random(vip, minimum, maximum, value_seed);
+  };
+  apply_fingerprint("canvas", 1, 16, 0);
+  apply_fingerprint("webgl", 1, 100, 17);
+  apply_fingerprint("audio", 100, 1000, 31);
+
+  std::wstring user_agent_json = L"{}";
+  if (auto value = ReadJsonDictionary(dict, "userAgent")) {
+    auto user_agent = FBroHsVIPUserAgentData_Create();
+    if (!user_agent) {
+      state->last_error = L"创建 FBro VIP User-Agent Data 失败";
+      return -6;
+    }
+#define LB_FBRO_APPLY_UA_STRING(key, fn) \
+    if (value->GetType(key) == VTYPE_STRING) fn(user_agent, value->GetString(key))
+    LB_FBRO_APPLY_UA_STRING("mainUserAgent", FBroHsVIPUserAgentData_SetMainUserAgent);
+    LB_FBRO_APPLY_UA_STRING("mainAcceptLanguage", FBroHsVIPUserAgentData_SetMainAcceptLanguage);
+    LB_FBRO_APPLY_UA_STRING("mainPlatform", FBroHsVIPUserAgentData_SetMainPlatform);
+    LB_FBRO_APPLY_UA_STRING("fullVersion", FBroHsVIPUserAgentData_SetFullVersion);
+    LB_FBRO_APPLY_UA_STRING("platform", FBroHsVIPUserAgentData_SetPlatform);
+    LB_FBRO_APPLY_UA_STRING("platformVersion", FBroHsVIPUserAgentData_SetPlatformVersion);
+    LB_FBRO_APPLY_UA_STRING("architecture", FBroHsVIPUserAgentData_SetArchitecture);
+    LB_FBRO_APPLY_UA_STRING("model", FBroHsVIPUserAgentData_SetModel);
+    LB_FBRO_APPLY_UA_STRING("bitness", FBroHsVIPUserAgentData_SetBitness);
+    if (value->HasKey("mobile")) FBroHsVIPUserAgentData_SetMobile(user_agent, ReadJsonBool(value, "mobile", 0) ? TRUE : FALSE);
+    if (value->HasKey("wow64")) FBroHsVIPUserAgentData_SetWow64(user_agent, ReadJsonBool(value, "wow64", 0) ? TRUE : FALSE);
+    if (auto brands = CreateDoubleStringFromJson(value, "brands")) FBroHsVIPUserAgentData_SetBrands(user_agent, brands);
+    if (auto versions = CreateDoubleStringFromJson(value, "fullVersionList")) FBroHsVIPUserAgentData_SetFullVersionList(user_agent, versions);
+    if (auto factors = CreateStringListFromJson(value, "formFactors")) FBroHsVIPUserAgentData_SetFormFactors(user_agent, factors);
+    FBroHsVIPControl_SetVirUserAgent(vip, user_agent);
+    user_agent_json = VipUserAgentJson(user_agent);
+#undef LB_FBRO_APPLY_UA_STRING
+  }
+
+  const std::wstring normalized = CefWriteJSON(parsed, JSON_WRITER_DEFAULT).ToWString();
+  state->last_fingerprint_json = L"{\"configuration\":" + (normalized.empty() ? std::wstring(L"{}") : normalized)
+      + L",\"userAgent\":" + user_agent_json + L"}";
+
+#undef LB_FBRO_APPLY_STRING
+#undef LB_FBRO_APPLY_INT
+#undef LB_FBRO_APPLY_NUMBER
+#undef LB_FBRO_APPLY_BOOL
   return 1;
+}
+
+int __stdcall LB_FBro_GetAppliedFingerprintJson(LB_FBRO_HANDLE browser, wchar_t* result, size_t capacity) {
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  BrowserState* state = Find(browser);
+  if (!state) return -1;
+  return CopyResult(state->last_fingerprint_json.empty() ? L"{}" : state->last_fingerprint_json, result, capacity);
 }
 
 int __stdcall LB_FBro_GetFingerprintCallCount(LB_FBRO_HANDLE browser, wchar_t* result, size_t capacity) {
@@ -3185,6 +4184,51 @@ int __stdcall LB_FBro_ClearFingerprintCallCount(LB_FBRO_HANDLE browser) {
   if (!vip || FBroHsVIPControl_IsNULL(vip)) return -4;
   FBroHsVIPControl_ClearFingerCount(vip); return 1;
 }
+
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_VipDomCommandAsync(
+    LB_FBRO_HANDLE browser, const wchar_t* command, const wchar_t* args_json,
+    LB_FBRO_TASK_CALLBACK callback, void* user_data) {
+  if (!browser || !command || !*command) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeVipDomTask> start = new BridgeVipDomTask(
+      browser, command, args_json ? args_json : L"{}", task);
+  ScheduleManagedTask(start, task, L"无法投递 FBro VIP DOM 任务");
+  return task->handle;
+}
+
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_VipExtensionCommandAsync(
+    LB_FBRO_HANDLE browser, const wchar_t* command, const wchar_t* args_json,
+    LB_FBRO_TASK_CALLBACK callback, void* user_data) {
+  if (!browser || !command || !*command) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeVipExtensionTask> start = new BridgeVipExtensionTask(
+      browser, command, args_json ? args_json : L"{}", task);
+  ScheduleManagedTask(start, task, L"无法投递 FBro VIP 扩展任务");
+  return task->handle;
+}
+
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_VipResourceCommandAsync(
+    LB_FBRO_HANDLE browser, const wchar_t* command, const wchar_t* args_json,
+    LB_FBRO_TASK_CALLBACK callback, void* user_data) {
+  if (!command || !*command) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeVipResourceTask> start = new BridgeVipResourceTask(
+      browser, command, args_json ? args_json : L"{}", task);
+  ScheduleManagedTask(start, task, L"无法投递 FBro VIP 资源规则任务");
+  return task->handle;
+}
+
+LB_FBRO_TASK_HANDLE __stdcall LB_FBro_VipDevToolsCommandAsync(
+    LB_FBRO_HANDLE browser, const wchar_t* command, const wchar_t* args_json,
+    LB_FBRO_TASK_CALLBACK callback, void* user_data) {
+  if (!browser || !command || !*command) return 0;
+  auto task = CreateTask(callback, user_data);
+  CefRefPtr<BridgeVipDevToolsTask> start = new BridgeVipDevToolsTask(
+      browser, command, args_json ? args_json : L"{}", task);
+  ScheduleManagedTask(start, task, L"无法投递 FBro VIP DevTools 任务");
+  return task->handle;
+}
+
 int __stdcall LB_FBro_Resize(LB_FBRO_HANDLE browser) {
   HWND host = nullptr;
   {
@@ -3229,6 +4273,12 @@ void __stdcall LB_FBro_Shutdown(void) {
     });
   });
   g_browsers.clear(); g_tasks.clear(); g_buffers.clear(); g_objects.clear();
-  g_init_event = nullptr; g_ready = false; g_initialized = false;
+  g_global_vip_resource_payloads.clear();
+  g_init_event = nullptr; g_vip_event = nullptr; g_ready = false; g_initialized = false;
+  if (!g_vip_proxy_password.empty()) {
+    SecureZeroMemory(g_vip_proxy_password.data(),
+                     g_vip_proxy_password.size() * sizeof(wchar_t));
+  }
+  g_vip_proxy_url.clear(); g_vip_proxy_user.clear(); g_vip_proxy_password.clear();
   if (g_winsock_started) { WSACleanup(); g_winsock_started = false; }
 }

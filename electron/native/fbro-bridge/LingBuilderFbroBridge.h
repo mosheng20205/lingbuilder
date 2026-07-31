@@ -122,12 +122,22 @@ enum LB_FBRO_EVENT_CODE {
   LB_FBRO_EVENT_ERROR = 6,
   LB_FBRO_EVENT_BEFORE_POPUP = 7,
   LB_FBRO_EVENT_CERTIFICATE_ERROR = 8,
-  LB_FBRO_EVENT_DRAG_ENTER = 9
+  LB_FBRO_EVENT_DRAG_ENTER = 9,
+  LB_FBRO_EVENT_VIP_DEVTOOLS_MESSAGE = 10,
+  LB_FBRO_EVENT_VIP_DEVTOOLS_RESULT = 11,
+  LB_FBRO_EVENT_VIP_DEVTOOLS_EVENT = 12,
+  LB_FBRO_EVENT_VIP_DEVTOOLS_ATTACHED = 13,
+  LB_FBRO_EVENT_VIP_DEVTOOLS_DETACHED = 14,
+  LB_FBRO_EVENT_VIP_LIFECYCLE = 15
 };
 
 LB_FBRO_API int __stdcall LB_FBro_Initialize(const wchar_t* runtime_directory);
 LB_FBRO_API uint32_t __stdcall LB_FBro_GetAbiVersion(void);
 LB_FBRO_API int __stdcall LB_FBro_IsReady(void);
+LB_FBRO_API int __stdcall LB_FBro_GetVipLicenseInfoJson(wchar_t* result, size_t capacity);
+LB_FBRO_API int __stdcall LB_FBro_SetVipStartupProxy(const wchar_t* url,
+                                                      const wchar_t* user,
+                                                      const wchar_t* password);
 LB_FBRO_API LB_FBRO_HANDLE __stdcall LB_FBro_Create(HWND host, const wchar_t* url,
                                                     const wchar_t* profile_directory,
                                                     LB_FBRO_EVENT_CALLBACK callback,
@@ -414,9 +424,23 @@ LB_FBRO_API LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_GetLastEventObject(LB_FBRO_H
 LB_FBRO_API int __stdcall LB_FBro_DragDataHasImage(LB_FBRO_OBJECT_HANDLE drag_data);
 LB_FBRO_API LB_FBRO_OBJECT_HANDLE __stdcall LB_FBro_DragDataGetImage(LB_FBRO_OBJECT_HANDLE drag_data);
 LB_FBRO_API int __stdcall LB_FBro_ApplyFingerprintJson(LB_FBRO_HANDLE browser, const wchar_t* json);
+LB_FBRO_API int __stdcall LB_FBro_GetAppliedFingerprintJson(LB_FBRO_HANDLE browser,
+                                                            wchar_t* result, size_t capacity);
 LB_FBRO_API int __stdcall LB_FBro_GetFingerprintCallCount(LB_FBRO_HANDLE browser,
                                                           wchar_t* result, size_t capacity);
 LB_FBRO_API int __stdcall LB_FBro_ClearFingerprintCallCount(LB_FBRO_HANDLE browser);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_VipDomCommandAsync(
+    LB_FBRO_HANDLE browser, const wchar_t* command, const wchar_t* args_json,
+    LB_FBRO_TASK_CALLBACK callback, void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_VipExtensionCommandAsync(
+    LB_FBRO_HANDLE browser, const wchar_t* command, const wchar_t* args_json,
+    LB_FBRO_TASK_CALLBACK callback, void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_VipResourceCommandAsync(
+    LB_FBRO_HANDLE browser, const wchar_t* command, const wchar_t* args_json,
+    LB_FBRO_TASK_CALLBACK callback, void* user_data);
+LB_FBRO_API LB_FBRO_TASK_HANDLE __stdcall LB_FBro_VipDevToolsCommandAsync(
+    LB_FBRO_HANDLE browser, const wchar_t* command, const wchar_t* args_json,
+    LB_FBRO_TASK_CALLBACK callback, void* user_data);
 LB_FBRO_API int __stdcall LB_FBro_Resize(LB_FBRO_HANDLE browser);
 LB_FBRO_API void __stdcall LB_FBro_Close(LB_FBRO_HANDLE browser);
 LB_FBRO_API void __stdcall LB_FBro_Shutdown(void);

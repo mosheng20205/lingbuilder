@@ -812,13 +812,16 @@ app.get("/api/modules/project/designer", async (req, res) => {
 
 app.post("/api/modules/project/enable", async (req, res) => {
   try {
-    const { projectId, moduleId } = req.body as { projectId?: string; moduleId?: string };
-    if (!moduleId) return res.status(400).json({ ok: false, error: "缺少 moduleId" });
+    const { projectId, moduleId, moduleIds } = req.body as { projectId?: string; moduleId?: string; moduleIds?: string[] };
+    const requestedModuleIds = Array.isArray(moduleIds)
+      ? [...new Set(moduleIds.map(item => String(item || '').trim()).filter(Boolean))]
+      : moduleId ? [moduleId] : [];
+    if (requestedModuleIds.length === 0) return res.status(400).json({ ok: false, error: "缺少 moduleId 或 moduleIds" });
     const validatedProjectId = await requireExistingProject(projectId);
-    moduleAccessService.assertAccess(moduleId);
-    const plan = await getModuleService().planEnableModulesForProject(validatedProjectId, [moduleId]);
+    requestedModuleIds.forEach(requestedModuleId => moduleAccessService.assertAccess(requestedModuleId));
+    const plan = await getModuleService().planEnableModulesForProject(validatedProjectId, requestedModuleIds);
     plan.addedModuleIds.forEach(dependencyModuleId => moduleAccessService.assertAccess(dependencyModuleId));
-    await getModuleService().enableModuleForProject(validatedProjectId, moduleId);
+    await getModuleService().enableModulesForProject(validatedProjectId, requestedModuleIds);
     const enabledModules = await getModuleService().getEnabledProjectModules(validatedProjectId);
     const compatibility = await buildConfigurationService.ensureCompatibleWithModules(enabledModules.map(module => module.manifest.id));
     res.json({ ok: true, plan, buildConfiguration: compatibility.configuration, buildConfigurationChanged: compatibility.changed, messages: compatibility.messages });
@@ -842,17 +845,21 @@ app.post("/api/modules/project/disable", async (req, res) => {
 
 app.post("/api/modules/project/change-plan", async (req, res) => {
   try {
-    const { projectId, moduleId, action } = req.body as { projectId?: string; moduleId?: string; action?: 'enable' | 'disable' };
-    if (!moduleId) return res.status(400).json({ ok: false, error: "缺少 moduleId" });
+    const { projectId, moduleId, moduleIds, action } = req.body as { projectId?: string; moduleId?: string; moduleIds?: string[]; action?: 'enable' | 'disable' };
+    const requestedModuleIds = Array.isArray(moduleIds)
+      ? [...new Set(moduleIds.map(item => String(item || '').trim()).filter(Boolean))]
+      : moduleId ? [moduleId] : [];
+    if (requestedModuleIds.length === 0) return res.status(400).json({ ok: false, error: "缺少 moduleId 或 moduleIds" });
     const validatedProjectId = await requireExistingProject(projectId);
     if (action === 'enable') {
-      moduleAccessService.assertAccess(moduleId);
-      const plan = await getModuleService().planEnableModulesForProject(validatedProjectId, [moduleId]);
+      requestedModuleIds.forEach(requestedModuleId => moduleAccessService.assertAccess(requestedModuleId));
+      const plan = await getModuleService().planEnableModulesForProject(validatedProjectId, requestedModuleIds);
       plan.addedModuleIds.forEach(dependencyModuleId => moduleAccessService.assertAccess(dependencyModuleId));
       return res.json({ ok: true, plan });
     }
     if (action === 'disable') {
-      return res.json({ ok: true, plan: await getModuleService().planDisableModuleForProject(validatedProjectId, moduleId) });
+      if (requestedModuleIds.length !== 1) return res.status(400).json({ ok: false, error: "禁用计划每次只能指定一个 moduleId" });
+      return res.json({ ok: true, plan: await getModuleService().planDisableModuleForProject(validatedProjectId, requestedModuleIds[0]) });
     }
     return res.status(400).json({ ok: false, error: "action 必须是 enable 或 disable" });
   } catch (error: any) {

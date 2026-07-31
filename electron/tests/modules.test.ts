@@ -12,6 +12,7 @@ import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
 import { CEF3_BROWSER_EVENTS } from '../src/services/modules/cef3BrowserEvents';
 import { EDGEVIEW_BROWSER_EVENTS, EDGEVIEW_COMPOSITION_ONLY_EVENTS } from '../src/services/modules/edgeViewBrowserEvents';
 import { EDGEVIEW_SAFE_API_CATALOG, validateEdgeViewApiCatalog } from '../src/services/modules/edgeViewApiCatalog';
+import { FBRO_VIP_API_CATALOG, generateFbroVipIndividualRuntime } from '../src/services/modules/fbroVipApiCatalog';
 import { STANDARD_LIBRARY_MODULES } from '../src/services/modules/standardLibraryModules';
 import { SYSTEM_LIBRARY_MODULES } from '../src/services/modules/systemLibraryModules';
 import { NETWORK_LIBRARY_MODULES } from '../src/services/modules/networkLibraryModules';
@@ -19,6 +20,22 @@ import { DATA_MEDIA_MODULES } from '../src/services/modules/dataMediaModules';
 import { PLATFORM_ADVANCED_MODULES } from '../src/services/modules/platformAdvancedModules';
 import { validateModuleManifest } from '../src/services/modules/manifest';
 import { createModuleService } from '../src/services/modules/moduleService';
+import { normalizeModulePublicInfoSearchText } from '../src/services/modules/modulePublicInfoSearch';
+import {
+  CEF3_ADVANCED_MODULE_IDS,
+  CEF3_MODULE_FAMILY,
+  CEF3_STANDARD_MODULE_IDS,
+  countModuleCommands,
+  FBRO_ADVANCED_MODULE_IDS,
+  FBRO_MODULE_FAMILY,
+  FBRO_STANDARD_MODULE_IDS,
+  getFbroFamilyModules,
+  getModuleFamilyModules,
+  getModuleFamilySearchText,
+  isFbroStandardFamilyEnabled,
+  isModuleFamilyStandardEnabled,
+  isModuleHiddenByFamily
+} from '../src/services/modules/moduleFamilies';
 import { createMarketIndex, validateModuleDirectory } from '../src/services/modules/moduleSdkService';
 import { getPreferredModuleTarget } from '../src/services/modules/targetResolver';
 import {
@@ -436,6 +453,54 @@ test('FBro submodules recursively enable the v2 core and require confirmed casca
   assert.ok(!enabled.some(item => item.manifest.id.startsWith('lingbuilder.fbro.')));
 });
 
+test('FBro module family exposes one manager entry and atomically enables the standard feature set', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-fbro-family-'));
+  await writeSolutionFixture(root, ['project-a']);
+  const service = createModuleService(root);
+  const installed = await service.scanInstalledModules('project-a');
+  const family = getFbroFamilyModules(installed);
+
+  assert.equal(family.length, FBRO_MODULE_FAMILY.features.length);
+  assert.equal(countModuleCommands(family), 420);
+  assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.browser'), false);
+  assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.objects'), true);
+  assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.sdk'), true);
+
+  const plan = await service.enableModulesForProject('project-a', FBRO_STANDARD_MODULE_IDS);
+  assert.deepEqual(new Set(plan.requestedModuleIds), new Set(FBRO_STANDARD_MODULE_IDS));
+  const enabled = await service.getEnabledProjectModules('project-a');
+  const enabledIds = new Set(enabled.map(module => module.manifest.id));
+  assert.ok(FBRO_STANDARD_MODULE_IDS.every(moduleId => enabledIds.has(moduleId)));
+  assert.ok(FBRO_ADVANCED_MODULE_IDS.every(moduleId => !enabledIds.has(moduleId)));
+  assert.equal(isFbroStandardFamilyEnabled(getFbroFamilyModules(enabled)), true);
+});
+
+test('CEF3 module family exposes one manager entry, searchable feature domains and optional advanced modules', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-cef3-family-'));
+  await writeSolutionFixture(root, ['project-a']);
+  const service = createModuleService(root);
+  const installed = await service.scanInstalledModules('project-a');
+  const family = getModuleFamilyModules(installed, CEF3_MODULE_FAMILY);
+
+  assert.equal(family.length, CEF3_MODULE_FAMILY.features.length);
+  assert.ok(countModuleCommands(family) >= 240);
+  assert.equal(isModuleHiddenByFamily('lingbuilder.cef3.browser'), false);
+  assert.equal(isModuleHiddenByFamily('lingbuilder.cef3.objects'), true);
+  assert.equal(isModuleHiddenByFamily('lingbuilder.cef3.sdk'), true);
+  assert.match(getModuleFamilySearchText(CEF3_MODULE_FAMILY, family), /cef3平台_取chrome实验说明/u);
+
+  const plan = await service.enableModulesForProject('project-a', CEF3_STANDARD_MODULE_IDS);
+  assert.deepEqual(new Set(plan.requestedModuleIds), new Set(CEF3_STANDARD_MODULE_IDS));
+  const enabled = await service.getEnabledProjectModules('project-a');
+  const enabledIds = new Set(enabled.map(module => module.manifest.id));
+  assert.ok(CEF3_STANDARD_MODULE_IDS.every(moduleId => enabledIds.has(moduleId)));
+  assert.ok(CEF3_ADVANCED_MODULE_IDS.every(moduleId => !enabledIds.has(moduleId)));
+  assert.equal(isModuleFamilyStandardEnabled(
+    CEF3_MODULE_FAMILY,
+    getModuleFamilyModules(enabled, CEF3_MODULE_FAMILY)
+  ), true);
+});
+
 test('module dependency planning blocks insufficient versions and cycles before writing', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-dependency-errors-'));
   await writeSolutionFixture(root, ['project-a']);
@@ -502,6 +567,7 @@ test('FBro official SDK coverage catalog remains complete and classified', async
     eventCatalog: Array<{ officialName: string; synchronous: boolean; timeoutMilliseconds: number; maxHz: number; bridgeStatus: string }>;
     signatures: Array<{
       officialName: string;
+      moduleId: string;
       chineseName: string;
       wrapperSymbol: string;
       overloadCount: number;
@@ -518,8 +584,8 @@ test('FBro official SDK coverage catalog remains complete and classified', async
   assert.ok(catalog.signatures.every(item => ['highLevel', 'advancedSafe', 'internal'].includes(item.classification)
     && ['implemented', 'planned', 'notApplicable'].includes(item.implementationStatus)
     && item.classificationReason.length > 0));
-  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'implemented').length, 162);
-  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'planned').length, 857);
+  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'implemented').length, 341);
+  assert.equal(catalog.signatures.filter(item => item.classification === 'advancedSafe' && item.implementationStatus === 'planned').length, 678);
   assert.equal(catalog.signatures.filter(item => item.implementationStatus === 'notApplicable').length, 4);
   assert.match(catalog.signatures.find(item => item.officialName === 'FBroHsBrowserHost_RunFileDialog')?.classificationReason || '', /阻塞/u);
   assert.ok(catalog.signatures.filter(item => item.classification === 'highLevel').every(item => item.implementationStatus === 'implemented'));
@@ -532,6 +598,94 @@ test('FBro official SDK coverage catalog remains complete and classified', async
   assert.equal(catalog.eventCatalog.filter(item => item.bridgeStatus === 'implemented').length, 9);
   assert.ok(catalog.eventCatalog.filter(item => item.synchronous).every(item => item.timeoutMilliseconds === 2000));
   assert.ok(catalog.eventCatalog.filter(item => /Paint/u.test(item.officialName)).every(item => item.maxHz === 60));
+
+  const vip = catalog.signatures.filter(item => item.moduleId === 'lingbuilder.fbro.vip');
+  assert.equal(vip.length, 188);
+  assert.equal(vip.filter(item => item.implementationStatus === 'implemented').length, 188);
+  assert.equal(vip.filter(item => item.implementationStatus === 'planned').length, 0);
+  const directFingerprintSurface = vip.filter(item => /(FingerPrint|FingerCount|SetVir|VIPUserAgentData)/u.test(item.officialName));
+  assert.equal(directFingerprintSurface.length, 87);
+  assert.ok(directFingerprintSurface.every(item => item.implementationStatus === 'implemented'));
+});
+
+test('FBro VIP 188 项逐项公开并通过安全 C ABI、模块 binding 与双后端运行时接入', async () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.vip');
+  assert.ok(manifest);
+  assert.equal(FBRO_VIP_API_CATALOG.length, 188);
+  assert.equal(manifest.contributes?.commands?.length, 198);
+  assert.equal(manifest.contributes?.commands?.filter(item => item.officialCapability).length, 188);
+  assert.equal(manifest.contributes?.commands?.filter(item => item.capabilityKind === 'single').length, 179);
+  assert.equal(manifest.contributes?.commands?.filter(item => item.capabilityKind === 'managed').length, 6);
+  assert.equal(manifest.contributes?.commands?.filter(item => item.capabilityKind === 'secureReplacement').length, 3);
+  assert.equal(manifest.contributes?.commands?.filter(item => item.capabilityKind === 'aggregate').length, 10);
+  assert.equal(new Set(FBRO_VIP_API_CATALOG.map(item => item.command.name)).size, 188);
+  assert.ok(FBRO_VIP_API_CATALOG.every(item => /^[\p{L}_][\p{L}\p{N}_]*$/u.test(item.command.name)));
+  assert.ok(FBRO_VIP_API_CATALOG.every(item => item.command.category && item.command.aliases?.includes(item.officialName)));
+  assert.ok(FBRO_VIP_API_CATALOG.some(item => item.command.name === 'FBroVIP_DOM_取文档'
+    && item.officialName === 'FBroHsDevToolsDOM_getDocument'));
+  assert.ok(FBRO_VIP_API_CATALOG.some(item => item.command.name === 'FBroVIP_浏览器扩展_安装CRX'
+    && item.officialName === 'FBroHsVIPRequestContext_InstallCrx'));
+  assert.ok(FBRO_VIP_API_CATALOG.some(item => item.command.name === 'FBroVIP_授权状态_设置授权密钥'
+    && item.capabilityKind === 'secureReplacement' && item.command.visibility === 'internal'));
+  assert.ok(manifest.contributes?.commands?.some(item => item.name === 'FBroVIP_取已应用配置JSON'
+    && item.aliases?.includes('LB_FBro_GetAppliedFingerprintJson') && item.capabilityKind === 'aggregate'));
+  assert.deepEqual(manifest.bindings?.commands?.map(item => item.command), manifest.contributes?.commands?.map(item => item.name));
+
+  const win32Runtime = generateFbroVipIndividualRuntime(false);
+  const newEmojiRuntime = generateFbroVipIndividualRuntime(true);
+  assert.match(win32Runtime, /FBroVIP单项_[0-9A-F]{12}\(const wchar_t\* controlName, const wchar_t\* argsJson\)/u);
+  assert.match(win32Runtime, /FBro指纹_DOM异步命令\(controlName, L"FBroHsDevToolsDOM_getDocument", argsJson\)/u);
+  assert.match(win32Runtime, /FBroVIP单项_应用配置路径\(controlName, L"gpuVendor", argsJson\)/u);
+  assert.match(newEmojiRuntime, /static long long FBroVIP单项_[0-9A-F]{12}/u);
+  assert.equal((win32Runtime.match(/FBroVIP单项_[0-9A-F]{12}\(/gu) || []).length, 188);
+  assert.equal((newEmojiRuntime.match(/FBroVIP单项_[0-9A-F]{12}\(/gu) || []).length, 188);
+
+  const bridge = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.cpp'), 'utf8');
+  const bridgeHeader = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.h'), 'utf8');
+  const generator = await fs.readFile(path.resolve(import.meta.dirname, '..', 'src', 'services', 'windowDesigner', 'lingCppWin32Project.ts'), 'utf8');
+  for (const symbol of [
+    'FBroHsVIPControl_SetVirGPUVendor', 'FBroHsVIPControl_SetVirLongitudeAndLatitude',
+    'FBroHsVIPControl_SetVirWebrtcIP', 'FBroHsVIPControl_SetVirTimeZone',
+    'FBroHsVIPControl_SetCanvasFingerPrint_constant', 'FBroHsVIPControl_SetWebGLFingerPrint_random',
+    'FBroHsVIPUserAgentData_Create', 'FBroHsVIPUserAgentData_SetBrands',
+    'FBroHsVIPUserAgentData_GetFormFactors', 'FBroDoubleString_Creat', 'FBroCefStringList_Creat',
+    'FBroHsDevToolsDOM_getDocument', 'FBroHsVIPRequestContext_InstallCrx',
+    'FBroHsVIPResourceHandler_AddChangeData', 'FBroHsVIPControl_AddResponseFilterChangeData',
+    'FBroHsVIPControl_RuntimeEvaluate', 'FBroHsVIPControl_DispatchTouchEvent',
+    'FBroHsVIPControl_AddDevToolsMessageObserver', 'FBroSetVipEvent', 'FBroHsVIPCommandLine_SetProxy'
+  ]) assert.match(bridge, new RegExp(`\\b${symbol}\\b`, 'u'));
+  assert.match(bridgeHeader, /LB_FBro_GetAppliedFingerprintJson/u);
+  assert.match(bridgeHeader, /LB_FBro_VipDomCommandAsync/u);
+  assert.match(bridgeHeader, /LB_FBro_VipExtensionCommandAsync/u);
+  assert.match(bridgeHeader, /LB_FBro_VipResourceCommandAsync/u);
+  assert.match(bridgeHeader, /LB_FBro_VipDevToolsCommandAsync/u);
+  assert.equal((generator.match(/FBro指纹_取已应用配置\(const wchar_t\*/gu) || []).length, 2);
+  assert.equal((generator.match(/FBro指纹_DOM异步命令\(const wchar_t\*/gu) || []).length, 2);
+  assert.equal((generator.match(/FBro指纹_扩展异步命令\(const wchar_t\*/gu) || []).length, 2);
+  assert.equal((generator.match(/FBro指纹_资源规则异步命令\(const wchar_t\*/gu) || []).length, 2);
+  assert.equal((generator.match(/FBro指纹_开发者工具异步命令\(const wchar_t\*/gu) || []).length, 2);
+  assert.equal((generator.match(/generateFbroVipIndividualRuntime\(/gu) || []).length, 2);
+  assert.match(bridge, /\\"configuration\\"/u);
+  assert.match(bridge, /\\"userAgent\\"/u);
+});
+
+test('模块公开信息搜索忽略命令标识符分隔符', () => {
+  const normalizedCatalog = FBRO_VIP_API_CATALOG.map(item => ({
+    name: item.command.name,
+    searchText: normalizeModulePublicInfoSearchText([
+      item.command.name,
+      item.command.signature,
+      item.command.description
+    ].join(' '))
+  }));
+  for (const [query, expectedName] of [
+    ['DOM取文档', 'FBroVIP_DOM_取文档'],
+    ['安装CRX', 'FBroVIP_浏览器扩展_安装CRX'],
+    ['GPU厂商', 'FBroVIP_GPUWebGL_设置GPU厂商']
+  ]) {
+    const normalizedQuery = normalizeModulePublicInfoSearchText(query);
+    assert.ok(normalizedCatalog.some(item => item.name === expectedName && item.searchText.includes(normalizedQuery)));
+  }
 });
 
 test('FBro Frame 使用类型化句柄并由普通 Win32 与 New_Emoji 共用官方调用', () => {
@@ -601,7 +755,7 @@ test('FBro Transfer PDF、文件对话框与 VIP 截图使用任务和受管缓�
     'FBroHsBrowserHost_PrintToPDF', 'IFileOpenDialog', 'CLSID_FileSaveDialog', 'CoCreateInstance',
     'FBroHsVIPControl_PageCaptureScreenshot', 'CefBase64Decode'
   ]) assert.match(bridge, new RegExp(`\\b${symbol}\\b`, 'u'));
-  assert.doesNotMatch(bridge, /FBroHsBrowserHost_RunFileDialog|FBroCefStringList_(?:Creat|Add)|GetHost\(\)->RunFileDialog/u);
+  assert.doesNotMatch(bridge, /FBroHsBrowserHost_RunFileDialog|GetHost\(\)->RunFileDialog/u);
   assert.match(bridge, /std::thread\(RunWindowsFileDialog[\s\S]*?\.detach\(\)/u);
   assert.match(bridge, /FBro 截图需要有效 VIP Key/u);
   const bridgeHeader = await fs.readFile(path.resolve(import.meta.dirname, '..', 'native', 'fbro-bridge', 'LingBuilderFbroBridge.h'), 'utf8');
@@ -2316,6 +2470,7 @@ test('new_emoji bridge template keeps UTF-8 buffers alive for native controls', 
 test('module manager interface action opens the viewport-level public information dialog', async () => {
   const inspectorSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'ModuleInspector.tsx'), 'utf8');
   const dialogSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'ModulePublicInfoDialog.tsx'), 'utf8');
+  const sidebarSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'Sidebar.tsx'), 'utf8');
 
   assert.match(inspectorSource, /onInspect=\{\(\) => inspectModule\(module\.manifest\.id\)\}/);
   assert.match(inspectorSource, /<ModulePublicInfoDialog/);
@@ -2325,6 +2480,20 @@ test('module manager interface action opens the viewport-level public informatio
   assert.match(dialogSource, /模块公开信息 - \{manifest\.name\}/);
   assert.match(dialogSource, /if \(event\.key === 'Escape'\)/);
   assert.match(dialogSource, /if \(event\.target === event\.currentTarget\) onClose\(\)/);
+  assert.match(inspectorSource, /isModuleHiddenByFamily/);
+  assert.match(inspectorSource, /moduleIds: standardModuleIds/);
+  assert.match(inspectorSource, /内部依赖和只读 SDK 已自动收起/);
+  assert.match(dialogSource, /\{family\?\.displayName \|\| '模块'\} 功能范围/);
+  assert.match(dialogSource, /启用高级功能/);
+  assert.match(dialogSource, /功能分类/);
+  assert.match(dialogSource, /function ModuleFamilyFeatureTreeGroup/);
+  assert.match(dialogSource, /const commandItems = items\.filter\(item => item\.groupId === 'commands'\)/);
+  assert.match(dialogSource, /<PublicInfoTreeItem/);
+  assert.match(dialogSource, /\{!isFamilyView && groups\.map\(group => \(/);
+  assert.match(dialogSource, /其他公开信息/);
+  assert.match(dialogSource, /条接口命令/);
+  assert.match(sidebarSource, /visibleProjectModules = projectModules\.filter\(module => !isModuleHiddenByFamily/);
+  assert.match(sidebarSource, /getModuleFamilySearchText\(definition, modules\)/);
 });
 
 function createTestModule(): InstalledModule {
