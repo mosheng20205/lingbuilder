@@ -159,8 +159,17 @@ export interface PromotionPolicy {
   enabled: boolean;
 }
 
+export type WebsitePublicationStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
+export interface WebsiteDownloadMirror { id: string; provider: string; label: string; url: string; accessCode: string; enabled: boolean; sortOrder: number }
+export interface WebsiteDownloadRelease { id: string; version: string; channel: string; platform: string; architecture: string; title: string; summary: string; releaseNotes: string; minimumRequirements: string; fileSize: string; sha256: string; publicationStatus: WebsitePublicationStatus; publishedAt?: string; sortOrder: number; mirrors: WebsiteDownloadMirror[] }
+export interface WebsiteCommandParameter { name?: string; type?: string; description?: string }
+export interface WebsiteCommandReference { id: string; stableKey: string; name: string; aliases: string[]; summary: string; kind: string; category: string; moduleId?: string; moduleName?: string; signature: string; returnType: string; returnDescription: string; parameters: WebsiteCommandParameter[]; examples: string[]; supportedBackends: string[]; minimumVersion: string; lifecycle: 'AVAILABLE' | 'DEPRECATED' | string; source: string; sourceVersion: string; publicationStatus: WebsitePublicationStatus }
+export interface WebsiteGuideArticle { id: string; slug: string; title: string; summary: string; kind: 'CONTROL' | 'MODULE' | 'AI' | string; category: string; bodyMarkdown: string; tags: string[]; minimumVersion: string; publicationStatus: WebsitePublicationStatus; sortOrder: number }
+export interface WebsiteDemoProject { id: string; slug: string; title: string; summary: string; category: string; difficulty: string; lingBuilderVersion: string; modules: string[]; prerequisites: string; sourceLinks: Array<{ label: string; url: string }>; screenshotUrl: string; videoUrl: string; license: string; publicationStatus: WebsitePublicationStatus; sortOrder: number }
+export interface WebsiteCommunityGroup { id: string; name: string; qqNumber: string; groupType: string; joinUrl: string; qrCodeUrl: string; description: string; statusText: string; enabled: boolean; sortOrder: number }
+
 export type CloudErrorCode =
-  | 'VALIDATION_FAILED' | 'AUTH_REQUIRED' | 'AUTH_INVALID' | 'EMAIL_NOT_VERIFIED'
+  | 'VALIDATION_FAILED' | 'NOT_FOUND' | 'AUTH_REQUIRED' | 'AUTH_INVALID' | 'EMAIL_NOT_VERIFIED'
   | 'FORBIDDEN' | 'MFA_REQUIRED' | 'RATE_LIMITED' | 'INSUFFICIENT_CREDITS'
   | 'IDEMPOTENCY_CONFLICT' | 'MODEL_UNAVAILABLE' | 'PROVIDER_FAILED'
   | 'REQUEST_CANCELLED' | 'FILE_CONFLICT' | 'INTERNAL_ERROR'

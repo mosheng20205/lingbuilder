@@ -6,6 +6,7 @@ dist-electron/
 electron/scratch/
 electron/release/
 electron/release-*/
+electron/installer/cloud-release.json
 **/*.exe
 **/*.dll
 **/*.pdb
@@ -39,6 +40,7 @@ assets/.aistudio/
 .lingbuilder/module-build/
 .lingbuilder/module-snapshots/
 .lingbuilder/modules/
+.lingbuilder/website-command-manifests.json
 
 # Electron 构建产物
 electron/release-final/

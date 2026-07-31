@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 export interface CloudSessionSnapshot { authenticated: boolean; email?: string; balance?: { available: string; reserved: string }; error?: string }
 type StreamListener = (requestKey: string, event: unknown) => void;
@@ -15,11 +17,9 @@ export class CloudAccountService {
   async models() { return await this.request('/v1/ai/models'); }
   async balance() { return await this.request('/v1/usage/balance'); }
   async moduleCatalog() {
-    if (this.accessToken) return await this.request('/v1/modules/catalog');
-    const response = await this.fetchCloud('/v1/module-store/catalog');
-    const value: any = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(value.message || 'LingBuilder 云端请求失败。');
-    return value;
+    if (!this.accessToken && this.refreshToken) await this.refresh().catch(() => this.clear());
+    if (!this.accessToken) return { ok: true, products: [], requiresLogin: true };
+    return await this.request('/v1/modules/catalog');
   }
   async moduleEntitlements() { return await this.request('/v1/modules/entitlements'); }
   async modulePermit(moduleId: string) {
@@ -33,6 +33,52 @@ export class CloudAccountService {
     return { permit: permit.permit, key: { keyId: key.keyId, algorithm: key.algorithm, publicKeyPem: key.publicKeyPem }, paidModuleIds: (catalog.products || []).map((product: any) => product.moduleId) };
   }
   async createModuleOrder(offerId: string, provider: 'wechat'|'alipay', idempotencyKey: string) { return await this.request('/v1/module-orders', { method: 'POST', headers: { 'idempotency-key': idempotencyKey }, body: JSON.stringify({ offerId, provider }) }); }
+  async downloadModuleArtifact(moduleId: string, arch: 'win32'|'x64'|'any', workspaceRoot: string) {
+    if (!this.accessToken && this.refreshToken) await this.refresh();
+    if (!this.accessToken) throw new Error('请先登录 LingBuilder 账号，再下载收费模块。');
+    const metadataResponse = await this.request(`/v1/modules/artifacts/latest?moduleId=${encodeURIComponent(moduleId)}&arch=${encodeURIComponent(arch)}`);
+    const artifact = metadataResponse?.artifact;
+    if (!artifact || artifact.moduleId !== moduleId || !/^[a-f0-9]{64}$/u.test(String(artifact.sha256 || '')) || !/^\d+\.\d+\.\d+/u.test(String(artifact.version || ''))) throw new Error('云端返回的模块制品元数据无效。');
+    const sizeBytes = Number(artifact.sizeBytes);
+    if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0 || sizeBytes > 1024 * 1024 * 1024) throw new Error('云端模块制品大小无效或超过 1GB。');
+    const publicKey = crypto.createPublicKey(String(artifact.publicKeyPem || ''));
+    const publicDer = publicKey.export({ type: 'spki', format: 'der' });
+    const keyId = crypto.createHash('sha256').update(publicDer).digest('hex').slice(0, 16);
+    if (keyId !== artifact.keyId) throw new Error('模块制品签名密钥标识无效。');
+    const signaturePayload = Buffer.from(['lingbuilder-module-artifact-v1', artifact.id, artifact.moduleId, artifact.version, artifact.arch, artifact.sha256, String(artifact.sizeBytes)].join('\n'), 'utf8');
+    if (!crypto.verify(null, signaturePayload, publicKey, Buffer.from(String(artifact.signature || ''), 'base64url'))) throw new Error('模块制品元数据签名无效，已拒绝下载。');
+
+    const packageDir = path.resolve(workspaceRoot, '.lingbuilder', 'module-packages');
+    const safeModule = moduleId.replace(/[^a-z0-9._-]/giu, '-');
+    const safeVersion = String(artifact.version).replace(/[^0-9A-Za-z.+-]/gu, '-');
+    const fileName = `${safeModule}-${safeVersion}-${artifact.arch}.lbmod`;
+    const targetPath = path.join(packageDir, fileName);
+    const temporaryPath = `${targetPath}.${crypto.randomBytes(6).toString('hex')}.partial`;
+    await fs.mkdir(packageDir, { recursive: true });
+    const response = await this.fetchCloud(String(artifact.downloadPath), { headers: { authorization: `Bearer ${this.accessToken}` } });
+    if (!response.ok || !response.body) { const failure: any = await response.json().catch(() => ({})); throw new Error(failure.message || '收费模块下载失败。'); }
+    const handle = await fs.open(temporaryPath, 'wx');
+    const hash = crypto.createHash('sha256');
+    let downloaded = 0;
+    try {
+      for await (const rawChunk of response.body as any) {
+        const chunk = Buffer.from(rawChunk);
+        downloaded += chunk.length;
+        if (downloaded > sizeBytes) throw new Error('模块制品下载大小超过签名元数据。');
+        hash.update(chunk);
+        await handle.write(chunk);
+      }
+      await handle.close();
+      if (downloaded !== sizeBytes || hash.digest('hex') !== artifact.sha256) throw new Error('模块制品 SHA-256 或文件大小校验失败。');
+      await fs.rm(targetPath, { force: true });
+      await fs.rename(temporaryPath, targetPath);
+      return { ok: true, relativePath: `.lingbuilder/module-packages/${fileName}`, artifact: { id: artifact.id, moduleId, version: artifact.version, arch: artifact.arch, sha256: artifact.sha256 } };
+    } catch (error) {
+      await handle.close().catch(() => undefined);
+      await fs.rm(temporaryPath, { force: true });
+      throw error;
+    }
+  }
   async startAi(kind: 'chat'|'edit', payload: unknown, listener: StreamListener): Promise<string> { if (!this.accessToken) await this.refresh(); const requestKey = crypto.randomUUID(); const controller = new AbortController(); this.requests.set(requestKey, controller); void this.consumeStream(requestKey, kind, payload, controller, listener); return requestKey; }
   cancel(requestKey: string) { const controller = this.requests.get(requestKey); controller?.abort(); return Boolean(controller); }
   private async consumeStream(requestKey: string, kind: 'chat'|'edit', payload: unknown, controller: AbortController, listener: StreamListener) { try { const response = await fetch(`${this.origin}/v1/ai/${kind}/stream`, { method: 'POST', signal: controller.signal, headers: { authorization: `Bearer ${this.accessToken}`, 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() }, body: JSON.stringify(payload) }); if (response.status === 401 && this.refreshToken) { await this.refresh(); throw new Error('登录令牌已刷新，请重新发送请求。'); } if (!response.ok || !response.body) { const failure: any = await response.json().catch(() => ({})); throw new Error(failure.message || '系统 AI 请求失败。'); } for await (const event of parseSse(response.body)) listener(requestKey, event); } catch (error) { listener(requestKey, { type: 'error', requestId: requestKey, code: controller.signal.aborted ? 'REQUEST_CANCELLED' : 'PROVIDER_FAILED', message: controller.signal.aborted ? 'AI 请求已取消。' : error instanceof Error ? error.message : String(error), retryable: !controller.signal.aborted }); } finally { this.requests.delete(requestKey); } }

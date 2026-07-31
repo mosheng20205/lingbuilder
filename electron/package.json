@@ -29,15 +29,16 @@
     "module:demos:verify": "tsx scripts/generate-module-demos.ts --verify-only",
     "module:demos:verify:deep": "tsx scripts/generate-module-demos.ts --verify-only --deep",
     "module:demos:rename": "tsx scripts/generate-module-demos.ts --rename-packages",
+    "module:web-docs": "tsx scripts/export-website-command-manifests.ts",
     "smoke:crypto-native": "node --import tsx scripts/smoke-crypto-native.ts",
     "verify:cef3-release": "node scripts/verify-cef3-release-sdk.cjs source",
     "verify:cef3-installer": "node scripts/verify-cef3-release-sdk.cjs installer",
     "verify:fbro-release": "node scripts/verify-fbro-release-sdk.cjs source",
     "verify:fbro-installer": "node scripts/verify-fbro-release-sdk.cjs installer",
     "test:cef3-release": "node --test scripts/verify-cef3-release-sdk.test.cjs",
-    "package:dir": "npm run verify:cef3-release && npm run verify:fbro-release && npm run build && electron-builder --dir && node scripts/verify-cef3-release-sdk.cjs unpacked && node scripts/verify-fbro-release-sdk.cjs unpacked",
+    "package:dir": "node scripts/prepare-cloud-release-config.cjs && npm run verify:cef3-release && npm run verify:fbro-release && npm run build && electron-builder --dir && node scripts/verify-cef3-release-sdk.cjs unpacked && node scripts/verify-fbro-release-sdk.cjs unpacked",
     "prepare:webview2": "node scripts/prepare-webview2-bootstrapper.cjs",
-    "package:win": "npm run verify:cef3-release && npm run verify:fbro-release && npm run build && npm run prepare:webview2 && electron-builder --win nsis --x64 && npm run verify:cef3-installer && npm run verify:fbro-installer",
+    "package:win": "node scripts/prepare-cloud-release-config.cjs && npm run verify:cef3-release && npm run verify:fbro-release && npm run build && npm run prepare:webview2 && electron-builder --win nsis --x64 && npm run verify:cef3-installer && npm run verify:fbro-installer",
     "smoke:packaged:cli": "node scripts/smoke-packaged.cjs --cli-only",
     "smoke:packaged": "node scripts/smoke-packaged.cjs",
     "smoke:ai-bridge": "node scripts/smoke-ai-bridge.cjs",
@@ -63,16 +64,18 @@
     "motion": "^12.23.24",
     "node-pty": "^1.1.0",
     "pinyin-pro": "^3.28.2",
+    "qrcode": "^1.5.4",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "tsx": "^4.21.0",
     "vite": "^6.2.3"
   },
   "devDependencies": {
-    "@types/react": "19.0.10",
-    "@types/react-dom": "19.0.4",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "19.0.10",
+    "@types/react-dom": "19.0.4",
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.1.2",
     "electron": "^43.1.0",
@@ -89,7 +92,7 @@
   "overrides": {
     "dompurify": "3.4.11"
   },
-    "build": {
+  "build": {
     "appId": "cn.lingbuilder.ide",
     "productName": "LingBuilder",
     "npmRebuild": false,
@@ -147,7 +150,16 @@
       },
       {
         "from": "../.lingbuilder/modules",
-        "to": "default-workspace/.lingbuilder/modules"
+        "to": "default-workspace/.lingbuilder/modules",
+        "filter": [
+          "**/*",
+          "!lingbuilder.new_emoji.ui",
+          "!lingbuilder.new_emoji.ui/**/*"
+        ]
+      },
+      {
+        "from": "installer/cloud-release.json",
+        "to": "cloud-release.json"
       },
       {
         "from": "../LingBuilder AI 规则手册.md",

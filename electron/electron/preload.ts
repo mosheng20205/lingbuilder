@@ -92,6 +92,7 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     moduleEntitlements: () => ipcRenderer.invoke('cloud-modules:entitlements'),
     authorizeModule: (moduleId: string) => ipcRenderer.invoke('cloud-modules:authorize', moduleId),
     createModuleOrder: (value: { offerId: string; provider: 'wechat'|'alipay'; idempotencyKey: string }) => ipcRenderer.invoke('cloud-modules:create-order', value),
+    downloadModule: (value: { moduleId: string; arch?: 'win32'|'x64'|'any' }) => ipcRenderer.invoke('cloud-modules:download', value),
   },
   cloudAi: {
     start: (kind: 'chat' | 'edit', payload: unknown) => ipcRenderer.invoke('cloud-ai:start', kind, payload),

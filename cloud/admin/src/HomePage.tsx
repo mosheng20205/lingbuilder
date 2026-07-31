@@ -20,8 +20,10 @@ import {
   TerminalSquare,
   WandSparkles,
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import brandIcon from '../../../image/lingbuilder-ide-icon-v2.png';
 import moduleEcosystemImage from '../../../宣传素材/LingBuilder模块生态宣传组图/01-LingBuilder模块生态-主视觉.png';
+import { fetchWebsiteBootstrap } from './websiteApi';
 import './home.css';
 
 const features = [
@@ -69,11 +71,11 @@ const features = [
   },
 ];
 
-const downloads = [
-  { label: '123 云盘', href: 'https://1855765585.share.123pan.cn/123pan/jgROvd-lPcW' },
-  { label: '天翼云盘', href: 'https://cloud.189.cn/web/share?code=7rEZniR7r2u2' },
-  { label: '百度网盘', href: 'https://pan.baidu.com/s/13ApwWnvg7ypC8RkALtnwqg?pwd=z25w' },
-  { label: '迅雷云盘', href: 'https://pan.xunlei.com/s/VOyNJe3jycYK-6GzlUFxXApqA1?pwd=emuk' },
+const fallbackDownloads = [
+  { label: '123 云盘', href: 'https://1855765585.share.123pan.cn/123pan/jgROvd-lPcW', accessCode: '' },
+  { label: '天翼云盘', href: 'https://cloud.189.cn/web/share?code=7rEZniR7r2u2', accessCode: 'xi65' },
+  { label: '百度网盘', href: 'https://pan.baidu.com/s/13ApwWnvg7ypC8RkALtnwqg?pwd=z25w', accessCode: 'z25w' },
+  { label: '迅雷云盘', href: 'https://pan.xunlei.com/s/VOyNJe3jycYK-6GzlUFxXApqA1?pwd=emuk', accessCode: 'emuk' },
 ];
 
 function Brand() {
@@ -86,6 +88,17 @@ function Brand() {
 }
 
 export function HomePage() {
+  const [downloads, setDownloads] = useState(fallbackDownloads);
+  const [qqGroup, setQqGroup] = useState('1083244094');
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchWebsiteBootstrap(controller.signal).then(value => {
+      const release = value.downloads[0];
+      if (release?.mirrors.length) setDownloads(release.mirrors.map(item => ({ label: item.label, href: item.url, accessCode: item.accessCode })));
+      if (value.groups[0]?.qqNumber) setQqGroup(value.groups[0].qqNumber);
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, []);
   return (
     <div className="home-page" id="top">
       <a className="skip-link" href="#home-main">跳到主要内容</a>
@@ -94,9 +107,10 @@ export function HomePage() {
           <Brand />
           <nav aria-label="首页导航">
             <a href="#capabilities">核心能力</a>
-            <a href="#workflow">实现方式</a>
-            <a href="#audience">适用人群</a>
-            <a href="#download">下载体验</a>
+            <a href="/commands">命令文档</a>
+            <a href="/docs/controls">控件手册</a>
+            <a href="/docs/modules">模块开发</a>
+            <a href="/demos">示例源码</a>
           </nav>
           <a className="header-action" href="#download">获取灵码 <ArrowDown size={16} /></a>
         </div>
@@ -255,11 +269,11 @@ export function HomePage() {
               <p className="home-kicker">EARLY ACCESS · WINDOWS</p>
               <h2>下载灵码，体验中文开发到真实 C++ 的完整路径</h2>
               <p>当前版本仍在持续开发与测试中。部分高级构建和调试能力需要 Visual Studio Build Tools、Windows SDK 等本机环境。</p>
-              <div className="download-note"><MessageCircle size={17} /> 交流 QQ 群：<strong>1083244094</strong></div>
+              <div className="download-note"><MessageCircle size={17} /> 交流 QQ 群：<strong>{qqGroup}</strong>　<a href="/community">查看加群方式</a></div>
             </div>
             <div className="download-links" aria-label="灵码下载地址">
-              {downloads.map(item => <a href={item.href} key={item.label} target="_blank" rel="noreferrer"><Download size={17} /><span>{item.label}</span><ExternalLink size={14} /></a>)}
-              <small>天翼云盘访问码：xi65 · 百度网盘提取码：z25w</small>
+              {downloads.map(item => <a href={item.href} key={item.label} target="_blank" rel="noreferrer"><Download size={17} /><span>{item.label}{item.accessCode ? <small>提取码：{item.accessCode}</small> : null}</span><ExternalLink size={14} /></a>)}
+              <small><a href="/downloads">查看版本说明、文件校验与全部下载镜像</a></small>
             </div>
           </div>
         </section>

@@ -1,6 +1,6 @@
 # LingBuilder API 和管理后台
 
-本文档固定记录 LingBuilder 云端 API、收费模块商业系统、管理后台的位置、启动方式和发布边界，避免后续开发时遗忘。最后核对日期：2026-07-27。
+本文档固定记录 LingBuilder 云端 API、收费模块商业系统、官网内容系统、管理后台的位置、启动方式和发布边界，避免后续开发时遗忘。最后核对日期：2026-07-31。
 
 ## 1. 工程位置
 
@@ -10,14 +10,20 @@
 | 收费模块用户接口 | `cloud/api/src/modules/module-commerce.controller.ts` |
 | 商品、订单、权益、限免和 Permit 服务 | `cloud/api/src/modules/module-commerce.service.ts` |
 | 支付适配器 | `cloud/api/src/modules/payment-provider.service.ts` |
+| 收费模块制品服务 | `cloud/api/src/modules/module-artifact.service.ts` |
 | 收费模块管理员接口 | `cloud/api/src/modules/module-admin.controller.ts` |
 | Prisma 数据模型 | `cloud/api/prisma/schema.prisma` |
-| 收费模块数据库迁移 | `cloud/api/prisma/migrations/202607270001_module_commerce/migration.sql` |
+| 收费模块数据库迁移 | `cloud/api/prisma/migrations/202607270001_module_commerce/`、`202607310002_module_artifacts/` |
 | 管理后台工程 | `cloud/admin/` |
 | 软件信息首页 | `cloud/admin/src/HomePage.tsx`，公开路径 `/` |
+| 官网文档与资源页面 | `cloud/admin/src/WebsitePortal.tsx`，公开路径 `/commands`、`/downloads`、`/docs/*`、`/demos`、`/community` |
+| 官网内容管理页面 | `cloud/admin/src/WebsiteContentAdmin.tsx`，管理后台“官网内容” |
+| 官网内容 API | `cloud/api/src/website/website-content.controller.ts` |
+| 官网内容服务 | `cloud/api/src/website/website-content.service.ts` |
+| 官网内容数据库迁移 | `cloud/api/prisma/migrations/202607310001_website_content/migration.sql` |
 | 系统 AI 供应商配置页 | `cloud/admin/src/SystemAiProviderAdmin.tsx` |
 | 系统 AI 供应商服务 | `cloud/api/src/ai/system-ai-provider.service.ts` |
-| 收费模块管理页面 | `cloud/admin/src/main.tsx` 中的 `ModuleCommerceAdmin` |
+| 收费模块管理页面 | `cloud/admin/src/ModuleCommerceAdmin.tsx` |
 | IDE、CLI、API、后台共享协议 | `packages/contracts/src/index.ts` |
 | Electron 云端账号客户端 | `electron/electron/cloudAccountService.ts` |
 | Electron 收费模块 IPC | `electron/electron/main.ts` 中的 `cloud-modules:*` |
@@ -34,9 +40,24 @@
 - PostgreSQL 开发端口：`54329`
 - Redis 开发端口：`6389`
 
-Electron 默认读取环境变量 `LINGBUILDER_CLOUD_API_URL`；未配置时连接 `http://127.0.0.1:17900`。管理后台读取 `VITE_CLOUD_API_URL`；未配置时同样连接本机 `17900`。
+Electron 开发版读取环境变量 `LINGBUILDER_CLOUD_API_URL`，未配置时连接 `http://127.0.0.1:17900`；正式安装版读取打包时生成的 `cloud-release.json` 并只接受 HTTPS。管理后台读取 `VITE_CLOUD_API_URL`；未配置时连接本机 `17900`。
+
+门户备案边界：公开首页和 `/commands`、`/downloads`、`/docs/*`、`/demos`、`/community` 不展示 NewEmoji 商品详情、价格、购买、订单或普通用户注册登录。商品和订单只在 IDE 登录态与 `/admin` 管理后台中出现；匿名模块商品目录接口已删除。
 
 管理后台“系统 AI 供应商”支持 DeepSeek V4 预设和自定义供应商。DeepSeek 预设会同时建立 `deepseek-v4-flash`、`deepseek-v4-pro` 两条模型路由；自定义供应商可填写 Base URL、Model Name 和 API Key，并选择 OpenAI 兼容协议或 Anthropic Messages 协议。API Key 使用云端 Secret Vault 加密保存，列表和编辑接口只返回“已配置”状态，不回传明文。
+
+### 官网内容接口
+
+- `GET /v1/site/bootstrap`：公开读取已发布的下载版本、教程、Demo 和已启用交流群。
+- `GET /v1/site/commands`：公开查询命令资料，支持关键词、类型、分类、模块和生命周期筛选。
+- `GET /v1/site/guides/:slug`：公开读取单篇已发布教程。
+- `GET /v1/admin/site`：管理员读取官网全部草稿和已发布内容。
+- `POST /v1/admin/site/downloads`、`download-mirrors`、`community-groups`、`guides`、`demos`、`commands`：管理员新增或更新对应内容。
+- `POST /v1/admin/site/commands/sync-manifest`：从 `.lbmod` v2 manifest 的 `contributes.commands` 和 `bindings.commands` 同步命令资料。
+
+官网公开接口不要求登录；所有管理员写入接口继续使用现有管理员角色、MFA 和审计日志。公开页面只显示 `PUBLISHED` 内容，下载镜像和 QQ 群还会检查各自的启用状态。
+
+内置模块命令清单可在 `electron/` 下运行 `npm run module:web-docs`，默认生成 `.lingbuilder/website-command-manifests.json`；在后台“官网内容 → 命令资料”导入该文件即可批量同步。模块 ID 与命令名组成稳定键，重新导入会更新原词条，当前清单中已删除的旧命令会标记为 `DEPRECATED`。
 
 ## 3. 本地开发启动
 
@@ -155,35 +176,28 @@ npm run package:win
 
 ### 账号、收费和 new_emoji 授权
 
-当前不能把安装包直接交给其他用户并宣称收费模块可正常使用，存在以下发布阻断项：
+代码链路已经完成：
 
-1. `cloud/api/` 和 `cloud/admin/` 不会被 Electron Builder 打进安装包。它们本来就应部署在你的服务器，而不是在每位用户电脑上运行。
-2. 安装版目前仍默认连接 `http://127.0.0.1:17900`。其他用户电脑通常没有本地 LingBuilder 云端，因此登录、购买、限免和 Permit 获取都会失败。
-3. 发布前必须部署一个公网 HTTPS 云端 API，并在构建或部署配置中把 `LINGBUILDER_CLOUD_API_URL` 指向正式地址。不能要求普通用户自行配置环境变量。
-4. 管理后台也要独立部署，并用 `VITE_CLOUD_API_URL` 指向正式 API；管理后台不能公开给普通用户，必须保留管理员角色和 MFA。
-5. 当前 Electron Builder 的 `extraResources` 会把整个 `.lingbuilder/modules` 复制到安装包的默认工作区，其中包含收费模块二进制。这与“收费模块取得权益后才能下载”的发布要求不一致。正式发布前必须从公开安装包排除 new_emoji 二进制，改为登录并授权后从受保护下载接口安装。
-6. Permit 正式环境必须配置稳定的 `MODULE_PERMIT_PRIVATE_KEY_PEM` 和 `MODULE_PERMIT_PUBLIC_KEY_PEM`。当前未配置时会在 API 进程启动时临时生成密钥，服务重启后旧 Permit 会全部失效。
-7. `.env.example` 当前还没有列出 Permit、微信支付、支付宝和正式云端地址配置；正式部署前必须补齐部署模板和 Secret 管理。
-8. 微信支付和支付宝当前是带签名的外部支付网关适配器，并非已经完成两家官方商户 SDK 的生产直连。缺少真实网关和 Webhook 密钥时，系统会拒绝模拟支付成功；开发期可使用管理员手工授权或限免测试。
-9. 必须在正式域名、正式数据库、Redis、SMTP、支付沙箱和 HTTPS 环境中完成端到端测试，不能只以本机单元测试作为上线依据。
+1. 管理后台可查询订单、按邮箱赠送权益、填写原因撤销权益，并查看微信/支付宝生产配置就绪状态。
+2. 微信使用 API v3 Native 下单、RSA-SHA256 请求签名、平台公钥响应/回调验签和 API v3 AES-GCM 回调解密；支付宝使用 `alipay.trade.precreate`、RSA2 请求/同步响应/异步通知验签。IDE 在本地生成付款二维码，不把支付地址发送给第三方二维码服务。
+3. 管理后台可上传 `.lbmod`。云端校验 ZIP 路径和 v2 manifest 的模块 ID/版本，计算 SHA-256，并使用稳定 Ed25519 Permit 密钥签署制品元数据；制品存放在非公开持久化目录。
+4. IDE 只有登录且拥有权益时才能取得制品元数据和下载流；下载前校验签名密钥标识和元数据签名，下载后校验文件大小与 SHA-256，再进入既有的安装预览、升级快照和确认安装流程。
+5. Electron Builder 明确排除 `lingbuilder.new_emoji.ui`；正式打包命令要求 `LINGBUILDER_CLOUD_API_URL` 为 HTTPS，并把地址写入安装包 `cloud-release.json`，安装版不再默认连接用户本机。
+6. 生产 API 缺少稳定 Permit 密钥、持久化制品目录、公网 HTTPS 地址或任一官方支付配置时会启动失败，不会带着临时密钥或模拟网关上线。
 
-因此当前结论是：
-
-- 本地开发：配置依赖和环境变量后可以运行。
-- 普通 Electron 安装包：基础 IDE 可以运行。
-- 给其他用户使用账号、收费和 new_emoji：当前尚不能直接发布，必须先完成正式云端部署、安装包 API 地址配置、收费模块受保护下载和稳定 Permit 密钥。
+仍需部署方提供的外部条件：真实域名和 HTTPS 证书、PostgreSQL/Redis/SMTP、微信与支付宝商户凭据、稳定 Ed25519 密钥、持久化制品磁盘，以及正式商户沙箱/小额支付与退款验收。仓库不能代替商户平台开通、ICP备案变更或服务器部署。
 
 ## 7. 正式发布前检查清单
 
 - [ ] 部署 PostgreSQL、Redis、SMTP 和云端 API。
 - [ ] 为 API 和管理后台配置 HTTPS 域名。
-- [ ] 固定生产 `LINGBUILDER_CLOUD_API_URL`，安装版不再回退用户本机 `17900`。
+- [x] 正式打包强制固定 HTTPS `LINGBUILDER_CLOUD_API_URL`，安装版不再回退用户本机 `17900`。
 - [ ] 固定管理后台 `VITE_CLOUD_API_URL`。
 - [ ] 配置稳定 Ed25519 Permit 公私钥。
 - [ ] 配置 JWT、Token Hash、Secret Vault 等生产密钥。
-- [ ] 接入并验证微信支付、支付宝商户网关和 Webhook。
-- [ ] 从公开安装包排除收费模块二进制。
-- [ ] 实现授权后的模块下载、签名校验、安装和更新。
+- [x] 代码接入微信支付 API v3 Native、支付宝当面付和官方签名/Webhook 验证；待真实商户验收。
+- [x] 从公开安装包排除 NewEmoji 收费模块二进制。
+- [x] 实现授权后的模块下载、签名校验、安装和更新预览。
 - [ ] 验证匿名、未验证邮箱、未购买、已购买、限免、退款、封禁、离线 72 小时和时钟回拨。
 - [ ] 验证 Renderer、Local API 和 AI Bridge 均不能绕过授权。
 - [ ] 完成 NSIS 安装包、升级、卸载和不同 Windows 账号的真实机器测试。

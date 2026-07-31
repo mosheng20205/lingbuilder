@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import QRCode from 'qrcode';
 import {
   Archive,
   BookOpen,
@@ -68,6 +69,7 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
   const [developerMarketPackages, setDeveloperMarketPackages] = useState('');
   const [developerMarketOut, setDeveloperMarketOut] = useState('');
   const [installPreview, setInstallPreview] = useState<ModuleInstallPreview | null>(null);
+  const [paymentQr, setPaymentQr] = useState<{ provider: 'wechat'|'alipay'; url: string; dataUrl: string; expiresAt?: string } | null>(null);
   const [enableAfterInstall, setEnableAfterInstall] = useState(true);
   const [expandedSections, setExpandedSections] = useState<Record<ModuleSectionId, boolean>>({
     installed: true,
@@ -271,10 +273,26 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
     try {
       const result = await cloudModules.createModuleOrder({ offerId: offer.id, provider, idempotencyKey: crypto.randomUUID() });
       if (!result?.order?.paymentUrl) throw new Error('支付渠道未返回付款地址。');
-      window.open(result.order.paymentUrl, '_blank', 'noopener,noreferrer');
-      setStatusText(`已创建${provider === 'wechat' ? '微信支付' : '支付宝'}订单，请在新窗口完成付款后刷新模块状态。`);
+      const dataUrl = await QRCode.toDataURL(result.order.paymentUrl, { width: 320, margin: 2, errorCorrectionLevel: 'M' });
+      setPaymentQr({ provider, url: result.order.paymentUrl, dataUrl, expiresAt: result.order.expiresAt });
+      setStatusText(`已创建${provider === 'wechat' ? '微信支付' : '支付宝'}订单，请扫码付款后刷新模块状态。`);
     } catch (error) { setStatusText(`创建模块订单失败：${error instanceof Error ? error.message : String(error)}`); }
     finally { setIsLoading(false); }
+  };
+
+  const downloadModule = async (moduleId: string) => {
+    const cloudModules = window.lingBuilder?.cloudAccount;
+    if (!cloudModules?.downloadModule) { setStatusText('请在 LingBuilder 桌面端登录后下载收费模块。'); return; }
+    setIsLoading(true);
+    try {
+      const result = await cloudModules.downloadModule({ moduleId, arch: 'any' });
+      if (!result?.ok || !result.relativePath) throw new Error('云端未返回有效模块包路径。');
+      setPackagePath(result.relativePath);
+      setStatusText(`模块 ${moduleId}@${result.artifact.version} 已完成权益校验、签名校验和下载，正在生成安装预览。`);
+      await previewPackage(result.relativePath);
+    } catch (error) {
+      setStatusText(`收费模块下载失败：${formatModuleOperationError(error)}`);
+    } finally { setIsLoading(false); }
   };
 
   const uninstallModule = async (module: InstalledModule) => {
@@ -546,6 +564,23 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
           isOpen={expandedSections.installed}
           onToggle={() => toggleSection('installed')}
         >
+          {commerceProducts.length > 0 && <div className="border-b border-white/10 bg-sky-500/5 p-3 space-y-2" aria-label="账号收费模块">
+            <div className="text-[11px] font-semibold text-sky-300">账号收费模块</div>
+            {commerceProducts.map(product => {
+              const installed = installedModules.find(item => item.manifest.id === product.moduleId);
+              const offer = product.offers?.[0];
+              return <div key={product.moduleId} className="rounded border border-white/10 p-2.5 text-xs">
+                <div className="flex flex-wrap items-center gap-2"><strong>{product.name}</strong><span className="text-[10px] text-slate-400">{product.moduleId}</span>{product.access?.allowed && <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300">账号已授权</span>}</div>
+                <div className="mt-1 text-[11px] leading-4 text-slate-400">{product.description}</div>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {product.access?.allowed ? <button disabled={isLoading} onClick={() => downloadModule(product.moduleId)} className="col-span-2 h-8 rounded bg-sky-600 text-white inline-flex items-center justify-center gap-1.5 hover:bg-sky-500"><Download size={14}/>{installed ? '下载更新并预览安装' : '下载并预览安装'}</button> : <>
+                    <button disabled={!offer || isLoading} onClick={() => purchaseModule(product.moduleId, 'wechat')} className="h-8 rounded border border-emerald-500/40 text-emerald-300">微信支付{offer ? ` ¥${(Number(offer.priceMinor) / 100).toFixed(2)}` : ''}</button>
+                    <button disabled={!offer || isLoading} onClick={() => purchaseModule(product.moduleId, 'alipay')} className="h-8 rounded border border-sky-500/40 text-sky-300">支付宝{offer ? ` ¥${(Number(offer.priceMinor) / 100).toFixed(2)}` : ''}</button>
+                  </>}
+                </div>
+              </div>;
+            })}
+          </div>}
           <div className="divide-y divide-white/10">
             {filteredInstalledModules.length === 0 ? (
               <Empty text="没有匹配的本地模块。" />
@@ -747,6 +782,16 @@ export default function ModuleInspector({ projectId, onAddLog, isDarkMode = true
                 确认安装
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {paymentQr && (
+        <div className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="模块支付二维码">
+          <div className={`w-full max-w-sm rounded-md border p-5 text-center shadow-xl ${cardClass}`}>
+            <div className="flex items-center justify-between"><div className="text-sm font-semibold">{paymentQr.provider === 'wechat' ? '微信支付' : '支付宝'}扫码付款</div><button aria-label="关闭支付二维码" onClick={() => setPaymentQr(null)} className="rounded p-1 hover:bg-white/10"><X size={17}/></button></div>
+            <img src={paymentQr.dataUrl} alt={`${paymentQr.provider === 'wechat' ? '微信支付' : '支付宝'}付款二维码`} className="mx-auto mt-4 w-72 max-w-full rounded bg-white p-2"/>
+            <p className={`mt-3 text-xs leading-5 ${subtleClass}`}>请使用{paymentQr.provider === 'wechat' ? '微信' : '支付宝'}扫描二维码。付款完成后关闭此窗口并点击“刷新”。{paymentQr.expiresAt ? ` 订单有效至 ${new Date(paymentQr.expiresAt).toLocaleTimeString()}。` : ''}</p>
+            <button onClick={() => window.open(paymentQr.url, '_blank', 'noopener,noreferrer')} className="mt-3 h-9 w-full rounded border border-sky-500/40 text-xs text-sky-300 hover:bg-sky-500/10">在本机支付应用中打开</button>
           </div>
         </div>
       )}

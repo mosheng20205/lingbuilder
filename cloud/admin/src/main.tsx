@@ -1,25 +1,29 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Activity, Bot, Boxes, CalendarDays, ChevronRight, CircleDollarSign, Gauge, KeyRound, LogOut, Menu, Network, PackageCheck, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react';
+import { Activity, Bot, Boxes, CalendarDays, ChevronRight, CircleDollarSign, Gauge, Globe2, KeyRound, LogOut, Menu, Network, PackageCheck, RefreshCw, Search, ShieldCheck, Users, X } from 'lucide-react';
 import './styles.css';
 import './mfa.css';
 import { HomePage } from './HomePage';
 import { SystemAiProviderAdmin } from './SystemAiProviderAdmin';
+import { PUBLIC_WEBSITE_PATHS, WebsitePortal } from './WebsitePortal';
+import { WebsiteContentAdmin } from './WebsiteContentAdmin';
+import { ModuleCommerceAdmin } from './ModuleCommerceAdmin';
 
 const API = import.meta.env.VITE_CLOUD_API_URL || 'http://127.0.0.1:17900';
-type Page = 'overview'|'users'|'credits'|'promotions'|'modules'|'providers'|'models'|'usage'|'audit';
+type Page = 'overview'|'site'|'users'|'credits'|'promotions'|'modules'|'providers'|'models'|'usage'|'audit';
 const NAV: Array<{id:Page;label:string;icon:React.ComponentType<{size?:number}>}> = [
-  {id:'overview',label:'运营总览',icon:Gauge},{id:'users',label:'用户账号',icon:Users},{id:'credits',label:'点数调账',icon:CircleDollarSign},{id:'promotions',label:'AI 赠送与免费日',icon:CalendarDays},{id:'modules',label:'收费模块',icon:PackageCheck},{id:'providers',label:'系统 AI 供应商',icon:Network},{id:'models',label:'模型路由',icon:Bot},{id:'usage',label:'AI 用量',icon:Activity},{id:'audit',label:'审计日志',icon:ShieldCheck}
+  {id:'overview',label:'运营总览',icon:Gauge},{id:'site',label:'官网内容',icon:Globe2},{id:'users',label:'用户账号',icon:Users},{id:'credits',label:'点数调账',icon:CircleDollarSign},{id:'promotions',label:'AI 赠送与免费日',icon:CalendarDays},{id:'modules',label:'收费模块',icon:PackageCheck},{id:'providers',label:'系统 AI 供应商',icon:Network},{id:'models',label:'模型路由',icon:Bot},{id:'usage',label:'AI 用量',icon:Activity},{id:'audit',label:'审计日志',icon:ShieldCheck}
 ];
 
 function App(){
   const [tokens,setTokens]=useState(()=>({access:sessionStorage.getItem('lb-admin-access')||'',refresh:sessionStorage.getItem('lb-admin-refresh')||''}));
   const [page,setPage]=useState<Page>('overview'); const [mobile,setMobile]=useState(false); const [data,setData]=useState<any>(null); const [busy,setBusy]=useState(false); const [error,setError]=useState(''); const [needsMfa,setNeedsMfa]=useState(false);
-  const request=async(path:string,init:RequestInit={})=>{const response=await fetch(`${API}${path}`,{...init,headers:{'content-type':'application/json',authorization:`Bearer ${tokens.access}`,...init.headers}});const value=await response.json();if(!response.ok)throw new Error(value.message||'请求失败');return value};
+  const request=async(path:string,init:RequestInit={})=>{const binary=typeof Blob!=='undefined'&&init.body instanceof Blob;const response=await fetch(`${API}${path}`,{...init,headers:{...(binary?{}:{'content-type':'application/json'}),authorization:`Bearer ${tokens.access}`,...init.headers}});const text=await response.text();const value=text?(()=>{try{return JSON.parse(text)}catch{return {message:text}}})():{};if(!response.ok)throw new Error(value.message||'请求失败');return value};
   const load=async()=>{if(!tokens.access)return;setBusy(true);setError('');try{const route=page==='models'?'model-routes':page==='providers'?'system-ai/providers':page;setData(await request(`/v1/admin/${route}`))}catch(reason){setError(reason instanceof Error?reason.message:String(reason))}finally{setBusy(false)}};
   useEffect(()=>{void load()},[page,tokens.access]);
   useEffect(()=>{if(tokens.access)void request('/v1/me').then(value=>setNeedsMfa(Boolean(value.user?.role&&!value.user?.mfa))).catch(()=>undefined)},[tokens.access]);
   if(location.pathname==='/'||location.pathname==='/index.html')return <HomePage/>;
+  if(PUBLIC_WEBSITE_PATHS.includes(location.pathname.replace(/\/$/u,'')))return <WebsitePortal/>;
   if(!tokens.access)return <Login onLogin={value=>{sessionStorage.setItem('lb-admin-access',value.accessToken);sessionStorage.setItem('lb-admin-refresh',value.refreshToken);setTokens({access:value.accessToken,refresh:value.refreshToken})}}/>;
   if(needsMfa)return <MfaSetup request={request} onComplete={()=>{sessionStorage.clear();setTokens({access:'',refresh:''})}}/>;
   if(location.pathname==='/device')return <DeviceApproval request={request}/>;
@@ -38,6 +42,7 @@ function Login({onLogin}:{onLogin:(value:any)=>void}){const[email,setEmail]=useS
 
 function PageContent({page,data,request,reload}:{page:Page;data:any;request:(p:string,i?:RequestInit)=>Promise<any>;reload:()=>Promise<void>}){
  if(page==='overview'){const d=data||{};return <><div className="metric-grid"><Metric label="注册用户" value={d.users||0} note="全部账号"/><Metric label="AI 请求" value={d.requests||0} note="累计请求"/><Metric label="可用模型" value={d.models||0} note="逻辑模型"/><Metric label="供应通道" value={d.providers||0} note="健康通道"/></div><section className="panel"><div className="panel-head"><div><span className="eyebrow">运行状态</span><h2>系统 AI 服务</h2></div><span className="status ok">运行正常</span></div><div className="health-grid"><Health title="零保留策略" detail="提示词与源码不写入数据库"/><Health title="点数账本" detail="冻结、结算和退款使用事务"/><Health title="模型路由" detail="IDE 只访问逻辑模型别名"/></div></section></>}
+ if(page==='site')return <WebsiteContentAdmin data={data} request={request} reload={reload}/>;
  if(page==='users')return <DataTable title="用户账号" rows={data?.users||[]} columns={[['email','邮箱'],['status','状态'],['createdAt','注册时间']]} empty="尚无用户账号"/>;
  if(page==='credits')return <ActionForm title="人工点数调整" description="每次调整都会写入不可变账本和管理员审计。" fields={[['userId','用户 ID','text'],['points','调整点数（可为负数）','number'],['reason','调整原因','text']]} onSubmit={async value=>{await request('/v1/admin/credits/adjust',{method:'POST',body:JSON.stringify(value)});await reload()}}/>;
  if(page==='promotions')return <><ActionForm title="新增赠送或免费日" description="免费窗口按 Asia/Shanghai 时区执行，仍记录供应商真实成本。" fields={[['name','活动名称','text'],['kind','类型：signup_gift 或 free_window','text'],['startsAt','开始时间（ISO）','text'],['endsAt','结束时间（ISO）','text'],['giftPoints','赠送点数','number'],['perUserListPriceCap','单用户免费上限','number']]} onSubmit={async value=>{await request('/v1/admin/promotions',{method:'POST',body:JSON.stringify(value)});await reload()}}/><DataTable title="活动策略" rows={data?.promotions||[]} columns={[['name','活动'],['kind','类型'],['startsAt','开始'],['endsAt','结束'],['enabled','状态']]} empty="尚未配置活动"/></>;
@@ -47,7 +52,7 @@ function PageContent({page,data,request,reload}:{page:Page;data:any;request:(p:s
  if(page==='usage')return <DataTable title="最近 AI 请求" rows={data?.requests||[]} columns={[['id','请求 ID'],['modelAlias','模型'],['status','状态'],['inputTokens','输入 Token'],['outputTokens','输出 Token'],['chargedPoints','扣除点数']]} empty="尚无 AI 请求"/>;
  return <DataTable title="管理员审计" rows={data?.entries||[]} columns={[['createdAt','时间'],['actorUserId','操作者'],['action','操作'],['targetType','对象']]} empty="尚无审计记录"/>;
 }
-function ModuleCommerceAdmin({data,request,reload}:{data:any;request:(p:string,i?:RequestInit)=>Promise<any>;reload:()=>Promise<void>}){
+function LegacyModuleCommerceAdmin({data,request,reload}:{data:any;request:(p:string,i?:RequestInit)=>Promise<any>;reload:()=>Promise<void>}){
  const products=data?.products||[];const[productId,setProductId]=useState('');const[start,setStart]=useState('');const[end,setEnd]=useState('');
  useEffect(()=>{if(!productId&&products[0]?.id)setProductId(products[0].id)},[products,productId]);
  const schedule24Hours=(value:string)=>{setStart(value);if(!value){setEnd('');return}const date=new Date(value);setEnd(new Date(date.getTime()+86_400_000).toISOString().slice(0,16))};

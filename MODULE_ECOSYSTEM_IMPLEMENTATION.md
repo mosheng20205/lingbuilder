@@ -1,5 +1,9 @@
 # LingBuilder 模块生态实现说明
 
+> 2026-07-31 补充：官网命令资料支持从模块 v2 manifest 同步。`electron/scripts/export-website-command-manifests.ts` 会从实际 `BUILTIN_MODULES` 导出 `.lingbuilder/website-command-manifests.json`，命令为 `cd electron && npm run module:web-docs`。官网后台按 `模块 ID + 命令名` 稳定更新 contribution/binding 资料；重新同步时，清单中不再存在的旧模块命令标记为 `DEPRECATED`，不静默删除历史资料。该导出只读取模块清单，不建立第二套命令定义来源。
+
+> 2026-07-31 补充：官方收费模块发布改为云端受保护制品链路。管理后台上传 `.lbmod` 后，API 校验安全 ZIP 路径及 v2 manifest 的模块 ID/版本，计算 SHA-256，并使用与 Permit 相同的稳定 Ed25519 信任根签名制品元数据；IDE 必须先验权、再验签和下载哈希，最后复用 `ModuleService.previewPackageInstall -> installPackage` 完成可确认、可回滚的安装或更新。公开安装包明确排除 `lingbuilder.new_emoji.ui`，匿名商品目录已取消。新增官方收费模块时必须同步发布过滤规则，不能把二进制放回默认工作区。
+
 > 2026-07-30 补充：仓库新增清单驱动的全模块演示生成器 `electron/scripts/generate-module-demos.ts`。它按实际 `BUILTIN_MODULES` 与已安装外置模块生成 68 个独立演示项目，逐条覆盖 contribution/binding 中的 2357 条命令；命令较多时最多使用 12 个 TabControl 页面分组，并通过“允许实际执行”开关避免网络、文件、进程、驱动等调用被误触发。演示源码位于 `examples/module-demos/`，可分享包统一以中文模块名称导出到 `exports/`。新增或删除模块、命令后应运行 `cd electron && npm run module:demos`，并以 `npm run module:demos:verify:deep` 对全部源码包做解压、哈希、模块引用和启动项目校验。
 
 > 2026-07-30 补充：LCPP 源码包对只读原生资产的自动携带范围包含 CEF3、FBro 与密码学 SDK。启用 `lingbuilder.crypto.hash/password/symmetric/asymmetric` 中任一模块时，导出服务必须自动携带 `lingbuilder.crypto.sdk`，与 CEF3/FBro 消费模块使用同一隔离打包逻辑，避免源码包在作者机器可构建、导入后因缺少 Botan/BLAKE3 资产失败。
@@ -340,7 +344,7 @@ lingbuilder.module.json
 - 内置基础能力也按模块模型表达，不要另写一套“特殊基础命令列表”。
 - 模块控件接入设计器时，应由 `designerControls` 贡献生成工具箱项，并在项目禁用模块时显示“依赖模块未启用”，不要静默删除已有控件。new_emoji 已按此规则接入 7 类基础控件。
 - 外部模块的 C++ 依赖第一阶段只生成报告和明确注释；真正复制 include/src/lib/runtime 文件到构建目录时，必须补测试并保证路径安全。
-- 模块市场远程下载、签名校验和回滚可以继续增强，但必须复用 preview/install 流程。
+- 官方收费模块的远程下载、Ed25519 签名校验、SHA-256 校验和安装/更新回滚已复用 preview/install 流程；第三方公开市场的审核和签名信任链仍可继续扩展。
 
 ## 验证命令
 

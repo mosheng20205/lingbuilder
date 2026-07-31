@@ -1,15 +1,23 @@
-import { Body, Controller, Get, Inject, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Inject, Param, Patch, Post, Put, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { CurrentUser, Roles, type AuthenticatedUser } from '../common/current-user.js';
 import { PrismaService } from '../prisma.service.js';
+import { ModuleArtifactService } from './module-artifact.service.js';
+import { PaymentProviderService } from './payment-provider.service.js';
 
 @Controller('v1/admin/modules')
 @Roles('super_admin', 'operator', 'support', 'auditor')
 export class ModuleAdminController {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService, @Inject(PaymentProviderService) private readonly payments: PaymentProviderService, @Inject(ModuleArtifactService) private readonly artifacts: ModuleArtifactService) {}
 
   @Get() async overview() {
-    const products = await this.prisma.moduleProduct.findMany({ include: { offers: true, freeWindows: { orderBy: { startsAt: 'desc' } } }, orderBy: { name: 'asc' } });
-    return json({ ok: true, products });
+    const [products, orders, entitlements, artifacts] = await Promise.all([
+      this.prisma.moduleProduct.findMany({ include: { offers: true, freeWindows: { orderBy: { startsAt: 'desc' } } }, orderBy: { name: 'asc' } }),
+      this.prisma.moduleOrder.findMany({ include: { product: true, offer: true, user: { select: { email: true } } }, orderBy: { createdAt: 'desc' }, take: 500 }),
+      this.prisma.moduleEntitlement.findMany({ include: { product: true, user: { select: { email: true } } }, orderBy: { createdAt: 'desc' }, take: 500 }),
+      this.artifacts.listArtifacts()
+    ]);
+    return json({ ok: true, products, orders, entitlements, artifacts, payment: this.payments.configurationStatus(), artifactReadiness: this.artifacts.readiness() });
   }
 
   @Post('products') @Roles('super_admin', 'operator') async upsertProduct(@Body() body: any, @CurrentUser() actor: AuthenticatedUser) {
@@ -53,10 +61,13 @@ export class ModuleAdminController {
   @Post('entitlements/grant') @Roles('super_admin', 'operator', 'support') async grant(@Body() body: any, @CurrentUser() actor: AuthenticatedUser) {
     const product = await this.prisma.moduleProduct.findUnique({ where: { moduleId: String(body.moduleId || '') } });
     if (!product) throw validation('模块商品不存在。');
+    const userInput = String(body.userId || body.email || '').trim().toLowerCase();
+    const user = await this.prisma.user.findFirst({ where: { OR: [{ id: userInput }, { email: userInput }] } });
+    if (!user) throw validation('授权用户不存在，请填写用户 ID 或注册邮箱。');
     const startsAt = new Date(); const endsAt = body.durationDays ? new Date(startsAt.getTime() + Number(body.durationDays) * 86_400_000) : null;
     const reason = String(body.reason || '').trim(); if (reason.length < 3) throw validation('管理员授权必须填写明确原因。');
-    const entitlement = await this.prisma.moduleEntitlement.create({ data: { userId: String(body.userId || ''), productId: product.id, source: 'ADMIN_GRANT', startsAt, endsAt, reason } });
-    await this.audit(actor, 'module.entitlement.grant', 'module-entitlement', entitlement.id, { userId: body.userId, moduleId: product.moduleId, endsAt, reason });
+    const entitlement = await this.prisma.moduleEntitlement.create({ data: { userId: user.id, productId: product.id, source: 'ADMIN_GRANT', startsAt, endsAt, reason } });
+    await this.audit(actor, 'module.entitlement.grant', 'module-entitlement', entitlement.id, { userId: user.id, email: user.email, moduleId: product.moduleId, endsAt, reason });
     return { ok: true, entitlement };
   }
 
@@ -68,6 +79,27 @@ export class ModuleAdminController {
   }
 
   @Get('orders') async orders() { return json({ ok: true, orders: await this.prisma.moduleOrder.findMany({ include: { product: true, offer: true, user: { select: { email: true } } }, orderBy: { createdAt: 'desc' }, take: 500 }) }); }
+
+  @Get('entitlements') async entitlements() { return json({ ok: true, entitlements: await this.prisma.moduleEntitlement.findMany({ include: { product: true, user: { select: { email: true } } }, orderBy: { createdAt: 'desc' }, take: 500 }) }); }
+
+  @Put('artifacts/:moduleId/:version') @Roles('super_admin', 'operator') async publishArtifact(
+    @Param('moduleId') moduleId: string,
+    @Param('version') version: string,
+    @Headers('x-module-arch') arch = 'any',
+    @Headers('x-module-file-name') encodedFileName = 'module.lbmod',
+    @Headers('x-minimum-ide-version') minimumIdeVersion = '',
+    @Req() request: Request,
+    @CurrentUser() actor: AuthenticatedUser
+  ) {
+    let fileName = encodedFileName;
+    try { fileName = decodeURIComponent(encodedFileName); } catch { throw validation('模块制品文件名编码无效。'); }
+    const artifact = await this.artifacts.upload(request, { moduleId, version, arch, fileName, minimumIdeVersion }, actor.id);
+    return { ok: true, artifact };
+  }
+
+  @Patch('artifacts/:artifactId') @Roles('super_admin', 'operator') async updateArtifact(@Param('artifactId') artifactId: string, @Body() body: any, @CurrentUser() actor: AuthenticatedUser) {
+    return { ok: true, artifact: await this.artifacts.setEnabled(artifactId, body.enabled === true, actor.id) };
+  }
 
   private async audit(actor: AuthenticatedUser, action: string, targetType: string, targetId: string, details: unknown) { await this.prisma.adminAuditLog.create({ data: { actorUserId: actor.id, action, targetType, targetId, requestId: crypto.randomUUID(), details: details as any } }); }
 }

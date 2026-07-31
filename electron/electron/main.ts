@@ -14,6 +14,7 @@ import {
 } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { buildWorkspaceWindowLaunch, DesktopWorkspaceService, getArgumentValue } from './workspaceService';
@@ -219,7 +220,22 @@ async function writeCloudRefresh(value: string): Promise<void> { if (!safeStorag
 function modulePermitCachePath(): string { return path.join(app.getPath('userData'), 'credentials', 'module-permits.bin'); }
 async function readModulePermitCache(): Promise<any[]> { try { if (!safeStorage.isEncryptionAvailable()) return []; const value = JSON.parse(safeStorage.decryptString(await fs.readFile(modulePermitCachePath()))); return Array.isArray(value) ? value : []; } catch { return []; } }
 async function writeModulePermitCache(values: any[]): Promise<void> { if (!safeStorage.isEncryptionAvailable()) return; const file = modulePermitCachePath(); await fs.mkdir(path.dirname(file), { recursive: true }); const temporary = `${file}.${crypto.randomUUID()}.tmp`; await fs.writeFile(temporary, safeStorage.encryptString(JSON.stringify(values.slice(-32)))); await fs.rename(temporary, file); }
-const cloudAccountService = new CloudAccountService(process.env.LINGBUILDER_CLOUD_API_URL || 'http://127.0.0.1:17900', readCloudRefresh, writeCloudRefresh);
+function cloudApiOrigin(): string {
+  const explicit = process.env.LINGBUILDER_CLOUD_API_URL?.trim();
+  if (explicit && (!app.isPackaged || explicit.startsWith('https://'))) return explicit.replace(/\/$/u, '');
+  if (explicit && app.isPackaged) console.error('安装版拒绝使用非 HTTPS 的 LINGBUILDER_CLOUD_API_URL。');
+  if (!app.isPackaged) return 'http://127.0.0.1:17900';
+  try {
+    const config = JSON.parse(readFileSync(path.join(process.resourcesPath, 'cloud-release.json'), 'utf8')) as { cloudApiOrigin?: unknown };
+    const origin = String(config.cloudApiOrigin || '').replace(/\/$/u, '');
+    if (!origin.startsWith('https://')) throw new Error('正式云端地址不是 HTTPS。');
+    return origin;
+  } catch (error) {
+    console.error('LingBuilder 安装包缺少有效的 cloud-release.json。', error);
+    return 'https://cloud-config-missing.invalid';
+  }
+}
+const cloudAccountService = new CloudAccountService(cloudApiOrigin(), readCloudRefresh, writeCloudRefresh);
 
 async function startManagedRendererServer(workspaceRoot: string): Promise<ServerReadyInfo> {
   await stopRendererServer();
@@ -957,6 +973,7 @@ function registerIpcHandlers(): void {
   ipcMain.handle('cloud-modules:catalog', () => cloudAccountService.moduleCatalog());
   ipcMain.handle('cloud-modules:entitlements', () => cloudAccountService.moduleEntitlements());
   ipcMain.handle('cloud-modules:create-order', (_event, value: any) => cloudAccountService.createModuleOrder(String(value?.offerId || ''), value?.provider === 'alipay' ? 'alipay' : 'wechat', String(value?.idempotencyKey || '')));
+  ipcMain.handle('cloud-modules:download', (_event, value: any) => cloudAccountService.downloadModuleArtifact(String(value?.moduleId || ''), ['win32', 'x64'].includes(value?.arch) ? value.arch : 'any', activeWorkspace));
   ipcMain.handle('cloud-modules:authorize', async (_event, moduleId: string) => {
     try {
       const authorization = await cloudAccountService.modulePermit(String(moduleId || ''));

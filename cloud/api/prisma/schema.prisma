@@ -112,6 +112,28 @@ model ModuleProduct {
   entitlements  ModuleEntitlement[]
   freeWindows   ModuleFreeWindow[]
   accessAudits  ModuleAccessAudit[]
+  artifacts     ModuleArtifact[]
+}
+
+model ModuleArtifact {
+  id                String        @id @default(uuid())
+  productId         String
+  version           String
+  arch              String        @default("any")
+  fileName          String
+  storageKey        String        @unique
+  sha256            String
+  sizeBytes         BigInt
+  signature         String
+  keyId             String
+  minimumIdeVersion String?
+  enabled           Boolean       @default(true)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  product           ModuleProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, version, arch])
+  @@index([productId, enabled, createdAt])
 }
 
 model ModuleOffer {
@@ -442,4 +464,132 @@ model AdminAuditLog {
   createdAt   DateTime @default(now())
 
   @@index([createdAt])
+}
+
+model WebsiteDownloadRelease {
+  id                  String                  @id @default(uuid())
+  version             String
+  channel             String                  @default("stable")
+  platform            String                  @default("Windows")
+  architecture        String                  @default("x64")
+  title               String
+  summary             String                  @default("")
+  releaseNotes        String                  @default("")
+  minimumRequirements String                  @default("")
+  fileSize            String                  @default("")
+  sha256              String                  @default("")
+  publicationStatus   String                  @default("DRAFT")
+  publishedAt         DateTime?
+  sortOrder           Int                     @default(0)
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  mirrors             WebsiteDownloadMirror[]
+
+  @@unique([version, channel, platform, architecture])
+  @@index([publicationStatus, sortOrder, publishedAt])
+}
+
+model WebsiteDownloadMirror {
+  id          String                 @id @default(uuid())
+  releaseId   String
+  provider    String
+  label       String
+  url         String
+  accessCode  String                 @default("")
+  enabled     Boolean                @default(true)
+  sortOrder   Int                    @default(0)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  release     WebsiteDownloadRelease @relation(fields: [releaseId], references: [id], onDelete: Cascade)
+
+  @@unique([releaseId, provider])
+  @@index([releaseId, enabled, sortOrder])
+}
+
+model WebsiteCommandReference {
+  id                String   @id @default(uuid())
+  stableKey         String   @unique
+  name              String
+  aliases           String[] @default([])
+  summary           String   @default("")
+  kind              String   @default("COMMAND")
+  category          String   @default("其他")
+  moduleId          String?
+  moduleName        String?
+  signature         String
+  returnType        String   @default("void")
+  returnDescription String   @default("")
+  parameters        Json
+  examples          Json
+  supportedBackends String[] @default([])
+  minimumVersion    String   @default("")
+  lifecycle         String   @default("AVAILABLE")
+  source            String   @default("manual")
+  sourceVersion     String   @default("")
+  publicationStatus String   @default("DRAFT")
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([publicationStatus, kind, category])
+  @@index([moduleId, lifecycle])
+  @@index([name])
+}
+
+model WebsiteGuideArticle {
+  id                String   @id @default(uuid())
+  slug              String   @unique
+  title             String
+  summary           String   @default("")
+  kind              String
+  category          String   @default("")
+  bodyMarkdown      String
+  coverImageUrl     String   @default("")
+  tags              String[] @default([])
+  minimumVersion    String   @default("")
+  publicationStatus String   @default("DRAFT")
+  sortOrder         Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([kind, publicationStatus, sortOrder])
+}
+
+model WebsiteDemoProject {
+  id                 String   @id @default(uuid())
+  slug               String   @unique
+  title              String
+  summary            String
+  category           String
+  difficulty         String   @default("入门")
+  lingBuilderVersion String   @default("")
+  modules            String[] @default([])
+  prerequisites      String   @default("")
+  sourceLinks        Json
+  screenshotUrl      String   @default("")
+  videoUrl           String   @default("")
+  license            String   @default("")
+  publicationStatus  String   @default("DRAFT")
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([publicationStatus, category, sortOrder])
+}
+
+model WebsiteCommunityGroup {
+  id          String   @id @default(uuid())
+  name        String
+  qqNumber    String   @unique
+  groupType   String   @default("官方交流群")
+  joinUrl     String   @default("")
+  qrCodeUrl   String   @default("")
+  description String   @default("")
+  statusText  String   @default("开放加入")
+  enabled     Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([enabled, sortOrder])
 }

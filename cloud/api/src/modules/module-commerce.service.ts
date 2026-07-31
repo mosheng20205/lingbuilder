@@ -2,13 +2,14 @@ import crypto from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma.service.js';
 import { PaymentProviderService, type PaymentProviderId } from './payment-provider.service.js';
+import { moduleSigningKeyPair, moduleSigningPublicKey } from './module-signing-key.js';
 
 const OFFLINE_PERMIT_MS = 72 * 60 * 60 * 1000;
 export interface ModuleAccessDecision { allowed: boolean; source?: string; expiresAt?: Date; productId: string; policyVersion: number; reason?: string }
 
 @Injectable()
 export class ModuleCommerceService {
-  private readonly permitKeyPair = createPermitKeyPair();
+  private readonly permitKeyPair = moduleSigningKeyPair();
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService, @Inject(PaymentProviderService) private readonly payments: PaymentProviderService) {}
 
   async catalog(userId?: string) {
@@ -51,7 +52,7 @@ export class ModuleCommerceService {
     return { payload, signature: crypto.sign(null, serialized, this.permitKeyPair.privateKey).toString('base64url') };
   }
 
-  permitPublicKey() { return { keyId: this.permitKeyPair.keyId, algorithm: 'Ed25519', publicKeyPem: this.permitKeyPair.publicKey.export({ type: 'spki', format: 'pem' }).toString() }; }
+  permitPublicKey() { return moduleSigningPublicKey(); }
 
   async listEntitlements(userId: string) {
     const rows = await this.prisma.moduleEntitlement.findMany({ where: { userId }, include: { product: true }, orderBy: { createdAt: 'desc' } });
@@ -87,8 +88,8 @@ export class ModuleCommerceService {
     }
   }
 
-  async paymentWebhook(provider: PaymentProviderId, rawBody: string, signature: string) {
-    const event = this.payments.verifyWebhook(provider, rawBody, signature);
+  async paymentWebhook(provider: PaymentProviderId, rawBody: string, headers: Record<string, string | string[] | undefined>) {
+    const event = this.payments.verifyWebhook(provider, rawBody, headers);
     const payloadHash = crypto.createHash('sha256').update(rawBody).digest('hex');
     return await this.prisma.$transaction(async tx => {
       const seen = await tx.paymentWebhookEvent.findUnique({ where: { provider_eventId: { provider, eventId: event.eventId } } });
@@ -112,14 +113,5 @@ export class ModuleCommerceService {
   }
 }
 
-function createPermitKeyPair() {
-  const privatePem = process.env.MODULE_PERMIT_PRIVATE_KEY_PEM?.replace(/\\n/gu, '\n');
-  const publicPem = process.env.MODULE_PERMIT_PUBLIC_KEY_PEM?.replace(/\\n/gu, '\n');
-  const pair = privatePem && publicPem
-    ? { privateKey: crypto.createPrivateKey(privatePem), publicKey: crypto.createPublicKey(publicPem) }
-    : crypto.generateKeyPairSync('ed25519');
-  const publicDer = pair.publicKey.export({ type: 'spki', format: 'der' });
-  return { ...pair, keyId: crypto.createHash('sha256').update(publicDer).digest('hex').slice(0, 16) };
-}
 function json<T>(value: T): T { return JSON.parse(JSON.stringify(value, (_key, item) => typeof item === 'bigint' ? item.toString() : item)); }
-function orderJson(order: any) { return json({ id: order.id, moduleId: order.product?.moduleId, offerId: order.offerId, provider: String(order.provider).toLowerCase(), status: String(order.status).toLowerCase(), amountMinor: order.amountMinor, currency: order.currency, paymentUrl: order.paymentUrl, expiresAt: order.expiresAt }); }
+function orderJson(order: any) { return json({ id: order.id, moduleId: order.product?.moduleId, offerId: order.offerId, provider: String(order.provider).toLowerCase(), status: String(order.status).toLowerCase(), amountMinor: order.amountMinor, currency: order.currency, paymentUrl: order.paymentUrl, paidAt: order.paidAt, expiresAt: order.expiresAt, createdAt: order.createdAt }); }
