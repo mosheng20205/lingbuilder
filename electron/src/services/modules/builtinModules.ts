@@ -2,6 +2,7 @@ import { LingBuilderModuleManifest, ModuleCommandBinding, ModuleCommandBindingPa
 import { normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter, normalizeControlReferenceSnippet } from './bindingValueType';
 import { getWin32ControlsForModule, Win32ControlModuleId } from '../windowDesigner/win32ControlRegistry';
 import { STANDARD_LIBRARY_MODULES } from './standardLibraryModules';
+import { PROTOBUF_MODULE } from './protobufModule';
 import { SYSTEM_LIBRARY_MODULES } from './systemLibraryModules';
 import { NETWORK_LIBRARY_MODULES } from './networkLibraryModules';
 import { DATA_MEDIA_MODULES } from './dataMediaModules';
@@ -14,6 +15,7 @@ import { DATA_GRID_BINDINGS, DATA_GRID_COMMANDS } from './dataGridApiCatalog';
 import { FBRO_SUBMODULES } from './fbroModules';
 import { CEF3_SUBMODULES } from './cef3Modules';
 import { OPENCV_MODULE } from './opencvModules';
+import { THREADING_MODULE } from './threadingModule';
 
 function createControlContributions(moduleId: Win32ControlModuleId) {
   return getWin32ControlsForModule(moduleId).map(definition => ({
@@ -25,6 +27,7 @@ function createControlContributions(moduleId: Win32ControlModuleId) {
     isVisual: definition.isVisual,
     nativeAdapter: definition.nativeAdapter,
     requiredLibraries: definition.requiredLibraries,
+    layout: getBuiltinContainerLayout(definition.type),
     defaultProps: definition.defaultProps,
     properties: definition.properties,
     events: definition.events.map(event => ({
@@ -33,6 +36,16 @@ function createControlContributions(moduleId: Win32ControlModuleId) {
       handlerPattern: `_{controlName}_${event.handlerSuffix}`
     }))
   }));
+}
+
+function getBuiltinContainerLayout(type: string) {
+  if (type === 'GroupBox') {
+    return { mode: 'absolute' as const, coordinateSpace: 'window' as const, adapterId: 'win32.groupbox.absolute' };
+  }
+  if (type === 'TabControl') {
+    return { mode: 'slots' as const, coordinateSpace: 'window' as const, adapterId: 'win32.tab.slots' };
+  }
+  return undefined;
 }
 
 function createControlTypes(moduleId: Win32ControlModuleId) {
@@ -114,14 +127,7 @@ function normalizeBuiltinControlParameter(
         : command.startsWith('树形框_') ? ['TreeView']
           : command.startsWith('选项卡_') ? ['TabControl']
             : command.startsWith('视频播放器_') ? ['VideoPlayer']
-              : command === '线程_启动延时添加行' ? ['ListView']
-                : command === '线程_启动延时添加项目' ? ['ListBox', 'ComboBox', 'ComboBoxEx']
-                  : command === '线程_批量启动'
-                    ? parameter.name === '任务数控件' || parameter.name === '线程数控件' ? ['TextBox']
-                      : parameter.name === '列表视图' ? ['ListView']
-                        : parameter.name === '日志列表' ? ['ListBox', 'ListView']
-                          : parameter.name === '状态标签' ? ['Label'] : undefined
-                    : undefined;
+              : undefined;
   return normalizeControlReferenceParameter(converted, { controlTypes: parameter.controlTypes || commandTypes || moduleTypes });
 }
 
@@ -131,6 +137,7 @@ function normalizeBuiltinSnippetCalls(value: string, bindings: readonly ModuleCo
 
 export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   ...STANDARD_LIBRARY_MODULES,
+  PROTOBUF_MODULE,
   ...SYSTEM_LIBRARY_MODULES,
   ...NETWORK_LIBRARY_MODULES,
   ...DATA_MEDIA_MODULES,
@@ -325,20 +332,22 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: '页面设置_右边距', signature: '页面设置_右边距()', description: '返回最近页面设置的右边距。', insertText: '页面设置_右边距()', returnType: '整数型' }
         ,{ name: '页面设置_下边距', signature: '页面设置_下边距()', description: '返回最近页面设置的下边距。', insertText: '页面设置_下边距()', returnType: '整数型' }
         ,{ name: '属性页_显示', signature: '属性页_显示(属性页)', description: '显示设计器资源中定义的顶层 Windows PropertySheet。', insertText: '属性页_显示(属性页1)', returnType: '整数型' }
-        ,{ name: '列表视图_添加行', signature: '列表视图_添加行(控件名, Tab分隔单元格)', description: '向 ListView 追加结构化行。', insertText: '列表视图_添加行($1, "名称\\t状态")', returnType: '整数型' }
-        ,{ name: '列表视图_插入行', signature: '列表视图_插入行(控件名, 行索引, Tab分隔单元格)', description: '在指定的零基行索引插入结构化行。', insertText: '列表视图_插入行($1, 0, "名称\\t状态")', returnType: '整数型' }
+        ,{ name: '列表视图_创建行', signature: '列表视图_创建行(单元格...)', description: '按参数顺序创建类型化列表视图行；文本、整数、小数和逻辑值会确定性转换为单元格文本。', insertText: '列表视图_创建行("$1", "$2")', returnType: '列表视图行' }
+        ,{ name: '列表视图_创建行集合', signature: '列表视图_创建行集合(行...)', description: '把一个或多个列表视图行组成可批量提交的类型化行集合。', insertText: '列表视图_创建行集合(列表视图_创建行("$1", "$2"), 列表视图_创建行("$3", "$4"))', returnType: '列表视图行集合' }
+        ,{ name: '列表视图_添加行', signature: '列表视图_添加行(控件名, 列表视图行)', description: '向 ListView 追加类型化单元格数组；继续兼容旧式 Tab 分隔文本。', insertText: '列表视图_添加行($1, 列表视图_创建行("$2", "$3"))', returnType: '整数型' }
+        ,{ name: '列表视图_插入行', signature: '列表视图_插入行(控件名, 行索引, 列表视图行)', description: '在指定的零基行索引插入类型化单元格数组；继续兼容旧式 Tab 分隔文本。', insertText: '列表视图_插入行($1, 0, 列表视图_创建行("$2", "$3"))', returnType: '整数型' }
         ,{ name: '列表视图_删除行', signature: '列表视图_删除行(控件名, 行索引)', description: '删除指定的零基行索引。', insertText: '列表视图_删除行($1, 0)', returnType: '逻辑型' }
         ,{ name: '列表视图_设置单元格', signature: '列表视图_设置单元格(控件名, 行索引, 列索引, 文本)', description: '修改指定零基行、列索引的单元格。', insertText: '列表视图_设置单元格($1, 0, 1, "$2")', returnType: '逻辑型' }
         ,{ name: '列表视图_取单元格', signature: '列表视图_取单元格(控件名, 行索引, 列索引)', description: '读取指定零基行、列索引的单元格文本。', insertText: '列表视图_取单元格($1, 0, 1)', returnType: '文本型' }
         ,{ name: '列表视图_取行数', signature: '列表视图_取行数(控件名)', description: '返回列表视图当前数据行数。', insertText: '列表视图_取行数($1)', returnType: '整数型' }
-        ,{ name: '列表视图_批量添加行', signature: '列表视图_批量添加行(控件名, 多行TSV文本)', description: '一次追加多行 TSV 数据；换行分隔行，Tab 分隔列，内部自动关闭并恢复重绘。', insertText: '列表视图_批量添加行($1, "第一行\\t1\\n第二行\\t2")', returnType: '整数型' }
+        ,{ name: '列表视图_批量添加行', signature: '列表视图_批量添加行(控件名, 列表视图行集合)', description: '一次追加类型化行集合，内部自动关闭并恢复重绘；继续兼容旧式多行 TSV 文本。', insertText: '列表视图_批量添加行($1, 列表视图_创建行集合(列表视图_创建行("$2", "$3"), 列表视图_创建行("$4", "$5")))', returnType: '整数型' }
         ,{ name: '列表视图_开始批量更新', signature: '列表视图_开始批量更新(控件名)', description: '暂停 ListView 重绘；必须与结束批量更新成对调用。', insertText: '列表视图_开始批量更新($1)', returnType: '逻辑型' }
         ,{ name: '列表视图_结束批量更新', signature: '列表视图_结束批量更新(控件名)', description: '结束一层批量更新，并在最外层结束时恢复重绘。', insertText: '列表视图_结束批量更新($1)', returnType: '逻辑型' }
         ,{ name: '列表视图_排序', signature: '列表视图_排序(控件名, 列索引, 升序)', description: '按指定列文本稳定排序，列索引从 0 开始。', insertText: '列表视图_排序($1, 0, 真)', returnType: '逻辑型' }
         ,{ name: '列表视图_取最后单击列', signature: '列表视图_取最后单击列(控件名)', description: '返回最近一次表头单击的零基列索引；尚未单击时返回 -1。', insertText: '列表视图_取最后单击列($1)', returnType: '整数型' }
         ,{ name: '列表视图_取虚拟模式', signature: '列表视图_取虚拟模式(控件名)', description: '返回控件是否以 Win32 LVS_OWNERDATA 虚拟模式创建。', insertText: '列表视图_取虚拟模式($1)', returnType: '逻辑型' }
         ,{ name: '列表视图_设置虚拟行数', signature: '列表视图_设置虚拟行数(控件名, 行数)', description: '设置虚拟 ListView 的总行数；设计器必须先开启虚拟列表模式。', insertText: '列表视图_设置虚拟行数($1, 15000)', returnType: '逻辑型' }
-        ,{ name: '列表视图_设置虚拟行', signature: '列表视图_设置虚拟行(控件名, 行索引, Tab分隔单元格)', description: '设置虚拟 ListView 指定行的数据，不创建真实行项目。', insertText: '列表视图_设置虚拟行($1, 0, "1\\t代码段\\t128\\t5")', returnType: '逻辑型' }
+        ,{ name: '列表视图_设置虚拟行', signature: '列表视图_设置虚拟行(控件名, 行索引, 列表视图行)', description: '用类型化单元格数组设置虚拟 ListView 指定行，不创建真实行项目；继续兼容旧式 Tab 分隔文本。', insertText: '列表视图_设置虚拟行($1, 0, 列表视图_创建行("$2", "$3"))', returnType: '逻辑型' }
         ,...LIST_VIEW_ADVANCED_COMMANDS
         ,...DATA_GRID_COMMANDS
         ,{ name: '树形框_添加节点', signature: '树形框_添加节点(控件名, 父节点文字, 节点文字)', description: '向 TreeView 根级或指定父节点追加节点。', insertText: '树形框_添加节点($1, "", "$2")', returnType: '逻辑型' }
@@ -360,7 +369,11 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: '视频播放器_设置音量', signature: '视频播放器_设置音量(控件名, 音量)', description: '设置视频音量，范围 0～100。', insertText: '视频播放器_设置音量(视频播放器1, 100)', returnType: '逻辑型' }
         ,{ name: '视频播放器_取状态', signature: '视频播放器_取状态(控件名)', description: '返回 Media Foundation 播放器状态；未创建时返回 -1。', insertText: '视频播放器_取状态(视频播放器1)', returnType: '整数型' }
       ],
-      types: createControlTypes('lingbuilder.win32.common-controls'),
+      types: [
+        ...createControlTypes('lingbuilder.win32.common-controls'),
+        { name: '列表视图行', kind: 'array', elementType: '文本型', description: 'ListView 一行按列排列的类型化单元格文本数组。' },
+        { name: '列表视图行集合', kind: 'array', elementType: '列表视图行', description: '可批量追加到 ListView 的类型化行数组。' }
+      ],
       designerControls: createControlContributions('lingbuilder.win32.common-controls'),
       snippets: [
         { label: '选择文件并输出', insertText: '调试输出(打开文件("选择文件", "所有文件|*.*"))', description: '选择一个文件并输出路径。' },
@@ -399,20 +412,22 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ command: '页面设置_右边距', runtimeName: '页面设置_右边距', parameters: [], returnType: 'int' }
         ,{ command: '页面设置_下边距', runtimeName: '页面设置_下边距', parameters: [], returnType: 'int' }
         ,{ command: '属性页_显示', runtimeName: '属性页_显示', parameters: [{ name: '属性页', type: 'controlRef', controlTypes: ['PropertySheet'], controlKinds: ['resource'], scope: 'project' }], returnType: 'int', encoding: 'wide' }
-        ,{ command: '列表视图_添加行', runtimeName: '列表视图_添加行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: 'Tab分隔单元格', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
-        ,{ command: '列表视图_插入行', runtimeName: '列表视图_插入行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行索引', type: 'int' }, { name: 'Tab分隔单元格', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_创建行', runtimeName: '列表视图_创建行', parameters: [{ name: '单元格', type: 'raw', description: '可继续传入任意数量的文本、整数、小数或逻辑值。' }], returnType: 'raw', encoding: 'wide' }
+        ,{ command: '列表视图_创建行集合', runtimeName: '列表视图_创建行集合', parameters: [{ name: '行', type: 'raw', description: '可继续传入任意数量的列表视图行。' }], returnType: 'raw' }
+        ,{ command: '列表视图_添加行', runtimeName: '列表视图_添加行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行数据', type: 'raw', description: '列表视图行；兼容旧式 Tab 分隔文本。' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_插入行', runtimeName: '列表视图_插入行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行索引', type: 'int' }, { name: '行数据', type: 'raw', description: '列表视图行；兼容旧式 Tab 分隔文本。' }], returnType: 'int', encoding: 'wide' }
         ,{ command: '列表视图_删除行', runtimeName: '列表视图_删除行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行索引', type: 'int' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '列表视图_设置单元格', runtimeName: '列表视图_设置单元格', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行索引', type: 'int' }, { name: '列索引', type: 'int' }, { name: '文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '列表视图_取单元格', runtimeName: '列表视图_取单元格', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行索引', type: 'int' }, { name: '列索引', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
         ,{ command: '列表视图_取行数', runtimeName: '列表视图_取行数', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' }
-        ,{ command: '列表视图_批量添加行', runtimeName: '列表视图_批量添加行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '多行TSV文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_批量添加行', runtimeName: '列表视图_批量添加行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行集合', type: 'raw', description: '列表视图行集合；兼容旧式多行 TSV 文本。' }], returnType: 'int', encoding: 'wide' }
         ,{ command: '列表视图_开始批量更新', runtimeName: '列表视图_开始批量更新', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '列表视图_结束批量更新', runtimeName: '列表视图_结束批量更新', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '列表视图_排序', runtimeName: '列表视图_排序', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '列索引', type: 'int' }, { name: '升序', type: 'bool' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '列表视图_取最后单击列', runtimeName: '列表视图_取最后单击列', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' }
         ,{ command: '列表视图_取虚拟模式', runtimeName: '列表视图_取虚拟模式', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' }
         ,{ command: '列表视图_设置虚拟行数', runtimeName: '列表视图_设置虚拟行数', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行数', type: 'int' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '列表视图_设置虚拟行', runtimeName: '列表视图_设置虚拟行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行索引', type: 'int' }, { name: 'Tab分隔单元格', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_设置虚拟行', runtimeName: '列表视图_设置虚拟行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行索引', type: 'int' }, { name: '行数据', type: 'raw', description: '列表视图行；兼容旧式 Tab 分隔文本。' }], returnType: 'bool', encoding: 'wide' }
         ,...LIST_VIEW_ADVANCED_BINDINGS
         ,...DATA_GRID_BINDINGS
         ,{ command: '树形框_添加节点', runtimeName: '树形框_添加节点', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '父节点文字', type: 'wideString' }, { name: '节点文字', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
@@ -719,52 +734,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     ] }
   },
   ...FBRO_SUBMODULES,
-  {
-    schemaVersion: 2,
-    id: 'lingbuilder.threading',
-    name: '多线程模块',
-    version: '1.0.0',
-    category: '系统',
-    description: '提供受控后台任务、等待回收、活动任务查询、硬件并发数和线程休眠能力。',
-    author: 'LingBuilder',
-    tags: ['内置', '系统', '多线程', '并发'],
-    contributes: {
-      commands: [
-        { name: '线程_启动延时输出', signature: '线程_启动延时输出(内容, 延时毫秒)', description: '启动后台线程，等待指定毫秒后写入调试输出，并返回任务编号。', insertText: '线程_启动延时输出("$1", 1000)', returnType: '整数型' },
-        { name: '线程_等待全部', signature: '线程_等待全部()', description: '等待当前窗口启动的全部后台任务结束并回收线程。', insertText: '线程_等待全部()', returnType: '空' },
-        { name: '线程_活动数量', signature: '线程_活动数量()', description: '返回当前仍在执行的后台任务数量。', insertText: '线程_活动数量()', returnType: '整数型' },
-        { name: '线程_硬件并发数', signature: '线程_硬件并发数()', description: '返回 C++ 运行时建议的并行线程数量。', insertText: '线程_硬件并发数()', returnType: '整数型' },
-        { name: '线程_休眠', signature: '线程_休眠(毫秒)', description: '让当前线程休眠指定毫秒；界面线程中使用会暂停界面响应。', insertText: '线程_休眠(100)', returnType: '空' },
-        { name: '线程_启动延时设置文本', signature: '线程_启动延时设置文本(控件名, 文本, 延时毫秒)', description: '启动后台线程，延时后线程安全地设置指定控件的显示文本。', insertText: '线程_启动延时设置文本($1, "完成", 1000)', returnType: '整数型' },
-        { name: '线程_启动延时添加行', signature: '线程_启动延时添加行(控件名, Tab分隔单元格, 延时毫秒)', description: '启动后台线程，延时后线程安全地向列表视图追加一行。', insertText: '线程_启动延时添加行($1, "内容\\t状态", 500)', returnType: '整数型' },
-        { name: '线程_启动延时添加项目', signature: '线程_启动延时添加项目(控件名, 文本, 延时毫秒)', description: '启动后台线程，延时后线程安全地向列表框追加一条日志。', insertText: '线程_启动延时添加项目($1, "日志内容", 500)', returnType: '整数型' },
-        { name: '线程_批量启动', signature: '线程_批量启动(任务数控件, 线程数控件, 列表视图, 日志列表, 状态标签)', description: '读取输入框中的任务数和线程数，动态创建多线程并行执行任务，实时更新列表视图和日志。', insertText: '线程_批量启动(任务数输入, 线程数输入, 任务列表, 日志列表, 状态标签)', returnType: '空' }
-      ],
-      types: [
-        { name: '线程任务', description: '由多线程模块管理的后台任务编号。', cppType: 'int' }
-      ],
-      snippets: [
-        { label: '多线程并行输出示例', insertText: '线程_启动延时输出("任务一完成", 300)\n线程_启动延时输出("任务二完成", 100)\n线程_等待全部()\n调试输出("全部线程任务已完成")', description: '并行启动两个延时输出任务并等待它们安全结束。' }
-      ]
-    },
-    targets: [{
-      id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc',
-      defines: ['LINGBUILDER_THREADING_MODULE']
-    }],
-    bindings: {
-      commands: [
-        { command: '线程_启动延时输出', runtimeName: '线程_启动延时输出', parameters: [{ name: '内容', type: 'wideString' }, { name: '延时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide', example: '线程_启动延时输出("后台任务完成", 500)' },
-        { command: '线程_等待全部', runtimeName: '线程_等待全部', parameters: [], returnType: 'void', example: '线程_等待全部()' },
-        { command: '线程_活动数量', runtimeName: '线程_活动数量', parameters: [], returnType: 'int', example: '线程_活动数量()' },
-        { command: '线程_硬件并发数', runtimeName: '线程_硬件并发数', parameters: [], returnType: 'int', example: '线程_硬件并发数()' },
-        { command: '线程_休眠', runtimeName: '线程_休眠', parameters: [{ name: '毫秒', type: 'int' }], returnType: 'void', example: '线程_休眠(100)' },
-        { command: '线程_启动延时设置文本', runtimeName: '线程_启动延时设置文本', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }, { name: '延时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide', example: '线程_启动延时设置文本(状态标签, "完成", 1000)' },
-        { command: '线程_启动延时添加行', runtimeName: '线程_启动延时添加行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: 'Tab分隔单元格', type: 'wideString' }, { name: '延时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide', example: '线程_启动延时添加行(列表1, "任务\\t完成", 500)' },
-        { command: '线程_启动延时添加项目', runtimeName: '线程_启动延时添加项目', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }, { name: '延时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide', example: '线程_启动延时添加项目(日志列表, "任务完成", 500)' },
-        { command: '线程_批量启动', runtimeName: '线程_批量启动', parameters: [{ name: '任务数控件', type: 'controlRef', controlTypes: ['TextBox'] }, { name: '线程数控件', type: 'controlRef', controlTypes: ['TextBox'] }, { name: '列表视图', type: 'controlRef', controlTypes: ['ListView'] }, { name: '日志列表', type: 'controlRef', controlTypes: ['ListBox', 'ListView'] }, { name: '状态标签', type: 'controlRef', controlTypes: ['Label'] }], returnType: 'void', encoding: 'wide', example: '线程_批量启动(任务数输入, 线程数输入, 任务列表, 日志列表, 状态标签)' }
-      ]
-    }
-  },
+  THREADING_MODULE,
   {
     schemaVersion: 2,
     id: 'lingbuilder.websocket.client',

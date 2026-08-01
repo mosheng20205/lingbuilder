@@ -55,8 +55,8 @@
 | `lingbuilder.image.core` 图像基础模块 | `module-demo-lingbuilder.image.core` | 7 | 0 | 1 | `图像基础模块完整演示.lcpppkg` |
 | `lingbuilder.image.icon` 图标处理模块 | `module-demo-lingbuilder.image.icon` | 3 | 0 | 1 | `图标处理模块完整演示.lcpppkg` |
 | `lingbuilder.image.recognition` 基础识图模块 | `module-demo-lingbuilder.image.recognition` | 5 | 0 | 1 | `基础识图模块完整演示.lcpppkg` |
-| `lingbuilder.input.keyboard` 键盘输入模块 | `module-demo-lingbuilder.input.keyboard` | 5 | 0 | 1 | `键盘输入模块完整演示.lcpppkg` |
-| `lingbuilder.input.mouse` 鼠标输入模块 | `module-demo-lingbuilder.input.mouse` | 6 | 0 | 1 | `鼠标输入模块完整演示.lcpppkg` |
+| `lingbuilder.input.keyboard` 键盘输入模块 | `module-demo-lingbuilder.input.keyboard` | 31 | 0 | 2 | `键盘输入模块完整演示.lcpppkg` |
+| `lingbuilder.input.mouse` 鼠标输入模块 | `module-demo-lingbuilder.input.mouse` | 29 | 0 | 2 | `鼠标输入模块完整演示.lcpppkg` |
 | `lingbuilder.ipc` 进程通信模块 | `module-demo-lingbuilder.ipc` | 8 | 0 | 1 | `进程通信模块完整演示.lcpppkg` |
 | `lingbuilder.media.audio` 基础音频模块 | `module-demo-lingbuilder.media.audio` | 5 | 0 | 1 | `基础音频模块完整演示.lcpppkg` |
 | `lingbuilder.net.cookie` Cookie文本模块 | `module-demo-lingbuilder.net.cookie` | 5 | 0 | 1 | `Cookie文本模块完整演示.lcpppkg` |
@@ -77,16 +77,16 @@
 | `lingbuilder.std.regex` 正则表达式模块 | `module-demo-lingbuilder.std.regex` | 5 | 0 | 1 | `正则表达式模块完整演示.lcpppkg` |
 | `lingbuilder.std.text` 文本处理模块 | `module-demo-lingbuilder.std.text` | 10 | 0 | 1 | `文本处理模块完整演示.lcpppkg` |
 | `lingbuilder.system.clipboard` 剪贴板模块 | `module-demo-lingbuilder.system.clipboard` | 4 | 0 | 1 | `剪贴板模块完整演示.lcpppkg` |
-| `lingbuilder.system.disk` 磁盘信息模块 | `module-demo-lingbuilder.system.disk` | 5 | 0 | 1 | `磁盘信息模块完整演示.lcpppkg` |
+| `lingbuilder.system.disk` 磁盘信息模块 | `module-demo-lingbuilder.system.disk` | 28 | 0 | 2 | `磁盘信息模块完整演示.lcpppkg` |
 | `lingbuilder.system.info` 系统信息模块 | `module-demo-lingbuilder.system.info` | 7 | 0 | 1 | `系统信息模块完整演示.lcpppkg` |
 | `lingbuilder.system.shell` 系统外壳模块 | `module-demo-lingbuilder.system.shell` | 5 | 0 | 1 | `系统外壳模块完整演示.lcpppkg` |
-| `lingbuilder.threading` 多线程模块 | `module-demo-lingbuilder.threading` | 9 | 0 | 1 | `多线程模块完整演示.lcpppkg` |
+| `lingbuilder.threading` 多线程模块 | `module-demo-lingbuilder.threading` | 54 | 0 | 3 | `多线程模块完整演示.lcpppkg` |
 | `lingbuilder.web.http` 网页访问模块 | `module-demo-lingbuilder.web.http` | 12 | 0 | 1 | `网页访问模块完整演示.lcpppkg` |
 | `lingbuilder.websocket.client` WebSocket 客户端模块 | `module-demo-lingbuilder.websocket.client` | 5 | 0 | 1 | `WebSocket客户端模块完整演示.lcpppkg` |
 | `lingbuilder.websocket.server` WebSocket 服务端模块 | `module-demo-lingbuilder.websocket.server` | 6 | 0 | 1 | `WebSocket服务端模块完整演示.lcpppkg` |
 | `lingbuilder.win32.accessibility` 辅助功能模块 | `module-demo-lingbuilder.win32.accessibility` | 4 | 0 | 1 | `辅助功能模块完整演示.lcpppkg` |
 | `lingbuilder.win32.basic` Win32窗口基础模块 | `module-demo-lingbuilder.win32.basic` | 39 | 12 | 2 | `Win32窗口基础模块完整演示.lcpppkg` |
-| `lingbuilder.win32.common-controls` Win32高级控件模块 | `module-demo-lingbuilder.win32.common-controls` | 220 | 26 | 11 | `Win32高级控件模块完整演示.lcpppkg` |
+| `lingbuilder.win32.common-controls` Win32高级控件模块 | `module-demo-lingbuilder.win32.common-controls` | 222 | 26 | 12 | `Win32高级控件模块完整演示.lcpppkg` |
 | `lingbuilder.win32.menu` Win32菜单模块 | `module-demo-lingbuilder.win32.menu` | 8 | 0 | 1 | `Win32菜单模块完整演示.lcpppkg` |
 | `lingbuilder.win32.monitor` 显示器与DPI模块 | `module-demo-lingbuilder.win32.monitor` | 6 | 0 | 1 | `显示器与DPI模块完整演示.lcpppkg` |
 | `lingbuilder.win32.tray` 托盘图标模块 | `module-demo-lingbuilder.win32.tray` | 5 | 0 | 1 | `托盘图标模块完整演示.lcpppkg` |

@@ -1,0 +1,26 @@
+包 Protocol Buffers 基础示例
+使用 Win32窗口基础模块
+使用 Protocol Buffers 模块
+
+// descriptor.pb 由受控 protoc Provider 在构建阶段生成。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        局部 句柄 描述集 = PB_加载描述集("generated/protobuf/descriptor.pb")
+        如果 (描述集 == 0)
+            调试输出("加载 Protobuf 描述集失败：", PB_取最后错误())
+            返回
+        结束
+
+        局部 句柄 消息 = PB_创建消息(描述集, "demo.Message")
+        如果 (消息 == 0)
+            调试输出("创建 Protobuf 消息失败：", PB_取最后错误())
+            PB_释放描述集(描述集)
+            返回
+        结束
+
+        局部 字节集 编码 = PB_序列化为字节集(消息)
+        调试输出("空消息字节数：", 字节集_长度(编码))
+        PB_释放消息(消息)
+        PB_释放描述集(描述集)
+    结束
+结束

@@ -74,6 +74,7 @@ import AboutDialog from './components/AboutDialog';
 import HelpCenterDialog from './components/HelpCenterDialog';
 import SponsorDialog from './components/SponsorDialog';
 import ProjectNameDialog from './components/ProjectNameDialog';
+import WelcomePage from './components/WelcomePage';
 import TextFileStatusControls from './components/TextFileStatusControls';
 import EditorPositionStatus from './components/EditorPositionStatus';
 import {
@@ -1040,6 +1041,24 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [activeDropdown, setActiveDropdown] = useState<'file' | 'edit' | 'view' | 'project' | 'tools' | 'help' | null>(null);
   const [isMinimizedApp, setIsMinimizedApp] = useState(false);
+  const [showWelcomePage, setShowWelcomePage] = useState(true);
+  const [hasEnteredWorkbench, setHasEnteredWorkbench] = useState(false);
+  const hasEnteredWorkbenchRef = useRef(false);
+  hasEnteredWorkbenchRef.current = hasEnteredWorkbench;
+  const [isWorkspaceSwitching, setIsWorkspaceSwitching] = useState(false);
+  const workspaceSwitchInFlightRef = useRef(false);
+  const workspaceSwitchReloadTokenRef = useRef<number | null>(null);
+  const enterWorkbench = useCallback(() => {
+    hasEnteredWorkbenchRef.current = true;
+    setHasEnteredWorkbench(true);
+    setShowWelcomePage(false);
+  }, []);
+  const finishWorkspaceSwitch = useCallback(() => {
+    if (!workspaceSwitchInFlightRef.current) return;
+    workspaceSwitchInFlightRef.current = false;
+    workspaceSwitchReloadTokenRef.current = null;
+    setIsWorkspaceSwitching(false);
+  }, []);
   const [isMaximizedApp, setIsMaximizedApp] = useState(false);
   const [showCloseConfirmModal, setShowCloseConfirmModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
@@ -1068,11 +1087,33 @@ export default function App() {
   const [configurationLoading, setConfigurationLoading] = useState(true);
   const [configurationError, setConfigurationError] = useState('');
   const [recentWorkspaces, setRecentWorkspaces] = useState<string[]>([]);
+  const [currentWorkspacePath, setCurrentWorkspacePath] = useState('');
   const [shortcutOverrides, setShortcutOverrides] = useState<Record<string, string>>({});
   const [commandRegistryVersion, setCommandRegistryVersion] = useState(0);
   const commandServiceRef = useRef(createCommandService());
   const commandContextRef = useRef<CommandContext>({});
   const designerCommandContextRef = useRef<CommandContext>({});
+  useEffect(() => {
+    const startupApi = window.lingBuilder?.startup;
+    if (!startupApi) return;
+    let disposed = false;
+    void startupApi.shouldShowWelcome()
+      .then(shouldShow => {
+        if (disposed || hasEnteredWorkbenchRef.current) return;
+        if (shouldShow) {
+          setShowWelcomePage(true);
+          setHasEnteredWorkbench(false);
+        } else {
+          hasEnteredWorkbenchRef.current = true;
+          setHasEnteredWorkbench(true);
+          setShowWelcomePage(false);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+    };
+  }, []);
   useEffect(() => commandServiceRef.current.onDidChange(() => {
     setCommandRegistryVersion(version => version + 1);
   }).dispose, []);
@@ -1141,9 +1182,67 @@ export default function App() {
     }
   }, [solution]);
 
+  const reloadWorkspaceState = useCallback(async (): Promise<SolutionModel> => {
+    const nextSolution = await fetchSolution();
+    hydratedProjectIdsRef.current.clear();
+    projectFileVersionsRef.current = {};
+    loadedProjectIdRef.current = '';
+    setLoadedProjectId('');
+    setProjectFileLoadState(createProjectFileLoadState(
+      nextSolution.startupProjectId || nextSolution.projects[0]?.id || DEFAULT_SOLUTION.projects[0].id,
+      'loading'
+    ));
+    setEditorState(createInactiveTextEditorStatus('loading-project'));
+    setModuleContext(previous => ({ ...previous, availableModules: [], enabledModules: [] }));
+    setProblems([]);
+    setCompilerProblems([]);
+    setQualityProblems([]);
+    setSourceControlStatus(null);
+    setSolution(nextSolution);
+    setProjectFileReloadToken(token => {
+      workspaceSwitchReloadTokenRef.current = token + 1;
+      return token + 1;
+    });
+    enterWorkbench();
+    return nextSolution;
+  }, [enterWorkbench]);
+
   useEffect(() => {
+    const workspaceApi = window.lingBuilder?.workspace;
+    if (!workspaceApi?.onDidChange) return;
+    let disposed = false;
+    const unsubscribe = workspaceApi.onDidChange(snapshot => {
+      if (disposed) return;
+      workspaceSwitchInFlightRef.current = true;
+      workspaceSwitchReloadTokenRef.current = null;
+      setCurrentWorkspacePath(snapshot.workspacePath);
+      setIsWorkspaceSwitching(true);
+      void reloadWorkspaceState()
+        .catch(error => {
+          console.error('Failed to reload workspace state:', error);
+          setProjectFileLoadState(createProjectFileLoadState(activeProjectIdRef.current, 'error', '工作区已切换，但项目状态载入失败。'));
+          finishWorkspaceSwitch();
+        });
+    });
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  }, [finishWorkspaceSwitch, reloadWorkspaceState]);
+
+  useEffect(() => {
+    if (!isWorkspaceSwitching) return;
+    const reloadToken = workspaceSwitchReloadTokenRef.current;
+    if (reloadToken === null || reloadToken !== projectFileReloadToken) return;
+    if (projectFileEditorAvailability === 'ready' || projectFileEditorAvailability === 'error') {
+      finishWorkspaceSwitch();
+    }
+  }, [finishWorkspaceSwitch, isWorkspaceSwitching, projectFileEditorAvailability, projectFileReloadToken]);
+
+  useEffect(() => {
+    if (!hasEnteredWorkbench || workspaceSwitchInFlightRef.current) return;
     void refreshSolution();
-  }, []);
+  }, [hasEnteredWorkbench]);
 
   useEffect(() => { const receive = (event: Event) => { const diagnostics = (event as CustomEvent<{ diagnostics?: any[] }>).detail?.diagnostics || []; const next: ProblemItem[] = diagnostics.map((item, index) => ({ id: `quality:${item.source}:${index}:${item.filePath || ''}:${item.line || 0}`, filePath: item.filePath || '质量分析', line: item.line || 1, column: item.column, code: item.code, source: item.source, level: item.severity, message: item.message, codeSnippet: item.message, suggestion: item.source === 'sarif' ? '请根据静态分析规则修正代码后重新生成报告。' : '请根据 Sanitizer 调用栈修复内存或未定义行为问题。' })); setQualityProblems(next); if (next.length) { setShowBottomPanel(true); setActiveTabInBottom('problems'); } }; window.addEventListener('lingbuilder-quality-diagnostics', receive); return () => window.removeEventListener('lingbuilder-quality-diagnostics', receive); }, []);
 
@@ -1194,13 +1293,13 @@ export default function App() {
     window.addEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
     window.addEventListener(WINDOW_DESIGNER_DIRTY_STATE_CHANGED, handleDesignerDirtyStateChanged);
     window.addEventListener('lingbuilder-modules-changed', handleModulesChanged);
-    refreshModuleContext();
+    if (hasEnteredWorkbench) refreshModuleContext();
     return () => {
       window.removeEventListener(WINDOW_DESIGNER_PROJECT_UPDATED, handleDesignerProjectUpdated);
       window.removeEventListener(WINDOW_DESIGNER_DIRTY_STATE_CHANGED, handleDesignerDirtyStateChanged);
       window.removeEventListener('lingbuilder-modules-changed', handleModulesChanged);
     };
-  }, [refreshModuleContext]);
+  }, [hasEnteredWorkbench, refreshModuleContext]);
 
   useEffect(() => {
     if (activeFile.language !== 'lingcpp') {
@@ -1636,6 +1735,7 @@ export default function App() {
   const taskLogCountsRef = useRef(new Map<string, number>());
 
   useEffect(() => {
+    if (!hasEnteredWorkbench) return;
     let disposed = false;
     let polling = false;
     let pollTimer: number | undefined;
@@ -1666,7 +1766,7 @@ export default function App() {
       disposed = true;
       if (pollTimer !== undefined) window.clearTimeout(pollTimer);
     };
-  }, []);
+  }, [hasEnteredWorkbench]);
 
   useEffect(() => {
     const isCpp = activeFile.language === 'cpp' || /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/iu.test(activeFile.path);
@@ -1681,7 +1781,12 @@ export default function App() {
     return () => events.close();
   }, [activeFile.language, activeFile.path, projectFilesReady]);
 
-  useEffect(() => { void fetch('/api/build-configuration').then(response => response.json()).then(payload => payload.configuration && setBuildConfiguration(payload.configuration)); }, []);
+  useEffect(() => {
+    if (!hasEnteredWorkbench) return;
+    void fetch('/api/build-configuration')
+      .then(response => response.json())
+      .then(payload => payload.configuration && setBuildConfiguration(payload.configuration));
+  }, [hasEnteredWorkbench]);
   const updateBuildConfiguration = useCallback(async (patch: { mode?: BuildMode; architecture?: BuildArchitecture }) => {
     const next = { ...buildConfiguration, ...patch };
     const response = await fetch('/api/build-configuration', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next) });
@@ -1949,10 +2054,12 @@ void DisplayStatus() {
   }, []);
 
   useEffect(() => {
+    if (!hasEnteredWorkbench) return;
     void refreshSourceControlStatus();
-  }, [refreshSourceControlStatus]);
+  }, [hasEnteredWorkbench, refreshSourceControlStatus]);
 
   useEffect(() => {
+    if (!hasEnteredWorkbench) return;
     // Populate translated contents with fallbacks or mock dictionary translations
     files.forEach(f => {
       const initialTranslations = f.strings.map(s => {
@@ -1968,7 +2075,7 @@ void DisplayStatus() {
       });
       triggerReconstruction(f, initialTranslations);
     });
-  }, []);
+  }, [hasEnteredWorkbench]);
 
   // Update translation for a single extracted string
   const handleUpdateStringTranslation = (id: string, value: string) => {
@@ -2583,6 +2690,7 @@ void DisplayStatus() {
 
 
   useEffect(() => {
+    if (!hasEnteredWorkbench) return;
     let cancelled = false;
     let timedOut = false;
     const loadGeneration = projectFileLoadGenerationRef.current;
@@ -2775,7 +2883,7 @@ void DisplayStatus() {
       controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [activeProjectId, projectFileReloadToken]);
+  }, [activeProjectId, hasEnteredWorkbench, projectFileReloadToken]);
 
   useEffect(() => {
     if (!projectFilesReady || loadedProjectId !== activeProjectId) return;
@@ -3548,19 +3656,25 @@ void DisplayStatus() {
   };
 
   const handleOpenWorkspace = async (): Promise<boolean> => {
+    if (workspaceSwitchInFlightRef.current) {
+      appendEditorTransactionLog('【打开工作区】已有工作区正在切换，请稍候。');
+      return false;
+    }
     if (editorOperationRef.current) {
       appendEditorTransactionLog(`【打开工作区】已有${getEditorOperationLabel(editorOperationRef.current)}任务正在进行，请稍后再试。`);
       return false;
     }
-    const flushState = await flushCurrentEditorDrafts();
-    if (!flushState.ok) {
-      appendEditorTransactionLog(`【打开工作区错误】${flushState.diagnostics[0] || '新手代码提交失败，未切换工作区。'}`);
-      return false;
-    }
+    if (hasEnteredWorkbench) {
+      const flushState = await flushCurrentEditorDrafts();
+      if (!flushState.ok) {
+        appendEditorTransactionLog(`【打开工作区错误】${flushState.diagnostics[0] || '新手代码提交失败，未切换工作区。'}`);
+        return false;
+      }
 
-    if (flushState.files.some(isEditorFileDirty) || designerDirtyRef.current) {
-      const saved = await handleSaveWorkspace('切换工作区前保存');
-      if (!saved) return false;
+      if (flushState.files.some(isEditorFileDirty) || designerDirtyRef.current) {
+        const saved = await handleSaveWorkspace('切换工作区前保存');
+        if (!saved) return false;
+      }
     }
 
     const workspaceApi = window.lingBuilder?.workspace;
@@ -3569,16 +3683,26 @@ void DisplayStatus() {
       return false;
     }
 
+    workspaceSwitchInFlightRef.current = true;
+    setIsWorkspaceSwitching(true);
     try {
       const result = await workspaceApi.open();
-      if (result.canceled) return false;
+      if (result.canceled) {
+        workspaceSwitchInFlightRef.current = false;
+        setIsWorkspaceSwitching(false);
+        return false;
+      }
       if (!result.ok) {
+        workspaceSwitchInFlightRef.current = false;
+        setIsWorkspaceSwitching(false);
         appendEditorTransactionLog(`【打开工作区错误】${result.error || '工作区切换失败。'}`);
         return false;
       }
       appendEditorTransactionLog(`【打开工作区】已切换到 ${result.workspacePath || '所选目录'}。`);
       return true;
     } catch (error) {
+      workspaceSwitchInFlightRef.current = false;
+      setIsWorkspaceSwitching(false);
       appendEditorTransactionLog(`【打开工作区错误】${error instanceof Error ? error.message : '原生目录选择失败。'}`);
       return false;
     }
@@ -3587,22 +3711,44 @@ void DisplayStatus() {
   const handleOpenWorkspacePath = async (targetPath: string, newWindow = false): Promise<boolean> => {
     const workspaceApi = window.lingBuilder?.workspace;
     if (!workspaceApi) return false;
-    if (!newWindow) {
+    if (!newWindow && workspaceSwitchInFlightRef.current) {
+      appendEditorTransactionLog('【打开工作区】已有工作区正在切换，请稍候。');
+      return false;
+    }
+    if (!newWindow && hasEnteredWorkbench) {
       const flushState = await flushCurrentEditorDrafts();
       if (!flushState.ok) return false;
       if ((flushState.files.some(isEditorFileDirty) || designerDirtyRef.current)
         && !await handleSaveWorkspace('切换工作区前保存')) return false;
     }
-    const result = await workspaceApi.openPath(targetPath, newWindow);
-    if (!result.ok) {
-      appendEditorTransactionLog(`【打开工作区错误】${result.error || '无法打开目标。'}`);
+    if (!newWindow) {
+      workspaceSwitchInFlightRef.current = true;
+      setIsWorkspaceSwitching(true);
+    }
+    try {
+      const result = await workspaceApi.openPath(targetPath, newWindow);
+      if (!result.ok) {
+        if (!newWindow) {
+          workspaceSwitchInFlightRef.current = false;
+          setIsWorkspaceSwitching(false);
+        }
+        appendEditorTransactionLog(`【打开工作区错误】${result.error || '无法打开目标。'}`);
+        return false;
+      }
+      appendEditorTransactionLog(newWindow
+        ? `【新窗口】已打开 ${result.workspacePath}。`
+        : `【打开工作区】已切换到 ${result.workspacePath}。`);
+      if (!newWindow && result.workspacePath) setCurrentWorkspacePath(result.workspacePath);
+      setRecentWorkspaces(await workspaceApi.listRecent());
+      return true;
+    } catch (error) {
+      if (!newWindow) {
+        workspaceSwitchInFlightRef.current = false;
+        setIsWorkspaceSwitching(false);
+      }
+      appendEditorTransactionLog(`【打开工作区错误】${error instanceof Error ? error.message : '无法打开目标。'}`);
       return false;
     }
-    appendEditorTransactionLog(newWindow
-      ? `【新窗口】已打开 ${result.workspacePath}。`
-      : `【打开工作区】已切换到 ${result.workspacePath}。`);
-    setRecentWorkspaces(await workspaceApi.listRecent());
-    return true;
   };
 
   const handleCloseCurrentSolution = async (): Promise<boolean> => {
@@ -3696,7 +3842,12 @@ void DisplayStatus() {
   useEffect(() => {
     const workspaceApi = window.lingBuilder?.workspace;
     if (!workspaceApi) return;
-    void workspaceApi.listRecent().then(setRecentWorkspaces);
+    void Promise.all([workspaceApi.getCurrent(), workspaceApi.listRecent()])
+      .then(([workspacePath, recent]) => {
+        setCurrentWorkspacePath(workspacePath || '');
+        setRecentWorkspaces(recent);
+      })
+      .catch(() => undefined);
     const preventDefault = (event: DragEvent) => event.preventDefault();
     const handleDrop = (event: DragEvent) => {
       event.preventDefault();
@@ -5244,6 +5395,49 @@ void DisplayStatus() {
     );
   }
 
+  if (showWelcomePage) {
+    return (
+      <div className="relative h-screen w-screen">
+        <WelcomePage
+          isDarkMode={isDarkMode}
+          isMaximized={isMaximizedApp}
+          recentWorkspaces={recentWorkspaces}
+          currentWorkspacePath={currentWorkspacePath}
+          onMinimize={handleWindowMinimize}
+          onToggleMaximize={handleWindowToggleMaximize}
+          onClose={handleWindowCloseConfirmed}
+          onCreateProject={() => {
+            enterWorkbench();
+            void executeWorkbenchCommand('workbench.action.project.create');
+          }}
+          onOpenWorkspace={async () => {
+            if (await executeWorkbenchCommand('workbench.action.files.openWorkspace')) enterWorkbench();
+          }}
+          onOpenRecentWorkspace={async workspacePath => {
+            if (await handleOpenWorkspacePath(workspacePath)) enterWorkbench();
+          }}
+          onContinue={enterWorkbench}
+          onOpenHelp={() => {
+            enterWorkbench();
+            void executeWorkbenchCommand('workbench.action.help.openHelpCenter');
+          }}
+          onOpenCliGuide={() => {
+            enterWorkbench();
+            void executeWorkbenchCommand('workbench.action.help.openCliGuide');
+          }}
+        />
+        {isWorkspaceSwitching && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[#111116]/75 backdrop-blur-[2px]" role="status" aria-live="polite">
+            <div className="flex min-w-[280px] items-center gap-3 rounded-lg border border-blue-400/30 bg-[#1f2028] px-5 py-4 text-sm text-slate-100 shadow-2xl">
+              <RefreshCw className="h-5 w-5 animate-spin text-blue-400" />
+              <span>正在切换工作区并载入项目文件…</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className={`workbench-shell h-screen flex flex-col overflow-hidden font-sans select-none ${isDarkMode ? 'bg-[#1E1E1E] text-[#D4D4D4]' : 'bg-slate-50 text-slate-800'}`}>
       {/* Title Bar */}
@@ -6719,6 +6913,15 @@ void DisplayStatus() {
           <div className="shrink-0 hover:bg-[#1f8ad2] px-2 py-0.5 rounded cursor-pointer transition-colors">反馈支持</div>
         </div>
       </div>
+
+      {isWorkspaceSwitching && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-[#111116]/75 backdrop-blur-[2px]" role="status" aria-live="polite">
+          <div className="flex min-w-[280px] items-center gap-3 rounded-lg border border-blue-400/30 bg-[#1f2028] px-5 py-4 text-sm text-slate-100 shadow-2xl">
+            <RefreshCw className="h-5 w-5 animate-spin text-blue-400" />
+            <span>正在切换工作区并载入项目文件…</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

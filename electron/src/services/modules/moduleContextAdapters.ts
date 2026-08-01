@@ -1,6 +1,7 @@
 import { getLingCppModuleCompletionItems } from '../lingCpp/completionCatalog';
 import { InstalledModule, LingCppModuleContext, ModuleCommandBinding, ModuleCommandContribution } from './types';
 import { describeModuleBindingParameterType } from './bindingValueType';
+import { formatModulePublicType, getModulePublicTypeKind } from './modulePublicTypeService';
 
 export interface BeginnerModuleCodeCompletion {
   label: string;
@@ -156,7 +157,12 @@ function formatModuleForAi(module: InstalledModule): string {
     lines.push(`  目标：${targets.map(target => `${target.id}(${target.platform}/${target.toolchain}/${target.arch})`).join('；')}`);
   }
   if (types.length > 0) {
-    lines.push(`  类型：${types.map(type => `${type.name}（${type.description}）`).join('；')}`);
+    lines.push(`  类型：${types.map(type => {
+      const fields = getModulePublicTypeKind(type) === 'record'
+        ? `；字段 ${type.fields?.map(field => `${field.type}${field.isArray ? '[]' : ''} ${field.name}`).join('、') || '无'}`
+        : '';
+      return `${type.name}（${type.description}；${formatModulePublicType(type)}${fields}）`;
+    }).join('；')}`);
   }
   if (snippets.length > 0) {
     lines.push(`  片段：${snippets.map(snippet => snippet.label).join('；')}`);

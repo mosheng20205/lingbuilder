@@ -3,6 +3,9 @@ import { contextBridge, ipcRenderer } from 'electron';
 contextBridge.exposeInMainWorld('lingBuilder', {
   runtime: 'electron',
   platform: process.platform,
+  startup: {
+    shouldShowWelcome: () => ipcRenderer.invoke('startup:should-show-welcome'),
+  },
   windowControls: {
     minimize: () => ipcRenderer.invoke('window:minimize'),
     toggleMaximize: () => ipcRenderer.invoke('window:toggle-maximize'),
@@ -32,6 +35,11 @@ contextBridge.exposeInMainWorld('lingBuilder', {
     listRecent: () => ipcRenderer.invoke('workspace:list-recent'),
     forgetRecent: (workspacePath: string) => ipcRenderer.invoke('workspace:forget-recent', workspacePath),
     closeCurrent: () => ipcRenderer.invoke('workspace:close-current'),
+    onDidChange: (listener: (snapshot: { workspacePath: string; version?: number }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, snapshot: { workspacePath: string; version?: number }) => listener(snapshot);
+      ipcRenderer.on('workspace:changed', handler);
+      return () => ipcRenderer.removeListener('workspace:changed', handler);
+    },
   },
   docs: {
     openModuleManual: () => ipcRenderer.invoke('docs:open-module-manual'),

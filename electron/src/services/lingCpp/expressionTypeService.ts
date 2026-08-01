@@ -14,13 +14,15 @@ const MODULE_VALUE_TYPE_ALIASES: Record<string, string> = {
   utf8string: '文本型',
   string: '文本型',
   handle: '窗口句柄',
-  raw: '字节集'
+  raw: '原始值'
 };
 
 export function normalizeLingCppValueType(type: string | undefined): string | undefined {
   const trimmed = type?.trim();
   if (!trimmed || /^(空|无|void|none|null)$/iu.test(trimmed)) return undefined;
-  return MODULE_VALUE_TYPE_ALIASES[normalizeIdentifier(trimmed)] || trimmed;
+  const normalized = normalizeIdentifier(trimmed);
+  if (normalized === 'bytes' || normalized === 'bytearray') return '字节集';
+  return MODULE_VALUE_TYPE_ALIASES[normalized] || trimmed;
 }
 
 export function inferLingCppExpressionType(

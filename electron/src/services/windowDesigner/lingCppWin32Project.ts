@@ -15,6 +15,12 @@ import {
   LingCppStatement
 } from '../lingCpp/types';
 import { InstalledModule, ModuleCommandBinding } from '../modules/types';
+import {
+  findModulePublicType,
+  getEnabledModuleStructuredTypeDiagnostics,
+  getModulePublicTypeKind,
+  getModuleRecordDataTypes
+} from '../modules/modulePublicTypeService';
 import { parseLingCppControlFlowLine } from '../lingCpp/controlFlow';
 import { createProjectGlobalContext, getProjectGlobalDiagnostics, isProjectGlobalsFilePath } from '../lingCpp/projectGlobalService';
 import { createProjectTypeContext, getProjectDataTypeDiagnostics, isProjectDataTypesFilePath, sortProjectDataTypes } from '../lingCpp/projectDataTypeService';
@@ -28,6 +34,8 @@ import { generateSystemLibraryRuntime } from './systemLibraryRuntime';
 import { generateNetworkLibraryRuntime } from './networkLibraryRuntime';
 import { generateDataMediaRuntime } from './dataMediaRuntime';
 import { generatePlatformAdvancedRuntime } from './platformAdvancedRuntime';
+import { generateThreadingRuntime } from './threadingRuntime';
+import { generateProtobufRuntime } from './protobufRuntime';
 import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from '../modules/targetResolver';
 import { getWin32ControlDefinition, WIN32_CONTROL_DEFINITIONS } from './win32ControlRegistry';
 import { getWindowEventHandlerName } from './windowEventRegistry';
@@ -270,6 +278,11 @@ function aggregateLingCppProjectSources(
   const functionLibrarySourceFiles = new Map<string, string>();
   const functionLibraryNames = new Map<string, string>();
   const globalNames = new Set<string>();
+  const moduleRecordTypes = getModuleRecordDataTypes(enabledModules);
+  getEnabledModuleStructuredTypeDiagnostics({ enabledModules }).forEach(message => {
+    diagnostics.push(message);
+    blockingDiagnostics.push(message);
+  });
 
   parsedSources.forEach(({ source, parsed }) => {
     parsed.diagnostics.forEach(diagnostic => {
@@ -345,7 +358,7 @@ function aggregateLingCppProjectSources(
   const program: LingCppProgram = {
     packageName: base.parsed.program.packageName,
     uses: Array.from(new Set(parsedSources.flatMap(item => item.parsed.program.uses))),
-    dataTypes: dataTypesSource?.parsed.program.dataTypes || [],
+    dataTypes: [...moduleRecordTypes, ...(dataTypesSource?.parsed.program.dataTypes || [])],
     constants: globalsSource?.parsed.program.constants || [],
     globals: globalsSource?.parsed.program.globals || [],
     functionLibraries: parsedSources.flatMap(item => item.parsed.program.functionLibraries),
@@ -371,16 +384,19 @@ function generateNewEmojiMainCpp(
   enabledModules: InstalledModule[]
 ): string {
   const fbroModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser');
+  const mouseModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.input.mouse');
+  const uiaCleanupLine = mouseModuleEnabled ? '    LB_UiaClear();' : '';
+  const protobufRuntime = generateProtobufRuntime(enabledModules);
   const builtinLibraryFragments = [
     generateStandardLibraryRuntime(enabledModules),
     generateSystemLibraryRuntime(enabledModules),
     generateNetworkLibraryRuntime(enabledModules),
     generateDataMediaRuntime(enabledModules),
-    generatePlatformAdvancedRuntime(enabledModules)
+    generatePlatformAdvancedRuntime(enabledModules),
+    protobufRuntime
   ].filter(Boolean);
-  const builtinLibraryRuntime = builtinLibraryFragments.length > 0
-    ? `${BUILTIN_LIBRARY_COMMON_RUNTIME}\n${builtinLibraryFragments.join('\n')}`
-    : '';
+  const builtinLibraryCommonRuntime = builtinLibraryFragments.length > 0 ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
+  const builtinLibraryRuntime = builtinLibraryFragments.join('\n');
   const projectDataTypesDefinition = generateProjectDataTypesDefinition(program, enabledModules);
   const projectGlobalsDefinition = generateProjectGlobalsDefinition(program, enabledModules);
   const newEmojiFunctionLibraries = generateNewEmojiFunctionLibraries(program, enabledModules);
@@ -691,6 +707,8 @@ function generateNewEmojiMainCpp(
 #include <cstring>
 #include <cwchar>
 #include <cwctype>
+#include <limits>
+#include <deque>
 #include <filesystem>
 #include <functional>
 #include <fstream>
@@ -707,6 +725,7 @@ function generateNewEmojiMainCpp(
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -720,10 +739,22 @@ ${modulePreamble}
 #define LINGBUILDER_NE_FBRO_AVAILABLE 0
 using LB_FBRO_HANDLE = UINT_PTR;
 #endif
+#if defined(LINGBUILDER_PROTOBUF_MODULE) && __has_include(<google/protobuf/descriptor.h>) && __has_include(<google/protobuf/dynamic_message.h>) && __has_include(<google/protobuf/descriptor.pb.h>) && __has_include(<google/protobuf/util/json_util.h>)
+#include <google/protobuf/descriptor.h>
+#include <google/protobuf/dynamic_message.h>
+#include <google/protobuf/descriptor.pb.h>
+#include <google/protobuf/message.h>
+#include <google/protobuf/util/json_util.h>
+#define LINGBUILDER_PROTOBUF_AVAILABLE 1
+#else
+#define LINGBUILDER_PROTOBUF_AVAILABLE 0
+#endif
 
-${builtinLibraryRuntime}
+${builtinLibraryCommonRuntime}
 
 ${projectDataTypesDefinition}
+
+${builtinLibraryRuntime}
 
 ${projectGlobalsDefinition}
 
@@ -1056,6 +1087,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 ${fbroModuleEnabled ? `    if (!LB_NE_InitializeFbro()) {
         MessageBoxW(nullptr, L"FBro 初始化失败：请检查 CEF 135 x64 运行时和 LingBuilderFbroBridge.dll。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
+${uiaCleanupLine}
         if (SUCCEEDED(comResult)) CoUninitialize();
         return 3;
     }` : ''}
@@ -1064,6 +1096,7 @@ ${fbroModuleEnabled ? '    LB_NE_AttachFbroEventWindow();' : ''}
     if (!g_newEmojiWindow) {
         MessageBoxW(nullptr, L"new_emoji 原生窗口创建失败，请确认 new_emoji.dll 与 exe 位于同一目录。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
         LB_NE_ShutdownFbro();
+${uiaCleanupLine}
         if (SUCCEEDED(comResult)) CoUninitialize();
         return 2;
     }
@@ -1074,6 +1107,7 @@ ${initialFocusLine}
 ${createdBody}
     if (!g_newEmojiWindow) {
         LB_NE_ShutdownFbro();
+${uiaCleanupLine}
         if (SUCCEEDED(comResult)) CoUninitialize();
         return 0;
     }
@@ -1081,6 +1115,7 @@ ${createdBody}
     int exitCode = NE_运行消息循环();
     LB_NE_ShutdownFbro();
 ${iconCleanup}
+${uiaCleanupLine}
     if (SUCCEEDED(comResult)) CoUninitialize();
     return exitCode;
 }
@@ -2896,16 +2931,20 @@ function generateMainCpp(
     .map((window, index) => `    case ${index}: return new ${toCppIdentifier(window.className)}(g_windows[${index}]);`)
     .join('\n');
   const moduleCppPreamble = generateModuleCppPreamble(enabledModules);
+  const mouseModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.input.mouse');
+  const uiaCleanupLine = mouseModuleEnabled ? '    LB_UiaClear();' : '';
+  const protobufRuntime = generateProtobufRuntime(enabledModules);
   const builtinLibraryFragments = [
     generateStandardLibraryRuntime(enabledModules),
     generateSystemLibraryRuntime(enabledModules),
     generateNetworkLibraryRuntime(enabledModules),
     generateDataMediaRuntime(enabledModules),
-    generatePlatformAdvancedRuntime(enabledModules)
+    generatePlatformAdvancedRuntime(enabledModules),
+    protobufRuntime
   ].filter(Boolean);
-  const builtinLibraryRuntime = builtinLibraryFragments.length > 0
-    ? `${BUILTIN_LIBRARY_COMMON_RUNTIME}\n${builtinLibraryFragments.join('\n')}`
-    : '';
+  const builtinLibraryCommonRuntime = builtinLibraryFragments.length > 0 ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
+  const builtinLibraryRuntime = builtinLibraryFragments.join('\n');
+  const threadingRuntime = generateThreadingRuntime(enabledModules);
   const moduleFeatureDefines = [
     enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview')
       ? `#ifndef LINGBUILDER_EDGEVIEW_MODULE\n#define LINGBUILDER_EDGEVIEW_MODULE\n#endif\n#define LINGBUILDER_EDGEVIEW_REQUIRED_RUNTIME_MAJOR ${collectEdgeViewApiUsage(program.source).minimumRuntimeMajor}`
@@ -2915,6 +2954,9 @@ function generateMainCpp(
       : '',
     enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser')
       ? '#ifndef LINGBUILDER_FBRO_MODULE\n#define LINGBUILDER_FBRO_MODULE\n#endif'
+      : '',
+    enabledModules.some(module => module.manifest.id === 'lingbuilder.data.protobuf')
+      ? '#ifndef LINGBUILDER_PROTOBUF_MODULE\n#define LINGBUILDER_PROTOBUF_MODULE\n#endif'
       : ''
   ].filter(Boolean).join('\n');
   const cef3EventIdCases = CEF3_BROWSER_EVENTS.map(event =>
@@ -3022,6 +3064,16 @@ enum LB_FBRO_FALLBACK_EVENT_CODE {
     LB_FBRO_EVENT_DRAG_ENTER = 9
 };
 #endif
+#if defined(LINGBUILDER_PROTOBUF_MODULE) && __has_include(<google/protobuf/descriptor.h>) && __has_include(<google/protobuf/dynamic_message.h>) && __has_include(<google/protobuf/descriptor.pb.h>) && __has_include(<google/protobuf/util/json_util.h>)
+#include <google/protobuf/descriptor.h>
+#include <google/protobuf/dynamic_message.h>
+#include <google/protobuf/descriptor.pb.h>
+#include <google/protobuf/message.h>
+#include <google/protobuf/util/json_util.h>
+#define LINGBUILDER_PROTOBUF_AVAILABLE 1
+#else
+#define LINGBUILDER_PROTOBUF_AVAILABLE 0
+#endif
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -3035,6 +3087,8 @@ enum LB_FBRO_FALLBACK_EVENT_CODE {
 #include <cstring>
 #include <cwchar>
 #include <cwctype>
+#include <limits>
+#include <deque>
 #include <filesystem>
 #include <functional>
 #include <fstream>
@@ -3047,6 +3101,7 @@ enum LB_FBRO_FALLBACK_EVENT_CODE {
 #include <set>
 #include <string>
 #include <thread>
+#include <type_traits>
 #include <utility>
 #include <mutex>
 #include <memory>
@@ -4448,7 +4503,13 @@ static void ResolveWindowPlacement(
     }
 }
 
+${builtinLibraryCommonRuntime}
+
+${projectDataTypesDefinition}
+
 ${builtinLibraryRuntime}
+
+${threadingRuntime}
 
 class LingWindowBase {
 public:
@@ -4472,7 +4533,17 @@ public:
 ${functionLibraryMethods}
 
     virtual ~LingWindowBase() {
-        线程_等待全部();
+#ifdef LINGBUILDER_THREADING_MODULE
+        if (threadOwnerToken_ != 0) {
+            LingThreadProjectRuntime::Instance().ShutdownOwner(threadOwnerToken_);
+            threadOwnerToken_ = 0;
+        }
+#endif
+        {
+            std::vector<std::thread> tasks;
+            { std::lock_guard<std::mutex> lock(asyncWebThreadsMutex_); tasks.swap(asyncWebThreads_); }
+            for (auto& task : tasks) if (task.joinable()) task.join();
+        }
         WS_关闭();
         HTTP_关闭服务();
         WSS_关闭服务();
@@ -4646,13 +4717,11 @@ protected:
     std::wstring lastFindText_;
     std::wstring lastReplaceText_;
     RECT lastPageMargins_ = {};
-    std::vector<std::thread> threadTasks_;
-    std::mutex threadTasksMutex_;
-    std::atomic<int> activeThreadTasks_{0};
-    std::atomic<int> nextThreadTaskId_{1};
-    struct ThreadUiUpdate { int kind; std::wstring controlName; std::wstring text; };
-    std::vector<ThreadUiUpdate> threadUiQueue_;
-    std::mutex threadUiMutex_;
+    std::vector<std::thread> asyncWebThreads_;
+    std::mutex asyncWebThreadsMutex_;
+#ifdef LINGBUILDER_THREADING_MODULE
+    long long threadOwnerToken_ = 0;
+#endif
     struct AsyncWebResult {
         std::wstring handler;
         std::wstring text;
@@ -4668,18 +4737,6 @@ protected:
     std::mutex asyncWebExecutionMutex_;
     std::atomic<int> nextAsyncWebRequestId_{1};
     int currentAsyncWebRequestId_ = 0;
-    struct BatchProgress {
-        std::atomic<int> completed{0};
-        std::atomic<int> threadsDone{0};
-        int totalTasks = 0;
-        int totalThreads = 0;
-        int lastLvSample = 0;
-        std::wstring lvName;
-        std::wstring logName;
-        std::wstring stName;
-        bool active = false;
-    };
-    std::unique_ptr<BatchProgress> batchProgress_;
     struct EdgeViewInstance {
         int id = 0;
         int controlId = 0;
@@ -10038,104 +10095,64 @@ ${generateFbroVipIndividualRuntime(false)}
         if (hwnd_) PostMessageW(hwnd_, WM_CLOSE, 0, 0);
     }
 
-    int 线程_启动延时输出(const wchar_t* text, int delayMs) {
-        const int taskId = nextThreadTaskId_.fetch_add(1);
-        const std::wstring message = text ? text : L"";
-        const int safeDelayMs = (std::max)(0, delayMs);
-        activeThreadTasks_.fetch_add(1);
-        try {
-            std::lock_guard<std::mutex> lock(threadTasksMutex_);
-            threadTasks_.emplace_back([this, message, safeDelayMs]() {
-                std::this_thread::sleep_for(std::chrono::milliseconds(safeDelayMs));
-                std::wstring output = message;
-                output += L"\\n";
-                OutputDebugStringW(output.c_str());
-                activeThreadTasks_.fetch_sub(1);
-            });
-        } catch (...) {
-            activeThreadTasks_.fetch_sub(1);
-            调试输出(L"线程任务启动失败：无法创建后台线程。");
-            return 0;
-        }
-        return taskId;
-    }
+#ifdef LINGBUILDER_THREADING_MODULE
+    template<class Work> long long 线程_提交(Work&& work) { return LingThreadProjectRuntime::Instance().Submit(threadOwnerToken_, 0, std::forward<Work>(work)); }
+    template<class Work, class Complete> long long 线程_提交完成(Work&& work, Complete&& complete) { return LingThreadProjectRuntime::Instance().SubmitComplete(threadOwnerToken_, 0, std::forward<Work>(work), std::forward<Complete>(complete)); }
+    template<class Work, class Progress, class Complete> long long 线程_提交进度(Work&& work, Progress&& progress, Complete&& complete) { return LingThreadProjectRuntime::Instance().SubmitProgress(threadOwnerToken_, 0, std::forward<Work>(work), std::forward<Progress>(progress), std::forward<Complete>(complete)); }
+    long long 线程_取当前任务() const { return LingThreadProjectRuntime::Instance().CurrentTask(); }
+    bool 线程_请求取消(long long task) { return LingThreadProjectRuntime::Instance().RequestCancel(task); }
+    bool 线程_是否请求取消(long long task = 0) const { return LingThreadProjectRuntime::Instance().IsCancellationRequested(task); }
+    int 线程_取状态(long long task) const { return LingThreadProjectRuntime::Instance().Status(task); }
+    std::wstring 线程_取状态名称(long long task) const { return LingThreadProjectRuntime::Instance().StatusName(task); }
+    bool 线程_是否完成(long long task) const { return LingThreadProjectRuntime::Instance().IsDone(task); }
+    std::wstring 线程_取错误(long long task) const { return LingThreadProjectRuntime::Instance().Error(task); }
+    bool 线程_等待(long long task, int timeoutMs) { return LingThreadProjectRuntime::Instance().Wait(task, timeoutMs); }
+    template<class... Tasks> bool 线程_等待全部超时(int timeoutMs, Tasks... tasks) { return LingThreadProjectRuntime::Instance().WaitAll(std::vector<long long>{ static_cast<long long>(tasks)... }, timeoutMs); }
+    bool 线程_协作等待(int milliseconds) { return LingThreadProjectRuntime::Instance().CooperativeWait(milliseconds); }
+    bool 线程_报告进度(int percent, const std::wstring& text) { return LingThreadProjectRuntime::Instance().ReportProgress(percent, text); }
+    int 线程_取进度(long long task) const { return LingThreadProjectRuntime::Instance().Progress(task); }
+    std::wstring 线程_取进度说明(long long task) const { return LingThreadProjectRuntime::Instance().ProgressText(task); }
+    bool 线程_释放任务(long long task) { return LingThreadProjectRuntime::Instance().ReleaseTask(task); }
+    int 线程_清理已完成() { return LingThreadProjectRuntime::Instance().CleanupCompleted(); }
 
-    void 线程_等待全部() {
-        std::vector<std::thread> tasks;
-        {
-            std::lock_guard<std::mutex> lock(threadTasksMutex_);
-            tasks.swap(threadTasks_);
-        }
-        for (auto& task : tasks) {
-            if (task.joinable()) task.join();
-        }
-    }
+    long long 线程池_取默认池() { return LingThreadProjectRuntime::Instance().DefaultPool(); }
+    long long 线程池_创建(int concurrency, int capacity) { return LingThreadProjectRuntime::Instance().CreatePool(concurrency, capacity); }
+    template<class Work> long long 线程池_提交(long long pool, Work&& work) { return LingThreadProjectRuntime::Instance().Submit(threadOwnerToken_, pool, std::forward<Work>(work)); }
+    template<class Work, class Complete> long long 线程池_提交完成(long long pool, Work&& work, Complete&& complete) { return LingThreadProjectRuntime::Instance().SubmitComplete(threadOwnerToken_, pool, std::forward<Work>(work), std::forward<Complete>(complete)); }
+    template<class Work, class Progress, class Complete> long long 线程池_提交进度(long long pool, Work&& work, Progress&& progress, Complete&& complete) { return LingThreadProjectRuntime::Instance().SubmitProgress(threadOwnerToken_, pool, std::forward<Work>(work), std::forward<Progress>(progress), std::forward<Complete>(complete)); }
+    bool 线程池_设置并发数(long long pool, int concurrency) { return LingThreadProjectRuntime::Instance().SetPoolConcurrency(pool, concurrency); }
+    int 线程池_取并发数(long long pool) const { return LingThreadProjectRuntime::Instance().PoolConcurrency(pool); }
+    int 线程池_取等待数量(long long pool) const { return LingThreadProjectRuntime::Instance().PoolWaiting(pool); }
+    int 线程池_取运行数量(long long pool) const { return LingThreadProjectRuntime::Instance().PoolRunning(pool); }
+    bool 线程池_是否空闲(long long pool) const { return LingThreadProjectRuntime::Instance().PoolIdle(pool); }
+    bool 线程池_等待空闲(long long pool, int timeoutMs) { return LingThreadProjectRuntime::Instance().WaitPoolIdle(pool, timeoutMs); }
+    bool 线程池_请求停止(long long pool) { return LingThreadProjectRuntime::Instance().RequestStopPool(pool); }
+    bool 线程池_关闭(long long pool, int timeoutMs) { return LingThreadProjectRuntime::Instance().ClosePool(pool, timeoutMs); }
+    bool 线程池_重启(long long pool) { return LingThreadProjectRuntime::Instance().RestartPool(pool); }
+    bool 线程池_销毁(long long pool) { return LingThreadProjectRuntime::Instance().DestroyPool(pool); }
+    int 线程池_取硬件并发数() const { return LingThreadProjectRuntime::Instance().HardwareConcurrency(); }
 
-    int 线程_活动数量() const {
-        return activeThreadTasks_.load();
-    }
-
-    int 线程_硬件并发数() const {
-        return static_cast<int>(std::thread::hardware_concurrency());
-    }
-
-    void 线程_休眠(int milliseconds) {
-        std::this_thread::sleep_for(std::chrono::milliseconds((std::max)(0, milliseconds)));
-    }
-
-    int 线程_启动延时设置文本(const wchar_t* controlName, const wchar_t* text, int delayMs) {
-        const int taskId = nextThreadTaskId_.fetch_add(1);
-        const std::wstring name = controlName ? controlName : L"";
-        const std::wstring content = text ? text : L"";
-        const int safeDelayMs = (std::max)(0, delayMs);
-        activeThreadTasks_.fetch_add(1);
-        try {
-            std::lock_guard<std::mutex> lock(threadTasksMutex_);
-            threadTasks_.emplace_back([this, name, content, safeDelayMs]() {
-                std::this_thread::sleep_for(std::chrono::milliseconds(safeDelayMs));
-                { std::lock_guard<std::mutex> uiLock(threadUiMutex_); threadUiQueue_.push_back({ 0, name, content }); }
-                if (hwnd_) PostMessageW(hwnd_, WM_LINGBUILDER_THREAD_UI_UPDATE, 0, 0);
-                activeThreadTasks_.fetch_sub(1);
-            });
-        } catch (...) { activeThreadTasks_.fetch_sub(1); return 0; }
-        return taskId;
-    }
-
-    int 线程_启动延时添加行(const wchar_t* controlName, const wchar_t* tabSeparatedCells, int delayMs) {
-        const int taskId = nextThreadTaskId_.fetch_add(1);
-        const std::wstring name = controlName ? controlName : L"";
-        const std::wstring content = tabSeparatedCells ? tabSeparatedCells : L"";
-        const int safeDelayMs = (std::max)(0, delayMs);
-        activeThreadTasks_.fetch_add(1);
-        try {
-            std::lock_guard<std::mutex> lock(threadTasksMutex_);
-            threadTasks_.emplace_back([this, name, content, safeDelayMs]() {
-                std::this_thread::sleep_for(std::chrono::milliseconds(safeDelayMs));
-                { std::lock_guard<std::mutex> uiLock(threadUiMutex_); threadUiQueue_.push_back({ 1, name, content }); }
-                if (hwnd_) PostMessageW(hwnd_, WM_LINGBUILDER_THREAD_UI_UPDATE, 0, 0);
-                activeThreadTasks_.fetch_sub(1);
-            });
-        } catch (...) { activeThreadTasks_.fetch_sub(1); return 0; }
-        return taskId;
-    }
-
-    int 线程_启动延时添加项目(const wchar_t* controlName, const wchar_t* text, int delayMs) {
-        const int taskId = nextThreadTaskId_.fetch_add(1);
-        const std::wstring name = controlName ? controlName : L"";
-        const std::wstring content = text ? text : L"";
-        const int safeDelayMs = (std::max)(0, delayMs);
-        activeThreadTasks_.fetch_add(1);
-        try {
-            std::lock_guard<std::mutex> lock(threadTasksMutex_);
-            threadTasks_.emplace_back([this, name, content, safeDelayMs]() {
-                std::this_thread::sleep_for(std::chrono::milliseconds(safeDelayMs));
-                { std::lock_guard<std::mutex> uiLock(threadUiMutex_); threadUiQueue_.push_back({ 2, name, content }); }
-                if (hwnd_) PostMessageW(hwnd_, WM_LINGBUILDER_THREAD_UI_UPDATE, 0, 0);
-                activeThreadTasks_.fetch_sub(1);
-            });
-        } catch (...) { activeThreadTasks_.fetch_sub(1); return 0; }
-        return taskId;
-    }
+    long long 互斥锁_创建() { return LingThreadProjectRuntime::Instance().CreateMutex(); }
+    template<class Callback> bool 互斥锁_执行(long long mutex, Callback&& callback) { return LingThreadProjectRuntime::Instance().WithMutex(mutex, -1, std::forward<Callback>(callback)); }
+    template<class Callback> bool 互斥锁_尝试执行(long long mutex, int timeoutMs, Callback&& callback) { return LingThreadProjectRuntime::Instance().WithMutex(mutex, timeoutMs, std::forward<Callback>(callback)); }
+    bool 互斥锁_销毁(long long mutex) { return LingThreadProjectRuntime::Instance().DestroyMutex(mutex); }
+    long long 原子整数_创建(long long initial) { return LingThreadProjectRuntime::Instance().CreateAtomic(initial); }
+    long long 原子整数_读取(long long value) const { return LingThreadProjectRuntime::Instance().ReadAtomic(value); }
+    long long 原子整数_写入(long long value, long long next) { return LingThreadProjectRuntime::Instance().WriteAtomic(value, next); }
+    long long 原子整数_增加(long long value, long long delta) { return LingThreadProjectRuntime::Instance().AddAtomic(value, delta); }
+    bool 原子整数_比较交换(long long value, long long expected, long long next) { return LingThreadProjectRuntime::Instance().CompareExchangeAtomic(value, expected, next); }
+    bool 原子整数_销毁(long long value) { return LingThreadProjectRuntime::Instance().DestroyAtomic(value); }
+    long long 线程事件_创建(bool manualReset, bool initialState) { return LingThreadProjectRuntime::Instance().CreateEvent(manualReset, initialState); }
+    bool 线程事件_置位(long long eventId) { return LingThreadProjectRuntime::Instance().SetEvent(eventId); }
+    bool 线程事件_重置(long long eventId) { return LingThreadProjectRuntime::Instance().ResetEvent(eventId); }
+    bool 线程事件_等待(long long eventId, int timeoutMs) { return LingThreadProjectRuntime::Instance().WaitEvent(eventId, timeoutMs); }
+    bool 线程事件_销毁(long long eventId) { return LingThreadProjectRuntime::Instance().DestroyEvent(eventId); }
+    long long 信号量_创建(int initial, int maximum) { return LingThreadProjectRuntime::Instance().CreateSemaphore(initial, maximum); }
+    bool 信号量_等待(long long semaphore, int timeoutMs) { return LingThreadProjectRuntime::Instance().WaitSemaphore(semaphore, timeoutMs); }
+    bool 信号量_释放(long long semaphore, int amount) { return LingThreadProjectRuntime::Instance().ReleaseSemaphore(semaphore, amount); }
+    int 信号量_取可用数量(long long semaphore) const { return LingThreadProjectRuntime::Instance().SemaphoreAvailable(semaphore); }
+    bool 信号量_销毁(long long semaphore) { return LingThreadProjectRuntime::Instance().DestroySemaphore(semaphore); }
+#endif
 
 #ifdef LINGBUILDER_WEB_HTTP_MODULE
     int 网页_异步访问(const wchar_t* url, int accessMethod, const wchar_t* completionHandler) {
@@ -10154,10 +10171,9 @@ ${generateFbroVipIndividualRuntime(false)}
             asyncWebResults_[requestId] = std::move(pending);
         }
 
-        activeThreadTasks_.fetch_add(1);
         try {
-            std::lock_guard<std::mutex> lock(threadTasksMutex_);
-            threadTasks_.emplace_back([this, requestId, address, accessMethod]() {
+            std::lock_guard<std::mutex> lock(asyncWebThreadsMutex_);
+            asyncWebThreads_.emplace_back([this, requestId, address, accessMethod]() {
                 AsyncWebResult completed;
                 {
                     std::lock_guard<std::mutex> executionLock(asyncWebExecutionMutex_);
@@ -10189,10 +10205,8 @@ ${generateFbroVipIndividualRuntime(false)}
                 if (notify && hwnd_) {
                     PostMessageW(hwnd_, WM_LINGBUILDER_WEB_ASYNC_COMPLETE, static_cast<WPARAM>(requestId), 0);
                 }
-                activeThreadTasks_.fetch_sub(1);
             });
         } catch (...) {
-            activeThreadTasks_.fetch_sub(1);
             std::lock_guard<std::mutex> resultLock(asyncWebMutex_);
             auto found = asyncWebResults_.find(requestId);
             if (found != asyncWebResults_.end()) {
@@ -10234,50 +10248,6 @@ ${generateFbroVipIndividualRuntime(false)}
         return true;
     }
 #endif
-
-    void 线程_批量启动(const wchar_t* taskCountControl, const wchar_t* threadCountControl, const wchar_t* listViewName, const wchar_t* logListName, const wchar_t* statusLabelName) {
-        int taskCount = 20;
-        int threadCount = 4;
-        std::wstring taskText = 控件_取文本(taskCountControl);
-        std::wstring threadText = 控件_取文本(threadCountControl);
-        if (!taskText.empty()) { int parsed = _wtoi(taskText.c_str()); if (parsed > 0) taskCount = parsed; }
-        if (!threadText.empty()) { int parsed = _wtoi(threadText.c_str()); if (parsed > 0) threadCount = parsed; }
-        if (taskCount > 100000) taskCount = 100000;
-        if (threadCount > 64) threadCount = 64;
-        batchProgress_ = std::make_unique<BatchProgress>();
-        batchProgress_->totalTasks = taskCount;
-        batchProgress_->totalThreads = threadCount;
-        batchProgress_->lvName = listViewName ? listViewName : L"";
-        batchProgress_->logName = logListName ? logListName : L"";
-        batchProgress_->stName = statusLabelName ? statusLabelName : L"";
-        batchProgress_->active = true;
-        batchProgress_->completed.store(0);
-        batchProgress_->threadsDone.store(0);
-        batchProgress_->lastLvSample = 0;
-        控件_添加项目(batchProgress_->logName.c_str(), (L"[配置] 任务数=" + std::to_wstring(taskCount) + L" 线程数=" + std::to_wstring(threadCount)).c_str());
-        if (hwnd_) SetTimer(hwnd_, 0x4C44, 80, nullptr);
-        const int totalTasks = taskCount;
-        const int totalThreads = threadCount;
-        const int tasksPerThread = (totalTasks + totalThreads - 1) / totalThreads;
-        for (int t = 0; t < totalThreads; ++t) {
-            const int threadIndex = t + 1;
-            const int startTask = t * tasksPerThread + 1;
-            const int endTask = (std::min)((t + 1) * tasksPerThread, totalTasks);
-            if (startTask > totalTasks) break;
-            activeThreadTasks_.fetch_add(1);
-            try {
-                std::lock_guard<std::mutex> lock(threadTasksMutex_);
-                threadTasks_.emplace_back([this, threadIndex, startTask, endTask]() {
-                    for (int i = startTask; i <= endTask; ++i) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(1 + (i * 7 + threadIndex * 13) % 5));
-                        batchProgress_->completed.fetch_add(1);
-                    }
-                    batchProgress_->threadsDone.fetch_add(1);
-                    activeThreadTasks_.fetch_sub(1);
-                });
-            } catch (...) { activeThreadTasks_.fetch_sub(1); batchProgress_->threadsDone.fetch_add(1); }
-        }
-    }
 
     int WS_连接(const wchar_t* url) {
         WS_关闭();
@@ -10804,7 +10774,13 @@ ${generateFbroVipIndividualRuntime(false)}
 
     bool 控件_设置文本(const wchar_t* controlName, const std::wstring& text) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); if (!runtime) return false;
-        return SetWindowTextW(runtime->hwnd, text.c_str()) == TRUE;
+        const ControlSpec* control = FindControl(runtime->id);
+        const BOOL updated = SetWindowTextW(runtime->hwnd, text.c_str());
+        if (updated && control && IsType(*control, L"TextBox") && (control->flags & CF_MULTILINE)) {
+            SendMessageW(runtime->hwnd, EM_SETSEL, static_cast<WPARAM>(-1), static_cast<LPARAM>(-1));
+            SendMessageW(runtime->hwnd, EM_SCROLLCARET, 0, 0);
+        }
+        return updated == TRUE;
     }
     bool InitializeVideoPlayer(RuntimeControl& runtime, const ControlSpec& control, const std::wstring& source, bool autoPlay) {
         if (runtime.mediaPlayer) { runtime.mediaPlayer->Shutdown(); runtime.mediaPlayer->Release(); runtime.mediaPlayer = nullptr; }
@@ -10976,6 +10952,15 @@ ${DATA_GRID_NATIVE_METHODS}
         while (start <= source.size()) { size_t end = source.find(static_cast<wchar_t>(9), start); cells.push_back(source.substr(start, end == std::wstring::npos ? std::wstring::npos : end - start)); if (end == std::wstring::npos) break; start = end + 1; }
         return cells;
     }
+    template <typename... Cells> std::vector<std::wstring> 列表视图_创建行(const Cells&... cells) const {
+        std::vector<std::wstring> row; row.reserve(sizeof...(cells));
+        auto appendCell = [&](const auto& value) { row.emplace_back(到文本(value)); };
+        (appendCell(cells), ...); return row;
+    }
+    template <typename... Rows> std::vector<std::vector<std::wstring>> 列表视图_创建行集合(const Rows&... rows) const {
+        std::vector<std::vector<std::wstring>> result; result.reserve(sizeof...(rows));
+        (result.emplace_back(rows), ...); return result;
+    }
     static int ListViewColumnCount(HWND hwnd) {
         HWND header = hwnd ? ListView_GetHeader(hwnd) : nullptr;
         return std::max(1, header ? Header_GetItemCount(header) : 1);
@@ -10994,16 +10979,18 @@ ${DATA_GRID_NATIVE_METHODS}
         for (int column = 1; inserted >= 0 && column < static_cast<int>(cells.size()); ++column) ListView_SetItemText(runtime.hwnd, inserted, column, const_cast<wchar_t*>(cells[column].c_str()));
         return inserted;
     }
-    int 列表视图_添加行(const wchar_t* controlName, const wchar_t* tabSeparatedCells) {
+    int 列表视图_添加行(const wchar_t* controlName, const std::vector<std::wstring>& cells) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView")) return -1;
         int rowIndex = control->value != 0 ? static_cast<int>(runtime->listViewRows.size()) : ListView_GetItemCount(runtime->hwnd);
-        return ListViewInsertCells(*runtime, *control, rowIndex, ListViewSplitCells(tabSeparatedCells));
+        return ListViewInsertCells(*runtime, *control, rowIndex, cells);
     }
+    int 列表视图_添加行(const wchar_t* controlName, const wchar_t* tabSeparatedCells) { return 列表视图_添加行(controlName, ListViewSplitCells(tabSeparatedCells)); }
     int 列表视图_添加行(const wchar_t* controlName, const std::wstring& tabSeparatedCells) { return 列表视图_添加行(controlName, tabSeparatedCells.c_str()); }
-    int 列表视图_插入行(const wchar_t* controlName, int rowIndex, const wchar_t* tabSeparatedCells) {
+    int 列表视图_插入行(const wchar_t* controlName, int rowIndex, const std::vector<std::wstring>& cells) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView")) return -1;
-        return ListViewInsertCells(*runtime, *control, rowIndex, ListViewSplitCells(tabSeparatedCells));
+        return ListViewInsertCells(*runtime, *control, rowIndex, cells);
     }
+    int 列表视图_插入行(const wchar_t* controlName, int rowIndex, const wchar_t* tabSeparatedCells) { return 列表视图_插入行(controlName, rowIndex, ListViewSplitCells(tabSeparatedCells)); }
     int 列表视图_插入行(const wchar_t* controlName, int rowIndex, const std::wstring& tabSeparatedCells) { return 列表视图_插入行(controlName, rowIndex, tabSeparatedCells.c_str()); }
     bool 列表视图_删除行(const wchar_t* controlName, int rowIndex) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView") || rowIndex < 0) return false;
@@ -11058,6 +11045,12 @@ ${DATA_GRID_NATIVE_METHODS}
         }
         return true;
     }
+    int 列表视图_批量添加行(const wchar_t* controlName, const std::vector<std::vector<std::wstring>>& rows) {
+        RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView")) return 0;
+        const bool ownsBatch = runtime->listViewBatchDepth == 0; if (ownsBatch) 列表视图_开始批量更新(controlName);
+        int added = 0; for (const auto& row : rows) if (列表视图_添加行(controlName, row) >= 0) ++added;
+        if (ownsBatch) 列表视图_结束批量更新(controlName); return added;
+    }
     int 列表视图_批量添加行(const wchar_t* controlName, const wchar_t* multiLineTsv) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView")) return 0;
         const bool ownsBatch = runtime->listViewBatchDepth == 0; if (ownsBatch) 列表视图_开始批量更新(controlName);
@@ -11102,9 +11095,12 @@ ${DATA_GRID_NATIVE_METHODS}
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView") || control->value == 0 || rowCount < 0 || rowCount > 10000000) return false;
         runtime->listViewRows.resize(static_cast<size_t>(rowCount)); if (runtime->listViewBatchDepth == 0) ListView_SetItemCountEx(runtime->hwnd, rowCount, LVSICF_NOINVALIDATEALL | LVSICF_NOSCROLL); return true;
     }
-    bool 列表视图_设置虚拟行(const wchar_t* controlName, int rowIndex, const wchar_t* tabSeparatedCells) {
+    bool 列表视图_设置虚拟行(const wchar_t* controlName, int rowIndex, const std::vector<std::wstring>& cells) {
         RuntimeControl* runtime = FindRuntimeControlByName(controlName); const ControlSpec* control = runtime ? FindControl(runtime->id) : nullptr; if (!runtime || !control || !IsType(*control, L"ListView") || control->value == 0 || rowIndex < 0 || rowIndex >= static_cast<int>(runtime->listViewRows.size())) return false;
-        runtime->listViewRows[static_cast<size_t>(rowIndex)] = ListViewSplitCells(tabSeparatedCells); if (runtime->listViewBatchDepth == 0) ListView_RedrawItems(runtime->hwnd, rowIndex, rowIndex); return true;
+        runtime->listViewRows[static_cast<size_t>(rowIndex)] = cells; if (runtime->listViewBatchDepth == 0) ListView_RedrawItems(runtime->hwnd, rowIndex, rowIndex); return true;
+    }
+    bool 列表视图_设置虚拟行(const wchar_t* controlName, int rowIndex, const wchar_t* tabSeparatedCells) {
+        return 列表视图_设置虚拟行(controlName, rowIndex, ListViewSplitCells(tabSeparatedCells));
     }
     bool 列表视图_设置虚拟行(const wchar_t* controlName, int rowIndex, const std::wstring& tabSeparatedCells) { return 列表视图_设置虚拟行(controlName, rowIndex, tabSeparatedCells.c_str()); }
     bool ResolveListView(const wchar_t* controlName, RuntimeControl*& runtime, const ControlSpec*& control) {
@@ -14600,13 +14596,14 @@ private:
             return 0;
         }
         case WM_LINGBUILDER_THREAD_UI_UPDATE: {
-            std::vector<ThreadUiUpdate> updates;
-            { std::lock_guard<std::mutex> uiLock(threadUiMutex_); updates.swap(threadUiQueue_); }
-            for (auto& update : updates) {
-                if (update.kind == 0) 控件_设置文本(update.controlName.c_str(), update.text);
-                else if (update.kind == 1) 列表视图_添加行(update.controlName.c_str(), update.text.c_str());
-                else if (update.kind == 2) 控件_添加项目(update.controlName.c_str(), update.text.c_str());
-            }
+#ifdef LINGBUILDER_THREADING_MODULE
+            const unsigned long long ownerGeneration = static_cast<unsigned long long>(static_cast<unsigned int>(wParam))
+                | (static_cast<unsigned long long>(static_cast<unsigned int>(lParam)) << 32);
+            const long long ownerId = static_cast<long long>(ownerGeneration);
+            if (ownerId == threadOwnerToken_) LingThreadDrainWindowCallbacks(ownerId);
+#else
+            (void)wParam;
+#endif
             return 0;
         }
         case WM_LINGBUILDER_CEF_EVENT: {
@@ -14694,6 +14691,9 @@ private:
         case WM_CREATE: {
             windowBrush_ = CreateSolidBrush(spec_.background);
             ++g_openWindowCount;
+#ifdef LINGBUILDER_THREADING_MODULE
+            threadOwnerToken_ = LingThreadRegisterWindowOwner(hwnd_);
+#endif
             CreateImageLists();
             RebuildControls();
             bool acceptsDroppedFiles = !GetWindowEventHandler(spec_, L"FileDropped").empty() || HasFileDialogDropTarget();
@@ -14837,42 +14837,6 @@ private:
                 return 0;
             }
             if (AdvanceAnimatedImage(static_cast<UINT_PTR>(wParam))) return 0;
-            if (wParam == 0x4C44) {
-                if (!batchProgress_ || !batchProgress_->active) { KillTimer(hwnd_, 0x4C44); return 0; }
-                const int completed = batchProgress_->completed.load();
-                const int threadsDone = batchProgress_->threadsDone.load();
-                const int totalTasks = batchProgress_->totalTasks;
-                const int totalThreads = batchProgress_->totalThreads;
-                std::wstring status = L"进度：" + std::to_wstring(completed) + L"/" + std::to_wstring(totalTasks) + L"  线程完成：" + std::to_wstring(threadsDone) + L"/" + std::to_wstring(totalThreads);
-                控件_设置文本(batchProgress_->stName.c_str(), status);
-                const int sampleInterval = (std::max)(1, totalTasks / 200);
-                int lastSample = batchProgress_->lastLvSample;
-                int nextSample = (completed / sampleInterval) * sampleInterval;
-                if (nextSample > lastSample) {
-                    static const wchar_t* taskTypes[] = { L"数据采集", L"文件读取", L"网络请求", L"缓存写入", L"日志归档", L"数据解析", L"图片下载", L"压缩打包", L"索引构建", L"消息推送" };
-                    RuntimeControl* rc = FindRuntimeControlByName(batchProgress_->lvName.c_str());
-                    HWND lvHwnd = rc ? rc->hwnd : nullptr;
-                    if (lvHwnd) SendMessageW(lvHwnd, WM_SETREDRAW, FALSE, 0);
-                    for (int s = lastSample + sampleInterval; s <= nextSample && s <= totalTasks; s += sampleInterval) {
-                        int threadIdx = (s * totalThreads / totalTasks) + 1;
-                        const wchar_t* taskType = taskTypes[s % 10];
-                        std::wstring row = L"任务" + std::to_wstring(s) + L"\t线程" + std::to_wstring(threadIdx) + L"\t" + taskType + L"\t完成";
-                        列表视图_添加行(batchProgress_->lvName.c_str(), row.c_str());
-                    }
-                    if (lvHwnd) { SendMessageW(lvHwnd, WM_SETREDRAW, TRUE, 0); InvalidateRect(lvHwnd, nullptr, TRUE); }
-                    batchProgress_->lastLvSample = nextSample;
-                    std::wstring log = L"[进度] 已完成 " + std::to_wstring(completed) + L"/" + std::to_wstring(totalTasks) + L" (" + std::to_wstring(completed * 100 / totalTasks) + L"%)";
-                    控件_添加项目(batchProgress_->logName.c_str(), log.c_str());
-                }
-                if (threadsDone >= totalThreads && completed >= totalTasks) {
-                    控件_设置文本(batchProgress_->stName.c_str(), (L"全部 " + std::to_wstring(totalTasks) + L" 个任务完成！" + std::to_wstring(totalThreads) + L" 个线程已安全回收").c_str());
-                    控件_添加项目(batchProgress_->logName.c_str(), (L"[完成] " + std::to_wstring(totalTasks) + L"个任务全部完成，" + std::to_wstring(totalThreads) + L"个线程已安全回收").c_str());
-                    列表视图_添加行(batchProgress_->lvName.c_str(), (L"汇总\t全部线程\t" + std::to_wstring(totalTasks) + L"个任务\t已完成").c_str());
-                    batchProgress_->active = false;
-                    KillTimer(hwnd_, 0x4C44);
-                }
-                return 0;
-            }
             if (wParam == 0x4C42) {
                 KillTimer(hwnd_, 0x4C42);
                 SetWindowPos(hwnd_, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
@@ -15086,6 +15050,12 @@ private:
             return 1;
         }
         case WM_DESTROY:
+#ifdef LINGBUILDER_THREADING_MODULE
+            if (threadOwnerToken_ != 0) {
+                LingThreadProjectRuntime::Instance().ShutdownOwner(threadOwnerToken_);
+                threadOwnerToken_ = 0;
+            }
+#endif
             if (!closedDispatched_) {
                 closedDispatched_ = true;
                 DispatchWindowEvent(L"Closed");
@@ -15568,8 +15538,6 @@ CefRefPtr<CefClient> LingCreateCefClient(LingWindowBase* owner, int controlId) {
 }
 #endif
 
-${projectDataTypesDefinition}
-
 ${projectGlobalsDefinition}
 
 ${classDefinitions}
@@ -15645,7 +15613,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
         ICC_PAGESCROLLER_CLASS | ICC_LINK_CLASS;
     InitCommonControlsEx(&controls);
     LoadLibraryW(L"Msftedit.dll");
-    if (!RegisterLingBuilderDataGridClass(instance)) { if (SUCCEEDED(mediaFoundationResult)) MFShutdown(); if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken); CoUninitialize(); return 0; }
+    if (!RegisterLingBuilderDataGridClass(instance)) { if (SUCCEEDED(mediaFoundationResult)) MFShutdown(); if (gdiplusToken) Gdiplus::GdiplusShutdown(gdiplusToken); ${uiaCleanupLine} CoUninitialize(); return 0; }
 
     WNDCLASSEXW windowClass = {};
     windowClass.cbSize = sizeof(WNDCLASSEXW);
@@ -15659,7 +15627,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
 #if LINGBUILDER_FBRO_AVAILABLE
         LB_FBro_Shutdown();
 #endif
-        CoUninitialize(); return 0; }
+        ${uiaCleanupLine} CoUninitialize(); return 0; }
     HWND startWindow = OpenGeneratedWindow(g_startWindowIndex, showCommand);
 
     MSG message;
@@ -15681,6 +15649,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
 #if LINGBUILDER_FBRO_AVAILABLE
     LB_FBro_Shutdown();
 #endif
+${uiaCleanupLine}
     CoUninitialize();
     return static_cast<int>(message.wParam);
 }
@@ -15743,7 +15712,7 @@ function generateLingCppNativeSourceMap(
   const lines = mainCppContent.split('\n');
   const entries: LingCppNativeSourceMapEntry[] = [];
   if (dataTypeSourceFile) {
-    program.dataTypes.forEach(dataType => {
+    program.dataTypes.filter(dataType => dataType.origin !== 'module').forEach(dataType => {
       const structLine = lines.findIndex(line => line.trim() === `struct ${toCppIdentifier(dataType.name)} {`);
       if (structLine < 0) return;
       const structEnd = lines.findIndex((line, index) => index > structLine && line.trim() === '};');
@@ -16332,7 +16301,7 @@ function generateUserMethod(method: LingCppMethod, enabledModules: InstalledModu
   const returnType = toCppType(method.returnType, 'return', enabledModules, dataTypes);
   const parameters = formatCppParameters(method.parameters, enabledModules, dataTypes);
   const body = [generateLocalDeclarations(method, enabledModules, dataTypes), translateMethodStatements(method, enabledModules, dataTypes)].filter(Boolean).join('\n');
-  const fallbackReturn = defaultReturnStatement(returnType);
+  const fallbackReturn = defaultReturnStatement(returnType, dataTypes);
   const staticPrefix = method.isStatic ? 'static ' : '';
   const bodyWithFallback = [
     body,
@@ -16367,11 +16336,17 @@ function toCppType(
   if (/^(逻辑型|逻辑|布尔型|布尔)$/u.test(normalized)) return 'bool';
   if (/^(字节型|字节)$/u.test(normalized)) return 'unsigned char';
   if (/^字节集$/u.test(normalized)) return 'std::vector<unsigned char>';
+  if (/^(?:bytes|bytearray)$/iu.test(normalized)) return 'std::vector<unsigned char>';
   const projectType = dataTypes.find(item => normalizeIdentifier(item.name) === normalizeIdentifier(normalized));
   if (projectType) return toCppIdentifier(projectType.name);
-  for (const module of enabledModules) {
-    const contributedType = (module.manifest.contributes?.types || []).find(item => item.name === normalized);
-    if (contributedType?.cppType) return contributedType.cppType;
+  const contributed = findModulePublicType(normalized, enabledModules);
+  if (contributed) {
+    const kind = getModulePublicTypeKind(contributed.type);
+    if (kind === 'array' && contributed.type.elementType) {
+      return `std::vector<${toCppType(contributed.type.elementType, 'variable', enabledModules, dataTypes)}>`;
+    }
+    if (kind === 'record') return toCppIdentifier(contributed.type.name);
+    if (contributed.type.cppType) return contributed.type.cppType;
   }
   if (/控件|窗体/u.test(normalized) || WIN32_CONTROL_DEFINITIONS.some(definition => (
     normalized === definition.label || normalized === definition.label.split('/')[0] || normalized === definition.type
@@ -16398,7 +16373,7 @@ function generateNewEmojiFunctionLibraries(program: LingCppProgram, enabledModul
     const returnType = toCppType(method.returnType, 'return', enabledModules, program.dataTypes);
     const body = [generateLocalDeclarations(method, enabledModules, program.dataTypes), translateMethodStatements(method, enabledModules, program.dataTypes)]
       .filter(Boolean).join('\n').replace(/^ {8}/gmu, '    ');
-    const fallback = defaultReturnStatement(returnType);
+    const fallback = defaultReturnStatement(returnType, program.dataTypes);
     return `static ${returnType} ${functionLibraryCppName(library.name, method.name)}(${formatCppParameters(method.parameters, enabledModules, program.dataTypes)}) {\n${body}${fallback ? `${body ? '\n' : ''}    ${fallback}` : ''}\n}`;
   }).join('\n\n');
   return `${declarations}\n\n${definitions}`;
@@ -16468,11 +16443,12 @@ function formatProjectDataField(field: LingCppDataField, enabledModules: Install
   return `${cppType} ${toCppIdentifier(field.name)}${initializer};`;
 }
 
-function defaultReturnStatement(returnType: string): string {
+function defaultReturnStatement(returnType: string, dataTypes: LingCppDataType[] = []): string {
   if (returnType === 'void') return '';
   if (returnType === 'bool') return 'return false;';
   if (returnType === 'std::wstring') return 'return L"";';
   if (returnType.startsWith('std::vector<')) return 'return {};';
+  if (dataTypes.some(dataType => toCppIdentifier(dataType.name) === returnType)) return 'return {};';
   if (returnType.endsWith('*')) return 'return nullptr;';
   if (returnType === 'double' || returnType === 'float') return 'return 0.0;';
   return 'return 0;';
@@ -16797,7 +16773,10 @@ function translateStatement(statement: string, enabledModules: InstalledModule[]
   const callStatement = parseCallStatement(statement);
   if (callStatement) {
     const binding = findModuleCommandBinding(callStatement.name, enabledModules);
-    if (binding) return `${toCppIdentifier(binding.runtimeName)}(${translateModuleCallArguments(callStatement.argumentsText, binding, enabledModules)});`;
+    if (binding) {
+      const managedCall = translateManagedModuleInvocation(callStatement.argumentsText, binding, enabledModules);
+      return `${managedCall || `${toCppIdentifier(binding.runtimeName)}(${translateModuleCallArguments(callStatement.argumentsText, binding, enabledModules)})`};`;
+    }
     const looksLikeModuleCommand = enabledModules.some(module =>
       (module.manifest.contributes?.commands || []).some(command =>
         command.name === callStatement.name || (command.aliases || []).includes(callStatement.name))
@@ -16924,7 +16903,8 @@ function translateCallArguments(raw: string, enabledModules: InstalledModule[] =
 function translateModuleCallArguments(raw: string, binding: ModuleCommandBinding, enabledModules: InstalledModule[] = []): string {
   return splitCallArguments(raw)
     .map((argument, index) => {
-      const parameter = binding.parameters?.[index];
+      const parameter = binding.parameters?.[index]
+        || binding.parameters?.find(item => item.variadic === true && index >= (binding.parameters?.indexOf(item) || 0));
       const parameterType = parameter?.type;
       if (parameterType === 'controlRef') {
         const controlName = argument.trim().match(/^[\p{L}_][\p{L}\p{N}_]*$/u)?.[0]
@@ -16950,6 +16930,53 @@ function translateModuleCallArguments(raw: string, binding: ModuleCommandBinding
       return translated;
     })
     .join(', ');
+}
+
+function translateManagedModuleInvocation(
+  raw: string,
+  binding: ModuleCommandBinding,
+  enabledModules: InstalledModule[] = []
+): string | undefined {
+  const invocation = binding.invocation;
+  if (!invocation || invocation.kind !== 'managedTask') return undefined;
+  const args = splitCallArguments(raw);
+  const workerName = parseManagedHandlerReference(args[invocation.workerParameterIndex]);
+  if (!workerName) return undefined;
+  const valueArgs = args.slice(invocation.variadicParameterIndex);
+  const translatedValues = valueArgs.map(value => translateLingCppExpression(value, enabledModules));
+  const captures = translatedValues.map((value, index) => `lbArg${index + 1} = ${value}`);
+  const captureList = ['this', ...captures].join(', ');
+  const callValues = translatedValues.map((_, index) => `lbArg${index + 1}`).join(', ');
+  const worker = `[${captureList}]() mutable { return this->${toCppIdentifier(workerName)}(${callValues}); }`;
+
+  if (invocation.operation === 'synchronized') {
+    const fixedArguments = args
+      .slice(0, invocation.variadicParameterIndex)
+      .filter((_, index) => index !== invocation.workerParameterIndex)
+      .map(value => translateLingCppExpression(value, enabledModules));
+    return `${toCppIdentifier(binding.runtimeName)}(${[...fixedArguments, worker].join(', ')})`;
+  }
+
+  const generatedArguments: string[] = [];
+  if (invocation.poolParameterIndex !== undefined) {
+    generatedArguments.push(translateLingCppExpression(args[invocation.poolParameterIndex] || '0', enabledModules));
+  }
+  generatedArguments.push(worker);
+  if (invocation.progressParameterIndex !== undefined) {
+    const progressName = parseManagedHandlerReference(args[invocation.progressParameterIndex]);
+    if (!progressName) return undefined;
+    generatedArguments.push(`[this](long long lbTask, int lbPercent, const std::wstring& lbText) { this->${toCppIdentifier(progressName)}(lbTask, lbPercent, lbText); }`);
+  }
+  if (invocation.completionParameterIndex !== undefined) {
+    const completionName = parseManagedHandlerReference(args[invocation.completionParameterIndex]);
+    if (!completionName) return undefined;
+    generatedArguments.push(`[this](long long lbTask, auto&&... lbResult) { this->${toCppIdentifier(completionName)}(lbTask, std::forward<decltype(lbResult)>(lbResult)...); }`);
+  }
+  return `${toCppIdentifier(binding.runtimeName)}(${generatedArguments.join(', ')})`;
+}
+
+function parseManagedHandlerReference(value?: string): string | undefined {
+  return value?.trim().match(/^&([\p{L}_][\p{L}\p{N}_]*)$/u)?.[1];
 }
 
 function splitCallArguments(raw: string): string[] {
@@ -17025,9 +17052,9 @@ function translateLingCppExpression(expression: string, enabledModules: Installe
   const call = parseCallStatement(trimmed);
   if (call) {
     const binding = findModuleCommandBinding(call.name, enabledModules);
-    const argumentsText = binding
-      ? translateModuleCallArguments(call.argumentsText, binding, enabledModules)
-      : translateCallArguments(call.argumentsText, enabledModules);
+    const managedCall = binding ? translateManagedModuleInvocation(call.argumentsText, binding, enabledModules) : undefined;
+    if (managedCall) return managedCall;
+    const argumentsText = binding ? translateModuleCallArguments(call.argumentsText, binding, enabledModules) : translateCallArguments(call.argumentsText, enabledModules);
     return `${binding ? toCppIdentifier(binding.runtimeName) : translateLingCppCallName(call.name)}(${argumentsText})`;
   }
   if (/^[\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*$/u.test(trimmed)) {

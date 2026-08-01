@@ -48,6 +48,9 @@ declare global {
     lingBuilder?: {
       runtime: 'electron';
       platform: NodeJS.Platform;
+      startup?: {
+        shouldShowWelcome: () => Promise<boolean>;
+      };
       windowControls?: {
         minimize: () => Promise<void>;
         toggleMaximize: () => Promise<boolean>;
@@ -82,6 +85,7 @@ declare global {
         listRecent: () => Promise<string[]>;
         forgetRecent: (workspacePath: string) => Promise<void>;
         closeCurrent: () => Promise<{ ok: boolean; workspacePath?: string; error?: string }>;
+        onDidChange: (listener: (snapshot: { workspacePath: string; version?: number }) => void) => () => void;
       };
       docs?: {
         openModuleManual: () => Promise<string>;

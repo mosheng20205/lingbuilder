@@ -56,6 +56,7 @@ import {
 } from '../services/windowDesigner/designerAssetClient';
 import type { InstalledModule, ModuleHintContent, ModuleTargetContribution } from '../services/modules/types';
 import { BUILTIN_MODULES } from '../services/modules/builtinModules';
+import { formatModulePublicType, formatModulePublicTypeSource, getModulePublicTypeKind } from '../services/modules/modulePublicTypeService';
 import {
   getModuleFamilyModules,
   getModuleFamilySearchText,
@@ -356,7 +357,13 @@ export default function Sidebar({
         command.description,
         command.returnType
       ]),
-      ...(module.manifest.contributes?.types || []).flatMap(type => [type.name, type.description, type.cppType]),
+      ...(module.manifest.contributes?.types || []).flatMap(type => [
+        type.name,
+        type.description,
+        type.cppType,
+        type.elementType,
+        ...(type.fields || []).flatMap(field => [field.name, field.type, field.description])
+      ]),
       ...(module.manifest.contributes?.designerControls || []).flatMap(control => [
         control.label,
         control.type,
@@ -858,10 +865,9 @@ export default function Sidebar({
   }, []);
 
   useEffect(() => {
-    for (const project of solution?.projects || []) {
-      void refreshProjectImageResources(project.id);
-    }
-  }, [refreshProjectImageResources, solution?.projects]);
+    if (!activeSolutionProjectId) return;
+    void refreshProjectImageResources(activeSolutionProjectId);
+  }, [activeSolutionProjectId, refreshProjectImageResources]);
 
   const handleAddProjectResource = async (project: SolutionProject) => {
     if (resourceImportingProjectId) return;
@@ -1514,11 +1520,15 @@ export default function Sidebar({
 
         {/* Bottom Help Icon in Activity Bar */}
         <div className="flex flex-col gap-3 items-center">
-          <HelpCircle
-            className={`w-4.5 h-4.5 cursor-pointer ${isDarkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700'}`}
+          <button
+            type="button"
             title="双击或点击底栏词条可编写中文代码"
+            aria-label="显示中文代码输入提示"
             onClick={() => triggerSuccess('提示: 双击中间编辑区的任意代码行，即可在底栏直接用中文替换原生符号！')}
-          />
+            className={`rounded p-1 ${isDarkMode ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-700'}`}
+          >
+            <HelpCircle className="h-4.5 w-4.5" aria-hidden="true" />
+          </button>
         </div>
       </div>
 
@@ -1552,26 +1562,34 @@ export default function Sidebar({
               }`}>
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 font-sans">解决方案资源管理器</span>
                 <div className="flex items-center gap-2 text-slate-400">
-                  <RefreshCw 
-                    className="w-3.5 h-3.5 hover:text-slate-200 cursor-pointer transition-colors" 
-                    title="刷新" 
+                  <button
+                    type="button"
+                    className="rounded p-0.5 transition-colors hover:text-slate-200"
+                    title="刷新"
+                    aria-label="刷新解决方案资源管理器"
                     onClick={() => {
                       if (onSelectFile && activeFile) {
                         onSelectFile(activeFile);
                       }
-                    }} 
-                  />
-                  <FolderMinus 
-                    className="w-3.5 h-3.5 hover:text-slate-200 cursor-pointer transition-colors" 
-                    title="折叠全部" 
+                    }}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded p-0.5 transition-colors hover:text-slate-200"
+                    title="折叠全部"
+                    aria-label="折叠解决方案资源管理器中的全部项目"
                     onClick={() => {
                       setIsSolutionOpen(false);
                       setExpandedProjectIds(Object.fromEntries(solutionProjects.map(project => [project.id, false])));
                       setIsWindowsOpen(false);
                       setIsSrcOpen(false);
                       setIsConfigOpen(false);
-                    }} 
-                  />
+                    }}
+                  >
+                    <FolderMinus className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
                 </div>
               </div>
 
@@ -1687,7 +1705,8 @@ export default function Sidebar({
                           resource.relativePath
                         ));
                         const resourceStatus = projectResourceStatus[project.id];
-                        const isResourceGroupOpen = expandedResourceProjectIds[project.id] !== false;
+                        const isResourceGroupOpen = expandedResourceProjectIds[project.id]
+                          ?? project.id === activeSolutionProjectId;
                         return (
                         <div
                           key={project.id}
@@ -1951,7 +1970,9 @@ export default function Sidebar({
                           onClick={() => {
                             const nextOpen = !isResourceGroupOpen;
                             setExpandedResourceProjectIds(previous => ({ ...previous, [project.id]: nextOpen }));
-                            if (nextOpen && resourceStatus === 'error') void refreshProjectImageResources(project.id);
+                            if (nextOpen && resourceStatus !== 'ready' && resourceStatus !== 'loading') {
+                              void refreshProjectImageResources(project.id);
+                            }
                           }}
                           className={`flex items-center gap-1.5 px-2 py-1.5 cursor-pointer text-[13px] font-sans transition-colors ${
                             isDarkMode ? 'hover:bg-[#2A2D2E]/50 text-slate-300' : 'hover:bg-slate-100 text-slate-700'
@@ -2613,7 +2634,7 @@ function ModuleInterfaceTree({
             key={`${module.manifest.id}:type:${type.name}`}
             icon={<BookOpen className="h-3 w-3 text-amber-300" />}
             title={type.name}
-            detail={type.cppType ? `${type.description} · C++ ${type.cppType}` : type.description}
+            detail={`${type.description} · ${formatModulePublicType(type)}`}
             isDarkMode={isDarkMode}
             selected={activeHintId === `${module.manifest.id}:type:${type.name}`}
             onClick={() => onShowHint?.({
@@ -2623,10 +2644,13 @@ function ModuleInterfaceTree({
               kind: '类型',
               title: type.name,
               description: type.description || '该模块未提供此类型的详细说明。',
-              declaration: type.cppType,
+              declaration: formatModulePublicTypeSource(type),
               fields: [
                 { label: '中文类型', value: type.name },
-                { label: '对应 C++ 类型', value: type.cppType || '模块未声明' }
+                { label: '类型种类', value: getModulePublicTypeKind(type) === 'record' ? '公开记录' : getModulePublicTypeKind(type) === 'array' ? '公开数组' : '不透明类型' },
+                ...(type.fields || []).map(field => ({ label: `字段 · ${field.name}`, value: `${field.type}${field.isArray ? '[]' : ''}` })),
+                ...(type.elementType ? [{ label: '元素类型', value: type.elementType }] : []),
+                ...(type.cppType ? [{ label: '对应 C++ 类型', value: type.cppType }] : [])
               ]
             })}
           />
@@ -2990,7 +3014,13 @@ function ModuleInfoDialog({
   const matchesSearch = (...values: Array<string | undefined>) => (
     !normalizedSearch || values.some(value => value?.toLowerCase().includes(normalizedSearch))
   );
-  const filteredTypes = types.filter(type => matchesSearch(type.name, type.description, type.cppType));
+  const filteredTypes = types.filter(type => matchesSearch(
+    type.name,
+    type.description,
+    type.cppType,
+    type.elementType,
+    ...(type.fields || []).flatMap(field => [field.name, field.type, field.description])
+  ));
   const filteredCommands = commands.filter(command => matchesSearch(
     command.name,
     command.signature,
@@ -3059,9 +3089,9 @@ function ModuleInfoDialog({
       return {
         kind: '类型/类',
         title: selectedType.name,
-        declaration: selectedType.cppType || '类型贡献',
+        declaration: formatModulePublicTypeSource(selectedType),
         description: selectedType.description,
-        badge: selectedType.cppType ? 'C++ 类型' : undefined
+        badge: getModulePublicTypeKind(selectedType) === 'record' ? '公开记录' : getModulePublicTypeKind(selectedType) === 'array' ? '公开数组' : '不透明类型'
       };
     }
     const selectedCommand = commands.find(command => selectedInfoNodeId === `command:${command.name}:${command.signature}`);
@@ -3214,7 +3244,7 @@ function ModuleInfoDialog({
                         key={`type:${type.name}`}
                         icon={<BookOpen className="h-3 w-3 text-amber-300" />}
                         label={type.name}
-                        detail={type.cppType}
+                        detail={formatModulePublicType(type)}
                         isDarkMode={isDarkMode}
                         selected={selectedInfoNodeId === `type:${type.name}`}
                         onClick={() => setSelectedInfoNodeId(`type:${type.name}`)}
@@ -3359,7 +3389,7 @@ function ModuleInfoDialog({
                   <ModuleInfoTable
                     headers={['名称', '声明/内容', '公开', '备注']}
                     rows={[
-                      ...filteredTypes.map(type => [type.name, type.cppType || '类型贡献', '✓', type.description]),
+                      ...filteredTypes.map(type => [type.name, formatModulePublicType(type), '✓', type.description]),
                       ...filteredCommands.map(command => [command.name, command.signature, '✓', command.description]),
                       ...filteredControls.map(control => [
                         control.label,
@@ -3403,8 +3433,8 @@ function ModuleInfoDialog({
 
                 <ModuleInfoSection title={`类型/类 ${filteredTypes.length}/${types.length}`} isDarkMode={isDarkMode}>
                   <ModuleInfoTable
-                    headers={['类型名称', 'C++类型', '公开', '备注']}
-                    rows={filteredTypes.map(type => [type.name, type.cppType || '-', '✓', type.description])}
+                    headers={['类型名称', '类型声明', '公开', '备注']}
+                    rows={filteredTypes.map(type => [type.name, formatModulePublicType(type), '✓', type.description])}
                     isDarkMode={isDarkMode}
                     onCopy={copyText}
                     emptyText="没有匹配的类型/类。"

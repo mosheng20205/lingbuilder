@@ -1,8 +1,8 @@
 # LingBuilder 模块封装清单
 
-更新时间：2026-07-31
+更新时间：2026-08-01
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **80 个内置模块、1639 条中文命令**；其中参考精易模块分类新增 **51 个模块、287 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **81 个内置模块、1776 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -15,7 +15,7 @@
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
 | 已封装 | `lingbuilder.std.text` | 文本处理模块 | 10 |
-| 已封装 | `lingbuilder.std.bytes` | 字节与十六进制模块 | 4 |
+| 已封装 | `lingbuilder.std.bytes` | 字节与十六进制模块 | 13 |
 | 已封装 | `lingbuilder.std.encoding` | 编码转换模块 | 30 |
 | 已封装 | `lingbuilder.std.math` | 数学与随机模块 | 7 |
 | 已封装 | `lingbuilder.std.datetime` | 日期时间模块 | 5 |
@@ -34,19 +34,21 @@
 | 已封装 | `lingbuilder.config.ini` | INI 配置模块 | 6 |
 | 已封装 | `lingbuilder.config.registry` | 用户注册表模块 | 6 |
 | 已封装 | `lingbuilder.system.info` | 系统信息模块 | 7 |
-| 已封装 | `lingbuilder.system.disk` | 磁盘信息模块 | 5 |
+| 已完整封装（只读信息） | `lingbuilder.system.disk` | 磁盘信息模块 | 28 |
 | 已封装 | `lingbuilder.system.clipboard` | 剪贴板模块 | 4 |
 | 已封装 | `lingbuilder.system.shell` | 系统外壳模块 | 5 |
 | 已封装 | `lingbuilder.process` | 进程管理模块 | 5 |
 | 已封装 | `lingbuilder.ipc` | 进程通信模块 | 8 |
 | 已封装 | `lingbuilder.archive` | ZIP 压缩模块 | 4 |
 
+磁盘信息模块 `1.1.0` 保留原 5 条容量/卷标兼容命令，并扩展为 28 条命令和 8 个公开 `record/array` 类型。覆盖精确字节容量、用户可用/总空闲/已用容量、使用率、逻辑驱动器、全部卷、卷 GUID、挂载点、文件系统能力标志、物理磁盘描述、总线、SSD、TRIM、逻辑/物理扇区及 MBR/GPT/RAW 分区布局。模块只执行只读 Windows 查询，不提供格式化、分区修改或写盘能力。
+
 ## 输入、窗口与桌面
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已封装 | `lingbuilder.input.keyboard` | 键盘输入模块 | 5 |
-| 已封装 | `lingbuilder.input.mouse` | 鼠标输入模块 | 6 |
+| 已封装 | `lingbuilder.input.keyboard` | 键盘输入模块 | 31 |
+| 已封装 | `lingbuilder.input.mouse` | 鼠标输入模块 | 29 |
 | 已封装 | `lingbuilder.win32.window-utils` | Win32 窗口操作模块 | 7 |
 | 已封装 | `lingbuilder.win32.monitor` | 显示器与 DPI 模块 | 6 |
 | 已封装 | `lingbuilder.win32.menu` | Win32 菜单模块 | 8 |
@@ -73,6 +75,7 @@ SMTP 模块当前只支持普通 SMTP/局域网调试服务，不支持 STARTTLS
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
 | 已封装 | `lingbuilder.data.csv` | CSV 数据模块 | 5 |
+| 已封装 | `lingbuilder.data.protobuf` | Protocol Buffers 模块 | 9 |
 | 已封装 | `lingbuilder.crypto.hash` | 哈希摘要模块 | 15 |
 | 已封装 | `lingbuilder.crypto.password` | 密码哈希与派生模块 | 9 |
 | 已封装 | `lingbuilder.crypto.symmetric` | 对称加密模块 | 26 |
@@ -139,7 +142,7 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 | 已封装 | `lingbuilder.fbro.objects` | FBro任务、缓冲及 Value/Dictionary/List/Stream/Image/Certificate/DragData 受管对象模块 | 132 |
 | 已封装 | `lingbuilder.fbro.network` | FBro高级网络模块 | 2 |
 | 已封装 | `lingbuilder.fbro.vip` | FBro VIP 指纹模块（188 项官方能力逐项公开，另保留 10 个批量入口） | 198 |
-| 已有 | `lingbuilder.threading` | 多线程模块 | 5 |
+| 已有 | `lingbuilder.threading` | 多线程模块 | 54 |
 | 已有 | `lingbuilder.websocket.client` | WebSocket 客户端模块 | 5 |
 | 已有 | `lingbuilder.http.server` | HTTP 服务端模块 | 5 |
 | 已有 | `lingbuilder.websocket.server` | WebSocket 服务端模块 | 6 |

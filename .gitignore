@@ -23,6 +23,8 @@ coverage/
 !.env.example
 **/node_modules/
 **/build/
+!electron/src/services/build/
+!electron/src/services/build/**
 **/dist/
 **/dist-electron/
 **/coverage/

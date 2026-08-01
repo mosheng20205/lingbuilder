@@ -47,7 +47,7 @@
             // 命令ID：网页_访问_对象
             // [7] 网页_访问_对象(网址, 访问方式, 提交信息, 提交Cookies, 返回Cookies, 附加协议头, 返回协议头, 返回状态代码, 禁止重定向, 字节集提交, 代理地址, 超时, 代理用户名, 代理密码, 代理标识, 对象继承, 是否自动合并更新Cookie, 是否补全必要协议头, 是否处理协议头大小写)
             // 功能：使用 WinHTTP 对象方式访问网页。访问方式：0=GET，1=POST，2=HEAD，3=PUT，4=OPTIONS，5=DELETE，6=TRACE，7=CONNECT，8=PATCH。
-            // 参数：网址:wideString，访问方式:int，提交信息:wideString，提交Cookies:wideString，返回Cookies:wideString，附加协议头:wideString，返回协议头:wideString，返回状态代码:int，禁止重定向:bool，字节集提交:raw，代理地址:wideString，超时:int，代理用户名:wideString，代理密码:wideString，代理标识:int，对象继承:raw，是否自动合并更新Cookie:bool，是否补全必要协议头:bool，是否处理协议头大小写:bool；返回：raw；可见性：default
+            // 参数：网址:wideString，访问方式:int，提交信息:wideString，提交Cookies:wideString，返回Cookies:wideString，附加协议头:wideString，返回协议头:wideString，返回状态代码:int，禁止重定向:bool，字节集提交:bytes，代理地址:wideString，超时:int，代理用户名:wideString，代理密码:wideString，代理标识:int，对象继承:raw，是否自动合并更新Cookie:bool，是否补全必要协议头:bool，是否处理协议头大小写:bool；返回：bytes；可见性：default
             网页_访问_对象("https://example.com", 1, "演示参数3", "演示参数4", "演示参数5", "演示参数6", "演示参数7", 1, 真, 0, "https://example.com", 1, "演示参数13", "演示参数14", 1, 0, 真, 真, 真)
             // 命令ID：网页_取返回文本
             // [8] 网页_取返回文本()

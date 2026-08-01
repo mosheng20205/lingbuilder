@@ -1,300 +1,1558 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:26.017Z",
+  "generatedAt": "2026-08-01T09:52:04.654Z",
   "module": {
     "id": "lingbuilder.threading",
     "name": "多线程模块",
-    "version": "1.0.0",
-    "description": "提供受控后台任务、等待回收、活动任务查询、硬件并发数和线程休眠能力。"
+    "version": "2.0.0",
+    "description": "提供项目级受管任务、类型化多参数、进度与完成回调、线程池和同步原语。"
   },
-  "commandCount": 9,
+  "commandCount": 54,
   "commands": [
     {
       "index": 1,
-      "name": "线程_启动延时输出",
-      "signature": "线程_启动延时输出(内容, 延时毫秒)",
-      "description": "启动后台线程，等待指定毫秒后写入调试输出，并返回任务编号。",
-      "insertText": "线程_启动延时输出(\"$1\", 1000)",
-      "returnType": "整数型",
+      "name": "线程_提交",
+      "signature": "线程_提交(&工作处理器, 参数...)",
+      "description": "向项目默认线程池提交类型化工作；所有参数在提交时按值深拷贝。",
+      "insertText": "线程_提交(&$1, $0)",
+      "returnType": "线程任务",
+      "category": "任务",
+      "capabilityKind": "managed",
       "binding": {
-        "command": "线程_启动延时输出",
-        "runtimeName": "线程_启动延时输出",
+        "command": "线程_提交",
+        "runtimeName": "线程_提交",
         "parameters": [
           {
-            "name": "内容",
-            "type": "wideString"
+            "name": "工作处理器",
+            "type": "handler"
           },
           {
-            "name": "延时毫秒",
-            "type": "int"
+            "name": "参数",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "按值深拷贝后传给工作处理器，数量不设人为上限。"
           }
         ],
-        "returnType": "int",
-        "encoding": "wide",
-        "example": "线程_启动延时输出(\"后台任务完成\", 500)"
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "线程_提交(&示例值, 示例值)",
+        "description": "向项目默认线程池提交类型化工作；所有参数在提交时按值深拷贝。",
+        "invocation": {
+          "kind": "managedTask",
+          "operation": "submit",
+          "workerParameterIndex": 0,
+          "variadicParameterIndex": 1
+        }
       },
-      "demoInvocation": "线程_启动延时输出(\"演示参数1\", 1)"
+      "demoInvocation": "线程_提交(&模块演示工作)"
     },
     {
       "index": 2,
-      "name": "线程_等待全部",
-      "signature": "线程_等待全部()",
-      "description": "等待当前窗口启动的全部后台任务结束并回收线程。",
-      "insertText": "线程_等待全部()",
-      "returnType": "空",
+      "name": "线程_提交完成",
+      "signature": "线程_提交完成(&工作处理器, &完成处理器, 参数...)",
+      "description": "提交工作并在发起窗口 UI 线程执行一次完成处理器。",
+      "insertText": "线程_提交完成(&$1, &$2, $0)",
+      "returnType": "线程任务",
+      "category": "任务",
+      "capabilityKind": "managed",
       "binding": {
-        "command": "线程_等待全部",
-        "runtimeName": "线程_等待全部",
-        "parameters": [],
-        "returnType": "void",
-        "example": "线程_等待全部()"
+        "command": "线程_提交完成",
+        "runtimeName": "线程_提交完成",
+        "parameters": [
+          {
+            "name": "工作处理器",
+            "type": "handler"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          },
+          {
+            "name": "参数",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "按值深拷贝后传给工作处理器，数量不设人为上限。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "线程_提交完成(&示例值, &示例值, 示例值)",
+        "description": "提交工作并在发起窗口 UI 线程执行一次完成处理器。",
+        "invocation": {
+          "kind": "managedTask",
+          "operation": "submit",
+          "workerParameterIndex": 0,
+          "variadicParameterIndex": 2,
+          "completionParameterIndex": 1
+        }
       },
-      "demoInvocation": "线程_等待全部()"
+      "demoInvocation": "线程_提交完成(&模块演示工作, &模块演示完成)"
     },
     {
       "index": 3,
-      "name": "线程_活动数量",
-      "signature": "线程_活动数量()",
-      "description": "返回当前仍在执行的后台任务数量。",
-      "insertText": "线程_活动数量()",
-      "returnType": "整数型",
+      "name": "线程_提交进度",
+      "signature": "线程_提交进度(&工作处理器, &进度处理器, &完成处理器, 参数...)",
+      "description": "提交可报告进度的工作；进度按 80ms 合并并在 UI 线程分发。",
+      "insertText": "线程_提交进度(&$1, &$2, &$3, $0)",
+      "returnType": "线程任务",
+      "category": "任务",
+      "capabilityKind": "managed",
       "binding": {
-        "command": "线程_活动数量",
-        "runtimeName": "线程_活动数量",
-        "parameters": [],
-        "returnType": "int",
-        "example": "线程_活动数量()"
+        "command": "线程_提交进度",
+        "runtimeName": "线程_提交进度",
+        "parameters": [
+          {
+            "name": "工作处理器",
+            "type": "handler"
+          },
+          {
+            "name": "进度处理器",
+            "type": "handler"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          },
+          {
+            "name": "参数",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "按值深拷贝后传给工作处理器，数量不设人为上限。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "线程_提交进度(&示例值, &示例值, &示例值, 示例值)",
+        "description": "提交可报告进度的工作；进度按 80ms 合并并在 UI 线程分发。",
+        "invocation": {
+          "kind": "managedTask",
+          "operation": "submit",
+          "workerParameterIndex": 0,
+          "variadicParameterIndex": 3,
+          "progressParameterIndex": 1,
+          "completionParameterIndex": 2
+        }
       },
-      "demoInvocation": "线程_活动数量()"
+      "demoInvocation": "线程_提交进度(&模块演示进度工作, &模块演示进度, &模块演示完成)"
     },
     {
       "index": 4,
-      "name": "线程_硬件并发数",
-      "signature": "线程_硬件并发数()",
-      "description": "返回 C++ 运行时建议的并行线程数量。",
-      "insertText": "线程_硬件并发数()",
-      "returnType": "整数型",
+      "name": "线程_取当前任务",
+      "signature": "线程_取当前任务()",
+      "description": "在工作处理器内返回当前任务；其它线程返回 0。",
+      "insertText": "线程_取当前任务()",
+      "returnType": "线程任务",
+      "category": "任务",
+      "capabilityKind": "managed",
       "binding": {
-        "command": "线程_硬件并发数",
-        "runtimeName": "线程_硬件并发数",
+        "command": "线程_取当前任务",
+        "runtimeName": "线程_取当前任务",
         "parameters": [],
-        "returnType": "int",
-        "example": "线程_硬件并发数()"
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "线程_取当前任务()",
+        "description": "在工作处理器内返回当前任务；其它线程返回 0。"
       },
-      "demoInvocation": "线程_硬件并发数()"
+      "demoInvocation": "线程_取当前任务()"
     },
     {
       "index": 5,
-      "name": "线程_休眠",
-      "signature": "线程_休眠(毫秒)",
-      "description": "让当前线程休眠指定毫秒；界面线程中使用会暂停界面响应。",
-      "insertText": "线程_休眠(100)",
-      "returnType": "空",
+      "name": "线程_请求取消",
+      "signature": "线程_请求取消(任务)",
+      "description": "请求排队或运行任务协作取消。",
+      "insertText": "线程_请求取消($1)",
+      "returnType": "逻辑型",
+      "category": "任务",
+      "capabilityKind": "managed",
       "binding": {
-        "command": "线程_休眠",
-        "runtimeName": "线程_休眠",
+        "command": "线程_请求取消",
+        "runtimeName": "线程_请求取消",
+        "parameters": [
+          {
+            "name": "任务",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程_请求取消()",
+        "description": "请求排队或运行任务协作取消。"
+      },
+      "demoInvocation": "线程_请求取消(1)"
+    },
+    {
+      "index": 6,
+      "name": "线程_是否请求取消",
+      "signature": "线程_是否请求取消(任务)",
+      "description": "查询指定任务是否已请求取消；传 0 时查询当前任务。",
+      "insertText": "线程_是否请求取消($1)",
+      "returnType": "逻辑型",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程_是否请求取消",
+        "runtimeName": "线程_是否请求取消",
+        "parameters": [
+          {
+            "name": "任务",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程_是否请求取消()",
+        "description": "查询指定任务是否已请求取消；传 0 时查询当前任务。"
+      },
+      "demoInvocation": "线程_是否请求取消(1)"
+    },
+    {
+      "index": 7,
+      "name": "线程_取状态",
+      "signature": "线程_取状态(任务)",
+      "description": "返回固定任务状态码：-1 无效，0 排队，1 运行，2 成功，3 失败，4 请求取消，5 已取消。",
+      "insertText": "线程_取状态($1)",
+      "returnType": "线程任务状态",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程_取状态",
+        "runtimeName": "线程_取状态",
+        "parameters": [
+          {
+            "name": "任务",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "线程_取状态()",
+        "description": "返回固定任务状态码：-1 无效，0 排队，1 运行，2 成功，3 失败，4 请求取消，5 已取消。"
+      },
+      "demoInvocation": "线程_取状态(1)"
+    },
+    {
+      "index": 8,
+      "name": "线程_取状态名称",
+      "signature": "线程_取状态名称(任务)",
+      "description": "返回任务状态的中文名称。",
+      "insertText": "线程_取状态名称($1)",
+      "returnType": "文本型",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程_取状态名称",
+        "runtimeName": "线程_取状态名称",
+        "parameters": [
+          {
+            "name": "任务",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "线程_取状态名称()",
+        "description": "返回任务状态的中文名称。"
+      },
+      "demoInvocation": "线程_取状态名称(1)"
+    },
+    {
+      "index": 9,
+      "name": "线程_是否完成",
+      "signature": "线程_是否完成(任务)",
+      "description": "判断任务是否处于成功、失败或已取消状态。",
+      "insertText": "线程_是否完成($1)",
+      "returnType": "逻辑型",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程_是否完成",
+        "runtimeName": "线程_是否完成",
+        "parameters": [
+          {
+            "name": "任务",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程_是否完成()",
+        "description": "判断任务是否处于成功、失败或已取消状态。"
+      },
+      "demoInvocation": "线程_是否完成(1)"
+    },
+    {
+      "index": 10,
+      "name": "线程_取错误",
+      "signature": "线程_取错误(任务)",
+      "description": "返回任务失败、取消或提交失败的中文错误。",
+      "insertText": "线程_取错误($1)",
+      "returnType": "文本型",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程_取错误",
+        "runtimeName": "线程_取错误",
+        "parameters": [
+          {
+            "name": "任务",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "线程_取错误()",
+        "description": "返回任务失败、取消或提交失败的中文错误。"
+      },
+      "demoInvocation": "线程_取错误(1)"
+    },
+    {
+      "index": 11,
+      "name": "线程_等待",
+      "signature": "线程_等待(任务, 超时毫秒)",
+      "description": "等待任务结束；-1 表示无限等待。禁止在任务中等待自身。",
+      "insertText": "线程_等待($1, $2)",
+      "returnType": "逻辑型",
+      "category": "等待",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程_等待",
+        "runtimeName": "线程_等待",
+        "parameters": [
+          {
+            "name": "任务",
+            "type": "longLong"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程_等待()",
+        "description": "等待任务结束；-1 表示无限等待。禁止在任务中等待自身。"
+      },
+      "demoInvocation": "线程_等待(1, 1)"
+    },
+    {
+      "index": 12,
+      "name": "线程_等待全部超时",
+      "signature": "线程_等待全部超时(超时毫秒, 任务...)",
+      "description": "在总超时内等待给出的全部任务。",
+      "insertText": "线程_等待全部超时(5000, $0)",
+      "returnType": "逻辑型",
+      "category": "等待",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程_等待全部超时",
+        "runtimeName": "线程_等待全部超时",
+        "parameters": [
+          {
+            "name": "超时毫秒",
+            "type": "int"
+          },
+          {
+            "name": "参数",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "一个或多个线程任务；不接受其它值。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程_等待全部超时(5000, 示例值)",
+        "description": "在总超时内等待给出的全部任务。"
+      },
+      "demoInvocation": "线程_等待全部超时(1)"
+    },
+    {
+      "index": 13,
+      "name": "线程_协作等待",
+      "signature": "线程_协作等待(毫秒)",
+      "description": "在工作处理器中分段等待并响应取消；UI 线程调用时不会泵送界面消息。",
+      "insertText": "线程_协作等待($1)",
+      "returnType": "逻辑型",
+      "category": "等待",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程_协作等待",
+        "runtimeName": "线程_协作等待",
         "parameters": [
           {
             "name": "毫秒",
             "type": "int"
           }
         ],
-        "returnType": "void",
-        "example": "线程_休眠(100)"
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程_协作等待()",
+        "description": "在工作处理器中分段等待并响应取消；UI 线程调用时不会泵送界面消息。"
       },
-      "demoInvocation": "线程_休眠(1)"
+      "demoInvocation": "线程_协作等待(1)"
     },
     {
-      "index": 6,
-      "name": "线程_启动延时设置文本",
-      "signature": "线程_启动延时设置文本(控件名, 文本, 延时毫秒)",
-      "description": "启动后台线程，延时后线程安全地设置指定控件的显示文本。",
-      "insertText": "线程_启动延时设置文本($1, \"完成\", 1000)",
-      "returnType": "整数型",
+      "index": 14,
+      "name": "线程_报告进度",
+      "signature": "线程_报告进度(百分比, 说明)",
+      "description": "从当前工作处理器报告 0～100 的最新进度。",
+      "insertText": "线程_报告进度($1, $2)",
+      "returnType": "逻辑型",
+      "category": "进度",
+      "capabilityKind": "managed",
       "binding": {
-        "command": "线程_启动延时设置文本",
-        "runtimeName": "线程_启动延时设置文本",
+        "command": "线程_报告进度",
+        "runtimeName": "线程_报告进度",
         "parameters": [
           {
-            "name": "控件名",
-            "type": "controlRef",
-            "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
-            "runtimeRepresentation": "wideName"
-          },
-          {
-            "name": "文本",
-            "type": "wideString"
-          },
-          {
-            "name": "延时毫秒",
+            "name": "百分比",
             "type": "int"
+          },
+          {
+            "name": "说明",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "线程_报告进度()",
+        "description": "从当前工作处理器报告 0～100 的最新进度。"
+      },
+      "demoInvocation": "线程_报告进度(1, \"演示参数2\")"
+    },
+    {
+      "index": 15,
+      "name": "线程_取进度",
+      "signature": "线程_取进度(任务)",
+      "description": "返回任务最近报告的百分比。",
+      "insertText": "线程_取进度($1)",
+      "returnType": "整数型",
+      "category": "进度",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程_取进度",
+        "runtimeName": "线程_取进度",
+        "parameters": [
+          {
+            "name": "任务",
+            "type": "longLong"
           }
         ],
         "returnType": "int",
-        "encoding": "wide",
-        "example": "线程_启动延时设置文本(状态标签, \"完成\", 1000)"
+        "encoding": "raw",
+        "example": "线程_取进度()",
+        "description": "返回任务最近报告的百分比。"
       },
-      "demoInvocation": "线程_启动延时设置文本(演示状态, \"演示参数2\", 1)"
+      "demoInvocation": "线程_取进度(1)"
     },
     {
-      "index": 7,
-      "name": "线程_启动延时添加行",
-      "signature": "线程_启动延时添加行(控件名, Tab分隔单元格, 延时毫秒)",
-      "description": "启动后台线程，延时后线程安全地向列表视图追加一行。",
-      "insertText": "线程_启动延时添加行($1, \"内容\\t状态\", 500)",
-      "returnType": "整数型",
+      "index": 16,
+      "name": "线程_取进度说明",
+      "signature": "线程_取进度说明(任务)",
+      "description": "返回任务最近报告的说明。",
+      "insertText": "线程_取进度说明($1)",
+      "returnType": "文本型",
+      "category": "进度",
+      "capabilityKind": "managed",
       "binding": {
-        "command": "线程_启动延时添加行",
-        "runtimeName": "线程_启动延时添加行",
+        "command": "线程_取进度说明",
+        "runtimeName": "线程_取进度说明",
         "parameters": [
           {
-            "name": "控件名",
-            "type": "controlRef",
-            "controlTypes": [
-              "ListView"
-            ],
-            "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
-            "runtimeRepresentation": "wideName"
+            "name": "任务",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "线程_取进度说明()",
+        "description": "返回任务最近报告的说明。"
+      },
+      "demoInvocation": "线程_取进度说明(1)"
+    },
+    {
+      "index": 17,
+      "name": "线程_释放任务",
+      "signature": "线程_释放任务(任务)",
+      "description": "释放已完成任务的项目级记录；运行中的任务不能释放。",
+      "insertText": "线程_释放任务($1)",
+      "returnType": "逻辑型",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程_释放任务",
+        "runtimeName": "线程_释放任务",
+        "parameters": [
+          {
+            "name": "任务",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程_释放任务()",
+        "description": "释放已完成任务的项目级记录；运行中的任务不能释放。"
+      },
+      "demoInvocation": "线程_释放任务(1)"
+    },
+    {
+      "index": 18,
+      "name": "线程_清理已完成",
+      "signature": "线程_清理已完成()",
+      "description": "清理当前项目中全部已完成任务记录并返回数量。",
+      "insertText": "线程_清理已完成()",
+      "returnType": "整数型",
+      "category": "任务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程_清理已完成",
+        "runtimeName": "线程_清理已完成",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "线程_清理已完成()",
+        "description": "清理当前项目中全部已完成任务记录并返回数量。"
+      },
+      "demoInvocation": "线程_清理已完成()"
+    },
+    {
+      "index": 19,
+      "name": "线程池_取默认池",
+      "signature": "线程池_取默认池()",
+      "description": "返回惰性启动的项目默认线程池。",
+      "insertText": "线程池_取默认池()",
+      "returnType": "线程池",
+      "category": "线程池",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程池_取默认池",
+        "runtimeName": "线程池_取默认池",
+        "parameters": [],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "线程池_取默认池()",
+        "description": "返回惰性启动的项目默认线程池。"
+      },
+      "demoInvocation": "线程池_取默认池()"
+    },
+    {
+      "index": 20,
+      "name": "线程池_创建",
+      "signature": "线程池_创建(并发数, 队列容量)",
+      "description": "创建项目级自定义有界线程池；并发数 1～64，容量 1～100000，最多 16 个。",
+      "insertText": "线程池_创建($1, $2)",
+      "returnType": "线程池",
+      "category": "线程池",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程池_创建",
+        "runtimeName": "线程池_创建",
+        "parameters": [
+          {
+            "name": "并发数",
+            "type": "int"
           },
           {
-            "name": "Tab分隔单元格",
-            "type": "wideString"
-          },
-          {
-            "name": "延时毫秒",
+            "name": "队列容量",
             "type": "int"
           }
         ],
-        "returnType": "int",
-        "encoding": "wide",
-        "example": "线程_启动延时添加行(列表1, \"任务\\t完成\", 500)"
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "线程池_创建()",
+        "description": "创建项目级自定义有界线程池；并发数 1～64，容量 1～100000，最多 16 个。"
       },
-      "demoInvocation": "线程_启动延时添加行(演示ListView控件, \"演示参数2\", 1)"
+      "demoInvocation": "线程池_创建(1, 1)"
     },
     {
-      "index": 8,
-      "name": "线程_启动延时添加项目",
-      "signature": "线程_启动延时添加项目(控件名, 文本, 延时毫秒)",
-      "description": "启动后台线程，延时后线程安全地向列表框追加一条日志。",
-      "insertText": "线程_启动延时添加项目($1, \"日志内容\", 500)",
-      "returnType": "整数型",
+      "index": 21,
+      "name": "线程池_提交",
+      "signature": "线程池_提交(线程池, &工作处理器, 参数...)",
+      "description": "向指定线程池提交类型化工作。",
+      "insertText": "线程池_提交($1, &$2, $0)",
+      "returnType": "线程任务",
+      "category": "线程池",
+      "capabilityKind": "managed",
       "binding": {
-        "command": "线程_启动延时添加项目",
-        "runtimeName": "线程_启动延时添加项目",
+        "command": "线程池_提交",
+        "runtimeName": "线程池_提交",
         "parameters": [
           {
-            "name": "控件名",
-            "type": "controlRef",
-            "controlTypes": [
-              "ListBox",
-              "ComboBox",
-              "ComboBoxEx"
-            ],
-            "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
-            "runtimeRepresentation": "wideName"
+            "name": "线程池",
+            "type": "longLong"
           },
           {
-            "name": "文本",
-            "type": "wideString"
+            "name": "工作处理器",
+            "type": "handler"
           },
           {
-            "name": "延时毫秒",
+            "name": "参数",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "按值深拷贝后传给工作处理器，数量不设人为上限。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "线程池_提交()",
+        "description": "向指定线程池提交类型化工作。",
+        "invocation": {
+          "kind": "managedTask",
+          "operation": "submit",
+          "workerParameterIndex": 1,
+          "variadicParameterIndex": 2,
+          "poolParameterIndex": 0
+        }
+      },
+      "demoInvocation": "线程池_提交(1, &模块演示工作)"
+    },
+    {
+      "index": 22,
+      "name": "线程池_提交完成",
+      "signature": "线程池_提交完成(线程池, &工作处理器, &完成处理器, 参数...)",
+      "description": "向指定线程池提交工作并在 UI 线程执行完成处理器。",
+      "insertText": "线程池_提交完成($1, &$2, &$3, $0)",
+      "returnType": "线程任务",
+      "category": "线程池",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程池_提交完成",
+        "runtimeName": "线程池_提交完成",
+        "parameters": [
+          {
+            "name": "线程池",
+            "type": "longLong"
+          },
+          {
+            "name": "工作处理器",
+            "type": "handler"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          },
+          {
+            "name": "参数",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "按值深拷贝后传给工作处理器，数量不设人为上限。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "线程池_提交完成()",
+        "description": "向指定线程池提交工作并在 UI 线程执行完成处理器。",
+        "invocation": {
+          "kind": "managedTask",
+          "operation": "submit",
+          "workerParameterIndex": 1,
+          "variadicParameterIndex": 3,
+          "poolParameterIndex": 0,
+          "completionParameterIndex": 2
+        }
+      },
+      "demoInvocation": "线程池_提交完成(1, &模块演示工作, &模块演示完成)"
+    },
+    {
+      "index": 23,
+      "name": "线程池_提交进度",
+      "signature": "线程池_提交进度(线程池, &工作处理器, &进度处理器, &完成处理器, 参数...)",
+      "description": "向指定线程池提交带进度和完成回调的工作。",
+      "insertText": "线程池_提交进度($1, &$2, &$3, &$4, $0)",
+      "returnType": "线程任务",
+      "category": "线程池",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程池_提交进度",
+        "runtimeName": "线程池_提交进度",
+        "parameters": [
+          {
+            "name": "线程池",
+            "type": "longLong"
+          },
+          {
+            "name": "工作处理器",
+            "type": "handler"
+          },
+          {
+            "name": "进度处理器",
+            "type": "handler"
+          },
+          {
+            "name": "完成处理器",
+            "type": "handler"
+          },
+          {
+            "name": "参数",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "按值深拷贝后传给工作处理器，数量不设人为上限。"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "线程池_提交进度()",
+        "description": "向指定线程池提交带进度和完成回调的工作。",
+        "invocation": {
+          "kind": "managedTask",
+          "operation": "submit",
+          "workerParameterIndex": 1,
+          "variadicParameterIndex": 4,
+          "poolParameterIndex": 0,
+          "progressParameterIndex": 2,
+          "completionParameterIndex": 3
+        }
+      },
+      "demoInvocation": "线程池_提交进度(1, &模块演示进度工作, &模块演示进度, &模块演示完成)"
+    },
+    {
+      "index": 24,
+      "name": "线程池_设置并发数",
+      "signature": "线程池_设置并发数(线程池, 并发数)",
+      "description": "在线程池空闲时调整并发数。",
+      "insertText": "线程池_设置并发数($1, $2)",
+      "returnType": "逻辑型",
+      "category": "线程池",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程池_设置并发数",
+        "runtimeName": "线程池_设置并发数",
+        "parameters": [
+          {
+            "name": "线程池",
+            "type": "longLong"
+          },
+          {
+            "name": "并发数",
             "type": "int"
           }
         ],
-        "returnType": "int",
-        "encoding": "wide",
-        "example": "线程_启动延时添加项目(日志列表, \"任务完成\", 500)"
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程池_设置并发数()",
+        "description": "在线程池空闲时调整并发数。"
       },
-      "demoInvocation": "线程_启动延时添加项目(演示ListBox控件, \"演示参数2\", 1)"
+      "demoInvocation": "线程池_设置并发数(1, 1)"
     },
     {
-      "index": 9,
-      "name": "线程_批量启动",
-      "signature": "线程_批量启动(任务数控件, 线程数控件, 列表视图, 日志列表, 状态标签)",
-      "description": "读取输入框中的任务数和线程数，动态创建多线程并行执行任务，实时更新列表视图和日志。",
-      "insertText": "线程_批量启动(任务数输入, 线程数输入, 任务列表, 日志列表, 状态标签)",
-      "returnType": "空",
+      "index": 25,
+      "name": "线程池_取并发数",
+      "signature": "线程池_取并发数(线程池)",
+      "description": "返回线程池工作线程数。",
+      "insertText": "线程池_取并发数($1)",
+      "returnType": "整数型",
+      "category": "线程池",
+      "capabilityKind": "managed",
       "binding": {
-        "command": "线程_批量启动",
-        "runtimeName": "线程_批量启动",
+        "command": "线程池_取并发数",
+        "runtimeName": "线程池_取并发数",
         "parameters": [
           {
-            "name": "任务数控件",
-            "type": "controlRef",
-            "controlTypes": [
-              "TextBox"
-            ],
-            "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
-            "runtimeRepresentation": "wideName"
-          },
-          {
-            "name": "线程数控件",
-            "type": "controlRef",
-            "controlTypes": [
-              "TextBox"
-            ],
-            "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
-            "runtimeRepresentation": "wideName"
-          },
-          {
-            "name": "列表视图",
-            "type": "controlRef",
-            "controlTypes": [
-              "ListView"
-            ],
-            "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
-            "runtimeRepresentation": "wideName"
-          },
-          {
-            "name": "日志列表",
-            "type": "controlRef",
-            "controlTypes": [
-              "ListBox",
-              "ListView"
-            ],
-            "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
-            "runtimeRepresentation": "wideName"
-          },
-          {
-            "name": "状态标签",
-            "type": "controlRef",
-            "controlTypes": [
-              "Label"
-            ],
-            "scope": "currentWindow",
-            "controlKinds": [
-              "visual"
-            ],
-            "runtimeRepresentation": "wideName"
+            "name": "线程池",
+            "type": "longLong"
           }
         ],
-        "returnType": "void",
-        "encoding": "wide",
-        "example": "线程_批量启动(任务数输入, 线程数输入, 任务列表, 日志列表, 状态标签)"
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "线程池_取并发数()",
+        "description": "返回线程池工作线程数。"
       },
-      "demoInvocation": "线程_批量启动(演示TextBox控件, 演示TextBox控件, 演示ListView控件, 演示ListView控件, 演示状态)"
+      "demoInvocation": "线程池_取并发数(1)"
+    },
+    {
+      "index": 26,
+      "name": "线程池_取等待数量",
+      "signature": "线程池_取等待数量(线程池)",
+      "description": "返回线程池有界队列中的等待任务数。",
+      "insertText": "线程池_取等待数量($1)",
+      "returnType": "整数型",
+      "category": "线程池",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程池_取等待数量",
+        "runtimeName": "线程池_取等待数量",
+        "parameters": [
+          {
+            "name": "线程池",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "线程池_取等待数量()",
+        "description": "返回线程池有界队列中的等待任务数。"
+      },
+      "demoInvocation": "线程池_取等待数量(1)"
+    },
+    {
+      "index": 27,
+      "name": "线程池_取运行数量",
+      "signature": "线程池_取运行数量(线程池)",
+      "description": "返回线程池当前运行任务数。",
+      "insertText": "线程池_取运行数量($1)",
+      "returnType": "整数型",
+      "category": "线程池",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程池_取运行数量",
+        "runtimeName": "线程池_取运行数量",
+        "parameters": [
+          {
+            "name": "线程池",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "线程池_取运行数量()",
+        "description": "返回线程池当前运行任务数。"
+      },
+      "demoInvocation": "线程池_取运行数量(1)"
+    },
+    {
+      "index": 28,
+      "name": "线程池_是否空闲",
+      "signature": "线程池_是否空闲(线程池)",
+      "description": "判断线程池是否没有排队或运行任务。",
+      "insertText": "线程池_是否空闲($1)",
+      "returnType": "逻辑型",
+      "category": "线程池",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程池_是否空闲",
+        "runtimeName": "线程池_是否空闲",
+        "parameters": [
+          {
+            "name": "线程池",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程池_是否空闲()",
+        "description": "判断线程池是否没有排队或运行任务。"
+      },
+      "demoInvocation": "线程池_是否空闲(1)"
+    },
+    {
+      "index": 29,
+      "name": "线程池_等待空闲",
+      "signature": "线程池_等待空闲(线程池, 超时毫秒)",
+      "description": "等待线程池进入空闲状态；-1 表示无限等待。",
+      "insertText": "线程池_等待空闲($1, $2)",
+      "returnType": "逻辑型",
+      "category": "线程池",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程池_等待空闲",
+        "runtimeName": "线程池_等待空闲",
+        "parameters": [
+          {
+            "name": "线程池",
+            "type": "longLong"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程池_等待空闲()",
+        "description": "等待线程池进入空闲状态；-1 表示无限等待。"
+      },
+      "demoInvocation": "线程池_等待空闲(1, 1)"
+    },
+    {
+      "index": 30,
+      "name": "线程池_请求停止",
+      "signature": "线程池_请求停止(线程池)",
+      "description": "协作取消线程池中的排队和运行任务。",
+      "insertText": "线程池_请求停止($1)",
+      "returnType": "逻辑型",
+      "category": "线程池",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程池_请求停止",
+        "runtimeName": "线程池_请求停止",
+        "parameters": [
+          {
+            "name": "线程池",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程池_请求停止()",
+        "description": "协作取消线程池中的排队和运行任务。"
+      },
+      "demoInvocation": "线程池_请求停止(1)"
+    },
+    {
+      "index": 31,
+      "name": "线程池_关闭",
+      "signature": "线程池_关闭(线程池, 超时毫秒)",
+      "description": "协作停止并等待工作线程退出；超时不会强杀线程。",
+      "insertText": "线程池_关闭($1, $2)",
+      "returnType": "逻辑型",
+      "category": "线程池",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程池_关闭",
+        "runtimeName": "线程池_关闭",
+        "parameters": [
+          {
+            "name": "线程池",
+            "type": "longLong"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程池_关闭()",
+        "description": "协作停止并等待工作线程退出；超时不会强杀线程。"
+      },
+      "demoInvocation": "线程池_关闭(1, 1)"
+    },
+    {
+      "index": 32,
+      "name": "线程池_重启",
+      "signature": "线程池_重启(线程池)",
+      "description": "重启已关闭且空闲的自定义线程池。",
+      "insertText": "线程池_重启($1)",
+      "returnType": "逻辑型",
+      "category": "线程池",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程池_重启",
+        "runtimeName": "线程池_重启",
+        "parameters": [
+          {
+            "name": "线程池",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程池_重启()",
+        "description": "重启已关闭且空闲的自定义线程池。"
+      },
+      "demoInvocation": "线程池_重启(1)"
+    },
+    {
+      "index": 33,
+      "name": "线程池_销毁",
+      "signature": "线程池_销毁(线程池)",
+      "description": "销毁已停止且空闲的自定义线程池；默认池不可销毁。",
+      "insertText": "线程池_销毁($1)",
+      "returnType": "逻辑型",
+      "category": "线程池",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程池_销毁",
+        "runtimeName": "线程池_销毁",
+        "parameters": [
+          {
+            "name": "线程池",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程池_销毁()",
+        "description": "销毁已停止且空闲的自定义线程池；默认池不可销毁。"
+      },
+      "demoInvocation": "线程池_销毁(1)"
+    },
+    {
+      "index": 34,
+      "name": "线程池_取硬件并发数",
+      "signature": "线程池_取硬件并发数()",
+      "description": "返回 C++ 运行时报告的硬件并发数，最小为 1。",
+      "insertText": "线程池_取硬件并发数()",
+      "returnType": "整数型",
+      "category": "线程池",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程池_取硬件并发数",
+        "runtimeName": "线程池_取硬件并发数",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "线程池_取硬件并发数()",
+        "description": "返回 C++ 运行时报告的硬件并发数，最小为 1。"
+      },
+      "demoInvocation": "线程池_取硬件并发数()"
+    },
+    {
+      "index": 35,
+      "name": "互斥锁_创建",
+      "signature": "互斥锁_创建()",
+      "description": "创建项目级非递归定时互斥锁。",
+      "insertText": "互斥锁_创建()",
+      "returnType": "线程互斥锁",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "互斥锁_创建",
+        "runtimeName": "互斥锁_创建",
+        "parameters": [],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "互斥锁_创建()",
+        "description": "创建项目级非递归定时互斥锁。"
+      },
+      "demoInvocation": "互斥锁_创建()"
+    },
+    {
+      "index": 36,
+      "name": "互斥锁_执行",
+      "signature": "互斥锁_执行(互斥锁, &处理器, 参数...)",
+      "description": "持锁执行处理器并由 RAII 自动解锁；同线程重入会失败。",
+      "insertText": "互斥锁_执行($1, &$2, $0)",
+      "returnType": "逻辑型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "互斥锁_执行",
+        "runtimeName": "互斥锁_执行",
+        "parameters": [
+          {
+            "name": "互斥锁",
+            "type": "longLong"
+          },
+          {
+            "name": "处理器",
+            "type": "handler"
+          },
+          {
+            "name": "参数",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "按值深拷贝后传给工作处理器，数量不设人为上限。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "互斥锁_执行()",
+        "description": "持锁执行处理器并由 RAII 自动解锁；同线程重入会失败。",
+        "invocation": {
+          "kind": "managedTask",
+          "operation": "synchronized",
+          "workerParameterIndex": 1,
+          "variadicParameterIndex": 2
+        }
+      },
+      "demoInvocation": "互斥锁_执行(1, &模块演示工作)"
+    },
+    {
+      "index": 37,
+      "name": "互斥锁_尝试执行",
+      "signature": "互斥锁_尝试执行(互斥锁, 超时毫秒, &处理器, 参数...)",
+      "description": "在超时内尝试持锁执行处理器，并由 RAII 自动解锁。",
+      "insertText": "互斥锁_尝试执行($1, $2, &$3, $0)",
+      "returnType": "逻辑型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "互斥锁_尝试执行",
+        "runtimeName": "互斥锁_尝试执行",
+        "parameters": [
+          {
+            "name": "互斥锁",
+            "type": "longLong"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int"
+          },
+          {
+            "name": "处理器",
+            "type": "handler"
+          },
+          {
+            "name": "参数",
+            "type": "lingValue",
+            "variadic": true,
+            "description": "按值深拷贝后传给工作处理器，数量不设人为上限。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "互斥锁_尝试执行()",
+        "description": "在超时内尝试持锁执行处理器，并由 RAII 自动解锁。",
+        "invocation": {
+          "kind": "managedTask",
+          "operation": "synchronized",
+          "workerParameterIndex": 2,
+          "variadicParameterIndex": 3,
+          "timeoutParameterIndex": 1
+        }
+      },
+      "demoInvocation": "互斥锁_尝试执行(1, 1, &模块演示工作)"
+    },
+    {
+      "index": 38,
+      "name": "互斥锁_销毁",
+      "signature": "互斥锁_销毁(互斥锁)",
+      "description": "销毁当前无人持有或等待的互斥锁。",
+      "insertText": "互斥锁_销毁($1)",
+      "returnType": "逻辑型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "互斥锁_销毁",
+        "runtimeName": "互斥锁_销毁",
+        "parameters": [
+          {
+            "name": "互斥锁",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "互斥锁_销毁()",
+        "description": "销毁当前无人持有或等待的互斥锁。"
+      },
+      "demoInvocation": "互斥锁_销毁(1)"
+    },
+    {
+      "index": 39,
+      "name": "原子整数_创建",
+      "signature": "原子整数_创建(初始值)",
+      "description": "创建项目级 64 位原子整数。",
+      "insertText": "原子整数_创建($1)",
+      "returnType": "线程原子整数",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "原子整数_创建",
+        "runtimeName": "原子整数_创建",
+        "parameters": [
+          {
+            "name": "初始值",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "原子整数_创建()",
+        "description": "创建项目级 64 位原子整数。"
+      },
+      "demoInvocation": "原子整数_创建(1)"
+    },
+    {
+      "index": 40,
+      "name": "原子整数_读取",
+      "signature": "原子整数_读取(原子整数)",
+      "description": "原子读取当前值。",
+      "insertText": "原子整数_读取($1)",
+      "returnType": "长整数型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "原子整数_读取",
+        "runtimeName": "原子整数_读取",
+        "parameters": [
+          {
+            "name": "原子整数",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "原子整数_读取()",
+        "description": "原子读取当前值。"
+      },
+      "demoInvocation": "原子整数_读取(1)"
+    },
+    {
+      "index": 41,
+      "name": "原子整数_写入",
+      "signature": "原子整数_写入(原子整数, 新值)",
+      "description": "原子写入并返回旧值。",
+      "insertText": "原子整数_写入($1, $2)",
+      "returnType": "长整数型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "原子整数_写入",
+        "runtimeName": "原子整数_写入",
+        "parameters": [
+          {
+            "name": "原子整数",
+            "type": "longLong"
+          },
+          {
+            "name": "新值",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "原子整数_写入()",
+        "description": "原子写入并返回旧值。"
+      },
+      "demoInvocation": "原子整数_写入(1, 1)"
+    },
+    {
+      "index": 42,
+      "name": "原子整数_增加",
+      "signature": "原子整数_增加(原子整数, 增量)",
+      "description": "原子增加并返回新值。",
+      "insertText": "原子整数_增加($1, $2)",
+      "returnType": "长整数型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "原子整数_增加",
+        "runtimeName": "原子整数_增加",
+        "parameters": [
+          {
+            "name": "原子整数",
+            "type": "longLong"
+          },
+          {
+            "name": "增量",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "原子整数_增加()",
+        "description": "原子增加并返回新值。"
+      },
+      "demoInvocation": "原子整数_增加(1, 1)"
+    },
+    {
+      "index": 43,
+      "name": "原子整数_比较交换",
+      "signature": "原子整数_比较交换(原子整数, 预期值, 新值)",
+      "description": "仅当当前值等于预期值时交换，并返回是否成功。",
+      "insertText": "原子整数_比较交换($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "原子整数_比较交换",
+        "runtimeName": "原子整数_比较交换",
+        "parameters": [
+          {
+            "name": "原子整数",
+            "type": "longLong"
+          },
+          {
+            "name": "预期值",
+            "type": "longLong"
+          },
+          {
+            "name": "新值",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "原子整数_比较交换()",
+        "description": "仅当当前值等于预期值时交换，并返回是否成功。"
+      },
+      "demoInvocation": "原子整数_比较交换(1, 1, 1)"
+    },
+    {
+      "index": 44,
+      "name": "原子整数_销毁",
+      "signature": "原子整数_销毁(原子整数)",
+      "description": "销毁项目级原子整数。",
+      "insertText": "原子整数_销毁($1)",
+      "returnType": "逻辑型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "原子整数_销毁",
+        "runtimeName": "原子整数_销毁",
+        "parameters": [
+          {
+            "name": "原子整数",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "原子整数_销毁()",
+        "description": "销毁项目级原子整数。"
+      },
+      "demoInvocation": "原子整数_销毁(1)"
+    },
+    {
+      "index": 45,
+      "name": "线程事件_创建",
+      "signature": "线程事件_创建(手动重置, 初始置位)",
+      "description": "创建自动或手动重置的项目级同步事件。",
+      "insertText": "线程事件_创建($1, $2)",
+      "returnType": "线程同步事件",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程事件_创建",
+        "runtimeName": "线程事件_创建",
+        "parameters": [
+          {
+            "name": "手动重置",
+            "type": "bool"
+          },
+          {
+            "name": "初始置位",
+            "type": "bool"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "线程事件_创建()",
+        "description": "创建自动或手动重置的项目级同步事件。"
+      },
+      "demoInvocation": "线程事件_创建(真, 真)"
+    },
+    {
+      "index": 46,
+      "name": "线程事件_置位",
+      "signature": "线程事件_置位(事件)",
+      "description": "置位事件并唤醒等待者。",
+      "insertText": "线程事件_置位($1)",
+      "returnType": "逻辑型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程事件_置位",
+        "runtimeName": "线程事件_置位",
+        "parameters": [
+          {
+            "name": "事件",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程事件_置位()",
+        "description": "置位事件并唤醒等待者。"
+      },
+      "demoInvocation": "线程事件_置位(1)"
+    },
+    {
+      "index": 47,
+      "name": "线程事件_重置",
+      "signature": "线程事件_重置(事件)",
+      "description": "将事件恢复为未置位状态。",
+      "insertText": "线程事件_重置($1)",
+      "returnType": "逻辑型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程事件_重置",
+        "runtimeName": "线程事件_重置",
+        "parameters": [
+          {
+            "name": "事件",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程事件_重置()",
+        "description": "将事件恢复为未置位状态。"
+      },
+      "demoInvocation": "线程事件_重置(1)"
+    },
+    {
+      "index": 48,
+      "name": "线程事件_等待",
+      "signature": "线程事件_等待(事件, 超时毫秒)",
+      "description": "等待事件置位；自动重置事件仅释放一个等待者。",
+      "insertText": "线程事件_等待($1, $2)",
+      "returnType": "逻辑型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程事件_等待",
+        "runtimeName": "线程事件_等待",
+        "parameters": [
+          {
+            "name": "事件",
+            "type": "longLong"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程事件_等待()",
+        "description": "等待事件置位；自动重置事件仅释放一个等待者。"
+      },
+      "demoInvocation": "线程事件_等待(1, 1)"
+    },
+    {
+      "index": 49,
+      "name": "线程事件_销毁",
+      "signature": "线程事件_销毁(事件)",
+      "description": "销毁事件并唤醒等待者使其失败返回。",
+      "insertText": "线程事件_销毁($1)",
+      "returnType": "逻辑型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "线程事件_销毁",
+        "runtimeName": "线程事件_销毁",
+        "parameters": [
+          {
+            "name": "事件",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "线程事件_销毁()",
+        "description": "销毁事件并唤醒等待者使其失败返回。"
+      },
+      "demoInvocation": "线程事件_销毁(1)"
+    },
+    {
+      "index": 50,
+      "name": "信号量_创建",
+      "signature": "信号量_创建(初始值, 最大值)",
+      "description": "创建项目级计数信号量。",
+      "insertText": "信号量_创建($1, $2)",
+      "returnType": "线程信号量",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "信号量_创建",
+        "runtimeName": "信号量_创建",
+        "parameters": [
+          {
+            "name": "初始值",
+            "type": "int"
+          },
+          {
+            "name": "最大值",
+            "type": "int"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "信号量_创建()",
+        "description": "创建项目级计数信号量。"
+      },
+      "demoInvocation": "信号量_创建(1, 1)"
+    },
+    {
+      "index": 51,
+      "name": "信号量_等待",
+      "signature": "信号量_等待(信号量, 超时毫秒)",
+      "description": "等待并消耗一个信号量计数。",
+      "insertText": "信号量_等待($1, $2)",
+      "returnType": "逻辑型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "信号量_等待",
+        "runtimeName": "信号量_等待",
+        "parameters": [
+          {
+            "name": "信号量",
+            "type": "longLong"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "信号量_等待()",
+        "description": "等待并消耗一个信号量计数。"
+      },
+      "demoInvocation": "信号量_等待(1, 1)"
+    },
+    {
+      "index": 52,
+      "name": "信号量_释放",
+      "signature": "信号量_释放(信号量, 数量)",
+      "description": "释放指定计数；超过最大值时拒绝。",
+      "insertText": "信号量_释放($1, $2)",
+      "returnType": "逻辑型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "信号量_释放",
+        "runtimeName": "信号量_释放",
+        "parameters": [
+          {
+            "name": "信号量",
+            "type": "longLong"
+          },
+          {
+            "name": "数量",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "信号量_释放()",
+        "description": "释放指定计数；超过最大值时拒绝。"
+      },
+      "demoInvocation": "信号量_释放(1, 1)"
+    },
+    {
+      "index": 53,
+      "name": "信号量_取可用数量",
+      "signature": "信号量_取可用数量(信号量)",
+      "description": "返回当前可用计数。",
+      "insertText": "信号量_取可用数量($1)",
+      "returnType": "整数型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "信号量_取可用数量",
+        "runtimeName": "信号量_取可用数量",
+        "parameters": [
+          {
+            "name": "信号量",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "信号量_取可用数量()",
+        "description": "返回当前可用计数。"
+      },
+      "demoInvocation": "信号量_取可用数量(1)"
+    },
+    {
+      "index": 54,
+      "name": "信号量_销毁",
+      "signature": "信号量_销毁(信号量)",
+      "description": "销毁信号量并唤醒等待者使其失败返回。",
+      "insertText": "信号量_销毁($1)",
+      "returnType": "逻辑型",
+      "category": "同步",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "信号量_销毁",
+        "runtimeName": "信号量_销毁",
+        "parameters": [
+          {
+            "name": "信号量",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "信号量_销毁()",
+        "description": "销毁信号量并唤醒等待者使其失败返回。"
+      },
+      "demoInvocation": "信号量_销毁(1)"
     }
   ]
 }

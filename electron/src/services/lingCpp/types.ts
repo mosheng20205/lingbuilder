@@ -59,6 +59,10 @@ export interface LingCppDataType {
   endLine?: number;
   note?: string;
   fields: LingCppDataField[];
+  /** 省略时表示项目数据类型文件中的声明。 */
+  origin?: 'project' | 'module';
+  sourceModuleId?: string;
+  sourceModuleName?: string;
 }
 
 export interface LingCppDataField {

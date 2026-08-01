@@ -219,7 +219,7 @@
           },
           {
             "name": "字节集提交",
-            "type": "raw"
+            "type": "bytes"
           },
           {
             "name": "代理地址",
@@ -262,7 +262,7 @@
             "type": "bool"
           }
         ],
-        "returnType": "raw",
+        "returnType": "bytes",
         "encoding": "wide",
         "targetIds": [
           "windows-msvc-win32",

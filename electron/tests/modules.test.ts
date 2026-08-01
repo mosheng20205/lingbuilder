@@ -15,12 +15,19 @@ import { EDGEVIEW_SAFE_API_CATALOG, validateEdgeViewApiCatalog } from '../src/se
 import { FBRO_VIP_API_CATALOG, generateFbroVipIndividualRuntime } from '../src/services/modules/fbroVipApiCatalog';
 import { STANDARD_LIBRARY_MODULES } from '../src/services/modules/standardLibraryModules';
 import { SYSTEM_LIBRARY_MODULES } from '../src/services/modules/systemLibraryModules';
+import { DISK_COMMAND_NAMES, DISK_PUBLIC_TYPES } from '../src/services/modules/diskApiCatalog';
+import { KEYBOARD_COMMAND_NAMES } from '../src/services/modules/keyboardApiCatalog';
+import { MOUSE_COMMAND_NAMES } from '../src/services/modules/mouseApiCatalog';
 import { NETWORK_LIBRARY_MODULES } from '../src/services/modules/networkLibraryModules';
 import { DATA_MEDIA_MODULES } from '../src/services/modules/dataMediaModules';
 import { PLATFORM_ADVANCED_MODULES } from '../src/services/modules/platformAdvancedModules';
 import { validateModuleManifest } from '../src/services/modules/manifest';
 import { auditControlReferenceManifests } from '../src/services/modules/controlReferenceAuditService';
 import { createModuleService } from '../src/services/modules/moduleService';
+import {
+  ModuleDocumentationError,
+  readModuleDocumentation
+} from '../src/services/modules/moduleDocumentationService';
 import { normalizeModulePublicInfoSearchText } from '../src/services/modules/modulePublicInfoSearch';
 import {
   CEF3_ADVANCED_MODULE_IDS,
@@ -53,6 +60,8 @@ import { createControlToolboxGroups } from '../src/services/windowDesigner/contr
 import { exportVisualStudioProject } from '../src/services/windowDesigner/visualStudioProjectExporter';
 import { OPENCV_COMMAND_NAMES, OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID } from '../src/services/modules/opencvModules';
 import { normalizeControlReferenceCallSnippet } from '../src/services/modules/bindingValueType';
+import { getEnabledModuleStructuredTypeDiagnostics } from '../src/services/modules/modulePublicTypeService';
+import { THREADING_COMMAND_SPECS, THREADING_LEGACY_COMMANDS } from '../src/services/modules/threadingModule';
 import { normalizeControlReferenceSourceLiterals } from '../scripts/lib/control-reference-source-audit';
 
 const sampleProject: LingWindowProject = {
@@ -125,12 +134,12 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
       parameterDigest: audit.parameterDigest
     },
     {
-      modules: 80,
-      commands: 1639,
-      parameters: 2888,
-      controlReferences: 777,
-      commandDigest: '060f2e3b',
-      parameterDigest: '34eb9b8f'
+      modules: 81,
+      commands: 1776,
+      parameters: 3077,
+      controlReferences: 769,
+      commandDigest: '3c691065',
+      parameterDigest: '1f3c7f07'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -168,6 +177,19 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
   assert.deepEqual(suspiciousTextParameters, []);
 });
 
+test('Win32 内置容器贡献声明与设计器布局注册表保持一致', () => {
+  const basic = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic');
+  const commonControls = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.common-controls');
+  assert.deepEqual(basic?.contributes?.designerControls?.find(control => control.type === 'GroupBox')?.layout, {
+    mode: 'absolute', coordinateSpace: 'window', adapterId: 'win32.groupbox.absolute'
+  });
+  assert.deepEqual(commonControls?.contributes?.designerControls?.find(control => control.type === 'TabControl')?.layout, {
+    mode: 'slots', coordinateSpace: 'window', adapterId: 'win32.tab.slots'
+  });
+  assert.equal(validateModuleManifest(basic).diagnostics.length, 0);
+  assert.equal(validateModuleManifest(commonControls).diagnostics.length, 0);
+});
+
 test('模块源目录中的 controlRef 补全、示例和代码片段全部保持裸引用', async () => {
   const moduleSourceRoot = path.resolve(process.cwd(), 'src', 'services', 'modules');
   const sourceFiles = await collectModuleSourceFilesForControlRefAudit(moduleSourceRoot);
@@ -177,7 +199,7 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
     const audit = normalizeControlReferenceSourceLiterals(source, filePath, BUILTIN_MODULES);
     audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
   }
-  assert.equal(sourceFiles.length, 28, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  assert.equal(sourceFiles.length, 36, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -224,6 +246,113 @@ test('第三方模块清单拒绝文本型控件参数和带引号的 controlRef
   assert.ok(quoted.diagnostics.some(message => message.includes('insertText 不得')));
   assert.ok(quoted.diagnostics.some(message => message.includes('example 不得')));
   assert.ok(quoted.diagnostics.some(message => message.includes('包括嵌套命令')));
+});
+
+test('模块清单公开记录和数组类型，并拒绝不安全结构契约', () => {
+  const valid = validateModuleManifest({
+    schemaVersion: 2,
+    id: 'third.party.public-types',
+    name: '公开类型模块',
+    version: '1.0.0',
+    category: '其他',
+    description: '公开 LingCpp 记录与数组。',
+    contributes: {
+      types: [
+        {
+          name: '网络地址',
+          kind: 'record',
+          description: '网络地址值。',
+          fields: [
+            { name: '主机', type: '文本型', initialValue: '""', description: '主机名称。' },
+            { name: '端口', type: '整数型', initialValue: '0', description: '端口号。' }
+          ]
+        },
+        {
+          name: '服务器信息',
+          kind: 'record',
+          description: '服务器信息值。',
+          fields: [
+            { name: '地址', type: '网络地址' },
+            { name: '标签', type: '文本型', isArray: true }
+          ]
+        },
+        { name: '服务器列表', kind: 'array', elementType: '服务器信息', description: '服务器信息数组。' },
+        { name: '原生会话', description: '旧式不透明类型。', cppType: 'long long' }
+      ]
+    }
+  });
+  assert.deepEqual(valid.diagnostics, []);
+
+  const unsafeDllAbi = validateModuleManifest({
+    schemaVersion: 2,
+    id: 'third.party.unsafe-structured-abi',
+    name: '错误结构 ABI 模块',
+    version: '1.0.0',
+    category: '其他',
+    description: '错误地让 DLL 直接返回 C++ 结构。',
+    contributes: {
+      types: [{ name: '原生结果', kind: 'record', description: '错误示例。', fields: [{ name: '编号', type: '整数型' }] }],
+      commands: [{ name: '读取结果', signature: '读取结果()', description: '错误示例。', returnType: '原生结果' }]
+    },
+    targets: [{
+      id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc',
+      libs: ['lib/result.lib'], runtimeFiles: ['bin/result.dll']
+    }],
+    bindings: { commands: [{ command: '读取结果', runtimeName: 'ReadResult', returnType: '原生结果' }] }
+  });
+  assert.ok(unsafeDllAbi.diagnostics.some(message => message.includes('不能通过原生 DLL ABI 直接返回结构化类型')));
+
+  const invalid = validateModuleManifest({
+    schemaVersion: 2,
+    id: 'third.party.invalid-public-types',
+    name: '错误公开类型模块',
+    version: '1.0.0',
+    category: '其他',
+    description: '包含错误结构定义。',
+    contributes: {
+      types: [
+        {
+          name: '类型A',
+          kind: 'record',
+          description: 'A。',
+          cppType: 'NativeA',
+          fields: [
+            { name: '项目', type: '类型B', initialValue: '类型B()' },
+            { name: '数据', type: '字节集', initialValue: '"错误"' },
+            { name: '数量', type: '整数型', initialValue: '"错误"' }
+          ]
+        },
+        { name: '类型B', kind: 'array', description: 'B。', elementType: '类型A' },
+        { name: '未知集合', kind: 'array', description: '未知。', elementType: '未公开类型' }
+      ]
+    }
+  });
+  assert.ok(invalid.diagnostics.some(message => message.includes('不能使用 cppType')));
+  assert.ok(invalid.diagnostics.some(message => message.includes('循环嵌套')));
+  assert.ok(invalid.diagnostics.some(message => message.includes('未公开或不安全')));
+  assert.ok(invalid.diagnostics.some(message => message.includes('数组、字节集或结构化字段只能默认空初始化')));
+  assert.ok(
+    invalid.diagnostics.some(message => message.includes('initialValue 与字段类型 整数型 不兼容')),
+    invalid.diagnostics.join('\n')
+  );
+
+  const opaqueModule = createTestModule();
+  opaqueModule.manifest.id = 'third.party.opaque-owner';
+  opaqueModule.manifest.contributes = {
+    types: [{ name: '共享类型', kind: 'opaque', description: '旧式不透明类型。', cppType: 'long long' }]
+  };
+  const recordModule = createTestModule();
+  recordModule.manifest.id = 'third.party.record-owner';
+  recordModule.manifest.contributes = {
+    types: [{ name: '共享类型', kind: 'record', description: '结构化值。', fields: [{ name: '编号', type: '整数型' }] }]
+  };
+  assert.match(
+    getEnabledModuleStructuredTypeDiagnostics({
+      availableModules: [opaqueModule, recordModule],
+      enabledModules: [opaqueModule, recordModule]
+    }).join('\n'),
+    /结构化类型不能与其他公开类型同名/u
+  );
 });
 
 test('模块 SDK 拒绝缺少 controlRef 元数据或带引号补全的 C++ 迁移配置', async () => {
@@ -285,12 +414,12 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
     commandDigest: audit.commandDigest,
     parameterDigest: audit.parameterDigest
   }, {
-    modules: 86,
-    commands: 3250,
-    parameters: 10461,
-    controlReferences: 777,
-    commandDigest: 'eb24565d',
-    parameterDigest: '425652d1'
+    modules: 87,
+    commands: 3387,
+    parameters: 10650,
+    controlReferences: 769,
+    commandDigest: '25f7100d',
+    parameterDigest: '59badb8e'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
 });
 
@@ -455,6 +584,168 @@ test('文件、配置、系统、进程、输入和窗口模块提供完整确�
   assert.match(mainCpp, /文件_写入文本\(L"验证\.txt", L"中文"\);/u);
 });
 
+test('键盘输入模块分类公开全局、前台与 HWND 后台能力', () => {
+  const manifest = SYSTEM_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.input.keyboard')!;
+  assert.equal(manifest.version, '2.0.0');
+  assert.deepEqual(validateModuleManifest(manifest).diagnostics, []);
+  assert.deepEqual(manifest.contributes?.commands?.map(command => command.name), KEYBOARD_COMMAND_NAMES);
+  assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), KEYBOARD_COMMAND_NAMES);
+  assert.equal(KEYBOARD_COMMAND_NAMES.length, 31);
+  assert.deepEqual(
+    Array.from(new Set(manifest.contributes?.commands?.map(command => command.category))).sort(),
+    ['全局状态', '兼容入口', '前台输入（SendInput）', '后台窗口（PostMessage）', '键码转换'].sort()
+  );
+  for (const command of manifest.contributes?.commands || []) {
+    assert.match(command.description, /^\[/u, `${command.name} 必须首先标明作用范围`);
+    assert.match(command.description, /占用键盘|独占实体键盘|占用实体键盘/u, `${command.name} 必须说明实体键盘影响`);
+  }
+  assert.equal(manifest.contributes?.docs?.[0]?.path, 'docs/modules/keyboard/README.md');
+
+  const installed: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.input.keyboard',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const source = [
+    '类 MainWindow',
+    '    事件 _MainWindow_创建完毕()',
+    '        局部 整数型 控制键 = 键盘_键名取键代码("Ctrl键")',
+    '        局部 整数型 扫描码 = 键盘_键代码取扫描码(13)',
+    '        键盘_窗口_输入文本(0, "后台")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(source, undefined, 'src/MainWindow.lcpp', {
+    availableModules: [installed], enabledModules: [installed]
+  });
+  assert.equal(diagnostics.filter(item => item.level === 'error').length, 0, diagnostics.map(item => item.message).join('\n'));
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, enabledModules: [installed] });
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(mainCpp, /bool 键盘_前台_输入文本\(const wchar_t\* text\)/u);
+  assert.match(mainCpp, /bool 键盘_窗口_按下\(long long windowHandle, int keyCode, bool systemKey\)/u);
+  assert.match(mainCpp, /PostMessageW\(window, message/u);
+  assert.match(mainCpp, /SendInput\(static_cast<UINT>\(inputs\.size\(\)\)/u);
+  assert.match(mainCpp, /键盘_窗口_输入文本\(0, L"后台"\);/u);
+});
+
+test('鼠标输入模块按前台、窗口消息和 UI Automation 三类公开完整能力', () => {
+  const manifest = SYSTEM_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.input.mouse')!;
+  assert.equal(manifest.version, '2.0.0');
+  assert.deepEqual(validateModuleManifest(manifest).diagnostics, []);
+  assert.deepEqual(manifest.contributes?.commands?.map(command => command.name), MOUSE_COMMAND_NAMES);
+  assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), MOUSE_COMMAND_NAMES);
+  assert.equal(MOUSE_COMMAND_NAMES.length, 29);
+  assert.deepEqual(
+    Array.from(new Set(manifest.contributes?.commands?.map(command => command.category))).sort(),
+    ['全局真实输入（前台）', '窗口消息输入（后台）', 'UI Automation（后台）'].sort()
+  );
+  for (const command of manifest.contributes?.commands || []) {
+    assert.match(command.description, /^\[/u, `${command.name} 必须首先标明作用范围`);
+    assert.match(command.description, /占用系统鼠标|不占用系统鼠标/u, `${command.name} 必须说明是否占用系统鼠标`);
+  }
+  const windowCommands = manifest.contributes?.commands?.filter(command => command.name.startsWith('鼠标_窗口消息')) || [];
+  const uiaCommands = manifest.contributes?.commands?.filter(command => command.name.startsWith('鼠标_UIA_')) || [];
+  assert.equal(windowCommands.length, 6);
+  assert.equal(uiaCommands.length, 8);
+  for (const command of [...windowCommands, ...uiaCommands]) {
+    const binding = manifest.bindings?.commands?.find(item => item.command === command.name);
+    assert.equal(binding?.parameters?.[0]?.type, 'handle', `${command.name} 的目标参数必须是句柄`);
+  }
+  assert.equal(manifest.contributes?.docs?.[0]?.path, 'docs/modules/mouse/README.md');
+
+  const installed: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.input.mouse',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const source = [
+    '类 MainWindow',
+    '    事件 _MainWindow_创建完毕()',
+    '        鼠标_相对移动(1, 2)',
+    '        鼠标_窗口消息移动(0, 20, 30)',
+    '        鼠标_UIA_按名称查找(0, "确定")',
+    '        鼠标_UIA_调用(0)',
+    '        鼠标_UIA_设置文本(0, "后台文本")',
+    '        鼠标_UIA_释放(0)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: source,
+    enabledModules: [installed]
+  });
+  assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
+  const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(mainCpp, /#include <UIAutomation\.h>/u);
+  assert.match(mainCpp, /#include <wrl\.h>/u);
+  assert.match(mainCpp, /#pragma comment\(lib, "uiautomationcore\.lib"\)/u);
+  assert.match(mainCpp, /PostMessageW\(window, message/u);
+  assert.match(mainCpp, /IUIAutomationInvokePattern/u);
+  assert.match(mainCpp, /GetCurrentPattern\(UIA_InvokePatternId/u);
+  assert.match(mainCpp, /bool 鼠标_窗口消息移动\(long long windowHandle, int x, int y\)/u);
+  assert.match(mainCpp, /long long 鼠标_UIA_按名称查找\(long long windowHandle, const wchar_t\* name\)/u);
+  assert.match(mainCpp, /鼠标_UIA_设置文本\(0, L"后台文本"\);/u);
+});
+
+test('磁盘信息模块完整公开卷、物理磁盘和分区的结构化只读能力', () => {
+  const manifest = SYSTEM_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.system.disk')!;
+  assert.equal(manifest.version, '1.1.0');
+  assert.deepEqual(validateModuleManifest(manifest).diagnostics, []);
+  assert.deepEqual(manifest.contributes?.commands?.map(command => command.name), DISK_COMMAND_NAMES);
+  assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), DISK_COMMAND_NAMES);
+  assert.equal(DISK_COMMAND_NAMES.length, 28);
+  assert.equal(DISK_PUBLIC_TYPES.length, 8);
+  assert.equal(manifest.contributes?.types?.filter(type => type.kind === 'record').length, 4);
+  assert.equal(manifest.contributes?.types?.filter(type => type.kind === 'array').length, 4);
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === '磁盘_枚举逻辑驱动器')?.returnType, '磁盘卷信息列表');
+  assert.equal(manifest.bindings?.commands?.find(binding => binding.command === '磁盘_取物理磁盘信息')?.returnType, '物理磁盘信息');
+
+  const installed: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.system.disk',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const source = [
+    '类 MainWindow',
+    '    事件 _MainWindow_创建完毕()',
+    '        局部 磁盘卷信息列表 卷列表 = 磁盘_枚举逻辑驱动器()',
+    '        局部 磁盘容量信息 容量 = 磁盘_取容量信息(".")',
+    '        局部 物理磁盘信息列表 物理磁盘 = 磁盘_枚举物理磁盘()',
+    '        局部 磁盘分区信息列表 分区 = 磁盘_取分区列表(0)',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const languageDiagnostics = getLingCppSemanticDiagnostics(
+    source,
+    undefined,
+    'src/MainWindow.lcpp',
+    { availableModules: [installed], enabledModules: [installed] }
+  );
+  assert.equal(languageDiagnostics.filter(item => item.level === 'error').length, 0, languageDiagnostics.map(item => item.message).join('\n'));
+
+  const generated = generateLingCppNativeWin32Project(sampleProject, { lingCppSourceCode: source, enabledModules: [installed] });
+  assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const typeIndex = cpp.indexOf('struct 磁盘容量信息');
+  const runtimeIndex = cpp.indexOf('磁盘容量信息 磁盘_取容量信息');
+  assert.ok(typeIndex >= 0 && runtimeIndex > typeIndex, '公开结构体必须先于磁盘运行时定义');
+  assert.match(cpp, /std::vector<磁盘卷信息> 磁盘_枚举逻辑驱动器\(\)/u);
+  assert.match(cpp, /物理磁盘信息 磁盘_取物理磁盘信息\(int diskNumber\)/u);
+  assert.match(cpp, /std::vector<磁盘分区信息> 磁盘_取分区列表\(int diskNumber\)/u);
+  assert.match(cpp, /std::vector<磁盘卷信息> 卷列表 = 磁盘_枚举逻辑驱动器\(\);/u);
+  assert.match(cpp, /磁盘容量信息 容量 = 磁盘_取容量信息\(L"\."\);/u);
+  assert.match(cpp, /#include <winioctl\.h>/u);
+});
+
 test('Win32 基础模块全局提供初级鼠标屏幕位置命令', () => {
   const manifest = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!;
   const horizontal = manifest.contributes?.commands?.find(command => command.name === '取鼠标水平位置');
@@ -556,7 +847,7 @@ test('模块封装清单覆盖实际内置模块注册表', async () => {
   const checklist = await fs.readFile(path.resolve('..', 'MODULE_ENCAPSULATION_CHECKLIST.md'), 'utf8');
   const commandCount = BUILTIN_MODULES.reduce((total, manifest) => total + (manifest.contributes?.commands?.length ?? 0), 0);
   assert.ok(checklist.includes(`${BUILTIN_MODULES.length} 个内置模块、${commandCount} 条中文命令`));
-  assert.match(checklist, /51 个模块、287 条命令/u);
+  assert.match(checklist, /51 个模块、336 条命令/u);
   assert.match(checklist, /`lingbuilder\.std\.encoding` \| 编码转换模块 \| 30/u);
   assert.match(checklist, /`lingbuilder\.win32\.basic` \| Win32 窗口基础模块 \| 39/u);
   for (const manifest of BUILTIN_MODULES) {
@@ -1196,6 +1487,73 @@ test('module validation, preview and pack reject missing declared files', async 
   assert.ok(preview.diagnostics.some(message => message.includes('文档不存在')));
 });
 
+test('module documentation service reads only declared UTF-8 files inside the installed module', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-docs-'));
+  const moduleId = 'com.example.documented';
+  const installPath = path.join(root, '.lingbuilder', 'modules', moduleId);
+  const documentPath = 'docs/usage.md';
+  await writeFixture(path.join(installPath, documentPath), '# 使用说明\n\n这是模块文档。');
+  const module: InstalledModule = {
+    manifest: {
+      schemaVersion: 2,
+      id: moduleId,
+      name: '文档测试模块',
+      version: '1.0.0',
+      category: '其他',
+      description: '验证模块文档受限读取。',
+      contributes: { docs: [{ title: '使用说明', path: documentPath }] }
+    },
+    installPath,
+    isInstalled: true,
+    diagnostics: []
+  };
+
+  const document = await readModuleDocumentation(module, documentPath, { workspaceRoot: root });
+  assert.equal(document.title, '使用说明');
+  assert.equal(document.format, 'markdown');
+  assert.match(document.content, /这是模块文档/u);
+  await assert.rejects(
+    () => readModuleDocumentation(module, 'docs/private.md', { workspaceRoot: root }),
+    (error: unknown) => error instanceof ModuleDocumentationError
+      && error.code === 'MODULE_DOCUMENT_NOT_DECLARED'
+  );
+  await assert.rejects(
+    () => readModuleDocumentation(module, '../outside.md', { workspaceRoot: root }),
+    (error: unknown) => error instanceof ModuleDocumentationError
+      && error.code === 'MODULE_DOCUMENT_INVALID_PATH'
+  );
+});
+
+test('built-in module documentation resolves from its packaged asset module', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-builtin-module-docs-'));
+  const installPath = path.join(root, '.lingbuilder', 'modules', 'lingbuilder.cef3.sdk');
+  await writeFixture(path.join(installPath, 'README.md'), '# CEF3 模块说明');
+  const module = BUILTIN_MODULES.find(candidate => candidate.id === 'lingbuilder.cef3.browser');
+  assert.ok(module);
+  const document = await readModuleDocumentation({
+    manifest: module,
+    installPath: 'builtin://lingbuilder.cef3.browser',
+    isBuiltin: true,
+    isInstalled: true,
+    diagnostics: []
+  }, 'README.md', { workspaceRoot: root });
+  assert.match(document.content, /CEF3 模块说明/u);
+
+  const resourceRoot = path.join(root, 'resources');
+  const threadingDocumentPath = 'docs/modules/threading/README.md';
+  await writeFixture(path.join(resourceRoot, threadingDocumentPath), '# 多线程模块使用说明');
+  const threadingModule = BUILTIN_MODULES.find(candidate => candidate.id === 'lingbuilder.threading');
+  assert.ok(threadingModule);
+  const threadingDocument = await readModuleDocumentation({
+    manifest: threadingModule,
+    installPath: 'builtin://lingbuilder.threading',
+    isBuiltin: true,
+    isInstalled: true,
+    diagnostics: []
+  }, threadingDocumentPath, { workspaceRoot: root, resourceRoot });
+  assert.match(threadingDocument.content, /多线程模块使用说明/u);
+});
+
 test('market index can store portable workspace-relative package paths without changing CLI defaults', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-market-'));
   const packagePath = path.join(root, '.lingbuilder', 'module-packages', 'demo.lbmod');
@@ -1691,7 +2049,7 @@ test('EdgeView designer controls create multiple WebView2 children and bind to g
   assert.match(mainCpp, /EdgeView_取事件数据控件\(L"浏览器2"\)/u);
 });
 
-test('built-in threading module contributes safe background task commands and C++ runtime', () => {
+test('built-in threading module contributes managed task commands and C++ runtime', () => {
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.threading');
   assert.ok(manifest);
   assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
@@ -1708,31 +2066,149 @@ test('built-in threading module contributes safe background task commands and C+
     { source: '', line: 1, column: 1 },
     { enabledModules: [module], availableModules: [module] }
   );
-  assert.ok(completions.some(item => item.label === '线程_启动延时输出'));
-  assert.ok(completions.some(item => item.label === '多线程并行输出示例'));
+  assert.ok(completions.some(item => item.label === '线程_提交完成'));
+  assert.ok(completions.some(item => item.label === '线程池_创建'));
+  assert.ok(completions.some(item => item.label === '线程任务多参数与完成回调'));
+  THREADING_LEGACY_COMMANDS.forEach(command => assert.ok(!completions.some(item => item.label === command)));
+  assert.equal(manifest.version, '2.0.0');
+  assert.deepEqual(manifest.contributes?.commands?.map(command => command.name), THREADING_COMMAND_SPECS.map(command => command.name));
+  assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), THREADING_COMMAND_SPECS.map(command => command.name));
+
+  const missingVariadic = structuredClone(manifest);
+  const missingVariadicBinding = missingVariadic.bindings?.commands?.find(binding => binding.command === '线程_提交');
+  missingVariadicBinding!.parameters![1]!.variadic = false;
+  const missingVariadicDiagnostics = validateModuleManifest(missingVariadic).diagnostics;
+  assert.ok(missingVariadicDiagnostics.some(message => message.includes('lingValue 参数必须声明 variadic: true')));
+  assert.ok(missingVariadicDiagnostics.some(message => message.includes('variadicParameterIndex 必须指向 variadic lingValue 参数')));
+
+  const invalidWorkerIndex = structuredClone(manifest);
+  const invalidWorkerBinding = invalidWorkerIndex.bindings?.commands?.find(binding => binding.command === '线程_提交');
+  invalidWorkerBinding!.invocation!.workerParameterIndex = 1;
+  assert.ok(validateModuleManifest(invalidWorkerIndex).diagnostics.some(message => message.includes('workerParameterIndex 必须指向 handler 参数')));
+
+  const misplacedVariadic = structuredClone(manifest);
+  const misplacedBinding = misplacedVariadic.bindings?.commands?.find(binding => binding.command === '线程_提交');
+  misplacedBinding!.parameters!.push({ name: '非法尾参数', type: 'int' });
+  assert.ok(validateModuleManifest(misplacedVariadic).diagnostics.some(message => message.includes('可变参数必须位于参数列表末尾')));
 
   const generated = generateLingCppNativeWin32Project(sampleProject, {
     activeWindowId: 'main-window',
     lingCppSourceCode: [
       '类 MainWindow',
       '    事件 _MainWindow_创建完毕()',
-      '        线程_启动延时输出("后台完成", 20)',
-      '        线程_等待全部()',
-      '        线程_活动数量()',
+      '        线程池 后台池 = 线程池_创建(4, 100)',
+      '        线程任务 任务 = 线程_提交进度(&后台工作, &工作进度, &工作完成, 7, "批次A")',
+      '        线程_请求取消(任务)',
+      '    整数型 后台工作(整数型 数值, 文本型 批次)',
+      '        线程_报告进度(100, 批次)',
+      '        返回 数值',
+      '    空 工作进度(线程任务 任务, 整数型 百分比, 文本型 说明)',
+      '        调试输出(说明)',
+      '    空 工作完成(线程任务 任务, 整数型 结果)',
+      '        调试输出("完成")',
       '结束类'
     ].join('\n'),
     enabledModules: [module]
   });
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
   const moduleReport = generated.files.find(file => file.relativePath === 'module-dependencies.txt')?.content || '';
+  assert.deepEqual(generated.blockingDiagnostics, []);
   assert.ok(mainCpp.includes('#include <thread>'));
-  assert.ok(mainCpp.includes('int 线程_启动延时输出(const wchar_t* text, int delayMs)'));
-  assert.ok(mainCpp.includes('const int safeDelayMs = (std::max)(0, delayMs);'));
-  assert.ok(mainCpp.includes('output += L"\\n";'));
-  assert.ok(mainCpp.includes('线程_启动延时输出(L"后台完成", 20);'));
-  assert.ok(mainCpp.includes('线程_等待全部();'));
-  assert.ok(mainCpp.includes('std::vector<std::thread> threadTasks_'));
+  assert.ok(mainCpp.includes('class LingThreadProjectRuntime'));
+  assert.ok(mainCpp.includes('return LingThreadProjectRuntime::Instance().SubmitProgress'));
+  assert.ok(mainCpp.includes('threadOwnerToken_ = LingThreadRegisterWindowOwner(hwnd_);'));
+  assert.ok(mainCpp.includes('RegisterOwner(std::function<void(long long)> notify)'));
+  assert.ok(!mainCpp.includes('long long RegisterOwner(HWND window)'));
+  const threadingCore = mainCpp.slice(
+    mainCpp.indexOf('class LingThreadProjectRuntime'),
+    mainCpp.indexOf('// Win32 is only the notification/error adapter')
+  );
+  assert.doesNotMatch(threadingCore, /\b(?:HWND|HANDLE|PostMessageW|OutputDebugStringW)\b/u);
+  assert.ok(mainCpp.includes('long long 后台池 = 线程池_创建(4, 100);'));
+  assert.ok(mainCpp.includes('lbArg1 = 7, lbArg2 = L"批次A"'));
+  assert.ok(mainCpp.includes('return this->后台工作(lbArg1, lbArg2);'));
+  assert.ok(mainCpp.includes('this->工作进度(lbTask, lbPercent, lbText);'));
+  assert.ok(mainCpp.includes('this->工作完成(lbTask, std::forward<decltype(lbResult)>(lbResult)...);'));
+  assert.ok(mainCpp.includes('else (*completion)(taskId, Result{});'));
+  assert.ok(mainCpp.includes('线程_请求取消(任务);'));
+  assert.ok(!mainCpp.includes('batchProgress_'));
+  assert.ok(!mainCpp.includes('std::vector<std::thread> threadTasks_'));
   assert.ok(moduleReport.includes('多线程模块'));
+});
+
+test('threading 2.0 blocks legacy commands and invalid managed handlers', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.threading')!;
+  const module: InstalledModule = { manifest, installPath: 'builtin://lingbuilder.threading', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  const source = [
+    '类 MainWindow',
+    '    事件 _MainWindow_创建完毕()',
+    '        线程_启动延时输出("旧调用", 20)',
+    '        线程_提交完成("错误工作", &错误完成, 1, "多余参数")',
+    '    整数型 错误工作(整数型 数值)',
+    '        返回 数值',
+    '    整数型 错误完成(线程任务 任务)',
+    '        返回 1',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(source, undefined, 'MainWindow.lcpp', { enabledModules: [module], availableModules: [module] });
+  assert.ok(diagnostics.some(item => item.level === 'error' && item.message.includes('已删除旧命令 线程_启动延时输出')));
+  assert.ok(diagnostics.some(item => item.level === 'error' && item.message.includes('必须使用 &处理器名')));
+});
+
+test('threading 2.0 validates typed variadic handlers and all controlRef bindings', () => {
+  const threadingManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.threading')!;
+  const threading: InstalledModule = { manifest: threadingManifest, installPath: 'builtin://lingbuilder.threading', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  const controlModule: InstalledModule = {
+    manifest: {
+      schemaVersion: 2,
+      id: 'test.control-ref-worker',
+      name: '测试控件模块',
+      version: '1.0.0',
+      category: '界面',
+      description: '仅用于验证工作处理器动态阻断 controlRef binding。',
+      contributes: {
+        commands: [{ name: '读取目标内容', signature: '读取目标内容(目标)', description: '测试动态 controlRef 禁用。' }],
+        types: [{ name: '外部句柄', description: '测试禁止跨线程复制的普通 opaque。', cppType: 'long long' }]
+      },
+      targets: [{ id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc' }],
+      bindings: { commands: [{
+        command: '读取目标内容',
+        runtimeName: '读取目标内容',
+        parameters: [{ name: '目标', type: 'controlRef', controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'wideName' }],
+        returnType: 'wideString'
+      }] }
+    },
+    installPath: 'builtin://test.control-ref-worker',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const source = [
+    '类 MainWindow',
+    '    事件 _MainWindow_创建完毕()',
+    '        线程_提交完成(&混合工作, &错误完成, 7, "批次A")',
+    '        线程_提交(&零参数工作)',
+    '        线程_提交(&句柄工作, 1)',
+    '    整数型 混合工作(整数型 数值, 文本型 批次)',
+    '        文本型 内容 = 读取目标内容(结果标签)',
+    '        返回 数值',
+    '    空 零参数工作()',
+    '        线程_协作等待(0)',
+    '    空 句柄工作(外部句柄 值)',
+    '        线程_协作等待(0)',
+    '    整数型 错误完成(线程任务 任务, 文本型 结果)',
+    '        返回 1',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(source, undefined, 'MainWindow.lcpp', { enabledModules: [threading, controlModule], availableModules: [threading, controlModule] });
+  assert.ok(
+    diagnostics.some(item => item.level === 'error' && item.message.includes('不能调用 UI/controlRef 命令 读取目标内容')),
+    diagnostics.map(item => item.message).join('\n')
+  );
+  assert.ok(diagnostics.some(item => item.level === 'error' && item.message.includes('完成处理器 错误完成') && item.message.includes('返回类型不匹配')));
+  assert.ok(diagnostics.some(item => item.level === 'error' && item.message.includes('类型 外部句柄 不能在线程间按值深拷贝')));
+  assert.ok(!diagnostics.some(item => item.message.includes('零参数工作需要')));
 });
 
 test('built-in HTTP and WebSocket server modules contribute commands and deterministic C++ bindings', () => {
@@ -2884,6 +3360,8 @@ test('new_emoji bridge template keeps UTF-8 buffers alive for native controls', 
 test('module manager interface action opens the viewport-level public information dialog', async () => {
   const inspectorSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'ModuleInspector.tsx'), 'utf8');
   const dialogSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'ModulePublicInfoDialog.tsx'), 'utf8');
+  const documentPreviewSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'ModuleDocumentPreview.tsx'), 'utf8');
+  const serverSource = await fs.readFile(path.join(process.cwd(), 'server.ts'), 'utf8');
   const sidebarSource = await fs.readFile(path.join(process.cwd(), 'src', 'components', 'Sidebar.tsx'), 'utf8');
 
   assert.match(inspectorSource, /onInspect=\{\(\) => inspectModule\(module\.manifest\.id\)\}/);
@@ -2898,10 +3376,21 @@ test('module manager interface action opens the viewport-level public informatio
   assert.match(inspectorSource, /moduleIds: standardModuleIds/);
   assert.match(inspectorSource, /内部依赖和只读 SDK 已自动收起/);
   assert.match(dialogSource, /\{family\?\.displayName \|\| '模块'\} 功能范围/);
-  assert.match(dialogSource, /启用高级功能/);
+  assert.match(dialogSource, /禁用\$\{feature\.label\}/);
+  assert.match(dialogSource, /启用\$\{feature\.label\}/);
+  assert.doesNotMatch(dialogSource, /启用高级功能/);
   assert.match(dialogSource, /功能分类/);
   assert.match(dialogSource, /function ModuleFamilyFeatureTreeGroup/);
   assert.match(dialogSource, /const commandItems = items\.filter\(item => item\.groupId === 'commands'\)/);
+  assert.match(dialogSource, /公开记录/);
+  assert.match(dialogSource, /公开数组/);
+  assert.match(dialogSource, /字段 · \$\{field\.name\}/);
+  assert.match(dialogSource, /<ModuleDocumentPreview/);
+  assert.match(documentPreviewSource, /ReactMarkdown/);
+  assert.match(documentPreviewSource, /正在读取模块文档/);
+  assert.match(documentPreviewSource, /无法预览模块文档/);
+  assert.match(serverSource, /app\.get\("\/api\/modules\/document"/);
+  assert.match(serverSource, /readModuleDocumentation/);
   assert.match(dialogSource, /<PublicInfoTreeItem/);
   assert.match(dialogSource, /\{!isFamilyView && groups\.map\(group => \(/);
   assert.match(dialogSource, /其他公开信息/);

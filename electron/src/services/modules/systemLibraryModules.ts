@@ -1,6 +1,9 @@
 import { LingBuilderModuleManifest, ModuleBindingValueType } from './types';
 import { createStandardModule, StandardCommandSpec } from './standardLibraryModules';
 import { createModuleBindingSnippetArgument } from './bindingValueType';
+import { DISK_COMMANDS, DISK_PUBLIC_TYPES } from './diskApiCatalog';
+import { KEYBOARD_COMMANDS } from './keyboardApiCatalog';
+import { MOUSE_COMMANDS } from './mouseApiCatalog';
 
 type Parameter = { name: string; type: ModuleBindingValueType; description?: string };
 
@@ -99,14 +102,11 @@ const systemInfo = createStandardModule({
 
 const disk = createStandardModule({
   id: 'lingbuilder.system.disk', name: '磁盘信息模块', category: '系统',
-  description: '读取磁盘容量、卷标、文件系统和驱动器类型。', tags: ['磁盘', '系统信息'],
-  commands: [
-    command('磁盘_总容量MB', [{ name: '路径', type: 'wideString' }], 'longLong', '返回路径所在卷的总容量 MB，失败返回 -1。'),
-    command('磁盘_可用容量MB', [{ name: '路径', type: 'wideString' }], 'longLong', '返回当前用户可用容量 MB，失败返回 -1。'),
-    command('磁盘_取卷标', [{ name: '根路径', type: 'wideString' }], 'wideString', '返回卷标，例如传入 C:\\。'),
-    command('磁盘_取文件系统', [{ name: '根路径', type: 'wideString' }], 'wideString', '返回 NTFS、FAT32 等文件系统名称。'),
-    command('磁盘_取驱动器类型', [{ name: '根路径', type: 'wideString' }], 'int', '返回 Win32 DRIVE_* 类型编号。')
-  ]
+  version: '1.1.0',
+  description: '完整读取逻辑驱动器、卷、容量、文件系统、物理磁盘、SSD/TRIM、扇区和分区信息。',
+  tags: ['磁盘', '卷', '分区', '存储', '系统信息'],
+  types: DISK_PUBLIC_TYPES,
+  commands: DISK_COMMANDS
 });
 
 const clipboard = createStandardModule({
@@ -146,27 +146,29 @@ const process = createStandardModule({
 
 const keyboard = createStandardModule({
   id: 'lingbuilder.input.keyboard', name: '键盘输入模块', category: '系统',
-  description: '读取键盘状态并通过 SendInput 执行受控按键操作。', tags: ['键盘', '输入'],
-  commands: [
-    command('键盘_键是否按下', [{ name: '虚拟键码', type: 'int' }], 'bool', '判断指定 Win32 虚拟键当前是否按下。'),
-    command('键盘_大小写锁定状态', [], 'bool', '读取 Caps Lock 切换状态。'),
-    command('键盘_数字锁定状态', [], 'bool', '读取 Num Lock 切换状态。'),
-    command('键盘_单击', [{ name: '虚拟键码', type: 'int' }], 'bool', '模拟一次按下并释放。'),
-    command('键盘_组合按键', [{ name: '修饰键码', type: 'int' }, { name: '主键码', type: 'int' }], 'bool', '模拟修饰键与主键组合。')
-  ]
+  version: '2.0.0',
+  description: '分类提供全局状态、前台 SendInput 注入、指定 HWND 后台消息和键码转换能力。',
+  tags: ['键盘', '输入', '全局', '前台', '后台', 'Win32'],
+  commands: KEYBOARD_COMMANDS,
+  snippets: [
+    { label: '前台 Unicode 文本输入', insertText: '键盘_前台_输入文本("你好 LingBuilder")', description: '向当前前台焦点注入 Unicode 文本，不会锁定实体键盘。' },
+    { label: '前台多修饰键组合', insertText: '键盘_前台_组合按键(83, 17, 16, 0)', description: '示例为 Ctrl+Shift+S，未使用的修饰键传 0。' },
+    { label: '后台窗口文本消息', insertText: '句柄 目标 = 键盘_窗口_取焦点控件(顶层窗口)\n键盘_窗口_输入文本(目标, "后台文本")', description: '不抢焦点地向指定 HWND 投递 WM_CHAR；目标可以忽略。' }
+  ],
+  docs: [{ title: '键盘输入模块 2.0 使用说明', path: 'docs/modules/keyboard/README.md' }]
 });
 
 const mouse = createStandardModule({
   id: 'lingbuilder.input.mouse', name: '鼠标输入模块', category: '系统',
-  description: '读取鼠标位置并通过 SendInput 执行受控移动和单击。', tags: ['鼠标', '输入'],
-  commands: [
-    command('鼠标_取横坐标', [], 'int', '返回鼠标当前屏幕横坐标。'),
-    command('鼠标_取纵坐标', [], 'int', '返回鼠标当前屏幕纵坐标。'),
-    command('鼠标_移动', [{ name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }], 'bool', '把鼠标移动到指定屏幕坐标。'),
-    command('鼠标_左键单击', [], 'bool', '模拟鼠标左键按下并释放。'),
-    command('鼠标_右键单击', [], 'bool', '模拟鼠标右键按下并释放。'),
-    command('鼠标_滚轮', [{ name: '滚动量', type: 'int' }], 'bool', '模拟垂直滚轮，常用单位为 120。')
-  ]
+  version: '2.0.0',
+  description: '按三类封装鼠标输入：全局真实输入（前台）、指定 HWND 的窗口消息输入（后台）和 UI Automation 语义操作（后台）。',
+  tags: ['鼠标', '输入', '全局', '前台', '后台', '窗口消息', 'UI Automation', 'Win32'],
+  commands: MOUSE_COMMANDS,
+  snippets: [
+    { label: '后台窗口消息点击', insertText: '鼠标_窗口消息左键单击(目标窗口, 20, 20)', description: '按客户区坐标向指定 HWND 投递后台消息，不移动真实光标。' },
+    { label: '后台 UI Automation 调用', insertText: '局部 句柄 确定按钮 = 鼠标_UIA_按名称查找(目标窗口, "确定")\n鼠标_UIA_调用(确定按钮)', description: '按控件语义查找并调用元素，不模拟鼠标。' }
+  ],
+  docs: [{ title: '鼠标输入模块 2.0 使用说明', path: 'docs/modules/mouse/README.md' }]
 });
 
 const windowUtils = createStandardModule({

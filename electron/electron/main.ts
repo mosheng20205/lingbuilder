@@ -45,6 +45,7 @@ const intentionallyStoppedServers = new WeakSet<UtilityProcess>();
 let rendererOrigin = DEV_SERVER_URL;
 let rendererSessionToken = process.env.LINGBUILDER_SESSION_TOKEN || '';
 let activeWorkspace = '';
+let showWelcomeOnNextRendererLoad = true;
 let isQuitting = false;
 let shutdownPromise: Promise<void> | null = null;
 let workspaceService: DesktopWorkspaceService;
@@ -252,6 +253,7 @@ async function startManagedRendererServer(workspaceRoot: string): Promise<Server
       HOST: '127.0.0.1',
       PORT: '0',
       LINGBUILDER_WORKSPACE_ROOT: workspaceRoot,
+      LINGBUILDER_RESOURCE_ROOT: app.isPackaged ? process.resourcesPath : path.join(repoRoot(), 'electron'),
       LINGBUILDER_USER_SETTINGS_PATH: path.join(app.getPath('userData'), 'settings.json'),
       LINGBUILDER_STATIC_ROOT: rendererStaticRoot(),
       LINGBUILDER_RULEBOOK_PATH: rulebookPath(),
@@ -404,6 +406,7 @@ async function requestRendererApi(apiPath: string, init: RequestInit): Promise<u
 }
 
 async function createMainWindow(): Promise<void> {
+  showWelcomeOnNextRendererLoad = true;
   const smokeTest = process.argv.includes('--smoke-test');
   const savedWindowState = await workspaceService.getWindowState();
   const usableBounds = savedWindowState && screen.getAllDisplays().some(display => intersects(display.workArea, savedWindowState))
@@ -618,41 +621,22 @@ async function writePackagedSmokeProgress(stage: string): Promise<void> {
 
 async function switchWorkspace(workspacePath: string): Promise<void> {
   const candidateWorkspace = await workspaceService.validateWorkspace(workspacePath);
-  const previousWorkspace = activeWorkspace;
-  const previousOrigin = rendererOrigin;
-  const previousServerWasManaged = rendererServer !== null;
-  try {
-    if (aiBridgeManager?.snapshot().state !== 'stopped') await aiBridgeManager.stop('工作区即将切换');
-    const ready = await startManagedRendererServer(candidateWorkspace);
-    rendererOrigin = ready.origin;
-    configureRendererSession(rendererOrigin, rendererSessionToken);
-    await mainWindow?.loadURL(rendererOrigin);
-    activeWorkspace = await workspaceService.rememberWorkspace(candidateWorkspace);
-  } catch (error) {
-    let restoreError: unknown;
-    try {
-      if (!app.isPackaged && !previousServerWasManaged) {
-        await stopRendererServer();
-        rendererOrigin = previousOrigin;
-      } else {
-        const restored = await startManagedRendererServer(previousWorkspace);
-        rendererOrigin = restored.origin;
-      }
-      configureRendererSession(rendererOrigin, rendererSessionToken);
-      await mainWindow?.loadURL(rendererOrigin);
-      activeWorkspace = previousWorkspace;
-    } catch (caught) {
-      restoreError = caught;
-    }
-    const primaryMessage = error instanceof Error ? error.message : String(error);
-    if (restoreError) {
-      throw new Error(`${primaryMessage}；恢复原工作区也失败：${restoreError instanceof Error ? restoreError.message : String(restoreError)}`);
-    }
-    throw error;
-  }
+  if (aiBridgeManager?.snapshot().state !== 'stopped') await aiBridgeManager.stop('工作区即将切换');
+  const result = await requestRendererApi('/api/workspace/switch', {
+    method: 'POST',
+    body: JSON.stringify({ workspacePath: candidateWorkspace })
+  }) as { workspacePath?: string; version?: number };
+  activeWorkspace = await workspaceService.rememberWorkspace(result.workspacePath || candidateWorkspace);
+  if (rendererReadyInfo) rendererReadyInfo = { ...rendererReadyInfo, workspaceRoot: activeWorkspace };
+  showWelcomeOnNextRendererLoad = false;
+  mainWindow?.webContents.send('workspace:changed', {
+    workspacePath: activeWorkspace,
+    version: result.version
+  });
 }
 
 function registerIpcHandlers(): void {
+  ipcMain.handle('startup:should-show-welcome', () => showWelcomeOnNextRendererLoad);
   ipcMain.handle('window:minimize', () => getFocusedWindow()?.minimize());
   ipcMain.handle('window:toggle-maximize', () => {
     const window = getFocusedWindow();

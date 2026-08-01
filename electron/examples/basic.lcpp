@@ -1,0 +1,5 @@
+局部 句柄 描述集 = PB_加载描述集("generated/protobuf/descriptor.pb")
+局部 句柄 消息 = PB_创建消息(描述集, "demo.Message")
+局部 字节集 数据 = PB_序列化为字节集(消息)
+PB_释放消息(消息)
+PB_释放描述集(描述集)

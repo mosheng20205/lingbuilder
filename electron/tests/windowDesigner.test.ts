@@ -3054,7 +3054,7 @@ test('ListView 完整数据接口、批量更新和 OWNERDATA 虚拟模式确定
   const enabledModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({ manifest: BUILTIN_MODULES.find(module => module.id === id)!, installPath: 'builtin', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
   const commonControlsManifest = BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.common-controls')!;
   const listViewCommands = [
-    '列表视图_添加行', '列表视图_插入行', '列表视图_删除行', '列表视图_设置单元格', '列表视图_取单元格',
+    '列表视图_创建行', '列表视图_创建行集合', '列表视图_添加行', '列表视图_插入行', '列表视图_删除行', '列表视图_设置单元格', '列表视图_取单元格',
     '列表视图_取行数', '列表视图_批量添加行', '列表视图_开始批量更新', '列表视图_结束批量更新', '列表视图_排序',
     '列表视图_取最后单击列', '列表视图_取虚拟模式', '列表视图_设置虚拟行数', '列表视图_设置虚拟行'
   ];
@@ -3066,28 +3066,42 @@ test('ListView 完整数据接口、批量更新和 OWNERDATA 虚拟模式确定
     assert.ok(commonControlsManifest.contributes?.commands?.some(command => command.name === advanced.name), `${advanced.name} 必须提供补全贡献`);
     assert.ok(commonControlsManifest.bindings?.commands?.some(command => command.command === advanced.name), `${advanced.name} 必须提供确定性 C++ binding`);
   }
+  const listViewRowType = commonControlsManifest.contributes?.types?.find(type => type.name === '列表视图行');
+  const listViewRowsType = commonControlsManifest.contributes?.types?.find(type => type.name === '列表视图行集合');
+  assert.deepEqual([listViewRowType?.kind, listViewRowType?.elementType], ['array', '文本型']);
+  assert.deepEqual([listViewRowsType?.kind, listViewRowsType?.elementType], ['array', '列表视图行']);
+  assert.match(
+    commonControlsManifest.contributes?.commands?.find(command => command.name === '列表视图_添加行')?.insertText || '',
+    /列表视图_创建行/u
+  );
   const virtualMode = WIN32_CONTROL_DEFINITIONS.find(definition => definition.type === 'ListView')?.properties.find(property => property.key === 'virtualMode');
   assert.equal(virtualMode?.defaultValue, false);
   const source = `类 MainWindow : 公开 窗体
     事件 _MainWindow_创建完毕()
         局部 整数型 i = 1
         局部 文本型 文本序号 = ""
+        局部 列表视图行 类型化行 = 列表视图_创建行("3", "丙", 3, 真)
+        局部 列表视图行集合 类型化行集合 = 列表视图_创建行集合(列表视图_创建行("4", "丁", 4, 假), 列表视图_创建行("5", "戊", 5, 真))
         文本序号 = 到文本(i)
         控件_清空项目("普通列表")
         列表视图_添加行("普通列表", 文本序号+"\\t代码段\\t128\\t5")
+        列表视图_添加行("普通列表", 类型化行)
         列表视图_插入行("普通列表", 0, "0\\t表头\\t0\\t0")
+        列表视图_插入行("普通列表", 1, 列表视图_创建行("插入", "结构化", 0, 真))
         列表视图_设置单元格("普通列表", 0, 1, "已修改")
         列表视图_取单元格("普通列表", 0, 1)
         列表视图_取行数("普通列表")
         列表视图_删除行("普通列表", 0)
         列表视图_开始批量更新("普通列表")
         列表视图_批量添加行("普通列表", "1\\t甲\\t1\\t1\\n2\\t乙\\t2\\t2")
+        列表视图_批量添加行("普通列表", 类型化行集合)
         列表视图_结束批量更新("普通列表")
         列表视图_排序("普通列表", 1, 真)
         列表视图_取最后单击列("普通列表")
         列表视图_取虚拟模式("虚拟列表")
         列表视图_设置虚拟行数("虚拟列表", 15000)
         列表视图_设置虚拟行("虚拟列表", 0, "1\\t代码段\\t128\\t5")
+        列表视图_设置虚拟行("虚拟列表", 1, 列表视图_创建行("2", "数组行", 64, 真))
     结束
 结束类`;
   const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules }).files.find(file => file.relativePath === 'main.cpp')!.content;
@@ -3098,6 +3112,14 @@ test('ListView 完整数据接口、批量更新和 OWNERDATA 虚拟模式确定
   assert.match(cpp, /列表视图_设置单元格\(L"普通列表", 0, 1, L"已修改"\)/u);
   assert.match(cpp, /列表视图_设置虚拟行数\(L"虚拟列表", 15000\)/u);
   assert.match(cpp, /列表视图_设置虚拟行\(L"虚拟列表", 0, L"1\\t代码段\\t128\\t5"\)/u);
+  assert.match(cpp, /std::vector<std::wstring> 类型化行 = 列表视图_创建行\(L"3", L"丙", 3, true\);/u);
+  assert.match(cpp, /std::vector<std::vector<std::wstring>> 类型化行集合 = 列表视图_创建行集合/u);
+  assert.match(cpp, /列表视图_添加行\(L"普通列表", 类型化行\)/u);
+  assert.match(cpp, /列表视图_插入行\(L"普通列表", 1, 列表视图_创建行\(L"插入", L"结构化", 0, true\)\)/u);
+  assert.match(cpp, /列表视图_批量添加行\(L"普通列表", 类型化行集合\)/u);
+  assert.match(cpp, /列表视图_设置虚拟行\(L"虚拟列表", 1, 列表视图_创建行\(L"2", L"数组行", 64, true\)\)/u);
+  assert.match(cpp, /列表视图_添加行\(const wchar_t\* controlName, const std::vector<std::wstring>& cells\)/u);
+  assert.match(cpp, /列表视图_批量添加行\(const wchar_t\* controlName, const std::vector<std::vector<std::wstring>>& rows\)/u);
   assert.match(cpp, /LingCppTextValue operator\+\(const wchar_t\* value\) const/u);
   assert.match(cpp, /列表视图_添加行\(const wchar_t\* controlName, const std::wstring& tabSeparatedCells\)/u);
   assert.match(cpp, /列表视图_添加行\(L"普通列表", 文本序号\+L"\\t代码段\\t128\\t5"\)/u);
@@ -3111,9 +3133,13 @@ test('工作区 ListView 全方法示例可直接生成并用于源码包分享'
   const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules });
   assert.deepEqual(generated.blockingDiagnostics, []);
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
-  assert.match(cpp, /列表视图_添加行\(L"普通列表", 文本序号\+L"\\t代码段\\t128\\t5"\)/u);
+  assert.match(cpp, /std::vector<std::wstring> 行数据\{\};/u);
+  assert.match(cpp, /std::vector<std::vector<std::wstring>> 导入行 = 列表视图_创建行集合/u);
+  assert.match(cpp, /行数据\s*=\s*列表视图_创建行\(文本序号, L"代码段", 128, 5\)/u);
+  assert.match(cpp, /列表视图_添加行\(L"普通列表", 行数据\)/u);
+  assert.match(cpp, /列表视图_批量添加行\(L"普通列表", 导入行\)/u);
   assert.match(cpp, /列表视图_设置虚拟行数\(L"虚拟列表", 15000\)/u);
-  assert.match(cpp, /列表视图_设置虚拟行\(L"虚拟列表", i-1, 文本序号\+L"\\t代码段\\t128\\t5"\)/u);
+  assert.match(cpp, /列表视图_设置虚拟行\(L"虚拟列表", i-1, 列表视图_创建行\(文本序号, L"代码段", 128, 5\)\)/u);
   assert.match(cpp, /LVS_OWNERDATA/u);
   assert.ok(project.windows[0].controls.some(control => control.name === '读取单元格按钮'));
   assert.match(source, /_读取单元格按钮_被单击\(\)/u);
@@ -3451,4 +3477,44 @@ test('格式化文本完整能力演示项目覆盖四组选项卡并可生成�
   assert.match(cpp, /template <typename\.\.\. Args> LingCppTextValue 格式化文本/u);
   assert.match(cpp, /信息框\(格式化文本\(L"当前订单摘要/u);
   assert.match(cpp, /调试输出\(格式化文本\(L"\[格式化日志\]/u);
+});
+
+test('multiline TextBox text updates keep the latest log line visible', () => {
+  const multiline = {
+    ...createControl('log-box', undefined, 'TextBox'),
+    name: 'log-box',
+    properties: { multiline: true, readOnly: true, scrollBars: 'vertical' }
+  };
+  const singleLine = {
+    ...createControl('single-line', undefined, 'TextBox'),
+    name: 'single-line',
+    properties: { multiline: false, readOnly: false, scrollBars: 'none' }
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'multiline-text-setter',
+    name: 'multiline text setter',
+    resources: [],
+    windows: [{
+      id: 'main',
+      fileName: 'MainWindow.xml',
+      className: 'MainWindow',
+      title: 'multiline text setter',
+      width: 640,
+      height: 480,
+      background: '#202028',
+      description: '',
+      controls: [multiline, singleLine]
+    }]
+  };
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: 'class MainWindow: public window\nend class'
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /const ControlSpec\* control = FindControl\(runtime->id\);[\s\S]+?if \(updated && control && IsType\(\*control, L"TextBox"\) && \(control->flags & CF_MULTILINE\)\)/u);
+  assert.match(cpp, /SendMessageW\(runtime->hwnd, EM_SETSEL, static_cast<WPARAM>\(-1\), static_cast<LPARAM>\(-1\)\);/u);
+  assert.match(cpp, /SendMessageW\(runtime->hwnd, EM_SCROLLCARET, 0, 0\);/u);
+  assert.equal((cpp.match(/EM_SCROLLCARET/g) || []).length, 1);
+  assert.match(cpp, /L"TextBox", L"log-box"[^\n]+4/u);
+  assert.match(cpp, /L"TextBox", L"single-line"[^\n]+0/u);
 });

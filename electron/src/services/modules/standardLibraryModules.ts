@@ -2,7 +2,10 @@ import {
   LingBuilderModuleCategory,
   LingBuilderModuleManifest,
   ModuleBindingValueType,
-  ModuleCommandBindingParameter
+  ModuleCommandBindingParameter,
+  ModuleDocContribution,
+  ModuleSnippetContribution,
+  ModuleTypeContribution
 } from './types';
 import {
   isWideStringAbiBindingType,
@@ -17,8 +20,9 @@ export interface StandardCommandSpec {
   description: string;
   insertText: string;
   parameters?: ModuleCommandBindingParameter[];
-  returnType: ModuleBindingValueType;
+  returnType: string;
   returnDescription?: string;
+  category?: string;
   visibility?: 'default' | 'advanced' | 'internal';
   example?: string;
 }
@@ -29,6 +33,10 @@ export interface StandardModuleSpec {
   category: LingBuilderModuleCategory;
   description: string;
   tags: string[];
+  version?: string;
+  types?: ModuleTypeContribution[];
+  docs?: ModuleDocContribution[];
+  snippets?: ModuleSnippetContribution[];
   commands: StandardCommandSpec[];
 }
 
@@ -54,7 +62,7 @@ export function createStandardModule(spec: StandardModuleSpec): LingBuilderModul
     schemaVersion: 2,
     id: spec.id,
     name: spec.name,
-    version: '1.0.0',
+    version: spec.version || '1.0.0',
     category: spec.category,
     description: spec.description,
     author: 'LingBuilder',
@@ -66,15 +74,18 @@ export function createStandardModule(spec: StandardModuleSpec): LingBuilderModul
         signature: command.signature,
         description: command.description,
         insertText: command.insertText,
-        returnType: RETURN_TYPE_LABELS[command.returnType],
+        returnType: RETURN_TYPE_LABELS[command.returnType as ModuleBindingValueType] || command.returnType,
         returnDescription: command.returnDescription,
+        category: command.category,
         visibility: command.visibility
       })),
-      snippets: [{
+      types: spec.types,
+      snippets: spec.snippets || [{
         label: `${spec.name}快速示例`,
         insertText: commands.slice(0, 2).map(command => command.example || command.insertText.replace(/\$\d+/g, '')).join('\n'),
         description: `插入${spec.name}的基础调用示例。`
-      }]
+      }],
+      docs: spec.docs
     },
     targets: [
       { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc' },
@@ -128,6 +139,38 @@ const bytesModule = createStandardModule({
     { name: '字节_十六进制是否有效', signature: '字节_十六进制是否有效(十六进制)', description: '判断文本是否由偶数个十六进制字符组成。', insertText: '字节_十六进制是否有效("$1")', parameters: [{ name: '十六进制', type: 'wideString' }], returnType: 'bool' }
   ]
 });
+
+const byteArrayOperationsModule = createStandardModule({
+  id: 'lingbuilder.std.bytes',
+  name: '字节与十六进制模块',
+  category: '其他',
+  description: '提供正式字节集值语义和边界安全的二进制操作。',
+  tags: ['字节集'],
+  commands: [
+    { name: '字节集_长度', signature: '字节集_长度(数据)', description: '返回字节集长度。', insertText: '字节集_长度($1)', parameters: [{ name: '数据', type: 'bytes' }], returnType: 'int' },
+    { name: '字节集_截取', signature: '字节集_截取(数据, 起始位置, 长度)', description: '按 0 起始位置安全截取字节集。', insertText: '字节集_截取($1, 0, 1)', parameters: [{ name: '数据', type: 'bytes' }, { name: '起始位置', type: 'int' }, { name: '长度', type: 'int' }], returnType: 'bytes' },
+    { name: '字节集_拼接', signature: '字节集_拼接(前段, 后段)', description: '拼接两个字节集，溢出时返回空字节集。', insertText: '字节集_拼接($1, $2)', parameters: [{ name: '前段', type: 'bytes' }, { name: '后段', type: 'bytes' }], returnType: 'bytes' },
+    { name: '字节集_取字节', signature: '字节集_取字节(数据, 位置)', description: '读取指定位置的 0～255 字节，越界返回 -1。', insertText: '字节集_取字节($1, 0)', parameters: [{ name: '数据', type: 'bytes' }, { name: '位置', type: 'int' }], returnType: 'int' },
+    { name: '字节集_置字节', signature: '字节集_置字节(数据, 位置, 数值)', description: '写入一个字节，位置或数值无效时返回假。', insertText: '字节集_置字节($1, 0, 0)', parameters: [{ name: '数据', type: 'bytes' }, { name: '位置', type: 'int' }, { name: '数值', type: 'int' }], returnType: 'bool' },
+    { name: '字节集_Base64编码', signature: '字节集_Base64编码(数据)', description: '把字节集编码为 Base64 文本。', insertText: '字节集_Base64编码($1)', parameters: [{ name: '数据', type: 'bytes' }], returnType: 'wideString' },
+    { name: '字节集_Base64解码', signature: '字节集_Base64解码(Base64文本)', description: '把 Base64 文本解码为字节集，格式错误返回空字节集。', insertText: '字节集_Base64解码("$1")', parameters: [{ name: 'Base64文本', type: 'wideString' }], returnType: 'bytes' },
+    { name: '字节集_十六进制编码', signature: '字节集_十六进制编码(数据)', description: '把字节集编码为 ASCII 十六进制字节集。', insertText: '字节集_十六进制编码($1)', parameters: [{ name: '数据', type: 'bytes' }], returnType: 'bytes' },
+    { name: '字节集_十六进制解码', signature: '字节集_十六进制解码(十六进制)', description: '把十六进制文本解码为字节集。', insertText: '字节集_十六进制解码("$1")', parameters: [{ name: '十六进制', type: 'wideString' }], returnType: 'bytes' }
+  ]
+});
+
+const bytesModuleWithBinary: LingBuilderModuleManifest = {
+  ...bytesModule,
+  contributes: {
+    ...bytesModule.contributes,
+    commands: [...(bytesModule.contributes?.commands || []), ...(byteArrayOperationsModule.contributes?.commands || [])],
+    snippets: [...(bytesModule.contributes?.snippets || []), ...(byteArrayOperationsModule.contributes?.snippets || [])]
+  },
+  bindings: {
+    ...bytesModule.bindings,
+    commands: [...(bytesModule.bindings?.commands || []), ...(byteArrayOperationsModule.bindings?.commands || [])]
+  }
+};
 
 const encodingModule = createStandardModule({
   id: 'lingbuilder.std.encoding',
@@ -248,7 +291,7 @@ const xmlModule = createStandardModule({
 
 export const STANDARD_LIBRARY_MODULES: LingBuilderModuleManifest[] = [
   textModule,
-  bytesModule,
+  bytesModuleWithBinary,
   encodingModule,
   mathModule,
   datetimeModule,

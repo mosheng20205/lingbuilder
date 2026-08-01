@@ -83,6 +83,33 @@ test('LCPP 源码包会记录 ListView 高级 API 所需生成器能力', async 
   assert.deepEqual(preview.manifest.requiredCapabilities, [LCPP_GENERATOR_CAPABILITIES.listViewAdvancedApi]);
 });
 
+test('LCPP 源码包会记录 ListView 类型化行所需生成器能力', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-listview-structured-capability-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, 'workspace');
+  await fs.mkdir(workspace, { recursive: true });
+  await createSolutionService(workspace).getSolution();
+  await fs.writeFile(path.join(workspace, 'src', 'MainWindow.lcpp'), [
+    '包 ListView类型化行示例',
+    '使用 Win32窗口基础模块',
+    '使用 Win32高级控件模块',
+    '',
+    '类 MainWindow : 窗体',
+    '    事件 _MainWindow_创建完毕()',
+    '        列表视图_添加行(列表, 列表视图_创建行("名称", "状态"))',
+    '    结束',
+    '结束类',
+    ''
+  ].join('\n'), 'utf8');
+
+  const exported = await createLcppSourcePackageService(workspace).exportProject(
+    DEFAULT_PROJECT_ID,
+    path.join(root, 'listview-structured-capability.lcpppkg')
+  );
+  assert.equal(exported.manifest.minimumGeneratorVersion, '0.2.8');
+  assert.deepEqual(exported.manifest.requiredCapabilities, [LCPP_GENERATOR_CAPABILITIES.listViewStructuredRows]);
+});
+
 test('LCPP 源码包会记录 DataGrid v1 所需生成器能力', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-datagrid-capability-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

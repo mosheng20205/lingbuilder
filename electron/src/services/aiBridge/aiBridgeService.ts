@@ -26,6 +26,11 @@ import {
   ProjectBuildPreparationError,
   type ProjectBuildSessionService
 } from '../tasks/projectBuildSessionService';
+import { IncrementalBuildService } from '../tasks/incrementalBuildService';
+import { createBuildStepProviderRegistry } from '../build/providerRegistry';
+import { BuildPipelineService } from '../build/buildPipeline';
+import { createProtobufCodeGeneratorProvider } from '../build/protobufProvider';
+import { createWindowsMsvcBuildTarget, runProjectCodeGenerators, type ProjectCodeGeneratorResult } from '../build/projectCodeGeneratorService';
 import { WorkspacePathPolicy } from '../workspace/workspacePathPolicy';
 import { decodeTextFile, encodeTextFile } from '../files/textFileService';
 import type { TextFileFormat } from '../files/types';
@@ -129,6 +134,7 @@ export interface AiBridgeServiceDependencies {
     signal?: AbortSignal
   ) => Promise<AiBridgeCompileResult>;
   assertModuleAccess?: (moduleIds: readonly string[]) => void;
+  buildPipelineService?: BuildPipelineService;
 }
 
 export class AiBridgeService {
@@ -144,6 +150,8 @@ export class AiBridgeService {
   private readonly compilerDetector: () => Promise<AiBridgeCompilerInfo | null>;
   private readonly compilerRunner: NonNullable<AiBridgeServiceDependencies['compileWin32Preview']>;
   private readonly assertModuleAccess: NonNullable<AiBridgeServiceDependencies['assertModuleAccess']>;
+  private readonly buildPipelineService: BuildPipelineService;
+  private readonly incrementalBuildService: IncrementalBuildService;
   private readonly fbroVipKey: string;
   private runAdmissionClosed = false;
   private shuttingDown = false;
@@ -167,6 +175,14 @@ export class AiBridgeService {
     this.compilerDetector = dependencies.detectCompiler ?? detectCompiler;
     this.compilerRunner = dependencies.compileWin32Preview ?? compileWin32Preview;
     this.assertModuleAccess = dependencies.assertModuleAccess ?? (() => undefined);
+    this.buildPipelineService = dependencies.buildPipelineService ?? new BuildPipelineService(createBuildStepProviderRegistry([
+      createProtobufCodeGeneratorProvider({
+        sdkRoot: () => process.env.LINGBUILDER_PROTOBUF_SDK_ROOT || path.join(this.workspaceRoot, '.lingbuilder', 'toolchains', 'protobuf'),
+        protocPath: () => path.join(process.env.LINGBUILDER_PROTOBUF_SDK_ROOT || path.join(this.workspaceRoot, '.lingbuilder', 'toolchains', 'protobuf'), 'bin', 'protoc.exe'),
+        expectedSha256: process.env.LINGBUILDER_PROTOC_SHA256
+      })
+    ]));
+    this.incrementalBuildService = new IncrementalBuildService(this.workspaceRoot);
     this.fbroVipKey = String(process.env.LINGBUILDER_FBRO_VIP_KEY || '').trim().slice(0, 4096);
     delete process.env.LINGBUILDER_FBRO_VIP_KEY;
   }
@@ -363,14 +379,42 @@ export class AiBridgeService {
       lingCppSources,
       enabledModules
     });
+    const projectRef = await this.resolveAssetProject(request.project);
+    const compiler = await this.compilerDetector();
+    const architecture = compiler?.arch === 'x64' ? 'x64' : 'win32';
+    const previewRoot = await this.pathPolicy.resolveDirectoryForWrite(
+      normalizeFilePath(path.join('.lingbuilder-build', 'native-preview', sanitizeFilename(projectId)))
+    );
+    await fs.rm(previewRoot, { recursive: true, force: true });
+    await fs.mkdir(previewRoot, { recursive: true });
+    const codeGeneratorResult = await runProjectCodeGenerators({
+      service: this.buildPipelineService,
+      workspaceRoot: this.workspaceRoot,
+      projectRoot: path.resolve(this.workspaceRoot, projectRef.sourceRoot || '.'),
+      outputRoot: previewRoot,
+      exportRoot: previewRoot,
+      projectId,
+      modules: enabledModules,
+      target: createWindowsMsvcBuildTarget(architecture),
+      cache: this.incrementalBuildService,
+      cacheKey: `${projectId}:native-preview-code-generators:${architecture}`
+    });
+    const files = [...generatedProject.files, ...codeGeneratorResult.textFiles];
     return {
       ok: true,
-      files: generatedProject.files,
-      diagnostics: generatedProject.diagnostics,
+      generatedFiles: generatedProject.files,
+      files,
+      diagnostics: [...generatedProject.diagnostics, ...codeGeneratorResult.diagnostics],
       blockingDiagnostics: generatedProject.blockingDiagnostics,
       selectedWindow: generatedProject.selectedWindow,
       enabledModules,
-      sourceMap: generatedProject.sourceMap
+      sourceMap: generatedProject.sourceMap,
+      logs: codeGeneratorResult.logs,
+      codeGenerators: {
+        fingerprint: codeGeneratorResult.fingerprint,
+        incrementalHit: codeGeneratorResult.incrementalHit,
+        artifacts: codeGeneratorResult.artifacts.map(({ relativePath, kind, size, sha256 }) => ({ relativePath, kind, size, sha256 }))
+      }
     };
   }
 
@@ -385,27 +429,53 @@ export class AiBridgeService {
         normalizeFilePath(path.join('generated', 'cpp', sanitizeFilename(request.project.id || 'window-preview')))
       );
       await fs.mkdir(exportDir, { recursive: true });
-      await Promise.all(preview.files.map(async file => {
+      const projectRef = await this.resolveAssetProject(request.project);
+      const compiler = await this.compilerDetector();
+      const architecture = compiler?.arch === 'x64' ? 'x64' : 'win32';
+      const codeGeneratorResult = await runProjectCodeGenerators({
+        service: this.buildPipelineService,
+        workspaceRoot: this.workspaceRoot,
+        projectRoot: path.resolve(this.workspaceRoot, projectRef.sourceRoot || '.'),
+        outputRoot: exportDir,
+        exportRoot: exportDir,
+        projectId: request.project.id || 'window-preview',
+        modules: preview.enabledModules,
+        target: createWindowsMsvcBuildTarget(architecture),
+        cache: this.incrementalBuildService,
+        cacheKey: `${request.project.id || 'window-preview'}:native-export-code-generators:${architecture}`
+      });
+      const generatedFiles = [...preview.generatedFiles, ...codeGeneratorResult.textFiles];
+      await Promise.all(generatedFiles.map(async file => {
         const targetPath = path.join(exportDir, file.relativePath);
         await fs.mkdir(path.dirname(targetPath), { recursive: true });
         await fs.writeFile(targetPath, file.content, 'utf8');
       }));
-      const projectRef = await this.resolveAssetProject(request.project);
       const copiedAssets = await this.designerAssetService.copyProjectAssets(projectRef, [exportDir]);
       const moduleDiagnostics = await exportModuleNativeDependencies(preview.enabledModules, exportDir);
       const visualStudioProject = await exportVisualStudioProject({
         projectDir: exportDir,
         projectId: request.project.id || 'window-preview',
-        generatedFiles: preview.files,
+        generatedFiles,
         enabledModules: preview.enabledModules,
-        contentFiles: copiedAssets.map(file => normalizeFilePath(path.relative(exportDir, file)))
+        contentFiles: [
+          ...copiedAssets.map(file => normalizeFilePath(path.relative(exportDir, file))),
+          ...codeGeneratorResult.artifacts
+            .filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime')
+            .map(artifact => normalizeFilePath(artifact.relativePath))
+        ]
       });
       await this.permissions.audit({ operation: 'write', action: 'native.export', ok: true, target: exportDir });
       return {
         ...preview,
+        files: [
+          ...generatedFiles.map(file => path.join(exportDir, file.relativePath)),
+          ...codeGeneratorResult.artifacts.map(artifact => path.join(exportDir, artifact.relativePath)),
+          ...visualStudioProject.files
+        ],
         exportDir,
         visualStudioProject,
-        diagnostics: [...preview.diagnostics, ...moduleDiagnostics]
+        diagnostics: [...preview.diagnostics, ...codeGeneratorResult.diagnostics, ...moduleDiagnostics],
+        logs: [...(preview.logs || []), ...codeGeneratorResult.logs]
       };
     } catch (error) {
       await this.auditFailure('write', 'native.export', request.project?.id, error);
@@ -590,6 +660,41 @@ export class AiBridgeService {
     }));
 
     const projectRef = await this.resolveAssetProject(request.project);
+    const compiler = await this.compilerDetector();
+    let codeGeneratorResult: ProjectCodeGeneratorResult;
+    try {
+      await fs.rm(path.join(binDir, 'LingBuilderPreview.exe'), { force: true });
+      codeGeneratorResult = await runProjectCodeGenerators({
+        service: this.buildPipelineService,
+        workspaceRoot: this.workspaceRoot,
+        projectRoot: path.resolve(this.workspaceRoot, projectRef.sourceRoot || '.'),
+        outputRoot: sourceDir,
+        exportRoot: exportDir,
+        projectId: managedProjectId,
+        modules: enabledModules,
+        target: createWindowsMsvcBuildTarget(compiler?.arch === 'x64' ? 'x64' : 'win32'),
+        signal: buildLease.signal,
+        cache: this.incrementalBuildService,
+        cacheKey: `${managedProjectId}:code-generators:${compiler?.arch === 'x64' ? 'x64' : 'win32'}`
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      const result = {
+        ok: false,
+        stage: 'code-generators',
+        error: reason,
+        buildDir,
+        sourceDir,
+        binDir,
+        objDir,
+        exportDir,
+        sourceMap: generatedProject.sourceMap,
+        logs: [...preBuildLogs, `代码生成阶段失败：${reason}`]
+      };
+      await this.permissions.audit({ operation: 'execute', action: 'build.run', ok: false, target: buildDir, details: result.stage });
+      return result;
+    }
+    const generatedCodegenFiles = codeGeneratorResult.textFiles;
     const copiedAssets = await this.designerAssetService.copyProjectAssets(projectRef, [buildDir, binDir, exportDir]);
     const buildContentFiles = copiedAssets
       .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
@@ -598,7 +703,6 @@ export class AiBridgeService {
       .filter(file => file.startsWith(`${path.resolve(exportDir)}${path.sep}`))
       .map(file => normalizeFilePath(path.relative(exportDir, file)));
 
-    const compiler = await this.compilerDetector();
     const preferredTargetId = compiler?.arch === 'x64' ? 'windows-msvc-x64' : 'windows-msvc-win32';
     const moduleNativePlan = await materializeModuleNativeDependencies(enabledModules, {
       buildDir,
@@ -623,15 +727,20 @@ export class AiBridgeService {
       await this.permissions.audit({ operation: 'execute', action: 'build.run', ok: false, target: buildDir, details: result.stage });
       return result;
     }
+    const generatedNativeSources = codeGeneratorResult.outputFiles.filter((file): file is string => typeof file === 'string' && /\.(?:c|cc|cpp|cxx)$/iu.test(file));
+    moduleNativePlan.sourceFiles.push(...generatedNativeSources);
+    moduleNativePlan.includeDirs.push(...new Set(generatedNativeSources.map(file => path.dirname(file))));
+    moduleNativePlan.sourceFiles = [...new Set(moduleNativePlan.sourceFiles)];
+    moduleNativePlan.includeDirs = [...new Set(moduleNativePlan.includeDirs)];
     const buildVisualStudioProject = await exportVisualStudioProject({
       projectDir: buildDir,
       projectId,
-      generatedFiles: generatedProject.files.map(file => ({
+      generatedFiles: [...generatedProject.files, ...generatedCodegenFiles].map(file => ({
         ...file,
         relativePath: normalizeFilePath(path.join('src', file.relativePath))
       })),
       enabledModules,
-      contentFiles: buildContentFiles,
+      contentFiles: [...buildContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(path.join('src', artifact.relativePath)))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
       fbroRuntimeFromBuildBin: true
@@ -639,9 +748,9 @@ export class AiBridgeService {
     const exportVisualStudioProjectResult = await exportVisualStudioProject({
       projectDir: exportDir,
       projectId,
-      generatedFiles: generatedProject.files,
+      generatedFiles: [...generatedProject.files, ...generatedCodegenFiles],
       enabledModules,
-      contentFiles: exportContentFiles,
+      contentFiles: [...exportContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
     });
@@ -661,6 +770,7 @@ export class AiBridgeService {
       `Visual Studio 解决方案：${buildVisualStudioProject.solutionPath}`,
       `可复制 Visual Studio 解决方案：${exportVisualStudioProjectResult.solutionPath}`,
       ...generatedProject.diagnostics,
+      ...codeGeneratorResult.logs,
       ...moduleNativePlan.diagnostics
     ];
 
@@ -673,7 +783,7 @@ export class AiBridgeService {
         binDir,
         objDir,
         exportDir,
-        files: generatedProject.files.map(file => path.join(sourceDir, file.relativePath)),
+        files: [...generatedProject.files, ...generatedCodegenFiles].map(file => path.join(sourceDir, file.relativePath)),
         visualStudioProject: buildVisualStudioProject,
         exportVisualStudioProject: exportVisualStudioProjectResult,
         sourceMap: generatedProject.sourceMap,

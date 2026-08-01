@@ -104,6 +104,7 @@ test('普通 Win32 生成依赖排序的 struct、值语义变量和数据类型
   assert.match(cpp, /用户信息 登录用户\{\};/u);
   assert.match(cpp, /当前用户\.地址\.城市 = L"上海";/u);
   assert.match(cpp, /用户信息 读取用户\(\)/u);
+  assert.match(cpp, /用户信息 读取用户\(\)[\s\S]*?return 结果;[\s\S]*?return \{\};/u);
   assert.ok(generated.sourceMap.some(entry => entry.kind === 'data-type' && entry.sourceFile === typePath));
   assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
 });
@@ -122,4 +123,89 @@ test('new_emoji 生成链同样聚合项目数据类型', () => {
   assert.match(cpp, /#include "new_emoji_bridge\.h"[\s\S]*struct 地址信息[\s\S]*struct 用户信息/u);
   assert.match(cpp, /用户信息 当前用户\{\};[\s\S]*当前用户\.姓名 = L"小明";/u);
   assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
+});
+
+test('模块公开记录与数组进入语言服务、项目嵌套和 C++ 生成链', () => {
+  const publicTypeModule: InstalledModule = {
+    manifest: {
+      schemaVersion: 2,
+      id: 'com.example.public-types',
+      name: '公开类型模块',
+      version: '1.0.0',
+      category: '其他',
+      description: '公开值语义数据模型。',
+      contributes: {
+        types: [
+          {
+            name: '模块地址',
+            kind: 'record',
+            description: '模块公开地址。',
+            fields: [{ name: '城市', type: '文本型', initialValue: '""' }]
+          },
+          {
+            name: '模块用户',
+            kind: 'record',
+            description: '模块公开用户。',
+            fields: [
+              { name: '姓名', type: '文本型', initialValue: '""' },
+              { name: '地址', type: '模块地址' },
+              { name: '标签', type: '文本型', isArray: true }
+            ]
+          },
+          { name: '模块用户列表', kind: 'array', elementType: '模块用户', description: '模块用户数组。' }
+        ]
+      }
+    },
+    installPath: 'builtin://com.example.public-types',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const moduleContext = { availableModules: [publicTypeModule], enabledModules: [publicTypeModule] };
+  const source = [
+    '类 主窗口',
+    '  事件 创建完毕()',
+    '    局部 模块用户 当前用户',
+    '    当前用户.',
+    '    当前用户.地址.城市 = "杭州"',
+    '    局部 模块用户列表 用户列表',
+    '  结束',
+    '结束类'
+  ].join('\n');
+  const languageContext = buildLingCppLanguageContext(source, undefined, moduleContext, 'src/demo/主窗口.lcpp');
+  const completion = getLingCppCompletionItems({
+    source,
+    line: 4,
+    column: '    当前用户.'.length + 1,
+    triggerText: ''
+  }, languageContext);
+  assert.ok(completion.some(item => item.label === '姓名' && item.detail.includes('模块用户 字段')));
+  assert.ok(completion.some(item => item.label === '地址'));
+  assert.equal(languageContext.diagnostics.filter(item => item.level === 'error').length, 0, languageContext.diagnostics.map(item => item.message).join('\n'));
+
+  const projectTypeDiagnostics = getProjectDataTypeDiagnostics(
+    '数据类型 项目会话\n  模块用户 用户\n  模块用户列表 历史\n结束数据类型\n',
+    typePath,
+    moduleContext
+  );
+  assert.equal(projectTypeDiagnostics.length, 0, projectTypeDiagnostics.map(item => item.message).join('\n'));
+
+  const project: LingWindowProject = {
+    id: 'module-public-types',
+    name: '模块公开类型',
+    windows: [{ id: 'main', fileName: '主窗口.xml', className: '主窗口', title: '主窗口', description: '', width: 640, height: 480, background: '#fff', controls: [] }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    enabledModules: [publicTypeModule],
+    lingCppSources: [{ filePath: 'src/demo/主窗口.lcpp', sourceCode: source.replace('    当前用户.\n', '') }]
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /struct 模块地址[\s\S]*struct 模块用户/u);
+  assert.match(cpp, /std::vector<std::wstring> 标签\{\};/u);
+  assert.match(cpp, /模块用户 当前用户\{\};/u);
+  assert.match(cpp, /std::vector<模块用户> 用户列表\{\};/u);
+  assert.match(cpp, /当前用户\.地址\.城市 = L"杭州";/u);
+  assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
+  assert.equal(generated.sourceMap.some(entry => entry.symbolName === '模块用户'), false, '模块公开类型不能伪装成项目数据类型源码映射');
 });

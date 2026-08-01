@@ -1,5 +1,19 @@
 # LingBuilder 模块生态实现说明
 
+> 2026-08-01 补充：`lingbuilder.input.mouse@2.0.0` 由 `mouseApiCatalog.ts` 统一维护 29 条命令，固定分为“全局真实输入（前台）”（15 条）、“窗口消息输入（后台）”（6 条）和“UI Automation（后台）”（8 条）。每条 contribution/binding 描述都以范围标签和“是否占用系统鼠标”说明开头：`GetCursorPos` 查询不移动光标，`SetCursorPos`/`SendInput` 会改变真实光标或进入系统鼠标输入流；指定 HWND 的 `PostMessageW` 只投递 `WM_MOUSE*` 消息，不移动光标、不抢前台；UI Automation 通过 `IUIAutomation` 的 Name/AutomationId 查找和 Invoke/Value/Toggle/Focus Pattern 按控件语义操作，不模拟鼠标。UIA 元素以模块内受管整数句柄保存，生成的 Win32/new_emoji 工程在 `CoUninitialize` 前统一清理 COM 引用；Win32/x64 生成测试覆盖 `UIAutomation.h`、`uiautomationcore.lib`、`PostMessageW` 和三类绑定。模块不公开 `BlockInput` 或裸 COM 指针，窗口消息和 UIA 目标仍可忽略、过滤或因权限隔离失败。
+
+> 2026-08-01 补充：`lingbuilder.input.keyboard@2.0.0` 现由 `keyboardApiCatalog.ts` 统一维护 31 条命令，按全局状态、键码转换、前台 `SendInput`、指定 HWND 后台 `PostMessageW` 和 1.x 兼容入口分类。每条 contribution 均明确标注前台/后台、焦点语义和实体键盘影响。前台组合键使用批量输入并在失败时尝试释放修饰键；后台命令只投递消息，不抢焦点、不改变物理键状态且允许目标忽略。模块不公开 `BlockInput`、低级键盘钩子或隐藏按键记录。Win32/x64 原生验收使用 `npm run smoke:keyboard-native`，不会向用户桌面注入按键。
+
+> 2026-08-01 补充：`lingbuilder.threading@2.0.0` 已升级为项目级受管并发模块，由 `threadingModule.ts` 单一目录生成 54 条命令和 7 个公开类型。manifest v2 新增受校验的 `lingValue` 末尾可变参数与 `managedTask` invocation 元数据；语言服务校验任意多参数深拷贝、工作/进度/完成签名和线程安全边界，生成器输出类型化 C++17 lambda。项目运行时统一管理默认/自定义有界线程池、十万任务上限、窗口 owner、协作取消、80ms 进度合并、互斥锁、原子整数、事件和信号量；Win32 `PostMessageW` 只承担 UI dispatcher 通知。旧 9 条演示命令不兼容删除并提供阻断迁移诊断，禁止裸线程、裸句柄、强杀、挂起/恢复、DLL 注入和跨线程 `controlRef`。
+
+> 2026-08-01 补充：模块公开信息中的 `contributes.docs[]` 已接通 IDE 内文档阅读器。选中文档后通过 `/api/modules/document` 读取并渲染 Markdown，普通 UTF-8 文本以源码形式预览；读取服务只接受当前模块清单已声明的相对路径，并以真实路径校验阻止目录越界和符号链接逃逸。单份文档上限为 1 MB，原始 HTML、未声明相对链接和远程图片不会直接执行或加载；内置模块文档从受控工作区资产或打包资源根解析。`lingbuilder.threading` 已登记随包中文说明，作为内置资源文档参考实现。
+
+> 2026-08-01 补充：`lingbuilder.system.disk@1.1.0` 已从 5 条基础命令扩展为 28 条只读命令和 8 个公开记录/数组类型。模块统一覆盖精确容量、逻辑驱动器、全部卷、卷 GUID/挂载点、文件系统标志、物理磁盘描述、总线、SSD/TRIM、逻辑/物理扇区及 MBR/GPT/RAW 分区布局；原 5 条命令继续兼容。结构化命令 binding 可以引用本模块 `contributes.types[]`，生成工程内部映射为 `struct/std::vector`；带原生 DLL runtime 的 target 仍被清单门禁禁止直接传递结构化类型。Win32/x64 均通过真实 MSVC 编译运行。
+
+> 2026-08-01 补充：`lingbuilder.win32.common-controls` 已用公开命名数组承接 ListView 行数据：`列表视图行` 映射 `std::vector<std::wstring>`，`列表视图行集合` 映射嵌套 vector；`列表视图_创建行/创建行集合` 负责从标量构造值，添加、插入、批量添加和虚拟行设置直接消费结构化数组。旧 Tab/TSV 文本重载继续兼容，但新手/Monaco 与 AI 默认生成结构化写法。该能力属于生成工程内部 C++ 值语义，不允许据此跨 DLL 传递 STL；源码包必须声明 `win32.listview.structured-rows.v1` 和最低生成器 0.2.8。
+
+> 2026-08-01 补充：manifest v2 的 `contributes.types[]` 已向后兼容扩展为 `opaque`、`record`、`array` 三类。旧类型省略 `kind` 时继续按不透明类型处理；`record` 使用结构化 `fields[]` 公开 LingCpp 值语义字段，`array` 使用 `elementType` 公开命名数组。启用模块后，语言服务、Monaco/新手补全、模块公开信息、项目数据类型嵌套和普通 Win32/new_emoji C++ 生成消费同一公开类型服务；记录生成真实 `struct`，数组确定性映射为 `std::vector<T>`。结构化类型禁止填写 `cppType` 绕过契约，原生 DLL 仍不得直接跨边界传递 STL 或未固定布局的 C++ 对象，复杂原生数据必须继续使用 POD、缓冲区、任务或受管句柄适配。
+
 > 2026-07-31 最新补充：CEF3 模块管理与解决方案资源管理器改为“用户侧单入口、内部多清单”。用户侧只显示 `lingbuilder.cef3.browser`，`events/session/transfer/objects` 与核心组成标准功能集合并可原子启用；`automation/network/devtools/views/platform` 在模块详情中作为高级功能按需启停；`lingbuilder.cef3.sdk` 与内部子模块不再平级展示。详情页按基础、事件、会话、下载与传输、对象、自动化、网络、开发者工具、视图、平台十个功能域聚合全部公开能力，模块搜索和解决方案搜索仍会命中子模块名称、中文命令、官方别名、类型与设计器控件。内部 v2 manifest、依赖解析、补全、诊断、binding、原生 Bridge 与 C++ 生成继续使用原始模块 ID，不合并清单或运行时。
 
 > 2026-07-31 最新补充：`lingbuilder.fbro.vip` 已完成官方 VIP 覆盖目录 188/188，模块内 `planned=0`。188 项官方能力已逐项生成 contribution 与 binding，包括 179 条单项安全命令、6 条 Bridge 自动管理能力和 3 条凭据中心/安全入口替代能力；原 10 条聚合命令继续保留为“批量与通用高级入口”，因此模块清单共 198 条记录。普通 Win32 与 New_Emoji 会生成同一套 188 项运行时包装器，两种真实生成工程均已通过 MSVC x64 编译，New_Emoji 工程还完成了 10 秒运行烟雾测试。模块详情搜索会忽略空格、下划线与常见连接符，`DOM取文档`、`安装CRX`、`GPU厂商` 可直接定位单项命令。资源二进制只接受受管缓冲句柄，扩展/替换文件限制在生成程序目录，回调结果复制为 UTF-16 JSON。全 FBro 目录最新为 397 `implemented`、678 `planned`、3 个内部 `notApplicable` 和 1 个高级替代 `notApplicable`，所以只能宣称 VIP 子模块完成，不能宣称 FBro 全功能完成。
@@ -28,9 +42,9 @@
 
 > 2026-07-30 补充：`lingbuilder.win32.common-controls` 的 ListView 已形成普通模式与 `LVS_OWNERDATA` 虚拟模式的同源命令闭环。普通模式支持添加/插入/删除行、单元格读写、行数、批量 TSV、重绘事务和排序；虚拟模式必须由设计器 `virtualMode` 创建期属性开启，再使用 `列表视图_设置虚拟行数/设置虚拟行` 管理内存数据，并由 `LVN_GETDISPINFOW` 按需显示。`contributes.commands`、`bindings.commands`、控件成员补全和 C++ 运行时必须继续同步，禁止只增加补全或在 React 预览中模拟数据方法。
 
-> 2026-07-30 补充：ListView 公开面现为 85 条高层命令。14 条数据/虚拟命令继续保留在内置模块；新增 71 条 Win32 高级命令必须统一由 `electron/src/services/modules/listViewApiCatalog.ts` 产生 contribution 与 binding，语言服务和 C++ 生成测试按目录全量枚举，不再手工复制多份命令表。原始指针/回调型 `LVM_*` 能力必须通过原生模块提供类型安全包装，不得在 DSL binding 中暴露任意地址或通用 `SendMessage`。
+> 2026-07-30 补充（2026-08-01 扩展）：ListView 公开面现为 87 条高层命令。16 条数据/虚拟/类型化行命令保留在内置模块；71 条 Win32 高级命令必须统一由 `electron/src/services/modules/listViewApiCatalog.ts` 产生 contribution 与 binding，语言服务和 C++ 生成测试按目录全量枚举，不再手工复制多份命令表。原始指针/回调型 `LVM_*` 能力必须通过原生模块提供类型安全包装，不得在 DSL binding 中暴露任意地址或通用 `SendMessage`。
 
-> 2026-07-30 补充：LCPP 源码包清单版本 2 会按实际 `.lcpp` 调用记录生成器能力。使用 71 条 ListView 高级命令的包写入 `win32.listview.advanced-api.v1` 和最低生成器版本；导入时若当前 IDE 不具备该能力，必须在编译前给出明确升级诊断，不得继续生成 C++ 后再暴露 `C3861`。
+> 2026-07-30 补充（2026-08-01 扩展）：LCPP 源码包清单版本 2 会按实际 `.lcpp` 调用记录生成器能力。使用 71 条 ListView 高级命令的包写入 `win32.listview.advanced-api.v1`；使用类型化行构造器的包写入 `win32.listview.structured-rows.v1` 并要求最低生成器 0.2.8。导入时若当前 IDE 不具备对应能力，必须在编译前给出明确升级诊断，不得继续生成 C++ 后再暴露 `C3861`。
 
 > 2026-07-30 DataGrid 对齐补充：结构化列模型的 `alignment` 只允许 `left/center/right` 且默认 `center`；设计器、预览、`表格_设置列对齐` binding 和 Win32 C++ 运行时必须消费同一字段，不能只在 React 预览中模拟。
 
@@ -328,7 +342,7 @@ lingbuilder.module.json
 
 ## 分类内置模块库（2026-07）
 
-- 参考精易模块的程序、窗口句柄、键盘鼠标、进程线程、配置、图片、网页、文本字节、文件目录、系统、杂类和组件分类，新增 51 个内置 v2 模块、287 条中文命令。
+- 参考精易模块的程序、窗口句柄、键盘鼠标、进程线程、配置、图片、网页、文本字节、文件目录、系统、杂类和组件分类，新增 51 个内置 v2 模块、336 条中文命令。
 - 当前 `BUILTIN_MODULES` 合计 63 个模块、746 条命令；正式清单位于根目录 `MODULE_ENCAPSULATION_CHECKLIST.md`。
 - 模块定义按领域拆到 `standardLibraryModules.ts`、`systemLibraryModules.ts`、`networkLibraryModules.ts`、`dataMediaModules.ts` 和 `platformAdvancedModules.ts`，不继续扩张单个 `builtinModules.ts`。
 - 对应 C++ 实现按领域拆到 `standardLibraryRuntime.ts`、`systemLibraryRuntime.ts`、`networkLibraryRuntime.ts`、`dataMediaRuntime.ts` 和 `platformAdvancedRuntime.ts`，生成器只注入当前项目已启用模块的运行时片段。
@@ -399,13 +413,16 @@ npm run build
 v2 manifest 可在 `contributes.menus[]` 和 `contributes.submenus[]` 中向稳定 `MenuId` 贡献声明式菜单。每个菜单项必须且只能声明 `command` 或 `submenu`，可附带 `when`、`group`、`order` 和最多 32KB 的 JSON `arguments`。模块菜单只能调用 IDE 已注册的受控命令，不能执行 renderer 脚本。
 
 容器型 `contributes.designerControls[]` 可声明 `layout`，其 `mode` 为 `absolute | flow | stack | grid | dock | slots | single | custom`，并可声明坐标空间、方向、插槽、容量和子控件类型限制。旧 `isContainer: true` 控件缺少 `layout` 时临时按窗口绝对坐标兼容并输出迁移诊断；新容器必须显式声明布局，否则不得作为可跨容器粘贴的正式控件发布。
+
+内置 Win32 容器也必须登记正式布局：`lingbuilder.win32.basic/GroupBox` 使用 `absolute` + `win32.groupbox.absolute`，`lingbuilder.win32.common-controls/TabControl` 使用 `slots` + `win32.tab.slots`。这些声明与 `DesignerContainerLayoutRegistry` 的适配器 ID 必须一致，设计器不得再为它们输出“未声明 layout”的兼容警告。
 > 2026-07-28 补充：FBro SDK 查找必须从任意深度的 `.lingbuilder-build/<project>/<arch>/<mode>` 向上定位工作区，不能用固定两级父目录推导。缺少 SDK、桥接文件、清单或运行时校验失败属于 `blockingDiagnostics`，F5、原生构建和 AI Bridge 必须在编译前停止，禁止依靠 `__has_include` 编译空白占位浏览器后仍报告成功。F5 中间 VS 工程从已校验的 `bin` 增量物化运行时；`generated/cpp` 可复制工程必须携带 78 项完整 runtime、清单和脚本。生成的 C++ 必须用 `L"\\\\/"` 同时识别 Windows 反斜杠和正斜杠，否则缓存根目录会被错误拼到 exe 文件名之后并导致 CEF 子进程失败。
 
 ## DataGrid v1 实现约束（2026-07-30）
 
 - 内置模块 `lingbuilder.win32.common-controls` 注册 `DataGrid`；每个实例创建独立 `LingBuilderDataGrid` 主 HWND，即使设计器初始状态为隐藏也不省略创建。
 - 单元格采用双缓冲、可见区域绘制。选择框、Switch、图片、进度和按钮不创建逐单元格 HWND；仅编辑文本/数字、组合框、日期时创建临时 EDIT、COMBOBOX、DateTimePicker 子 HWND。
-- Switch 与进度由 DataGrid 主 HWND 使用 GDI+ 抗锯齿圆角绘制并保持设计器同系配色；组合框静态绘制中文标签和箭头，单击后展开深色自绘的真实临时 COMBOBOX，未悬停项也必须使用可读前景色，选择提交时同时发送编辑提交和组合框改变事件。
+- Switch 与进度由 DataGrid 主 HWND 使用 GDI+ 抗锯齿圆角绘制并保持设计器同系配色；进度轨道高度和圆角必须按窗口 DPI 缩放，进度文字使用完整单元格文本区域垂直居中，不能裁剪在较窄的轨道矩形内。按钮列必须用当前 GDI 字体测量文字宽度，并对内边距、间距和命中矩形做 DPI 缩放；绘制、悬停和点击必须复用同一布局结果，只有整组按钮放不下时才显示“更多”。所有按钮状态和“更多”入口统一使用随 DPI 缩放的 4 逻辑像素 GDI+ 抗锯齿圆角填充与描边，不得回退成直角 `FillRect` / `FrameRect`。组合框静态绘制中文标签和箭头，单击后展开深色自绘的真实临时 COMBOBOX，未悬停项也必须使用可读前景色，选择提交时同时发送编辑提交和组合框改变事件。
+- 冻结列在表头和数据行绘制时必须先填充对应的不透明背景，再绘制列内容和分隔线，确保横向滚动列位于冻结列后方时不可见；冻结列背景必须与当前行的条纹色及表头色一致。
 - 图片运行时路径相对 EXE 目录解析，F5/导出必须通过 `DesignerAssetService` 保持 `assets/<项目ID>/` 结构复制资源；原生测试禁止额外手工复制图片来掩盖资源物化缺失。
 - 图片列和单元格覆盖共用 `tile/contain/cover/center/stretch` 显示方式，原生路径图片与 ImageList 都必须真正执行平铺、等比缩放、铺满裁剪、原始居中或拉伸，不能只保存属性后仍统一 StretchBlt。
 
@@ -434,3 +451,11 @@ v2 manifest 可在 `contributes.menus[]` 和 `contributes.submenus[]` 中向稳�
 - DataGrid 当前共有 92 条目录命令；进度状态和行选择状态均有成对读写接口。`.xlsx` 导入/导出通过标准 SpreadsheetML 与 Windows ZIP Shell 实现，不启动或依赖 Excel；只处理首个工作表、仅允许静态模式，并把图片单元格作为路径文本往返。
 - Win32 支持本地排序筛选及虚拟缓存；虚拟模式只更新状态并异步触发 `VirtualDataRequested`，不得在绘制回调中调用数据提供者。
 - 旧 new_emoji Table 不自动转成 Win32 DataGrid；迁移服务只添加统一结构化编辑字段，保留原模块类型、后端和生成适配器。new_emoji 不声明支持 Win32 `表格_` 命令。
+
+## 受控构建生成与 Protobuf（2026-08-01）
+
+- `electron/src/services/build/` 提供统一构建图、`BuildStepProvider` 注册表和 Pipeline。步骤固定包含 ID、Provider/版本、阶段、依赖、输入、输出和结构化选项；执行统一做拓扑排序、循环/路径越界诊断、取消、进度、结构化日志、原子输出回滚和增量指纹。
+- v2 模块只允许声明 `build.codeGenerators[]`，不能声明 `buildSteps`、Shell、PowerShell、任意可执行文件或注入 JavaScript。Provider 必须由 IDE 内置注册，未知 Provider、版本不匹配、重复 ID、路径越界、输出覆盖源码和不支持的 target 必须在规划阶段阻断。通用公开 `buildSteps` 延后到第二套独立生成器通过同一安全验收后再发布。
+- `bytes` 是 LingCpp 的正式字节集类型，模块 ABI 使用调用方拥有的 `const unsigned char* + size_t` 输入和“查询长度后写入调用方缓冲区”输出；DLL 边界不得传递或释放 STL。真实字节序列从旧 `raw` 迁移，opaque 原生值仍可保留 `raw`。
+- 内置 `lingbuilder.data.protobuf` 使用固定 `lingbuilder.protobuf.protoc` Provider。`.proto`、import、`.pb.h`、`.pb.cc`、descriptor set、运行时和工具随 F5、AI Bridge、CLI 与 Visual Studio 导出进入同一 Pipeline。SDK 必须离线放置于 `.lingbuilder/toolchains/protobuf`，固定版本为 27.3.0，并由 `runtime-manifest.json` 对所有文件执行大小/SHA-256 校验；缺失、篡改、版本或架构不符直接阻断，禁止联网下载或回退系统 `protoc`。
+- Protobuf Provider 会解析本地 `import` 依赖并把依赖文件纳入增量指纹；构建步骤在临时 staging 目录中执行，声明产物成功后才原子提交到构建/导出目录，失败或取消会清理 staging 并恢复旧产物。

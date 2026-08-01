@@ -1,21 +1,22 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.926Z",
+  "generatedAt": "2026-08-01T15:40:08.470Z",
   "module": {
     "id": "lingbuilder.input.mouse",
     "name": "鼠标输入模块",
-    "version": "1.0.0",
-    "description": "读取鼠标位置并通过 SendInput 执行受控移动和单击。"
+    "version": "2.0.0",
+    "description": "按三类封装鼠标输入：全局真实输入（前台）、指定 HWND 的窗口消息输入（后台）和 UI Automation 语义操作（后台）。"
   },
-  "commandCount": 6,
+  "commandCount": 29,
   "commands": [
     {
       "index": 1,
       "name": "鼠标_取横坐标",
       "signature": "鼠标_取横坐标()",
-      "description": "返回鼠标当前屏幕横坐标。",
+      "description": "[前台全局｜不占用系统鼠标] 读取真实系统光标当前屏幕横坐标；只读，不移动光标。",
       "insertText": "鼠标_取横坐标()",
       "returnType": "整数型",
+      "category": "全局真实输入（前台）",
       "binding": {
         "command": "鼠标_取横坐标",
         "runtimeName": "鼠标_取横坐标",
@@ -28,9 +29,10 @@
       "index": 2,
       "name": "鼠标_取纵坐标",
       "signature": "鼠标_取纵坐标()",
-      "description": "返回鼠标当前屏幕纵坐标。",
+      "description": "[前台全局｜不占用系统鼠标] 读取真实系统光标当前屏幕纵坐标；只读，不移动光标。",
       "insertText": "鼠标_取纵坐标()",
       "returnType": "整数型",
+      "category": "全局真实输入（前台）",
       "binding": {
         "command": "鼠标_取纵坐标",
         "runtimeName": "鼠标_取纵坐标",
@@ -43,48 +45,146 @@
       "index": 3,
       "name": "鼠标_移动",
       "signature": "鼠标_移动(横坐标, 纵坐标)",
-      "description": "把鼠标移动到指定屏幕坐标。",
+      "description": "[前台全局｜占用系统鼠标] 调用 SetCursorPos 移动真实系统光标；会改变用户当前光标位置。",
       "insertText": "鼠标_移动(0, 0)",
       "returnType": "逻辑型",
+      "category": "全局真实输入（前台）",
       "binding": {
         "command": "鼠标_移动",
         "runtimeName": "鼠标_移动",
         "parameters": [
           {
             "name": "横坐标",
-            "type": "int"
+            "type": "int",
+            "description": "目标屏幕横坐标。"
           },
           {
             "name": "纵坐标",
-            "type": "int"
+            "type": "int",
+            "description": "目标屏幕纵坐标。"
           }
         ],
-        "returnType": "bool"
+        "returnType": "bool",
+        "example": "鼠标_移动(100, 100)"
       },
       "demoInvocation": "鼠标_移动(1, 1)"
     },
     {
       "index": 4,
+      "name": "鼠标_相对移动",
+      "signature": "鼠标_相对移动(横向增量, 纵向增量)",
+      "description": "[前台全局｜占用系统鼠标] 通过 SendInput 发送相对鼠标输入；会改变用户当前光标位置，实际位移受 Windows 鼠标速度和加速度设置影响。",
+      "insertText": "鼠标_相对移动(0, 0)",
+      "returnType": "逻辑型",
+      "category": "全局真实输入（前台）",
+      "binding": {
+        "command": "鼠标_相对移动",
+        "runtimeName": "鼠标_相对移动",
+        "parameters": [
+          {
+            "name": "横向增量",
+            "type": "int",
+            "description": "相对输入的横向增量；实际位移受 Windows 鼠标速度和加速度设置影响。"
+          },
+          {
+            "name": "纵向增量",
+            "type": "int",
+            "description": "相对输入的纵向增量；实际位移受 Windows 鼠标速度和加速度设置影响。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_相对移动(1, 1)"
+    },
+    {
+      "index": 5,
+      "name": "鼠标_左键按下",
+      "signature": "鼠标_左键按下()",
+      "description": "[前台全局｜占用系统鼠标] 向当前系统输入流注入左键按下；会占用真实鼠标输入，必须与放开成对使用。",
+      "insertText": "鼠标_左键按下()",
+      "returnType": "逻辑型",
+      "category": "全局真实输入（前台）",
+      "binding": {
+        "command": "鼠标_左键按下",
+        "runtimeName": "鼠标_左键按下",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_左键按下()"
+    },
+    {
+      "index": 6,
+      "name": "鼠标_左键放开",
+      "signature": "鼠标_左键放开()",
+      "description": "[前台全局｜占用系统鼠标] 向当前系统输入流注入左键放开；会占用真实鼠标输入。",
+      "insertText": "鼠标_左键放开()",
+      "returnType": "逻辑型",
+      "category": "全局真实输入（前台）",
+      "binding": {
+        "command": "鼠标_左键放开",
+        "runtimeName": "鼠标_左键放开",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_左键放开()"
+    },
+    {
+      "index": 7,
       "name": "鼠标_左键单击",
       "signature": "鼠标_左键单击()",
-      "description": "模拟鼠标左键按下并释放。",
+      "description": "[前台全局｜占用系统鼠标] 向当前前台窗口注入左键按下和放开；不主动切换前台，但会占用真实鼠标输入流。",
       "insertText": "鼠标_左键单击()",
       "returnType": "逻辑型",
+      "category": "全局真实输入（前台）",
       "binding": {
         "command": "鼠标_左键单击",
         "runtimeName": "鼠标_左键单击",
         "parameters": [],
-        "returnType": "bool"
+        "returnType": "bool",
+        "example": "鼠标_左键单击()"
       },
       "demoInvocation": "鼠标_左键单击()"
     },
     {
-      "index": 5,
+      "index": 8,
+      "name": "鼠标_右键按下",
+      "signature": "鼠标_右键按下()",
+      "description": "[前台全局｜占用系统鼠标] 向当前系统输入流注入右键按下；会占用真实鼠标输入，必须与放开成对使用。",
+      "insertText": "鼠标_右键按下()",
+      "returnType": "逻辑型",
+      "category": "全局真实输入（前台）",
+      "binding": {
+        "command": "鼠标_右键按下",
+        "runtimeName": "鼠标_右键按下",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_右键按下()"
+    },
+    {
+      "index": 9,
+      "name": "鼠标_右键放开",
+      "signature": "鼠标_右键放开()",
+      "description": "[前台全局｜占用系统鼠标] 向当前系统输入流注入右键放开；会占用真实鼠标输入。",
+      "insertText": "鼠标_右键放开()",
+      "returnType": "逻辑型",
+      "category": "全局真实输入（前台）",
+      "binding": {
+        "command": "鼠标_右键放开",
+        "runtimeName": "鼠标_右键放开",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_右键放开()"
+    },
+    {
+      "index": 10,
       "name": "鼠标_右键单击",
       "signature": "鼠标_右键单击()",
-      "description": "模拟鼠标右键按下并释放。",
+      "description": "[前台全局｜占用系统鼠标] 向当前前台窗口注入右键按下和放开；不主动切换前台，但会占用真实鼠标输入流。",
       "insertText": "鼠标_右键单击()",
       "returnType": "逻辑型",
+      "category": "全局真实输入（前台）",
       "binding": {
         "command": "鼠标_右键单击",
         "runtimeName": "鼠标_右键单击",
@@ -94,24 +194,501 @@
       "demoInvocation": "鼠标_右键单击()"
     },
     {
-      "index": 6,
+      "index": 11,
+      "name": "鼠标_中键按下",
+      "signature": "鼠标_中键按下()",
+      "description": "[前台全局｜占用系统鼠标] 向当前系统输入流注入中键按下；会占用真实鼠标输入，必须与放开成对使用。",
+      "insertText": "鼠标_中键按下()",
+      "returnType": "逻辑型",
+      "category": "全局真实输入（前台）",
+      "binding": {
+        "command": "鼠标_中键按下",
+        "runtimeName": "鼠标_中键按下",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_中键按下()"
+    },
+    {
+      "index": 12,
+      "name": "鼠标_中键放开",
+      "signature": "鼠标_中键放开()",
+      "description": "[前台全局｜占用系统鼠标] 向当前系统输入流注入中键放开；会占用真实鼠标输入。",
+      "insertText": "鼠标_中键放开()",
+      "returnType": "逻辑型",
+      "category": "全局真实输入（前台）",
+      "binding": {
+        "command": "鼠标_中键放开",
+        "runtimeName": "鼠标_中键放开",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_中键放开()"
+    },
+    {
+      "index": 13,
+      "name": "鼠标_中键单击",
+      "signature": "鼠标_中键单击()",
+      "description": "[前台全局｜占用系统鼠标] 向当前前台窗口注入中键按下和放开；不主动切换前台，但会占用真实鼠标输入流。",
+      "insertText": "鼠标_中键单击()",
+      "returnType": "逻辑型",
+      "category": "全局真实输入（前台）",
+      "binding": {
+        "command": "鼠标_中键单击",
+        "runtimeName": "鼠标_中键单击",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_中键单击()"
+    },
+    {
+      "index": 14,
       "name": "鼠标_滚轮",
       "signature": "鼠标_滚轮(滚动量)",
-      "description": "模拟垂直滚轮，常用单位为 120。",
+      "description": "[前台全局｜占用系统鼠标] 向当前前台窗口注入垂直滚轮；通常不移动光标，但会占用真实鼠标输入流。",
       "insertText": "鼠标_滚轮(0)",
       "returnType": "逻辑型",
+      "category": "全局真实输入（前台）",
       "binding": {
         "command": "鼠标_滚轮",
         "runtimeName": "鼠标_滚轮",
         "parameters": [
           {
             "name": "滚动量",
-            "type": "int"
+            "type": "int",
+            "description": "垂直滚轮量，常用值为 120 或 -120。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "鼠标_滚轮(120)"
+      },
+      "demoInvocation": "鼠标_滚轮(1)"
+    },
+    {
+      "index": 15,
+      "name": "鼠标_水平滚轮",
+      "signature": "鼠标_水平滚轮(滚动量)",
+      "description": "[前台全局｜占用系统鼠标] 向当前前台窗口注入水平滚轮；通常不移动光标，但会占用真实鼠标输入流。",
+      "insertText": "鼠标_水平滚轮(0)",
+      "returnType": "逻辑型",
+      "category": "全局真实输入（前台）",
+      "binding": {
+        "command": "鼠标_水平滚轮",
+        "runtimeName": "鼠标_水平滚轮",
+        "parameters": [
+          {
+            "name": "滚动量",
+            "type": "int",
+            "description": "水平滚轮量，常用值为 120 或 -120。"
           }
         ],
         "returnType": "bool"
       },
-      "demoInvocation": "鼠标_滚轮(1)"
+      "demoInvocation": "鼠标_水平滚轮(1)"
+    },
+    {
+      "index": 16,
+      "name": "鼠标_窗口消息移动",
+      "signature": "鼠标_窗口消息移动(窗口句柄, 客户区横坐标, 客户区纵坐标)",
+      "description": "[后台窗口消息｜不占用系统鼠标] 向指定 HWND 投递 WM_MOUSEMOVE；坐标为客户区坐标，不移动真实光标，目标程序可能忽略消息。",
+      "insertText": "鼠标_窗口消息移动(0, 0, 0)",
+      "returnType": "逻辑型",
+      "category": "窗口消息输入（后台）",
+      "binding": {
+        "command": "鼠标_窗口消息移动",
+        "runtimeName": "鼠标_窗口消息移动",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "目标窗口的 HWND；不是 UI Automation 元素句柄。"
+          },
+          {
+            "name": "客户区横坐标",
+            "type": "int",
+            "description": "目标窗口客户区横坐标，单位为像素。"
+          },
+          {
+            "name": "客户区纵坐标",
+            "type": "int",
+            "description": "目标窗口客户区纵坐标，单位为像素。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "鼠标_窗口消息移动(目标窗口, 20, 20)"
+      },
+      "demoInvocation": "鼠标_窗口消息移动(0, 1, 1)"
+    },
+    {
+      "index": 17,
+      "name": "鼠标_窗口消息左键单击",
+      "signature": "鼠标_窗口消息左键单击(窗口句柄, 客户区横坐标, 客户区纵坐标)",
+      "description": "[后台窗口消息｜不占用系统鼠标] 向指定 HWND 投递 WM_LBUTTONDOWN/UP；坐标为客户区坐标，不移动真实光标、不抢前台。",
+      "insertText": "鼠标_窗口消息左键单击(0, 0, 0)",
+      "returnType": "逻辑型",
+      "category": "窗口消息输入（后台）",
+      "binding": {
+        "command": "鼠标_窗口消息左键单击",
+        "runtimeName": "鼠标_窗口消息左键单击",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "目标窗口的 HWND；不是 UI Automation 元素句柄。"
+          },
+          {
+            "name": "客户区横坐标",
+            "type": "int",
+            "description": "目标窗口客户区横坐标，单位为像素。"
+          },
+          {
+            "name": "客户区纵坐标",
+            "type": "int",
+            "description": "目标窗口客户区纵坐标，单位为像素。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_窗口消息左键单击(0, 1, 1)"
+    },
+    {
+      "index": 18,
+      "name": "鼠标_窗口消息右键单击",
+      "signature": "鼠标_窗口消息右键单击(窗口句柄, 客户区横坐标, 客户区纵坐标)",
+      "description": "[后台窗口消息｜不占用系统鼠标] 向指定 HWND 投递 WM_RBUTTONDOWN/UP；坐标为客户区坐标，不移动真实光标、不抢前台。",
+      "insertText": "鼠标_窗口消息右键单击(0, 0, 0)",
+      "returnType": "逻辑型",
+      "category": "窗口消息输入（后台）",
+      "binding": {
+        "command": "鼠标_窗口消息右键单击",
+        "runtimeName": "鼠标_窗口消息右键单击",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "目标窗口的 HWND；不是 UI Automation 元素句柄。"
+          },
+          {
+            "name": "客户区横坐标",
+            "type": "int",
+            "description": "目标窗口客户区横坐标，单位为像素。"
+          },
+          {
+            "name": "客户区纵坐标",
+            "type": "int",
+            "description": "目标窗口客户区纵坐标，单位为像素。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_窗口消息右键单击(0, 1, 1)"
+    },
+    {
+      "index": 19,
+      "name": "鼠标_窗口消息中键单击",
+      "signature": "鼠标_窗口消息中键单击(窗口句柄, 客户区横坐标, 客户区纵坐标)",
+      "description": "[后台窗口消息｜不占用系统鼠标] 向指定 HWND 投递 WM_MBUTTONDOWN/UP；坐标为客户区坐标，不移动真实光标、不抢前台。",
+      "insertText": "鼠标_窗口消息中键单击(0, 0, 0)",
+      "returnType": "逻辑型",
+      "category": "窗口消息输入（后台）",
+      "binding": {
+        "command": "鼠标_窗口消息中键单击",
+        "runtimeName": "鼠标_窗口消息中键单击",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "目标窗口的 HWND；不是 UI Automation 元素句柄。"
+          },
+          {
+            "name": "客户区横坐标",
+            "type": "int",
+            "description": "目标窗口客户区横坐标，单位为像素。"
+          },
+          {
+            "name": "客户区纵坐标",
+            "type": "int",
+            "description": "目标窗口客户区纵坐标，单位为像素。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_窗口消息中键单击(0, 1, 1)"
+    },
+    {
+      "index": 20,
+      "name": "鼠标_窗口消息滚轮",
+      "signature": "鼠标_窗口消息滚轮(窗口句柄, 滚动量, 屏幕横坐标, 屏幕纵坐标)",
+      "description": "[后台窗口消息｜不占用系统鼠标] 向指定 HWND 投递 WM_MOUSEWHEEL；滚轮消息坐标为屏幕坐标，不移动真实光标。",
+      "insertText": "鼠标_窗口消息滚轮(0, 0, 0, 0)",
+      "returnType": "逻辑型",
+      "category": "窗口消息输入（后台）",
+      "binding": {
+        "command": "鼠标_窗口消息滚轮",
+        "runtimeName": "鼠标_窗口消息滚轮",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "目标窗口的 HWND；不是 UI Automation 元素句柄。"
+          },
+          {
+            "name": "滚动量",
+            "type": "int",
+            "description": "垂直滚轮量，常用值为 120 或 -120。"
+          },
+          {
+            "name": "屏幕横坐标",
+            "type": "int",
+            "description": "屏幕横坐标，单位为像素；滚轮消息使用此坐标。"
+          },
+          {
+            "name": "屏幕纵坐标",
+            "type": "int",
+            "description": "屏幕纵坐标，单位为像素；滚轮消息使用此坐标。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_窗口消息滚轮(0, 1, 1, 1)"
+    },
+    {
+      "index": 21,
+      "name": "鼠标_窗口消息水平滚轮",
+      "signature": "鼠标_窗口消息水平滚轮(窗口句柄, 滚动量, 屏幕横坐标, 屏幕纵坐标)",
+      "description": "[后台窗口消息｜不占用系统鼠标] 向指定 HWND 投递 WM_MOUSEHWHEEL；滚轮消息坐标为屏幕坐标，不移动真实光标。",
+      "insertText": "鼠标_窗口消息水平滚轮(0, 0, 0, 0)",
+      "returnType": "逻辑型",
+      "category": "窗口消息输入（后台）",
+      "binding": {
+        "command": "鼠标_窗口消息水平滚轮",
+        "runtimeName": "鼠标_窗口消息水平滚轮",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "目标窗口的 HWND；不是 UI Automation 元素句柄。"
+          },
+          {
+            "name": "滚动量",
+            "type": "int",
+            "description": "水平滚轮量，常用值为 120 或 -120。"
+          },
+          {
+            "name": "屏幕横坐标",
+            "type": "int",
+            "description": "屏幕横坐标，单位为像素；滚轮消息使用此坐标。"
+          },
+          {
+            "name": "屏幕纵坐标",
+            "type": "int",
+            "description": "屏幕纵坐标，单位为像素；滚轮消息使用此坐标。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_窗口消息水平滚轮(0, 1, 1, 1)"
+    },
+    {
+      "index": 22,
+      "name": "鼠标_UIA_按名称查找",
+      "signature": "鼠标_UIA_按名称查找(窗口句柄, 名称)",
+      "description": "[后台 UI Automation｜不占用系统鼠标] 在指定 HWND 的 UI Automation 子树中按 Name 查找元素，返回受管元素句柄；不移动真实光标。",
+      "insertText": "鼠标_UIA_按名称查找(0, \"$2\")",
+      "returnType": "长整数型",
+      "category": "UI Automation（后台）",
+      "binding": {
+        "command": "鼠标_UIA_按名称查找",
+        "runtimeName": "鼠标_UIA_按名称查找",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "目标窗口的 HWND；不是 UI Automation 元素句柄。"
+          },
+          {
+            "name": "名称",
+            "type": "wideString",
+            "description": "UI Automation 当前名称（Name）属性。"
+          }
+        ],
+        "returnType": "handle",
+        "encoding": "wide",
+        "example": "鼠标_UIA_按名称查找(目标窗口, \"确定\")"
+      },
+      "demoInvocation": "鼠标_UIA_按名称查找(0, \"演示参数2\")"
+    },
+    {
+      "index": 23,
+      "name": "鼠标_UIA_按自动化ID查找",
+      "signature": "鼠标_UIA_按自动化ID查找(窗口句柄, 自动化ID)",
+      "description": "[后台 UI Automation｜不占用系统鼠标] 在指定 HWND 的 UI Automation 子树中按 AutomationId 查找元素，返回受管元素句柄；不移动真实光标。",
+      "insertText": "鼠标_UIA_按自动化ID查找(0, \"$2\")",
+      "returnType": "长整数型",
+      "category": "UI Automation（后台）",
+      "binding": {
+        "command": "鼠标_UIA_按自动化ID查找",
+        "runtimeName": "鼠标_UIA_按自动化ID查找",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "目标窗口的 HWND；不是 UI Automation 元素句柄。"
+          },
+          {
+            "name": "自动化ID",
+            "type": "wideString",
+            "description": "UI Automation AutomationId 属性。"
+          }
+        ],
+        "returnType": "handle",
+        "encoding": "wide"
+      },
+      "demoInvocation": "鼠标_UIA_按自动化ID查找(0, \"演示参数2\")"
+    },
+    {
+      "index": 24,
+      "name": "鼠标_UIA_调用",
+      "signature": "鼠标_UIA_调用(元素句柄)",
+      "description": "[后台 UI Automation｜不占用系统鼠标] 调用元素的 InvokePattern；按控件语义执行，不模拟鼠标、不移动光标。",
+      "insertText": "鼠标_UIA_调用(0)",
+      "returnType": "逻辑型",
+      "category": "UI Automation（后台）",
+      "binding": {
+        "command": "鼠标_UIA_调用",
+        "runtimeName": "鼠标_UIA_调用",
+        "parameters": [
+          {
+            "name": "元素句柄",
+            "type": "handle",
+            "description": "本模块返回的 UI Automation 受管整数句柄；不是 HWND 或裸 COM 指针。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_UIA_调用(0)"
+    },
+    {
+      "index": 25,
+      "name": "鼠标_UIA_设置文本",
+      "signature": "鼠标_UIA_设置文本(元素句柄, 文本)",
+      "description": "[后台 UI Automation｜不占用系统鼠标] 通过 ValuePattern 设置元素文本；按控件语义执行，不模拟鼠标。",
+      "insertText": "鼠标_UIA_设置文本(0, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "UI Automation（后台）",
+      "binding": {
+        "command": "鼠标_UIA_设置文本",
+        "runtimeName": "鼠标_UIA_设置文本",
+        "parameters": [
+          {
+            "name": "元素句柄",
+            "type": "handle",
+            "description": "本模块返回的 UI Automation 受管整数句柄；不是 HWND 或裸 COM 指针。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要写入 ValuePattern 的 Unicode 文本。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "鼠标_UIA_设置文本(0, \"演示参数2\")"
+    },
+    {
+      "index": 26,
+      "name": "鼠标_UIA_取文本",
+      "signature": "鼠标_UIA_取文本(元素句柄)",
+      "description": "[后台 UI Automation｜不占用系统鼠标] 读取元素的 ValuePattern 文本，缺少 ValuePattern 时回退到 Name；不模拟鼠标。",
+      "insertText": "鼠标_UIA_取文本(0)",
+      "returnType": "文本型",
+      "category": "UI Automation（后台）",
+      "binding": {
+        "command": "鼠标_UIA_取文本",
+        "runtimeName": "鼠标_UIA_取文本",
+        "parameters": [
+          {
+            "name": "元素句柄",
+            "type": "handle",
+            "description": "本模块返回的 UI Automation 受管整数句柄；不是 HWND 或裸 COM 指针。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "鼠标_UIA_取文本(0)"
+    },
+    {
+      "index": 27,
+      "name": "鼠标_UIA_设置勾选",
+      "signature": "鼠标_UIA_设置勾选(元素句柄, 是否勾选)",
+      "description": "[后台 UI Automation｜不占用系统鼠标] 通过 TogglePattern 调整元素勾选状态；不模拟鼠标、不改变真实光标。",
+      "insertText": "鼠标_UIA_设置勾选(0, 假)",
+      "returnType": "逻辑型",
+      "category": "UI Automation（后台）",
+      "binding": {
+        "command": "鼠标_UIA_设置勾选",
+        "runtimeName": "鼠标_UIA_设置勾选",
+        "parameters": [
+          {
+            "name": "元素句柄",
+            "type": "handle",
+            "description": "本模块返回的 UI Automation 受管整数句柄；不是 HWND 或裸 COM 指针。"
+          },
+          {
+            "name": "是否勾选",
+            "type": "bool",
+            "description": "目标 ToggleState；真为选中，假为未选中。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_UIA_设置勾选(0, 真)"
+    },
+    {
+      "index": 28,
+      "name": "鼠标_UIA_设置焦点",
+      "signature": "鼠标_UIA_设置焦点(元素句柄)",
+      "description": "[后台 UI Automation｜不占用系统鼠标] 调用 UI Automation SetFocus；不移动真实光标，但可能改变键盘焦点。",
+      "insertText": "鼠标_UIA_设置焦点(0)",
+      "returnType": "逻辑型",
+      "category": "UI Automation（后台）",
+      "binding": {
+        "command": "鼠标_UIA_设置焦点",
+        "runtimeName": "鼠标_UIA_设置焦点",
+        "parameters": [
+          {
+            "name": "元素句柄",
+            "type": "handle",
+            "description": "本模块返回的 UI Automation 受管整数句柄；不是 HWND 或裸 COM 指针。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_UIA_设置焦点(0)"
+    },
+    {
+      "index": 29,
+      "name": "鼠标_UIA_释放",
+      "signature": "鼠标_UIA_释放(元素句柄)",
+      "description": "[后台 UI Automation｜不占用系统鼠标] 释放本模块持有的 UI Automation 元素句柄；不操作真实鼠标。",
+      "insertText": "鼠标_UIA_释放(0)",
+      "returnType": "逻辑型",
+      "category": "UI Automation（后台）",
+      "binding": {
+        "command": "鼠标_UIA_释放",
+        "runtimeName": "鼠标_UIA_释放",
+        "parameters": [
+          {
+            "name": "元素句柄",
+            "type": "handle",
+            "description": "本模块返回的 UI Automation 受管整数句柄；不是 HWND 或裸 COM 指针。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "鼠标_UIA_释放(0)"
     }
   ]
 }

@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import type { ModuleFamilyDefinition, ModuleFamilyFeatureDefinition } from '../services/modules/moduleFamilies';
 import { normalizeModulePublicInfoSearchText } from '../services/modules/modulePublicInfoSearch';
+import { formatModulePublicType, formatModulePublicTypeSource, getModulePublicTypeKind } from '../services/modules/modulePublicTypeService';
 import type { InstalledModule, ModuleTargetContribution } from '../services/modules/types';
 
 type PublicGroupId = 'types' | 'commands' | 'controls' | 'snippets' | 'dependencies' | 'docs';
@@ -52,6 +53,7 @@ interface ModulePublicInfoDialogProps {
 
 const TREE_ITEM_LIMIT = 200;
 const OVERVIEW_ROW_LIMIT = 400;
+const ModuleDocumentPreview = React.lazy(() => import('./ModuleDocumentPreview'));
 
 export default function ModulePublicInfoDialog({
   module,
@@ -308,7 +310,21 @@ export default function ModulePublicInfoDialog({
 
           <main className="min-w-0 flex-1 overflow-y-auto p-4">
             {selectedItem ? (
-              <PublicInfoDetail item={selectedItem} isDarkMode={isDarkMode} />
+              <PublicInfoDetail
+                item={selectedItem}
+                documentItems={allItems.filter(item => item.groupId === 'docs')}
+                isDarkMode={isDarkMode}
+                onOpenDocument={(moduleId, documentPath) => {
+                  const target = allItems.find(item => (
+                    item.groupId === 'docs'
+                    && item.sourceModuleId === moduleId
+                    && item.declaration === documentPath
+                  ));
+                  if (!target) return;
+                  setSelectedItemId(target.id);
+                  if (isFamilyView) setSelectedFeatureId(moduleId);
+                }}
+              />
             ) : (
               <div className="space-y-4">
                 {isFamilyView && (
@@ -551,7 +567,7 @@ function ModuleFamilyFeaturePanel({
                   }`}
                   aria-pressed={enabled}
                 >
-                  {enabled ? '禁用高级功能' : '启用高级功能'}
+                  {enabled ? `禁用${feature.label}` : `启用${feature.label}`}
                 </button>
               ) : (
                 <div className={`mt-2 flex min-h-9 items-center justify-center rounded border px-2 text-[11px] ${enabled ? 'border-emerald-500/30 text-emerald-300' : `${borderClass} ${subtleClass}`}`}>
@@ -695,7 +711,41 @@ function ModulePublicOverview({
   );
 }
 
-function PublicInfoDetail({ item, isDarkMode }: { item: PublicInfoItem; isDarkMode: boolean }) {
+function PublicInfoDetail({
+  item,
+  documentItems,
+  isDarkMode,
+  onOpenDocument
+}: {
+  item: PublicInfoItem;
+  documentItems: PublicInfoItem[];
+  isDarkMode: boolean;
+  onOpenDocument: (moduleId: string, documentPath: string) => void;
+}) {
+  if (item.groupId === 'docs') {
+    return (
+      <React.Suspense fallback={(
+        <div className={`flex min-h-56 items-center justify-center rounded border text-sm ${isDarkMode ? 'border-white/10 text-slate-400' : 'border-slate-200 text-slate-500'}`} role="status">
+          正在加载文档阅读器...
+        </div>
+      )}>
+        <ModuleDocumentPreview
+          moduleId={item.sourceModuleId}
+          title={item.name}
+          documentPath={item.declaration}
+          declaredDocuments={documentItems
+            .filter(candidate => candidate.sourceModuleId === item.sourceModuleId)
+            .map(candidate => ({ title: candidate.name, path: candidate.declaration }))}
+          isDarkMode={isDarkMode}
+          onOpenDocument={documentPath => onOpenDocument(item.sourceModuleId, documentPath)}
+        />
+      </React.Suspense>
+    );
+  }
+  return <PublicInfoDeclarationDetail item={item} isDarkMode={isDarkMode} />;
+}
+
+function PublicInfoDeclarationDetail({ item, isDarkMode }: { item: PublicInfoItem; isDarkMode: boolean }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     await navigator.clipboard.writeText(item.copyText || item.declaration);
@@ -797,16 +847,28 @@ function collectPublicInfoItems(module: InstalledModule): PublicInfoItem[] {
   const items: PublicInfoItem[] = [];
 
   for (const type of contributes.types || []) {
+    const typeKind = getModulePublicTypeKind(type);
+    const typeFields = typeKind === 'record'
+      ? (type.fields || []).map(field => ({
+        label: `字段 · ${field.name}`,
+        value: `${field.type}${field.isArray ? '[]' : ''}${field.initialValue?.trim() ? ` = ${field.initialValue.trim()}` : ''}${field.description ? ` · ${field.description}` : ''}`
+      }))
+      : typeKind === 'array' && type.elementType
+        ? [{ label: '元素类型', value: type.elementType }]
+        : type.cppType ? [{ label: 'C++ 类型', value: type.cppType }] : [];
     items.push(createItem({
       id: `${manifest.id}:type:${type.name}`,
       sourceModuleId: manifest.id,
       groupId: 'types',
       kind: '类型/类',
       name: type.name,
-      declaration: type.cppType || '类型贡献',
+      declaration: formatModulePublicType(type),
       description: type.description,
-      copyText: type.name,
-      fields: type.cppType ? [{ label: 'C++ 类型', value: type.cppType }] : undefined
+      copyText: formatModulePublicTypeSource(type),
+      fields: [
+        { label: '类型种类', value: typeKind === 'record' ? '公开记录' : typeKind === 'array' ? '公开数组' : '不透明类型' },
+        ...typeFields
+      ]
     }));
   }
   for (const command of contributes.commands || []) {

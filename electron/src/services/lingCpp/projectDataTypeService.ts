@@ -1,6 +1,7 @@
 import { LingCppModuleContext } from '../modules/types';
 import { areLingCppTypesCompatible, inferLingCppExpressionType } from './expressionTypeService';
 import { LING_CPP_TYPES, normalizeIdentifier, parseLingCpp } from './parser';
+import { getModulePublicTypeKind } from '../modules/modulePublicTypeService';
 import {
   LingCppDataField,
   LingCppDataType,
@@ -129,6 +130,10 @@ export function getProjectDataTypeDiagnostics(
   const moduleTypes = (moduleContext?.enabledModules || [])
     .flatMap(module => module.manifest.contributes?.types || [])
     .map(type => type.name);
+  const moduleStructuredTypes = new Set((moduleContext?.enabledModules || [])
+    .flatMap(module => module.manifest.contributes?.types || [])
+    .filter(type => getModulePublicTypeKind(type) !== 'opaque')
+    .map(type => normalizeIdentifier(type.name)));
   const reserved = new Map<string, string>([
     ...LING_CPP_TYPES.map(name => [normalizeIdentifier(name), `内置类型 ${name}`] as const),
     ...moduleTypes.map(name => [normalizeIdentifier(name), `模块类型 ${name}`] as const),
@@ -147,10 +152,11 @@ export function getProjectDataTypeDiagnostics(
     dataType.fields.forEach(field => {
       const fieldTypeKey = normalizeIdentifier(field.type);
       const isCustom = typeMap.has(fieldTypeKey);
-      if (!safeTypes.has(fieldTypeKey) && !isCustom) {
+      const isModuleStructured = moduleStructuredTypes.has(fieldTypeKey);
+      if (!safeTypes.has(fieldTypeKey) && !isCustom && !isModuleStructured) {
         diagnostics.push(diagnostic('error', field.line, field.type, `字段 ${dataType.name}.${field.name} 使用了不允许的类型 ${field.type}。`, `请选择 ${SAFE_DATA_FIELD_TYPES.join('、')} 或其他项目自定义数据类型。`));
       }
-      if ((field.isArray || field.type === '字节集' || isCustom) && field.initialValue?.trim()) {
+      if ((field.isArray || field.type === '字节集' || isCustom || isModuleStructured) && field.initialValue?.trim()) {
         diagnostics.push(diagnostic('error', field.line, field.initialValue, `字段 ${dataType.name}.${field.name} 只能使用默认空初始化。`, '请清空数组、字节集或嵌套对象字段的默认值。'));
       } else if (field.initialValue?.trim()) {
         const inferred = inferLingCppExpressionType(field.initialValue, new Map(), moduleContext);

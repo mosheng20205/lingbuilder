@@ -1,28 +1,671 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.922Z",
+  "generatedAt": "2026-08-01T15:03:10.786Z",
   "module": {
     "id": "lingbuilder.input.keyboard",
     "name": "键盘输入模块",
-    "version": "1.0.0",
-    "description": "读取键盘状态并通过 SendInput 执行受控按键操作。"
+    "version": "2.0.0",
+    "description": "分类提供全局状态、前台 SendInput 注入、指定 HWND 后台消息和键码转换能力。"
   },
-  "commandCount": 5,
+  "commandCount": 31,
   "commands": [
     {
       "index": 1,
+      "name": "键盘_全局_键是否按下",
+      "signature": "键盘_全局_键是否按下(虚拟键码)",
+      "description": "[全局状态｜前后台均可调用｜不占用键盘] 读取当前桌面的异步键状态；不发送按键。",
+      "insertText": "键盘_全局_键是否按下(0)",
+      "returnType": "逻辑型",
+      "category": "全局状态",
+      "binding": {
+        "command": "键盘_全局_键是否按下",
+        "runtimeName": "键盘_全局_键是否按下",
+        "parameters": [
+          {
+            "name": "虚拟键码",
+            "type": "int",
+            "description": "Win32 VK_* 虚拟键码，有效范围 1～255。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "键盘_全局_键是否按下(17)"
+      },
+      "demoInvocation": "键盘_全局_键是否按下(1)"
+    },
+    {
+      "index": 2,
+      "name": "键盘_全局_切换状态",
+      "signature": "键盘_全局_切换状态(虚拟键码)",
+      "description": "[全局状态｜前后台均可调用｜不占用键盘] 读取 Caps Lock、Num Lock、Scroll Lock 等切换键的开关位。",
+      "insertText": "键盘_全局_切换状态(0)",
+      "returnType": "逻辑型",
+      "category": "全局状态",
+      "binding": {
+        "command": "键盘_全局_切换状态",
+        "runtimeName": "键盘_全局_切换状态",
+        "parameters": [
+          {
+            "name": "虚拟键码",
+            "type": "int",
+            "description": "Win32 VK_* 虚拟键码，有效范围 1～255。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_全局_切换状态(1)"
+    },
+    {
+      "index": 3,
+      "name": "键盘_全局_大小写锁定状态",
+      "signature": "键盘_全局_大小写锁定状态()",
+      "description": "[全局状态｜前后台均可调用｜不占用键盘] 读取 Caps Lock 开关状态。",
+      "insertText": "键盘_全局_大小写锁定状态()",
+      "returnType": "逻辑型",
+      "category": "全局状态",
+      "binding": {
+        "command": "键盘_全局_大小写锁定状态",
+        "runtimeName": "键盘_全局_大小写锁定状态",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_全局_大小写锁定状态()"
+    },
+    {
+      "index": 4,
+      "name": "键盘_全局_数字锁定状态",
+      "signature": "键盘_全局_数字锁定状态()",
+      "description": "[全局状态｜前后台均可调用｜不占用键盘] 读取 Num Lock 开关状态。",
+      "insertText": "键盘_全局_数字锁定状态()",
+      "returnType": "逻辑型",
+      "category": "全局状态",
+      "binding": {
+        "command": "键盘_全局_数字锁定状态",
+        "runtimeName": "键盘_全局_数字锁定状态",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_全局_数字锁定状态()"
+    },
+    {
+      "index": 5,
+      "name": "键盘_全局_滚动锁定状态",
+      "signature": "键盘_全局_滚动锁定状态()",
+      "description": "[全局状态｜前后台均可调用｜不占用键盘] 读取 Scroll Lock 开关状态。",
+      "insertText": "键盘_全局_滚动锁定状态()",
+      "returnType": "逻辑型",
+      "category": "全局状态",
+      "binding": {
+        "command": "键盘_全局_滚动锁定状态",
+        "runtimeName": "键盘_全局_滚动锁定状态",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_全局_滚动锁定状态()"
+    },
+    {
+      "index": 6,
+      "name": "键盘_全局_取前台窗口",
+      "signature": "键盘_全局_取前台窗口()",
+      "description": "[全局状态｜前后台均可调用｜不占用键盘] 返回当前接收系统输入的前台顶层窗口 HWND，没有时返回 0。",
+      "insertText": "键盘_全局_取前台窗口()",
+      "returnType": "长整数型",
+      "category": "全局状态",
+      "binding": {
+        "command": "键盘_全局_取前台窗口",
+        "runtimeName": "键盘_全局_取前台窗口",
+        "parameters": [],
+        "returnType": "handle"
+      },
+      "demoInvocation": "键盘_全局_取前台窗口()"
+    },
+    {
+      "index": 7,
+      "name": "键盘_全局_取前台焦点控件",
+      "signature": "键盘_全局_取前台焦点控件()",
+      "description": "[全局状态｜前后台均可调用｜不占用键盘] 返回前台线程当前具有键盘焦点的子控件 HWND，无法取得时返回 0。",
+      "insertText": "键盘_全局_取前台焦点控件()",
+      "returnType": "长整数型",
+      "category": "全局状态",
+      "binding": {
+        "command": "键盘_全局_取前台焦点控件",
+        "runtimeName": "键盘_全局_取前台焦点控件",
+        "parameters": [],
+        "returnType": "handle"
+      },
+      "demoInvocation": "键盘_全局_取前台焦点控件()"
+    },
+    {
+      "index": 8,
+      "name": "键盘_键名取键代码",
+      "signature": "键盘_键名取键代码(键名)",
+      "description": "[本地转换｜不发送输入｜不占用键盘] 把常用键名或单字符转为 Win32 虚拟键码，无法识别时返回 0。",
+      "insertText": "键盘_键名取键代码(\"$1\")",
+      "returnType": "整数型",
+      "category": "键码转换",
+      "binding": {
+        "command": "键盘_键名取键代码",
+        "runtimeName": "键盘_键名取键代码",
+        "parameters": [
+          {
+            "name": "键名",
+            "type": "wideString",
+            "description": "中文或英文常用键名，例如 Ctrl键、回车键、F5、A。"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide",
+        "example": "键盘_键名取键代码(\"Ctrl键\")"
+      },
+      "demoInvocation": "键盘_键名取键代码(\"演示参数1\")"
+    },
+    {
+      "index": 9,
+      "name": "键盘_键代码取键名",
+      "signature": "键盘_键代码取键名(虚拟键码)",
+      "description": "[本地转换｜不发送输入｜不占用键盘] 使用当前 Windows 键盘布局返回键名，无法识别时返回空文本。",
+      "insertText": "键盘_键代码取键名(0)",
+      "returnType": "文本型",
+      "category": "键码转换",
+      "binding": {
+        "command": "键盘_键代码取键名",
+        "runtimeName": "键盘_键代码取键名",
+        "parameters": [
+          {
+            "name": "虚拟键码",
+            "type": "int",
+            "description": "Win32 VK_* 虚拟键码，有效范围 1～255。"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "键盘_键代码取键名(1)"
+    },
+    {
+      "index": 10,
+      "name": "键盘_键代码取扫描码",
+      "signature": "键盘_键代码取扫描码(虚拟键码)",
+      "description": "[本地转换｜不发送输入｜不占用键盘] 使用当前键盘布局把虚拟键码转为扫描码。",
+      "insertText": "键盘_键代码取扫描码(0)",
+      "returnType": "整数型",
+      "category": "键码转换",
+      "binding": {
+        "command": "键盘_键代码取扫描码",
+        "runtimeName": "键盘_键代码取扫描码",
+        "parameters": [
+          {
+            "name": "虚拟键码",
+            "type": "int",
+            "description": "Win32 VK_* 虚拟键码，有效范围 1～255。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "键盘_键代码取扫描码(1)"
+    },
+    {
+      "index": 11,
+      "name": "键盘_扫描码取键代码",
+      "signature": "键盘_扫描码取键代码(扫描码)",
+      "description": "[本地转换｜不发送输入｜不占用键盘] 使用当前键盘布局把扫描码转为虚拟键码。",
+      "insertText": "键盘_扫描码取键代码(0)",
+      "returnType": "整数型",
+      "category": "键码转换",
+      "binding": {
+        "command": "键盘_扫描码取键代码",
+        "runtimeName": "键盘_扫描码取键代码",
+        "parameters": [
+          {
+            "name": "扫描码",
+            "type": "int",
+            "description": "Win32 键盘扫描码；可包含 E0/E1 扩展前缀。"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "键盘_扫描码取键代码(1)"
+    },
+    {
+      "index": 12,
+      "name": "键盘_键代码是否扩展键",
+      "signature": "键盘_键代码是否扩展键(虚拟键码)",
+      "description": "[本地转换｜不发送输入｜不占用键盘] 判断虚拟键是否需要 KEYEVENTF_EXTENDEDKEY。",
+      "insertText": "键盘_键代码是否扩展键(0)",
+      "returnType": "逻辑型",
+      "category": "键码转换",
+      "binding": {
+        "command": "键盘_键代码是否扩展键",
+        "runtimeName": "键盘_键代码是否扩展键",
+        "parameters": [
+          {
+            "name": "虚拟键码",
+            "type": "int",
+            "description": "Win32 VK_* 虚拟键码，有效范围 1～255。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_键代码是否扩展键(1)"
+    },
+    {
+      "index": 13,
+      "name": "键盘_前台_按下",
+      "signature": "键盘_前台_按下(虚拟键码)",
+      "description": "[前台输入｜作用于当前焦点｜不独占实体键盘] 向系统输入流注入按下事件；必须与“放开”成对使用。",
+      "insertText": "键盘_前台_按下(0)",
+      "returnType": "逻辑型",
+      "category": "前台输入（SendInput）",
+      "binding": {
+        "command": "键盘_前台_按下",
+        "runtimeName": "键盘_前台_按下",
+        "parameters": [
+          {
+            "name": "虚拟键码",
+            "type": "int",
+            "description": "Win32 VK_* 虚拟键码，有效范围 1～255。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_前台_按下(1)"
+    },
+    {
+      "index": 14,
+      "name": "键盘_前台_放开",
+      "signature": "键盘_前台_放开(虚拟键码)",
+      "description": "[前台输入｜作用于当前焦点｜不独占实体键盘] 向系统输入流注入放开事件。",
+      "insertText": "键盘_前台_放开(0)",
+      "returnType": "逻辑型",
+      "category": "前台输入（SendInput）",
+      "binding": {
+        "command": "键盘_前台_放开",
+        "runtimeName": "键盘_前台_放开",
+        "parameters": [
+          {
+            "name": "虚拟键码",
+            "type": "int",
+            "description": "Win32 VK_* 虚拟键码，有效范围 1～255。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_前台_放开(1)"
+    },
+    {
+      "index": 15,
+      "name": "键盘_前台_单击",
+      "signature": "键盘_前台_单击(虚拟键码)",
+      "description": "[前台输入｜作用于当前焦点｜不独占实体键盘] 使用一个 SendInput 批次按下并放开指定虚拟键。",
+      "insertText": "键盘_前台_单击(0)",
+      "returnType": "逻辑型",
+      "category": "前台输入（SendInput）",
+      "binding": {
+        "command": "键盘_前台_单击",
+        "runtimeName": "键盘_前台_单击",
+        "parameters": [
+          {
+            "name": "虚拟键码",
+            "type": "int",
+            "description": "Win32 VK_* 虚拟键码，有效范围 1～255。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "键盘_前台_单击(13)"
+      },
+      "demoInvocation": "键盘_前台_单击(1)"
+    },
+    {
+      "index": 16,
+      "name": "键盘_前台_组合按键",
+      "signature": "键盘_前台_组合按键(主键码, 修饰键码1, 修饰键码2, 修饰键码3)",
+      "description": "[前台输入｜作用于当前焦点｜不独占实体键盘] 批量按下最多三个修饰键和主键，再按相反顺序放开；未使用的修饰键传 0。",
+      "insertText": "键盘_前台_组合按键(0, 0, 0, 0)",
+      "returnType": "逻辑型",
+      "category": "前台输入（SendInput）",
+      "binding": {
+        "command": "键盘_前台_组合按键",
+        "runtimeName": "键盘_前台_组合按键",
+        "parameters": [
+          {
+            "name": "主键码",
+            "type": "int",
+            "description": "要按下的主键 Win32 虚拟键码。"
+          },
+          {
+            "name": "修饰键码1",
+            "type": "int",
+            "description": "第一个修饰键虚拟键码，0 表示不使用。"
+          },
+          {
+            "name": "修饰键码2",
+            "type": "int",
+            "description": "第二个修饰键虚拟键码，0 表示不使用。"
+          },
+          {
+            "name": "修饰键码3",
+            "type": "int",
+            "description": "第三个修饰键虚拟键码，0 表示不使用。"
+          }
+        ],
+        "returnType": "bool",
+        "example": "键盘_前台_组合按键(83, 17, 16, 0)"
+      },
+      "demoInvocation": "键盘_前台_组合按键(1, 1, 1, 1)"
+    },
+    {
+      "index": 17,
+      "name": "键盘_前台_输入文本",
+      "signature": "键盘_前台_输入文本(文本)",
+      "description": "[前台输入｜作用于当前焦点｜不独占实体键盘] 使用 KEYEVENTF_UNICODE 输入文本，不依赖当前键盘布局。",
+      "insertText": "键盘_前台_输入文本(\"$1\")",
+      "returnType": "逻辑型",
+      "category": "前台输入（SendInput）",
+      "binding": {
+        "command": "键盘_前台_输入文本",
+        "runtimeName": "键盘_前台_输入文本",
+        "parameters": [
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "要按 UTF-16 Unicode 注入的文本，最多 32768 个代码单元。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "键盘_前台_输入文本(\"你好 LingBuilder\")"
+      },
+      "demoInvocation": "键盘_前台_输入文本(\"演示参数1\")"
+    },
+    {
+      "index": 18,
+      "name": "键盘_前台_扫描码按下",
+      "signature": "键盘_前台_扫描码按下(扫描码, 扩展键)",
+      "description": "[前台输入｜作用于当前焦点｜不独占实体键盘] 按物理扫描码注入按下事件，适用于与键盘布局无关的按键。",
+      "insertText": "键盘_前台_扫描码按下(0, 假)",
+      "returnType": "逻辑型",
+      "category": "前台输入（SendInput）",
+      "binding": {
+        "command": "键盘_前台_扫描码按下",
+        "runtimeName": "键盘_前台_扫描码按下",
+        "parameters": [
+          {
+            "name": "扫描码",
+            "type": "int",
+            "description": "Win32 键盘扫描码；可包含 E0/E1 扩展前缀。"
+          },
+          {
+            "name": "扩展键",
+            "type": "bool",
+            "description": "右 Ctrl、右 Alt、方向键等扩展键传真。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_前台_扫描码按下(1, 真)"
+    },
+    {
+      "index": 19,
+      "name": "键盘_前台_扫描码放开",
+      "signature": "键盘_前台_扫描码放开(扫描码, 扩展键)",
+      "description": "[前台输入｜作用于当前焦点｜不独占实体键盘] 按物理扫描码注入放开事件。",
+      "insertText": "键盘_前台_扫描码放开(0, 假)",
+      "returnType": "逻辑型",
+      "category": "前台输入（SendInput）",
+      "binding": {
+        "command": "键盘_前台_扫描码放开",
+        "runtimeName": "键盘_前台_扫描码放开",
+        "parameters": [
+          {
+            "name": "扫描码",
+            "type": "int",
+            "description": "Win32 键盘扫描码；可包含 E0/E1 扩展前缀。"
+          },
+          {
+            "name": "扩展键",
+            "type": "bool",
+            "description": "右 Ctrl、右 Alt、方向键等扩展键传真。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_前台_扫描码放开(1, 真)"
+    },
+    {
+      "index": 20,
+      "name": "键盘_前台_扫描码单击",
+      "signature": "键盘_前台_扫描码单击(扫描码, 扩展键)",
+      "description": "[前台输入｜作用于当前焦点｜不独占实体键盘] 按物理扫描码批量注入按下和放开事件。",
+      "insertText": "键盘_前台_扫描码单击(0, 假)",
+      "returnType": "逻辑型",
+      "category": "前台输入（SendInput）",
+      "binding": {
+        "command": "键盘_前台_扫描码单击",
+        "runtimeName": "键盘_前台_扫描码单击",
+        "parameters": [
+          {
+            "name": "扫描码",
+            "type": "int",
+            "description": "Win32 键盘扫描码；可包含 E0/E1 扩展前缀。"
+          },
+          {
+            "name": "扩展键",
+            "type": "bool",
+            "description": "右 Ctrl、右 Alt、方向键等扩展键传真。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_前台_扫描码单击(1, 真)"
+    },
+    {
+      "index": 21,
+      "name": "键盘_窗口_取焦点控件",
+      "signature": "键盘_窗口_取焦点控件(窗口句柄)",
+      "description": "[后台窗口｜指定 HWND｜不抢焦点且不占用实体键盘] 读取指定顶层窗口线程的焦点子控件 HWND；不改变焦点。",
+      "insertText": "键盘_窗口_取焦点控件(0)",
+      "returnType": "长整数型",
+      "category": "后台窗口（PostMessage）",
+      "binding": {
+        "command": "键盘_窗口_取焦点控件",
+        "runtimeName": "键盘_窗口_取焦点控件",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "接收键盘消息的 HWND；建议传入真正的焦点子控件句柄。"
+          }
+        ],
+        "returnType": "handle"
+      },
+      "demoInvocation": "键盘_窗口_取焦点控件(0)"
+    },
+    {
+      "index": 22,
+      "name": "键盘_窗口_按下",
+      "signature": "键盘_窗口_按下(窗口句柄, 虚拟键码, 系统键)",
+      "description": "[后台窗口｜指定 HWND｜不抢焦点且不占用实体键盘] 向目标消息队列投递 WM_KEYDOWN 或 WM_SYSKEYDOWN；返回值只表示成功入队。",
+      "insertText": "键盘_窗口_按下(0, 0, 假)",
+      "returnType": "逻辑型",
+      "category": "后台窗口（PostMessage）",
+      "binding": {
+        "command": "键盘_窗口_按下",
+        "runtimeName": "键盘_窗口_按下",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "接收键盘消息的 HWND；建议传入真正的焦点子控件句柄。"
+          },
+          {
+            "name": "虚拟键码",
+            "type": "int",
+            "description": "Win32 VK_* 虚拟键码，有效范围 1～255。"
+          },
+          {
+            "name": "系统键",
+            "type": "bool",
+            "description": "真时发送 WM_SYSKEYDOWN/WM_SYSKEYUP，用于 Alt 或 F10 类组合。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_窗口_按下(0, 1, 真)"
+    },
+    {
+      "index": 23,
+      "name": "键盘_窗口_放开",
+      "signature": "键盘_窗口_放开(窗口句柄, 虚拟键码, 系统键)",
+      "description": "[后台窗口｜指定 HWND｜不抢焦点且不占用实体键盘] 向目标消息队列投递 WM_KEYUP 或 WM_SYSKEYUP；不改变全局按键状态。",
+      "insertText": "键盘_窗口_放开(0, 0, 假)",
+      "returnType": "逻辑型",
+      "category": "后台窗口（PostMessage）",
+      "binding": {
+        "command": "键盘_窗口_放开",
+        "runtimeName": "键盘_窗口_放开",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "接收键盘消息的 HWND；建议传入真正的焦点子控件句柄。"
+          },
+          {
+            "name": "虚拟键码",
+            "type": "int",
+            "description": "Win32 VK_* 虚拟键码，有效范围 1～255。"
+          },
+          {
+            "name": "系统键",
+            "type": "bool",
+            "description": "真时发送 WM_SYSKEYDOWN/WM_SYSKEYUP，用于 Alt 或 F10 类组合。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_窗口_放开(0, 1, 真)"
+    },
+    {
+      "index": 24,
+      "name": "键盘_窗口_单击",
+      "signature": "键盘_窗口_单击(窗口句柄, 虚拟键码, 系统键)",
+      "description": "[后台窗口｜指定 HWND｜不抢焦点且不占用实体键盘] 依次投递按下和放开消息；目标程序可能忽略或过滤后台消息。",
+      "insertText": "键盘_窗口_单击(0, 0, 假)",
+      "returnType": "逻辑型",
+      "category": "后台窗口（PostMessage）",
+      "binding": {
+        "command": "键盘_窗口_单击",
+        "runtimeName": "键盘_窗口_单击",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "接收键盘消息的 HWND；建议传入真正的焦点子控件句柄。"
+          },
+          {
+            "name": "虚拟键码",
+            "type": "int",
+            "description": "Win32 VK_* 虚拟键码，有效范围 1～255。"
+          },
+          {
+            "name": "系统键",
+            "type": "bool",
+            "description": "真时发送 WM_SYSKEYDOWN/WM_SYSKEYUP，用于 Alt 或 F10 类组合。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_窗口_单击(0, 1, 真)"
+    },
+    {
+      "index": 25,
+      "name": "键盘_窗口_组合按键",
+      "signature": "键盘_窗口_组合按键(窗口句柄, 主键码, 修饰键码1, 修饰键码2, 修饰键码3, 系统键)",
+      "description": "[后台窗口｜指定 HWND｜不抢焦点且不占用实体键盘] 向同一目标按顺序投递最多三个修饰键和主键消息；不保证目标使用物理修饰键状态。",
+      "insertText": "键盘_窗口_组合按键(0, 0, 0, 0, 0, 假)",
+      "returnType": "逻辑型",
+      "category": "后台窗口（PostMessage）",
+      "binding": {
+        "command": "键盘_窗口_组合按键",
+        "runtimeName": "键盘_窗口_组合按键",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "接收键盘消息的 HWND；建议传入真正的焦点子控件句柄。"
+          },
+          {
+            "name": "主键码",
+            "type": "int",
+            "description": "要按下的主键 Win32 虚拟键码。"
+          },
+          {
+            "name": "修饰键码1",
+            "type": "int",
+            "description": "第一个修饰键虚拟键码，0 表示不使用。"
+          },
+          {
+            "name": "修饰键码2",
+            "type": "int",
+            "description": "第二个修饰键虚拟键码，0 表示不使用。"
+          },
+          {
+            "name": "修饰键码3",
+            "type": "int",
+            "description": "第三个修饰键虚拟键码，0 表示不使用。"
+          },
+          {
+            "name": "系统键",
+            "type": "bool",
+            "description": "真时发送 WM_SYSKEYDOWN/WM_SYSKEYUP，用于 Alt 或 F10 类组合。"
+          }
+        ],
+        "returnType": "bool"
+      },
+      "demoInvocation": "键盘_窗口_组合按键(0, 1, 1, 1, 1, 真)"
+    },
+    {
+      "index": 26,
+      "name": "键盘_窗口_输入文本",
+      "signature": "键盘_窗口_输入文本(窗口句柄, 文本)",
+      "description": "[后台窗口｜指定 HWND｜不抢焦点且不占用实体键盘] 向指定 HWND 投递 WM_CHAR；适用于接收文本消息的控件，不等价于真实物理按键。",
+      "insertText": "键盘_窗口_输入文本(0, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "后台窗口（PostMessage）",
+      "binding": {
+        "command": "键盘_窗口_输入文本",
+        "runtimeName": "键盘_窗口_输入文本",
+        "parameters": [
+          {
+            "name": "窗口句柄",
+            "type": "handle",
+            "description": "接收键盘消息的 HWND；建议传入真正的焦点子控件句柄。"
+          },
+          {
+            "name": "文本",
+            "type": "wideString",
+            "description": "逐个 UTF-16 代码单元作为 WM_CHAR 投递的文本，最多 32768 个单元。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "键盘_窗口_输入文本(0, \"演示参数2\")"
+    },
+    {
+      "index": 27,
       "name": "键盘_键是否按下",
       "signature": "键盘_键是否按下(虚拟键码)",
-      "description": "判断指定 Win32 虚拟键当前是否按下。",
+      "description": "[兼容入口] [全局状态｜前后台均可调用｜不占用键盘] 保留 1.x 源码兼容；等价于“键盘_全局_键是否按下”。",
       "insertText": "键盘_键是否按下(0)",
       "returnType": "逻辑型",
+      "category": "兼容入口",
       "binding": {
         "command": "键盘_键是否按下",
         "runtimeName": "键盘_键是否按下",
         "parameters": [
           {
             "name": "虚拟键码",
-            "type": "int"
+            "type": "int",
+            "description": "Win32 VK_* 虚拟键码，有效范围 1～255。"
           }
         ],
         "returnType": "bool"
@@ -30,12 +673,13 @@
       "demoInvocation": "键盘_键是否按下(1)"
     },
     {
-      "index": 2,
+      "index": 28,
       "name": "键盘_大小写锁定状态",
       "signature": "键盘_大小写锁定状态()",
-      "description": "读取 Caps Lock 切换状态。",
+      "description": "[兼容入口] [全局状态｜前后台均可调用｜不占用键盘] 保留 1.x 源码兼容；等价于全局 Caps Lock 状态查询。",
       "insertText": "键盘_大小写锁定状态()",
       "returnType": "逻辑型",
+      "category": "兼容入口",
       "binding": {
         "command": "键盘_大小写锁定状态",
         "runtimeName": "键盘_大小写锁定状态",
@@ -45,12 +689,13 @@
       "demoInvocation": "键盘_大小写锁定状态()"
     },
     {
-      "index": 3,
+      "index": 29,
       "name": "键盘_数字锁定状态",
       "signature": "键盘_数字锁定状态()",
-      "description": "读取 Num Lock 切换状态。",
+      "description": "[兼容入口] [全局状态｜前后台均可调用｜不占用键盘] 保留 1.x 源码兼容；等价于全局 Num Lock 状态查询。",
       "insertText": "键盘_数字锁定状态()",
       "returnType": "逻辑型",
+      "category": "兼容入口",
       "binding": {
         "command": "键盘_数字锁定状态",
         "runtimeName": "键盘_数字锁定状态",
@@ -60,19 +705,21 @@
       "demoInvocation": "键盘_数字锁定状态()"
     },
     {
-      "index": 4,
+      "index": 30,
       "name": "键盘_单击",
       "signature": "键盘_单击(虚拟键码)",
-      "description": "模拟一次按下并释放。",
+      "description": "[兼容入口] [前台输入｜作用于当前焦点｜不独占实体键盘] 保留 1.x 源码兼容；等价于“键盘_前台_单击”。",
       "insertText": "键盘_单击(0)",
       "returnType": "逻辑型",
+      "category": "兼容入口",
       "binding": {
         "command": "键盘_单击",
         "runtimeName": "键盘_单击",
         "parameters": [
           {
             "name": "虚拟键码",
-            "type": "int"
+            "type": "int",
+            "description": "Win32 VK_* 虚拟键码，有效范围 1～255。"
           }
         ],
         "returnType": "bool"
@@ -80,23 +727,26 @@
       "demoInvocation": "键盘_单击(1)"
     },
     {
-      "index": 5,
+      "index": 31,
       "name": "键盘_组合按键",
       "signature": "键盘_组合按键(修饰键码, 主键码)",
-      "description": "模拟修饰键与主键组合。",
+      "description": "[兼容入口] [前台输入｜作用于当前焦点｜不独占实体键盘] 保留 1.x 源码兼容；仅支持一个修饰键，新代码应使用“键盘_前台_组合按键”。",
       "insertText": "键盘_组合按键(0, 0)",
       "returnType": "逻辑型",
+      "category": "兼容入口",
       "binding": {
         "command": "键盘_组合按键",
         "runtimeName": "键盘_组合按键",
         "parameters": [
           {
             "name": "修饰键码",
-            "type": "int"
+            "type": "int",
+            "description": "保留的单修饰键参数。"
           },
           {
             "name": "主键码",
-            "type": "int"
+            "type": "int",
+            "description": "要按下的主键 Win32 虚拟键码。"
           }
         ],
         "returnType": "bool"

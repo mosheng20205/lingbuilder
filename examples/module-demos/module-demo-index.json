@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-01T03:36:23.500Z",
+  "generatedAt": "2026-08-01T15:40:09.242Z",
   "modules": [
     {
       "moduleId": "lingbuilder.advanced.assembly",
@@ -546,9 +546,9 @@
       "moduleId": "lingbuilder.input.keyboard",
       "moduleName": "键盘输入模块",
       "projectId": "module-demo-lingbuilder.input.keyboard",
-      "commandCount": 5,
+      "commandCount": 31,
       "controlCount": 0,
-      "groupCount": 1,
+      "groupCount": 2,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.input.keyboard/src",
       "packageName": "键盘输入模块完整演示.lcpppkg"
@@ -557,12 +557,13 @@
       "moduleId": "lingbuilder.input.mouse",
       "moduleName": "鼠标输入模块",
       "projectId": "module-demo-lingbuilder.input.mouse",
-      "commandCount": 6,
+      "commandCount": 29,
       "controlCount": 0,
-      "groupCount": 1,
+      "groupCount": 2,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.input.mouse/src",
-      "packageName": "鼠标输入模块完整演示.lcpppkg"
+      "packageName": "鼠标输入模块完整演示.lcpppkg",
+      "packageBytes": 13496
     },
     {
       "moduleId": "lingbuilder.ipc",
@@ -788,12 +789,13 @@
       "moduleId": "lingbuilder.system.disk",
       "moduleName": "磁盘信息模块",
       "projectId": "module-demo-lingbuilder.system.disk",
-      "commandCount": 5,
+      "commandCount": 28,
       "controlCount": 0,
-      "groupCount": 1,
+      "groupCount": 2,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.system.disk/src",
-      "packageName": "磁盘信息模块完整演示.lcpppkg"
+      "packageName": "磁盘信息模块完整演示.lcpppkg",
+      "packageBytes": 13665
     },
     {
       "moduleId": "lingbuilder.system.info",
@@ -821,12 +823,13 @@
       "moduleId": "lingbuilder.threading",
       "moduleName": "多线程模块",
       "projectId": "module-demo-lingbuilder.threading",
-      "commandCount": 9,
+      "commandCount": 54,
       "controlCount": 0,
-      "groupCount": 1,
+      "groupCount": 3,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.threading/src",
-      "packageName": "多线程模块完整演示.lcpppkg"
+      "packageName": "多线程模块完整演示.lcpppkg",
+      "packageBytes": 17991
     },
     {
       "moduleId": "lingbuilder.web.http",
@@ -887,12 +890,13 @@
       "moduleId": "lingbuilder.win32.common-controls",
       "moduleName": "Win32高级控件模块",
       "projectId": "module-demo-lingbuilder.win32.common-controls",
-      "commandCount": 220,
+      "commandCount": 222,
       "controlCount": 26,
-      "groupCount": 11,
+      "groupCount": 12,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.win32.common-controls/src",
-      "packageName": "Win32高级控件模块完整演示.lcpppkg"
+      "packageName": "Win32高级控件模块完整演示.lcpppkg",
+      "packageBytes": 43409
     },
     {
       "moduleId": "lingbuilder.win32.menu",

@@ -68,10 +68,28 @@ export interface ModuleDesignerEventBindingMapping {
   eventCode?: number;
 }
 
+export type ModulePublicTypeKind = 'opaque' | 'record' | 'array';
+
+export interface ModuleTypeFieldContribution {
+  name: string;
+  /** LingCpp 字段类型名；数组维度单独由 isArray 声明。 */
+  type: string;
+  description?: string;
+  initialValue?: string;
+  isArray?: boolean;
+}
+
 export interface ModuleTypeContribution {
   name: string;
   description: string;
+  /** 旧模块省略 kind 时按 opaque 处理。 */
+  kind?: ModulePublicTypeKind;
+  /** opaque 类型映射到生成工程中的原生 C++ 类型。 */
   cppType?: string;
+  /** record 类型公开的值语义字段。 */
+  fields?: ModuleTypeFieldContribution[];
+  /** array 类型的 LingCpp 元素类型名。 */
+  elementType?: string;
 }
 
 export interface ModuleSnippetContribution {
@@ -176,6 +194,37 @@ export interface ModuleExampleContribution {
   description?: string;
 }
 
+export type ModuleBuildArtifactKind = 'source' | 'header' | 'content' | 'descriptor' | 'runtime';
+
+export interface ModuleCodeGeneratorInput {
+  root?: string;
+  include: string[];
+  exclude?: string[];
+}
+
+export interface ModuleCodeGeneratorOutput {
+  path: string;
+  kind: ModuleBuildArtifactKind;
+}
+
+/**
+ * Declarative, host-owned code generation. A module can select a registered
+ * provider, but it cannot inject a command line or executable into the build.
+ */
+export interface ModuleCodeGeneratorContribution {
+  id: string;
+  provider: string;
+  version?: string;
+  inputs: ModuleCodeGeneratorInput;
+  outputs: ModuleCodeGeneratorOutput[];
+  options?: Record<string, unknown>;
+  targetIds?: string[];
+}
+
+export interface ModuleBuildContribution {
+  codeGenerators?: ModuleCodeGeneratorContribution[];
+}
+
 export type ModuleTargetPlatform = 'windows' | 'linux' | 'macos';
 export type ModuleTargetArch = 'win32' | 'x64' | 'arm64' | 'any';
 export type ModuleTargetToolchain = 'msvc' | 'gcc' | 'clang' | 'cmake' | 'any';
@@ -205,8 +254,13 @@ export type ModuleBindingValueType =
   | 'utf8String'
   | 'controlRef'
   | 'handler'
+  | 'lingValue'
   | 'handle'
+  | 'bytes'
   | 'raw';
+
+/** 基础 ABI 类型或当前模块通过 contributes.types 公开的结构化 LingCpp 类型名。 */
+export type ModuleCommandValueType = ModuleBindingValueType | (string & {});
 
 export type ModuleControlReferenceScope = 'currentWindow' | 'project';
 export type ModuleControlReferenceKind = 'visual' | 'nonVisual' | 'resource';
@@ -214,7 +268,7 @@ export type ModuleControlRuntimeRepresentation = 'wideName' | 'stableId' | 'nati
 
 export interface ModuleCommandBindingParameter {
   name: string;
-  type: ModuleBindingValueType;
+  type: ModuleCommandValueType;
   description?: string;
   /** controlRef 可接受的设计器控件类型；省略表示接受任意兼容控件。 */
   controlTypes?: string[];
@@ -224,17 +278,33 @@ export interface ModuleCommandBindingParameter {
   scope?: ModuleControlReferenceScope;
   /** controlRef 传给原生运行时的表示；当前默认 wideName。 */
   runtimeRepresentation?: ModuleControlRuntimeRepresentation;
+  /** 仅 lingValue 可用；表示从此参数起接受任意数量的 LingCpp 可深拷贝值。 */
+  variadic?: boolean;
+}
+
+export interface ModuleManagedTaskInvocation {
+  kind: 'managedTask';
+  /** submit 生成任务 lambda；synchronized 生成由 RAII 同步原语执行的 lambda。 */
+  operation: 'submit' | 'synchronized';
+  workerParameterIndex: number;
+  variadicParameterIndex: number;
+  poolParameterIndex?: number;
+  timeoutParameterIndex?: number;
+  progressParameterIndex?: number;
+  completionParameterIndex?: number;
 }
 
 export interface ModuleCommandBinding {
   command: string;
   runtimeName: string;
   parameters?: ModuleCommandBindingParameter[];
-  returnType?: ModuleBindingValueType;
+  returnType?: ModuleCommandValueType;
   targetIds?: string[];
   encoding?: 'wide' | 'utf8' | 'raw';
   example?: string;
   description?: string;
+  /** 由语言服务和生成器共同校验并展开的受管处理器调用。 */
+  invocation?: ModuleManagedTaskInvocation;
 }
 
 export interface ModuleBindingsContribution {
@@ -287,6 +357,7 @@ export interface LingBuilderModuleManifest {
     docs?: ModuleDocContribution[];
     examples?: ModuleExampleContribution[];
   };
+  build?: ModuleBuildContribution;
   targets?: ModuleTargetContribution[];
   bindings?: ModuleBindingsContribution;
   designer?: ModuleDesignerCatalogContribution;

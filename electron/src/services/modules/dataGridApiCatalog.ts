@@ -1,7 +1,7 @@
 import type { ModuleBindingValueType, ModuleCommandBinding, ModuleCommandBindingParameter, ModuleCommandContribution } from './types';
 import { createModuleBindingSnippetArgument } from './bindingValueType';
 
-type UiReturnType = '整数型' | '长整数型' | '小数型' | '逻辑型' | '文本型';
+type UiReturnType = '整数型' | '长整数型' | '小数型' | '逻辑型' | '文本型' | '字节集';
 type Parameter = ModuleCommandBindingParameter;
 
 export interface DataGridApiDefinition {
@@ -30,7 +30,7 @@ const string = (name: string) => p(name, 'wideString');
 
 const returnTypeMap: Record<ModuleBindingValueType, UiReturnType> = {
   int: '整数型', longLong: '长整数型', double: '小数型', bool: '逻辑型', wideString: '文本型',
-  void: '逻辑型', utf8String: '文本型', controlRef: '长整数型', handler: '长整数型', handle: '长整数型', raw: '长整数型'
+  void: '逻辑型', utf8String: '文本型', controlRef: '长整数型', handler: '长整数型', lingValue: '长整数型', handle: '长整数型', bytes: '字节集', raw: '长整数型'
 };
 const sample = (parameter: Parameter, placeholder: number) => {
   if (parameter.type === 'bool') return '真';

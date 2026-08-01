@@ -7,6 +7,8 @@ import { validateModuleRelativePath } from './manifest';
 import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from './targetResolver';
 import { CRYPTO_SDK_MODULE_IDS } from './dataMediaModules';
 import { OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID, OPENCV_VERSION } from './opencvModules';
+import { PROTOBUF_MODULE_ID } from './protobufModule';
+import { validateProtobufSdk, type ProtobufTargetArchitecture } from './protobufSdk';
 
 const FBRO_SDK_VERSION = '135.0.21';
 const FBRO_BRIDGE_VERSION = '2.1.0';
@@ -91,6 +93,10 @@ export async function materializeModuleNativeDependencies(
 
   if (enabledIds.has(OPENCV_MODULE_ID)) {
     await materializeOpenCvSdk(layout, plan);
+  }
+
+  if (enabledIds.has(PROTOBUF_MODULE_ID)) {
+    await materializeProtobufSdk(layout, plan);
   }
 
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
@@ -227,6 +233,17 @@ export async function exportModuleNativeDependencies(
       preferredTargetId: 'windows-msvc-x64'
     }, plan);
   }
+  if (enabledModules.some(module => module.manifest.id === PROTOBUF_MODULE_ID)) {
+    const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: true };
+    await materializeProtobufSdk({
+      buildDir: exportDir,
+      sourceDir: exportDir,
+      binDir: exportDir,
+      exportDir,
+      preferredTargetId: 'windows-msvc-win32'
+    }, plan);
+    diagnostics.push(...plan.blockingDiagnostics);
+  }
   if (enabledModules.some(module => CRYPTO_SDK_MODULE_IDS.includes(module.manifest.id as typeof CRYPTO_SDK_MODULE_IDS[number]))) {
     const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: true };
     await materializeCryptoSdk({
@@ -262,6 +279,87 @@ export async function exportModuleNativeDependencies(
     }
   }
   return diagnostics;
+}
+
+async function materializeProtobufSdk(
+  layout: ModuleNativeDependencyLayout,
+  plan: ModuleNativeDependencyPlan
+): Promise<void> {
+  plan.requiresMsvc = true;
+  const sdkRoot = await resolveProtobufSdkRoot(layout);
+  const targetArchitecture: ProtobufTargetArchitecture = layout.preferredTargetId === 'windows-msvc-x64' ? 'x64' : 'win32';
+  if (layout.preferredTargetId && layout.preferredTargetId !== 'windows-msvc-win32' && layout.preferredTargetId !== 'windows-msvc-x64') {
+    addBlockingDiagnostic(plan, `Protobuf 模块不支持目标 ${layout.preferredTargetId}，当前仅支持 Windows MSVC Win32/x64。`);
+    return;
+  }
+  let sdk;
+  try {
+    sdk = await validateProtobufSdk(sdkRoot, targetArchitecture);
+  } catch (error) {
+    addBlockingDiagnostic(plan, error instanceof Error ? error.message : String(error));
+    return;
+  }
+  const allFiles = ['runtime-manifest.json', ...sdk.files.keys()];
+  const sourceFiles = [...sdk.files.keys()].filter(relative => relative.startsWith('include/'));
+
+  const isPortableExport = layout.buildDir === layout.exportDir && layout.sourceDir === layout.exportDir && layout.binDir === layout.exportDir;
+  if (isPortableExport) {
+    const exportRoot = path.join(layout.exportDir, 'modules', PROTOBUF_MODULE_ID, 'sdk');
+    await copyProtobufFiles(sdkRoot, exportRoot, allFiles, plan.diagnostics, plan.blockingDiagnostics);
+    return;
+  }
+
+  const buildRoot = path.join(layout.buildDir, 'modules', PROTOBUF_MODULE_ID, 'sdk');
+  const sourceRoot = path.join(layout.sourceDir, 'modules', PROTOBUF_MODULE_ID, 'sdk');
+  const exportRoot = path.join(layout.exportDir, 'modules', PROTOBUF_MODULE_ID, 'sdk');
+  await Promise.all([
+    copyProtobufFiles(sdkRoot, buildRoot, allFiles, plan.diagnostics, plan.blockingDiagnostics),
+    copyProtobufFiles(sdkRoot, sourceRoot, sourceFiles, plan.diagnostics, plan.blockingDiagnostics),
+    copyProtobufFiles(sdkRoot, exportRoot, allFiles, plan.diagnostics, plan.blockingDiagnostics)
+  ]);
+  plan.includeDirs.push(path.join(sourceRoot, 'include'));
+  plan.libFiles.push(path.join(buildRoot, 'lib', 'libprotobuf.lib'));
+  const runtimeTarget = path.join(layout.binDir, 'libprotobuf.dll');
+  await fs.mkdir(path.dirname(runtimeTarget), { recursive: true });
+  try {
+    await copyFileAtomicallyIfDifferent(path.join(sdkRoot, 'bin', 'libprotobuf.dll'), runtimeTarget);
+    plan.runtimeFiles.push(runtimeTarget);
+  } catch (error) {
+    addBlockingDiagnostic(plan, `复制 Protobuf 运行时失败：${errorMessage(error)}`);
+  }
+}
+
+async function copyProtobufFiles(
+  sourceRoot: string,
+  targetRoot: string,
+  relativeFiles: readonly string[],
+  diagnostics: string[],
+  blockingDiagnostics: string[] = diagnostics
+): Promise<void> {
+  for (const relative of relativeFiles) {
+    try {
+      const target = path.join(targetRoot, relative);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await copyFileAtomicallyIfDifferent(path.join(sourceRoot, relative), target);
+    } catch (error) {
+      const message = `复制 Protobuf SDK 文件失败：${relative}：${errorMessage(error)}`;
+      diagnostics.push(message);
+      if (blockingDiagnostics !== diagnostics) blockingDiagnostics.push(message);
+    }
+  }
+}
+
+async function resolveProtobufSdkRoot(layout: ModuleNativeDependencyLayout): Promise<string> {
+  const configured = process.env.LINGBUILDER_PROTOBUF_SDK_ROOT?.trim();
+  if (configured) return path.resolve(configured);
+  let current = path.resolve(layout.buildDir);
+  for (let index = 0; index < 8; index += 1) {
+    if (await pathExists(path.join(current, '.lingbuilder'))) return path.join(current, '.lingbuilder', 'toolchains', 'protobuf');
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return path.resolve(layout.buildDir, '..', '..', '..', '..', '.lingbuilder', 'toolchains', 'protobuf');
 }
 
 interface FbroRuntimeManifestFile {

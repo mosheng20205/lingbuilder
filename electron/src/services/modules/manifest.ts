@@ -10,13 +10,14 @@ import {
   ModuleBindingValueType
 } from './types';
 import { normalizeControlReferenceCallSnippet, normalizeControlReferenceSnippet } from './bindingValueType';
+import { validateModuleTypeContributions } from './modulePublicTypeService';
 
 const CATEGORIES: LingBuilderModuleCategory[] = ['界面', '系统', '网络', '数据库', '图像', 'AI', '构建', '其他'];
 const MODULE_ID_RE = /^[a-z0-9][a-z0-9._-]{2,80}$/;
 const TARGET_PLATFORMS: ModuleTargetPlatform[] = ['windows', 'linux', 'macos'];
 const TARGET_ARCHES: ModuleTargetArch[] = ['win32', 'x64', 'arm64', 'any'];
 const TARGET_TOOLCHAINS: ModuleTargetToolchain[] = ['msvc', 'gcc', 'clang', 'cmake', 'any'];
-const BINDING_VALUE_TYPES: ModuleBindingValueType[] = ['void', 'int', 'longLong', 'double', 'bool', 'wideString', 'utf8String', 'controlRef', 'handler', 'handle', 'raw'];
+const BINDING_VALUE_TYPES: ModuleBindingValueType[] = ['void', 'int', 'longLong', 'double', 'bool', 'wideString', 'utf8String', 'controlRef', 'handler', 'lingValue', 'handle', 'bytes', 'raw'];
 const CONTROL_REFERENCE_SCOPES = ['currentWindow', 'project'];
 const CONTROL_REFERENCE_KINDS = ['visual', 'nonVisual', 'resource'];
 const CONTROL_RUNTIME_REPRESENTATIONS = ['wideName', 'stableId', 'nativeHandle'];
@@ -82,6 +83,7 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
   }
 
   validateMenuContributions(contributes?.menus, contributes?.submenus, diagnostics);
+  validateModuleTypeContributions(contributes?.types, diagnostics);
 
   if (contributes?.designerControls) {
     if (!Array.isArray(contributes.designerControls)) diagnostics.push('contributes.designerControls 必须是数组。');
@@ -142,8 +144,9 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
   validatePathArray(contributes?.docs?.map((doc: any) => doc?.path), 'docs.path', diagnostics);
   validatePathArray(contributes?.examples?.map((example: any) => example?.path), 'examples.path', diagnostics);
   validateDependencies(raw.dependencies, raw.id, diagnostics);
+  validateBuildContribution(raw.build, raw.targets || [], diagnostics);
   validateTargets(raw.targets, diagnostics);
-  validateBindings(raw.bindings, contributes?.commands || [], raw.targets || [], diagnostics);
+  validateBindings(raw.bindings, contributes?.commands || [], contributes?.types || [], raw.targets || [], diagnostics);
   validateControlReferenceSnippets(contributes?.snippets, raw.bindings?.commands, diagnostics);
   validateCompatibility(raw.compatibility, raw.id, diagnostics);
 
@@ -311,6 +314,70 @@ function uniqueReferences(values: Array<{ path: string; label: string }>): Array
   });
 }
 
+function validateBuildContribution(build: any, targets: any[], diagnostics: string[]): void {
+  if (build === undefined) return;
+  if (!build || typeof build !== 'object' || Array.isArray(build)) {
+    diagnostics.push('build 必须是对象。');
+    return;
+  }
+  if (build.buildSteps !== undefined) diagnostics.push('模块暂不允许公开 buildSteps；请使用受控 build.codeGenerators。');
+  if (build.codeGenerators === undefined) return;
+  if (!Array.isArray(build.codeGenerators)) {
+    diagnostics.push('build.codeGenerators 必须是数组。');
+    return;
+  }
+  const targetIds = new Set(targets.map(target => target?.id).filter(Boolean));
+  const seen = new Set<string>();
+  const allOutputPaths = new Set<string>();
+  build.codeGenerators.forEach((generator: any, index: number) => {
+    const prefix = `build.codeGenerators[${index}]`;
+    if (typeof generator?.id !== 'string' || !/^[a-z0-9][a-z0-9._-]{2,100}$/u.test(generator.id)) diagnostics.push(`${prefix}.id 无效。`);
+    if (seen.has(generator?.id)) diagnostics.push(`代码生成器 ID 重复：${generator.id}`);
+    seen.add(generator?.id);
+    if (typeof generator?.provider !== 'string' || !/^[a-z0-9][a-z0-9._-]{2,100}$/u.test(generator.provider)) diagnostics.push(`${prefix}.provider 无效。`);
+    if (generator?.version !== undefined && (typeof generator.version !== 'string' || !generator.version.trim())) diagnostics.push(`${prefix}.version 必须是非空版本文本。`);
+    if (!generator?.inputs || typeof generator.inputs !== 'object' || !Array.isArray(generator.inputs.include) || generator.inputs.include.length === 0) {
+      diagnostics.push(`${prefix}.inputs.include 至少需要一个输入 glob。`);
+    } else {
+      [...generator.inputs.include, ...(generator.inputs.exclude || [])].forEach((pattern: unknown) => {
+        if (typeof pattern !== 'string' || !pattern.trim() || path.isAbsolute(pattern) || pattern.split(/[\\/]/u).includes('..')) diagnostics.push(`${prefix}.inputs 含有不安全路径。`);
+      });
+      if (generator.inputs.exclude !== undefined && (!Array.isArray(generator.inputs.exclude) || generator.inputs.exclude.some((item: unknown) => typeof item !== 'string'))) diagnostics.push(`${prefix}.inputs.exclude 必须是文本数组。`);
+      if (generator.inputs.root !== undefined && (typeof generator.inputs.root !== 'string' || path.isAbsolute(generator.inputs.root) || generator.inputs.root.split(/[\\/]/u).includes('..'))) diagnostics.push(`${prefix}.inputs.root 必须是安全的相对路径。`);
+    }
+    if (!Array.isArray(generator?.outputs) || generator.outputs.length === 0) diagnostics.push(`${prefix}.outputs 不能为空。`);
+    else {
+      const outputPaths = new Set<string>();
+      generator.outputs.forEach((output: any, outputIndex: number) => {
+        if (typeof output?.path !== 'string' || !output.path.trim() || path.isAbsolute(output.path) || output.path.split(/[\\/]/u).includes('..')) diagnostics.push(`${prefix}.outputs[${outputIndex}].path 不安全。`);
+        if (!['source', 'header', 'content', 'descriptor', 'runtime'].includes(output?.kind)) diagnostics.push(`${prefix}.outputs[${outputIndex}].kind 不受支持。`);
+        const normalizedPath = typeof output?.path === 'string' ? output.path.replace(/\\/gu, '/').toLowerCase() : '';
+        if (normalizedPath && outputPaths.has(normalizedPath)) diagnostics.push(`${prefix}.outputs 存在重复路径：${output.path}`);
+        if (normalizedPath) outputPaths.add(normalizedPath);
+        if (normalizedPath && allOutputPaths.has(normalizedPath)) diagnostics.push(`代码生成器输出路径重复：${output.path}`);
+        if (normalizedPath) allOutputPaths.add(normalizedPath);
+      });
+    }
+    if (generator?.targetIds !== undefined) {
+      if (!Array.isArray(generator.targetIds) || generator.targetIds.some((targetId: unknown) => typeof targetId !== 'string' || (targetIds.size === 0 || !targetIds.has(targetId)))) diagnostics.push(`${prefix}.targetIds 引用了不存在的 target。`);
+    }
+    if (generator?.options !== undefined && (!generator.options || typeof generator.options !== 'object' || Array.isArray(generator.options))) diagnostics.push(`${prefix}.options 必须是对象。`);
+    else if (generator?.options !== undefined) validateCodeGeneratorOptions(generator.options, prefix, diagnostics);
+  });
+}
+
+function validateCodeGeneratorOptions(options: unknown, prefix: string, diagnostics: string[], trail = ''): void {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) return;
+  for (const [key, value] of Object.entries(options as Record<string, unknown>)) {
+    const normalized = key.toLowerCase();
+    if (['command', 'commands', 'executable', 'exe', 'shell', 'powershell', 'script', 'javascript', 'cwd', 'workingdirectory'].includes(normalized)) {
+      diagnostics.push(`${prefix}.options${trail ? `.${trail}` : ''}.${key} 不允许注入命令或脚本。`);
+      continue;
+    }
+    if (value && typeof value === 'object' && !Array.isArray(value)) validateCodeGeneratorOptions(value, prefix, diagnostics, trail ? `${trail}.${key}` : key);
+  }
+}
+
 function validateTargets(targets: unknown, diagnostics: string[]): void {
   if (targets === undefined) return;
   if (!Array.isArray(targets)) {
@@ -333,7 +400,7 @@ function validateTargets(targets: unknown, diagnostics: string[]): void {
   });
 }
 
-function validateBindings(bindings: any, commands: any[], targets: any[], diagnostics: string[]): void {
+function validateBindings(bindings: any, commands: any[], types: any[], targets: any[], diagnostics: string[]): void {
   if (bindings === undefined) return;
   if (!bindings || typeof bindings !== 'object') {
     diagnostics.push('bindings 必须是对象。');
@@ -345,17 +412,32 @@ function validateBindings(bindings: any, commands: any[], targets: any[], diagno
     return;
   }
   const commandNames = new Set(commands.map(command => command?.name).filter(Boolean));
+  const publicTypeNames = new Set(types.map(type => type?.name).filter((name): name is string => typeof name === 'string' && Boolean(name.trim())));
+  const structuredTypeNames = new Set(types
+    .filter(type => type?.kind === 'record' || type?.kind === 'array')
+    .map(type => type.name)
+    .filter((name): name is string => typeof name === 'string' && Boolean(name.trim())));
   const targetIds = new Set(targets.map(target => target?.id).filter(Boolean));
+  const hasNativeDllTarget = targets.some(target => Array.isArray(target?.runtimeFiles)
+    && target.runtimeFiles.some((file: unknown) => typeof file === 'string' && file.toLowerCase().endsWith('.dll')));
+  const isSupportedBindingType = (value: unknown) => typeof value === 'string'
+    && (BINDING_VALUE_TYPES.includes(value as ModuleBindingValueType) || publicTypeNames.has(value));
   bindings.commands.forEach((binding: any, index: number) => {
     if (typeof binding?.command !== 'string' || !binding.command.trim()) diagnostics.push(`bindings.commands[${index}] 缺少 command。`);
     if (binding?.command && commandNames.size > 0 && !commandNames.has(binding.command)) diagnostics.push(`binding 引用了未贡献的命令：${binding.command}`);
     if (typeof binding?.runtimeName !== 'string' || !binding.runtimeName.trim()) diagnostics.push(`bindings.commands[${index}] 缺少 runtimeName。`);
-    if (binding?.returnType && !BINDING_VALUE_TYPES.includes(binding.returnType)) diagnostics.push(`bindings.commands[${index}].returnType 不受支持。`);
+    if (binding?.returnType && !isSupportedBindingType(binding.returnType)) diagnostics.push(`bindings.commands[${index}].returnType 不受支持；只能使用基础类型或本模块公开类型。`);
+    if (hasNativeDllTarget && structuredTypeNames.has(binding?.returnType)) {
+      diagnostics.push(`命令 ${binding?.command || index + 1} 不能通过原生 DLL ABI 直接返回结构化类型 ${binding.returnType}；请改用 POD 缓冲区或受管句柄。`);
+    }
     if (binding?.parameters !== undefined) {
       if (!Array.isArray(binding.parameters)) diagnostics.push(`bindings.commands[${index}].parameters 必须是数组。`);
       else binding.parameters.forEach((parameter: any, parameterIndex: number) => {
         if (typeof parameter?.name !== 'string' || !parameter.name.trim()) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}] 缺少 name。`);
-        if (!BINDING_VALUE_TYPES.includes(parameter?.type)) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].type 不受支持。`);
+        if (!isSupportedBindingType(parameter?.type)) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].type 不受支持；只能使用基础类型或本模块公开类型。`);
+        if (hasNativeDllTarget && structuredTypeNames.has(parameter?.type)) {
+          diagnostics.push(`命令 ${binding?.command || index + 1} 不能通过原生 DLL ABI 直接传递结构化参数 ${parameter.type}；请改用 POD 缓冲区或受管句柄。`);
+        }
         if (parameter?.type === 'controlRef') {
           if (!Array.isArray(parameter.controlKinds) || parameter.controlKinds.length === 0) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].controlKinds 必须显式声明 visual、nonVisual 或 resource。`);
           if (!parameter.scope) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].scope 必须显式声明 currentWindow 或 project。`);
@@ -378,8 +460,28 @@ function validateBindings(bindings: any, commands: any[], targets: any[], diagno
         } else if ((parameter?.type === 'wideString' || parameter?.type === 'utf8String') && looksLikeControlReferenceParameterName(parameter?.name)) {
           diagnostics.push(`命令 ${binding.command} 的参数“${parameter.name}”具有控件引用语义，必须声明为 controlRef，不能声明为文本。`);
         }
+        if (parameter?.type === 'raw' && looksLikeByteSequence(parameter?.name, binding?.command, parameter?.description, binding?.encoding)) {
+          diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}] 使用 raw 表示字节序列；请迁移为 bytes（用户可见类型“字节集”）。raw 仅保留给不透明原生类型。`);
+        }
+        if (parameter?.variadic !== undefined && typeof parameter.variadic !== 'boolean') {
+          diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].variadic 必须是逻辑值。`);
+        }
+        if (parameter?.variadic === true && parameter?.type !== 'lingValue') {
+          diagnostics.push(`命令 ${binding.command} 的可变参数必须声明为 lingValue。`);
+        }
+        if (parameter?.type === 'lingValue' && parameter?.variadic !== true) {
+          diagnostics.push(`命令 ${binding.command} 的 lingValue 参数必须声明 variadic: true。`);
+        }
       });
     }
+    const variadicIndexes = (binding.parameters || [])
+      .map((parameter: any, parameterIndex: number) => parameter?.variadic === true ? parameterIndex : -1)
+      .filter((parameterIndex: number) => parameterIndex >= 0);
+    if (variadicIndexes.length > 1) diagnostics.push(`命令 ${binding.command} 只能声明一个可变参数。`);
+    if (variadicIndexes.length === 1 && variadicIndexes[0] !== (binding.parameters || []).length - 1) {
+      diagnostics.push(`命令 ${binding.command} 的可变参数必须位于参数列表末尾。`);
+    }
+    validateManagedInvocation(binding, index, diagnostics);
     if (binding?.targetIds !== undefined) {
       if (!Array.isArray(binding.targetIds)) diagnostics.push(`bindings.commands[${index}].targetIds 必须是数组。`);
       else binding.targetIds.forEach((targetId: unknown) => {
@@ -387,6 +489,57 @@ function validateBindings(bindings: any, commands: any[], targets: any[], diagno
       });
     }
   });
+}
+
+function looksLikeByteSequence(...values: unknown[]): boolean {
+  const [nameValue, commandValue, descriptionValue, encodingValue] = values;
+  const name = typeof nameValue === 'string' ? nameValue : undefined;
+  const command = typeof commandValue === 'string' ? commandValue : undefined;
+  const description = typeof descriptionValue === 'string' ? descriptionValue : undefined;
+  const encoding = typeof encodingValue === 'string' ? encodingValue : undefined;
+  const explicitChinese = /(?:字节集|字节序列|字节数组|二进制数据)/iu;
+  const explicitAscii = /^(?:bytes|byteArray)$/iu;
+  // Pointer-plus-length parameters in native bindings are commonly named
+  // `title_bytes`, `data_bytes`, etc. Those are opaque ABI values, not a
+  // public byte-sequence type, so only exact parameter names are considered.
+  if (name && explicitChinese.test(name)) return true;
+  if (name && explicitAscii.test(name.trim())) return encoding !== 'raw';
+  return [command, description].some(value => Boolean(value && (explicitChinese.test(value) || /\bbyteArray\b/iu.test(value))));
+}
+
+function validateManagedInvocation(binding: any, bindingIndex: number, diagnostics: string[]): void {
+  const invocation = binding?.invocation;
+  if (invocation === undefined) return;
+  if (!invocation || typeof invocation !== 'object' || invocation.kind !== 'managedTask') {
+    diagnostics.push(`bindings.commands[${bindingIndex}].invocation.kind 必须为 managedTask。`);
+    return;
+  }
+  if (!['submit', 'synchronized'].includes(invocation.operation)) {
+    diagnostics.push(`命令 ${binding.command} 的 managedTask.operation 不受支持。`);
+  }
+  const parameters = Array.isArray(binding.parameters) ? binding.parameters : [];
+  const indexes = [
+    ['workerParameterIndex', 'handler'],
+    ['progressParameterIndex', 'handler'],
+    ['completionParameterIndex', 'handler'],
+    ['poolParameterIndex', undefined],
+    ['timeoutParameterIndex', undefined],
+    ['variadicParameterIndex', 'lingValue']
+  ] as const;
+  indexes.forEach(([key, expectedType]) => {
+    const value = invocation[key];
+    if (value === undefined && !['workerParameterIndex', 'variadicParameterIndex'].includes(key)) return;
+    if (!Number.isInteger(value) || value < 0 || value >= parameters.length) {
+      diagnostics.push(`命令 ${binding.command} 的 ${key} 不是有效参数索引。`);
+      return;
+    }
+    if (expectedType && parameters[value]?.type !== expectedType) {
+      diagnostics.push(`命令 ${binding.command} 的 ${key} 必须指向 ${expectedType} 参数。`);
+    }
+  });
+  if (invocation.variadicParameterIndex !== undefined && parameters[invocation.variadicParameterIndex]?.variadic !== true) {
+    diagnostics.push(`命令 ${binding.command} 的 variadicParameterIndex 必须指向 variadic lingValue 参数。`);
+  }
 }
 
 function looksLikeControlReferenceParameterName(value: unknown): boolean {

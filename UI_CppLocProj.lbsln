@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "datagrid-api-demo",
+  "startupProjectId": "new-emoji-92-tabs-validation",
   "startupProjectIds": [
-    "datagrid-api-demo"
+    "new-emoji-92-tabs-validation"
   ],
   "folders": [
     {
@@ -231,6 +231,13 @@
       "name": "动态图像控件完整接口示例",
       "type": "visual-cpp",
       "sourceRoot": "src/animated-image-api-demo",
+      "references": []
+    },
+    {
+      "id": "threading-api-demo",
+      "name": "多线程模块 2.0 完整交互演示",
+      "type": "visual-cpp",
+      "sourceRoot": "src/threading-api-demo",
       "references": []
     },
     {

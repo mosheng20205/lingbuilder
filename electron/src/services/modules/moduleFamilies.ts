@@ -1,4 +1,5 @@
 import type { InstalledModule } from './types';
+import { formatModulePublicType } from './modulePublicTypeService';
 
 export type ModuleFamilyFeatureTier = 'standard' | 'advanced';
 
@@ -260,7 +261,14 @@ export function getModuleFamilySearchText(
         command.returnType,
         ...(command.aliases || [])
       ]),
-      ...(contributes?.types || []).flatMap(type => [type.name, type.description, type.cppType]),
+      ...(contributes?.types || []).flatMap(type => [
+        type.name,
+        type.description,
+        type.cppType,
+        type.elementType,
+        formatModulePublicType(type),
+        ...(type.fields || []).flatMap(field => [field.name, field.type, field.description])
+      ]),
       ...(contributes?.designerControls || []).flatMap(control => [control.label, control.type, control.category])
     ];
   }).join(' ').toLocaleLowerCase('zh-CN');

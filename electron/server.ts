@@ -41,6 +41,10 @@ import {
   renameFunctionLibraryAcrossSources
 } from "./src/services/lingCpp/functionLibraryService";
 import { createModuleService } from "./src/services/modules/moduleService";
+import {
+  ModuleDocumentationError,
+  readModuleDocumentation
+} from "./src/services/modules/moduleDocumentationService";
 import { ModuleAccessService } from "./src/services/modules/moduleAccessService";
 import { LingCppModuleContext } from "./src/services/modules/types";
 import { describeLingCppModuleContextForAi } from "./src/services/modules/moduleContextAdapters";
@@ -132,6 +136,10 @@ import {
   createProjectBuildSessionService,
   ProjectBuildPreparationError
 } from "./src/services/tasks/projectBuildSessionService";
+import { createBuildStepProviderRegistry } from "./src/services/build/providerRegistry";
+import { BuildPipelineService } from "./src/services/build/buildPipeline";
+import { createProtobufCodeGeneratorProvider } from "./src/services/build/protobufProvider";
+import { createWindowsMsvcBuildTarget, runProjectCodeGenerators, type ProjectCodeGeneratorResult } from "./src/services/build/projectCodeGeneratorService";
 import {
   formatServerReady,
   isServerSessionAuthorized,
@@ -160,18 +168,18 @@ function createFbroRuntimeEnvironment(): NodeJS.ProcessEnv {
   };
 }
 
-const serverRuntimeConfig = resolveServerRuntimeConfig(process.env);
+let serverRuntimeConfig = resolveServerRuntimeConfig(process.env);
 // This process is already running as an Electron utility process. Ensure that
 // any later process.execPath probe starts Electron in Node mode instead of
 // recursively launching the packaged LingBuilder application.
 if (serverRuntimeConfig.environment === "production") {
   process.env.ELECTRON_RUN_AS_NODE = "1";
 }
-const workspacePathPolicy = new WorkspacePathPolicy(serverRuntimeConfig.workspaceRoot);
-const projectFileMutationService = createProjectFileMutationService(serverRuntimeConfig.workspaceRoot);
+let workspacePathPolicy = new WorkspacePathPolicy(serverRuntimeConfig.workspaceRoot);
+let projectFileMutationService = createProjectFileMutationService(serverRuntimeConfig.workspaceRoot);
 const projectFilePersistenceService = createProjectFilePersistenceService();
-const hotExitRecoveryService = new HotExitRecoveryService(serverRuntimeConfig.workspaceRoot);
-const workspaceSearchService = createWorkspaceSearchService(serverRuntimeConfig.workspaceRoot);
+let hotExitRecoveryService = new HotExitRecoveryService(serverRuntimeConfig.workspaceRoot);
+let workspaceSearchService = createWorkspaceSearchService(serverRuntimeConfig.workspaceRoot);
 const managedProcessService = createManagedProcessService();
 let activeEdgeControlPreviewProcessKey: string | undefined;
 const edgeControlPreviewBuildDirs = new Map<string, string>();
@@ -188,41 +196,133 @@ async function cleanupEdgeControlPreviewBuild(processKey: string): Promise<void>
 }
 const taskService = new TaskService();
 const environmentRepairService = new EnvironmentRepairService();
-const buildConfigurationService = new BuildConfigurationService(serverRuntimeConfig.workspaceRoot);
-const incrementalBuildService = new IncrementalBuildService(serverRuntimeConfig.workspaceRoot);
-const ptyTerminalService = new PtyTerminalService(serverRuntimeConfig.workspaceRoot);
-const nativeDebugService = new NativeDebugService(serverRuntimeConfig.workspaceRoot);
-const gitService = new GitService(serverRuntimeConfig.workspaceRoot);
-const testExplorerService = new TestExplorerService(serverRuntimeConfig.workspaceRoot);
+let buildConfigurationService = new BuildConfigurationService(serverRuntimeConfig.workspaceRoot);
+let incrementalBuildService = new IncrementalBuildService(serverRuntimeConfig.workspaceRoot);
+let ptyTerminalService = new PtyTerminalService(serverRuntimeConfig.workspaceRoot);
+let nativeDebugService = new NativeDebugService(serverRuntimeConfig.workspaceRoot);
+let gitService = new GitService(serverRuntimeConfig.workspaceRoot);
+let testExplorerService = new TestExplorerService(serverRuntimeConfig.workspaceRoot);
 const nodeTestDebugService = new NodeTestDebugService();
-const qualityService = new QualityService(serverRuntimeConfig.workspaceRoot, TSX_IMPORT);
-const extensionService = new ExtensionService(serverRuntimeConfig.workspaceRoot);
-const dependencyService = new DependencyService(serverRuntimeConfig.workspaceRoot);
-const rcResourceService = new RcResourceService(serverRuntimeConfig.workspaceRoot);
-const designerAssetService = createDesignerAssetService(serverRuntimeConfig.workspaceRoot);
-const performanceService = new PerformanceService(serverRuntimeConfig.workspaceRoot);
-const publishingService = new PublishingService(serverRuntimeConfig.workspaceRoot);
-const workspaceIndexService = new WorkspaceIndexService(serverRuntimeConfig.workspaceRoot);
-const settingsSyncService = new SettingsSyncService(serverRuntimeConfig.workspaceRoot, serverRuntimeConfig.userSettingsPath);
-const externalProjectService = new ExternalProjectService(serverRuntimeConfig.workspaceRoot);
+let qualityService = new QualityService(serverRuntimeConfig.workspaceRoot, TSX_IMPORT);
+let extensionService = new ExtensionService(serverRuntimeConfig.workspaceRoot);
+let dependencyService = new DependencyService(serverRuntimeConfig.workspaceRoot);
+let rcResourceService = new RcResourceService(serverRuntimeConfig.workspaceRoot);
+let designerAssetService = createDesignerAssetService(serverRuntimeConfig.workspaceRoot);
+let performanceService = new PerformanceService(serverRuntimeConfig.workspaceRoot);
+let publishingService = new PublishingService(serverRuntimeConfig.workspaceRoot);
+let workspaceIndexService = new WorkspaceIndexService(serverRuntimeConfig.workspaceRoot);
+let settingsSyncService = new SettingsSyncService(serverRuntimeConfig.workspaceRoot, serverRuntimeConfig.userSettingsPath);
+let externalProjectService = new ExternalProjectService(serverRuntimeConfig.workspaceRoot);
 const moduleAccessService = new ModuleAccessService();
-const clangdService = new ClangdService({
+let clangdService = new ClangdService({
   workspaceRoot: serverRuntimeConfig.workspaceRoot,
   command: process.env.LINGBUILDER_CLANGD_PATH || "clangd"
 });
-const lspWorkspaceEditService = new LspWorkspaceEditService(serverRuntimeConfig.workspaceRoot);
+let lspWorkspaceEditService = new LspWorkspaceEditService(serverRuntimeConfig.workspaceRoot);
 const projectBuildCoordinator = createProjectBuildCoordinator();
 const projectBuildSessionService = createProjectBuildSessionService(
   projectBuildCoordinator,
   managedProcessService
 );
-const workbenchConfigurationService = createWorkbenchConfigurationService({
+const buildProviderRegistry = createBuildStepProviderRegistry([
+  createProtobufCodeGeneratorProvider({
+    sdkRoot: () => process.env.LINGBUILDER_PROTOBUF_SDK_ROOT || path.join(getRepoWorkspaceRoot(), '.lingbuilder', 'toolchains', 'protobuf'),
+    protocPath: () => path.join(process.env.LINGBUILDER_PROTOBUF_SDK_ROOT || path.join(getRepoWorkspaceRoot(), '.lingbuilder', 'toolchains', 'protobuf'), 'bin', 'protoc.exe'),
+    expectedSha256: process.env.LINGBUILDER_PROTOC_SHA256
+  })
+]);
+const buildPipelineService = new BuildPipelineService(buildProviderRegistry);
+let workbenchConfigurationService = createWorkbenchConfigurationService({
   workspaceRoot: serverRuntimeConfig.workspaceRoot,
   userSettingsPath: serverRuntimeConfig.userSettingsPath
 });
-const workbenchConfigurationInitialization = workbenchConfigurationService.initialize();
+let workbenchConfigurationInitialization = workbenchConfigurationService.initialize();
 let lingBuilderAiRulebookCache: string | undefined;
 let solutionServiceCache: ReturnType<typeof createSolutionService> | null = null;
+let workspaceSwitchQueue: Promise<void> = Promise.resolve();
+let workspaceRuntimeVersion = 1;
+
+async function resolveWorkspaceSwitchTarget(value: unknown): Promise<string> {
+  if (typeof value !== 'string' || !value.trim() || !path.isAbsolute(value.trim())) {
+    throw new Error('工作区路径必须是绝对路径。');
+  }
+  const candidatePath = path.resolve(value.trim());
+  const stat = await fs.stat(candidatePath);
+  if (!stat.isDirectory()) throw new Error('工作区路径必须指向目录。');
+  const candidatePolicy = new WorkspacePathPolicy(candidatePath);
+  return await candidatePolicy.getRealWorkspaceRoot();
+}
+
+function isSameWorkspace(left: string, right: string): boolean {
+  return path.resolve(left).localeCompare(path.resolve(right), undefined, {
+    sensitivity: process.platform === 'win32' ? 'accent' : 'variant'
+  }) === 0;
+}
+
+async function stopWorkspaceBoundServices(): Promise<void> {
+  projectBuildCoordinator.cancelAll('user');
+  await projectBuildCoordinator.waitForIdle();
+  await Promise.allSettled([
+    managedProcessService.stopAll(),
+    nativeDebugService.stop(),
+    clangdService.stop(),
+    nodeTestDebugService.stop(),
+    extensionService.stop()
+  ]);
+  ptyTerminalService.closeAll();
+  performanceService.cancel();
+  workspaceIndexService.cancel();
+}
+
+async function switchWorkspaceRuntime(requestedPath: unknown): Promise<{ workspacePath: string; version: number; changed: boolean }> {
+  const candidateWorkspace = await resolveWorkspaceSwitchTarget(requestedPath);
+  const operation = workspaceSwitchQueue.then(async () => {
+    const currentWorkspace = serverRuntimeConfig.workspaceRoot;
+    if (isSameWorkspace(currentWorkspace, candidateWorkspace)) {
+      return { workspacePath: currentWorkspace, version: workspaceRuntimeVersion, changed: false };
+    }
+
+    await stopWorkspaceBoundServices();
+    serverRuntimeConfig = { ...serverRuntimeConfig, workspaceRoot: candidateWorkspace };
+    process.env.LINGBUILDER_WORKSPACE_ROOT = candidateWorkspace;
+    workspacePathPolicy = new WorkspacePathPolicy(candidateWorkspace);
+    projectFileMutationService = createProjectFileMutationService(candidateWorkspace);
+    hotExitRecoveryService = new HotExitRecoveryService(candidateWorkspace);
+    workspaceSearchService = createWorkspaceSearchService(candidateWorkspace);
+    buildConfigurationService = new BuildConfigurationService(candidateWorkspace);
+    incrementalBuildService = new IncrementalBuildService(candidateWorkspace);
+    ptyTerminalService = new PtyTerminalService(candidateWorkspace);
+    nativeDebugService = new NativeDebugService(candidateWorkspace);
+    gitService = new GitService(candidateWorkspace);
+    testExplorerService = new TestExplorerService(candidateWorkspace);
+    qualityService = new QualityService(candidateWorkspace, TSX_IMPORT);
+    extensionService = new ExtensionService(candidateWorkspace);
+    dependencyService = new DependencyService(candidateWorkspace);
+    rcResourceService = new RcResourceService(candidateWorkspace);
+    designerAssetService = createDesignerAssetService(candidateWorkspace);
+    performanceService = new PerformanceService(candidateWorkspace);
+    publishingService = new PublishingService(candidateWorkspace);
+    workspaceIndexService = new WorkspaceIndexService(candidateWorkspace);
+    settingsSyncService = new SettingsSyncService(candidateWorkspace, serverRuntimeConfig.userSettingsPath);
+    externalProjectService = new ExternalProjectService(candidateWorkspace);
+    clangdService = new ClangdService({
+      workspaceRoot: candidateWorkspace,
+      command: process.env.LINGBUILDER_CLANGD_PATH || "clangd"
+    });
+    lspWorkspaceEditService = new LspWorkspaceEditService(candidateWorkspace);
+    workbenchConfigurationService = createWorkbenchConfigurationService({
+      workspaceRoot: candidateWorkspace,
+      userSettingsPath: serverRuntimeConfig.userSettingsPath
+    });
+    workbenchConfigurationInitialization = workbenchConfigurationService.initialize();
+    solutionServiceCache = null;
+    workspaceRuntimeVersion += 1;
+    await workbenchConfigurationInitialization;
+    return { workspacePath: candidateWorkspace, version: workspaceRuntimeVersion, changed: true };
+  });
+  workspaceSwitchQueue = operation.then(() => undefined, () => undefined);
+  return await operation;
+}
 
 async function getLingBuilderAiRulebook(): Promise<string> {
   if (lingBuilderAiRulebookCache !== undefined) return lingBuilderAiRulebookCache;
@@ -565,6 +665,7 @@ if (serverRuntimeConfig.aiBridgeEnabled) {
   const aiBridgeService = new AiBridgeService(aiBridgeOptions, {
     managedProcessService,
     projectBuildCoordinator,
+    buildPipelineService,
     assertModuleAccess
   });
   app.use(
@@ -774,6 +875,40 @@ app.get("/api/modules/installed", async (req, res) => {
   }
 });
 
+app.get("/api/modules/document", async (req, res) => {
+  const moduleId = String(req.query.moduleId || "").trim();
+  const documentPath = String(req.query.path || "").trim();
+  if (!moduleId || !documentPath) {
+    res.status(400).json({ ok: false, error: "缺少模块 ID 或文档路径。" });
+    return;
+  }
+  try {
+    const module = (await getModuleService().scanInstalledModules())
+      .find(candidate => candidate.manifest.id === moduleId);
+    if (!module) {
+      res.status(404).json({ ok: false, error: "没有找到该模块。" });
+      return;
+    }
+    const document = await readModuleDocumentation(module, documentPath, {
+      workspaceRoot: getRepoWorkspaceRoot(),
+      resourceRoot: process.env.LINGBUILDER_RESOURCE_ROOT || process.cwd()
+    });
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ ok: true, document });
+  } catch (error) {
+    const status = error instanceof ModuleDocumentationError
+      ? error.code === "MODULE_DOCUMENT_TOO_LARGE" ? 413
+        : error.code === "MODULE_DOCUMENT_NOT_FOUND" ? 404
+          : 400
+      : 500;
+    res.status(status).json({
+      ok: false,
+      code: error instanceof ModuleDocumentationError ? error.code : "MODULE_DOCUMENT_READ_FAILED",
+      error: error instanceof Error ? error.message : "模块文档读取失败。"
+    });
+  }
+});
+
 app.get("/api/modules/project", async (req, res) => {
   try {
     const { projectId } = req.query as { projectId?: string };
@@ -913,6 +1048,15 @@ app.get("/api/solution", async (_req, res) => {
     res.json({ ok: true, solution });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error?.message || "解决方案读取失败" });
+  }
+});
+
+app.post("/api/workspace/switch", async (req, res) => {
+  try {
+    const result = await switchWorkspaceRuntime(req.body?.workspacePath);
+    res.json({ ok: true, ...result });
+  } catch (error: any) {
+    res.status(400).json({ ok: false, error: error?.message || "工作区切换失败。" });
   }
 });
 
@@ -1525,16 +1669,42 @@ app.post("/api/window-designer/native-preview", async (req, res) => {
       lingCppSources: await resolveLingCppProjectSources(project.id || "lingbuilder-ui-project", lingCppSources),
       enabledModules
     });
+    const previewConfiguration = await buildConfigurationService.read();
+    const previewRoot = path.join(getRepoWorkspaceRoot(), '.lingbuilder-build', 'native-preview', sanitizeFilename(project.id || 'window-preview'));
+    await fs.rm(previewRoot, { recursive: true, force: true });
+    await fs.mkdir(previewRoot, { recursive: true });
+    let previewProjectRoot = getRepoWorkspaceRoot();
+    try {
+      const previewSolution = getSolutionService();
+      const previewProjectRef = previewSolution.getProject(await previewSolution.getSolution(), project.id || 'lingbuilder-ui-project');
+      previewProjectRoot = path.resolve(getRepoWorkspaceRoot(), previewProjectRef.sourceRoot || '.');
+    } catch {
+      // A detached designer preview may not have a persisted solution entry yet.
+    }
+    const previewCodeGenerators = await runProjectCodeGenerators({
+      service: buildPipelineService,
+      workspaceRoot: getRepoWorkspaceRoot(),
+      projectRoot: previewProjectRoot,
+      outputRoot: previewRoot,
+      exportRoot: previewRoot,
+      projectId: project.id || 'window-preview',
+      modules: enabledModules,
+      target: createWindowsMsvcBuildTarget(previewConfiguration.architecture === 'x64' ? 'x64' : 'win32'),
+      cache: incrementalBuildService,
+      cacheKey: `${project.id || 'window-preview'}:native-preview-code-generators:${previewConfiguration.architecture}`
+    });
+    const previewFiles = [...generatedProject.files, ...previewCodeGenerators.textFiles];
 
     res.json({
       ok: true,
-      files: generatedProject.files.map(file => ({
+      files: previewFiles.map(file => ({
         relativePath: file.relativePath,
         language: getGeneratedFileLanguage(file.relativePath),
         content: file.content,
         readonly: true
       })),
-      diagnostics: generatedProject.diagnostics,
+      diagnostics: [...generatedProject.diagnostics, ...previewCodeGenerators.diagnostics],
+      logs: previewCodeGenerators.logs,
       selectedWindow: generatedProject.selectedWindow,
       enabledModules: enabledModules.map(module => `${module.manifest.name} (${module.manifest.id}@${module.manifest.version})`),
       sourceMap: generatedProject.sourceMap
@@ -1580,14 +1750,31 @@ app.post("/api/window-designer/native-export", async (req, res) => {
     await writeGeneratedProjectFiles(exportDir, generatedProject.files);
     const solutionService = getSolutionService();
     const projectRef = solutionService.getProject(await solutionService.getSolution(), project.id || "lingbuilder-ui-project");
+    const exportConfiguration = await buildConfigurationService.read();
+    const codeGeneratorResult = await runProjectCodeGenerators({
+      service: buildPipelineService,
+      workspaceRoot: getRepoWorkspaceRoot(),
+      projectRoot: path.resolve(getRepoWorkspaceRoot(), projectRef.sourceRoot || '.'),
+      outputRoot: exportDir,
+      exportRoot: exportDir,
+      projectId: project.id || 'window-preview',
+      modules: enabledModules,
+      target: createWindowsMsvcBuildTarget(exportConfiguration.architecture === 'x64' ? 'x64' : 'win32'),
+      cache: incrementalBuildService,
+      cacheKey: `${project.id || 'window-preview'}:native-export-code-generators:${exportConfiguration.architecture}`
+    });
+    const generatedCodegenFiles = codeGeneratorResult.textFiles;
     const copiedAssets = await designerAssetService.copyProjectAssets(projectRef, [exportDir]);
     const moduleExportDiagnostics = await exportModuleNativeDependencies(enabledModules, exportDir);
     const visualStudioProject = await exportVisualStudioProject({
       projectDir: exportDir,
       projectId: project.id || "window-preview",
-      generatedFiles: generatedProject.files,
+      generatedFiles: [...generatedProject.files, ...generatedCodegenFiles],
       enabledModules,
-      contentFiles: copiedAssets.map(file => normalizeFilePath(path.relative(exportDir, file)))
+      contentFiles: [
+        ...copiedAssets.map(file => normalizeFilePath(path.relative(exportDir, file))),
+        ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))
+      ]
     });
 
     res.json({
@@ -1595,10 +1782,11 @@ app.post("/api/window-designer/native-export", async (req, res) => {
       exportDir,
       files: [
         ...generatedProject.files.map(file => path.join(exportDir, file.relativePath)),
+        ...generatedCodegenFiles.map(file => path.join(exportDir, file.relativePath)),
         ...visualStudioProject.files
       ],
       visualStudioProject,
-      diagnostics: [...generatedProject.diagnostics, ...moduleExportDiagnostics],
+      diagnostics: [...generatedProject.diagnostics, ...codeGeneratorResult.diagnostics, ...moduleExportDiagnostics],
       selectedWindow: generatedProject.selectedWindow,
       enabledModules: enabledModules.map(module => `${module.manifest.name} (${module.manifest.id}@${module.manifest.version})`),
       sourceMap: generatedProject.sourceMap,
@@ -1608,6 +1796,7 @@ app.post("/api/window-designer/native-export", async (req, res) => {
         `当前窗口：${generatedProject.selectedWindow.title}`,
         copiedAssets.length ? `已复制 ${copiedAssets.length} 个项目图片资源。` : "当前项目没有需要复制的图片资源。",
         ...generatedProject.diagnostics,
+        ...codeGeneratorResult.logs,
         ...moduleExportDiagnostics
       ]
     });
@@ -1982,6 +2171,38 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       writeGeneratedProjectFiles(exportDir, generatedProject.files)
     ]);
     const assetProjectRef = getSolutionService().getProject(await getSolutionService().getSolution(), projectId);
+    let codeGeneratorResult: ProjectCodeGeneratorResult;
+    try {
+      await fs.rm(path.join(binDir, "LingBuilderPreview.exe"), { force: true });
+      codeGeneratorResult = await runProjectCodeGenerators({
+        service: buildPipelineService,
+        workspaceRoot: repoRoot,
+        projectRoot: path.resolve(repoRoot, assetProjectRef.sourceRoot || '.'),
+        outputRoot: sourceDir,
+        exportRoot: exportDir,
+        projectId,
+        modules: enabledModules,
+        target: createWindowsMsvcBuildTarget(buildConfiguration.architecture === 'x64' ? 'x64' : 'win32'),
+        signal: buildLease.signal,
+        cache: incrementalBuildService,
+        cacheKey: `${projectId}:code-generators:${buildConfiguration.architecture}`,
+        log: message => preBuildLogs.push(message)
+      });
+    } catch (error) {
+      return res.status(200).json({
+        ok: false,
+        stage: "code-generators",
+        error: error instanceof Error ? error.message : String(error),
+        buildDir,
+        sourceDir,
+        binDir,
+        objDir,
+        exportDir,
+        sourceMap: generatedProject.sourceMap,
+        logs: [...preBuildLogs, `代码生成阶段失败：${error instanceof Error ? error.message : String(error)}`]
+      });
+    }
+    const generatedCodegenFiles = codeGeneratorResult.textFiles;
     const copiedAssets = await designerAssetService.copyProjectAssets(assetProjectRef, [buildDir, binDir, exportDir]);
     const buildContentFiles = copiedAssets
       .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
@@ -2010,15 +2231,20 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         logs: [...preBuildLogs, ...generatedProject.diagnostics, ...moduleNativePlan.diagnostics, "原生依赖未准备完整，已阻止编译和运行。"]
       });
     }
+    const generatedNativeSources = codeGeneratorResult.outputFiles.filter((file): file is string => typeof file === "string" && /\.(?:c|cc|cpp|cxx)$/iu.test(file));
+    moduleNativePlan.sourceFiles.push(...generatedNativeSources);
+    moduleNativePlan.includeDirs.push(...new Set(generatedNativeSources.map(file => path.dirname(file))));
+    moduleNativePlan.sourceFiles = [...new Set(moduleNativePlan.sourceFiles)];
+    moduleNativePlan.includeDirs = [...new Set(moduleNativePlan.includeDirs)];
     const buildVisualStudioProject = await exportVisualStudioProject({
       projectDir: buildDir,
       projectId,
-      generatedFiles: generatedProject.files.map(file => ({
+      generatedFiles: [...generatedProject.files, ...generatedCodegenFiles].map(file => ({
         ...file,
         relativePath: normalizeFilePath(path.join("src", file.relativePath))
       })),
       enabledModules,
-      contentFiles: buildContentFiles,
+      contentFiles: [...buildContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(path.join('src', artifact.relativePath)))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
       fbroRuntimeFromBuildBin: true
@@ -2026,9 +2252,9 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     const exportVisualStudioProjectResult = await exportVisualStudioProject({
       projectDir: exportDir,
       projectId,
-      generatedFiles: generatedProject.files,
+      generatedFiles: [...generatedProject.files, ...generatedCodegenFiles],
       enabledModules,
-      contentFiles: exportContentFiles,
+      contentFiles: [...exportContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))],
       requiredCppStandard: moduleNativePlan.requiredCppStandard,
       requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
     });
@@ -2049,7 +2275,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
         binDir,
         objDir,
         exportDir,
-        files: generatedProject.files.map(file => path.join(sourceDir, file.relativePath)),
+        files: [...generatedProject.files, ...generatedCodegenFiles].map(file => path.join(sourceDir, file.relativePath)),
         visualStudioProject: buildVisualStudioProject,
         exportVisualStudioProject: exportVisualStudioProjectResult,
         sourceMap: generatedProject.sourceMap,
@@ -2087,6 +2313,7 @@ app.post("/api/window-designer/build-run", async (req, res) => {
       `编译器：${compiler.kind} (${compiler.command})`,
       `构建配置：${buildConfiguration.mode}|${buildConfiguration.architecture}`,
       ...generatedProject.diagnostics,
+      ...codeGeneratorResult.logs,
       ...moduleNativePlan.diagnostics,
       moduleNativePlan.runtimeFiles.length ? `已复制模块运行时文件：${moduleNativePlan.runtimeFiles.map(file => path.basename(file)).join(", ")}` : "",
       ...compileResult.logs
@@ -2387,6 +2614,38 @@ async function runControlledWindowDesignerBuild(options: {
     writeGeneratedProjectFiles(exportDir, generatedProject.files)
   ]);
   const assetProjectRef = getSolutionService().getProject(await getSolutionService().getSolution(), projectId);
+  let codeGeneratorResult: ProjectCodeGeneratorResult;
+  try {
+    await fs.rm(exePath, { force: true });
+    codeGeneratorResult = await runProjectCodeGenerators({
+      service: buildPipelineService,
+      workspaceRoot: repoRoot,
+      projectRoot: path.resolve(repoRoot, assetProjectRef.sourceRoot || '.'),
+      outputRoot: sourceDir,
+      exportRoot: exportDir,
+      projectId,
+      modules: enabledModules,
+      target: createWindowsMsvcBuildTarget(buildConfiguration.architecture === 'x64' ? 'x64' : 'win32'),
+      signal: buildLease.signal,
+      cache: incrementalBuildService,
+      cacheKey: `${projectId}:code-generators:${buildConfiguration.architecture}`,
+      log: message => preBuildLogs.push(message)
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      stage: "code-generators",
+      error: error instanceof Error ? error.message : String(error),
+      buildDir,
+      sourceDir,
+      binDir,
+      objDir,
+      exportDir,
+      sourceMap: generatedProject.sourceMap,
+      logs: [...preBuildLogs, `代码生成阶段失败：${error instanceof Error ? error.message : String(error)}`]
+    };
+  }
+  const generatedCodegenFiles = codeGeneratorResult.textFiles;
   const copiedAssets = await designerAssetService.copyProjectAssets(assetProjectRef, [buildDir, binDir, exportDir]);
   const buildContentFiles = copiedAssets
     .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
@@ -2415,15 +2674,20 @@ async function runControlledWindowDesignerBuild(options: {
       logs: [...preBuildLogs, ...generatedProject.diagnostics, ...moduleNativePlan.diagnostics, "原生依赖未准备完整，已阻止编译和运行。"]
     };
   }
+  const generatedNativeSources = codeGeneratorResult.outputFiles.filter((file): file is string => typeof file === "string" && /\.(?:c|cc|cpp|cxx)$/iu.test(file));
+  moduleNativePlan.sourceFiles.push(...generatedNativeSources);
+  moduleNativePlan.includeDirs.push(...new Set(generatedNativeSources.map(file => path.dirname(file))));
+  moduleNativePlan.sourceFiles = [...new Set(moduleNativePlan.sourceFiles)];
+  moduleNativePlan.includeDirs = [...new Set(moduleNativePlan.includeDirs)];
   const buildVisualStudioProject = await exportVisualStudioProject({
     projectDir: buildDir,
     projectId,
-    generatedFiles: generatedProject.files.map(file => ({
+    generatedFiles: [...generatedProject.files, ...generatedCodegenFiles].map(file => ({
       ...file,
       relativePath: normalizeFilePath(path.join("src", file.relativePath))
     })),
     enabledModules,
-    contentFiles: buildContentFiles,
+    contentFiles: [...buildContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(path.join('src', artifact.relativePath)))],
     requiredCppStandard: moduleNativePlan.requiredCppStandard,
     requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt,
     fbroRuntimeFromBuildBin: true
@@ -2431,9 +2695,9 @@ async function runControlledWindowDesignerBuild(options: {
   const exportVisualStudioProjectResult = await exportVisualStudioProject({
     projectDir: exportDir,
     projectId,
-    generatedFiles: generatedProject.files,
+    generatedFiles: [...generatedProject.files, ...generatedCodegenFiles],
     enabledModules,
-    contentFiles: exportContentFiles,
+    contentFiles: [...exportContentFiles, ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))],
     requiredCppStandard: moduleNativePlan.requiredCppStandard,
     requiresDynamicCrt: moduleNativePlan.requiresDynamicCrt
   });
@@ -2445,6 +2709,10 @@ async function runControlledWindowDesignerBuild(options: {
     sourceCode,
     sourceFilePath: lingCppSourceFilePath || "",
     generatedFiles: generatedProject.files,
+    codeGenerators: {
+      fingerprint: codeGeneratorResult.fingerprint,
+      artifacts: codeGeneratorResult.artifacts
+    },
     enabledModules,
     buildConfiguration
   });
@@ -2476,7 +2744,7 @@ async function runControlledWindowDesignerBuild(options: {
       binDir,
       objDir,
       exportDir,
-      files: generatedProject.files.map(file => path.join(sourceDir, file.relativePath)),
+      files: [...generatedProject.files, ...generatedCodegenFiles].map(file => path.join(sourceDir, file.relativePath)),
       visualStudioProject: buildVisualStudioProject,
       exportVisualStudioProject: exportVisualStudioProjectResult,
       sourceMap: generatedProject.sourceMap,
@@ -2515,6 +2783,7 @@ async function runControlledWindowDesignerBuild(options: {
     `当前窗口：${generatedProject.selectedWindow.title}`,
     `编译器：${compiler.kind} (${compiler.command})`,
     ...generatedProject.diagnostics,
+    ...codeGeneratorResult.logs,
     ...moduleNativePlan.diagnostics,
     moduleNativePlan.runtimeFiles.length ? `已复制模块运行时文件：${moduleNativePlan.runtimeFiles.map(file => path.basename(file)).join(", ")}` : "",
     ...compileResult.logs

@@ -1,6 +1,20 @@
 # LingBuilder 后期优化事项
 
+- 已完成（2026-08-01）：`lingbuilder.input.mouse@2.0.0` 从最小鼠标接口扩展为 29 条三分类命令：15 条全局真实输入（前台）、6 条指定 HWND 窗口消息输入（后台）和 8 条 UI Automation 语义操作（后台）。贡献、binding、运行时、文档、演示和专项测试同源；每条命令都注明是否移动/占用真实系统鼠标。窗口消息只用受控 `PostMessageW` 入队，UIA 使用受管整数元素句柄并在 COM 退出前统一清理。相对移动文案改为 Windows 鼠标速度/加速度影响的输入增量。后续如需拖动、双击、XButton 或 Raw Input，应继续按前台/后台边界设计独立命令，不得偷偷扩大为任意消息或全局钩子。
+
+- 已完成（2026-08-01）：键盘输入模块由 5 条最小命令升级为 2.0 的 31 条分类 API。全局状态和键码转换不发送输入；前台命令使用批量 `SendInput` 支持虚拟键、最多三修饰键、Unicode 文本和扫描码；后台命令按指定 HWND 投递 `WM_KEY*` / `WM_SYSKEY*` / `WM_CHAR`，不抢焦点或改变物理键状态。全部命令在模块详情中标注前台/后台和键盘占用语义，旧 5 条命令保留兼容。已用 MSVC 验证 Win32/x64；后续如需全局热键事件，应在受管命令/事件生命周期上单独设计，不得引入隐藏键盘记录或无法回收的低级钩子。
+
+- 已修复（2026-08-01）：Win32 生成运行时对多行 TextBox 做程序化文本更新时不再跳回文本开头。`控件_设置文本` 在 `SetWindowTextW` 成功后设置插入点到末尾并发送 `EM_SCROLLCARET`，自动显示最新日志行；单行 TextBox 和非 TextBox 控件保持原行为。设计器回归测试及 threading-api-demo 的生成/编译验证覆盖该修复；后续可按实时多行日志规模评估文本更新频率与更大日志控件的性能策略。
+
+- 已完成（2026-08-01）：磁盘信息模块从 5 条基础查询扩展到 28 条只读命令和 8 个公开记录/数组类型，覆盖容量、卷/挂载点、文件系统能力、物理磁盘、总线、SSD/TRIM、扇区和分区布局。结构化命令返回值进入清单校验、语言服务和普通 Win32/new_emoji 生成顺序，原生 DLL target 继续禁止直接传递 STL/任意 C++ 结构；`smoke:disk-native` 已验证 Win32/x64 真实编译运行。后续若增加 SMART/NVMe 厂商日志，应单独设计权限、设备支持和版本化数据契约，不能把未授权或不支持误报为磁盘故障。
+
+- 已完成（2026-08-01）：Win32 ListView 行数据接入模块公开命名数组。`lingbuilder.win32.common-controls` 新增 `列表视图行 = 文本型[]`、`列表视图行集合 = 列表视图行[]`、`列表视图_创建行` 和 `列表视图_创建行集合`；添加、插入、批量添加和虚拟行设置直接消费 `std::vector<std::wstring>` 或嵌套 vector，不再要求新源码手工拼接 `\t` / `\n`。构造器沿用 `到文本` 确定性转换标量，Monaco/新手成员补全按设计器实际列数生成结构化参数。旧 TSV 重载继续兼容；结构化值仅在生成工程内部传递，不开放为 DLL STL ABI。源码包新增 `win32.listview.structured-rows.v1` 和最低生成器 0.2.8 门禁，`listview-api-demo` 已迁移为推荐写法。
+
+- 已完成（2026-08-01）：模块公开类型从扁平 `name/description/cppType` 扩展为 manifest v2 向后兼容的 `opaque/record/array` 契约。公开记录支持字段、说明、标量默认值、嵌套和字段数组；公开数组声明元素类型。清单校验阻止重名、未知/不安全字段类型、循环嵌套及结构化类型借 `cppType` 绕过语义。启用模块后，Monaco/新手补全、字段悬停与赋值诊断、项目数据类型嵌套、模块搜索/公开信息、AI 模块上下文和普通 Win32/new_emoji C++ 生成复用同一服务，记录生成 `struct`，数组映射为 `std::vector<T>`。后续若允许结构化值直接跨预编译 DLL binding，必须先增加独立、可验证的 POD/缓冲区/句柄 ABI 适配描述；不得直接跨 DLL 传递 STL 或任意 C++ 对象。
+
 - 已修复（2026-08-01）：非默认解决方案项目新建或复制窗口时，窗口源码过去被固定创建到工作区根 `src/`，没有跟随项目 `sourceRoot`，会导致保存校验失败或重新载入后提示“未找到自定义窗体”。现已统一通过窗口源码路径服务按当前项目源码根目录生成、查找和删除 `.lcpp`，覆盖设计器、解决方案资源管理器和初始编辑器文件映射；旧会话若只剩设计器窗口而源码缺失，打开窗口时会按正确路径重新生成并提示保存。新增多项目路径回归测试。
+
+- 已修复（2026-08-01）：内置 Win32 `GroupBox` 与 `TabControl` 的模块贡献过去遗漏正式 `layout`，打开含有这两个容器的项目会输出兼容布局警告。现由同一内置控件映射声明 `win32.groupbox.absolute` 和 `win32.tab.slots`，并新增 manifest 回归测试；后续新增容器仍必须同时更新布局注册表、模块贡献和跨容器粘贴测试。
 
 - CEF 150 安全全覆盖进行中（2026-07-31）：`3.0.0-alpha.2` 的覆盖 v2 当前为 265 implemented、8 internal、185 notApplicable、1119 planned（1577 项记录）。objects 与 session 已清零各自 `planned`：183 条 objects 命令覆盖 Value/Dictionary/List/Binary、Image、NavigationEntry、完整 MenuModel、X509Certificate/Principal/SSLStatus 和导航历史；19 条 session 命令覆盖独立 RequestContext、Preference、Cookie、缓存、证书例外、HTTP 认证与连接回收。Bridge 原生 MSVC x64 测试验证真实 HTTPS 证书、历史 JSON、菜单索引/快捷键/颜色/字体、对象深复制和双会话隔离。全局 Cookie/Preference 与初始化注册器有明确内部替代，不允许破坏实例隔离。当前仍有 86 个事件签名以及 network/transfer/automation/DevTools/OSR/Views/platform 等 1119 项待完成；下一步优先接通剩余 Handler 的专用响应 schema，再进入 Scheme/ResourceHandler/Filter、下载/PDF、DOM/V8/进程消息、DevTools 订阅、真实 OSR、Views 和平台工具。`module:cef3-coverage:complete` 在 planned/needsReview 清零前仍必须失败。
 
@@ -28,7 +42,7 @@
 
 - 已完成（2026-07-30）：Win32 ListView 补齐完整确定性数据接口。新增指定位置插入、删除、单元格读写、行数、批量 TSV、嵌套开始/结束批量更新、按列稳定排序和最后单击列读取；批量更新使用 `WM_SETREDRAW` 成对关闭/恢复重绘。设计器新增“虚拟列表模式”，生成时直接使用 `LVS_OWNERDATA`，运行时通过 `LVN_GETDISPINFOW` 按需提供文本，并支持最多 1000 万行的受控行数设置。新增 `listview-api-demo` 项目演示普通模式全部方法和 15000 行虚拟模式，可通过项目右键“一键导出 LCPP 源码包”分享；源码包只携带当前项目实际依赖的 CEF3/FBro SDK 资产模块，避免普通 Win32 示例被无关浏览器 SDK 膨胀。后续如需服务端数据分页，应在虚拟行模型之上增加可取消的数据提供者接口，不得在通知回调中执行阻塞网络请求。
 
-- 已完成（2026-07-30）：Win32 ListView 高层运行时扩展为 85 条中文命令，其中新增 71 条列管理、行状态、查找/命中/几何、滚动/重绘、视图/扩展样式/颜色、分组、标签编辑、热项、ImageList、插入标记和图标布局接口。命令目录集中在 `listViewApiCatalog.ts`，模块 contribution、binding、Monaco 成员补全和 C++ 符号回归测试从同一目录校验。`listview-api-demo` 增加分类自检和“运行全部 85 接口”入口。需要指针结构、自定义回调/绘制、工作区数组或 Tile/Footer 复合 ABI 的原始 `LVM_*` 消息保留为 v2 原生模块扩展边界，禁止用文本参数伪装指针。
+- 已完成（2026-07-30，2026-08-01 扩展）：Win32 ListView 高层运行时现为 87 条中文命令：16 条数据/虚拟/类型化行命令，以及 71 条列管理、行状态、查找/命中/几何、滚动/重绘、视图/扩展样式/颜色、分组、标签编辑、热项、ImageList、插入标记和图标布局接口。高级命令目录集中在 `listViewApiCatalog.ts`，模块 contribution、binding、Monaco 成员补全和 C++ 符号回归测试保持同源。`listview-api-demo` 提供分类自检和全接口入口。需要指针结构、自定义回调/绘制、工作区数组或 Tile/Footer 复合 ABI 的原始 `LVM_*` 消息保留为 v2 原生模块扩展边界，禁止用文本参数伪装指针。
 
 - 已修复（2026-07-30）：Win32 窗口运行时的 `信息框` 补充 `std::wstring` 重载，保留原 `const wchar_t*` 重载。ListView 示例读取选中行并组合索引、数量和单元格文本时，动态宽文本现可直接传给信息框，不再在 MSVC 阶段因 `std::wstring` 无法转为 `const wchar_t*` 而报 C2664。
 
@@ -105,7 +119,7 @@
 - 已完成（2026-07-26）：新手模式的新增/已有局部变量“类型”输入框接入统一类型补全服务。输入 `wb`、`zs`、`lj`、`xs` 等拼音简写或 `string`、`int`、`bool` 等英文别名会显示中文类型候选；支持方向键切换、Enter/Tab 确认、Esc 关闭，失焦时的精确别名也会规范化为中文类型，自定义类型仍可原样保留。
 
 - 已完成（2026-07-26）：落地一键 LCPP 源码分享闭环。文件菜单、命令面板和项目右键菜单可把目标项目及其项目引用闭包导出为单文件 `.lcpppkg`；包内包含 `.lcpp`、配置、设计器模型、assets、项目模块锁定、已启用第三方模块和 SDK/资产载体模块，并为全部工作区文件记录 SHA-256。安装版支持双击、拖入或原生对话框打开，导入前校验格式、路径、符号链接、文件数量、解压体积和逐文件哈希，然后在“文档/LingBuilder/已导入源码”创建唯一独立工作区并直接切换，不覆盖原项目或污染其他工作区模块。`.env`、私钥/证书和常见凭据 JSON 默认排除；新增桌面宿主服务与真实压缩/解压回归测试。
-- 已修复（2026-07-30）：开发模式打开解决方案或 `.lcpppkg` 不再提示手工重跑 `npm run dev`。Electron 会从已构建服务入口为目标工作区启动独立随机回环端口的受管 Vite 服务，成功加载后更新最近工作区；失败时恢复原开发服务。开发模式新窗口使用 `--managed-dev-server` 隔离工作区，关闭当前解决方案也复用同一切换链路。
+- 已完成（2026-08-01）：工作区切换改为复用当前本地服务进程并在服务层运行时重绑定工作区。Electron 主进程调用 `/api/workspace/switch` 后只发送 `workspace:changed` IPC，不再停止/重启 Express/Vite、重新加载 renderer 或固定等待新服务；服务端串行取消构建、终端、clangd、调试和扩展等旧工作区资源，再重建工作区绑定服务并递增运行时版本。renderer 收到事件后重新载入解决方案、项目文件和模块上下文，显示切换遮罩直到本次项目文件载入进入 `ready/error`，并用 reload token 防止旧请求提前关闭遮罩。旧的“每次切换启动独立受管 Vite 服务”方案已被本方案替换；独立新窗口仍继续使用 `--managed-dev-server` 隔离服务。
 
 - 已完成（2026-07-26）：CEF3 内核 SDK 离线模块包（方案 A）落地：新增纯资产载体模块 `lingbuilder.cef3.sdk`（无命令/控件、无需为项目启用），打包脚本 `electron/scripts/generate-cef3-sdk-module.cjs`（`npm run module:cef3-sdk -- --install`）把 CEF 官方包的 `include/Release/Resources` 与预编译 /MD `libcef_dll_wrapper.lib` 打成 `cef3-sdk-x64.lbmod`（实测 184MB，版本号自动读 `cef_version.h`）；`findCef3SdkRoot` 新增候选 `.lingbuilder/modules/lingbuilder.cef3.sdk/sdk` 并从 `layout.buildDir` 反推工作区根目录；`.lbmod` 包上限从 100MB 放宽到 1GB。已验证：正式安装链路（preview→install）通过；挡住其它 SDK 路径后仅凭模块 SDK 全新构建成功且 exe 多进程运行；`tests/modules.test.ts` 34/34。后续：开发者中心/市场 UI 需验证大包上传体验；32 位 SDK 包未制作；内核升级时需用新官方包重新打包。
 
@@ -531,11 +545,14 @@
 - 已完成（2026-07-31）：覆盖门禁升级为 SDK `1.0.3537.50` / Runtime 141 与 SDK `1.0.4078.44` / Runtime 150 双基线。995 个稳定方法已分类为 public 330、internal 565、excluded 100、pending 0；禁止未匹配项自动归为 internal。安全层固定排除 CompositionController、PointerInfo、AutomationProvider、实验 API、任意 Host Object 与裸 COM/指针。设计器独立原生预览和 Win32/x64 Release MSVC 冒烟均通过。
 - 已完成（2026-07-31）：补齐 Environment/Controller 创建选项、Frame/Worker、Profile/Cookie/扩展/权限、下载/查找/打印、PDF 流、通知、DevTools、资源响应、证书、共享缓冲与附加文件对象。设计器创建期属性明确提示重建；F5 和原生清单按源码调用计算 Runtime 141/150 最低要求，v2 源码包声明 `edgeview.safe-api.v2`。
 - 后续优化：打印设置和查找选项目前接受稳定 JSON 入口但只应用安全默认值，后续可在不改变命令签名的前提下扩充完整字段解析；浏览器扩展安装仍需增加明确的用户确认 UI 和签名来源提示。
-# 2026-07-11：内置多线程模块基础闭环
+# 2026-08-01：内置多线程模块 2.0 完整受管闭环
 
-- 已完成：新增 `lingbuilder.threading` 内置 v2 模块，统一贡献补全、中文诊断、代码片段和确定性 C++ binding。
-- 已完成：生成器提供受控后台延时输出任务、活动数量、硬件并发数、线程休眠和全部任务回收；窗口析构前自动 join，避免后台线程悬空访问窗口对象。
-- 已完成（2026-07-26）：模块 binding 增加受控 `handler` 参数类型，`.lcpp` 可用 `&处理器名` 引用当前类无参数事件/方法。网页访问模块新增 `网页_异步访问`、按请求编号的结果读取、当前完成请求编号和协作式取消；后台 WinHTTP 完成后通过专用窗口消息回到 UI 主线程分发处理器。后续仍保留通用任务线程池、可中断 WinHTTP 句柄和结果回收策略；不得通过任意函数地址绕过生成器。
+- 已完成：`lingbuilder.threading@2.0.0` 由单一命令目录生成 54 条 contribution/binding/补全/演示，公开 7 个受管类型；原 9 条演示命令和逐任务线程、`batchProgress_`、延时 UI 队列已删除并提供阻断迁移诊断。
+- 已完成：`lingValue` 可变参数和 `managedTask` 调用形态接入 manifest 校验、语言服务和生成器。任意多个基础值、文本、字节集、数组、记录及嵌套组合按值深拷贝，工作/进度/完成处理器签名被静态校验，生成 C++17 类型化 lambda，不使用字符串参数包或 `std::any`。
+- 已完成：项目级 `LingThreadProjectRuntime` 提供默认/自定义有界线程池、十万任务上限、协作取消、状态/错误/等待/进度、窗口 owner 隔离、80ms 进度合并和完成一次性投递。工作任务自等待和关闭所属池会被拒绝；窗口关闭不会影响其它窗口任务。
+- 已完成：项目级非递归定时互斥锁、64 位原子整数/CAS、自动/手动重置事件和有界信号量全部使用不可伪造类别的 64 位受管 ID。销毁会校验持有/等待状态或唤醒等待者，不暴露裸线程、裸 `HANDLE`、裸指针或强制终止入口。
+- 已完成：语言服务从全部启用模块 binding 动态识别 `controlRef` 命令并阻断工作处理器调用，同时警告未加锁的类成员/项目全局写入。普通 Win32 使用独立 UI dispatcher 消息适配器；核心线程池和同步实现保持标准 C++17 边界，后续 macOS 只替换 owner/UI dispatcher 与构建 target。
+- 后续优化：新增桌面 UI 后端或 macOS target 时必须接入同一 owner/UI dispatcher 契约，并复用现有任务、线程池和同步核心；不得复制第二套状态机或放宽跨线程 UI 限制。
 
 # 2026-07-12：按钮圆角属性与原生绘制一致性
 
@@ -636,6 +653,9 @@
 - [x] 已增加覆盖 92 条命令、16 个专属事件、10 种列类型和 100 万虚拟行的独立示例项目，并用真实 MSVC x64 编译启动验证；动态文本参数通过生成期 `LingCppWideArg` 安全适配。列对齐支持居左、居中、居右，设计器默认居中并生成到原生表头、单元格和临时文本编辑器。
 - [x] Switch 与进度单元格已改为和设计器一致的圆角视觉；组合框支持稳定值到中文标签映射、单击展开真实下拉框和选择事件；图片统一从 EXE 相对路径读取，非默认项目资源复制链路已有原生冒烟覆盖。
 - [x] Switch/进度圆角进一步改为 GDI+ 抗锯齿；DataGrid 临时组合框使用深色自绘保证普通、悬停和选中项文字可读；图片列与单元格覆盖提供 `tile/contain/cover/center/stretch` 五种真实原生绘制模式。
+- [x] DataGrid 进度轨道高度和圆角已接入窗口 DPI 缩放，进度文字改用完整单元格文本区域垂直居中，修复高 DPI 下数字上下被轨道矩形裁切的问题。
+- [x] DataGrid 按钮列已改为按当前 GDI 字体测量完整文字宽度，并统一缩放内边距、间距及命中区域；绘制、悬停和点击复用同一布局，修复高 DPI 下按钮文字被截断及点击区域错位的问题。普通、主操作、危险、禁用、悬停和“更多”状态统一使用随 DPI 缩放的 4 逻辑像素 GDI+ 抗锯齿圆角填充与描边，保持紧凑但不再生硬。
+- [x] DataGrid 冻结列表头和数据行先绘制不透明背景，再绘制列内容，修复横向滚动列位于冻结列后方时透出的透明区域。
 - [x] DataGrid 新手示例改为 9 个选项卡和 86 个单命令按钮，事件上下文类接口放在真实生命周期中；完整包固定输出到 `exports/LingBuilder-DataGrid-All-APIs.lcpppkg`。项目源码扫描和源码包导出会精准排除误建的嵌套 LingBuilder 工作区，避免重复 `MainWindow` 阻断 F5。
 - [ ] 后续以实际 10 万静态行和 100 万虚拟行数据源持续采集滚动帧耗时、GDI 对象数与缓存命中率，并根据数据决定是否引入分块索引或 Direct2D 后端。
 - [ ] new_emoji 上游 DLL 增加图片单元格 ABI 后，再解除旧 Table 图片列的生成前诊断；本阶段不修改上游 DLL。
@@ -658,3 +678,14 @@
 - [x] C++ 生成和 Win32/new_emoji 后端契约消费同一 binding；第三方清单与 SDK 拒绝文本型控件参数、缺失元数据和带引号示例。
 - [x] 安全迁移覆盖主解决方案、模块演示、便携工作区、嵌套导出项目和 smoke `build-request.json` 嵌入源码，只改写唯一解析且兼容的引用；新增只读迁移门禁，真实源码仍有可迁移或无法解析引用时直接失败。
 - [ ] 后续模块生态增加新的对象种类或跨窗口引用模型时，应扩展 `controlKinds` / `scope` 枚举和后端适配测试，不得退回名称字符串猜测。
+
+## 构建生成链与字节集（2026-08-01）
+
+- [x] 建立 `BuildStep`、Provider 注册表、构建图和统一 Pipeline；已覆盖拓扑排序、循环依赖、路径越界、取消、进度、原子回滚和输入/Provider/选项/目标/工具链增量指纹。
+- [x] manifest v2 增加受控 `build.codeGenerators[]`，拒绝公开 `buildSteps` 和任意命令；未知 Provider、版本不匹配、输出覆盖源码和不支持目标在规划阶段阻断。
+- [x] 正式公开 `bytes`/“字节集”，补齐类型目录、赋值/补全/模块校验和 C++ 生成；跨 DLL 统一采用调用方拥有的指针+长度 ABI，真实字节序列的旧 `raw` 给出迁移诊断。
+- [x] 接入 `lingbuilder.data.protobuf` 和受控 `lingbuilder.protobuf.protoc`，覆盖 descriptor set、反射句柄、bytes/JSON 往返和固定生成物清单。
+- [x] Protobuf 本地 import 纳入输入指纹并复制到构建/导出树；Build Graph 产物先写 staging，再原子提交并在失败/取消时恢复旧文件。
+- [x] Protobuf SDK 固定为 27.3.0。`runtime-manifest.json` 逐文件验证大小/SHA-256，并强制包含 `bin/protoc.exe`、头文件、导入库和 DLL；缺失、篡改、版本/架构不符在所有构建入口前阻断，禁止系统回退或联网下载。
+- [ ] 通用公开 `buildSteps` 仍待第二套独立生成器完成同一安全、缓存、导出和取消验收后再开放。
+- [ ] 补充真实固定版本 Protobuf SDK 的 Win32/x64 原生 smoke、import/嵌套/repeated/map/bytes/未知字段 round-trip 和独立 VS 构建；当前单元测试使用离线 fixture 验证清单、物化和 Provider 阻断。

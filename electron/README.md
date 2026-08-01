@@ -1,5 +1,15 @@
 # LingBuilder Electron
 
+> 2026-08-01：`lingbuilder.input.mouse@2.0.0` 已封装为 29 条三分类 API：全局真实输入（前台）15 条、指定 HWND 窗口消息输入（后台）6 条、UI Automation（后台）8 条。模块详情、文档和演示逐条标注前台/后台及是否移动或占用系统鼠标；窗口消息使用 `PostMessageW` 不移动光标，UIA 使用受管元素句柄按控件语义操作。Win32/new_emoji 生成代码在 `CoUninitialize` 前清理 UIA 引用；`鼠标_相对移动` 按 Windows 输入增量说明，实际位移受速度/加速度设置影响。详见 `docs/modules/mouse/README.md`。
+
+> 2026-08-01：`lingbuilder.input.keyboard@2.0.0` 已从 5 条基础命令扩展为 31 条分类 API，覆盖全局状态、键码/扫描码转换、前台 `SendInput` 虚拟键/扫描码/Unicode 输入、指定 HWND 的后台 `PostMessageW` 按键与文本消息。模块详情按作用域分类，每条命令标明焦点和实体键盘影响；不提供 `BlockInput` 或低级记录钩子。详见 `docs/modules/keyboard/README.md`，Win32/x64 原生验收为 `npm run smoke:keyboard-native`。
+
+> 2026-08-01：`lingbuilder.threading@2.0.0` 已提供 54 条项目级受管并发命令和 7 个公开类型，覆盖任意多参数深拷贝、类型化结果、进度/完成 UI 回调、协作取消、默认/自定义有界线程池、互斥锁、64 位原子整数、事件和信号量。旧 9 条演示命令不兼容删除并提供迁移诊断。普通 Win32 生成使用 C++17 项目运行时和仅负责通知的 `PostMessageW` adapter；`npm run smoke:threading-native` 对 Win32/x64 执行真实 MSVC 编译运行及并发边界验证。
+
+> 2026-08-01：磁盘信息模块升级为 `lingbuilder.system.disk@1.1.0`，公开 28 条只读命令和 8 个 `record/array` 类型，覆盖容量、卷与挂载点、文件系统能力、物理磁盘、SSD/TRIM、扇区和分区布局；原 5 条命令保持兼容。结构化命令 binding 只在生成工程内部使用 `struct/std::vector`，带原生 DLL 的 target 会被清单门禁拒绝。`npm run smoke:disk-native` 对 Win32/x64 执行真实 MSVC 编译运行。
+
+> 2026-08-01：模块公开类型支持 manifest v2 向后兼容的 `opaque`、`record`、`array`。旧类型仍按不透明类型处理；公开记录声明字段、嵌套和字段数组，公开数组声明元素类型。模块清单校验、模块公开信息和搜索、AI 上下文、Monaco/新手补全与诊断、项目数据类型嵌套及普通 Win32/new_emoji 生成共用 `modulePublicTypeService`；记录生成 C++ `struct`，数组映射为 `std::vector<T>`。该映射只属于生成工程内部值语义，预编译 DLL 仍必须使用稳定 POD、缓冲区或受管句柄 ABI，不能直接跨边界传递 STL/C++ 对象。
+
 > 2026-07-31：CEF3 `3.0.0-alpha.2` 的覆盖 v2 当前登记 1577 项能力：265 `implemented`、8 `internal`、185 `notApplicable`、1119 `planned`。应用只包含/链接 `LingBuilderCefBridge`。objects 的 183 条命令与 session 的 19 条命令已清零各自 planned，真实覆盖 Value/Dictionary/List/Binary、Image、NavigationEntry、完整 MenuModel、X509Certificate/Principal/SSLStatus、导航历史、独立 RequestContext、Preference、Cookie、缓存和认证/连接清理。原生 x64 测试验证真实 HTTPS 证书、菜单快捷键/颜色/字体、导航历史 JSON、对象深复制与双会话隔离。Bridge 当前真实接通 27 个上游事件签名，仍有 86 个事件签名和其它网络/传输、自动化、OSR、Views、平台能力待实现，不能把 alpha 描述成 CEF 全功能完成。
 
 > 2026-08-01：FBro VIP 指纹子模块保持官方覆盖 188/188、planned=0。`lingbuilder.fbro.vip` 将 188 项官方能力逐项公开为 179 条单项安全命令、6 条 Bridge 自动管理能力和 3 条凭据中心/安全入口替代能力，并保留 10 条批量与通用高级入口。普通 Win32 与 New_Emoji 共用同一 Bridge；文件路径限制在生成程序目录，二进制只接受受管缓冲，授权信息脱敏且不回传 Key。全 FBro 普通 API 目录仍为 397 implemented、678 个非事件高级签名 planned、3 internal notApplicable、1 advanced notApplicable，因此不能把 VIP 或事件完成描述成 1079 项全功能完成。
@@ -38,7 +48,7 @@
 - `.lcpppkg` 是可直接分享的单文件源码包。文件菜单、命令面板和项目右键菜单均提供“一键导出 LCPP 源码包”。
 - 导出前工作台会提交并保存当前草稿；包内包含目标项目的完整依赖闭包、源码、配置、设计器、项目资源、模块引用及已启用第三方模块。无命令、无 target 的 SDK/资产载体模块也会随包携带。
 - 每个包包含 `lingbuilder-source-package.json` 和独立 `workspace/`，清单记录全部文件大小及 SHA-256。导入拒绝路径越界、符号链接、额外文件、哈希不一致、超过 1GB 的包和超过 2GB 的解压内容。
-- 源码包清单版本 2 还记录最低生成器版本和 `requiredCapabilities`。导出项目使用 ListView 高级 API 时会记录 `win32.listview.advanced-api.v1`；导入会在生成 C++ 前检查能力，避免旧版 IDE 先生成源码、最后才在 MSVC 阶段集中报 `C3861`。
+- 源码包清单版本 2 还记录最低生成器版本和 `requiredCapabilities`。导出项目使用 ListView 高级 API 时会记录 `win32.listview.advanced-api.v1`，使用类型化行构造器时会记录 `win32.listview.structured-rows.v1`（最低生成器 0.2.8）；导入会在生成 C++ 前检查能力，避免旧版 IDE 先生成源码、最后才在 MSVC 阶段集中报 `C3861`。
 - 旧版 v1 `.lcpppkg` 仍可由新版 IDE 安全迁移；导入时会重新扫描包内 `.lcpp`，补齐能力清单后再执行生成器能力校验。
 - 双击、拖入或选择 `.lcpppkg` 后，桌面宿主会把它导入“文档/LingBuilder/已导入源码”的唯一新目录并直接打开；不会覆盖已有工作区，第三方模块也只在新工作区内生效。
 - `.env`、PEM/PFX/P12/KEY、常见私钥文件以及 credentials/secrets/tokens JSON 默认排除，并在导出及导入提示中列明。
@@ -144,7 +154,7 @@ npm run package:win
 
 - 控件唯一目录位于 `src/services/windowDesigner/win32ControlRegistry.ts`，不得再在 React、模块清单和 C++ 生成器分别维护名称/事件清单。
 - 新建项目默认启用 `lingbuilder.win32.basic`；ListView、TreeView、Tab、日期、工具栏、状态栏、RichEdit 和系统通用对话框来自可选 `lingbuilder.win32.common-controls`。
-- ListView 共公开 85 条确定性高层命令；其中 71 条高级命令集中在 `src/services/modules/listViewApiCatalog.ts`，模块 contribution、binding、成员补全和 C++ 生成回归测试必须保持同源。`src/listview-api-demo` 是全量调用和 `LVS_OWNERDATA` 15000 行虚拟列表的可分享示例。
+- ListView 共公开 87 条确定性高层命令；其中 71 条高级命令集中在 `src/services/modules/listViewApiCatalog.ts`。数据面公开 `列表视图行`、`列表视图行集合` 命名数组和 `列表视图_创建行/创建行集合`，添加、插入、批量添加及虚拟行设置优先传结构化数组，旧 TSV 文本仅作兼容。模块 contribution、binding、成员补全和 C++ 生成回归测试必须保持同源；`src/listview-api-demo` 是全量调用和 `LVS_OWNERDATA` 15000 行虚拟列表的可分享示例。
 - 设计器项目保存为 `schemaVersion: 2`，控件专属数据位于 `properties`，旧无版本项目在读取时安全迁移。
 - 图片框“图片源”右侧按钮调用 Electron 原生文件对话框；选中的本地图片由 `src/services/windowDesigner/designerAssetService.ts` 复制到项目 `assets/`，模型只保存相对路径。受控预览 API、F5、原生导出及 AI Bridge 共用该服务；生成的 Visual Studio 工程会在构建后把图片复制到 exe 输出目录。
 - 解决方案资源管理器中右键项目并选择“添加资源…”也可导入图片；工作台命令会按所选项目自动复制到 `assets/`（默认项目）或 `assets/<projectId>/`（多项目）。项目树的“图片资源 (assets)”组会列出全部图片：单击图片可预览真实资源和尺寸，右键图片并选择“复制相对路径”即可获得可直接用于 `.lcpp` 的路径。
@@ -256,6 +266,8 @@ new_emoji YOLO 示例约束：
 ## 模块 SDK CLI
 
 LingBuilder 模块标准为 `schemaVersion: 2`。旧 `.lbmod` v1 不再兼容，C++ 依赖写入 `targets[]`，中文命令到 C++ 的确定性映射写入 `bindings.commands[]`。根目录 `模块开发手册.md` 是面向外部模块作者的正式说明。
+
+`contributes.types[]` 可声明不透明类型、公开记录和命名数组。`record` 使用 `fields[]`，字段数组使用 `isArray: true`；`array` 使用 `elementType`。结构化类型进入语言服务和生成器，但不会自动成为 DLL ABI；原生模块仍需通过 `bindings.commands[]` 和稳定桥接函数交换复杂数据。
 
 binding 处理器参数可声明为 `handler`，`.lcpp` 用 `&处理器名` 引用当前类的无参数事件或方法。`lingbuilder.web.http` 1.1.1 使用该语义提供 `网页_异步访问`：请求在受控后台线程执行，完成处理器通过 Win32 消息回到 UI 主线程，结果按请求编号隔离读取。命令提示通过 `returnDescription` 解释返回值语义，并优先显示 binding 为每个参数声明的独立说明。
 
@@ -438,7 +450,7 @@ Visual C++ 项目使用固定的 `<sourceRoot>/项目数据类型.lcpp` 保存�
 
 0.2.5 在“高级控件”提供独立 `DataGrid / 数据表格`。设计器使用结构化三页编辑器配置列、初始数据和单元格覆盖，支持文本、整数、小数、日期、选择框、Switch、图片、进度、组合框和多按钮列。原生生成使用独立 `LingBuilderDataGrid` HWND、双缓冲可见区域绘制和按需临时编辑器；不会为每个单元格创建 HWND。
 
-原生特殊单元格与设计器保持同一视觉语义：Switch 使用 GDI+ 抗锯齿圆角轨道和白色滑块，进度条使用抗锯齿圆角轨道、状态色填充和居中文字；组合框静态显示中文标签及下拉箭头，单击后创建并展开深色自绘的真实 `COMBOBOX`。项目图片路径相对 EXE 目录解析，F5 和 Visual Studio 导出会把非默认项目资源复制到 `assets/<项目ID>/`；图片显示方式支持 `tile/contain/cover/center/stretch`。
+原生特殊单元格与设计器保持同一视觉语义：Switch 使用 GDI+ 抗锯齿圆角轨道和白色滑块，进度条使用抗锯齿圆角轨道、状态色填充和居中文字；进度轨道尺寸随窗口 DPI 缩放，文字使用完整单元格文本区域垂直居中，避免在高 DPI 下被窄轨道裁切。按钮列按当前 GDI 字体测量完整文字宽度，内边距、间距和命中区域随 DPI 缩放，绘制与交互复用同一布局；仅在整组按钮无法放入单元格时显示“更多”。所有按钮状态和“更多”入口统一采用随 DPI 缩放的 4 逻辑像素 GDI+ 抗锯齿圆角填充与描边，保持紧凑而不生硬。组合框静态显示中文标签及下拉箭头，单击后创建并展开深色自绘的真实 `COMBOBOX`。项目图片路径相对 EXE 目录解析，F5 和 Visual Studio 导出会把非默认项目资源复制到 `assets/<项目ID>/`；图片显示方式支持 `tile/contain/cover/center/stretch`。
 
 接口目录现有 92 条命令，包括 `表格_取进度状态`、`表格_取行是否选中`，以及直接读写 `.xlsx` 的 `表格_导入Excel`、`表格_导出Excel`。XLSX 使用标准 SpreadsheetML 和 Windows 自带 ZIP Shell，无需安装 Excel；首版仅处理静态表格的第一个工作表，图片值按路径文本导入导出。CSV/TSV 接口继续使用可往返文本，便于配合文件模块自行持久化。
 
@@ -494,3 +506,35 @@ npm run module:control-ref-source-audit
 ```
 
 审计会遍历全部模块方法/参数、已安装第三方清单和模块 TypeScript 源字面量；迁移检查为只读门禁，写入迁移只改写已解析且兼容的引用，同时覆盖 `.lcpp`、便携工作区、嵌套源码包及 smoke `build-request.json` 中的嵌入源码。
+
+## 受控构建生成链
+
+`src/services/build/` 内的 `BuildPipelineService`、`BuildStepProviderRegistry` 和 `BuildGraph` 是 F5、原生导出、AI Bridge、CLI 以及解决方案构建共用的生成基础设施。构建步骤包含 Provider 版本、阶段、依赖、输入、输出和结构化选项，并统一执行拓扑排序、路径安全、取消、进度、结构化日志、原子回滚和增量指纹。
+
+模块 v2 只可声明 `build.codeGenerators[]`。Provider 由 IDE 内置注册，模块不能注入 JavaScript、Shell、PowerShell 或任意可执行命令；未知 Provider、版本不匹配、路径越界、输出覆盖源码和不支持 target 会在规划阶段阻断。通用 `buildSteps` 仍未公开。
+
+## Protobuf 与字节集
+
+`lingbuilder.data.protobuf` 使用受控 `lingbuilder.protobuf.protoc`，固定 SDK 版本 27.3.0。开发机或安装包必须离线提供 `.lingbuilder/toolchains/protobuf/runtime-manifest.json`、头文件、导入库、`libprotobuf.dll` 和 `bin/protoc.exe`；物化服务逐文件校验清单中的大小和 SHA-256，并在缺失、篡改、版本、架构或 CRT 不符时阻断 F5、AI Bridge、CLI 和 VS 导出。不会联网下载，也不会调用 PATH 中的系统 protoc。完整 `.pb.h`、`.pb.cc`、descriptor set、`.proto` 输入和运行时依赖会进入可复制导出目录。
+
+Provider 会递归解析 `.proto` 的本地 import 并将其纳入构建指纹；代码生成在临时 staging 目录完成，成功后才原子提交，失败或取消会恢复旧产物并清理 staging。
+
+LingCpp 的用户类型名为“字节集”，模块/ABI 名为 `bytes`。跨 DLL 仅允许调用方拥有的 `const unsigned char* + size_t` 输入和调用方缓冲区输出；禁止传递或释放 STL。旧 `raw` 字节 binding 会产生迁移诊断，真正 opaque 原生类型仍可保留 `raw`。
+
+验证：
+
+```bash
+npm run lint
+npm run test:lingcpp
+npm run build
+```
+
+无固定 Protobuf SDK 时，构建应以中文阻断诊断结束；测试中的离线 fixture 只用于验证清单、物化和安全边界，不代表可替代发布 SDK。
+
+原生生成 smoke：
+
+```bash
+npm run smoke:protobuf-native
+```
+
+该命令在没有固定 SDK 时只报告可解释的跳过状态；发布验收使用 `npm run smoke:protobuf-native -- --require-sdk`，会执行 import、嵌套/repeated/map/bytes 生成和 build/export 运行时物化检查。

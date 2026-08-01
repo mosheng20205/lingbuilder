@@ -6,6 +6,7 @@
   "startupProjectIds": [
     "lingbuilder-ui-project"
   ],
+  "folders": [],
   "projects": [
     {
       "type": "visual-cpp",

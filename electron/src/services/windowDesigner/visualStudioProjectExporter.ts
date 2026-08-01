@@ -4,6 +4,7 @@ import { InstalledModule } from '../modules/types';
 import { getPreferredModuleTarget } from '../modules/targetResolver';
 import { CRYPTO_SDK_MODULE_IDS } from '../modules/dataMediaModules';
 import { OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID } from '../modules/opencvModules';
+import { PROTOBUF_MODULE_ID } from '../modules/protobufModule';
 import { LingCppNativeProjectFile } from './lingCppWin32Project';
 
 export interface VisualStudioProjectExportResult {
@@ -133,7 +134,9 @@ function getModuleLibFiles(enabledModules: InstalledModule[], targetId = 'window
     const moduleId = module.manifest.id;
     return (getPreferredModuleTarget(module, targetId)?.libs || [])
       .map(file => isBuiltinModule(module)
-        ? normalizeSlash(file)
+        ? module.manifest.id === PROTOBUF_MODULE_ID
+          ? normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file)))
+          : normalizeSlash(file)
         : normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
   }),
   ...(usesCryptoSdk(enabledModules) ? [`modules/lingbuilder.crypto.sdk/lib/${architecture}/botan-3.lib`] : []),

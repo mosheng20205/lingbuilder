@@ -16,17 +16,19 @@ export const MODULE_BINDING_TYPE_LABELS: Record<ModuleBindingValueType, string> 
   utf8String: 'UTF-8 文本',
   controlRef: '控件',
   handler: '处理器',
+  lingValue: 'LingCpp 任意值',
   handle: '句柄',
+  bytes: '字节集',
   raw: '原始值'
 };
 
 export function describeModuleBindingParameterType(parameter: ModuleCommandBindingParameter): string {
-  if (parameter.type !== 'controlRef') return MODULE_BINDING_TYPE_LABELS[parameter.type] || parameter.type;
+  if (parameter.type !== 'controlRef') return MODULE_BINDING_TYPE_LABELS[parameter.type as ModuleBindingValueType] || parameter.type;
   const types = parameter.controlTypes?.map(value => value.trim()).filter(Boolean) || [];
   return types.length === 0 ? '控件' : types.length === 1 ? `${types[0]} 控件` : `控件（${types.join(' / ')}）`;
 }
 
-export function isWideStringAbiBindingType(type: ModuleBindingValueType | undefined): boolean {
+export function isWideStringAbiBindingType(type: string | undefined): boolean {
   return type === 'wideString' || type === 'handler' || type === 'controlRef';
 }
 

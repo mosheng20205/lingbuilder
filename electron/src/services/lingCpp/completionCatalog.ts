@@ -4,6 +4,7 @@ import {
   LingCppCompletionContextKind,
   LingCppCompletionItem
 } from './types';
+import { formatModulePublicType, getModulePublicTypeKind } from '../modules/modulePublicTypeService';
 import { InstalledModule, LingCppModuleContext } from '../modules/types';
 import { buildChineseCompletionSearchAliases } from './completionSearchAliases';
 
@@ -140,8 +141,8 @@ export function getLingCppModuleCompletionItems(moduleContext?: LingCppModuleCon
       label: type.name,
       kind: 'type',
       insertText: type.name,
-      detail: `${manifest.name} · 类型`,
-      documentation: type.description,
+      detail: `${manifest.name} · ${getModulePublicTypeKind(type) === 'record' ? '公开记录' : getModulePublicTypeKind(type) === 'array' ? '公开数组' : '类型'}`,
+      documentation: [type.description, formatModulePublicType(type), ...(type.fields || []).map(field => `${field.type}${field.isArray ? '[]' : ''} ${field.name}`)].join('\n'),
       category: 'module',
       source: 'module',
       sortRank: 20

@@ -29,7 +29,9 @@ const RETURN_LABELS: Record<ModuleBindingValueType, string> = {
   utf8String: '文本型',
   controlRef: '控件引用',
   handler: '处理器',
+  lingValue: 'LingCpp 任意值',
   handle: '长整数型',
+  bytes: '字节集',
   raw: '原生类型'
 };
 

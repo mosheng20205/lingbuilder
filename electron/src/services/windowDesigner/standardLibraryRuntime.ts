@@ -136,6 +136,94 @@ const wchar_t* 字节_十六进制转文本(const wchar_t* hex) {
     }
     return LB_ReturnText(LB_Utf8ToWide(bytes));
 }
+
+int 字节集_长度(const std::vector<unsigned char>& bytes) {
+    return bytes.size() > static_cast<size_t>((std::numeric_limits<int>::max)())
+        ? (std::numeric_limits<int>::max)()
+        : static_cast<int>(bytes.size());
+}
+
+std::vector<unsigned char> 字节集_截取(const std::vector<unsigned char>& bytes, int start, int length) {
+    if (start < 0 || length <= 0 || static_cast<size_t>(start) >= bytes.size()) return {};
+    const size_t offset = static_cast<size_t>(start);
+    const size_t count = (std::min)(static_cast<size_t>(length), bytes.size() - offset);
+    return std::vector<unsigned char>(bytes.begin() + static_cast<std::ptrdiff_t>(offset), bytes.begin() + static_cast<std::ptrdiff_t>(offset + count));
+}
+
+std::vector<unsigned char> 字节集_拼接(const std::vector<unsigned char>& first, const std::vector<unsigned char>& second) {
+    if (second.size() > (std::numeric_limits<size_t>::max)() - first.size()) return {};
+    std::vector<unsigned char> result; result.reserve(first.size() + second.size());
+    result.insert(result.end(), first.begin(), first.end()); result.insert(result.end(), second.begin(), second.end());
+    return result;
+}
+
+int 字节集_取字节(const std::vector<unsigned char>& bytes, int index) {
+    return index >= 0 && static_cast<size_t>(index) < bytes.size() ? bytes[static_cast<size_t>(index)] : -1;
+}
+
+bool 字节集_置字节(std::vector<unsigned char>& bytes, int index, int value) {
+    if (index < 0 || static_cast<size_t>(index) >= bytes.size() || value < 0 || value > 255) return false;
+    bytes[static_cast<size_t>(index)] = static_cast<unsigned char>(value); return true;
+}
+
+static std::wstring LB_BytesBase64Encode(const std::vector<unsigned char>& bytes) {
+    static constexpr wchar_t alphabet[] = L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::wstring result;
+    result.reserve(((bytes.size() + 2) / 3) * 4);
+    for (size_t offset = 0; offset < bytes.size(); offset += 3) {
+        const unsigned int a = bytes[offset];
+        const unsigned int b = offset + 1 < bytes.size() ? bytes[offset + 1] : 0;
+        const unsigned int c = offset + 2 < bytes.size() ? bytes[offset + 2] : 0;
+        const unsigned int block = (a << 16) | (b << 8) | c;
+        result.push_back(alphabet[(block >> 18) & 63]); result.push_back(alphabet[(block >> 12) & 63]);
+        result.push_back(offset + 1 < bytes.size() ? alphabet[(block >> 6) & 63] : L'=');
+        result.push_back(offset + 2 < bytes.size() ? alphabet[block & 63] : L'=');
+    }
+    return result;
+}
+
+std::wstring 字节集_Base64编码(const std::vector<unsigned char>& bytes) { return LB_BytesBase64Encode(bytes); }
+
+static int LB_BytesBase64Value(wchar_t value) {
+    static constexpr wchar_t alphabet[] = L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const wchar_t* found = std::wcschr(alphabet, value); return found ? static_cast<int>(found - alphabet) : -1;
+}
+
+std::vector<unsigned char> 字节集_Base64解码(const wchar_t* text) {
+    const std::wstring input = LB_Wide(text); if (input.empty()) return {};
+    if (input.size() % 4 != 0) return {};
+    std::vector<unsigned char> result;
+    result.reserve((input.size() / 4) * 3);
+    for (size_t offset = 0; offset < input.size(); offset += 4) {
+        int values[4] = {};
+        for (int index = 0; index < 4; ++index) values[index] = input[offset + static_cast<size_t>(index)] == L'=' ? -2 : LB_BytesBase64Value(input[offset + static_cast<size_t>(index)]);
+        if (values[0] < 0 || values[1] < 0 || values[2] == -1 || values[3] == -1 || (values[2] == -2 && values[3] != -2)) return {};
+        const unsigned int block = (static_cast<unsigned int>(values[0]) << 18) | (static_cast<unsigned int>(values[1]) << 12)
+            | (static_cast<unsigned int>((std::max)(0, values[2])) << 6) | static_cast<unsigned int>((std::max)(0, values[3]));
+        result.push_back(static_cast<unsigned char>((block >> 16) & 0xff));
+        if (values[2] >= 0) result.push_back(static_cast<unsigned char>((block >> 8) & 0xff));
+        if (values[3] >= 0) result.push_back(static_cast<unsigned char>(block & 0xff));
+    }
+    return result;
+}
+
+std::vector<unsigned char> 字节集_十六进制编码(const std::vector<unsigned char>& bytes) {
+    std::vector<unsigned char> result; result.reserve(bytes.size() * 2);
+    static constexpr unsigned char digits[] = "0123456789ABCDEF";
+    for (unsigned char byte : bytes) { result.push_back(digits[(byte >> 4) & 0x0f]); result.push_back(digits[byte & 0x0f]); }
+    return result;
+}
+
+std::vector<unsigned char> 字节集_十六进制解码(const wchar_t* hex) {
+    const std::wstring value = LB_Wide(hex); if (value.size() % 2 != 0) return {};
+    std::vector<unsigned char> result; result.reserve(value.size() / 2);
+    for (size_t index = 0; index < value.size(); index += 2) {
+        const int high = LB_HexDigit(value[index]), low = LB_HexDigit(value[index + 1]);
+        if (high < 0 || low < 0) return {};
+        result.push_back(static_cast<unsigned char>((high << 4) | low));
+    }
+    return result;
+}
 `;
 
 const ENCODING_RUNTIME = String.raw`

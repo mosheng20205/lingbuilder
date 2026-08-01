@@ -161,11 +161,16 @@ test('new workspace windows use an isolated process with an explicit workspace a
   assert.deepEqual(development.args.slice(-4), ['--workspace', path.resolve('C:\\项目'), '--new-window', '--managed-dev-server']);
 });
 
-test('development workspace switching starts a managed Vite service instead of requiring npm restart', async () => {
+test('workspace switching reuses the current local service instead of reloading Electron', async () => {
   const mainSource = await fs.readFile(path.resolve(import.meta.dirname, '../electron/main.ts'), 'utf8');
+  const serverSource = await fs.readFile(path.resolve(import.meta.dirname, '../server.ts'), 'utf8');
   const desktopSource = await fs.readFile(path.resolve(import.meta.dirname, '../scripts/start-electron.cjs'), 'utf8');
   assert.doesNotMatch(mainSource, /开发模式切换工作区后请重新运行 npm run dev/u);
-  assert.match(mainSource, /startManagedRendererServer\(candidateWorkspace\)/u);
+  assert.match(mainSource, /requestRendererApi\('\/api\/workspace\/switch'/u);
+  assert.doesNotMatch(mainSource, /startManagedRendererServer\(candidateWorkspace\)/u);
+  assert.match(mainSource, /webContents\.send\('workspace:changed'/u);
+  assert.match(serverSource, /app\.post\("\/api\/workspace\/switch"/u);
+  assert.match(serverSource, /workspaceRuntimeVersion/u);
   assert.match(mainSource, /NODE_ENV: app\.isPackaged \? 'production' : 'development'/u);
   assert.match(mainSource, /process\.argv\.includes\('--managed-dev-server'\)/u);
   assert.match(desktopSource, /'run', 'build:server'/u);

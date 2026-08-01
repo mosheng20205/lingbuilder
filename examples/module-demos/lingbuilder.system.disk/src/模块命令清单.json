@@ -1,21 +1,22 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:26.007Z",
+  "generatedAt": "2026-08-01T07:50:17.666Z",
   "module": {
     "id": "lingbuilder.system.disk",
     "name": "磁盘信息模块",
-    "version": "1.0.0",
-    "description": "读取磁盘容量、卷标、文件系统和驱动器类型。"
+    "version": "1.1.0",
+    "description": "完整读取逻辑驱动器、卷、容量、文件系统、物理磁盘、SSD/TRIM、扇区和分区信息。"
   },
-  "commandCount": 5,
+  "commandCount": 28,
   "commands": [
     {
       "index": 1,
       "name": "磁盘_总容量MB",
       "signature": "磁盘_总容量MB(路径)",
-      "description": "返回路径所在卷的总容量 MB，失败返回 -1。",
+      "description": "返回路径所在卷的总容量 MB，失败返回 -1；兼容旧源码。",
       "insertText": "磁盘_总容量MB(\"$1\")",
       "returnType": "长整数型",
+      "category": "容量",
       "binding": {
         "command": "磁盘_总容量MB",
         "runtimeName": "磁盘_总容量MB",
@@ -26,7 +27,8 @@
           }
         ],
         "returnType": "longLong",
-        "encoding": "wide"
+        "encoding": "wide",
+        "example": "磁盘_总容量MB(\"C:\\\")"
       },
       "demoInvocation": "磁盘_总容量MB(\"module-demo-temp.txt\")"
     },
@@ -34,9 +36,10 @@
       "index": 2,
       "name": "磁盘_可用容量MB",
       "signature": "磁盘_可用容量MB(路径)",
-      "description": "返回当前用户可用容量 MB，失败返回 -1。",
+      "description": "返回当前用户配额下可用容量 MB，失败返回 -1；兼容旧源码。",
       "insertText": "磁盘_可用容量MB(\"$1\")",
       "returnType": "长整数型",
+      "category": "容量",
       "binding": {
         "command": "磁盘_可用容量MB",
         "runtimeName": "磁盘_可用容量MB",
@@ -55,9 +58,10 @@
       "index": 3,
       "name": "磁盘_取卷标",
       "signature": "磁盘_取卷标(根路径)",
-      "description": "返回卷标，例如传入 C:\\。",
+      "description": "返回卷标，失败返回空文本。",
       "insertText": "磁盘_取卷标(\"$1\")",
       "returnType": "文本型",
+      "category": "卷",
       "binding": {
         "command": "磁盘_取卷标",
         "runtimeName": "磁盘_取卷标",
@@ -76,9 +80,10 @@
       "index": 4,
       "name": "磁盘_取文件系统",
       "signature": "磁盘_取文件系统(根路径)",
-      "description": "返回 NTFS、FAT32 等文件系统名称。",
+      "description": "返回 NTFS、ReFS、FAT32 等文件系统名称。",
       "insertText": "磁盘_取文件系统(\"$1\")",
       "returnType": "文本型",
+      "category": "卷",
       "binding": {
         "command": "磁盘_取文件系统",
         "runtimeName": "磁盘_取文件系统",
@@ -100,6 +105,7 @@
       "description": "返回 Win32 DRIVE_* 类型编号。",
       "insertText": "磁盘_取驱动器类型(\"$1\")",
       "returnType": "整数型",
+      "category": "卷",
       "binding": {
         "command": "磁盘_取驱动器类型",
         "runtimeName": "磁盘_取驱动器类型",
@@ -113,6 +119,485 @@
         "encoding": "wide"
       },
       "demoInvocation": "磁盘_取驱动器类型(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 6,
+      "name": "磁盘_取总容量字节",
+      "signature": "磁盘_取总容量字节(路径)",
+      "description": "返回路径所在卷的精确总容量字节数，失败返回 -1。",
+      "insertText": "磁盘_取总容量字节(\"$1\")",
+      "returnType": "长整数型",
+      "category": "容量",
+      "binding": {
+        "command": "磁盘_取总容量字节",
+        "runtimeName": "磁盘_取总容量字节",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取总容量字节(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 7,
+      "name": "磁盘_取用户可用字节",
+      "signature": "磁盘_取用户可用字节(路径)",
+      "description": "返回当前用户配额下可用的精确字节数，失败返回 -1。",
+      "insertText": "磁盘_取用户可用字节(\"$1\")",
+      "returnType": "长整数型",
+      "category": "容量",
+      "binding": {
+        "command": "磁盘_取用户可用字节",
+        "runtimeName": "磁盘_取用户可用字节",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取用户可用字节(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 8,
+      "name": "磁盘_取总空闲字节",
+      "signature": "磁盘_取总空闲字节(路径)",
+      "description": "返回卷上所有用户合计可见的空闲字节数，失败返回 -1。",
+      "insertText": "磁盘_取总空闲字节(\"$1\")",
+      "returnType": "长整数型",
+      "category": "容量",
+      "binding": {
+        "command": "磁盘_取总空闲字节",
+        "runtimeName": "磁盘_取总空闲字节",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取总空闲字节(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 9,
+      "name": "磁盘_取已用容量字节",
+      "signature": "磁盘_取已用容量字节(路径)",
+      "description": "返回总容量减去总空闲容量的字节数，失败返回 -1。",
+      "insertText": "磁盘_取已用容量字节(\"$1\")",
+      "returnType": "长整数型",
+      "category": "容量",
+      "binding": {
+        "command": "磁盘_取已用容量字节",
+        "runtimeName": "磁盘_取已用容量字节",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取已用容量字节(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 10,
+      "name": "磁盘_取使用率",
+      "signature": "磁盘_取使用率(路径)",
+      "description": "返回卷使用率百分比，失败返回 -1。",
+      "insertText": "磁盘_取使用率(\"$1\")",
+      "returnType": "双精度小数型",
+      "category": "容量",
+      "binding": {
+        "command": "磁盘_取使用率",
+        "runtimeName": "磁盘_取使用率",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "double",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取使用率(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 11,
+      "name": "磁盘_取容量信息",
+      "signature": "磁盘_取容量信息(路径)",
+      "description": "一次返回精确容量、空闲容量、已用容量和使用率。",
+      "insertText": "磁盘_取容量信息(\"$1\")",
+      "returnType": "磁盘容量信息",
+      "category": "容量",
+      "binding": {
+        "command": "磁盘_取容量信息",
+        "runtimeName": "磁盘_取容量信息",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "磁盘容量信息",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取容量信息(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 12,
+      "name": "磁盘_取卷信息",
+      "signature": "磁盘_取卷信息(路径)",
+      "description": "返回路径所在卷的容量、标识、文件系统、类型和挂载点快照。",
+      "insertText": "磁盘_取卷信息(\"$1\")",
+      "returnType": "磁盘卷信息",
+      "category": "卷",
+      "binding": {
+        "command": "磁盘_取卷信息",
+        "runtimeName": "磁盘_取卷信息",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "磁盘卷信息",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取卷信息(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 13,
+      "name": "磁盘_枚举逻辑驱动器",
+      "signature": "磁盘_枚举逻辑驱动器()",
+      "description": "枚举当前会话可见的盘符和网络映射驱动器；未就绪设备也会保留并携带错误代码。",
+      "insertText": "磁盘_枚举逻辑驱动器()",
+      "returnType": "磁盘卷信息列表",
+      "category": "枚举",
+      "binding": {
+        "command": "磁盘_枚举逻辑驱动器",
+        "runtimeName": "磁盘_枚举逻辑驱动器",
+        "parameters": [],
+        "returnType": "磁盘卷信息列表"
+      },
+      "demoInvocation": "磁盘_枚举逻辑驱动器()"
+    },
+    {
+      "index": 14,
+      "name": "磁盘_枚举全部卷",
+      "signature": "磁盘_枚举全部卷()",
+      "description": "使用 Windows 卷枚举 API 返回包含无盘符卷在内的全部卷。",
+      "insertText": "磁盘_枚举全部卷()",
+      "returnType": "磁盘卷信息列表",
+      "category": "枚举",
+      "binding": {
+        "command": "磁盘_枚举全部卷",
+        "runtimeName": "磁盘_枚举全部卷",
+        "parameters": [],
+        "returnType": "磁盘卷信息列表"
+      },
+      "demoInvocation": "磁盘_枚举全部卷()"
+    },
+    {
+      "index": 15,
+      "name": "磁盘_取挂载点列表",
+      "signature": "磁盘_取挂载点列表(卷GUID路径)",
+      "description": "返回卷对应的全部盘符和目录挂载点。",
+      "insertText": "磁盘_取挂载点列表(\"$1\")",
+      "returnType": "磁盘路径列表",
+      "category": "卷",
+      "binding": {
+        "command": "磁盘_取挂载点列表",
+        "runtimeName": "磁盘_取挂载点列表",
+        "parameters": [
+          {
+            "name": "卷GUID路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "磁盘路径列表",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取挂载点列表(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 16,
+      "name": "磁盘_取路径卷根",
+      "signature": "磁盘_取路径卷根(路径)",
+      "description": "把任意本地路径解析为所属卷根路径。",
+      "insertText": "磁盘_取路径卷根(\"$1\")",
+      "returnType": "文本型",
+      "category": "卷",
+      "binding": {
+        "command": "磁盘_取路径卷根",
+        "runtimeName": "磁盘_取路径卷根",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取路径卷根(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 17,
+      "name": "磁盘_取卷GUID路径",
+      "signature": "磁盘_取卷GUID路径(路径)",
+      "description": "返回路径所属卷的稳定 \\\\?\\Volume{GUID}\\ 名称。",
+      "insertText": "磁盘_取卷GUID路径(\"$1\")",
+      "returnType": "文本型",
+      "category": "卷",
+      "binding": {
+        "command": "磁盘_取卷GUID路径",
+        "runtimeName": "磁盘_取卷GUID路径",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取卷GUID路径(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 18,
+      "name": "磁盘_取驱动器类型名称",
+      "signature": "磁盘_取驱动器类型名称(根路径)",
+      "description": "返回未知、无效根路径、可移动、固定、网络、光盘或内存盘。",
+      "insertText": "磁盘_取驱动器类型名称(\"$1\")",
+      "returnType": "文本型",
+      "category": "卷",
+      "binding": {
+        "command": "磁盘_取驱动器类型名称",
+        "runtimeName": "磁盘_取驱动器类型名称",
+        "parameters": [
+          {
+            "name": "根路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取驱动器类型名称(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 19,
+      "name": "磁盘_取卷序列号",
+      "signature": "磁盘_取卷序列号(根路径)",
+      "description": "返回文件系统卷序列号，失败返回 -1。",
+      "insertText": "磁盘_取卷序列号(\"$1\")",
+      "returnType": "长整数型",
+      "category": "文件系统",
+      "binding": {
+        "command": "磁盘_取卷序列号",
+        "runtimeName": "磁盘_取卷序列号",
+        "parameters": [
+          {
+            "name": "根路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取卷序列号(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 20,
+      "name": "磁盘_取文件系统标志",
+      "signature": "磁盘_取文件系统标志(根路径)",
+      "description": "返回 GetVolumeInformationW 的 FILE_* 能力标志位，失败返回 -1。",
+      "insertText": "磁盘_取文件系统标志(\"$1\")",
+      "returnType": "长整数型",
+      "category": "文件系统",
+      "binding": {
+        "command": "磁盘_取文件系统标志",
+        "runtimeName": "磁盘_取文件系统标志",
+        "parameters": [
+          {
+            "name": "根路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取文件系统标志(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 21,
+      "name": "磁盘_取最大文件名长度",
+      "signature": "磁盘_取最大文件名长度(根路径)",
+      "description": "返回文件系统支持的单个名称最大字符数，失败返回 -1。",
+      "insertText": "磁盘_取最大文件名长度(\"$1\")",
+      "returnType": "整数型",
+      "category": "文件系统",
+      "binding": {
+        "command": "磁盘_取最大文件名长度",
+        "runtimeName": "磁盘_取最大文件名长度",
+        "parameters": [
+          {
+            "name": "根路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取最大文件名长度(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 22,
+      "name": "磁盘_卷是否就绪",
+      "signature": "磁盘_卷是否就绪(根路径)",
+      "description": "判断卷是否存在且介质可读取。",
+      "insertText": "磁盘_卷是否就绪(\"$1\")",
+      "returnType": "逻辑型",
+      "category": "卷",
+      "binding": {
+        "command": "磁盘_卷是否就绪",
+        "runtimeName": "磁盘_卷是否就绪",
+        "parameters": [
+          {
+            "name": "根路径",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_卷是否就绪(\"module-demo-temp.txt\")"
+    },
+    {
+      "index": 23,
+      "name": "磁盘_文件系统是否支持",
+      "signature": "磁盘_文件系统是否支持(根路径, 能力名称)",
+      "description": "按中文或英文能力名查询压缩、稀疏文件、重解析点、命名流、加密、ACL、硬链接、事务、USN、DAX 等 FILE_* 标志。",
+      "insertText": "磁盘_文件系统是否支持(\"$1\", \"$2\")",
+      "returnType": "逻辑型",
+      "category": "文件系统",
+      "binding": {
+        "command": "磁盘_文件系统是否支持",
+        "runtimeName": "磁盘_文件系统是否支持",
+        "parameters": [
+          {
+            "name": "根路径",
+            "type": "wideString"
+          },
+          {
+            "name": "能力名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_文件系统是否支持(\"module-demo-temp.txt\", \"演示参数2\")"
+    },
+    {
+      "index": 24,
+      "name": "磁盘_枚举物理磁盘",
+      "signature": "磁盘_枚举物理磁盘()",
+      "description": "枚举 Windows PhysicalDrive 设备并返回只读存储描述、容量、扇区、分区、SSD 和 TRIM 信息。",
+      "insertText": "磁盘_枚举物理磁盘()",
+      "returnType": "物理磁盘信息列表",
+      "category": "物理磁盘",
+      "binding": {
+        "command": "磁盘_枚举物理磁盘",
+        "runtimeName": "磁盘_枚举物理磁盘",
+        "parameters": [],
+        "returnType": "物理磁盘信息列表"
+      },
+      "demoInvocation": "磁盘_枚举物理磁盘()"
+    },
+    {
+      "index": 25,
+      "name": "磁盘_取物理磁盘信息",
+      "signature": "磁盘_取物理磁盘信息(磁盘编号)",
+      "description": "按 PhysicalDrive 编号查询物理磁盘；不请求写权限。",
+      "insertText": "磁盘_取物理磁盘信息(0)",
+      "returnType": "物理磁盘信息",
+      "category": "物理磁盘",
+      "binding": {
+        "command": "磁盘_取物理磁盘信息",
+        "runtimeName": "磁盘_取物理磁盘信息",
+        "parameters": [
+          {
+            "name": "磁盘编号",
+            "type": "int"
+          }
+        ],
+        "returnType": "物理磁盘信息"
+      },
+      "demoInvocation": "磁盘_取物理磁盘信息(1)"
+    },
+    {
+      "index": 26,
+      "name": "磁盘_取分区列表",
+      "signature": "磁盘_取分区列表(磁盘编号)",
+      "description": "读取物理磁盘的 MBR/GPT/RAW 分区布局，失败返回空数组并记录错误。",
+      "insertText": "磁盘_取分区列表(0)",
+      "returnType": "磁盘分区信息列表",
+      "category": "分区",
+      "binding": {
+        "command": "磁盘_取分区列表",
+        "runtimeName": "磁盘_取分区列表",
+        "parameters": [
+          {
+            "name": "磁盘编号",
+            "type": "int"
+          }
+        ],
+        "returnType": "磁盘分区信息列表"
+      },
+      "demoInvocation": "磁盘_取分区列表(1)"
+    },
+    {
+      "index": 27,
+      "name": "磁盘_取最近错误码",
+      "signature": "磁盘_取最近错误码()",
+      "description": "返回当前线程最近一次磁盘模块失败的 Win32 错误代码；成功调用会清零。",
+      "insertText": "磁盘_取最近错误码()",
+      "returnType": "整数型",
+      "category": "诊断",
+      "binding": {
+        "command": "磁盘_取最近错误码",
+        "runtimeName": "磁盘_取最近错误码",
+        "parameters": [],
+        "returnType": "int"
+      },
+      "demoInvocation": "磁盘_取最近错误码()"
+    },
+    {
+      "index": 28,
+      "name": "磁盘_取最近错误",
+      "signature": "磁盘_取最近错误()",
+      "description": "返回当前线程最近一次磁盘模块失败的中文上下文和系统错误文本。",
+      "insertText": "磁盘_取最近错误()",
+      "returnType": "文本型",
+      "category": "诊断",
+      "binding": {
+        "command": "磁盘_取最近错误",
+        "runtimeName": "磁盘_取最近错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "磁盘_取最近错误()"
     }
   ]
 }

@@ -290,7 +290,26 @@ function createSource(manifest: LingBuilderModuleManifest, groups: DemoGroup[]):
     lines.push('    结束', '');
   }
 
-  if ((manifest.bindings?.commands || []).some(binding => binding.parameters?.some(parameter => parameter.type === 'handler'))) {
+  if (manifest.id === 'lingbuilder.threading') {
+    lines.push(
+      '    空 模块演示工作()',
+      '        线程_协作等待(1)',
+      '    结束',
+      '',
+      '    空 模块演示进度工作()',
+      '        线程_报告进度(100, "演示工作完成")',
+      '    结束',
+      '',
+      '    空 模块演示进度(线程任务 任务, 整数型 百分比, 文本型 说明)',
+      '        调试输出(说明)',
+      '    结束',
+      '',
+      '    空 模块演示完成(线程任务 任务)',
+      '        调试输出("模块演示任务完成")',
+      '    结束',
+      ''
+    );
+  } else if ((manifest.bindings?.commands || []).some(binding => binding.parameters?.some(parameter => parameter.type === 'handler'))) {
     lines.push('    事件 模块演示回调()', '        调试输出("模块演示回调已触发。")', '    结束', '');
   }
   lines.push('结束类', '');
@@ -298,7 +317,17 @@ function createSource(manifest: LingBuilderModuleManifest, groups: DemoGroup[]):
 }
 
 function createInvocation(binding: ModuleCommandBinding, controlFixtures: readonly ControlReferenceFixture[]): string {
-  const args = (binding.parameters || []).map((parameter, index) => defaultArgument(parameter, index, controlFixtures));
+  const args = (binding.parameters || []).flatMap((parameter, index) => {
+    if (parameter.variadic) return [];
+    if (binding.invocation?.kind === 'managedTask' && parameter.type === 'handler') {
+      if (index === binding.invocation.progressParameterIndex) return ['&模块演示进度'];
+      if (index === binding.invocation.completionParameterIndex) return ['&模块演示完成'];
+      if (index === binding.invocation.workerParameterIndex) {
+        return [binding.invocation.progressParameterIndex === undefined ? '&模块演示工作' : '&模块演示进度工作'];
+      }
+    }
+    return [defaultArgument(parameter, index, controlFixtures)];
+  });
   return `${binding.command}(${args.join(', ')})`;
 }
 

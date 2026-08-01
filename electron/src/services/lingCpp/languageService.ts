@@ -1,4 +1,4 @@
-import { LING_CPP_KEYWORDS, LING_CPP_TYPES, normalizeIdentifier, parseLingCpp } from './parser';
+import { isLingCppCommentLine, LING_CPP_KEYWORDS, LING_CPP_TYPES, normalizeIdentifier, parseLingCpp } from './parser';
 import { LIST_VIEW_ADVANCED_API } from '../modules/listViewApiCatalog';
 import { DATA_GRID_API } from '../modules/dataGridApiCatalog';
 import {
@@ -44,7 +44,8 @@ import {
 } from './types';
 import { applyLingCppAstEdit } from './astEditService';
 import { LingDesignerResource, LingFileDialogResource, LingMenuResource, LingWindowModel, LingWindowProject } from '../windowDesigner/types';
-import { LingCppModuleContext } from '../modules/types';
+import { LingCppModuleContext, ModuleCommandBinding } from '../modules/types';
+import { THREADING_LEGACY_COMMANDS } from '../modules/threadingModule';
 import {
   getWindowEventDefinition,
   getWindowEventHandlerName,
@@ -55,6 +56,7 @@ import { areLingCppTypesCompatible, inferLingCppExpressionType } from './express
 import { parseLingCppControlFlowLine } from './controlFlow';
 import { getProjectGlobalDiagnostics, isProjectGlobalsFilePath, projectSymbolTypes } from './projectGlobalService';
 import { getProjectDataTypeDiagnostics, getProjectDataTypeNames, resolveProjectFieldPathType } from './projectDataTypeService';
+import { createEffectiveLingCppTypeContext, getEnabledModuleStructuredTypeDiagnostics } from '../modules/modulePublicTypeService';
 import { getFunctionLibraryCompletionItems, getFunctionLibraryDiagnostics } from './functionLibraryService';
 import {
   getLingCppControlReferenceAtPosition,
@@ -264,19 +266,24 @@ export function getLingCppSemanticDiagnostics(
   projectFunctions?: LingCppProjectFunctionContext
 ): LingCppDiagnostic[] {
   const parsed = parseLingCpp(source);
+  const effectiveTypes = createEffectiveLingCppTypeContext(projectTypes, moduleContext);
   const diagnostics = [...parsed.diagnostics, ...getBlockDiagnostics(source)];
-  diagnostics.push(...getProjectGlobalDiagnostics(source, filePath, moduleContext, getProjectDataTypeNames(projectTypes)));
+  diagnostics.push(...getProjectGlobalDiagnostics(source, filePath, moduleContext, getProjectDataTypeNames(effectiveTypes)));
   diagnostics.push(...getProjectDataTypeDiagnostics(source, filePath, moduleContext, parsed.program.classes.map(cls => cls.name)));
+  getEnabledModuleStructuredTypeDiagnostics(moduleContext).forEach(message => diagnostics.push(createDiagnostic(
+    'error', 1, '', message, '请禁用其中一个冲突模块，或让模块作者修改公开类型名称。'
+  )));
   diagnostics.push(...getModuleUsageDiagnostics(source, moduleContext));
   diagnostics.push(...getLegacyModuleHandlerDiagnostics(source, moduleContext));
   diagnostics.push(...getLingCppControlReferenceDiagnostics(source, designerProject, moduleContext, filePath));
   const effectiveConstants = isProjectGlobalsFilePath(filePath) ? parsed.program.constants : (projectGlobals?.constants || []);
   const effectiveGlobals = isProjectGlobalsFilePath(filePath) ? parsed.program.globals : (projectGlobals?.globals || []);
+  diagnostics.push(...getThreadingDiagnostics(source, parsed.program, moduleContext, effectiveGlobals, effectiveTypes));
   diagnostics.push(...getVariableDiagnostics([
     ...parsed.program.classes,
     ...parsed.program.functionLibraries.map(library => ({ name: library.name, line: library.line, endLine: library.endLine, members: [], methods: library.methods }))
-  ], moduleContext, effectiveConstants, effectiveGlobals, projectTypes));
-  diagnostics.push(...getUnknownDeclaredTypeDiagnostics(parsed.program, moduleContext, projectTypes));
+  ], moduleContext, effectiveConstants, effectiveGlobals, effectiveTypes));
+  diagnostics.push(...getUnknownDeclaredTypeDiagnostics(parsed.program, moduleContext, effectiveTypes));
   const functionLibraryDiagnostics = getFunctionLibraryDiagnostics(source, filePath, projectFunctions);
   diagnostics.push(...functionLibraryDiagnostics.filter(diagnostic => !isDesignerControlMethodDiagnostic(diagnostic, source, designerProject, filePath)));
 
@@ -326,6 +333,7 @@ export function buildLingCppLanguageContext(
 ): LingCppLanguageContext {
   const parsed = parseLingCpp(source);
   const designerBindings = getLingCppDesignerBindings(source, designerProject, filePath, moduleContext);
+  const effectiveTypes = createEffectiveLingCppTypeContext(projectTypes, moduleContext);
   return {
     source,
     filePath,
@@ -338,7 +346,7 @@ export function buildLingCppLanguageContext(
     moduleContext,
     moduleContributions: getLingCppModuleCompletionItems(moduleContext),
     projectGlobals,
-    projectTypes,
+    projectTypes: effectiveTypes,
     projectFunctions
   };
 }
@@ -540,7 +548,9 @@ function getProjectFieldCompletionItems(
     kind: 'type',
     insertText: field.name,
     detail: `${owner.name} 字段 · ${field.type}${field.isArray ? '[]' : ''}`,
-    documentation: field.note || `项目自定义数据类型 ${owner.name} 的字段。`,
+    documentation: field.note || (owner.origin === 'module'
+      ? `模块 ${owner.sourceModuleName || owner.sourceModuleId || '未知模块'} 公开记录 ${owner.name} 的字段。`
+      : `项目自定义数据类型 ${owner.name} 的字段。`),
     category: 'symbol',
     source: 'symbol',
     sortRank: 0
@@ -595,7 +605,9 @@ function getCurrentSymbolCompletionItems(languageContext: LingCppLanguageContext
       source: 'symbol',
       sortRank: 0
     }));
-  const projectTypeItems = (languageContext.projectTypes?.dataTypes || languageContext.program.dataTypes).map(dataType => createLingCppCatalogItem({
+  const projectTypeItems = (languageContext.projectTypes?.dataTypes || languageContext.program.dataTypes)
+    .filter(dataType => dataType.origin !== 'module')
+    .map(dataType => createLingCppCatalogItem({
     label: dataType.name,
     kind: 'type',
     insertText: dataType.name,
@@ -1949,21 +1961,29 @@ function getDesignerControlCommandCompletions(
     commands.push(command('清空项目', '控件_清空项目', '', '清空控件中的项目'));
   }
   if (control.type === 'ListView') {
+    const listViewColumnCount = Array.isArray(control.properties?.columns)
+      ? Math.max(1, control.properties.columns.length)
+      : 1;
+    const structuredRowArguments = Array.from(
+      { length: listViewColumnCount },
+      (_item, index) => `"$${index + 1}"`
+    ).join(', ');
+    const structuredRow = `列表视图_创建行(${structuredRowArguments})`;
     commands.push(
-      command('添加行', '列表视图_添加行', '"$1"', '追加一行 Tab 分隔的单元格'),
-      command('插入行', '列表视图_插入行', '0, "$1"', '在零基行索引插入一行'),
+      command('添加行', '列表视图_添加行', structuredRow, '按当前列数追加类型化单元格数组'),
+      command('插入行', '列表视图_插入行', `0, ${structuredRow}`, '在零基行索引插入类型化单元格数组'),
       command('删除行', '列表视图_删除行', '0', '删除零基行索引'),
       command('设置单元格', '列表视图_设置单元格', '0, 0, "$1"', '设置零基行列单元格'),
       command('取单元格', '列表视图_取单元格', '0, 0', '读取零基行列单元格'),
       command('取行数', '列表视图_取行数', '', '读取当前数据行数'),
-      command('批量添加行', '列表视图_批量添加行', '"$1"', '追加换行分隔的多行 TSV 数据'),
+      command('批量添加行', '列表视图_批量添加行', `列表视图_创建行集合(${structuredRow})`, '批量追加类型化行集合'),
       command('开始批量更新', '列表视图_开始批量更新', '', '暂停重绘'),
       command('结束批量更新', '列表视图_结束批量更新', '', '恢复重绘'),
       command('排序', '列表视图_排序', '0, 真', '按列文本稳定排序'),
       command('取最后单击列', '列表视图_取最后单击列', '', '读取最近表头单击列'),
       command('取虚拟模式', '列表视图_取虚拟模式', '', '判断是否启用 LVS_OWNERDATA'),
       command('设置虚拟行数', '列表视图_设置虚拟行数', '15000', '设置虚拟列表总行数'),
-      command('设置虚拟行', '列表视图_设置虚拟行', '0, "$1"', '设置虚拟列表指定行'),
+      command('设置虚拟行', '列表视图_设置虚拟行', `0, ${structuredRow}`, '设置虚拟列表指定类型化行'),
       ...LIST_VIEW_ADVANCED_API.map(item => command(item.memberName, item.name, item.memberArgs, item.description))
     );
   }
@@ -2373,6 +2393,7 @@ function getVariableDiagnostics(
   const constantNames = new Set(constants.map(constant => normalizeIdentifier(constant.name)));
   classes.forEach(cls => {
     const memberTypes = new Map(cls.members.map(member => [normalizeIdentifier(member.name), member.type]));
+    const methodNames = new Set(cls.methods.map(method => normalizeIdentifier(method.name)));
     cls.members.forEach(member => {
       if (constantNames.has(normalizeIdentifier(member.name))) {
         diagnostics.push(createDiagnostic('error', member.line, member.name, `程序集变量 ${member.name} 不能遮蔽同名项目常量。`, '请修改程序集变量或项目常量的名称。'));
@@ -2404,7 +2425,8 @@ function getVariableDiagnostics(
             method,
             local,
             initializerScopeTypes,
-            allLocalPositions
+            allLocalPositions,
+            methodNames
           ));
           const actualType = inferLingCppExpressionType(local.initialValue, initializerScopeTypes, moduleContext, new Map(), projectTypes);
           if (actualType && !areLingCppTypesCompatible(local.type, actualType)) {
@@ -2482,7 +2504,8 @@ function getLocalInitializerReferenceDiagnostics(
   method: LingCppMethod,
   local: NonNullable<LingCppMethod['locals']>[number],
   scopeTypes: ReadonlyMap<string, string>,
-  allLocalPositions: ReadonlyMap<string, number>
+  allLocalPositions: ReadonlyMap<string, number>,
+  methodNames: ReadonlySet<string>
 ): LingCppDiagnostic[] {
   const expression = local.initialValue || '';
   const withoutStrings = expression.replace(/(?:L)?"(?:\\.|[^"\\])*"|“[^”]*”/gu, match => ' '.repeat(match.length));
@@ -2496,6 +2519,7 @@ function getLocalInitializerReferenceDiagnostics(
     const before = withoutStrings.slice(0, index).trimEnd();
     const after = withoutStrings.slice(index + name.length);
     if (before.endsWith('.')) continue;
+    if (before.endsWith('&') && methodNames.has(normalized)) continue;
     if (/^\s*[（(]/u.test(after)) continue;
     if (/^\s*\.\s*[\p{L}_][\p{L}\p{N}_]*\s*[（(]/u.test(after)) continue;
     if (scopeTypes.has(normalized)) continue;
@@ -2546,11 +2570,203 @@ function getModuleUsageDiagnostics(source: string, moduleContext?: LingCppModule
   return diagnostics;
 }
 
+const THREADING_LEGACY_MIGRATIONS: Record<(typeof THREADING_LEGACY_COMMANDS)[number], string> = {
+  线程_启动延时输出: '新建工作处理器，在其中调用 线程_协作等待(毫秒) 和 调试输出，再使用 线程_提交(&工作处理器, 参数...)。',
+  线程_等待全部: '保存线程任务，并改用 线程_等待全部超时(超时毫秒, 任务...)。',
+  线程_活动数量: '改用 线程池_取运行数量(线程池_取默认池()) 与 线程池_取等待数量(线程池_取默认池())。',
+  线程_硬件并发数: '改用 线程池_取硬件并发数()。',
+  线程_休眠: '工作处理器内改用可响应取消的 线程_协作等待(毫秒)。',
+  线程_启动延时设置文本: '把延时工作放入工作处理器，把控件更新放入完成处理器；完成处理器会在 UI 线程执行。',
+  线程_启动延时添加行: '把延时工作放入工作处理器，把列表更新放入完成处理器；不要把 controlRef 传入工作线程。',
+  线程_启动延时添加项目: '把延时工作放入工作处理器，把列表更新放入完成处理器；不要把 controlRef 传入工作线程。',
+  线程_批量启动: '改为自定义线程池 + 工作/进度/完成处理器，并由进度处理器更新 UI。'
+};
+
+function getThreadingDiagnostics(
+  source: string,
+  program: LingCppProgram,
+  moduleContext: LingCppModuleContext | undefined,
+  globals: LingCppGlobalVariable[],
+  projectTypes?: LingCppProjectTypeContext
+): LingCppDiagnostic[] {
+  const threadingModule = [...(moduleContext?.enabledModules || []), ...(moduleContext?.availableModules || [])]
+    .find(module => module.manifest.id === 'lingbuilder.threading');
+  if (!threadingModule) return [];
+  const diagnostics: LingCppDiagnostic[] = [];
+  const sourceLines = splitLines(source);
+
+  THREADING_LEGACY_COMMANDS.forEach(command => sourceLines.forEach((line, index) => {
+    if (!containsCommandInvocation(line, command)) return;
+    diagnostics.push(createDiagnostic(
+      'error', index + 1, line,
+      `多线程模块 2.0 已删除旧命令 ${command}，不能继续构建。`,
+      THREADING_LEGACY_MIGRATIONS[command]
+    ));
+  }));
+
+  const enabledThreading = (moduleContext?.enabledModules || []).find(module => module.manifest.id === 'lingbuilder.threading');
+  if (!enabledThreading) return diagnostics;
+  const managedBindings = (enabledThreading.manifest.bindings?.commands || []).filter(binding => binding.invocation?.kind === 'managedTask');
+  const opaqueTypes = new Set((moduleContext?.enabledModules || []).flatMap(module => (module.manifest.contributes?.types || [])
+    .filter(type => (type.kind || 'opaque') === 'opaque' && module.manifest.id !== 'lingbuilder.threading')
+    .map(type => normalizeIdentifier(type.name))));
+  const structuredTypes = new Set([
+    ...(projectTypes?.dataTypes || []).map(type => normalizeIdentifier(type.name)),
+    ...(moduleContext?.enabledModules || []).flatMap(module => (module.manifest.contributes?.types || [])
+      .filter(type => type.kind === 'record' || type.kind === 'array')
+      .map(type => normalizeIdentifier(type.name)))
+  ]);
+  const globalTypes = new Map(globals.map(global => [normalizeIdentifier(global.name), global.type]));
+  const controlRefCommands = getEnabledLingCppModuleContributions(moduleContext).flatMap(module => {
+    const aliases = new Map((module.manifest.contributes?.commands || []).map(command => [command.name, command.aliases || []]));
+    return (module.manifest.bindings?.commands || [])
+      .filter(binding => (binding.parameters || []).some(parameter => parameter.type === 'controlRef'))
+      .flatMap(binding => [binding.command, ...(aliases.get(binding.command) || [])]);
+  });
+
+  program.classes.forEach(cls => {
+    const handlers = new Map(cls.methods.map(method => [normalizeIdentifier(method.name), method]));
+    cls.methods.forEach(caller => {
+      const scopeTypes = new Map<string, string>(globalTypes);
+      cls.members.forEach(member => scopeTypes.set(normalizeIdentifier(member.name), member.isArray ? `${member.type}[]` : member.type));
+      caller.parameters.forEach(item => scopeTypes.set(normalizeIdentifier(item.name), item.type));
+      (caller.locals || []).forEach(item => scopeTypes.set(normalizeIdentifier(item.name), item.isArray ? `${item.type}[]` : item.type));
+
+      caller.statements.filter(statement => !isLingCppCommentLine(statement.text)).forEach(statement => managedBindings.forEach(binding => {
+        const commandNames = [binding.command, ...((enabledThreading.manifest.contributes?.commands || []).find(command => command.name === binding.command)?.aliases || [])];
+        commandNames.flatMap(command => extractCommandInvocationArguments(statement.text, command)).forEach(args => {
+          validateThreadingManagedInvocation(binding, args, statement, handlers, scopeTypes, moduleContext, projectTypes, opaqueTypes, structuredTypes, diagnostics);
+        });
+      }));
+    });
+
+    const memberNames = new Set(cls.members.map(member => normalizeIdentifier(member.name)));
+    handlers.forEach(handler => {
+      if (!isThreadWorkerHandler(source, handler.name, managedBindings)) return;
+      const usesMutex = handler.statements.some(statement => containsCommandInvocation(statement.text, '互斥锁_执行') || containsCommandInvocation(statement.text, '互斥锁_尝试执行'));
+      const workerExpressions = [
+        ...handler.statements,
+        ...(handler.locals || []).filter(local => local.initialValue).map(local => ({
+          line: local.line,
+          text: sourceLines[local.line - 1] || local.initialValue || ''
+        }))
+      ];
+      workerExpressions.forEach(expression => {
+        const uiCall = controlRefCommands.find(command => containsCommandInvocation(expression.text, command))
+          || expression.text.match(/(?:^|[^\p{L}\p{N}_])((?:控件|窗口|列表视图|表格|树形框|选项卡|信息框|文件对话框|菜单|EdgeView|CEF3|FBro)_[\p{L}\p{N}_]+|信息框)\s*[（(]/u)?.[1];
+        if (uiCall) diagnostics.push(createDiagnostic('error', expression.line, expression.text, `工作处理器 ${handler.name} 不能调用 UI/controlRef 命令 ${uiCall}。`, '把 UI 操作移动到进度处理器或完成处理器；它们会在发起窗口 UI 线程执行。'));
+      });
+      handler.statements.forEach(statement => {
+        const assignment = statement.text.match(/^\s*([\p{L}_][\p{L}\p{N}_]*)\s*[=＝](?!=)/u)?.[1];
+        const writesShared = assignment && (memberNames.has(normalizeIdentifier(assignment)) || globalTypes.has(normalizeIdentifier(assignment)));
+        if (writesShared && !usesMutex) diagnostics.push(createDiagnostic('warning', statement.line, statement.text, `工作处理器 ${handler.name} 写入共享值 ${assignment}，但未检测到互斥锁保护。`, '请使用 互斥锁_执行/互斥锁_尝试执行，或改用线程原子整数。'));
+      });
+    });
+  });
+  return diagnostics;
+}
+
+function validateThreadingManagedInvocation(
+  binding: ModuleCommandBinding,
+  args: string[],
+  statement: LingCppStatement,
+  handlers: Map<string, LingCppMethod>,
+  scopeTypes: Map<string, string>,
+  moduleContext: LingCppModuleContext | undefined,
+  projectTypes: LingCppProjectTypeContext | undefined,
+  opaqueTypes: Set<string>,
+  structuredTypes: Set<string>,
+  diagnostics: LingCppDiagnostic[]
+): void {
+  const invocation = binding.invocation!;
+  const requiredCount = invocation.variadicParameterIndex;
+  if (args.length < requiredCount) {
+    diagnostics.push(createDiagnostic('error', statement.line, statement.text, `${binding.command} 缺少处理器或固定参数。`, `请按 ${binding.command} 的补全签名填写参数。`));
+    return;
+  }
+  const worker = requireThreadHandler(binding, '工作处理器', args[invocation.workerParameterIndex], statement, handlers, diagnostics);
+  const values = args.slice(invocation.variadicParameterIndex);
+  if (worker) {
+    if (worker.parameters.length !== values.length) {
+      diagnostics.push(createDiagnostic('error', statement.line, statement.text, `工作处理器 ${worker.name} 需要 ${worker.parameters.length} 个参数，但提交了 ${values.length} 个。`, '参数数量必须与工作处理器形参逐项一致；允许 0 个或任意多个参数。'));
+    }
+    worker.parameters.forEach((parameter, index) => {
+      if (!isThreadCopyableType(parameter.type, opaqueTypes, structuredTypes)) {
+        diagnostics.push(createDiagnostic('error', statement.line, statement.text, `工作处理器参数 ${parameter.name} 的类型 ${parameter.type} 不能在线程间按值深拷贝。`, '仅允许基础类型、文本、字节集、数组、记录及多线程模块自己的受管句柄；禁止 controlRef、外部 opaque、原生句柄和引用。'));
+      }
+      const actual = values[index] ? inferLingCppExpressionType(values[index]!, scopeTypes, moduleContext, new Map(), projectTypes) : undefined;
+      if (actual && !areLingCppTypesCompatible(parameter.type, actual)) {
+        diagnostics.push(createDiagnostic('error', statement.line, statement.text, `传给 ${worker.name} 的第 ${index + 1} 个参数类型为 ${actual}，与形参 ${parameter.type} 不匹配。`, '请调整提交参数或工作处理器形参，参数必须逐项匹配。'));
+      }
+    });
+  }
+
+  if (invocation.progressParameterIndex !== undefined) {
+    const progress = requireThreadHandler(binding, '进度处理器', args[invocation.progressParameterIndex], statement, handlers, diagnostics);
+    if (progress && (!isVoidType(progress.returnType) || progress.parameters.length !== 3
+      || !isTaskType(progress.parameters[0]?.type) || !areLingCppTypesCompatible('整数型', progress.parameters[1]?.type || '')
+      || !areLingCppTypesCompatible('文本型', progress.parameters[2]?.type || ''))) {
+      diagnostics.push(createDiagnostic('error', statement.line, statement.text, `进度处理器 ${progress.name} 的签名无效。`, '进度处理器必须为：空 处理器(线程任务 任务, 整数型 百分比, 文本型 说明)。'));
+    }
+  }
+
+  if (invocation.completionParameterIndex !== undefined) {
+    const completion = requireThreadHandler(binding, '完成处理器', args[invocation.completionParameterIndex], statement, handlers, diagnostics);
+    if (completion && worker) {
+      const expectedCount = isVoidType(worker.returnType) ? 1 : 2;
+      const resultMatches = expectedCount === 1 || areLingCppTypesCompatible(worker.returnType, completion.parameters[1]?.type || '');
+      if (!isVoidType(completion.returnType) || completion.parameters.length !== expectedCount || !isTaskType(completion.parameters[0]?.type) || !resultMatches) {
+        diagnostics.push(createDiagnostic('error', statement.line, statement.text, `完成处理器 ${completion.name} 与工作处理器 ${worker.name} 的返回类型不匹配。`, isVoidType(worker.returnType)
+          ? '工作返回空时，完成处理器必须为：空 处理器(线程任务 任务)。'
+          : `完成处理器必须为：空 处理器(线程任务 任务, ${worker.returnType} 结果)。`));
+      }
+    }
+  }
+}
+
+function requireThreadHandler(
+  binding: ModuleCommandBinding,
+  role: string,
+  value: string | undefined,
+  statement: LingCppStatement,
+  handlers: Map<string, LingCppMethod>,
+  diagnostics: LingCppDiagnostic[]
+): LingCppMethod | undefined {
+  const reference = value?.trim().match(/^&([\p{L}_][\p{L}\p{N}_]*)$/u)?.[1];
+  if (!reference) {
+    diagnostics.push(createDiagnostic('error', statement.line, statement.text, `${binding.command} 的${role}必须使用 &处理器名 引用语法。`, '不要使用字符串或普通变量传递处理器。'));
+    return undefined;
+  }
+  const handler = handlers.get(normalizeIdentifier(reference));
+  if (!handler) diagnostics.push(createDiagnostic('error', statement.line, statement.text, `找不到${role} ${reference}。`, '请在当前窗口类中声明该处理器，并保持签名一致。'));
+  return handler;
+}
+
+function isThreadCopyableType(type: string, opaqueTypes: Set<string>, structuredTypes: Set<string>): boolean {
+  const normalized = type.trim().replace(/(?:\[\]|［］)$/u, '');
+  const key = normalizeIdentifier(normalized);
+  if (/^(?:文本型|文本|字符串|字符串型|整数型|整数|长整数型|长整数|小数型|小数|双精度|双精度型|双精度小数型|逻辑型|逻辑|布尔型|布尔|字节型|字节|字节集)$/u.test(normalized)) return true;
+  if (/^(?:线程任务|线程任务状态|线程池|线程互斥锁|线程原子整数|线程同步事件|线程信号量)$/u.test(normalized)) return true;
+  if (structuredTypes.has(key)) return true;
+  if (opaqueTypes.has(key) || /(?:控件|窗体|窗口|句柄|指针|引用|&|\*)/u.test(normalized)) return false;
+  return false;
+}
+
+function isVoidType(type: string | undefined): boolean { return !type || /^(?:空|void)$/iu.test(type.trim()); }
+function isTaskType(type: string | undefined): boolean { return Boolean(type && /^(?:线程任务|长整数型|长整数)$/u.test(type.trim())); }
+
+function isThreadWorkerHandler(source: string, handlerName: string, bindings: ModuleCommandBinding[]): boolean {
+  return bindings.some(binding => binding.invocation?.operation === 'submit'
+    && [binding.command].some(command => extractCommandInvocationArguments(source, command)
+      .some(args => args[binding.invocation!.workerParameterIndex]?.trim() === `&${handlerName}`)));
+}
+
 function getLegacyModuleHandlerDiagnostics(source: string, moduleContext?: LingCppModuleContext): LingCppDiagnostic[] {
   const diagnostics: LingCppDiagnostic[] = [];
   const lines = splitLines(source);
   getEnabledLingCppModuleContributions(moduleContext).forEach(module => {
     (module.manifest.bindings?.commands || []).forEach(binding => {
+      if (binding.invocation?.kind === 'managedTask') return;
       const handlerIndexes = (binding.parameters || []).map((parameter, index) => parameter.type === 'handler' ? index : -1).filter(index => index >= 0);
       if (handlerIndexes.length === 0) return;
       const aliases = (module.manifest.contributes?.commands || []).find(command => command.name === binding.command)?.aliases || [];

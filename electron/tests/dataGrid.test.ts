@@ -151,7 +151,7 @@ test('Win32 generator emits independent DataGrid HWND, virtualization, editors a
     properties: {
       ...createDefaultControlProperties('DataGrid'),
       dataGridColumns: [
-        { id: 'selected', title: '选择', type: 'checkbox', width: 70 },
+        { id: 'selected', title: '选择', type: 'checkbox', width: 70, frozen: true },
         { id: 'picture', title: '图片', type: 'image', width: 90 },
         { id: 'progress', title: '进度', type: 'progress', width: 130 },
         { id: 'action', title: '操作', type: 'buttons', width: 180, buttons: [{ id: 'view', text: '查看', style: 'primary' }] }
@@ -171,8 +171,13 @@ test('Win32 generator emits independent DataGrid HWND, virtualization, editors a
   assert.match(cpp, /className = L"LingBuilderDataGrid"/u);
   assert.match(cpp, /CreateCompatibleBitmap/u);
   assert.match(cpp, /ResolveRuntimeAssetPath/u);
+  assert.match(cpp, /if\(column\.frozen\)\{RECT frozenRect=\{x,top,x\+width,top\+rowHeight\};FillRect\(memory,&frozenRect,rowBrush\);\}/u);
+  assert.match(cpp, /if\(column\.frozen\)\{RECT frozenRect=\{x,0,x\+width,header\};FillRect\(memory,&frozenRect,headerBrush\);\}/u);
   assert.match(cpp, /DataGridFillRoundedRect/u);
   assert.match(cpp, /SmoothingModeAntiAlias/u);
+  assert.match(cpp, /barHeight=std::max\(1,std::min\(ScaleForDpi\(16,dpi_\)/u);
+  assert.match(cpp, /DrawTextW\(memory,value\.c_str\(\),-1,&rect,DT_CENTER\|DT_SINGLELINE\|DT_VCENTER\|DT_NOPREFIX\)/u);
+  assert.doesNotMatch(cpp, /DrawTextW\(memory,value\.c_str\(\),-1,&bar/u);
   assert.match(cpp, /DataGridFillEllipse/u);
   assert.match(cpp, /DataGridPaintBitmap/u);
   assert.match(cpp, /mode==L"tile"/u);
@@ -183,7 +188,17 @@ test('Win32 generator emits independent DataGrid HWND, virtualization, editors a
   assert.match(cpp, /hoverRowKey/u);
   assert.match(cpp, /UpdateDataGridHover/u);
   assert.match(cpp, /TrackMouseEvent/u);
-  assert.match(cpp, /FrameRect\(memory,&buttonRect/u);
+  assert.match(cpp, /GetTextExtentPoint32W\(target,text\.c_str\(\)/u);
+  assert.match(cpp, /DataGridLayoutButtons\(memory,buttons,buttonCell\)/u);
+  assert.match(cpp, /DataGridButtonAt\(runtime,row,column,mouseX,mouseY,rect\)/u);
+  assert.doesNotMatch(cpp, /std::min\(80,std::max\(42,static_cast<int>\(button\.text\.size\(\)\)\*12\+16\)\)/u);
+  assert.match(cpp, /buttonRadius=ScaleForDpi\(4,dpi_\)/u);
+  assert.match(cpp, /DataGridFillRoundedRect\(memory,buttonRect,buttonRadius,buttonBackground\)/u);
+  assert.match(cpp, /DataGridStrokeRoundedRect\(memory,buttonRect,buttonRadius,buttonBorder\)/u);
+  assert.match(cpp, /DataGridFillRoundedRect\(memory,more,buttonRadius,RGB\(51,65,85\)\)/u);
+  assert.match(cpp, /DataGridStrokeRoundedRect\(memory,more,buttonRadius,RGB\(100,116,139\)\)/u);
+  assert.doesNotMatch(cpp, /FillRect\(memory,&buttonRect/u);
+  assert.doesNotMatch(cpp, /FrameRect\(memory,&buttonRect/u);
   assert.match(cpp, /RGB\(248,250,252\)/u);
   assert.match(cpp, /notification == CBN_SELCHANGE|HIWORD\(wParam\)==CBN_SELCHANGE/u);
   assert.match(cpp, /L"ComboChanged"/u);
