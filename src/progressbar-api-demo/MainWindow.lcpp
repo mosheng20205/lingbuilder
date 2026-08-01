@@ -7,7 +7,7 @@
 
     事件 _MainWindow_创建完毕()
         调试输出("ProgressBar 30 个接口演示已启动")
-        控件_设置文本("状态标签", "状态：请选择一个选项卡中的接口组。")
+        控件_设置文本(状态标签, "状态：请选择一个选项卡中的接口组。")
     结束
 
     事件 _接口01_进度与状态_被点击()
@@ -23,7 +23,7 @@
         @ EU_SetProgressShowText(g_newEmojiWindow, id, 1);
         @ int postedShowText = EU_PostSetProgressShowText(g_newEmojiWindow, id, 0);
         调试输出("接口01：Percentage / Status / ShowText 的设置、异步设置、读取已调用")
-        控件_设置文本("状态标签", "状态：进度与状态接口已执行；请查看调试输出中的读取值。")
+        控件_设置文本(状态标签, "状态：进度与状态接口已执行；请查看调试输出中的读取值。")
     结束
 
     事件 _接口02_选项_被点击()
@@ -37,7 +37,7 @@
         @ int showText = 0;
         @ EU_GetProgressOptions(g_newEmojiWindow, id, &progressType, &strokeWidth, &showText);
         调试输出("接口02：ProgressOptions 设置、异步设置和读取已调用")
-        控件_设置文本("状态标签", "状态：选项接口已执行。")
+        控件_设置文本(状态标签, "状态：选项接口已执行。")
     结束
 
     事件 _接口03_格式_被点击()
@@ -50,7 +50,7 @@
         @ int striped = 0;
         @ EU_GetProgressFormatOptions(g_newEmojiWindow, id, &format, &striped);
         调试输出("接口03：FormatOptions 设置、异步设置和读取已调用")
-        控件_设置文本("状态标签", "状态：格式接口已执行，已切换为模板格式。")
+        控件_设置文本(状态标签, "状态：格式接口已执行，已切换为模板格式。")
     结束
 
     事件 _接口04_文字内显_被点击()
@@ -61,7 +61,7 @@
         @ int posted = EU_PostSetProgressTextInside(g_newEmojiWindow, id, 0);
         @ int inside = EU_GetProgressTextInside(g_newEmojiWindow, id);
         调试输出("接口04：TextInside 设置、异步设置和读取已调用")
-        控件_设置文本("状态标签", "状态：文字内显接口已执行；请查看调试输出中的读取值。")
+        控件_设置文本(状态标签, "状态：文字内显接口已执行；请查看调试输出中的读取值。")
     结束
 
     事件 _接口05_颜色_被点击()
@@ -75,7 +75,7 @@
         @ Color text = static_cast<Color>(0);
         @ EU_GetProgressColors(g_newEmojiWindow, id, &fill, &track, &text);
         调试输出("接口05：Colors 设置、异步设置和读取已调用")
-        控件_设置文本("状态标签", "状态：颜色接口已执行。")
+        控件_设置文本(状态标签, "状态：颜色接口已执行。")
     结束
 
     事件 _接口06_分段颜色_被点击()
@@ -90,7 +90,7 @@
         @ int firstPercent = 0;
         @ EU_GetProgressColorStop(g_newEmojiWindow, id, 0, &firstColor, &firstPercent);
         调试输出("接口06：ColorStops 设置、异步设置、数量和首项读取已调用")
-        控件_设置文本("状态标签", "状态：分段颜色接口已执行；请查看调试输出中的分段数量。")
+        控件_设置文本(状态标签, "状态：分段颜色接口已执行；请查看调试输出中的分段数量。")
     结束
 
     事件 _接口07_完成与模板_被点击()
@@ -108,12 +108,12 @@
         @ int completeSize = EU_GetProgressCompleteText(g_newEmojiWindow, id, completeBuffer, static_cast<int>(sizeof(completeBuffer)));
         @ int templateSize = EU_GetProgressTextTemplate(g_newEmojiWindow, id, templateBuffer, static_cast<int>(sizeof(templateBuffer)));
         调试输出("接口07：CompleteText / TextTemplate 设置、异步设置和读取已调用")
-        控件_设置文本("状态标签", "状态：完成文本与模板接口已执行。")
+        控件_设置文本(状态标签, "状态：完成文本与模板接口已执行。")
     结束
 
     事件 _接口08_全部回归_被点击()
         调试输出("接口08：请依次点击四个选项卡中的接口按钮，完成全部 30 个接口回归。")
-        控件_设置文本("状态标签", "状态：已开始全部 30 个 ProgressBar 接口回归，请依次查看前三个选项卡。")
+        控件_设置文本(状态标签, "状态：已开始全部 30 个 ProgressBar 接口回归，请依次查看前三个选项卡。")
     结束
 
     事件 _接口09_恢复默认_被点击()
@@ -130,7 +130,7 @@
         @ EU_SetProgressCompleteText(g_newEmojiWindow, id, reinterpret_cast<const unsigned char*>("满"), static_cast<int>(sizeof("满") - 1));
         @ EU_SetProgressTextTemplate(g_newEmojiWindow, id, reinterpret_cast<const unsigned char*>("{value}%"), static_cast<int>(sizeof("{value}%") - 1));
         调试输出("接口09：已恢复设计器默认状态")
-        控件_设置文本("状态标签", "状态：已恢复默认值。")
+        控件_设置文本(状态标签, "状态：已恢复默认值。")
     结束
 
     事件 _演示进度条_鼠标进入()

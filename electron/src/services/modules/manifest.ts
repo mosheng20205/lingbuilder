@@ -9,14 +9,18 @@ import {
   ModuleTargetToolchain,
   ModuleBindingValueType
 } from './types';
+import { normalizeControlReferenceCallSnippet, normalizeControlReferenceSnippet } from './bindingValueType';
 
 const CATEGORIES: LingBuilderModuleCategory[] = ['界面', '系统', '网络', '数据库', '图像', 'AI', '构建', '其他'];
 const MODULE_ID_RE = /^[a-z0-9][a-z0-9._-]{2,80}$/;
 const TARGET_PLATFORMS: ModuleTargetPlatform[] = ['windows', 'linux', 'macos'];
 const TARGET_ARCHES: ModuleTargetArch[] = ['win32', 'x64', 'arm64', 'any'];
 const TARGET_TOOLCHAINS: ModuleTargetToolchain[] = ['msvc', 'gcc', 'clang', 'cmake', 'any'];
-const BINDING_VALUE_TYPES: ModuleBindingValueType[] = ['void', 'int', 'longLong', 'double', 'bool', 'wideString', 'utf8String', 'handler', 'handle', 'raw'];
-const DESIGNER_PROPERTY_TYPES = ['text', 'number', 'boolean', 'enum', 'color', 'file', 'stringList', 'columns', 'dataGridColumns', 'dataGridRows', 'treeNodes', 'tabs', 'date', 'controlRef'];
+const BINDING_VALUE_TYPES: ModuleBindingValueType[] = ['void', 'int', 'longLong', 'double', 'bool', 'wideString', 'utf8String', 'controlRef', 'handler', 'handle', 'raw'];
+const CONTROL_REFERENCE_SCOPES = ['currentWindow', 'project'];
+const CONTROL_REFERENCE_KINDS = ['visual', 'nonVisual', 'resource'];
+const CONTROL_RUNTIME_REPRESENTATIONS = ['wideName', 'stableId', 'nativeHandle'];
+const DESIGNER_PROPERTY_TYPES = ['text', 'hotkey', 'hotKey', 'number', 'boolean', 'enum', 'color', 'file', 'stringList', 'columns', 'dataGridColumns', 'dataGridRows', 'treeNodes', 'tabs', 'date', 'controlRef'];
 const DESIGNER_LAYOUT_MODES = ['absolute', 'flow', 'stack', 'grid', 'dock', 'slots', 'single', 'custom'];
 
 export function validateModuleManifest(value: unknown): { manifest?: LingBuilderModuleManifest; diagnostics: string[] } {
@@ -140,10 +144,21 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
   validateDependencies(raw.dependencies, raw.id, diagnostics);
   validateTargets(raw.targets, diagnostics);
   validateBindings(raw.bindings, contributes?.commands || [], raw.targets || [], diagnostics);
+  validateControlReferenceSnippets(contributes?.snippets, raw.bindings?.commands, diagnostics);
   validateCompatibility(raw.compatibility, raw.id, diagnostics);
 
   if (diagnostics.length > 0) return { diagnostics };
   return { manifest: raw as LingBuilderModuleManifest, diagnostics };
+}
+
+function validateControlReferenceSnippets(snippets: unknown, bindings: unknown, diagnostics: string[]): void {
+  if (!Array.isArray(snippets) || !Array.isArray(bindings)) return;
+  snippets.forEach((snippet: any, snippetIndex: number) => {
+    if (typeof snippet?.insertText !== 'string') return;
+    if (normalizeControlReferenceSnippet(snippet.insertText, bindings) !== snippet.insertText) {
+      diagnostics.push(`contributes.snippets[${snippetIndex}] 不得给 controlRef 参数添加双引号，包括嵌套命令。`);
+    }
+  });
 }
 
 function validateDependencies(dependencies: unknown, moduleId: string, diagnostics: string[]): void {
@@ -341,6 +356,28 @@ function validateBindings(bindings: any, commands: any[], targets: any[], diagno
       else binding.parameters.forEach((parameter: any, parameterIndex: number) => {
         if (typeof parameter?.name !== 'string' || !parameter.name.trim()) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}] 缺少 name。`);
         if (!BINDING_VALUE_TYPES.includes(parameter?.type)) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].type 不受支持。`);
+        if (parameter?.type === 'controlRef') {
+          if (!Array.isArray(parameter.controlKinds) || parameter.controlKinds.length === 0) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].controlKinds 必须显式声明 visual、nonVisual 或 resource。`);
+          if (!parameter.scope) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].scope 必须显式声明 currentWindow 或 project。`);
+          if (!parameter.runtimeRepresentation) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].runtimeRepresentation 必须显式声明 wideName、stableId 或 nativeHandle。`);
+          if (parameter.controlTypes !== undefined && (!Array.isArray(parameter.controlTypes) || parameter.controlTypes.some((item: unknown) => typeof item !== 'string' || !item.trim()))) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].controlTypes 必须是非空控件类型文本数组。`);
+          if (parameter.controlKinds !== undefined && (!Array.isArray(parameter.controlKinds) || parameter.controlKinds.some((item: unknown) => !CONTROL_REFERENCE_KINDS.includes(String(item))))) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].controlKinds 不受支持。`);
+          if (parameter.scope !== undefined && !CONTROL_REFERENCE_SCOPES.includes(parameter.scope)) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].scope 不受支持。`);
+          if (parameter.runtimeRepresentation !== undefined && !CONTROL_RUNTIME_REPRESENTATIONS.includes(parameter.runtimeRepresentation)) diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}].runtimeRepresentation 不受支持。`);
+          const contribution = commands.find(command => command?.name === binding.command);
+          if (typeof contribution?.insertText === 'string'
+            && normalizeControlReferenceCallSnippet(contribution.insertText, binding.parameters) !== contribution.insertText) {
+            diagnostics.push(`命令 ${binding.command} 的 insertText 不得给 controlRef 参数添加双引号。`);
+          }
+          if (typeof binding.example === 'string'
+            && normalizeControlReferenceCallSnippet(binding.example, binding.parameters) !== binding.example) {
+            diagnostics.push(`命令 ${binding.command} 的 example 不得给 controlRef 参数添加双引号。`);
+          }
+        } else if (parameter?.controlTypes !== undefined || parameter?.controlKinds !== undefined || parameter?.scope !== undefined || parameter?.runtimeRepresentation !== undefined) {
+          diagnostics.push(`bindings.commands[${index}].parameters[${parameterIndex}] 只有 controlRef 参数可以声明控件引用约束。`);
+        } else if ((parameter?.type === 'wideString' || parameter?.type === 'utf8String') && looksLikeControlReferenceParameterName(parameter?.name)) {
+          diagnostics.push(`命令 ${binding.command} 的参数“${parameter.name}”具有控件引用语义，必须声明为 controlRef，不能声明为文本。`);
+        }
       });
     }
     if (binding?.targetIds !== undefined) {
@@ -350,6 +387,11 @@ function validateBindings(bindings: any, commands: any[], targets: any[], diagno
       });
     }
   });
+}
+
+function looksLikeControlReferenceParameterName(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  return /^(?:控件|控件名|组件|组件名|目标控件|父控件|浏览器|浏览器控件|表格控件|列表视图控件|图像列表|图像列表ID|属性页|菜单组件)$/u.test(value.trim());
 }
 
 function validatePathArray(values: unknown, label: string, diagnostics: string[]): void {

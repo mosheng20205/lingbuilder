@@ -41,6 +41,7 @@ import ModuleInspector from './ModuleInspector';
 import {
   createBlankWindow,
   getLingWindowSourceFileName,
+  getLingWindowSourceFilePath,
   readWindowDesignerState,
   saveWindowDesignerState,
   WINDOW_DESIGNER_PROJECT_UPDATED,
@@ -306,6 +307,7 @@ export default function Sidebar({
     ])
   ];
   const activeSolutionProjectId = activeProjectId || solution?.startupProjectId || solutionProjects[0]?.id;
+  const activeSolutionProject = solutionProjects.find(project => project.id === activeSolutionProjectId);
   const moduleProjectId = activeSolutionProjectId || designerState.project.id || 'lingbuilder-ui-project';
   const moduleProjectIdRef = useRef(moduleProjectId);
   moduleProjectIdRef.current = moduleProjectId;
@@ -449,7 +451,7 @@ export default function Sidebar({
 
   const getSourceFileForWindow = (windowModel: LingWindowModel) => {
     const sourceName = getLingWindowSourceFileName(windowModel.fileName, windowModel.className);
-    const sourcePath = `src/${sourceName}`;
+    const sourcePath = getLingWindowSourceFilePath(activeSolutionProject?.sourceRoot, windowModel.fileName, windowModel.className);
     return files.find(file => file.path === sourcePath || file.name === sourceName);
   };
 
@@ -461,17 +463,22 @@ export default function Sidebar({
     const sourceName = getLingWindowSourceFileName(windowModel.fileName, windowModel.className);
     const sourceFile = getSourceFileForWindow(windowModel);
 
-    if (!sourceFile) {
-      triggerSuccess(`未找到 ${sourceName}，请先在设计器中保存或重新生成窗口代码文件。`);
-      return;
-    }
-
     const nextState = saveWindowDesignerState({
       ...designerState,
       activeWindowId: windowModel.id,
       selectedControlId: windowModel.controls[0]?.id || null
     });
     setDesignerState(nextState);
+
+    if (!sourceFile) {
+      window.dispatchEvent(new CustomEvent('window-added', { detail: windowModel }));
+      window.dispatchEvent(new CustomEvent('show-window-designer', {
+        detail: { projectId, windowId: windowModel.id }
+      }));
+      triggerSuccess(`已重新生成 ${sourceName}，请保存项目。`);
+      return;
+    }
+
     onSelectFile(sourceFile, false);
     window.dispatchEvent(new CustomEvent('show-window-designer', {
       detail: { projectId, windowId: windowModel.id }

@@ -34,6 +34,7 @@ function getEditorTabClassName(isActive: boolean, isDarkMode: boolean) {
 import { CommandHintContent, DiffLine, DiffResult, ExtractedString, ProblemItem } from '../types';
 import WpfDesigner from './WpfDesigner';
 import type { CommandService } from '../services/commands/commandService';
+import { describeModuleBindingParameterType } from '../services/modules/bindingValueType';
 import type { CommandContext } from '../services/commands/types';
 import MonacoCodeEditor, {
   MonacoContentChange,
@@ -102,6 +103,30 @@ import {
 import { getLingCppModuleCommandNames } from '../services/lingCpp/monacoTokens';
 import { LingCppModuleContext } from '../services/modules/types';
 import {
+  getLingCppControlReferenceAtPosition,
+  getLingCppControlReferences,
+  renameLingCppControlReference,
+  type LingCppControlReference
+} from '../services/lingCpp/controlReferenceService';
+import { getLingCppControlReferenceTokenColor } from '../services/lingCpp/semanticTheme';
+import {
+  acquireLingCppControlReferenceCommands,
+  REVEAL_LINGCPP_CONTROL_COMMAND
+} from '../services/lingCpp/controlReferenceCommands';
+import {
+  acquireLingCppBeginnerCommands,
+  activeLingCppBeginnerCommandTargetService,
+  ADD_BEGINNER_LOCAL_CONSTANT_COMMAND,
+  ADD_BEGINNER_LOCAL_VARIABLE_COMMAND,
+  type LingCppBeginnerMethodTarget
+} from '../services/lingCpp/beginnerCommandTargetService';
+import { getMenuService } from '../services/menus/menuService';
+import { LINGCPP_BEGINNER_CONTEXT_MENU, LINGCPP_CONTROL_REFERENCE_CONTEXT_MENU } from '../services/menus/types';
+import {
+  requestDesignerNavigation,
+  subscribeDesignerNavigation
+} from '../services/windowDesigner/designerNavigationService';
+import {
   getBeginnerModuleCodeCompletions,
   getBeginnerModuleCommandHints,
   normalizeSnippetPlaceholders
@@ -123,6 +148,7 @@ import {
 } from '../services/textModel';
 
 let beginnerProcedureNameMeasureCanvas: HTMLCanvasElement | null = null;
+let diffViewerCommandTargetSerial = 0;
 
 function measureBeginnerProcedureName(name: string, fontSize: number) {
   if (typeof document === 'undefined') {
@@ -247,6 +273,7 @@ type LocalVariableDraft = {
   name: string;
   initialValue: string;
   isArray: boolean;
+  isConstant: boolean;
 };
 
 interface NativePreviewState {
@@ -321,6 +348,7 @@ interface BeginnerContextMenuState {
   className?: string;
   methodName?: string;
   definitionName?: string;
+  controlReference?: LingCppControlReference;
 }
 
 interface BeginnerJumpHighlightState {
@@ -1112,6 +1140,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   getCommandContext
 }: DiffViewerProps, ref) {
   const [viewType, setViewType] = useState<'code' | 'designer'>('code');
+  const [beginnerCommandTargetId] = useState(() => `lingcpp-beginner-editor-${++diffViewerCommandTargetSerial}`);
+  const beginnerLocalCommandHandlerRef = useRef<{
+    addVariable?: (target?: LingCppBeginnerMethodTarget) => unknown;
+    addConstant?: (target?: LingCppBeginnerMethodTarget) => unknown;
+  }>({});
 
   useEffect(() => {
     const handleForceCodeView = () => {
@@ -1472,6 +1505,70 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       : null,
     [activeFile?.language, activeFile?.path, designerProject, lingCppProjectSources, moduleContext, normalizedSourceCode, projectGlobals, projectTypes]
   );
+  const revealControlReference = useCallback((reference: LingCppControlReference) => {
+    if (!reference.symbol) return;
+    const request = {
+      projectId: reference.symbol.projectId,
+      windowId: reference.symbol.windowId,
+      controlId: reference.symbol.controlId,
+      kind: reference.symbol.kind,
+      name: reference.symbol.name
+    };
+    setViewType('designer');
+    if (commandService) {
+      void commandService.executeCommand(
+        REVEAL_LINGCPP_CONTROL_COMMAND,
+        { ...(getCommandContext?.() || {}), 'workspace.open': true, 'lingcpp.controlReference': true },
+        request
+      );
+    } else {
+      requestDesignerNavigation(request);
+    }
+  }, [commandService, getCommandContext]);
+  const renameControlReference = useCallback((reference: LingCppControlReference, newName: string) => {
+    if (!reference.symbol || !designerProject || !moduleContext || !onUpdateProjectSources) {
+      throw new Error('控件重命名需要完整的设计器、模块和项目源码上下文。');
+    }
+    const result = renameLingCppControlReference(
+      lingCppProjectSources,
+      designerProject,
+      moduleContext,
+      reference.symbol,
+      newName
+    );
+    saveWindowDesignerState({
+      project: result.project,
+      activeWindowId: reference.symbol.windowId,
+      selectedControlId: reference.symbol.kind === 'resource' ? null : reference.symbol.controlId
+    });
+    onUpdateProjectSources(result.sources);
+  }, [designerProject, lingCppProjectSources, moduleContext, onUpdateProjectSources]);
+  useEffect(() => {
+    if (!commandService) return;
+    const registration = acquireLingCppControlReferenceCommands(commandService);
+    return () => registration.dispose();
+  }, [commandService]);
+  useEffect(() => {
+    if (!commandService) return;
+    const menus = getMenuService(commandService);
+    const commandRegistration = acquireLingCppBeginnerCommands(commandService, menus);
+    const targetRegistration = activeLingCppBeginnerCommandTargetService.register({
+      id: beginnerCommandTargetId,
+      addLocalVariable: target => beginnerLocalCommandHandlerRef.current.addVariable?.(target),
+      addLocalConstant: target => beginnerLocalCommandHandlerRef.current.addConstant?.(target)
+    });
+    activeLingCppBeginnerCommandTargetService.activate(beginnerCommandTargetId);
+    return () => {
+      targetRegistration.dispose();
+      commandRegistration.dispose();
+    };
+  }, [beginnerCommandTargetId, commandService]);
+  useEffect(() => {
+    const registration = subscribeDesignerNavigation(request => {
+      if (request.projectId === designerProject?.id) setViewType('designer');
+    });
+    return () => registration.dispose();
+  }, [designerProject?.id]);
   const flushBeginnerDrafts = useCallback((applyToParent: boolean): FlushPendingEditsResult => {
     const currentSourceCode = latestSourceCodeRef.current;
     const result = applyPendingBeginnerCodeDrafts(
@@ -1656,17 +1753,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         note: parameter.note
       }));
     });
-    const bindingTypeLabels: Record<string, string> = {
-      void: '空',
-      int: '整数型',
-      longLong: '长整数型',
-      double: '小数型',
-      bool: '逻辑型',
-      wideString: '文本型',
-      utf8String: 'UTF-8 文本',
-      handle: '句柄',
-      raw: '原始值'
-    };
     (moduleContext?.enabledModules || [])
       .filter(module => module.diagnostics.length === 0)
       .forEach(module => {
@@ -1677,7 +1763,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           catalog[binding.command] = Array.from({ length: count }, (_, index) => ({
             name: bindingParameters[index]?.name || contributed[index]?.name || `参数 ${index + 1}`,
             type: bindingParameters[index]?.type
-              ? bindingTypeLabels[bindingParameters[index].type] || bindingParameters[index].type
+              ? describeModuleBindingParameterType(bindingParameters[index])
               : contributed[index]?.type,
             note: bindingParameters[index]?.description || contributed[index]?.note
           }));
@@ -3890,7 +3976,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       global: '项目全局变量',
       class: '类',
       member: '成员声明',
-      local: '局部变量',
+      local: '局部声明',
       method: '方法',
       constructor: '初始化',
       event: '事件处理器',
@@ -4148,7 +4234,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       global: '项目全局变量',
       class: '类',
       member: '成员声明',
-      local: '局部变量',
+      local: '局部声明',
       method: '方法',
       constructor: '初始化',
       event: '事件处理器',
@@ -4365,7 +4451,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         ...(target.method.locals || []).map(local => createBeginnerVariableCompletion({
           name: local.name,
           type: local.type,
-          scope: '局部变量',
+          scope: local.isConstant ? '局部常量' : '局部变量',
           ownerName: target.method.name
         }))
       ].map(item => [`${item.label}:${item.insertText}`, item]))
@@ -5321,12 +5407,21 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         name: '',
         initialValue: '',
         isArray: false,
+        isConstant: false,
         ...(draftOverride || {})
       };
       const name = draft.name.trim();
       const type = draft.type.trim();
       if (!name || !type) {
-        setStructureEditError('新增局部变量需要填写变量名和类型。');
+        setStructureEditError('新增局部声明需要填写名称和类型。');
+        return false;
+      }
+      if (draft.isConstant && draft.isArray) {
+        setStructureEditError(`局部常量 ${name} 不支持数组，请改用普通局部变量。`);
+        return false;
+      }
+      if (draft.isConstant && !draft.initialValue.trim()) {
+        setStructureEditError(`局部常量 ${name} 必须填写初始值。`);
         return false;
       }
       const usedNames = new Set([
@@ -5334,7 +5429,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         ...(target.method.locals || []).map(local => local.name)
       ].map(normalizeIdentifier));
       if (usedNames.has(normalizeIdentifier(name))) {
-        setStructureEditError(`局部变量 ${name} 与现有参数或局部变量重名。`);
+        setStructureEditError(`局部声明 ${name} 与现有参数、局部变量或局部常量重名。`);
         return false;
       }
       const applied = applyStructureAstEdits([{
@@ -5346,35 +5441,49 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           name,
           type,
           initialValue: draft.initialValue.trim() || undefined,
-          isArray: draft.isArray
+          isArray: draft.isArray,
+          isConstant: draft.isConstant
         }
       }], target.method.line);
       return applied;
     };
-    const createBeginnerLocal = (target?: BeginnerCodeTarget) => {
+    const createBeginnerLocal = (target?: BeginnerCodeTarget, isConstant = false) => {
       if (!target) {
-        setStructureEditError('请先选择要添加局部变量的事件或子程序。');
+        setStructureEditError(`请先选择要添加局部${isConstant ? '常量' : '变量'}的事件或子程序。`);
         return;
       }
-      const name = uniqueBeginnerName('局部变量', [
+      const name = uniqueBeginnerName(isConstant ? '局部常量' : '局部变量', [
         ...target.method.parameters.map(parameter => parameter.name),
         ...(target.method.locals || []).map(local => local.name)
       ]);
-      commitNewLocalVariable(target, { name, type: '文本型', initialValue: '""' });
+      commitNewLocalVariable(target, { name, type: '文本型', initialValue: '""', isConstant });
     };
     const updateLocalVariable = (
       target: BeginnerCodeTarget,
       local: LingCppLocalVariable,
-      patch: { newName?: string; type?: string; initialValue?: string; isArray?: boolean }
+      patch: { newName?: string; type?: string; initialValue?: string; isArray?: boolean; isConstant?: boolean }
     ) => {
       const nextName = patch.newName?.trim();
       const nextType = patch.type?.trim();
+      const nextIsConstant = patch.isConstant ?? local.isConstant ?? false;
+      const nextIsArray = patch.isArray ?? local.isArray ?? false;
+      const nextInitialValue = patch.initialValue !== undefined
+        ? patch.initialValue.trim()
+        : local.initialValue?.trim() || '';
       if (patch.newName !== undefined && !nextName) {
-        setStructureEditError('局部变量名不能为空。');
+        setStructureEditError('局部声明名称不能为空。');
         return false;
       }
       if (patch.type !== undefined && !nextType) {
-        setStructureEditError('局部变量类型不能为空。');
+        setStructureEditError('局部声明类型不能为空。');
+        return false;
+      }
+      if (nextIsConstant && nextIsArray) {
+        setStructureEditError(`局部变量 ${local.name} 是数组，不能转换为局部常量；请先取消数组。`);
+        return false;
+      }
+      if (nextIsConstant && !nextInitialValue) {
+        setStructureEditError(`局部常量 ${local.name} 必须有初始值，不能留空。`);
         return false;
       }
       return applyStructureAstEdits([{
@@ -5385,7 +5494,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         newName: nextName,
         type: nextType,
         initialValue: patch.initialValue,
-        isArray: patch.isArray
+        isArray: patch.isArray,
+        isConstant: patch.isConstant
       }], local.line);
     };
     const deleteLocalVariable = (target: BeginnerCodeTarget, local: LingCppLocalVariable) => {
@@ -5395,6 +5505,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         methodName: target.method.name,
         localName: local.name
       }], local.line);
+    };
+    const resolveBeginnerCommandTarget = (target?: LingCppBeginnerMethodTarget) => target
+      ? codeTargets.find(item => item.className === target.className && item.method.name === target.methodName)
+      : activeCanvasTarget;
+    beginnerLocalCommandHandlerRef.current = {
+      addVariable: target => createBeginnerLocal(resolveBeginnerCommandTarget(target), false),
+      addConstant: target => createBeginnerLocal(resolveBeginnerCommandTarget(target), true)
     };
     const deleteBeginnerCodeTarget = (target?: BeginnerCodeTarget) => {
       if (!target) return;
@@ -5514,14 +5631,25 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       captureBeginnerTextareaView(event.currentTarget);
 
       const cursor = getBeginnerTextareaOffsetAtPoint(event.currentTarget, event.clientX, event.clientY);
+      const sourcePosition = beginnerSourcePositionAtOffset(event.currentTarget, cursor);
+      const controlReference = getLingCppControlReferenceAtPosition(
+        normalizedSourceCode,
+        sourcePosition.line,
+        sourcePosition.column,
+        designerProject,
+        moduleContext,
+        activeFile?.path
+      );
       const call = getProcedureCallFromInput(event.currentTarget, cursor);
       const constantName = getProjectConstantNameAtCursor(
         event.currentTarget.value,
         cursor,
         projectGlobals?.constants.map(constant => constant.name) || []
       );
-      const revealed = call
-        ? revealBeginnerProcedureDefinition(target.className, call.name)
+      const revealed = controlReference?.symbol
+        ? (revealControlReference(controlReference), true)
+        : call
+          ? revealBeginnerProcedureDefinition(target.className, call.name)
         : constantName
           ? revealProjectConstantDefinition(constantName)
           : false;
@@ -5544,6 +5672,22 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             getBeginnerTextareaOffsetAtPoint(input, event.clientX, event.clientY)
           )
         : null;
+      const inputOffset = input
+        ? getBeginnerTextareaOffsetAtPoint(input, event.clientX, event.clientY)
+        : undefined;
+      const sourcePosition = input && inputOffset !== undefined
+        ? beginnerSourcePositionAtOffset(input, inputOffset)
+        : undefined;
+      const controlReference = sourcePosition
+        ? getLingCppControlReferenceAtPosition(
+            normalizedSourceCode,
+            sourcePosition.line,
+            sourcePosition.column,
+            designerProject,
+            moduleContext,
+            activeFile?.path
+          )
+        : undefined;
       if (effectiveTarget) {
         setSelectedBeginnerCodeTarget({ className: effectiveTarget.className, methodName: effectiveTarget.method.name });
         if (effectiveTarget.method.kind === 'event') setSelectedBeginnerHandler(effectiveTarget.method.name);
@@ -5553,7 +5697,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         y: event.clientY,
         className: effectiveTarget?.className,
         methodName: effectiveTarget?.method.name,
-        definitionName: procedureCall?.name
+        definitionName: procedureCall?.name,
+        controlReference
       });
     };
     const parameterExampleText = (parameter: LingCppParameter) =>
@@ -6994,6 +7139,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     ].filter(Boolean));
     const beginnerKnownProcedures = new Set(codeTargets.map(target => target.method.name).filter(Boolean));
     const beginnerModuleCommands = new Set(getLingCppModuleCommandNames(moduleContext));
+    const beginnerControlReferenceNames = new Set(getLingCppControlReferences(
+      normalizedSourceCode,
+      designerProject,
+      moduleContext,
+      activeFile?.path
+    ).filter(reference => reference.status === 'resolved').map(reference => reference.name));
     const beginnerNativeVariables = extractLingCppNativeVariableNames(normalizedSourceCode);
 
     const findBeginnerLineCommentStart = (line: string) => {
@@ -7032,6 +7183,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         type: isDarkMode ? 'text-[#2bd4c6]' : 'text-teal-700',
         literal: isDarkMode ? 'text-[#b5cea8]' : 'text-emerald-700',
         'module-command': isDarkMode ? 'text-[#22d3ee]' : 'text-[#006a7a]',
+        'control-reference': '',
         member: isDarkMode ? 'text-amber-200' : 'text-amber-800',
         procedure: isDarkMode ? 'text-cyan-200' : 'text-cyan-800',
         operator: isDarkMode ? 'text-slate-400' : 'text-slate-500',
@@ -7048,7 +7200,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           key={index}
           data-lingcpp-token={kind}
           className={className}
-          style={BEGINNER_CODE_OVERLAY_TOKEN_STYLE}
+          style={{
+            ...BEGINNER_CODE_OVERLAY_TOKEN_STYLE,
+            ...(kind === 'control-reference' ? { color: getLingCppControlReferenceTokenColor(isDarkMode), fontWeight: 600 } : {})
+          }}
         >
           {token}
         </span>
@@ -7068,6 +7223,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         moduleCommands: beginnerModuleCommands,
         knownMembers: beginnerKnownMembers,
         knownProcedures: beginnerKnownProcedures,
+        controlReferences: beginnerControlReferenceNames,
         nativeVariables: beginnerNativeVariables
       });
       return (
@@ -7539,29 +7695,44 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           <button
             type="button"
             aria-expanded={!collapsed}
-            aria-label={collapsed ? '展开局部变量组' : '折叠局部变量组'}
+            aria-label={collapsed ? '展开局部声明组' : '折叠局部声明组'}
             onClick={() => setCollapsedBeginnerLocalGroupKeys(current =>
               current.includes(localGroupKey)
                 ? current.filter(key => key !== localGroupKey)
                 : [...current, localGroupKey]
             )}
             className={`flex w-full items-center gap-1.5 border-b px-2 py-1 text-left text-[10px] font-semibold ${tableHeadChrome}`}
-            title={collapsed ? '展开局部变量组' : '折叠局部变量组'}
+            title={collapsed ? '展开局部声明组' : '折叠局部声明组'}
           >
             {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            <span>局部变量 · {locals.length} 个 · 仅在当前子程序内有效</span>
-            <span className="ml-auto font-normal opacity-70">正文中按 Ctrl+L 快速插入</span>
+            <span>局部声明 · {locals.length} 个 · 变量与只读常量仅在当前子程序内有效</span>
+            <span className="ml-auto font-normal opacity-70">Ctrl+L 只快速插入普通变量</span>
           </button>
           {!collapsed && renderInlineTable(
             [
-              { label: '局部变量', className: 'w-[140px]' },
-              { label: '类 型', className: 'w-[110px]' },
+              { label: '类 别', className: 'w-[78px]' },
+              { label: '名 称', className: 'w-[130px]' },
+              { label: '类 型', className: 'w-[105px]' },
               { label: '数 组', className: 'w-[56px]' },
-              { label: '初始值', className: 'w-[180px]' },
+              { label: '初始值', className: 'w-[165px]' },
               { label: '操 作', className: 'w-[88px]' }
             ],
             locals.map(local => (
               <tr key={`${codeTargetKey(target)}:local:${local.line}:${local.name}`} className={isDarkMode ? 'bg-[#18191f]' : 'bg-white'}>
+                  <td className={compactCellClass}>
+                    <select
+                      value={local.isConstant ? 'constant' : 'variable'}
+                      disabled={!onUpdateSourceContent}
+                      onChange={event => updateLocalVariable(target, local, {
+                        isConstant: event.currentTarget.value === 'constant'
+                      })}
+                      aria-label={`选择局部声明 ${local.name} 的类别`}
+                      className={directInputClasses('plain')}
+                    >
+                      <option value="variable">变量</option>
+                      <option value="constant">常量</option>
+                    </select>
+                  </td>
                   <td className={compactCellClass}>{renderLocalVariableInput(target, local, 'name', local.name, '变量名', 'variable')}</td>
                   <td className={compactCellClass}>{renderLocalVariableInput(target, local, 'type', local.type, '类型', 'type')}</td>
                   <td className={compactCellClass}>
@@ -7569,14 +7740,15 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                       <input
                         type="checkbox"
                         checked={Boolean(local.isArray)}
-                        disabled={!onUpdateSourceContent}
+                        disabled={!onUpdateSourceContent || Boolean(local.isConstant)}
                         onChange={event => updateLocalVariable(target, local, { isArray: event.currentTarget.checked })}
                         className="h-3.5 w-3.5 accent-cyan-500"
-                        aria-label={`切换局部变量 ${local.name} 数组状态`}
+                        aria-label={`切换局部声明 ${local.name} 数组状态`}
+                        title={local.isConstant ? '局部常量不支持数组' : undefined}
                       />
                     </label>
                   </td>
-                  <td className={compactCellClass}>{renderLocalVariableInput(target, local, 'initialValue', local.initialValue || '', '可留空', 'value')}</td>
+                  <td className={compactCellClass}>{renderLocalVariableInput(target, local, 'initialValue', local.initialValue || '', local.isConstant ? '常量必填' : '可留空', 'value')}</td>
                   <td className={compactCellClass}>
                     <button
                       type="button"
@@ -8116,6 +8288,29 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           beginnerContextMenu.definitionName
         )
       : undefined;
+    const contextControlMenuItem = beginnerContextMenu?.controlReference?.symbol && commandService
+      ? getMenuService(commandService).resolveMenu(
+          LINGCPP_CONTROL_REFERENCE_CONTEXT_MENU,
+          { ...(getCommandContext?.() || {}), 'workspace.open': true, 'lingcpp.controlReference': true },
+          { includeDisabled: true }
+        ).find(item => item.kind === 'command' && item.command.id === REVEAL_LINGCPP_CONTROL_COMMAND)
+      : undefined;
+    const beginnerLocalCommandContext: CommandContext = {
+      ...(getCommandContext?.() || {}),
+      'workspace.open': true,
+      'lingcpp.beginner.active': true,
+      'lingcpp.beginner.hasTarget': Boolean(contextTarget)
+    };
+    const beginnerLocalMenuItems = commandService
+      ? getMenuService(commandService).resolveMenu(
+          LINGCPP_BEGINNER_CONTEXT_MENU,
+          beginnerLocalCommandContext,
+          { includeDisabled: true }
+        ).filter(item => item.kind === 'command' && (
+          item.command.id === ADD_BEGINNER_LOCAL_VARIABLE_COMMAND
+          || item.command.id === ADD_BEGINNER_LOCAL_CONSTANT_COMMAND
+        ))
+      : [];
     const renderContextMenuButton = (
       label: string,
       onClick: () => void,
@@ -8163,6 +8358,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           onClick={event => event.stopPropagation()}
           onContextMenu={event => event.preventDefault()}
         >
+          {contextControlMenuItem?.kind === 'command' && beginnerContextMenu.controlReference?.symbol && renderContextMenuButton(
+            contextControlMenuItem.command.title,
+            () => revealControlReference(beginnerContextMenu.controlReference!),
+            <LayoutGrid className="h-3.5 w-3.5" />
+          )}
+          {contextControlMenuItem?.kind === 'command' && <div className={`my-1 border-t ${canvasBorder}`} />}
           {renderContextMenuButton(
             beginnerContextMenu.definitionName
               ? `转到定义：${beginnerContextMenu.definitionName}`
@@ -8182,7 +8383,23 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           <div className={`my-1 border-t ${canvasBorder}`} />
           {renderContextMenuButton('新建子程序', createBeginnerFunction, <Plus className="h-3.5 w-3.5" />)}
           {renderContextMenuButton('新建程序集变量', createBeginnerMember, <Plus className="h-3.5 w-3.5" />)}
-          {renderContextMenuButton('新建局部变量', () => createBeginnerLocal(contextTarget), <Plus className="h-3.5 w-3.5" />, false, !contextTarget)}
+          {beginnerLocalMenuItems.map(item => item.kind === 'command' && renderContextMenuButton(
+            item.command.title,
+            () => {
+              if (!commandService) return;
+              const targetArgument = contextTarget
+                ? { className: contextTarget.className, methodName: contextTarget.method.name }
+                : undefined;
+              void commandService.executeCommand(
+                item.command.id,
+                beginnerLocalCommandContext,
+                targetArgument
+              ).catch(error => setStructureEditError(error instanceof Error ? error.message : '新增局部声明失败。'));
+            },
+            <Plus className="h-3.5 w-3.5" />,
+            false,
+            !item.command.enabled
+          ))}
           <div className={`my-1 border-t ${canvasBorder}`} />
           {renderContextMenuButton('展开全部子程序', expandAllBeginnerProcesses, <ChevronDown className="h-3.5 w-3.5" />, false, allProcessTargets.length === 0)}
           {renderContextMenuButton('折叠全部子程序', collapseAllBeginnerProcesses, <ChevronRight className="h-3.5 w-3.5" />, false, allProcessTargets.length === 0)}
@@ -8721,7 +8938,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       global: '项目全局变量',
       class: '类声明',
       member: '成员声明',
-      local: '局部变量',
+      local: '局部声明',
       method: '方法声明',
       constructor: '构造函数',
       event: '事件处理器',
@@ -9157,6 +9374,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   projectSources={lingCppProjectSources}
                   onProjectSourcesChange={onUpdateProjectSources}
                   onRevealDesignerBinding={() => setViewType('designer')}
+                  commandService={commandService}
+                  getCommandContext={getCommandContext}
+                  onRevealControlReference={revealControlReference}
+                  onRenameControlReference={renameControlReference}
                   onCursorPositionChange={setCursorPosition}
                   readingMode={activeFile?.language === 'lingcpp' ? readingMode : 'off'}
                   focusedBlockId={focusedReadableBlockId}

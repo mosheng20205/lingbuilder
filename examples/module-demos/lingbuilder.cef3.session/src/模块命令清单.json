@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T09:57:36.101Z",
+  "generatedAt": "2026-07-31T18:20:25.801Z",
   "module": {
     "id": "lingbuilder.cef3.session",
     "name": "CEF3会话模块",
@@ -17,7 +17,7 @@
       ],
       "signature": "CEF3会话_取缓存目录(控件名)",
       "description": "取得实例实际使用的独立缓存目录。",
-      "insertText": "CEF3会话_取缓存目录(\"$1\")",
+      "insertText": "CEF3会话_取缓存目录($1)",
       "returnType": "文本型",
       "binding": {
         "command": "CEF3会话_取缓存目录",
@@ -25,13 +25,21 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "wideString",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3会话_取缓存目录(\"演示输出\")"
+      "demoInvocation": "CEF3会话_取缓存目录(演示CefBrowser控件)"
     },
     {
       "index": 2,
@@ -41,7 +49,7 @@
       ],
       "signature": "CEF3会话_取代理(控件名)",
       "description": "取得实例创建时应用的代理地址。",
-      "insertText": "CEF3会话_取代理(\"$1\")",
+      "insertText": "CEF3会话_取代理($1)",
       "returnType": "文本型",
       "binding": {
         "command": "CEF3会话_取代理",
@@ -49,13 +57,21 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "wideString",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3会话_取代理(\"演示输出\")"
+      "demoInvocation": "CEF3会话_取代理(演示CefBrowser控件)"
     },
     {
       "index": 3,
@@ -65,7 +81,7 @@
       ],
       "signature": "CEF3会话_取上下文(控件名)",
       "description": "取得浏览器独立RequestContext的类型化受管句柄。",
-      "insertText": "CEF3会话_取上下文(\"$1\")",
+      "insertText": "CEF3会话_取上下文($1)",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -74,13 +90,21 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "longLong",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3会话_取上下文(\"演示输出\")"
+      "demoInvocation": "CEF3会话_取上下文(演示CefBrowser控件)"
     },
     {
       "index": 4,

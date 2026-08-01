@@ -1,6 +1,6 @@
 类 EdgeMultiControlWindow : 公开 窗口
     事件 _EdgeMultiControlWindow_创建完毕()
-        EdgeView脚本_文档预注入异步("根级 Edge", "document.body.innerHTML='LingBuilder EdgeView root'", &根级脚本完成)
+        EdgeView脚本_文档预注入异步(根级Edge, "document.body.innerHTML='LingBuilder EdgeView root'", &根级脚本完成)
     结束
 
     事件 根级脚本完成()

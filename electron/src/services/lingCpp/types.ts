@@ -5,6 +5,7 @@ export type LingCppAccessModifier = '公开' | '私有' | '保护';
 export interface LingCppDiagnostic {
   id: string;
   line: number;
+  range?: LingCppSourceRange;
   level: 'error' | 'warning' | 'info';
   message: string;
   codeSnippet: string;
@@ -107,6 +108,8 @@ export interface LingCppLocalVariable {
   line: number;
   initialValue?: string;
   isArray?: boolean;
+  /** 运行时初始化一次、之后只读的子程序局部值。 */
+  isConstant?: boolean;
 }
 
 export interface LingCppParameter {
@@ -163,6 +166,7 @@ export interface LingCppAstNode {
   returnType?: string;
   isStatic?: boolean;
   isArray?: boolean;
+  isConstant?: boolean;
   children: LingCppAstNode[];
 }
 
@@ -540,6 +544,7 @@ export interface LingCppStructuredReadingRow {
   returnType?: string;
   isStatic?: boolean;
   isArray?: boolean;
+  isConstant?: boolean;
   parameters?: LingCppParameter[];
 }
 
@@ -587,8 +592,8 @@ export type LingCppAstEdit =
   | { kind: 'add-member'; className?: string; member: { name: string; type: string; access?: LingCppAccessModifier; initialValue?: string; isStatic?: boolean; isArray?: boolean; note?: string } }
   | { kind: 'update-member'; className?: string; memberName: string; newName?: string; type?: string; access?: LingCppAccessModifier; initialValue?: string; isStatic?: boolean; isArray?: boolean; note?: string }
   | { kind: 'delete-member'; className?: string; memberName: string }
-  | { kind: 'add-local'; className?: string; methodName: string; insertBeforeLine?: number; local: { name: string; type: string; initialValue?: string; isArray?: boolean } }
-  | { kind: 'update-local'; className?: string; methodName: string; localName: string; newName?: string; type?: string; initialValue?: string; isArray?: boolean }
+  | { kind: 'add-local'; className?: string; methodName: string; insertBeforeLine?: number; local: { name: string; type: string; initialValue?: string; isArray?: boolean; isConstant?: boolean } }
+  | { kind: 'update-local'; className?: string; methodName: string; localName: string; newName?: string; type?: string; initialValue?: string; isArray?: boolean; isConstant?: boolean }
   | { kind: 'delete-local'; className?: string; methodName: string; localName: string }
   | { kind: 'add-event'; className?: string; event: { handlerName: string; access?: LingCppAccessModifier; parameters?: LingCppParameter[]; note?: string } }
   | { kind: 'update-event'; className?: string; handlerName: string; newHandlerName?: string; access?: LingCppAccessModifier; parameters?: LingCppParameter[]; note?: string }
@@ -614,7 +619,7 @@ export interface LingCppNativeSourceMapEntry {
   sourceFile?: string;
   sourceStartLine: number;
   sourceEndLine: number;
-  kind: 'constant' | 'global' | 'data-type' | 'data-field' | 'function-library' | 'class' | 'event' | 'method' | 'statement' | 'native-cpp';
+  kind: 'constant' | 'global' | 'data-type' | 'data-field' | 'function-library' | 'class' | 'event' | 'method' | 'local' | 'statement' | 'native-cpp';
   symbolName: string;
   className?: string;
 }

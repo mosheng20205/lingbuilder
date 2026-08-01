@@ -6,14 +6,14 @@
 // 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
-        控件_设置选择项("命令分组选项卡", 0)
-        控件_设置文本("演示状态", "new_emoji 原生界面库：1599 条命令，默认处于安全预览模式。")
+        控件_设置选择项(命令分组选项卡, 0)
+        控件_设置文本(演示状态, "new_emoji 原生界面库：1599 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.new_emoji.ui")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本("演示状态", "命令 1–134：NE_创建窗口 至 NE_EU_GetDialogAdvancedOptions；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 1–134：NE_创建窗口 至 NE_EU_GetDialogAdvancedOptions；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE_创建窗口
             // [1] NE_创建窗口(标题, X, Y, 宽度, 高度)
             // 功能：创建 new_emoji 原生窗口。
@@ -689,8 +689,8 @@
     结束
 
     事件 _运行第02组_被单击()
-        控件_设置文本("演示状态", "命令 135–268：NE_EU_GetDialogContentParent 至 NE_EU_GetRadioGroupState；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 135–268：NE_EU_GetDialogContentParent 至 NE_EU_GetRadioGroupState；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE_EU_GetDialogContentParent
             // [135] NE_EU_GetDialogContentParent(hwnd, element_id)
             // 功能：new_emoji 原生界面库 底层导出 EU_GetDialogContentParent。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。
@@ -1366,8 +1366,8 @@
     结束
 
     事件 _运行第03组_被单击()
-        控件_设置文本("演示状态", "命令 269–402：NE_EU_SetRadioGroupChangeCallback 至 NE_EU_SetSelectV2Search；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 269–402：NE_EU_SetRadioGroupChangeCallback 至 NE_EU_SetSelectV2Search；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE_EU_SetRadioGroupChangeCallback
             // [269] NE_EU_SetRadioGroupChangeCallback(hwnd, element_id, cb)
             // 功能：new_emoji 原生界面库 底层导出 EU_SetRadioGroupChangeCallback。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。
@@ -2043,8 +2043,8 @@
     结束
 
     事件 _运行第04组_被单击()
-        控件_设置文本("演示状态", "命令 403–536：NE_EU_SetSelectV2OptionDisabled 至 NE_EU_SetDescriptionsItems；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 403–536：NE_EU_SetSelectV2OptionDisabled 至 NE_EU_SetDescriptionsItems；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE_EU_SetSelectV2OptionDisabled
             // [403] NE_EU_SetSelectV2OptionDisabled(hwnd, element_id, option_index, disabled)
             // 功能：new_emoji 原生界面库 底层导出 EU_SetSelectV2OptionDisabled。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。
@@ -2720,8 +2720,8 @@
     结束
 
     事件 _运行第05组_被单击()
-        控件_设置文本("演示状态", "命令 537–670：NE_EU_PostSetDescriptionsItems 至 NE_EU_SetListBoxChangeCallback；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 537–670：NE_EU_PostSetDescriptionsItems 至 NE_EU_SetListBoxChangeCallback；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE_EU_PostSetDescriptionsItems
             // [537] NE_EU_PostSetDescriptionsItems(hwnd, element_id, items_bytes, items_len)
             // 功能：new_emoji 原生界面库 底层导出 EU_PostSetDescriptionsItems。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。
@@ -3397,8 +3397,8 @@
     结束
 
     事件 _运行第06组_被单击()
-        控件_设置文本("演示状态", "命令 671–804：NE_EU_SetListBoxItemClickCallback 至 NE_EU_SetCalendarSelectedMarker；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 671–804：NE_EU_SetListBoxItemClickCallback 至 NE_EU_SetCalendarSelectedMarker；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE_EU_SetListBoxItemClickCallback
             // [671] NE_EU_SetListBoxItemClickCallback(hwnd, element_id, cb)
             // 功能：new_emoji 原生界面库 底层导出 EU_SetListBoxItemClickCallback。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。
@@ -4074,8 +4074,8 @@
     结束
 
     事件 _运行第07组_被单击()
-        控件_设置文本("演示状态", "命令 805–938：NE_EU_SetCalendarChangeCallback 至 NE_EU_PostSetMentionsOpen；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 805–938：NE_EU_SetCalendarChangeCallback 至 NE_EU_PostSetMentionsOpen；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE_EU_SetCalendarChangeCallback
             // [805] NE_EU_SetCalendarChangeCallback(hwnd, element_id, cb)
             // 功能：new_emoji 原生界面库 底层导出 EU_SetCalendarChangeCallback。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。
@@ -4751,8 +4751,8 @@
     结束
 
     事件 _运行第08组_被单击()
-        控件_设置文本("演示状态", "命令 939–1072：NE_EU_SetMentionsSelected 至 NE_EU_SetDropdownMainClickCallback；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 939–1072：NE_EU_SetMentionsSelected 至 NE_EU_SetDropdownMainClickCallback；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE_EU_SetMentionsSelected
             // [939] NE_EU_SetMentionsSelected(hwnd, element_id, selected_index)
             // 功能：new_emoji 原生界面库 底层导出 EU_SetMentionsSelected。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。
@@ -5428,8 +5428,8 @@
     结束
 
     事件 _运行第09组_被单击()
-        控件_设置文本("演示状态", "命令 1073–1206：NE_EU_SetMenuItems 至 NE_EU_SetUploadFileStatus；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 1073–1206：NE_EU_SetMenuItems 至 NE_EU_SetUploadFileStatus；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE_EU_SetMenuItems
             // [1073] NE_EU_SetMenuItems(hwnd, element_id, items_bytes, items_len)
             // 功能：new_emoji 原生界面库 底层导出 EU_SetMenuItems。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。
@@ -6105,8 +6105,8 @@
     结束
 
     事件 _运行第10组_被单击()
-        控件_设置文本("演示状态", "命令 1207–1340：NE_EU_PostSetUploadFileStatus 至 NE_EU_SetMessageBoxBeforeClose；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 1207–1340：NE_EU_PostSetUploadFileStatus 至 NE_EU_SetMessageBoxBeforeClose；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE_EU_PostSetUploadFileStatus
             // [1207] NE_EU_PostSetUploadFileStatus(hwnd, element_id, file_index, status, progress)
             // 功能：new_emoji 原生界面库 底层导出 EU_PostSetUploadFileStatus。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。
@@ -6782,8 +6782,8 @@
     结束
 
     事件 _运行第11组_被单击()
-        控件_设置文本("演示状态", "命令 1341–1474：NE_EU_SetMessageBoxResultCallback 至 NE_EU_SetElementMouseCallback；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 1341–1474：NE_EU_SetMessageBoxResultCallback 至 NE_EU_SetElementMouseCallback；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE_EU_SetMessageBoxResultCallback
             // [1341] NE_EU_SetMessageBoxResultCallback(hwnd, element_id, cb)
             // 功能：new_emoji 原生界面库 底层导出 EU_SetMessageBoxResultCallback。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。
@@ -7459,8 +7459,8 @@
     结束
 
     事件 _运行第12组_被单击()
-        控件_设置文本("演示状态", "命令 1475–1599：NE_EU_SetElementFocusCallback 至 NE_EU_GetBrowserViewportState；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 1475–1599：NE_EU_SetElementFocusCallback 至 NE_EU_GetBrowserViewportState；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：NE_EU_SetElementFocusCallback
             // [1475] NE_EU_SetElementFocusCallback(hwnd, element_id, cb)
             // 功能：new_emoji 原生界面库 底层导出 EU_SetElementFocusCallback。文本参数使用 UTF-8 字节指针和长度，高级调用前请确认参数类型。

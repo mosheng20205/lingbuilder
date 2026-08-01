@@ -5,6 +5,7 @@ import { PLATFORM_ADVANCED_MODULES } from '../modules/platformAdvancedModules';
 import { STANDARD_LIBRARY_MODULES } from '../modules/standardLibraryModules';
 import { SYSTEM_LIBRARY_MODULES } from '../modules/systemLibraryModules';
 import type { InstalledModule } from '../modules/types';
+import type { ModuleControlRuntimeRepresentation } from '../modules/types';
 import { NEW_EMOJI_MODULE_ID } from './newEmojiDesignerAdapter';
 
 export const WIN32_UI_BACKEND_ID = 'win32';
@@ -38,6 +39,7 @@ export interface NativeUiBackendCommandContract {
   backendId: string;
   displayName: string;
   supportsCommand(context: NativeUiBackendCommandContext): boolean;
+  supportsControlReferenceRepresentation?(representation: ModuleControlRuntimeRepresentation): boolean;
   formatUnsupportedDiagnostic(call: NativeUiBackendCommandCall, context: NativeUiBackendCommandContext): string;
 }
 
@@ -77,6 +79,7 @@ export const WIN32_UI_BACKEND_COMMAND_CONTRACT: NativeUiBackendCommandContract =
   backendId: WIN32_UI_BACKEND_ID,
   displayName: '普通 Win32',
   supportsCommand: () => true,
+  supportsControlReferenceRepresentation: () => true,
   formatUnsupportedDiagnostic: (call, context) => `普通 Win32 后端不支持命令“${context.commandName}”（源码第 ${call.line} 行）。`
 };
 
@@ -92,6 +95,7 @@ export const NEW_EMOJI_UI_BACKEND_COMMAND_CONTRACT: NativeUiBackendCommandContra
     // 第三方 v2 模块由 targets.headers/sources/libs 提供独立运行时；模块清单校验负责约束 binding。
     return true;
   },
+  supportsControlReferenceRepresentation: representation => representation !== 'nativeHandle',
   formatUnsupportedDiagnostic: (call, { module, commandName }) => (
     `new_emoji 后端不支持命令“${commandName}”（${module.manifest.name}，源码第 ${call.line} 行）；`
     + '该命令依赖普通 Win32 窗口运行时，已在生成 C++ 前阻止构建。请改用 new_emoji 模块对应命令，或把当前窗口切换为 Win32 后端。'
@@ -153,6 +157,22 @@ export function getUiBackendCommandDiagnostics(
     if (contract.supportsCommand(context)) return;
     const key = `${module.manifest.id}:${call.name}`;
     if (!diagnostics.has(key)) diagnostics.set(key, contract.formatUnsupportedDiagnostic(call, context));
+  });
+
+  calls.forEach(call => {
+    const module = bindingOwners.get(call.name);
+    const binding = module?.manifest.bindings?.commands?.find(item => item.command === call.name);
+    if (!module || !binding) return;
+    (binding.parameters || []).forEach((parameter, parameterIndex) => {
+      if (parameter.type !== 'controlRef') return;
+      const representation = parameter.runtimeRepresentation || 'wideName';
+      if (contract.supportsControlReferenceRepresentation?.(representation) !== false) return;
+      const key = `${module.manifest.id}:${call.name}:controlRef:${parameterIndex}`;
+      if (!diagnostics.has(key)) diagnostics.set(
+        key,
+        `${contract.displayName} 后端不支持命令“${call.name}”第 ${parameterIndex + 1} 个 controlRef 参数的 ${representation} 运行时表示（源码第 ${call.line} 行）。`
+      );
+    });
   });
 
   return [...diagnostics.values()];

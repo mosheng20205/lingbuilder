@@ -3,13 +3,32 @@ import assert from 'node:assert/strict';
 import { createCommandService } from '../src/services/commands/commandService';
 import { MenuService } from '../src/services/menus/menuService';
 import { validateModuleManifest } from '../src/services/modules/manifest';
-import { DESIGNER_CONTROL_CONTEXT_MENU, SOLUTION_EXPLORER_CONTEXT_MENU, SOLUTION_PROJECT_CONTEXT_MENU } from '../src/services/menus/types';
+import { DESIGNER_CONTROL_CONTEXT_MENU, LINGCPP_BEGINNER_CONTEXT_MENU, SOLUTION_EXPLORER_CONTEXT_MENU, SOLUTION_PROJECT_CONTEXT_MENU } from '../src/services/menus/types';
 import {
   CREATE_SOLUTION_FOLDER_COMMAND,
   RENAME_SOLUTION_PROJECT_COMMAND,
   registerSolutionExplorerMenu
 } from '../src/services/solution/solutionExplorerMenu';
 import { acquireDesignerCommands, activeDesignerCommandTargetService } from '../src/services/windowDesigner/designerCommandTargetService';
+import {
+  acquireLingCppBeginnerCommands,
+  activeLingCppBeginnerCommandTargetService,
+  ADD_BEGINNER_LOCAL_CONSTANT_COMMAND,
+  ADD_BEGINNER_LOCAL_VARIABLE_COMMAND
+} from '../src/services/lingCpp/beginnerCommandTargetService';
+import {
+  acquireLingCppControlReferenceCommands,
+  REVEAL_LINGCPP_CONTROL_COMMAND
+} from '../src/services/lingCpp/controlReferenceCommands';
+import { getMenuService } from '../src/services/menus/menuService';
+import { LINGCPP_CONTROL_REFERENCE_CONTEXT_MENU } from '../src/services/menus/types';
+import {
+  clearDesignerNavigationRequests,
+  completeDesignerNavigation,
+  getPendingDesignerNavigation,
+  registerDesignerNavigationTarget,
+  subscribeDesignerNavigation
+} from '../src/services/windowDesigner/designerNavigationService';
 
 test('MenuService resolves commands, groups, submenus and dynamic disposal', async () => {
   const commands = createCommandService();
@@ -58,6 +77,49 @@ test('MenuService rejects non-serializable or oversized arguments', () => {
   const menus = new MenuService(createCommandService());
   assert.throws(() => menus.registerMenuItem({ menu: 'x', command: 'x', arguments: [BigInt(1)] }), /JSON/);
   assert.throws(() => menus.registerMenuItem({ menu: 'x', command: 'x', arguments: ['x'.repeat(40_000)] }), /32KB/);
+});
+
+test('控件引用右键菜单通过 CommandService 路由，并在设计器挂载前保留稳定 ID 导航请求', async () => {
+  clearDesignerNavigationRequests();
+  const commands = createCommandService();
+  const registration = acquireLingCppControlReferenceCommands(commands);
+  const menu = getMenuService(commands).resolveMenu(
+    LINGCPP_CONTROL_REFERENCE_CONTEXT_MENU,
+    { 'workspace.open': true, 'lingcpp.controlReference': true }
+  );
+  assert.equal(menu.length, 1);
+  assert.equal(menu[0].kind, 'command');
+  if (menu[0].kind !== 'command') return;
+  assert.equal(menu[0].command.id, REVEAL_LINGCPP_CONTROL_COMMAND);
+
+  await commands.executeCommand(menu[0].command.id, { 'workspace.open': true }, {
+    projectId: 'project-1',
+    windowId: 'window-1',
+    controlId: 'control-1',
+    kind: 'visual',
+    name: '操作结果'
+  });
+  const pending = getPendingDesignerNavigation('project-1');
+  assert.equal(pending?.windowId, 'window-1');
+  assert.equal(pending?.controlId, 'control-1');
+  let focused = '';
+  const target = registerDesignerNavigationTarget({
+    projectId: 'project-1', windowId: 'window-1', controlId: 'control-1', kind: 'visual'
+  }, request => { focused = request.controlId; });
+  assert.equal(focused, 'control-1');
+  assert.equal(getPendingDesignerNavigation('project-1'), undefined);
+
+  let observed = '';
+  const listener = subscribeDesignerNavigation(request => { observed = request.controlId; });
+  await commands.executeCommand(menu[0].command.id, { 'workspace.open': true }, {
+    projectId: 'project-1', windowId: 'window-1', controlId: 'control-2', kind: 'resource'
+  });
+  assert.equal(observed, 'control-2');
+  completeDesignerNavigation(getPendingDesignerNavigation('project-1')!.requestId);
+  assert.equal(getPendingDesignerNavigation('project-1'), undefined);
+  listener.dispose();
+  target.dispose();
+  registration.dispose();
 });
 
 test('solution explorer folder and project actions use MenuService and unregister cleanly', () => {
@@ -115,4 +177,41 @@ test('EdgeView preview command is visible only for an EdgeBrowser selection and 
   assert.equal(previewed, 1);
   targetRegistration.dispose();
   commandRegistration.dispose();
+});
+
+test('LingCpp beginner local declaration commands resolve through MenuService and unregister cleanly', async () => {
+  const commands = createCommandService();
+  const menus = new MenuService(commands);
+  const commandRegistration = acquireLingCppBeginnerCommands(commands, menus);
+  const calls: Array<{ kind: 'variable' | 'constant'; target?: { className: string; methodName: string } }> = [];
+  const targetRegistration = activeLingCppBeginnerCommandTargetService.register({
+    id: 'beginner-local-test',
+    addLocalVariable: target => calls.push({ kind: 'variable', target }),
+    addLocalConstant: target => calls.push({ kind: 'constant', target })
+  });
+  const enabledContext = { 'lingcpp.beginner.active': true, 'lingcpp.beginner.hasTarget': true };
+  const disabledContext = { 'lingcpp.beginner.active': true, 'lingcpp.beginner.hasTarget': false };
+  const enabledMenu = menus.resolveMenu(LINGCPP_BEGINNER_CONTEXT_MENU, enabledContext, { includeDisabled: true });
+  const disabledMenu = menus.resolveMenu(LINGCPP_BEGINNER_CONTEXT_MENU, disabledContext, { includeDisabled: true });
+
+  assert.deepEqual(enabledMenu.filter(item => item.kind === 'command').map(item => item.kind === 'command' && item.command.id), [
+    ADD_BEGINNER_LOCAL_VARIABLE_COMMAND,
+    ADD_BEGINNER_LOCAL_CONSTANT_COMMAND
+  ]);
+  assert.ok(enabledMenu.every(item => item.kind !== 'command' || item.command.enabled));
+  assert.ok(disabledMenu.every(item => item.kind !== 'command' || !item.command.enabled));
+
+  const methodTarget = { className: 'MainWindow', methodName: '创建完毕' };
+  await commands.executeCommand(ADD_BEGINNER_LOCAL_VARIABLE_COMMAND, enabledContext, methodTarget);
+  await commands.executeCommand(ADD_BEGINNER_LOCAL_CONSTANT_COMMAND, enabledContext, methodTarget);
+  assert.deepEqual(calls, [
+    { kind: 'variable', target: methodTarget },
+    { kind: 'constant', target: methodTarget }
+  ]);
+
+  targetRegistration.dispose();
+  commandRegistration.dispose();
+  assert.deepEqual(menus.resolveMenu(LINGCPP_BEGINNER_CONTEXT_MENU, enabledContext, { includeDisabled: true }), []);
+  assert.equal(commands.hasCommand(ADD_BEGINNER_LOCAL_VARIABLE_COMMAND), false);
+  assert.equal(commands.hasCommand(ADD_BEGINNER_LOCAL_CONSTANT_COMMAND), false);
 });

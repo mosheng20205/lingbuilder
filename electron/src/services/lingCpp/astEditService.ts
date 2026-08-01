@@ -235,7 +235,8 @@ function applyEditToLines(lines: string[], program: LingCppProgram, edit: LingCp
       name: edit.newName || local.name,
       type: edit.type || local.type,
       initialValue: edit.initialValue ?? local.initialValue,
-      isArray: edit.isArray ?? local.isArray ?? false
+      isArray: edit.isArray ?? local.isArray ?? false,
+      isConstant: edit.isConstant ?? local.isConstant ?? false
     });
     return next;
   }
@@ -456,7 +457,7 @@ function insertEvent(
 function insertLocal(
   lines: string[],
   method: LingCppMethod,
-  local: { name: string; type: string; initialValue?: string; isArray?: boolean },
+  local: { name: string; type: string; initialValue?: string; isArray?: boolean; isConstant?: boolean },
   insertBeforeLine?: number
 ): void {
   const locals = method.locals || [];
@@ -472,7 +473,7 @@ function insertLocal(
   );
   const insertAt = lineIndex(safeInsertBeforeLine);
   const indent = inferMethodBodyIndent(lines, method);
-  lines.splice(insertAt, 0, formatLocalDeclaration(`${indent}局部 ${local.type} ${local.name}`, local));
+  lines.splice(insertAt, 0, formatLocalDeclaration(`${indent}${local.isConstant ? '局部常量' : '局部'} ${local.type} ${local.name}`, local));
 }
 
 function insertMethod(
@@ -674,14 +675,14 @@ function formatConstantDeclaration(
 
 function formatLocalDeclaration(
   originalLine: string,
-  local: { name: string; type: string; initialValue?: string; isArray?: boolean }
+  local: { name: string; type: string; initialValue?: string; isArray?: boolean; isConstant?: boolean }
 ): string {
   const indent = indentOf(originalLine);
   const initialValue = typeof local.initialValue === 'string' && local.initialValue.trim()
     ? ` = ${local.initialValue.trim()}`
     : '';
   const arraySuffix = local.isArray ? '[]' : '';
-  return `${indent}局部 ${local.type.trim()} ${local.name.trim()}${arraySuffix}${initialValue}`;
+  return `${indent}${local.isConstant ? '局部常量' : '局部'} ${local.type.trim()} ${local.name.trim()}${arraySuffix}${initialValue}`;
 }
 
 function formatEventDeclaration(originalLine: string, handlerName: string, parameters: LingCppParameter[]): string {

@@ -8,11 +8,13 @@
 
 > 2026-07-31 补充：CEF 150 安全全覆盖工程处于 `3.0.0-alpha.2`，Alpha.3 正在实施。覆盖 v2 扫描 287 个 SDK 头并登记 1577 项能力记录；当前为 265 `implemented`、8 `internal`、185 `notApplicable`、1119 `planned`，169 个 `include/capi/test/**` 签名逐项排除。`lingbuilder.cef3.objects` 与 `lingbuilder.cef3.session` 的覆盖项已分别清零 `planned`：objects 现有 183 条命令，除 Value/Dictionary/List/Binary、Image、NavigationEntry 外，已完整接入 MenuModel 的创建、增删、索引、子菜单、快捷键、颜色和字体，TLS 证书/Principal/SSLStatus 快照及异步导航历史；session 现有 19 条命令，覆盖独立 RequestContext、Preference、Cookie、缓存、证书例外、HTTP 认证与连接清理。全局 Cookie/Preference 和初始化期注册器被明确归为内部替代，避免绕过实例隔离。Bridge 原生测试使用真实 CEF 150 x64 验证 HTTPS 证书、导航历史、对象深复制、菜单状态和会话隔离。Bridge 已编译 27 个事件签名的真实 override，事件模块仍有 86 项待接通；其它 network/transfer/automation/OSR/Views/platform 能力继续保持 `planned`。生成应用只包含/链接 `LingBuilderCefBridge`，`planned` 或 `needsReview` 未清零前禁止发布 3.0.0。
 
-> 2026-07-31 补充：FBro 升级为 `2.0.0` 双层封装基础。核心模块新增官方英文调用别名，拆出 `events/session/transfer/automation/objects/network/vip` 七个可调用子模块；子模块使用 `dependencies[{ moduleId, minimumVersion }]` 递归启用 `lingbuilder.fbro.browser@2.0.0`。模块服务会在写入前检查缺失版本、依赖循环和 CEF3 冲突，管理器展示自动启用计划；禁用核心时默认阻断，只有用户确认后才原子级联禁用。英文别名与中文主名共同参与补全、禁用诊断、类型推断和 C++ binding 解析。
+> 2026-08-01 补充：FBro 模块族统一升级为 `2.1.0`。核心与 `events/session/transfer/automation/objects/network/vip` 七个子模块继续使用递归依赖、CEF3 冲突检查和原子级联启停；英文别名、中文主名和旧事件别名共同参与补全、诊断、稳定事件 ID 解析和 C++ binding。旧项目中的 `Created`、`LoadEnd`、`BeforePopup` 等处理器键会迁移到同一规范事件，不丢失现有处理器。
 
-> 2026-07-31 补充：`LingBuilderFbroBridge` C ABI 升级到 v2，同时保留全部 v1 导出。v2 使用版本化 POD 事件包、类型化不透明句柄、任务注册表、受管缓冲和稳定错误码；`.lcpp` 不接触裸指针、`CefRefPtr` 或 STL。普通 Win32 与 New_Emoji 共用 `LB_FBro_SetEventCallbackV2` 事件协议，事件数据保存为 UTF-16 JSON，事件包可附带受管对象句柄，`BeforePopup` 与 `CertificateError` 使用 2 秒同步决策超时；Chrome UI 每个实例分别保存事件、错误、事件对象和处理器状态。官方 FBro 5.38.49 / CEF 135.0.21 的 77 个公共头、1079 个签名及 158 个事件/回调签名由 `npm run module:fbro-coverage` 生成稳定 ID、签名哈希、默认动作、超时/限流和实现状态，`--check` 在漂移或未分类时失败。当前实际接通 9 个事件，其余目录项保持 `planned`，不得误报为已实现。
+> 2026-08-01 补充：`LingBuilderFbroBridge` 主事件协议升级到兼容 C ABI v3，同时保留全部 v1/v2 导出。v3 增加 `LB_FBRO_EVENT_PACKET_V3`、`LB_FBRO_EVENT_RESPONSE_V3`、`LB_FBro_SetEventCallbackV3`、按浏览器与事件订阅、受管延续完成/取消和不限于 v2 固定返回缓冲的 UTF-16 JSON 响应。普通通知异步投递，即时决策默认 2 秒；安全/认证/权限、查询/消息路由、文件/对话框/下载延续默认分别为 5、30、120 秒。延续超时由 Bridge 单一受管计时线程执行，浏览器关闭和 Shutdown 会取消未完成句柄。
 
-> 2026-07-31 补充：FBro 覆盖目录已升级为可执行 wrapper 规范：每个 API 家族记录 `LB_FBroV2_<签名哈希前16位>` 符号、稳定 overloadId、参数/返回 codec、线程、同步方式和所有权；未知术语标记 `needsReview`，不再生成 `功能XXXX` 占位名。核心、objects、session、transfer、automation 与 VIP 均通过 C ABI v2 组合类型化对象、任务、UTF-16 JSON 和受管缓冲；普通 Win32 与 New_Emoji 消费同一 binding。VIP 子模块的 188 项官方能力逐项公开为 179 条单项命令、6 条 Bridge 自动管理能力和 3 条安全替代能力，另保留 10 条批量高级入口，模块清单共 198 条；官方目录为 188/188、planned=0。FBro 全目录为 397 `implemented`、678 `planned`、3 个内部 `notApplicable` 和 1 个高级替代 `notApplicable`。FBro 5.38.49 的阻塞文件对话框辅助导出继续明确排除，高层使用独立 STA `IFileDialog`。只有 Bridge 真实调用、模块 contribution/binding、双后端运行时和原生链接测试同时存在才允许改为 `implemented`。
+> 2026-08-01 补充：事件目录按“所属类 + 方法名 + 完整签名”登记 174 个类方法槽位、158 个唯一签名，覆盖 `FBroHsBroEvent` 90 项、`FBroHsInitEvent` 31 项和其余适配器 53 项；当前事件目录 `planned=0`、`needsReview=0`。每个槽位都有真实 override 或明确的 `managed/internal/notApplicable` 分类、字段/响应 schema、线程/所有权和测试。普通 Win32 与 New_Emoji 共用同一目录与 v3 协议，高频事件按订阅和采样率限流。`module:fbro-events:complete` 同时检查目录、override/schema/测试以及已安装 SDK 的头、导入库和 Bridge DLL，防止源码与安装模块 ABI 漂移。
+
+> 2026-08-01 补充：FBro 覆盖目录继续以 wrapperSymbol、稳定 overloadId、参数/返回 codec、线程、同步方式和所有权为确定性规范。事件安全全覆盖完成不等于整个 1079 项 API 全功能完成：当前全目录仍为 397 `implemented`、678 个非事件高级签名 `planned`、3 个内部 `notApplicable` 和 1 个高级替代 `notApplicable`。Frame visitor、完整公开 V8、正式 OSR 设计器和其余高级网络/对象 API 保持独立工作流。FBro 5.38.49 的阻塞文件对话框辅助导出继续由独立 STA `IFileDialog` 安全替代；可视 Basic Auth 登录 UI 未经过预期 `GetAuthCredentials` override，测试改用无交互资源请求延续验证 30 秒超时，不得伪造认证账号或声称真实登录弹窗回调已通过。
 
 > 2026-07-31 补充：官网命令资料支持从模块 v2 manifest 同步。`electron/scripts/export-website-command-manifests.ts` 会从实际 `BUILTIN_MODULES` 导出 `.lingbuilder/website-command-manifests.json`，命令为 `cd electron && npm run module:web-docs`。官网后台按 `模块 ID + 命令名` 稳定更新 contribution/binding 资料；重新同步时，清单中不再存在的旧模块命令标记为 `DEPRECATED`，不静默删除历史资料。该导出只读取模块清单，不建立第二套命令定义来源。
 
@@ -406,6 +408,27 @@ v2 manifest 可在 `contributes.menus[]` 和 `contributes.submenus[]` 中向稳�
 - Switch 与进度由 DataGrid 主 HWND 使用 GDI+ 抗锯齿圆角绘制并保持设计器同系配色；组合框静态绘制中文标签和箭头，单击后展开深色自绘的真实临时 COMBOBOX，未悬停项也必须使用可读前景色，选择提交时同时发送编辑提交和组合框改变事件。
 - 图片运行时路径相对 EXE 目录解析，F5/导出必须通过 `DesignerAssetService` 保持 `assets/<项目ID>/` 结构复制资源；原生测试禁止额外手工复制图片来掩盖资源物化缺失。
 - 图片列和单元格覆盖共用 `tile/contain/cover/center/stretch` 显示方式，原生路径图片与 ImageList 都必须真正执行平铺、等比缩放、铺满裁剪、原始居中或拉伸，不能只保存属性后仍统一 StretchBlt。
+
+## OpenCV 4.14.0 x64 图像模块（2026-08-01）
+
+- 用户模块为 `lingbuilder.opencv@1.0.0`；只读资产模块为 `lingbuilder.opencv.sdk@4.14.0+bridge.1`。模块管理器只显示用户模块，并通过 OpenCV 模块家族展示 SDK 已安装或缺失状态。
+- 首版固定 Windows、MSVC、x64、动态 CRT `/MD`、C++17、CPU 模式，只构建 OpenCV `core`、`imgproc`、`imgcodecs`。由于 OpenCV dispatch 生成器在中文绝对路径下会写出窄编码 include，SDK 构建固定使用 SSE2 baseline 并关闭 `CPU_DISPATCH`，避免生成损坏路径；这不改变公开 ABI。
+- `.lcpp` 只接触 `OpenCV图像句柄`、`OpenCV结果句柄` 两类受管 64 位句柄。确定性运行时位于 `electron/src/services/windowDesigner/opencvRuntime.ts`，统一调用 `LB_OCV_*` ASCII C ABI；文本返回使用两次长度查询和调用方缓冲区，再交给 `LB_ReturnText`。
+- 原生 Bridge 位于 `electron/native/opencv-bridge/`，使用宽字符 Win32 文件读写配合 `imdecode/imencode` 支持中文路径；所有 OpenCV/C++ 异常在 DLL 边界转换为中文错误。单图上限 100MP，图像与结果合计最多 256 个对象，分析内部候选最多 100 个。
+- `OpenCV_分析缺口` 只分析用户提供或已授权图像。无滑块时使用边缘、形态学和轮廓；有滑块时融合滑块边缘模板与背景轮廓评分。结果按置信度降序、横坐标升序稳定排列，执行间距和 IoU 抑制；不提供浏览器控制、自动拖动或验证提交。
+- SDK 由 `npm run module:opencv-sdk -- --install` 生成，固定校验 OpenCV 4.14.0 源码 SHA-256，并发布 Bridge 头/LIB/DLL、三个 OpenCV DLL、许可证和逐文件运行时清单。二进制、上游源码与中间构建只保存在 `.lingbuilder/`、`.lingbuilder-build/`，不提交仓库。
+- `nativeDependencyService.materializeOpenCvSdk` 是 F5、AI Bridge、原生导出和 Visual Studio 导出的统一依赖入口；版本、ABI、工具集、CRT、架构、必要文件或 SHA-256 任一不符都必须在编译前阻断。DLL 复制到 EXE 同目录，`.lcpppkg` 自动携带隐藏 SDK。
+- 启用 OpenCV 后 Visual Studio 工程只生成 Debug/Release x64；Win32 目标必须在生成前返回中文阻断诊断。公开说明和完整示例位于 `electron/docs/modules/opencv/`。
+- 原生验收入口为 `npm run smoke:opencv-native`，覆盖中文路径、主要图像操作、模板与单/双缺口、空候选、严格 JSON、并发读、重复释放、对象上限、标注图、模块物化、VS x64 编译及 DLL 同目录。
+
+## 控件引用语义 `controlRef`（2026-08-01）
+
+- `bindings.commands[].parameters[]` 是控件参数语义的唯一确定性来源。凡指向可视控件、非可视组件或设计器资源的参数必须使用 `type: "controlRef"`，并显式声明 `controlKinds`、`scope`、`runtimeRepresentation`；需要限制类型时同时声明 `controlTypes`。
+- 清单校验会拒绝名称语义明显属于控件但仍声明为 `wideString` / `utf8String` 的参数，也会拒绝 controlRef 缺元数据、`insertText` / `example` 给控件占位符加引号。模块 SDK 的 C++ 迁移入口执行同一门禁。
+- `ModuleService -> LingCppModuleContext -> controlReferenceService` 同时服务新手编辑器、Monaco、诊断、悬停、补全、引用、重命名、快速修复和 C++ 生成。编辑器源码保持裸控件名，后端契约再转换为宽名称、稳定 ID 或原生句柄。
+- “跳转到控件”统一使用 `lingcpp.action.revealControl`，右键菜单经 `MenuService` 注册、动作经 `CommandService` 执行、定位经 `designerNavigationService` 按稳定项目/窗口/对象 ID 完成；未挂载设计器保存待处理请求。
+- 全量门禁命令 `npm run module:control-ref-audit` 当前审计 86 个模块、3249 个方法、10460 个参数和 776 个 controlRef 参数，并额外扫描 28 个模块 TypeScript 源文件中的原始 `insertText`、`example` 和 snippet 字面量；方法/参数摘要防止未来只抽样覆盖或只靠运行时归一化掩盖旧写法。
+- `npm run module:control-ref-migration-check` 对主解决方案、模块演示、便携工作区、嵌套源码包和 smoke `build-request.json` 做只读迁移门禁；`npm run module:control-ref-migrate` 只改写唯一解析且兼容的引用。发布目录、构建目录和生成目录不作为可编辑源码，无法解析的真实源码会使门禁失败。
 - `dataGridSchemaVersion` 当前为 1。列、行和单元格覆盖先经过 `dataGridModel.ts` 规范化，再由设计器预览和 Win32 生成器共同消费。
 - `dataGridApiCatalog.ts` 是 contribution、binding、Monaco 补全和真实 C++ 符号的一致性来源。新增命令必须同时实现运行时行为和测试，不能只增加补全。
 - DataGrid 当前共有 92 条目录命令；进度状态和行选择状态均有成对读写接口。`.xlsx` 导入/导出通过标准 SpreadsheetML 与 Windows ZIP Shell 实现，不启动或依赖 Excel；只处理首个工作表、仅允许静态模式，并把图片单元格作为路径文本往返。

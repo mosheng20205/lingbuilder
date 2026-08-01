@@ -44,7 +44,7 @@ export function createProjectConstantRenameProposal(
       ...classNode.members.map(member => ({ kind: '成员', name: member.name })),
       ...classNode.methods.flatMap(method => [
         ...method.parameters.map(parameter => ({ kind: '参数', name: parameter.name })),
-        ...(method.locals || []).map(local => ({ kind: '局部变量', name: local.name }))
+        ...(method.locals || []).map(local => ({ kind: local.isConstant ? '局部常量' : '局部变量', name: local.name }))
       ])
     ])
     .find(symbol => normalizeIdentifier(symbol.name) === normalizedNewName);

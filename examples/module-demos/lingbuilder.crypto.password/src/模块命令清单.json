@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T09:57:36.122Z",
+  "generatedAt": "2026-07-31T18:20:25.823Z",
   "module": {
     "id": "lingbuilder.crypto.password",
     "name": "密码哈希与派生模块",

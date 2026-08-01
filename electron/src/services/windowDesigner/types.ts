@@ -200,6 +200,7 @@ export interface LingDesignerEventInfo {
   name: string;
   label: string;
   desc: string;
+  handlerSuffix?: string;
 }
 
 export interface LingCppNativePreviewFile {

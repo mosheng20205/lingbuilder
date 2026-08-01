@@ -1,5 +1,6 @@
 import { getLingCppModuleCompletionItems } from '../lingCpp/completionCatalog';
 import { InstalledModule, LingCppModuleContext, ModuleCommandBinding, ModuleCommandContribution } from './types';
+import { describeModuleBindingParameterType } from './bindingValueType';
 
 export interface BeginnerModuleCodeCompletion {
   label: string;
@@ -172,19 +173,6 @@ function parseCommandParameters(
   const match = signature.match(/^[^(（]+[（(](.*)[）)]/u);
   if (!match || !match[1].trim()) return [];
 
-  const bindingTypeLabels: Record<string, string> = {
-    void: '空',
-    int: '整数型',
-    longLong: '长整数型',
-    double: '小数型',
-    bool: '逻辑型',
-    wideString: '文本型',
-    utf8String: 'UTF-8 文本',
-    handler: '处理器',
-    handle: '句柄',
-    raw: '原始值'
-  };
-
   return match[1]
     .split(/[，,]/u)
     .map(part => part.trim())
@@ -195,7 +183,7 @@ function parseCommandParameters(
       return {
         name: bindingParameter?.name || name || part,
         type: bindingParameter?.type
-          ? bindingTypeLabels[bindingParameter.type] || bindingParameter.type
+          ? describeModuleBindingParameterType(bindingParameter)
           : type || '参数',
         note: bindingParameter?.description || '模块尚未提供这个参数的详细说明。'
       };

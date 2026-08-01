@@ -1,5 +1,6 @@
 import { InstalledModule } from '../modules/types';
 import { generateCryptoRuntime } from './cryptoRuntime';
+import { OPENCV_RUNTIME } from './opencvRuntime';
 
 const CSV_RUNTIME = String.raw`
 static std::wstring LB_CsvEscape(const std::wstring& field) { if (field.find_first_of(L",\"\r\n") == std::wstring::npos) return field; std::wstring escaped = field; LB_ReplaceAll(escaped, L"\"", L"\"\""); return L"\"" + escaped + L"\""; }
@@ -120,6 +121,7 @@ const RUNTIMES: Record<string, string> = {
   'lingbuilder.image.bitmap': BITMAP_RUNTIME,
   'lingbuilder.image.icon': ICON_RUNTIME,
   'lingbuilder.image.recognition': RECOGNITION_RUNTIME,
+  'lingbuilder.opencv': OPENCV_RUNTIME,
   'lingbuilder.media.audio': AUDIO_RUNTIME
 };
 

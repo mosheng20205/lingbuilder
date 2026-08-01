@@ -1,4 +1,5 @@
-import type { ModuleBindingValueType, ModuleCommandBinding, ModuleCommandContribution } from './types';
+import type { ModuleBindingValueType, ModuleCommandBinding, ModuleCommandBindingParameter, ModuleCommandContribution } from './types';
+import { createModuleBindingSnippetArgument, isWideStringAbiBindingType, normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter } from './bindingValueType';
 
 export const EDGEVIEW_SAFE_API_CAPABILITY = 'edgeview.safe-api.v1';
 export const EDGEVIEW_SAFE_API_V2_CAPABILITY = 'edgeview.safe-api.v2';
@@ -26,7 +27,7 @@ export interface EdgeViewApiCatalogEntry {
   testId: string;
 }
 
-type Parameter = { name: string; type: ModuleBindingValueType; description?: string };
+type Parameter = ModuleCommandBindingParameter;
 
 function api(
   family: EdgeViewApiFamily,
@@ -38,12 +39,8 @@ function api(
   options: { insertText?: string; runtimeName?: string; visibility?: 'default' | 'advanced'; capability?: 'edgeview.safe-api.v1' | 'edgeview.safe-api.v2'; minimumRuntimeMajor?: number; testId?: string } = {}
 ): EdgeViewApiCatalogEntry {
   const runtimeName = options.runtimeName || name;
-  const argumentsText = parameters.map((parameter, index) => {
-    if (parameter.type === 'handler') return `&$${index + 1}`;
-    if (parameter.type === 'wideString' || parameter.type === 'utf8String') return `"$${index + 1}"`;
-    if (parameter.type === 'bool') return '真';
-    return `$${index + 1}`;
-  }).join(', ');
+  const normalizedParameters = parameters.map(parameter => normalizeControlReferenceParameter(parameter, { controlTypes: ['EdgeBrowser'] }));
+  const argumentsText = normalizedParameters.map(createModuleBindingSnippetArgument).join(', ');
   const returnName = returnType === 'void' ? '空' : returnType === 'wideString' ? '文本型'
     : returnType === 'longLong' || returnType === 'handle' ? '长整数型'
       : returnType === 'double' ? '双精度小数型' : '整数型';
@@ -51,18 +48,18 @@ function api(
     family,
     command: {
       name,
-      signature: `${name}(${parameters.map(parameter => parameter.name).join(', ')})`,
+      signature: `${name}(${normalizedParameters.map(parameter => parameter.name).join(', ')})`,
       description,
-      insertText: options.insertText || `${name}(${argumentsText})`,
+      insertText: normalizeControlReferenceCallSnippet(options.insertText, normalizedParameters) || `${name}(${argumentsText})`,
       returnType: returnName,
       visibility: options.visibility
     },
     binding: {
       command: name,
       runtimeName,
-      parameters,
+      parameters: normalizedParameters,
       returnType,
-      encoding: parameters.some(parameter => parameter.type === 'wideString' || parameter.type === 'handler') || returnType === 'wideString' ? 'wide' : undefined
+      encoding: normalizedParameters.some(parameter => isWideStringAbiBindingType(parameter.type)) || returnType === 'wideString' ? 'wide' : undefined
     },
     sdkMembers,
     runtimeSymbol: runtimeName,
@@ -72,7 +69,7 @@ function api(
   };
 }
 
-const control = { name: '控件名', type: 'wideString' as const };
+const control: ModuleCommandBindingParameter = { name: '控件名', type: 'controlRef', controlTypes: ['EdgeBrowser'] };
 const task = { name: '任务ID', type: 'longLong' as const };
 
 export const EDGEVIEW_SAFE_API_CATALOG: EdgeViewApiCatalogEntry[] = [

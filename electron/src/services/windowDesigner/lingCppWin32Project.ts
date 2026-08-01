@@ -84,7 +84,8 @@ interface TranslatedStatementLine {
   code: string;
   sourceStartLine: number;
   sourceEndLine: number;
-  kind: 'statement' | 'native-cpp';
+  kind: 'local' | 'statement' | 'native-cpp';
+  symbolName?: string;
 }
 
 interface AggregatedLingCppProjectSources {
@@ -132,7 +133,7 @@ export function generateLingCppNativeWin32Project(
   const backendGeneratorDiagnostics = hasNativeLayoutGenerator
     ? []
     : [`UI 后端“${selectedBackendId}”尚未注册原生 C++ 布局生成器，已阻止回退到错误的 Win32 实现。`];
-  const sourceMap = generateLingCppNativeSourceMap(mainCppContent, project, aggregate.program, sourceFilePath, aggregate.classSourceFiles, aggregate.functionLibrarySourceFiles, aggregate.globalSourceFile, aggregate.dataTypeSourceFile);
+  const sourceMap = generateLingCppNativeSourceMap(mainCppContent, project, aggregate.program, sourceFilePath, aggregate.classSourceFiles, aggregate.functionLibrarySourceFiles, aggregate.globalSourceFile, aggregate.dataTypeSourceFile, enabledModules);
   const manifestContent = generateNativeManifest(project, selectedWindow, enabledModules, sourceFilePath, sourceMap, edgeViewApiUsage);
   const moduleTargetDiagnostics = enabledModules
     .filter(module => !module.isBuiltin)
@@ -758,6 +759,15 @@ static const LB_NE_ElementRef* LB_NE_FindElement(const wchar_t* controlName) {
     return found == g_newEmojiElementsByName.end() ? nullptr : &found->second;
 }
 
+static int LingCppControlStableId(const wchar_t* controlName) {
+    const LB_NE_ElementRef* element = LB_NE_FindElement(controlName);
+    return element ? element->id : 0;
+}
+
+static HWND LingCppControlNativeHandle(const wchar_t*) {
+    return nullptr;
+}
+
 static bool LB_NE_IsType(const LB_NE_ElementRef* element, std::initializer_list<const wchar_t*> types) {
     if (!element) return false;
     for (const wchar_t* type : types) if (type && element->type == type) return true;
@@ -1181,7 +1191,7 @@ function selectKnownCef3Branches(source: string): string {
 }
 
 function generateNewEmojiMethodBody(method: LingCppMethod, enabledModules: InstalledModule[], dataTypes: LingCppDataType[]): string {
-  return [generateLocalDeclarations(method, enabledModules, dataTypes), translateMethodStatements(method, enabledModules)]
+  return [generateLocalDeclarations(method, enabledModules, dataTypes), translateMethodStatements(method, enabledModules, dataTypes)]
     .filter(Boolean)
     .join('\n')
     .replace(/^ {8}/gmu, '    ');
@@ -1242,7 +1252,7 @@ function generateNewEmojiFbroEventDispatch(
   program: LingCppProgram | undefined,
   enabledModules: InstalledModule[]
 ): string {
-  if (!program) return 'static int LB_NE_DispatchFbroHandler(const wchar_t*) { return 0; }\nstatic void LB_NE_DispatchFbroEvent(const wchar_t*, const wchar_t*) {}';
+  if (!program) return 'static int LB_NE_DispatchFbroHandler(const wchar_t*) { return 0; }\nstatic bool LB_NE_DispatchFbroEvent(const wchar_t*, const wchar_t*) { return false; }';
   const blocks: string[] = [];
   const cases: string[] = [];
   const handlerCases: string[] = [];
@@ -1256,10 +1266,10 @@ function generateNewEmojiFbroEventDispatch(
   controls.forEach(control => {
     Object.entries(control.events || {}).forEach(([eventName, handlerName]) => {
       if (!handlerName || !methods.has(handlerName)) return;
-      cases.push(`    if (wcscmp(controlName, L"${escapeWideString(control.name)}") == 0 && wcscmp(eventName, L"${escapeWideString(eventName)}") == 0) { LB_NE_DispatchFbroHandler(L"${escapeWideString(handlerName)}"); return; }`);
+      cases.push(`    if (wcscmp(controlName, L"${escapeWideString(control.name)}") == 0 && wcscmp(eventName, L"${escapeWideString(eventName)}") == 0) { LB_NE_DispatchFbroHandler(L"${escapeWideString(handlerName)}"); return true; }`);
     });
   });
-  return `${blocks.join('\n\n')}\n\nstatic int LB_NE_DispatchFbroHandler(const wchar_t* handlerName) {\n    if (!handlerName) return 0;\n${handlerCases.join('\n')}\n    return 0;\n}\n\nstatic void LB_NE_DispatchFbroEvent(const wchar_t* controlName, const wchar_t* eventName) {\n    if (!controlName || !eventName) return;\n${cases.join('\n')}\n}`;
+  return `${blocks.join('\n\n')}\n\nstatic int LB_NE_DispatchFbroHandler(const wchar_t* handlerName) {\n    if (!handlerName) return 0;\n${handlerCases.join('\n')}\n    return 0;\n}\n\nstatic bool LB_NE_DispatchFbroEvent(const wchar_t* controlName, const wchar_t* eventName) {\n    if (!controlName || !eventName) return false;\n${cases.join('\n')}\n    return false;\n}`;
 }
 
 function generateFbroObjectRuntime(availabilityMacro: string, staticFunctions: boolean): string {
@@ -1478,9 +1488,11 @@ struct LB_NE_FbroBrowserInstance {
     std::wstring lastEventData;
     std::wstring lastEventJson;
     LB_FBRO_OBJECT_HANDLE lastEventObject = 0;
+    LB_FBRO_CONTINUATION_HANDLE lastEventContinuation = 0;
     std::wstring lastError;
     int eventAction = 0;
     std::wstring eventResultText;
+    std::wstring eventResponseJson;
     std::map<std::wstring, std::wstring> handlers;
     struct PopupState { std::wstring lastEvent; std::wstring lastEventData; std::wstring lastEventJson; LB_FBRO_OBJECT_HANDLE lastEventObject = 0; std::wstring lastError; };
     std::map<LB_FBRO_HANDLE, PopupState> chromeUiInstances;
@@ -1496,12 +1508,17 @@ static constexpr UINT WM_LINGBUILDER_NE_FBRO_EVENT = WM_APP + 0x51;
 struct LB_NE_FbroEventPacket {
     LB_FBRO_HANDLE handle = 0;
     int eventCode = 0;
+    uint32_t flags = 0;
+    std::wstring eventId;
     std::wstring eventName;
+    std::wstring officialName;
     std::wstring data;
     std::wstring dataJson;
     LB_FBRO_OBJECT_HANDLE object = 0;
+    LB_FBRO_CONTINUATION_HANDLE continuation = 0;
     int action = 0;
     std::wstring resultText;
+    std::wstring responseJson;
     bool synchronous = false;
 };
 
@@ -1523,7 +1540,7 @@ static std::wstring LB_NE_ReadFbroJsonField(const std::wstring& json, const wcha
     return value;
 }
 
-static void LB_NE_DispatchFbroEvent(const wchar_t* controlName, const wchar_t* eventName);
+static bool LB_NE_DispatchFbroEvent(const wchar_t* controlName, const wchar_t* eventName);
 static int LB_NE_DispatchFbroHandler(const wchar_t* handlerName);
 
 static LB_NE_FbroBrowserInstance* LB_NE_FindFbro(const wchar_t* controlName) {
@@ -1573,6 +1590,40 @@ static int __stdcall LB_NE_FbroEventV2(const LB_FBRO_EVENT_PACKET_V2* source,
     return packet.action;
 }
 
+static void __stdcall LB_NE_FbroEventV3(const LB_FBRO_EVENT_PACKET_V3* source,
+                                        LB_FBRO_EVENT_RESPONSE_V3* response, void*) {
+    if (!source || source->struct_size < sizeof(LB_FBRO_EVENT_PACKET_V3)
+        || source->abi_version != LB_FBRO_ABI_VERSION_V3 || !g_newEmojiWindow || !IsWindow(g_newEmojiWindow)) return;
+    auto fill = [source](LB_NE_FbroEventPacket& packet) {
+        packet.handle = source->browser;
+        packet.eventCode = source->legacy_event_code;
+        packet.flags = source->flags;
+        packet.eventId = source->event_id ? source->event_id : L"";
+        packet.eventName = source->event_name ? source->event_name : L"未知事件";
+        packet.officialName = source->official_name ? source->official_name : L"";
+        packet.dataJson = source->fields_json ? source->fields_json : L"{}";
+        packet.data = packet.dataJson;
+        packet.object = source->object;
+        packet.continuation = source->continuation;
+    };
+    const bool synchronous = (source->flags & LB_FBRO_EVENT_FLAG_SYNCHRONOUS) != 0
+        && (source->flags & LB_FBRO_EVENT_FLAG_DEFERRED) == 0;
+    if (!synchronous) {
+        auto* packet = new LB_NE_FbroEventPacket(); fill(*packet);
+        if (!PostMessageW(g_newEmojiWindow, WM_LINGBUILDER_NE_FBRO_EVENT, 0, reinterpret_cast<LPARAM>(packet))) delete packet;
+        return;
+    }
+    LB_NE_FbroEventPacket packet; fill(packet); packet.synchronous = true;
+    DWORD_PTR ignored = 0;
+    if (!SendMessageTimeoutW(g_newEmojiWindow, WM_LINGBUILDER_NE_FBRO_EVENT, 0, reinterpret_cast<LPARAM>(&packet),
+                             SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &ignored)) return;
+    if (response && response->struct_size >= sizeof(LB_FBRO_EVENT_RESPONSE_V3)) {
+        response->abi_version = LB_FBRO_ABI_VERSION_V3;
+        response->action = packet.action;
+        response->response_json = packet.responseJson.empty() ? nullptr : packet.responseJson.c_str();
+    }
+}
+
 static LRESULT CALLBACK LB_NE_FbroWindowSubclass(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam,
                                                   UINT_PTR subclassId, DWORD_PTR) {
     if (message == WM_LINGBUILDER_NE_FBRO_EVENT) {
@@ -1582,16 +1633,35 @@ static LRESULT CALLBACK LB_NE_FbroWindowSubclass(HWND hwnd, UINT message, WPARAM
             if (browser.handle == packet->handle) {
                 browser.eventAction = 0;
                 browser.eventResultText.clear();
+                browser.eventResponseJson.clear();
                 browser.lastEvent = packet->eventName;
                 browser.lastEventData = packet->data;
                 browser.lastEventJson = packet->dataJson;
                 browser.lastEventObject = packet->object;
+                browser.lastEventContinuation = packet->continuation;
                 if (packet->eventCode == LB_FBRO_EVENT_ERROR) browser.lastError = packet->data;
-                auto handler = browser.handlers.find(browser.lastEvent);
-                if (handler != browser.handlers.end()) LB_NE_DispatchFbroHandler(handler->second.c_str());
-                else LB_NE_DispatchFbroEvent(browser.name.c_str(), browser.lastEvent.c_str());
+                std::wstring handlerName;
+                for (const std::wstring* key : {&packet->eventId, &packet->officialName, &packet->eventName}) {
+                    if (!key->empty()) { auto handler = browser.handlers.find(*key); if (handler != browser.handlers.end()) { handlerName = handler->second; break; } }
+                }
+                if (!handlerName.empty()) LB_NE_DispatchFbroHandler(handlerName.c_str());
+                else {
+                    const wchar_t* primary = packet->eventId.empty() ? browser.lastEvent.c_str() : packet->eventId.c_str();
+                    bool dispatched = LB_NE_DispatchFbroEvent(browser.name.c_str(), primary);
+                    const wchar_t* legacy = packet->eventCode == LB_FBRO_EVENT_CREATED ? L"Created"
+                        : packet->eventCode == LB_FBRO_EVENT_LOAD_END ? L"LoadEnd"
+                        : packet->eventCode == LB_FBRO_EVENT_ADDRESS_CHANGED ? L"AddressChanged"
+                        : packet->eventCode == LB_FBRO_EVENT_TITLE_CHANGED ? L"TitleChanged"
+                        : packet->eventCode == LB_FBRO_EVENT_CLOSED ? L"Closed"
+                        : packet->eventCode == LB_FBRO_EVENT_ERROR ? L"Error"
+                        : packet->eventCode == LB_FBRO_EVENT_BEFORE_POPUP ? L"BeforePopup"
+                        : packet->eventCode == LB_FBRO_EVENT_CERTIFICATE_ERROR ? L"CertificateError"
+                        : packet->eventCode == LB_FBRO_EVENT_DRAG_ENTER ? L"DragEnter" : L"";
+                    if (!dispatched && *legacy) LB_NE_DispatchFbroEvent(browser.name.c_str(), legacy);
+                }
                 packet->action = browser.eventAction;
                 packet->resultText = browser.eventResultText;
+                packet->responseJson = browser.eventResponseJson;
                 break;
             }
             auto popup = browser.chromeUiInstances.find(packet->handle);
@@ -1678,6 +1748,7 @@ static int FBro_创建(const wchar_t* controlName) {
             browser.userAgent.c_str(), browser.flags, LB_NE_FbroEvent, nullptr);
         if (!browser.handle) { browser.lastError = L"创建 FBro 浏览器句柄失败"; continue; }
         LB_FBro_SetEventCallbackV2(browser.handle, LB_NE_FbroEventV2, nullptr);
+        LB_FBro_SetEventCallbackV3(browser.handle, LB_NE_FbroEventV3, nullptr);
         if (!browser.proxyServer.empty()) LB_FBro_SetProxy(browser.handle, browser.proxyServer.c_str(), L"", L"");
         if (!browser.fingerprintJson.empty()) LB_FBro_ApplyFingerprintJson(browser.handle, browser.fingerprintJson.c_str());
         ++created;
@@ -1702,6 +1773,7 @@ static int FBro_打开谷歌原生UI浏览器(const wchar_t* name, const wchar_t
     if (popup) {
         browser->chromeUiInstances.emplace(popup, LB_NE_FbroBrowserInstance::PopupState{});
         LB_FBro_SetEventCallbackV2(popup, LB_NE_FbroEventV2, nullptr);
+        LB_FBro_SetEventCallbackV3(popup, LB_NE_FbroEventV3, nullptr);
     }
     return popup ? 1 : 0;
 #else
@@ -2071,7 +2143,10 @@ static long long FBro_取事件对象(const wchar_t* name) {
 #endif
 }
 static std::wstring FBro_取事件字段(const wchar_t* name, const wchar_t* fieldName) {
-    auto* browser = LB_NE_FindFbro(name); return browser && fieldName ? LB_NE_ReadFbroJsonField(browser->lastEventJson, fieldName) : L"";
+    auto* browser = LB_NE_FindFbro(name);
+    if (browser && fieldName && std::wcscmp(fieldName, L"continuationHandle") == 0) return std::to_wstring(browser->lastEventContinuation);
+    if (browser && fieldName && std::wcscmp(fieldName, L"objectHandle") == 0) return std::to_wstring(browser->lastEventObject);
+    return browser && fieldName ? LB_NE_ReadFbroJsonField(browser->lastEventJson, fieldName) : L"";
 }
 static int FBro_设置事件结果(const wchar_t* name, int action) {
     auto* browser = LB_NE_FindFbro(name); if (!browser || action < 0 || action > 3) return 0; browser->eventAction = action; return 1;
@@ -2079,10 +2154,44 @@ static int FBro_设置事件结果(const wchar_t* name, int action) {
 static int FBro_设置事件返回文本(const wchar_t* name, const wchar_t* value) {
     auto* browser = LB_NE_FindFbro(name); if (!browser) return 0; browser->eventResultText = value ? value : L""; return 1;
 }
+static int FBro_设置事件响应JSON(const wchar_t* name, const wchar_t* value) {
+    auto* browser = LB_NE_FindFbro(name); if (!browser) return 0; browser->eventResponseJson = value ? value : L"{}"; return 1;
+}
+static std::wstring FBro_取事件对象字段(const wchar_t* name, const wchar_t* fieldName) { return FBro_取事件字段(name, fieldName); }
+static long long FBro_取事件延续(const wchar_t* name) {
+    auto* browser = LB_NE_FindFbro(name);
+    return browser ? static_cast<long long>(browser->lastEventContinuation) : 0;
+}
+static int FBro事件_完成延续(long long continuation, const wchar_t* responseJson) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return continuation > 0 ? LB_FBro_CompleteEventContinuation(static_cast<LB_FBRO_CONTINUATION_HANDLE>(continuation), responseJson) : 0;
+#else
+    (void)continuation; (void)responseJson; return 0;
+#endif
+}
+static int FBro事件_取消延续(long long continuation) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    return continuation > 0 ? LB_FBro_CancelEventContinuation(static_cast<LB_FBRO_CONTINUATION_HANDLE>(continuation)) : 0;
+#else
+    (void)continuation; return 0;
+#endif
+}
+static int FBro_设置事件采样率(const wchar_t* name, const wchar_t* eventName, int maxHz) {
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    auto* browser = LB_NE_FindFbro(name); return browser && browser->handle && eventName && maxHz >= 0
+        ? LB_FBro_SetEventSamplingRate(browser->handle, eventName, static_cast<uint32_t>(maxHz)) : 0;
+#else
+    (void)name; (void)eventName; (void)maxHz; return 0;
+#endif
+}
 static int FBro_绑定事件(const wchar_t* name, const wchar_t* eventName, const wchar_t* handler) {
     auto* browser = LB_NE_FindFbro(name);
     if (!browser || !eventName || !*eventName || !handler || !*handler) return 0;
-    browser->handlers[eventName] = handler; return 1;
+    browser->handlers[eventName] = handler;
+#if LINGBUILDER_NE_FBRO_AVAILABLE
+    if (browser->handle) LB_FBro_SetEventSubscription(browser->handle, eventName, 1);
+#endif
+    return 1;
 }
 static int FBro_设置代理(const wchar_t* name, const wchar_t* proxy) {
     auto* browser = LB_NE_FindFbro(name); if (!browser) return 0; browser->proxyServer = proxy ? proxy : L"";
@@ -2900,6 +3009,18 @@ ${moduleFeatureDefines}
 #define LINGBUILDER_FBRO_AVAILABLE 0
 using LB_FBRO_HANDLE = UINT_PTR;
 using LB_FBRO_OBJECT_HANDLE = UINT_PTR;
+using LB_FBRO_CONTINUATION_HANDLE = unsigned long long;
+enum LB_FBRO_FALLBACK_EVENT_CODE {
+    LB_FBRO_EVENT_CREATED = 1,
+    LB_FBRO_EVENT_LOAD_END = 2,
+    LB_FBRO_EVENT_ADDRESS_CHANGED = 3,
+    LB_FBRO_EVENT_TITLE_CHANGED = 4,
+    LB_FBRO_EVENT_CLOSED = 5,
+    LB_FBRO_EVENT_ERROR = 6,
+    LB_FBRO_EVENT_BEFORE_POPUP = 7,
+    LB_FBRO_EVENT_CERTIFICATE_ERROR = 8,
+    LB_FBRO_EVENT_DRAG_ENTER = 9
+};
 #endif
 #include <algorithm>
 #include <array>
@@ -3220,12 +3341,17 @@ struct LingFbroEventPacket {
     LB_FBRO_HANDLE handle = 0;
     int eventCode = 0;
     int instanceKind = 0;
+    uint32_t flags = 0;
+    std::wstring eventId;
     std::wstring eventName;
+    std::wstring officialName;
     std::wstring data;
     std::wstring dataJson;
     LB_FBRO_OBJECT_HANDLE object = 0;
+    LB_FBRO_CONTINUATION_HANDLE continuation = 0;
     int action = 0;
     std::wstring resultText;
+    std::wstring responseJson;
     bool synchronous = false;
 };
 
@@ -4468,6 +4594,7 @@ protected:
     UINT dpi_;
     bool closingEventActive_ = false;
     bool closingCancelled_ = false;
+    bool fbroClosePending_ = false;
     bool keyboardEventActive_ = false;
     bool keyboardHandled_ = false;
     bool closedDispatched_ = false;
@@ -4569,6 +4696,7 @@ protected:
         std::map<std::wstring, std::wstring> eventFields;
         int eventAction = 0;
         std::wstring eventResultText;
+        std::wstring eventResponseJson;
         long long eventObjectSelection = 0;
         bool eventDecisionActive = false;
         long long nextDownloadId = 1;
@@ -4655,6 +4783,7 @@ protected:
         int controlId = 0;
         HWND host = nullptr;
         LB_FBRO_HANDLE handle = 0;
+        bool closed = false;
         std::wstring url;
         std::wstring profileDirectory;
         std::wstring userAgent;
@@ -4664,18 +4793,22 @@ protected:
         std::wstring lastEventData;
         std::wstring lastEventJson;
         LB_FBRO_OBJECT_HANDLE lastEventObject = 0;
+        LB_FBRO_CONTINUATION_HANDLE lastEventContinuation = 0;
         std::wstring lastError;
         int eventAction = 0;
         std::wstring eventResultText;
+        std::wstring eventResponseJson;
         std::map<std::wstring, std::wstring> handlers;
         struct PopupState {
             std::wstring lastEvent;
             std::wstring lastEventData;
             std::wstring lastEventJson;
             LB_FBRO_OBJECT_HANDLE lastEventObject = 0;
+            LB_FBRO_CONTINUATION_HANDLE lastEventContinuation = 0;
             std::wstring lastError;
             int eventAction = 0;
             std::wstring eventResultText;
+            std::wstring eventResponseJson;
             std::map<std::wstring, std::wstring> handlers;
         };
         std::map<LB_FBRO_HANDLE, PopupState> chromeUiInstances;
@@ -5919,6 +6052,41 @@ ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
         if (resultText && resultCapacity > 0) wcsncpy_s(resultText, resultCapacity, packet.resultText.c_str(), _TRUNCATE);
         return packet.action;
     }
+    static void __stdcall FBro_桥接事件V3(const LB_FBRO_EVENT_PACKET_V3* source,
+                                           LB_FBRO_EVENT_RESPONSE_V3* response, void* userData) {
+        auto* self = static_cast<LingWindowBase*>(userData);
+        if (!source || source->struct_size < sizeof(LB_FBRO_EVENT_PACKET_V3)
+            || source->abi_version != LB_FBRO_ABI_VERSION_V3 || !self || !self->hwnd_ || !IsWindow(self->hwnd_)) return;
+        auto fillPacket = [source](LingFbroEventPacket& packet) {
+            packet.handle = source->browser;
+            packet.eventCode = source->legacy_event_code;
+            packet.instanceKind = source->instance_kind;
+            packet.flags = source->flags;
+            packet.eventId = source->event_id ? source->event_id : L"";
+            packet.eventName = source->event_name ? source->event_name : L"未知事件";
+            packet.officialName = source->official_name ? source->official_name : L"";
+            packet.dataJson = source->fields_json ? source->fields_json : L"{}";
+            packet.data = packet.dataJson;
+            packet.object = source->object;
+            packet.continuation = source->continuation;
+        };
+        const bool synchronous = (source->flags & LB_FBRO_EVENT_FLAG_SYNCHRONOUS) != 0
+            && (source->flags & LB_FBRO_EVENT_FLAG_DEFERRED) == 0;
+        if (!synchronous) {
+            auto* packet = new LingFbroEventPacket(); fillPacket(*packet);
+            if (!PostMessageW(self->hwnd_, WM_LINGBUILDER_FBRO_EVENT, 0, reinterpret_cast<LPARAM>(packet))) delete packet;
+            return;
+        }
+        LingFbroEventPacket packet; fillPacket(packet); packet.synchronous = true;
+        DWORD_PTR ignored = 0;
+        if (!SendMessageTimeoutW(self->hwnd_, WM_LINGBUILDER_FBRO_EVENT, 0, reinterpret_cast<LPARAM>(&packet),
+                                 SMTO_ABORTIFHUNG | SMTO_BLOCK, 2000, &ignored)) return;
+        if (response && response->struct_size >= sizeof(LB_FBRO_EVENT_RESPONSE_V3)) {
+            response->abi_version = LB_FBRO_ABI_VERSION_V3;
+            response->action = packet.action;
+            response->response_json = packet.responseJson.empty() ? nullptr : packet.responseJson.c_str();
+        }
+    }
 #endif
 
     int FBro_创建(const wchar_t* controlName) {
@@ -5948,6 +6116,7 @@ ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
                 continue;
             }
             LB_FBro_SetEventCallbackV2(instance->handle, FBro_桥接事件V2, this);
+            LB_FBro_SetEventCallbackV3(instance->handle, FBro_桥接事件V3, this);
             if (!instance->proxyServer.empty()) LB_FBro_SetProxy(instance->handle, instance->proxyServer.c_str(), L"", L"");
             if (!instance->fingerprintJson.empty()) LB_FBro_ApplyFingerprintJson(instance->handle, instance->fingerprintJson.c_str());
             ++created;
@@ -5981,6 +6150,7 @@ ${EDGEVIEW_SAFE_API_NATIVE_MEMBERS}
         }
         instance->chromeUiInstances.emplace(popup, FbroBrowserInstance::PopupState{});
         LB_FBro_SetEventCallbackV2(popup, FBro_桥接事件V2, this);
+        LB_FBro_SetEventCallbackV3(popup, FBro_桥接事件V3, this);
         return static_cast<long long>(popup);
 #else
         (void)controlName; (void)address;
@@ -6347,6 +6517,8 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
     }
     std::wstring FBro_取事件字段(const wchar_t* controlName, const wchar_t* fieldName) {
         auto* instance = FBro_查找实例(controlName);
+        if (instance && fieldName && std::wcscmp(fieldName, L"continuationHandle") == 0) return std::to_wstring(instance->lastEventContinuation);
+        if (instance && fieldName && std::wcscmp(fieldName, L"objectHandle") == 0) return std::to_wstring(instance->lastEventObject);
         return instance && fieldName ? FBro_读取JSON字段(instance->lastEventJson, fieldName) : L"";
     }
     int FBro_设置事件结果(const wchar_t* controlName, int action) {
@@ -6359,10 +6531,49 @@ ${generateFbroObjectRuntime('LINGBUILDER_FBRO_AVAILABLE', false)}
         if (!instance) return 0;
         instance->eventResultText = value ? value : L""; return 1;
     }
+    int FBro_设置事件响应JSON(const wchar_t* controlName, const wchar_t* value) {
+        auto* instance = FBro_查找实例(controlName);
+        if (!instance) return 0;
+        instance->eventResponseJson = value ? value : L"{}"; return 1;
+    }
+    std::wstring FBro_取事件对象字段(const wchar_t* controlName, const wchar_t* fieldName) {
+        return FBro_取事件字段(controlName, fieldName);
+    }
+    long long FBro_取事件延续(const wchar_t* controlName) {
+        auto* instance = FBro_查找实例(controlName);
+        return instance ? static_cast<long long>(instance->lastEventContinuation) : 0;
+    }
+    int FBro事件_完成延续(long long continuation, const wchar_t* responseJson) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return continuation > 0 ? LB_FBro_CompleteEventContinuation(static_cast<LB_FBRO_CONTINUATION_HANDLE>(continuation), responseJson) : 0;
+#else
+        (void)continuation; (void)responseJson; return 0;
+#endif
+    }
+    int FBro事件_取消延续(long long continuation) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        return continuation > 0 ? LB_FBro_CancelEventContinuation(static_cast<LB_FBRO_CONTINUATION_HANDLE>(continuation)) : 0;
+#else
+        (void)continuation; return 0;
+#endif
+    }
+    int FBro_设置事件采样率(const wchar_t* controlName, const wchar_t* eventName, int maxHz) {
+#if LINGBUILDER_FBRO_AVAILABLE
+        auto* instance = FBro_查找实例(controlName);
+        return instance && instance->handle && eventName && maxHz >= 0
+            ? LB_FBro_SetEventSamplingRate(instance->handle, eventName, static_cast<uint32_t>(maxHz)) : 0;
+#else
+        (void)controlName; (void)eventName; (void)maxHz; return 0;
+#endif
+    }
     int FBro_绑定事件(const wchar_t* controlName, const wchar_t* eventName, const wchar_t* handler) {
         auto* instance = FBro_查找实例(controlName);
         if (!instance || !eventName || !*eventName || !handler || !*handler) return 0;
-        instance->handlers[eventName] = handler; return 1;
+        instance->handlers[eventName] = handler;
+#if LINGBUILDER_FBRO_AVAILABLE
+        if (instance->handle) LB_FBro_SetEventSubscription(instance->handle, eventName, 1);
+#endif
+        return 1;
     }
     int FBro_实例导航(long long instanceId, const wchar_t* address) {
 #if LINGBUILDER_FBRO_AVAILABLE
@@ -6643,6 +6854,24 @@ ${generateFbroVipIndividualRuntime(false)}
         for (auto& item : fbroBrowsers_) if (item.second->handle) LB_FBro_Resize(item.second->handle);
 #endif
     }
+    bool FBro_是否全部关闭() const {
+#if LINGBUILDER_FBRO_AVAILABLE
+        for (const auto& item : fbroBrowsers_) {
+            if (!item.second->closed && item.second->handle) return false;
+            if (!item.second->chromeUiInstances.empty()) return false;
+        }
+#endif
+        return true;
+    }
+    void FBro_开始应用关闭() {
+#if LINGBUILDER_FBRO_AVAILABLE
+        for (auto& item : fbroBrowsers_) {
+            for (const auto& popup : item.second->chromeUiInstances) if (popup.first) LB_FBro_Close(popup.first);
+            if (item.second->handle && !item.second->closed) LB_FBro_Close(item.second->handle);
+        }
+        LB_FBro_Shutdown();
+#endif
+    }
     void FBro_关闭全部() {
 #if LINGBUILDER_FBRO_AVAILABLE
         for (auto& item : fbroBrowsers_) {
@@ -6653,6 +6882,22 @@ ${generateFbroVipIndividualRuntime(false)}
         fbroBrowsers_.clear();
     }
     void FBro_处理事件包(LingFbroEventPacket& packet) {
+        auto findHandler = [&packet](const auto& handlers) -> std::wstring {
+            const wchar_t* legacy = packet.eventCode == LB_FBRO_EVENT_CREATED ? L"Created"
+                : packet.eventCode == LB_FBRO_EVENT_LOAD_END ? L"LoadEnd"
+                : packet.eventCode == LB_FBRO_EVENT_ADDRESS_CHANGED ? L"AddressChanged"
+                : packet.eventCode == LB_FBRO_EVENT_TITLE_CHANGED ? L"TitleChanged"
+                : packet.eventCode == LB_FBRO_EVENT_CLOSED ? L"Closed"
+                : packet.eventCode == LB_FBRO_EVENT_ERROR ? L"Error"
+                : packet.eventCode == LB_FBRO_EVENT_BEFORE_POPUP ? L"BeforePopup"
+                : packet.eventCode == LB_FBRO_EVENT_CERTIFICATE_ERROR ? L"CertificateError"
+                : packet.eventCode == LB_FBRO_EVENT_DRAG_ENTER ? L"DragEnter" : L"";
+            for (const std::wstring* key : {&packet.eventId, &packet.officialName, &packet.eventName}) {
+                if (!key->empty()) { auto found = handlers.find(*key); if (found != handlers.end()) return found->second; }
+            }
+            if (*legacy) { auto found = handlers.find(legacy); if (found != handlers.end()) return found->second; }
+            return L"";
+        };
         for (auto& item : fbroBrowsers_) {
             FbroBrowserInstance& instance = *item.second;
             const bool isEmbedded = instance.handle == packet.handle;
@@ -6664,36 +6909,64 @@ ${generateFbroVipIndividualRuntime(false)}
                 popup.lastEventData = packet.data;
                 popup.lastEventJson = packet.dataJson;
                 popup.lastEventObject = packet.object;
+                popup.lastEventContinuation = packet.continuation;
                 popup.eventAction = 0;
                 popup.eventResultText.clear();
+                popup.eventResponseJson.clear();
                 if (packet.eventCode == 6) popup.lastError = packet.data;
-                auto handler = popup.handlers.find(packet.eventName);
-                if (handler != popup.handlers.end()) DispatchFbroBrowserEvent(handler->second.c_str(), instance.controlId,
+                const std::wstring handler = findHandler(popup.handlers);
+                if (!handler.empty()) DispatchFbroBrowserEvent(handler.c_str(), instance.controlId,
                     packet.handle, packet.eventName.c_str(), packet.data.c_str());
                 if (packet.synchronous) {
                     packet.action = popup.eventAction;
                     packet.resultText = popup.eventResultText;
+                    packet.responseJson = popup.eventResponseJson;
                 }
                 if (packet.eventCode == 5) instance.chromeUiInstances.erase(chromeUi);
                 return;
             }
             const ControlSpec* control = FindControl(instance.controlId);
             if (!control) return;
+            if (packet.eventCode == LB_FBRO_EVENT_CREATED) instance.closed = false;
+            if (packet.eventCode == LB_FBRO_EVENT_CLOSED) instance.closed = true;
             instance.eventAction = 0;
             instance.eventResultText.clear();
+            instance.eventResponseJson.clear();
             instance.lastEvent = packet.eventName;
             instance.lastEventData = packet.data;
             instance.lastEventJson = packet.dataJson;
             instance.lastEventObject = packet.object;
+            instance.lastEventContinuation = packet.continuation;
             if (packet.eventCode == 6) instance.lastError = packet.data;
-            auto handler = instance.handlers.find(instance.lastEvent);
-            if (handler != instance.handlers.end()) {
-                DispatchFbroBrowserEvent(handler->second.c_str(), instance.controlId, packet.handle,
+            const std::wstring handler = findHandler(instance.handlers);
+            if (!handler.empty()) {
+                DispatchFbroBrowserEvent(handler.c_str(), instance.controlId, packet.handle,
                     instance.lastEvent.c_str(), instance.lastEventData.c_str());
-            } else DispatchLingEvent(*control, instance.lastEvent.c_str());
+            } else {
+                const wchar_t* legacy = packet.eventCode == LB_FBRO_EVENT_CREATED ? L"Created"
+                    : packet.eventCode == LB_FBRO_EVENT_LOAD_END ? L"LoadEnd"
+                    : packet.eventCode == LB_FBRO_EVENT_ADDRESS_CHANGED ? L"AddressChanged"
+                    : packet.eventCode == LB_FBRO_EVENT_TITLE_CHANGED ? L"TitleChanged"
+                    : packet.eventCode == LB_FBRO_EVENT_CLOSED ? L"Closed"
+                    : packet.eventCode == LB_FBRO_EVENT_ERROR ? L"Error"
+                    : packet.eventCode == LB_FBRO_EVENT_BEFORE_POPUP ? L"BeforePopup"
+                    : packet.eventCode == LB_FBRO_EVENT_CERTIFICATE_ERROR ? L"CertificateError"
+                    : packet.eventCode == LB_FBRO_EVENT_DRAG_ENTER ? L"DragEnter" : L"";
+                std::wstring designerHandler;
+                for (const wchar_t* key : {packet.eventId.c_str(), packet.officialName.c_str(),
+                        packet.eventName.c_str(), legacy}) {
+                    if (!key || !*key) continue;
+                    designerHandler = GetEventHandler(*control, key);
+                    if (!designerHandler.empty()) break;
+                }
+                if (!designerHandler.empty()) DispatchFbroBrowserEvent(designerHandler.c_str(),
+                    instance.controlId, packet.handle, instance.lastEvent.c_str(), instance.lastEventData.c_str());
+                else DispatchLingEvent(*control, packet.eventId.empty() ? instance.lastEvent.c_str() : packet.eventId.c_str());
+            }
             if (packet.synchronous) {
                 packet.action = instance.eventAction;
                 packet.resultText = instance.eventResultText;
+                packet.responseJson = instance.eventResponseJson;
             }
             return;
         }
@@ -11325,6 +11598,14 @@ private:
         const ControlSpec* control = FindControlByName(name); return control ? FindRuntimeControl(control->id) : nullptr;
     }
 
+    int LingCppControlStableId(const wchar_t* name) {
+        const ControlSpec* control = FindControlByName(name); return control ? control->id : 0;
+    }
+
+    HWND LingCppControlNativeHandle(const wchar_t* name) {
+        RuntimeControl* runtime = FindRuntimeControlByName(name); return runtime ? runtime->hwnd : nullptr;
+    }
+
     HTREEITEM FindTreeItemByText(HWND tree, HTREEITEM item, const wchar_t* text) {
         while (item) {
             wchar_t buffer[512] = {}; TVITEMW info = {}; info.mask = TVIF_TEXT; info.hItem = item; info.pszText = buffer; info.cchTextMax = 512;
@@ -14340,6 +14621,11 @@ private:
             if (!packet) return 0;
             FBro_处理事件包(*packet);
             if (!packet->synchronous) delete packet;
+            if (fbroClosePending_ && FBro_是否全部关闭()) {
+                KillTimer(hwnd_, 0x4C46);
+                fbroClosePending_ = false;
+                DestroyWindow(hwnd_);
+            }
             return 0;
         }
         case WM_LINGBUILDER_LAYOUT_DATE_PICKER: {
@@ -14423,7 +14709,21 @@ private:
             closingCancelled_ = false;
             DispatchWindowEvent(L"Closing");
             closingEventActive_ = false;
-            if (!closingCancelled_) DestroyWindow(hwnd_);
+            if (!closingCancelled_) {
+#if LINGBUILDER_FBRO_AVAILABLE
+                // Keep the Win32 host and its message pump alive until FBro
+                // delivers OnBeforeClose. A five-second fallback prevents a
+                // broken SDK callback from leaving a hidden process forever.
+                if (g_openWindowCount <= 1 && !FBro_是否全部关闭()) {
+                    fbroClosePending_ = true;
+                    ShowWindow(hwnd_, SW_HIDE);
+                    SetTimer(hwnd_, 0x4C46, 5000, nullptr);
+                    FBro_开始应用关闭();
+                    return 0;
+                }
+#endif
+                DestroyWindow(hwnd_);
+            }
             return 0;
         case WM_SHOWWINDOW: {
             bool nextVisible = wParam != FALSE;
@@ -14530,6 +14830,12 @@ private:
             if (HandleContextMenu(reinterpret_cast<HWND>(wParam), lParam)) return 0;
             break;
         case WM_TIMER:
+            if (wParam == 0x4C46) {
+                KillTimer(hwnd_, 0x4C46);
+                fbroClosePending_ = false;
+                DestroyWindow(hwnd_);
+                return 0;
+            }
             if (AdvanceAnimatedImage(static_cast<UINT_PTR>(wParam))) return 0;
             if (wParam == 0x4C44) {
                 if (!batchProgress_ || !batchProgress_->active) { KillTimer(hwnd_, 0x4C44); return 0; }
@@ -15431,7 +15737,8 @@ function generateLingCppNativeSourceMap(
   classSourceFiles: ReadonlyMap<string, string> = new Map(),
   functionLibrarySourceFiles: ReadonlyMap<string, string> = new Map(),
   globalSourceFile?: string,
-  dataTypeSourceFile?: string
+  dataTypeSourceFile?: string,
+  enabledModules: InstalledModule[] = []
 ): LingCppNativeSourceMapEntry[] {
   const lines = mainCppContent.split('\n');
   const entries: LingCppNativeSourceMapEntry[] = [];
@@ -15497,7 +15804,7 @@ function generateLingCppNativeSourceMap(
         kind: 'function-library',
         symbolName: `${library.name}.${method.name}`
       });
-      const statementEntries = translateMethodStatementsWithMetadata(method);
+      const statementEntries = translateMethodStatementsWithMetadata(method, enabledModules, program.dataTypes);
       let searchLine = boundary.startLine + 1;
       statementEntries.forEach(statement => {
         const targetLine = findGeneratedStatementLine(lines, statement.code, searchLine, boundary.endLine);
@@ -15510,7 +15817,7 @@ function generateLingCppNativeSourceMap(
           sourceStartLine: statement.sourceStartLine,
           sourceEndLine: statement.sourceEndLine,
           kind: statement.kind,
-          symbolName: `${library.name}.${method.name}`
+          symbolName: statement.symbolName || `${library.name}.${method.name}`
         });
         searchLine = targetLine + 1;
       });
@@ -15561,7 +15868,7 @@ function generateLingCppNativeSourceMap(
         className
       });
 
-      const statementEntries = translateMethodStatementsWithMetadata(method);
+      const statementEntries = translateMethodStatementsWithMetadata(method, enabledModules, program.dataTypes);
       let searchLine = boundary.startLine + 1;
       statementEntries.forEach(statement => {
         const targetLine = findGeneratedStatementLine(lines, statement.code, searchLine, boundary.endLine);
@@ -15574,7 +15881,7 @@ function generateLingCppNativeSourceMap(
           sourceStartLine: statement.sourceStartLine,
           sourceEndLine: statement.sourceEndLine,
           kind: statement.kind,
-          symbolName: method.name,
+          symbolName: statement.symbolName || method.name,
           className
         });
         searchLine = targetLine + 1;
@@ -15598,7 +15905,7 @@ function generateLingCppNativeSourceMap(
           className
         });
 
-        const statementEntries = translateMethodStatementsWithMetadata(method);
+        const statementEntries = translateMethodStatementsWithMetadata(method, enabledModules, program.dataTypes);
         let searchLine = boundary.startLine + 1;
         statementEntries.forEach(statement => {
           const targetLine = findGeneratedStatementLine(lines, statement.code, searchLine, boundary.endLine);
@@ -15611,7 +15918,7 @@ function generateLingCppNativeSourceMap(
             sourceStartLine: statement.sourceStartLine,
             sourceEndLine: statement.sourceEndLine,
             kind: statement.kind,
-            symbolName: method.name,
+            symbolName: statement.symbolName || method.name,
             className
           });
           searchLine = targetLine + 1;
@@ -15626,7 +15933,8 @@ function buildWindowClassSourceMap(
   classCode: string,
   window: LingWindowModel,
   program: LingCppProgram,
-  sourceFilePath: string
+  sourceFilePath: string,
+  enabledModules: InstalledModule[] = []
 ): LingCppNativeSourceMapEntry[] {
   const lines = classCode.split('\n');
   const sourceClass = findLingCppClassForWindow(program, window);
@@ -15670,7 +15978,7 @@ function buildWindowClassSourceMap(
       className
     });
 
-    const statementEntries = translateMethodStatementsWithMetadata(method);
+    const statementEntries = translateMethodStatementsWithMetadata(method, enabledModules, program.dataTypes);
     let searchLine = boundary.startLine + 1;
     statementEntries.forEach(statement => {
       const targetLine = findGeneratedStatementLine(lines, statement.code, searchLine, boundary.endLine);
@@ -15683,7 +15991,7 @@ function buildWindowClassSourceMap(
         sourceStartLine: statement.sourceStartLine,
         sourceEndLine: statement.sourceEndLine,
         kind: statement.kind,
-        symbolName: method.name,
+        symbolName: statement.symbolName || method.name,
         className
       });
       searchLine = targetLine + 1;
@@ -15707,7 +16015,7 @@ function buildWindowClassSourceMap(
         className
       });
 
-      const statementEntries = translateMethodStatementsWithMetadata(method);
+      const statementEntries = translateMethodStatementsWithMetadata(method, enabledModules, program.dataTypes);
       let searchLine = boundary.startLine + 1;
       statementEntries.forEach(statement => {
         const targetLine = findGeneratedStatementLine(lines, statement.code, searchLine, boundary.endLine);
@@ -15720,7 +16028,7 @@ function buildWindowClassSourceMap(
           sourceStartLine: statement.sourceStartLine,
           sourceEndLine: statement.sourceEndLine,
           kind: statement.kind,
-          symbolName: method.name,
+          symbolName: statement.symbolName || method.name,
           className
         });
         searchLine = targetLine + 1;
@@ -16013,7 +16321,7 @@ function findLingCppClassForWindow(program: LingCppProgram, window: LingWindowMo
 
 function generateHandlerMethod(handler: string, method: LingCppMethod | undefined, enabledModules: InstalledModule[], dataTypes: LingCppDataType[] = []): string {
   const body = method
-    ? [generateLocalDeclarations(method, enabledModules, dataTypes), translateMethodStatements(method, enabledModules)].filter(Boolean).join('\n')
+    ? [generateLocalDeclarations(method, enabledModules, dataTypes), translateMethodStatements(method, enabledModules, dataTypes)].filter(Boolean).join('\n')
     : `        调试输出(L"未找到 ${escapeWideString(handler)} 的中文 C++ 事件实现。");`;
   return `    void ${toCppIdentifier(handler)}() {
 ${body || '        // 空事件处理器。'}
@@ -16023,7 +16331,7 @@ ${body || '        // 空事件处理器。'}
 function generateUserMethod(method: LingCppMethod, enabledModules: InstalledModule[], dataTypes: LingCppDataType[] = []): string {
   const returnType = toCppType(method.returnType, 'return', enabledModules, dataTypes);
   const parameters = formatCppParameters(method.parameters, enabledModules, dataTypes);
-  const body = [generateLocalDeclarations(method, enabledModules, dataTypes), translateMethodStatements(method, enabledModules)].filter(Boolean).join('\n');
+  const body = [generateLocalDeclarations(method, enabledModules, dataTypes), translateMethodStatements(method, enabledModules, dataTypes)].filter(Boolean).join('\n');
   const fallbackReturn = defaultReturnStatement(returnType);
   const staticPrefix = method.isStatic ? 'static ' : '';
   const bodyWithFallback = [
@@ -16088,7 +16396,7 @@ function generateNewEmojiFunctionLibraries(program: LingCppProgram, enabledModul
   )).join('\n');
   const definitions = entries.map(({ library, method }) => {
     const returnType = toCppType(method.returnType, 'return', enabledModules, program.dataTypes);
-    const body = [generateLocalDeclarations(method, enabledModules, program.dataTypes), translateMethodStatements(method, enabledModules)]
+    const body = [generateLocalDeclarations(method, enabledModules, program.dataTypes), translateMethodStatements(method, enabledModules, program.dataTypes)]
       .filter(Boolean).join('\n').replace(/^ {8}/gmu, '    ');
     const fallback = defaultReturnStatement(returnType);
     return `static ${returnType} ${functionLibraryCppName(library.name, method.name)}(${formatCppParameters(method.parameters, enabledModules, program.dataTypes)}) {\n${body}${fallback ? `${body ? '\n' : ''}    ${fallback}` : ''}\n}`;
@@ -16105,11 +16413,14 @@ function generateMemberDeclaration(member: LingCppMember, enabledModules: Instal
 }
 
 function generateLocalDeclarations(method: LingCppMethod, enabledModules: InstalledModule[], dataTypes: LingCppDataType[] = []): string {
-  return (method.locals || []).map(local => `        ${formatCppVariableDeclaration(local, enabledModules, '', dataTypes)}`).join('\n');
+  return (method.locals || [])
+    .filter(local => !local.isConstant)
+    .map(local => `        ${formatCppVariableDeclaration(local, enabledModules, '', dataTypes)}`)
+    .join('\n');
 }
 
 function formatCppVariableDeclaration(
-  variable: { name: string; type: string; initialValue?: string; isArray?: boolean },
+  variable: { name: string; type: string; initialValue?: string; isArray?: boolean; isConstant?: boolean },
   enabledModules: InstalledModule[],
   prefix = '',
   dataTypes: LingCppDataType[] = []
@@ -16119,7 +16430,8 @@ function formatCppVariableDeclaration(
   const initializer = variable.initialValue?.trim()
     ? ` = ${translateLingCppExpression(variable.initialValue, enabledModules)}`
     : '{}';
-  return `${prefix}${cppType} ${toCppIdentifier(variable.name)}${initializer};`;
+  const constantSuffix = variable.isConstant ? ' const' : '';
+  return `${prefix}${cppType}${constantSuffix} ${toCppIdentifier(variable.name)}${initializer};`;
 }
 
 function generateProjectGlobalsDefinition(program: LingCppProgram, enabledModules: InstalledModule[]): string {
@@ -16166,8 +16478,28 @@ function defaultReturnStatement(returnType: string): string {
   return 'return 0;';
 }
 
-function translateMethodStatementsWithMetadata(method: LingCppMethod, enabledModules: InstalledModule[] = []): TranslatedStatementLine[] {
-  return translateLingCppStatementBlock(method.statements, enabledModules);
+function translateMethodStatementsWithMetadata(
+  method: LingCppMethod,
+  enabledModules: InstalledModule[] = [],
+  dataTypes: LingCppDataType[] = []
+): TranslatedStatementLine[] {
+  const translated = translateLingCppStatementBlock(method.statements, enabledModules);
+  const localConstants = [...(method.locals || [])]
+    .filter(local => local.isConstant)
+    .sort((left, right) => left.line - right.line);
+  localConstants.forEach(local => {
+    const entry: TranslatedStatementLine = {
+      code: formatCppVariableDeclaration(local, enabledModules, '', dataTypes),
+      sourceStartLine: local.line,
+      sourceEndLine: local.line,
+      kind: 'local',
+      symbolName: local.name
+    };
+    const insertAt = translated.findIndex(item => item.sourceStartLine > local.line);
+    if (insertAt < 0) translated.push(entry);
+    else translated.splice(insertAt, 0, entry);
+  });
+  return translated;
 }
 
 function translateLingCppStatementBlock(statements: LingCppStatement[], enabledModules: InstalledModule[] = []): TranslatedStatementLine[] {
@@ -16390,8 +16722,12 @@ function translateStatementToMetadata(statement: LingCppStatement, enabledModule
   };
 }
 
-function translateMethodStatements(method: LingCppMethod, enabledModules: InstalledModule[] = []): string {
-  return translateMethodStatementsWithMetadata(method, enabledModules)
+function translateMethodStatements(
+  method: LingCppMethod,
+  enabledModules: InstalledModule[] = [],
+  dataTypes: LingCppDataType[] = []
+): string {
+  return translateMethodStatementsWithMetadata(method, enabledModules, dataTypes)
     .map(item => `        ${item.code}`)
     .join('\n');
 }
@@ -16588,11 +16924,26 @@ function translateCallArguments(raw: string, enabledModules: InstalledModule[] =
 function translateModuleCallArguments(raw: string, binding: ModuleCommandBinding, enabledModules: InstalledModule[] = []): string {
   return splitCallArguments(raw)
     .map((argument, index) => {
-      const parameterType = binding.parameters?.[index]?.type;
+      const parameter = binding.parameters?.[index];
+      const parameterType = parameter?.type;
+      if (parameterType === 'controlRef') {
+        const controlName = argument.trim().match(/^[\p{L}_][\p{L}\p{N}_]*$/u)?.[0]
+          || argument.trim().match(/^["“]([\p{L}_][\p{L}\p{N}_]*)["”]$/u)?.[1];
+        if (controlName) {
+          const wideName = `L"${escapeWideString(controlName)}"`;
+          if ((parameter.runtimeRepresentation || 'wideName') === 'stableId') return `LingCppControlStableId(${wideName})`;
+          if (parameter.runtimeRepresentation === 'nativeHandle') return `LingCppControlNativeHandle(${wideName})`;
+          return wideName;
+        }
+      }
+      if (parameterType === 'wideString') {
+        const trimmed = argument.trim();
+        if (/^"(?:\\.|[^"\\])*"$/u.test(trimmed)) return `L${trimmed}`;
+        const chineseQuoted = trimmed.match(/^“([\s\S]*)”$/u);
+        if (chineseQuoted) return `L"${escapeWideString(chineseQuoted[1] || '')}"`;
+      }
       const translated = translateLingCppExpression(argument, enabledModules);
-      if (parameterType === 'wideString'
-        && binding.command.startsWith('表格_')
-        && /^[\p{L}_][\p{L}\p{N}_]*$/u.test(argument.trim())) return `LingCppWideArg(${translated})`;
+      if (parameterType === 'wideString' && /^[\p{L}_][\p{L}\p{N}_]*$/u.test(argument.trim())) return `LingCppWideArg(${translated})`;
       if (parameterType !== 'handler') return translated;
       const reference = argument.trim().match(/^&([\w\u4e00-\u9fa5]+)$/u);
       if (reference) return `L"${escapeWideString(reference[1] || '')}"`;
@@ -16606,11 +16957,17 @@ function splitCallArguments(raw: string): string[] {
   let current = '';
   let depth = 0;
   let quote: '"' | '“' | null = null;
+  let escaped = false;
 
   for (const char of raw) {
     if (quote) {
       current += char;
-      if ((quote === '"' && char === '"') || (quote === '“' && char === '”')) quote = null;
+      if (quote === '"' && char === '\\' && !escaped) {
+        escaped = true;
+        continue;
+      }
+      if (((quote === '"' && char === '"') || (quote === '“' && char === '”')) && !escaped) quote = null;
+      escaped = false;
       continue;
     }
     if (char === '"' || char === '“') {

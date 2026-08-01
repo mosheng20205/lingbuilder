@@ -14,10 +14,12 @@ typedef uintptr_t LB_FBRO_HANDLE;
 typedef uint64_t LB_FBRO_OBJECT_HANDLE;
 typedef uint64_t LB_FBRO_TASK_HANDLE;
 typedef uint64_t LB_FBRO_BUFFER_HANDLE;
+typedef uint64_t LB_FBRO_CONTINUATION_HANDLE;
 typedef void(__stdcall* LB_FBRO_EVENT_CALLBACK)(LB_FBRO_HANDLE browser, int event_code,
                                                 const wchar_t* data, void* user_data);
 
 #define LB_FBRO_ABI_VERSION_V2 0x00020000u
+#define LB_FBRO_ABI_VERSION_V3 0x00030000u
 
 enum LB_FBRO_RESULT_CODE {
   LB_FBRO_OK = 1,
@@ -77,6 +79,54 @@ typedef struct LB_FBRO_EVENT_PACKET_V2 {
   const wchar_t* data_json;
   LB_FBRO_OBJECT_HANDLE object;
 } LB_FBRO_EVENT_PACKET_V2;
+
+enum LB_FBRO_EVENT_FLAGS {
+  LB_FBRO_EVENT_FLAG_SYNCHRONOUS = 1u << 0,
+  LB_FBRO_EVENT_FLAG_DEFERRED = 1u << 1,
+  LB_FBRO_EVENT_FLAG_HIGH_FREQUENCY = 1u << 2,
+  LB_FBRO_EVENT_FLAG_COALESCED = 1u << 3,
+  LB_FBRO_EVENT_FLAG_INTERNAL = 1u << 4
+};
+
+enum LB_FBRO_EVENT_ACTION {
+  LB_FBRO_EVENT_ACTION_DEFAULT = 0,
+  LB_FBRO_EVENT_ACTION_CONTINUE = 1,
+  LB_FBRO_EVENT_ACTION_CANCEL = 2,
+  LB_FBRO_EVENT_ACTION_HANDLED = 3,
+  LB_FBRO_EVENT_ACTION_DEFER = 4
+};
+
+/** v3 只暴露复制后的 UTF-16 JSON 和受管句柄；所有指针仅在回调期间有效。 */
+typedef struct LB_FBRO_EVENT_PACKET_V3 {
+  uint32_t struct_size;
+  uint32_t abi_version;
+  uint64_t sequence;
+  uint64_t timestamp_milliseconds;
+  LB_FBRO_HANDLE browser;
+  uint64_t event_token;
+  int32_t legacy_event_code;
+  int32_t instance_kind;
+  uint32_t flags;
+  const wchar_t* event_id;
+  const wchar_t* event_name;
+  const wchar_t* official_name;
+  const wchar_t* fields_json;
+  LB_FBRO_OBJECT_HANDLE object;
+  LB_FBRO_CONTINUATION_HANDLE continuation;
+} LB_FBRO_EVENT_PACKET_V3;
+
+typedef struct LB_FBRO_EVENT_RESPONSE_V3 {
+  uint32_t struct_size;
+  uint32_t abi_version;
+  int32_t action;
+  uint32_t flags;
+  const wchar_t* response_json;
+} LB_FBRO_EVENT_RESPONSE_V3;
+
+typedef void(__stdcall* LB_FBRO_EVENT_CALLBACK_V3)(
+    const LB_FBRO_EVENT_PACKET_V3* packet,
+    LB_FBRO_EVENT_RESPONSE_V3* response,
+    void* user_data);
 
 /** 所有生成高级 wrapper 共用的只读调用包。args_json 由调用方持有，调用期间保持有效。 */
 typedef struct LB_FBRO_CALL_V2 {
@@ -228,6 +278,19 @@ LB_FBRO_API int __stdcall LB_FBro_GetLastError(LB_FBRO_HANDLE browser, wchar_t* 
 LB_FBRO_API int __stdcall LB_FBro_SetEventCallbackV2(LB_FBRO_HANDLE browser,
                                                      LB_FBRO_EVENT_CALLBACK_V2 callback,
                                                      void* user_data);
+LB_FBRO_API int __stdcall LB_FBro_SetEventCallbackV3(LB_FBRO_HANDLE browser,
+                                                     LB_FBRO_EVENT_CALLBACK_V3 callback,
+                                                     void* user_data);
+LB_FBRO_API int __stdcall LB_FBro_SetEventSubscription(LB_FBRO_HANDLE browser,
+                                                       const wchar_t* event_id,
+                                                       int enabled);
+LB_FBRO_API int __stdcall LB_FBro_SetEventSamplingRate(LB_FBRO_HANDLE browser,
+                                                       const wchar_t* event_id,
+                                                       uint32_t max_hz);
+LB_FBRO_API int __stdcall LB_FBro_CompleteEventContinuation(
+    LB_FBRO_CONTINUATION_HANDLE continuation, const wchar_t* response_json);
+LB_FBRO_API int __stdcall LB_FBro_CancelEventContinuation(
+    LB_FBRO_CONTINUATION_HANDLE continuation);
 LB_FBRO_API int __stdcall LB_FBro_GetLastEventJson(LB_FBRO_HANDLE browser,
                                                    wchar_t* result, size_t capacity);
 LB_FBRO_API int __stdcall LB_FBro_GetInstanceKind(LB_FBRO_HANDLE browser);

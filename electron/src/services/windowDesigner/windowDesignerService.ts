@@ -14,6 +14,7 @@ import {
 } from './win32ControlRegistry';
 import { getWindowEventDefinition } from './windowEventRegistry';
 import type { ModuleDesignerControlContribution } from '../modules/types';
+import { normalizeFbroEventId } from '../modules/fbroEventCatalog';
 import {
   dataGridModelToPropertyValues,
   migrateLegacyNewEmojiTableProperties,
@@ -170,7 +171,8 @@ export function getEventsForType(type: LingControlType): LingDesignerEventInfo[]
     return registered.events.map(item => ({
       name: item.name,
       label: `${item.label} (${item.name})`,
-      desc: `${registered.label}触发“${item.label}”时执行中文事件处理器。`
+      desc: `${registered.label}触发“${item.label}”时执行中文事件处理器。`,
+      handlerSuffix: item.handlerSuffix
     }));
   }
   switch (type as any) {
@@ -654,9 +656,13 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
         || control.fontSize !== font.size
         || control.fontBold !== font.bold
         || control.fontItalic !== font.italic
-        || control.fontUnderline !== font.underline;
+        || control.fontUnderline !== font.underline
+        || (control.type === 'FBroBrowser' && Object.keys(control.events || {}).some(name => normalizeFbroEventId(name) !== name));
       if (!requiresMigration) return control;
       controlsChanged = true;
+      const normalizedEvents = control.type === 'FBroBrowser' && control.events
+        ? Object.fromEntries(Object.entries(control.events).map(([name, handler]) => [normalizeFbroEventId(name), handler]))
+        : control.events;
       return {
         ...control,
         fontFamily: font.family,
@@ -664,6 +670,7 @@ export function normalizeWindowDesignerState(state?: Partial<PersistedWindowDesi
         fontBold: font.bold,
         fontItalic: font.italic,
         fontUnderline: font.underline,
+        events: normalizedEvents,
         width: usesLegacyMonthCalendarSize ? 300 : control.width,
         height: usesLegacyDateTimePickerHeight || usesLegacyMonthCalendarSize ? (control.type === 'DateTimePicker' ? 40 : 300) : control.height,
         properties: {
@@ -796,6 +803,19 @@ export function getLingWindowSourceFileName(windowFileName?: string, windowClass
   if (windowClassName?.trim()) return `${windowClassName.trim()}.lcpp`;
   const normalized = (windowFileName || '窗口').replace(/\.xml$/i, '');
   return `${normalized}.lcpp`;
+}
+
+export function getLingWindowSourceFilePath(
+  projectSourceRoot: string | undefined,
+  windowFileName?: string,
+  windowClassName?: string
+): string {
+  const sourceRoot = (projectSourceRoot || 'src')
+    .replace(/\\/gu, '/')
+    .replace(/^\.\//u, '')
+    .replace(/\/+$/u, '');
+  const sourceFileName = getLingWindowSourceFileName(windowFileName, windowClassName);
+  return !sourceRoot || sourceRoot === '.' ? sourceFileName : `${sourceRoot}/${sourceFileName}`;
 }
 
 export function generateWindowXml(window: LingWindowModel): string {

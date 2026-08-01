@@ -259,6 +259,40 @@ test('通用密码学源码包自动携带只读密码学 SDK', async t => {
   assert.ok(exported.manifest.bundledSupportModuleIds.includes('lingbuilder.crypto.sdk'));
 });
 
+test('OpenCV 源码包自动携带只读 x64 SDK', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-lcpp-opencv-sdk-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const workspace = path.join(root, 'workspace');
+  await fs.mkdir(workspace, { recursive: true });
+  await createSolutionService(workspace).getSolution();
+  await fs.writeFile(path.join(workspace, 'src', 'MainWindow.lcpp'), [
+    '类 MainWindow : 窗体',
+    '    事件 _MainWindow_创建完毕()',
+    '        调试输出(OpenCV_取版本())',
+    '    结束',
+    '结束类',
+    ''
+  ].join('\n'), 'utf8');
+  await fs.writeFile(path.join(workspace, '.lingbuilder', 'project-modules.json'), JSON.stringify({
+    schemaVersion: 1,
+    enabledModuleIds: ['lingbuilder.win32.basic', 'lingbuilder.opencv'],
+    pinnedVersions: { 'lingbuilder.win32.basic': '1.0.0', 'lingbuilder.opencv': '1.0.0' }
+  }, null, 2), 'utf8');
+  const sdkRoot = path.join(workspace, '.lingbuilder', 'modules', 'lingbuilder.opencv.sdk');
+  await fs.mkdir(sdkRoot, { recursive: true });
+  await fs.writeFile(path.join(sdkRoot, 'lingbuilder.module.json'), JSON.stringify({
+    schemaVersion: 2,
+    id: 'lingbuilder.opencv.sdk',
+    name: 'OpenCV 测试 SDK',
+    version: '4.14.0+bridge.1',
+    category: '图像',
+    description: '测试 OpenCV 消费模块的源码包资产携带。'
+  }, null, 2), 'utf8');
+  const packagePath = path.join(root, 'opencv-demo.lcpppkg');
+  const exported = await createLcppSourcePackageService(workspace).exportProject(DEFAULT_PROJECT_ID, packagePath);
+  assert.ok(exported.manifest.bundledSupportModuleIds.includes('lingbuilder.opencv.sdk'));
+});
+
 test('双击关联的 .lcpppkg 会导入并解析为可直接打开的工作区', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-lcpp-associated-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));

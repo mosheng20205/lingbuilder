@@ -955,6 +955,14 @@
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.views/src",
       "solutionFolderId": "module-complete-demos",
       "references": []
+    },
+    {
+      "id": "module-demo-lingbuilder.opencv",
+      "name": "OpenCV 图像处理模块完整演示",
+      "type": "visual-cpp",
+      "sourceRoot": "examples/module-demos/lingbuilder.opencv/src",
+      "solutionFolderId": "module-complete-demos",
+      "references": []
     }
   ]
 }

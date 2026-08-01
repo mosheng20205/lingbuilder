@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T09:57:36.092Z",
+  "generatedAt": "2026-07-31T18:20:25.789Z",
   "module": {
     "id": "lingbuilder.cef3.objects",
     "name": "CEF3受管对象模块",
@@ -4113,7 +4113,7 @@
       ],
       "signature": "CEF3导航项_取当前可见(控件名)",
       "description": "在CEF UI线程快照当前可见导航项并返回类型化受管句柄。",
-      "insertText": "CEF3导航项_取当前可见(\"$1\")",
+      "insertText": "CEF3导航项_取当前可见($1)",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -4122,13 +4122,21 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "longLong",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3导航项_取当前可见(\"演示输出\")"
+      "demoInvocation": "CEF3导航项_取当前可见(演示CefBrowser控件)"
     },
     {
       "index": 149,
@@ -4138,7 +4146,7 @@
       ],
       "signature": "CEF3导航项_读取历史(控件名, 仅当前项)",
       "description": "异步读取导航历史并返回结果为JSON数组的任务ID。",
-      "insertText": "CEF3导航项_读取历史(\"$1\", 假)",
+      "insertText": "CEF3导航项_读取历史($1, 假)",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -4147,7 +4155,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "仅当前项",
@@ -4157,7 +4173,7 @@
         "returnType": "longLong",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3导航项_读取历史(\"演示输出\", 真)"
+      "demoInvocation": "CEF3导航项_读取历史(演示CefBrowser控件, 真)"
     },
     {
       "index": 150,
@@ -4407,7 +4423,7 @@
       ],
       "signature": "CEF3证书_取当前(控件名)",
       "description": "在CEF UI线程读取当前可见导航项的TLS证书并返回不可变受管快照。",
-      "insertText": "CEF3证书_取当前(\"$1\")",
+      "insertText": "CEF3证书_取当前($1)",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -4416,13 +4432,21 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "longLong",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3证书_取当前(\"演示输出\")"
+      "demoInvocation": "CEF3证书_取当前(演示CefBrowser控件)"
     },
     {
       "index": 161,

@@ -2,8 +2,10 @@ import type {
   LingBuilderModuleManifest,
   ModuleBindingValueType,
   ModuleCommandBinding,
+  ModuleCommandBindingParameter,
   ModuleCommandContribution
 } from './types';
+import { createModuleBindingSnippetArgument, isWideStringAbiBindingType, normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter } from './bindingValueType';
 
 const CEF3_ALPHA_VERSION = '3.0.0-alpha.2';
 const CORE_DEPENDENCY = [{ moduleId: 'lingbuilder.cef3.browser', minimumVersion: CEF3_ALPHA_VERSION }];
@@ -15,7 +17,7 @@ const TARGET = [{
   toolchain: 'msvc' as const
 }];
 
-type Parameter = { name: string; type: ModuleBindingValueType; description?: string };
+type Parameter = ModuleCommandBindingParameter;
 
 function api(
   name: string,
@@ -25,19 +27,16 @@ function api(
   description: string,
   options: { runtimeName?: string; example?: string; visibility?: 'default' | 'advanced' } = {}
 ): { command: ModuleCommandContribution; binding: ModuleCommandBinding } {
-  const argumentText = parameters.map((parameter, index) => {
-    if (parameter.type === 'handler') return `&$${index + 1}`;
-    if (parameter.type === 'wideString' || parameter.type === 'utf8String') return `"$${index + 1}"`;
-    if (parameter.type === 'bool') return index === 0 ? '真' : '假';
-    return `$${index + 1}`;
-  }).join(', ');
+  const normalizedParameters = parameters.map(parameter => normalizeControlReferenceParameter(parameter, { controlTypes: ['CefBrowser'] }));
+  const argumentText = normalizedParameters.map(createModuleBindingSnippetArgument).join(', ');
+  const normalizedExample = normalizeControlReferenceCallSnippet(options.example, normalizedParameters);
   return {
     command: {
       name,
       aliases: [officialAlias],
-      signature: `${name}(${parameters.map(parameter => parameter.name).join(', ')})`,
+      signature: `${name}(${normalizedParameters.map(parameter => parameter.name).join(', ')})`,
       description,
-      insertText: options.example || `${name}(${argumentText})`,
+      insertText: normalizedExample || `${name}(${argumentText})`,
       returnType: returnType === 'void' ? '空' : returnType === 'wideString' ? '文本型'
         : returnType === 'longLong' || returnType === 'handle' ? '长整数型'
           : returnType === 'double' ? '双精度小数型' : '整数型',
@@ -46,10 +45,10 @@ function api(
     binding: {
       command: name,
       runtimeName: options.runtimeName || name,
-      parameters,
+      parameters: normalizedParameters,
       returnType,
-      encoding: parameters.some(parameter => parameter.type === 'wideString' || parameter.type === 'handler') ? 'wide' : undefined,
-      example: options.example
+      encoding: normalizedParameters.some(parameter => isWideStringAbiBindingType(parameter.type)) ? 'wide' : undefined,
+      example: normalizedExample
     }
   };
 }
@@ -79,12 +78,12 @@ function module(
 }
 
 const eventEntries = [
-  api('CEF3事件_取最近事件', 'LB_CEF3_GetLastEvent', [{ name: '控件名', type: 'wideString' }], 'wideString', '取得指定浏览器最近事件名。', { runtimeName: 'CEF3_取最近事件' }),
-  api('CEF3事件_取数据', 'LB_CEF3_GetEventData', [{ name: '控件名', type: 'wideString' }], 'wideString', '取得当前或最近事件的主要文本。', { runtimeName: 'CEF3_取事件数据' }),
-  api('CEF3事件_取字段', 'LB_CEF3_GetEventField', [{ name: '控件名', type: 'wideString' }, { name: '字段名', type: 'wideString' }], 'wideString', '读取当前事件的结构化字段。', { runtimeName: 'CEF3_取事件字段' }),
-  api('CEF3事件_设置结果', 'LB_CEF3_SetEventAction', [{ name: '控件名', type: 'wideString' }, { name: '动作', type: 'int' }], 'int', '设置当前同步事件动作。', { runtimeName: 'CEF3_设置事件结果' }),
-  api('CEF3事件_设置返回文本', 'LB_CEF3_SetEventResultText', [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }], 'int', '设置当前同步事件返回文本。', { runtimeName: 'CEF3_设置事件返回文本' }),
-  api('CEF3事件_绑定', 'LB_CEF3_BindEvent', [{ name: '控件名', type: 'wideString' }, { name: '事件名', type: 'wideString' }, { name: '处理器', type: 'handler', description: '必须使用 &处理器名' }], 'int', '把浏览器事件绑定到当前类的无参数处理器。', { runtimeName: 'CEF3_绑定事件', example: 'CEF3事件_绑定("浏览器1", "加载完成", &$1)' })
+  api('CEF3事件_取最近事件', 'LB_CEF3_GetLastEvent', [{ name: '控件名', type: 'controlRef' }], 'wideString', '取得指定浏览器最近事件名。', { runtimeName: 'CEF3_取最近事件' }),
+  api('CEF3事件_取数据', 'LB_CEF3_GetEventData', [{ name: '控件名', type: 'controlRef' }], 'wideString', '取得当前或最近事件的主要文本。', { runtimeName: 'CEF3_取事件数据' }),
+  api('CEF3事件_取字段', 'LB_CEF3_GetEventField', [{ name: '控件名', type: 'controlRef' }, { name: '字段名', type: 'wideString' }], 'wideString', '读取当前事件的结构化字段。', { runtimeName: 'CEF3_取事件字段' }),
+  api('CEF3事件_设置结果', 'LB_CEF3_SetEventAction', [{ name: '控件名', type: 'controlRef' }, { name: '动作', type: 'int' }], 'int', '设置当前同步事件动作。', { runtimeName: 'CEF3_设置事件结果' }),
+  api('CEF3事件_设置返回文本', 'LB_CEF3_SetEventResultText', [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }], 'int', '设置当前同步事件返回文本。', { runtimeName: 'CEF3_设置事件返回文本' }),
+  api('CEF3事件_绑定', 'LB_CEF3_BindEvent', [{ name: '控件名', type: 'controlRef' }, { name: '事件名', type: 'wideString' }, { name: '处理器', type: 'handler', description: '必须使用 &处理器名' }], 'int', '把浏览器事件绑定到当前类的无参数处理器。', { runtimeName: 'CEF3_绑定事件', example: 'CEF3事件_绑定(浏览器1, "加载完成", &$1)' })
 ];
 
 const objectEntries = [
@@ -240,8 +239,8 @@ const objectEntries = [
   api('CEF3图像_取PNG缓冲', 'CefImage::GetAsPNG', [{ name: '图像句柄', type: 'longLong' }, { name: '缩放', type: 'double' }, { name: '保留透明', type: 'bool' }], 'longLong', '导出指定缩放表示为受管PNG缓冲。', { visibility: 'advanced' }),
   api('CEF3图像_取JPEG缓冲', 'CefImage::GetAsJPEG', [{ name: '图像句柄', type: 'longLong' }, { name: '缩放', type: 'double' }, { name: '质量', type: 'int' }], 'longLong', '导出指定缩放表示为受管JPEG缓冲，质量范围0到100。', { visibility: 'advanced' }),
   api('CEF3图像_释放', 'LB_CEF3_ImageRelease', [{ name: '图像句柄', type: 'longLong' }], 'int', '在CEF UI线程释放图像对象受管句柄。', { visibility: 'advanced' }),
-  api('CEF3导航项_取当前可见', 'CefBrowserHost::GetVisibleNavigationEntry', [{ name: '控件名', type: 'wideString' }], 'longLong', '在CEF UI线程快照当前可见导航项并返回类型化受管句柄。', { visibility: 'advanced' }),
-  api('CEF3导航项_读取历史', 'CefBrowserHost::GetNavigationEntries', [{ name: '控件名', type: 'wideString' }, { name: '仅当前项', type: 'bool' }], 'longLong', '异步读取导航历史并返回结果为JSON数组的任务ID。', { visibility: 'advanced' }),
+  api('CEF3导航项_取当前可见', 'CefBrowserHost::GetVisibleNavigationEntry', [{ name: '控件名', type: 'controlRef' }], 'longLong', '在CEF UI线程快照当前可见导航项并返回类型化受管句柄。', { visibility: 'advanced' }),
+  api('CEF3导航项_读取历史', 'CefBrowserHost::GetNavigationEntries', [{ name: '控件名', type: 'controlRef' }, { name: '仅当前项', type: 'bool' }], 'longLong', '异步读取导航历史并返回结果为JSON数组的任务ID。', { visibility: 'advanced' }),
   api('CEF3导航项_是否有效', 'CefNavigationEntry::IsValid', [{ name: '导航项句柄', type: 'longLong' }], 'int', '判断导航项快照是否有效。', { visibility: 'advanced' }),
   api('CEF3导航项_取地址', 'CefNavigationEntry::GetURL', [{ name: '导航项句柄', type: 'longLong' }], 'wideString', '取得导航项实际URL。', { visibility: 'advanced' }),
   api('CEF3导航项_取显示地址', 'CefNavigationEntry::GetDisplayURL', [{ name: '导航项句柄', type: 'longLong' }], 'wideString', '取得适合显示的URL。', { visibility: 'advanced' }),
@@ -252,7 +251,7 @@ const objectEntries = [
   api('CEF3导航项_取完成时间', 'CefNavigationEntry::GetCompletionTime', [{ name: '导航项句柄', type: 'longLong' }], 'double', '取得最后成功完成导航的Unix秒时间，未完成时为0。', { visibility: 'advanced' }),
   api('CEF3导航项_取HTTP状态码', 'CefNavigationEntry::GetHttpStatusCode', [{ name: '导航项句柄', type: 'longLong' }], 'int', '取得最后成功导航响应的HTTP状态码。', { visibility: 'advanced' }),
   api('CEF3导航项_释放', 'LB_CEF3_NavigationEntryRelease', [{ name: '导航项句柄', type: 'longLong' }], 'int', '释放导航项快照受管句柄。', { visibility: 'advanced' }),
-  api('CEF3证书_取当前', 'CefSSLStatus::GetX509Certificate', [{ name: '控件名', type: 'wideString' }], 'longLong', '在CEF UI线程读取当前可见导航项的TLS证书并返回不可变受管快照。', { visibility: 'advanced' }),
+  api('CEF3证书_取当前', 'CefSSLStatus::GetX509Certificate', [{ name: '控件名', type: 'controlRef' }], 'longLong', '在CEF UI线程读取当前可见导航项的TLS证书并返回不可变受管快照。', { visibility: 'advanced' }),
   api('CEF3证书_是否安全连接', 'CefSSLStatus::IsSecureConnection', [{ name: '证书句柄', type: 'longLong' }], 'int', '判断证书快照对应导航是否为安全TLS连接。', { visibility: 'advanced' }),
   api('CEF3证书_取证书状态', 'CefSSLStatus::GetCertStatus', [{ name: '证书句柄', type: 'longLong' }], 'longLong', '取得证书验证问题位掩码。', { visibility: 'advanced' }),
   api('CEF3证书_取SSL版本', 'CefSSLStatus::GetSSLVersion', [{ name: '证书句柄', type: 'longLong' }], 'int', '取得TLS连接版本枚举。', { visibility: 'advanced' }),
@@ -279,9 +278,9 @@ const objectEntries = [
 ];
 
 const sessionEntries = [
-  api('CEF3会话_取缓存目录', 'LB_CEF3_GetProfilePath', [{ name: '控件名', type: 'wideString' }], 'wideString', '取得实例实际使用的独立缓存目录。'),
-  api('CEF3会话_取代理', 'LB_CEF3_GetProxy', [{ name: '控件名', type: 'wideString' }], 'wideString', '取得实例创建时应用的代理地址。'),
-  api('CEF3会话_取上下文', 'CefBrowserHost::GetRequestContext', [{ name: '控件名', type: 'wideString' }], 'longLong', '取得浏览器独立RequestContext的类型化受管句柄。', { visibility: 'advanced' }),
+  api('CEF3会话_取缓存目录', 'LB_CEF3_GetProfilePath', [{ name: '控件名', type: 'controlRef' }], 'wideString', '取得实例实际使用的独立缓存目录。'),
+  api('CEF3会话_取代理', 'LB_CEF3_GetProxy', [{ name: '控件名', type: 'controlRef' }], 'wideString', '取得实例创建时应用的代理地址。'),
+  api('CEF3会话_取上下文', 'CefBrowserHost::GetRequestContext', [{ name: '控件名', type: 'controlRef' }], 'longLong', '取得浏览器独立RequestContext的类型化受管句柄。', { visibility: 'advanced' }),
   api('CEF3会话_上下文取缓存目录', 'CefRequestContext::GetCachePath', [{ name: '上下文句柄', type: 'longLong' }], 'wideString', '从RequestContext读取实际缓存目录。', { visibility: 'advanced' }),
   api('CEF3会话_是否有首选项', 'CefPreferenceManager::HasPreference', [{ name: '上下文句柄', type: 'longLong' }, { name: '名称', type: 'wideString' }], 'int', '在CEF UI线程判断当前隔离会话是否存在指定Preference。', { visibility: 'advanced' }),
   api('CEF3会话_首选项是否可写', 'CefPreferenceManager::CanSetPreference', [{ name: '上下文句柄', type: 'longLong' }, { name: '名称', type: 'wideString' }], 'int', '判断指定Preference能否在运行时修改。', { visibility: 'advanced' }),
@@ -307,26 +306,26 @@ const sessionEntries = [
 ];
 
 const networkEntries = [
-  api('CEF3网络_设置代理', 'LB_CEF3_SetProxy', [{ name: '控件名', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], 'int', '在浏览器创建前设置实例RequestContext代理；空文本表示直连。', { runtimeName: 'CEF3_设置代理', visibility: 'advanced' })
+  api('CEF3网络_设置代理', 'LB_CEF3_SetProxy', [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }], 'int', '在浏览器创建前设置实例RequestContext代理；空文本表示直连。', { runtimeName: 'CEF3_设置代理', visibility: 'advanced' })
 ];
 
 const transferEntries = [
-  api('CEF3传输_开始下载', 'CefBrowserHost::StartDownload', [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], 'int', '使用当前实例会话开始下载。'),
-  api('CEF3传输_打印', 'CefBrowserHost::Print', [{ name: '控件名', type: 'wideString' }], 'int', '打开当前页面的原生打印流程。')
+  api('CEF3传输_开始下载', 'CefBrowserHost::StartDownload', [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], 'int', '使用当前实例会话开始下载。'),
+  api('CEF3传输_打印', 'CefBrowserHost::Print', [{ name: '控件名', type: 'controlRef' }], 'int', '打开当前页面的原生打印流程。')
 ];
 
 const automationEntries = [
-  api('CEF3自动化_执行JS异步', 'Runtime.evaluate', [{ name: '控件名', type: 'wideString' }, { name: '脚本', type: 'wideString' }], 'longLong', '通过DevTools Runtime.evaluate异步执行JavaScript，返回受管任务ID。', { visibility: 'advanced' })
+  api('CEF3自动化_执行JS异步', 'Runtime.evaluate', [{ name: '控件名', type: 'controlRef' }, { name: '脚本', type: 'wideString' }], 'longLong', '通过DevTools Runtime.evaluate异步执行JavaScript，返回受管任务ID。', { visibility: 'advanced' })
 ];
 
 const devtoolsEntries = [
-  api('CEF3开发工具_打开', 'CefBrowserHost::ShowDevTools', [{ name: '控件名', type: 'wideString' }], 'int', '打开指定实例的开发者工具；设计器禁止开发者工具时返回0。'),
-  api('CEF3开发工具_关闭', 'CefBrowserHost::CloseDevTools', [{ name: '控件名', type: 'wideString' }], 'int', '关闭指定实例的开发者工具。'),
-  api('CEF3开发工具_是否打开', 'CefBrowserHost::HasDevTools', [{ name: '控件名', type: 'wideString' }], 'int', '返回指定实例是否已打开开发者工具。')
+  api('CEF3开发工具_打开', 'CefBrowserHost::ShowDevTools', [{ name: '控件名', type: 'controlRef' }], 'int', '打开指定实例的开发者工具；设计器禁止开发者工具时返回0。'),
+  api('CEF3开发工具_关闭', 'CefBrowserHost::CloseDevTools', [{ name: '控件名', type: 'controlRef' }], 'int', '关闭指定实例的开发者工具。'),
+  api('CEF3开发工具_是否打开', 'CefBrowserHost::HasDevTools', [{ name: '控件名', type: 'controlRef' }], 'int', '返回指定实例是否已打开开发者工具。')
 ];
 
 const viewsEntries = [
-  api('CEF3视图_打开Chrome窗口', 'CefBrowserHost::CreateBrowser', [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], 'int', '使用实例会话创建Chrome Runtime独立顶层窗口。', { runtimeName: 'CEF3_打开原生UI浏览器' })
+  api('CEF3视图_打开Chrome窗口', 'CefBrowserHost::CreateBrowser', [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], 'int', '使用实例会话创建Chrome Runtime独立顶层窗口。', { runtimeName: 'CEF3_打开原生UI浏览器' })
 ];
 
 const platformEntries = [

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { InstalledModule } from '../modules/types';
 import { getPreferredModuleTarget } from '../modules/targetResolver';
 import { CRYPTO_SDK_MODULE_IDS } from '../modules/dataMediaModules';
+import { OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID } from '../modules/opencvModules';
 import { LingCppNativeProjectFile } from './lingCppWin32Project';
 
 export interface VisualStudioProjectExportResult {
@@ -46,10 +47,16 @@ export async function exportVisualStudioProject(
   const runtimeFilesX64 = getModuleRuntimeFiles(options.enabledModules, 'windows-msvc-x64');
   const hasFbro = options.enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser');
   const hasCryptoSdk = usesCryptoSdk(options.enabledModules);
+  const hasOpenCv = usesOpenCvSdk(options.enabledModules);
+  const x64Only = options.enabledModules.some(module => {
+    const targets = module.manifest.targets || [];
+    return targets.some(target => target.platform === 'windows' && target.toolchain === 'msvc' && target.arch === 'x64')
+      && !targets.some(target => target.platform === 'windows' && target.toolchain === 'msvc' && target.arch === 'win32');
+  });
 
   await fs.mkdir(options.projectDir, { recursive: true });
   await Promise.all([
-    fs.writeFile(solutionPath, generateSolution(projectName, projectGuid), 'utf8'),
+    fs.writeFile(solutionPath, generateSolution(projectName, projectGuid, x64Only), 'utf8'),
     fs.writeFile(projectPath, generateVcxproj({
       projectGuid,
       projectName,
@@ -65,7 +72,8 @@ export async function exportVisualStudioProject(
       fbroRuntimeFromBuildBin: options.fbroRuntimeFromBuildBin,
       contentFiles,
       requiredCppStandard: options.requiredCppStandard ?? (hasCryptoSdk ? 20 : undefined),
-      requiresDynamicCrt: options.requiresDynamicCrt ?? hasCryptoSdk
+      requiresDynamicCrt: (options.requiresDynamicCrt ?? hasCryptoSdk) || hasOpenCv,
+      x64Only
     }), 'utf8'),
     fs.writeFile(filtersPath, generateFilters(sourceFiles, noneFiles), 'utf8')
   ]);
@@ -113,7 +121,10 @@ function getModuleIncludeDirs(enabledModules: InstalledModule[], targetId = 'win
       return firstSegment ? normalizeSlash(path.posix.join('modules', moduleId, firstSegment)) : '';
     }).filter(Boolean);
     return [...explicitDirs, ...headerDirs];
-  }), ...(usesCryptoSdk(enabledModules) ? ['modules/lingbuilder.crypto.sdk/include'] : [])]);
+  }),
+  ...(usesCryptoSdk(enabledModules) ? ['modules/lingbuilder.crypto.sdk/include'] : []),
+  ...(usesOpenCvSdk(enabledModules) ? [`modules/${OPENCV_SDK_MODULE_ID}/include`] : [])
+  ]);
 }
 
 function getModuleLibFiles(enabledModules: InstalledModule[], targetId = 'windows-msvc-win32'): string[] {
@@ -124,7 +135,10 @@ function getModuleLibFiles(enabledModules: InstalledModule[], targetId = 'window
       .map(file => isBuiltinModule(module)
         ? normalizeSlash(file)
         : normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
-  }), ...(usesCryptoSdk(enabledModules) ? [`modules/lingbuilder.crypto.sdk/lib/${architecture}/botan-3.lib`] : [])]);
+  }),
+  ...(usesCryptoSdk(enabledModules) ? [`modules/lingbuilder.crypto.sdk/lib/${architecture}/botan-3.lib`] : []),
+  ...(usesOpenCvSdk(enabledModules) && architecture === 'x64' ? [`modules/${OPENCV_SDK_MODULE_ID}/lib/x64/LingBuilderOpenCvBridge.lib`] : [])
+  ]);
 }
 
 function getModuleRuntimeFiles(enabledModules: InstalledModule[], targetId = 'windows-msvc-win32'): string[] {
@@ -133,14 +147,50 @@ function getModuleRuntimeFiles(enabledModules: InstalledModule[], targetId = 'wi
     const moduleId = module.manifest.id;
     return (getPreferredModuleTarget(module, targetId)?.runtimeFiles || [])
       .map(file => normalizeSlash(path.posix.join('modules', moduleId, normalizeSlash(file))));
-  }), ...(usesCryptoSdk(enabledModules) ? [`modules/lingbuilder.crypto.sdk/bin/${architecture}/botan-3.dll`] : [])]);
+  }),
+  ...(usesCryptoSdk(enabledModules) ? [`modules/lingbuilder.crypto.sdk/bin/${architecture}/botan-3.dll`] : []),
+  ...(usesOpenCvSdk(enabledModules) && architecture === 'x64' ? [
+    `modules/${OPENCV_SDK_MODULE_ID}/bin/x64/LingBuilderOpenCvBridge.dll`,
+    `modules/${OPENCV_SDK_MODULE_ID}/bin/x64/opencv_core4140.dll`,
+    `modules/${OPENCV_SDK_MODULE_ID}/bin/x64/opencv_imgproc4140.dll`,
+    `modules/${OPENCV_SDK_MODULE_ID}/bin/x64/opencv_imgcodecs4140.dll`
+  ] : [])
+  ]);
 }
 
 function usesCryptoSdk(enabledModules: InstalledModule[]): boolean {
   return enabledModules.some(module => CRYPTO_SDK_MODULE_IDS.includes(module.manifest.id as typeof CRYPTO_SDK_MODULE_IDS[number]));
 }
 
-function generateSolution(projectName: string, projectGuid: string): string {
+function usesOpenCvSdk(enabledModules: InstalledModule[]): boolean {
+  return enabledModules.some(module => module.manifest.id === OPENCV_MODULE_ID);
+}
+
+function generateSolution(projectName: string, projectGuid: string, x64Only = false): string {
+  if (x64Only) return [
+    'Microsoft Visual Studio Solution File, Format Version 12.00',
+    '# Visual Studio Version 17',
+    'VisualStudioVersion = 17.0.31903.59',
+    'MinimumVisualStudioVersion = 10.0.40219.1',
+    `Project("{${WINDOWS_GUID}}") = "${projectName}", "${projectName}.vcxproj", "{${projectGuid}}"`,
+    'EndProject',
+    'Global',
+    '\tGlobalSection(SolutionConfigurationPlatforms) = preSolution',
+    '\t\tDebug|x64 = Debug|x64',
+    '\t\tRelease|x64 = Release|x64',
+    '\tEndGlobalSection',
+    '\tGlobalSection(ProjectConfigurationPlatforms) = postSolution',
+    `\t\t{${projectGuid}}.Debug|x64.ActiveCfg = Debug|x64`,
+    `\t\t{${projectGuid}}.Debug|x64.Build.0 = Debug|x64`,
+    `\t\t{${projectGuid}}.Release|x64.ActiveCfg = Release|x64`,
+    `\t\t{${projectGuid}}.Release|x64.Build.0 = Release|x64`,
+    '\tEndGlobalSection',
+    '\tGlobalSection(SolutionProperties) = preSolution',
+    '\t\tHideSolutionNode = FALSE',
+    '\tEndGlobalSection',
+    'EndGlobal',
+    ''
+  ].join('\r\n');
   return [
     'Microsoft Visual Studio Solution File, Format Version 12.00',
     '# Visual Studio Version 17',
@@ -189,6 +239,7 @@ function generateVcxproj(options: {
   contentFiles: string[];
   requiredCppStandard?: 17 | 20;
   requiresDynamicCrt?: boolean;
+  x64Only?: boolean;
 }): string {
   const includeDirectories = options.includeDirs.map(toWindowsPath).join(';');
   const additionalIncludeDirectories = includeDirectories
@@ -223,7 +274,7 @@ function generateVcxproj(options: {
     ? 'NDEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)'
     : '_DEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)';
 
-  return `<?xml version="1.0" encoding="utf-8"?>
+  const project = `<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -320,6 +371,15 @@ ${generateFileItems('ClCompile', options.sourceFiles)}${generateFileItems('None'
   <ImportGroup Label="ExtensionTargets" />
 </Project>
 `;
+  return options.x64Only ? stripWin32Configurations(project) : project;
+}
+
+function stripWin32Configurations(project: string): string {
+  return project
+    .replace(/\s*<ProjectConfiguration Include="(?:Debug|Release)\|Win32">[\s\S]*?<\/ProjectConfiguration>/gu, '')
+    .replace(/\s*<PropertyGroup Condition="'\$\(Configuration\)\|\$\(Platform\)'=='(?:Debug|Release)\|Win32'" Label="Configuration">[\s\S]*?<\/PropertyGroup>/gu, '')
+    .replace(/\s*<ImportGroup Label="PropertySheets" Condition="'\$\(Configuration\)\|\$\(Platform\)'=='(?:Debug|Release)\|Win32'">[\s\S]*?<\/ImportGroup>/gu, '')
+    .replace(/\s*<ItemDefinitionGroup Condition="'\$\(Configuration\)\|\$\(Platform\)'=='(?:Debug|Release)\|Win32'">[\s\S]*?<\/ItemDefinitionGroup>/gu, '');
 }
 
 function generateFilters(sourceFiles: string[], noneFiles: string[]): string {

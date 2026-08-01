@@ -1,7 +1,8 @@
-import type { ModuleBindingValueType, ModuleCommandBinding, ModuleCommandContribution } from './types';
+import type { ModuleBindingValueType, ModuleCommandBinding, ModuleCommandBindingParameter, ModuleCommandContribution } from './types';
+import { createModuleBindingSnippetArgument } from './bindingValueType';
 
 type UiReturnType = '整数型' | '长整数型' | '小数型' | '逻辑型' | '文本型';
-type Parameter = { name: string; type: ModuleBindingValueType };
+type Parameter = ModuleCommandBindingParameter;
 
 export interface DataGridApiDefinition {
   name: string;
@@ -16,10 +17,11 @@ export interface DataGridApiDefinition {
 }
 
 const p = (name: string, type: ModuleBindingValueType): Parameter => ({ name, type });
-const control = p('控件名', 'wideString');
+const control: Parameter = { name: '控件名', type: 'controlRef', controlTypes: ['DataGrid'] };
 const rowKey = p('行键', 'wideString');
 const columnId = p('列ID', 'wideString');
 const text = p('文本', 'wideString');
+const imageList: Parameter = { name: '图像列表', type: 'controlRef', controlTypes: ['ImageList'], controlKinds: ['resource'], scope: 'project' };
 const index = p('索引', 'int');
 const bool = (name: string) => p(name, 'bool');
 const integer = (name: string) => p(name, 'int');
@@ -28,13 +30,13 @@ const string = (name: string) => p(name, 'wideString');
 
 const returnTypeMap: Record<ModuleBindingValueType, UiReturnType> = {
   int: '整数型', longLong: '长整数型', double: '小数型', bool: '逻辑型', wideString: '文本型',
-  void: '逻辑型', utf8String: '文本型', handler: '长整数型', handle: '长整数型', raw: '长整数型'
+  void: '逻辑型', utf8String: '文本型', controlRef: '长整数型', handler: '长整数型', handle: '长整数型', raw: '长整数型'
 };
 const sample = (parameter: Parameter, placeholder: number) => {
   if (parameter.type === 'bool') return '真';
   if (parameter.type === 'double') return '0.0';
   if (parameter.type === 'int' || parameter.type === 'longLong' || parameter.type === 'handle') return '0';
-  return `"$${placeholder}"`;
+  return createModuleBindingSnippetArgument(parameter, placeholder - 1);
 };
 const api = (
   suffix: string,
@@ -109,7 +111,7 @@ export const DATA_GRID_API: DataGridApiDefinition[] = [
   api('取日期', 'wideString', [rowKey, columnId], '读取日期文本。'),
 
   api('置图片', 'bool', [rowKey, columnId, string('项目路径')], '设置项目资源或运行时文件路径图片。'),
-  api('置图像列表图片', 'bool', [rowKey, columnId, string('图像列表ID'), integer('图片索引')], '设置 ImageList 图片引用。'),
+  api('置图像列表图片', 'bool', [rowKey, columnId, imageList, integer('图片索引')], '设置 ImageList 图片引用。'),
   api('清除图片', 'bool', [rowKey, columnId], '清除图片单元格。'),
   api('置进度', 'bool', [rowKey, columnId, decimal('进度')], '设置进度值并限制到列范围。'),
   api('取进度', 'double', [rowKey, columnId], '读取进度值。'),

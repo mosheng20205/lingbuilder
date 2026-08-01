@@ -70,6 +70,20 @@ import { LingWindowProject } from '../src/services/windowDesigner/types';
 import { WIN32_CONTROL_DEFINITIONS } from '../src/services/windowDesigner/win32ControlRegistry';
 import { InstalledModule } from '../src/services/modules/types';
 import { BUILTIN_MODULES } from '../src/services/modules/builtinModules';
+import {
+  getLingCppControlReferenceAtPosition,
+  getLingCppControlReferenceDiagnostics,
+  getLingCppControlReferenceLocations,
+  getLingCppControlReferences,
+  migrateQuotedControlReferences,
+  renameLingCppControlReference
+} from '../src/services/lingCpp/controlReferenceService';
+import { classifyLingCppPresentationCode } from '../src/services/lingCpp/beginnerSyntaxPresentation';
+import {
+  buildLingCppControlReferenceSemanticTokenData,
+  LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN,
+  LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS
+} from '../src/services/lingCpp/semanticTheme';
 
 const sampleSource = `包 太空冒险
 使用 Win32窗口
@@ -415,6 +429,92 @@ test('LingCpp parses scoped local variables and diagnoses undeclared or incompat
     { enabledModules: [byteResponseModule], availableModules: [byteResponseModule] }
   );
   assert.ok(useBeforeDeclarationDiagnostics.some(diagnostic => diagnostic.id.includes('undeclared-variable') && diagnostic.message.includes('ret')));
+});
+
+test('LingCpp parses runtime local constants in events, methods, constructors and function libraries', () => {
+  const source = [
+    '类 MainWindow : 公开 窗体',
+    '    整数型 成员次数 = 2',
+    '    构造()',
+    '        局部常量 文本型 构造标签 = "ready"',
+    '    结束',
+    '    事件 创建完毕(整数型 参数次数)',
+    '        局部 整数型 前置次数 = 参数次数',
+    '        局部常量 整数型 最大次数 = 前置次数 + 成员次数',
+    '        调试输出(最大次数)',
+    '    结束',
+    '    整数型 取固定次数()',
+    '        局部常量 整数型 方法次数 = 3',
+    '        返回 方法次数',
+    '    结束',
+    '结束类',
+    '',
+    '功能库 数值工具',
+    '公开:',
+    '    整数型 计算()',
+    '        局部常量 整数型 功能次数 = 4',
+    '        返回 功能次数',
+    '    结束',
+    '结束功能库'
+  ].join('\n');
+  const parsed = parseLingCpp(source);
+  const locals = [
+    ...parsed.program.classes.flatMap(cls => cls.methods.flatMap(method => method.locals || [])),
+    ...parsed.program.functionLibraries.flatMap(library => library.methods.flatMap(method => method.locals || []))
+  ];
+
+  assert.deepEqual(locals.filter(local => local.isConstant).map(local => local.name), [
+    '构造标签', '最大次数', '方法次数', '功能次数'
+  ]);
+  assert.equal(parsed.symbolIndex.locals.filter(node => node.isConstant).length, 4);
+  assert.equal(parsed.diagnostics.some(diagnostic => diagnostic.level === 'error'), false, JSON.stringify(parsed.diagnostics));
+
+  const context = buildLingCppLanguageContext(source);
+  const completion = getLingCppCompletionItems({ source, line: 9, column: 18, triggerText: '最大' }, context)
+    .find(item => item.label === '最大次数');
+  assert.match(completion?.detail || '', /局部常量（只读）/u);
+  assert.doesNotMatch(
+    getLingCppCompletionItems({ source, line: 13, column: 15, triggerText: '' }, context).map(item => item.label).join('\n'),
+    /最大次数/u
+  );
+  assert.match(getLingCppHover({ source, line: 8, column: 22 }, context)?.contents || '', /局部常量[\s\S]*只读/u);
+  assert.ok(getLingCppStructuredRows(context).some(row => row.group === 'local' && row.name === '最大次数' && row.isConstant));
+});
+
+test('LingCpp local constants require safe top-level initialization and remain read-only', () => {
+  const source = [
+    '类 MainWindow : 公开 窗体',
+    '    事件 创建完毕(整数型 参数值)',
+    '        局部常量 整数型 缺值',
+    '        局部常量 整数型 数组值[] = 1',
+    '        局部常量 未知类型 未知类型值 = 1',
+    '        局部常量 整数型 自身值 = 自身值',
+    '        局部常量 整数型 后置引用 = 后置值',
+    '        局部 整数型 后置值 = 2',
+    '        局部常量 文本型 类型错误 = 3',
+    '        局部常量 整数型 只读值 = 参数值',
+    '        只读值 = 2',
+    '        只读值.字段 = 2',
+    '        只读值[0] = 2',
+    '        如果 (真)',
+    '            局部常量 整数型 块内值 = 1',
+    '        如果结束',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const messages = [
+    ...parseLingCpp(source).diagnostics,
+    ...getLingCppSemanticDiagnostics(source)
+  ].map(diagnostic => diagnostic.message).join('\n');
+
+  assert.match(messages, /缺值.*必须填写初始值/u);
+  assert.match(messages, /数组值.*不支持数组/u);
+  assert.match(messages, /未知类型值.*未知类型/u);
+  assert.match(messages, /自身值.*不能在初始化表达式中引用自身/u);
+  assert.match(messages, /后置引用.*后置值\s+尚未声明/u);
+  assert.match(messages, /类型错误.*类型是 文本型，不能使用 整数型 初始化/u);
+  assert.match(messages, /块内值.*控制块内部/u);
+  assert.equal((messages.match(/只读值 是只读值，不能重新赋值/gu) || []).length, 3);
 });
 
 test('LingCpp project constants parse, validate, complete, rename and remain read-only', () => {
@@ -952,6 +1052,289 @@ test('LingCpp hover displays module command signature documentation and return t
   assert.deepEqual(hover.range, { startLine: 1, startColumn: 1, endLine: 1, endColumn: 11 });
 });
 
+test('controlRef uses bare designer symbols for diagnostics, completion, hover, references and migration', () => {
+  const modules: InstalledModule[] = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({
+    manifest: BUILTIN_MODULES.find(item => item.id === id)!,
+    installPath: `builtin://${id}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }));
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [
+        ...sampleProject.windows[0].controls,
+        { id: 'result-label', type: 'Label', name: '操作结果', content: '', x: 10, y: 10, width: 160, height: 28, fontSize: 13, background: '#202020', foreground: '#ffffff', isEnabled: true, visibility: 'Visible', events: {} },
+        { id: 'list-view', type: 'ListView', name: '数据列表', content: '', x: 10, y: 50, width: 240, height: 160, fontSize: 13, background: '#202020', foreground: '#ffffff', isEnabled: true, visibility: 'Visible', events: {} }
+      ]
+    }],
+    resources: [{ id: 'images-main', type: 'ImageList', name: '主图像列表', imageWidth: 16, imageHeight: 16, images: [] }]
+  };
+  const moduleContext = { enabledModules: modules, availableModules: modules };
+  const source = '类 游戏主窗体 : 公开 窗体\n事件 测试()\n    控件_设置文本(操作结果, "完成")\n    控件_取文本(操作结果)\n结束\n结束类';
+  assert.deepEqual(getLingCppControlReferenceDiagnostics(source, project, moduleContext, 'src/MainWindow.lcpp'), []);
+
+  const languageContext = buildLingCppLanguageContext(source, project, moduleContext, 'src/MainWindow.lcpp');
+  const hover = getLingCppHover({ source, line: 3, column: 14 }, languageContext);
+  assert.match(hover?.contents || '', /设计器控件 · Label/u);
+  assert.match(hover?.contents || '', /所属窗口：太空冒险/u);
+
+  const incomplete = '类 游戏主窗体 : 公开 窗体\n事件 测试()\n    控件_设置文本(操';
+  const completions = getLingCppCompletionItems(
+    { source: incomplete, line: 3, column: 14, triggerText: '操' },
+    buildLingCppLanguageContext(incomplete, project, moduleContext, 'src/MainWindow.lcpp')
+  );
+  assert.ok(completions.some(item => item.label === '操作结果' && item.insertText === '操作结果'));
+  assert.ok(completions.every(item => !item.insertText.startsWith('"')));
+
+  const resourceSource = '类 游戏主窗体 : 公开 窗体\n事件 测试()\n    列表视图_设置图像列表(数据列表, 主';
+  const resourceCompletions = getLingCppCompletionItems(
+    { source: resourceSource, line: 3, column: 23, triggerText: '主' },
+    buildLingCppLanguageContext(resourceSource, project, moduleContext, 'src/MainWindow.lcpp')
+  );
+  assert.deepEqual(resourceCompletions.map(item => item.label), ['主图像列表']);
+
+  const reference = getLingCppControlReferenceAtPosition(source, 3, 14, project, moduleContext, 'src/MainWindow.lcpp');
+  assert.equal(reference?.symbol?.controlId, 'result-label');
+  assert.equal(getLingCppControlReferenceLocations([{ filePath: 'src/MainWindow.lcpp', sourceCode: source }], reference!.symbol!, project, moduleContext).length, 2);
+
+  const quoted = source.replaceAll('操作结果', '"操作结果"');
+  const quotedDiagnostics = getLingCppControlReferenceDiagnostics(quoted, project, moduleContext, 'src/MainWindow.lcpp');
+  assert.equal(quotedDiagnostics.length, 2);
+  assert.ok(quotedDiagnostics.every(item => item.level === 'error' && item.range?.startColumn));
+  const migrated = migrateQuotedControlReferences(quoted, project, moduleContext, 'src/MainWindow.lcpp');
+  assert.equal(migrated.changeCount, 2);
+  assert.equal(migrated.source, source);
+
+  const renamed = renameLingCppControlReference(
+    [{ filePath: 'src/MainWindow.lcpp', sourceCode: source }],
+    project,
+    moduleContext,
+    reference!.symbol!,
+    '结果提示'
+  );
+  assert.equal(renamed.changeCount, 2);
+  assert.match(renamed.sources[0].sourceCode, /控件_设置文本\(结果提示, "完成"\)/u);
+  assert.equal(renamed.project.windows[0].controls.find(control => control.id === 'result-label')?.name, '结果提示');
+
+  const nativeCpp = `${source}\n@ 控件_设置文本(L"操作结果", L"原生 C++");`;
+  assert.equal(getLingCppControlReferences(nativeCpp, project, moduleContext, 'src/MainWindow.lcpp').length, 2);
+});
+
+test('beginner presentation assigns a dedicated control-reference token color kind', () => {
+  const tokens = classifyLingCppPresentationCode('控件_设置文本(操作结果, "完成")', {
+    isNativeCpp: false,
+    moduleCommands: new Set(['控件_设置文本']),
+    knownMembers: new Set(),
+    knownProcedures: new Set(),
+    controlReferences: new Set(['操作结果'])
+  });
+  assert.equal(tokens.find(token => token.text === '操作结果')?.kind, 'control-reference');
+});
+
+test('Monaco control references use an independent semantic token and stable theme colors', () => {
+  assert.equal(LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN, 'controlReference');
+  assert.notEqual(LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS.dark.toLocaleLowerCase(), '#ce9178');
+  assert.notEqual(LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS.light.toLocaleLowerCase(), '#a31515');
+  assert.deepEqual([...buildLingCppControlReferenceSemanticTokenData([
+    { startLine: 2, startColumn: 5, endLine: 2, endColumn: 9 },
+    { startLine: 4, startColumn: 3, endLine: 4, endColumn: 8 }
+  ])], [1, 4, 4, 0, 0, 2, 2, 5, 0, 0]);
+});
+
+test('controlRef reports scope, kind, type, ambiguity and unsafe quoted references independently', () => {
+  const modules: InstalledModule[] = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({
+    manifest: BUILTIN_MODULES.find(item => item.id === id)!,
+    installPath: `builtin://${id}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }));
+  const project: LingWindowProject = {
+    id: 'control-ref-errors',
+    name: '控件引用诊断',
+    windows: [{
+      id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口',
+      width: 640, height: 480, background: '#111111', description: '', controls: [
+        { id: 'label-main', type: 'Label', name: '操作结果', content: '', x: 10, y: 10, width: 120, height: 28, fontSize: 12, background: '#222222', foreground: '#fff', isEnabled: true, visibility: 'Visible', events: {} },
+        { id: 'list-main', type: 'ListView', name: '数据列表', content: '', x: 10, y: 50, width: 200, height: 120, fontSize: 12, background: '#222222', foreground: '#fff', isEnabled: true, visibility: 'Visible', events: {} },
+        { id: 'duplicate-a', type: 'Label', name: '重复名称', content: '', x: 10, y: 180, width: 100, height: 28, fontSize: 12, background: '#222222', foreground: '#fff', isEnabled: true, visibility: 'Visible', events: {} },
+        { id: 'duplicate-b', type: 'Button', name: '重复名称', content: '', x: 120, y: 180, width: 100, height: 28, fontSize: 12, background: '#222222', foreground: '#fff', isEnabled: true, visibility: 'Visible', events: {} }
+      ]
+    }, {
+      id: 'other-window', fileName: 'OtherWindow.xml', className: 'OtherWindow', title: '其他窗口',
+      width: 640, height: 480, background: '#111111', description: '', controls: [
+        { id: 'other-label', type: 'Label', name: '跨窗标签', content: '', x: 10, y: 10, width: 120, height: 28, fontSize: 12, background: '#222222', foreground: '#fff', isEnabled: true, visibility: 'Visible', events: {} }
+      ]
+    }],
+    resources: [{ id: 'images-main', type: 'ImageList', name: '主图像列表', imageWidth: 16, imageHeight: 16, images: [] }]
+  };
+  const moduleContext = { enabledModules: modules, availableModules: modules };
+  const source = [
+    '类 MainWindow : 公开 窗体',
+    '事件 测试()',
+    '    控件_设置文本(跨窗标签, "x")',
+    '    控件_设置文本(主图像列表, "x")',
+    '    列表视图_添加行(操作结果, "x")',
+    '    控件_设置文本(重复名称, "x")',
+    '    控件_设置文本("不存在", "x")',
+    '    列表视图_设置图像列表(数据列表, 主图像列表, "small")',
+    '结束',
+    '结束类'
+  ].join('\n');
+  const references = getLingCppControlReferences(source, project, moduleContext, 'src/MainWindow.lcpp');
+  assert.deepEqual(references.map(reference => reference.status), [
+    'scope-mismatch', 'incompatible-kind', 'incompatible-type', 'ambiguous', 'missing', 'resolved', 'resolved'
+  ]);
+  const diagnostics = getLingCppControlReferenceDiagnostics(source, project, moduleContext, 'src/MainWindow.lcpp');
+  assert.ok(diagnostics.some(item => item.id.startsWith('lingcpp-control-reference-scope-')));
+  assert.ok(diagnostics.some(item => item.id.startsWith('lingcpp-control-reference-kind-')));
+  assert.ok(diagnostics.some(item => item.id.startsWith('lingcpp-control-reference-type-')));
+  assert.ok(diagnostics.some(item => item.id.startsWith('lingcpp-control-reference-ambiguous-')));
+  assert.ok(diagnostics.some(item => item.id.startsWith('lingcpp-control-reference-quoted-')));
+  assert.ok(diagnostics.some(item => item.id.startsWith('lingcpp-control-reference-missing-')));
+  assert.equal(migrateQuotedControlReferences(source, project, moduleContext, 'src/MainWindow.lcpp').changeCount, 0);
+});
+
+test('controlRef recognizes third-party non-visual designer components from module contributions', () => {
+  const manifest = {
+    schemaVersion: 2 as const,
+    id: 'third.party.timer-component',
+    name: '计时组件',
+    version: '1.0.0',
+    category: '界面' as const,
+    description: '提供非可视计时组件。',
+    contributes: {
+      designerControls: [{
+        type: 'TimerComponent',
+        namespacedType: 'third.party.timer-component/TimerComponent',
+        label: '计时组件',
+        category: '非可视组件',
+        isVisual: false,
+        defaultProps: {}
+      }],
+      commands: [{ name: '计时器_启动', signature: '计时器_启动(组件)', description: '启动计时器', insertText: '计时器_启动($1)' }]
+    },
+    bindings: { commands: [{
+      command: '计时器_启动',
+      runtimeName: '计时器_启动',
+      parameters: [{
+        name: '组件',
+        type: 'controlRef' as const,
+        controlTypes: ['TimerComponent'],
+        controlKinds: ['nonVisual' as const],
+        scope: 'currentWindow' as const,
+        runtimeRepresentation: 'stableId' as const
+      }],
+      returnType: 'bool' as const
+    }] }
+  };
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'test://third-party-timer',
+    isBuiltin: false,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'timer-1',
+        type: 'TimerComponent' as LingWindowProject['windows'][number]['controls'][number]['type'],
+        designerType: 'third.party.timer-component/TimerComponent',
+        name: '刷新计时器',
+        content: '',
+        x: 0,
+        y: 0,
+        width: 0,
+        height: 0,
+        fontSize: 12,
+        background: 'transparent',
+        foreground: '#ffffff',
+        isEnabled: true,
+        visibility: 'Visible'
+      }]
+    }]
+  };
+  const moduleContext = { enabledModules: [module], availableModules: [module] };
+  const source = '类 游戏主窗体 : 公开 窗体\n事件 测试()\n    计时器_启动(刷新计时器)\n结束\n结束类';
+  const reference = getLingCppControlReferences(source, project, moduleContext, 'src/MainWindow.lcpp')[0];
+  assert.equal(reference?.status, 'resolved');
+  assert.equal(reference?.symbol?.kind, 'nonVisual');
+  assert.equal(reference?.symbol?.designerType, 'third.party.timer-component/TimerComponent');
+});
+
+test('controlRef deterministically emits a wide control name for native C++', () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.win32.basic')!;
+  const module: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.win32.basic',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [
+        ...sampleProject.windows[0].controls,
+        { id: 'result-label', type: 'Label', name: '操作结果', content: '', x: 10, y: 10, width: 160, height: 28, fontSize: 13, background: '#202020', foreground: '#ffffff', isEnabled: true, visibility: 'Visible', events: {} }
+      ]
+    }]
+  };
+  const source = '类 游戏主窗体 : 公开 窗体\n事件 _游戏主窗体_创建完毕()\n    控件_设置文本(操作结果, "完成")\n结束\n结束类';
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] })
+    .files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /控件_设置文本\(L"操作结果", L"完成"\);/u);
+});
+
+test('controlRef runtime representations are adapted by the registered UI backend contract', () => {
+  const manifest = {
+    schemaVersion: 2 as const,
+    id: 'third.party.control-representations',
+    name: '控件表示测试',
+    version: '1.0.0',
+    category: '界面' as const,
+    description: '验证 stableId 与 nativeHandle。',
+    contributes: { commands: [
+      { name: '探测稳定ID', signature: '探测稳定ID(控件)', description: '测试', insertText: '探测稳定ID($1)' },
+      { name: '探测原生句柄', signature: '探测原生句柄(控件)', description: '测试', insertText: '探测原生句柄($1)' }
+    ] },
+    bindings: { commands: [
+      { command: '探测稳定ID', runtimeName: '调试输出', parameters: [{ name: '控件', type: 'controlRef' as const, controlKinds: ['visual' as const], scope: 'currentWindow' as const, runtimeRepresentation: 'stableId' as const }], returnType: 'void' as const },
+      { command: '探测原生句柄', runtimeName: '调试输出', parameters: [{ name: '控件', type: 'controlRef' as const, controlKinds: ['visual' as const], scope: 'currentWindow' as const, runtimeRepresentation: 'nativeHandle' as const }], returnType: 'void' as const }
+    ] }
+  };
+  const module: InstalledModule = { manifest, installPath: 'test://control-representations', isBuiltin: false, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      designerBackend: 'win32',
+      controls: [...sampleProject.windows[0].controls, { id: 'result-label', type: 'Label', name: '操作结果', content: '', x: 10, y: 10, width: 160, height: 28, fontSize: 13, background: '#202020', foreground: '#ffffff', isEnabled: true, visibility: 'Visible', events: {} }]
+    }]
+  };
+  const source = '类 游戏主窗体 : 公开 窗体\n事件 _游戏主窗体_创建完毕()\n    探测稳定ID(操作结果)\n    探测原生句柄(操作结果)\n结束\n结束类';
+  const generated = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source, enabledModules: [module] });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
+  assert.match(cpp, /调试输出\(LingCppControlStableId\(L"操作结果"\)\);/u);
+  assert.match(cpp, /调试输出\(LingCppControlNativeHandle\(L"操作结果"\)\);/u);
+
+  const newEmojiProject = { ...project, windows: [{ ...project.windows[0], designerBackend: 'new-emoji' }] };
+  const blocked = generateLingCppNativeWin32Project(newEmojiProject, { lingCppSourceCode: source, enabledModules: [module] });
+  assert.ok(blocked.blockingDiagnostics.some(item => item.includes('nativeHandle') && item.includes('new_emoji')));
+});
+
 test('LingCpp language service emits outline symbols and folding ranges', () => {
   const parsed = parseLingCpp(sampleSource);
   const symbols = getLingCppSymbols(sampleSource);
@@ -1416,6 +1799,51 @@ test('LingCpp designer bindings use associated designer file to isolate other wi
   assert.equal(diagnostics.some(diagnostic => diagnostic.id.includes('_missing_other_window_handler')), false);
 });
 
+test('ordinary XML-looking module strings do not override the current designer window', () => {
+  const source = [
+    `${LING_CPP_KEYWORDS[0]} Demo`,
+    `${LING_CPP_KEYWORDS[2]} MainWindow : ${LING_CPP_KEYWORDS[3]} ${LING_CPP_TYPES[0]}`,
+    `${LING_CPP_KEYWORDS[3]}:`,
+    '    构造()',
+    '        调试输出("lingbuilder.data.xml")',
+    `    ${LING_CPP_KEYWORDS[16]}`,
+    `${LING_CPP_KEYWORDS[16]}`
+  ].join('\n');
+  const project: LingWindowProject = {
+    id: 'xml-string-project',
+    name: 'Demo',
+    windows: [{
+      id: 'main-window',
+      fileName: 'MainWindow.xml',
+      className: 'MainWindow',
+      title: 'MainWindow',
+      width: 640,
+      height: 480,
+      background: '#111111',
+      description: 'MainWindow',
+      controls: [{
+        id: 'result-label',
+        type: 'Label',
+        name: '操作结果',
+        content: '',
+        width: 120,
+        height: 28,
+        x: 10,
+        y: 10,
+        fontSize: 12,
+        background: '#222222',
+        foreground: '#ffffff',
+        isEnabled: true,
+        visibility: 'Visible',
+        events: {}
+      }]
+    }]
+  };
+
+  const completions = getLingCppDesignerControlCompletions(source, project);
+  assert.ok(completions.some(item => item.label === '操作结果'));
+});
+
 test('LingCpp structure view lists package, classes, designer file, members and events', () => {
   const structure = getLingCppStructureView(sampleSource, sampleProject, 'src/MainWindow.lcpp');
   const classNode = structure.find(node => node.kind === 'class');
@@ -1694,6 +2122,51 @@ test('LingCpp AST edit service adds, updates and deletes method-scoped local var
   });
   assert.equal(removed.success, true);
   assert.equal(removed.sourceCode.includes('局部 文本型 请求地址'), false);
+});
+
+test('LingCpp AST edit service preserves local constant kind and source order through conversion', () => {
+  const inserted = applyLingCppAstEdit(sampleSource, {
+    kind: 'add-local',
+    className: '游戏主窗体',
+    methodName: '_按钮1_被单击',
+    insertBeforeLine: findLingCppMethod(parseLingCpp(sampleSource).program, '_按钮1_被单击')?.statements[1]?.line,
+    local: {
+      name: '只读标题',
+      type: '文本型',
+      initialValue: '"运行时标题"',
+      isConstant: true
+    }
+  });
+  assert.equal(inserted.success, true);
+  assert.match(inserted.sourceCode, /信息框[^\n]+\n\s+局部常量 文本型 只读标题 = "运行时标题"\n\s+调试输出/u);
+  assert.equal(findLingCppMethod(parseLingCpp(inserted.sourceCode).program, '_按钮1_被单击')
+    ?.locals.find(local => local.name === '只读标题')?.isConstant, true);
+
+  const convertedToVariable = applyLingCppAstEdit(inserted.sourceCode, {
+    kind: 'update-local',
+    className: '游戏主窗体',
+    methodName: '_按钮1_被单击',
+    localName: '只读标题',
+    isConstant: false
+  });
+  assert.match(convertedToVariable.sourceCode, /局部 文本型 只读标题 = "运行时标题"/u);
+
+  const convertedBack = applyLingCppAstEdit(convertedToVariable.sourceCode, {
+    kind: 'update-local',
+    className: '游戏主窗体',
+    methodName: '_按钮1_被单击',
+    localName: '只读标题',
+    isConstant: true
+  });
+  assert.match(convertedBack.sourceCode, /局部常量 文本型 只读标题 = "运行时标题"/u);
+
+  const removed = applyLingCppAstEdit(convertedBack.sourceCode, {
+    kind: 'delete-local',
+    className: '游戏主窗体',
+    methodName: '_按钮1_被单击',
+    localName: '只读标题'
+  });
+  assert.equal(removed.sourceCode.includes('只读标题'), false);
 });
 
 test('beginner definition navigation resolves project procedure calls at the cursor', () => {
@@ -2042,12 +2515,16 @@ test('beginner local and assembly variables expose pinyin completion aliases', (
   assert.match(assembly.detail, /程序集变量/u);
 });
 
-test('beginner editor exposes a method-scoped local variable table', () => {
+test('beginner editor exposes method-scoped local declarations with variable and constant categories', () => {
   const source = readFileSync(resolve(process.cwd(), 'src', 'components', 'DiffViewer.tsx'), 'utf8');
-  assert.match(source, /局部变量 · .*仅在当前子程序内有效/u);
+  assert.match(source, /局部声明 · .*变量与只读常量仅在当前子程序内有效/u);
   assert.match(source, /kind: 'add-local'/u);
   assert.match(source, /kind: 'update-local'/u);
   assert.match(source, /kind: 'delete-local'/u);
+  assert.match(source, /<option value="variable">变量<\/option>/u);
+  assert.match(source, /<option value="constant">常量<\/option>/u);
+  assert.match(source, /ADD_BEGINNER_LOCAL_CONSTANT_COMMAND/u);
+  assert.match(source, /Ctrl\+L 只快速插入普通变量/u);
   assert.match(source, /getBeginnerCodeCompletionItems\(target\)/u);
   assert.match(source, /createBeginnerVariableCompletion\(/u);
   assert.match(source, /event\.key === 'Enter' \|\| event\.key === 'Tab'/u);
@@ -2056,7 +2533,7 @@ test('beginner editor exposes a method-scoped local variable table', () => {
   assert.match(source, /beginnerCompletionState\.segmentId === segmentId/u);
   assert.match(source, /isBeginnerLocalInsertShortcut\(event\)/u);
   assert.match(source, /getBeginnerLocalInsertStatementIndex\(/u);
-  assert.match(source, /折叠局部变量组/u);
+  assert.match(source, /折叠局部声明组/u);
   assert.match(source, /tryBeginnerAutoLocalOnEnter/u);
   assert.match(source, /为 .* 选择类型/u);
   assert.match(source, /handleBeginnerCodeClick/u);
@@ -2250,8 +2727,88 @@ test('generateLingCppNativeWin32Project emits members, locals and module return 
   assert.ok(mainCpp.includes('std::wstring apiBase = L"http://127.0.0.1:8981";'));
   assert.ok(mainCpp.includes('std::wstring url = L"http://127.0.0.1:8981/api";'));
   assert.ok(mainCpp.includes('std::vector<unsigned char> ret{};'));
-  assert.ok(mainCpp.includes('ret = LB_WebRequestObject(url, 1);'));
+  assert.ok(mainCpp.includes('ret = LB_WebRequestObject(LingCppWideArg(url), 1);'));
   assert.equal(mainCpp.includes('暂不支持的中文 C++ 语句：ret ='), false);
+});
+
+test('generateLingCppNativeWin32Project emits runtime local constants in source order with local source maps', () => {
+  const sourcePath = 'src/MainWindow.lcpp';
+  const source = [
+    '类 游戏主窗体 : 公开 窗体',
+    '    整数型 取最大次数()',
+    '        返回 3',
+    '    结束',
+    '    事件 _按钮1_被单击()',
+    '        调试输出("before")',
+    '        局部常量 整数型 最大次数 = 取最大次数()',
+    '        局部常量 文本型 标题 = "ready"',
+    '        调试输出(最大次数)',
+    '    结束',
+    '结束类',
+    '',
+    '功能库 数值工具',
+    '公开:',
+    '    整数型 计算()',
+    '        局部常量 整数型 功能值 = 4',
+    '        返回 功能值',
+    '    结束',
+    '结束功能库'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source,
+    lingCppSourceFilePath: sourcePath
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  assert.match(cpp, /int const 最大次数 = 取最大次数\(\);/u);
+  assert.match(cpp, /std::wstring const 标题 = L"ready";/u);
+  assert.match(cpp, /int const 功能值 = 4;/u);
+  assert.doesNotMatch(cpp, /constexpr[^\n]+最大次数/u);
+  assert.ok(cpp.indexOf('调试输出(L"before")') < cpp.indexOf('int const 最大次数'));
+  assert.ok(cpp.indexOf('int const 最大次数') < cpp.indexOf('调试输出(最大次数)'));
+  assert.ok(generated.sourceMap.some(entry => (
+    entry.kind === 'local'
+    && entry.symbolName === '最大次数'
+    && entry.sourceFile === sourcePath
+    && entry.sourceStartLine === 7
+  )));
+  assert.ok(generated.sourceMap.some(entry => entry.kind === 'local' && entry.symbolName === '功能值'));
+
+  const newEmojiModule: InstalledModule = {
+    manifest: {
+      schemaVersion: 2,
+      id: 'lingbuilder.new_emoji.ui',
+      name: 'new_emoji 原生界面库',
+      version: '1.0.0',
+      category: '界面',
+      description: '局部常量生成测试',
+      targets: [{
+        id: 'windows-msvc-win32',
+        platform: 'windows',
+        arch: 'win32',
+        toolchain: 'msvc',
+        includeDirs: ['include'],
+        libs: ['lib/Win32/new_emoji.lib']
+      }]
+    },
+    installPath: 'C:/modules/lingbuilder.new_emoji.ui',
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const newEmojiProject: LingWindowProject = {
+    ...sampleProject,
+    id: 'local-constant-new-emoji',
+    windows: sampleProject.windows.map(window => ({ ...window, designerBackend: 'new-emoji' }))
+  };
+  const newEmojiCpp = generateLingCppNativeWin32Project(newEmojiProject, {
+    activeWindowId: 'window-1',
+    lingCppSourceCode: source.replace('事件 _按钮1_被单击()', '事件 创建完毕()'),
+    enabledModules: [newEmojiModule]
+  }).files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(newEmojiCpp, /int const 最大次数 = 取最大次数\(\);/u);
+  assert.match(newEmojiCpp, /int const 功能值 = 4;/u);
 });
 
 test('generateLingCppNativeWin32Project paints Grid with the designer background brush', () => {
@@ -2393,20 +2950,30 @@ test('generateLingCppNativeWin32Project keeps wide string arguments inside arith
 test('generateLingCppNativeWin32Project translates ordinary conditions and rounds window dimensions', () => {
   const source = `类 游戏主窗体 : 公开 窗体
     事件 _按钮1_被单击()
-        如果 (文件对话框_取文件("文件对话框1", 0)!="")
-            控件_设置文本("按钮1", "已选择")
+        如果 (文件对话框_取文件(文件对话框1, 0)!="")
+            控件_设置文本(按钮1, "已选择")
         否则
-            控件_设置文本("按钮1", "未选择")
+            控件_设置文本(按钮1, "未选择")
         如果结束
     结束
 结束类`;
   const decimalProject: LingWindowProject = {
     ...sampleProject,
+    resources: [{
+      id: 'file-dialog-1', type: 'FileDialog', name: '文件对话框1', ownerWindowId: 'window-1',
+      triggerControlId: 'button-1', dropTargetId: '', title: '选择文件', filter: '所有文件|*.*',
+      multiple: false, allowDrop: false, filesSelectedHandler: '', filesDroppedHandler: '', cancelledHandler: ''
+    }],
     windows: [{ ...sampleProject.windows[0], width: 640.6, height: 480.6 }]
   };
+  const enabledModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({
+    manifest: BUILTIN_MODULES.find(module => module.id === id)!, installPath: 'builtin', isBuiltin: true,
+    isInstalled: true, isEnabledForProject: true, diagnostics: []
+  }));
   const generated = generateLingCppNativeWin32Project(decimalProject, {
     activeWindowId: 'window-1',
-    lingCppSourceCode: source
+    lingCppSourceCode: source,
+    enabledModules
   });
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
 

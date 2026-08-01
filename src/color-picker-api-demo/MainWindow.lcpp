@@ -4,7 +4,7 @@
 类 MainWindow : 公开 窗体
     事件 _MainWindow_创建完毕()
         调试输出("ColorPicker 完整接口演示已启动")
-        控件_设置文本("状态标签", "状态：已启动；请按选项卡逐项验证颜色、透明度、十六进制、调色板和事件接口。")
+        控件_设置文本(状态标签, "状态：已启动；请按选项卡逐项验证颜色、透明度、十六进制、调色板和事件接口。")
     结束
 
     事件 _基础_设置颜色_被点击()
@@ -14,7 +14,7 @@
         @ EU_SetColorPickerColor(g_newEmojiWindow, pickerId, static_cast<Color>(0xff3366ccu));
         @ EU_PostSetColorPickerColor(g_newEmojiWindow, pickerId, static_cast<Color>(0xffff9933u));
         调试输出("已调用 EU_SetColorPickerColor 和 EU_PostSetColorPickerColor")
-        控件_设置文本("状态标签", "基础：同步与异步设置颜色已调用。")
+        控件_设置文本(状态标签, "基础：同步与异步设置颜色已调用。")
     结束
 
     事件 _基础_读取颜色_被点击()
@@ -23,7 +23,7 @@
         @ int color = EU_GetColorPickerColor(g_newEmojiWindow, picker->id);
         @ (void)color;
         调试输出("已调用 EU_GetColorPickerColor，返回值已写入本地变量。")
-        控件_设置文本("状态标签", "基础：已读取当前颜色值。")
+        控件_设置文本(状态标签, "基础：已读取当前颜色值。")
     结束
 
     事件 _基础_设置透明度_被点击()
@@ -31,7 +31,7 @@
         @ if (!picker) return;
         @ EU_SetColorPickerAlpha(g_newEmojiWindow, picker->id, 168);
         调试输出("已调用 EU_SetColorPickerAlpha(168)")
-        控件_设置文本("状态标签", "基础：透明度已设置为 168。")
+        控件_设置文本(状态标签, "基础：透明度已设置为 168。")
     结束
 
     事件 _基础_读取透明度_被点击()
@@ -40,7 +40,7 @@
         @ int alpha = EU_GetColorPickerAlpha(g_newEmojiWindow, picker->id);
         @ (void)alpha;
         调试输出("已调用 EU_GetColorPickerAlpha，返回值已写入本地变量。")
-        控件_设置文本("状态标签", "基础：已读取当前透明度。")
+        控件_设置文本(状态标签, "基础：已读取当前透明度。")
     结束
 
     事件 _基础_设置十六进制_被点击()
@@ -50,7 +50,7 @@
         @ EU_SetColorPickerHex(g_newEmojiWindow, picker->id, hexBytes, static_cast<int>(sizeof(hexBytes) - 1));
         @ EU_PostSetColorPickerHex(g_newEmojiWindow, picker->id, reinterpret_cast<const unsigned char*>("#FF8844CC"), 9);
         调试输出("已调用 EU_SetColorPickerHex 和 EU_PostSetColorPickerHex")
-        控件_设置文本("状态标签", "基础：同步与异步十六进制设置已调用。")
+        控件_设置文本(状态标签, "基础：同步与异步十六进制设置已调用。")
     结束
 
     事件 _基础_读取十六进制_被点击()
@@ -60,7 +60,7 @@
         @ int length = EU_GetColorPickerHex(g_newEmojiWindow, picker->id, buffer, static_cast<int>(sizeof(buffer)));
         @ (void)length;
         调试输出("已调用 EU_GetColorPickerHex，结果写入本地缓冲区。")
-        控件_设置文本("状态标签", "基础：已读取当前十六进制颜色文本。")
+        控件_设置文本(状态标签, "基础：已读取当前十六进制颜色文本。")
     结束
 
     事件 _基础_清空检查_被点击()
@@ -71,7 +71,7 @@
         @ (void)hasValueAfterClear;
         @ EU_SetColorPickerColor(g_newEmojiWindow, picker->id, static_cast<Color>(0xff2d7dffu));
         调试输出("已调用 EU_ClearColorPicker 和 EU_GetColorPickerHasValue，并恢复演示颜色。")
-        控件_设置文本("状态标签", "基础：已清空并检查值状态，随后恢复演示颜色。")
+        控件_设置文本(状态标签, "基础：已清空并检查值状态，随后恢复演示颜色。")
     结束
 
     事件 _状态_展开关闭_被点击()
@@ -84,7 +84,7 @@
         @ int closed = EU_GetColorPickerOpen(g_newEmojiWindow, picker->id);
         @ (void)closed;
         调试输出("已调用展开/读取和异步关闭/读取接口。")
-        控件_设置文本("状态标签", "状态：展开、读取、异步关闭接口已调用。")
+        控件_设置文本(状态标签, "状态：展开、读取、异步关闭接口已调用。")
     结束
 
     事件 _状态_选项读写_被点击()
@@ -100,7 +100,7 @@
         @ (void)sizeMode;
         @ (void)clearable;
         调试输出("已调用 EU_SetColorPickerOptions 和 EU_GetColorPickerOptions。")
-        控件_设置文本("状态标签", "状态：已设置显示透明度、大尺寸、不可清空，并读取选项。")
+        控件_设置文本(状态标签, "状态：已设置显示透明度、大尺寸、不可清空，并读取选项。")
     结束
 
     事件 _调色板_设置调色板_被点击()
@@ -113,7 +113,7 @@
         @ };
         @ EU_SetColorPickerPalette(g_newEmojiWindow, picker->id, palette, 6);
         调试输出("已调用 EU_SetColorPickerPalette，写入 6 个调色板颜色。")
-        控件_设置文本("状态标签", "调色板：已写入红、橙、黄、绿、蓝、紫 6 个颜色。")
+        控件_设置文本(状态标签, "调色板：已写入红、橙、黄、绿、蓝、紫 6 个颜色。")
     结束
 
     事件 _调色板_读取数量_被点击()
@@ -122,7 +122,7 @@
         @ int count = EU_GetColorPickerPaletteCount(g_newEmojiWindow, picker->id);
         @ (void)count;
         调试输出("已调用 EU_GetColorPickerPaletteCount，返回值已写入本地变量。")
-        控件_设置文本("状态标签", "调色板：已读取当前调色板数量。")
+        控件_设置文本(状态标签, "调色板：已读取当前调色板数量。")
     结束
 
     事件 _事件_触发数值变化_被点击()
@@ -130,7 +130,7 @@
         @ if (!picker) return;
         @ EU_SetColorPickerColor(g_newEmojiWindow, picker->id, static_cast<Color>(0xff14b8a6u));
         调试输出("已设置事件页颜色，可观察数值变化事件。")
-        控件_设置文本("状态标签", "事件：已改变颜色；请继续移动、点击、滚轮和切换焦点观察事件日志。")
+        控件_设置文本(状态标签, "事件：已改变颜色；请继续移动、点击、滚轮和切换焦点观察事件日志。")
     结束
 
     // 设计器会为 ValueChanged 自动注册 EU_SetColorPickerChangeCallback。

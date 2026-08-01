@@ -40,6 +40,7 @@ assets/.aistudio/
 .lingbuilder/module-build/
 .lingbuilder/module-snapshots/
 .lingbuilder/modules/
+.lingbuilder/cache/
 .lingbuilder/website-command-manifests.json
 
 # Electron 构建产物

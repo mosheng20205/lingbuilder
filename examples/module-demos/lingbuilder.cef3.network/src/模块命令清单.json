@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T09:57:36.089Z",
+  "generatedAt": "2026-07-31T18:20:25.786Z",
   "module": {
     "id": "lingbuilder.cef3.network",
     "name": "CEF3网络模块",
@@ -17,7 +17,7 @@
       ],
       "signature": "CEF3网络_设置代理(控件名, 代理地址)",
       "description": "在浏览器创建前设置实例RequestContext代理；空文本表示直连。",
-      "insertText": "CEF3网络_设置代理(\"$1\", \"$2\")",
+      "insertText": "CEF3网络_设置代理($1, \"$2\")",
       "returnType": "整数型",
       "visibility": "advanced",
       "binding": {
@@ -26,7 +26,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "代理地址",
@@ -36,7 +44,7 @@
         "returnType": "int",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3网络_设置代理(\"演示输出\", \"https://example.com\")"
+      "demoInvocation": "CEF3网络_设置代理(演示CefBrowser控件, \"https://example.com\")"
     }
   ]
 }

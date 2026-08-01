@@ -6,6 +6,20 @@ import { InstalledModule } from './types';
 import { validateModuleRelativePath } from './manifest';
 import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from './targetResolver';
 import { CRYPTO_SDK_MODULE_IDS } from './dataMediaModules';
+import { OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID, OPENCV_VERSION } from './opencvModules';
+
+const FBRO_SDK_VERSION = '135.0.21';
+const FBRO_BRIDGE_VERSION = '2.1.0';
+const FBRO_V3_HEADER_MARKERS = [
+  'LB_FBRO_ABI_VERSION_V3',
+  'LB_FBRO_EVENT_PACKET_V3',
+  'LB_FBRO_EVENT_RESPONSE_V3',
+  'LB_FBRO_CONTINUATION_HANDLE',
+  'LB_FBro_SetEventCallbackV3',
+  'LB_FBro_SetEventSubscription',
+  'LB_FBro_CompleteEventContinuation',
+  'LB_FBro_CancelEventContinuation'
+] as const;
 
 export interface ModuleNativeDependencyLayout {
   buildDir: string;
@@ -73,6 +87,10 @@ export async function materializeModuleNativeDependencies(
 
   if (enabledModules.some(module => CRYPTO_SDK_MODULE_IDS.includes(module.manifest.id as typeof CRYPTO_SDK_MODULE_IDS[number]))) {
     await materializeCryptoSdk(layout, plan);
+  }
+
+  if (enabledIds.has(OPENCV_MODULE_ID)) {
+    await materializeOpenCvSdk(layout, plan);
   }
 
   for (const module of enabledModules.filter(item => !item.isBuiltin)) {
@@ -192,6 +210,16 @@ export async function exportModuleNativeDependencies(
   if (enabledModules.some(module => module.manifest.id === 'lingbuilder.fbro.browser')) {
     const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: true };
     await materializeFbroSdk({
+      buildDir: exportDir,
+      sourceDir: exportDir,
+      binDir: exportDir,
+      exportDir,
+      preferredTargetId: 'windows-msvc-x64'
+    }, plan);
+  }
+  if (enabledModules.some(module => module.manifest.id === OPENCV_MODULE_ID)) {
+    const plan: ModuleNativeDependencyPlan = { includeDirs: [], sourceFiles: [], libFiles: [], runtimeFiles: [], diagnostics, blockingDiagnostics: [], requiresMsvc: true };
+    await materializeOpenCvSdk({
       buildDir: exportDir,
       sourceDir: exportDir,
       binDir: exportDir,
@@ -336,8 +364,8 @@ async function materializeFbroSdkUnlocked(
     addBlockingDiagnostic(plan, `FBro 运行时清单无效：${manifestError}`);
     return;
   }
-  if (manifest.sdkVersion !== '135.0.21' || manifest.architecture !== 'x64') {
-    addBlockingDiagnostic(plan, `FBro SDK 版本或架构不匹配：需要 135.0.21/x64，实际为 ${manifest.sdkVersion}/${manifest.architecture}。`);
+  if (manifest.sdkVersion !== FBRO_SDK_VERSION || manifest.bridgeVersion !== FBRO_BRIDGE_VERSION || manifest.architecture !== 'x64') {
+    addBlockingDiagnostic(plan, `FBro SDK、Bridge 或架构不匹配：需要 ${FBRO_SDK_VERSION}/Bridge ${FBRO_BRIDGE_VERSION}/x64，实际为 ${manifest.sdkVersion}/Bridge ${manifest.bridgeVersion}/${manifest.architecture}。请运行“cd electron && npm run module:fbro-sdk -- --install”重新生成。`);
     return;
   }
 
@@ -350,6 +378,12 @@ async function materializeFbroSdkUnlocked(
       addBlockingDiagnostic(plan, `FBro SDK 文件缺失：${path.relative(sdkRoot, required).replace(/\\/g, '/')}`);
       return;
     }
+  }
+  const bridgeHeaderSource = await fs.readFile(bridgeHeader, 'utf8').catch(() => '');
+  const missingV3Markers = FBRO_V3_HEADER_MARKERS.filter(marker => !bridgeHeaderSource.includes(marker));
+  if (missingV3Markers.length) {
+    addBlockingDiagnostic(plan, `FBro Bridge 头文件不是完整 C ABI v3，缺少：${missingV3Markers.join('、')}。请运行“cd electron && npm run module:fbro-sdk -- --install”重新生成。`);
+    return;
   }
 
   const roots = unique([
@@ -555,6 +589,114 @@ async function findCryptoSdkRoot(layout: ModuleNativeDependencyLayout): Promise<
     if (await pathExists(path.join(candidate, 'runtime-manifest.json')) &&
         await pathExists(path.join(candidate, 'include', 'botan', 'ffi.h')) &&
         await pathExists(path.join(candidate, 'include', 'blake3.h'))) return candidate;
+  }
+  return null;
+}
+
+interface OpenCvSdkManifest {
+  schemaVersion: 1;
+  opencvVersion: string;
+  bridgeVersion: string;
+  bridgeAbiVersion: number;
+  architecture: 'x64';
+  toolset: string;
+  runtimeLibrary: 'MD';
+  files: CryptoSdkManifestFile[];
+}
+
+async function materializeOpenCvSdk(
+  layout: ModuleNativeDependencyLayout,
+  plan: ModuleNativeDependencyPlan
+): Promise<void> {
+  plan.requiresMsvc = true;
+  plan.requiresDynamicCrt = true;
+  plan.requiredCppStandard = Math.max(plan.requiredCppStandard || 17, 17) as 17 | 20;
+  if (process.platform !== 'win32') {
+    addBlockingDiagnostic(plan, 'OpenCV 模块当前只支持 Windows MSVC x64。');
+    return;
+  }
+  if (layout.preferredTargetId && layout.preferredTargetId !== 'windows-msvc-x64') {
+    addBlockingDiagnostic(plan, 'OpenCV 模块仅支持 Windows MSVC x64，请把构建目标切换为 x64。');
+    return;
+  }
+  const sdkRoot = await findOpenCvSdkRoot(layout);
+  if (!sdkRoot) {
+    addBlockingDiagnostic(plan, 'OpenCV 模块缺少 lingbuilder.opencv.sdk。请运行“cd electron && npm run module:opencv-sdk -- --install”生成并安装经过哈希校验的 OpenCV 4.14.0 x64 SDK。');
+    return;
+  }
+  let manifest: OpenCvSdkManifest;
+  try {
+    manifest = JSON.parse(await fs.readFile(path.join(sdkRoot, 'runtime-manifest.json'), 'utf8')) as OpenCvSdkManifest;
+  } catch (error) {
+    addBlockingDiagnostic(plan, `OpenCV SDK 清单读取失败：${errorMessage(error)}`);
+    return;
+  }
+  if (manifest.schemaVersion !== 1 || manifest.opencvVersion !== OPENCV_VERSION || manifest.bridgeVersion !== '1.0.0'
+      || manifest.bridgeAbiVersion !== 1 || manifest.architecture !== 'x64' || manifest.toolset !== 'msvc-v143'
+      || manifest.runtimeLibrary !== 'MD' || !Array.isArray(manifest.files) || manifest.files.length === 0) {
+    addBlockingDiagnostic(plan, 'OpenCV SDK 清单格式、版本、架构或 CRT 不符合要求。');
+    return;
+  }
+  for (const entry of manifest.files) {
+    const relative = normalizeRelativePath(entry.path || '');
+    if (!validateModuleRelativePath(relative) || !Number.isSafeInteger(entry.size) || entry.size < 0 || !/^[a-f0-9]{64}$/i.test(entry.sha256 || '')) {
+      addBlockingDiagnostic(plan, `OpenCV SDK 清单包含无效文件记录：${entry.path || '未知路径'}`);
+      return;
+    }
+    if (!await fileMatchesManifest(path.join(sdkRoot, relative), entry)) {
+      addBlockingDiagnostic(plan, `OpenCV SDK 文件缺失或哈希不一致：${relative}`);
+      return;
+    }
+  }
+  const required = [
+    'include/LingBuilderOpenCvBridge.h',
+    'lib/x64/LingBuilderOpenCvBridge.lib',
+    'bin/x64/LingBuilderOpenCvBridge.dll',
+    'bin/x64/opencv_core4140.dll',
+    'bin/x64/opencv_imgproc4140.dll',
+    'bin/x64/opencv_imgcodecs4140.dll'
+  ];
+  const manifestPaths = new Set(manifest.files.map(entry => normalizeRelativePath(entry.path || '')));
+  for (const relative of required) {
+    if (!manifestPaths.has(relative) || !await pathExists(path.join(sdkRoot, ...relative.split('/')))) {
+      addBlockingDiagnostic(plan, `OpenCV SDK 清单缺少必要资产：${relative}`);
+      return;
+    }
+  }
+  const moduleRoot = path.join('modules', OPENCV_SDK_MODULE_ID);
+  try {
+    for (const root of unique([
+      path.join(layout.buildDir, moduleRoot),
+      path.join(layout.sourceDir, moduleRoot),
+      path.join(layout.exportDir, moduleRoot)
+    ])) await copyDirectoryRecursive(sdkRoot, root);
+    await fs.mkdir(layout.binDir, { recursive: true });
+    for (const runtimeName of ['LingBuilderOpenCvBridge.dll', 'opencv_core4140.dll', 'opencv_imgproc4140.dll', 'opencv_imgcodecs4140.dll']) {
+      const runtimeTarget = path.join(layout.binDir, runtimeName);
+      await copyFileAtomicallyIfDifferent(path.join(sdkRoot, 'bin', 'x64', runtimeName), runtimeTarget);
+      plan.runtimeFiles.push(runtimeTarget);
+    }
+    plan.includeDirs.push(path.join(layout.sourceDir, moduleRoot, 'include'));
+    plan.libFiles.push(path.join(layout.buildDir, moduleRoot, 'lib', 'x64', 'LingBuilderOpenCvBridge.lib'));
+  } catch (error) {
+    addBlockingDiagnostic(plan, `准备 OpenCV SDK 失败：${errorMessage(error)}`);
+  }
+}
+
+async function findOpenCvSdkRoot(layout: ModuleNativeDependencyLayout): Promise<string | null> {
+  const workspaceRoot = inferWorkspaceRootFromBuildDir(layout.buildDir);
+  const packagedRoot = process.resourcesPath
+    ? path.join(process.resourcesPath, 'default-workspace', '.lingbuilder', 'modules', OPENCV_SDK_MODULE_ID, 'sdk')
+    : '';
+  const candidates = unique([
+    process.env.LINGBUILDER_OPENCV_SDK_ROOT || '',
+    path.join(workspaceRoot, '.lingbuilder', 'modules', OPENCV_SDK_MODULE_ID, 'sdk'),
+    packagedRoot,
+    path.resolve('.lingbuilder', 'modules', OPENCV_SDK_MODULE_ID, 'sdk')
+  ].filter(Boolean));
+  for (const candidate of candidates) {
+    if (await pathExists(path.join(candidate, 'runtime-manifest.json')) &&
+        await pathExists(path.join(candidate, 'include', 'LingBuilderOpenCvBridge.h'))) return candidate;
   }
   return null;
 }

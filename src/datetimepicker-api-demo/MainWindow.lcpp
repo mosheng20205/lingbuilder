@@ -6,7 +6,7 @@
     // 本示例按能力分组调用全部 EU_DateTimePicker* 接口，@ 行保留真实 native ABI 调用。
     事件 _MainWindow_创建完毕()
         调试输出("日期时间选择器完整接口演示已启动")
-        控件_设置文本("状态标签", "状态：请选择一个选项卡执行接口组。")
+        控件_设置文本(状态标签, "状态：请选择一个选项卡执行接口组。")
     结束
 
     事件 _基础设置_被点击()
@@ -17,7 +17,7 @@
         @ EU_SetDateTimePickerDefaultTime(g_newEmojiWindow, picker->id, 9, 0);
         @ EU_SetDateTimePickerOpen(g_newEmojiWindow, picker->id, 1);
         调试输出("基础设置：日期时间、选项、默认时间和打开接口已调用")
-        控件_设置文本("状态标签", "状态：已设置 2026-08-18 14:30，分钟步进 15。")
+        控件_设置文本(状态标签, "状态：已设置 2026-08-18 14:30，分钟步进 15。")
     结束
 
     事件 _清空今天现在_被点击()
@@ -27,7 +27,7 @@
         @ EU_DateTimePickerSelectToday(g_newEmojiWindow, picker->id);
         @ EU_DateTimePickerSelectNow(g_newEmojiWindow, picker->id);
         调试输出("清空、选择今天和选择现在接口已调用")
-        控件_设置文本("状态标签", "状态：已执行清空 → 今天 → 现在。")
+        控件_设置文本(状态标签, "状态：已执行清空 → 今天 → 现在。")
     结束
 
     事件 _范围设置_被点击()
@@ -40,7 +40,7 @@
         @ EU_SetDateTimePickerRangeDefaultTime(g_newEmojiWindow, picker->id, 9, 0, 18, 0);
         @ EU_SetDateTimePickerRangeSelect(g_newEmojiWindow, picker->id, 1, 20260818, 900, 20260820, 1800);
         调试输出("范围接口：日期时间范围、占位符、分隔符、默认时间和范围选择已调用")
-        控件_设置文本("状态标签", "状态：已启用 2026 年范围选择，时间 08:00–22:00。")
+        控件_设置文本(状态标签, "状态：已启用 2026 年范围选择，时间 08:00–22:00。")
     结束
 
     事件 _快捷与滚动_被点击()
@@ -51,7 +51,7 @@
         @ EU_DateTimePickerMoveMonth(g_newEmojiWindow, picker->id, 1);
         @ EU_SetDateTimePickerOpen(g_newEmojiWindow, picker->id, 1);
         调试输出("快捷与导航接口：快捷键、滚动、下月和打开接口已调用")
-        控件_设置文本("状态标签", "状态：已配置快捷操作，滚动到第 2/3 行并移动到下个月。")
+        控件_设置文本(状态标签, "状态：已配置快捷操作，滚动到第 2/3 行并移动到下个月。")
     结束
 
     事件 _读取状态_被点击()
@@ -69,7 +69,7 @@
         @ int startDate = 0; int startTime = 0; int endDate = 0; int endTime = 0; int rangeEnabled = 0;
         @ int rangeValueResult = EU_GetDateTimePickerRangeValue(g_newEmojiWindow, picker->id, &startDate, &startTime, &endDate, &endTime, &rangeEnabled);
         调试输出("读取状态：打开=", openState, "日期=", dateValue, "时间=", timeValue, "范围返回=", rangeResult, "选项返回=", optionsResult, "滚动返回=", scrollResult, "范围值返回=", rangeValueResult)
-        控件_设置文本("状态标签", "状态：已读取打开、日期、时间、范围、选项、滚动和范围值；详见输出面板。")
+        控件_设置文本(状态标签, "状态：已读取打开、日期、时间、范围、选项、滚动和范围值；详见输出面板。")
     结束
 
     事件 _演示日期时间选择器_选择变化()

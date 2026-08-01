@@ -1,0 +1,947 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-31T18:20:25.978Z",
+  "module": {
+    "id": "lingbuilder.opencv",
+    "name": "OpenCV 图像处理模块",
+    "version": "1.0.0",
+    "description": "基于 OpenCV 4.14.0 的 x64 本地图像处理、模板匹配、轮廓分析和单/双缺口候选分析模块。"
+  },
+  "commandCount": 33,
+  "commands": [
+    {
+      "index": 1,
+      "name": "OpenCV_取版本",
+      "signature": "OpenCV_取版本()",
+      "description": "返回当前 Bridge 使用的 OpenCV 与 Bridge ABI 版本。",
+      "insertText": "OpenCV_取版本()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "OpenCV_取版本",
+        "runtimeName": "OpenCV_取版本",
+        "parameters": [],
+        "returnType": "wideString",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "encoding": "wide",
+        "example": "OpenCV_取版本()"
+      },
+      "demoInvocation": "OpenCV_取版本()"
+    },
+    {
+      "index": 2,
+      "name": "OpenCV_加载图像",
+      "signature": "OpenCV_加载图像(路径, 读取模式)",
+      "description": "加载图像并返回受管图像句柄。",
+      "insertText": "OpenCV_加载图像(\"$1\", \"$2\")",
+      "returnType": "长整数型",
+      "returnDescription": "成功返回 OpenCV图像句柄，失败返回 0。",
+      "binding": {
+        "command": "OpenCV_加载图像",
+        "runtimeName": "OpenCV_加载图像",
+        "parameters": [
+          {
+            "name": "路径",
+            "type": "wideString",
+            "description": "支持中文路径的本地图像文件。"
+          },
+          {
+            "name": "读取模式",
+            "type": "wideString",
+            "description": "彩色、灰度或原样。"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "encoding": "wide",
+        "example": "OpenCV_加载图像(\"背景.png\", \"彩色\")"
+      },
+      "demoInvocation": "OpenCV_加载图像(\"module-demo-temp.txt\", \"演示参数2\")"
+    },
+    {
+      "index": 3,
+      "name": "OpenCV_保存图像",
+      "signature": "OpenCV_保存图像(图像, 路径, 质量)",
+      "description": "按目标扩展名保存图像。",
+      "insertText": "OpenCV_保存图像(0, \"$2\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "OpenCV_保存图像",
+        "runtimeName": "OpenCV_保存图像",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          },
+          {
+            "name": "路径",
+            "type": "wideString"
+          },
+          {
+            "name": "质量",
+            "type": "int",
+            "description": "0～100；JPEG 使用质量，PNG 使用压缩级别映射。"
+          }
+        ],
+        "returnType": "bool",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "encoding": "wide",
+        "example": "OpenCV_保存图像(图像, \"输出.png\", 95)"
+      },
+      "demoInvocation": "OpenCV_保存图像(0, \"module-demo-temp.txt\", 1)"
+    },
+    {
+      "index": 4,
+      "name": "OpenCV_克隆图像",
+      "signature": "OpenCV_克隆图像(图像)",
+      "description": "深复制图像并返回新句柄。",
+      "insertText": "OpenCV_克隆图像(0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "OpenCV_克隆图像",
+        "runtimeName": "OpenCV_克隆图像",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_克隆图像(0)"
+    },
+    {
+      "index": 5,
+      "name": "OpenCV_释放图像",
+      "signature": "OpenCV_释放图像(图像)",
+      "description": "释放一个受管图像句柄。",
+      "insertText": "OpenCV_释放图像(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "OpenCV_释放图像",
+        "runtimeName": "OpenCV_释放图像",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          }
+        ],
+        "returnType": "bool",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_释放图像(0)"
+    },
+    {
+      "index": 6,
+      "name": "OpenCV_释放全部",
+      "signature": "OpenCV_释放全部()",
+      "description": "释放当前进程中全部 OpenCV 图像与结果句柄。",
+      "insertText": "OpenCV_释放全部()",
+      "returnType": "空",
+      "binding": {
+        "command": "OpenCV_释放全部",
+        "runtimeName": "OpenCV_释放全部",
+        "parameters": [],
+        "returnType": "void",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_释放全部()"
+    },
+    {
+      "index": 7,
+      "name": "OpenCV_取宽度",
+      "signature": "OpenCV_取宽度(图像)",
+      "description": "返回图像像素宽度。",
+      "insertText": "OpenCV_取宽度(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OpenCV_取宽度",
+        "runtimeName": "OpenCV_取宽度",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          }
+        ],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_取宽度(0)"
+    },
+    {
+      "index": 8,
+      "name": "OpenCV_取高度",
+      "signature": "OpenCV_取高度(图像)",
+      "description": "返回图像像素高度。",
+      "insertText": "OpenCV_取高度(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OpenCV_取高度",
+        "runtimeName": "OpenCV_取高度",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          }
+        ],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_取高度(0)"
+    },
+    {
+      "index": 9,
+      "name": "OpenCV_取通道数",
+      "signature": "OpenCV_取通道数(图像)",
+      "description": "返回图像通道数。",
+      "insertText": "OpenCV_取通道数(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OpenCV_取通道数",
+        "runtimeName": "OpenCV_取通道数",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          }
+        ],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_取通道数(0)"
+    },
+    {
+      "index": 10,
+      "name": "OpenCV_取错误",
+      "signature": "OpenCV_取错误()",
+      "description": "读取当前线程最近一次 OpenCV 操作的中文错误。",
+      "insertText": "OpenCV_取错误()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "OpenCV_取错误",
+        "runtimeName": "OpenCV_取错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "encoding": "wide"
+      },
+      "demoInvocation": "OpenCV_取错误()"
+    },
+    {
+      "index": 11,
+      "name": "OpenCV_灰度化",
+      "signature": "OpenCV_灰度化(图像)",
+      "description": "转换为灰度图并返回新句柄。",
+      "insertText": "OpenCV_灰度化(0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "OpenCV_灰度化",
+        "runtimeName": "OpenCV_灰度化",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_灰度化(0)"
+    },
+    {
+      "index": 12,
+      "name": "OpenCV_缩放",
+      "signature": "OpenCV_缩放(图像, 宽度, 高度)",
+      "description": "使用高质量插值缩放图像并返回新句柄。",
+      "insertText": "OpenCV_缩放(0, 0, 0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "OpenCV_缩放",
+        "runtimeName": "OpenCV_缩放",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_缩放(0, 1, 1)"
+    },
+    {
+      "index": 13,
+      "name": "OpenCV_裁剪",
+      "signature": "OpenCV_裁剪(图像, 横坐标, 纵坐标, 宽度, 高度)",
+      "description": "裁剪图像区域并返回新句柄。",
+      "insertText": "OpenCV_裁剪(0, 0, 0, 0, 0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "OpenCV_裁剪",
+        "runtimeName": "OpenCV_裁剪",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          },
+          {
+            "name": "横坐标",
+            "type": "int"
+          },
+          {
+            "name": "纵坐标",
+            "type": "int"
+          },
+          {
+            "name": "宽度",
+            "type": "int"
+          },
+          {
+            "name": "高度",
+            "type": "int"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_裁剪(0, 1, 1, 1, 1)"
+    },
+    {
+      "index": 14,
+      "name": "OpenCV_高斯模糊",
+      "signature": "OpenCV_高斯模糊(图像, 卷积核, Sigma)",
+      "description": "执行高斯模糊并返回新句柄。",
+      "insertText": "OpenCV_高斯模糊(0, 0, 0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "OpenCV_高斯模糊",
+        "runtimeName": "OpenCV_高斯模糊",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          },
+          {
+            "name": "卷积核",
+            "type": "int",
+            "description": "1～31 的正奇数。"
+          },
+          {
+            "name": "Sigma",
+            "type": "double"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_高斯模糊(0, 1, 1.0)"
+    },
+    {
+      "index": 15,
+      "name": "OpenCV_二值化",
+      "signature": "OpenCV_二值化(图像, 阈值, 模式)",
+      "description": "灰度化后执行固定或大津二值化。",
+      "insertText": "OpenCV_二值化(0, 0, \"$3\")",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "OpenCV_二值化",
+        "runtimeName": "OpenCV_二值化",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          },
+          {
+            "name": "阈值",
+            "type": "double"
+          },
+          {
+            "name": "模式",
+            "type": "wideString",
+            "description": "二值、反二值、大津或大津反向。"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "encoding": "wide"
+      },
+      "demoInvocation": "OpenCV_二值化(0, 1.0, \"演示参数3\")"
+    },
+    {
+      "index": 16,
+      "name": "OpenCV_自适应二值化",
+      "signature": "OpenCV_自适应二值化(图像, 块大小, 常数, 反向)",
+      "description": "执行高斯自适应二值化。",
+      "insertText": "OpenCV_自适应二值化(0, 0, 0, 假)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "OpenCV_自适应二值化",
+        "runtimeName": "OpenCV_自适应二值化",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          },
+          {
+            "name": "块大小",
+            "type": "int",
+            "description": "3～99 的正奇数。"
+          },
+          {
+            "name": "常数",
+            "type": "double"
+          },
+          {
+            "name": "反向",
+            "type": "bool"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_自适应二值化(0, 1, 1.0, 真)"
+    },
+    {
+      "index": 17,
+      "name": "OpenCV_Canny边缘",
+      "signature": "OpenCV_Canny边缘(图像, 低阈值, 高阈值)",
+      "description": "灰度化后执行 Canny 边缘检测。",
+      "insertText": "OpenCV_Canny边缘(0, 0, 0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "OpenCV_Canny边缘",
+        "runtimeName": "OpenCV_Canny边缘",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          },
+          {
+            "name": "低阈值",
+            "type": "double"
+          },
+          {
+            "name": "高阈值",
+            "type": "double"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_Canny边缘(0, 1.0, 1.0)"
+    },
+    {
+      "index": 18,
+      "name": "OpenCV_形态学",
+      "signature": "OpenCV_形态学(图像, 操作, 卷积核, 次数)",
+      "description": "执行形态学操作并返回新句柄。",
+      "insertText": "OpenCV_形态学(0, \"$2\", 0, 0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "OpenCV_形态学",
+        "runtimeName": "OpenCV_形态学",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          },
+          {
+            "name": "操作",
+            "type": "wideString",
+            "description": "腐蚀、膨胀、开运算、闭运算或梯度。"
+          },
+          {
+            "name": "卷积核",
+            "type": "int"
+          },
+          {
+            "name": "次数",
+            "type": "int"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "encoding": "wide"
+      },
+      "demoInvocation": "OpenCV_形态学(0, \"演示参数2\", 1, 1)"
+    },
+    {
+      "index": 19,
+      "name": "OpenCV_模板匹配",
+      "signature": "OpenCV_模板匹配(图像, 模板, 方法, 最低分数, 最大结果数)",
+      "description": "执行模板匹配和重叠抑制，返回受管分析结果。",
+      "insertText": "OpenCV_模板匹配(0, 0, \"$3\", 0, 0)",
+      "returnType": "长整数型",
+      "returnDescription": "成功返回 OpenCV结果句柄；没有候选时仍返回有效句柄。",
+      "binding": {
+        "command": "OpenCV_模板匹配",
+        "runtimeName": "OpenCV_模板匹配",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          },
+          {
+            "name": "模板",
+            "type": "handle"
+          },
+          {
+            "name": "方法",
+            "type": "wideString",
+            "description": "平方差、相关或相关系数。"
+          },
+          {
+            "name": "最低分数",
+            "type": "double"
+          },
+          {
+            "name": "最大结果数",
+            "type": "int"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "encoding": "wide"
+      },
+      "demoInvocation": "OpenCV_模板匹配(0, 0, \"演示参数3\", 1.0, 1)"
+    },
+    {
+      "index": 20,
+      "name": "OpenCV_查找轮廓",
+      "signature": "OpenCV_查找轮廓(图像, 最小面积, 最大面积, 最大结果数)",
+      "description": "查找外部轮廓并按面积排序返回矩形候选。",
+      "insertText": "OpenCV_查找轮廓(0, 0, 0, 0)",
+      "returnType": "长整数型",
+      "binding": {
+        "command": "OpenCV_查找轮廓",
+        "runtimeName": "OpenCV_查找轮廓",
+        "parameters": [
+          {
+            "name": "图像",
+            "type": "handle"
+          },
+          {
+            "name": "最小面积",
+            "type": "double"
+          },
+          {
+            "name": "最大面积",
+            "type": "double",
+            "description": "0 表示不限制。"
+          },
+          {
+            "name": "最大结果数",
+            "type": "int"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV_查找轮廓(0, 1.0, 1.0, 1)"
+    },
+    {
+      "index": 21,
+      "name": "OpenCV_分析缺口",
+      "signature": "OpenCV_分析缺口(背景图像, 滑块图像, 候选数量, 配置JSON)",
+      "description": "使用模板边缘与轮廓的确定性规则分析单缺口或双缺口候选。",
+      "insertText": "OpenCV_分析缺口(0, 0, 0, \"$4\")",
+      "returnType": "长整数型",
+      "returnDescription": "成功返回 OpenCV结果句柄；未发现候选时结果数量为 0。",
+      "binding": {
+        "command": "OpenCV_分析缺口",
+        "runtimeName": "OpenCV_分析缺口",
+        "parameters": [
+          {
+            "name": "背景图像",
+            "type": "handle"
+          },
+          {
+            "name": "滑块图像",
+            "type": "handle",
+            "description": "传 0 时只使用轮廓模式。"
+          },
+          {
+            "name": "候选数量",
+            "type": "int",
+            "description": "1～8。"
+          },
+          {
+            "name": "配置JSON",
+            "type": "wideString",
+            "description": "空文本或 {} 使用默认配置。"
+          }
+        ],
+        "returnType": "handle",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "encoding": "wide",
+        "example": "OpenCV_分析缺口(背景图, 0, 2, \"{}\")"
+      },
+      "demoInvocation": "OpenCV_分析缺口(0, 0, 1, \"{}\")"
+    },
+    {
+      "index": 22,
+      "name": "OpenCV结果_取类型",
+      "signature": "OpenCV结果_取类型(结果)",
+      "description": "返回模板匹配、轮廓或缺口。",
+      "insertText": "OpenCV结果_取类型(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "OpenCV结果_取类型",
+        "runtimeName": "OpenCV结果_取类型",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "handle"
+          }
+        ],
+        "returnType": "wideString",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "encoding": "wide"
+      },
+      "demoInvocation": "OpenCV结果_取类型(0)"
+    },
+    {
+      "index": 23,
+      "name": "OpenCV结果_取数量",
+      "signature": "OpenCV结果_取数量(结果)",
+      "description": "返回候选项数量。",
+      "insertText": "OpenCV结果_取数量(0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OpenCV结果_取数量",
+        "runtimeName": "OpenCV结果_取数量",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "handle"
+          }
+        ],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV结果_取数量(0)"
+    },
+    {
+      "index": 24,
+      "name": "OpenCV结果_取横坐标",
+      "signature": "OpenCV结果_取横坐标(结果, 索引)",
+      "description": "返回候选矩形左上角横坐标。",
+      "insertText": "OpenCV结果_取横坐标(0, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OpenCV结果_取横坐标",
+        "runtimeName": "OpenCV结果_取横坐标",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "handle"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV结果_取横坐标(0, 1)"
+    },
+    {
+      "index": 25,
+      "name": "OpenCV结果_取纵坐标",
+      "signature": "OpenCV结果_取纵坐标(结果, 索引)",
+      "description": "返回候选矩形左上角纵坐标。",
+      "insertText": "OpenCV结果_取纵坐标(0, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OpenCV结果_取纵坐标",
+        "runtimeName": "OpenCV结果_取纵坐标",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "handle"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV结果_取纵坐标(0, 1)"
+    },
+    {
+      "index": 26,
+      "name": "OpenCV结果_取宽度",
+      "signature": "OpenCV结果_取宽度(结果, 索引)",
+      "description": "返回候选矩形宽度。",
+      "insertText": "OpenCV结果_取宽度(0, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OpenCV结果_取宽度",
+        "runtimeName": "OpenCV结果_取宽度",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "handle"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV结果_取宽度(0, 1)"
+    },
+    {
+      "index": 27,
+      "name": "OpenCV结果_取高度",
+      "signature": "OpenCV结果_取高度(结果, 索引)",
+      "description": "返回候选矩形高度。",
+      "insertText": "OpenCV结果_取高度(0, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OpenCV结果_取高度",
+        "runtimeName": "OpenCV结果_取高度",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "handle"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV结果_取高度(0, 1)"
+    },
+    {
+      "index": 28,
+      "name": "OpenCV结果_取中心横坐标",
+      "signature": "OpenCV结果_取中心横坐标(结果, 索引)",
+      "description": "返回候选中心横坐标。",
+      "insertText": "OpenCV结果_取中心横坐标(0, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OpenCV结果_取中心横坐标",
+        "runtimeName": "OpenCV结果_取中心横坐标",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "handle"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV结果_取中心横坐标(0, 1)"
+    },
+    {
+      "index": 29,
+      "name": "OpenCV结果_取中心纵坐标",
+      "signature": "OpenCV结果_取中心纵坐标(结果, 索引)",
+      "description": "返回候选中心纵坐标。",
+      "insertText": "OpenCV结果_取中心纵坐标(0, 0)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "OpenCV结果_取中心纵坐标",
+        "runtimeName": "OpenCV结果_取中心纵坐标",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "handle"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV结果_取中心纵坐标(0, 1)"
+    },
+    {
+      "index": 30,
+      "name": "OpenCV结果_取置信度",
+      "signature": "OpenCV结果_取置信度(结果, 索引)",
+      "description": "返回 0～1 的候选置信度。",
+      "insertText": "OpenCV结果_取置信度(0, 0)",
+      "returnType": "双精度小数型",
+      "binding": {
+        "command": "OpenCV结果_取置信度",
+        "runtimeName": "OpenCV结果_取置信度",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "handle"
+          },
+          {
+            "name": "索引",
+            "type": "int"
+          }
+        ],
+        "returnType": "double",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV结果_取置信度(0, 1)"
+    },
+    {
+      "index": 31,
+      "name": "OpenCV结果_取JSON",
+      "signature": "OpenCV结果_取JSON(结果)",
+      "description": "返回 schemaVersion 1 的 UTF-16 JSON 结果。",
+      "insertText": "OpenCV结果_取JSON(0)",
+      "returnType": "文本型",
+      "binding": {
+        "command": "OpenCV结果_取JSON",
+        "runtimeName": "OpenCV结果_取JSON",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "handle"
+          }
+        ],
+        "returnType": "wideString",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "encoding": "wide"
+      },
+      "demoInvocation": "OpenCV结果_取JSON(0)"
+    },
+    {
+      "index": 32,
+      "name": "OpenCV结果_保存标注图",
+      "signature": "OpenCV结果_保存标注图(结果, 路径, 质量)",
+      "description": "保存带候选矩形和置信度标注的调试图。",
+      "insertText": "OpenCV结果_保存标注图(0, \"$2\", 0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "OpenCV结果_保存标注图",
+        "runtimeName": "OpenCV结果_保存标注图",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "handle"
+          },
+          {
+            "name": "路径",
+            "type": "wideString"
+          },
+          {
+            "name": "质量",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "targetIds": [
+          "windows-msvc-x64"
+        ],
+        "encoding": "wide"
+      },
+      "demoInvocation": "OpenCV结果_保存标注图(0, \"module-demo-temp.txt\", 1)"
+    },
+    {
+      "index": 33,
+      "name": "OpenCV结果_释放",
+      "signature": "OpenCV结果_释放(结果)",
+      "description": "释放一个受管分析结果句柄。",
+      "insertText": "OpenCV结果_释放(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "OpenCV结果_释放",
+        "runtimeName": "OpenCV结果_释放",
+        "parameters": [
+          {
+            "name": "结果",
+            "type": "handle"
+          }
+        ],
+        "returnType": "bool",
+        "targetIds": [
+          "windows-msvc-x64"
+        ]
+      },
+      "demoInvocation": "OpenCV结果_释放(0)"
+    }
+  ]
+}

@@ -84,7 +84,7 @@ test('DataGrid catalog keeps contributions, bindings and member metadata aligned
   assert.equal(new Set(DATA_GRID_API.map(item => item.name)).size, DATA_GRID_API.length);
   DATA_GRID_API.forEach(item => {
     assert.equal(item.parameters[0].name, '控件名');
-    assert.equal(item.parameters[0].type, 'wideString');
+    assert.equal(item.parameters[0].type, 'controlRef');
   });
   ['表格_取进度状态', '表格_取行是否选中', '表格_导入Excel', '表格_导出Excel'].forEach(name => assert.ok(DATA_GRID_API.some(item => item.name === name), `缺少接口：${name}`));
 });

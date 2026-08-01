@@ -1,0 +1,193 @@
+包 OpenCV图像处理模块完整演示
+使用 Win32窗口基础模块
+使用 OpenCV图像处理模块
+
+// 本项目由模块清单自动生成；每条 binding 命令都在下方具有真实调用语句。
+// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
+类 MainWindow : 公开 窗口
+    事件 _MainWindow_创建完毕()
+        控件_设置选择项(命令分组选项卡, 0)
+        控件_设置文本(演示状态, "OpenCV 图像处理模块：33 条命令，默认处于安全预览模式。")
+        调试输出("已加载模块演示：lingbuilder.opencv")
+    结束
+
+    事件 _运行第01组_被单击()
+        控件_设置文本(演示状态, "命令 1–17：OpenCV_取版本 至 OpenCV_Canny边缘；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
+            // 命令ID：OpenCV_取版本
+            // [1] OpenCV_取版本()
+            // 功能：返回当前 Bridge 使用的 OpenCV 与 Bridge ABI 版本。
+            // 参数：无；返回：wideString；可见性：default
+            OpenCV_取版本()
+            // 命令ID：OpenCV_加载图像
+            // [2] OpenCV_加载图像(路径, 读取模式)
+            // 功能：加载图像并返回受管图像句柄。
+            // 参数：路径:wideString，读取模式:wideString；返回：handle；可见性：default
+            OpenCV_加载图像("module-demo-temp.txt", "演示参数2")
+            // 命令ID：OpenCV_保存图像
+            // [3] OpenCV_保存图像(图像, 路径, 质量)
+            // 功能：按目标扩展名保存图像。
+            // 参数：图像:handle，路径:wideString，质量:int；返回：bool；可见性：default
+            OpenCV_保存图像(0, "module-demo-temp.txt", 1)
+            // 命令ID：OpenCV_克隆图像
+            // [4] OpenCV_克隆图像(图像)
+            // 功能：深复制图像并返回新句柄。
+            // 参数：图像:handle；返回：handle；可见性：default
+            OpenCV_克隆图像(0)
+            // 命令ID：OpenCV_释放图像
+            // [5] OpenCV_释放图像(图像)
+            // 功能：释放一个受管图像句柄。
+            // 参数：图像:handle；返回：bool；可见性：default
+            OpenCV_释放图像(0)
+            // 命令ID：OpenCV_释放全部
+            // [6] OpenCV_释放全部()
+            // 功能：释放当前进程中全部 OpenCV 图像与结果句柄。
+            // 参数：无；返回：void；可见性：default
+            OpenCV_释放全部()
+            // 命令ID：OpenCV_取宽度
+            // [7] OpenCV_取宽度(图像)
+            // 功能：返回图像像素宽度。
+            // 参数：图像:handle；返回：int；可见性：default
+            OpenCV_取宽度(0)
+            // 命令ID：OpenCV_取高度
+            // [8] OpenCV_取高度(图像)
+            // 功能：返回图像像素高度。
+            // 参数：图像:handle；返回：int；可见性：default
+            OpenCV_取高度(0)
+            // 命令ID：OpenCV_取通道数
+            // [9] OpenCV_取通道数(图像)
+            // 功能：返回图像通道数。
+            // 参数：图像:handle；返回：int；可见性：default
+            OpenCV_取通道数(0)
+            // 命令ID：OpenCV_取错误
+            // [10] OpenCV_取错误()
+            // 功能：读取当前线程最近一次 OpenCV 操作的中文错误。
+            // 参数：无；返回：wideString；可见性：default
+            OpenCV_取错误()
+            // 命令ID：OpenCV_灰度化
+            // [11] OpenCV_灰度化(图像)
+            // 功能：转换为灰度图并返回新句柄。
+            // 参数：图像:handle；返回：handle；可见性：default
+            OpenCV_灰度化(0)
+            // 命令ID：OpenCV_缩放
+            // [12] OpenCV_缩放(图像, 宽度, 高度)
+            // 功能：使用高质量插值缩放图像并返回新句柄。
+            // 参数：图像:handle，宽度:int，高度:int；返回：handle；可见性：default
+            OpenCV_缩放(0, 1, 1)
+            // 命令ID：OpenCV_裁剪
+            // [13] OpenCV_裁剪(图像, 横坐标, 纵坐标, 宽度, 高度)
+            // 功能：裁剪图像区域并返回新句柄。
+            // 参数：图像:handle，横坐标:int，纵坐标:int，宽度:int，高度:int；返回：handle；可见性：default
+            OpenCV_裁剪(0, 1, 1, 1, 1)
+            // 命令ID：OpenCV_高斯模糊
+            // [14] OpenCV_高斯模糊(图像, 卷积核, Sigma)
+            // 功能：执行高斯模糊并返回新句柄。
+            // 参数：图像:handle，卷积核:int，Sigma:double；返回：handle；可见性：default
+            OpenCV_高斯模糊(0, 1, 1.0)
+            // 命令ID：OpenCV_二值化
+            // [15] OpenCV_二值化(图像, 阈值, 模式)
+            // 功能：灰度化后执行固定或大津二值化。
+            // 参数：图像:handle，阈值:double，模式:wideString；返回：handle；可见性：default
+            OpenCV_二值化(0, 1.0, "演示参数3")
+            // 命令ID：OpenCV_自适应二值化
+            // [16] OpenCV_自适应二值化(图像, 块大小, 常数, 反向)
+            // 功能：执行高斯自适应二值化。
+            // 参数：图像:handle，块大小:int，常数:double，反向:bool；返回：handle；可见性：default
+            OpenCV_自适应二值化(0, 1, 1.0, 真)
+            // 命令ID：OpenCV_Canny边缘
+            // [17] OpenCV_Canny边缘(图像, 低阈值, 高阈值)
+            // 功能：灰度化后执行 Canny 边缘检测。
+            // 参数：图像:handle，低阈值:double，高阈值:double；返回：handle；可见性：default
+            OpenCV_Canny边缘(0, 1.0, 1.0)
+        如果结束
+        调试输出("已查看 命令 1–17：OpenCV_取版本 至 OpenCV_Canny边缘；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+    事件 _运行第02组_被单击()
+        控件_设置文本(演示状态, "命令 18–33：OpenCV_形态学 至 OpenCV结果_释放；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
+            // 命令ID：OpenCV_形态学
+            // [18] OpenCV_形态学(图像, 操作, 卷积核, 次数)
+            // 功能：执行形态学操作并返回新句柄。
+            // 参数：图像:handle，操作:wideString，卷积核:int，次数:int；返回：handle；可见性：default
+            OpenCV_形态学(0, "演示参数2", 1, 1)
+            // 命令ID：OpenCV_模板匹配
+            // [19] OpenCV_模板匹配(图像, 模板, 方法, 最低分数, 最大结果数)
+            // 功能：执行模板匹配和重叠抑制，返回受管分析结果。
+            // 参数：图像:handle，模板:handle，方法:wideString，最低分数:double，最大结果数:int；返回：handle；可见性：default
+            OpenCV_模板匹配(0, 0, "演示参数3", 1.0, 1)
+            // 命令ID：OpenCV_查找轮廓
+            // [20] OpenCV_查找轮廓(图像, 最小面积, 最大面积, 最大结果数)
+            // 功能：查找外部轮廓并按面积排序返回矩形候选。
+            // 参数：图像:handle，最小面积:double，最大面积:double，最大结果数:int；返回：handle；可见性：default
+            OpenCV_查找轮廓(0, 1.0, 1.0, 1)
+            // 命令ID：OpenCV_分析缺口
+            // [21] OpenCV_分析缺口(背景图像, 滑块图像, 候选数量, 配置JSON)
+            // 功能：使用模板边缘与轮廓的确定性规则分析单缺口或双缺口候选。
+            // 参数：背景图像:handle，滑块图像:handle，候选数量:int，配置JSON:wideString；返回：handle；可见性：default
+            OpenCV_分析缺口(0, 0, 1, "{}")
+            // 命令ID：OpenCV结果_取类型
+            // [22] OpenCV结果_取类型(结果)
+            // 功能：返回模板匹配、轮廓或缺口。
+            // 参数：结果:handle；返回：wideString；可见性：default
+            OpenCV结果_取类型(0)
+            // 命令ID：OpenCV结果_取数量
+            // [23] OpenCV结果_取数量(结果)
+            // 功能：返回候选项数量。
+            // 参数：结果:handle；返回：int；可见性：default
+            OpenCV结果_取数量(0)
+            // 命令ID：OpenCV结果_取横坐标
+            // [24] OpenCV结果_取横坐标(结果, 索引)
+            // 功能：返回候选矩形左上角横坐标。
+            // 参数：结果:handle，索引:int；返回：int；可见性：default
+            OpenCV结果_取横坐标(0, 1)
+            // 命令ID：OpenCV结果_取纵坐标
+            // [25] OpenCV结果_取纵坐标(结果, 索引)
+            // 功能：返回候选矩形左上角纵坐标。
+            // 参数：结果:handle，索引:int；返回：int；可见性：default
+            OpenCV结果_取纵坐标(0, 1)
+            // 命令ID：OpenCV结果_取宽度
+            // [26] OpenCV结果_取宽度(结果, 索引)
+            // 功能：返回候选矩形宽度。
+            // 参数：结果:handle，索引:int；返回：int；可见性：default
+            OpenCV结果_取宽度(0, 1)
+            // 命令ID：OpenCV结果_取高度
+            // [27] OpenCV结果_取高度(结果, 索引)
+            // 功能：返回候选矩形高度。
+            // 参数：结果:handle，索引:int；返回：int；可见性：default
+            OpenCV结果_取高度(0, 1)
+            // 命令ID：OpenCV结果_取中心横坐标
+            // [28] OpenCV结果_取中心横坐标(结果, 索引)
+            // 功能：返回候选中心横坐标。
+            // 参数：结果:handle，索引:int；返回：int；可见性：default
+            OpenCV结果_取中心横坐标(0, 1)
+            // 命令ID：OpenCV结果_取中心纵坐标
+            // [29] OpenCV结果_取中心纵坐标(结果, 索引)
+            // 功能：返回候选中心纵坐标。
+            // 参数：结果:handle，索引:int；返回：int；可见性：default
+            OpenCV结果_取中心纵坐标(0, 1)
+            // 命令ID：OpenCV结果_取置信度
+            // [30] OpenCV结果_取置信度(结果, 索引)
+            // 功能：返回 0～1 的候选置信度。
+            // 参数：结果:handle，索引:int；返回：double；可见性：default
+            OpenCV结果_取置信度(0, 1)
+            // 命令ID：OpenCV结果_取JSON
+            // [31] OpenCV结果_取JSON(结果)
+            // 功能：返回 schemaVersion 1 的 UTF-16 JSON 结果。
+            // 参数：结果:handle；返回：wideString；可见性：default
+            OpenCV结果_取JSON(0)
+            // 命令ID：OpenCV结果_保存标注图
+            // [32] OpenCV结果_保存标注图(结果, 路径, 质量)
+            // 功能：保存带候选矩形和置信度标注的调试图。
+            // 参数：结果:handle，路径:wideString，质量:int；返回：bool；可见性：default
+            OpenCV结果_保存标注图(0, "module-demo-temp.txt", 1)
+            // 命令ID：OpenCV结果_释放
+            // [33] OpenCV结果_释放(结果)
+            // 功能：释放一个受管分析结果句柄。
+            // 参数：结果:handle；返回：bool；可见性：default
+            OpenCV结果_释放(0)
+        如果结束
+        调试输出("已查看 命令 18–33：OpenCV_形态学 至 OpenCV结果_释放；勾选允许实际执行后会使用演示参数调用。")
+    结束
+
+结束类

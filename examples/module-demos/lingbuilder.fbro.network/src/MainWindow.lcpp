@@ -6,24 +6,24 @@
 // 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
-        控件_设置选择项("命令分组选项卡", 0)
-        控件_设置文本("演示状态", "FBro高级网络模块：2 条命令，默认处于安全预览模式。")
+        控件_设置选择项(命令分组选项卡, 0)
+        控件_设置文本(演示状态, "FBro高级网络模块：2 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.fbro.network")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本("演示状态", "命令 1–2：FBro网络_设置代理 至 FBro网络_设置代理认证；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 1–2：FBro网络_设置代理 至 FBro网络_设置代理认证；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：FBro网络_设置代理
             // [1] FBro网络_设置代理(控件名, 代理地址)
             // 功能：设置当前 FBro RequestContext 的代理。
-            // 参数：控件名:wideString，代理地址:wideString；返回：int；可见性：advanced
-            FBro网络_设置代理("演示输出", "https://example.com")
+            // 参数：控件名:controlRef，代理地址:wideString；返回：int；可见性：advanced
+            FBro网络_设置代理(演示FBroBrowser控件, "https://example.com")
             // 命令ID：FBro网络_设置代理认证
             // [2] FBro网络_设置代理认证(控件名, 代理地址, 用户名, 密码)
             // 功能：设置代理与认证信息。
-            // 参数：控件名:wideString，代理地址:wideString，用户名:wideString，密码:wideString；返回：int；可见性：advanced
-            FBro网络_设置代理认证("演示输出", "https://example.com", "演示参数3", "演示参数4")
+            // 参数：控件名:controlRef，代理地址:wideString，用户名:wideString，密码:wideString；返回：int；可见性：advanced
+            FBro网络_设置代理认证(演示FBroBrowser控件, "https://example.com", "演示参数3", "演示参数4")
         如果结束
         调试输出("已查看 命令 1–2：FBro网络_设置代理 至 FBro网络_设置代理认证；勾选允许实际执行后会使用演示参数调用。")
     结束

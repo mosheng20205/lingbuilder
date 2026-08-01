@@ -1,15 +1,22 @@
 import {
   LingBuilderModuleCategory,
   LingBuilderModuleManifest,
-  ModuleBindingValueType
+  ModuleBindingValueType,
+  ModuleCommandBindingParameter
 } from './types';
+import {
+  isWideStringAbiBindingType,
+  MODULE_BINDING_TYPE_LABELS,
+  normalizeControlReferenceCallSnippet,
+  normalizeControlReferenceParameter
+} from './bindingValueType';
 
 export interface StandardCommandSpec {
   name: string;
   signature: string;
   description: string;
   insertText: string;
-  parameters?: Array<{ name: string; type: ModuleBindingValueType; description?: string }>;
+  parameters?: ModuleCommandBindingParameter[];
   returnType: ModuleBindingValueType;
   returnDescription?: string;
   visibility?: 'default' | 'advanced' | 'internal';
@@ -26,19 +33,23 @@ export interface StandardModuleSpec {
 }
 
 const RETURN_TYPE_LABELS: Record<ModuleBindingValueType, string> = {
-  void: '空',
-  int: '整数型',
-  longLong: '长整数型',
+  ...MODULE_BINDING_TYPE_LABELS,
   double: '双精度小数型',
-  bool: '逻辑型',
-  wideString: '文本型',
   utf8String: '文本型',
-  handler: '处理器',
   handle: '长整数型',
   raw: '原生类型'
 };
 
 export function createStandardModule(spec: StandardModuleSpec): LingBuilderModuleManifest {
+  const commands = spec.commands.map(command => {
+    const parameters = (command.parameters || []).map(parameter => normalizeControlReferenceParameter(parameter));
+    return {
+      ...command,
+      parameters,
+      insertText: normalizeControlReferenceCallSnippet(command.insertText, parameters) || command.insertText,
+      example: normalizeControlReferenceCallSnippet(command.example, parameters)
+    };
+  });
   return {
     schemaVersion: 2,
     id: spec.id,
@@ -50,7 +61,7 @@ export function createStandardModule(spec: StandardModuleSpec): LingBuilderModul
     license: 'MIT',
     tags: ['内置', '标准库', ...spec.tags],
     contributes: {
-      commands: spec.commands.map(command => ({
+      commands: commands.map(command => ({
         name: command.name,
         signature: command.signature,
         description: command.description,
@@ -61,7 +72,7 @@ export function createStandardModule(spec: StandardModuleSpec): LingBuilderModul
       })),
       snippets: [{
         label: `${spec.name}快速示例`,
-        insertText: spec.commands.slice(0, 2).map(command => command.example || command.insertText.replace(/\$\d+/g, '')).join('\n'),
+        insertText: commands.slice(0, 2).map(command => command.example || command.insertText.replace(/\$\d+/g, '')).join('\n'),
         description: `插入${spec.name}的基础调用示例。`
       }]
     },
@@ -70,12 +81,12 @@ export function createStandardModule(spec: StandardModuleSpec): LingBuilderModul
       { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc' }
     ],
     bindings: {
-      commands: spec.commands.map(command => ({
+      commands: commands.map(command => ({
         command: command.name,
         runtimeName: command.name,
         parameters: command.parameters || [],
         returnType: command.returnType,
-        encoding: command.parameters?.some(parameter => parameter.type === 'wideString') || command.returnType === 'wideString'
+        encoding: command.parameters?.some(parameter => isWideStringAbiBindingType(parameter.type)) || command.returnType === 'wideString'
           ? 'wide'
           : undefined,
         example: command.example

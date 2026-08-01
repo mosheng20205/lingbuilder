@@ -1,7 +1,7 @@
 # FBro会话模块完整演示
 
 - 模块 ID：`lingbuilder.fbro.session`
-- 版本：`2.0.0`
+- 版本：`2.1.0`
 - 类型：LingBuilder 内置模块
 - 命令数：10
 - 设计器控件数：0

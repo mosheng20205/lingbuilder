@@ -1,4 +1,5 @@
 import { EDGEVIEW_SAFE_API_CATALOG } from '../modules/edgeViewApiCatalog';
+import { isWideStringAbiBindingType } from '../modules/bindingValueType';
 
 const SETTING_MEMBERS: Array<[string, string, number]> = [
   ['脚本执行', 'IsScriptEnabled', 1], ['网页消息', 'IsWebMessageEnabled', 1], ['脚本对话框', 'AreDefaultScriptDialogsEnabled', 1],
@@ -55,7 +56,7 @@ function printSettingsWrappers(): string {
 function unavailableStubs(): string {
   return EDGEVIEW_SAFE_API_CATALOG.map(entry => {
     const parameters = (entry.binding.parameters || []).map((parameter, index) => {
-      const type = parameter.type === 'wideString' || parameter.type === 'handler' ? 'const wchar_t*'
+      const type = isWideStringAbiBindingType(parameter.type) ? 'const wchar_t*'
         : parameter.type === 'longLong' || parameter.type === 'handle' ? 'long long'
           : parameter.type === 'double' ? 'double' : parameter.type === 'bool' ? 'bool' : 'int';
       return `${type} value${index}`;

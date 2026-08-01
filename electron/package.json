@@ -33,13 +33,22 @@
     "module:fbro-sdk": "node scripts/generate-fbro-sdk-module.cjs",
     "module:fbro-coverage": "node scripts/generate-fbro-api-coverage.cjs",
     "module:fbro-coverage:check": "node scripts/generate-fbro-api-coverage.cjs --check",
+    "module:fbro-events:complete": "node scripts/generate-fbro-api-coverage.cjs --check --events-complete",
     "module:crypto-sdk": "node scripts/generate-crypto-sdk-module.cjs",
+    "module:opencv-sdk": "node scripts/generate-opencv-sdk-module.cjs",
     "module:demos": "tsx scripts/generate-module-demos.ts",
     "module:demos:verify": "tsx scripts/generate-module-demos.ts --verify-only",
     "module:demos:verify:deep": "tsx scripts/generate-module-demos.ts --verify-only --deep",
     "module:demos:rename": "tsx scripts/generate-module-demos.ts --rename-packages",
     "module:web-docs": "tsx scripts/export-website-command-manifests.ts",
+    "module:control-ref-audit": "tsx scripts/audit-control-references.ts",
+    "module:control-ref-migrate": "tsx scripts/migrate-control-references.ts --write",
+    "module:control-ref-migration-check": "tsx scripts/migrate-control-references.ts",
+    "module:control-ref-source-audit": "tsx scripts/migrate-module-control-reference-literals.ts",
+    "module:control-ref-source-migrate": "tsx scripts/migrate-module-control-reference-literals.ts --write",
     "smoke:crypto-native": "node --import tsx scripts/smoke-crypto-native.ts",
+    "smoke:opencv-native": "node --import tsx scripts/smoke-opencv-native.ts",
+    "smoke:local-constant-native": "tsx scripts/smoke-local-constant-native.ts",
     "verify:cef3-release": "node scripts/verify-cef3-release-sdk.cjs source",
     "verify:cef3-installer": "node scripts/verify-cef3-release-sdk.cjs installer",
     "verify:fbro-release": "node scripts/verify-fbro-release-sdk.cjs source",
@@ -53,11 +62,12 @@
     "smoke:packaged": "node scripts/smoke-packaged.cjs",
     "smoke:ai-bridge": "node scripts/smoke-ai-bridge.cjs",
     "smoke:fbro-native": "tsx scripts/smoke-fbro-native.ts",
+    "smoke:fbro-events-stress": "tsx scripts/smoke-fbro-events-stress.ts",
     "smoke:datagrid-native": "tsx scripts/smoke-datagrid-native.ts",
     "smoke:edgeview-native": "tsx scripts/smoke-edgeview-native.ts",
     "smoke:datagrid-demo": "tsx scripts/smoke-datagrid-demo.ts",
     "smoke:new-emoji-fbro-tabs": "tsx scripts/smoke-new-emoji-fbro-tabs.ts",
-    "test:fbro-invalid-vip": "npm run smoke:fbro-native && tsx scripts/test-fbro-invalid-vip.ts",
+    "test:fbro-invalid-vip": "tsx scripts/smoke-fbro-native.ts --build-only && tsx scripts/test-fbro-invalid-vip.ts",
     "clean": "rimraf dist dist-electron"
   },
   "dependencies": {
@@ -183,6 +193,10 @@
       {
         "from": "../模块开发手册.md",
         "to": "docs/模块开发手册.md"
+      },
+      {
+        "from": "docs/modules/opencv",
+        "to": "docs/modules/opencv"
       }
     ],
     "win": {

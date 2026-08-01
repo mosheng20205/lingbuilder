@@ -131,6 +131,7 @@ import {
 import {
   getEplEventSuffix,
   getLingWindowSourceFileName,
+  getLingWindowSourceFilePath,
   readWindowDesignerState,
   saveWindowDesignerState,
   PersistedWindowDesignerState,
@@ -518,8 +519,8 @@ export default function App() {
 
     const currentFiles = [...initialFiles];
     proj.windows.forEach(win => {
-      const sourceName = `${win.className || win.fileName.replace(/\.xml$/i, '')}.lcpp`;
-      const sourcePath = `src/${sourceName}`;
+      const sourceName = getLingWindowSourceFileName(win.fileName, win.className);
+      const sourcePath = getLingWindowSourceFilePath(activeSolutionProject.sourceRoot, win.fileName, win.className);
       if (!currentFiles.some(f => f.path === sourcePath)) {
         currentFiles.push({
           path: sourcePath,
@@ -2470,7 +2471,7 @@ void DisplayStatus() {
     const handleWindowAdded = (event: Event) => {
       const nextWindow = (event as CustomEvent).detail;
       const fileName = getLingWindowSourceFileName(nextWindow.fileName, nextWindow.className);
-      const filePath = `src/${fileName}`;
+      const filePath = getLingWindowSourceFilePath(activeSolutionProject.sourceRoot, nextWindow.fileName, nextWindow.className);
 
       const currentFiles = filesRef.current;
       const existingFile = currentFiles.find(f => f.path === filePath);
@@ -2500,7 +2501,7 @@ void DisplayStatus() {
       const deletedWindow = detail.deletedWindow || detail;
       const nextWindow = detail.nextWindow;
       const fileName = getLingWindowSourceFileName(deletedWindow.fileName, deletedWindow.className);
-      const filePath = `src/${fileName}`;
+      const filePath = getLingWindowSourceFilePath(activeSolutionProject.sourceRoot, deletedWindow.fileName, deletedWindow.className);
       const nextFiles = filesRef.current.filter(f => f.path !== filePath);
       disposeWorkbenchTextModelsForSource(textModelIdentity(activeProjectIdRef.current, filePath));
 
@@ -2526,7 +2527,7 @@ void DisplayStatus() {
     const handleWindowDuplicated = (event: Event) => {
       const clonedWindow = (event as CustomEvent).detail;
       const fileName = getLingWindowSourceFileName(clonedWindow.fileName, clonedWindow.className);
-      const filePath = `src/${fileName}`;
+      const filePath = getLingWindowSourceFilePath(activeSolutionProject.sourceRoot, clonedWindow.fileName, clonedWindow.className);
 
       const currentFiles = filesRef.current;
       const existingFile = currentFiles.find(f => f.path === filePath);
@@ -2578,7 +2579,7 @@ void DisplayStatus() {
       window.removeEventListener('window-deleted', handleWindowDeleted);
       window.removeEventListener('window-duplicated', handleWindowDuplicated);
     };
-  }, [captureProjectMutationOwner, flushCurrentEditorDrafts, focusLingCppHandler, handleSelectFile, isCurrentProjectMutationOwner]);
+  }, [activeSolutionProject.sourceRoot, captureProjectMutationOwner, flushCurrentEditorDrafts, focusLingCppHandler, handleSelectFile, isCurrentProjectMutationOwner]);
 
 
   useEffect(() => {

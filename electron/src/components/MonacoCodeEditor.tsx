@@ -51,6 +51,26 @@ import {
 } from '../services/textModel/monacoModelSync';
 import { applyLspRefactor, lspRangeToMonaco, markupToText, normalizeCompletionItems, normalizeLspLocations, previewLspRefactor, requestLsp } from '../services/lsp/lspClient';
 import { MonacoFilePathRegistry } from '../services/lsp/monacoFilePathRegistry';
+import type { CommandService } from '../services/commands/commandService';
+import type { CommandContext } from '../services/commands/types';
+import { getMenuService } from '../services/menus/menuService';
+import { LINGCPP_CONTROL_REFERENCE_CONTEXT_MENU } from '../services/menus/types';
+import {
+  getLingCppControlReferenceAtPosition,
+  getLingCppControlReferenceLocations,
+  getLingCppControlReferences,
+  type LingCppControlReference
+} from '../services/lingCpp/controlReferenceService';
+import {
+  acquireLingCppControlReferenceCommands,
+  REVEAL_LINGCPP_CONTROL_COMMAND
+} from '../services/lingCpp/controlReferenceCommands';
+import {
+  buildLingCppControlReferenceSemanticTokenData,
+  createLingCppControlReferenceEditorCss,
+  LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN,
+  LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS
+} from '../services/lingCpp/semanticTheme';
 
 // Keep the primary editor fully local/offline. Every language used here can
 // share Monaco's core editor worker; no CDN or hidden machine state is needed.
@@ -103,6 +123,10 @@ export interface MonacoCodeEditorProps {
   modelSurface?: string;
   onEditorStateChange?: (state: MonacoEditorState) => void;
   onFocusEditor?: () => void;
+  commandService?: CommandService;
+  getCommandContext?: () => CommandContext;
+  onRevealControlReference?: (reference: LingCppControlReference) => void;
+  onRenameControlReference?: (reference: LingCppControlReference, newName: string) => void;
 }
 
 let lingCppProvidersRegistered = false;
@@ -119,6 +143,8 @@ let lingCppProjectGlobalsSnapshot: LingCppProjectGlobalContext | undefined;
 let lingCppProjectTypesSnapshot: LingCppProjectTypeContext | undefined;
 let lingCppProjectSourcesSnapshot: LingCppProjectSourceFile[] | undefined;
 let lingCppProjectSourcesChangeSnapshot: ((sources: LingCppProjectSourceFile[]) => void) | undefined;
+let lingCppRevealControlReferenceSnapshot: ((reference: LingCppControlReference) => void) | undefined;
+let lingCppRenameControlReferenceSnapshot: ((reference: LingCppControlReference, newName: string) => void) | undefined;
 
 const EPL_KEYWORDS = [
   '如果', '如果真', '否则', '否则如果', '如果结束',
@@ -130,7 +156,7 @@ const EPL_KEYWORDS = [
   '枚举循环首', '枚举循环尾',
   '跳出循环', '到循环尾',
   '尝试', '捕获',
-  '子程序', '局部变量', '常量', '返回', '结束'
+  '子程序', '局部变量', '局部常量', '常量', '返回', '结束'
 ];
 
 const EPL_COMMANDS = [
@@ -249,7 +275,11 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
   modelIdentity: providedModelIdentity,
   modelSurface = 'professional',
   onEditorStateChange,
-  onFocusEditor
+  onFocusEditor,
+  commandService,
+  getCommandContext,
+  onRevealControlReference,
+  onRenameControlReference
 }: MonacoCodeEditorProps, ref) {
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
@@ -593,8 +623,52 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       onFontSizeChange(currentValue => currentValue + (event.deltaY < 0 ? 1 : -1));
     };
     editorDomNode?.addEventListener('wheel', handleFontWheel, { passive: false });
+    const controlReferenceContextKey = editor.createContextKey?.('lingcppControlReference', false);
+    const updateControlReferenceContext = (position: { lineNumber: number; column: number } | undefined) => {
+      if (!position || language !== 'lingcpp') {
+        controlReferenceContextKey?.set(false);
+        return undefined;
+      }
+      const reference = getLingCppControlReferenceAtPosition(
+        editor.getModel?.()?.getValue?.() || sourceCode,
+        position.lineNumber,
+        position.column,
+        lingCppDesignerProjectSnapshot,
+        lingCppModuleContextSnapshot,
+        lingCppFilePathSnapshot
+      );
+      controlReferenceContextKey?.set(Boolean(reference?.symbol));
+      return reference;
+    };
+    const cursorRegistration = editor.onDidChangeCursorPosition?.((event: any) => updateControlReferenceContext(event.position));
+    const contextMenuRegistration = editor.onContextMenu?.((event: any) => updateControlReferenceContext(event.target?.position || editor.getPosition?.()));
+    const controlCommandRegistration = commandService ? acquireLingCppControlReferenceCommands(commandService) : undefined;
+    const resolvedControlMenuItem = commandService
+      ? getMenuService(commandService).resolveMenu(
+          LINGCPP_CONTROL_REFERENCE_CONTEXT_MENU,
+          { ...(getCommandContext?.() || {}), 'workspace.open': true },
+          { includeDisabled: true }
+        ).find(item => item.kind === 'command' && item.command.id === REVEAL_LINGCPP_CONTROL_COMMAND)
+      : undefined;
+    const revealActionRegistration = resolvedControlMenuItem?.kind === 'command'
+      ? editor.addAction?.({
+          id: REVEAL_LINGCPP_CONTROL_COMMAND,
+          label: resolvedControlMenuItem.command.title,
+          contextMenuGroupId: 'navigation',
+          contextMenuOrder: 1,
+          precondition: 'lingcppControlReference',
+          run: () => {
+            const reference = updateControlReferenceContext(editor.getPosition?.());
+            if (reference?.symbol) lingCppRevealControlReferenceSnapshot?.(reference);
+          }
+        })
+      : undefined;
     editor.onDidDispose?.(() => {
       editorDomNode?.removeEventListener('wheel', handleFontWheel);
+      cursorRegistration?.dispose?.();
+      contextMenuRegistration?.dispose?.();
+      revealActionRegistration?.dispose?.();
+      controlCommandRegistration?.dispose?.();
       cppFilePathRegistry.release(cppFilePathOwnerRef.current);
     });
     editor.onDidChangeCursorSelection?.(scheduleStateUpdate);
@@ -695,6 +769,24 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
           getLingCppSymbols(model.getValue()).map(symbol => toMonacoDocumentSymbol(symbol, monaco))
       });
 
+      monaco.languages.registerDocumentSemanticTokensProvider('lingcpp', {
+        getLegend: () => ({
+          tokenTypes: [LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN],
+          tokenModifiers: []
+        }),
+        provideDocumentSemanticTokens: (model: any) => ({
+          data: buildLingCppControlReferenceSemanticTokenData(
+            getLingCppControlReferences(
+              model.getValue(),
+              lingCppDesignerProjectSnapshot,
+              lingCppModuleContextSnapshot,
+              lingCppFilePathSnapshot
+            ).filter(reference => reference.status === 'resolved').map(reference => reference.range)
+          )
+        }),
+        releaseDocumentSemanticTokens: () => undefined
+      });
+
       monaco.languages.registerCompletionItemProvider('lingcpp', {
         triggerCharacters: ['_', ' ', '(', '"', '“', '.'],
         provideCompletionItems: (model: any, position: any) => {
@@ -772,6 +864,18 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
 
       monaco.languages.registerDefinitionProvider('lingcpp', {
         provideDefinition: (model: any, position: any) => {
+          const controlReference = getLingCppControlReferenceAtPosition(
+            model.getValue(),
+            position.lineNumber,
+            position.column,
+            lingCppDesignerProjectSnapshot,
+            lingCppModuleContextSnapshot,
+            lingCppFilePathSnapshot
+          );
+          if (controlReference?.symbol) {
+            lingCppRevealControlReferenceSnapshot?.(controlReference);
+            return null;
+          }
           const word = model.getWordAtPosition(position);
           if (!word?.word) return null;
           const constant = lingCppProjectGlobalsSnapshot?.constants.find(item => item.name === word.word);
@@ -811,6 +915,19 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
 
       monaco.languages.registerRenameProvider('lingcpp', {
         resolveRenameLocation: (model: any, position: any) => {
+          const controlReference = getLingCppControlReferenceAtPosition(
+            model.getValue(), position.lineNumber, position.column,
+            lingCppDesignerProjectSnapshot, lingCppModuleContextSnapshot, lingCppFilePathSnapshot
+          );
+          if (controlReference?.symbol) return {
+            text: controlReference.symbol.name,
+            range: {
+              startLineNumber: controlReference.range.startLine,
+              startColumn: controlReference.range.startColumn,
+              endLineNumber: controlReference.range.endLine,
+              endColumn: controlReference.range.endColumn
+            }
+          };
           const word = model.getWordAtPosition(position);
           const isConstant = Boolean(word?.word && lingCppProjectGlobalsSnapshot?.constants.some(item => item.name === word.word));
           const definition = word?.word && lingCppProjectGlobalsSnapshot ? findProjectGlobalDefinition(word.word, lingCppProjectGlobalsSnapshot) : undefined;
@@ -826,6 +943,19 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
           };
         },
         provideRenameEdits: (model: any, position: any, newName: string) => {
+          const controlReference = getLingCppControlReferenceAtPosition(
+            model.getValue(), position.lineNumber, position.column,
+            lingCppDesignerProjectSnapshot, lingCppModuleContextSnapshot, lingCppFilePathSnapshot
+          );
+          if (controlReference?.symbol) {
+            if (!lingCppRenameControlReferenceSnapshot) return { edits: [], rejectReason: '控件重命名服务尚未就绪。' };
+            try {
+              lingCppRenameControlReferenceSnapshot(controlReference, newName);
+              return { edits: [] };
+            } catch (error) {
+              return { edits: [], rejectReason: error instanceof Error ? error.message : '控件重命名失败。' };
+            }
+          }
           const word = model.getWordAtPosition(position);
           if (!word?.word || !lingCppProjectGlobalsSnapshot || !lingCppProjectSourcesSnapshot?.length || !lingCppProjectSourcesChangeSnapshot) {
             return { edits: [], rejectReason: '项目全局变量上下文尚未就绪。' };
@@ -858,6 +988,26 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
 
       monaco.languages.registerReferenceProvider('lingcpp', {
         provideReferences: (model: any, position: any) => {
+          const controlReference = getLingCppControlReferenceAtPosition(
+            model.getValue(), position.lineNumber, position.column,
+            lingCppDesignerProjectSnapshot, lingCppModuleContextSnapshot, lingCppFilePathSnapshot
+          );
+          if (controlReference?.symbol && lingCppProjectSourcesSnapshot?.length) {
+            return getLingCppControlReferenceLocations(
+              lingCppProjectSourcesSnapshot,
+              controlReference.symbol,
+              lingCppDesignerProjectSnapshot,
+              lingCppModuleContextSnapshot
+            ).map(location => ({
+              uri: location.filePath === lingCppFilePathSnapshot ? model.uri : monaco.Uri.file(location.filePath),
+              range: {
+                startLineNumber: location.range.startLine,
+                startColumn: location.range.startColumn,
+                endLineNumber: location.range.endLine,
+                endColumn: location.range.endColumn
+              }
+            }));
+          }
           const word = model.getWordAtPosition(position);
           if (!word?.word || !lingCppProjectGlobalsSnapshot?.constants.some(item => item.name === word.word) || !lingCppProjectSourcesSnapshot?.length) return [];
           return findProjectConstantReferences(lingCppProjectSourcesSnapshot, word.word).map(reference => ({
@@ -869,6 +1019,40 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
               endColumn: reference.column + word.word.length
             }
           }));
+        }
+      });
+
+      monaco.languages.registerCodeActionProvider('lingcpp', {
+        provideCodeActions: (model: any, range: any) => {
+          const actions = getLingCppControlReferences(
+            model.getValue(),
+            lingCppDesignerProjectSnapshot,
+            lingCppModuleContextSnapshot,
+            lingCppFilePathSnapshot
+          ).filter(reference => reference.quoted && reference.status === 'resolved'
+            && reference.range.startLine <= range.endLineNumber
+            && reference.range.endLine >= range.startLineNumber)
+            .map(reference => ({
+              title: `改为控件引用：${reference.name}`,
+              kind: 'quickfix',
+              isPreferred: true,
+              edit: {
+                edits: [{
+                  resource: model.uri,
+                  textEdit: {
+                    range: {
+                      startLineNumber: reference.range.startLine,
+                      startColumn: reference.range.startColumn,
+                      endLineNumber: reference.range.endLine,
+                      endColumn: reference.range.endColumn
+                    },
+                    text: reference.name
+                  },
+                  versionId: model.getVersionId?.()
+                }]
+              }
+            }));
+          return { actions, dispose: () => undefined };
         }
       });
 
@@ -1034,6 +1218,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     monaco.editor.defineTheme('epl-dark', {
       base: 'vs-dark',
       inherit: true,
+      semanticHighlighting: true,
       rules: [
         { token: 'keyword', foreground: '569cd6', fontStyle: 'bold' },
         { token: 'predefined', foreground: '4ec9b0' },
@@ -1044,6 +1229,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
         { token: 'comment', foreground: '6a9955', fontStyle: 'italic' },
         { token: 'string', foreground: 'ce9178' },
         { token: 'number', foreground: 'b5cea8' }
+        ,{ token: LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN, foreground: LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS.dark.slice(1), fontStyle: 'bold' }
       ],
       colors: {
         'editor.background': '#1e1e24',
@@ -1057,6 +1243,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     monaco.editor.defineTheme('epl-light', {
       base: 'vs',
       inherit: true,
+      semanticHighlighting: true,
       rules: [
         { token: 'keyword', foreground: '0000ff', fontStyle: 'bold' },
         { token: 'predefined', foreground: '008080' },
@@ -1067,6 +1254,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
         { token: 'comment', foreground: '008000', fontStyle: 'italic' },
         { token: 'string', foreground: 'a31515' },
         { token: 'number', foreground: '098658' }
+        ,{ token: LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN, foreground: LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS.light.slice(1), fontStyle: 'bold' }
       ],
       colors: {
         'editor.background': '#ffffff',
@@ -1129,6 +1317,8 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     lingCppProjectTypesSnapshot = projectTypes;
     lingCppProjectSourcesSnapshot = projectSources;
     lingCppProjectSourcesChangeSnapshot = onProjectSourcesChange;
+    lingCppRevealControlReferenceSnapshot = onRevealControlReference;
+    lingCppRenameControlReferenceSnapshot = onRenameControlReference;
 
     const monaco = monacoRef.current;
     const editor = editorRef.current;
@@ -1145,10 +1335,10 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
       const line = Math.max(1, Math.min(diagnostic.line, model.getLineCount()));
       return {
         severity: toMonacoMarkerSeverity(diagnostic.level, monaco),
-        startLineNumber: line,
-        startColumn: 1,
-        endLineNumber: line,
-        endColumn: Math.max(2, model.getLineMaxColumn(line)),
+        startLineNumber: diagnostic.range?.startLine || line,
+        startColumn: diagnostic.range?.startColumn || 1,
+        endLineNumber: diagnostic.range?.endLine || line,
+        endColumn: diagnostic.range?.endColumn || Math.max(2, model.getLineMaxColumn(line)),
         message: `${diagnostic.message}\n${diagnostic.suggestion}`,
         code: diagnostic.id
       };
@@ -1186,7 +1376,7 @@ const MonacoCodeEditor = forwardRef<MonacoCodeEditorHandle, MonacoCodeEditorProp
     );
 
     decorationIdsRef.current = editor.deltaDecorations(decorationIdsRef.current, [...bindingDecorations, ...structureDecorations, ...readingDecorations]);
-  }, [sourceCode, language, designerProject, filePath, onRevealDesignerBinding, moduleContext, projectGlobals, projectTypes, readingMode, focusedBlockId]);
+  }, [sourceCode, language, designerProject, filePath, onRevealDesignerBinding, onRevealControlReference, onRenameControlReference, moduleContext, projectGlobals, projectTypes, projectSources, readingMode, focusedBlockId]);
 
   useEffect(() => {
     const editor = editorRef.current; const monaco = monacoRef.current; if (!editor || !monaco) return;
@@ -1313,6 +1503,7 @@ function injectLingCppEditorStyles(): void {
     '.lingcpp-action-exit::before { background: #fb7185; }',
     '.lingcpp-action-text::before { background: #fbbf24; }',
     '.lingcpp-action-window::before { background: #c084fc; }',
+    ...createLingCppControlReferenceEditorCss(),
     '.lingbuilder-debug-breakpoint::before { content: ""; display: block; width: 10px; height: 10px; margin: 5px auto 0; border-radius: 999px; background: #ef4444; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.22); } .lingbuilder-coverage-covered { background: rgba(34,197,94,.10); } .lingbuilder-coverage-uncovered { background: rgba(244,63,94,.13); } .lingbuilder-coverage-gutter-covered { border-left: 3px solid #22c55e; } .lingbuilder-coverage-gutter-uncovered { border-left: 3px solid #f43f5e; }'
   ].join('\n');
   if (!existing) document.head.appendChild(style);
@@ -1465,7 +1656,7 @@ function structureTextForGroup(group: LingCppStructuredReadingRow['group']): str
     global: '项目全局变量',
     class: '类',
     member: '成员',
-    local: '局部变量',
+    local: '局部声明',
     method: '方法',
     constructor: '初始化',
     event: '事件',

@@ -6,7 +6,7 @@
     // 下面的按钮用 @ 原生语句逐项调用其余 EU_* 接口。@ 只作为本示例的 ABI 演示入口，不改变 LingBuilder 的运行时边界。
     事件 _MainWindow_创建完毕()
         调试输出("ListBox 接口演示已启动")
-        控件_设置文本("状态标签", "状态：请选择右侧接口组；底层返回值写入输出面板。")
+        控件_设置文本(状态标签, "状态：请选择右侧接口组；底层返回值写入输出面板。")
     结束
 
     事件 _接口01_基础数据_被点击()
@@ -25,7 +25,7 @@
         @ int updated = EU_UpdateListBoxItem(g_newEmojiWindow, 列表框ID, 0, reinterpret_cast<const unsigned char*>("更新后的任务一"), 18);
         @ int postedUpdated = EU_PostUpdateListBoxItem(g_newEmojiWindow, 列表框ID, 1, reinterpret_cast<const unsigned char*>("异步更新"), 12);
         调试输出("基础数据接口：添加、插入、更新及同步/异步版本已调用")
-        控件_设置文本("状态标签", "状态：基础数据接口已执行。")
+        控件_设置文本(状态标签, "状态：基础数据接口已执行。")
     结束
 
     事件 _接口02_读取选择_被点击()
@@ -47,7 +47,7 @@
         @ int selectedItemsSize = EU_GetListBoxSelectedItems(g_newEmojiWindow, 列表框ID, selectedItemsBuffer, static_cast<int>(sizeof(selectedItemsBuffer)));
         @ int postedKeys = EU_PostSetListBoxSelectedKeys(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("task-1|task-2"), static_cast<int>(sizeof("task-1|task-2") - 1));
         调试输出("读取与选择接口：项目数、项目内容、选择索引、选择 Key 和选中项目已调用")
-        控件_设置文本("状态标签", "状态：读取/选择接口已执行；请查看输出面板中的返回值。")
+        控件_设置文本(状态标签, "状态：读取/选择接口已执行；请查看输出面板中的返回值。")
     结束
 
     事件 _接口03_状态编辑_被点击()
@@ -73,7 +73,7 @@
         @ EU_SetListBoxEditOptions(g_newEmojiWindow, 列表框ID, 3, 1);
         @ int postedEditOptions = EU_PostSetListBoxEditOptions(g_newEmojiWindow, 列表框ID, 3, 1);
         调试输出("状态与编辑接口：禁用、展开、分组、开始/提交/取消编辑已调用")
-        控件_设置文本("状态标签", "状态：状态与编辑接口已执行。")
+        控件_设置文本(状态标签, "状态：状态与编辑接口已执行。")
     结束
 
     事件 _接口04_外观滚动_被点击()
@@ -93,7 +93,7 @@
         @ unsigned char stateBuffer[32768] = {};
         @ int stateSize = EU_GetListBoxFullState(g_newEmojiWindow, 列表框ID, stateBuffer, static_cast<int>(sizeof(stateBuffer)));
         调试输出("外观与滚动接口：滚动、选项、样式和完整状态已调用")
-        控件_设置文本("状态标签", "状态：外观/滚动接口已执行。")
+        控件_设置文本(状态标签, "状态：外观/滚动接口已执行。")
     结束
 
     事件 _接口05_虚拟项目_被点击()
@@ -107,7 +107,7 @@
         @ EU_RefreshListBoxVirtualItems(g_newEmojiWindow, 列表框ID);
         @ int postedRefresh = EU_PostRefreshListBoxVirtualItems(g_newEmojiWindow, 列表框ID);
         调试输出("虚拟项目接口：虚拟行数、提供器设置和刷新接口已调用")
-        控件_设置文本("状态标签", "状态：已切换虚拟项目模式；提供器回调请通过原生扩展接入。")
+        控件_设置文本(状态标签, "状态：已切换虚拟项目模式；提供器回调请通过原生扩展接入。")
     结束
 
     事件 _接口06_清理恢复_被点击()
@@ -122,7 +122,7 @@
         @ EU_SetListBoxItems(g_newEmojiWindow, 列表框ID, reinterpret_cast<const unsigned char*>("任务一|任务二|任务三|任务四"), static_cast<int>(sizeof("任务一|任务二|任务三|任务四") - 1));
         @ EU_SetListBoxSelectedIndex(g_newEmojiWindow, 列表框ID, 0);
         调试输出("清理接口：删除、清空和恢复初始项目已调用")
-        控件_设置文本("状态标签", "状态：列表框已清理并恢复初始数据。")
+        控件_设置文本(状态标签, "状态：列表框已清理并恢复初始数据。")
     结束
 
     // 列表框专属回调由设计器事件自动生成 EU_SetListBox*Callback 注册语句。

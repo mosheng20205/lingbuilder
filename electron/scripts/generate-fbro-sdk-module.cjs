@@ -7,7 +7,7 @@ const { promisify } = require('node:util');
 const execFileAsync = promisify(execFile);
 const MODULE_ID = 'lingbuilder.fbro.sdk';
 const SDK_VERSION = '135.0.21';
-const BRIDGE_VERSION = '2.0.0';
+const BRIDGE_VERSION = '2.1.0';
 const DEFAULT_SOURCE = 'T:\\编程工具\\win_android\\plugins\\vprj_win\\classlib\\sys\\FBrowser';
 
 async function main() {

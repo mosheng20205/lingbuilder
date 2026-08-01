@@ -19,6 +19,7 @@ import { NETWORK_LIBRARY_MODULES } from '../src/services/modules/networkLibraryM
 import { DATA_MEDIA_MODULES } from '../src/services/modules/dataMediaModules';
 import { PLATFORM_ADVANCED_MODULES } from '../src/services/modules/platformAdvancedModules';
 import { validateModuleManifest } from '../src/services/modules/manifest';
+import { auditControlReferenceManifests } from '../src/services/modules/controlReferenceAuditService';
 import { createModuleService } from '../src/services/modules/moduleService';
 import { normalizeModulePublicInfoSearchText } from '../src/services/modules/modulePublicInfoSearch';
 import {
@@ -29,6 +30,7 @@ import {
   FBRO_ADVANCED_MODULE_IDS,
   FBRO_MODULE_FAMILY,
   FBRO_STANDARD_MODULE_IDS,
+  OPENCV_MODULE_FAMILY,
   getFbroFamilyModules,
   getModuleFamilyModules,
   getModuleFamilySearchText,
@@ -36,7 +38,7 @@ import {
   isModuleFamilyStandardEnabled,
   isModuleHiddenByFamily
 } from '../src/services/modules/moduleFamilies';
-import { createMarketIndex, validateModuleDirectory } from '../src/services/modules/moduleSdkService';
+import { createMarketIndex, migrateCppModule, validateModuleDirectory } from '../src/services/modules/moduleSdkService';
 import { getPreferredModuleTarget } from '../src/services/modules/targetResolver';
 import {
   describeLingCppModuleContextForAi,
@@ -49,6 +51,9 @@ import { generateLingCppNativeWin32Project } from '../src/services/windowDesigne
 import { LingWindowProject } from '../src/services/windowDesigner/types';
 import { createControlToolboxGroups } from '../src/services/windowDesigner/controlToolboxModel';
 import { exportVisualStudioProject } from '../src/services/windowDesigner/visualStudioProjectExporter';
+import { OPENCV_COMMAND_NAMES, OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID } from '../src/services/modules/opencvModules';
+import { normalizeControlReferenceCallSnippet } from '../src/services/modules/bindingValueType';
+import { normalizeControlReferenceSourceLiterals } from '../scripts/lib/control-reference-source-audit';
 
 const sampleProject: LingWindowProject = {
   id: 'module-test-project',
@@ -69,6 +74,20 @@ const sampleProject: LingWindowProject = {
 };
 
 const execFileAsync = promisify(execFile);
+
+async function collectModuleSourceFilesForControlRefAudit(root: string): Promise<string[]> {
+  const result: string[] = [];
+  const walk = async (current: string): Promise<void> => {
+    const entries = await fs.readdir(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) await walk(fullPath);
+      else if (entry.isFile() && entry.name.endsWith('.ts')) result.push(fullPath);
+    }
+  };
+  await walk(root);
+  return result.sort();
+}
 
 test('标准库模块命令、binding、Win32/x64 target 保持完整对应', () => {
   const expectedIds = [
@@ -91,6 +110,216 @@ test('标准库模块命令、binding、Win32/x64 target 保持完整对应', ()
     assert.deepEqual(manifest.targets?.map(target => target.id), ['windows-msvc-win32', 'windows-msvc-x64']);
     assert.ok(BUILTIN_MODULES.some(module => module.id === manifest.id));
   }
+});
+
+test('全部内置方法的控件参数统一使用 controlRef、裸补全和明确运行时元数据', () => {
+  const audit = auditControlReferenceManifests(BUILTIN_MODULES);
+  assert.deepEqual(audit.violations, []);
+  assert.deepEqual(
+    {
+      modules: audit.moduleCount,
+      commands: audit.commandCount,
+      parameters: audit.parameterCount,
+      controlReferences: audit.controlReferenceCount,
+      commandDigest: audit.commandDigest,
+      parameterDigest: audit.parameterDigest
+    },
+    {
+      modules: 80,
+      commands: 1639,
+      parameters: 2888,
+      controlReferences: 777,
+      commandDigest: '060f2e3b',
+      parameterDigest: '34eb9b8f'
+    },
+    '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
+  );
+  const suspiciousTextParameters: string[] = [];
+  const controlNamePattern = /^(?:控件|控件名|组件|组件名|目标控件|父控件|浏览器|浏览器控件|表格控件|列表视图控件|图像列表|图像列表ID|属性页|菜单组件)$/u;
+
+  for (const manifest of BUILTIN_MODULES) {
+    assert.deepEqual(validateModuleManifest(manifest).diagnostics, [], `${manifest.id} 应通过 controlRef 清单门禁`);
+    const contributions = new Map((manifest.contributes?.commands || []).map(command => [command.name, command]));
+    for (const binding of manifest.bindings?.commands || []) {
+      for (const parameter of binding.parameters || []) {
+        if ((parameter.type === 'wideString' || parameter.type === 'utf8String') && controlNamePattern.test(parameter.name)) {
+          suspiciousTextParameters.push(`${manifest.id}/${binding.command}/${parameter.name}`);
+        }
+        if (parameter.type !== 'controlRef') continue;
+        assert.ok(parameter.controlKinds?.length, `${manifest.id}/${binding.command}/${parameter.name} 缺少 controlKinds`);
+        assert.ok(parameter.scope, `${manifest.id}/${binding.command}/${parameter.name} 缺少 scope`);
+        assert.equal(parameter.runtimeRepresentation, 'wideName', `${manifest.id}/${binding.command}/${parameter.name} 必须确定性传递宽字符控件名`);
+      }
+      if (!(binding.parameters || []).some(parameter => parameter.type === 'controlRef')) continue;
+      const contribution = contributions.get(binding.command);
+      assert.equal(
+        normalizeControlReferenceCallSnippet(contribution?.insertText, binding.parameters),
+        contribution?.insertText,
+        `${manifest.id}/${binding.command} 的补全不得给控件引用加引号`
+      );
+      assert.equal(
+        normalizeControlReferenceCallSnippet(binding.example, binding.parameters),
+        binding.example,
+        `${manifest.id}/${binding.command} 的示例不得给控件引用加引号`
+      );
+    }
+  }
+
+  assert.deepEqual(suspiciousTextParameters, []);
+});
+
+test('模块源目录中的 controlRef 补全、示例和代码片段全部保持裸引用', async () => {
+  const moduleSourceRoot = path.resolve(process.cwd(), 'src', 'services', 'modules');
+  const sourceFiles = await collectModuleSourceFilesForControlRefAudit(moduleSourceRoot);
+  const violations: string[] = [];
+  for (const filePath of sourceFiles) {
+    const source = await fs.readFile(filePath, 'utf8');
+    const audit = normalizeControlReferenceSourceLiterals(source, filePath, BUILTIN_MODULES);
+    audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
+  }
+  assert.equal(sourceFiles.length, 28, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  assert.deepEqual(violations, []);
+
+  const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
+  const normalized = normalizeControlReferenceSourceLiterals(unsafe, 'unsafe.ts', BUILTIN_MODULES);
+  assert.equal(normalized.changes.length, 1);
+  assert.match(normalized.source, /控件_设置文本\(操作结果, "\$2"\)/u);
+
+  const nestedUnsafe = 'const snippet = { insertText: \'调试输出(CEF3_执行JS("浏览器1", "document.title"))\' };';
+  const nestedNormalized = normalizeControlReferenceSourceLiterals(nestedUnsafe, 'nested-unsafe.ts', BUILTIN_MODULES);
+  assert.equal(nestedNormalized.changes.length, 1);
+  assert.match(nestedNormalized.source, /调试输出\(CEF3_执行JS\(浏览器1, "document.title"\)\)/u);
+});
+
+test('第三方模块清单拒绝文本型控件参数和带引号的 controlRef 代码片段', () => {
+  const legacy = validateModuleManifest({
+    schemaVersion: 2,
+    id: 'third.party.legacy-control',
+    name: '旧控件模块',
+    version: '1.0.0',
+    category: '界面',
+    description: '测试旧参数。',
+    author: 'Test',
+    contributes: { commands: [{ name: '旧命令', signature: '旧命令(控件名)', description: '旧命令', insertText: '旧命令("$1")' }] },
+    targets: [],
+    bindings: { commands: [{ command: '旧命令', runtimeName: '旧命令', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool' }] }
+  });
+  assert.ok(legacy.diagnostics.some(message => message.includes('必须声明为 controlRef')));
+
+  const quoted = validateModuleManifest({
+    schemaVersion: 2,
+    id: 'third.party.quoted-control',
+    name: '引号控件模块',
+    version: '1.0.0',
+    category: '界面',
+    description: '测试引号参数。',
+    author: 'Test',
+    contributes: {
+      commands: [{ name: '设置控件', signature: '设置控件(控件名)', description: '设置控件', insertText: '设置控件("$1")' }],
+      snippets: [{ label: '嵌套旧写法', insertText: '调试输出(设置控件("按钮1"))', description: '必须拒绝嵌套引号。' }]
+    },
+    targets: [],
+    bindings: { commands: [{ command: '设置控件', runtimeName: '设置控件', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', example: '设置控件("按钮1")' }] }
+  });
+  assert.ok(quoted.diagnostics.some(message => message.includes('insertText 不得')));
+  assert.ok(quoted.diagnostics.some(message => message.includes('example 不得')));
+  assert.ok(quoted.diagnostics.some(message => message.includes('包括嵌套命令')));
+});
+
+test('模块 SDK 拒绝缺少 controlRef 元数据或带引号补全的 C++ 迁移配置', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-control-ref-sdk-'));
+  const configPath = path.join(root, 'module.json');
+  const outDir = path.join(root, 'out');
+  const baseConfig = {
+    id: 'third.party.control-sdk',
+    name: '控件 SDK 测试',
+    commands: [{
+      name: '设置控件',
+      runtimeName: 'SetControl',
+      insertText: '设置控件($1)',
+      parameters: [{ name: '控件名', type: 'controlRef' }]
+    }]
+  };
+  await fs.writeFile(configPath, JSON.stringify(baseConfig), 'utf8');
+  await assert.rejects(() => migrateCppModule(configPath, outDir), /controlKinds/u);
+
+  await fs.writeFile(configPath, JSON.stringify({
+    ...baseConfig,
+    commands: [{
+      ...baseConfig.commands[0],
+      insertText: '设置控件("$1")',
+      parameters: [{
+        name: '控件名', type: 'controlRef', controlKinds: ['visual'], scope: 'currentWindow', runtimeRepresentation: 'wideName'
+      }]
+    }]
+  }), 'utf8');
+  await assert.rejects(() => migrateCppModule(configPath, outDir), /SDK 拒绝/u);
+});
+
+test('工作区已安装模块全部通过 controlRef 清单和示例门禁', async () => {
+  const modulesRoot = path.resolve(process.cwd(), '..', '.lingbuilder', 'modules');
+  const entries = await fs.readdir(modulesRoot, { withFileTypes: true });
+  const auditedManifests = new Map(BUILTIN_MODULES.map(manifest => [manifest.id, manifest]));
+  let manifestCount = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const manifestPath = path.join(modulesRoot, entry.name, 'lingbuilder.module.json');
+    try {
+      const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+      manifestCount += 1;
+      assert.deepEqual(validateModuleManifest(manifest).diagnostics, [], `${entry.name} 必须通过第三方模块 controlRef 门禁`);
+      if (!auditedManifests.has(manifest.id)) auditedManifests.set(manifest.id, manifest);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+      throw error;
+    }
+  }
+  assert.ok(manifestCount >= 7, `预计至少审计 7 份已安装模块清单，实际 ${manifestCount}`);
+  const audit = auditControlReferenceManifests([...auditedManifests.values()]);
+  assert.deepEqual(audit.violations, []);
+  assert.deepEqual({
+    modules: audit.moduleCount,
+    commands: audit.commandCount,
+    parameters: audit.parameterCount,
+    controlReferences: audit.controlReferenceCount,
+    commandDigest: audit.commandDigest,
+    parameterDigest: audit.parameterDigest
+  }, {
+    modules: 86,
+    commands: 3250,
+    parameters: 10461,
+    controlReferences: 777,
+    commandDigest: 'eb24565d',
+    parameterDigest: '425652d1'
+  }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
+});
+
+test('OpenCV 模块公开完整中文 API、真实 binding 和 x64-only target', () => {
+  const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID);
+  assert.ok(manifest);
+  assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
+  assert.deepEqual(manifest.targets?.map(target => target.id), ['windows-msvc-x64']);
+  assert.deepEqual(manifest.contributes?.commands?.map(command => command.name), OPENCV_COMMAND_NAMES);
+  assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), OPENCV_COMMAND_NAMES);
+  assert.ok(OPENCV_COMMAND_NAMES.includes('OpenCV_分析缺口'));
+  assert.ok(OPENCV_COMMAND_NAMES.includes('OpenCV结果_取JSON'));
+  assert.equal(OPENCV_MODULE_FAMILY.rootModuleId, OPENCV_MODULE_ID);
+  assert.deepEqual(OPENCV_MODULE_FAMILY.assetModuleIds, [OPENCV_SDK_MODULE_ID]);
+  assert.equal(isModuleHiddenByFamily(OPENCV_SDK_MODULE_ID), true);
+});
+
+test('OpenCV 模块生成稳定 C ABI 包装且不暴露 cv::Mat', () => {
+  const manifest = BUILTIN_MODULES.find(module => module.id === OPENCV_MODULE_ID)!;
+  const module: InstalledModule = { manifest, installPath: `builtin://${OPENCV_MODULE_ID}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    enabledModules: [module],
+    lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        调试输出(OpenCV_取版本())\n    结束\n结束类'
+  });
+  const cpp = generated.files.find(file => file.relativePath.endsWith('.cpp'))?.content || '';
+  assert.match(cpp, /#include "LingBuilderOpenCvBridge\.h"/u);
+  assert.match(cpp, /LB_OCV_AnalyzeGap/u);
+  assert.match(cpp, /OpenCV_分析缺口/u);
+  assert.doesNotMatch(cpp, /cv::Mat/u);
 });
 
 test('编码转换模块公开完整的文本安全字符编码、BOM 与通用转码命令', () => {
@@ -433,7 +662,7 @@ test('module enable plan is side-effect free and can join a source copy transact
   assert.ok(!(await service.getEnabledProjectModules('project-a')).some(module => module.manifest.id === manifest.id));
 });
 
-test('FBro submodules recursively enable the v2 core and require confirmed cascade disable', async () => {
+test('FBro submodules recursively enable the 2.1.0 v3 event core and require confirmed cascade disable', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-fbro-dependencies-'));
   await writeSolutionFixture(root, ['project-a']);
   const service = createModuleService(root);
@@ -453,6 +682,25 @@ test('FBro submodules recursively enable the v2 core and require confirmed casca
   assert.ok(!enabled.some(item => item.manifest.id.startsWith('lingbuilder.fbro.')));
 });
 
+test('all callable FBro modules stay on 2.1.0 and depend on the matching v3 event core', () => {
+  const callable = BUILTIN_MODULES.filter(module => module.id.startsWith('lingbuilder.fbro.')
+    && module.id !== 'lingbuilder.fbro.sdk');
+  assert.deepEqual(new Set(callable.map(module => module.id)), new Set([
+    'lingbuilder.fbro.browser',
+    'lingbuilder.fbro.events',
+    'lingbuilder.fbro.session',
+    'lingbuilder.fbro.transfer',
+    'lingbuilder.fbro.automation',
+    'lingbuilder.fbro.objects',
+    'lingbuilder.fbro.network',
+    'lingbuilder.fbro.vip'
+  ]));
+  assert.ok(callable.every(module => module.version === '2.1.0'));
+  assert.ok(callable.filter(module => module.id !== 'lingbuilder.fbro.browser').every(module =>
+    module.dependencies?.some(dependency => dependency.moduleId === 'lingbuilder.fbro.browser'
+      && dependency.minimumVersion === '2.1.0')));
+});
+
 test('FBro module family exposes one manager entry and atomically enables the standard feature set', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-fbro-family-'));
   await writeSolutionFixture(root, ['project-a']);
@@ -461,7 +709,7 @@ test('FBro module family exposes one manager entry and atomically enables the st
   const family = getFbroFamilyModules(installed);
 
   assert.equal(family.length, FBRO_MODULE_FAMILY.features.length);
-  assert.equal(countModuleCommands(family), 420);
+  assert.equal(countModuleCommands(family), 426);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.browser'), false);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.objects'), true);
   assert.equal(isModuleHiddenByFamily('lingbuilder.fbro.sdk'), true);
@@ -564,7 +812,10 @@ test('FBro official SDK coverage catalog remains complete and classified', async
     headerCount: number;
     signatureCount: number;
     rawDeclarationCount: number;
-    eventCatalog: Array<{ officialName: string; synchronous: boolean; timeoutMilliseconds: number; maxHz: number; bridgeStatus: string }>;
+    eventSlotCount: number;
+    uniqueEventSignatureCount: number;
+    eventClassCounts: Record<string, number>;
+    eventCatalog: Array<{ eventId: string; ownerClass: string; officialName: string; synchronous: boolean; timeoutMilliseconds: number; maxHz: number; bridgeStatus: string; exposure: string; classificationReason: string; responseSchema: unknown; testId: string }>;
     signatures: Array<{
       officialName: string;
       moduleId: string;
@@ -594,8 +845,21 @@ test('FBro official SDK coverage catalog remains complete and classified', async
     && item.overloads.every(overload => overload.overloadId && overload.returnCodec.codec
       && overload.parameters.every(parameter => parameter.codec))));
   assert.ok(catalog.signatures.every(item => !/功能[0-9A-F]{4}/u.test(item.chineseName)));
-  assert.equal(catalog.eventCatalog.length, 158);
-  assert.equal(catalog.eventCatalog.filter(item => item.bridgeStatus === 'implemented').length, 9);
+  assert.equal(catalog.eventSlotCount, 174);
+  assert.equal(catalog.uniqueEventSignatureCount, 158);
+  assert.equal(catalog.eventCatalog.length, 174);
+  assert.equal(catalog.eventClassCounts.FBroHsBroEvent, 90);
+  assert.equal(catalog.eventClassCounts.FBroHsInitEvent, 31);
+  assert.equal(catalog.eventCatalog.filter(item => item.bridgeStatus === 'implemented').length, 89);
+  assert.equal(catalog.eventCatalog.filter(item => item.bridgeStatus === 'managed').length, 76);
+  const browserAuthBoundary = catalog.eventCatalog.find(item => item.ownerClass === 'FBroHsBroEvent'
+    && item.officialName === 'GetAuthCredentials');
+  assert.equal(browserAuthBoundary?.bridgeStatus, 'managed');
+  assert.equal(browserAuthBoundary?.exposure, 'managed');
+  assert.match(browserAuthBoundary?.classificationReason || '', /Basic Auth|未经过/u);
+  assert.equal(catalog.eventCatalog.filter(item => ['planned', 'needsReview'].includes(item.bridgeStatus)).length, 0);
+  assert.equal(new Set(catalog.eventCatalog.map(item => item.eventId)).size, 174);
+  assert.ok(catalog.eventCatalog.every(item => item.responseSchema && item.testId));
   assert.ok(catalog.eventCatalog.filter(item => item.synchronous).every(item => item.timeoutMilliseconds === 2000));
   assert.ok(catalog.eventCatalog.filter(item => /Paint/u.test(item.officialName)).every(item => item.maxHz === 60));
 
@@ -1900,9 +2164,9 @@ test('FBro module contributes a toolbox designer control and C ABI generated run
   const designer = manifest.contributes?.designerControls?.find(control => control.type === 'FBroBrowser');
   assert.equal(designer?.label, 'FBro指纹浏览器');
   assert.equal(designer?.nativeAdapter, 'fbro-browser');
-  assert.deepEqual(designer?.events?.map(event => event.name), [
-    'Created', 'LoadEnd', 'AddressChanged', 'BeforePopup', 'TitleChanged', 'Closed', 'Error', 'CertificateError', 'DragEnter'
-  ]);
+  assert.equal(designer?.events?.length, 89);
+  assert.ok(designer?.events?.every(event => event.name.startsWith('fbro.event.fbrohsbroevent.')));
+  assert.ok(!designer?.events?.some(event => /getauthcredentials/u.test(event.name)));
   const browserGroup = createControlToolboxGroups(['Button', 'FBroBrowser'], false).find(group => group.id === 'browser');
   assert.deepEqual(browserGroup?.controlTypes, ['FBroBrowser']);
 
@@ -1932,6 +2196,8 @@ test('FBro module contributes a toolbox designer control and C ABI generated run
   assert.ok(cpp.indexOf('#define LINGBUILDER_FBRO_MODULE') < cpp.indexOf('#if defined(LINGBUILDER_FBRO_MODULE) && __has_include(<LingBuilderFbroBridge.h>)'));
   assert.match(cpp, /IsType\(control, L"FBroBrowser"\)/u);
   assert.match(cpp, /LB_FBro_Create/u);
+  assert.match(cpp, /LB_FBro_SetEventCallbackV3/u);
+  assert.match(cpp, /LB_FBRO_EVENT_FLAG_SYNCHRONOUS/u);
   assert.match(cpp, /int FBro_导航\(const wchar_t\* controlName, const std::wstring& address\)/u);
   assert.match(cpp, /LB_FBro_CreateChromeUi/u);
   assert.match(cpp, /int FBro_打开谷歌原生UI浏览器\(const wchar_t\* controlName, const wchar_t\* address\)/u);
@@ -1941,6 +2207,8 @@ test('FBro module contributes a toolbox designer control and C ABI generated run
   assert.match(cpp, /LB_FBro_SetEventCallbackV2/u);
   assert.match(cpp, /SendMessageTimeoutW/u);
   assert.match(cpp, /FBro_取事件字段/u);
+  assert.match(cpp, /long long FBro_取事件延续\(const wchar_t\* controlName\)/u);
+  assert.match(cpp, /designerHandler = GetEventHandler\(\*control, key\)/u);
   for (const symbol of ['LB_FBro_CanGoBack', 'LB_FBro_CanGoForward', 'LB_FBro_IsLoading', 'LB_FBro_GetZoomLevel',
     'LB_FBro_SetZoomLevel', 'LB_FBro_IsAudioMuted', 'LB_FBro_SetAudioMuted', 'LB_FBro_SendFocusEvent',
     'LB_FBro_Find', 'LB_FBro_StopFinding', 'LB_FBro_HasDevTools', 'LB_FBro_CloseDevTools',
@@ -1950,6 +2218,10 @@ test('FBro module contributes a toolbox designer control and C ABI generated run
     assert.match(cpp, new RegExp(symbol, 'u'), `生成运行时缺少 ${symbol}`);
   }
   assert.match(cpp, /WM_LINGBUILDER_FBRO_EVENT/u);
+  assert.match(cpp, /bool FBro_是否全部关闭\(\) const/u);
+  assert.match(cpp, /void FBro_开始应用关闭\(\)/u);
+  assert.match(cpp, /fbroClosePending_ = true/u);
+  assert.match(cpp, /SetTimer\(hwnd_, 0x4C46, 5000/u);
   assert.match(cpp, /\.fbro-global-cache\/profile-fbro-1/u);
   assert.doesNotMatch(cpp, /CefRefPtr<FBro/u);
 });
@@ -1971,6 +2243,43 @@ test('FBro bridge serializes browser creation onto the CEF UI thread and contain
   assert.match(bridgeSource, /window\.window = nullptr;/u);
   assert.match(bridgeSource, /window\.ex_style = WS_EX_APPWINDOW;/u);
   assert.doesNotMatch(bridgeSource, /LB_FBro_CreateChromeUi\(HWND/u);
+  assert.match(bridgeSource, /RequestBrowserCloseBatchAndWait/u);
+  assert.match(bridgeSource, /ContinuationTimerLoop/u);
+  assert.match(bridgeSource, /g_continuation_timer_condition\.wait_until/u);
+  assert.doesNotMatch(bridgeSource, /BridgeContinuationTimeoutTask/u);
+  assert.match(bridgeSource, /callback->Cancel\(\)/u);
+});
+
+test('FBro v3 continuation JSON keeps escaped quotes inside one UTF-16 module argument', () => {
+  const browserManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
+  const eventsManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.events');
+  assert.ok(browserManifest && eventsManifest);
+  const modules: InstalledModule[] = [browserManifest, eventsManifest].map(manifest => ({
+    manifest,
+    installPath: `builtin://${manifest.id}`,
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  }));
+  const project: LingWindowProject = {
+    ...sampleProject,
+    windows: [{
+      ...sampleProject.windows[0],
+      controls: [{
+        id: 'fbro-json', type: 'FBroBrowser', name: 'FBro浏览器1', content: '', x: 0, y: 0,
+        width: 320, height: 200, background: '#fff', foreground: '#000', fontSize: 12,
+        isEnabled: true, visibility: 'Visible', properties: { url: 'about:blank' }
+      }]
+    }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    enabledModules: modules,
+    lingCppSourceCode: '类 MainWindow\n    事件 测试()\n        FBro事件_完成延续(FBro_取事件延续(FBro浏览器1), "{\\"action\\":1}")\n    结束\n结束类'
+  });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /FBro事件_完成延续\(FBro_取事件延续\(L"FBro浏览器1"\), L"\{\\"action\\":1\}"\)/u);
 });
 
 test('FBro UI beginner project exposes embedded and hostless Chrome UI actions', async () => {
@@ -1982,9 +2291,9 @@ test('FBro UI beginner project exposes embedded and hostless Chrome UI actions',
   assert.ok(project.windows[0]?.controls.some(control => control.type === 'FBroBrowser'));
   assert.ok(project.windows[0]?.controls.some(control => control.name === '内嵌打开按钮'));
   assert.ok(project.windows[0]?.controls.some(control => control.name === '谷歌原生UI按钮'));
-  assert.match(source, /FBro_导航\("FBro指纹浏览器1"/u);
-  assert.match(source, /FBro_打开谷歌原生UI浏览器\("FBro指纹浏览器1"/u);
-  assert.match(source, /FBro_取最近事件\("FBro指纹浏览器1"\)/u);
+  assert.match(source, /FBro_导航\(FBro指纹浏览器1/u);
+  assert.match(source, /FBro_打开谷歌原生UI浏览器\(FBro指纹浏览器1/u);
+  assert.match(source, /FBro_取最近事件\(FBro指纹浏览器1\)/u);
 });
 
 test('FBro resize never blocks the host message loop or recursively moves Chromium descendants', async () => {
@@ -1999,7 +2308,7 @@ test('FBro beginner browser keeps every navigation control DPI aligned while res
   const source = await fs.readFile(path.resolve(import.meta.dirname, '..', '..', 'src', 'fbro', 'MainWindow.lcpp'), 'utf8');
   assert.match(source, /局部 整数型 当前DPI = 窗口_取事件DPI\(\)/u);
   for (const name of ['后退按钮', '前进按钮', '刷新按钮', '地址栏', '导航按钮', 'FBro指纹浏览器1']) {
-    assert.match(source, new RegExp(`控件_设置位置大小\\(\"${name}\"`, 'u'));
+    assert.match(source, new RegExp(`控件_设置位置大小\\(${name}`, 'u'));
   }
   assert.match(source, /50 \* 当前DPI \/ 96/u);
 });
@@ -2010,7 +2319,8 @@ test('FBro bridge reports invalid VIP authorization without exposing the supplie
   assert.match(bridgeSource, /FBro VIP 授权码校验失败/u);
   assert.match(bridgeSource, /SecureZeroMemory\(vip_key/u);
   assert.match(bridgeSource, /g_license_error\.replace/u);
-  assert.match(bridgeSource, /g_close_condition\.wait_for/u);
+  assert.match(bridgeSource, /StopContinuationTimerThread\(\)/u);
+  assert.match(bridgeSource, /if \(!had_live_browsers\) FBroQuitMessageLoop\(\)/u);
   assert.match(bridgeSource, /FBroShutdown\(FALSE\)/u);
 });
 
@@ -2018,6 +2328,18 @@ test('FBro SDK discovery resolves the workspace above deeply nested build config
   const workspace = path.resolve('C:/workspace/lingbuilder');
   const buildDir = path.join(workspace, '.lingbuilder-build', 'fbro', 'x64', 'Debug');
   assert.equal(inferWorkspaceRootFromBuildDir(buildDir), workspace);
+});
+
+test('未启用 FBro 的公共 Win32 运行时仍具备自包含的事件 fallback 类型', () => {
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        调试输出("普通窗口")\n    结束\n结束类',
+    enabledModules: []
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /#define LINGBUILDER_FBRO_AVAILABLE 0/u);
+  assert.match(cpp, /using LB_FBRO_CONTINUATION_HANDLE = unsigned long long;/u);
+  assert.match(cpp, /LB_FBRO_EVENT_CREATED = 1/u);
+  assert.match(cpp, /LB_FBRO_EVENT_DRAG_ENTER = 9/u);
 });
 
 test('FBro native dependency materializer preserves directories and only repairs changed files', async t => {
@@ -2028,7 +2350,18 @@ test('FBro native dependency materializer preserves directories and only repairs
     ['libcef.dll', Buffer.from('cef-runtime')],
     ['locales/zh-CN.pak', Buffer.from('zh-cn-runtime')]
   ]);
-  await writeFixture(path.join(sdk, 'include', 'LingBuilderFbroBridge.h'), '#pragma once\n');
+  const fbroV3Header = [
+    '#pragma once',
+    '#define LB_FBRO_ABI_VERSION_V3 0x00030000u',
+    'typedef unsigned long long LB_FBRO_CONTINUATION_HANDLE;',
+    'typedef struct LB_FBRO_EVENT_PACKET_V3 {} LB_FBRO_EVENT_PACKET_V3;',
+    'typedef struct LB_FBRO_EVENT_RESPONSE_V3 {} LB_FBRO_EVENT_RESPONSE_V3;',
+    'void LB_FBro_SetEventCallbackV3();',
+    'void LB_FBro_SetEventSubscription();',
+    'void LB_FBro_CompleteEventContinuation();',
+    'void LB_FBro_CancelEventContinuation();'
+  ].join('\n');
+  await writeFixture(path.join(sdk, 'include', 'LingBuilderFbroBridge.h'), `${fbroV3Header}\n`);
   await writeFixture(path.join(sdk, 'lib', 'x64', 'LingBuilderFbroBridge.lib'), 'bridge-lib');
   await writeFixture(path.join(sdk, 'bridge', 'x64', 'LingBuilderFbroBridge.dll'), 'bridge-dll');
   const files = [];
@@ -2039,7 +2372,7 @@ test('FBro native dependency materializer preserves directories and only repairs
     files.push({ path: relative, size: content.length, sha256: crypto.createHash('sha256').update(content).digest('hex') });
   }
   await fs.writeFile(path.join(sdk, 'runtime-manifest.json'), JSON.stringify({
-    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '1.0.0', files
+    schemaVersion: 1, sdkVersion: '135.0.21', architecture: 'x64', bridgeVersion: '2.1.0', files
   }), 'utf8');
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.fbro.browser');
   assert.ok(manifest);
@@ -2069,6 +2402,9 @@ test('FBro native dependency materializer preserves directories and only repairs
     assert.deepEqual(repaired.diagnostics, []);
     assert.equal((await fs.readFile(cefPath)).toString(), 'cef-runtime');
     assert.ok(await exists(path.join(layout.binDir, '.lingbuilder-fbro-runtime.json')));
+    await fs.writeFile(path.join(sdk, 'include', 'LingBuilderFbroBridge.h'), '#pragma once\n', 'utf8');
+    const staleBridge = await materializeModuleNativeDependencies([module], layout);
+    assert.match(staleBridge.blockingDiagnostics.join('\n'), /不是完整 C ABI v3.*LB_FBRO_ABI_VERSION_V3/u);
   } finally {
     if (previous === undefined) delete process.env.FBRO_SDK_ROOT;
     else process.env.FBRO_SDK_ROOT = previous;
@@ -2092,6 +2428,63 @@ test('FBro and CEF3 are blocked before native dependencies are materialized', as
     assert.match(plan.blockingDiagnostics.join('\n'), /CEF 135.*CEF 150/u);
     assert.equal(plan.runtimeFiles.length, 0);
   } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('OpenCV SDK materializer validates hashes and materializes x64 Bridge assets', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-opencv-sdk-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const sdk = path.join(root, 'sdk');
+  const fixtureFiles = new Map<string, Buffer>([
+    ['include/LingBuilderOpenCvBridge.h', Buffer.from('#pragma once\n')],
+    ['lib/x64/LingBuilderOpenCvBridge.lib', Buffer.from('bridge-lib')],
+    ['bin/x64/LingBuilderOpenCvBridge.dll', Buffer.from('bridge-dll')],
+    ['bin/x64/opencv_core4140.dll', Buffer.from('core-dll')],
+    ['bin/x64/opencv_imgproc4140.dll', Buffer.from('imgproc-dll')],
+    ['bin/x64/opencv_imgcodecs4140.dll', Buffer.from('imgcodecs-dll')]
+  ]);
+  const files = [];
+  for (const [relative, content] of fixtureFiles) {
+    const target = path.join(sdk, ...relative.split('/'));
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, content);
+    files.push({ path: relative, size: content.length, sha256: crypto.createHash('sha256').update(content).digest('hex') });
+  }
+  await fs.writeFile(path.join(sdk, 'runtime-manifest.json'), JSON.stringify({
+    schemaVersion: 1,
+    opencvVersion: '4.14.0',
+    bridgeVersion: '1.0.0',
+    bridgeAbiVersion: 1,
+    architecture: 'x64',
+    toolset: 'msvc-v143',
+    runtimeLibrary: 'MD',
+    files
+  }), 'utf8');
+  const manifest = BUILTIN_MODULES.find(item => item.id === OPENCV_MODULE_ID)!;
+  const module: InstalledModule = { manifest, installPath: `builtin://${OPENCV_MODULE_ID}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] };
+  const previous = process.env.LINGBUILDER_OPENCV_SDK_ROOT;
+  process.env.LINGBUILDER_OPENCV_SDK_ROOT = sdk;
+  try {
+    const layout = {
+      buildDir: path.join(root, 'build'), sourceDir: path.join(root, 'source'),
+      binDir: path.join(root, 'bin'), exportDir: path.join(root, 'export'), preferredTargetId: 'windows-msvc-x64'
+    };
+    const plan = await materializeModuleNativeDependencies([module], layout);
+    assert.deepEqual(plan.blockingDiagnostics, []);
+    assert.equal(plan.requiresDynamicCrt, true);
+    assert.ok(plan.includeDirs.some(item => item.endsWith(path.join(OPENCV_SDK_MODULE_ID, 'include'))));
+    assert.ok(plan.libFiles.some(item => item.endsWith('LingBuilderOpenCvBridge.lib')));
+    for (const name of ['LingBuilderOpenCvBridge.dll', 'opencv_core4140.dll', 'opencv_imgproc4140.dll', 'opencv_imgcodecs4140.dll']) {
+      assert.ok(await exists(path.join(layout.binDir, name)), `缺少运行时 ${name}`);
+    }
+    await fs.writeFile(path.join(sdk, 'bin', 'x64', 'opencv_core4140.dll'), 'broken');
+    const damaged = await materializeModuleNativeDependencies([module], layout);
+    assert.match(damaged.blockingDiagnostics.join('\n'), /哈希不一致/u);
+    const win32 = await materializeModuleNativeDependencies([module], { ...layout, preferredTargetId: 'windows-msvc-win32' });
+    assert.match(win32.blockingDiagnostics.join('\n'), /仅支持.*x64/u);
+  } finally {
+    if (previous === undefined) delete process.env.LINGBUILDER_OPENCV_SDK_ROOT;
+    else process.env.LINGBUILDER_OPENCV_SDK_ROOT = previous;
+  }
 });
 
 test('generated new_emoji bridge completions match binding parameter counts', async () => {
@@ -2307,7 +2700,7 @@ test('new_emoji Tabs can host one independent FBro HWND browser on each page', a
     }]
   }, {
     enabledModules,
-    lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        FBro_导航("FBro浏览器1", "https://example.com")\n        调试输出("三个 FBro 标签页已创建")\n    结束\n结束类'
+    lingCppSourceCode: '类 MainWindow\n    事件 _MainWindow_创建完毕()\n        FBro_导航(FBro浏览器1, "https://example.com")\n        调试输出("三个 FBro 标签页已创建")\n    结束\n结束类'
   });
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
   assert.equal(generated.blockingDiagnostics.length, 0);
@@ -2324,6 +2717,7 @@ test('new_emoji Tabs can host one independent FBro HWND browser on each page', a
   assert.match(cpp, /ShowWindow\(browser\.host, visible \? SW_SHOW : SW_HIDE\)/u);
   assert.match(cpp, /const UINT dpi = g_newEmojiWindow \? GetDpiForWindow\(g_newEmojiWindow\) : 96/u);
   assert.match(cpp, /scale\(y \+ titleBarLogicalHeight\)/u);
+  assert.match(cpp, /if \(!dispatched && \*legacy\) LB_NE_DispatchFbroEvent/u);
   assert.match(cpp, /wWinMain[\s\S]*CoInitializeEx\([^;]+\);\s*if \(!LB_NE_InitializeFbro\(\)\)[\s\S]*g_newEmojiWindow = NE_/u);
   const browserGroup = createControlToolboxGroups(['FBroBrowser'], true).find(group => group.id === 'browser');
   assert.deepEqual(browserGroup?.controlTypes, ['FBroBrowser']);
@@ -2387,6 +2781,26 @@ test('exportVisualStudioProject selects the correct FBro runtime source for F5 a
   assert.match(buildProject, /-RuntimeRoot &quot;\$\(ProjectDir\)bin&quot;/u);
   assert.doesNotMatch(portableProject, /-RuntimeRoot/u);
   assert.match(portableProject, /materialize-fbro-runtime\.ps1/u);
+});
+
+test('exportVisualStudioProject emits x64-only OpenCV configurations and SDK dependencies', async () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === OPENCV_MODULE_ID)!;
+  const module: InstalledModule = { manifest, installPath: `builtin://${OPENCV_MODULE_ID}`, isBuiltin: true, isInstalled: true, diagnostics: [] };
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-vs-opencv-'));
+  const result = await exportVisualStudioProject({
+    projectDir: root,
+    projectId: 'opencv-demo',
+    generatedFiles: [{ relativePath: 'main.cpp', content: '' }],
+    enabledModules: [module]
+  });
+  const solution = await fs.readFile(result.solutionPath, 'utf8');
+  const project = await fs.readFile(result.projectPath, 'utf8');
+  assert.doesNotMatch(solution, /Win32/u);
+  assert.doesNotMatch(project, /<Platform>Win32<\/Platform>/u);
+  assert.match(project, /<Platform>x64<\/Platform>/u);
+  assert.match(project, /LingBuilderOpenCvBridge\.lib/u);
+  assert.match(project, /opencv_core4140\.dll/u);
+  assert.match(project, /<RuntimeLibrary>MultiThreadedDLL<\/RuntimeLibrary>/u);
 });
 
 test('exportVisualStudioProject applies native module C++20 and dynamic CRT requirements', async () => {

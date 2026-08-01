@@ -42,6 +42,7 @@ export const LING_CPP_KEYWORDS = [
   '结束类',
   '静态',
   '局部',
+  '局部常量',
   '如果真',
   '否则如果',
   '如果真结束',
@@ -127,6 +128,7 @@ const METHOD_RE = new RegExp(
   `^(静态\\s+)?(事件|构造|析构|空|${TYPE_EXPRESSION_SOURCE})\\s*(${TYPE_NAME_SOURCE})?\\s*[（(]([^）)]*)[）)]`, 'u'
 );
 const MEMBER_RE = new RegExp(`^(静态\\s+)?(${TYPE_NAME_SOURCE})\\s+(${TYPE_NAME_SOURCE})(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.+))?$`, 'u');
+const LOCAL_CONSTANT_RE = new RegExp(`^局部常量\\s+(${TYPE_NAME_SOURCE})\\s+(${TYPE_NAME_SOURCE})(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.*))?$`, 'u');
 const LOCAL_RE = new RegExp(`^(?:局部\\s+)?(${TYPE_NAME_SOURCE})\\s+(${TYPE_NAME_SOURCE})(?:\\s*(\\[\\]|［］))?(?:\\s*[=＝]\\s*(.+))?$`, 'u');
 
 export function parseLingCpp(source: string): LingCppParseResult {
@@ -441,6 +443,42 @@ export function parseLingCpp(source: string): LingCppParseResult {
       return;
     }
 
+    const localConstantMatch = currentMethod ? trimmed.match(LOCAL_CONSTANT_RE) : null;
+    if (localConstantMatch && currentMethod && currentMethodNode) {
+      const local: LingCppLocalVariable = {
+        type: localConstantMatch[1],
+        name: localConstantMatch[2],
+        line: lineNumber,
+        initialValue: localConstantMatch[4]?.trim(),
+        isArray: Boolean(localConstantMatch[3]),
+        isConstant: true
+      };
+      (currentMethod.locals ||= []).push(local);
+      pushNode(createAstNode('local', local.name, lineNumber, line, currentMethodNode.id, {
+        type: local.type,
+        value: local.initialValue,
+        isArray: local.isArray,
+        isConstant: true,
+        detail: ['局部常量', local.type, local.initialValue ? `= ${local.initialValue}` : '未初始化'].filter(Boolean).join(' ')
+      }), currentMethodNode);
+      if (local.isArray) {
+        diagnostics.push(createDiagnostic('error', lineNumber, line, `局部常量 ${local.name} 不支持数组。`, '请删除数组标记，或改用普通局部变量。'));
+      }
+      if (!local.initialValue) {
+        diagnostics.push(createDiagnostic('error', lineNumber, line, `局部常量 ${local.name} 必须填写初始值。`, '请在声明时使用字面量、前置值或命令结果初始化。'));
+      }
+      return;
+    }
+
+    if (!currentMethod && trimmed.startsWith('局部常量')) {
+      diagnostics.push(createDiagnostic('error', lineNumber, line, '局部常量只能声明在事件、方法、构造或功能库函数内部。', '请把声明移动到目标子程序正文中。'));
+      pushNode(createAstNode('statement', trimmed, lineNumber, line, currentClassNode?.id || currentFunctionLibraryNode?.id, {
+        value: trimmed,
+        detail: '无效的局部常量声明'
+      }), currentClassNode || currentFunctionLibraryNode);
+      return;
+    }
+
     const localMatch = currentMethod ? trimmed.match(LOCAL_RE) : null;
     if (localMatch && currentMethod && currentMethodNode && !LING_CPP_KEYWORDS.includes(localMatch[1])) {
       const local: LingCppLocalVariable = {
@@ -555,15 +593,9 @@ export function parseLingCpp(source: string): LingCppParseResult {
       diagnostics.push(createDiagnostic('info', cls.line, `类 ${cls.name}`, `类 ${cls.name} 未声明构造函数。`, '可添加 `公开: 构造()` 初始化窗口状态。'));
     }
     cls.methods.forEach(method => {
-      const declaredNames = new Set(method.parameters.map(parameter => normalizeIdentifier(parameter.name)));
-      (method.locals || []).forEach(local => {
-        const normalized = normalizeIdentifier(local.name);
-        if (declaredNames.has(normalized)) {
-          diagnostics.push(createDiagnostic('error', local.line, lines[local.line - 1] || local.name, `局部变量 ${local.name} 与同一子程序中的参数或变量重名。`, '请为局部变量使用唯一名称。'));
-        }
-        declaredNames.add(normalized);
-      });
+      diagnostics.push(...validateMethodLocalDeclarations(method, lines));
       diagnostics.push(...validateLingCppControlFlow(method, lines));
+      diagnostics.push(...validateLocalConstantPlacement(method, lines));
     });
   });
 
@@ -577,7 +609,9 @@ export function parseLingCpp(source: string): LingCppParseResult {
       const methodName = normalizeIdentifier(method.name);
       if (methodNames.has(methodName)) diagnostics.push(createDiagnostic('error', method.line, method.name, `功能库 ${library.name} 中的功能 ${method.name} 重复声明。`, '首版功能库不支持重载，请使用唯一功能名。'));
       methodNames.add(methodName);
+      diagnostics.push(...validateMethodLocalDeclarations(method, lines));
       diagnostics.push(...validateLingCppControlFlow(method, lines));
+      diagnostics.push(...validateLocalConstantPlacement(method, lines));
     });
   });
 
@@ -711,6 +745,53 @@ function validateLingCppControlFlow(method: LingCppMethod, sourceLines: string[]
       `${entry.control.keyword} 结构缺少结束语句。`,
       `请添加 ${lingCppControlFlowEndLabel(entry.control)}。`
     ));
+  });
+  return diagnostics;
+}
+
+function validateMethodLocalDeclarations(method: LingCppMethod, sourceLines: string[]): LingCppDiagnostic[] {
+  const diagnostics: LingCppDiagnostic[] = [];
+  const declaredNames = new Set(method.parameters.map(parameter => normalizeIdentifier(parameter.name)));
+  (method.locals || []).forEach(local => {
+    const normalized = normalizeIdentifier(local.name);
+    if (declaredNames.has(normalized)) {
+      const label = local.isConstant ? '局部常量' : '局部变量';
+      diagnostics.push(createDiagnostic('error', local.line, sourceLines[local.line - 1] || local.name, `${label} ${local.name} 与同一子程序中的参数或局部声明重名。`, '请为每个参数、局部变量和局部常量使用唯一名称。'));
+    }
+    declaredNames.add(normalized);
+  });
+  return diagnostics;
+}
+
+function validateLocalConstantPlacement(method: LingCppMethod, sourceLines: string[]): LingCppDiagnostic[] {
+  const diagnostics: LingCppDiagnostic[] = [];
+  const entries = [
+    ...method.statements.map(statement => ({ kind: 'statement' as const, line: statement.line, statement })),
+    ...(method.locals || []).filter(local => local.isConstant).map(local => ({ kind: 'constant' as const, line: local.line, local }))
+  ].sort((left, right) => left.line - right.line);
+  const stack: LingCppControlFlowLine[] = [];
+
+  entries.forEach(entry => {
+    if (entry.kind === 'constant') {
+      if (stack.length > 0) {
+        diagnostics.push(createDiagnostic(
+          'error',
+          entry.local.line,
+          sourceLines[entry.local.line - 1] || entry.local.name,
+          `局部常量 ${entry.local.name} 不能声明在如果、循环、选择或尝试等控制块内部。`,
+          '请把局部常量移动到当前控制块之前或结束之后。'
+        ));
+      }
+      return;
+    }
+
+    const control = parseLingCppControlFlowLine(entry.statement.text);
+    if (!control) return;
+    if (control.role === 'end' && control.family) {
+      if (stack.at(-1)?.family === control.family) stack.pop();
+      return;
+    }
+    if (control.role === 'start' && control.family) stack.push(control);
   });
   return diagnostics;
 }
@@ -915,6 +996,7 @@ function createAstNode(
     returnType: overrides.returnType,
     isStatic: overrides.isStatic,
     isArray: overrides.isArray,
+    isConstant: overrides.isConstant,
     children: []
   };
 }

@@ -6,59 +6,59 @@
 // 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
-        控件_设置选择项("命令分组选项卡", 0)
-        控件_设置文本("演示状态", "FBro会话模块：10 条命令，默认处于安全预览模式。")
+        控件_设置选择项(命令分组选项卡, 0)
+        控件_设置文本(演示状态, "FBro会话模块：10 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.fbro.session")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本("演示状态", "命令 1–10：FBro会话_取Cookie 至 FBro会话_异步清理全局缓存；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 1–10：FBro会话_取Cookie 至 FBro会话_异步清理全局缓存；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：FBro会话_取Cookie
             // [1] FBro会话_取Cookie(控件名, 地址)
             // 功能：读取指定 RequestContext 中的 Cookie。
-            // 参数：控件名:wideString，地址:wideString；返回：wideString；可见性：default
-            FBro会话_取Cookie("演示输出", "https://example.com")
+            // 参数：控件名:controlRef，地址:wideString；返回：wideString；可见性：default
+            FBro会话_取Cookie(演示FBroBrowser控件, "https://example.com")
             // 命令ID：FBro会话_清空Cookie
             // [2] FBro会话_清空Cookie(控件名, 地址)
             // 功能：清空指定地址 Cookie。
-            // 参数：控件名:wideString，地址:wideString；返回：int；可见性：default
-            FBro会话_清空Cookie("演示输出", "https://example.com")
+            // 参数：控件名:controlRef，地址:wideString；返回：int；可见性：default
+            FBro会话_清空Cookie(演示FBroBrowser控件, "https://example.com")
             // 命令ID：FBro会话_设置代理认证
             // [3] FBro会话_设置代理认证(控件名, 代理地址, 用户名, 密码)
             // 功能：设置隔离会话代理及认证信息。
-            // 参数：控件名:wideString，代理地址:wideString，用户名:wideString，密码:wideString；返回：int；可见性：default
-            FBro会话_设置代理认证("演示输出", "https://example.com", "演示参数3", "演示参数4")
+            // 参数：控件名:controlRef，代理地址:wideString，用户名:wideString，密码:wideString；返回：int；可见性：default
+            FBro会话_设置代理认证(演示FBroBrowser控件, "https://example.com", "演示参数3", "演示参数4")
             // 命令ID：FBro会话_异步取全部Cookie
             // [4] FBro会话_异步取全部Cookie(控件名)
             // 功能：异步读取当前 RequestContext 的全部 Cookie，任务结果为 UTF-16 JSON 数组。
-            // 参数：控件名:wideString；返回：longLong；可见性：default
-            FBro会话_异步取全部Cookie("演示输出")
+            // 参数：控件名:controlRef；返回：longLong；可见性：default
+            FBro会话_异步取全部Cookie(演示FBroBrowser控件)
             // 命令ID：FBro会话_异步取地址Cookie
             // [5] FBro会话_异步取地址Cookie(控件名, 地址, 包含HttpOnly)
             // 功能：异步读取指定地址 Cookie，任务结果为 UTF-16 JSON 数组。
-            // 参数：控件名:wideString，地址:wideString，包含HttpOnly:int；返回：longLong；可见性：default
-            FBro会话_异步取地址Cookie("演示输出", "https://example.com", 1)
+            // 参数：控件名:controlRef，地址:wideString，包含HttpOnly:int；返回：longLong；可见性：default
+            FBro会话_异步取地址Cookie(演示FBroBrowser控件, "https://example.com", 1)
             // 命令ID：FBro会话_异步设置Cookie
             // [6] FBro会话_异步设置Cookie(控件名, 地址, 名称, 值, 域, 路径, 安全, 仅HTTP)
             // 功能：通过官方 CookieManager 异步设置 Cookie，并返回受管任务 ID。
-            // 参数：控件名:wideString，地址:wideString，名称:wideString，值:wideString，域:wideString，路径:wideString，安全:int，仅HTTP:int；返回：longLong；可见性：default
-            FBro会话_异步设置Cookie("演示输出", "https://example.com", "演示参数3", "演示参数4", "演示参数5", "module-demo-temp.txt", 1, 1)
+            // 参数：控件名:controlRef，地址:wideString，名称:wideString，值:wideString，域:wideString，路径:wideString，安全:int，仅HTTP:int；返回：longLong；可见性：default
+            FBro会话_异步设置Cookie(演示FBroBrowser控件, "https://example.com", "演示参数3", "演示参数4", "演示参数5", "module-demo-temp.txt", 1, 1)
             // 命令ID：FBro会话_异步删除Cookie
             // [7] FBro会话_异步删除Cookie(控件名, 地址, 名称)
             // 功能：异步删除指定 Cookie；名称留空时删除该地址全部 Cookie。
-            // 参数：控件名:wideString，地址:wideString，名称:wideString；返回：longLong；可见性：default
-            FBro会话_异步删除Cookie("演示输出", "https://example.com", "演示参数3")
+            // 参数：控件名:controlRef，地址:wideString，名称:wideString；返回：longLong；可见性：default
+            FBro会话_异步删除Cookie(演示FBroBrowser控件, "https://example.com", "演示参数3")
             // 命令ID：FBro会话_异步刷新Cookie存储
             // [8] FBro会话_异步刷新Cookie存储(控件名)
             // 功能：异步请求 FBro 将 Cookie 写入持久化存储。
-            // 参数：控件名:wideString；返回：longLong；可见性：default
-            FBro会话_异步刷新Cookie存储("演示输出")
+            // 参数：控件名:controlRef；返回：longLong；可见性：default
+            FBro会话_异步刷新Cookie存储(演示FBroBrowser控件)
             // 命令ID：FBro会话_异步清理缓存
             // [9] FBro会话_异步清理缓存(控件名, 来源, 移除标志, 配额标志)
             // 功能：异步清理当前浏览器实例指定来源的缓存数据。
-            // 参数：控件名:wideString，来源:wideString，移除标志:int，配额标志:int；返回：longLong；可见性：advanced
-            FBro会话_异步清理缓存("演示输出", "演示参数2", 1, 1)
+            // 参数：控件名:controlRef，来源:wideString，移除标志:int，配额标志:int；返回：longLong；可见性：advanced
+            FBro会话_异步清理缓存(演示FBroBrowser控件, "演示参数2", 1, 1)
             // 命令ID：FBro会话_异步清理全局缓存
             // [10] FBro会话_异步清理全局缓存(来源, 移除标志, 配额标志)
             // 功能：异步清理所有 FBro 实例共享的全局缓存数据。

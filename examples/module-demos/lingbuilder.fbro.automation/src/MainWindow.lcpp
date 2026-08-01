@@ -6,49 +6,49 @@
 // 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
-        控件_设置选择项("命令分组选项卡", 0)
-        控件_设置文本("演示状态", "FBro自动化模块：25 条命令，默认处于安全预览模式。")
+        控件_设置选择项(命令分组选项卡, 0)
+        控件_设置文本(演示状态, "FBro自动化模块：25 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.fbro.automation")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本("演示状态", "命令 1–13：FBro自动化_执行JS异步 至 FBro框架_取标识；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 1–13：FBro自动化_执行JS异步 至 FBro框架_取标识；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：FBro自动化_执行JS异步
             // [1] FBro自动化_执行JS异步(控件名, 脚本)
             // 功能：异步执行 JavaScript 并返回受管任务 ID。
-            // 参数：控件名:wideString，脚本:wideString；返回：longLong；可见性：advanced
-            FBro自动化_执行JS异步("演示输出", "演示参数2")
+            // 参数：控件名:controlRef，脚本:wideString；返回：longLong；可见性：advanced
+            FBro自动化_执行JS异步(演示FBroBrowser控件, "演示参数2")
             // 命令ID：FBro框架_取主框架
             // [2] FBro框架_取主框架(控件名)
             // 功能：取得浏览器主框架的受管句柄。
-            // 参数：控件名:wideString；返回：longLong；可见性：advanced
-            FBro框架_取主框架("演示输出")
+            // 参数：控件名:controlRef；返回：longLong；可见性：advanced
+            FBro框架_取主框架(演示FBroBrowser控件)
             // 命令ID：FBro框架_取焦点框架
             // [3] FBro框架_取焦点框架(控件名)
             // 功能：取得当前焦点框架的受管句柄。
-            // 参数：控件名:wideString；返回：longLong；可见性：advanced
-            FBro框架_取焦点框架("演示输出")
+            // 参数：控件名:controlRef；返回：longLong；可见性：advanced
+            FBro框架_取焦点框架(演示FBroBrowser控件)
             // 命令ID：FBro框架_按标识取框架
             // [4] FBro框架_按标识取框架(控件名, 标识)
             // 功能：按官方字符串标识取得受管框架句柄。
-            // 参数：控件名:wideString，标识:wideString；返回：longLong；可见性：advanced
-            FBro框架_按标识取框架("演示输出", "演示参数2")
+            // 参数：控件名:controlRef，标识:wideString；返回：longLong；可见性：advanced
+            FBro框架_按标识取框架(演示FBroBrowser控件, "演示参数2")
             // 命令ID：FBro框架_按名称取框架
             // [5] FBro框架_按名称取框架(控件名, 名称)
             // 功能：按框架名称取得受管框架句柄。
-            // 参数：控件名:wideString，名称:wideString；返回：longLong；可见性：advanced
-            FBro框架_按名称取框架("演示输出", "演示参数2")
+            // 参数：控件名:controlRef，名称:wideString；返回：longLong；可见性：advanced
+            FBro框架_按名称取框架(演示FBroBrowser控件, "演示参数2")
             // 命令ID：FBro框架_取标识列表JSON
             // [6] FBro框架_取标识列表JSON(控件名)
             // 功能：取得全部框架标识的 UTF-16 JSON 数组。
-            // 参数：控件名:wideString；返回：wideString；可见性：advanced
-            FBro框架_取标识列表JSON("演示输出")
+            // 参数：控件名:controlRef；返回：wideString；可见性：advanced
+            FBro框架_取标识列表JSON(演示FBroBrowser控件)
             // 命令ID：FBro框架_取名称列表JSON
             // [7] FBro框架_取名称列表JSON(控件名)
             // 功能：取得全部框架名称的 UTF-16 JSON 数组。
-            // 参数：控件名:wideString；返回：wideString；可见性：advanced
-            FBro框架_取名称列表JSON("演示输出")
+            // 参数：控件名:controlRef；返回：wideString；可见性：advanced
+            FBro框架_取名称列表JSON(演示FBroBrowser控件)
             // 命令ID：FBro框架_是否有效
             // [8] FBro框架_是否有效(框架句柄)
             // 功能：检查受管框架是否仍有效。
@@ -84,8 +84,8 @@
     结束
 
     事件 _运行第02组_被单击()
-        控件_设置文本("演示状态", "命令 14–25：FBro框架_取父框架 至 FBro框架_执行JS；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 14–25：FBro框架_取父框架 至 FBro框架_执行JS；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：FBro框架_取父框架
             // [14] FBro框架_取父框架(框架句柄)
             // 功能：取得父框架受管句柄；主框架返回零。

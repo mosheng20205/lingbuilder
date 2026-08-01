@@ -56,6 +56,11 @@ import { parseLingCppControlFlowLine } from './controlFlow';
 import { getProjectGlobalDiagnostics, isProjectGlobalsFilePath, projectSymbolTypes } from './projectGlobalService';
 import { getProjectDataTypeDiagnostics, getProjectDataTypeNames, resolveProjectFieldPathType } from './projectDataTypeService';
 import { getFunctionLibraryCompletionItems, getFunctionLibraryDiagnostics } from './functionLibraryService';
+import {
+  getLingCppControlReferenceAtPosition,
+  getLingCppControlReferenceCompletion,
+  getLingCppControlReferenceDiagnostics
+} from './controlReferenceService';
 
 const KEYWORD = {
   package: '包',
@@ -264,6 +269,7 @@ export function getLingCppSemanticDiagnostics(
   diagnostics.push(...getProjectDataTypeDiagnostics(source, filePath, moduleContext, parsed.program.classes.map(cls => cls.name)));
   diagnostics.push(...getModuleUsageDiagnostics(source, moduleContext));
   diagnostics.push(...getLegacyModuleHandlerDiagnostics(source, moduleContext));
+  diagnostics.push(...getLingCppControlReferenceDiagnostics(source, designerProject, moduleContext, filePath));
   const effectiveConstants = isProjectGlobalsFilePath(filePath) ? parsed.program.constants : (projectGlobals?.constants || []);
   const effectiveGlobals = isProjectGlobalsFilePath(filePath) ? parsed.program.globals : (projectGlobals?.globals || []);
   diagnostics.push(...getVariableDiagnostics([
@@ -355,6 +361,25 @@ export function getLingCppCompletionItems(
   context: LingCppCompletionContext,
   languageContext = buildLingCppLanguageContext(context.source)
 ): LingCppCompletionItem[] {
+  const controlReferenceCompletion = getLingCppControlReferenceCompletion(
+    context.source,
+    context.line,
+    context.column,
+    languageContext.designerProject as LingWindowProject | undefined,
+    languageContext.moduleContext,
+    languageContext.filePath
+  );
+  if (controlReferenceCompletion) {
+    return dedupeLingCppCompletionItems(controlReferenceCompletion.symbols.map(symbol => ({
+      label: symbol.name,
+      kind: 'type' as const,
+      insertText: symbol.name,
+      detail: `${symbol.kind === 'resource' ? '设计器资源' : '设计器控件'} · ${symbol.controlType}`,
+      documentation: `窗口：${symbol.windowName}\n名称：${symbol.name}\n类型：${symbol.controlType}\n参数：${controlReferenceCompletion.parameter.name}`,
+      aliases: [symbol.controlType, symbol.windowName, '控件', '组件'],
+      category: 'designer' as const
+    })), context.triggerText);
+  }
   const contextKind = getLingCppCompletionContextKind(context.source, context.line, context.column);
   const projectFieldItems = getProjectFieldCompletionItems(context, languageContext);
   if (projectFieldItems) return dedupeLingCppCompletionItems(projectFieldItems, context.triggerText);
@@ -386,6 +411,33 @@ export function getLingCppHover(
   context: LingCppCompletionContext,
   languageContext = buildLingCppLanguageContext(context.source)
 ): LingCppHover | undefined {
+  const controlReference = getLingCppControlReferenceAtPosition(
+    context.source,
+    context.line,
+    context.column,
+    languageContext.designerProject as LingWindowProject | undefined,
+    languageContext.moduleContext,
+    languageContext.filePath
+  );
+  if (controlReference?.symbol) {
+    return {
+      line: context.line,
+      column: context.column,
+      range: {
+        startLine: controlReference.range.startLine,
+        startColumn: controlReference.range.startColumn,
+        endLine: controlReference.range.endLine,
+        endColumn: controlReference.range.endColumn
+      },
+      contents: [
+        `**${controlReference.symbol.name}**`,
+        `${controlReference.symbol.kind === 'resource' ? '设计器资源' : '设计器控件'} · ${controlReference.symbol.controlType}`,
+        `所属窗口：${controlReference.symbol.windowName}`,
+        `命令参数：${controlReference.canonicalCommandName} / ${controlReference.parameter.name}`,
+        'Ctrl+单击或右键选择“跳转到控件”可在可视化设计器中定位。'
+      ].join('\n\n')
+    };
+  }
   const nodes = languageContext.symbolIndex.byLine[context.line] || [];
   const structuralNode = nodes.find(item => item.kind !== 'program' && item.kind !== 'statement');
   if (structuralNode) {
@@ -570,7 +622,7 @@ function symbolDetailForAstNode(node: LingCppAstNode): string {
   if (node.kind === 'constant') return `项目常量 · ${node.type || '未标注类型'}`;
   if (node.kind === 'global') return `项目全局变量 · ${node.type || '未标注类型'}`;
   if (node.kind === 'member') return `当前成员 · ${node.type || '未标注类型'}`;
-  if (node.kind === 'local') return `当前子程序局部变量 · ${node.type || '未标注类型'}`;
+  if (node.kind === 'local') return `${node.isConstant ? '当前子程序局部常量（只读）' : '当前子程序局部变量'} · ${node.type || '未标注类型'}`;
   if (node.kind === 'event') return '当前事件处理器';
   if (node.kind === 'method' || node.kind === 'constructor' || node.kind === 'destructor') return `当前方法 · ${node.returnType || '空'}`;
   return '当前源码符号';
@@ -584,7 +636,7 @@ function hoverTextForAstNode(node: LingCppAstNode): string {
   if (node.kind === 'class') return node.type ? `类：${node.name}\n基础类：${node.type}` : `类：${node.name}`;
   if (node.kind === 'function-library') return `功能库：${node.name}\n作用域：当前项目\n调用：${node.name}.功能名(...)`;
   if (node.kind === 'member') return `成员：${node.name}\n类型：${node.type || '未标注'}\n访问：${node.access || '私有'}`;
-  if (node.kind === 'local') return `局部变量：${node.name}\n类型：${node.type || '未标注'}\n作用域：当前子程序`;
+  if (node.kind === 'local') return `${node.isConstant ? '局部常量' : '局部变量'}：${node.name}\n类型：${node.type || '未标注'}\n作用域：当前子程序${node.isConstant ? '\n状态：只读，运行时初始化一次' : ''}`;
   if (node.kind === 'event') return `事件处理器：${node.name}`;
   if (node.kind === 'constructor') return `构造函数：${node.name}`;
   if (node.kind === 'destructor') return `析构函数：${node.name}`;
@@ -873,15 +925,16 @@ export function getLingCppStructuredReadingRows(
           group: 'local',
           name: local.name,
           type: local.type,
-          value: [local.isArray ? '数组' : '', local.initialValue || ''].filter(Boolean).join(' · '),
-          note: `仅在 ${method.name} 内有效`,
+          value: [local.isConstant ? '只读' : '', local.isArray ? '数组' : '', local.initialValue || ''].filter(Boolean).join(' · '),
+          note: `${local.isConstant ? '运行时初始化一次 · ' : ''}仅在 ${method.name} 内有效`,
           line: local.line,
           blockId: block?.id,
           className: cls.name,
           methodName: method.name,
           targetName: local.name,
           initialValue: local.initialValue,
-          isArray: local.isArray
+          isArray: local.isArray,
+          isConstant: local.isConstant
         });
       });
       if (method.kind === 'event') {
@@ -1008,8 +1061,8 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
         group: 'local',
         name: local.name,
         type: local.type,
-        value: [local.isArray ? '数组' : '', local.initialValue ? `初始值 ${local.initialValue}` : ''].filter(Boolean).join(' · '),
-        note: `仅在 ${library.name}.${method.name} 内有效`,
+        value: [local.isConstant ? '只读' : '', local.isArray ? '数组' : '', local.initialValue ? `初始值 ${local.initialValue}` : ''].filter(Boolean).join(' · '),
+        note: `${local.isConstant ? '运行时初始化一次 · ' : ''}仅在 ${library.name}.${method.name} 内有效`,
         line: local.line,
         editable: true,
         editKind: 'local',
@@ -1017,7 +1070,8 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
         methodName: method.name,
         targetName: local.name,
         initialValue: local.initialValue,
-        isArray: local.isArray
+        isArray: local.isArray,
+        isConstant: local.isConstant
       }));
       rows.push({
         id: `structured-library-method-${library.name}-${method.name}-${method.line}`,
@@ -1092,8 +1146,8 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
           group: 'local',
           name: local.name,
           type: local.type,
-          value: [local.isArray ? '数组' : '', local.initialValue ? `初始值 ${local.initialValue}` : ''].filter(Boolean).join(' · '),
-          note: `局部作用域：${method.name}`,
+          value: [local.isConstant ? '只读' : '', local.isArray ? '数组' : '', local.initialValue ? `初始值 ${local.initialValue}` : ''].filter(Boolean).join(' · '),
+          note: `${local.isConstant ? '运行时初始化一次 · ' : ''}局部作用域：${method.name}`,
           line: local.line,
           blockId: block?.id,
           editable: true,
@@ -1102,7 +1156,8 @@ export function getLingCppStructuredRows(languageContext: LingCppLanguageContext
           methodName: method.name,
           targetName: local.name,
           initialValue: local.initialValue,
-          isArray: local.isArray
+          isArray: local.isArray,
+          isConstant: local.isConstant
         });
       });
       if (method.kind === 'event') {
@@ -1747,7 +1802,7 @@ function getDesignerControlCompletionItemsForWindow(win: LingWindowModel): LingC
         kind: 'snippet',
         insertText: `${control.name}.内容`,
         detail: `${detail} · 读取当前文本`,
-        documentation: `读取设计器控件“${control.name}”的当前文本；等价于 控件_取文本("${control.name}")。`,
+        documentation: `读取设计器控件“${control.name}”的当前文本；等价于 控件_取文本(${control.name})。`,
         aliases: [control.name, `${control.name}.文字`, '内容', '文字', '取文本'],
         category: 'designer',
         source: 'designer',
@@ -1762,7 +1817,7 @@ function getDesignerControlCompletionItemsForWindow(win: LingWindowModel): LingC
         detail: `${detail} · 按从 0 开始的索引切换选择项`,
         signature: `${control.name}.设置选择项(索引)`,
         returnType: '逻辑型',
-        documentation: `设置设计器控件“${control.name}”的选择项；等价于 控件_设置选择项("${control.name}", 索引)。`,
+        documentation: `设置设计器控件“${control.name}”的选择项；等价于 控件_设置选择项(${control.name}, 索引)。`,
         aliases: [control.name, '设置选择项', '切换选项卡', '选择页面'],
         category: 'designer',
         source: 'designer',
@@ -2295,13 +2350,13 @@ function getUnknownDeclaredTypeDiagnostics(
     cls.methods.forEach(method => {
       check(method.returnType, method.name, method.line, '子程序返回值');
       method.parameters.forEach(parameter => check(parameter.type, parameter.name, method.line, '参数'));
-      (method.locals || []).forEach(local => check(local.type, local.name, local.line, '局部变量'));
+      (method.locals || []).forEach(local => check(local.type, local.name, local.line, local.isConstant ? '局部常量' : '局部变量'));
     });
   });
   program.functionLibraries.forEach(library => library.methods.forEach(method => {
     check(method.returnType, method.name, method.line, '功能库返回值');
     method.parameters.forEach(parameter => check(parameter.type, parameter.name, method.line, '功能库参数'));
-    (method.locals || []).forEach(local => check(local.type, local.name, local.line, '功能库局部变量'));
+    (method.locals || []).forEach(local => check(local.type, local.name, local.line, local.isConstant ? '功能库局部常量' : '功能库局部变量'));
   }));
   return diagnostics;
 }
@@ -2336,20 +2391,28 @@ function getVariableDiagnostics(
         baseScopeTypes.set(name, parameter.type);
       });
       const orderedLocals = [...(method.locals || [])].sort((left, right) => left.line - right.line);
+      const allLocalPositions = new Map(orderedLocals.map(local => [normalizeIdentifier(local.name), local.line]));
       const initializerScopeTypes = new Map(baseScopeTypes);
       orderedLocals.forEach(local => {
-        if (constantNames.has(normalizeIdentifier(local.name))) diagnostics.push(createDiagnostic('error', local.line, local.name, `局部变量 ${local.name} 不能遮蔽同名项目常量。`, '请修改局部变量或项目常量的名称。'));
+        const localLabel = local.isConstant ? '局部常量' : '局部变量';
+        if (constantNames.has(normalizeIdentifier(local.name))) diagnostics.push(createDiagnostic('error', local.line, local.name, `${localLabel} ${local.name} 不能遮蔽同名项目常量。`, `请修改${localLabel}或项目常量的名称。`));
         if (globalTypes.has(normalizeIdentifier(local.name))) {
-          diagnostics.push(createDiagnostic('warning', local.line, local.name, `局部变量 ${local.name} 会遮蔽同名项目全局变量。`, '建议使用不同名称，或直接使用已有项目全局变量。'));
+          diagnostics.push(createDiagnostic('warning', local.line, local.name, `${localLabel} ${local.name} 会遮蔽同名项目全局变量。`, '建议使用不同名称，或直接使用已有项目全局变量。'));
         }
         if (local.initialValue) {
+          diagnostics.push(...getLocalInitializerReferenceDiagnostics(
+            method,
+            local,
+            initializerScopeTypes,
+            allLocalPositions
+          ));
           const actualType = inferLingCppExpressionType(local.initialValue, initializerScopeTypes, moduleContext, new Map(), projectTypes);
           if (actualType && !areLingCppTypesCompatible(local.type, actualType)) {
             diagnostics.push({
               id: `lingcpp-local-initializer-type-${method.name}-${local.name}-${local.line}`,
               line: local.line,
               level: 'error',
-              message: `局部变量 ${local.name} 的类型是 ${local.type}，不能使用 ${actualType} 初始化。`,
+              message: `${localLabel} ${local.name} 的类型是 ${local.type}，不能使用 ${actualType} 初始化。`,
               codeSnippet: local.initialValue,
               suggestion: `请改用 ${local.type} 值，或修改局部变量类型。`
             });
@@ -2363,6 +2426,18 @@ function getVariableDiagnostics(
         orderedLocals
           .filter(local => local.line < statement.line)
           .forEach(local => scopeTypes.set(normalizeIdentifier(local.name), local.type));
+        const readOnlyTarget = statement.text.trim().match(/^([\p{L}_][\p{L}\p{N}_]*)(?:\s*(?:\.\s*[\p{L}_][\p{L}\p{N}_]*|\[[^\]]+\]))*\s*[=＝](?!=)/u);
+        if (readOnlyTarget?.[1]) {
+          const localConstant = orderedLocals.find(local => (
+            local.isConstant
+            && local.line < statement.line
+            && normalizeIdentifier(local.name) === normalizeIdentifier(readOnlyTarget[1] || '')
+          ));
+          if (localConstant) {
+            diagnostics.push(createDiagnostic('error', statement.line, statement.text, `局部常量 ${localConstant.name} 是只读值，不能重新赋值。`, '请改用普通局部变量保存运行时变化的值。'));
+            return;
+          }
+        }
         const assignment = statement.text.trim().match(/^([\p{L}_][\p{L}\p{N}_]*(?:\s*\.\s*[\p{L}_][\p{L}\p{N}_]*)*)\s*[=＝](?!=)\s*(.+?)\s*;?$/u);
         if (!assignment) return;
         const targetPath = (assignment[1] || '').split(/\s*\.\s*/u);
@@ -2400,6 +2475,46 @@ function getVariableDiagnostics(
       });
     });
   });
+  return diagnostics;
+}
+
+function getLocalInitializerReferenceDiagnostics(
+  method: LingCppMethod,
+  local: NonNullable<LingCppMethod['locals']>[number],
+  scopeTypes: ReadonlyMap<string, string>,
+  allLocalPositions: ReadonlyMap<string, number>
+): LingCppDiagnostic[] {
+  const expression = local.initialValue || '';
+  const withoutStrings = expression.replace(/(?:L)?"(?:\\.|[^"\\])*"|“[^”]*”/gu, match => ' '.repeat(match.length));
+  const diagnostics: LingCppDiagnostic[] = [];
+  const seen = new Set<string>();
+  for (const match of withoutStrings.matchAll(/[\p{L}_][\p{L}\p{N}_]*/gu)) {
+    const name = match[0];
+    const normalized = normalizeIdentifier(name);
+    if (seen.has(normalized) || /^(真|假)$/u.test(name)) continue;
+    const index = match.index || 0;
+    const before = withoutStrings.slice(0, index).trimEnd();
+    const after = withoutStrings.slice(index + name.length);
+    if (before.endsWith('.')) continue;
+    if (/^\s*[（(]/u.test(after)) continue;
+    if (/^\s*\.\s*[\p{L}_][\p{L}\p{N}_]*\s*[（(]/u.test(after)) continue;
+    if (scopeTypes.has(normalized)) continue;
+    seen.add(normalized);
+    const declarationLine = allLocalPositions.get(normalized);
+    const reason = normalized === normalizeIdentifier(local.name)
+      ? '不能在初始化表达式中引用自身'
+      : declarationLine !== undefined && declarationLine >= local.line
+        ? `只能引用声明在它之前的局部值，${name} 尚未声明`
+        : `引用了未知名称 ${name}`;
+    diagnostics.push({
+      id: `lingcpp-local-initializer-reference-${method.name}-${local.name}-${normalized}-${local.line}`,
+      line: local.line,
+      level: 'error',
+      message: `${local.isConstant ? '局部常量' : '局部变量'} ${local.name} 的初始值无效：${reason}。`,
+      codeSnippet: expression,
+      suggestion: '请只使用参数、成员、项目符号、前置局部值或可调用的子程序与模块命令。'
+    });
+  }
   return diagnostics;
 }
 
@@ -2707,8 +2822,7 @@ function collectDesignerEventBindings(windows: LingWindowModel[], resources: Lin
 }
 
 function extractAssociatedDesignerFile(source: string): string | undefined {
-  const match = source.match(/=\s*["']([^"']+\.xml)["']/i) || source.match(/["']([^"']+\.xml)["']/i);
-  return match?.[1]?.trim();
+  return source.match(/(?:关联设计文件|DesignerFile)\s*=\s*["']([^"']+\.xml)["']/iu)?.[1]?.trim();
 }
 
 function findWindowEventMatch(handlerName: string, className: string, windows: LingWindowModel[]): LingWindowModel | undefined {

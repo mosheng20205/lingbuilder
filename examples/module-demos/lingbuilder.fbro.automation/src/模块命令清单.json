@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T09:57:36.151Z",
+  "generatedAt": "2026-07-31T18:20:25.861Z",
   "module": {
     "id": "lingbuilder.fbro.automation",
     "name": "FBro自动化模块",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "description": "提供受管异步 JavaScript 任务与类型化 Frame 操作。"
   },
   "commandCount": 25,
@@ -17,7 +17,7 @@
       ],
       "signature": "FBro自动化_执行JS异步(控件名, 脚本)",
       "description": "异步执行 JavaScript 并返回受管任务 ID。",
-      "insertText": "FBro自动化_执行JS异步(\"$1\", \"$2\")",
+      "insertText": "FBro自动化_执行JS异步($1, \"$2\")",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -26,7 +26,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "脚本",
@@ -36,7 +44,7 @@
         "returnType": "longLong",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro自动化_执行JS异步(\"演示输出\", \"演示参数2\")"
+      "demoInvocation": "FBro自动化_执行JS异步(演示FBroBrowser控件, \"演示参数2\")"
     },
     {
       "index": 2,
@@ -46,7 +54,7 @@
       ],
       "signature": "FBro框架_取主框架(控件名)",
       "description": "取得浏览器主框架的受管句柄。",
-      "insertText": "FBro框架_取主框架(\"$1\")",
+      "insertText": "FBro框架_取主框架($1)",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -55,13 +63,21 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "longLong",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro框架_取主框架(\"演示输出\")"
+      "demoInvocation": "FBro框架_取主框架(演示FBroBrowser控件)"
     },
     {
       "index": 3,
@@ -71,7 +87,7 @@
       ],
       "signature": "FBro框架_取焦点框架(控件名)",
       "description": "取得当前焦点框架的受管句柄。",
-      "insertText": "FBro框架_取焦点框架(\"$1\")",
+      "insertText": "FBro框架_取焦点框架($1)",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -80,13 +96,21 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "longLong",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro框架_取焦点框架(\"演示输出\")"
+      "demoInvocation": "FBro框架_取焦点框架(演示FBroBrowser控件)"
     },
     {
       "index": 4,
@@ -96,7 +120,7 @@
       ],
       "signature": "FBro框架_按标识取框架(控件名, 标识)",
       "description": "按官方字符串标识取得受管框架句柄。",
-      "insertText": "FBro框架_按标识取框架(\"$1\", \"$2\")",
+      "insertText": "FBro框架_按标识取框架($1, \"$2\")",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -105,7 +129,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "标识",
@@ -115,7 +147,7 @@
         "returnType": "longLong",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro框架_按标识取框架(\"演示输出\", \"演示参数2\")"
+      "demoInvocation": "FBro框架_按标识取框架(演示FBroBrowser控件, \"演示参数2\")"
     },
     {
       "index": 5,
@@ -125,7 +157,7 @@
       ],
       "signature": "FBro框架_按名称取框架(控件名, 名称)",
       "description": "按框架名称取得受管框架句柄。",
-      "insertText": "FBro框架_按名称取框架(\"$1\", \"$2\")",
+      "insertText": "FBro框架_按名称取框架($1, \"$2\")",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -134,7 +166,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "名称",
@@ -144,7 +184,7 @@
         "returnType": "longLong",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro框架_按名称取框架(\"演示输出\", \"演示参数2\")"
+      "demoInvocation": "FBro框架_按名称取框架(演示FBroBrowser控件, \"演示参数2\")"
     },
     {
       "index": 6,
@@ -154,7 +194,7 @@
       ],
       "signature": "FBro框架_取标识列表JSON(控件名)",
       "description": "取得全部框架标识的 UTF-16 JSON 数组。",
-      "insertText": "FBro框架_取标识列表JSON(\"$1\")",
+      "insertText": "FBro框架_取标识列表JSON($1)",
       "returnType": "文本型",
       "visibility": "advanced",
       "binding": {
@@ -163,13 +203,21 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "wideString",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro框架_取标识列表JSON(\"演示输出\")"
+      "demoInvocation": "FBro框架_取标识列表JSON(演示FBroBrowser控件)"
     },
     {
       "index": 7,
@@ -179,7 +227,7 @@
       ],
       "signature": "FBro框架_取名称列表JSON(控件名)",
       "description": "取得全部框架名称的 UTF-16 JSON 数组。",
-      "insertText": "FBro框架_取名称列表JSON(\"$1\")",
+      "insertText": "FBro框架_取名称列表JSON($1)",
       "returnType": "文本型",
       "visibility": "advanced",
       "binding": {
@@ -188,13 +236,21 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "wideString",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro框架_取名称列表JSON(\"演示输出\")"
+      "demoInvocation": "FBro框架_取名称列表JSON(演示FBroBrowser控件)"
     },
     {
       "index": 8,

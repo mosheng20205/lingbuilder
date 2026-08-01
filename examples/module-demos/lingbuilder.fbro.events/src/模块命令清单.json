@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T09:57:36.156Z",
+  "generatedAt": "2026-08-01T03:36:22.870Z",
   "module": {
     "id": "lingbuilder.fbro.events",
     "name": "FBro事件模块",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "description": "提供 UTF-16 JSON 事件包、同步决策与动态处理器绑定。"
   },
-  "commandCount": 6,
+  "commandCount": 12,
   "commands": [
     {
       "index": 1,
@@ -17,7 +17,7 @@
       ],
       "signature": "FBro_取事件数据(控件名)",
       "description": "取得当前处理中的事件主数据。",
-      "insertText": "FBro_取事件数据(\"$1\")",
+      "insertText": "FBro_取事件数据($1)",
       "returnType": "文本型",
       "binding": {
         "command": "FBro_取事件数据",
@@ -25,13 +25,21 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "wideString",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro_取事件数据(\"演示输出\")"
+      "demoInvocation": "FBro_取事件数据(演示FBroBrowser控件)"
     },
     {
       "index": 2,
@@ -41,7 +49,7 @@
       ],
       "signature": "FBro_取事件字段(控件名, 字段名)",
       "description": "从 UTF-16 JSON 事件包读取结构化字段。",
-      "insertText": "FBro_取事件字段(\"$1\", \"$2\")",
+      "insertText": "FBro_取事件字段($1, \"$2\")",
       "returnType": "文本型",
       "binding": {
         "command": "FBro_取事件字段",
@@ -49,7 +57,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "字段名",
@@ -59,7 +75,7 @@
         "returnType": "wideString",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro_取事件字段(\"演示输出\", \"演示参数2\")"
+      "demoInvocation": "FBro_取事件字段(演示FBroBrowser控件, \"演示参数2\")"
     },
     {
       "index": 3,
@@ -69,7 +85,7 @@
       ],
       "signature": "FBro_设置事件结果(控件名, 动作)",
       "description": "设置同步事件动作；未设置时使用事件目录默认动作。",
-      "insertText": "FBro_设置事件结果(\"$1\", $2)",
+      "insertText": "FBro_设置事件结果($1, $2)",
       "returnType": "整数型",
       "binding": {
         "command": "FBro_设置事件结果",
@@ -77,7 +93,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "动作",
@@ -87,7 +111,7 @@
         "returnType": "int",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro_设置事件结果(\"演示输出\", 1)"
+      "demoInvocation": "FBro_设置事件结果(演示FBroBrowser控件, 1)"
     },
     {
       "index": 4,
@@ -97,7 +121,7 @@
       ],
       "signature": "FBro_设置事件返回文本(控件名, 文本)",
       "description": "设置同步事件返回文本。",
-      "insertText": "FBro_设置事件返回文本(\"$1\", \"$2\")",
+      "insertText": "FBro_设置事件返回文本($1, \"$2\")",
       "returnType": "整数型",
       "binding": {
         "command": "FBro_设置事件返回文本",
@@ -105,7 +129,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "文本",
@@ -115,17 +147,53 @@
         "returnType": "int",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro_设置事件返回文本(\"演示输出\", \"演示参数2\")"
+      "demoInvocation": "FBro_设置事件返回文本(演示FBroBrowser控件, \"演示参数2\")"
     },
     {
       "index": 5,
+      "name": "FBro_设置事件响应JSON",
+      "aliases": [
+        "LB_FBro_SetEventResponseJson"
+      ],
+      "signature": "FBro_设置事件响应JSON(控件名, 响应JSON)",
+      "description": "设置 C ABI v3 事件结构化响应；回调返回后 Bridge 会立即复制。",
+      "insertText": "FBro_设置事件响应JSON($1, \"$2\")",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_设置事件响应JSON",
+        "runtimeName": "FBro_设置事件响应JSON",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "响应JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_设置事件响应JSON(演示FBroBrowser控件, \"{}\")"
+    },
+    {
+      "index": 6,
       "name": "FBro_取事件对象",
       "aliases": [
         "LB_FBro_GetLastEventObject"
       ],
       "signature": "FBro_取事件对象(控件名)",
       "description": "取得 CertificateError 或 DragEnter 事件携带的受管对象句柄。",
-      "insertText": "FBro_取事件对象(\"$1\")",
+      "insertText": "FBro_取事件对象($1)",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -134,23 +202,194 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "longLong",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro_取事件对象(\"演示输出\")"
+      "demoInvocation": "FBro_取事件对象(演示FBroBrowser控件)"
     },
     {
-      "index": 6,
+      "index": 7,
+      "name": "FBro_取事件延续",
+      "aliases": [
+        "LB_FBro_GetLastEventContinuation"
+      ],
+      "signature": "FBro_取事件延续(控件名)",
+      "description": "取得当前延迟决策事件的受管延续句柄；只允许传给完成或取消命令。",
+      "insertText": "FBro_取事件延续($1)",
+      "returnType": "长整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro_取事件延续",
+        "runtimeName": "FBro_取事件延续",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取事件延续(演示FBroBrowser控件)"
+    },
+    {
+      "index": 8,
+      "name": "FBro_取事件对象字段",
+      "aliases": [
+        "LB_FBro_GetEventObjectField"
+      ],
+      "signature": "FBro_取事件对象字段(控件名, 字段名)",
+      "description": "读取事件包中复制后的对象字段或受管句柄字段。",
+      "insertText": "FBro_取事件对象字段($1, \"$2\")",
+      "returnType": "文本型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro_取事件对象字段",
+        "runtimeName": "FBro_取事件对象字段",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "字段名",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_取事件对象字段(演示FBroBrowser控件, \"演示参数2\")"
+    },
+    {
+      "index": 9,
+      "name": "FBro事件_完成延续",
+      "aliases": [
+        "LB_FBro_CompleteEventContinuation"
+      ],
+      "signature": "FBro事件_完成延续(延续句柄, 响应JSON)",
+      "description": "完成认证、权限、查询或下载等延迟决策；重复完成返回稳定错误码。",
+      "insertText": "FBro事件_完成延续($1, \"$2\")",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro事件_完成延续",
+        "runtimeName": "FBro事件_完成延续",
+        "parameters": [
+          {
+            "name": "延续句柄",
+            "type": "longLong"
+          },
+          {
+            "name": "响应JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro事件_完成延续(1, \"{}\")"
+    },
+    {
+      "index": 10,
+      "name": "FBro事件_取消延续",
+      "aliases": [
+        "LB_FBro_CancelEventContinuation"
+      ],
+      "signature": "FBro事件_取消延续(延续句柄)",
+      "description": "取消尚未完成的受管事件延续。",
+      "insertText": "FBro事件_取消延续($1)",
+      "returnType": "整数型",
+      "visibility": "advanced",
+      "binding": {
+        "command": "FBro事件_取消延续",
+        "runtimeName": "FBro事件_取消延续",
+        "parameters": [
+          {
+            "name": "延续句柄",
+            "type": "longLong"
+          }
+        ],
+        "returnType": "int"
+      },
+      "demoInvocation": "FBro事件_取消延续(1)"
+    },
+    {
+      "index": 11,
+      "name": "FBro_设置事件采样率",
+      "aliases": [
+        "LB_FBro_SetEventSamplingRate"
+      ],
+      "signature": "FBro_设置事件采样率(控件名, 事件名, 每秒次数)",
+      "description": "按浏览器和事件设置高频事件采样率；零表示暂停投递。",
+      "insertText": "FBro_设置事件采样率($1, \"$2\", $3)",
+      "returnType": "整数型",
+      "binding": {
+        "command": "FBro_设置事件采样率",
+        "runtimeName": "FBro_设置事件采样率",
+        "parameters": [
+          {
+            "name": "控件名",
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
+          },
+          {
+            "name": "事件名",
+            "type": "wideString"
+          },
+          {
+            "name": "每秒次数",
+            "type": "int"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "wide"
+      },
+      "demoInvocation": "FBro_设置事件采样率(演示FBroBrowser控件, \"演示事件\", 1)"
+    },
+    {
+      "index": 12,
       "name": "FBro_绑定事件",
       "aliases": [
         "LB_FBro_BindEvent"
       ],
       "signature": "FBro_绑定事件(控件名, 事件名, 处理器)",
       "description": "动态绑定 FBro 事件处理器。",
-      "insertText": "FBro_绑定事件(\"FBro浏览器1\", \"BeforePopup\", &$1)",
+      "insertText": "FBro_绑定事件(FBro浏览器1, \"BeforePopup\", &$1)",
       "returnType": "整数型",
       "binding": {
         "command": "FBro_绑定事件",
@@ -158,7 +397,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "事件名",
@@ -172,9 +419,9 @@
         ],
         "returnType": "int",
         "encoding": "wide",
-        "example": "FBro_绑定事件(\"FBro浏览器1\", \"BeforePopup\", &$1)"
+        "example": "FBro_绑定事件(FBro浏览器1, \"BeforePopup\", &$1)"
       },
-      "demoInvocation": "FBro_绑定事件(\"演示输出\", \"演示事件\", &模块演示回调)"
+      "demoInvocation": "FBro_绑定事件(演示FBroBrowser控件, \"演示事件\", &模块演示回调)"
     }
   ]
 }

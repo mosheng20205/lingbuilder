@@ -1,7 +1,7 @@
 # FBro高级网络模块完整演示
 
 - 模块 ID：`lingbuilder.fbro.network`
-- 版本：`2.0.0`
+- 版本：`2.1.0`
 - 类型：LingBuilder 内置模块
 - 命令数：2
 - 设计器控件数：0

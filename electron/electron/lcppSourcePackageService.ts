@@ -402,7 +402,8 @@ function isRequiredSupportAssetModule(module: PortableInstalledModule, requiredM
       'lingbuilder.crypto.password',
       'lingbuilder.crypto.symmetric',
       'lingbuilder.crypto.asymmetric'
-    ]
+    ],
+    'lingbuilder.opencv.sdk': ['lingbuilder.opencv']
   };
   const knownConsumers = consumers[module.manifest.id];
   if (knownConsumers) return knownConsumers.some(moduleId => requiredModuleIds.has(moduleId));

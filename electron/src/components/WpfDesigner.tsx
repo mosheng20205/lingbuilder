@@ -127,6 +127,12 @@ import { DESIGNER_CANVAS_CONTEXT_MENU, DESIGNER_CONTROL_CONTEXT_MENU, DESIGNER_R
 import { createDesignerContainerLayoutRegistry } from '../services/windowDesigner/containerLayoutRegistry';
 import { DesignerClipboardService, removeClipboardSelection } from '../services/windowDesigner/designerClipboardService';
 import { acquireDesignerCommands, activeDesignerCommandTargetService, type DesignerCommandTarget, type DesignerLayerOperation } from '../services/windowDesigner/designerCommandTargetService';
+import {
+  getPendingDesignerNavigation,
+  registerDesignerNavigationTarget as registerDesignerNavigationTargetHandler,
+  subscribeDesignerNavigation,
+  type DesignerNavigationRequest
+} from '../services/windowDesigner/designerNavigationService';
 import { applyDesignerEditEnvelope, getDesignerModelRevision, isDesignerEditEnvelope, type DesignerCommandInvocation } from '../services/windowDesigner/designerExtensionEditService';
 import type { ExtensionHostSnapshot } from '../services/extensions/types';
 import {
@@ -360,6 +366,31 @@ export default function WpfDesigner({
   const selectedControlIdsRef = useRef(selectedControlIds);
   selectedControlIdsRef.current = selectedControlIds;
   const [selectedResourceId, setSelectedResourceId] = useState<string | null>(null);
+  const designerNavigationTargetsRef = useRef(new Map<string, { element: HTMLElement; dispose(): void }>());
+  const registerDesignerNavigationTarget = useCallback((kind: 'control' | 'resource', id: string) => (
+    element: HTMLElement | null
+  ) => {
+    const key = `${kind}:${id}`;
+    const existing = designerNavigationTargetsRef.current.get(key);
+    if (existing?.element === element) return;
+    existing?.dispose();
+    designerNavigationTargetsRef.current.delete(key);
+    if (!element || !activeWindowId) return;
+    const control = project.windows.find(window => window.id === activeWindowId)?.controls.find(item => item.id === id);
+    const registration = registerDesignerNavigationTargetHandler({
+      projectId: project.id,
+      windowId: activeWindowId,
+      controlId: id,
+      kind: kind === 'resource' ? 'resource' : getWin32ControlDefinition(control?.type || '')?.isVisual === false ? 'nonVisual' : 'visual'
+    }, request => {
+      const details = element.closest('details');
+      if (details instanceof HTMLDetailsElement) details.open = true;
+      element.focus({ preventScroll: true });
+      element.scrollIntoView({ block: 'center', inline: 'center' });
+      return request.controlId === id;
+    });
+    designerNavigationTargetsRef.current.set(key, { element, dispose: registration.dispose });
+  }, [activeWindowId, project.id, project.windows]);
   const selectOnlyControl = (id: string | null) => { setSelectedControlId(id); setSelectedControlIds(id && !id.startsWith('__window_') ? [id] : []); setSelectedResourceId(null); };
   const designerHistoryRef = useRef(new DesignerHistory(initialDesignerState.project));
   const applyingHistoryRef = useRef(false);
@@ -371,6 +402,35 @@ export default function WpfDesigner({
   useEffect(() => {
     if (selectedControlId !== null && selectedResourceId !== null) setSelectedResourceId(null);
   }, [selectedControlId, selectedResourceId]);
+
+  useEffect(() => {
+    const revealTarget = (request: DesignerNavigationRequest) => {
+      if (request.projectId !== project.id) return;
+      const targetWindow = project.windows.find(window => window.id === request.windowId);
+      if (!targetWindow) return;
+      const targetExists = request.kind === 'resource'
+        ? Boolean((project.resources || []).some(resource => resource.id === request.controlId))
+        : targetWindow.controls.some(control => control.id === request.controlId);
+      if (!targetExists) return;
+
+      setActiveWindowId(targetWindow.id);
+      setActiveInspectorTab('properties');
+      if (request.kind === 'resource') {
+        setSelectedControlId(null);
+        setSelectedControlIds([]);
+        setSelectedResourceId(request.controlId);
+      } else {
+        setSelectedResourceId(null);
+        setSelectedControlId(request.controlId);
+        setSelectedControlIds([request.controlId]);
+      }
+
+    };
+    const registration = subscribeDesignerNavigation(revealTarget);
+    const pending = getPendingDesignerNavigation(project.id);
+    if (pending) revealTarget(pending);
+    return () => registration.dispose();
+  }, [project]);
 
   useEffect(() => {
     const handleDesignerProjectUpdated = (event: Event) => {
@@ -2754,7 +2814,8 @@ export default function WpfDesigner({
                 effectiveState.enabled,
                 ancestorsVisible && isControlOnSelectedTab(activeWindow.controls, control.id),
                 isTabContainerControl(control) ? pageId => handleSelectTabPage(control.id, pageId) : undefined,
-                control.type === 'ReBar' ? (fromIndex, toIndex) => handleReorderRebarBand(control.id, fromIndex, toIndex) : undefined
+                control.type === 'ReBar' ? (fromIndex, toIndex) => handleReorderRebarBand(control.id, fromIndex, toIndex) : undefined,
+                registerDesignerNavigationTarget('control', control.id)
               );
             })}
             {activeFileDialogs.map((resource, index) => {
@@ -2763,6 +2824,8 @@ export default function WpfDesigner({
               return (
                 <div
                   key={resource.id}
+                  ref={registerDesignerNavigationTarget('resource', resource.id)}
+                  data-designer-resource-id={resource.id}
                   role="button"
                   tabIndex={0}
                   aria-label={`文件对话框占位：${resource.name}`}
@@ -2814,6 +2877,8 @@ export default function WpfDesigner({
               return (
                 <div
                   key={resource.id}
+                  ref={registerDesignerNavigationTarget('resource', resource.id)}
+                  data-designer-resource-id={resource.id}
                   role="button"
                   tabIndex={0}
                   aria-label={`${isContext ? '上下文菜单' : '弹出菜单'}占位：${resource.name}`}
@@ -2932,6 +2997,8 @@ export default function WpfDesigner({
                   resources={(project.resources || []).filter((resource): resource is LingImageListResource => resource.type === 'ImageList')}
                   isDarkMode={isDarkMode}
                   onChange={resources => setProject(previous => ({ ...previous, resources: [...(previous.resources || []).filter(resource => resource.type !== 'ImageList'), ...resources] }))}
+                  revealResourceId={selectedResourceId}
+                  registerNavigationTarget={registerDesignerNavigationTarget}
                 />
                 <BehaviorResourceEditor
                   resources={project.resources || []}
@@ -2939,6 +3006,7 @@ export default function WpfDesigner({
                   activeWindow={activeWindow}
                   isDarkMode={isDarkMode}
                   onChange={resources => setProject(previous => ({ ...previous, resources }))}
+                  registerNavigationTarget={registerDesignerNavigationTarget}
                 />
                 {selectedControlId === null ? (
                   <WindowProperties
@@ -3460,7 +3528,8 @@ function renderControl(
   isEffectivelyEnabled: boolean,
   ancestorsVisible: boolean,
   onSelectTabPage?: (pageId: string) => void,
-  onReorderRebarBand?: (fromIndex: number, toIndex: number) => void
+  onReorderRebarBand?: (fromIndex: number, toIndex: number) => void,
+  navigationRef?: (element: HTMLElement | null) => void
 ) {
   const isCollapsed = !isEffectivelyVisible && ancestorsVisible;
   const isHiddenByAncestor = !ancestorsVisible;
@@ -3490,6 +3559,9 @@ function renderControl(
   return (
     <div
       key={control.id}
+      ref={navigationRef}
+      data-designer-control-id={control.id}
+      tabIndex={-1}
       onClick={event => {
         event.stopPropagation();
         setSelectedControlId(control.id);
@@ -4809,7 +4881,14 @@ function MenuResourceEvents({ resource, windowModel, isDarkMode, onChange }: {
   </div>;
 }
 
-function BehaviorResourceEditor({ resources, windows, activeWindow, isDarkMode, onChange }: { resources: LingDesignerResource[]; windows: LingWindowModel[]; activeWindow: LingWindowModel; isDarkMode: boolean; onChange: (resources: LingDesignerResource[]) => void }) {
+function BehaviorResourceEditor({ resources, windows, activeWindow, isDarkMode, onChange, registerNavigationTarget }: {
+  resources: LingDesignerResource[];
+  windows: LingWindowModel[];
+  activeWindow: LingWindowModel;
+  isDarkMode: boolean;
+  onChange: (resources: LingDesignerResource[]) => void;
+  registerNavigationTarget: (kind: 'control' | 'resource', id: string) => (element: HTMLElement | null) => void;
+}) {
   const controls = windows.flatMap(window => window.controls);
   const tooltips = resources.filter((resource): resource is LingToolTipResource => resource.type === 'ToolTip');
   const sheets = resources.filter((resource): resource is LingPropertySheetResource => resource.type === 'PropertySheet');
@@ -4835,13 +4914,13 @@ function BehaviorResourceEditor({ resources, windows, activeWindow, isDarkMode, 
   const inputClass = `w-full rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`;
   return <PropertyGroup title={`项目 / 附加行为（${tooltips.length + sheets.length}）`} isDarkMode={isDarkMode} defaultOpen={false}>
     <div className="space-y-2 p-2">
-      {tooltips.map(resource => <div key={resource.id} className={`space-y-1 rounded border p-2 ${isDarkMode ? 'border-[#34343d]' : 'border-slate-200'}`}>
+      {tooltips.map(resource => <div key={resource.id} ref={registerNavigationTarget('resource', resource.id)} tabIndex={-1} data-designer-resource-id={resource.id} className={`space-y-1 rounded border p-2 ${isDarkMode ? 'border-[#34343d]' : 'border-slate-200'}`}>
         <div className="flex items-center gap-1"><span className="text-[10px] font-semibold text-cyan-500">ToolTip · {resource.name}</span><button type="button" onClick={() => remove(resource.id)} className="ml-auto text-red-400"><Trash2 className="h-3 w-3" /></button></div>
         <select aria-label="工具提示目标控件" value={resource.targetControlId} onChange={event => replace({ ...resource, targetControlId: event.target.value })} className={inputClass}><option value="">选择目标控件</option>{controls.map(control => <option key={control.id} value={control.id}>{control.name}</option>)}</select>
         <input aria-label="工具提示文字" value={resource.text} onChange={event => replace({ ...resource, text: event.target.value })} placeholder="提示文字" className={inputClass} />
         <input aria-label="工具提示延迟" type="number" min={0} value={resource.initialDelay} onChange={event => replace({ ...resource, initialDelay: Math.max(0, Number(event.target.value) || 0) })} className={inputClass} />
       </div>)}
-      {sheets.map(resource => <div key={resource.id} className={`space-y-1 rounded border p-2 ${isDarkMode ? 'border-[#34343d]' : 'border-slate-200'}`}>
+      {sheets.map(resource => <div key={resource.id} ref={registerNavigationTarget('resource', resource.id)} tabIndex={-1} data-designer-resource-id={resource.id} className={`space-y-1 rounded border p-2 ${isDarkMode ? 'border-[#34343d]' : 'border-slate-200'}`}>
         <div className="flex items-center gap-1"><span className="text-[10px] font-semibold text-violet-500">PropertySheet · {resource.name}</span><button type="button" onClick={() => remove(resource.id)} className="ml-auto text-red-400"><Trash2 className="h-3 w-3" /></button></div>
         <input aria-label="属性页窗口标题" value={resource.title} onChange={event => replace({ ...resource, title: event.target.value })} className={inputClass} />
         <button
@@ -4871,7 +4950,7 @@ function BehaviorResourceEditor({ resources, windows, activeWindow, isDarkMode, 
           <select aria-label="属性页控件模板窗口" value={page.sourceWindowId || ''} onChange={event => replace({ ...resource, pages: resource.pages.map((item, row) => row === index ? { ...item, sourceWindowId: event.target.value || undefined } : item) })} className={`${inputClass} col-span-2`}><option value="">仅显示页面文字</option>{windows.map(window => <option key={window.id} value={window.id}>{window.title}（{window.controls.length} 个控件）</option>)}</select>
         </div>)}
         <button type="button" onClick={() => replace({ ...resource, pages: [...resource.pages, { id: `page-${resource.pages.length + 1}`, title: `页面 ${resource.pages.length + 1}`, content: '' }] })} className="w-full text-[9px] text-emerald-500">+ 添加属性页</button>
-        <div className="text-[9px] text-slate-500">中文代码调用：属性页_显示(&quot;{resource.id}&quot;)</div>
+        <div className="text-[9px] text-slate-500">中文代码调用：属性页_显示({resource.name})</div>
       </div>)}
       <div className="flex gap-1">
         <button type="button" onClick={() => { const id = uniqueId('tooltip'); onChange([...resources, { id, type: 'ToolTip', name: `工具提示 ${tooltips.length + 1}`, targetControlId: '', text: '提示文字', initialDelay: 500 }]); }} className="flex-1 rounded border border-cyan-500/30 py-1 text-[9px] text-cyan-500">+ ToolTip</button>
@@ -4884,13 +4963,20 @@ function BehaviorResourceEditor({ resources, windows, activeWindow, isDarkMode, 
 function ImageListResourceEditor({
   resources,
   isDarkMode,
-  onChange
+  onChange,
+  revealResourceId,
+  registerNavigationTarget
 }: {
   resources: LingImageListResource[];
   isDarkMode: boolean;
   onChange: (resources: LingImageListResource[]) => void;
+  revealResourceId: string | null;
+  registerNavigationTarget: (kind: 'control' | 'resource', id: string) => (element: HTMLElement | null) => void;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (revealResourceId && resources.some(resource => resource.id === revealResourceId)) setOpen(true);
+  }, [resources, revealResourceId]);
   const update = (id: string, fields: Partial<LingImageListResource>) => onChange(resources.map(resource => resource.id === id ? { ...resource, ...fields } : resource));
   const add = () => {
     let suffix = resources.length + 1;
@@ -4903,7 +4989,7 @@ function ImageListResourceEditor({
       <div className="space-y-2 p-2">
         <button type="button" onClick={() => setOpen(value => !value)} className="w-full rounded border border-cyan-500/30 px-2 py-1 text-[10px] text-cyan-500">{open ? '收起资源编辑器' : '管理 ImageList'}</button>
         {open && resources.map(resource => (
-          <div key={resource.id} className={`space-y-1 rounded border p-2 ${isDarkMode ? 'border-[#34343d] bg-black/10' : 'border-slate-200 bg-white'}`}>
+          <div key={resource.id} ref={registerNavigationTarget('resource', resource.id)} tabIndex={-1} data-designer-resource-id={resource.id} className={`space-y-1 rounded border p-2 ${isDarkMode ? 'border-[#34343d] bg-black/10' : 'border-slate-200 bg-white'}`}>
             <div className="flex gap-1">
               <input aria-label="图像列表名称" value={resource.name} onChange={event => update(resource.id, { name: event.target.value })} className={`min-w-0 flex-1 rounded border px-1 py-0.5 text-[10px] ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`} />
               <button type="button" aria-label={`删除图像列表 ${resource.name}`} onClick={() => onChange(resources.filter(item => item.id !== resource.id))} className="rounded px-1 text-red-400"><Trash2 className="h-3 w-3" /></button>
@@ -5512,12 +5598,15 @@ function ControlEvents({
         desc: eventInfo.parameters?.length
           ? `事件参数：${eventInfo.parameters.map(parameter => `${parameter.name}:${parameter.type}`).join('、')}`
           : '由 new_emoji 原生运行时触发。',
-        handlerPattern: eventInfo.handlerPattern
+        handlerPattern: eventInfo.handlerPattern,
+        handlerSuffix: eventInfo.label
       }))
     : getEventsForType(control.type);
 
   const openEventCode = (eventName: string, handlerPattern?: string) => {
-    const suggestedName = handlerPattern?.replace('{controlName}', control.name) || getEplEventHandlerName(control.name, eventName);
+    const eventInfo = eventInfos.find(item => item.name === eventName);
+    const suggestedName = handlerPattern?.replace('{controlName}', control.name)
+      || getEplEventHandlerName(control.name, eventInfo?.handlerSuffix || eventName);
     const handlerName = control.events?.[eventName]?.trim() || suggestedName;
     onChange({
       events: {
@@ -5553,7 +5642,7 @@ function ControlEvents({
       )}
       {eventInfos.map(eventInfo => {
         const currentHandler = control.events?.[eventInfo.name] || '';
-        const suggestedHandler = getEplEventHandlerName(control.name, eventInfo.name);
+        const suggestedHandler = getEplEventHandlerName(control.name, eventInfo.handlerSuffix || eventInfo.name);
         const isBound = Boolean(currentHandler.trim());
         const handlerName = currentHandler.trim() || suggestedHandler;
         return (

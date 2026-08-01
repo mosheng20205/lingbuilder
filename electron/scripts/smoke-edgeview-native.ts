@@ -47,7 +47,7 @@ async function main() {
   const source = [
     '类 MainWindow',
     '    事件 _MainWindow_创建完毕()',
-    '        EdgeView脚本_文档预注入异步("根级浏览器", "document.body.innerHTML=\'LingBuilder EdgeView smoke\'", &根级浏览器_脚本完成)',
+    '        EdgeView脚本_文档预注入异步(根级浏览器, "document.body.innerHTML=\'LingBuilder EdgeView smoke\'", &根级浏览器_脚本完成)',
     '    结束',
     '    事件 根级浏览器_脚本完成()',
     '        调试输出(EdgeView任务_取结果(EdgeView任务_取当前任务ID()))',

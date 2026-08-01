@@ -1,7 +1,7 @@
 # FBro受管对象模块完整演示
 
 - 模块 ID：`lingbuilder.fbro.objects`
-- 版本：`2.0.0`
+- 版本：`2.1.0`
 - 类型：LingBuilder 内置模块
 - 命令数：132
 - 设计器控件数：0

@@ -2,7 +2,7 @@
 
 更新时间：2026-07-31
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **79 个内置模块、1600 条中文命令**；其中参考精易模块分类新增 **51 个模块、287 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **80 个内置模块、1639 条中文命令**；其中参考精易模块分类新增 **51 个模块、287 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -94,9 +94,12 @@ SQLite 模块不会静默假装数据库可用：项目需要提供 `sqlite3.dll
 | 已封装 | `lingbuilder.image.bitmap` | 位图像素模块 | 5 |
 | 已封装 | `lingbuilder.image.icon` | 图标处理模块 | 3 |
 | 已封装 | `lingbuilder.image.recognition` | 基础识图模块 | 5 |
+| 已封装（OpenCV 4.14.0 x64） | `lingbuilder.opencv` | OpenCV 图像处理与单/双缺口候选模块 | 33 |
 | 已封装 | `lingbuilder.media.audio` | 基础音频模块 | 5 |
 
 基础识图使用确定性像素遍历，适合找色和小模板。它不是 OCR 或机器学习识别模块。
+
+OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开模块只暴露受管图像/结果句柄；隐藏 `lingbuilder.opencv.sdk@4.14.0+bridge.1` 携带 x64 `/MD` Bridge、三个 OpenCV DLL、许可证和 SHA-256 清单。缺口能力仅分析用户提供或已获授权的图像并返回候选，不提供浏览器自动化、拖动或验证提交。
 
 ## 高级和高风险模块
 
@@ -128,8 +131,8 @@ SQLite 模块不会静默假装数据库可用：项目需要提供 `sqlite3.dll
 | 3.0预览 | `lingbuilder.cef3.devtools` | CEF3开发者工具模块 | 3 |
 | 3.0预览 | `lingbuilder.cef3.views` | CEF3 Chrome Runtime视图模块 | 1 |
 | 3.0预览 | `lingbuilder.cef3.platform` | CEF3版本、MIME与Chrome Variations工具模块 | 4 |
-| 已封装 | `lingbuilder.fbro.browser` | FBro核心浏览器模块（CEF 135 x64/C ABI v2，兼容 v1） | 42 |
-| 已封装 | `lingbuilder.fbro.events` | FBro结构化事件、同步决策与受管事件对象模块 | 6 |
+| 已封装 | `lingbuilder.fbro.browser` | FBro核心浏览器模块（CEF 135 x64/C ABI v3，兼容 v1/v2） | 42 |
+| 已封装 | `lingbuilder.fbro.events` | FBro 174 槽位事件目录、同步/延迟决策与受管事件对象模块 | 11 |
 | 已封装 | `lingbuilder.fbro.session` | FBro会话、Cookie 与代理认证模块 | 10 |
 | 已封装 | `lingbuilder.fbro.transfer` | FBro下载、打印、PDF、文件对话框与截图模块 | 5 |
 | 已封装 | `lingbuilder.fbro.automation` | FBro受管异步及 Frame 自动化模块 | 25 |
@@ -145,8 +148,8 @@ SQLite 模块不会静默假装数据库可用：项目需要提供 `sqlite3.dll
 
 ## 代码位置
 
-- 模块清单：`electron/src/services/modules/standardLibraryModules.ts`、`systemLibraryModules.ts`、`networkLibraryModules.ts`、`dataMediaModules.ts`、`platformAdvancedModules.ts`。
-- C++ 运行时：`electron/src/services/windowDesigner/standardLibraryRuntime.ts`、`systemLibraryRuntime.ts`、`networkLibraryRuntime.ts`、`dataMediaRuntime.ts`、`cryptoRuntime.ts`、`platformAdvancedRuntime.ts`。
+- 模块清单：`electron/src/services/modules/standardLibraryModules.ts`、`systemLibraryModules.ts`、`networkLibraryModules.ts`、`dataMediaModules.ts`、`opencvModules.ts`、`platformAdvancedModules.ts`。
+- C++ 运行时：`electron/src/services/windowDesigner/standardLibraryRuntime.ts`、`systemLibraryRuntime.ts`、`networkLibraryRuntime.ts`、`dataMediaRuntime.ts`、`opencvRuntime.ts`、`cryptoRuntime.ts`、`platformAdvancedRuntime.ts`。
 - 聚合入口：`electron/src/services/modules/builtinModules.ts`。
 - 生成接入：`electron/src/services/windowDesigner/lingCppWin32Project.ts`。
 - 自动测试：`electron/tests/modules.test.ts`。
@@ -160,3 +163,11 @@ SQLite 模块不会静默假装数据库可用：项目需要提供 `sqlite3.dll
 - Visual Studio 2022 `Release|Win32` 编译通过。
 
 编译验证目录为 `.lingbuilder-build/standard-library-smoke-20260723/`，属于可重新生成的构建产物。
+
+## controlRef 封装门禁
+
+- [ ] 每个设计器对象参数都声明为 `controlRef`，并包含 `controlKinds`、`scope`、`runtimeRepresentation`；需要限定控件类型时包含 `controlTypes`。
+- [ ] `insertText`、命令示例、README、演示工程与 smoke 源码使用裸控件名，不把 controlRef 写成字符串。
+- [ ] C++ Bridge 接收宽名称、稳定 ID 或原生句柄的差异由 binding/后端契约适配，不反向污染 `.lcpp` 语法。
+- [ ] 模块清单通过第三方门禁，SDK 迁移配置不会把“控件名/组件名/资源名”声明为文本型。
+- [ ] 运行 `npm run module:control-ref-audit`，确认全部方法和参数进入摘要；运行 `npm run module:control-ref-migrate` 后再以只读方式复核 0 个可安全迁移引用。

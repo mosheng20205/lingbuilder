@@ -2,14 +2,16 @@ import type {
   LingBuilderModuleManifest,
   ModuleBindingValueType,
   ModuleCommandBinding,
+  ModuleCommandBindingParameter,
   ModuleCommandContribution
 } from './types';
+import { createModuleBindingSnippetArgument, isWideStringAbiBindingType, normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter } from './bindingValueType';
 import {
   FBRO_VIP_AGGREGATE_CATEGORY,
   FBRO_VIP_OFFICIAL_ENTRIES
 } from './fbroVipApiCatalog';
 
-const CORE_DEPENDENCY = [{ moduleId: 'lingbuilder.fbro.browser', minimumVersion: '2.0.0' }];
+const CORE_DEPENDENCY = [{ moduleId: 'lingbuilder.fbro.browser', minimumVersion: '2.1.0' }];
 const TARGET = [{
   id: 'windows-msvc-x64' as const,
   platform: 'windows' as const,
@@ -17,7 +19,7 @@ const TARGET = [{
   toolchain: 'msvc' as const
 }];
 
-type Parameter = { name: string; type: ModuleBindingValueType; description?: string };
+type Parameter = ModuleCommandBindingParameter;
 
 function api(
   name: string,
@@ -33,14 +35,16 @@ function api(
     capabilityKind?: ModuleCommandContribution['capabilityKind'];
   } = {}
 ): { command: ModuleCommandContribution; binding: ModuleCommandBinding } {
-  const signature = `${name}(${parameters.map(item => item.name).join(', ')})`;
+  const normalizedParameters = parameters.map(parameter => normalizeControlReferenceParameter(parameter, { controlTypes: ['FBroBrowser'] }));
+  const signature = `${name}(${normalizedParameters.map(item => item.name).join(', ')})`;
+  const normalizedExample = normalizeControlReferenceCallSnippet(options.example, normalizedParameters);
   return {
     command: {
       name,
       aliases: [officialAlias],
       signature,
       description,
-      insertText: options.example || `${name}(${parameters.map((item, index) => item.type === 'wideString' || item.type === 'handler' ? `"$${index + 1}"` : `$${index + 1}`).join(', ')})`,
+      insertText: normalizedExample || `${name}(${normalizedParameters.map(createModuleBindingSnippetArgument).join(', ')})`,
       returnType: returnType === 'void' ? '空' : returnType === 'wideString' ? '文本型' : returnType === 'longLong' || returnType === 'handle' ? '长整数型' : returnType === 'double' ? '小数型' : returnType === 'bool' ? '逻辑型' : '整数型',
       category: options.category,
       capabilityKind: options.capabilityKind,
@@ -49,10 +53,10 @@ function api(
     binding: {
       command: name,
       runtimeName: options.runtimeName || name,
-      parameters,
+      parameters: normalizedParameters,
       returnType,
-      encoding: parameters.some(item => item.type === 'wideString' || item.type === 'handler') ? 'wide' : undefined,
-      example: options.example
+      encoding: normalizedParameters.some(item => isWideStringAbiBindingType(item.type)) ? 'wide' : undefined,
+      example: normalizedExample
     }
   };
 }
@@ -68,7 +72,7 @@ function module(
     schemaVersion: 2,
     id,
     name,
-    version: '2.0.0',
+    version: '2.1.0',
     category,
     description,
     author: 'LingBuilder',
@@ -85,43 +89,49 @@ function module(
 }
 
 const eventEntries = [
-  api('FBro_取事件数据', 'LB_FBro_GetLastEventData', [{ name: '控件名', type: 'wideString' }], 'wideString', '取得当前处理中的事件主数据。'),
-  api('FBro_取事件字段', 'LB_FBro_GetEventField', [{ name: '控件名', type: 'wideString' }, { name: '字段名', type: 'wideString' }], 'wideString', '从 UTF-16 JSON 事件包读取结构化字段。'),
-  api('FBro_设置事件结果', 'LB_FBro_SetEventResult', [{ name: '控件名', type: 'wideString' }, { name: '动作', type: 'int' }], 'int', '设置同步事件动作；未设置时使用事件目录默认动作。'),
-  api('FBro_设置事件返回文本', 'LB_FBro_SetEventResultText', [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }], 'int', '设置同步事件返回文本。'),
-  api('FBro_取事件对象', 'LB_FBro_GetLastEventObject', [{ name: '控件名', type: 'wideString' }], 'longLong', '取得 CertificateError 或 DragEnter 事件携带的受管对象句柄。', { visibility: 'advanced' }),
-  api('FBro_绑定事件', 'LB_FBro_BindEvent', [{ name: '控件名', type: 'wideString' }, { name: '事件名', type: 'wideString' }, { name: '处理器', type: 'handler', description: '必须使用 &处理器名' }], 'int', '动态绑定 FBro 事件处理器。', { example: 'FBro_绑定事件("FBro浏览器1", "BeforePopup", &$1)' })
+  api('FBro_取事件数据', 'LB_FBro_GetLastEventData', [{ name: '控件名', type: 'controlRef' }], 'wideString', '取得当前处理中的事件主数据。'),
+  api('FBro_取事件字段', 'LB_FBro_GetEventField', [{ name: '控件名', type: 'controlRef' }, { name: '字段名', type: 'wideString' }], 'wideString', '从 UTF-16 JSON 事件包读取结构化字段。'),
+  api('FBro_设置事件结果', 'LB_FBro_SetEventResult', [{ name: '控件名', type: 'controlRef' }, { name: '动作', type: 'int' }], 'int', '设置同步事件动作；未设置时使用事件目录默认动作。'),
+  api('FBro_设置事件返回文本', 'LB_FBro_SetEventResultText', [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }], 'int', '设置同步事件返回文本。'),
+  api('FBro_设置事件响应JSON', 'LB_FBro_SetEventResponseJson', [{ name: '控件名', type: 'controlRef' }, { name: '响应JSON', type: 'wideString' }], 'int', '设置 C ABI v3 事件结构化响应；回调返回后 Bridge 会立即复制。'),
+  api('FBro_取事件对象', 'LB_FBro_GetLastEventObject', [{ name: '控件名', type: 'controlRef' }], 'longLong', '取得 CertificateError 或 DragEnter 事件携带的受管对象句柄。', { visibility: 'advanced' }),
+  api('FBro_取事件延续', 'LB_FBro_GetLastEventContinuation', [{ name: '控件名', type: 'controlRef' }], 'longLong', '取得当前延迟决策事件的受管延续句柄；只允许传给完成或取消命令。', { visibility: 'advanced' }),
+  api('FBro_取事件对象字段', 'LB_FBro_GetEventObjectField', [{ name: '控件名', type: 'controlRef' }, { name: '字段名', type: 'wideString' }], 'wideString', '读取事件包中复制后的对象字段或受管句柄字段。', { visibility: 'advanced' }),
+  api('FBro事件_完成延续', 'LB_FBro_CompleteEventContinuation', [{ name: '延续句柄', type: 'longLong' }, { name: '响应JSON', type: 'wideString' }], 'int', '完成认证、权限、查询或下载等延迟决策；重复完成返回稳定错误码。', { visibility: 'advanced' }),
+  api('FBro事件_取消延续', 'LB_FBro_CancelEventContinuation', [{ name: '延续句柄', type: 'longLong' }], 'int', '取消尚未完成的受管事件延续。', { visibility: 'advanced' }),
+  api('FBro_设置事件采样率', 'LB_FBro_SetEventSamplingRate', [{ name: '控件名', type: 'controlRef' }, { name: '事件名', type: 'wideString' }, { name: '每秒次数', type: 'int' }], 'int', '按浏览器和事件设置高频事件采样率；零表示暂停投递。'),
+  api('FBro_绑定事件', 'LB_FBro_BindEvent', [{ name: '控件名', type: 'controlRef' }, { name: '事件名', type: 'wideString' }, { name: '处理器', type: 'handler', description: '必须使用 &处理器名' }], 'int', '动态绑定 FBro 事件处理器。', { example: 'FBro_绑定事件(FBro浏览器1, "BeforePopup", &$1)' })
 ];
 
 const sessionEntries = [
-  api('FBro会话_取Cookie', 'LB_FBro_GetCookies', [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], 'wideString', '读取指定 RequestContext 中的 Cookie。', { runtimeName: 'FBro_取Cookie' }),
-  api('FBro会话_清空Cookie', 'LB_FBro_ClearCookies', [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], 'int', '清空指定地址 Cookie。', { runtimeName: 'FBro_清空Cookie' }),
-  api('FBro会话_设置代理认证', 'LB_FBro_SetProxy', [{ name: '控件名', type: 'wideString' }, { name: '代理地址', type: 'wideString' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], 'int', '设置隔离会话代理及认证信息。'),
-  api('FBro会话_异步取全部Cookie', 'LB_FBro_CookieVisitAllAsync', [{ name: '控件名', type: 'wideString' }], 'longLong', '异步读取当前 RequestContext 的全部 Cookie，任务结果为 UTF-16 JSON 数组。'),
-  api('FBro会话_异步取地址Cookie', 'LB_FBro_CookieVisitUrlAsync', [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }, { name: '包含HttpOnly', type: 'int' }], 'longLong', '异步读取指定地址 Cookie，任务结果为 UTF-16 JSON 数组。'),
-  api('FBro会话_异步设置Cookie', 'LB_FBro_CookieSetAsync', [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }, { name: '名称', type: 'wideString' }, { name: '值', type: 'wideString' }, { name: '域', type: 'wideString' }, { name: '路径', type: 'wideString' }, { name: '安全', type: 'int' }, { name: '仅HTTP', type: 'int' }], 'longLong', '通过官方 CookieManager 异步设置 Cookie，并返回受管任务 ID。'),
-  api('FBro会话_异步删除Cookie', 'LB_FBro_CookieDeleteAsync', [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }, { name: '名称', type: 'wideString' }], 'longLong', '异步删除指定 Cookie；名称留空时删除该地址全部 Cookie。'),
-  api('FBro会话_异步刷新Cookie存储', 'LB_FBro_CookieFlushAsync', [{ name: '控件名', type: 'wideString' }], 'longLong', '异步请求 FBro 将 Cookie 写入持久化存储。'),
-  api('FBro会话_异步清理缓存', 'LB_FBro_ClearCacheAsync', [{ name: '控件名', type: 'wideString' }, { name: '来源', type: 'wideString' }, { name: '移除标志', type: 'int' }, { name: '配额标志', type: 'int' }], 'longLong', '异步清理当前浏览器实例指定来源的缓存数据。', { visibility: 'advanced' }),
+  api('FBro会话_取Cookie', 'LB_FBro_GetCookies', [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], 'wideString', '读取指定 RequestContext 中的 Cookie。', { runtimeName: 'FBro_取Cookie' }),
+  api('FBro会话_清空Cookie', 'LB_FBro_ClearCookies', [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], 'int', '清空指定地址 Cookie。', { runtimeName: 'FBro_清空Cookie' }),
+  api('FBro会话_设置代理认证', 'LB_FBro_SetProxy', [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], 'int', '设置隔离会话代理及认证信息。'),
+  api('FBro会话_异步取全部Cookie', 'LB_FBro_CookieVisitAllAsync', [{ name: '控件名', type: 'controlRef' }], 'longLong', '异步读取当前 RequestContext 的全部 Cookie，任务结果为 UTF-16 JSON 数组。'),
+  api('FBro会话_异步取地址Cookie', 'LB_FBro_CookieVisitUrlAsync', [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }, { name: '包含HttpOnly', type: 'int' }], 'longLong', '异步读取指定地址 Cookie，任务结果为 UTF-16 JSON 数组。'),
+  api('FBro会话_异步设置Cookie', 'LB_FBro_CookieSetAsync', [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }, { name: '名称', type: 'wideString' }, { name: '值', type: 'wideString' }, { name: '域', type: 'wideString' }, { name: '路径', type: 'wideString' }, { name: '安全', type: 'int' }, { name: '仅HTTP', type: 'int' }], 'longLong', '通过官方 CookieManager 异步设置 Cookie，并返回受管任务 ID。'),
+  api('FBro会话_异步删除Cookie', 'LB_FBro_CookieDeleteAsync', [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }, { name: '名称', type: 'wideString' }], 'longLong', '异步删除指定 Cookie；名称留空时删除该地址全部 Cookie。'),
+  api('FBro会话_异步刷新Cookie存储', 'LB_FBro_CookieFlushAsync', [{ name: '控件名', type: 'controlRef' }], 'longLong', '异步请求 FBro 将 Cookie 写入持久化存储。'),
+  api('FBro会话_异步清理缓存', 'LB_FBro_ClearCacheAsync', [{ name: '控件名', type: 'controlRef' }, { name: '来源', type: 'wideString' }, { name: '移除标志', type: 'int' }, { name: '配额标志', type: 'int' }], 'longLong', '异步清理当前浏览器实例指定来源的缓存数据。', { visibility: 'advanced' }),
   api('FBro会话_异步清理全局缓存', 'LB_FBro_ClearGlobalCacheAsync', [{ name: '来源', type: 'wideString' }, { name: '移除标志', type: 'int' }, { name: '配额标志', type: 'int' }], 'longLong', '异步清理所有 FBro 实例共享的全局缓存数据。', { visibility: 'advanced' })
 ];
 
 const transferEntries = [
-  api('FBro传输_开始下载', 'LB_FBro_StartDownload', [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], 'int', '使用当前浏览器会话开始下载。'),
-  api('FBro传输_打印', 'LB_FBro_Print', [{ name: '控件名', type: 'wideString' }], 'int', '打开当前浏览器页面的原生打印流程。'),
-  api('FBro传输_异步生成PDF', 'LB_FBro_PrintToPdfAsync', [{ name: '控件名', type: 'wideString' }, { name: '输出路径', type: 'wideString' }, { name: '设置JSON', type: 'wideString' }], 'longLong', '异步生成 PDF；设置使用 UTF-16 JSON，任务结果包含成功状态和绝对路径。'),
-  api('FBro传输_异步打开文件对话框', 'LB_FBro_RunFileDialogAsync', [{ name: '控件名', type: 'wideString' }, { name: '模式', type: 'int' }, { name: '标题', type: 'wideString' }, { name: '默认路径', type: 'wideString' }, { name: '筛选器JSON', type: 'wideString' }], 'longLong', '调用独立 STA Windows 安全文件对话框；模式为 0打开、1多选、2文件夹、3保存，任务返回 cancelled 和 paths UTF-16 JSON 字段。'),
-  api('FBro传输_异步截图', 'LB_FBro_CaptureScreenshotAsync', [{ name: '控件名', type: 'wideString' }, { name: '格式', type: 'wideString' }, { name: '质量', type: 'int' }, { name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }, { name: '宽度', type: 'int' }, { name: '高度', type: 'int' }, { name: '缩放', type: 'int' }, { name: '来自表面', type: 'bool' }, { name: '超出视口', type: 'bool' }], 'longLong', '通过 FBro VIP Page.captureScreenshot 异步截图；任务结果通过受管缓冲返回。')
+  api('FBro传输_开始下载', 'LB_FBro_StartDownload', [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], 'int', '使用当前浏览器会话开始下载。'),
+  api('FBro传输_打印', 'LB_FBro_Print', [{ name: '控件名', type: 'controlRef' }], 'int', '打开当前浏览器页面的原生打印流程。'),
+  api('FBro传输_异步生成PDF', 'LB_FBro_PrintToPdfAsync', [{ name: '控件名', type: 'controlRef' }, { name: '输出路径', type: 'wideString' }, { name: '设置JSON', type: 'wideString' }], 'longLong', '异步生成 PDF；设置使用 UTF-16 JSON，任务结果包含成功状态和绝对路径。'),
+  api('FBro传输_异步打开文件对话框', 'LB_FBro_RunFileDialogAsync', [{ name: '控件名', type: 'controlRef' }, { name: '模式', type: 'int' }, { name: '标题', type: 'wideString' }, { name: '默认路径', type: 'wideString' }, { name: '筛选器JSON', type: 'wideString' }], 'longLong', '调用独立 STA Windows 安全文件对话框；模式为 0打开、1多选、2文件夹、3保存，任务返回 cancelled 和 paths UTF-16 JSON 字段。'),
+  api('FBro传输_异步截图', 'LB_FBro_CaptureScreenshotAsync', [{ name: '控件名', type: 'controlRef' }, { name: '格式', type: 'wideString' }, { name: '质量', type: 'int' }, { name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }, { name: '宽度', type: 'int' }, { name: '高度', type: 'int' }, { name: '缩放', type: 'int' }, { name: '来自表面', type: 'bool' }, { name: '超出视口', type: 'bool' }], 'longLong', '通过 FBro VIP Page.captureScreenshot 异步截图；任务结果通过受管缓冲返回。')
 ];
 
 const automationEntries = [
-  api('FBro自动化_执行JS异步', 'LB_FBro_ExecuteJsAsync', [{ name: '控件名', type: 'wideString' }, { name: '脚本', type: 'wideString' }], 'longLong', '异步执行 JavaScript 并返回受管任务 ID。', { visibility: 'advanced' }),
-  api('FBro框架_取主框架', 'FBroHsBrowser_GetMainFrame', [{ name: '控件名', type: 'wideString' }], 'longLong', '取得浏览器主框架的受管句柄。', { visibility: 'advanced' }),
-  api('FBro框架_取焦点框架', 'FBroHsBrowser_GetFocusedFrame', [{ name: '控件名', type: 'wideString' }], 'longLong', '取得当前焦点框架的受管句柄。', { visibility: 'advanced' }),
-  api('FBro框架_按标识取框架', 'FBroHsBrowser_GetFrameById', [{ name: '控件名', type: 'wideString' }, { name: '标识', type: 'wideString' }], 'longLong', '按官方字符串标识取得受管框架句柄。', { visibility: 'advanced' }),
-  api('FBro框架_按名称取框架', 'FBroHsBrowser_GetFrameByName', [{ name: '控件名', type: 'wideString' }, { name: '名称', type: 'wideString' }], 'longLong', '按框架名称取得受管框架句柄。', { visibility: 'advanced' }),
-  api('FBro框架_取标识列表JSON', 'FBroHsBrowser_GetFrameIdentifiers', [{ name: '控件名', type: 'wideString' }], 'wideString', '取得全部框架标识的 UTF-16 JSON 数组。', { visibility: 'advanced' }),
-  api('FBro框架_取名称列表JSON', 'FBroHsBrowser_GetFrameNames', [{ name: '控件名', type: 'wideString' }], 'wideString', '取得全部框架名称的 UTF-16 JSON 数组。', { visibility: 'advanced' }),
+  api('FBro自动化_执行JS异步', 'LB_FBro_ExecuteJsAsync', [{ name: '控件名', type: 'controlRef' }, { name: '脚本', type: 'wideString' }], 'longLong', '异步执行 JavaScript 并返回受管任务 ID。', { visibility: 'advanced' }),
+  api('FBro框架_取主框架', 'FBroHsBrowser_GetMainFrame', [{ name: '控件名', type: 'controlRef' }], 'longLong', '取得浏览器主框架的受管句柄。', { visibility: 'advanced' }),
+  api('FBro框架_取焦点框架', 'FBroHsBrowser_GetFocusedFrame', [{ name: '控件名', type: 'controlRef' }], 'longLong', '取得当前焦点框架的受管句柄。', { visibility: 'advanced' }),
+  api('FBro框架_按标识取框架', 'FBroHsBrowser_GetFrameById', [{ name: '控件名', type: 'controlRef' }, { name: '标识', type: 'wideString' }], 'longLong', '按官方字符串标识取得受管框架句柄。', { visibility: 'advanced' }),
+  api('FBro框架_按名称取框架', 'FBroHsBrowser_GetFrameByName', [{ name: '控件名', type: 'controlRef' }, { name: '名称', type: 'wideString' }], 'longLong', '按框架名称取得受管框架句柄。', { visibility: 'advanced' }),
+  api('FBro框架_取标识列表JSON', 'FBroHsBrowser_GetFrameIdentifiers', [{ name: '控件名', type: 'controlRef' }], 'wideString', '取得全部框架标识的 UTF-16 JSON 数组。', { visibility: 'advanced' }),
+  api('FBro框架_取名称列表JSON', 'FBroHsBrowser_GetFrameNames', [{ name: '控件名', type: 'controlRef' }], 'wideString', '取得全部框架名称的 UTF-16 JSON 数组。', { visibility: 'advanced' }),
   api('FBro框架_是否有效', 'FBroHsBrowserFrame_IsValid', [{ name: '框架句柄', type: 'longLong' }], 'int', '检查受管框架是否仍有效。', { visibility: 'advanced' }),
   api('FBro框架_是否主框架', 'FBroHsBrowserFrame_IsMain', [{ name: '框架句柄', type: 'longLong' }], 'int', '检查是否为主框架。', { visibility: 'advanced' }),
   api('FBro框架_是否焦点框架', 'FBroHsBrowserFrame_IsFocused', [{ name: '框架句柄', type: 'longLong' }], 'int', '检查框架是否拥有焦点。', { visibility: 'advanced' }),
@@ -252,7 +262,7 @@ const objectEntries = [
   api('FBro流_是否结束', 'FBroStream_Eof', [{ name: '流句柄', type: 'longLong' }], 'int', '检查 Stream 是否到达结尾。', { visibility: 'advanced' }),
   api('FBro流_是否可能阻塞', 'FBroStream_MayBlock', [{ name: '流句柄', type: 'longLong' }], 'int', '查询该 Stream 操作是否可能阻塞。', { visibility: 'advanced' }),
 
-  api('FBro图像_异步下载', 'FBroHsBrowserHost_DownloadImage', [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }, { name: '作为图标', type: 'bool' }, { name: '最大尺寸', type: 'int' }, { name: '绕过缓存', type: 'bool' }], 'longLong', '通过当前浏览器会话异步下载图像并返回任务 ID。', { visibility: 'advanced' }),
+  api('FBro图像_异步下载', 'FBroHsBrowserHost_DownloadImage', [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }, { name: '作为图标', type: 'bool' }, { name: '最大尺寸', type: 'int' }, { name: '绕过缓存', type: 'bool' }], 'longLong', '通过当前浏览器会话异步下载图像并返回任务 ID。', { visibility: 'advanced' }),
   api('FBro图像_是否为空', 'FBroHsImage_IsEmpty', [{ name: '图像句柄', type: 'longLong' }], 'int', '检查受管 Image 是否为空。', { visibility: 'advanced' }),
   api('FBro图像_取宽度', 'FBroHsImage_GetWidth', [{ name: '图像句柄', type: 'longLong' }], 'int', '取得图像 DIP 宽度。', { visibility: 'advanced' }),
   api('FBro图像_取高度', 'FBroHsImage_GetHeight', [{ name: '图像句柄', type: 'longLong' }], 'int', '取得图像 DIP 高度。', { visibility: 'advanced' }),
@@ -261,7 +271,7 @@ const objectEntries = [
   api('FBro图像_转JPEG缓冲', 'FBroHsImage_GetAsJPEG', [{ name: '图像句柄', type: 'longLong' }, { name: '缩放因子', type: 'double' }, { name: '质量', type: 'int' }], 'longLong', '把图像编码为 JPEG 受管缓冲。', { visibility: 'advanced' }),
   api('FBro图像_转PNG缓冲', 'FBroHsImage_GetAsPNG', [{ name: '图像句柄', type: 'longLong' }, { name: '缩放因子', type: 'double' }, { name: '保留透明', type: 'bool' }], 'longLong', '把图像编码为 PNG 受管缓冲。', { visibility: 'advanced' }),
 
-  api('FBro证书_异步取当前', 'LB_FBro_GetCurrentCertificateAsync', [{ name: '控件名', type: 'wideString' }], 'longLong', '从当前可见导航项异步取得 TLS 证书任务。', { visibility: 'advanced' }),
+  api('FBro证书_异步取当前', 'LB_FBro_GetCurrentCertificateAsync', [{ name: '控件名', type: 'controlRef' }], 'longLong', '从当前可见导航项异步取得 TLS 证书任务。', { visibility: 'advanced' }),
   api('FBro证书_取主体', 'FBroHsX509Certificate_GetSubject', [{ name: '证书句柄', type: 'longLong' }], 'longLong', '取得受证书管理的主体 Principal 句柄。', { visibility: 'advanced' }),
   api('FBro证书_取颁发者', 'FBroHsX509Certificate_GetIssuer', [{ name: '证书句柄', type: 'longLong' }], 'longLong', '取得受证书管理的颁发者 Principal 句柄。', { visibility: 'advanced' }),
   api('FBro证书_取序列号缓冲', 'FBroHsX509Certificate_GetSerialNumber', [{ name: '证书句柄', type: 'longLong' }], 'longLong', '取得证书序列号受管缓冲。', { visibility: 'advanced' }),
@@ -284,8 +294,8 @@ const objectEntries = [
 ];
 
 const networkEntries = [
-  api('FBro网络_设置代理', 'LB_FBro_SetProxy', [{ name: '控件名', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], 'int', '设置当前 FBro RequestContext 的代理。', { runtimeName: 'FBro_设置代理', visibility: 'advanced' }),
-  api('FBro网络_设置代理认证', 'LB_FBro_SetProxyAuthentication', [{ name: '控件名', type: 'wideString' }, { name: '代理地址', type: 'wideString' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], 'int', '设置代理与认证信息。', { runtimeName: 'FBro会话_设置代理认证', visibility: 'advanced' })
+  api('FBro网络_设置代理', 'LB_FBro_SetProxy', [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }], 'int', '设置当前 FBro RequestContext 的代理。', { runtimeName: 'FBro_设置代理', visibility: 'advanced' }),
+  api('FBro网络_设置代理认证', 'LB_FBro_SetProxyAuthentication', [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], 'int', '设置代理与认证信息。', { runtimeName: 'FBro会话_设置代理认证', visibility: 'advanced' })
 ];
 
 const vipAggregateOptions = {
@@ -296,15 +306,15 @@ const vipAggregateOptions = {
 
 const vipEntries = [
   ...FBRO_VIP_OFFICIAL_ENTRIES,
-  api('FBroVIP_应用指纹JSON', 'LB_FBro_ApplyFingerprintJson', [{ name: '控件名', type: 'wideString' }, { name: 'JSON', type: 'wideString' }], 'int', '通过 UTF-16 JSON 批量应用完整直接指纹配置，覆盖浏览器、屏幕、GPU、WebRTC、时区、电池、位置、设备、Canvas/WebGL/Audio 和 User-Agent Data；不会暴露 Key。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_应用配置' }),
-  api('FBroVIP_取已应用配置JSON', 'LB_FBro_GetAppliedFingerprintJson', [{ name: '控件名', type: 'wideString' }], 'wideString', '取得最近一次成功应用的规范化指纹配置与 User-Agent Data JSON。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_取已应用配置' }),
+  api('FBroVIP_应用指纹JSON', 'LB_FBro_ApplyFingerprintJson', [{ name: '控件名', type: 'controlRef' }, { name: 'JSON', type: 'wideString' }], 'int', '通过 UTF-16 JSON 批量应用完整直接指纹配置，覆盖浏览器、屏幕、GPU、WebRTC、时区、电池、位置、设备、Canvas/WebGL/Audio 和 User-Agent Data；不会暴露 Key。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_应用配置' }),
+  api('FBroVIP_取已应用配置JSON', 'LB_FBro_GetAppliedFingerprintJson', [{ name: '控件名', type: 'controlRef' }], 'wideString', '取得最近一次成功应用的规范化指纹配置与 User-Agent Data JSON。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_取已应用配置' }),
   api('FBroVIP_取授权信息JSON', 'LB_FBro_GetVipLicenseInfoJson', [], 'wideString', '读取脱敏的 VIP 授权状态、版本、授权范围和有效期；不返回 Key。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_取授权信息' }),
-  api('FBroVIP_取调用次数', 'LB_FBro_GetFingerprintCallCount', [{ name: '控件名', type: 'wideString' }], 'wideString', '查询 VIP 指纹调用次数。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_取调用次数' }),
-  api('FBroVIP_清空调用次数', 'LB_FBro_ClearFingerprintCallCount', [{ name: '控件名', type: 'wideString' }], 'int', '清空 VIP 指纹调用次数。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_清空调用次数' }),
-  api('FBroVIP_DOM异步命令', 'LB_FBro_VipDomCommandAsync', [{ name: '控件名', type: 'wideString' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', 'DOM 批量高级分发入口；单项 DOM 命令已经在 DOM 分类中分别公开。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_DOM异步命令' }),
-  api('FBroVIP_扩展异步命令', 'LB_FBro_VipExtensionCommandAsync', [{ name: '控件名', type: 'wideString' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', '扩展批量高级分发入口；文件路径必须位于生成程序目录内。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_扩展异步命令' }),
-  api('FBroVIP_资源规则异步命令', 'LB_FBro_VipResourceCommandAsync', [{ name: '控件名', type: 'wideString' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', '资源与响应规则批量高级分发入口；二进制数据只接受 FBro 受管缓冲句柄。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_资源规则异步命令' }),
-  api('FBroVIP_开发者工具异步命令', 'LB_FBro_VipDevToolsCommandAsync', [{ name: '控件名', type: 'wideString' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', 'DevTools、Runtime 与输入批量高级分发入口；单项命令已经分别公开。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_开发者工具异步命令' }),
+  api('FBroVIP_取调用次数', 'LB_FBro_GetFingerprintCallCount', [{ name: '控件名', type: 'controlRef' }], 'wideString', '查询 VIP 指纹调用次数。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_取调用次数' }),
+  api('FBroVIP_清空调用次数', 'LB_FBro_ClearFingerprintCallCount', [{ name: '控件名', type: 'controlRef' }], 'int', '清空 VIP 指纹调用次数。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_清空调用次数' }),
+  api('FBroVIP_DOM异步命令', 'LB_FBro_VipDomCommandAsync', [{ name: '控件名', type: 'controlRef' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', 'DOM 批量高级分发入口；单项 DOM 命令已经在 DOM 分类中分别公开。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_DOM异步命令' }),
+  api('FBroVIP_扩展异步命令', 'LB_FBro_VipExtensionCommandAsync', [{ name: '控件名', type: 'controlRef' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', '扩展批量高级分发入口；文件路径必须位于生成程序目录内。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_扩展异步命令' }),
+  api('FBroVIP_资源规则异步命令', 'LB_FBro_VipResourceCommandAsync', [{ name: '控件名', type: 'controlRef' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', '资源与响应规则批量高级分发入口；二进制数据只接受 FBro 受管缓冲句柄。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_资源规则异步命令' }),
+  api('FBroVIP_开发者工具异步命令', 'LB_FBro_VipDevToolsCommandAsync', [{ name: '控件名', type: 'controlRef' }, { name: '命令', type: 'wideString' }, { name: '参数JSON', type: 'wideString' }], 'longLong', 'DevTools、Runtime 与输入批量高级分发入口；单项命令已经分别公开。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_开发者工具异步命令' }),
   api('FBroVIP_设置启动代理', 'LB_FBro_SetVipStartupProxy', [{ name: '地址', type: 'wideString' }, { name: '用户名', type: 'wideString' }, { name: '密码', type: 'wideString' }], 'int', '配置 VIP 启动代理；必须在首个 FBro 运行时初始化前调用，凭据只保存在 Bridge 内存中。', { ...vipAggregateOptions, runtimeName: 'FBro指纹_设置启动代理' })
 ];
 

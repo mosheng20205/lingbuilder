@@ -28,7 +28,7 @@ const groupLabel: Record<LingCppStructuredReadingRow['group'], string> = {
   global: '项目全局变量',
   class: '类',
   member: '变量',
-  local: '局部变量',
+  local: '局部声明',
   method: '过程',
   constructor: '初始化',
   event: '事件',

@@ -26,14 +26,14 @@ async function main() {
   const enabledModules = [builtin('lingbuilder.win32.basic'), builtin('lingbuilder.win32.common-controls')];
   const project = JSON.parse(await fs.readFile(path.join(repoRoot, '.lingbuilder', 'projects', 'datagrid-api-demo', 'window-designer.json'), 'utf8')) as LingWindowProject;
   let source = await fs.readFile(path.join(repoRoot, 'src', 'datagrid-api-demo', 'MainWindow.lcpp'), 'utf8');
-  const smokeAnchor = '        控件_设置文本("事件日志", "事件日志：请直接单击、双击或编辑左侧表格。")';
+  const smokeAnchor = '        控件_设置文本(事件日志, "事件日志：请直接单击、双击或编辑左侧表格。")';
   if (!source.includes(smokeAnchor)) throw new Error('DataGrid smoke 无法定位创建完毕处理器注入点。');
   source = source.replace(smokeAnchor, [
     smokeAnchor,
-    '        表格_导出Excel("静态表格", "datagrid-smoke.xlsx", 真)',
-    '        表格_清空行("静态表格")',
-    '        表格_导入Excel("静态表格", "datagrid-smoke.xlsx", 真)',
-    '        表格_导出Excel("静态表格", "datagrid-smoke-roundtrip.xlsx", 真)'
+    '        表格_导出Excel(静态表格, "datagrid-smoke.xlsx", 真)',
+    '        表格_清空行(静态表格)',
+    '        表格_导入Excel(静态表格, "datagrid-smoke.xlsx", 真)',
+    '        表格_导出Excel(静态表格, "datagrid-smoke-roundtrip.xlsx", 真)'
   ].join('\n'));
   const generated = generateLingCppNativeWin32Project(project, { enabledModules, lingCppSourceCode: source });
   if (generated.blockingDiagnostics.length) throw new Error(generated.blockingDiagnostics.join('\n'));

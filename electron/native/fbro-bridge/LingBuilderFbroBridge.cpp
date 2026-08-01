@@ -13,9 +13,12 @@
 #include "FBroHsEvent.h"
 #include "FBroInit.h"
 #include "FBroDictionaryValue.h"
+#include "FBroDownloadItem.h"
 #include "FBroListValue.h"
 #include "FBroImage.h"
+#include "FBroMenuModel.h"
 #include "FBroMiddleData.h"
+#include "FBroRequest.h"
 #include "FBroRequestContext.h"
 #include "FBroStream.h"
 #include "FBroSSLInfo.h"
@@ -54,12 +57,14 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace {
 
 struct BrowserState;
 class BridgeBrowserEvent;
+BrowserState* Find(LB_FBRO_HANDLE handle);
 void NotifyVipBrowser(CefRefPtr<CefBrowser> browser, int code, const std::wstring& data);
 
 struct VipResourcePayload {
@@ -68,7 +73,7 @@ struct VipResourcePayload {
 };
 
 std::recursive_mutex g_mutex;
-std::condition_variable_any g_close_condition;
+std::condition_variable_any g_continuation_timer_condition;
 std::unordered_map<LB_FBRO_HANDLE, std::unique_ptr<BrowserState>> g_browsers;
 std::atomic<LB_FBRO_HANDLE> g_next_handle{1};
 std::atomic<uint64_t> g_next_object_handle{0x100000000ULL};
@@ -76,6 +81,8 @@ std::atomic<uint64_t> g_event_sequence{1};
 std::atomic<bool> g_initialized{false};
 std::atomic<bool> g_ready{false};
 std::atomic<bool> g_shutdown_started{false};
+bool g_continuation_timer_stop = false;
+std::thread g_continuation_timer_thread;
 std::atomic<bool> g_license_attempted{false};
 std::atomic<bool> g_license_valid{false};
 bool g_winsock_started = false;
@@ -122,9 +129,20 @@ struct ObjectState {
   std::vector<unsigned char> owned_bytes;
 };
 
+struct ContinuationState {
+  LB_FBRO_CONTINUATION_HANDLE handle = 0;
+  LB_FBRO_HANDLE browser = 0;
+  std::wstring event_id;
+  std::atomic<bool> completed{false};
+  std::chrono::steady_clock::time_point deadline;
+  int timeout_action = LB_FBRO_EVENT_ACTION_CANCEL;
+  std::function<void(int, const std::wstring&)> completion;
+};
+
 std::unordered_map<LB_FBRO_TASK_HANDLE, std::shared_ptr<TaskState>> g_tasks;
 std::unordered_map<LB_FBRO_BUFFER_HANDLE, std::shared_ptr<BufferState>> g_buffers;
 std::unordered_map<LB_FBRO_OBJECT_HANDLE, std::shared_ptr<ObjectState>> g_objects;
+std::unordered_map<LB_FBRO_CONTINUATION_HANDLE, std::shared_ptr<ContinuationState>> g_continuations;
 
 struct BrowserState {
   LB_FBRO_HANDLE handle = 0;
@@ -142,6 +160,11 @@ struct BrowserState {
   void* user_data = nullptr;
   LB_FBRO_EVENT_CALLBACK_V2 callback_v2 = nullptr;
   void* user_data_v2 = nullptr;
+  LB_FBRO_EVENT_CALLBACK_V3 callback_v3 = nullptr;
+  void* user_data_v3 = nullptr;
+  std::unordered_map<std::wstring, bool> event_subscriptions;
+  std::unordered_map<std::wstring, uint32_t> event_sampling_rates;
+  std::unordered_map<std::wstring, uint64_t> event_last_delivery;
   CefRefPtr<CefBrowser> browser;
   CefRefPtr<CefRequestContext> request_context;
   CefRefPtr<BridgeBrowserEvent> event;
@@ -420,6 +443,61 @@ const wchar_t* EventName(int code) {
   }
 }
 
+const wchar_t* StableEventId(int code) {
+  switch (code) {
+#define LB_FBRO_LEGACY_EVENT_ID_CASES
+#include "FbroEventOverrides.generated.inc"
+#undef LB_FBRO_LEGACY_EVENT_ID_CASES
+    default: return nullptr;
+  }
+}
+
+const wchar_t* StableEventId(const wchar_t* official_name) {
+  if (!official_name) return nullptr;
+#define LB_FBRO_OFFICIAL_EVENT_ID_CASES
+#include "FbroEventOverrides.generated.inc"
+#undef LB_FBRO_OFFICIAL_EVENT_ID_CASES
+  return nullptr;
+}
+
+const wchar_t* ChineseEventName(const wchar_t* official_name) {
+  if (!official_name) return L"未知事件";
+#define LB_FBRO_OFFICIAL_EVENT_CHINESE_CASES
+#include "FbroEventOverrides.generated.inc"
+#undef LB_FBRO_OFFICIAL_EVENT_CHINESE_CASES
+  return official_name;
+}
+
+const wchar_t* OfficialEventName(int code) {
+  switch (code) {
+    case LB_FBRO_EVENT_CREATED: return L"OnAfterCreated";
+    case LB_FBRO_EVENT_LOAD_END: return L"OnLoadEnd";
+    case LB_FBRO_EVENT_ADDRESS_CHANGED: return L"OnAddressChange";
+    case LB_FBRO_EVENT_TITLE_CHANGED: return L"OnTitleChange";
+    case LB_FBRO_EVENT_CLOSED: return L"OnBeforeClose";
+    case LB_FBRO_EVENT_ERROR: return L"OnLoadError";
+    case LB_FBRO_EVENT_BEFORE_POPUP: return L"OnBeforePopup";
+    case LB_FBRO_EVENT_CERTIFICATE_ERROR: return L"OnCertificateError";
+    case LB_FBRO_EVENT_DRAG_ENTER: return L"OnDragEnter";
+    default: return EventName(code);
+  }
+}
+
+const wchar_t* ChineseEventName(int code) {
+  switch (code) {
+    case LB_FBRO_EVENT_CREATED: return L"浏览器创建完成";
+    case LB_FBRO_EVENT_LOAD_END: return L"加载完成";
+    case LB_FBRO_EVENT_ADDRESS_CHANGED: return L"地址被改变";
+    case LB_FBRO_EVENT_TITLE_CHANGED: return L"标题被改变";
+    case LB_FBRO_EVENT_CLOSED: return L"浏览器即将关闭";
+    case LB_FBRO_EVENT_ERROR: return L"加载失败";
+    case LB_FBRO_EVENT_BEFORE_POPUP: return L"新窗口打开前";
+    case LB_FBRO_EVENT_CERTIFICATE_ERROR: return L"证书错误";
+    case LB_FBRO_EVENT_DRAG_ENTER: return L"拖入浏览器";
+    default: return EventName(code);
+  }
+}
+
 std::wstring JsonEscape(const std::wstring& value) {
   std::wstring result;
   result.reserve(value.size() + 16);
@@ -469,32 +547,507 @@ std::wstring BuildEventJson(const BrowserState& state, int code, const std::wstr
   return json;
 }
 
+uint64_t StableEventToken(const std::wstring& event_id) {
+  uint64_t hash = 1469598103934665603ULL;
+  for (const wchar_t character : event_id) {
+    hash ^= static_cast<uint64_t>(static_cast<uint32_t>(character));
+    hash *= 1099511628211ULL;
+  }
+  return hash;
+}
+
+uint64_t NowMilliseconds() {
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::system_clock::now().time_since_epoch()).count());
+}
+
+std::wstring BuildSafeFieldsJson(
+    std::initializer_list<std::pair<const wchar_t*, std::wstring>> fields) {
+  std::wstring json = L"{";
+  bool first = true;
+  for (const auto& field : fields) {
+    if (!first) json += L",";
+    first = false;
+    json += L"\"" + JsonEscape(field.first ? field.first : L"value") + L"\":\""
+        + JsonEscape(field.second) + L"\"";
+  }
+  json += L"}";
+  return json;
+}
+
+bool ShouldDeliverEvent(BrowserState& state, const std::wstring& event_id,
+                        const std::wstring& official_name, const std::wstring& event_name,
+                        uint32_t flags, uint32_t default_max_hz) {
+  bool explicitly_enabled = false;
+  for (const auto& alias : {event_id, official_name, event_name}) {
+    const auto subscription = state.event_subscriptions.find(alias);
+    if (subscription != state.event_subscriptions.end() && !subscription->second) return false;
+    if (subscription != state.event_subscriptions.end() && subscription->second) explicitly_enabled = true;
+  }
+  if ((flags & LB_FBRO_EVENT_FLAG_HIGH_FREQUENCY) == 0) return true;
+  if (!explicitly_enabled) return false;
+  uint32_t max_hz = default_max_hz;
+  for (const auto& alias : {event_id, official_name, event_name}) {
+    if (const auto found = state.event_sampling_rates.find(alias);
+        found != state.event_sampling_rates.end()) { max_hz = found->second; break; }
+  }
+  if (max_hz == 0) return false;
+  const uint64_t now = NowMilliseconds();
+  const uint64_t interval = std::max<uint64_t>(1, 1000ULL / std::min<uint32_t>(max_hz, 1000));
+  uint64_t& last = state.event_last_delivery[event_id];
+  if (last != 0 && now - last < interval) return false;
+  last = now;
+  return true;
+}
+
+int DispatchEventV3(BrowserState& state, const std::wstring& event_id,
+                    const std::wstring& official_name, const std::wstring& event_name,
+                    const std::wstring& fields_json, int legacy_code, uint32_t flags,
+                    uint32_t default_max_hz, LB_FBRO_OBJECT_HANDLE object,
+                    LB_FBRO_CONTINUATION_HANDLE continuation,
+                    std::wstring* response_json = nullptr) {
+  if (!ShouldDeliverEvent(state, event_id, official_name, event_name, flags, default_max_hz)) return LB_FBRO_EVENT_ACTION_DEFAULT;
+  state.last_event = event_name;
+  state.last_event_object = object;
+  state.last_event_json = L"{\"eventId\":\"" + JsonEscape(event_id)
+      + L"\",\"event\":\"" + JsonEscape(event_name)
+      + L"\",\"officialName\":\"" + JsonEscape(official_name)
+      + L"\",\"fields\":" + (fields_json.empty() ? std::wstring(L"{}") : fields_json)
+      + L",\"instanceKind\":\"" + (state.chrome_ui ? std::wstring(L"chromeUi") : std::wstring(L"embedded"))
+      + L"\",\"browserHandle\":\"" + std::to_wstring(state.handle)
+      + L"\",\"objectHandle\":\"" + std::to_wstring(object)
+      + L"\",\"continuationHandle\":\"" + std::to_wstring(continuation) + L"\"}";
+
+  if (state.callback_v3) {
+    LB_FBRO_EVENT_PACKET_V3 packet{};
+    packet.struct_size = sizeof(packet);
+    packet.abi_version = LB_FBRO_ABI_VERSION_V3;
+    packet.sequence = g_event_sequence.fetch_add(1);
+    packet.timestamp_milliseconds = NowMilliseconds();
+    packet.browser = state.handle;
+    packet.event_token = StableEventToken(event_id);
+    packet.legacy_event_code = legacy_code;
+    packet.instance_kind = state.chrome_ui ? LB_FBRO_INSTANCE_CHROME_UI : LB_FBRO_INSTANCE_EMBEDDED;
+    packet.flags = flags;
+    packet.event_id = event_id.c_str();
+    packet.event_name = event_name.c_str();
+    packet.official_name = official_name.c_str();
+    packet.fields_json = fields_json.c_str();
+    packet.object = object;
+    packet.continuation = continuation;
+    LB_FBRO_EVENT_RESPONSE_V3 response{};
+    response.struct_size = sizeof(response);
+    response.abi_version = LB_FBRO_ABI_VERSION_V3;
+    state.callback_v3(&packet, &response, state.user_data_v3);
+    if (response_json && response.response_json) *response_json = response.response_json;
+    return response.action;
+  }
+
+  if (state.callback_v2) {
+    wchar_t callback_result[4096]{};
+    LB_FBRO_EVENT_PACKET_V2 packet{};
+    packet.struct_size = sizeof(packet);
+    packet.abi_version = LB_FBRO_ABI_VERSION_V2;
+    packet.sequence = g_event_sequence.fetch_add(1);
+    packet.timestamp_milliseconds = NowMilliseconds();
+    packet.browser = state.handle;
+    packet.event_code = legacy_code;
+    packet.instance_kind = state.chrome_ui ? LB_FBRO_INSTANCE_CHROME_UI : LB_FBRO_INSTANCE_EMBEDDED;
+    packet.flags = flags;
+    packet.event_name = official_name.c_str();
+    packet.data_json = state.last_event_json.c_str();
+    packet.object = object;
+    const int action = state.callback_v2(&packet, callback_result, std::size(callback_result), state.user_data_v2);
+    if (response_json) *response_json = callback_result;
+    return action;
+  }
+  if (state.callback && legacy_code > 0) {
+    state.callback(state.handle, legacy_code, fields_json.c_str(), state.user_data);
+  }
+  return LB_FBRO_EVENT_ACTION_DEFAULT;
+}
+
+int ParseContinuationAction(const std::wstring& response_json, int fallback) {
+  if (response_json.empty()) return fallback;
+  const auto parsed = CefParseJSON(response_json, JSON_PARSER_RFC);
+  if (!parsed || parsed->GetType() != VTYPE_DICTIONARY) return fallback;
+  const auto dictionary = parsed->GetDictionary();
+  if (!dictionary || dictionary->GetType("action") != VTYPE_INT) return fallback;
+  return dictionary->GetInt("action");
+}
+
+CefRefPtr<CefDictionaryValue> ParseEventResponse(const std::wstring& response_json) {
+  if (response_json.empty()) return nullptr;
+  const auto parsed = CefParseJSON(CefString(response_json), JSON_PARSER_ALLOW_TRAILING_COMMAS);
+  return parsed && parsed->GetType() == VTYPE_DICTIONARY ? parsed->GetDictionary() : nullptr;
+}
+
+std::wstring EventResponseString(CefRefPtr<CefDictionaryValue> response, const char* key) {
+  return response && response->GetType(key) == VTYPE_STRING
+      ? response->GetString(key).ToWString() : std::wstring();
+}
+
+int EventResponseInt(CefRefPtr<CefDictionaryValue> response, const char* key, int fallback = 0) {
+  if (!response || !response->HasKey(key)) return fallback;
+  if (response->GetType(key) == VTYPE_INT) return response->GetInt(key);
+  if (response->GetType(key) == VTYPE_BOOL) return response->GetBool(key) ? 1 : 0;
+  return fallback;
+}
+
+bool EventResponseBool(CefRefPtr<CefDictionaryValue> response, const char* key, bool fallback = false) {
+  return EventResponseInt(response, key, fallback ? 1 : 0) != 0;
+}
+
+CefRefPtr<FBroCefStringList> EventResponseStringList(
+    CefRefPtr<CefDictionaryValue> response, const char* key) {
+  if (!response || response->GetType(key) != VTYPE_LIST) return nullptr;
+  const auto values = response->GetList(key);
+  auto result = FBroCefStringList_Creat();
+  if (!result) return nullptr;
+  for (size_t index = 0; index < values->GetSize(); ++index) {
+    if (values->GetType(index) == VTYPE_STRING) FBroCefStringList_Add(result, values->GetString(index));
+  }
+  return result;
+}
+
+class BridgeContinuationCompletionTask final : public CefTask {
+ public:
+  BridgeContinuationCompletionTask(std::shared_ptr<ContinuationState> continuation,
+                                   int action, std::wstring response_json)
+      : continuation_(std::move(continuation)), action_(action),
+        response_json_(std::move(response_json)) {}
+  void Execute() override {
+    if (continuation_ && continuation_->completion) {
+      continuation_->completion(action_, response_json_);
+    }
+  }
+ private:
+  std::shared_ptr<ContinuationState> continuation_;
+  int action_;
+  std::wstring response_json_;
+  IMPLEMENT_REFCOUNTING(BridgeContinuationCompletionTask);
+};
+
+int CompleteContinuationInternal(LB_FBRO_CONTINUATION_HANDLE handle, int action,
+                                 const std::wstring& response_json);
+
+void ContinuationTimerLoop() {
+  std::unique_lock<std::recursive_mutex> lock(g_mutex);
+  while (!g_continuation_timer_stop) {
+    if (g_continuations.empty()) {
+      g_continuation_timer_condition.wait(lock, [] {
+        return g_continuation_timer_stop || !g_continuations.empty();
+      });
+      continue;
+    }
+    auto earliest = std::min_element(g_continuations.begin(), g_continuations.end(),
+        [](const auto& left, const auto& right) {
+          return left.second->deadline < right.second->deadline;
+        });
+    const auto deadline = earliest->second->deadline;
+    if (g_continuation_timer_condition.wait_until(lock, deadline) != std::cv_status::timeout) {
+      continue;
+    }
+    std::vector<std::pair<LB_FBRO_CONTINUATION_HANDLE, int>> expired;
+    const auto now = std::chrono::steady_clock::now();
+    for (const auto& item : g_continuations) {
+      if (item.second->deadline <= now) {
+        expired.emplace_back(item.first, item.second->timeout_action);
+      }
+    }
+    lock.unlock();
+    for (const auto& item : expired) {
+      CompleteContinuationInternal(item.first, item.second, L"{\"reason\":\"timeout\"}");
+    }
+    lock.lock();
+  }
+}
+
+void EnsureContinuationTimerThread() {
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  if (g_continuation_timer_thread.joinable()) return;
+  g_continuation_timer_stop = false;
+  g_continuation_timer_thread = std::thread(ContinuationTimerLoop);
+}
+
+void StopContinuationTimerThread() {
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    g_continuation_timer_stop = true;
+    g_continuation_timer_condition.notify_all();
+  }
+  if (g_continuation_timer_thread.joinable()) g_continuation_timer_thread.join();
+}
+
+class BridgeCloseBrowserTask final : public CefTask {
+ public:
+  explicit BridgeCloseBrowserTask(CefRefPtr<CefBrowser> browser)
+      : browser_(std::move(browser)) {}
+  void Execute() override {
+    if (browser_ && browser_->GetHost()) {
+      FBroHsBrowserHost_CloseBrowser(browser_, true);
+    }
+  }
+ private:
+  CefRefPtr<CefBrowser> browser_;
+  IMPLEMENT_REFCOUNTING(BridgeCloseBrowserTask);
+};
+
+bool RequestBrowserClose(CefRefPtr<CefBrowser> browser) {
+  if (!browser || !browser->GetHost()) return false;
+  if (CefCurrentlyOn(TID_UI)) {
+    FBroHsBrowserHost_CloseBrowser(browser, true);
+    return true;
+  }
+  return CefPostTask(TID_UI, new BridgeCloseBrowserTask(std::move(browser)));
+}
+
+struct BrowserCloseBatchState {
+  BrowserCloseBatchState() : completed(CreateEventW(nullptr, TRUE, FALSE, nullptr)) {}
+  ~BrowserCloseBatchState() { if (completed) CloseHandle(completed); }
+  HANDLE completed = nullptr;
+};
+
+class BridgeCloseBrowserBatchTask final : public CefTask {
+ public:
+  BridgeCloseBrowserBatchTask(std::vector<CefRefPtr<CefBrowser>> browsers,
+                              std::shared_ptr<BrowserCloseBatchState> state)
+      : browsers_(std::move(browsers)), state_(std::move(state)) {}
+  void Execute() override {
+    for (auto& browser : browsers_) {
+      if (browser && browser->GetHost()) FBroHsBrowserHost_CloseBrowser(browser, true);
+    }
+    if (state_ && state_->completed) SetEvent(state_->completed);
+  }
+ private:
+  std::vector<CefRefPtr<CefBrowser>> browsers_;
+  std::shared_ptr<BrowserCloseBatchState> state_;
+  IMPLEMENT_REFCOUNTING(BridgeCloseBrowserBatchTask);
+};
+
+void RequestBrowserCloseBatchAndWait(std::vector<CefRefPtr<CefBrowser>> browsers) {
+  if (browsers.empty()) return;
+  if (CefCurrentlyOn(TID_UI)) {
+    for (auto& browser : browsers) {
+      if (browser && browser->GetHost()) FBroHsBrowserHost_CloseBrowser(browser, true);
+    }
+    return;
+  }
+  auto state = std::make_shared<BrowserCloseBatchState>();
+  if (!state->completed || !CefPostTask(TID_UI,
+      new BridgeCloseBrowserBatchTask(std::move(browsers), state))) return;
+  WaitForSingleObject(state->completed, 2000);
+}
+
+int CompleteContinuationInternal(LB_FBRO_CONTINUATION_HANDLE handle, int action,
+                                 const std::wstring& response_json) {
+  std::shared_ptr<ContinuationState> continuation;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    const auto found = g_continuations.find(handle);
+    if (found == g_continuations.end()) return LB_FBRO_ERROR_RELEASED_HANDLE;
+    continuation = found->second;
+    g_continuations.erase(found);
+    g_continuation_timer_condition.notify_all();
+  }
+  bool expected = false;
+  if (!continuation->completed.compare_exchange_strong(expected, true)) {
+    return LB_FBRO_ERROR_RELEASED_HANDLE;
+  }
+  if (!continuation->completion) return LB_FBRO_OK;
+  if (CefCurrentlyOn(TID_UI)) {
+    continuation->completion(action, response_json);
+    return LB_FBRO_OK;
+  }
+  return CefPostTask(TID_UI,
+      new BridgeContinuationCompletionTask(continuation, action, response_json))
+      ? LB_FBRO_OK : LB_FBRO_ERROR_OPERATION_FAILED;
+}
+
+LB_FBRO_CONTINUATION_HANDLE CreateContinuation(
+    LB_FBRO_HANDLE browser, const std::wstring& event_id, uint32_t timeout_milliseconds,
+    int timeout_action, std::function<void(int, const std::wstring&)> completion) {
+  auto continuation = std::make_shared<ContinuationState>();
+  continuation->handle = g_next_object_handle.fetch_add(1);
+  continuation->browser = browser;
+  continuation->event_id = event_id;
+  continuation->deadline = std::chrono::steady_clock::now()
+      + std::chrono::milliseconds(timeout_milliseconds);
+  continuation->timeout_action = timeout_action;
+  continuation->completion = std::move(completion);
+  EnsureContinuationTimerThread();
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    g_continuations.emplace(continuation->handle, continuation);
+    g_continuation_timer_condition.notify_all();
+  }
+  return continuation->handle;
+}
+
+void CancelContinuationsForBrowser(LB_FBRO_HANDLE browser) {
+  std::vector<LB_FBRO_CONTINUATION_HANDLE> handles;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    for (const auto& item : g_continuations) {
+      if (item.second->browser == browser) handles.push_back(item.first);
+    }
+  }
+  for (const auto handle : handles) {
+    CompleteContinuationInternal(handle, LB_FBRO_EVENT_ACTION_CANCEL,
+                                 L"{\"reason\":\"browserClosed\"}");
+  }
+}
+
 int Notify(BrowserState& state, int code, const std::wstring& data,
            std::wstring* result_text = nullptr, LB_FBRO_OBJECT_HANDLE object = 0) {
-  state.last_event = EventName(code);
-  state.last_event_object = object;
-  state.last_event_json = BuildEventJson(state, code, data);
   if (code == LB_FBRO_EVENT_ERROR) state.last_error = data;
-  const auto callback = state.callback;
-  const auto callback_v2 = state.callback_v2;
-  if (callback && !callback_v2) callback(state.handle, code, data.c_str(), state.user_data);
-  if (!callback_v2) return 0;
-  wchar_t callback_result[4096]{};
-  LB_FBRO_EVENT_PACKET_V2 packet{};
-  packet.struct_size = sizeof(packet);
-  packet.abi_version = LB_FBRO_ABI_VERSION_V2;
-  packet.sequence = g_event_sequence.fetch_add(1);
-  packet.timestamp_milliseconds = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::system_clock::now().time_since_epoch()).count());
-  packet.browser = state.handle;
-  packet.event_code = code;
-  packet.instance_kind = state.chrome_ui ? LB_FBRO_INSTANCE_CHROME_UI : LB_FBRO_INSTANCE_EMBEDDED;
-  packet.event_name = EventName(code);
-  packet.data_json = state.last_event_json.c_str();
-  packet.object = object;
-  const int action = callback_v2(&packet, callback_result, std::size(callback_result), state.user_data_v2);
-  if (result_text) *result_text = callback_result;
-  return action;
+  const std::wstring event_name = EventName(code);
+  const wchar_t* stable_id = StableEventId(code);
+  const std::wstring event_id = stable_id ? stable_id : L"fbro.legacy." + event_name;
+  const wchar_t* field = code == LB_FBRO_EVENT_LOAD_END ? L"statusCode"
+      : code == LB_FBRO_EVENT_ADDRESS_CHANGED || code == LB_FBRO_EVENT_BEFORE_POPUP ? L"url"
+      : code == LB_FBRO_EVENT_TITLE_CHANGED ? L"title"
+      : code == LB_FBRO_EVENT_ERROR ? L"message" : L"data";
+  uint32_t flags = (code == LB_FBRO_EVENT_BEFORE_POPUP || code == LB_FBRO_EVENT_CERTIFICATE_ERROR
+      || code == LB_FBRO_EVENT_DRAG_ENTER) ? LB_FBRO_EVENT_FLAG_SYNCHRONOUS : 0;
+  return DispatchEventV3(state, event_id, OfficialEventName(code), ChineseEventName(code),
+      BuildSafeFieldsJson({{field, data}}), code, flags, 0, object, 0, result_text);
+}
+
+int DispatchGeneratedBrowserEvent(LB_FBRO_HANDLE handle, const wchar_t* event_id,
+                                  const wchar_t* official_name, const wchar_t* event_name,
+                                  const std::wstring& fields_json, uint32_t flags,
+                                  uint32_t max_hz, std::wstring* response_json = nullptr) {
+  BrowserState* state = nullptr;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    state = Find(handle);
+  }
+  if (!state) return LB_FBRO_EVENT_ACTION_DEFAULT;
+  return DispatchEventV3(*state, event_id ? event_id : L"", official_name ? official_name : L"",
+                         event_name ? event_name : L"", fields_json, 0, flags, max_hz, 0, 0,
+                         response_json);
+}
+
+template <typename T>
+void ApplyEventResponse(const std::wstring&, const char*, T&) {}
+
+void ApplyEventResponse(const std::wstring& response_json, const char* key, bool& value) {
+  value = EventResponseBool(ParseEventResponse(response_json), key, value);
+}
+
+void ApplyEventResponse(const std::wstring& response_json, const char* key, int& value) {
+  value = EventResponseInt(ParseEventResponse(response_json), key, value);
+}
+
+void ApplyEventResponse(const std::wstring& response_json, const char* key, CefRect& value) {
+  const auto response = ParseEventResponse(response_json);
+  if (!response || response->GetType(key) != VTYPE_DICTIONARY) return;
+  const auto rect = response->GetDictionary(key);
+  value.x = EventResponseInt(rect, "x", value.x);
+  value.y = EventResponseInt(rect, "y", value.y);
+  value.width = EventResponseInt(rect, "width", value.width);
+  value.height = EventResponseInt(rect, "height", value.height);
+}
+
+void ApplyEventResponse(const std::wstring& response_json, const char* key,
+                        CefScreenInfo& value) {
+  const auto response = ParseEventResponse(response_json);
+  if (!response || response->GetType(key) != VTYPE_DICTIONARY) return;
+  const auto screen = response->GetDictionary(key);
+  if (screen->GetType("deviceScaleFactor") == VTYPE_DOUBLE) {
+    value.device_scale_factor = static_cast<float>(screen->GetDouble("deviceScaleFactor"));
+  } else if (screen->GetType("deviceScaleFactor") == VTYPE_INT) {
+    value.device_scale_factor = static_cast<float>(screen->GetInt("deviceScaleFactor"));
+  }
+  value.depth = EventResponseInt(screen, "depth", value.depth);
+  value.depth_per_component = EventResponseInt(screen, "depthPerComponent", value.depth_per_component);
+  value.is_monochrome = EventResponseBool(screen, "isMonochrome", value.is_monochrome);
+  if (screen->GetType("rect") == VTYPE_DICTIONARY) {
+    auto wrapper = CefDictionaryValue::Create(); wrapper->SetDictionary(key, screen->GetDictionary("rect"));
+    auto root = CefValue::Create(); root->SetDictionary(wrapper);
+    ApplyEventResponse(CefWriteJSON(root, JSON_WRITER_DEFAULT).ToWString(), key, value.rect);
+  }
+  if (screen->GetType("availableRect") == VTYPE_DICTIONARY) {
+    auto wrapper = CefDictionaryValue::Create(); wrapper->SetDictionary(key, screen->GetDictionary("availableRect"));
+    auto root = CefValue::Create(); root->SetDictionary(wrapper);
+    ApplyEventResponse(CefWriteJSON(root, JSON_WRITER_DEFAULT).ToWString(), key, value.available_rect);
+  }
+}
+
+void ApplyEventResponse(const std::wstring& response_json, const char* key,
+                        CefAudioParameters& value) {
+  const auto response = ParseEventResponse(response_json);
+  if (!response || response->GetType(key) != VTYPE_DICTIONARY) return;
+  const auto audio = response->GetDictionary(key);
+  value.channel_layout = static_cast<cef_channel_layout_t>(
+      EventResponseInt(audio, "channelLayout", static_cast<int>(value.channel_layout)));
+  value.sample_rate = EventResponseInt(audio, "sampleRate", value.sample_rate);
+  value.frames_per_buffer = EventResponseInt(audio, "framesPerBuffer", value.frames_per_buffer);
+}
+
+int DispatchGeneratedInitEvent(CefRefPtr<CefBrowser> browser, const wchar_t* event_id,
+                               const wchar_t* official_name, const wchar_t* event_name,
+                               const std::wstring& fields_json, uint32_t flags,
+                               uint32_t max_hz) {
+  BrowserState* state = nullptr;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    for (auto& item : g_browsers) {
+      if (browser && item.second->browser && item.second->browser->IsSame(browser)) {
+        state = item.second.get();
+        break;
+      }
+    }
+  }
+  if (!state) return LB_FBRO_EVENT_ACTION_DEFAULT;
+  return DispatchEventV3(*state, event_id ? event_id : L"", official_name ? official_name : L"",
+                         event_name ? event_name : L"", fields_json, 0, flags, max_hz, 0, 0);
+}
+
+bool HasExplicitEventSubscription(const BrowserState& state, const std::wstring& event_id,
+                                  const wchar_t* official_name, const wchar_t* event_name,
+                                  int legacy_code) {
+  for (const std::wstring alias : {event_id,
+       official_name ? std::wstring(official_name) : std::wstring(),
+       event_name ? std::wstring(event_name) : std::wstring(),
+       legacy_code > 0 ? std::wstring(EventName(legacy_code)) : std::wstring()}) {
+    if (alias.empty()) continue;
+    if (const auto found = state.event_subscriptions.find(alias);
+        found != state.event_subscriptions.end() && found->second) return true;
+  }
+  return false;
+}
+
+bool DispatchManagedBrowserEvent(
+    LB_FBRO_HANDLE browser, const wchar_t* official_name, const std::wstring& fields_json,
+    uint32_t timeout_milliseconds,
+    std::function<void(int, const std::wstring&)> completion,
+    LB_FBRO_OBJECT_HANDLE object = 0, int legacy_code = 0,
+    bool require_subscription = true) {
+  const wchar_t* stable_id_value = StableEventId(official_name);
+  const wchar_t* chinese_name = ChineseEventName(official_name);
+  const std::wstring event_id = stable_id_value ? stable_id_value : L"fbro.event.unknown";
+  BrowserState* state = nullptr;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    state = Find(browser);
+    if (!state || !state->callback_v3) return false;
+    if (require_subscription
+        && !HasExplicitEventSubscription(*state, event_id, official_name, chinese_name,
+                                         legacy_code)) return false;
+  }
+  const auto continuation = CreateContinuation(browser, event_id, timeout_milliseconds,
+      LB_FBRO_EVENT_ACTION_CANCEL, std::move(completion));
+  std::wstring response_json;
+  const int action = DispatchEventV3(*state, event_id, official_name, chinese_name,
+      fields_json, legacy_code, LB_FBRO_EVENT_FLAG_DEFERRED, 0, object,
+      continuation, &response_json);
+  if (action == LB_FBRO_EVENT_ACTION_CONTINUE || action == LB_FBRO_EVENT_ACTION_CANCEL
+      || action == LB_FBRO_EVENT_ACTION_HANDLED) {
+    CompleteContinuationInternal(continuation, action, response_json);
+  }
+  return true;
 }
 
 BrowserState* Find(LB_FBRO_HANDLE handle) {
@@ -614,12 +1167,19 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
     return action != 1;
   }
   void OnBeforeClose(CefRefPtr<CefBrowser>) override {
-    std::lock_guard<std::recursive_mutex> lock(g_mutex);
-    if (auto* state = Find(handle_)) {
-      state->browser = nullptr;
-      Notify(*state, LB_FBRO_EVENT_CLOSED, L"浏览器关闭完成");
-      g_close_condition.notify_all();
+    CancelContinuationsForBrowser(handle_);
+    bool all_browsers_closed = false;
+    {
+      std::lock_guard<std::recursive_mutex> lock(g_mutex);
+      if (auto* state = Find(handle_)) {
+        state->browser = nullptr;
+        Notify(*state, LB_FBRO_EVENT_CLOSED, L"浏览器关闭完成");
+      }
+      all_browsers_closed = std::all_of(g_browsers.begin(), g_browsers.end(), [](const auto& item) {
+        return !item.second->browser;
+      });
     }
+    if (all_browsers_closed && g_shutdown_started) FBroQuitMessageLoop();
   }
   void OnAddressChange(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, const CefString& url) override {
     if (!frame || !frame->IsMain()) return;
@@ -657,10 +1217,22 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
     const int cert_status = ssl_info ? FBroHsSSLInfo_GetCertStatus(ssl_info) : 0;
     const auto certificate = ssl_info ? FBroHsSSLInfo_GetX509Certificate(ssl_info) : nullptr;
     const LB_FBRO_OBJECT_HANDLE object = RegisterCertificate(certificate);
+    if (callback && DispatchManagedBrowserEvent(handle_, L"OnCertificateError",
+        BuildSafeFieldsJson({
+            {L"errorCode", std::to_wstring(static_cast<int>(cert_error))},
+            {L"certificateStatus", std::to_wstring(cert_status)},
+            {L"url", request_url.ToWString()}}),
+        5000, [callback](int completion_action, const std::wstring&) {
+          if (completion_action == LB_FBRO_EVENT_ACTION_CONTINUE) FBroCallback_Continue(callback);
+          else FBroCallback_Cancel(callback);
+        }, object, LB_FBRO_EVENT_CERTIFICATE_ERROR)) return true;
+
     int action = 0;
     std::unique_lock<std::recursive_mutex> lock(g_mutex);
     auto* state = Find(handle_);
+    const bool uses_v3 = state && state->callback_v3;
     lock.unlock();
+    if (uses_v3) return false;
     if (state) {
       const std::wstring data = std::to_wstring(static_cast<int>(cert_error)) + L":"
           + std::to_wstring(cert_status) + L":" + request_url.ToWString();
@@ -685,6 +1257,266 @@ class BridgeBrowserEvent final : public FBroHsBroEvent {
     }
     return action == 2;
   }
+
+  bool GetAuthCredentials(CefRefPtr<CefBrowser>, const CefString& origin_url,
+                          bool is_proxy, const CefString& host, int port,
+                          const CefString& realm, const CefString& scheme,
+                          CefRefPtr<CefAuthCallback> callback) override {
+    if (!callback) return false;
+    return DispatchManagedBrowserEvent(handle_, L"GetAuthCredentials",
+        BuildSafeFieldsJson({
+            {L"originUrl", origin_url.ToWString()}, {L"isProxy", is_proxy ? L"1" : L"0"},
+            {L"host", host.ToWString()}, {L"port", std::to_wstring(port)},
+            {L"realm", realm.ToWString()}, {L"scheme", scheme.ToWString()}}),
+        5000, [callback](int action, const std::wstring& response_json) {
+          if (action != LB_FBRO_EVENT_ACTION_CONTINUE) {
+            callback->Cancel();
+            return;
+          }
+          const auto response = ParseEventResponse(response_json);
+          FBroAuthCallback_Continue(callback, CefString(EventResponseString(response, "username")),
+                                    CefString(EventResponseString(response, "password")));
+        }, 0, 0, false);
+  }
+
+  bool OnBeforeDownload(CefRefPtr<CefBrowser>, CefRefPtr<CefDownloadItem> item,
+                        const CefString& suggested_name,
+                        CefRefPtr<CefBeforeDownloadCallback> callback) override {
+    if (!callback) return false;
+    return DispatchManagedBrowserEvent(handle_, L"OnBeforeDownload",
+        BuildSafeFieldsJson({
+            {L"downloadId", item ? std::to_wstring(FBroHsDownloadItem_GetDownloadId(item)) : L"0"},
+            {L"url", item ? FromFbroString(FBroHsDownloadItem_GetDownloadURL(item)) : L""},
+            {L"suggestedName", suggested_name.ToWString()},
+            {L"totalBytes", item ? std::to_wstring(FBroHsDownloadItem_GetTotalBytes(item)) : L"0"}}),
+        120000, [callback](int action, const std::wstring& response_json) {
+          if (action != LB_FBRO_EVENT_ACTION_CONTINUE) return;
+          const auto response = ParseEventResponse(response_json);
+          FBroHsBeforeDownloadCallback_Continue(callback,
+              CefString(EventResponseString(response, "path")),
+              EventResponseBool(response, "showDialog", false));
+        });
+  }
+
+  CefResourceRequestHandler::ReturnValue OnBeforeResourceLoad(
+      CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame, CefRefPtr<CefRequest> request,
+      CefRefPtr<CefCallback> callback) override {
+    if (!callback) return RV_CONTINUE;
+    const bool managed = DispatchManagedBrowserEvent(handle_, L"OnBeforeResourceLoad",
+        BuildSafeFieldsJson({
+            {L"frameUrl", frame ? frame->GetURL().ToWString() : L""},
+            {L"url", request ? FromFbroString(FBroHsRequest_GetURL(request)) : L""},
+            {L"method", request ? FromFbroString(FBroHsRequest_GetMethod(request)) : L""},
+            {L"identifier", request ? std::to_wstring(FBroHsRequest_GetIdentifier(request)) : L"0"}}),
+        30000, [callback](int action, const std::wstring&) {
+          if (action == LB_FBRO_EVENT_ACTION_CONTINUE) FBroCallback_Continue(callback);
+          else FBroCallback_Cancel(callback);
+        });
+    return managed ? RV_CONTINUE_ASYNC : RV_CONTINUE;
+  }
+
+  bool OnBeforeUnloadDialog(CefRefPtr<CefBrowser>, const CefString& message_text,
+                            bool is_reload, CefRefPtr<CefJSDialogCallback> callback) override {
+    if (!callback) return false;
+    return DispatchManagedBrowserEvent(handle_, L"OnBeforeUnloadDialog",
+        BuildSafeFieldsJson({{L"message", message_text.ToWString()},
+                             {L"isReload", is_reload ? L"1" : L"0"}}),
+        120000, [callback](int action, const std::wstring& response_json) {
+          const auto response = ParseEventResponse(response_json);
+          const bool success = action == LB_FBRO_EVENT_ACTION_CONTINUE
+              && EventResponseBool(response, "success", true);
+          FBroJSDialogCallback_Continue(callback, success,
+                                        CefString(EventResponseString(response, "userInput")));
+        });
+  }
+
+  void OnDownloadUpdated(CefRefPtr<CefBrowser>, CefRefPtr<CefDownloadItem> item,
+                         CefRefPtr<CefDownloadItemCallback> callback) override {
+    if (!callback) return;
+    DispatchManagedBrowserEvent(handle_, L"OnDownloadUpdated",
+        BuildSafeFieldsJson({
+            {L"downloadId", item ? std::to_wstring(FBroHsDownloadItem_GetDownloadId(item)) : L"0"},
+            {L"percent", item ? std::to_wstring(FBroHsDownloadItem_GetPercentComplete(item)) : L"-1"},
+            {L"receivedBytes", item ? std::to_wstring(FBroHsDownloadItem_GetReceivedBytes(item)) : L"0"},
+            {L"totalBytes", item ? std::to_wstring(FBroHsDownloadItem_GetTotalBytes(item)) : L"0"},
+            {L"fullPath", item ? FromFbroString(FBroHsDownloadItem_GetFullPath(item)) : L""}}),
+        120000, [callback](int action, const std::wstring& response_json) {
+          const auto response = ParseEventResponse(response_json);
+          const int download_action = EventResponseInt(response, "downloadAction",
+              action == LB_FBRO_EVENT_ACTION_CONTINUE ? 2 : 0);
+          if (download_action == 1) FBroHsBeforeDownloadCallback_Pause(callback);
+          else if (download_action == 2) FBroHsBeforeDownloadCallback_Resume(callback);
+          else FBroHsBeforeDownloadCallback_Cancel(callback);
+        });
+  }
+
+  bool OnFileDialog(CefRefPtr<CefBrowser>, CefDialogHandler::FileDialogMode mode,
+                    const CefString& title, const CefString& default_file_path,
+                    CefRefPtr<FBroCefStringList> accept_filters,
+                    CefRefPtr<FBroCefStringList> accept_extensions,
+                    CefRefPtr<FBroCefStringList> accept_descriptions,
+                    CefRefPtr<CefFileDialogCallback> callback) override {
+    if (!callback) return false;
+    std::wstring fields = L"{\"mode\":\"" + std::to_wstring(static_cast<int>(mode))
+        + L"\",\"title\":\"" + JsonEscape(title.ToWString())
+        + L"\",\"defaultPath\":\"" + JsonEscape(default_file_path.ToWString())
+        + L"\",\"acceptFilters\":" + StringListJson(accept_filters)
+        + L",\"acceptExtensions\":" + StringListJson(accept_extensions)
+        + L",\"acceptDescriptions\":" + StringListJson(accept_descriptions) + L"}";
+    return DispatchManagedBrowserEvent(handle_, L"OnFileDialog", fields, 120000,
+        [callback](int action, const std::wstring& response_json) {
+          if (action != LB_FBRO_EVENT_ACTION_CONTINUE) {
+            FBroFileDialogCallback_Cancel(callback);
+            return;
+          }
+          const auto response = ParseEventResponse(response_json);
+          const auto paths = EventResponseStringList(response, "paths");
+          if (paths && FBroCefStringList_Size(paths) > 0) FBroFileDialogCallback_Continue(callback, paths);
+          else FBroFileDialogCallback_Cancel(callback);
+        });
+  }
+
+  bool OnJSDialog(CefRefPtr<CefBrowser>, const CefString& origin_url,
+                  CefJSDialogHandler::JSDialogType dialog_type, const CefString& message_text,
+                  const CefString& default_prompt_text, CefRefPtr<CefJSDialogCallback> callback,
+                  bool& suppress_message) override {
+    if (!callback) return false;
+    suppress_message = false;
+    return DispatchManagedBrowserEvent(handle_, L"OnJSDialog",
+        BuildSafeFieldsJson({
+            {L"originUrl", origin_url.ToWString()},
+            {L"dialogType", std::to_wstring(static_cast<int>(dialog_type))},
+            {L"message", message_text.ToWString()},
+            {L"defaultPrompt", default_prompt_text.ToWString()}}),
+        120000, [callback](int action, const std::wstring& response_json) {
+          const auto response = ParseEventResponse(response_json);
+          const bool success = action == LB_FBRO_EVENT_ACTION_CONTINUE
+              && EventResponseBool(response, "success", true);
+          FBroJSDialogCallback_Continue(callback, success,
+                                        CefString(EventResponseString(response, "userInput")));
+        });
+  }
+
+  bool OnQuotaRequest(CefRefPtr<CefBrowser>, const CefString& origin_url,
+                      int64_t new_size, CefRefPtr<CefCallback> callback) override {
+    if (!callback) return false;
+    return DispatchManagedBrowserEvent(handle_, L"OnQuotaRequest",
+        BuildSafeFieldsJson({{L"originUrl", origin_url.ToWString()},
+                             {L"newSize", std::to_wstring(new_size)}}),
+        5000, [callback](int action, const std::wstring&) {
+          if (action == LB_FBRO_EVENT_ACTION_CONTINUE) FBroCallback_Continue(callback);
+          else FBroCallback_Cancel(callback);
+        });
+  }
+
+  bool OnRequestMediaAccessPermission(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
+                                      const CefString& requesting_origin,
+                                      uint32_t requested_permissions,
+                                      CefRefPtr<CefMediaAccessCallback> callback) override {
+    if (!callback) return false;
+    return DispatchManagedBrowserEvent(handle_, L"OnRequestMediaAccessPermission",
+        BuildSafeFieldsJson({
+            {L"frameUrl", frame ? frame->GetURL().ToWString() : L""},
+            {L"requestingOrigin", requesting_origin.ToWString()},
+            {L"requestedPermissions", std::to_wstring(requested_permissions)}}),
+        5000, [callback, requested_permissions](int action, const std::wstring& response_json) {
+          if (action != LB_FBRO_EVENT_ACTION_CONTINUE) {
+            FBroHsMediaAccessCallback_Cancel(callback);
+            return;
+          }
+          const auto response = ParseEventResponse(response_json);
+          FBroHsMediaAccessCallback_Continue(callback,
+              EventResponseInt(response, "allowedPermissions",
+                               static_cast<int>(requested_permissions)));
+        });
+  }
+
+  bool OnSelectClientCertificate(CefRefPtr<CefBrowser>, bool is_proxy, const CefString& host,
+                                 int port, CefRefPtr<FBroX509CertificateList> certificates,
+                                 CefRefPtr<CefSelectClientCertificateCallback> callback) override {
+    if (!callback) return false;
+    const int certificate_count = certificates ? FBroX509CertificateList_Size(certificates) : 0;
+    return DispatchManagedBrowserEvent(handle_, L"OnSelectClientCertificate",
+        BuildSafeFieldsJson({{L"isProxy", is_proxy ? L"1" : L"0"},
+                             {L"host", host.ToWString()}, {L"port", std::to_wstring(port)},
+                             {L"certificateCount", std::to_wstring(certificate_count)}}),
+        5000, [callback, certificates, certificate_count](int action, const std::wstring& response_json) {
+          CefRefPtr<CefX509Certificate> selected;
+          if (action == LB_FBRO_EVENT_ACTION_CONTINUE) {
+            const auto response = ParseEventResponse(response_json);
+            const int index = EventResponseInt(response, "certificateIndex", -1);
+            if (index >= 0 && index < certificate_count) selected = FBroX509CertificateList_GetValue(certificates, index);
+          }
+          FBroSelectClientCertificateCallback_Select(callback, selected);
+        });
+  }
+
+  bool OnShowPermissionPrompt(CefRefPtr<CefBrowser>, uint64_t prompt_id,
+                              const CefString& requesting_origin, uint32_t requested_permissions,
+                              CefRefPtr<CefPermissionPromptCallback> callback) override {
+    if (!callback) return false;
+    return DispatchManagedBrowserEvent(handle_, L"OnShowPermissionPrompt",
+        BuildSafeFieldsJson({{L"promptId", std::to_wstring(prompt_id)},
+                             {L"requestingOrigin", requesting_origin.ToWString()},
+                             {L"requestedPermissions", std::to_wstring(requested_permissions)}}),
+        5000, [callback](int action, const std::wstring& response_json) {
+          const auto response = ParseEventResponse(response_json);
+          const int result = action == LB_FBRO_EVENT_ACTION_CONTINUE
+              ? EventResponseInt(response, "permissionResult", CEF_PERMISSION_RESULT_ACCEPT)
+              : CEF_PERMISSION_RESULT_DENY;
+          FBroHsPermissionPromptCallback_Continue(callback, result);
+        });
+  }
+
+  bool RunContextMenu(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
+                      CefRefPtr<CefContextMenuParams> params, CefRefPtr<CefMenuModel> model,
+                      CefRefPtr<CefRunContextMenuCallback> callback) override {
+    if (!callback) return false;
+    return DispatchManagedBrowserEvent(handle_, L"RunContextMenu",
+        BuildSafeFieldsJson({
+            {L"frameUrl", frame ? frame->GetURL().ToWString() : L""},
+            {L"selectionText", params ? FromFbroString(FBroHsContextMenuParams_GetSelectionText(params)) : L""},
+            {L"editStateFlags", params ? std::to_wstring(FBroHsContextMenuParams_GetEditStateFlags(params)) : L"0"},
+            {L"itemCount", model ? std::to_wstring(FBroHsMenuModel_GetCount(model)) : L"0"}}),
+        30000, [callback](int action, const std::wstring& response_json) {
+          if (action != LB_FBRO_EVENT_ACTION_CONTINUE) {
+            FBroRunContextMenuCallback_Cancel(callback);
+            return;
+          }
+          const auto response = ParseEventResponse(response_json);
+          FBroRunContextMenuCallback_Continue(callback,
+              EventResponseInt(response, "commandId", -1),
+              static_cast<cef_event_flags_t>(EventResponseInt(response, "eventFlags", 0)));
+        });
+  }
+
+  bool RunQuickMenu(CefRefPtr<CefBrowser>, CefRefPtr<CefFrame> frame,
+                    PTELIB_ELEMENT_AT location, POINT_SIZE size, int edit_state_flags,
+                    CefRefPtr<CefRunQuickMenuCallback> callback) override {
+    if (!callback) return false;
+    return DispatchManagedBrowserEvent(handle_, L"RunQuickMenu",
+        BuildSafeFieldsJson({
+            {L"frameUrl", frame ? frame->GetURL().ToWString() : L""},
+            {L"x", location ? std::to_wstring(location->x) : L"0"},
+            {L"y", location ? std::to_wstring(location->y) : L"0"},
+            {L"width", size ? std::to_wstring(size->width) : L"0"},
+            {L"height", size ? std::to_wstring(size->height) : L"0"},
+            {L"editStateFlags", std::to_wstring(edit_state_flags)}}),
+        30000, [callback](int action, const std::wstring& response_json) {
+          if (action != LB_FBRO_EVENT_ACTION_CONTINUE) {
+            FBroHsRunQuickMenuCallback_Cancel(callback);
+            return;
+          }
+          const auto response = ParseEventResponse(response_json);
+          FBroHsRunQuickMenuCallback_Continue(callback,
+              EventResponseInt(response, "commandId", -1),
+              EventResponseInt(response, "eventFlags", 0));
+        });
+  }
+
+#define LB_FBRO_BROWSER_EVENT_OVERRIDES
+#include "FbroEventOverrides.generated.inc"
+#undef LB_FBRO_BROWSER_EVENT_OVERRIDES
 
  private:
   LB_FBRO_HANDLE handle_;
@@ -800,6 +1632,9 @@ class BridgeInitEvent final : public FBroHsInitEvent {
     g_ready = true;
     StartPendingBrowsers();
   }
+#define LB_FBRO_INIT_EVENT_OVERRIDES
+#include "FbroEventOverrides.generated.inc"
+#undef LB_FBRO_INIT_EVENT_OVERRIDES
  private:
   IMPLEMENT_REFCOUNTING(BridgeInitEvent);
 };
@@ -2331,7 +3166,7 @@ class BridgeCurrentCertificateTask final : public CefTask {
 
 }  // namespace
 
-uint32_t __stdcall LB_FBro_GetAbiVersion(void) { return LB_FBRO_ABI_VERSION_V2; }
+uint32_t __stdcall LB_FBro_GetAbiVersion(void) { return LB_FBRO_ABI_VERSION_V3; }
 
 int __stdcall LB_FBro_SetVipStartupProxy(const wchar_t* url,
                                          const wchar_t* user,
@@ -2867,6 +3702,59 @@ int __stdcall LB_FBro_SetEventCallbackV2(LB_FBRO_HANDLE browser,
   state->callback_v2 = callback;
   state->user_data_v2 = user_data;
   return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_SetEventCallbackV3(LB_FBRO_HANDLE browser,
+                                          LB_FBRO_EVENT_CALLBACK_V3 callback,
+                                          void* user_data) {
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  auto* state = Find(browser);
+  if (!state) return LB_FBRO_ERROR_NOT_FOUND;
+  state->callback_v3 = callback;
+  state->user_data_v3 = user_data;
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_SetEventSubscription(LB_FBRO_HANDLE browser,
+                                            const wchar_t* event_id,
+                                            int enabled) {
+  if (!event_id || !*event_id) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  auto* state = Find(browser);
+  if (!state) return LB_FBRO_ERROR_NOT_FOUND;
+  state->event_subscriptions[event_id] = enabled != 0;
+  for (int code = LB_FBRO_EVENT_CREATED; code <= LB_FBRO_EVENT_DRAG_ENTER; ++code) {
+    if (std::wcscmp(event_id, EventName(code)) != 0) continue;
+    if (const wchar_t* stable_id = StableEventId(code)) {
+      state->event_subscriptions[stable_id] = enabled != 0;
+    }
+    break;
+  }
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_SetEventSamplingRate(LB_FBRO_HANDLE browser,
+                                            const wchar_t* event_id,
+                                            uint32_t max_hz) {
+  if (!event_id || !*event_id || max_hz > 1000) return LB_FBRO_ERROR_INVALID_ARGUMENT;
+  std::lock_guard<std::recursive_mutex> lock(g_mutex);
+  auto* state = Find(browser);
+  if (!state) return LB_FBRO_ERROR_NOT_FOUND;
+  state->event_sampling_rates[event_id] = max_hz;
+  return LB_FBRO_OK;
+}
+
+int __stdcall LB_FBro_CompleteEventContinuation(
+    LB_FBRO_CONTINUATION_HANDLE continuation, const wchar_t* response_json) {
+  const std::wstring response = response_json ? response_json : L"{}";
+  return CompleteContinuationInternal(continuation,
+      ParseContinuationAction(response, LB_FBRO_EVENT_ACTION_CONTINUE), response);
+}
+
+int __stdcall LB_FBro_CancelEventContinuation(
+    LB_FBRO_CONTINUATION_HANDLE continuation) {
+  return CompleteContinuationInternal(continuation, LB_FBRO_EVENT_ACTION_CANCEL,
+                                      L"{\"reason\":\"cancelled\"}");
 }
 
 int __stdcall LB_FBro_GetLastEventJson(LB_FBRO_HANDLE browser, wchar_t* result, size_t capacity) {
@@ -4256,29 +5144,36 @@ int __stdcall LB_FBro_Resize(LB_FBRO_HANDLE browser) {
   return 1;
 }
 void __stdcall LB_FBro_Close(LB_FBRO_HANDLE browser) {
-  std::lock_guard<std::recursive_mutex> lock(g_mutex); BrowserState* state = Find(browser);
-  if (state && state->browser) FBroHsBrowserHost_CloseBrowser(state->browser, true);
+  CancelContinuationsForBrowser(browser);
+  CefRefPtr<CefBrowser> native_browser;
+  {
+    std::lock_guard<std::recursive_mutex> lock(g_mutex);
+    BrowserState* state = Find(browser);
+    if (state) native_browser = state->browser;
+  }
+  RequestBrowserClose(std::move(native_browser));
 }
 void __stdcall LB_FBro_Shutdown(void) {
   if (!g_initialized || g_shutdown_started.exchange(true)) return;
+  std::vector<CefRefPtr<CefBrowser>> native_browsers;
+  std::vector<LB_FBRO_CONTINUATION_HANDLE> pending_continuations;
   {
     std::lock_guard<std::recursive_mutex> lock(g_mutex);
-    for (auto& item : g_browsers) if (item.second->browser) FBroHsBrowserHost_CloseBrowser(item.second->browser, true);
+    for (auto& item : g_browsers) {
+      if (item.second->browser) native_browsers.push_back(item.second->browser);
+    }
+    for (const auto& item : g_continuations) pending_continuations.push_back(item.first);
   }
+  for (const auto continuation : pending_continuations) {
+    CompleteContinuationInternal(continuation, LB_FBRO_EVENT_ACTION_CANCEL,
+                                 L"{\"reason\":\"shutdown\"}");
+  }
+  StopContinuationTimerThread();
+  const bool had_live_browsers = !native_browsers.empty();
+  RequestBrowserCloseBatchAndWait(std::move(native_browsers));
+  // FBroShutdown(FALSE) starts the framework's asynchronous close protocol.
+  // The host Win32 message pump must remain alive until OnBeforeClose arrives;
+  // waiting here would block that pump and deadlock normal application exit.
   FBroShutdown(FALSE);
-  std::unique_lock<std::recursive_mutex> lock(g_mutex);
-  g_close_condition.wait_for(lock, std::chrono::seconds(3), [] {
-    return std::all_of(g_browsers.begin(), g_browsers.end(), [](const auto& item) {
-      return !item.second->browser;
-    });
-  });
-  g_browsers.clear(); g_tasks.clear(); g_buffers.clear(); g_objects.clear();
-  g_global_vip_resource_payloads.clear();
-  g_init_event = nullptr; g_vip_event = nullptr; g_ready = false; g_initialized = false;
-  if (!g_vip_proxy_password.empty()) {
-    SecureZeroMemory(g_vip_proxy_password.data(),
-                     g_vip_proxy_password.size() * sizeof(wchar_t));
-  }
-  g_vip_proxy_url.clear(); g_vip_proxy_user.clear(); g_vip_proxy_password.clear();
-  if (g_winsock_started) { WSACleanup(); g_winsock_started = false; }
+  if (!had_live_browsers) FBroQuitMessageLoop();
 }

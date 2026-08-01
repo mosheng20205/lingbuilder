@@ -1,9 +1,12 @@
 import { LingBuilderModuleManifest, ModuleBindingValueType } from './types';
 import { createStandardModule, StandardCommandSpec } from './standardLibraryModules';
+import { createModuleBindingSnippetArgument } from './bindingValueType';
 
 type Parameter = { name: string; type: ModuleBindingValueType; description?: string };
 function command(name: string, parameters: Parameter[], returnType: ModuleBindingValueType, description: string): StandardCommandSpec {
-  const args = parameters.map((parameter, index) => parameter.type === 'wideString' ? `"$${index + 1}"` : parameter.type === 'bool' ? '假' : '0');
+  const args = parameters.map((parameter, index) => parameter.type === 'controlRef' || parameter.type === 'handler'
+    ? createModuleBindingSnippetArgument(parameter, index)
+    : parameter.type === 'wideString' ? `"$${index + 1}"` : parameter.type === 'bool' ? '假' : '0');
   return { name, signature: `${name}(${parameters.map(parameter => parameter.name).join(', ')})`, description, insertText: `${name}(${args.join(', ')})`, parameters, returnType };
 }
 

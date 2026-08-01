@@ -38,6 +38,7 @@ import {
   getEventsForType,
   getPrimaryDesignerEventBinding,
   getPrimaryEventNameForType,
+  getLingWindowSourceFilePath,
   getWindowDesignerAutosaveKey,
   generateWindowXml,
   hasDesignerWindowMenu,
@@ -131,6 +132,18 @@ import {
   serializeMenuBarItems,
   validateMenuBarItems
 } from '../src/services/windowDesigner/menuBarItemsModel';
+
+test('窗口源码路径跟随当前解决方案项目源码根目录', () => {
+  assert.equal(
+    getLingWindowSourceFilePath('src/datagrid-api-demo', 'Window2.xml', '自定义窗体2'),
+    'src/datagrid-api-demo/自定义窗体2.lcpp'
+  );
+  assert.equal(
+    getLingWindowSourceFilePath('examples\\demo\\src\\', 'Window3.xml', '自定义窗体3'),
+    'examples/demo/src/自定义窗体3.lcpp'
+  );
+  assert.equal(getLingWindowSourceFilePath('.', '工具窗口.xml'), '工具窗口.lcpp');
+});
 
 test('工具栏按钮集合模型支持规范化、新增、复制、排序和删除', () => {
   const normalized = normalizeToolbarButtons([
@@ -1616,10 +1629,10 @@ test('非可视文件对话框绑定按钮和拖放目标并生成统一结果�
   const enabledModules = ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'].map(id => ({ manifest: BUILTIN_MODULES.find(module => module.id === id)!, installPath: 'builtin', isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: [] }));
   const source = `类 主窗口 : 公开 窗体
     事件 文件对话框1_文件已选择()
-        调试输出(文件对话框_取文件("文件对话框1", 0))
+        调试输出(文件对话框_取文件(文件对话框1, 0))
     结束
     事件 文件对话框1_文件被拖入()
-        调试输出(文件对话框_取文件数量("文件对话框1"))
+        调试输出(文件对话框_取文件数量(文件对话框1))
     结束
     事件 文件对话框1_选择被取消()
         调试输出("已取消")
@@ -3104,13 +3117,13 @@ test('工作区 ListView 全方法示例可直接生成并用于源码包分享'
   assert.match(cpp, /LVS_OWNERDATA/u);
   assert.ok(project.windows[0].controls.some(control => control.name === '读取单元格按钮'));
   assert.match(source, /_读取单元格按钮_被单击\(\)/u);
-  assert.match(source, /列表视图_取单元格\("普通列表", 选中行, 1\)/u);
+  assert.match(source, /列表视图_取单元格\(普通列表, 选中行, 1\)/u);
   assert.match(cpp, /信息框\(L"第 "\+到文本\(选中行\+1\)\+L" 行、第 2 列的值："\+单元格内容, 64, L"读取单元格"\)/u);
   assert.ok(project.windows[0].controls.some(control => control.name === '读取选中行按钮'));
   assert.equal(project.windows[0].controls.find(control => control.name === '普通列表')?.properties?.multiple, true);
-  assert.match(source, /选中行 = 控件_取选择项\("普通列表"\)/u);
-  assert.match(source, /选中行数 = 列表视图_取选中行数\("普通列表"\)/u);
-  assert.match(source, /首个选中行 = 列表视图_取下一个选中行\("普通列表", -1\)/u);
+  assert.match(source, /选中行 = 控件_取选择项\(普通列表\)/u);
+  assert.match(source, /选中行数 = 列表视图_取选中行数\(普通列表\)/u);
+  assert.match(source, /首个选中行 = 列表视图_取下一个选中行\(普通列表, -1\)/u);
   assert.match(cpp, /选中行文本\s*=\s*到文本\(选中行\)/u);
   assert.match(cpp, /选中行数文本\s*=\s*到文本\(选中行数\)/u);
   assert.match(cpp, /首个选中行文本\s*=\s*到文本\(首个选中行\)/u);

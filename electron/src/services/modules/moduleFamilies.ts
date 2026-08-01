@@ -149,9 +149,25 @@ export const CEF3_MODULE_FAMILY: ModuleFamilyDefinition = {
   ]
 };
 
+export const OPENCV_MODULE_FAMILY: ModuleFamilyDefinition = {
+  id: 'lingbuilder.opencv.family',
+  displayName: 'OpenCV',
+  rootModuleId: 'lingbuilder.opencv',
+  assetModuleIds: ['lingbuilder.opencv.sdk'],
+  managerDescription: '统一提供 OpenCV 图像处理和缺口候选分析；x64 SDK 资产由构建链自动校验和管理。',
+  featurePanelDescription: '首版固定使用 OpenCV 4.14.0、Windows MSVC x64 和 CPU 运行时。',
+  features: [{
+    moduleId: 'lingbuilder.opencv',
+    label: '图像处理与缺口分析',
+    description: '图像句柄、预处理、模板匹配、轮廓分析和单/双缺口候选。',
+    tier: 'standard'
+  }]
+};
+
 export const MODULE_FAMILIES: readonly ModuleFamilyDefinition[] = [
   CEF3_MODULE_FAMILY,
-  FBRO_MODULE_FAMILY
+  FBRO_MODULE_FAMILY,
+  OPENCV_MODULE_FAMILY
 ];
 
 export const FBRO_STANDARD_MODULE_IDS = FBRO_MODULE_FAMILY.features

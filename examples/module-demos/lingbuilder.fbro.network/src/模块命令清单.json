@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T09:57:36.158Z",
+  "generatedAt": "2026-07-31T18:20:25.874Z",
   "module": {
     "id": "lingbuilder.fbro.network",
     "name": "FBro高级网络模块",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "description": "提供显式启用的代理与认证高级 API。"
   },
   "commandCount": 2,
@@ -17,7 +17,7 @@
       ],
       "signature": "FBro网络_设置代理(控件名, 代理地址)",
       "description": "设置当前 FBro RequestContext 的代理。",
-      "insertText": "FBro网络_设置代理(\"$1\", \"$2\")",
+      "insertText": "FBro网络_设置代理($1, \"$2\")",
       "returnType": "整数型",
       "visibility": "advanced",
       "binding": {
@@ -26,7 +26,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "代理地址",
@@ -36,7 +44,7 @@
         "returnType": "int",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro网络_设置代理(\"演示输出\", \"https://example.com\")"
+      "demoInvocation": "FBro网络_设置代理(演示FBroBrowser控件, \"https://example.com\")"
     },
     {
       "index": 2,
@@ -46,7 +54,7 @@
       ],
       "signature": "FBro网络_设置代理认证(控件名, 代理地址, 用户名, 密码)",
       "description": "设置代理与认证信息。",
-      "insertText": "FBro网络_设置代理认证(\"$1\", \"$2\", \"$3\", \"$4\")",
+      "insertText": "FBro网络_设置代理认证($1, \"$2\", \"$3\", \"$4\")",
       "returnType": "整数型",
       "visibility": "advanced",
       "binding": {
@@ -55,7 +63,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "代理地址",
@@ -73,7 +89,7 @@
         "returnType": "int",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro网络_设置代理认证(\"演示输出\", \"https://example.com\", \"演示参数3\", \"演示参数4\")"
+      "demoInvocation": "FBro网络_设置代理认证(演示FBroBrowser控件, \"https://example.com\", \"演示参数3\", \"演示参数4\")"
     }
   ]
 }

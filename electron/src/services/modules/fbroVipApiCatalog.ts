@@ -406,7 +406,7 @@ export const FBRO_VIP_API_CATALOG: FbroVipApiCatalogEntry[] = vipSignatures.map(
   const returnType = returnTypeFor(routeDefinition.route);
   const capabilityKind = capabilityKindFor(routeDefinition.route);
   const parameters = [
-    { name: '控件名', type: 'wideString' as const, description: '所属 FBro 浏览器设计器控件名。' },
+    { name: '控件名', type: 'controlRef' as const, description: '所属 FBro 浏览器设计器控件名。' },
     { name: '参数JSON', type: 'wideString' as const, description: '该固定接口的 UTF-16 JSON 参数；无参数时传 {}。' }
   ];
   const runtimeName = `FBroVIP单项_${signature.signatureHash.slice(0, 12).toUpperCase()}`;

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T09:57:36.079Z",
+  "generatedAt": "2026-07-31T18:20:25.767Z",
   "module": {
     "id": "lingbuilder.cef3.automation",
     "name": "CEF3自动化模块",
@@ -17,7 +17,7 @@
       ],
       "signature": "CEF3自动化_执行JS异步(控件名, 脚本)",
       "description": "通过DevTools Runtime.evaluate异步执行JavaScript，返回受管任务ID。",
-      "insertText": "CEF3自动化_执行JS异步(\"$1\", \"$2\")",
+      "insertText": "CEF3自动化_执行JS异步($1, \"$2\")",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -26,7 +26,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "脚本",
@@ -36,7 +44,7 @@
         "returnType": "longLong",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3自动化_执行JS异步(\"演示输出\", \"演示参数2\")"
+      "demoInvocation": "CEF3自动化_执行JS异步(演示CefBrowser控件, \"演示参数2\")"
     }
   ]
 }

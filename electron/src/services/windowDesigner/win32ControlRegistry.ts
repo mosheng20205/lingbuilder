@@ -1,5 +1,6 @@
 import { CEF3_BROWSER_EVENTS } from '../modules/cef3BrowserEvents';
 import { EDGEVIEW_BROWSER_EVENTS } from '../modules/edgeViewBrowserEvents';
+import { FBRO_PUBLIC_BROWSER_EVENTS } from '../modules/fbroEventCatalog';
 
 export type Win32ControlModuleId = 'lingbuilder.win32.basic' | 'lingbuilder.win32.common-controls' | 'lingbuilder.new_emoji.ui' | 'lingbuilder.edgeview' | 'lingbuilder.cef3.browser' | 'lingbuilder.fbro.browser';
 
@@ -94,6 +95,12 @@ const EDGEVIEW_CONTROL_EVENTS = EDGEVIEW_BROWSER_EVENTS.map(definition => event(
   definition.designerId || definition.id,
   definition.name,
   definition.name,
+  'notify'
+));
+const FBRO_CONTROL_EVENTS = FBRO_PUBLIC_BROWSER_EVENTS.map(definition => event(
+  definition.eventId,
+  `${definition.lingBuilderName} (${definition.officialName})`,
+  definition.lingBuilderName,
   'notify'
 ));
 const COMMON_FOCUS_EVENTS = [
@@ -249,7 +256,7 @@ export const WIN32_CONTROL_DEFINITIONS: Win32ControlDefinition[] = [
     events: EDGEVIEW_CONTROL_EVENTS, requiredLibraries: ['ole32.lib']
   }),
   control({ type: 'CefBrowser', label: 'CEF3浏览器', moduleId: 'lingbuilder.cef3.browser', category: '媒体', icon: 'Globe', nativeClass: 'STATIC', nativeAdapter: 'cef3-browser', defaultProps: { content: 'CEF3浏览器', width: 480, height: 320, background: '#FFFFFF' }, properties: [text('url', '打开地址', 'https://www.baidu.com'), text('cacheDir', '缓存目录', '.cef3/cache'), text('userAgent', 'User-Agent 标识'), bool('enableJs', '启用 JavaScript', true), bool('enableDevTools', '允许开发者工具', true), bool('loadImages', '加载图片', true), bool('enableWebGL', '启用 WebGL'), bool('muteAudio', '静音'), enumProp('proxyMode', '代理模式', 'system', ['system', 'none', 'custom'], { system: '跟随系统', none: '不使用代理', custom: '自定义' }), text('proxyServer', '自定义代理地址')], events: CEF3_CONTROL_EVENTS, requiredLibraries: ['libcef.lib', 'libcef_dll_wrapper.lib'] }),
-  control({ type: 'FBroBrowser', label: 'FBro指纹浏览器', moduleId: 'lingbuilder.fbro.browser', category: '媒体', icon: 'Fingerprint', nativeClass: 'STATIC', nativeAdapter: 'fbro-browser', defaultProps: { content: 'FBro指纹浏览器', width: 480, height: 320, background: '#FFFFFF' }, properties: [text('url', '打开地址', 'https://www.baidu.com'), text('cacheDir', '独立缓存目录'), text('userAgent', 'User-Agent 标识'), bool('enableJs', '启用 JavaScript', true), bool('loadImages', '加载图片', true), bool('enableWebGL', '启用 WebGL', true), bool('muteAudio', '静音'), enumProp('proxyMode', '代理模式', 'system', ['system', 'none', 'custom'], { system: '跟随系统', none: '不使用代理', custom: '自定义' }), text('proxyServer', '自定义代理地址'), text('fingerprintProfile', '指纹配置 JSON')], events: [event('Created', '浏览器创建完成', '浏览器创建完成', 'window'), event('LoadEnd', '网页加载完成', '网页加载完成', 'window'), event('AddressChanged', '地址被改变', '地址被改变', 'window'), event('BeforePopup', '即将打开新窗口', '即将打开新窗口', 'window'), event('TitleChanged', '标题被改变', '标题被改变', 'window'), event('Closed', '浏览器关闭完成', '浏览器关闭完成', 'window'), event('Error', '浏览器发生错误', '浏览器发生错误', 'window'), event('CertificateError', '证书验证错误', 'HTTPS 证书验证失败，可通过事件对象读取受管证书并同步决定继续或取消', 'window'), event('DragEnter', '拖入浏览器', '外部拖放数据进入浏览器，可通过事件对象读取受管拖放数据', 'window')], requiredLibraries: ['LingBuilderFbroBridge.lib'] })
+  control({ type: 'FBroBrowser', label: 'FBro指纹浏览器', moduleId: 'lingbuilder.fbro.browser', category: '媒体', icon: 'Fingerprint', nativeClass: 'STATIC', nativeAdapter: 'fbro-browser', defaultProps: { content: 'FBro指纹浏览器', width: 480, height: 320, background: '#FFFFFF' }, properties: [text('url', '打开地址', 'https://www.baidu.com'), text('cacheDir', '独立缓存目录'), text('userAgent', 'User-Agent 标识'), bool('enableJs', '启用 JavaScript', true), bool('loadImages', '加载图片', true), bool('enableWebGL', '启用 WebGL', true), bool('muteAudio', '静音'), enumProp('proxyMode', '代理模式', 'system', ['system', 'none', 'custom'], { system: '跟随系统', none: '不使用代理', custom: '自定义' }), text('proxyServer', '自定义代理地址'), text('fingerprintProfile', '指纹配置 JSON')], events: FBRO_CONTROL_EVENTS, requiredLibraries: ['LingBuilderFbroBridge.lib'] })
 ];
 
 WIN32_CONTROL_DEFINITIONS.forEach(definition => {

@@ -1,4 +1,5 @@
-import { LingBuilderModuleManifest } from './types';
+import { LingBuilderModuleManifest, ModuleCommandBinding, ModuleCommandBindingParameter } from './types';
+import { normalizeControlReferenceCallSnippet, normalizeControlReferenceParameter, normalizeControlReferenceSnippet } from './bindingValueType';
 import { getWin32ControlsForModule, Win32ControlModuleId } from '../windowDesigner/win32ControlRegistry';
 import { STANDARD_LIBRARY_MODULES } from './standardLibraryModules';
 import { SYSTEM_LIBRARY_MODULES } from './systemLibraryModules';
@@ -12,6 +13,7 @@ import { LIST_VIEW_ADVANCED_BINDINGS, LIST_VIEW_ADVANCED_COMMANDS } from './list
 import { DATA_GRID_BINDINGS, DATA_GRID_COMMANDS } from './dataGridApiCatalog';
 import { FBRO_SUBMODULES } from './fbroModules';
 import { CEF3_SUBMODULES } from './cef3Modules';
+import { OPENCV_MODULE } from './opencvModules';
 
 function createControlContributions(moduleId: Win32ControlModuleId) {
   return getWin32ControlsForModule(moduleId).map(definition => ({
@@ -55,11 +57,84 @@ function ensureBuiltinX64Target(manifest: LingBuilderModuleManifest): LingBuilde
   };
 }
 
+function normalizeBuiltinControlReferences(manifest: LingBuilderModuleManifest): LingBuilderModuleManifest {
+  const bindings = (manifest.bindings?.commands || []).map(binding => {
+    const parameters = (binding.parameters || []).map(parameter => normalizeBuiltinControlParameter(manifest.id, binding.command, parameter));
+    return {
+      ...binding,
+      parameters,
+      example: normalizeControlReferenceCallSnippet(binding.example, parameters)
+    };
+  });
+  const bindingByCommand = new Map(bindings.map(binding => [binding.command, binding]));
+  const commands = (manifest.contributes?.commands || []).map(command => {
+    const binding = bindingByCommand.get(command.name);
+    return binding ? {
+      ...command,
+      insertText: normalizeControlReferenceCallSnippet(command.insertText, binding.parameters)
+    } : command;
+  });
+  const snippets = (manifest.contributes?.snippets || []).map(snippet => ({
+    ...snippet,
+    insertText: normalizeBuiltinSnippetCalls(snippet.insertText, bindings)
+  }));
+  return {
+    ...manifest,
+    contributes: manifest.contributes ? { ...manifest.contributes, commands, snippets } : manifest.contributes,
+    bindings: manifest.bindings ? { ...manifest.bindings, commands: bindings } : manifest.bindings
+  };
+}
+
+function normalizeBuiltinControlParameter(
+  moduleId: string,
+  command: string,
+  parameter: ModuleCommandBindingParameter
+): ModuleCommandBindingParameter {
+  const converted = parameter;
+  if (converted.type !== 'controlRef') return converted;
+  const resourceTypes = command.startsWith('文件对话框_') ? ['FileDialog']
+    : command.startsWith('上下文菜单_') ? ['ContextMenu']
+      : command.startsWith('弹出菜单_') ? ['PopupMenu']
+        : command === '菜单_取最后项目' ? ['ContextMenu', 'PopupMenu']
+          : command.startsWith('属性页_') ? ['PropertySheet']
+            : parameter.name === '图像列表ID' ? ['ImageList']
+              : undefined;
+  if (resourceTypes) return normalizeControlReferenceParameter(converted, {
+    controlTypes: resourceTypes,
+    controlKinds: ['resource'],
+    scope: 'project'
+  });
+  const moduleTypes = moduleId.startsWith('lingbuilder.cef3') ? ['CefBrowser']
+    : moduleId.startsWith('lingbuilder.fbro') ? ['FBroBrowser']
+      : moduleId === 'lingbuilder.edgeview' ? ['EdgeBrowser']
+        : undefined;
+  const commandTypes = command.startsWith('颜色选择器_') ? ['ColorPicker']
+    : command.startsWith('列表视图_') ? ['ListView']
+      : command.startsWith('表格_') ? ['DataGrid']
+        : command.startsWith('树形框_') ? ['TreeView']
+          : command.startsWith('选项卡_') ? ['TabControl']
+            : command.startsWith('视频播放器_') ? ['VideoPlayer']
+              : command === '线程_启动延时添加行' ? ['ListView']
+                : command === '线程_启动延时添加项目' ? ['ListBox', 'ComboBox', 'ComboBoxEx']
+                  : command === '线程_批量启动'
+                    ? parameter.name === '任务数控件' || parameter.name === '线程数控件' ? ['TextBox']
+                      : parameter.name === '列表视图' ? ['ListView']
+                        : parameter.name === '日志列表' ? ['ListBox', 'ListView']
+                          : parameter.name === '状态标签' ? ['Label'] : undefined
+                    : undefined;
+  return normalizeControlReferenceParameter(converted, { controlTypes: parameter.controlTypes || commandTypes || moduleTypes });
+}
+
+function normalizeBuiltinSnippetCalls(value: string, bindings: readonly ModuleCommandBinding[]): string {
+  return normalizeControlReferenceSnippet(value, bindings) || value;
+}
+
 export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
   ...STANDARD_LIBRARY_MODULES,
   ...SYSTEM_LIBRARY_MODULES,
   ...NETWORK_LIBRARY_MODULES,
   ...DATA_MEDIA_MODULES,
+  OPENCV_MODULE,
   ...PLATFORM_ADVANCED_MODULES,
   {
     schemaVersion: 2,
@@ -98,20 +173,20 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '到整数', signature: '到整数(文本)', description: '把文本转换为整数；空文本或无法转换的内容返回 0。', insertText: '到整数("$1")', returnType: '整数型' },
         { name: '取鼠标水平位置', signature: '取鼠标水平位置()', description: '返回鼠标指针当前相对于屏幕左边的水平位置，单位为像素点。初级命令。', insertText: '取鼠标水平位置()', returnType: '整数型' },
         { name: '取鼠标垂直位置', signature: '取鼠标垂直位置()', description: '返回鼠标指针当前相对于屏幕顶边的垂直位置，单位为像素点。初级命令。', insertText: '取鼠标垂直位置()', returnType: '整数型' },
-        { name: '控件_设置文本', signature: '控件_设置文本(控件名, 文本)', description: '设置当前窗口中指定控件的文本。', insertText: '控件_设置文本("$1", "$2")', returnType: '逻辑型' },
-        { name: '控件_设置图片', signature: '控件_设置图片(控件名, 图片路径)', description: '设置图片框显示的本地图片；支持项目 assets 相对路径或本地完整路径，空路径清空图片。', insertText: '控件_设置图片("$1", "assets/$2")', returnType: '逻辑型' },
-        { name: '控件_取文本', signature: '控件_取文本(控件名)', description: '读取指定控件的当前文本。', insertText: '控件_取文本("$1")', returnType: '文本型' },
-        { name: '控件_设置启用', signature: '控件_设置启用(控件名, 启用)', description: '启用或禁用指定控件。', insertText: '控件_设置启用("$1", 真)', returnType: '逻辑型' },
-        { name: '控件_设置可见', signature: '控件_设置可见(控件名, 可见)', description: '显示或隐藏指定控件。', insertText: '控件_设置可见("$1", 真)', returnType: '逻辑型' },
-        { name: '控件_设置位置大小', signature: '控件_设置位置大小(控件名, 横坐标, 纵坐标, 宽度, 高度)', description: '按当前窗口客户区像素坐标移动指定控件并调整大小，适合在窗口大小事件中实现自适应布局。', insertText: '控件_设置位置大小("$1", $2, $3, $4, $5)', returnType: '逻辑型' },
-        { name: '控件_设置勾选', signature: '控件_设置勾选(控件名, 勾选)', description: '设置复选框、单选框或切换按钮状态。', insertText: '控件_设置勾选("$1", 真)', returnType: '逻辑型' },
-        { name: '控件_取勾选', signature: '控件_取勾选(控件名)', description: '读取控件勾选状态。', insertText: '控件_取勾选("$1")', returnType: '逻辑型' },
-        { name: '控件_设置数值', signature: '控件_设置数值(控件名, 数值)', description: '设置进度条、滑块、调节器或滚动条数值。', insertText: '控件_设置数值("$1", 50)', returnType: '逻辑型' },
-        { name: '控件_取数值', signature: '控件_取数值(控件名)', description: '读取数值型控件当前值。', insertText: '控件_取数值("$1")', returnType: '整数型' },
-        { name: '控件_设置选择项', signature: '控件_设置选择项(控件名, 索引)', description: '设置列表、组合框、列表视图或选项卡选择项。', insertText: '控件_设置选择项("$1", 0)', returnType: '逻辑型' },
-        { name: '控件_取选择项', signature: '控件_取选择项(控件名)', description: '读取选择项索引。', insertText: '控件_取选择项("$1")', returnType: '整数型' },
-        { name: '控件_添加项目', signature: '控件_添加项目(控件名, 文本)', description: '向列表框、组合框或增强组合框追加项目。', insertText: '控件_添加项目("$1", "$2")', returnType: '整数型' },
-        { name: '控件_清空项目', signature: '控件_清空项目(控件名)', description: '清空集合控件项目。', insertText: '控件_清空项目("$1")', returnType: '逻辑型' },
+        { name: '控件_设置文本', signature: '控件_设置文本(控件名, 文本)', description: '设置当前窗口中指定控件的文本。', insertText: '控件_设置文本($1, "$2")', returnType: '逻辑型' },
+        { name: '控件_设置图片', signature: '控件_设置图片(控件名, 图片路径)', description: '设置图片框显示的本地图片；支持项目 assets 相对路径或本地完整路径，空路径清空图片。', insertText: '控件_设置图片($1, "assets/$2")', returnType: '逻辑型' },
+        { name: '控件_取文本', signature: '控件_取文本(控件名)', description: '读取指定控件的当前文本。', insertText: '控件_取文本($1)', returnType: '文本型' },
+        { name: '控件_设置启用', signature: '控件_设置启用(控件名, 启用)', description: '启用或禁用指定控件。', insertText: '控件_设置启用($1, 真)', returnType: '逻辑型' },
+        { name: '控件_设置可见', signature: '控件_设置可见(控件名, 可见)', description: '显示或隐藏指定控件。', insertText: '控件_设置可见($1, 真)', returnType: '逻辑型' },
+        { name: '控件_设置位置大小', signature: '控件_设置位置大小(控件名, 横坐标, 纵坐标, 宽度, 高度)', description: '按当前窗口客户区像素坐标移动指定控件并调整大小，适合在窗口大小事件中实现自适应布局。', insertText: '控件_设置位置大小($1, $2, $3, $4, $5)', returnType: '逻辑型' },
+        { name: '控件_设置勾选', signature: '控件_设置勾选(控件名, 勾选)', description: '设置复选框、单选框或切换按钮状态。', insertText: '控件_设置勾选($1, 真)', returnType: '逻辑型' },
+        { name: '控件_取勾选', signature: '控件_取勾选(控件名)', description: '读取控件勾选状态。', insertText: '控件_取勾选($1)', returnType: '逻辑型' },
+        { name: '控件_设置数值', signature: '控件_设置数值(控件名, 数值)', description: '设置进度条、滑块、调节器或滚动条数值。', insertText: '控件_设置数值($1, 50)', returnType: '逻辑型' },
+        { name: '控件_取数值', signature: '控件_取数值(控件名)', description: '读取数值型控件当前值。', insertText: '控件_取数值($1)', returnType: '整数型' },
+        { name: '控件_设置选择项', signature: '控件_设置选择项(控件名, 索引)', description: '设置列表、组合框、列表视图或选项卡选择项。', insertText: '控件_设置选择项($1, 0)', returnType: '逻辑型' },
+        { name: '控件_取选择项', signature: '控件_取选择项(控件名)', description: '读取选择项索引。', insertText: '控件_取选择项($1)', returnType: '整数型' },
+        { name: '控件_添加项目', signature: '控件_添加项目(控件名, 文本)', description: '向列表框、组合框或增强组合框追加项目。', insertText: '控件_添加项目($1, "$2")', returnType: '整数型' },
+        { name: '控件_清空项目', signature: '控件_清空项目(控件名)', description: '清空集合控件项目。', insertText: '控件_清空项目($1)', returnType: '逻辑型' },
         { name: '窗口_取消关闭', signature: '窗口_取消关闭()', description: '在窗口“关闭前”事件中取消本次关闭请求。', insertText: '窗口_取消关闭()', returnType: '逻辑型' },
         { name: '窗口_取事件宽度', signature: '窗口_取事件宽度()', description: '返回最近窗口大小事件中的客户区宽度。', insertText: '窗口_取事件宽度()', returnType: '整数型' },
         { name: '窗口_取事件高度', signature: '窗口_取事件高度()', description: '返回最近窗口大小事件中的客户区高度。', insertText: '窗口_取事件高度()', returnType: '整数型' },
@@ -166,7 +241,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
           parameters: [{ name: '内容', type: 'wideString' }],
           returnType: 'void',
           encoding: 'wide',
-          example: '调试输出("当前选择项", 控件_取选择项("列表框1"), 真)'
+          example: '调试输出("当前选择项", 控件_取选择项(列表框1), 真)'
         },
         {
           command: '结束',
@@ -180,20 +255,20 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '到整数', runtimeName: '到整数', parameters: [{ name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
         { command: '取鼠标水平位置', runtimeName: '取鼠标水平位置', parameters: [], returnType: 'int' },
         { command: '取鼠标垂直位置', runtimeName: '取鼠标垂直位置', parameters: [], returnType: 'int' },
-        { command: '控件_设置文本', runtimeName: '控件_设置文本', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
-        { command: '控件_设置图片', runtimeName: '控件_设置图片', parameters: [{ name: '控件名', type: 'wideString' }, { name: '图片路径', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
-        { command: '控件_取文本', runtimeName: '控件_取文本', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
-        { command: '控件_设置启用', runtimeName: '控件_设置启用', parameters: [{ name: '控件名', type: 'wideString' }, { name: '启用', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
-        { command: '控件_设置可见', runtimeName: '控件_设置可见', parameters: [{ name: '控件名', type: 'wideString' }, { name: '可见', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
-        { command: '控件_设置位置大小', runtimeName: '控件_设置位置大小', parameters: [{ name: '控件名', type: 'wideString' }, { name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }, { name: '宽度', type: 'int' }, { name: '高度', type: 'int' }], returnType: 'bool', encoding: 'wide' },
-        { command: '控件_设置勾选', runtimeName: '控件_设置勾选', parameters: [{ name: '控件名', type: 'wideString' }, { name: '勾选', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
-        { command: '控件_取勾选', runtimeName: '控件_取勾选', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
-        { command: '控件_设置数值', runtimeName: '控件_设置数值', parameters: [{ name: '控件名', type: 'wideString' }, { name: '数值', type: 'int' }], returnType: 'bool', encoding: 'wide' },
-        { command: '控件_取数值', runtimeName: '控件_取数值', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-        { command: '控件_设置选择项', runtimeName: '控件_设置选择项', parameters: [{ name: '控件名', type: 'wideString' }, { name: '索引', type: 'int' }], returnType: 'bool', encoding: 'wide' },
-        { command: '控件_取选择项', runtimeName: '控件_取选择项', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-        { command: '控件_添加项目', runtimeName: '控件_添加项目', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-        { command: '控件_清空项目', runtimeName: '控件_清空项目', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置文本', runtimeName: '控件_设置文本', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置图片', runtimeName: '控件_设置图片', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '图片路径', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_取文本', runtimeName: '控件_取文本', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
+        { command: '控件_设置启用', runtimeName: '控件_设置启用', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '启用', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置可见', runtimeName: '控件_设置可见', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '可见', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置位置大小', runtimeName: '控件_设置位置大小', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }, { name: '宽度', type: 'int' }, { name: '高度', type: 'int' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置勾选', runtimeName: '控件_设置勾选', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '勾选', type: 'bool' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_取勾选', runtimeName: '控件_取勾选', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_设置数值', runtimeName: '控件_设置数值', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '数值', type: 'int' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_取数值', runtimeName: '控件_取数值', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+        { command: '控件_设置选择项', runtimeName: '控件_设置选择项', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '索引', type: 'int' }], returnType: 'bool', encoding: 'wide' },
+        { command: '控件_取选择项', runtimeName: '控件_取选择项', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+        { command: '控件_添加项目', runtimeName: '控件_添加项目', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+        { command: '控件_清空项目', runtimeName: '控件_清空项目', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' },
         { command: '窗口_取消关闭', runtimeName: '窗口_取消关闭', parameters: [], returnType: 'bool' },
         { command: '窗口_取事件宽度', runtimeName: '窗口_取事件宽度', parameters: [], returnType: 'int' },
         { command: '窗口_取事件高度', runtimeName: '窗口_取事件高度', parameters: [], returnType: 'int' },
@@ -229,9 +304,9 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '保存文件', signature: '保存文件(标题, 筛选器)', description: '显示 Windows 文件保存对话框并返回路径。', insertText: '保存文件("保存文件", "所有文件|*.*")', returnType: '文本型' },
         { name: '选择文件夹', signature: '选择文件夹(标题)', description: '显示 Windows 文件夹选择对话框并返回路径。', insertText: '选择文件夹("选择文件夹")', returnType: '文本型' },
         { name: '选择颜色', signature: '选择颜色(默认颜色)', description: '显示系统颜色对话框并返回 COLORREF 整数。', insertText: '选择颜色(0)', returnType: '整数型' },
-        { name: '颜色选择器_打开', signature: '颜色选择器_打开(控件名)', description: '打开指定颜色选择器的系统选色窗口；控件设置为不可视时仍可由按钮或其他事件调用。', insertText: '颜色选择器_打开("颜色选择器1")', returnType: '逻辑型' },
-        { name: '颜色选择器_置颜色', signature: '颜色选择器_置颜色(控件名, 颜色)', description: '设置颜色选择器当前 COLORREF 颜色，并在颜色变化时触发事件。', insertText: '颜色选择器_置颜色("颜色选择器1", 0)', returnType: '逻辑型' },
-        { name: '颜色选择器_取颜色', signature: '颜色选择器_取颜色(控件名)', description: '返回颜色选择器当前 COLORREF 整数。', insertText: '颜色选择器_取颜色("颜色选择器1")', returnType: '整数型' },
+        { name: '颜色选择器_打开', signature: '颜色选择器_打开(控件名)', description: '打开指定颜色选择器的系统选色窗口；控件设置为不可视时仍可由按钮或其他事件调用。', insertText: '颜色选择器_打开(颜色选择器1)', returnType: '逻辑型' },
+        { name: '颜色选择器_置颜色', signature: '颜色选择器_置颜色(控件名, 颜色)', description: '设置颜色选择器当前 COLORREF 颜色，并在颜色变化时触发事件。', insertText: '颜色选择器_置颜色(颜色选择器1, 0)', returnType: '逻辑型' },
+        { name: '颜色选择器_取颜色', signature: '颜色选择器_取颜色(控件名)', description: '返回颜色选择器当前 COLORREF 整数。', insertText: '颜色选择器_取颜色(颜色选择器1)', returnType: '整数型' },
         { name: '选择字体', signature: '选择字体(默认字号)', description: '显示系统字体对话框并返回字体说明。', insertText: '选择字体(12)', returnType: '文本型' },
         { name: '查找文本', signature: '查找文本(默认文本)', description: '显示系统查找对话框。', insertText: '查找文本("$1")', returnType: '空' },
         { name: '替换文本', signature: '替换文本(查找内容, 替换内容)', description: '显示系统替换对话框。', insertText: '替换文本("$1", "$2")', returnType: '空' },
@@ -249,41 +324,41 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: '页面设置_上边距', signature: '页面设置_上边距()', description: '返回最近页面设置的上边距。', insertText: '页面设置_上边距()', returnType: '整数型' }
         ,{ name: '页面设置_右边距', signature: '页面设置_右边距()', description: '返回最近页面设置的右边距。', insertText: '页面设置_右边距()', returnType: '整数型' }
         ,{ name: '页面设置_下边距', signature: '页面设置_下边距()', description: '返回最近页面设置的下边距。', insertText: '页面设置_下边距()', returnType: '整数型' }
-        ,{ name: '属性页_显示', signature: '属性页_显示(资源ID)', description: '显示设计器资源中定义的顶层 Windows PropertySheet。', insertText: '属性页_显示("property-sheet-1")', returnType: '整数型' }
-        ,{ name: '列表视图_添加行', signature: '列表视图_添加行(控件名, Tab分隔单元格)', description: '向 ListView 追加结构化行。', insertText: '列表视图_添加行("$1", "名称\\t状态")', returnType: '整数型' }
-        ,{ name: '列表视图_插入行', signature: '列表视图_插入行(控件名, 行索引, Tab分隔单元格)', description: '在指定的零基行索引插入结构化行。', insertText: '列表视图_插入行("$1", 0, "名称\\t状态")', returnType: '整数型' }
-        ,{ name: '列表视图_删除行', signature: '列表视图_删除行(控件名, 行索引)', description: '删除指定的零基行索引。', insertText: '列表视图_删除行("$1", 0)', returnType: '逻辑型' }
-        ,{ name: '列表视图_设置单元格', signature: '列表视图_设置单元格(控件名, 行索引, 列索引, 文本)', description: '修改指定零基行、列索引的单元格。', insertText: '列表视图_设置单元格("$1", 0, 1, "$2")', returnType: '逻辑型' }
-        ,{ name: '列表视图_取单元格', signature: '列表视图_取单元格(控件名, 行索引, 列索引)', description: '读取指定零基行、列索引的单元格文本。', insertText: '列表视图_取单元格("$1", 0, 1)', returnType: '文本型' }
-        ,{ name: '列表视图_取行数', signature: '列表视图_取行数(控件名)', description: '返回列表视图当前数据行数。', insertText: '列表视图_取行数("$1")', returnType: '整数型' }
-        ,{ name: '列表视图_批量添加行', signature: '列表视图_批量添加行(控件名, 多行TSV文本)', description: '一次追加多行 TSV 数据；换行分隔行，Tab 分隔列，内部自动关闭并恢复重绘。', insertText: '列表视图_批量添加行("$1", "第一行\\t1\\n第二行\\t2")', returnType: '整数型' }
-        ,{ name: '列表视图_开始批量更新', signature: '列表视图_开始批量更新(控件名)', description: '暂停 ListView 重绘；必须与结束批量更新成对调用。', insertText: '列表视图_开始批量更新("$1")', returnType: '逻辑型' }
-        ,{ name: '列表视图_结束批量更新', signature: '列表视图_结束批量更新(控件名)', description: '结束一层批量更新，并在最外层结束时恢复重绘。', insertText: '列表视图_结束批量更新("$1")', returnType: '逻辑型' }
-        ,{ name: '列表视图_排序', signature: '列表视图_排序(控件名, 列索引, 升序)', description: '按指定列文本稳定排序，列索引从 0 开始。', insertText: '列表视图_排序("$1", 0, 真)', returnType: '逻辑型' }
-        ,{ name: '列表视图_取最后单击列', signature: '列表视图_取最后单击列(控件名)', description: '返回最近一次表头单击的零基列索引；尚未单击时返回 -1。', insertText: '列表视图_取最后单击列("$1")', returnType: '整数型' }
-        ,{ name: '列表视图_取虚拟模式', signature: '列表视图_取虚拟模式(控件名)', description: '返回控件是否以 Win32 LVS_OWNERDATA 虚拟模式创建。', insertText: '列表视图_取虚拟模式("$1")', returnType: '逻辑型' }
-        ,{ name: '列表视图_设置虚拟行数', signature: '列表视图_设置虚拟行数(控件名, 行数)', description: '设置虚拟 ListView 的总行数；设计器必须先开启虚拟列表模式。', insertText: '列表视图_设置虚拟行数("$1", 15000)', returnType: '逻辑型' }
-        ,{ name: '列表视图_设置虚拟行', signature: '列表视图_设置虚拟行(控件名, 行索引, Tab分隔单元格)', description: '设置虚拟 ListView 指定行的数据，不创建真实行项目。', insertText: '列表视图_设置虚拟行("$1", 0, "1\\t代码段\\t128\\t5")', returnType: '逻辑型' }
+        ,{ name: '属性页_显示', signature: '属性页_显示(属性页)', description: '显示设计器资源中定义的顶层 Windows PropertySheet。', insertText: '属性页_显示(属性页1)', returnType: '整数型' }
+        ,{ name: '列表视图_添加行', signature: '列表视图_添加行(控件名, Tab分隔单元格)', description: '向 ListView 追加结构化行。', insertText: '列表视图_添加行($1, "名称\\t状态")', returnType: '整数型' }
+        ,{ name: '列表视图_插入行', signature: '列表视图_插入行(控件名, 行索引, Tab分隔单元格)', description: '在指定的零基行索引插入结构化行。', insertText: '列表视图_插入行($1, 0, "名称\\t状态")', returnType: '整数型' }
+        ,{ name: '列表视图_删除行', signature: '列表视图_删除行(控件名, 行索引)', description: '删除指定的零基行索引。', insertText: '列表视图_删除行($1, 0)', returnType: '逻辑型' }
+        ,{ name: '列表视图_设置单元格', signature: '列表视图_设置单元格(控件名, 行索引, 列索引, 文本)', description: '修改指定零基行、列索引的单元格。', insertText: '列表视图_设置单元格($1, 0, 1, "$2")', returnType: '逻辑型' }
+        ,{ name: '列表视图_取单元格', signature: '列表视图_取单元格(控件名, 行索引, 列索引)', description: '读取指定零基行、列索引的单元格文本。', insertText: '列表视图_取单元格($1, 0, 1)', returnType: '文本型' }
+        ,{ name: '列表视图_取行数', signature: '列表视图_取行数(控件名)', description: '返回列表视图当前数据行数。', insertText: '列表视图_取行数($1)', returnType: '整数型' }
+        ,{ name: '列表视图_批量添加行', signature: '列表视图_批量添加行(控件名, 多行TSV文本)', description: '一次追加多行 TSV 数据；换行分隔行，Tab 分隔列，内部自动关闭并恢复重绘。', insertText: '列表视图_批量添加行($1, "第一行\\t1\\n第二行\\t2")', returnType: '整数型' }
+        ,{ name: '列表视图_开始批量更新', signature: '列表视图_开始批量更新(控件名)', description: '暂停 ListView 重绘；必须与结束批量更新成对调用。', insertText: '列表视图_开始批量更新($1)', returnType: '逻辑型' }
+        ,{ name: '列表视图_结束批量更新', signature: '列表视图_结束批量更新(控件名)', description: '结束一层批量更新，并在最外层结束时恢复重绘。', insertText: '列表视图_结束批量更新($1)', returnType: '逻辑型' }
+        ,{ name: '列表视图_排序', signature: '列表视图_排序(控件名, 列索引, 升序)', description: '按指定列文本稳定排序，列索引从 0 开始。', insertText: '列表视图_排序($1, 0, 真)', returnType: '逻辑型' }
+        ,{ name: '列表视图_取最后单击列', signature: '列表视图_取最后单击列(控件名)', description: '返回最近一次表头单击的零基列索引；尚未单击时返回 -1。', insertText: '列表视图_取最后单击列($1)', returnType: '整数型' }
+        ,{ name: '列表视图_取虚拟模式', signature: '列表视图_取虚拟模式(控件名)', description: '返回控件是否以 Win32 LVS_OWNERDATA 虚拟模式创建。', insertText: '列表视图_取虚拟模式($1)', returnType: '逻辑型' }
+        ,{ name: '列表视图_设置虚拟行数', signature: '列表视图_设置虚拟行数(控件名, 行数)', description: '设置虚拟 ListView 的总行数；设计器必须先开启虚拟列表模式。', insertText: '列表视图_设置虚拟行数($1, 15000)', returnType: '逻辑型' }
+        ,{ name: '列表视图_设置虚拟行', signature: '列表视图_设置虚拟行(控件名, 行索引, Tab分隔单元格)', description: '设置虚拟 ListView 指定行的数据，不创建真实行项目。', insertText: '列表视图_设置虚拟行($1, 0, "1\\t代码段\\t128\\t5")', returnType: '逻辑型' }
         ,...LIST_VIEW_ADVANCED_COMMANDS
         ,...DATA_GRID_COMMANDS
-        ,{ name: '树形框_添加节点', signature: '树形框_添加节点(控件名, 父节点文字, 节点文字)', description: '向 TreeView 根级或指定父节点追加节点。', insertText: '树形框_添加节点("$1", "", "$2")', returnType: '逻辑型' }
-        ,{ name: '选项卡_添加页', signature: '选项卡_添加页(控件名, 标题)', description: '向 TabControl 追加标签页。', insertText: '选项卡_添加页("$1", "$2")', returnType: '整数型' }
-        ,{ name: '选项卡_设置隐藏表头', signature: '选项卡_设置隐藏表头(控件名, 隐藏)', description: '运行时隐藏或显示 TabControl 的标签表头，并重新布局当前页面。', insertText: '选项卡_设置隐藏表头("$1", 真)', returnType: '逻辑型' }
-        ,{ name: '选项卡_取隐藏表头', signature: '选项卡_取隐藏表头(控件名)', description: '读取 TabControl 当前是否隐藏标签表头。', insertText: '选项卡_取隐藏表头("$1")', returnType: '逻辑型' }
-        ,{ name: '文件对话框_打开', signature: '文件对话框_打开(组件名)', description: '打开设计器中配置的非可视文件对话框，并保存选择结果。', insertText: '文件对话框_打开("文件对话框1")', returnType: '逻辑型' }
-        ,{ name: '文件对话框_清空', signature: '文件对话框_清空(组件名)', description: '清空文件对话框组件最近选择或拖入的文件。', insertText: '文件对话框_清空("文件对话框1")', returnType: '逻辑型' }
-        ,{ name: '文件对话框_取文件数量', signature: '文件对话框_取文件数量(组件名)', description: '返回文件对话框组件最近选择或拖入的文件数量。', insertText: '文件对话框_取文件数量("文件对话框1")', returnType: '整数型' }
-        ,{ name: '文件对话框_取文件', signature: '文件对话框_取文件(组件名, 索引)', description: '返回文件对话框组件指定索引的完整文件路径。', insertText: '文件对话框_取文件("文件对话框1", 0)', returnType: '文本型' }
-        ,{ name: '上下文菜单_显示', signature: '上下文菜单_显示(组件名)', description: '在鼠标位置主动显示上下文菜单；绑定目标右键时无需手动调用。', insertText: '上下文菜单_显示("上下文菜单1")', returnType: '逻辑型' }
-        ,{ name: '弹出菜单_显示', signature: '弹出菜单_显示(组件名)', description: '在当前鼠标位置显示弹出菜单。', insertText: '弹出菜单_显示("弹出菜单1")', returnType: '逻辑型' }
-        ,{ name: '弹出菜单_在坐标显示', signature: '弹出菜单_在坐标显示(组件名, 横坐标, 纵坐标)', description: '在指定的屏幕像素坐标显示弹出菜单。', insertText: '弹出菜单_在坐标显示("弹出菜单1", 取鼠标水平位置(), 取鼠标垂直位置())', returnType: '逻辑型' }
-        ,{ name: '菜单_取最后项目', signature: '菜单_取最后项目(组件名)', description: '返回指定上下文菜单或弹出菜单最近选择的稳定菜单项 ID。', insertText: '菜单_取最后项目("弹出菜单1")', returnType: '文本型' }
-        ,{ name: '视频播放器_设置文件', signature: '视频播放器_设置文件(控件名, 视频路径)', description: '切换视频播放器的本地媒体文件；支持 MP4、WMV 等 Media Foundation 可解码格式。', insertText: '视频播放器_设置文件("视频播放器1", "assets/$1.mp4")', returnType: '逻辑型' }
-        ,{ name: '视频播放器_播放', signature: '视频播放器_播放(控件名)', description: '播放或继续播放指定视频。', insertText: '视频播放器_播放("视频播放器1")', returnType: '逻辑型' }
-        ,{ name: '视频播放器_暂停', signature: '视频播放器_暂停(控件名)', description: '暂停指定视频。', insertText: '视频播放器_暂停("视频播放器1")', returnType: '逻辑型' }
-        ,{ name: '视频播放器_停止', signature: '视频播放器_停止(控件名)', description: '停止指定视频。', insertText: '视频播放器_停止("视频播放器1")', returnType: '逻辑型' }
-        ,{ name: '视频播放器_设置音量', signature: '视频播放器_设置音量(控件名, 音量)', description: '设置视频音量，范围 0～100。', insertText: '视频播放器_设置音量("视频播放器1", 100)', returnType: '逻辑型' }
-        ,{ name: '视频播放器_取状态', signature: '视频播放器_取状态(控件名)', description: '返回 Media Foundation 播放器状态；未创建时返回 -1。', insertText: '视频播放器_取状态("视频播放器1")', returnType: '整数型' }
+        ,{ name: '树形框_添加节点', signature: '树形框_添加节点(控件名, 父节点文字, 节点文字)', description: '向 TreeView 根级或指定父节点追加节点。', insertText: '树形框_添加节点($1, "", "$2")', returnType: '逻辑型' }
+        ,{ name: '选项卡_添加页', signature: '选项卡_添加页(控件名, 标题)', description: '向 TabControl 追加标签页。', insertText: '选项卡_添加页($1, "$2")', returnType: '整数型' }
+        ,{ name: '选项卡_设置隐藏表头', signature: '选项卡_设置隐藏表头(控件名, 隐藏)', description: '运行时隐藏或显示 TabControl 的标签表头，并重新布局当前页面。', insertText: '选项卡_设置隐藏表头($1, 真)', returnType: '逻辑型' }
+        ,{ name: '选项卡_取隐藏表头', signature: '选项卡_取隐藏表头(控件名)', description: '读取 TabControl 当前是否隐藏标签表头。', insertText: '选项卡_取隐藏表头($1)', returnType: '逻辑型' }
+        ,{ name: '文件对话框_打开', signature: '文件对话框_打开(组件名)', description: '打开设计器中配置的非可视文件对话框，并保存选择结果。', insertText: '文件对话框_打开(文件对话框1)', returnType: '逻辑型' }
+        ,{ name: '文件对话框_清空', signature: '文件对话框_清空(组件名)', description: '清空文件对话框组件最近选择或拖入的文件。', insertText: '文件对话框_清空(文件对话框1)', returnType: '逻辑型' }
+        ,{ name: '文件对话框_取文件数量', signature: '文件对话框_取文件数量(组件名)', description: '返回文件对话框组件最近选择或拖入的文件数量。', insertText: '文件对话框_取文件数量(文件对话框1)', returnType: '整数型' }
+        ,{ name: '文件对话框_取文件', signature: '文件对话框_取文件(组件名, 索引)', description: '返回文件对话框组件指定索引的完整文件路径。', insertText: '文件对话框_取文件(文件对话框1, 0)', returnType: '文本型' }
+        ,{ name: '上下文菜单_显示', signature: '上下文菜单_显示(组件名)', description: '在鼠标位置主动显示上下文菜单；绑定目标右键时无需手动调用。', insertText: '上下文菜单_显示(上下文菜单1)', returnType: '逻辑型' }
+        ,{ name: '弹出菜单_显示', signature: '弹出菜单_显示(组件名)', description: '在当前鼠标位置显示弹出菜单。', insertText: '弹出菜单_显示(弹出菜单1)', returnType: '逻辑型' }
+        ,{ name: '弹出菜单_在坐标显示', signature: '弹出菜单_在坐标显示(组件名, 横坐标, 纵坐标)', description: '在指定的屏幕像素坐标显示弹出菜单。', insertText: '弹出菜单_在坐标显示(弹出菜单1, 取鼠标水平位置(), 取鼠标垂直位置())', returnType: '逻辑型' }
+        ,{ name: '菜单_取最后项目', signature: '菜单_取最后项目(组件名)', description: '返回指定上下文菜单或弹出菜单最近选择的稳定菜单项 ID。', insertText: '菜单_取最后项目(弹出菜单1)', returnType: '文本型' }
+        ,{ name: '视频播放器_设置文件', signature: '视频播放器_设置文件(控件名, 视频路径)', description: '切换视频播放器的本地媒体文件；支持 MP4、WMV 等 Media Foundation 可解码格式。', insertText: '视频播放器_设置文件(视频播放器1, "assets/$1.mp4")', returnType: '逻辑型' }
+        ,{ name: '视频播放器_播放', signature: '视频播放器_播放(控件名)', description: '播放或继续播放指定视频。', insertText: '视频播放器_播放(视频播放器1)', returnType: '逻辑型' }
+        ,{ name: '视频播放器_暂停', signature: '视频播放器_暂停(控件名)', description: '暂停指定视频。', insertText: '视频播放器_暂停(视频播放器1)', returnType: '逻辑型' }
+        ,{ name: '视频播放器_停止', signature: '视频播放器_停止(控件名)', description: '停止指定视频。', insertText: '视频播放器_停止(视频播放器1)', returnType: '逻辑型' }
+        ,{ name: '视频播放器_设置音量', signature: '视频播放器_设置音量(控件名, 音量)', description: '设置视频音量，范围 0～100。', insertText: '视频播放器_设置音量(视频播放器1, 100)', returnType: '逻辑型' }
+        ,{ name: '视频播放器_取状态', signature: '视频播放器_取状态(控件名)', description: '返回 Media Foundation 播放器状态；未创建时返回 -1。', insertText: '视频播放器_取状态(视频播放器1)', returnType: '整数型' }
       ],
       types: createControlTypes('lingbuilder.win32.common-controls'),
       designerControls: createControlContributions('lingbuilder.win32.common-controls'),
@@ -303,9 +378,9 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '保存文件', runtimeName: '保存文件', parameters: [{ name: '标题', type: 'wideString' }, { name: '筛选器', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
         { command: '选择文件夹', runtimeName: '选择文件夹', parameters: [{ name: '标题', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
         { command: '选择颜色', runtimeName: '选择颜色', parameters: [{ name: '默认颜色', type: 'int' }], returnType: 'int' },
-        { command: '颜色选择器_打开', runtimeName: '颜色选择器_打开', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' },
-        { command: '颜色选择器_置颜色', runtimeName: '颜色选择器_置颜色', parameters: [{ name: '控件名', type: 'wideString' }, { name: '颜色', type: 'int' }], returnType: 'bool', encoding: 'wide' },
-        { command: '颜色选择器_取颜色', runtimeName: '颜色选择器_取颜色', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+        { command: '颜色选择器_打开', runtimeName: '颜色选择器_打开', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' },
+        { command: '颜色选择器_置颜色', runtimeName: '颜色选择器_置颜色', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '颜色', type: 'int' }], returnType: 'bool', encoding: 'wide' },
+        { command: '颜色选择器_取颜色', runtimeName: '颜色选择器_取颜色', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
         { command: '选择字体', runtimeName: '选择字体', parameters: [{ name: '默认字号', type: 'int' }], returnType: 'wideString', encoding: 'wide' },
         { command: '查找文本', runtimeName: '查找文本', parameters: [{ name: '默认文本', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
         { command: '替换文本', runtimeName: '替换文本', parameters: [{ name: '查找内容', type: 'wideString' }, { name: '替换内容', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
@@ -323,41 +398,41 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ command: '页面设置_上边距', runtimeName: '页面设置_上边距', parameters: [], returnType: 'int' }
         ,{ command: '页面设置_右边距', runtimeName: '页面设置_右边距', parameters: [], returnType: 'int' }
         ,{ command: '页面设置_下边距', runtimeName: '页面设置_下边距', parameters: [], returnType: 'int' }
-        ,{ command: '属性页_显示', runtimeName: '属性页_显示', parameters: [{ name: '资源ID', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
-        ,{ command: '列表视图_添加行', runtimeName: '列表视图_添加行', parameters: [{ name: '控件名', type: 'wideString' }, { name: 'Tab分隔单元格', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
-        ,{ command: '列表视图_插入行', runtimeName: '列表视图_插入行', parameters: [{ name: '控件名', type: 'wideString' }, { name: '行索引', type: 'int' }, { name: 'Tab分隔单元格', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
-        ,{ command: '列表视图_删除行', runtimeName: '列表视图_删除行', parameters: [{ name: '控件名', type: 'wideString' }, { name: '行索引', type: 'int' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '列表视图_设置单元格', runtimeName: '列表视图_设置单元格', parameters: [{ name: '控件名', type: 'wideString' }, { name: '行索引', type: 'int' }, { name: '列索引', type: 'int' }, { name: '文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '列表视图_取单元格', runtimeName: '列表视图_取单元格', parameters: [{ name: '控件名', type: 'wideString' }, { name: '行索引', type: 'int' }, { name: '列索引', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
-        ,{ command: '列表视图_取行数', runtimeName: '列表视图_取行数', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
-        ,{ command: '列表视图_批量添加行', runtimeName: '列表视图_批量添加行', parameters: [{ name: '控件名', type: 'wideString' }, { name: '多行TSV文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
-        ,{ command: '列表视图_开始批量更新', runtimeName: '列表视图_开始批量更新', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '列表视图_结束批量更新', runtimeName: '列表视图_结束批量更新', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '列表视图_排序', runtimeName: '列表视图_排序', parameters: [{ name: '控件名', type: 'wideString' }, { name: '列索引', type: 'int' }, { name: '升序', type: 'bool' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '列表视图_取最后单击列', runtimeName: '列表视图_取最后单击列', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
-        ,{ command: '列表视图_取虚拟模式', runtimeName: '列表视图_取虚拟模式', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '列表视图_设置虚拟行数', runtimeName: '列表视图_设置虚拟行数', parameters: [{ name: '控件名', type: 'wideString' }, { name: '行数', type: 'int' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '列表视图_设置虚拟行', runtimeName: '列表视图_设置虚拟行', parameters: [{ name: '控件名', type: 'wideString' }, { name: '行索引', type: 'int' }, { name: 'Tab分隔单元格', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '属性页_显示', runtimeName: '属性页_显示', parameters: [{ name: '属性页', type: 'controlRef', controlTypes: ['PropertySheet'], controlKinds: ['resource'], scope: 'project' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_添加行', runtimeName: '列表视图_添加行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: 'Tab分隔单元格', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_插入行', runtimeName: '列表视图_插入行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行索引', type: 'int' }, { name: 'Tab分隔单元格', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_删除行', runtimeName: '列表视图_删除行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行索引', type: 'int' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_设置单元格', runtimeName: '列表视图_设置单元格', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行索引', type: 'int' }, { name: '列索引', type: 'int' }, { name: '文本', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_取单元格', runtimeName: '列表视图_取单元格', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行索引', type: 'int' }, { name: '列索引', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
+        ,{ command: '列表视图_取行数', runtimeName: '列表视图_取行数', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_批量添加行', runtimeName: '列表视图_批量添加行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '多行TSV文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_开始批量更新', runtimeName: '列表视图_开始批量更新', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_结束批量更新', runtimeName: '列表视图_结束批量更新', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_排序', runtimeName: '列表视图_排序', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '列索引', type: 'int' }, { name: '升序', type: 'bool' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_取最后单击列', runtimeName: '列表视图_取最后单击列', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '列表视图_取虚拟模式', runtimeName: '列表视图_取虚拟模式', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_设置虚拟行数', runtimeName: '列表视图_设置虚拟行数', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行数', type: 'int' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '列表视图_设置虚拟行', runtimeName: '列表视图_设置虚拟行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '行索引', type: 'int' }, { name: 'Tab分隔单元格', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
         ,...LIST_VIEW_ADVANCED_BINDINGS
         ,...DATA_GRID_BINDINGS
-        ,{ command: '树形框_添加节点', runtimeName: '树形框_添加节点', parameters: [{ name: '控件名', type: 'wideString' }, { name: '父节点文字', type: 'wideString' }, { name: '节点文字', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '选项卡_添加页', runtimeName: '选项卡_添加页', parameters: [{ name: '控件名', type: 'wideString' }, { name: '标题', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
-        ,{ command: '选项卡_设置隐藏表头', runtimeName: '选项卡_设置隐藏表头', parameters: [{ name: '控件名', type: 'wideString' }, { name: '隐藏', type: 'bool' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '选项卡_取隐藏表头', runtimeName: '选项卡_取隐藏表头', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '文件对话框_打开', runtimeName: '文件对话框_打开', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '文件对话框_清空', runtimeName: '文件对话框_清空', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '文件对话框_取文件数量', runtimeName: '文件对话框_取文件数量', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
-        ,{ command: '文件对话框_取文件', runtimeName: '文件对话框_取文件', parameters: [{ name: '组件名', type: 'wideString' }, { name: '索引', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
-        ,{ command: '上下文菜单_显示', runtimeName: '上下文菜单_显示', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '弹出菜单_显示', runtimeName: '弹出菜单_显示', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '弹出菜单_在坐标显示', runtimeName: '弹出菜单_在坐标显示', parameters: [{ name: '组件名', type: 'wideString' }, { name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '菜单_取最后项目', runtimeName: '菜单_取最后项目', parameters: [{ name: '组件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' }
-        ,{ command: '视频播放器_设置文件', runtimeName: '视频播放器_设置文件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '视频路径', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '视频播放器_播放', runtimeName: '视频播放器_播放', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '视频播放器_暂停', runtimeName: '视频播放器_暂停', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '视频播放器_停止', runtimeName: '视频播放器_停止', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '视频播放器_设置音量', runtimeName: '视频播放器_设置音量', parameters: [{ name: '控件名', type: 'wideString' }, { name: '音量', type: 'int' }], returnType: 'bool', encoding: 'wide' }
-        ,{ command: '视频播放器_取状态', runtimeName: '视频播放器_取状态', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '树形框_添加节点', runtimeName: '树形框_添加节点', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '父节点文字', type: 'wideString' }, { name: '节点文字', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '选项卡_添加页', runtimeName: '选项卡_添加页', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '标题', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '选项卡_设置隐藏表头', runtimeName: '选项卡_设置隐藏表头', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '隐藏', type: 'bool' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '选项卡_取隐藏表头', runtimeName: '选项卡_取隐藏表头', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '文件对话框_打开', runtimeName: '文件对话框_打开', parameters: [{ name: '组件名', type: 'controlRef', controlTypes: ['FileDialog'], controlKinds: ['resource'], scope: 'project' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '文件对话框_清空', runtimeName: '文件对话框_清空', parameters: [{ name: '组件名', type: 'controlRef', controlTypes: ['FileDialog'], controlKinds: ['resource'], scope: 'project' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '文件对话框_取文件数量', runtimeName: '文件对话框_取文件数量', parameters: [{ name: '组件名', type: 'controlRef', controlTypes: ['FileDialog'], controlKinds: ['resource'], scope: 'project' }], returnType: 'int', encoding: 'wide' }
+        ,{ command: '文件对话框_取文件', runtimeName: '文件对话框_取文件', parameters: [{ name: '组件名', type: 'controlRef', controlTypes: ['FileDialog'], controlKinds: ['resource'], scope: 'project' }, { name: '索引', type: 'int' }], returnType: 'wideString', encoding: 'wide' }
+        ,{ command: '上下文菜单_显示', runtimeName: '上下文菜单_显示', parameters: [{ name: '组件名', type: 'controlRef', controlTypes: ['ContextMenu'], controlKinds: ['resource'], scope: 'project' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '弹出菜单_显示', runtimeName: '弹出菜单_显示', parameters: [{ name: '组件名', type: 'controlRef', controlTypes: ['PopupMenu'], controlKinds: ['resource'], scope: 'project' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '弹出菜单_在坐标显示', runtimeName: '弹出菜单_在坐标显示', parameters: [{ name: '组件名', type: 'controlRef', controlTypes: ['PopupMenu'], controlKinds: ['resource'], scope: 'project' }, { name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '菜单_取最后项目', runtimeName: '菜单_取最后项目', parameters: [{ name: '组件名', type: 'controlRef', controlTypes: ['ContextMenu', 'PopupMenu'], controlKinds: ['resource'], scope: 'project' }], returnType: 'wideString', encoding: 'wide' }
+        ,{ command: '视频播放器_设置文件', runtimeName: '视频播放器_设置文件', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '视频路径', type: 'wideString' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '视频播放器_播放', runtimeName: '视频播放器_播放', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '视频播放器_暂停', runtimeName: '视频播放器_暂停', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '视频播放器_停止', runtimeName: '视频播放器_停止', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '视频播放器_设置音量', runtimeName: '视频播放器_设置音量', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '音量', type: 'int' }], returnType: 'bool', encoding: 'wide' }
+        ,{ command: '视频播放器_取状态', runtimeName: '视频播放器_取状态', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' }
       ]
     }
   },
@@ -400,17 +475,17 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: 'EdgeView_刷新', signature: 'EdgeView_刷新()', description: '刷新当前网页。', insertText: 'EdgeView_刷新()', returnType: '空' },
         { name: 'EdgeView_关闭', signature: 'EdgeView_关闭()', description: '关闭浏览器控制器并释放 WebView2 资源。', insertText: 'EdgeView_关闭()', returnType: '空' }
         ,{ name: 'EdgeView_关闭实例', signature: 'EdgeView_关闭实例(实例编号)', description: '关闭指定 EdgeView 实例并释放其承载窗口。', insertText: 'EdgeView_关闭实例(1)', returnType: '空' }
-        ,{ name: 'EdgeView_创建控件', signature: 'EdgeView_创建控件(控件名)', description: '使用设计器属性重新创建指定 Edge 浏览器控件；空文本创建当前窗口全部 Edge 浏览器控件。', insertText: 'EdgeView_创建控件("$1")', returnType: '整数型' }
-        ,{ name: 'EdgeView_导航控件', signature: 'EdgeView_导航控件(控件名, 地址)', description: '让指定设计器 Edge 浏览器控件导航到新地址。', insertText: 'EdgeView_导航控件("$1", "https://example.com")', returnType: '整数型' }
-        ,{ name: 'EdgeView_执行JS控件', signature: 'EdgeView_执行JS控件(控件名, 脚本)', description: '在指定设计器 Edge 浏览器控件中执行 JavaScript 并返回 JSON 编码结果。', insertText: 'EdgeView_执行JS控件("$1", "document.title")', returnType: '文本型' }
-        ,{ name: 'EdgeView_取最近事件控件', signature: 'EdgeView_取最近事件控件(控件名)', description: '读取指定设计器 Edge 浏览器控件最近触发的事件名。', insertText: 'EdgeView_取最近事件控件("$1")', returnType: '文本型' }
-        ,{ name: 'EdgeView_取事件数据控件', signature: 'EdgeView_取事件数据控件(控件名)', description: '读取指定设计器 Edge 浏览器控件最近事件的数据。', insertText: 'EdgeView_取事件数据控件("$1")', returnType: '文本型' }
-        ,{ name: 'EdgeView_后退控件', signature: 'EdgeView_后退控件(控件名)', description: '让指定设计器 Edge 浏览器控件后退。', insertText: 'EdgeView_后退控件("$1")', returnType: '整数型' }
-        ,{ name: 'EdgeView_前进控件', signature: 'EdgeView_前进控件(控件名)', description: '让指定设计器 Edge 浏览器控件前进。', insertText: 'EdgeView_前进控件("$1")', returnType: '整数型' }
-        ,{ name: 'EdgeView_刷新控件', signature: 'EdgeView_刷新控件(控件名)', description: '刷新指定设计器 Edge 浏览器控件。', insertText: 'EdgeView_刷新控件("$1")', returnType: '空' }
-        ,{ name: 'EdgeView_关闭控件', signature: 'EdgeView_关闭控件(控件名)', description: '关闭指定设计器 Edge 浏览器控件并保留设计器宿主占位。', insertText: 'EdgeView_关闭控件("$1")', returnType: '空' }
-        ,{ name: 'EdgeView_绑定控件事件', signature: 'EdgeView_绑定控件事件(控件名, 事件名, &处理器名)', description: `按控件名绑定 WebView2 完整事件目录中的中文事件；当前目录共 ${EDGEVIEW_BROWSER_EVENT_NAMES.length} 项。旧字符串处理器仍兼容，但会产生迁移警告。`, insertText: 'EdgeView_绑定控件事件("$1", "导航完成", &$2)', returnType: '整数型' }
-        ,{ name: 'EdgeView_监听开发者工具事件控件', signature: 'EdgeView_监听开发者工具事件控件(控件名, 协议事件名)', description: '按设计器控件名监听 Chromium DevTools Protocol 事件。', insertText: 'EdgeView_监听开发者工具事件控件("$1", "Console.messageAdded")', returnType: '整数型' }
+        ,{ name: 'EdgeView_创建控件', signature: 'EdgeView_创建控件(控件名)', description: '使用设计器属性重新创建指定 Edge 浏览器控件；空文本创建当前窗口全部 Edge 浏览器控件。', insertText: 'EdgeView_创建控件($1)', returnType: '整数型' }
+        ,{ name: 'EdgeView_导航控件', signature: 'EdgeView_导航控件(控件名, 地址)', description: '让指定设计器 Edge 浏览器控件导航到新地址。', insertText: 'EdgeView_导航控件($1, "https://example.com")', returnType: '整数型' }
+        ,{ name: 'EdgeView_执行JS控件', signature: 'EdgeView_执行JS控件(控件名, 脚本)', description: '在指定设计器 Edge 浏览器控件中执行 JavaScript 并返回 JSON 编码结果。', insertText: 'EdgeView_执行JS控件($1, "document.title")', returnType: '文本型' }
+        ,{ name: 'EdgeView_取最近事件控件', signature: 'EdgeView_取最近事件控件(控件名)', description: '读取指定设计器 Edge 浏览器控件最近触发的事件名。', insertText: 'EdgeView_取最近事件控件($1)', returnType: '文本型' }
+        ,{ name: 'EdgeView_取事件数据控件', signature: 'EdgeView_取事件数据控件(控件名)', description: '读取指定设计器 Edge 浏览器控件最近事件的数据。', insertText: 'EdgeView_取事件数据控件($1)', returnType: '文本型' }
+        ,{ name: 'EdgeView_后退控件', signature: 'EdgeView_后退控件(控件名)', description: '让指定设计器 Edge 浏览器控件后退。', insertText: 'EdgeView_后退控件($1)', returnType: '整数型' }
+        ,{ name: 'EdgeView_前进控件', signature: 'EdgeView_前进控件(控件名)', description: '让指定设计器 Edge 浏览器控件前进。', insertText: 'EdgeView_前进控件($1)', returnType: '整数型' }
+        ,{ name: 'EdgeView_刷新控件', signature: 'EdgeView_刷新控件(控件名)', description: '刷新指定设计器 Edge 浏览器控件。', insertText: 'EdgeView_刷新控件($1)', returnType: '空' }
+        ,{ name: 'EdgeView_关闭控件', signature: 'EdgeView_关闭控件(控件名)', description: '关闭指定设计器 Edge 浏览器控件并保留设计器宿主占位。', insertText: 'EdgeView_关闭控件($1)', returnType: '空' }
+        ,{ name: 'EdgeView_绑定控件事件', signature: 'EdgeView_绑定控件事件(控件名, 事件名, &处理器名)', description: `按控件名绑定 WebView2 完整事件目录中的中文事件；当前目录共 ${EDGEVIEW_BROWSER_EVENT_NAMES.length} 项。旧字符串处理器仍兼容，但会产生迁移警告。`, insertText: 'EdgeView_绑定控件事件($1, "导航完成", &$2)', returnType: '整数型' }
+        ,{ name: 'EdgeView_监听开发者工具事件控件', signature: 'EdgeView_监听开发者工具事件控件(控件名, 协议事件名)', description: '按设计器控件名监听 Chromium DevTools Protocol 事件。', insertText: 'EdgeView_监听开发者工具事件控件($1, "Console.messageAdded")', returnType: '整数型' }
       ],
       types: [{ name: 'EdgeView浏览器', description: '嵌入 Win32 HWND 的 Microsoft Edge WebView2 浏览器。', cppType: 'ICoreWebView2*' }],
       snippets: [{ label: 'EdgeView 嵌入与 JS 返回值', insertText: 'EdgeView_创建(0, "https://example.com")\n调试输出(EdgeView_执行JS("document.title"))\n调试输出(EdgeView_取最近事件())\n调试输出(EdgeView_取事件数据())', description: '在当前窗口嵌入 EdgeView，并读取网页标题与最近浏览器事件。' }]
@@ -446,17 +521,17 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { command: 'EdgeView_刷新', runtimeName: 'EdgeView_刷新', parameters: [], returnType: 'void' },
       { command: 'EdgeView_关闭', runtimeName: 'EdgeView_关闭', parameters: [], returnType: 'void' },
       { command: 'EdgeView_关闭实例', runtimeName: 'EdgeView_关闭实例', parameters: [{ name: '实例编号', type: 'int' }], returnType: 'void' }
-      ,{ command: 'EdgeView_创建控件', runtimeName: 'EdgeView_创建控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
-      ,{ command: 'EdgeView_导航控件', runtimeName: 'EdgeView_导航控件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
-      ,{ command: 'EdgeView_执行JS控件', runtimeName: 'EdgeView_执行JS控件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' }
-      ,{ command: 'EdgeView_取最近事件控件', runtimeName: 'EdgeView_取最近事件控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' }
-      ,{ command: 'EdgeView_取事件数据控件', runtimeName: 'EdgeView_取事件数据控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' }
-      ,{ command: 'EdgeView_后退控件', runtimeName: 'EdgeView_后退控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
-      ,{ command: 'EdgeView_前进控件', runtimeName: 'EdgeView_前进控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
-      ,{ command: 'EdgeView_刷新控件', runtimeName: 'EdgeView_刷新控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' }
-      ,{ command: 'EdgeView_关闭控件', runtimeName: 'EdgeView_关闭控件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' }
-      ,{ command: 'EdgeView_绑定控件事件', runtimeName: 'EdgeView_绑定控件事件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '事件名', type: 'wideString' }, { name: '处理器名', type: 'handler', description: '新代码必须使用 &处理器名；旧字符串写法仅兼容迁移。' }], returnType: 'int', encoding: 'wide' }
-      ,{ command: 'EdgeView_监听开发者工具事件控件', runtimeName: 'EdgeView_监听开发者工具事件控件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '协议事件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_创建控件', runtimeName: 'EdgeView_创建控件', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_导航控件', runtimeName: 'EdgeView_导航控件', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_执行JS控件', runtimeName: 'EdgeView_执行JS控件', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' }
+      ,{ command: 'EdgeView_取最近事件控件', runtimeName: 'EdgeView_取最近事件控件', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' }
+      ,{ command: 'EdgeView_取事件数据控件', runtimeName: 'EdgeView_取事件数据控件', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' }
+      ,{ command: 'EdgeView_后退控件', runtimeName: 'EdgeView_后退控件', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_前进控件', runtimeName: 'EdgeView_前进控件', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_刷新控件', runtimeName: 'EdgeView_刷新控件', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'void', encoding: 'wide' }
+      ,{ command: 'EdgeView_关闭控件', runtimeName: 'EdgeView_关闭控件', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'void', encoding: 'wide' }
+      ,{ command: 'EdgeView_绑定控件事件', runtimeName: 'EdgeView_绑定控件事件', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '事件名', type: 'wideString' }, { name: '处理器名', type: 'handler', description: '新代码必须使用 &处理器名；旧字符串写法仅兼容迁移。' }], returnType: 'int', encoding: 'wide' }
+      ,{ command: 'EdgeView_监听开发者工具事件控件', runtimeName: 'EdgeView_监听开发者工具事件控件', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '协议事件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
     ] }
   },
   {
@@ -474,31 +549,31 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     contributes: {
       designerControls: createControlContributions('lingbuilder.cef3.browser'),
       commands: [
-        { name: 'CEF3_导航', signature: 'CEF3_导航(控件名, 地址)', description: '让指定 CEF3 浏览器控件导航到 HTTP/HTTPS 地址或本地文件地址。', insertText: 'CEF3_导航("$1", "https://www.baidu.com")', returnType: '整数型' },
-        { name: 'CEF3_打开原生UI浏览器', signature: 'CEF3_打开原生UI浏览器(控件名, 地址)', description: '使用 CEF Chrome Runtime 创建带原生地址栏和浏览器界面的独立顶层窗口，并纳入指定内嵌控件的 popup 生命周期管理。', insertText: 'CEF3_打开原生UI浏览器("$1", "https://www.baidu.com")', returnType: '整数型' },
-        { name: 'CEF3_执行JS', aliases: ['Runtime.evaluate'], signature: 'CEF3_执行JS(控件名, 脚本)', description: '通过 DevTools Runtime.evaluate 执行 JavaScript，最多等待 5 秒并返回 JSON 结果；新代码优先使用异步任务接口。', insertText: 'CEF3_执行JS("$1", "document.title")', returnType: '文本型' },
-        { name: 'CEF3_后退', signature: 'CEF3_后退(控件名)', description: '指定 CEF3 浏览器控件可以后退时返回上一页，成功返回 1。', insertText: 'CEF3_后退("$1")', returnType: '整数型' },
-        { name: 'CEF3_前进', signature: 'CEF3_前进(控件名)', description: '指定 CEF3 浏览器控件可以前进时进入下一页，成功返回 1。', insertText: 'CEF3_前进("$1")', returnType: '整数型' },
-        { name: 'CEF3_刷新', signature: 'CEF3_刷新(控件名)', description: '刷新指定 CEF3 浏览器控件的当前网页。', insertText: 'CEF3_刷新("$1")', returnType: '空' },
-        { name: 'CEF3_停止', signature: 'CEF3_停止(控件名)', description: '停止指定 CEF3 浏览器控件的当前导航。', insertText: 'CEF3_停止("$1")', returnType: '空' },
-        { name: 'CEF3_取标题', signature: 'CEF3_取标题(控件名)', description: '返回指定 CEF3 浏览器控件当前网页标题。', insertText: 'CEF3_取标题("$1")', returnType: '文本型' },
-        { name: 'CEF3_取地址', signature: 'CEF3_取地址(控件名)', description: '返回指定 CEF3 浏览器控件当前网页地址。', insertText: 'CEF3_取地址("$1")', returnType: '文本型' },
-        { name: 'CEF3_设置缓存目录', aliases: ['CefRequestContext::CreateContext'], signature: 'CEF3_设置缓存目录(控件名, 目录)', description: '设置实例独立 RequestContext 的缓存目录标识；实际目录被安全映射到全局 root_cache_path 的直接子目录。需在创建前设置。', insertText: 'CEF3_设置缓存目录("$1", "cache-2")', returnType: '整数型' },
-        { name: 'CEF3_设置代理', aliases: ['CefPreferenceManager::SetPreference'], signature: 'CEF3_设置代理(控件名, 代理地址)', description: '为实例独立 RequestContext 设置 HTTP/HTTPS/SOCKS5 代理；空文本使用直连。需在创建前设置。', insertText: 'CEF3_设置代理("$1", "http://127.0.0.1:7890")', returnType: '整数型' },
-        { name: 'CEF3_创建', signature: 'CEF3_创建(控件名)', description: '使用属性面板配置的地址、缓存目录和代理参数初始化指定 CEF3 浏览器控件；传空控件名时初始化当前窗口全部 CEF3 控件。成功返回 1。', insertText: 'CEF3_创建("$1")', returnType: '整数型' },
-        { name: 'CEF3_关闭', signature: 'CEF3_关闭(控件名)', description: '关闭指定 CEF3 浏览器控件并释放 Chromium 资源。', insertText: 'CEF3_关闭("$1")', returnType: '空' },
-        { name: 'CEF3_取最近事件', signature: 'CEF3_取最近事件(控件名)', description: `返回最近 CEF3 事件名；当前目录包含 ${CEF3_BROWSER_EVENT_NAMES.length} 个浏览器回调。`, insertText: 'CEF3_取最近事件("$1")', returnType: '文本型' },
-        { name: 'CEF3_取事件数据', signature: 'CEF3_取事件数据(控件名)', description: '返回最近事件的主要文本数据。', insertText: 'CEF3_取事件数据("$1")', returnType: '文本型' },
-        { name: 'CEF3_取事件字段', signature: 'CEF3_取事件字段(控件名, 字段名)', description: '读取最近事件的命名字段，例如 url、frameId、statusCode、progress、commandId。', insertText: 'CEF3_取事件字段("$1", "url")', returnType: '文本型' },
-        { name: 'CEF3_设置事件结果', signature: 'CEF3_设置事件结果(控件名, 结果)', description: '设置当前同步事件结果：0=默认、1=允许/继续、2=拒绝/取消、3=已处理。', insertText: 'CEF3_设置事件结果("$1", 1)', returnType: '整数型' },
-        { name: 'CEF3_设置事件返回文本', signature: 'CEF3_设置事件返回文本(控件名, 文本)', description: '设置当前事件的返回文本，例如修改后的 URL、下载路径、对话框输入或身份验证信息。', insertText: 'CEF3_设置事件返回文本("$1", "$2")', returnType: '整数型' },
-        { name: 'CEF3_绑定事件', signature: 'CEF3_绑定事件(控件名, 事件名, 处理器)', description: `绑定 CEF3 浏览器事件目录（${CEF3_BROWSER_EVENT_NAMES.length} 项）到当前窗口无参数中文事件或方法；处理器必须使用 &处理器名。`, insertText: 'CEF3_绑定事件("$1", "加载完成", &$2)', returnType: '整数型' },
-        { name: 'CEF3_是否可后退', signature: 'CEF3_是否可后退(控件名)', description: '指定 CEF3 浏览器控件可以后退时返回 1。', insertText: 'CEF3_是否可后退("$1")', returnType: '整数型' },
-        { name: 'CEF3_是否可前进', signature: 'CEF3_是否可前进(控件名)', description: '指定 CEF3 浏览器控件可以前进时返回 1。', insertText: 'CEF3_是否可前进("$1")', returnType: '整数型' },
-        { name: 'CEF3_是否加载中', signature: 'CEF3_是否加载中(控件名)', description: '指定 CEF3 浏览器控件正在加载网页时返回 1。', insertText: 'CEF3_是否加载中("$1")', returnType: '整数型' }
+        { name: 'CEF3_导航', signature: 'CEF3_导航(控件名, 地址)', description: '让指定 CEF3 浏览器控件导航到 HTTP/HTTPS 地址或本地文件地址。', insertText: 'CEF3_导航($1, "https://www.baidu.com")', returnType: '整数型' },
+        { name: 'CEF3_打开原生UI浏览器', signature: 'CEF3_打开原生UI浏览器(控件名, 地址)', description: '使用 CEF Chrome Runtime 创建带原生地址栏和浏览器界面的独立顶层窗口，并纳入指定内嵌控件的 popup 生命周期管理。', insertText: 'CEF3_打开原生UI浏览器($1, "https://www.baidu.com")', returnType: '整数型' },
+        { name: 'CEF3_执行JS', aliases: ['Runtime.evaluate'], signature: 'CEF3_执行JS(控件名, 脚本)', description: '通过 DevTools Runtime.evaluate 执行 JavaScript，最多等待 5 秒并返回 JSON 结果；新代码优先使用异步任务接口。', insertText: 'CEF3_执行JS($1, "document.title")', returnType: '文本型' },
+        { name: 'CEF3_后退', signature: 'CEF3_后退(控件名)', description: '指定 CEF3 浏览器控件可以后退时返回上一页，成功返回 1。', insertText: 'CEF3_后退($1)', returnType: '整数型' },
+        { name: 'CEF3_前进', signature: 'CEF3_前进(控件名)', description: '指定 CEF3 浏览器控件可以前进时进入下一页，成功返回 1。', insertText: 'CEF3_前进($1)', returnType: '整数型' },
+        { name: 'CEF3_刷新', signature: 'CEF3_刷新(控件名)', description: '刷新指定 CEF3 浏览器控件的当前网页。', insertText: 'CEF3_刷新($1)', returnType: '空' },
+        { name: 'CEF3_停止', signature: 'CEF3_停止(控件名)', description: '停止指定 CEF3 浏览器控件的当前导航。', insertText: 'CEF3_停止($1)', returnType: '空' },
+        { name: 'CEF3_取标题', signature: 'CEF3_取标题(控件名)', description: '返回指定 CEF3 浏览器控件当前网页标题。', insertText: 'CEF3_取标题($1)', returnType: '文本型' },
+        { name: 'CEF3_取地址', signature: 'CEF3_取地址(控件名)', description: '返回指定 CEF3 浏览器控件当前网页地址。', insertText: 'CEF3_取地址($1)', returnType: '文本型' },
+        { name: 'CEF3_设置缓存目录', aliases: ['CefRequestContext::CreateContext'], signature: 'CEF3_设置缓存目录(控件名, 目录)', description: '设置实例独立 RequestContext 的缓存目录标识；实际目录被安全映射到全局 root_cache_path 的直接子目录。需在创建前设置。', insertText: 'CEF3_设置缓存目录($1, "cache-2")', returnType: '整数型' },
+        { name: 'CEF3_设置代理', aliases: ['CefPreferenceManager::SetPreference'], signature: 'CEF3_设置代理(控件名, 代理地址)', description: '为实例独立 RequestContext 设置 HTTP/HTTPS/SOCKS5 代理；空文本使用直连。需在创建前设置。', insertText: 'CEF3_设置代理($1, "http://127.0.0.1:7890")', returnType: '整数型' },
+        { name: 'CEF3_创建', signature: 'CEF3_创建(控件名)', description: '使用属性面板配置的地址、缓存目录和代理参数初始化指定 CEF3 浏览器控件；传空控件名时初始化当前窗口全部 CEF3 控件。成功返回 1。', insertText: 'CEF3_创建($1)', returnType: '整数型' },
+        { name: 'CEF3_关闭', signature: 'CEF3_关闭(控件名)', description: '关闭指定 CEF3 浏览器控件并释放 Chromium 资源。', insertText: 'CEF3_关闭($1)', returnType: '空' },
+        { name: 'CEF3_取最近事件', signature: 'CEF3_取最近事件(控件名)', description: `返回最近 CEF3 事件名；当前目录包含 ${CEF3_BROWSER_EVENT_NAMES.length} 个浏览器回调。`, insertText: 'CEF3_取最近事件($1)', returnType: '文本型' },
+        { name: 'CEF3_取事件数据', signature: 'CEF3_取事件数据(控件名)', description: '返回最近事件的主要文本数据。', insertText: 'CEF3_取事件数据($1)', returnType: '文本型' },
+        { name: 'CEF3_取事件字段', signature: 'CEF3_取事件字段(控件名, 字段名)', description: '读取最近事件的命名字段，例如 url、frameId、statusCode、progress、commandId。', insertText: 'CEF3_取事件字段($1, "url")', returnType: '文本型' },
+        { name: 'CEF3_设置事件结果', signature: 'CEF3_设置事件结果(控件名, 结果)', description: '设置当前同步事件结果：0=默认、1=允许/继续、2=拒绝/取消、3=已处理。', insertText: 'CEF3_设置事件结果($1, 1)', returnType: '整数型' },
+        { name: 'CEF3_设置事件返回文本', signature: 'CEF3_设置事件返回文本(控件名, 文本)', description: '设置当前事件的返回文本，例如修改后的 URL、下载路径、对话框输入或身份验证信息。', insertText: 'CEF3_设置事件返回文本($1, "$2")', returnType: '整数型' },
+        { name: 'CEF3_绑定事件', signature: 'CEF3_绑定事件(控件名, 事件名, 处理器)', description: `绑定 CEF3 浏览器事件目录（${CEF3_BROWSER_EVENT_NAMES.length} 项）到当前窗口无参数中文事件或方法；处理器必须使用 &处理器名。`, insertText: 'CEF3_绑定事件($1, "加载完成", &$2)', returnType: '整数型' },
+        { name: 'CEF3_是否可后退', signature: 'CEF3_是否可后退(控件名)', description: '指定 CEF3 浏览器控件可以后退时返回 1。', insertText: 'CEF3_是否可后退($1)', returnType: '整数型' },
+        { name: 'CEF3_是否可前进', signature: 'CEF3_是否可前进(控件名)', description: '指定 CEF3 浏览器控件可以前进时返回 1。', insertText: 'CEF3_是否可前进($1)', returnType: '整数型' },
+        { name: 'CEF3_是否加载中', signature: 'CEF3_是否加载中(控件名)', description: '指定 CEF3 浏览器控件正在加载网页时返回 1。', insertText: 'CEF3_是否加载中($1)', returnType: '整数型' }
       ],
       types: [{ name: 'CEF3浏览器', description: '由 LingBuilderCefBridge 管理的 CEF 150 浏览器句柄。', cppType: 'LB_CEF3_HANDLE' }],
-      snippets: [{ label: 'CEF3 浏览器导航与 JS 返回值', insertText: 'CEF3_导航("浏览器1", "https://www.baidu.com")\n调试输出(CEF3_执行JS("浏览器1", "document.title"))\n调试输出(CEF3_取最近事件("浏览器1"))', description: '在 CEF3 浏览器控件中导航，并读取网页标题与最近事件。' }],
+      snippets: [{ label: 'CEF3 浏览器导航与 JS 返回值', insertText: 'CEF3_导航(浏览器1, "https://www.baidu.com")\n调试输出(CEF3_执行JS(浏览器1, "document.title"))\n调试输出(CEF3_取最近事件(浏览器1))', description: '在 CEF3 浏览器控件中导航，并读取网页标题与最近事件。' }],
       docs: [{ title: 'CEF3 模块说明', path: 'README.md' }],
       examples: [{ title: '双浏览器示例', path: 'examples/双浏览器示例.lcpp', description: '在同一窗口创建两个独立缓存目录的 CEF3 浏览器控件。' }]
     },
@@ -506,28 +581,28 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       { id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/LingBuilderCefBridge.h'], libs: ['modules/lingbuilder.cef3.browser/lib/x64/LingBuilderCefBridge.lib'], runtimeFiles: ['bin/x64/libcef.dll', 'bin/x64/chrome_elf.dll', 'bin/x64/LingBuilderCefBridge.dll'], defines: ['LINGBUILDER_CEF3_MODULE'] }
     ],
     bindings: { commands: [
-      { command: 'CEF3_导航', runtimeName: 'CEF3_导航', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_导航("浏览器1", "https://www.baidu.com")' },
-      { command: 'CEF3_打开原生UI浏览器', runtimeName: 'CEF3_打开原生UI浏览器', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_打开原生UI浏览器("浏览器1", "https://www.baidu.com")' },
-      { command: 'CEF3_执行JS', runtimeName: 'CEF3_执行JS', parameters: [{ name: '控件名', type: 'wideString' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide', example: 'CEF3_执行JS("浏览器1", "document.title")' },
-      { command: 'CEF3_后退', runtimeName: 'CEF3_后退', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'CEF3_前进', runtimeName: 'CEF3_前进', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'CEF3_刷新', runtimeName: 'CEF3_刷新', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
-      { command: 'CEF3_停止', runtimeName: 'CEF3_停止', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
-      { command: 'CEF3_取标题', runtimeName: 'CEF3_取标题', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
-      { command: 'CEF3_取地址', runtimeName: 'CEF3_取地址', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
-      { command: 'CEF3_设置缓存目录', runtimeName: 'CEF3_设置缓存目录', parameters: [{ name: '控件名', type: 'wideString' }, { name: '目录', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'CEF3_设置代理', runtimeName: 'CEF3_设置代理', parameters: [{ name: '控件名', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'CEF3_创建', runtimeName: 'CEF3_创建', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'CEF3_关闭', runtimeName: 'CEF3_关闭', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
-      { command: 'CEF3_取最近事件', runtimeName: 'CEF3_取最近事件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
-      { command: 'CEF3_取事件数据', runtimeName: 'CEF3_取事件数据', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
-      { command: 'CEF3_取事件字段', runtimeName: 'CEF3_取事件字段', parameters: [{ name: '控件名', type: 'wideString' }, { name: '字段名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
-      { command: 'CEF3_设置事件结果', runtimeName: 'CEF3_设置事件结果', parameters: [{ name: '控件名', type: 'wideString' }, { name: '结果', type: 'int' }], returnType: 'int', encoding: 'wide' },
-      { command: 'CEF3_设置事件返回文本', runtimeName: 'CEF3_设置事件返回文本', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'CEF3_绑定事件', runtimeName: 'CEF3_绑定事件', parameters: [{ name: '控件名', type: 'wideString' }, { name: '事件名', type: 'wideString', description: '事件名' }, { name: '处理器', type: 'handler', description: '必须使用 &处理器名' }], returnType: 'int', encoding: 'wide', example: 'CEF3_绑定事件("浏览器1", "加载完成", &浏览器1_加载完成)' },
-      { command: 'CEF3_是否可后退', runtimeName: 'CEF3_是否可后退', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'CEF3_是否可前进', runtimeName: 'CEF3_是否可前进', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'CEF3_是否加载中', runtimeName: 'CEF3_是否加载中', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' }
+      { command: 'CEF3_导航', runtimeName: 'CEF3_导航', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_导航(浏览器1, "https://www.baidu.com")' },
+      { command: 'CEF3_打开原生UI浏览器', runtimeName: 'CEF3_打开原生UI浏览器', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'CEF3_打开原生UI浏览器(浏览器1, "https://www.baidu.com")' },
+      { command: 'CEF3_执行JS', runtimeName: 'CEF3_执行JS', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide', example: 'CEF3_执行JS(浏览器1, "document.title")' },
+      { command: 'CEF3_后退', runtimeName: 'CEF3_后退', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_前进', runtimeName: 'CEF3_前进', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_刷新', runtimeName: 'CEF3_刷新', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'void', encoding: 'wide' },
+      { command: 'CEF3_停止', runtimeName: 'CEF3_停止', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'void', encoding: 'wide' },
+      { command: 'CEF3_取标题', runtimeName: 'CEF3_取标题', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3_取地址', runtimeName: 'CEF3_取地址', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3_设置缓存目录', runtimeName: 'CEF3_设置缓存目录', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '目录', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_设置代理', runtimeName: 'CEF3_设置代理', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_创建', runtimeName: 'CEF3_创建', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_关闭', runtimeName: 'CEF3_关闭', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'void', encoding: 'wide' },
+      { command: 'CEF3_取最近事件', runtimeName: 'CEF3_取最近事件', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3_取事件数据', runtimeName: 'CEF3_取事件数据', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3_取事件字段', runtimeName: 'CEF3_取事件字段', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '字段名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'CEF3_设置事件结果', runtimeName: 'CEF3_设置事件结果', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '结果', type: 'int' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_设置事件返回文本', runtimeName: 'CEF3_设置事件返回文本', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_绑定事件', runtimeName: 'CEF3_绑定事件', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '事件名', type: 'wideString', description: '事件名' }, { name: '处理器', type: 'handler', description: '必须使用 &处理器名' }], returnType: 'int', encoding: 'wide', example: 'CEF3_绑定事件(浏览器1, "加载完成", &浏览器1_加载完成)' },
+      { command: 'CEF3_是否可后退', runtimeName: 'CEF3_是否可后退', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否可前进', runtimeName: 'CEF3_是否可前进', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'CEF3_是否加载中', runtimeName: 'CEF3_是否加载中', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' }
     ] }
   },
   ...CEF3_SUBMODULES,
@@ -535,7 +610,7 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     schemaVersion: 2,
     id: 'lingbuilder.fbro.browser',
     name: 'FBro指纹浏览器模块',
-    version: '2.0.0',
+    version: '2.1.0',
     category: '界面',
     description: '通过隔离的 C ABI 桥接层使用 FBro/FBrowser CEF 135 x64，提供设计器浏览器控件、基础浏览器控制和结构化指纹配置。',
     author: 'LingBuilder',
@@ -546,51 +621,51 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
     contributes: {
       designerControls: createControlContributions('lingbuilder.fbro.browser'),
       commands: [
-        { name: 'FBro_创建', aliases: ['LB_FBro_Create', 'LB_FBro_CreateEx'], signature: 'FBro_创建(控件名)', description: '使用设计器属性创建指定 FBro 浏览器；空控件名创建当前窗口全部 FBro 控件。', insertText: 'FBro_创建("$1")', returnType: '整数型' },
-        { name: 'FBro_打开谷歌原生UI浏览器', aliases: ['LB_FBro_CreateChromeUi'], signature: 'FBro_打开谷歌原生UI浏览器(控件名, 地址)', description: '基于指定内嵌 FBro 实例的会话创建 Chrome Runtime 独立顶层浏览器；不接收或复用 LingBuilder 窗口句柄。', insertText: 'FBro_打开谷歌原生UI浏览器("$1", "https://www.baidu.com")', returnType: '整数型' },
-        { name: 'FBro_关闭', aliases: ['LB_FBro_Close'], signature: 'FBro_关闭(控件名)', description: '关闭指定 FBro 浏览器并释放实例。', insertText: 'FBro_关闭("$1")', returnType: '空' },
-        { name: 'FBro_导航', aliases: ['LB_FBro_Navigate'], signature: 'FBro_导航(控件名, 地址)', description: '让指定 FBro 浏览器导航到目标地址。', insertText: 'FBro_导航("$1", "https://www.baidu.com")', returnType: '整数型' },
-        { name: 'FBro_刷新', aliases: ['LB_FBro_Reload'], signature: 'FBro_刷新(控件名)', description: '刷新指定 FBro 浏览器。', insertText: 'FBro_刷新("$1")', returnType: '空' },
-        { name: 'FBro_后退', aliases: ['LB_FBro_GoBack'], signature: 'FBro_后退(控件名)', description: '浏览器可以后退时返回上一页。', insertText: 'FBro_后退("$1")', returnType: '整数型' },
-        { name: 'FBro_前进', aliases: ['LB_FBro_GoForward'], signature: 'FBro_前进(控件名)', description: '浏览器可以前进时进入下一页。', insertText: 'FBro_前进("$1")', returnType: '整数型' },
-        { name: 'FBro_停止', aliases: ['LB_FBro_Stop'], signature: 'FBro_停止(控件名)', description: '停止指定浏览器当前导航。', insertText: 'FBro_停止("$1")', returnType: '空' },
-        { name: 'FBro_是否可后退', aliases: ['LB_FBro_CanGoBack'], signature: 'FBro_是否可后退(控件名)', description: '返回指定浏览器当前是否存在可后退的历史记录。', insertText: 'FBro_是否可后退("$1")', returnType: '整数型' },
-        { name: 'FBro_是否可前进', aliases: ['LB_FBro_CanGoForward'], signature: 'FBro_是否可前进(控件名)', description: '返回指定浏览器当前是否存在可前进的历史记录。', insertText: 'FBro_是否可前进("$1")', returnType: '整数型' },
-        { name: 'FBro_是否加载中', aliases: ['LB_FBro_IsLoading'], signature: 'FBro_是否加载中(控件名)', description: '返回指定浏览器是否正在加载页面。', insertText: 'FBro_是否加载中("$1")', returnType: '整数型' },
-        { name: 'FBro_取缩放级别', aliases: ['LB_FBro_GetZoomLevel'], signature: 'FBro_取缩放级别(控件名)', description: '读取浏览器宿主当前缩放级别。', insertText: 'FBro_取缩放级别("$1")', returnType: '小数型' },
-        { name: 'FBro_设置缩放级别', aliases: ['LB_FBro_SetZoomLevel'], signature: 'FBro_设置缩放级别(控件名, 级别)', description: '设置浏览器宿主缩放级别。', insertText: 'FBro_设置缩放级别("$1", 0)', returnType: '整数型' },
-        { name: 'FBro_是否静音', aliases: ['LB_FBro_IsAudioMuted'], signature: 'FBro_是否静音(控件名)', description: '返回指定浏览器是否已静音。', insertText: 'FBro_是否静音("$1")', returnType: '整数型' },
-        { name: 'FBro_设置静音', aliases: ['LB_FBro_SetAudioMuted'], signature: 'FBro_设置静音(控件名, 是否静音)', description: '设置指定浏览器的音频静音状态。', insertText: 'FBro_设置静音("$1", 真)', returnType: '整数型' },
-        { name: 'FBro_设置焦点', aliases: ['LB_FBro_SendFocusEvent'], signature: 'FBro_设置焦点(控件名, 是否聚焦)', description: '向浏览器宿主发送焦点状态。', insertText: 'FBro_设置焦点("$1", 真)', returnType: '整数型' },
-        { name: 'FBro_查找', aliases: ['LB_FBro_Find'], signature: 'FBro_查找(控件名, 文本, 向前, 区分大小写, 查找下一个)', description: '在当前页面中查找文本。', insertText: 'FBro_查找("$1", "$2", 真, 假, 假)', returnType: '整数型' },
-        { name: 'FBro_停止查找', aliases: ['LB_FBro_StopFinding'], signature: 'FBro_停止查找(控件名, 清除选择)', description: '停止页面查找并可选清除当前选择。', insertText: 'FBro_停止查找("$1", 真)', returnType: '整数型' },
-        { name: 'FBro_是否打开开发者工具', aliases: ['LB_FBro_HasDevTools'], signature: 'FBro_是否打开开发者工具(控件名)', description: '返回指定浏览器是否已有 DevTools 实例。', insertText: 'FBro_是否打开开发者工具("$1")', returnType: '整数型' },
-        { name: 'FBro_关闭开发者工具', aliases: ['LB_FBro_CloseDevTools'], signature: 'FBro_关闭开发者工具(控件名)', description: '关闭指定浏览器的 DevTools。', insertText: 'FBro_关闭开发者工具("$1")', returnType: '整数型' },
-        { name: 'FBro_强制刷新', aliases: ['LB_FBro_ReloadIgnoreCache'], signature: 'FBro_强制刷新(控件名)', description: '忽略缓存重新加载当前页面。', insertText: 'FBro_强制刷新("$1")', returnType: '整数型' },
-        { name: 'FBro_取浏览器标识', aliases: ['LB_FBro_GetIdentifier'], signature: 'FBro_取浏览器标识(控件名)', description: '返回 FBro/CEF 分配的浏览器标识。', insertText: 'FBro_取浏览器标识("$1")', returnType: '整数型' },
-        { name: 'FBro_是否同一实例', aliases: ['LB_FBro_IsSame'], signature: 'FBro_是否同一实例(控件名, 另一控件名)', description: '判断两个受管控件是否引用同一个底层浏览器。', insertText: 'FBro_是否同一实例("$1", "$2")', returnType: '整数型' },
-        { name: 'FBro_是否弹出窗口', aliases: ['LB_FBro_IsPopup'], signature: 'FBro_是否弹出窗口(控件名)', description: '返回底层浏览器是否为 popup。', insertText: 'FBro_是否弹出窗口("$1")', returnType: '整数型' },
-        { name: 'FBro_是否有文档', aliases: ['LB_FBro_HasDocument'], signature: 'FBro_是否有文档(控件名)', description: '返回浏览器是否已加载文档。', insertText: 'FBro_是否有文档("$1")', returnType: '整数型' },
-        { name: 'FBro_尝试关闭', aliases: ['LB_FBro_TryCloseBrowser'], signature: 'FBro_尝试关闭(控件名)', description: '请求浏览器按官方关闭协议完成关闭。', insertText: 'FBro_尝试关闭("$1")', returnType: '整数型' },
-        { name: 'FBro_设置宿主焦点', aliases: ['LB_FBro_SetFocus'], signature: 'FBro_设置宿主焦点(控件名, 是否聚焦)', description: '设置浏览器宿主的焦点状态。', insertText: 'FBro_设置宿主焦点("$1", 真)', returnType: '整数型' },
-        { name: 'FBro_是否有视图', aliases: ['LB_FBro_HasView'], signature: 'FBro_是否有视图(控件名)', description: '返回浏览器宿主是否具有可用视图。', insertText: 'FBro_是否有视图("$1")', returnType: '整数型' },
-        { name: 'FBro_设置自动调整大小', aliases: ['LB_FBro_SetAutoResizeEnabled'], signature: 'FBro_设置自动调整大小(控件名, 启用, 最小高度, 最小宽度, 最大高度, 最大宽度)', description: '设置官方宿主自动调整大小范围；范围必须非负且最大值不小于最小值。', insertText: 'FBro_设置自动调整大小("$1", 真, 100, 100, 1080, 1920)', returnType: '整数型' },
-        { name: 'FBro_执行JS', aliases: ['LB_FBro_ExecuteJs'], signature: 'FBro_执行JS(控件名, 脚本)', description: '通过桥接层执行 JavaScript，返回 UTF-16 结果或中文错误。', insertText: 'FBro_执行JS("$1", "document.title")', returnType: '文本型' },
-        { name: 'FBro_取标题', aliases: ['LB_FBro_GetTitle'], signature: 'FBro_取标题(控件名)', description: '返回最近一次标题事件记录的网页标题。', insertText: 'FBro_取标题("$1")', returnType: '文本型' },
-        { name: 'FBro_取地址', aliases: ['LB_FBro_GetUrl'], signature: 'FBro_取地址(控件名)', description: '返回指定浏览器当前地址。', insertText: 'FBro_取地址("$1")', returnType: '文本型' },
-        { name: 'FBro_设置代理', aliases: ['LB_FBro_SetProxy'], signature: 'FBro_设置代理(控件名, 代理地址)', description: '设置创建前使用的代理地址；空文本表示直连。', insertText: 'FBro_设置代理("$1", "$2")', returnType: '整数型' },
-        { name: 'FBro_设置缓存目录', aliases: ['LB_FBro_SetProfileDirectory'], signature: 'FBro_设置缓存目录(控件名, 目录)', description: '设置创建前使用的独立缓存目录。', insertText: 'FBro_设置缓存目录("$1", "$2")', returnType: '整数型' },
-        { name: 'FBro_设置UserAgent', aliases: ['LB_FBro_SetUserAgent'], signature: 'FBro_设置UserAgent(控件名, UserAgent)', description: '设置创建前使用的 User-Agent。', insertText: 'FBro_设置UserAgent("$1", "$2")', returnType: '整数型' },
-        { name: 'FBro_取Cookie', aliases: ['LB_FBro_GetCookies'], signature: 'FBro_取Cookie(控件名, 地址)', description: '异步读取指定地址 Cookie；首版返回桥接层最近快照。', insertText: 'FBro_取Cookie("$1", "$2")', returnType: '文本型' },
-        { name: 'FBro_清空Cookie', aliases: ['LB_FBro_ClearCookies'], signature: 'FBro_清空Cookie(控件名, 地址)', description: '删除指定地址的 Cookie。', insertText: 'FBro_清空Cookie("$1", "$2")', returnType: '整数型' },
-        { name: 'FBro指纹_应用配置', aliases: ['LB_FBro_ApplyFingerprintJson'], signature: 'FBro指纹_应用配置(控件名, JSON)', description: '应用结构化指纹 JSON；未配置 VIP 授权时返回 0 并记录中文错误。', insertText: 'FBro指纹_应用配置("$1", "$2")', returnType: '整数型' },
-        { name: 'FBro指纹_取调用次数', aliases: ['LB_FBro_GetFingerprintCallCount'], signature: 'FBro指纹_取调用次数(控件名)', description: '返回 FBro VIP 指纹调用次数。', insertText: 'FBro指纹_取调用次数("$1")', returnType: '文本型' },
-        { name: 'FBro指纹_清空调用次数', aliases: ['LB_FBro_ClearFingerprintCallCount'], signature: 'FBro指纹_清空调用次数(控件名)', description: '清空指定浏览器的指纹调用次数。', insertText: 'FBro指纹_清空调用次数("$1")', returnType: '整数型' },
-        { name: 'FBro_取最近事件', aliases: ['LB_FBro_GetLastEvent'], signature: 'FBro_取最近事件(控件名)', description: '返回最近 FBro 浏览器事件名。', insertText: 'FBro_取最近事件("$1")', returnType: '文本型' },
-        { name: 'FBro_取最近错误', aliases: ['LB_FBro_GetLastError'], signature: 'FBro_取最近错误(控件名)', description: '返回桥接层最近中文错误。', insertText: 'FBro_取最近错误("$1")', returnType: '文本型' }
+        { name: 'FBro_创建', aliases: ['LB_FBro_Create', 'LB_FBro_CreateEx'], signature: 'FBro_创建(控件名)', description: '使用设计器属性创建指定 FBro 浏览器；空控件名创建当前窗口全部 FBro 控件。', insertText: 'FBro_创建($1)', returnType: '整数型' },
+        { name: 'FBro_打开谷歌原生UI浏览器', aliases: ['LB_FBro_CreateChromeUi'], signature: 'FBro_打开谷歌原生UI浏览器(控件名, 地址)', description: '基于指定内嵌 FBro 实例的会话创建 Chrome Runtime 独立顶层浏览器；不接收或复用 LingBuilder 窗口句柄。', insertText: 'FBro_打开谷歌原生UI浏览器($1, "https://www.baidu.com")', returnType: '整数型' },
+        { name: 'FBro_关闭', aliases: ['LB_FBro_Close'], signature: 'FBro_关闭(控件名)', description: '关闭指定 FBro 浏览器并释放实例。', insertText: 'FBro_关闭($1)', returnType: '空' },
+        { name: 'FBro_导航', aliases: ['LB_FBro_Navigate'], signature: 'FBro_导航(控件名, 地址)', description: '让指定 FBro 浏览器导航到目标地址。', insertText: 'FBro_导航($1, "https://www.baidu.com")', returnType: '整数型' },
+        { name: 'FBro_刷新', aliases: ['LB_FBro_Reload'], signature: 'FBro_刷新(控件名)', description: '刷新指定 FBro 浏览器。', insertText: 'FBro_刷新($1)', returnType: '空' },
+        { name: 'FBro_后退', aliases: ['LB_FBro_GoBack'], signature: 'FBro_后退(控件名)', description: '浏览器可以后退时返回上一页。', insertText: 'FBro_后退($1)', returnType: '整数型' },
+        { name: 'FBro_前进', aliases: ['LB_FBro_GoForward'], signature: 'FBro_前进(控件名)', description: '浏览器可以前进时进入下一页。', insertText: 'FBro_前进($1)', returnType: '整数型' },
+        { name: 'FBro_停止', aliases: ['LB_FBro_Stop'], signature: 'FBro_停止(控件名)', description: '停止指定浏览器当前导航。', insertText: 'FBro_停止($1)', returnType: '空' },
+        { name: 'FBro_是否可后退', aliases: ['LB_FBro_CanGoBack'], signature: 'FBro_是否可后退(控件名)', description: '返回指定浏览器当前是否存在可后退的历史记录。', insertText: 'FBro_是否可后退($1)', returnType: '整数型' },
+        { name: 'FBro_是否可前进', aliases: ['LB_FBro_CanGoForward'], signature: 'FBro_是否可前进(控件名)', description: '返回指定浏览器当前是否存在可前进的历史记录。', insertText: 'FBro_是否可前进($1)', returnType: '整数型' },
+        { name: 'FBro_是否加载中', aliases: ['LB_FBro_IsLoading'], signature: 'FBro_是否加载中(控件名)', description: '返回指定浏览器是否正在加载页面。', insertText: 'FBro_是否加载中($1)', returnType: '整数型' },
+        { name: 'FBro_取缩放级别', aliases: ['LB_FBro_GetZoomLevel'], signature: 'FBro_取缩放级别(控件名)', description: '读取浏览器宿主当前缩放级别。', insertText: 'FBro_取缩放级别($1)', returnType: '小数型' },
+        { name: 'FBro_设置缩放级别', aliases: ['LB_FBro_SetZoomLevel'], signature: 'FBro_设置缩放级别(控件名, 级别)', description: '设置浏览器宿主缩放级别。', insertText: 'FBro_设置缩放级别($1, 0)', returnType: '整数型' },
+        { name: 'FBro_是否静音', aliases: ['LB_FBro_IsAudioMuted'], signature: 'FBro_是否静音(控件名)', description: '返回指定浏览器是否已静音。', insertText: 'FBro_是否静音($1)', returnType: '整数型' },
+        { name: 'FBro_设置静音', aliases: ['LB_FBro_SetAudioMuted'], signature: 'FBro_设置静音(控件名, 是否静音)', description: '设置指定浏览器的音频静音状态。', insertText: 'FBro_设置静音($1, 真)', returnType: '整数型' },
+        { name: 'FBro_设置焦点', aliases: ['LB_FBro_SendFocusEvent'], signature: 'FBro_设置焦点(控件名, 是否聚焦)', description: '向浏览器宿主发送焦点状态。', insertText: 'FBro_设置焦点($1, 真)', returnType: '整数型' },
+        { name: 'FBro_查找', aliases: ['LB_FBro_Find'], signature: 'FBro_查找(控件名, 文本, 向前, 区分大小写, 查找下一个)', description: '在当前页面中查找文本。', insertText: 'FBro_查找($1, "$2", 真, 假, 假)', returnType: '整数型' },
+        { name: 'FBro_停止查找', aliases: ['LB_FBro_StopFinding'], signature: 'FBro_停止查找(控件名, 清除选择)', description: '停止页面查找并可选清除当前选择。', insertText: 'FBro_停止查找($1, 真)', returnType: '整数型' },
+        { name: 'FBro_是否打开开发者工具', aliases: ['LB_FBro_HasDevTools'], signature: 'FBro_是否打开开发者工具(控件名)', description: '返回指定浏览器是否已有 DevTools 实例。', insertText: 'FBro_是否打开开发者工具($1)', returnType: '整数型' },
+        { name: 'FBro_关闭开发者工具', aliases: ['LB_FBro_CloseDevTools'], signature: 'FBro_关闭开发者工具(控件名)', description: '关闭指定浏览器的 DevTools。', insertText: 'FBro_关闭开发者工具($1)', returnType: '整数型' },
+        { name: 'FBro_强制刷新', aliases: ['LB_FBro_ReloadIgnoreCache'], signature: 'FBro_强制刷新(控件名)', description: '忽略缓存重新加载当前页面。', insertText: 'FBro_强制刷新($1)', returnType: '整数型' },
+        { name: 'FBro_取浏览器标识', aliases: ['LB_FBro_GetIdentifier'], signature: 'FBro_取浏览器标识(控件名)', description: '返回 FBro/CEF 分配的浏览器标识。', insertText: 'FBro_取浏览器标识($1)', returnType: '整数型' },
+        { name: 'FBro_是否同一实例', aliases: ['LB_FBro_IsSame'], signature: 'FBro_是否同一实例(控件名, 另一控件名)', description: '判断两个受管控件是否引用同一个底层浏览器。', insertText: 'FBro_是否同一实例($1, $2)', returnType: '整数型' },
+        { name: 'FBro_是否弹出窗口', aliases: ['LB_FBro_IsPopup'], signature: 'FBro_是否弹出窗口(控件名)', description: '返回底层浏览器是否为 popup。', insertText: 'FBro_是否弹出窗口($1)', returnType: '整数型' },
+        { name: 'FBro_是否有文档', aliases: ['LB_FBro_HasDocument'], signature: 'FBro_是否有文档(控件名)', description: '返回浏览器是否已加载文档。', insertText: 'FBro_是否有文档($1)', returnType: '整数型' },
+        { name: 'FBro_尝试关闭', aliases: ['LB_FBro_TryCloseBrowser'], signature: 'FBro_尝试关闭(控件名)', description: '请求浏览器按官方关闭协议完成关闭。', insertText: 'FBro_尝试关闭($1)', returnType: '整数型' },
+        { name: 'FBro_设置宿主焦点', aliases: ['LB_FBro_SetFocus'], signature: 'FBro_设置宿主焦点(控件名, 是否聚焦)', description: '设置浏览器宿主的焦点状态。', insertText: 'FBro_设置宿主焦点($1, 真)', returnType: '整数型' },
+        { name: 'FBro_是否有视图', aliases: ['LB_FBro_HasView'], signature: 'FBro_是否有视图(控件名)', description: '返回浏览器宿主是否具有可用视图。', insertText: 'FBro_是否有视图($1)', returnType: '整数型' },
+        { name: 'FBro_设置自动调整大小', aliases: ['LB_FBro_SetAutoResizeEnabled'], signature: 'FBro_设置自动调整大小(控件名, 启用, 最小高度, 最小宽度, 最大高度, 最大宽度)', description: '设置官方宿主自动调整大小范围；范围必须非负且最大值不小于最小值。', insertText: 'FBro_设置自动调整大小($1, 真, 100, 100, 1080, 1920)', returnType: '整数型' },
+        { name: 'FBro_执行JS', aliases: ['LB_FBro_ExecuteJs'], signature: 'FBro_执行JS(控件名, 脚本)', description: '通过桥接层执行 JavaScript，返回 UTF-16 结果或中文错误。', insertText: 'FBro_执行JS($1, "document.title")', returnType: '文本型' },
+        { name: 'FBro_取标题', aliases: ['LB_FBro_GetTitle'], signature: 'FBro_取标题(控件名)', description: '返回最近一次标题事件记录的网页标题。', insertText: 'FBro_取标题($1)', returnType: '文本型' },
+        { name: 'FBro_取地址', aliases: ['LB_FBro_GetUrl'], signature: 'FBro_取地址(控件名)', description: '返回指定浏览器当前地址。', insertText: 'FBro_取地址($1)', returnType: '文本型' },
+        { name: 'FBro_设置代理', aliases: ['LB_FBro_SetProxy'], signature: 'FBro_设置代理(控件名, 代理地址)', description: '设置创建前使用的代理地址；空文本表示直连。', insertText: 'FBro_设置代理($1, "$2")', returnType: '整数型' },
+        { name: 'FBro_设置缓存目录', aliases: ['LB_FBro_SetProfileDirectory'], signature: 'FBro_设置缓存目录(控件名, 目录)', description: '设置创建前使用的独立缓存目录。', insertText: 'FBro_设置缓存目录($1, "$2")', returnType: '整数型' },
+        { name: 'FBro_设置UserAgent', aliases: ['LB_FBro_SetUserAgent'], signature: 'FBro_设置UserAgent(控件名, UserAgent)', description: '设置创建前使用的 User-Agent。', insertText: 'FBro_设置UserAgent($1, "$2")', returnType: '整数型' },
+        { name: 'FBro_取Cookie', aliases: ['LB_FBro_GetCookies'], signature: 'FBro_取Cookie(控件名, 地址)', description: '异步读取指定地址 Cookie；首版返回桥接层最近快照。', insertText: 'FBro_取Cookie($1, "$2")', returnType: '文本型' },
+        { name: 'FBro_清空Cookie', aliases: ['LB_FBro_ClearCookies'], signature: 'FBro_清空Cookie(控件名, 地址)', description: '删除指定地址的 Cookie。', insertText: 'FBro_清空Cookie($1, "$2")', returnType: '整数型' },
+        { name: 'FBro指纹_应用配置', aliases: ['LB_FBro_ApplyFingerprintJson'], signature: 'FBro指纹_应用配置(控件名, JSON)', description: '应用结构化指纹 JSON；未配置 VIP 授权时返回 0 并记录中文错误。', insertText: 'FBro指纹_应用配置($1, "$2")', returnType: '整数型' },
+        { name: 'FBro指纹_取调用次数', aliases: ['LB_FBro_GetFingerprintCallCount'], signature: 'FBro指纹_取调用次数(控件名)', description: '返回 FBro VIP 指纹调用次数。', insertText: 'FBro指纹_取调用次数($1)', returnType: '文本型' },
+        { name: 'FBro指纹_清空调用次数', aliases: ['LB_FBro_ClearFingerprintCallCount'], signature: 'FBro指纹_清空调用次数(控件名)', description: '清空指定浏览器的指纹调用次数。', insertText: 'FBro指纹_清空调用次数($1)', returnType: '整数型' },
+        { name: 'FBro_取最近事件', aliases: ['LB_FBro_GetLastEvent'], signature: 'FBro_取最近事件(控件名)', description: '返回最近 FBro 浏览器事件名。', insertText: 'FBro_取最近事件($1)', returnType: '文本型' },
+        { name: 'FBro_取最近错误', aliases: ['LB_FBro_GetLastError'], signature: 'FBro_取最近错误(控件名)', description: '返回桥接层最近中文错误。', insertText: 'FBro_取最近错误($1)', returnType: '文本型' }
       ],
       types: [{ name: 'FBro浏览器', description: '由 LingBuilderFbroBridge 管理的不透明 FBro 浏览器句柄。', cppType: 'LB_FBRO_HANDLE' }],
-      snippets: [{ label: 'FBro 指纹浏览器基础操作', insertText: 'FBro_创建("FBro浏览器1")\nFBro_导航("FBro浏览器1", "https://www.baidu.com")\n调试输出(FBro_取地址("FBro浏览器1"))', description: '创建 FBro 控件并导航。' }]
+      snippets: [{ label: 'FBro 指纹浏览器基础操作', insertText: 'FBro_创建(FBro浏览器1)\nFBro_导航(FBro浏览器1, "https://www.baidu.com")\n调试输出(FBro_取地址(FBro浏览器1))', description: '创建 FBro 控件并导航。' }]
     },
     targets: [{
       id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc',
@@ -599,48 +674,48 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       runtimeFiles: ['bin/x64/LingBuilderFbroBridge.dll'], defines: ['LINGBUILDER_FBRO_MODULE']
     }],
     bindings: { commands: [
-      { command: 'FBro_创建', runtimeName: 'FBro_创建', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_打开谷歌原生UI浏览器', runtimeName: 'FBro_打开谷歌原生UI浏览器', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'FBro_打开谷歌原生UI浏览器("FBro浏览器1", "https://www.baidu.com")' },
-      { command: 'FBro_关闭', runtimeName: 'FBro_关闭', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
-      { command: 'FBro_导航', runtimeName: 'FBro_导航', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_刷新', runtimeName: 'FBro_刷新', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
-      { command: 'FBro_后退', runtimeName: 'FBro_后退', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_前进', runtimeName: 'FBro_前进', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_停止', runtimeName: 'FBro_停止', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'void', encoding: 'wide' },
-      { command: 'FBro_是否可后退', runtimeName: 'FBro_是否可后退', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_是否可前进', runtimeName: 'FBro_是否可前进', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_是否加载中', runtimeName: 'FBro_是否加载中', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_取缩放级别', runtimeName: 'FBro_取缩放级别', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'double', encoding: 'wide' },
-      { command: 'FBro_设置缩放级别', runtimeName: 'FBro_设置缩放级别', parameters: [{ name: '控件名', type: 'wideString' }, { name: '级别', type: 'double' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_是否静音', runtimeName: 'FBro_是否静音', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_设置静音', runtimeName: 'FBro_设置静音', parameters: [{ name: '控件名', type: 'wideString' }, { name: '是否静音', type: 'bool' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_设置焦点', runtimeName: 'FBro_设置焦点', parameters: [{ name: '控件名', type: 'wideString' }, { name: '是否聚焦', type: 'bool' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_查找', runtimeName: 'FBro_查找', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }, { name: '向前', type: 'bool' }, { name: '区分大小写', type: 'bool' }, { name: '查找下一个', type: 'bool' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_停止查找', runtimeName: 'FBro_停止查找', parameters: [{ name: '控件名', type: 'wideString' }, { name: '清除选择', type: 'bool' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_是否打开开发者工具', runtimeName: 'FBro_是否打开开发者工具', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_关闭开发者工具', runtimeName: 'FBro_关闭开发者工具', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_强制刷新', runtimeName: 'FBro_强制刷新', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_取浏览器标识', runtimeName: 'FBro_取浏览器标识', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_是否同一实例', runtimeName: 'FBro_是否同一实例', parameters: [{ name: '控件名', type: 'wideString' }, { name: '另一控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_是否弹出窗口', runtimeName: 'FBro_是否弹出窗口', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_是否有文档', runtimeName: 'FBro_是否有文档', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_尝试关闭', runtimeName: 'FBro_尝试关闭', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_设置宿主焦点', runtimeName: 'FBro_设置宿主焦点', parameters: [{ name: '控件名', type: 'wideString' }, { name: '是否聚焦', type: 'bool' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_是否有视图', runtimeName: 'FBro_是否有视图', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_设置自动调整大小', runtimeName: 'FBro_设置自动调整大小', parameters: [{ name: '控件名', type: 'wideString' }, { name: '启用', type: 'bool' }, { name: '最小高度', type: 'int' }, { name: '最小宽度', type: 'int' }, { name: '最大高度', type: 'int' }, { name: '最大宽度', type: 'int' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_执行JS', runtimeName: 'FBro_执行JS', parameters: [{ name: '控件名', type: 'wideString' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
-      { command: 'FBro_取标题', runtimeName: 'FBro_取标题', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
-      { command: 'FBro_取地址', runtimeName: 'FBro_取地址', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
-      { command: 'FBro_设置代理', runtimeName: 'FBro_设置代理', parameters: [{ name: '控件名', type: 'wideString' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_设置缓存目录', runtimeName: 'FBro_设置缓存目录', parameters: [{ name: '控件名', type: 'wideString' }, { name: '目录', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_设置UserAgent', runtimeName: 'FBro_设置UserAgent', parameters: [{ name: '控件名', type: 'wideString' }, { name: 'UserAgent', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_取Cookie', runtimeName: 'FBro_取Cookie', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
-      { command: 'FBro_清空Cookie', runtimeName: 'FBro_清空Cookie', parameters: [{ name: '控件名', type: 'wideString' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro指纹_应用配置', runtimeName: 'FBro指纹_应用配置', parameters: [{ name: '控件名', type: 'wideString' }, { name: 'JSON', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro指纹_取调用次数', runtimeName: 'FBro指纹_取调用次数', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
-      { command: 'FBro指纹_清空调用次数', runtimeName: 'FBro指纹_清空调用次数', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
-      { command: 'FBro_取最近事件', runtimeName: 'FBro_取最近事件', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
-      { command: 'FBro_取最近错误', runtimeName: 'FBro_取最近错误', parameters: [{ name: '控件名', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' }
+      { command: 'FBro_创建', runtimeName: 'FBro_创建', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_打开谷歌原生UI浏览器', runtimeName: 'FBro_打开谷歌原生UI浏览器', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide', example: 'FBro_打开谷歌原生UI浏览器(FBro浏览器1, "https://www.baidu.com")' },
+      { command: 'FBro_关闭', runtimeName: 'FBro_关闭', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'void', encoding: 'wide' },
+      { command: 'FBro_导航', runtimeName: 'FBro_导航', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_刷新', runtimeName: 'FBro_刷新', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'void', encoding: 'wide' },
+      { command: 'FBro_后退', runtimeName: 'FBro_后退', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_前进', runtimeName: 'FBro_前进', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_停止', runtimeName: 'FBro_停止', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'void', encoding: 'wide' },
+      { command: 'FBro_是否可后退', runtimeName: 'FBro_是否可后退', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否可前进', runtimeName: 'FBro_是否可前进', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否加载中', runtimeName: 'FBro_是否加载中', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_取缩放级别', runtimeName: 'FBro_取缩放级别', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'double', encoding: 'wide' },
+      { command: 'FBro_设置缩放级别', runtimeName: 'FBro_设置缩放级别', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '级别', type: 'double' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否静音', runtimeName: 'FBro_是否静音', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_设置静音', runtimeName: 'FBro_设置静音', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '是否静音', type: 'bool' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_设置焦点', runtimeName: 'FBro_设置焦点', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '是否聚焦', type: 'bool' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_查找', runtimeName: 'FBro_查找', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }, { name: '向前', type: 'bool' }, { name: '区分大小写', type: 'bool' }, { name: '查找下一个', type: 'bool' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_停止查找', runtimeName: 'FBro_停止查找', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '清除选择', type: 'bool' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否打开开发者工具', runtimeName: 'FBro_是否打开开发者工具', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_关闭开发者工具', runtimeName: 'FBro_关闭开发者工具', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_强制刷新', runtimeName: 'FBro_强制刷新', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_取浏览器标识', runtimeName: 'FBro_取浏览器标识', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否同一实例', runtimeName: 'FBro_是否同一实例', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '另一控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否弹出窗口', runtimeName: 'FBro_是否弹出窗口', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否有文档', runtimeName: 'FBro_是否有文档', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_尝试关闭', runtimeName: 'FBro_尝试关闭', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_设置宿主焦点', runtimeName: 'FBro_设置宿主焦点', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '是否聚焦', type: 'bool' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_是否有视图', runtimeName: 'FBro_是否有视图', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_设置自动调整大小', runtimeName: 'FBro_设置自动调整大小', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '启用', type: 'bool' }, { name: '最小高度', type: 'int' }, { name: '最小宽度', type: 'int' }, { name: '最大高度', type: 'int' }, { name: '最大宽度', type: 'int' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_执行JS', runtimeName: 'FBro_执行JS', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '脚本', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_取标题', runtimeName: 'FBro_取标题', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_取地址', runtimeName: 'FBro_取地址', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_设置代理', runtimeName: 'FBro_设置代理', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '代理地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_设置缓存目录', runtimeName: 'FBro_设置缓存目录', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '目录', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_设置UserAgent', runtimeName: 'FBro_设置UserAgent', parameters: [{ name: '控件名', type: 'controlRef' }, { name: 'UserAgent', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_取Cookie', runtimeName: 'FBro_取Cookie', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_清空Cookie', runtimeName: 'FBro_清空Cookie', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '地址', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro指纹_应用配置', runtimeName: 'FBro指纹_应用配置', parameters: [{ name: '控件名', type: 'controlRef' }, { name: 'JSON', type: 'wideString' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro指纹_取调用次数', runtimeName: 'FBro指纹_取调用次数', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro指纹_清空调用次数', runtimeName: 'FBro指纹_清空调用次数', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'int', encoding: 'wide' },
+      { command: 'FBro_取最近事件', runtimeName: 'FBro_取最近事件', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' },
+      { command: 'FBro_取最近错误', runtimeName: 'FBro_取最近错误', parameters: [{ name: '控件名', type: 'controlRef' }], returnType: 'wideString', encoding: 'wide' }
     ] }
   },
   ...FBRO_SUBMODULES,
@@ -660,10 +735,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { name: '线程_活动数量', signature: '线程_活动数量()', description: '返回当前仍在执行的后台任务数量。', insertText: '线程_活动数量()', returnType: '整数型' },
         { name: '线程_硬件并发数', signature: '线程_硬件并发数()', description: '返回 C++ 运行时建议的并行线程数量。', insertText: '线程_硬件并发数()', returnType: '整数型' },
         { name: '线程_休眠', signature: '线程_休眠(毫秒)', description: '让当前线程休眠指定毫秒；界面线程中使用会暂停界面响应。', insertText: '线程_休眠(100)', returnType: '空' },
-        { name: '线程_启动延时设置文本', signature: '线程_启动延时设置文本(控件名, 文本, 延时毫秒)', description: '启动后台线程，延时后线程安全地设置指定控件的显示文本。', insertText: '线程_启动延时设置文本("$1", "完成", 1000)', returnType: '整数型' },
-        { name: '线程_启动延时添加行', signature: '线程_启动延时添加行(控件名, Tab分隔单元格, 延时毫秒)', description: '启动后台线程，延时后线程安全地向列表视图追加一行。', insertText: '线程_启动延时添加行("$1", "内容\\t状态", 500)', returnType: '整数型' },
-        { name: '线程_启动延时添加项目', signature: '线程_启动延时添加项目(控件名, 文本, 延时毫秒)', description: '启动后台线程，延时后线程安全地向列表框追加一条日志。', insertText: '线程_启动延时添加项目("$1", "日志内容", 500)', returnType: '整数型' },
-        { name: '线程_批量启动', signature: '线程_批量启动(任务数控件, 线程数控件, 列表视图, 日志列表, 状态标签)', description: '读取输入框中的任务数和线程数，动态创建多线程并行执行任务，实时更新列表视图和日志。', insertText: '线程_批量启动("任务数输入", "线程数输入", "任务列表", "日志列表", "状态标签")', returnType: '空' }
+        { name: '线程_启动延时设置文本', signature: '线程_启动延时设置文本(控件名, 文本, 延时毫秒)', description: '启动后台线程，延时后线程安全地设置指定控件的显示文本。', insertText: '线程_启动延时设置文本($1, "完成", 1000)', returnType: '整数型' },
+        { name: '线程_启动延时添加行', signature: '线程_启动延时添加行(控件名, Tab分隔单元格, 延时毫秒)', description: '启动后台线程，延时后线程安全地向列表视图追加一行。', insertText: '线程_启动延时添加行($1, "内容\\t状态", 500)', returnType: '整数型' },
+        { name: '线程_启动延时添加项目', signature: '线程_启动延时添加项目(控件名, 文本, 延时毫秒)', description: '启动后台线程，延时后线程安全地向列表框追加一条日志。', insertText: '线程_启动延时添加项目($1, "日志内容", 500)', returnType: '整数型' },
+        { name: '线程_批量启动', signature: '线程_批量启动(任务数控件, 线程数控件, 列表视图, 日志列表, 状态标签)', description: '读取输入框中的任务数和线程数，动态创建多线程并行执行任务，实时更新列表视图和日志。', insertText: '线程_批量启动(任务数输入, 线程数输入, 任务列表, 日志列表, 状态标签)', returnType: '空' }
       ],
       types: [
         { name: '线程任务', description: '由多线程模块管理的后台任务编号。', cppType: 'int' }
@@ -683,10 +758,10 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         { command: '线程_活动数量', runtimeName: '线程_活动数量', parameters: [], returnType: 'int', example: '线程_活动数量()' },
         { command: '线程_硬件并发数', runtimeName: '线程_硬件并发数', parameters: [], returnType: 'int', example: '线程_硬件并发数()' },
         { command: '线程_休眠', runtimeName: '线程_休眠', parameters: [{ name: '毫秒', type: 'int' }], returnType: 'void', example: '线程_休眠(100)' },
-        { command: '线程_启动延时设置文本', runtimeName: '线程_启动延时设置文本', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }, { name: '延时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide', example: '线程_启动延时设置文本("状态标签", "完成", 1000)' },
-        { command: '线程_启动延时添加行', runtimeName: '线程_启动延时添加行', parameters: [{ name: '控件名', type: 'wideString' }, { name: 'Tab分隔单元格', type: 'wideString' }, { name: '延时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide', example: '线程_启动延时添加行("列表1", "任务\\t完成", 500)' },
-        { command: '线程_启动延时添加项目', runtimeName: '线程_启动延时添加项目', parameters: [{ name: '控件名', type: 'wideString' }, { name: '文本', type: 'wideString' }, { name: '延时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide', example: '线程_启动延时添加项目("日志列表", "任务完成", 500)' },
-        { command: '线程_批量启动', runtimeName: '线程_批量启动', parameters: [{ name: '任务数控件', type: 'wideString' }, { name: '线程数控件', type: 'wideString' }, { name: '列表视图', type: 'wideString' }, { name: '日志列表', type: 'wideString' }, { name: '状态标签', type: 'wideString' }], returnType: 'void', encoding: 'wide', example: '线程_批量启动("任务数输入", "线程数输入", "任务列表", "日志列表", "状态标签")' }
+        { command: '线程_启动延时设置文本', runtimeName: '线程_启动延时设置文本', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }, { name: '延时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide', example: '线程_启动延时设置文本(状态标签, "完成", 1000)' },
+        { command: '线程_启动延时添加行', runtimeName: '线程_启动延时添加行', parameters: [{ name: '控件名', type: 'controlRef' }, { name: 'Tab分隔单元格', type: 'wideString' }, { name: '延时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide', example: '线程_启动延时添加行(列表1, "任务\\t完成", 500)' },
+        { command: '线程_启动延时添加项目', runtimeName: '线程_启动延时添加项目', parameters: [{ name: '控件名', type: 'controlRef' }, { name: '文本', type: 'wideString' }, { name: '延时毫秒', type: 'int' }], returnType: 'int', encoding: 'wide', example: '线程_启动延时添加项目(日志列表, "任务完成", 500)' },
+        { command: '线程_批量启动', runtimeName: '线程_批量启动', parameters: [{ name: '任务数控件', type: 'controlRef', controlTypes: ['TextBox'] }, { name: '线程数控件', type: 'controlRef', controlTypes: ['TextBox'] }, { name: '列表视图', type: 'controlRef', controlTypes: ['ListView'] }, { name: '日志列表', type: 'controlRef', controlTypes: ['ListBox', 'ListView'] }, { name: '状态标签', type: 'controlRef', controlTypes: ['Label'] }], returnType: 'void', encoding: 'wide', example: '线程_批量启动(任务数输入, 线程数输入, 任务列表, 日志列表, 状态标签)' }
       ]
     }
   },
@@ -1035,4 +1110,4 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
       ]
     }
   }
-].map(ensureBuiltinX64Target);
+].map(normalizeBuiltinControlReferences).map(ensureBuiltinX64Target);

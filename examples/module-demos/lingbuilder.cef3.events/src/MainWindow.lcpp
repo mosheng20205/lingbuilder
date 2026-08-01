@@ -6,44 +6,44 @@
 // 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
-        控件_设置选择项("命令分组选项卡", 0)
-        控件_设置文本("演示状态", "CEF3事件模块：6 条命令，默认处于安全预览模式。")
+        控件_设置选择项(命令分组选项卡, 0)
+        控件_设置文本(演示状态, "CEF3事件模块：6 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.cef3.events")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本("演示状态", "命令 1–6：CEF3事件_取最近事件 至 CEF3事件_绑定；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 1–6：CEF3事件_取最近事件 至 CEF3事件_绑定；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：CEF3事件_取最近事件
             // [1] CEF3事件_取最近事件(控件名)
             // 功能：取得指定浏览器最近事件名。
-            // 参数：控件名:wideString；返回：wideString；可见性：default
-            CEF3事件_取最近事件("演示输出")
+            // 参数：控件名:controlRef；返回：wideString；可见性：default
+            CEF3事件_取最近事件(演示CefBrowser控件)
             // 命令ID：CEF3事件_取数据
             // [2] CEF3事件_取数据(控件名)
             // 功能：取得当前或最近事件的主要文本。
-            // 参数：控件名:wideString；返回：wideString；可见性：default
-            CEF3事件_取数据("演示输出")
+            // 参数：控件名:controlRef；返回：wideString；可见性：default
+            CEF3事件_取数据(演示CefBrowser控件)
             // 命令ID：CEF3事件_取字段
             // [3] CEF3事件_取字段(控件名, 字段名)
             // 功能：读取当前事件的结构化字段。
-            // 参数：控件名:wideString，字段名:wideString；返回：wideString；可见性：default
-            CEF3事件_取字段("演示输出", "演示参数2")
+            // 参数：控件名:controlRef，字段名:wideString；返回：wideString；可见性：default
+            CEF3事件_取字段(演示CefBrowser控件, "演示参数2")
             // 命令ID：CEF3事件_设置结果
             // [4] CEF3事件_设置结果(控件名, 动作)
             // 功能：设置当前同步事件动作。
-            // 参数：控件名:wideString，动作:int；返回：int；可见性：default
-            CEF3事件_设置结果("演示输出", 1)
+            // 参数：控件名:controlRef，动作:int；返回：int；可见性：default
+            CEF3事件_设置结果(演示CefBrowser控件, 1)
             // 命令ID：CEF3事件_设置返回文本
             // [5] CEF3事件_设置返回文本(控件名, 文本)
             // 功能：设置当前同步事件返回文本。
-            // 参数：控件名:wideString，文本:wideString；返回：int；可见性：default
-            CEF3事件_设置返回文本("演示输出", "演示参数2")
+            // 参数：控件名:controlRef，文本:wideString；返回：int；可见性：default
+            CEF3事件_设置返回文本(演示CefBrowser控件, "演示参数2")
             // 命令ID：CEF3事件_绑定
             // [6] CEF3事件_绑定(控件名, 事件名, 处理器)
             // 功能：把浏览器事件绑定到当前类的无参数处理器。
-            // 参数：控件名:wideString，事件名:wideString，处理器:handler；返回：int；可见性：default
-            CEF3事件_绑定("演示输出", "演示事件", &模块演示回调)
+            // 参数：控件名:controlRef，事件名:wideString，处理器:handler；返回：int；可见性：default
+            CEF3事件_绑定(演示CefBrowser控件, "演示事件", &模块演示回调)
         如果结束
         调试输出("已查看 命令 1–6：CEF3事件_取最近事件 至 CEF3事件_绑定；勾选允许实际执行后会使用演示参数调用。")
     结束

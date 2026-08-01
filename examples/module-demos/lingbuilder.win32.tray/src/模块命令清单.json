@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T09:57:36.295Z",
+  "generatedAt": "2026-07-31T18:20:26.044Z",
   "module": {
     "id": "lingbuilder.win32.tray",
     "name": "托盘图标模块",

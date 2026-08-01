@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T09:57:36.161Z",
+  "generatedAt": "2026-07-31T18:20:25.878Z",
   "module": {
     "id": "lingbuilder.fbro.objects",
     "name": "FBro受管对象模块",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "description": "提供任务、缓冲及 Value、Dictionary、List、Stream、Image、Certificate、DragData 的类型化不透明句柄 API。"
   },
   "commandCount": 132,
@@ -702,7 +702,7 @@
       ],
       "signature": "FBro值_设置逻辑(值句柄, 值)",
       "description": "写入逻辑值。",
-      "insertText": "FBro值_设置逻辑($1, $2)",
+      "insertText": "FBro值_设置逻辑($1, 假)",
       "returnType": "整数型",
       "visibility": "advanced",
       "binding": {
@@ -1118,7 +1118,7 @@
       ],
       "signature": "FBro字典_复制(字典句柄, 排除空子项)",
       "description": "复制 Dictionary 并返回独立受管句柄。",
-      "insertText": "FBro字典_复制($1, $2)",
+      "insertText": "FBro字典_复制($1, 假)",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -1566,7 +1566,7 @@
       ],
       "signature": "FBro字典_设置逻辑(字典句柄, 键, 值)",
       "description": "写入逻辑值。",
-      "insertText": "FBro字典_设置逻辑($1, \"$2\", $3)",
+      "insertText": "FBro字典_设置逻辑($1, \"$2\", 假)",
       "returnType": "整数型",
       "visibility": "advanced",
       "binding": {
@@ -2385,7 +2385,7 @@
       ],
       "signature": "FBro列表_设置逻辑(列表句柄, 索引, 值)",
       "description": "写入逻辑值。",
-      "insertText": "FBro列表_设置逻辑($1, $2, $3)",
+      "insertText": "FBro列表_设置逻辑($1, $2, 假)",
       "returnType": "整数型",
       "visibility": "advanced",
       "binding": {
@@ -2827,7 +2827,7 @@
       ],
       "signature": "FBro图像_异步下载(控件名, 地址, 作为图标, 最大尺寸, 绕过缓存)",
       "description": "通过当前浏览器会话异步下载图像并返回任务 ID。",
-      "insertText": "FBro图像_异步下载(\"$1\", \"$2\", $3, $4, $5)",
+      "insertText": "FBro图像_异步下载($1, \"$2\", 假, $4, 假)",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -2836,7 +2836,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "地址",
@@ -2858,7 +2866,7 @@
         "returnType": "longLong",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro图像_异步下载(\"演示输出\", \"https://example.com\", 真, 1, 真)"
+      "demoInvocation": "FBro图像_异步下载(演示FBroBrowser控件, \"https://example.com\", 真, 1, 真)"
     },
     {
       "index": 106,
@@ -3036,7 +3044,7 @@
       ],
       "signature": "FBro图像_转PNG缓冲(图像句柄, 缩放因子, 保留透明)",
       "description": "把图像编码为 PNG 受管缓冲。",
-      "insertText": "FBro图像_转PNG缓冲($1, $2, $3)",
+      "insertText": "FBro图像_转PNG缓冲($1, $2, 假)",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -3068,7 +3076,7 @@
       ],
       "signature": "FBro证书_异步取当前(控件名)",
       "description": "从当前可见导航项异步取得 TLS 证书任务。",
-      "insertText": "FBro证书_异步取当前(\"$1\")",
+      "insertText": "FBro证书_异步取当前($1)",
       "returnType": "长整数型",
       "visibility": "advanced",
       "binding": {
@@ -3077,13 +3085,21 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "FBroBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "longLong",
         "encoding": "wide"
       },
-      "demoInvocation": "FBro证书_异步取当前(\"演示输出\")"
+      "demoInvocation": "FBro证书_异步取当前(演示FBroBrowser控件)"
     },
     {
       "index": 114,

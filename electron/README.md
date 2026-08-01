@@ -2,9 +2,9 @@
 
 > 2026-07-31：CEF3 `3.0.0-alpha.2` 的覆盖 v2 当前登记 1577 项能力：265 `implemented`、8 `internal`、185 `notApplicable`、1119 `planned`。应用只包含/链接 `LingBuilderCefBridge`。objects 的 183 条命令与 session 的 19 条命令已清零各自 planned，真实覆盖 Value/Dictionary/List/Binary、Image、NavigationEntry、完整 MenuModel、X509Certificate/Principal/SSLStatus、导航历史、独立 RequestContext、Preference、Cookie、缓存和认证/连接清理。原生 x64 测试验证真实 HTTPS 证书、菜单快捷键/颜色/字体、导航历史 JSON、对象深复制与双会话隔离。Bridge 当前真实接通 27 个上游事件签名，仍有 86 个事件签名和其它网络/传输、自动化、OSR、Views、平台能力待实现，不能把 alpha 描述成 CEF 全功能完成。
 
-> 2026-07-31：FBro VIP 指纹子模块已完成官方覆盖 188/188、planned=0。`lingbuilder.fbro.vip` 将 188 项官方能力逐项公开为 179 条单项安全命令、6 条 Bridge 自动管理能力和 3 条凭据中心/安全入口替代能力，并保留 10 条“批量与通用高级入口”，模块清单共 198 条。普通 Win32 与 New_Emoji 共用同一 Bridge，并生成同一套 188 项运行时包装器；两种真实生成工程均已通过 MSVC x64 编译。模块详情搜索忽略空格、下划线和常见连接符。文件路径限制在生成程序目录，二进制只接受受管缓冲，授权信息脱敏且不回传 Key。全 FBro 最新目录为 397 implemented、678 planned、3 internal notApplicable、1 advanced notApplicable，事件仍为 9/158，因此整体仍处于 2.0 增量封装阶段。
+> 2026-08-01：FBro VIP 指纹子模块保持官方覆盖 188/188、planned=0。`lingbuilder.fbro.vip` 将 188 项官方能力逐项公开为 179 条单项安全命令、6 条 Bridge 自动管理能力和 3 条凭据中心/安全入口替代能力，并保留 10 条批量与通用高级入口。普通 Win32 与 New_Emoji 共用同一 Bridge；文件路径限制在生成程序目录，二进制只接受受管缓冲，授权信息脱敏且不回传 Key。全 FBro 普通 API 目录仍为 397 implemented、678 个非事件高级签名 planned、3 internal notApplicable、1 advanced notApplicable，因此不能把 VIP 或事件完成描述成 1079 项全功能完成。
 
-> 2026-07-31：FBro 核心与 Bridge 升级为 2.0.0。新增结构化 v2 事件包、2 秒同步事件决策、独立 Chrome UI 实例状态、受管异步任务/缓冲/对象句柄，以及 events/session/transfer/automation/objects/network/vip 七个依赖子模块；v1 C ABI 和原 21 条中文命令继续兼容，核心现共有 42 条命令。objects 为 132 条、session 为 10 条、transfer 为 5 条、automation 为 25 条；vip 为 198 条模块记录，其中 188 条对应逐项官方能力，另有 10 条批量高级入口。`npm run module:fbro-coverage:check` 对 FBro 5.38.49 / CEF 135.0.21 的 77 个头文件、1079 个导出签名和 158 个事件/回调签名做漂移、codec、分类与实现状态门禁；当前 397 项已实现、678 项待实现、3 项内部不适用和 1 项高级替代不适用，VIP 子模块 188/188、planned=0，接通事件仍为 9/158。普通 Win32 MSVC x64 冒烟已验证 Frame、PDF、Cookie、图像、证书、VIP 安全分发器与生命周期；有效 VIP 调用由 `LINGBUILDER_FBRO_VIP_KEY` 门控。Frame visitor/V8、真实 OSR、完整事件和其它模块剩余能力仍未接通，不得描述为 FBro 全功能完成。
+> 2026-08-01：FBro 模块族与 Bridge 升级为 2.1.0，主事件协议为兼容 C ABI v3，同时保留 v1/v2。v3 提供稳定事件 ID、结构化 UTF-16 JSON 响应、按事件订阅、受管对象和延续句柄、完成/取消 API；普通通知异步投递，即时决策默认 2 秒，延迟决策按安全、查询、文件类别使用 5/30/120 秒。事件目录现有 174 个“类+方法”槽位、158 个唯一签名，零 `planned/needsReview`；`module:fbro-events:complete` 会校验目录、真实 override/schema/测试以及已安装头、LIB、DLL。普通 Win32 与 New_Emoji 共用 v3 协议，原生 smoke 均通过。延续由 Bridge 受管计时线程超时；正常关闭会取消延续、隐藏最后窗口并保留 HWND/消息泵等待 Closed，5 秒后才 fallback。无交互压力测试覆盖事件风暴、完成/取消/重复完成、30 秒超时、关闭清理和 100 次生命周期。FBro 5.38.49 可视 Basic Auth UI 未经过预期 BroEvent override，属于已知 SDK 边界，不再运行会弹登录框的测试。
 
 > 2026-07-30：新增完整通用密码学模块：哈希、密码哈希/派生、对称加密和非对称密码。运行时使用固定版本 Botan 3.12.0 与官方 BLAKE3 C 1.8.5；运行 `npm run module:crypto-sdk -- --install` 可生成并安装 Win32/x64 SDK 和 `.lbmod`，文件由 SHA-256 清单校验。启用任一通用加密模块后，F5、AI Bridge 构建和 VS 导出会自动物化头文件、BLAKE3 C 源、对应架构 `botan-3.lib`/DLL，并强制 MSVC、动态 CRT 与 C++20。`npm run smoke:crypto-native` 同时编译 Win32/x64，运行标准哈希向量、密码哈希、全部对称算法和 RSA/ECC/SM2/ElGamal 闭环。
 
@@ -148,7 +148,7 @@ npm run package:win
 - 设计器项目保存为 `schemaVersion: 2`，控件专属数据位于 `properties`，旧无版本项目在读取时安全迁移。
 - 图片框“图片源”右侧按钮调用 Electron 原生文件对话框；选中的本地图片由 `src/services/windowDesigner/designerAssetService.ts` 复制到项目 `assets/`，模型只保存相对路径。受控预览 API、F5、原生导出及 AI Bridge 共用该服务；生成的 Visual Studio 工程会在构建后把图片复制到 exe 输出目录。
 - 解决方案资源管理器中右键项目并选择“添加资源…”也可导入图片；工作台命令会按所选项目自动复制到 `assets/`（默认项目）或 `assets/<projectId>/`（多项目）。项目树的“图片资源 (assets)”组会列出全部图片：单击图片可预览真实资源和尺寸，右键图片并选择“复制相对路径”即可获得可直接用于 `.lcpp` 的路径。
-- 普通 Win32 图片框可在 `.lcpp` 中调用 `图片框1.设置图片("assets/示例.png")` 动态换图，等价命令为 `控件_设置图片("图片框1", "assets/示例.png")`；也可传入 `文件对话框_取文件(...)` 返回的完整路径，传入空文本会清空图片。运行时继续使用设计器配置的填充方式。
+- 普通 Win32 图片框可在 `.lcpp` 中调用 `图片框1.设置图片("assets/示例.png")` 动态换图，等价命令为 `控件_设置图片(图片框1, "assets/示例.png")`；也可传入 `文件对话框_取文件(...)` 返回的完整路径，传入空文本会清空图片。运行时继续使用设计器配置的填充方式。
 - 图片框即使初始没有配置图片源，也会以 Win32 `SS_BITMAP` 静态控件创建；因此可以在文件已选择或文件被拖入事件中直接调用 `.设置图片(...)`，不需要先在设计器中放置一张占位图片。
 - 高级模块未启用时，工具箱显示依赖状态但不能新增高级控件；项目已有高级控件不得被删除或静默替换。
 - 内置 `lingbuilder.edgeview` 当前版本 `1.2.0`、最低生成器 `0.2.8`。窗口、分组框或选项卡内每个控件都有独立 HWND、Environment、Controller、WebView、Profile 和默认 `.edgeview/<controlId>` UDF；属性面板包含稳定运行期属性和 v2 创建期选项，并明确提示修改创建期属性后重建。`designer.edgeview.previewControl` 继续使用独立原生窗口，不向 React 画布嵌入 HWND。
@@ -261,9 +261,9 @@ binding 处理器参数可声明为 `handler`，`.lcpp` 用 `&处理器名` 引�
 
 Win32 高级模块还提供结构化集合编辑、ImageList 项目资源管理和完整系统对话框状态读取。文件筛选器采用 `名称|模式` 成对格式；`系统对话框_状态()` 返回 1/0/-1，查找替换和工具栏通过专用读取命令返回最近动作，`打印文本` 会向所选打印机提交真实文档。
 
-Win32 高级工具箱包含可视“颜色选择器”。它显示当前色块和可选 `#RRGGBB` 文本，点击后打开 LingBuilder 自绘暗色弹窗，提供 HSV 色谱、色相条、HEX/RGB、常用预设和确认/取消，不再显示旧式系统颜色窗口；弹窗采用整窗双缓冲和 HSV 色谱缓存，拖动选色不闪烁，HEX 值在输入区域垂直居中。将设计器“可见性”设为隐藏后，运行时仍保留该组件，可在按钮、菜单或其他事件中调用 `颜色选择器_打开("颜色选择器1")`。`颜色选择器_置颜色/取颜色` 使用 COLORREF 整数，选择过程可绑定颜色改变、窗口打开、确认、取消和关闭事件。
+Win32 高级工具箱包含可视“颜色选择器”。它显示当前色块和可选 `#RRGGBB` 文本，点击后打开 LingBuilder 自绘暗色弹窗，提供 HSV 色谱、色相条、HEX/RGB、常用预设和确认/取消，不再显示旧式系统颜色窗口；弹窗采用整窗双缓冲和 HSV 色谱缓存，拖动选色不闪烁，HEX 值在输入区域垂直居中。将设计器“可见性”设为隐藏后，运行时仍保留该组件，可在按钮、菜单或其他事件中调用 `颜色选择器_打开(颜色选择器1)`。`颜色选择器_置颜色/取颜色` 使用 COLORREF 整数，选择过程可绑定颜色改变、窗口打开、确认、取消和关闭事件。
 
-非可视 ToolTip 和 PropertySheet 位于设计器“项目 / 行为与属性页”资源区：ToolTip 绑定目标控件并拥有独立延迟；PropertySheet 编辑顶层页面、应用事件处理器，并由中文命令 `属性页_显示("资源ID")` 打开。
+非可视 ToolTip 和 PropertySheet 位于设计器“项目 / 行为与属性页”资源区：ToolTip 绑定目标控件并拥有独立延迟；PropertySheet 编辑顶层页面、应用事件处理器，并由中文命令 `属性页_显示(属性页资源)` 打开。
 
 窗口设计器工具箱还提供非可视“上下文菜单”和“弹出菜单”。上下文菜单绑定窗口或控件并响应原生右键消息；弹出菜单通过 `弹出菜单_显示` 或 `弹出菜单_在坐标显示` 主动打开。Win32 基础模块全局提供初级命令 `取鼠标水平位置()` 和 `取鼠标垂直位置()`，可直接作为弹出菜单的屏幕像素坐标参数。两类菜单共用结构化菜单项模型，F5 和原生导出使用真实 Win32 `HMENU`，菜单项事件按稳定 ID 绑定；`菜单_取最后项目` 可读取最近选择项。
 
@@ -360,6 +360,25 @@ AI 面板现在提供“系统 AI”和“自定义 API”两个独立模式。�
 
 工作区扩展放在 `.lingbuilder/extensions/<目录>/`，入口清单为 `package.json`，与 C++ `.lbmod` 模块分离。支持 `onCommand`、`onLanguage`、`workspaceContains`、`*` 激活和 commands、menus、views、languages、themes 贡献。扩展在独立受限进程运行；工作区读写必须声明 `workspace.read/workspace.write`，默认不能加载 Node 模块或直接访问文件系统。解决方案侧栏扩展面板可刷新、启用/禁用并执行贡献命令。
 
+# 局部常量
+
+事件、方法、构造和功能库函数可以在子程序顶层声明运行时局部常量：
+
+```lcpp
+局部常量 整数型 最大次数 = 取最大次数()
+局部常量 文本型 标题 = "ready"
+```
+
+局部常量初始化一次后只读，C++ 统一生成 `T const`，不使用 `constexpr`。初始值必填，禁止显式数组；首版不能声明在如果、循环、选择、尝试等控制块内。初始化表达式可以使用参数、成员、项目符号、前置局部声明、子程序和已启用模块命令，禁止自身引用、未知名称和后置局部名称。对常量本身、字段或索引重新赋值会产生阻断诊断；句柄常量只冻结句柄绑定，不深度冻结外部对象。
+
+新手结构编辑器把变量和常量统一显示在“局部声明”表中，并提供“类别”列。右键菜单和命令面板的“新建局部常量”执行 `lingcpp.beginner.addLocalConstant`；`Ctrl+L` 继续只插入普通局部变量。变量转常量前必须已有初始值且不是数组。普通 Win32、new_emoji、F5、原生预览、Visual Studio 导出和 AI Bridge 共用同一生成与 source map 链路。独立原生验收命令：
+
+```bash
+npm run smoke:local-constant-native
+```
+
+程序集常量仍未支持。
+
 # 项目全局变量
 
 Visual C++ 项目在源码根目录使用固定的 `项目全局变量.lcpp`。解决方案资源管理器中的“项目全局变量”入口会在新手模式打开表格，在专业模式打开同一文件的 Monaco 文本；旧项目缺少文件时，首次打开只创建待保存的内存模型。
@@ -438,3 +457,40 @@ npm run smoke:datagrid-demo
 ```
 
 可直接分享的新手完整包位于根目录 `exports/LingBuilder-DataGrid-All-APIs.lcpppkg`。导出和项目构建会识别源码根目录中误创建的嵌套 LingBuilder 工作区，不会再把其中的第二份 `MainWindow.lcpp` 打入包或参与 F5 构建。
+
+# OpenCV 4.14.0 x64 模块
+
+内置用户模块 `lingbuilder.opencv@1.0.0` 提供 33 条中文命令，覆盖图像加载保存、克隆与信息读取、灰度/缩放/裁剪/模糊/二值/边缘/形态学、模板匹配、轮廓和单/双缺口候选分析。`cv::Mat` 不进入 LingCpp；生成代码通过 `opencvRuntime.ts` 调用 `LingBuilderOpenCvBridge` 的 `LB_OCV_*` C ABI，并使用受管 64 位句柄。
+
+只读资产模块 `lingbuilder.opencv.sdk@4.14.0+bridge.1` 默认隐藏。生成并安装：
+
+```bash
+npm run module:opencv-sdk -- --install
+```
+
+脚本固定校验 OpenCV 4.14.0 源码 SHA-256，只构建 `core`、`imgproc`、`imgcodecs` 的 Release x64 `/MD` 资产，并输出 Bridge 头/LIB/DLL、三个 OpenCV DLL、Apache-2.0 许可证和逐文件运行时清单。SDK、源码和中间产物位于根目录 `.lingbuilder/`、`.lingbuilder-build/`，不会提交 Git。
+
+启用模块后只允许 `windows-msvc-x64`，Visual Studio 导出只生成 Debug/Release x64。F5、AI Bridge `build.run/native.export`、原生导出与源码包恢复都复用 `nativeDependencyService` 的版本/ABI/架构/CRT/SHA-256 校验。原生验收：
+
+```bash
+npm run smoke:opencv-native
+```
+
+中文说明、命令表和完整 `.lcpp` 示例位于 `docs/modules/opencv/`。缺口分析只处理用户自有或已授权图像，不包含浏览器控制、自动拖动或验证提交。
+
+# LingCpp 控件引用语义
+
+模块 binding 中的设计器对象参数统一使用 `controlRef`。`.lcpp` 必须写裸名称，例如 `控件_设置文本(操作结果, "完成")`；生成器解析稳定项目/窗口/控件 ID 后，再按后端契约转换为 `L"操作结果"`、稳定 ID 或原生句柄。
+
+新手编辑器与 Monaco 共用 `controlReferenceService`，提供兼容对象补全、缺失/歧义/类型/种类/作用域/引号诊断、安全移除引号、悬停、引用和重命名。控件引用使用独立语义令牌颜色；Ctrl+单击、右键和命令面板的“跳转到控件”共用 CommandService/MenuService/设计器导航服务，设计器未挂载时请求不会丢失。
+
+维护和迁移：
+
+```bash
+npm run module:control-ref-audit
+npm run module:control-ref-migration-check
+npm run module:control-ref-migrate
+npm run module:control-ref-source-audit
+```
+
+审计会遍历全部模块方法/参数、已安装第三方清单和模块 TypeScript 源字面量；迁移检查为只读门禁，写入迁移只改写已解析且兼容的引用，同时覆盖 `.lcpp`、便携工作区、嵌套源码包及 smoke `build-request.json` 中的嵌入源码。

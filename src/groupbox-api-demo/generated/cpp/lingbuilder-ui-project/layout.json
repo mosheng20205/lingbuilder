@@ -491,6 +491,30 @@
           }
         },
         {
+          "id": "container-result",
+          "type": "Label",
+          "parentId": "gb-container",
+          "name": "容器结果",
+          "content": "容器事件状态：等待操作",
+          "width": 430,
+          "height": 54,
+          "x": 84,
+          "y": 430,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "background": "#134E4A",
+          "foreground": "#CCFBF1",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left",
+            "imageSource": "",
+            "toolTip": "显示分组框内子控件事件结果",
+            "toolTipDelay": 500
+          }
+        },
+        {
           "id": "gb-nested",
           "type": "GroupBox",
           "parentId": "tabs",

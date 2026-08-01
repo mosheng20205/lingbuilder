@@ -136,7 +136,7 @@ export interface ModuleDesignerControlContribution {
   properties?: Array<{
     key: string;
     label: string;
-    type: 'text' | 'number' | 'boolean' | 'enum' | 'color' | 'file' | 'stringList' | 'columns' | 'dataGridColumns' | 'dataGridRows' | 'treeNodes' | 'tabs' | 'date' | 'controlRef';
+    type: 'text' | 'hotkey' | 'hotKey' | 'number' | 'boolean' | 'enum' | 'color' | 'file' | 'stringList' | 'columns' | 'dataGridColumns' | 'dataGridRows' | 'treeNodes' | 'tabs' | 'date' | 'controlRef';
     defaultValue: unknown;
     options?: Array<{ value: string; label: string }>;
     min?: number;
@@ -203,14 +203,27 @@ export type ModuleBindingValueType =
   | 'bool'
   | 'wideString'
   | 'utf8String'
+  | 'controlRef'
   | 'handler'
   | 'handle'
   | 'raw';
+
+export type ModuleControlReferenceScope = 'currentWindow' | 'project';
+export type ModuleControlReferenceKind = 'visual' | 'nonVisual' | 'resource';
+export type ModuleControlRuntimeRepresentation = 'wideName' | 'stableId' | 'nativeHandle';
 
 export interface ModuleCommandBindingParameter {
   name: string;
   type: ModuleBindingValueType;
   description?: string;
+  /** controlRef 可接受的设计器控件类型；省略表示接受任意兼容控件。 */
+  controlTypes?: string[];
+  /** controlRef 可接受的设计器对象种类；默认仅 visual。 */
+  controlKinds?: ModuleControlReferenceKind[];
+  /** controlRef 的源码解析范围；默认 currentWindow。 */
+  scope?: ModuleControlReferenceScope;
+  /** controlRef 传给原生运行时的表示；当前默认 wideName。 */
+  runtimeRepresentation?: ModuleControlRuntimeRepresentation;
 }
 
 export interface ModuleCommandBinding {

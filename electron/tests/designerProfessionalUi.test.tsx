@@ -138,7 +138,8 @@ test('beginner editor navigation and variable form remain safe without a duplica
   assert.match(source, /const handleBeginnerCodeBlur[\s\S]*?closeBeginnerCompletion\(target\);/u);
   assert.match(source, /const BEGINNER_CODE_OVERLAY_TOKEN_STYLE: React\.CSSProperties/u);
   assert.match(source, /fontWeight: 'inherit'/u);
-  assert.match(source, /style=\{BEGINNER_CODE_OVERLAY_TOKEN_STYLE\}/u);
+  assert.match(source, /\.\.\.BEGINNER_CODE_OVERLAY_TOKEN_STYLE/u);
+  assert.match(source, /kind === 'control-reference'[\s\S]*?getLingCppControlReferenceTokenColor\(isDarkMode\)/u);
   assert.doesNotMatch(source, /'module-command':[^\n]*font-bold/u);
 });
 

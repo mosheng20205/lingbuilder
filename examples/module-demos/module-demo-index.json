@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T14:57:25.450Z",
+  "generatedAt": "2026-08-01T03:36:23.500Z",
   "modules": [
     {
       "moduleId": "lingbuilder.advanced.assembly",
@@ -11,8 +11,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.advanced.assembly/src",
-      "packageName": "CPU指令能力模块完整演示.lcpppkg",
-      "packageBytes": 9042
+      "packageName": "CPU指令能力模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.advanced.com",
@@ -23,8 +22,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.advanced.com/src",
-      "packageName": "COM自动化模块完整演示.lcpppkg",
-      "packageBytes": 8932
+      "packageName": "COM自动化模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.advanced.driver",
@@ -35,8 +33,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.advanced.driver/src",
-      "packageName": "设备驱动通信模块完整演示.lcpppkg",
-      "packageBytes": 9041
+      "packageName": "设备驱动通信模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.advanced.hook",
@@ -47,8 +44,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.advanced.hook/src",
-      "packageName": "键盘Hook模块完整演示.lcpppkg",
-      "packageBytes": 8652
+      "packageName": "键盘Hook模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.advanced.memory",
@@ -59,8 +55,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.advanced.memory/src",
-      "packageName": "受控内存模块完整演示.lcpppkg",
-      "packageBytes": 9153
+      "packageName": "受控内存模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.advanced.process-memory",
@@ -71,8 +66,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.advanced.process-memory/src",
-      "packageName": "进程内存模块完整演示.lcpppkg",
-      "packageBytes": 8990
+      "packageName": "进程内存模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.archive",
@@ -83,8 +77,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.archive/src",
-      "packageName": "ZIP压缩模块完整演示.lcpppkg",
-      "packageBytes": 8646
+      "packageName": "ZIP压缩模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.cef3.automation",
@@ -95,8 +88,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.automation/src",
-      "packageName": "CEF3自动化模块完整演示.lcpppkg",
-      "packageBytes": 8510
+      "packageName": "CEF3自动化模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.cef3.browser",
@@ -107,8 +99,7 @@
       "groupCount": 2,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.browser/src",
-      "packageName": "CEF3浏览器模块完整演示.lcpppkg",
-      "packageBytes": 193274484
+      "packageName": "CEF3浏览器模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.cef3.devtools",
@@ -119,8 +110,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.devtools/src",
-      "packageName": "CEF3开发者工具模块完整演示.lcpppkg",
-      "packageBytes": 8624
+      "packageName": "CEF3开发者工具模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.cef3.events",
@@ -131,8 +121,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.events/src",
-      "packageName": "CEF3事件模块完整演示.lcpppkg",
-      "packageBytes": 9240
+      "packageName": "CEF3事件模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.cef3.network",
@@ -143,8 +132,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.network/src",
-      "packageName": "CEF3网络模块完整演示.lcpppkg",
-      "packageBytes": 8447
+      "packageName": "CEF3网络模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.cef3.objects",
@@ -155,8 +143,7 @@
       "groupCount": 10,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.objects/src",
-      "packageName": "CEF3受管对象模块完整演示.lcpppkg",
-      "packageBytes": 31726
+      "packageName": "CEF3受管对象模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.cef3.platform",
@@ -167,8 +154,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.platform/src",
-      "packageName": "CEF3平台工具模块完整演示.lcpppkg",
-      "packageBytes": 8897
+      "packageName": "CEF3平台工具模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.cef3.sdk",
@@ -179,8 +165,7 @@
       "groupCount": 1,
       "builtin": false,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.sdk/src",
-      "packageName": "CEF3内核SDK包（64位）完整演示.lcpppkg",
-      "packageBytes": 193269610
+      "packageName": "CEF3内核SDK包（64位）完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.cef3.session",
@@ -191,8 +176,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.session/src",
-      "packageName": "CEF3会话模块完整演示.lcpppkg",
-      "packageBytes": 11911
+      "packageName": "CEF3会话模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.cef3.transfer",
@@ -203,8 +187,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.transfer/src",
-      "packageName": "CEF3传输模块完整演示.lcpppkg",
-      "packageBytes": 8509
+      "packageName": "CEF3传输模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.cef3.views",
@@ -215,8 +198,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.views/src",
-      "packageName": "CEF3视图模块完整演示.lcpppkg",
-      "packageBytes": 8323
+      "packageName": "CEF3视图模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.config.ini",
@@ -227,8 +209,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.config.ini/src",
-      "packageName": "INI配置模块完整演示.lcpppkg",
-      "packageBytes": 8802
+      "packageName": "INI配置模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.config.registry",
@@ -239,8 +220,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.config.registry/src",
-      "packageName": "用户注册表模块完整演示.lcpppkg",
-      "packageBytes": 9066
+      "packageName": "用户注册表模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.crypto.asymmetric",
@@ -251,8 +231,7 @@
       "groupCount": 2,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.crypto.asymmetric/src",
-      "packageName": "非对称密码模块完整演示.lcpppkg",
-      "packageBytes": 6491901
+      "packageName": "非对称密码模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.crypto.hash",
@@ -263,8 +242,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.crypto.hash/src",
-      "packageName": "哈希摘要模块完整演示.lcpppkg",
-      "packageBytes": 6489933
+      "packageName": "哈希摘要模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.crypto.password",
@@ -275,8 +253,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.crypto.password/src",
-      "packageName": "密码哈希与派生模块完整演示.lcpppkg",
-      "packageBytes": 6489977
+      "packageName": "密码哈希与派生模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.crypto.sdk",
@@ -287,8 +264,7 @@
       "groupCount": 1,
       "builtin": false,
       "sourceRoot": "examples/module-demos/lingbuilder.crypto.sdk/src",
-      "packageName": "LingBuilder密码学SDK完整演示.lcpppkg",
-      "packageBytes": 6487873
+      "packageName": "LingBuilder密码学SDK完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.crypto.symmetric",
@@ -299,8 +275,7 @@
       "groupCount": 2,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.crypto.symmetric/src",
-      "packageName": "对称加密模块完整演示.lcpppkg",
-      "packageBytes": 6491872
+      "packageName": "对称加密模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.crypto.windows",
@@ -311,8 +286,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.crypto.windows/src",
-      "packageName": "Windows数据保护模块完整演示.lcpppkg",
-      "packageBytes": 8722
+      "packageName": "Windows数据保护模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.data.csv",
@@ -323,8 +297,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.data.csv/src",
-      "packageName": "CSV数据模块完整演示.lcpppkg",
-      "packageBytes": 8795
+      "packageName": "CSV数据模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.data.json",
@@ -335,8 +308,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.data.json/src",
-      "packageName": "JSON数据模块完整演示.lcpppkg",
-      "packageBytes": 9073
+      "packageName": "JSON数据模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.data.xml",
@@ -347,8 +319,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.data.xml/src",
-      "packageName": "XML文本模块完整演示.lcpppkg",
-      "packageBytes": 8943
+      "packageName": "XML文本模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.database.odbc",
@@ -359,8 +330,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.database.odbc/src",
-      "packageName": "ODBC数据库模块完整演示.lcpppkg",
-      "packageBytes": 9218
+      "packageName": "ODBC数据库模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.database.sqlite",
@@ -371,8 +341,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.database.sqlite/src",
-      "packageName": "SQLite数据库桥接模块完整演示.lcpppkg",
-      "packageBytes": 9423
+      "packageName": "SQLite数据库桥接模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.edgeview",
@@ -383,8 +352,7 @@
       "groupCount": 12,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.edgeview/src",
-      "packageName": "EdgeView浏览器模块完整演示.lcpppkg",
-      "packageBytes": 47622
+      "packageName": "EdgeView浏览器模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.fbro.automation",
@@ -395,8 +363,7 @@
       "groupCount": 2,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.fbro.automation/src",
-      "packageName": "FBro自动化模块完整演示.lcpppkg",
-      "packageBytes": 11777
+      "packageName": "FBro自动化模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.fbro.browser",
@@ -407,20 +374,19 @@
       "groupCount": 3,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.fbro.browser/src",
-      "packageName": "FBro指纹浏览器模块完整演示.lcpppkg",
-      "packageBytes": 257085039
+      "packageName": "FBro指纹浏览器模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.fbro.events",
       "moduleName": "FBro事件模块",
       "projectId": "module-demo-lingbuilder.fbro.events",
-      "commandCount": 6,
+      "commandCount": 12,
       "controlCount": 0,
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.fbro.events/src",
       "packageName": "FBro事件模块完整演示.lcpppkg",
-      "packageBytes": 9461
+      "packageBytes": 11075
     },
     {
       "moduleId": "lingbuilder.fbro.network",
@@ -431,8 +397,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.fbro.network/src",
-      "packageName": "FBro高级网络模块完整演示.lcpppkg",
-      "packageBytes": 8626
+      "packageName": "FBro高级网络模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.fbro.objects",
@@ -443,8 +408,7 @@
       "groupCount": 7,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.fbro.objects/src",
-      "packageName": "FBro受管对象模块完整演示.lcpppkg",
-      "packageBytes": 25198
+      "packageName": "FBro受管对象模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.fbro.sdk",
@@ -455,8 +419,7 @@
       "groupCount": 1,
       "builtin": false,
       "sourceRoot": "examples/module-demos/lingbuilder.fbro.sdk/src",
-      "packageName": "FBro135内置SDK（64位）完整演示.lcpppkg",
-      "packageBytes": 257077388
+      "packageName": "FBro135内置SDK（64位）完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.fbro.session",
@@ -467,8 +430,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.fbro.session/src",
-      "packageName": "FBro会话模块完整演示.lcpppkg",
-      "packageBytes": 10617
+      "packageName": "FBro会话模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.fbro.transfer",
@@ -479,8 +441,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.fbro.transfer/src",
-      "packageName": "FBro传输模块完整演示.lcpppkg",
-      "packageBytes": 10085
+      "packageName": "FBro传输模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.fbro.vip",
@@ -491,8 +452,7 @@
       "groupCount": 10,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.fbro.vip/src",
-      "packageName": "FBroVIP指纹模块完整演示.lcpppkg",
-      "packageBytes": 46322
+      "packageName": "FBroVIP指纹模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.fs.core",
@@ -503,8 +463,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.fs.core/src",
-      "packageName": "文件目录模块完整演示.lcpppkg",
-      "packageBytes": 9681
+      "packageName": "文件目录模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.fs.path",
@@ -515,8 +474,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.fs.path/src",
-      "packageName": "路径处理模块完整演示.lcpppkg",
-      "packageBytes": 9058
+      "packageName": "路径处理模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.http.server",
@@ -527,8 +485,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.http.server/src",
-      "packageName": "HTTP服务端模块完整演示.lcpppkg",
-      "packageBytes": 9100
+      "packageName": "HTTP服务端模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.image.bitmap",
@@ -539,8 +496,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.image.bitmap/src",
-      "packageName": "位图像素模块完整演示.lcpppkg",
-      "packageBytes": 9035
+      "packageName": "位图像素模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.image.capture",
@@ -551,8 +507,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.image.capture/src",
-      "packageName": "屏幕截图模块完整演示.lcpppkg",
-      "packageBytes": 8695
+      "packageName": "屏幕截图模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.image.core",
@@ -563,8 +518,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.image.core/src",
-      "packageName": "图像基础模块完整演示.lcpppkg",
-      "packageBytes": 9355
+      "packageName": "图像基础模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.image.icon",
@@ -575,8 +529,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.image.icon/src",
-      "packageName": "图标处理模块完整演示.lcpppkg",
-      "packageBytes": 8582
+      "packageName": "图标处理模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.image.recognition",
@@ -587,8 +540,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.image.recognition/src",
-      "packageName": "基础识图模块完整演示.lcpppkg",
-      "packageBytes": 9352
+      "packageName": "基础识图模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.input.keyboard",
@@ -599,8 +551,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.input.keyboard/src",
-      "packageName": "键盘输入模块完整演示.lcpppkg",
-      "packageBytes": 8865
+      "packageName": "键盘输入模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.input.mouse",
@@ -611,8 +562,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.input.mouse/src",
-      "packageName": "鼠标输入模块完整演示.lcpppkg",
-      "packageBytes": 8801
+      "packageName": "鼠标输入模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.ipc",
@@ -623,8 +573,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.ipc/src",
-      "packageName": "进程通信模块完整演示.lcpppkg",
-      "packageBytes": 9010
+      "packageName": "进程通信模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.media.audio",
@@ -635,8 +584,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.media.audio/src",
-      "packageName": "基础音频模块完整演示.lcpppkg",
-      "packageBytes": 8848
+      "packageName": "基础音频模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.net.cookie",
@@ -647,8 +595,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.net.cookie/src",
-      "packageName": "Cookie文本模块完整演示.lcpppkg",
-      "packageBytes": 8902
+      "packageName": "Cookie文本模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.net.dns",
@@ -659,8 +606,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.net.dns/src",
-      "packageName": "DNS与IP模块完整演示.lcpppkg",
-      "packageBytes": 8709
+      "packageName": "DNS与IP模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.net.ftp",
@@ -671,8 +617,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.net.ftp/src",
-      "packageName": "FTP客户端模块完整演示.lcpppkg",
-      "packageBytes": 9260
+      "packageName": "FTP客户端模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.net.http-client",
@@ -683,8 +628,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.net.http-client/src",
-      "packageName": "HTTP客户端模块完整演示.lcpppkg",
-      "packageBytes": 9380
+      "packageName": "HTTP客户端模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.net.mail",
@@ -695,8 +639,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.net.mail/src",
-      "packageName": "SMTP邮件模块完整演示.lcpppkg",
-      "packageBytes": 8713
+      "packageName": "SMTP邮件模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.net.tcp",
@@ -707,8 +650,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.net.tcp/src",
-      "packageName": "TCP通信模块完整演示.lcpppkg",
-      "packageBytes": 9027
+      "packageName": "TCP通信模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.net.udp",
@@ -719,8 +661,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.net.udp/src",
-      "packageName": "UDP通信模块完整演示.lcpppkg",
-      "packageBytes": 9058
+      "packageName": "UDP通信模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.net.url",
@@ -731,8 +672,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.net.url/src",
-      "packageName": "URL解析模块完整演示.lcpppkg",
-      "packageBytes": 8666
+      "packageName": "URL解析模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.new_emoji.ui",
@@ -743,8 +683,18 @@
       "groupCount": 12,
       "builtin": false,
       "sourceRoot": "examples/module-demos/lingbuilder.new_emoji.ui/src",
-      "packageName": "新表情原生界面库完整演示.lcpppkg",
-      "packageBytes": 2750214
+      "packageName": "新表情原生界面库完整演示.lcpppkg"
+    },
+    {
+      "moduleId": "lingbuilder.opencv",
+      "moduleName": "OpenCV 图像处理模块",
+      "projectId": "module-demo-lingbuilder.opencv",
+      "commandCount": 33,
+      "controlCount": 0,
+      "groupCount": 2,
+      "builtin": true,
+      "sourceRoot": "examples/module-demos/lingbuilder.opencv/src",
+      "packageName": "OpenCV图像处理模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.process",
@@ -755,8 +705,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.process/src",
-      "packageName": "进程管理模块完整演示.lcpppkg",
-      "packageBytes": 8899
+      "packageName": "进程管理模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.std.bytes",
@@ -767,8 +716,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.std.bytes/src",
-      "packageName": "字节与十六进制模块完整演示.lcpppkg",
-      "packageBytes": 8911
+      "packageName": "字节与十六进制模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.std.datetime",
@@ -779,8 +727,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.std.datetime/src",
-      "packageName": "日期时间模块完整演示.lcpppkg",
-      "packageBytes": 8802
+      "packageName": "日期时间模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.std.encoding",
@@ -791,8 +738,7 @@
       "groupCount": 2,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.std.encoding/src",
-      "packageName": "编码转换模块完整演示.lcpppkg",
-      "packageBytes": 12996
+      "packageName": "编码转换模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.std.math",
@@ -803,8 +749,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.std.math/src",
-      "packageName": "数学与随机模块完整演示.lcpppkg",
-      "packageBytes": 9078
+      "packageName": "数学与随机模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.std.regex",
@@ -815,8 +760,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.std.regex/src",
-      "packageName": "正则表达式模块完整演示.lcpppkg",
-      "packageBytes": 8942
+      "packageName": "正则表达式模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.std.text",
@@ -827,8 +771,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.std.text/src",
-      "packageName": "文本处理模块完整演示.lcpppkg",
-      "packageBytes": 9769
+      "packageName": "文本处理模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.system.clipboard",
@@ -839,8 +782,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.system.clipboard/src",
-      "packageName": "剪贴板模块完整演示.lcpppkg",
-      "packageBytes": 8665
+      "packageName": "剪贴板模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.system.disk",
@@ -851,8 +793,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.system.disk/src",
-      "packageName": "磁盘信息模块完整演示.lcpppkg",
-      "packageBytes": 8895
+      "packageName": "磁盘信息模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.system.info",
@@ -863,8 +804,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.system.info/src",
-      "packageName": "系统信息模块完整演示.lcpppkg",
-      "packageBytes": 9005
+      "packageName": "系统信息模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.system.shell",
@@ -875,8 +815,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.system.shell/src",
-      "packageName": "系统外壳模块完整演示.lcpppkg",
-      "packageBytes": 8812
+      "packageName": "系统外壳模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.threading",
@@ -887,8 +826,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.threading/src",
-      "packageName": "多线程模块完整演示.lcpppkg",
-      "packageBytes": 10171
+      "packageName": "多线程模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.web.http",
@@ -899,8 +837,7 @@
       "groupCount": 1,
       "builtin": false,
       "sourceRoot": "examples/module-demos/lingbuilder.web.http/src",
-      "packageName": "网页访问模块完整演示.lcpppkg",
-      "packageBytes": 24577
+      "packageName": "网页访问模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.websocket.client",
@@ -911,8 +848,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.websocket.client/src",
-      "packageName": "WebSocket客户端模块完整演示.lcpppkg",
-      "packageBytes": 9311
+      "packageName": "WebSocket客户端模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.websocket.server",
@@ -923,8 +859,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.websocket.server/src",
-      "packageName": "WebSocket服务端模块完整演示.lcpppkg",
-      "packageBytes": 9313
+      "packageName": "WebSocket服务端模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.win32.accessibility",
@@ -935,8 +870,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.win32.accessibility/src",
-      "packageName": "辅助功能模块完整演示.lcpppkg",
-      "packageBytes": 8711
+      "packageName": "辅助功能模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.win32.basic",
@@ -947,8 +881,7 @@
       "groupCount": 2,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.win32.basic/src",
-      "packageName": "Win32窗口基础模块完整演示.lcpppkg",
-      "packageBytes": 15009
+      "packageName": "Win32窗口基础模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.win32.common-controls",
@@ -959,8 +892,7 @@
       "groupCount": 11,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.win32.common-controls/src",
-      "packageName": "Win32高级控件模块完整演示.lcpppkg",
-      "packageBytes": 40629
+      "packageName": "Win32高级控件模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.win32.menu",
@@ -971,8 +903,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.win32.menu/src",
-      "packageName": "Win32菜单模块完整演示.lcpppkg",
-      "packageBytes": 9202
+      "packageName": "Win32菜单模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.win32.monitor",
@@ -983,8 +914,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.win32.monitor/src",
-      "packageName": "显示器与DPI模块完整演示.lcpppkg",
-      "packageBytes": 8698
+      "packageName": "显示器与DPI模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.win32.tray",
@@ -995,8 +925,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.win32.tray/src",
-      "packageName": "托盘图标模块完整演示.lcpppkg",
-      "packageBytes": 8853
+      "packageName": "托盘图标模块完整演示.lcpppkg"
     },
     {
       "moduleId": "lingbuilder.win32.window-utils",
@@ -1007,8 +936,7 @@
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.win32.window-utils/src",
-      "packageName": "Win32窗口操作模块完整演示.lcpppkg",
-      "packageBytes": 9478
+      "packageName": "Win32窗口操作模块完整演示.lcpppkg"
     }
   ]
 }

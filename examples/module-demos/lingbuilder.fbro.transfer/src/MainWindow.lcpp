@@ -6,39 +6,39 @@
 // 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。
 类 MainWindow : 公开 窗口
     事件 _MainWindow_创建完毕()
-        控件_设置选择项("命令分组选项卡", 0)
-        控件_设置文本("演示状态", "FBro传输模块：5 条命令，默认处于安全预览模式。")
+        控件_设置选择项(命令分组选项卡, 0)
+        控件_设置文本(演示状态, "FBro传输模块：5 条命令，默认处于安全预览模式。")
         调试输出("已加载模块演示：lingbuilder.fbro.transfer")
     结束
 
     事件 _运行第01组_被单击()
-        控件_设置文本("演示状态", "命令 1–5：FBro传输_开始下载 至 FBro传输_异步截图；源码内含完整签名、参数、返回值与调用。")
-        如果 (控件_取勾选("允许实际执行"))
+        控件_设置文本(演示状态, "命令 1–5：FBro传输_开始下载 至 FBro传输_异步截图；源码内含完整签名、参数、返回值与调用。")
+        如果 (控件_取勾选(允许实际执行))
             // 命令ID：FBro传输_开始下载
             // [1] FBro传输_开始下载(控件名, 地址)
             // 功能：使用当前浏览器会话开始下载。
-            // 参数：控件名:wideString，地址:wideString；返回：int；可见性：default
-            FBro传输_开始下载("演示输出", "https://example.com")
+            // 参数：控件名:controlRef，地址:wideString；返回：int；可见性：default
+            FBro传输_开始下载(演示FBroBrowser控件, "https://example.com")
             // 命令ID：FBro传输_打印
             // [2] FBro传输_打印(控件名)
             // 功能：打开当前浏览器页面的原生打印流程。
-            // 参数：控件名:wideString；返回：int；可见性：default
-            FBro传输_打印("演示输出")
+            // 参数：控件名:controlRef；返回：int；可见性：default
+            FBro传输_打印(演示FBroBrowser控件)
             // 命令ID：FBro传输_异步生成PDF
             // [3] FBro传输_异步生成PDF(控件名, 输出路径, 设置JSON)
             // 功能：异步生成 PDF；设置使用 UTF-16 JSON，任务结果包含成功状态和绝对路径。
-            // 参数：控件名:wideString，输出路径:wideString，设置JSON:wideString；返回：longLong；可见性：default
-            FBro传输_异步生成PDF("演示输出", "module-demo-temp.txt", "{}")
+            // 参数：控件名:controlRef，输出路径:wideString，设置JSON:wideString；返回：longLong；可见性：default
+            FBro传输_异步生成PDF(演示FBroBrowser控件, "module-demo-temp.txt", "{}")
             // 命令ID：FBro传输_异步打开文件对话框
             // [4] FBro传输_异步打开文件对话框(控件名, 模式, 标题, 默认路径, 筛选器JSON)
             // 功能：调用独立 STA Windows 安全文件对话框；模式为 0打开、1多选、2文件夹、3保存，任务返回 cancelled 和 paths UTF-16 JSON 字段。
-            // 参数：控件名:wideString，模式:int，标题:wideString，默认路径:wideString，筛选器JSON:wideString；返回：longLong；可见性：default
-            FBro传输_异步打开文件对话框("演示输出", 1, "演示参数3", "module-demo-temp.txt", "{}")
+            // 参数：控件名:controlRef，模式:int，标题:wideString，默认路径:wideString，筛选器JSON:wideString；返回：longLong；可见性：default
+            FBro传输_异步打开文件对话框(演示FBroBrowser控件, 1, "演示参数3", "module-demo-temp.txt", "{}")
             // 命令ID：FBro传输_异步截图
             // [5] FBro传输_异步截图(控件名, 格式, 质量, 横坐标, 纵坐标, 宽度, 高度, 缩放, 来自表面, 超出视口)
             // 功能：通过 FBro VIP Page.captureScreenshot 异步截图；任务结果通过受管缓冲返回。
-            // 参数：控件名:wideString，格式:wideString，质量:int，横坐标:int，纵坐标:int，宽度:int，高度:int，缩放:int，来自表面:bool，超出视口:bool；返回：longLong；可见性：default
-            FBro传输_异步截图("演示输出", "演示参数2", 1, 1, 1, 1, 1, 1, 真, 真)
+            // 参数：控件名:controlRef，格式:wideString，质量:int，横坐标:int，纵坐标:int，宽度:int，高度:int，缩放:int，来自表面:bool，超出视口:bool；返回：longLong；可见性：default
+            FBro传输_异步截图(演示FBroBrowser控件, "演示参数2", 1, 1, 1, 1, 1, 1, 真, 真)
         如果结束
         调试输出("已查看 命令 1–5：FBro传输_开始下载 至 FBro传输_异步截图；勾选允许实际执行后会使用演示参数调用。")
     结束

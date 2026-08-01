@@ -81,6 +81,8 @@ CLI 刷新令牌使用 Windows DPAPI 保护，不以明文保存。AI Bridge 默
 
 ## 质量门禁
 
+LingCpp 的设计器对象参数使用统一 `controlRef` 语义：源码写裸控件名，编辑器提供类型化补全、诊断、重命名和“跳转到控件”，C++ 生成阶段再转换为后端需要的名称、稳定 ID 或句柄。模块作者与维护者可运行 `cd electron && npm run module:control-ref-audit` 做逐方法/逐参数审计；`npm run module:control-ref-migrate` 只迁移可唯一解析的旧引号写法。
+
 ```powershell
 npm run lint
 npm run test

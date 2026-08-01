@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T09:57:36.269Z",
+  "generatedAt": "2026-07-31T18:20:26.017Z",
   "module": {
     "id": "lingbuilder.threading",
     "name": "多线程模块",
@@ -109,7 +109,7 @@
       "name": "线程_启动延时设置文本",
       "signature": "线程_启动延时设置文本(控件名, 文本, 延时毫秒)",
       "description": "启动后台线程，延时后线程安全地设置指定控件的显示文本。",
-      "insertText": "线程_启动延时设置文本(\"$1\", \"完成\", 1000)",
+      "insertText": "线程_启动延时设置文本($1, \"完成\", 1000)",
       "returnType": "整数型",
       "binding": {
         "command": "线程_启动延时设置文本",
@@ -117,7 +117,12 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "文本",
@@ -130,16 +135,16 @@
         ],
         "returnType": "int",
         "encoding": "wide",
-        "example": "线程_启动延时设置文本(\"状态标签\", \"完成\", 1000)"
+        "example": "线程_启动延时设置文本(状态标签, \"完成\", 1000)"
       },
-      "demoInvocation": "线程_启动延时设置文本(\"演示输出\", \"演示参数2\", 1)"
+      "demoInvocation": "线程_启动延时设置文本(演示状态, \"演示参数2\", 1)"
     },
     {
       "index": 7,
       "name": "线程_启动延时添加行",
       "signature": "线程_启动延时添加行(控件名, Tab分隔单元格, 延时毫秒)",
       "description": "启动后台线程，延时后线程安全地向列表视图追加一行。",
-      "insertText": "线程_启动延时添加行(\"$1\", \"内容\\t状态\", 500)",
+      "insertText": "线程_启动延时添加行($1, \"内容\\t状态\", 500)",
       "returnType": "整数型",
       "binding": {
         "command": "线程_启动延时添加行",
@@ -147,7 +152,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "ListView"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "Tab分隔单元格",
@@ -160,16 +173,16 @@
         ],
         "returnType": "int",
         "encoding": "wide",
-        "example": "线程_启动延时添加行(\"列表1\", \"任务\\t完成\", 500)"
+        "example": "线程_启动延时添加行(列表1, \"任务\\t完成\", 500)"
       },
-      "demoInvocation": "线程_启动延时添加行(\"演示输出\", \"演示参数2\", 1)"
+      "demoInvocation": "线程_启动延时添加行(演示ListView控件, \"演示参数2\", 1)"
     },
     {
       "index": 8,
       "name": "线程_启动延时添加项目",
       "signature": "线程_启动延时添加项目(控件名, 文本, 延时毫秒)",
       "description": "启动后台线程，延时后线程安全地向列表框追加一条日志。",
-      "insertText": "线程_启动延时添加项目(\"$1\", \"日志内容\", 500)",
+      "insertText": "线程_启动延时添加项目($1, \"日志内容\", 500)",
       "returnType": "整数型",
       "binding": {
         "command": "线程_启动延时添加项目",
@@ -177,7 +190,17 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox",
+              "ComboBox",
+              "ComboBoxEx"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "文本",
@@ -190,16 +213,16 @@
         ],
         "returnType": "int",
         "encoding": "wide",
-        "example": "线程_启动延时添加项目(\"日志列表\", \"任务完成\", 500)"
+        "example": "线程_启动延时添加项目(日志列表, \"任务完成\", 500)"
       },
-      "demoInvocation": "线程_启动延时添加项目(\"演示输出\", \"演示参数2\", 1)"
+      "demoInvocation": "线程_启动延时添加项目(演示ListBox控件, \"演示参数2\", 1)"
     },
     {
       "index": 9,
       "name": "线程_批量启动",
       "signature": "线程_批量启动(任务数控件, 线程数控件, 列表视图, 日志列表, 状态标签)",
       "description": "读取输入框中的任务数和线程数，动态创建多线程并行执行任务，实时更新列表视图和日志。",
-      "insertText": "线程_批量启动(\"任务数输入\", \"线程数输入\", \"任务列表\", \"日志列表\", \"状态标签\")",
+      "insertText": "线程_批量启动(任务数输入, 线程数输入, 任务列表, 日志列表, 状态标签)",
       "returnType": "空",
       "binding": {
         "command": "线程_批量启动",
@@ -207,30 +230,71 @@
         "parameters": [
           {
             "name": "任务数控件",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "线程数控件",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "TextBox"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "列表视图",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "ListView"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "日志列表",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "ListBox",
+              "ListView"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "状态标签",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "Label"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "void",
         "encoding": "wide",
-        "example": "线程_批量启动(\"任务数输入\", \"线程数输入\", \"任务列表\", \"日志列表\", \"状态标签\")"
+        "example": "线程_批量启动(任务数输入, 线程数输入, 任务列表, 日志列表, 状态标签)"
       },
-      "demoInvocation": "线程_批量启动(\"演示输出\", \"演示输出\", \"演示参数3\", \"演示参数4\", \"演示参数5\")"
+      "demoInvocation": "线程_批量启动(演示TextBox控件, 演示TextBox控件, 演示ListView控件, 演示ListView控件, 演示状态)"
     }
   ]
 }

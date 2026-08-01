@@ -1,0 +1,53 @@
+export interface LingCppSemanticTokenColors {
+  dark: string;
+  light: string;
+}
+
+export interface LingCppSemanticTokenRange {
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+}
+
+export const LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN = 'controlReference';
+
+export const LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS: LingCppSemanticTokenColors = {
+  dark: '#f472b6',
+  light: '#b42367'
+};
+
+export function getLingCppControlReferenceTokenColor(isDarkMode: boolean): string {
+  return isDarkMode
+    ? LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS.dark
+    : LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS.light;
+}
+
+export function createLingCppControlReferenceEditorCss(): string[] {
+  const colors = LINGCPP_CONTROL_REFERENCE_TOKEN_COLORS;
+  return [
+    `.monaco-editor.vs-dark .lingcpp-control-reference-token, .monaco-editor.hc-black .lingcpp-control-reference-token { color: ${colors.dark} !important; font-weight: 600; }`,
+    `.monaco-editor.vs .lingcpp-control-reference-token, .monaco-editor.hc-light .lingcpp-control-reference-token { color: ${colors.light} !important; font-weight: 600; }`
+  ];
+}
+
+export function buildLingCppControlReferenceSemanticTokenData(
+  ranges: readonly LingCppSemanticTokenRange[]
+): Uint32Array {
+  const sorted = [...ranges]
+    .filter(range => range.startLine === range.endLine && range.endColumn > range.startColumn)
+    .sort((left, right) => left.startLine - right.startLine || left.startColumn - right.startColumn);
+  const data: number[] = [];
+  let previousLine = 0;
+  let previousStart = 0;
+  sorted.forEach(range => {
+    const line = Math.max(0, range.startLine - 1);
+    const start = Math.max(0, range.startColumn - 1);
+    const deltaLine = line - previousLine;
+    const deltaStart = deltaLine === 0 ? start - previousStart : start;
+    data.push(deltaLine, deltaStart, range.endColumn - range.startColumn, 0, 0);
+    previousLine = line;
+    previousStart = start;
+  });
+  return Uint32Array.from(data);
+}

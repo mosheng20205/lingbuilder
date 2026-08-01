@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T09:57:36.104Z",
+  "generatedAt": "2026-07-31T18:20:25.804Z",
   "module": {
     "id": "lingbuilder.cef3.transfer",
     "name": "CEF3传输模块",
@@ -17,7 +17,7 @@
       ],
       "signature": "CEF3传输_开始下载(控件名, 地址)",
       "description": "使用当前实例会话开始下载。",
-      "insertText": "CEF3传输_开始下载(\"$1\", \"$2\")",
+      "insertText": "CEF3传输_开始下载($1, \"$2\")",
       "returnType": "整数型",
       "binding": {
         "command": "CEF3传输_开始下载",
@@ -25,7 +25,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "地址",
@@ -35,7 +43,7 @@
         "returnType": "int",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3传输_开始下载(\"演示输出\", \"https://example.com\")"
+      "demoInvocation": "CEF3传输_开始下载(演示CefBrowser控件, \"https://example.com\")"
     },
     {
       "index": 2,
@@ -45,7 +53,7 @@
       ],
       "signature": "CEF3传输_打印(控件名)",
       "description": "打开当前页面的原生打印流程。",
-      "insertText": "CEF3传输_打印(\"$1\")",
+      "insertText": "CEF3传输_打印($1)",
       "returnType": "整数型",
       "binding": {
         "command": "CEF3传输_打印",
@@ -53,13 +61,21 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "int",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3传输_打印(\"演示输出\")"
+      "demoInvocation": "CEF3传输_打印(演示CefBrowser控件)"
     }
   ]
 }

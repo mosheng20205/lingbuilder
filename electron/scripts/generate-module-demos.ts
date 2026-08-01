@@ -56,6 +56,13 @@ interface DemoIndexEntry {
   packageBytes?: number;
 }
 
+interface ControlReferenceFixture {
+  key: string;
+  name: string;
+  type: string;
+  kind: 'visual' | 'nonVisual' | 'resource';
+}
+
 interface PortableSolution {
   schemaVersion: 2;
   id: string;
@@ -88,7 +95,7 @@ async function main(): Promise<void> {
   }
 
   if (syncSolutionOnly) {
-    await updateRootSolution(modules.map(module => describeDemoEntry(module)));
+    await updateRootSolution(modules.map(module => describeDemoEntry(module)), !selectedModuleId);
     console.log(`解决方案入口已同步：${modules.length} 个模块演示项目。`);
     return;
   }
@@ -116,7 +123,7 @@ async function main(): Promise<void> {
   await fs.mkdir(exportsRoot, { recursive: true });
   const entries: DemoIndexEntry[] = [];
   for (const module of modules) entries.push(await generateModuleDemo(module));
-  if (!selectedModuleId) await updateRootSolution(entries);
+  await updateRootSolution(entries, !selectedModuleId);
   let indexEntries = entries;
   if (selectedModuleId) {
     const indexPath = path.join(demosRoot, 'module-demo-index.json');
@@ -243,6 +250,7 @@ function createGroups(commands: Array<{ contribution: ModuleCommandContribution;
 }
 
 function createSource(manifest: LingBuilderModuleManifest, groups: DemoGroup[]): string {
+  const controlFixtures = createControlReferenceFixtures(manifest);
   const lines = [
     `包 ${safeIdentifier(manifest.name)}完整演示`,
     '使用 Win32窗口基础模块',
@@ -252,8 +260,8 @@ function createSource(manifest: LingBuilderModuleManifest, groups: DemoGroup[]):
     '// 为避免误删文件、启动进程、访问网络或操作设备，必须先勾选“允许实际执行”才会进入命令调用区。',
     '类 MainWindow : 公开 窗口',
     '    事件 _MainWindow_创建完毕()',
-    '        控件_设置选择项("命令分组选项卡", 0)',
-    `        控件_设置文本("演示状态", "${escapeLcppString(manifest.name)}：${(manifest.bindings?.commands || []).length} 条命令，默认处于安全预览模式。")`,
+    '        控件_设置选择项(命令分组选项卡, 0)',
+    `        控件_设置文本(演示状态, "${escapeLcppString(manifest.name)}：${(manifest.bindings?.commands || []).length} 条命令，默认处于安全预览模式。")`,
     `        调试输出("已加载模块演示：${escapeLcppString(manifest.id)}")`,
     ...(manifest.id === 'lingbuilder.edgeview' ? ['        打开窗口("Edge 多控件安全示例", "居中")'] : []),
     '    结束',
@@ -263,18 +271,18 @@ function createSource(manifest: LingBuilderModuleManifest, groups: DemoGroup[]):
   for (const group of groups) {
     const range = groupRange(group, groups);
     lines.push(`    事件 _运行第${pad(group.index)}组_被单击()`);
-    lines.push(`        控件_设置文本("演示状态", "${escapeLcppString(range)}；源码内含完整签名、参数、返回值与调用。")`);
+    lines.push(`        控件_设置文本(演示状态, "${escapeLcppString(range)}；源码内含完整签名、参数、返回值与调用。")`);
     if (group.commands.length === 0) {
       lines.push(`        调试输出("${escapeLcppString(manifest.name)} 是只读资产模块，不公开 LCPP 命令。")`);
     } else {
-      lines.push('        如果 (控件_取勾选("允许实际执行"))');
+      lines.push('        如果 (控件_取勾选(允许实际执行))');
       for (const [offset, item] of group.commands.entries()) {
         const absoluteIndex = groups.slice(0, group.index - 1).reduce((sum, current) => sum + current.commands.length, 0) + offset + 1;
         lines.push(`            // 命令ID：${item.contribution.name}`);
         lines.push(`            // [${absoluteIndex}] ${sanitizeComment(item.contribution.signature)}`);
         lines.push(`            // 功能：${sanitizeComment(item.contribution.description)}`);
         lines.push(`            // 参数：${describeParameters(item.binding.parameters)}；返回：${item.binding.returnType || 'void'}；可见性：${item.contribution.visibility || 'default'}`);
-        lines.push(`            ${createInvocation(item.binding)}`);
+        lines.push(`            ${createInvocation(item.binding, controlFixtures)}`);
       }
       lines.push('        如果结束');
       lines.push(`        调试输出("已查看 ${escapeLcppString(range)}；勾选允许实际执行后会使用演示参数调用。")`);
@@ -289,13 +297,18 @@ function createSource(manifest: LingBuilderModuleManifest, groups: DemoGroup[]):
   return lines.join('\n');
 }
 
-function createInvocation(binding: ModuleCommandBinding): string {
-  const args = (binding.parameters || []).map((parameter, index) => defaultArgument(parameter, index));
+function createInvocation(binding: ModuleCommandBinding, controlFixtures: readonly ControlReferenceFixture[]): string {
+  const args = (binding.parameters || []).map((parameter, index) => defaultArgument(parameter, index, controlFixtures));
   return `${binding.command}(${args.join(', ')})`;
 }
 
-function defaultArgument(parameter: ModuleCommandBindingParameter, index: number): string {
+function defaultArgument(
+  parameter: ModuleCommandBindingParameter,
+  index: number,
+  controlFixtures: readonly ControlReferenceFixture[]
+): string {
   if (parameter.type === 'handler') return '&模块演示回调';
+  if (parameter.type === 'controlRef') return selectControlReferenceFixture(parameter, controlFixtures).name;
   if (parameter.type === 'wideString' || parameter.type === 'utf8String') {
     const name = parameter.name.toLowerCase();
     if (/url|网址|地址/u.test(name)) return '"https://example.com"';
@@ -361,6 +374,20 @@ function createDesigner(manifest: LingBuilderModuleManifest, groups: DemoGroup[]
       events: { Click: `_运行第${pad(group.index)}组_被单击` }
     }));
   }
+  const controlFixtures = createControlReferenceFixtures(manifest);
+  controlFixtures.filter(fixture => fixture.kind !== 'resource' && !isBuiltinDemoFixture(fixture)).forEach((fixture, index) => {
+    controls.push(controlBase({
+      id: `control-ref-${fixture.key}`,
+      type: fixture.type,
+      name: fixture.name,
+      content: `${fixture.type} controlRef 演示对象`,
+      x: 24 + (index % 6) * 8,
+      y: 716 + Math.floor(index / 6) * 8,
+      width: 2,
+      height: 2,
+      visibility: 'Collapsed'
+    }));
+  });
   const windows: Array<Record<string, unknown>> = [{
     id: 'main-window', fileName: 'MainWindow.xml', className: 'MainWindow', title: `${manifest.name}完整演示`,
     width: 1140, height: 760, background: '#0F172A', titleBarBackground: '#111827', titleBarForeground: '#F8FAFC',
@@ -372,7 +399,9 @@ function createDesigner(manifest: LingBuilderModuleManifest, groups: DemoGroup[]
     schemaVersion: 2,
     id: projectIdFor(manifest.id),
     name: `${manifest.name}完整演示`,
-    resources: [],
+    resources: controlFixtures
+      .filter(fixture => fixture.kind === 'resource')
+      .map(createControlReferenceResource),
     windows
   };
 }
@@ -381,7 +410,7 @@ function createEdgeViewMultiControlSource(): string {
   return [
     '类 EdgeMultiControlWindow : 公开 窗口',
     '    事件 _EdgeMultiControlWindow_创建完毕()',
-    '        EdgeView脚本_文档预注入异步("根级 Edge", "document.body.innerHTML=\'LingBuilder EdgeView root\'", &根级脚本完成)',
+    '        EdgeView脚本_文档预注入异步(根级Edge, "document.body.innerHTML=\'LingBuilder EdgeView root\'", &根级脚本完成)',
     '    结束',
     '',
     '    事件 根级脚本完成()',
@@ -400,7 +429,7 @@ function createEdgeViewMultiControlWindow(): Record<string, unknown> {
     description: '根级、分组框和选项卡页中的四个 Edge 控件均拥有独立 HWND、Profile 和 UDF。', designerBackend: 'win32',
     openPlacement: 'center', resizable: true, maximizable: true, events: { Loaded: '_EdgeMultiControlWindow_创建完毕' },
     controls: [
-      controlBase({ id: 'edge-root', type: 'EdgeBrowser', designerType: 'lingbuilder.edgeview/EdgeBrowser', name: '根级 Edge', x: 18, y: 18, width: 520, height: 300,
+      controlBase({ id: 'edge-root', type: 'EdgeBrowser', designerType: 'lingbuilder.edgeview/EdgeBrowser', name: '根级Edge', x: 18, y: 18, width: 520, height: 300,
         properties: { url: 'about:blank', cacheDir: '.edgeview/demo-root', userAgent: 'LingBuilder-EdgeView-Demo/1.1', enableScript: true, enableWebMessage: true, enableDevTools: false, enableContextMenu: true, enableStatusBar: true, zoomFactor: 100, muteAudio: false, defaultBackgroundColor: '#FFFFFF', allowExternalDrop: false, profileName: 'demo-root', inPrivate: false, language: 'zh-CN', trackingPrevention: 'balanced', enableAutofill: false, enablePasswordAutosave: false } }),
       controlBase({ id: 'edge-group', type: 'GroupBox', name: 'Edge 分组框', content: '分组框内独立 Edge', x: 560, y: 18, width: 570, height: 320, background: '#1E293B' }),
       controlBase({ id: 'edge-in-group', parentId: 'edge-group', type: 'EdgeBrowser', designerType: 'lingbuilder.edgeview/EdgeBrowser', name: '分组框 Edge', x: 16, y: 42, width: 530, height: 250,
@@ -452,21 +481,101 @@ function createModuleReadme(manifest: LingBuilderModuleManifest, groups: DemoGro
 }
 
 function createCommandCatalog(manifest: LingBuilderModuleManifest, commands: Array<{ contribution: ModuleCommandContribution; binding: ModuleCommandBinding }>) {
+  const controlFixtures = createControlReferenceFixtures(manifest);
   return {
     schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     module: { id: manifest.id, name: manifest.name, version: manifest.version, description: manifest.description },
     commandCount: commands.length,
-    commands: commands.map((item, index) => ({ index: index + 1, ...item.contribution, binding: item.binding, demoInvocation: createInvocation(item.binding) }))
+    commands: commands.map((item, index) => ({ index: index + 1, ...item.contribution, binding: item.binding, demoInvocation: createInvocation(item.binding, controlFixtures) }))
   };
 }
 
-async function updateRootSolution(entries: DemoIndexEntry[]): Promise<void> {
+function createControlReferenceFixtures(manifest: LingBuilderModuleManifest): ControlReferenceFixture[] {
+  const fixtures = new Map<string, ControlReferenceFixture>();
+  for (const binding of manifest.bindings?.commands || []) {
+    for (const parameter of binding.parameters || []) {
+      if (parameter.type !== 'controlRef') continue;
+      const kind = parameter.controlKinds?.[0] || 'visual';
+      const type = parameter.controlTypes?.[0] || (kind === 'resource' ? 'ImageList' : 'Label');
+      const key = `${kind}-${safeIdentifier(type) || 'Any'}`;
+      if (!fixtures.has(key)) fixtures.set(key, {
+        key,
+        kind,
+        type,
+        name: fixtureName(type, kind)
+      });
+    }
+  }
+  return [...fixtures.values()];
+}
+
+function selectControlReferenceFixture(
+  parameter: ModuleCommandBindingParameter,
+  fixtures: readonly ControlReferenceFixture[]
+): ControlReferenceFixture {
+  const allowedKinds = new Set(parameter.controlKinds?.length ? parameter.controlKinds : ['visual']);
+  const allowedTypes = new Set(parameter.controlTypes || []);
+  const matched = fixtures.find(fixture => allowedKinds.has(fixture.kind)
+    && (allowedTypes.size === 0 || allowedTypes.has(fixture.type)));
+  if (!matched) throw new Error(`无法为 controlRef 参数“${parameter.name}”生成兼容设计器对象。`);
+  return matched;
+}
+
+function fixtureName(type: string, kind: ControlReferenceFixture['kind']): string {
+  if (kind === 'resource') return `演示${type}资源`;
+  if (type === 'Label') return '演示状态';
+  if (type === 'CheckBox') return '允许实际执行';
+  if (type === 'TabControl') return '命令分组选项卡';
+  return `演示${type}控件`;
+}
+
+function isBuiltinDemoFixture(fixture: ControlReferenceFixture): boolean {
+  return fixture.name === '演示状态'
+    || fixture.name === '允许实际执行'
+    || fixture.name === '命令分组选项卡';
+}
+
+function createControlReferenceResource(fixture: ControlReferenceFixture): Record<string, unknown> {
+  const base = { id: `control-ref-${fixture.key}`, type: fixture.type, name: fixture.name };
+  if (fixture.type === 'ImageList') return { ...base, imageWidth: 16, imageHeight: 16, images: [] };
+  if (fixture.type === 'FileDialog') return {
+    ...base,
+    mode: 'open',
+    title: '选择文件',
+    filter: '所有文件|*.*',
+    initialDirectory: '.',
+    defaultFileName: '',
+    allowMultiple: false,
+    pickFolders: false,
+    bindButtonId: '',
+    dropTargetControlId: '',
+    selectedFiles: [],
+    events: {}
+  };
+  if (fixture.type === 'ContextMenu' || fixture.type === 'PopupMenu') return {
+    ...base,
+    items: [],
+    bindControlId: '',
+    lastCommandId: 0,
+    events: {}
+  };
+  if (fixture.type === 'PropertySheet') return {
+    ...base,
+    title: '属性',
+    pages: [{ id: 'page-1', title: '常规', content: '' }]
+  };
+  return base;
+}
+
+async function updateRootSolution(entries: DemoIndexEntry[], pruneMissingGeneratedProjects = true): Promise<void> {
   const solution = JSON.parse(await fs.readFile(solutionPath, 'utf8')) as PortableSolution;
   solution.folders ||= [];
   if (!solution.folders.some(folder => folder.id === MODULE_DEMO_FOLDER_ID)) solution.folders.push({ id: MODULE_DEMO_FOLDER_ID, name: '模块完整演示' });
   const generatedIds = new Set(entries.map(entry => entry.projectId));
-  solution.projects = solution.projects.filter(project => !project.id.startsWith(PROJECT_PREFIX) || generatedIds.has(project.id));
+  if (pruneMissingGeneratedProjects) {
+    solution.projects = solution.projects.filter(project => !project.id.startsWith(PROJECT_PREFIX) || generatedIds.has(project.id));
+  }
   for (const entry of entries) {
     const project = {
       type: 'visual-cpp', id: entry.projectId, name: `${entry.moduleName}完整演示`,

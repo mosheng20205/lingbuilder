@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { LingBuilderModuleManifest, ModuleCommandContribution, ModuleCommandBinding, ModuleBindingValueType } from './types';
+import { LingBuilderModuleManifest, ModuleCommandContribution, ModuleCommandBinding, ModuleBindingValueType, ModuleControlReferenceKind, ModuleControlReferenceScope, ModuleControlRuntimeRepresentation } from './types';
 import { validateModuleManifest, validateModuleManifestContents } from './manifest';
+import { createModuleBindingSnippetArgument, normalizeControlReferenceCallSnippet } from './bindingValueType';
 
 const MODULE_MANIFEST_FILE = 'lingbuilder.module.json';
 
@@ -31,7 +32,15 @@ export interface ModuleCppMigrationConfig {
     runtimeName?: string;
     returnType?: string;
     insertText?: string;
-    parameters?: Array<{ name: string; type: string; description?: string }>;
+    parameters?: Array<{
+      name: string;
+      type: string;
+      description?: string;
+      controlTypes?: string[];
+      controlKinds?: ModuleControlReferenceKind[];
+      scope?: ModuleControlReferenceScope;
+      runtimeRepresentation?: ModuleControlRuntimeRepresentation;
+    }>;
   }>;
   targetId?: string;
   arch?: 'win32' | 'x64';
@@ -80,6 +89,13 @@ export async function validateModuleDirectory(modulePath: string): Promise<Modul
 
 export async function migrateCppModule(configPath: string, outDir: string): Promise<LingBuilderModuleManifest> {
   const raw = JSON.parse(await fs.readFile(configPath, 'utf8')) as ModuleCppMigrationConfig;
+  (raw.commands || []).forEach(command => {
+    if (!command.insertText) return;
+    const parameters = toBindingParameters(command.parameters || []);
+    if (normalizeControlReferenceCallSnippet(command.insertText, parameters) !== command.insertText) {
+      throw new Error(`命令 ${command.name} 的 insertText 给 controlRef 参数添加了双引号；SDK 拒绝生成退化模块。`);
+    }
+  });
   const commands = (raw.commands || []).map(toCommandContribution);
   const bindings = (raw.commands || []).map(toCommandBinding);
   const manifest: LingBuilderModuleManifest = {
@@ -206,28 +222,39 @@ function buildTemplateManifest(options: ModuleInitOptions): LingBuilderModuleMan
 }
 
 function toCommandContribution(command: NonNullable<ModuleCppMigrationConfig['commands']>[number]): ModuleCommandContribution {
+  const parameters = toBindingParameters(command.parameters || []);
+  const generatedInsertText = `${command.name}(${parameters.map(createModuleBindingSnippetArgument).join(', ')})`;
   return {
     name: command.name,
     signature: command.signature || `${command.name}(${(command.parameters || []).map(parameter => parameter.name).join(', ')})`,
     description: command.description || `调用 C++ 运行时 ${command.runtimeName || command.name}。`,
-    insertText: command.insertText || `${command.name}(${(command.parameters || []).map((_, index) => `$${index + 1}`).join(', ')})`,
+    insertText: normalizeControlReferenceCallSnippet(command.insertText || generatedInsertText, parameters),
     returnType: command.returnType || '空'
   };
 }
 
 function toCommandBinding(command: NonNullable<ModuleCppMigrationConfig['commands']>[number]): ModuleCommandBinding {
+  const parameters = toBindingParameters(command.parameters || []);
   return {
     command: command.name,
     runtimeName: command.runtimeName || command.name,
-    parameters: (command.parameters || []).map(parameter => ({
-      name: parameter.name,
-      type: normalizeBindingType(parameter.type),
-      description: parameter.description
-    })),
+    parameters,
     returnType: normalizeBindingType(command.returnType || 'void'),
     encoding: 'wide',
-    example: command.insertText || command.signature || `${command.name}()`
+    example: normalizeControlReferenceCallSnippet(command.insertText || command.signature || `${command.name}()`, parameters)
   };
+}
+
+function toBindingParameters(parameters: NonNullable<NonNullable<ModuleCppMigrationConfig['commands']>[number]['parameters']>): ModuleCommandBinding['parameters'] {
+  return parameters.map(parameter => ({
+    name: parameter.name,
+    type: normalizeBindingType(parameter.type),
+    description: parameter.description,
+    controlTypes: parameter.controlTypes,
+    controlKinds: parameter.controlKinds,
+    scope: parameter.scope,
+    runtimeRepresentation: parameter.runtimeRepresentation
+  }));
 }
 
 function normalizeBindingType(value: string): ModuleBindingValueType {
@@ -236,6 +263,7 @@ function normalizeBindingType(value: string): ModuleBindingValueType {
   if (value === '逻辑型' || value === 'bool') return 'bool';
   if (value === '小数型' || value === 'double') return 'double';
   if (value === '窗口句柄' || value === 'handle' || value === 'HWND') return 'handle';
+  if (value === '控件' || value === '控件引用' || value === 'controlRef') return 'controlRef';
   if (value === '空' || value === 'void') return 'void';
   return 'raw';
 }

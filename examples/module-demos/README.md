@@ -1,6 +1,6 @@
 # LingBuilder 全模块演示项目
 
-本目录由 `npm run module:demos -w lingbuilder-electron` 根据实际模块清单生成，共 84 个独立项目。
+本目录由 `npm run module:demos -w lingbuilder-electron` 根据实际模块清单生成，共 85 个独立项目。
 
 每个项目逐条覆盖目标模块全部 binding 命令；命令较多时使用 TabControl 分组。源码包输出到仓库根目录 `exports/`。
 
@@ -40,7 +40,7 @@
 | `lingbuilder.edgeview` EdgeView 浏览器模块 | `module-demo-lingbuilder.edgeview` | 271 | 1 | 12 | `EdgeView浏览器模块完整演示.lcpppkg` |
 | `lingbuilder.fbro.automation` FBro自动化模块 | `module-demo-lingbuilder.fbro.automation` | 25 | 0 | 2 | `FBro自动化模块完整演示.lcpppkg` |
 | `lingbuilder.fbro.browser` FBro指纹浏览器模块 | `module-demo-lingbuilder.fbro.browser` | 42 | 1 | 3 | `FBro指纹浏览器模块完整演示.lcpppkg` |
-| `lingbuilder.fbro.events` FBro事件模块 | `module-demo-lingbuilder.fbro.events` | 6 | 0 | 1 | `FBro事件模块完整演示.lcpppkg` |
+| `lingbuilder.fbro.events` FBro事件模块 | `module-demo-lingbuilder.fbro.events` | 12 | 0 | 1 | `FBro事件模块完整演示.lcpppkg` |
 | `lingbuilder.fbro.network` FBro高级网络模块 | `module-demo-lingbuilder.fbro.network` | 2 | 0 | 1 | `FBro高级网络模块完整演示.lcpppkg` |
 | `lingbuilder.fbro.objects` FBro受管对象模块 | `module-demo-lingbuilder.fbro.objects` | 132 | 0 | 7 | `FBro受管对象模块完整演示.lcpppkg` |
 | `lingbuilder.fbro.sdk` FBro 135 内置 SDK（x64） | `module-demo-lingbuilder.fbro.sdk` | 0 | 0 | 1 | `FBro135内置SDK（64位）完整演示.lcpppkg` |
@@ -68,6 +68,7 @@
 | `lingbuilder.net.udp` UDP通信模块 | `module-demo-lingbuilder.net.udp` | 7 | 0 | 1 | `UDP通信模块完整演示.lcpppkg` |
 | `lingbuilder.net.url` URL解析模块 | `module-demo-lingbuilder.net.url` | 6 | 0 | 1 | `URL解析模块完整演示.lcpppkg` |
 | `lingbuilder.new_emoji.ui` new_emoji 原生界面库 | `module-demo-lingbuilder.new_emoji.ui` | 1599 | 92 | 12 | `新表情原生界面库完整演示.lcpppkg` |
+| `lingbuilder.opencv` OpenCV 图像处理模块 | `module-demo-lingbuilder.opencv` | 33 | 0 | 2 | `OpenCV图像处理模块完整演示.lcpppkg` |
 | `lingbuilder.process` 进程管理模块 | `module-demo-lingbuilder.process` | 5 | 0 | 1 | `进程管理模块完整演示.lcpppkg` |
 | `lingbuilder.std.bytes` 字节与十六进制模块 | `module-demo-lingbuilder.std.bytes` | 4 | 0 | 1 | `字节与十六进制模块完整演示.lcpppkg` |
 | `lingbuilder.std.datetime` 日期时间模块 | `module-demo-lingbuilder.std.datetime` | 5 | 0 | 1 | `日期时间模块完整演示.lcpppkg` |

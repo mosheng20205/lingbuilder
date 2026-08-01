@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T09:57:36.087Z",
+  "generatedAt": "2026-07-31T18:20:25.782Z",
   "module": {
     "id": "lingbuilder.cef3.events",
     "name": "CEF3事件模块",
@@ -17,7 +17,7 @@
       ],
       "signature": "CEF3事件_取最近事件(控件名)",
       "description": "取得指定浏览器最近事件名。",
-      "insertText": "CEF3事件_取最近事件(\"$1\")",
+      "insertText": "CEF3事件_取最近事件($1)",
       "returnType": "文本型",
       "binding": {
         "command": "CEF3事件_取最近事件",
@@ -25,13 +25,21 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "wideString",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3事件_取最近事件(\"演示输出\")"
+      "demoInvocation": "CEF3事件_取最近事件(演示CefBrowser控件)"
     },
     {
       "index": 2,
@@ -41,7 +49,7 @@
       ],
       "signature": "CEF3事件_取数据(控件名)",
       "description": "取得当前或最近事件的主要文本。",
-      "insertText": "CEF3事件_取数据(\"$1\")",
+      "insertText": "CEF3事件_取数据($1)",
       "returnType": "文本型",
       "binding": {
         "command": "CEF3事件_取数据",
@@ -49,13 +57,21 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           }
         ],
         "returnType": "wideString",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3事件_取数据(\"演示输出\")"
+      "demoInvocation": "CEF3事件_取数据(演示CefBrowser控件)"
     },
     {
       "index": 3,
@@ -65,7 +81,7 @@
       ],
       "signature": "CEF3事件_取字段(控件名, 字段名)",
       "description": "读取当前事件的结构化字段。",
-      "insertText": "CEF3事件_取字段(\"$1\", \"$2\")",
+      "insertText": "CEF3事件_取字段($1, \"$2\")",
       "returnType": "文本型",
       "binding": {
         "command": "CEF3事件_取字段",
@@ -73,7 +89,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "字段名",
@@ -83,7 +107,7 @@
         "returnType": "wideString",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3事件_取字段(\"演示输出\", \"演示参数2\")"
+      "demoInvocation": "CEF3事件_取字段(演示CefBrowser控件, \"演示参数2\")"
     },
     {
       "index": 4,
@@ -93,7 +117,7 @@
       ],
       "signature": "CEF3事件_设置结果(控件名, 动作)",
       "description": "设置当前同步事件动作。",
-      "insertText": "CEF3事件_设置结果(\"$1\", $2)",
+      "insertText": "CEF3事件_设置结果($1, $2)",
       "returnType": "整数型",
       "binding": {
         "command": "CEF3事件_设置结果",
@@ -101,7 +125,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "动作",
@@ -111,7 +143,7 @@
         "returnType": "int",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3事件_设置结果(\"演示输出\", 1)"
+      "demoInvocation": "CEF3事件_设置结果(演示CefBrowser控件, 1)"
     },
     {
       "index": 5,
@@ -121,7 +153,7 @@
       ],
       "signature": "CEF3事件_设置返回文本(控件名, 文本)",
       "description": "设置当前同步事件返回文本。",
-      "insertText": "CEF3事件_设置返回文本(\"$1\", \"$2\")",
+      "insertText": "CEF3事件_设置返回文本($1, \"$2\")",
       "returnType": "整数型",
       "binding": {
         "command": "CEF3事件_设置返回文本",
@@ -129,7 +161,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "文本",
@@ -139,7 +179,7 @@
         "returnType": "int",
         "encoding": "wide"
       },
-      "demoInvocation": "CEF3事件_设置返回文本(\"演示输出\", \"演示参数2\")"
+      "demoInvocation": "CEF3事件_设置返回文本(演示CefBrowser控件, \"演示参数2\")"
     },
     {
       "index": 6,
@@ -149,7 +189,7 @@
       ],
       "signature": "CEF3事件_绑定(控件名, 事件名, 处理器)",
       "description": "把浏览器事件绑定到当前类的无参数处理器。",
-      "insertText": "CEF3事件_绑定(\"浏览器1\", \"加载完成\", &$1)",
+      "insertText": "CEF3事件_绑定(浏览器1, \"加载完成\", &$1)",
       "returnType": "整数型",
       "binding": {
         "command": "CEF3事件_绑定",
@@ -157,7 +197,15 @@
         "parameters": [
           {
             "name": "控件名",
-            "type": "wideString"
+            "type": "controlRef",
+            "controlTypes": [
+              "CefBrowser"
+            ],
+            "scope": "currentWindow",
+            "controlKinds": [
+              "visual"
+            ],
+            "runtimeRepresentation": "wideName"
           },
           {
             "name": "事件名",
@@ -171,9 +219,9 @@
         ],
         "returnType": "int",
         "encoding": "wide",
-        "example": "CEF3事件_绑定(\"浏览器1\", \"加载完成\", &$1)"
+        "example": "CEF3事件_绑定(浏览器1, \"加载完成\", &$1)"
       },
-      "demoInvocation": "CEF3事件_绑定(\"演示输出\", \"演示事件\", &模块演示回调)"
+      "demoInvocation": "CEF3事件_绑定(演示CefBrowser控件, \"演示事件\", &模块演示回调)"
     }
   ]
 }

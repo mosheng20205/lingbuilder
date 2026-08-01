@@ -1,5 +1,6 @@
 import { LingBuilderModuleManifest, ModuleBindingValueType } from './types';
 import { createStandardModule, StandardCommandSpec } from './standardLibraryModules';
+import { createModuleBindingSnippetArgument } from './bindingValueType';
 
 export const CRYPTO_SDK_MODULE_IDS = [
   'lingbuilder.crypto.hash',
@@ -11,7 +12,9 @@ export const CRYPTO_SDK_MODULE_IDS = [
 type Parameter = { name: string; type: ModuleBindingValueType; description?: string };
 type CommandOptions = Pick<StandardCommandSpec, 'example' | 'returnDescription' | 'visibility'>;
 function command(name: string, parameters: Parameter[], returnType: ModuleBindingValueType, description: string, options: CommandOptions | string = {}): StandardCommandSpec {
-  const args = parameters.map((parameter, index) => parameter.type === 'wideString' || parameter.type === 'utf8String' ? `"$${index + 1}"` : parameter.type === 'bool' ? '假' : '0');
+  const args = parameters.map((parameter, index) => parameter.type === 'controlRef' || parameter.type === 'handler'
+    ? createModuleBindingSnippetArgument(parameter, index)
+    : parameter.type === 'wideString' || parameter.type === 'utf8String' ? `"$${index + 1}"` : parameter.type === 'bool' ? '假' : '0');
   const normalizedOptions = typeof options === 'string' ? { example: options } : options;
   return { name, signature: `${name}(${parameters.map(parameter => parameter.name).join(', ')})`, description, insertText: `${name}(${args.join(', ')})`, parameters, returnType, ...normalizedOptions };
 }
