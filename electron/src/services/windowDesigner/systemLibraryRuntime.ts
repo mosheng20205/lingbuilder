@@ -608,15 +608,266 @@ const wchar_t* 磁盘_取最近错误() { return LB_ReturnText(g_lbDiskLastError
 `;
 
 const CLIPBOARD_RUNTIME = String.raw`
-bool 剪贴板_置文本(const wchar_t* text) {
-    if (!OpenClipboard(nullptr)) return false; EmptyClipboard(); const std::wstring value = LB_Wide(text); const SIZE_T bytes = (value.size() + 1) * sizeof(wchar_t);
-    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes); if (!memory) { CloseClipboard(); return false; } void* target = GlobalLock(memory);
-    if (!target) { GlobalFree(memory); CloseClipboard(); return false; } std::memcpy(target, value.c_str(), bytes); GlobalUnlock(memory);
-    if (!SetClipboardData(CF_UNICODETEXT, memory)) { GlobalFree(memory); CloseClipboard(); return false; } CloseClipboard(); return true;
+static constexpr size_t LB_CLIPBOARD_MAX_IMAGE_BYTES = 256ULL * 1024ULL * 1024ULL;
+static constexpr size_t LB_CLIPBOARD_MAX_HTML_BYTES = ((LB_CLIPBOARD_MAX_IMAGE_BYTES + 2ULL) / 3ULL) * 4ULL + 4096ULL;
+
+static bool LB_ClipboardNormalizeDib(const std::vector<unsigned char>& input, std::vector<unsigned char>& dib) {
+    dib.clear();
+    if (input.empty() || input.size() > LB_CLIPBOARD_MAX_IMAGE_BYTES) return false;
+    const auto isDib = [](const unsigned char* data, size_t size) {
+        if (size < sizeof(DWORD)) return false;
+        DWORD headerSize = 0;
+        std::memcpy(&headerSize, data, sizeof(headerSize));
+        if (headerSize < sizeof(BITMAPINFOHEADER) || headerSize > sizeof(BITMAPV5HEADER) || headerSize > size) return false;
+        BITMAPINFOHEADER header = {};
+        std::memcpy(&header, data, sizeof(header));
+        if (header.biPlanes != 1 || header.biWidth <= 0 || header.biHeight == 0) return false;
+        if (header.biBitCount == 0 || header.biBitCount > 32) return false;
+        if (header.biSizeImage > 0 && static_cast<size_t>(header.biSizeImage) > size - headerSize) return false;
+        return true;
+    };
+    if (isDib(input.data(), input.size())) {
+        dib = input;
+        return true;
+    }
+    if (input.size() < sizeof(BITMAPFILEHEADER)) return false;
+    BITMAPFILEHEADER file = {};
+    std::memcpy(&file, input.data(), sizeof(file));
+    if (file.bfType != 0x4D42 || file.bfOffBits < sizeof(BITMAPFILEHEADER) || file.bfOffBits >= input.size()) return false;
+    const size_t dibSize = input.size() - sizeof(BITMAPFILEHEADER);
+    if (!isDib(input.data() + sizeof(BITMAPFILEHEADER), dibSize)) return false;
+    dib.assign(input.begin() + static_cast<std::ptrdiff_t>(sizeof(BITMAPFILEHEADER)), input.end());
+    return true;
 }
 
-const wchar_t* 剪贴板_取文本() { if (!OpenClipboard(nullptr)) return LB_ReturnText(L""); HANDLE data = GetClipboardData(CF_UNICODETEXT); const wchar_t* text = data ? static_cast<const wchar_t*>(GlobalLock(data)) : nullptr; std::wstring result = text ? text : L""; if (text) GlobalUnlock(data); CloseClipboard(); return LB_ReturnText(std::move(result)); }
+static bool LB_ClipboardIsGif(const std::vector<unsigned char>& bytes) {
+    if (bytes.size() < 13 || bytes.size() > LB_CLIPBOARD_MAX_IMAGE_BYTES) return false;
+    const bool signature = std::memcmp(bytes.data(), "GIF87a", 6) == 0 || std::memcmp(bytes.data(), "GIF89a", 6) == 0;
+    const unsigned int width = static_cast<unsigned int>(bytes[6]) | (static_cast<unsigned int>(bytes[7]) << 8);
+    const unsigned int height = static_cast<unsigned int>(bytes[8]) | (static_cast<unsigned int>(bytes[9]) << 8);
+    return signature && width > 0 && height > 0;
+}
+
+static UINT LB_ClipboardGifFormat() {
+    static const UINT format = RegisterClipboardFormatW(L"GIF");
+    return format;
+}
+
+static UINT LB_ClipboardGifMimeFormat() {
+    static const UINT format = RegisterClipboardFormatW(L"image/gif");
+    return format;
+}
+
+static UINT LB_ClipboardHtmlFormat() {
+    static const UINT format = RegisterClipboardFormatW(L"HTML Format");
+    return format;
+}
+
+static HGLOBAL LB_ClipboardGlobalBytes(const void* data, size_t size) {
+    if (!data || size == 0 || size > LB_CLIPBOARD_MAX_HTML_BYTES) return nullptr;
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, size);
+    if (!memory) return nullptr;
+    void* target = GlobalLock(memory);
+    if (!target) { GlobalFree(memory); return nullptr; }
+    std::memcpy(target, data, size); GlobalUnlock(memory);
+    return memory;
+}
+
+static std::string LB_ClipboardBase64(const std::vector<unsigned char>& bytes) {
+    static constexpr char alphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string result;
+    result.reserve(((bytes.size() + 2) / 3) * 4);
+    for (size_t offset = 0; offset < bytes.size(); offset += 3) {
+        const unsigned int a = bytes[offset];
+        const unsigned int b = offset + 1 < bytes.size() ? bytes[offset + 1] : 0;
+        const unsigned int c = offset + 2 < bytes.size() ? bytes[offset + 2] : 0;
+        const unsigned int block = (a << 16) | (b << 8) | c;
+        result.push_back(alphabet[(block >> 18) & 63]);
+        result.push_back(alphabet[(block >> 12) & 63]);
+        result.push_back(offset + 1 < bytes.size() ? alphabet[(block >> 6) & 63] : '=');
+        result.push_back(offset + 2 < bytes.size() ? alphabet[block & 63] : '=');
+    }
+    return result;
+}
+
+static std::string LB_ClipboardGifHtml(const std::vector<unsigned char>& bytes) {
+    const std::string image = "<img src=\"data:image/gif;base64," + LB_ClipboardBase64(bytes) + "\">";
+    const std::string body = "<html><body><!--StartFragment-->" + image + "<!--EndFragment--></body></html>";
+    std::string header = "Version:1.0\r\nStartHTML:0000000000\r\nEndHTML:0000000000\r\nStartFragment:0000000000\r\nEndFragment:0000000000\r\n";
+    const size_t startHtml = header.size();
+    const size_t startFragment = startHtml + body.find(image);
+    const size_t endFragment = startFragment + image.size();
+    const size_t endHtml = startHtml + body.size();
+    const auto offsetText = [](size_t value) {
+        std::string text = std::to_string(value);
+        return text.size() < 10 ? std::string(10 - text.size(), '0') + text : text;
+    };
+    const auto replaceOffset = [&header, &offsetText](const char* label, size_t value) {
+        const size_t labelPosition = header.find(label);
+        if (labelPosition == std::string::npos) return;
+        const size_t valuePosition = labelPosition + std::strlen(label);
+        header.replace(valuePosition, 10, offsetText(value));
+    };
+    replaceOffset("StartHTML:", startHtml);
+    replaceOffset("EndHTML:", endHtml);
+    replaceOffset("StartFragment:", startFragment);
+    replaceOffset("EndFragment:", endFragment);
+    return header + body;
+}
+
+static bool LB_ClipboardSetGif(const std::vector<unsigned char>& bytes) {
+    const UINT gifFormat = LB_ClipboardGifFormat();
+    const UINT gifMimeFormat = LB_ClipboardGifMimeFormat();
+    const UINT htmlFormat = LB_ClipboardHtmlFormat();
+    if (!gifFormat) return false;
+    HGLOBAL gifMemory = LB_ClipboardGlobalBytes(bytes.data(), bytes.size());
+    if (!gifMemory) return false;
+    HGLOBAL gifMimeMemory = nullptr;
+    if (gifMimeFormat && gifMimeFormat != gifFormat) {
+        gifMimeMemory = LB_ClipboardGlobalBytes(bytes.data(), bytes.size());
+    }
+    HGLOBAL htmlMemory = nullptr;
+    try {
+        const std::string html = LB_ClipboardGifHtml(bytes);
+        if (htmlFormat) htmlMemory = LB_ClipboardGlobalBytes(html.c_str(), html.size() + 1);
+    } catch (...) {
+        // GIF 注册格式仍可独立承载动图；HTML 只是兼容网页粘贴的可选载荷。
+    }
+    if (!OpenClipboard(nullptr)) { GlobalFree(htmlMemory); GlobalFree(gifMimeMemory); GlobalFree(gifMemory); return false; }
+    if (!EmptyClipboard()) { CloseClipboard(); if (htmlMemory) GlobalFree(htmlMemory); if (gifMimeMemory) GlobalFree(gifMimeMemory); GlobalFree(gifMemory); return false; }
+    if (!SetClipboardData(gifFormat, gifMemory)) {
+        if (htmlMemory) GlobalFree(htmlMemory); if (gifMimeMemory) GlobalFree(gifMimeMemory); GlobalFree(gifMemory); CloseClipboard(); return false;
+    }
+    if (gifMimeMemory && !SetClipboardData(gifMimeFormat, gifMimeMemory)) {
+        GlobalFree(gifMimeMemory);
+    }
+    if (htmlMemory && !SetClipboardData(htmlFormat, htmlMemory)) {
+        GlobalFree(htmlMemory);
+    }
+    CloseClipboard(); return true;
+}
+
+static std::vector<unsigned char> LB_ClipboardReadGlobalBytes(UINT format);
+
+static std::vector<unsigned char> LB_ClipboardReadGifBytes() {
+    std::vector<unsigned char> result = LB_ClipboardReadGlobalBytes(LB_ClipboardGifFormat());
+    if (!LB_ClipboardIsGif(result)) result.clear();
+    if (result.empty()) {
+        result = LB_ClipboardReadGlobalBytes(LB_ClipboardGifMimeFormat());
+        if (!LB_ClipboardIsGif(result)) result.clear();
+    }
+    return result;
+}
+
+static std::vector<unsigned char> LB_ClipboardReadGlobalBytes(UINT format) {
+    std::vector<unsigned char> result;
+    if (!format) return result;
+    HANDLE data = GetClipboardData(format);
+    if (!data) return result;
+    const SIZE_T size = GlobalSize(data);
+    if (size == 0 || size > LB_CLIPBOARD_MAX_IMAGE_BYTES) return result;
+    const void* source = GlobalLock(data);
+    if (!source) return result;
+    result.assign(static_cast<const unsigned char*>(source), static_cast<const unsigned char*>(source) + size);
+    GlobalUnlock(data);
+    return result;
+}
+
+static UINT LB_ClipboardDibFormat(const std::vector<unsigned char>& dib) {
+    DWORD headerSize = 0;
+    if (dib.size() >= sizeof(headerSize)) std::memcpy(&headerSize, dib.data(), sizeof(headerSize));
+    if (headerSize >= sizeof(BITMAPV5HEADER)) return CF_DIBV5;
+    return CF_DIB;
+}
+
+static bool LB_ClipboardBitmapToDib(HBITMAP bitmap, std::vector<unsigned char>& dib) {
+    dib.clear();
+    if (!bitmap) return false;
+    BITMAP source = {};
+    if (!GetObjectW(bitmap, sizeof(source), &source) || source.bmWidth <= 0 || source.bmHeight <= 0 || source.bmWidth > 32768 || source.bmHeight > 32768) return false;
+    const ULONGLONG pixelBytes64 = static_cast<ULONGLONG>(source.bmWidth) * static_cast<ULONGLONG>(source.bmHeight) * 4ULL;
+    if (pixelBytes64 > LB_CLIPBOARD_MAX_IMAGE_BYTES - sizeof(BITMAPINFOHEADER)) return false;
+    const size_t pixelBytes = static_cast<size_t>(pixelBytes64);
+    dib.resize(sizeof(BITMAPINFOHEADER) + pixelBytes);
+    auto* header = reinterpret_cast<BITMAPINFOHEADER*>(dib.data());
+    header->biSize = sizeof(BITMAPINFOHEADER); header->biWidth = source.bmWidth; header->biHeight = source.bmHeight;
+    header->biPlanes = 1; header->biBitCount = 32; header->biCompression = BI_RGB; header->biSizeImage = static_cast<DWORD>(pixelBytes);
+    HDC screen = GetDC(nullptr);
+    const int rows = screen ? GetDIBits(screen, bitmap, 0, static_cast<UINT>(source.bmHeight), dib.data() + sizeof(BITMAPINFOHEADER), reinterpret_cast<BITMAPINFO*>(header), DIB_RGB_COLORS) : 0;
+    if (screen) ReleaseDC(nullptr, screen);
+    if (rows != source.bmHeight) { dib.clear(); return false; }
+    return true;
+}
+
+bool 剪贴板_置文本(const wchar_t* text) {
+    const std::wstring value = LB_Wide(text);
+    if (value.size() > (std::numeric_limits<SIZE_T>::max() / sizeof(wchar_t)) - 1) return false;
+    const SIZE_T bytes = (value.size() + 1) * sizeof(wchar_t);
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, bytes);
+    if (!memory) return false;
+    void* target = GlobalLock(memory);
+    if (!target) { GlobalFree(memory); return false; }
+    std::memcpy(target, value.c_str(), bytes); GlobalUnlock(memory);
+    if (!OpenClipboard(nullptr)) { GlobalFree(memory); return false; }
+    if (!EmptyClipboard()) { CloseClipboard(); GlobalFree(memory); return false; }
+    if (!SetClipboardData(CF_UNICODETEXT, memory)) { GlobalFree(memory); CloseClipboard(); return false; }
+    CloseClipboard(); return true;
+}
+
+const wchar_t* 剪贴板_取文本() {
+    if (!OpenClipboard(nullptr)) return LB_ReturnText(L"");
+    HANDLE data = GetClipboardData(CF_UNICODETEXT);
+    const SIZE_T byteSize = data ? GlobalSize(data) : 0;
+    const wchar_t* text = data && byteSize >= sizeof(wchar_t) ? static_cast<const wchar_t*>(GlobalLock(data)) : nullptr;
+    std::wstring result;
+    if (text) {
+        const size_t maxCharacters = static_cast<size_t>(byteSize / sizeof(wchar_t));
+        size_t length = 0;
+        while (length < maxCharacters && text[length] != L'\0') ++length;
+        result.assign(text, length);
+        GlobalUnlock(data);
+    }
+    CloseClipboard(); return LB_ReturnText(std::move(result));
+}
 bool 剪贴板_是否有文本() { return IsClipboardFormatAvailable(CF_UNICODETEXT) == TRUE; }
+bool 剪贴板_置图片字节集(const std::vector<unsigned char>& imageBytes) {
+    if (LB_ClipboardIsGif(imageBytes)) return LB_ClipboardSetGif(imageBytes);
+    std::vector<unsigned char> dib;
+    if (!LB_ClipboardNormalizeDib(imageBytes, dib)) return false;
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, dib.size());
+    if (!memory) return false;
+    void* target = GlobalLock(memory);
+    if (!target) { GlobalFree(memory); return false; }
+    std::memcpy(target, dib.data(), dib.size()); GlobalUnlock(memory);
+    if (!OpenClipboard(nullptr)) { GlobalFree(memory); return false; }
+    if (!EmptyClipboard()) { CloseClipboard(); GlobalFree(memory); return false; }
+    if (!SetClipboardData(LB_ClipboardDibFormat(dib), memory)) { GlobalFree(memory); CloseClipboard(); return false; }
+    CloseClipboard(); return true;
+}
+
+std::vector<unsigned char> 剪贴板_取图片字节集() {
+    if (!OpenClipboard(nullptr)) return {};
+    std::vector<unsigned char> result = LB_ClipboardReadGifBytes();
+    if (result.empty()) result = LB_ClipboardReadGlobalBytes(IsClipboardFormatAvailable(CF_DIBV5) ? CF_DIBV5 : (IsClipboardFormatAvailable(CF_DIB) ? CF_DIB : 0));
+    if (result.empty() && IsClipboardFormatAvailable(CF_BITMAP)) LB_ClipboardBitmapToDib(static_cast<HBITMAP>(GetClipboardData(CF_BITMAP)), result);
+    CloseClipboard(); return result;
+}
+
+bool 剪贴板_置GIF字节集(const std::vector<unsigned char>& imageBytes) { return LB_ClipboardIsGif(imageBytes) && LB_ClipboardSetGif(imageBytes); }
+std::vector<unsigned char> 剪贴板_取GIF字节集() {
+    if (!OpenClipboard(nullptr)) return {};
+    std::vector<unsigned char> result = LB_ClipboardReadGifBytes();
+    CloseClipboard();
+    return result;
+}
+bool 剪贴板_是否有图片() { return IsClipboardFormatAvailable(LB_ClipboardGifFormat()) == TRUE || IsClipboardFormatAvailable(LB_ClipboardGifMimeFormat()) == TRUE || IsClipboardFormatAvailable(CF_DIBV5) == TRUE || IsClipboardFormatAvailable(CF_DIB) == TRUE || IsClipboardFormatAvailable(CF_BITMAP) == TRUE; }
+const wchar_t* 剪贴板_取图片格式() {
+    if (IsClipboardFormatAvailable(LB_ClipboardGifFormat()) || IsClipboardFormatAvailable(LB_ClipboardGifMimeFormat())) return LB_ReturnText(L"GIF");
+    if (IsClipboardFormatAvailable(CF_DIBV5)) return LB_ReturnText(L"CF_DIBV5");
+    if (IsClipboardFormatAvailable(CF_DIB)) return LB_ReturnText(L"CF_DIB");
+    if (IsClipboardFormatAvailable(CF_BITMAP)) return LB_ReturnText(L"CF_BITMAP");
+    return LB_ReturnText(L"");
+}
 bool 剪贴板_清空() { if (!OpenClipboard(nullptr)) return false; const bool success = EmptyClipboard() == TRUE; CloseClipboard(); return success; }
 `;
 

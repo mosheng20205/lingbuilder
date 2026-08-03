@@ -13,6 +13,11 @@ test('LCPP 源码包一键导出后可在独立目录完整导入', async t => {
   const workspace = path.join(root, 'workspace');
   await fs.mkdir(workspace, { recursive: true });
   await createSolutionService(workspace).getSolution();
+  await fs.writeFile(path.join(workspace, '.lingbuilder', 'build-configuration.json'), JSON.stringify({
+    schemaVersion: 1,
+    mode: 'Release',
+    architecture: 'x64'
+  }, null, 2), 'utf8');
   const sourcePath = path.join(workspace, 'src', 'MainWindow.lcpp');
   const source = '包 分享示例\n使用 Win32窗口基础模块\n\n类 MainWindow : 窗口\n  事件 _MainWindow_创建完毕()\n    调试输出("你好，源码分享")\n  结束\n结束类\n';
   await fs.writeFile(sourcePath, source, 'utf8');
@@ -54,6 +59,11 @@ test('LCPP 源码包一键导出后可在独立目录完整导入', async t => {
   await assert.rejects(fs.access(path.join(imported.workspacePath, 'src', '.env')));
   assert.ok(await exists(path.join(imported.workspacePath, '.lingbuilder', 'window-designer.json')));
   assert.ok(await exists(path.join(imported.workspacePath, '.lingbuilder', 'project-modules.json')));
+  assert.deepEqual(JSON.parse(await fs.readFile(path.join(imported.workspacePath, '.lingbuilder', 'build-configuration.json'), 'utf8')), {
+    schemaVersion: 1,
+    mode: 'Release',
+    architecture: 'x64'
+  });
   assert.ok(await exists(imported.solutionEntryPath));
 });
 
@@ -106,7 +116,7 @@ test('LCPP 源码包会记录 ListView 类型化行所需生成器能力', async
     DEFAULT_PROJECT_ID,
     path.join(root, 'listview-structured-capability.lcpppkg')
   );
-  assert.equal(exported.manifest.minimumGeneratorVersion, '0.2.8');
+  assert.equal(exported.manifest.minimumGeneratorVersion, '0.2.7');
   assert.deepEqual(exported.manifest.requiredCapabilities, [LCPP_GENERATOR_CAPABILITIES.listViewStructuredRows]);
 });
 
@@ -151,7 +161,7 @@ test('LCPP 源码包使用 EdgeView v1 命令时声明 safe-api.v1 和 0.2.7', a
   assert.deepEqual(exported.manifest.requiredCapabilities, [LCPP_GENERATOR_CAPABILITIES.edgeViewSafeApiV1]);
 });
 
-test('LCPP 源码包使用 EdgeView v2 命令时声明 safe-api.v2 和 0.2.8', async t => {
+test('LCPP 源码包使用 EdgeView v2 命令时声明 safe-api.v2 和 0.2.7', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-edgeview-v2-capability-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const workspace = path.join(root, 'workspace');
@@ -166,7 +176,7 @@ test('LCPP 源码包使用 EdgeView v2 命令时声明 safe-api.v2 和 0.2.8', a
     ''
   ].join('\n'), 'utf8');
   const exported = await createLcppSourcePackageService(workspace).exportProject(DEFAULT_PROJECT_ID, path.join(root, 'edgeview-v2.lcpppkg'));
-  assert.equal(exported.manifest.minimumGeneratorVersion, '0.2.8');
+  assert.equal(exported.manifest.minimumGeneratorVersion, '0.2.7');
   assert.ok(exported.manifest.requiredCapabilities.includes(LCPP_GENERATOR_CAPABILITIES.edgeViewSafeApiV2));
 });
 

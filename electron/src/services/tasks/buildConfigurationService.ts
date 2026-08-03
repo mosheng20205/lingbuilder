@@ -13,7 +13,14 @@ export interface ModuleCompatibleBuildConfiguration {
 
 const MODULE_ARCHITECTURE_REQUIREMENTS: Readonly<Record<string, BuildArchitecture>> = {
   'lingbuilder.cef3.browser': 'x64',
-  'lingbuilder.fbro.browser': 'x64'
+  'lingbuilder.fbro.browser': 'x64',
+  'lingbuilder.opencv': 'x64'
+};
+
+const MODULE_ARCHITECTURE_LABELS: Readonly<Record<string, string>> = {
+  'lingbuilder.cef3.browser': 'CEF3 浏览器模块',
+  'lingbuilder.fbro.browser': 'FBro 浏览器模块',
+  'lingbuilder.opencv': 'OpenCV 模块'
 };
 
 export class BuildConfigurationService {
@@ -56,7 +63,7 @@ export function resolveModuleCompatibleBuildConfiguration(
   return {
     configuration: { ...configuration, architecture },
     changed: true,
-    messages: [`${moduleIds.includes('lingbuilder.fbro.browser') ? 'FBro' : 'CEF3'} 浏览器模块仅支持 x64，构建架构已自动从 ${configuration.architecture} 切换为 ${architecture}。`]
+    messages: [`${MODULE_ARCHITECTURE_LABELS[moduleIds.find(moduleId => MODULE_ARCHITECTURE_REQUIREMENTS[moduleId] === architecture) || ''] || '当前模块'}仅支持 ${architecture}，构建架构已自动从 ${configuration.architecture} 切换为 ${architecture}。`]
   };
 }
 

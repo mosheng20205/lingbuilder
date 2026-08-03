@@ -50,6 +50,8 @@ export interface ModuleDesignerRuntimeParameter {
   lengthOf?: string;
   /** Setter 需要的固定参数，例如启用布局或默认关闭掩码。 */
   literal?: string | number;
+  /** 将设计器数值转换为原生 ABI 数值时使用的乘数，例如百分比到倍率为 0.01。 */
+  valueScale?: number;
 }
 
 export interface ModuleDesignerPropertySetterMapping {
@@ -266,6 +268,13 @@ export type ModuleControlReferenceScope = 'currentWindow' | 'project';
 export type ModuleControlReferenceKind = 'visual' | 'nonVisual' | 'resource';
 export type ModuleControlRuntimeRepresentation = 'wideName' | 'stableId' | 'nativeHandle';
 
+export interface ModuleHandlerSignatureContract {
+  /** 处理器在 .lcpp 中声明的参数类型，空数组表示必须是无参数处理器。 */
+  parameterTypes: string[];
+  /** 处理器在 .lcpp 中声明的返回类型，例如“空”“整数型”。 */
+  returnType: string;
+}
+
 export interface ModuleCommandBindingParameter {
   name: string;
   type: ModuleCommandValueType;
@@ -280,6 +289,8 @@ export interface ModuleCommandBindingParameter {
   runtimeRepresentation?: ModuleControlRuntimeRepresentation;
   /** 仅 lingValue 可用；表示从此参数起接受任意数量的 LingCpp 可深拷贝值。 */
   variadic?: boolean;
+  /** 仅 handler 可用；由语言服务校验 &引用目标的参数和返回类型。 */
+  handlerSignature?: ModuleHandlerSignatureContract;
 }
 
 export interface ModuleManagedTaskInvocation {

@@ -7,6 +7,7 @@ const MODULE_PREFIX = 'lingbuilder.new_emoji.ui/';
 type PreviewProps = {
   control: LingControl;
   isEnabled: boolean;
+  isSelected?: boolean;
   theme: NewEmojiThemePreview;
 };
 
@@ -23,6 +24,53 @@ function listValue(value: unknown, fallback: string[]) {
   if (!Array.isArray(value)) return fallback;
   const result = value.map(item => typeof item === 'string' ? item : String((item as Record<string, unknown>)?.label ?? (item as Record<string, unknown>)?.title ?? (item as Record<string, unknown>)?.text ?? '')).filter(Boolean);
   return result.length ? result : fallback;
+}
+
+/**
+ * new_emoji stores colors as #AARRGGBB while CSS expects #RRGGBB or rgba().
+ * Keep the conversion here so designer previews use the same values as the
+ * generated native setters instead of silently falling back to the theme.
+ */
+export function toNewEmojiCssColor(value: unknown, fallback: string): string {
+  if (typeof value !== 'string') return fallback;
+  const normalized = value.trim();
+  const argb = normalized.match(/^#([0-9a-f]{8})$/iu);
+  if (argb) {
+    const hex = argb[1]!;
+    const alpha = Number.parseInt(hex.slice(0, 2), 16);
+    const red = Number.parseInt(hex.slice(2, 4), 16);
+    const green = Number.parseInt(hex.slice(4, 6), 16);
+    const blue = Number.parseInt(hex.slice(6, 8), 16);
+    if (alpha === 255) return `#${hex.slice(2).toUpperCase()}`;
+    return `rgba(${red}, ${green}, ${blue}, ${(alpha / 255).toFixed(3).replace(/0+$/u, '').replace(/\.$/u, '')})`;
+  }
+  if (/^0x[0-9a-f]{8}$/iu.test(normalized)) {
+    return toNewEmojiCssColor(`#${normalized.slice(2)}`, fallback);
+  }
+  return normalized || fallback;
+}
+
+function alignItems(value: unknown, fallback: 'flex-start' | 'center' | 'flex-end' = 'center') {
+  const normalized = String(value ?? '');
+  return normalized === '0' ? 'flex-start' : normalized === '2' ? 'flex-end' : fallback;
+}
+
+function justifyContent(value: unknown, fallback: 'flex-start' | 'center' | 'flex-end' = 'center') {
+  const normalized = String(value ?? '');
+  return normalized === '0' ? 'flex-start' : normalized === '2' ? 'flex-end' : fallback;
+}
+
+function nativeRegionStyle(control: LingControl, theme: NewEmojiThemePreview, properties: Record<string, unknown>) {
+  const background = toNewEmojiCssColor(properties.backgroundColor, toNewEmojiCssColor(control.background, 'transparent'));
+  const foreground = toNewEmojiCssColor(control.foreground, theme.textPrimary);
+  const align = String(properties.align ?? '1');
+  return {
+    backgroundColor: background,
+    color: foreground,
+    justifyContent: justifyContent(properties.align),
+    alignItems: alignItems(properties.valign),
+    textAlign: align === '1' ? 'center' : align === '2' ? 'right' : 'left'
+  } as React.CSSProperties;
 }
 
 function Shell({ children, className = '', style }: { children: React.ReactNode; className?: string; style?: React.CSSProperties }) {
@@ -53,7 +101,7 @@ export function getNewEmojiPreviewKind(control: LingControl) {
   return control.designerType?.startsWith(MODULE_PREFIX) ? control.designerType.slice(MODULE_PREFIX.length) : undefined;
 }
 
-export default function NewEmojiDesignerControlPreview({ control, isEnabled, theme }: PreviewProps) {
+export default function NewEmojiDesignerControlPreview({ control, isEnabled, isSelected = false, theme }: PreviewProps) {
   const kind = getNewEmojiPreviewKind(control);
   if (!kind) return null;
   const p = control.properties ?? {};
@@ -131,32 +179,36 @@ export default function NewEmojiDesignerControlPreview({ control, isEnabled, the
       preview = <Shell className="flex items-start gap-3 border-sky-500/50 bg-sky-950/25 p-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-500/25 font-serif text-sky-300">i</span><span><b className="block">{title}</b><span className="text-[9px] text-sky-200/70">{body}</span></span></Shell>;
       break;
     case 'Link':
-      preview = <div className="flex h-full items-center gap-1 overflow-hidden text-sky-400 underline underline-offset-2"><span className="truncate">{content}</span><span>↗</span></div>;
+      preview = <div className="flex h-full items-center gap-1 overflow-hidden underline underline-offset-2" style={{ color: toNewEmojiCssColor(control.foreground, theme.textPrimary) }}><span className="truncate">{p.prefixIcon ? `${String(p.prefixIcon)} ` : ''}{content}{p.suffixIcon ? ` ${String(p.suffixIcon)}` : ''}</span></div>;
       break;
     case 'Icon':
-      preview = <div className="flex h-full w-full items-center justify-center rounded-md border border-violet-500/30 bg-violet-500/10 text-2xl text-violet-300">{textValue(p.icon, '✦')}</div>;
+      preview = <div className="flex h-full w-full items-center justify-center overflow-hidden" style={{ color: toNewEmojiCssColor(control.foreground, theme.textPrimary), transform: `rotate(${numberValue(p.rotation, 0)}deg)` }}>{content}</div>;
       break;
     case 'Space':
-      preview = <div className="flex h-full w-full items-center justify-center gap-2"><span className="h-2 w-2 rounded-full bg-violet-400"/><span className="h-px flex-1 border-t border-dashed border-violet-400/60"/><span className="text-[8px] text-violet-300">{numberValue(p.size, 16)}px</span><span className="h-px flex-1 border-t border-dashed border-violet-400/60"/><span className="h-2 w-2 rounded-full bg-violet-400"/></div>;
+      preview = isSelected
+        ? <div data-new-emoji-space-helper="visible" className="flex h-full w-full items-center justify-center border border-dashed border-amber-400/70 text-[9px] text-amber-300">间距 · 运行时不可见</div>
+        : <div data-new-emoji-space-helper="hidden" className="h-full w-full" aria-hidden="true" />;
       break;
     case 'Container':
-      preview = <Shell className="grid grid-cols-2 gap-2 border-dashed p-2"><div className="rounded border border-violet-500/25 bg-violet-500/10"/><div className="rounded border border-cyan-500/25 bg-cyan-500/10"/><span className="col-span-2 self-end text-[8px] text-slate-500">Container · 内容承载区</span></Shell>;
+      preview = <div className="h-full w-full overflow-hidden" style={{ backgroundColor: toNewEmojiCssColor(p.backgroundColor, toNewEmojiCssColor(control.background, 'transparent')), border: `1px solid ${toNewEmojiCssColor(p.borderColor, 'transparent')}`, color: toNewEmojiCssColor(control.foreground, theme.textPrimary) }} />;
       break;
     case 'Header':
-      preview = <Shell className="flex items-center justify-between border-b-violet-500/50 bg-slate-800 px-3"><span className="font-semibold">◈ {content}</span><span className="flex gap-3 text-[9px] text-slate-400"><i>首页</i><i>文档</i><i>关于</i></span></Shell>;
+      preview = <div className="flex h-full w-full overflow-hidden px-0" style={nativeRegionStyle(control, theme, p)}><span className="truncate">{title}</span></div>;
       break;
     case 'Aside':
-      preview = <Shell className="flex"><div className="w-10 bg-violet-500/15 p-2 text-violet-300">◈</div><div className="flex-1 space-y-2 p-2 text-[9px] text-slate-400"><div className="rounded bg-violet-500/25 p-1 text-violet-200">导航一</div><div className="p-1">导航二</div><div className="p-1">导航三</div></div></Shell>;
+      preview = <div className="flex h-full w-full overflow-hidden" style={nativeRegionStyle(control, theme, p)}><span className="truncate">{title}</span></div>;
       break;
     case 'Main':
-      preview = <Shell className="grid grid-cols-3 gap-2 p-3"><div className="col-span-2 rounded bg-slate-800"/><div className="rounded bg-violet-500/15"/><div className="col-span-3 h-2 self-end rounded bg-slate-700"/></Shell>;
+      preview = <div className="flex h-full w-full overflow-hidden" style={nativeRegionStyle(control, theme, p)}><span className="truncate">{title}</span></div>;
       break;
     case 'Footer':
-      preview = <Shell className="flex items-center justify-between border-t-violet-500/50 px-3 text-[9px] text-slate-400"><span>© LingBuilder</span><span>帮助 · 隐私 · 关于</span></Shell>;
+      preview = <div className="flex h-full w-full overflow-hidden" style={nativeRegionStyle(control, theme, p)}><span className="truncate">{title}</span></div>;
       break;
-    case 'Layout':
-      preview = <Shell className="grid grid-cols-[28%_1fr] grid-rows-[25%_1fr_20%] gap-1 p-1"><div className="col-span-2 rounded bg-violet-500/25"/><div className="rounded bg-slate-700"/><div className="rounded bg-slate-800"/><div className="col-span-2 rounded bg-cyan-500/15"/></Shell>;
+    case 'Layout': {
+      const background = toNewEmojiCssColor(p.backgroundColor, toNewEmojiCssColor(control.background, 'transparent'));
+      preview = <Shell className="grid grid-cols-[28%_1fr] grid-rows-[25%_1fr_20%] gap-1 p-1" style={{ backgroundColor: background, color: toNewEmojiCssColor(control.foreground, theme.textPrimary) }}><div className="col-span-2 rounded bg-violet-500/25"/><div className="rounded bg-slate-700"/><div className="rounded bg-slate-800"/><div className="col-span-2 rounded bg-cyan-500/15"/></Shell>;
       break;
+    }
     case 'Border':
       preview = <div className="flex h-full w-full items-center justify-center rounded-lg border-2 border-violet-400/80 bg-violet-500/5 p-2"><span className="text-[9px] text-violet-200">{content}</span></div>;
       break;

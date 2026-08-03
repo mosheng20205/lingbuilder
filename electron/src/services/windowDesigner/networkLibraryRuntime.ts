@@ -8,44 +8,6 @@ static bool LB_EnsureSockets() {
 }
 `;
 
-const HTTP_CLIENT_RUNTIME = String.raw`
-static thread_local int g_lbHttpStatus = 0;
-static thread_local std::wstring g_lbHttpResponse;
-static thread_local std::wstring g_lbHttpError;
-
-void HTTP客户端_清空状态() { g_lbHttpStatus = 0; g_lbHttpResponse.clear(); g_lbHttpError.clear(); }
-int HTTP客户端_取状态码() { return g_lbHttpStatus; }
-const wchar_t* HTTP客户端_取响应文本() { return LB_ReturnText(g_lbHttpResponse); }
-const wchar_t* HTTP客户端_取错误() { return LB_ReturnText(g_lbHttpError); }
-
-static bool LB_HttpFail(const wchar_t* message) { g_lbHttpError = message; g_lbHttpError += L"（错误码 "; g_lbHttpError += std::to_wstring(GetLastError()); g_lbHttpError += L"）"; return false; }
-
-bool HTTP客户端_请求(const wchar_t* method, const wchar_t* url, const wchar_t* body, int timeoutMs) {
-    HTTP客户端_清空状态(); const std::wstring address = LB_Wide(url); if (address.empty()) { g_lbHttpError = L"HTTP 请求地址为空。"; return false; }
-    URL_COMPONENTSW parts = {}; parts.dwStructSize = sizeof(parts); parts.dwHostNameLength = static_cast<DWORD>(-1); parts.dwUrlPathLength = static_cast<DWORD>(-1); parts.dwExtraInfoLength = static_cast<DWORD>(-1);
-    if (!WinHttpCrackUrl(address.c_str(), 0, 0, &parts)) return LB_HttpFail(L"HTTP 地址解析失败。");
-    if (parts.nScheme != INTERNET_SCHEME_HTTP && parts.nScheme != INTERNET_SCHEME_HTTPS) { g_lbHttpError = L"HTTP 地址必须使用 http:// 或 https://。"; return false; }
-    const std::wstring host(parts.lpszHostName, parts.dwHostNameLength); std::wstring path = parts.dwUrlPathLength ? std::wstring(parts.lpszUrlPath, parts.dwUrlPathLength) : L"/";
-    if (parts.dwExtraInfoLength) path.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
-    HINTERNET session = WinHttpOpen(L"LingBuilder HTTP/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0); if (!session) return LB_HttpFail(L"HTTP 会话创建失败。");
-    const int timeout = timeoutMs > 0 ? timeoutMs : 30000; WinHttpSetTimeouts(session, timeout, timeout, timeout, timeout);
-    HINTERNET connection = WinHttpConnect(session, host.c_str(), parts.nPort, 0); if (!connection) { WinHttpCloseHandle(session); return LB_HttpFail(L"HTTP 主机连接失败。"); }
-    const std::wstring verb = LB_Wide(method).empty() ? L"GET" : LB_Wide(method); const DWORD flags = parts.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0;
-    HINTERNET request = WinHttpOpenRequest(connection, verb.c_str(), path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
-    if (!request) { WinHttpCloseHandle(connection); WinHttpCloseHandle(session); return LB_HttpFail(L"HTTP 请求创建失败。"); }
-    const std::string bodyBytes = LB_WideToUtf8(body); const wchar_t* headers = bodyBytes.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : L"Content-Type: application/json; charset=utf-8\r\n";
-    bool success = WinHttpSendRequest(request, headers, bodyBytes.empty() ? 0 : static_cast<DWORD>(-1L), bodyBytes.empty() ? WINHTTP_NO_REQUEST_DATA : const_cast<char*>(bodyBytes.data()), static_cast<DWORD>(bodyBytes.size()), static_cast<DWORD>(bodyBytes.size()), 0) == TRUE;
-    if (success) success = WinHttpReceiveResponse(request, nullptr) == TRUE;
-    if (!success) { WinHttpCloseHandle(request); WinHttpCloseHandle(connection); WinHttpCloseHandle(session); return LB_HttpFail(L"HTTP 请求发送或接收失败。"); }
-    DWORD statusSize = sizeof(g_lbHttpStatus); WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &g_lbHttpStatus, &statusSize, WINHTTP_NO_HEADER_INDEX);
-    std::string responseBytes; while (true) { DWORD available = 0; if (!WinHttpQueryDataAvailable(request, &available) || available == 0) break; const size_t start = responseBytes.size(); responseBytes.resize(start + available); DWORD read = 0; if (!WinHttpReadData(request, responseBytes.data() + start, available, &read)) break; responseBytes.resize(start + read); }
-    g_lbHttpResponse = LB_Utf8ToWide(responseBytes); WinHttpCloseHandle(request); WinHttpCloseHandle(connection); WinHttpCloseHandle(session); return true;
-}
-
-bool HTTP客户端_GET(const wchar_t* url) { return HTTP客户端_请求(L"GET", url, L"", 30000); }
-bool HTTP客户端_POST(const wchar_t* url, const wchar_t* body) { return HTTP客户端_请求(L"POST", url, body, 30000); }
-`;
-
 const TCP_RUNTIME = String.raw`
 static SOCKET g_lbTcpSocket = INVALID_SOCKET;
 static std::wstring g_lbTcpError;
@@ -135,7 +97,6 @@ bool FTP_重命名(const wchar_t* oldName, const wchar_t* newName) { return g_lb
 `;
 
 const RUNTIMES: Record<string, string> = {
-  'lingbuilder.net.http-client': HTTP_CLIENT_RUNTIME,
   'lingbuilder.net.tcp': TCP_RUNTIME,
   'lingbuilder.net.udp': UDP_RUNTIME,
   'lingbuilder.net.dns': DNS_RUNTIME,

@@ -12,6 +12,9 @@ export const WIN32_UI_BACKEND_ID = 'win32';
 export const NEW_EMOJI_UI_BACKEND_ID = 'new-emoji';
 const WIN32_BASIC_MODULE_ID = 'lingbuilder.win32.basic';
 const FBRO_BROWSER_MODULE_ID = 'lingbuilder.fbro.browser';
+const HTTP_SERVER_MODULE_ID = 'lingbuilder.http.server';
+const WEBSOCKET_CLIENT_MODULE_ID = 'lingbuilder.websocket.client';
+const WEBSOCKET_SERVER_MODULE_ID = 'lingbuilder.websocket.server';
 
 const BACKEND_NEUTRAL_BUILTIN_MODULE_IDS = new Set([
   ...STANDARD_LIBRARY_MODULES,
@@ -91,6 +94,12 @@ export const NEW_EMOJI_UI_BACKEND_COMMAND_CONTRACT: NativeUiBackendCommandContra
     if (module.manifest.id === WIN32_BASIC_MODULE_ID) return NEW_EMOJI_WIN32_BASIC_COMMANDS.has(commandName);
     // FBro 在 new_emoji 后端使用独立 HWND 子宿主，生成模板提供完整 C ABI 命令适配。
     if (module.manifest.id === FBRO_BROWSER_MODULE_ID) return true;
+    // HTTP 服务端复用同一工作线程运行时，并通过 new_emoji UI 线程的消息窗口派发请求处理器。
+    if (module.manifest.id === HTTP_SERVER_MODULE_ID) return true;
+    // WebSocket 服务端复用同一 reactor，并通过 new_emoji UI 线程的消息窗口派发处理器。
+    if (module.manifest.id === WEBSOCKET_SERVER_MODULE_ID) return true;
+    // WebSocket 客户端复用同一 WinHTTP 运行时，并通过 new_emoji UI 线程的消息窗口派发处理器。
+    if (module.manifest.id === WEBSOCKET_CLIENT_MODULE_ID) return true;
     if (module.isBuiltin) return BACKEND_NEUTRAL_BUILTIN_MODULE_IDS.has(module.manifest.id);
     // 第三方 v2 模块由 targets.headers/sources/libs 提供独立运行时；模块清单校验负责约束 binding。
     return true;

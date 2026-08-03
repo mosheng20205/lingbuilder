@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>R2 大文件上传器</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">跳到上传区域</a>
+    <header class="app-header">
+      <div class="app-header__inner">
+        <div>
+          <h1>R2 大文件上传器</h1>
+          <p>32 MiB 分段 · 3 路并发 · 失败自动重试</p>
+        </div>
+        <span id="service-state" class="service-state" data-state="checking"><span aria-hidden="true"></span>正在检查 R2</span>
+      </div>
+    </header>
+
+    <main id="main-content" class="workspace">
+      <section id="config-section" aria-labelledby="config-heading" hidden>
+        <div class="section-heading">
+          <div>
+            <h2 id="config-heading">R2 连接</h2>
+            <p>本机直传配置</p>
+          </div>
+        </div>
+
+        <form id="config-form" class="config-form">
+          <fieldset id="config-fields" class="config-fields">
+            <div class="config-grid">
+              <label class="field">
+                <span>Account ID</span>
+                <input id="account-id" name="accountId" inputmode="text" autocomplete="off" required>
+              </label>
+              <label class="field">
+                <span>存储桶</span>
+                <input id="bucket-name" name="bucketName" inputmode="text" autocomplete="off" required>
+              </label>
+              <label class="field">
+                <span>Access Key ID</span>
+                <input id="access-key-id" name="accessKeyId" inputmode="text" autocomplete="off" required>
+              </label>
+              <label class="field">
+                <span>Secret Access Key</span>
+                <input id="secret-access-key" name="secretAccessKey" type="password" autocomplete="off">
+              </label>
+              <label class="field field--wide">
+                <span>R2 公开域名</span>
+                <input id="public-base-url" name="publicBaseUrl" type="url" inputmode="url" autocomplete="off">
+              </label>
+            </div>
+            <div class="config-actions">
+              <p id="config-status" class="config-status" role="status" aria-live="polite"></p>
+              <button id="save-config" class="button button--primary" type="submit">保存并验证</button>
+            </div>
+          </fieldset>
+        </form>
+      </section>
+
+      <section aria-labelledby="upload-heading">
+        <div class="section-heading">
+          <div>
+            <h2 id="upload-heading">上传文件</h2>
+            <p>支持 580 MB 及更大文件，完成后在 R2 中生成一个完整对象。</p>
+          </div>
+        </div>
+
+        <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-controls="file-input" aria-describedby="drop-help" aria-disabled="true">
+          <input id="file-input" class="visually-hidden" type="file" disabled>
+          <p class="drop-zone__title">将文件拖到此处</p>
+          <p id="drop-help" class="drop-zone__hint">或使用下方按钮选择本地文件</p>
+          <label class="button button--secondary" for="file-input">选择文件</label>
+        </div>
+
+        <div id="file-panel" class="file-panel" hidden>
+          <div class="file-panel__metadata">
+            <strong id="file-name"></strong>
+            <span id="file-size"></span>
+          </div>
+          <div class="file-panel__actions">
+            <button id="start-upload" class="button button--primary" type="button">开始上传</button>
+            <button id="cancel-upload" class="button button--danger" type="button" hidden>取消上传</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="progress-panel" class="progress-panel" aria-labelledby="progress-heading" hidden>
+        <div class="progress-panel__heading">
+          <div>
+            <h2 id="progress-heading">上传进度</h2>
+            <p id="phase-text" aria-live="polite">准备上传...</p>
+          </div>
+          <strong id="progress-percent" class="progress-percent">0%</strong>
+        </div>
+        <div id="progress-bar" class="progress-bar" role="progressbar" aria-label="文件上传进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <span></span>
+        </div>
+        <dl class="progress-stats">
+          <div><dt>已上传</dt><dd id="progress-bytes">0 B / 0 B</dd></div>
+          <div><dt>平均速度</dt><dd id="progress-speed">--</dd></div>
+          <div><dt>预计剩余</dt><dd id="progress-remaining">--</dd></div>
+        </dl>
+      </section>
+
+      <p id="message" class="message" role="status" aria-live="polite" hidden></p>
+
+      <section id="result-panel" class="result-panel" aria-labelledby="result-heading" hidden>
+        <div>
+          <h2 id="result-heading">下载地址</h2>
+          <p id="result-key" class="result-key"></p>
+        </div>
+        <div class="result-actions">
+          <label for="result-url" class="visually-hidden">下载地址</label>
+          <input id="result-url" type="url" readonly>
+          <button id="copy-url" class="button button--secondary" type="button">复制地址</button>
+          <a id="download-link" class="button button--primary" href="#">下载文件</a>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

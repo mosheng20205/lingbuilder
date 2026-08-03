@@ -1,0 +1,68 @@
+{
+  "name": "lingbuilder-r2-large-file-uploader",
+  "version": "1.0.0",
+  "description": "Cloudflare R2 大文件上传桌面客户端",
+  "author": "LingBuilder",
+  "private": true,
+  "type": "module",
+  "main": "scripts/desktop-main.mjs",
+  "scripts": {
+    "start": "node scripts/start.mjs",
+    "dev": "node scripts/start.mjs",
+    "dev:worker": "wrangler dev",
+    "dev:local": "wrangler dev --local",
+    "deploy": "wrangler deploy",
+    "capture:ui": "node scripts/capture-ui.mjs",
+    "capture:desktop": "node scripts/capture-desktop-client.mjs",
+    "smoke:upload": "node scripts/smoke-upload.mjs",
+    "desktop": "electron scripts/desktop-main.mjs",
+    "dist:win": "electron-builder --win portable --x64",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run test"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "playwright": "^1.62.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10",
+    "wrangler": "^4.118.0"
+  },
+  "allowScripts": {
+    "electron": true,
+    "esbuild": true,
+    "workerd": true
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1101.0",
+    "jsonc-parser": "^3.3.1"
+  },
+  "build": {
+    "appId": "com.lingbuilder.r2-uploader",
+    "productName": "LingBuilder R2 大文件上传器",
+    "asar": true,
+    "directories": {
+      "output": "dist-client"
+    },
+    "files": [
+      "package.json",
+      "public/**/*",
+      "scripts/desktop-main.mjs",
+      "scripts/local-server.mjs",
+      "wrangler.jsonc"
+    ],
+    "win": {
+      "icon": "../../image/lingbuilder-ide-icon-v2.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "LingBuilder-R2-Uploader-${version}-x64.${ext}"
+    }
+  }
+}

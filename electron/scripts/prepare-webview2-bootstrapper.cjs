@@ -7,6 +7,11 @@ const projectRoot = path.resolve(__dirname, '..');
 const destination = path.join(projectRoot, 'build', 'vendor', 'MicrosoftEdgeWebview2Setup.exe');
 
 async function main() {
+  if (await fileExists(destination)) {
+    await validateBootstrapper(destination);
+    process.stdout.write(`已复用本地 WebView2 Bootstrapper：${destination}\n`);
+    return;
+  }
   const response = await fetch(DOWNLOAD_URL, { redirect: 'follow', signal: AbortSignal.timeout(60_000) });
   if (!response.ok) throw new Error(`下载 WebView2 Bootstrapper 失败：HTTP ${response.status}`);
   const finalUrl = new URL(response.url);
@@ -14,15 +19,33 @@ async function main() {
     throw new Error(`WebView2 Bootstrapper 重定向到了非微软地址：${finalUrl.hostname}`);
   }
   const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.length < 1024 || bytes.length > 16 * 1024 * 1024 || bytes.subarray(0, 2).toString('ascii') !== 'MZ') {
-    throw new Error('下载的 WebView2 Bootstrapper 不是有效的 Windows 可执行文件。');
-  }
+  validateBootstrapperBytes(bytes);
   await fs.mkdir(path.dirname(destination), { recursive: true });
   const temporary = `${destination}.tmp`;
   await fs.writeFile(temporary, bytes);
-  await verifyMicrosoftSignature(temporary);
+  await validateBootstrapper(temporary);
   await fs.rename(temporary, destination);
   process.stdout.write(`WebView2 Bootstrapper 已冻结到安装资源：${destination}\n`);
+}
+
+async function fileExists(filePath) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function validateBootstrapper(filePath) {
+  validateBootstrapperBytes(await fs.readFile(filePath));
+  await verifyMicrosoftSignature(filePath);
+}
+
+function validateBootstrapperBytes(bytes) {
+  if (bytes.length < 1024 || bytes.length > 16 * 1024 * 1024 || bytes.subarray(0, 2).toString('ascii') !== 'MZ') {
+    throw new Error('WebView2 Bootstrapper 不是有效的 Windows 可执行文件。');
+  }
 }
 
 async function verifyMicrosoftSignature(executablePath) {

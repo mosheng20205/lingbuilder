@@ -6,6 +6,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import DataGridDesignerPreview from '../src/components/DataGridDesignerPreview';
 import DataGridEditorDialog from '../src/components/DataGridEditorDialog';
+import NewEmojiTableEditorDialog, { getNewEmojiTableEditorData, serializeNewEmojiTableProperties } from '../src/components/NewEmojiTableEditorDialog';
 import { DATA_GRID_API, DATA_GRID_BINDINGS, DATA_GRID_COMMANDS } from '../src/services/modules/dataGridApiCatalog';
 import {
   encodeDataGridDelimited,
@@ -62,6 +63,133 @@ test('legacy new_emoji Table migration only adds unified edit model', () => {
   assert.deepEqual((properties.dataGridColumns as any[]).map(column => column.type), ['text', 'switch', 'buttons']);
   assert.equal((properties.dataGridRows as any[])[0].key, 'row-a');
   assert.equal(properties.originalRuntimeFlag, 'keep');
+});
+
+test('new_emoji Table editor exposes structured columns, typed cells and batch import', () => {
+  const control: LingControl = {
+    id: 'new-emoji-table-editor', type: 'Grid', designerType: 'lingbuilder.new_emoji.ui/Table', name: '订单表格', content: '', x: 0, y: 0, width: 520, height: 260,
+    fontSize: 12, background: '#202028', foreground: '#F8FAFC', isEnabled: true, visibility: 'Visible',
+    properties: {
+      columns: ['名称', '状态'],
+      rows: ['待处理\t订单 A'],
+      tableColumnsEx: [
+        { id: 'status', title: '状态', type: 'combo', width: 140, options: [{ value: 'pending', label: '待处理' }] },
+        { id: 'name', title: '名称', type: 'text', width: 180 }
+      ],
+      tableRowsEx: [{ id: 'order-a', enabled: true, cells: ['pending', '订单 A'] }]
+    }
+  };
+  const markup = renderToStaticMarkup(React.createElement(NewEmojiTableEditorDialog, {
+    control, isDarkMode: true, onSave: () => undefined, onClose: () => undefined
+  }));
+  assert.match(markup, /列配置/u);
+  assert.match(markup, /行数据/u);
+  assert.match(markup, /列专属配置/u);
+  assert.match(markup, /组合框选项/u);
+  assert.match(markup, /待处理/u);
+  assert.deepEqual(getNewEmojiTableEditorData(control), { columns: 2, rows: 1 });
+});
+
+test('new_emoji Table serialization keeps typed advanced column metadata and legacy runtime fields', () => {
+  const model = normalizeDataGridModel({
+    columns: [{
+      id: 'status', title: '状态', type: 'combo', width: 140, options: [{ value: 'ready to ship', label: '待发货' }],
+      allowCustomInput: true, visible: true, sortable: true, filterable: true, required: true
+    }] as any,
+    rows: [{ key: 'order-1', enabled: false, cells: { status: 'ready to ship' } }] as any
+  });
+  const properties = serializeNewEmojiTableProperties(model);
+  const columns = properties.tableColumnsEx as any[];
+  const rows = properties.tableRowsEx as any[];
+  assert.equal((properties.columns as string[])[0], '状态');
+  assert.equal((properties.rows as string[])[0], 'ready to ship');
+  assert.equal(columns[0].id, 'status');
+  assert.equal(columns[0].allowCustomInput, true);
+  assert.deepEqual(columns[0].options, [{ value: 'ready to ship', label: '待发货' }]);
+  assert.deepEqual(rows[0], { id: 'order-1', enabled: false, cells: ['ready to ship'] });
+});
+
+test('new_emoji Table generator renders structured data through the safe basic ABI', async () => {
+  const workspaceRoot = path.resolve('..');
+  const manifestPath = path.join(workspaceRoot, '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  const table = manifest.contributes.designerControls.find((item: { namespacedType?: string }) => item.namespacedType === 'lingbuilder.new_emoji.ui/Table');
+  assert.ok(table);
+  const installedModule: InstalledModule = {
+    manifest,
+    installPath: path.dirname(manifestPath),
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'new-emoji-table-fallback',
+    name: 'new_emoji Table fallback',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 420, background: '#202028', description: '', designerBackend: 'new-emoji',
+      controls: [{
+        id: 'table', type: 'Grid', designerType: 'lingbuilder.new_emoji.ui/Table', name: '订单表格', content: '表格', x: 20, y: 20, width: 460, height: 240,
+        fontSize: 12, background: '#202028', foreground: '#F8FAFC', isEnabled: true, visibility: 'Visible',
+        properties: {
+          ...table.defaultProps,
+          columns: [], rows: [], tableColumnsEx: [], tableRowsEx: [],
+          dataGridColumns: [{ id: 'name', title: '名称', type: 'text', width: 160 }, { id: 'status', title: '状态', type: 'text', width: 120 }],
+          dataGridRows: [{ key: 'order-1', enabled: true, cells: { name: '订单 A', status: '待处理' } }]
+        }, events: {}
+      }]
+    }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    enabledModules: [installedModule],
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
+  });
+  assert.deepEqual(generated.blockingDiagnostics, []);
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /EU_CreateTable\(g_newEmojiWindow/u);
+  assert.match(cpp, /LB_NE_ToUtf8\(L"名称\|状态"\)/u);
+  assert.match(cpp, /LB_NE_ToUtf8\(L"订单 A\\t待处理"\)/u);
+  assert.match(cpp, /EU_SetTableData\(g_newEmojiWindow/u);
+  assert.doesNotMatch(cpp, /EU_SetTableColumnsEx\(g_newEmojiWindow/u);
+  assert.doesNotMatch(cpp, /EU_SetTableRowsEx\(g_newEmojiWindow/u);
+});
+
+test('new_emoji Table keeps legacy string Ex data compatible', async () => {
+  const workspaceRoot = path.resolve('..');
+  const manifestPath = path.join(workspaceRoot, '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json');
+  const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+  const table = manifest.contributes.designerControls.find((item: { namespacedType?: string }) => item.namespacedType === 'lingbuilder.new_emoji.ui/Table');
+  assert.ok(table);
+  const installedModule: InstalledModule = {
+    manifest,
+    installPath: path.dirname(manifestPath),
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'new-emoji-table-legacy-ex',
+    name: 'new_emoji Table legacy Ex',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 420, background: '#202028', description: '', designerBackend: 'new-emoji',
+      controls: [{
+        id: 'table', type: 'Grid', designerType: 'lingbuilder.new_emoji.ui/Table', name: '旧表格', content: '表格', x: 20, y: 20, width: 460, height: 240,
+        fontSize: 12, background: '#202028', foreground: '#F8FAFC', isEnabled: true, visibility: 'Visible',
+        properties: {
+          ...table.defaultProps,
+          columns: ['名称'], rows: ['订单 A'], tableColumnsEx: ['名称'], tableRowsEx: ['订单 A']
+        }, events: {}
+      }]
+    }]
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    enabledModules: [installedModule],
+    lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类'
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /EU_SetTableColumnsEx\(g_newEmojiWindow/u);
+  assert.match(cpp, /EU_SetTableRowsEx\(g_newEmojiWindow/u);
 });
 
 test('combo stable values are preserved instead of being rewritten as identifiers', () => {

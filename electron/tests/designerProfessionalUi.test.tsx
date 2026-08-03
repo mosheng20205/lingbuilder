@@ -10,6 +10,16 @@ test('designer hotkey property captures supported key combinations without trigg
   assert.match(source, /readOnly/u);
 });
 
+test('module enum properties explicitly open the native picker and expose accessible labels', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
+  assert.match(source, /function openDesignerSelectPicker/u);
+  assert.match(source, /event\.currentTarget\.showPicker\(\)/u);
+  assert.match(source, /data-designer-enum-property=\{definition\.key\}/u);
+  assert.match(source, /aria-label=\{definition\.label\}/u);
+  assert.match(source, /显示标签页表头/u);
+  assert.doesNotMatch(source, /当前运行时不支持隐藏标签头/u);
+});
+
 test('generic designer preview does not retain its placeholder fill for transparent controls', async () => {
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   assert.match(source, /control\.background === 'transparent' \? 'bg-transparent' : 'bg-sky-950\/15'/u);
@@ -214,9 +224,13 @@ test('solution project context menu imports image resources through the command 
   assert.match(sidebarSource, /复制相对路径/u);
   assert.match(sidebarSource, /setResourcePreview\(\{ projectId: project\.id, resource \}\)/u);
   assert.match(sidebarSource, /ImageResourcePreviewDialog/u);
-  assert.match(sidebarSource, /getDesignerImagePreviewSource\(projectId, resource\.relativePath\)/u);
+  assert.match(sidebarSource, /fetchDesignerImagePreviewBlob\(projectId, resource\.relativePath, controller\.signal\)/u);
+  assert.match(sidebarSource, /URL\.createObjectURL\(blob\)/u);
+  assert.match(sidebarSource, /workspaceKeyRef\.current !== requestedWorkspaceKey/u);
+  assert.match(sidebarSource, /setProjectImageResources\(\{\}\)/u);
+  assert.match(appSource, /workspaceKey=\{currentWorkspacePath\}/u);
   assert.match(sidebarSource, /正在载入图片/u);
-  assert.match(sidebarSource, /图片无法预览/u);
+  assert.match(sidebarSource, /图片无法预览：\{loadError/u);
   assert.match(sidebarSource, /正在选择并复制图片资源/u);
   assert.match(sidebarSource, /role="alert"/u);
   assert.match(appSource, /workbench\.action\.project\.addImageResource/u);

@@ -91,9 +91,12 @@ async function main() {
   await writeBmp(path.join(executableDir, '背景测试.bmp'), 320, 160, [[100, 50, 40, 40], [220, 50, 40, 40]]);
   await writeBmp(path.join(executableDir, '滑块测试.bmp'), 40, 40, [[0, 0, 40, 40]]);
   await writeBmp(path.join(executableDir, '空白测试.bmp'), 80, 80, []);
+  const demoAssetRoot = path.join(repoRoot, 'assets', 'module-demo-lingbuilder.opencv');
+  await fs.copyFile(path.join(demoAssetRoot, 'OpenCV缺口背景.png'), path.join(executableDir, 'OpenCV缺口背景.png'));
   await execFileAsync(executable, [], { cwd: executableDir, windowsHide: true, timeout: 2 * 60 * 1000, maxBuffer: 1024 * 1024 });
   const report = await fs.readFile(path.join(executableDir, 'opencv-native-smoke.txt'), 'utf8');
-  if (report.trim() !== 'OK') throw new Error(`OpenCV 原生验证失败：\n${report}`);
+  if (!report.trim().startsWith('OK ')) throw new Error(`OpenCV 原生验证失败：\n${report}`);
+  await fs.copyFile(path.join(executableDir, 'OpenCV缺口验证标注.png'), path.join(demoAssetRoot, 'OpenCV缺口验证标注.png'));
   for (const name of ['LingBuilderOpenCvBridge.dll', 'opencv_core4140.dll', 'opencv_imgproc4140.dll', 'opencv_imgcodecs4140.dll']) {
     await fs.access(path.join(executableDir, name));
   }
@@ -163,6 +166,18 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   const long long blank = OpenCV_加载图像(L"空白测试.bmp", L"彩色");
   const long long emptyResult = OpenCV_分析缺口(blank, 0, 1, L"{\"minScore\":1.0}");
   check(emptyResult != 0 && OpenCV结果_取数量(emptyResult) == 0, 8192);
+  const long long demoGapImage = OpenCV_加载图像(L"OpenCV缺口背景.png", L"彩色");
+  const long long demoGapResult = OpenCV_分析缺口(demoGapImage, 0, 1, L"{\"mode\":\"contour\",\"roiX\":290,\"roiY\":80,\"roiWidth\":170,\"roiHeight\":160,\"minWidth\":60,\"minHeight\":80,\"maxWidth\":130,\"maxHeight\":140,\"minScore\":0.2}");
+  const int demoGapX = OpenCV结果_取横坐标(demoGapResult, 0);
+  const int demoGapY = OpenCV结果_取纵坐标(demoGapResult, 0);
+  const int demoGapWidth = OpenCV结果_取宽度(demoGapResult, 0);
+  const int demoGapHeight = OpenCV结果_取高度(demoGapResult, 0);
+  check(demoGapImage != 0 && demoGapResult != 0 && OpenCV结果_取数量(demoGapResult) == 1, 65536);
+  check(std::abs(demoGapX - 330) <= 3 && std::abs(demoGapY - 108) <= 3, 131072);
+  check(std::abs(demoGapWidth - 100) <= 5 && std::abs(demoGapHeight - 110) <= 5, 262144);
+  check(OpenCV结果_保存标注图(demoGapResult, L"OpenCV缺口验证标注.png", 95), 524288);
+  OpenCV结果_释放(demoGapResult);
+  OpenCV_释放图像(demoGapImage);
   OpenCV结果_释放(emptyResult);
   OpenCV_释放图像(blank);
   OpenCV结果_释放(templateResult);
@@ -185,8 +200,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   FILE* report = nullptr;
   _wfopen_s(&report, L"opencv-native-smoke.txt", L"wb");
   if (report) {
-    if (failures == 0) std::fprintf(report, "OK\n");
-    else std::fprintf(report, "FAIL %d X=%d,%d\n", failures, firstX, secondX);
+    if (failures == 0) std::fprintf(report, "OK DEMO=%d,%d,%d,%d\n", demoGapX, demoGapY, demoGapWidth, demoGapHeight);
+    else std::fprintf(report, "FAIL %d X=%d,%d DEMO=%d,%d,%d,%d\n", failures, firstX, secondX, demoGapX, demoGapY, demoGapWidth, demoGapHeight);
     std::fclose(report);
   }
   return failures == 0 ? 0 : 2;

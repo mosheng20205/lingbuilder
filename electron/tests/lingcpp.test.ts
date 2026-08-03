@@ -79,6 +79,7 @@ import {
   renameLingCppControlReference
 } from '../src/services/lingCpp/controlReferenceService';
 import { classifyLingCppPresentationCode } from '../src/services/lingCpp/beginnerSyntaxPresentation';
+import { getLingCppParameterElementType, isLingCppArrayParameterType, setLingCppArrayParameterType } from '../src/services/lingCpp/parameterTypeService';
 import {
   buildLingCppControlReferenceSemanticTokenData,
   LINGCPP_CONTROL_REFERENCE_SEMANTIC_TOKEN,
@@ -2493,6 +2494,39 @@ test('beginner local variable type completion resolves Chinese pinyin abbreviati
   assert.equal(resolveBeginnerTypeAlias(catalog, '自定义类型'), '自定义类型');
 });
 
+test('LingCpp parameter array type helpers keep the canonical type suffix', () => {
+  assert.equal(isLingCppArrayParameterType('整数型[]'), true);
+  assert.equal(isLingCppArrayParameterType('文本型［］'), true);
+  assert.equal(isLingCppArrayParameterType('整数型'), false);
+  assert.equal(getLingCppParameterElementType('整数型[]'), '整数型');
+  assert.equal(setLingCppArrayParameterType('整数型', true), '整数型[]');
+  assert.equal(setLingCppArrayParameterType('整数型［］', false), '整数型');
+});
+
+test('LingCpp AST edits and native generation preserve array parameters end to end', () => {
+  const source = [
+    '类 游戏主窗体 : 公开 窗体',
+    '    空 批量处理()',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const edited = applyLingCppAstEdit(source, {
+    kind: 'update-method-signature',
+    className: '游戏主窗体',
+    methodName: '批量处理',
+    parameters: [{ type: setLingCppArrayParameterType('整数型', true), name: '编号集合' }]
+  });
+
+  assert.equal(edited.success, true);
+  assert.match(edited.sourceCode, /空 批量处理\(整数型\[\] 编号集合\)/u);
+  assert.equal(parseLingCpp(edited.sourceCode).program.classes[0]?.methods[0]?.parameters[0]?.type, '整数型[]');
+
+  const mainCpp = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: edited.sourceCode
+  }).files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(mainCpp, /void 批量处理\(std::vector<int> 编号集合\)/u);
+});
+
 test('beginner local and assembly variables expose pinyin completion aliases', () => {
   const local = createBeginnerVariableCompletion({
     name: '本机IP',
@@ -2548,6 +2582,26 @@ test('beginner editor exposes method-scoped local declarations with variable and
   assert.doesNotMatch(source, /data-beginner-new-local-type/u);
   assert.match(source, /data-beginner-local-type/u);
   assert.match(source, /支持中文、英文和拼音简写/u);
+});
+
+test('beginner editor keeps a parameter entry row for zero-parameter subroutines', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src', 'components', 'DiffViewer.tsx'), 'utf8');
+  assert.match(source, /const renderParameterCanvas = \(target: BeginnerCodeTarget, visualLine: number\)/u);
+  assert.match(source, /填写名称和类型后新增/u);
+  assert.match(source, /新增参数并写回子程序签名/u);
+  assert.match(source, /\{ label: '操 作', className: 'w-\[104px\]' \}/u);
+  assert.match(source, /gap-1 whitespace-nowrap rounded border px-1 text-\[10px\]/u);
+  assert.match(source, /target\.method\.parameters\.length \+ 1/u);
+  assert.match(source, /data-beginner-parameter-type/u);
+  assert.match(source, /data-beginner-new-parameter-type/u);
+  assert.match(source, /renderParameterArraySwitch/u);
+  assert.match(source, /renderNewParameterArraySwitch/u);
+  assert.match(source, /setLingCppArrayParameterType/u);
+  assert.match(source, /updateBeginnerTypeCompletion\(inputKey, event\.currentTarget\)/u);
+  assert.match(source, /renderBeginnerTypeCompletionPopup\(inputKey, applyTypeCompletion\)/u);
+  assert.doesNotMatch(source, /renderEventFunctionCallBar/u);
+  assert.doesNotMatch(source, /调用功能/u);
+  assert.doesNotMatch(source, /无参数，点击“插入调用”会直接写入当前子程序/u);
 });
 
 test('beginner editor defers pointer state synchronization until after the caret paint', () => {
@@ -2977,7 +3031,7 @@ test('generateLingCppNativeWin32Project translates ordinary conditions and round
   });
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
 
-  assert.ok(mainCpp.includes('if (文件对话框_取文件(L"文件对话框1", 0)!=L"") {'));
+  assert.ok(mainCpp.includes('if (std::wstring(LingCppWideArg(文件对话框_取文件(L"文件对话框1", 0)))!=LingCppWideArg(L"")) {'));
   assert.ok(mainCpp.includes('} else {'));
   assert.equal(mainCpp.includes('暂不支持的中文 C++ 语句：如果'), false);
   assert.match(mainCpp, /L"太空冒险", 641, 453,/u);

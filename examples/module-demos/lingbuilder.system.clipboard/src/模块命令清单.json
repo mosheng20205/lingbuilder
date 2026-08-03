@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:26.004Z",
+  "generatedAt": "2026-08-02T05:05:35.900Z",
   "module": {
     "id": "lingbuilder.system.clipboard",
     "name": "剪贴板模块",
-    "version": "1.0.0",
-    "description": "提供 Unicode 文本剪贴板读写和状态查询。"
+    "version": "1.1.0",
+    "description": "提供 Unicode 文本、Windows DIB/BMP 图片和保留动画帧的 GIF 字节集剪贴板读写与格式查询。"
   },
-  "commandCount": 4,
+  "commandCount": 10,
   "commands": [
     {
       "index": 1,
@@ -64,6 +64,109 @@
     },
     {
       "index": 4,
+      "name": "剪贴板_置图片字节集",
+      "signature": "剪贴板_置图片字节集(图片数据)",
+      "description": "自动识别 GIF87a/GIF89a、Windows DIB/DIBV5 或带 BMP 文件头的图片字节集；GIF 会保留全部动画帧。",
+      "insertText": "剪贴板_置图片字节集(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "剪贴板_置图片字节集",
+        "runtimeName": "剪贴板_置图片字节集",
+        "parameters": [
+          {
+            "name": "图片数据",
+            "type": "bytes"
+          }
+        ],
+        "returnType": "bool",
+        "example": "剪贴板_置图片字节集(图片数据)"
+      },
+      "demoInvocation": "剪贴板_置图片字节集({})"
+    },
+    {
+      "index": 5,
+      "name": "剪贴板_取图片字节集",
+      "signature": "剪贴板_取图片字节集()",
+      "description": "优先读取原始 GIF 动图字节集，否则读取 DIB/DIBV5 图片字节集；没有可读图片时返回空字节集。",
+      "insertText": "剪贴板_取图片字节集()",
+      "returnType": "字节集",
+      "binding": {
+        "command": "剪贴板_取图片字节集",
+        "runtimeName": "剪贴板_取图片字节集",
+        "parameters": [],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "剪贴板_取图片字节集()"
+    },
+    {
+      "index": 6,
+      "name": "剪贴板_是否有图片",
+      "signature": "剪贴板_是否有图片()",
+      "description": "判断系统剪贴板是否包含 GIF、DIB、DIBV5 或位图图片。",
+      "insertText": "剪贴板_是否有图片()",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "剪贴板_是否有图片",
+        "runtimeName": "剪贴板_是否有图片",
+        "parameters": [],
+        "returnType": "bool"
+      },
+      "demoInvocation": "剪贴板_是否有图片()"
+    },
+    {
+      "index": 7,
+      "name": "剪贴板_取图片格式",
+      "signature": "剪贴板_取图片格式()",
+      "description": "返回当前图片格式名：GIF、CF_DIBV5、CF_DIB 或 CF_BITMAP；没有图片时返回空文本。",
+      "insertText": "剪贴板_取图片格式()",
+      "returnType": "文本型",
+      "binding": {
+        "command": "剪贴板_取图片格式",
+        "runtimeName": "剪贴板_取图片格式",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "wide"
+      },
+      "demoInvocation": "剪贴板_取图片格式()"
+    },
+    {
+      "index": 8,
+      "name": "剪贴板_置GIF字节集",
+      "signature": "剪贴板_置GIF字节集(GIF数据)",
+      "description": "把原始 GIF87a/GIF89a 字节集以 GIF、image/gif 和 HTML Format 格式写入剪贴板，保留动图帧。",
+      "insertText": "剪贴板_置GIF字节集(0)",
+      "returnType": "逻辑型",
+      "binding": {
+        "command": "剪贴板_置GIF字节集",
+        "runtimeName": "剪贴板_置GIF字节集",
+        "parameters": [
+          {
+            "name": "GIF数据",
+            "type": "bytes"
+          }
+        ],
+        "returnType": "bool",
+        "example": "剪贴板_置GIF字节集(GIF数据)"
+      },
+      "demoInvocation": "剪贴板_置GIF字节集({})"
+    },
+    {
+      "index": 9,
+      "name": "剪贴板_取GIF字节集",
+      "signature": "剪贴板_取GIF字节集()",
+      "description": "读取剪贴板 GIF 注册格式中的原始 GIF 字节集；没有 GIF 时返回空字节集。",
+      "insertText": "剪贴板_取GIF字节集()",
+      "returnType": "字节集",
+      "binding": {
+        "command": "剪贴板_取GIF字节集",
+        "runtimeName": "剪贴板_取GIF字节集",
+        "parameters": [],
+        "returnType": "bytes"
+      },
+      "demoInvocation": "剪贴板_取GIF字节集()"
+    },
+    {
+      "index": 10,
       "name": "剪贴板_清空",
       "signature": "剪贴板_清空()",
       "description": "清空系统剪贴板。",

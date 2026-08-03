@@ -41,10 +41,13 @@ test('收费模块只经登录后的受保护接口下载并完成签名与摘�
   assert.ok(moduleResource.filter.includes('!lingbuilder.new_emoji.ui/**/*'));
 });
 
-test('正式安装包必须写入公网 HTTPS 云端地址', () => {
+test('安装包必须明确选择公网 HTTPS 或离线云端模式', () => {
   const script = fs.readFileSync(new URL('../scripts/prepare-cloud-release-config.cjs', import.meta.url), 'utf8');
   const main = fs.readFileSync(new URL('../electron/main.ts', import.meta.url), 'utf8');
   assert.match(script, /startsWith\('https:\/\/'\)/u);
+  assert.match(script, /LINGBUILDER_CLOUD_RELEASE_MODE/u);
+  assert.match(script, /cloudMode: 'offline'/u);
   assert.match(main, /cloud-release\.json/u);
+  assert.match(main, /cloud-offline\.invalid/u);
   assert.match(main, /cloud-config-missing\.invalid/u);
 });

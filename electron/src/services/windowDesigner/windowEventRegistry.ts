@@ -2,6 +2,12 @@ export type LingWindowEventCategory = '生命周期' | '布局与状态' | '焦�
 
 export type LingWindowEventBatch = 'common' | 'advanced';
 
+export interface LingWindowEventParameter {
+  name: string;
+  type: string;
+  description: string;
+}
+
 export interface LingWindowEventDefinition {
   name: string;
   label: string;
@@ -9,7 +15,10 @@ export interface LingWindowEventDefinition {
   category: LingWindowEventCategory;
   batch: LingWindowEventBatch;
   description: string;
+  parameters?: LingWindowEventParameter[];
 }
+
+const parameter = (name: string, type: string, description: string): LingWindowEventParameter => ({ name, type, description });
 
 const event = (
   name: string,
@@ -17,8 +26,9 @@ const event = (
   handlerSuffix: string,
   category: LingWindowEventCategory,
   batch: LingWindowEventBatch,
-  description: string
-): LingWindowEventDefinition => ({ name, label, handlerSuffix, category, batch, description });
+  description: string,
+  parameters?: LingWindowEventParameter[]
+): LingWindowEventDefinition => ({ name, label, handlerSuffix, category, batch, description, parameters });
 
 export const WINDOW_EVENT_DEFINITIONS: LingWindowEventDefinition[] = [
   event('Loaded', '创建完毕', '创建完毕', '生命周期', 'common', '窗口和设计器控件创建完成后触发。'),
@@ -34,11 +44,27 @@ export const WINDOW_EVENT_DEFINITIONS: LingWindowEventDefinition[] = [
   event('Restored', '被恢复', '被恢复', '布局与状态', 'advanced', '窗口从最小化或最大化恢复为普通状态时触发。'),
   event('GotFocus', '获得焦点', '获得焦点', '焦点与键盘', 'advanced', '窗口本身获得键盘焦点时触发。'),
   event('LostFocus', '失去焦点', '失去焦点', '焦点与键盘', 'advanced', '窗口本身失去键盘焦点时触发。'),
-  event('KeyDown', '按键被按下', '按键被按下', '焦点与键盘', 'advanced', '窗口或其子控件收到按键按下消息时触发。'),
-  event('KeyUp', '按键被放开', '按键被放开', '焦点与键盘', 'advanced', '窗口或其子控件收到按键放开消息时触发。'),
-  event('TextInput', '字符被输入', '字符被输入', '焦点与键盘', 'advanced', '输入法或键盘产生最终 Unicode 字符时触发。'),
-  event('DpiChanged', 'DPI 被改变', 'DPI被改变', '系统与拖放', 'advanced', '窗口移动到不同缩放比例的显示器后触发。'),
-  event('FileDropped', '文件被拖入', '文件被拖入', '系统与拖放', 'advanced', '用户把一个或多个文件或目录拖入窗口时触发。')
+  event('KeyDown', '按键被按下', '按键被按下', '焦点与键盘', 'advanced', '窗口或其子控件收到按键按下消息时触发。处理器参数依次为虚拟键码和 Ctrl、Shift、Alt 状态。', [
+    parameter('键码', '整数型', 'Win32 虚拟键码。'),
+    parameter('Ctrl键按下', '逻辑型', '事件发生时 Ctrl 键是否按下。'),
+    parameter('Shift键按下', '逻辑型', '事件发生时 Shift 键是否按下。'),
+    parameter('Alt键按下', '逻辑型', '事件发生时 Alt 键是否按下。')
+  ]),
+  event('KeyUp', '按键被放开', '按键被放开', '焦点与键盘', 'advanced', '窗口或其子控件收到按键放开消息时触发。处理器参数依次为虚拟键码和 Ctrl、Shift、Alt 状态。', [
+    parameter('键码', '整数型', 'Win32 虚拟键码。'),
+    parameter('Ctrl键按下', '逻辑型', '事件发生时 Ctrl 键是否按下。'),
+    parameter('Shift键按下', '逻辑型', '事件发生时 Shift 键是否按下。'),
+    parameter('Alt键按下', '逻辑型', '事件发生时 Alt 键是否按下。')
+  ]),
+  event('TextInput', '字符被输入', '字符被输入', '焦点与键盘', 'advanced', '输入法或键盘产生最终 Unicode 字符时触发，处理器参数为完整字符文本。', [
+    parameter('字符', '文本型', '最终输入的 Unicode 字符；可能包含一个代理项对。')
+  ]),
+  event('DpiChanged', 'DPI 被改变', 'DPI被改变', '系统与拖放', 'advanced', '窗口移动到不同缩放比例的显示器后触发，处理器参数为新的 DPI。', [
+    parameter('新DPI', '整数型', '窗口当前使用的每英寸点数。')
+  ]),
+  event('FileDropped', '文件被拖入', '文件被拖入', '系统与拖放', 'advanced', '用户把一个或多个文件或目录拖入窗口时触发，处理器参数为按拖入顺序排列的完整路径数组。', [
+    parameter('文件集合', '文本型[]', '本次拖入的文件和目录完整路径，索引从 0 开始。')
+  ])
 ];
 
 export const WINDOW_EVENT_CATEGORIES: LingWindowEventCategory[] = [
@@ -50,6 +76,16 @@ export const WINDOW_EVENT_CATEGORIES: LingWindowEventCategory[] = [
 
 export function getWindowEventDefinition(eventName: string): LingWindowEventDefinition | undefined {
   return WINDOW_EVENT_DEFINITIONS.find(definition => definition.name === eventName);
+}
+
+export function getWindowEventParameters(eventName: string): LingWindowEventParameter[] {
+  return getWindowEventDefinition(eventName)?.parameters || [];
+}
+
+export function formatWindowEventParameters(eventName: string): string {
+  return getWindowEventParameters(eventName)
+    .map(parameter => `${parameter.type} ${parameter.name}`)
+    .join('，');
 }
 
 export function getWindowEventHandlerName(className: string, eventName: string): string {

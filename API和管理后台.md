@@ -40,7 +40,7 @@
 - PostgreSQL 开发端口：`54329`
 - Redis 开发端口：`6389`
 
-Electron 开发版读取环境变量 `LINGBUILDER_CLOUD_API_URL`，未配置时连接 `http://127.0.0.1:17900`；正式安装版读取打包时生成的 `cloud-release.json` 并只接受 HTTPS。管理后台读取 `VITE_CLOUD_API_URL`；未配置时连接本机 `17900`。
+Electron 开发版读取环境变量 `LINGBUILDER_CLOUD_API_URL`，未配置时连接 `http://127.0.0.1:17900`；安装版读取打包时生成的 `cloud-release.json`。联网发布只接受 HTTPS；域名或服务器尚未就绪时，可用 `LINGBUILDER_CLOUD_RELEASE_MODE=offline` 生成明确不连接云端的离线版，不得填入虚假公网地址。管理后台读取 `VITE_CLOUD_API_URL`；未配置时连接本机 `17900`。
 
 门户备案边界：公开首页和 `/commands`、`/downloads`、`/docs/*`、`/demos`、`/community` 不展示 NewEmoji 商品详情、价格、购买、订单或普通用户注册登录。商品和订单只在 IDE 登录态与 `/admin` 管理后台中出现；匿名模块商品目录接口已删除。
 
@@ -182,7 +182,7 @@ npm run package:win
 2. 微信使用 API v3 Native 下单、RSA-SHA256 请求签名、平台公钥响应/回调验签和 API v3 AES-GCM 回调解密；支付宝使用 `alipay.trade.precreate`、RSA2 请求/同步响应/异步通知验签。IDE 在本地生成付款二维码，不把支付地址发送给第三方二维码服务。
 3. 管理后台可上传 `.lbmod`。云端校验 ZIP 路径和 v2 manifest 的模块 ID/版本，计算 SHA-256，并使用稳定 Ed25519 Permit 密钥签署制品元数据；制品存放在非公开持久化目录。
 4. IDE 只有登录且拥有权益时才能取得制品元数据和下载流；下载前校验签名密钥标识和元数据签名，下载后校验文件大小与 SHA-256，再进入既有的安装预览、升级快照和确认安装流程。
-5. Electron Builder 明确排除 `lingbuilder.new_emoji.ui`；正式打包命令要求 `LINGBUILDER_CLOUD_API_URL` 为 HTTPS，并把地址写入安装包 `cloud-release.json`，安装版不再默认连接用户本机。
+5. Electron Builder 明确排除 `lingbuilder.new_emoji.ui`；联网打包命令要求 `LINGBUILDER_CLOUD_API_URL` 为 HTTPS，并把地址写入安装包 `cloud-release.json`。备案或云端未就绪时可显式选择 `offline`，此时系统 AI、账号和收费模块暂不可用，也不会回退连接用户本机。
 6. 生产 API 缺少稳定 Permit 密钥、持久化制品目录、公网 HTTPS 地址或任一官方支付配置时会启动失败，不会带着临时密钥或模拟网关上线。
 
 仍需部署方提供的外部条件：真实域名和 HTTPS 证书、PostgreSQL/Redis/SMTP、微信与支付宝商户凭据、稳定 Ed25519 密钥、持久化制品磁盘，以及正式商户沙箱/小额支付与退款验收。仓库不能代替商户平台开通、ICP备案变更或服务器部署。
@@ -191,7 +191,7 @@ npm run package:win
 
 - [ ] 部署 PostgreSQL、Redis、SMTP 和云端 API。
 - [ ] 为 API 和管理后台配置 HTTPS 域名。
-- [x] 正式打包强制固定 HTTPS `LINGBUILDER_CLOUD_API_URL`，安装版不再回退用户本机 `17900`。
+- [x] 联网打包强制固定 HTTPS `LINGBUILDER_CLOUD_API_URL`；离线打包必须显式设置 `LINGBUILDER_CLOUD_RELEASE_MODE=offline`，两种安装版都不回退用户本机 `17900`。
 - [ ] 固定管理后台 `VITE_CLOUD_API_URL`。
 - [ ] 配置稳定 Ed25519 Permit 公私钥。
 - [ ] 配置 JWT、Token Hash、Secret Vault 等生产密钥。

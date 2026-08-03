@@ -554,6 +554,7 @@ const PROPERTY_PARAMETER_ALIASES = {
   'Menu.EU_SetMenuExpandedUtf8': { indices: 'expandedIndices' },
   'Tabs.EU_SetTabsPosition': { tabPosition: 'position' },
   'Tabs.EU_SetTabsHeaderAlign': { align: 'headerAlign' },
+  'Tabs.EU_SetTabsHeaderVisible': { visible: 'headerVisible' },
   'Tabs.EU_SetTabsContentVisible': { visible: 'contentVisible' },
   'Dialog.EU_SetDialogOptions': { w: 'dialogWidth', h: 'dialogHeight' },
   'Notification.EU_SetNotificationOptions': { notifyType: 'messageType', durationMs: 'duration' },
@@ -611,6 +612,13 @@ const PROPERTY_PARAMETER_LITERALS = {
   'Slider.EU_SetSliderOptions': { showTooltip: 1 }
 };
 
+// Designer properties use human-friendly units while the native ABI may use a
+// factor. Keep that conversion in the generated runtime mapping instead of
+// teaching the C++ generator about a specific new_emoji control.
+const PROPERTY_PARAMETER_VALUE_SCALES = {
+  'Icon.EU_SetIconOptions': { scale: 0.01 }
+};
+
 function getCustomPropertySetters(component) {
   const textRegions = new Set(['Header', 'Aside', 'Main', 'Footer']);
   const result = [];
@@ -626,6 +634,14 @@ function getCustomPropertySetters(component) {
     });
   }
   if (component.id === 'Container') {
+    result.push({
+      command: 'EU_SetPanelLayout',
+      parameters: [
+        { name: 'hwnd', type: 'HWND' }, { name: 'element_id', type: 'int' },
+        { name: 'fill_parent', type: 'int', literal: 0 }, { name: 'content_layout', type: 'int', literal: 0 }
+      ],
+      propertyKeys: []
+    });
     result.push({
       command: 'EU_SetPanelStyle',
       parameters: [
@@ -702,6 +718,7 @@ function inferPropertySetters(component, rawExports) {
       || runtimeExport.name.includes('Provider')) continue;
     const aliases = PROPERTY_PARAMETER_ALIASES[`${component.id}.${runtimeExport.name}`] || {};
     const literals = PROPERTY_PARAMETER_LITERALS[`${component.id}.${runtimeExport.name}`] || {};
+    const valueScales = PROPERTY_PARAMETER_VALUE_SCALES[`${component.id}.${runtimeExport.name}`] || {};
     const parameters = [];
     const mappedKeys = new Set();
     let supported = true;
@@ -734,7 +751,14 @@ function inferPropertySetters(component, rawExports) {
       parameters.push({
         name: parameter.name,
         type: parameter.type,
-        ...(parameter.name.endsWith('_len') ? { lengthOf: propertyKey } : { propertyKey })
+        ...(parameter.name.endsWith('_len')
+          ? { lengthOf: propertyKey }
+          : {
+              propertyKey,
+              ...(typeof valueScales[normalizedName] === 'number'
+                ? { valueScale: valueScales[normalizedName] }
+                : {})
+            })
       });
       if (parameter.type === 'const unsigned char*') lastTextPropertyKey = propertyKey;
     }
@@ -1240,12 +1264,14 @@ function moduleReadme(exportCount) {
 
 该模块由 LingBuilder 脚本从 new_emoji 工程生成，打包 Win32/x64 DLL 与导入库。
 
+设计器图标的“缩放”属性使用百分比（100 表示原始大小），生成器会按 EU_SetIconOptions ABI 要求转换为倍率（1.0）。直接调用底层 API 时，scale 仍使用倍率。
+
 - 模块 ID：${MODULE_ID}
 - 导出 API 数：${exportCount}
 - 默认 F5 预览平台：Win32
 - 当前 .lib 导入库需要 MSVC/Visual Studio Build Tools 链接
 
-推荐在 .lcpp 中优先使用 NE_ 前缀的中文桥接命令；NE_EU_* 命令是底层高级入口，参数仍遵循 new_emoji DLL 的 UTF-8 字节指针和长度规则。
+推荐在 .lcpp 中优先使用 NE_ 前缀的中文桥接命令；NE_EU_* 命令是底层高级入口，参数仍遵循 new_emoji DLL 的 UTF-8 字节指针和长度规则。Tabs 的“显示标签页表头”属性对应 EU_SetTabsHeaderVisible，关闭后内容区占满标签页区域。
 `;
 }
 

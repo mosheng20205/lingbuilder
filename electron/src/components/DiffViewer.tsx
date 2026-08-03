@@ -94,6 +94,7 @@ import { normalizeIdentifier, parseLingCpp } from '../services/lingCpp/parser';
 import { createProjectGlobalContext, isProjectGlobalsFilePath } from '../services/lingCpp/projectGlobalService';
 import { createProjectTypeContext, isProjectDataTypesFilePath } from '../services/lingCpp/projectDataTypeService';
 import { createProjectFunctionContext } from '../services/lingCpp/functionLibraryService';
+import { getLingCppParameterElementType, isLingCppArrayParameterType, setLingCppArrayParameterType } from '../services/lingCpp/parameterTypeService';
 import { getProjectConstantNameAtCursor } from '../services/lingCpp/projectConstantReferenceService';
 import {
   classifyLingCppPresentationCode,
@@ -266,6 +267,7 @@ type ParameterDraft = {
   type: string;
   name: string;
   defaultValue: string;
+  isArray: boolean;
 };
 
 type LocalVariableDraft = {
@@ -1208,7 +1210,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [newEventDraft, setNewEventDraft] = useState({ handlerName: '', parameters: '' });
   const [newFunctionDraft, setNewFunctionDraft] = useState({ returnType: '空', name: '', parameters: '' });
   const [newParameterDrafts, setNewParameterDrafts] = useState<Record<string, ParameterDraft>>({});
-  const [functionCallDrafts, setFunctionCallDrafts] = useState<Record<string, Record<string, string>>>({});
   const [sourceScroll, setSourceScroll] = useState({ top: 0, left: 0 });
   const [pendingHandlerFocus, setPendingHandlerFocus] = useState<{ handlerName: string; filePath?: string } | null>(null);
   const [expandedBeginnerEventTargetKey, setExpandedBeginnerEventTargetKey] = useState<string | null>(null);
@@ -1217,7 +1218,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const [collapsedBeginnerLocalGroupKeys, setCollapsedBeginnerLocalGroupKeys] = useState<string[]>([]);
   const [expandedBeginnerCommand, setExpandedBeginnerCommand] = useState<string | null>(null);
   const [beginnerCommandArgumentDrafts, setBeginnerCommandArgumentDrafts] = useState<Record<string, string>>({});
-  const [selectedFunctionTemplateKey, setSelectedFunctionTemplateKey] = useState<string | null>(null);
   const [nativePreviewState, setNativePreviewState] = useState<NativePreviewState | null>(null);
   const nativePreviewStateRef = useRef<NativePreviewState | null>(null);
   nativePreviewStateRef.current = nativePreviewState;
@@ -1294,8 +1294,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     setSelectedBeginnerCodeTarget(null);
     setExpandedBeginnerEventTargetKey(null);
     setExpandedBeginnerFunctionTargetKey(null);
-    setSelectedFunctionTemplateKey(null);
-    setFunctionCallDrafts({});
     setBeginnerCompletionState(null);
     setBeginnerAutoLocalTypeState(null);
     setBeginnerJumpHighlight(null);
@@ -3581,6 +3579,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     if (applied) resetNewMemberDraft();
   };
 
+  const resetNewEventDraft = () => {
+    setNewEventDraft({ handlerName: '', parameters: '' });
+  };
+
+  const resetNewFunctionDraft = () => {
+    setNewFunctionDraft({ returnType: '空', name: '', parameters: '' });
+  };
+
   const renderNewMemberInput = (
     field: 'type' | 'name' | 'initialValue' | 'note',
     placeholder: string,
@@ -3692,7 +3698,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       }
     }]);
     if (applied) {
-      setNewEventDraft({ handlerName: '', parameters: '' });
+      resetNewEventDraft();
       setSelectedBeginnerHandler(handlerName);
       setSelectedBeginnerCodeTarget({ className: primaryLingCppClass.name, methodName: handlerName });
       setExpandedBeginnerEventTargetKey(`${primaryLingCppClass.name}:event:${handlerName}`);
@@ -3712,16 +3718,18 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       placeholder={placeholder}
       disabled={!onUpdateSourceContent || !primaryLingCppClass}
       onChange={event => setNewEventDraft(current => ({ ...current, [field]: event.target.value }))}
-      onBlur={event => commitNewEventDraft({ [field]: event.currentTarget.value })}
       onKeyDown={event => {
-        if (event.key === 'Enter') event.currentTarget.blur();
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          commitNewEventDraft({ [field]: event.currentTarget.value });
+        }
         if (event.key === 'Escape') {
-          setNewEventDraft({ handlerName: '', parameters: '' });
+          resetNewEventDraft();
           event.currentTarget.blur();
         }
       }}
       className={`${directInputClasses(tone)} disabled:cursor-not-allowed disabled:opacity-40`}
-      title="输入处理器名后自动新增事件"
+      title="填写处理器名和参数后点击“新增”"
     />
   );
 
@@ -3747,7 +3755,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       }
     }]);
     if (applied) {
-      setNewFunctionDraft({ returnType: '空', name: '', parameters: '' });
+      resetNewFunctionDraft();
       setSelectedBeginnerCodeTarget({ className: primaryMethodOwnerName, methodName: name });
       setExpandedBeginnerFunctionTargetKey(`${primaryMethodOwnerName}:method:${name}`);
       window.requestAnimationFrame(() => {
@@ -3769,18 +3777,20 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         : undefined
       }
       autoComplete="off"
-      disabled={!onUpdateSourceContent || !primaryLingCppClass}
+      disabled={!onUpdateSourceContent || !primaryMethodOwnerName}
       onChange={event => setNewFunctionDraft(current => ({ ...current, [field]: event.target.value }))}
-      onBlur={event => commitNewFunctionDraft({ [field]: event.currentTarget.value })}
       onKeyDown={event => {
-        if (event.key === 'Enter') event.currentTarget.blur();
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          commitNewFunctionDraft({ [field]: event.currentTarget.value });
+        }
         if (event.key === 'Escape') {
-          setNewFunctionDraft({ returnType: '空', name: '', parameters: '' });
+          resetNewFunctionDraft();
           event.currentTarget.blur();
         }
       }}
       className={`${directInputClasses(tone)} disabled:cursor-not-allowed disabled:opacity-40`}
-      title="输入功能名后自动新增功能代码"
+      title="填写返回值、功能名和参数后点击“新增”"
     />
   );
 
@@ -4270,6 +4280,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         .map(method => ({ className: owner.name, method }))
     );
     const functionTargets = codeTargets.filter(target => target.method.kind === 'method');
+    const isFunctionLibraryOwner = (ownerName: string) => lingCppLanguageContext?.program.functionLibraries.some(
+      library => normalizeIdentifier(library.name) === normalizeIdentifier(ownerName)
+    ) ?? false;
+    const functionCallName = (target: BeginnerCodeTarget) =>
+      isFunctionLibraryOwner(target.className)
+        ? `${target.className}.${target.method.name}`
+        : target.method.name;
     const preferredCodeTarget = selectedBeginnerCodeTarget
       ? codeTargets.find(target =>
           target.method.name === selectedBeginnerCodeTarget.methodName &&
@@ -4429,9 +4446,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         ...codeTargets
           .filter(target => target.method.kind === 'method')
           .map(target => ({
-            label: target.method.name,
+            label: functionCallName(target),
             detail: `${target.method.returnType || '空'} 子程序调用`,
-            insertText: `${target.method.name}(${target.method.parameters.map(defaultCodeArgument).join(', ')})`,
+            insertText: `${functionCallName(target)}(${target.method.parameters.map(defaultCodeArgument).join(', ')})`,
             aliases: [target.method.name, '子程序', '功能', '调用'],
             kind: '子程序' as BeginnerCodeCompletion['kind']
           })),
@@ -5282,7 +5299,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             ? Array.from(new Set(current.map(key => key === previousKey ? nextKey : key)))
             : current
         );
-        setSelectedFunctionTemplateKey(current => current === previousKey ? nextKey : current);
       }
       if (applied && nextName && nextName !== target.method.name) {
         setSelectedBeginnerCodeTarget({ className: target.className, methodName: nextName });
@@ -5296,13 +5312,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       field: keyof LingCppParameter,
       rawValue: string
     ) => {
-      const nextValue = rawValue.trim();
+      const currentParameter = target.method.parameters[index];
+      if (!currentParameter) return;
+      const nextValue = field === 'type'
+        ? setLingCppArrayParameterType(rawValue, isLingCppArrayParameterType(rawValue) || isLingCppArrayParameterType(currentParameter.type))
+        : rawValue.trim();
       if (field !== 'defaultValue' && !nextValue) {
         setStructureEditError('参数名和参数类型不能为空。');
         return;
       }
-      const currentParameter = target.method.parameters[index];
-      if (!currentParameter || (currentParameter[field] || '') === nextValue) return;
+      if ((currentParameter[field] || '') === nextValue) return;
       const nextParameters = target.method.parameters.map((parameter, parameterIndex) =>
         parameterIndex === index
           ? { ...parameter, [field]: nextValue || undefined }
@@ -5310,16 +5329,30 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       );
       applyCodeTargetSignature(target, { parameters: nextParameters });
     };
+    const setCodeTargetParameterArray = (
+      target: BeginnerCodeTarget,
+      index: number,
+      isArray: boolean
+    ) => {
+      const currentParameter = target.method.parameters[index];
+      if (!currentParameter) return;
+      const nextType = setLingCppArrayParameterType(currentParameter.type, isArray);
+      if (nextType === currentParameter.type) return;
+      const nextParameters = target.method.parameters.map((parameter, parameterIndex) =>
+        parameterIndex === index ? { ...parameter, type: nextType } : parameter
+      );
+      applyCodeTargetSignature(target, { parameters: nextParameters });
+    };
     const commitNewCodeTargetParameter = (
       target: BeginnerCodeTarget,
-      patch: Partial<LingCppParameter> = {}
+      patch: Partial<ParameterDraft> = {}
     ) => {
       const key = codeTargetKey(target);
-      const draft: ParameterDraft = { type: '文本型', name: '', defaultValue: '', ...(newParameterDrafts[key] || {}), ...patch };
+      const draft: ParameterDraft = { type: '文本型', name: '', defaultValue: '', isArray: false, ...(newParameterDrafts[key] || {}), ...patch };
       setNewParameterDrafts(current => ({ ...current, [key]: draft }));
       const name = draft.name.trim();
       if (!name) return;
-      const type = draft.type.trim() || '对象';
+      const type = setLingCppArrayParameterType(draft.type, draft.isArray || isLingCppArrayParameterType(draft.type));
       const defaultValue = draft.defaultValue.trim();
       const applied = applyCodeTargetSignature(target, {
         parameters: [...target.method.parameters, { type, name, defaultValue: defaultValue || undefined }]
@@ -5768,23 +5801,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       `${name}(${(parameters || []).map(defaultFunctionArgument).join(', ')})`;
     const formatFunctionSignature = (name: string, parameters?: LingCppParameter[]) =>
       `${name}(${(parameters || []).map(formatSingleParameterDraft).join(', ')})`;
-    const functionCallDraftKey = (eventTarget: BeginnerCodeTarget, functionTarget: BeginnerCodeTarget) =>
-      `${codeTargetKey(eventTarget)}=>${codeTargetKey(functionTarget)}`;
-    const parameterCallArgumentKey = (parameter: LingCppParameter, index: number) =>
-      `${index}:${parameter.name || parameter.type || 'parameter'}`;
-    const getFunctionCallArgument = (
-      parameter: LingCppParameter,
-      index: number,
-      draft: Record<string, string>
-    ) => {
-      const value = draft[parameterCallArgumentKey(parameter, index)]?.trim();
-      return value || defaultFunctionArgument(parameter);
-    };
-    const formatFunctionCallWithDraft = (
-      name: string,
-      parameters: LingCppParameter[],
-      draft: Record<string, string>
-    ) => `${name}(${parameters.map((parameter, index) => getFunctionCallArgument(parameter, index, draft)).join(', ')})`;
 
     const renderParameterSummary = (parameters?: LingCppParameter[]) => {
       if (!parameters || parameters.length === 0) return renderTextCell('无参数', 'muted');
@@ -5813,6 +5829,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       compact = false
     ) => {
       const effectiveParameters = parameters || [];
+      if (effectiveParameters.length === 0) return renderTextCell('无参数功能', 'muted');
       const callExample = formatFunctionCall(name, effectiveParameters);
       return (
         <div className={`rounded border px-2 py-1.5 ${
@@ -5824,23 +5841,19 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               {effectiveParameters.length ? formatFunctionSignature(name, effectiveParameters) : '无参数功能'}
             </span>
           </div>
-          {effectiveParameters.length > 0 ? (
-            <div className={`mt-1.5 grid gap-1 ${compact ? 'text-[9px]' : 'text-[10px]'}`}>
-              {effectiveParameters.map((parameter, index) => (
-                <div
-                  key={`${name}:${parameter.name}:${index}`}
-                  className={`grid min-w-0 grid-cols-[minmax(86px,1fr)_minmax(90px,1fr)] gap-2 rounded px-1.5 py-1 ${
-                    isDarkMode ? 'bg-[#181a20] text-slate-300' : 'bg-white text-slate-700'
-                  }`}
-                >
-                  <span className={`truncate ${textTone('parameter')}`}>{parameter.name}</span>
-                  <span className="truncate">{parameterExampleText(parameter)}</span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className={`mt-1 text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>无参数，点击后会直接写入调用。</div>
-          )}
+          <div className={`mt-1.5 grid gap-1 ${compact ? 'text-[9px]' : 'text-[10px]'}`}>
+            {effectiveParameters.map((parameter, index) => (
+              <div
+                key={`${name}:${parameter.name}:${index}`}
+                className={`grid min-w-0 grid-cols-[minmax(86px,1fr)_minmax(90px,1fr)] gap-2 rounded px-1.5 py-1 ${
+                  isDarkMode ? 'bg-[#181a20] text-slate-300' : 'bg-white text-slate-700'
+                }`}
+              >
+                <span className={`truncate ${textTone('parameter')}`}>{parameter.name}</span>
+                <span className="truncate">{parameterExampleText(parameter)}</span>
+              </div>
+            ))}
+          </div>
           <div className={`mt-1.5 rounded px-1.5 py-1 font-mono ${compact ? 'text-[9px]' : 'text-[10px]'} ${
             isDarkMode ? 'bg-[#0d0f14] text-emerald-300' : 'bg-white text-emerald-700'
           }`}>
@@ -6111,68 +6124,242 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       value: string,
       placeholder: string,
       tone: StructureInputTone = 'plain'
-    ) => (
-      <input
-        key={`${codeTargetKey(target)}:parameter:${index}:${field}:${value}`}
-        defaultValue={value}
-        placeholder={placeholder}
-        list={
-          field === 'name' ? 'beginner-member-name-suggestions'
-          : undefined
+    ) => {
+      const inputKey = `${codeTargetKey(target)}:parameter:${index}:${field}`;
+      const typeCompletion = field === 'type' && beginnerTypeCompletionState?.inputKey === inputKey
+        ? beginnerTypeCompletionState
+        : null;
+      const applyTypeCompletion = (item: BeginnerTypeCompletionItem, input: HTMLInputElement | null) => {
+        if (input) {
+          input.value = item.label;
+          input.dataset.beginnerTypeApplied = 'true';
         }
-        autoComplete="off"
-        readOnly={!onUpdateSourceContent}
-        onBlur={event => commitCodeTargetParameter(target, index, field, event.currentTarget.value)}
-        onKeyDown={event => {
-          if (event.key === 'Enter') event.currentTarget.blur();
-          if (event.key === 'Escape') {
-            event.currentTarget.value = value;
-            event.currentTarget.blur();
-          }
-        }}
-        className={directInputClasses(tone)}
-      />
-    );
+        setBeginnerTypeCompletionState(null);
+        commitCodeTargetParameter(target, index, field, item.label);
+      };
+
+      return (
+        <div className="relative min-w-0" data-beginner-type-wrap={field === 'type' ? inputKey : undefined}>
+          <input
+            key={`${codeTargetKey(target)}:parameter:${index}:${field}:${value}`}
+            data-beginner-parameter-type={field === 'type' ? index : undefined}
+            defaultValue={value}
+            placeholder={placeholder}
+            list={field === 'name' ? 'beginner-member-name-suggestions' : undefined}
+            autoComplete="off"
+            spellCheck={false}
+            readOnly={!onUpdateSourceContent}
+            onChange={event => {
+              if (field === 'type') updateBeginnerTypeCompletion(inputKey, event.currentTarget);
+            }}
+            onBlur={event => {
+              if (field === 'type') closeBeginnerTypeCompletionLater(inputKey);
+              if (event.currentTarget.dataset.beginnerTypeApplied === 'true') {
+                delete event.currentTarget.dataset.beginnerTypeApplied;
+                return;
+              }
+              const rawValue = event.currentTarget.value;
+              const nextValue = field === 'type' ? resolveBeginnerTypeInput(rawValue) : rawValue;
+              event.currentTarget.value = nextValue;
+              commitCodeTargetParameter(target, index, field, nextValue);
+            }}
+            onKeyDown={event => {
+              if (field === 'type' && typeCompletion) {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  moveBeginnerTypeCompletion(inputKey, event.key === 'ArrowDown' ? 1 : -1);
+                  return;
+                }
+                if (event.key === 'Enter' || event.key === 'Tab') {
+                  const item = typeCompletion.items[typeCompletion.selectedIndex];
+                  if (item) {
+                    event.preventDefault();
+                    applyTypeCompletion(item, event.currentTarget);
+                    event.currentTarget.blur();
+                    return;
+                  }
+                }
+              }
+              if (event.key === 'Enter') event.currentTarget.blur();
+              if (event.key === 'Escape') {
+                setBeginnerTypeCompletionState(null);
+                event.currentTarget.value = value;
+                event.currentTarget.blur();
+              }
+            }}
+            className={directInputClasses(tone)}
+            title={field === 'type' ? '支持中文、英文和拼音简写，例如 wb、zs、string、int' : undefined}
+          />
+          {field === 'type' && renderBeginnerTypeCompletionPopup(inputKey, applyTypeCompletion)}
+        </div>
+      );
+    };
+
+    const renderParameterArraySwitch = (
+      target: BeginnerCodeTarget,
+      index: number,
+      checked: boolean
+    ) => {
+      const disabled = !onUpdateSourceContent;
+      return (
+        <label
+          className={`inline-flex h-[var(--beginner-input-height)] w-full items-center justify-center ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
+          title={checked ? '关闭参数数组' : '将参数设为数组'}
+        >
+          <input
+            type="checkbox"
+            className="sr-only"
+            checked={checked}
+            disabled={disabled}
+            aria-label={`切换参数 ${target.method.parameters[index]?.name || index + 1} 数组状态`}
+            onChange={event => setCodeTargetParameterArray(target, index, event.currentTarget.checked)}
+          />
+          <span className={`relative h-[var(--beginner-switch-height)] w-[var(--beginner-switch-width)] rounded-full transition-colors ${
+            checked
+              ? isDarkMode ? 'bg-cyan-500/80' : 'bg-cyan-600'
+              : isDarkMode ? 'bg-[#2b2d34]' : 'bg-slate-300'
+          }`}>
+            <span className={`absolute top-[var(--beginner-switch-knob-offset)] h-[var(--beginner-switch-knob-size)] w-[var(--beginner-switch-knob-size)] rounded-full bg-white transition-transform ${
+              checked ? 'translate-x-[var(--beginner-switch-knob-translate)]' : 'translate-x-[var(--beginner-switch-knob-offset)]'
+            }`} />
+          </span>
+        </label>
+      );
+    };
 
     const renderNewParameterInput = (
       target: BeginnerCodeTarget,
       field: keyof LingCppParameter,
       placeholder: string,
-      tone: StructureInputTone = 'plain'
+      tone: StructureInputTone = 'plain',
+      autoCommit = true
     ) => {
       const key = codeTargetKey(target);
-      const draft: ParameterDraft = { type: '文本型', name: '', defaultValue: '', ...(newParameterDrafts[key] || {}) };
+      const draft: ParameterDraft = { type: '文本型', name: '', defaultValue: '', isArray: false, ...(newParameterDrafts[key] || {}) };
+      const inputKey = `${key}:new-parameter:${field}`;
+      const typeCompletion = field === 'type' && beginnerTypeCompletionState?.inputKey === inputKey
+        ? beginnerTypeCompletionState
+        : null;
+      const updateDraftValue = (nextValue: string) => {
+        setNewParameterDrafts(current => ({
+          ...current,
+          [key]: { ...draft, [field]: nextValue }
+        }));
+      };
+      const applyTypeCompletion = (item: BeginnerTypeCompletionItem, input: HTMLInputElement | null) => {
+        if (input) input.value = item.label;
+        setBeginnerTypeCompletionState(null);
+        updateDraftValue(item.label);
+      };
       return (
-        <input
-          value={draft[field] || ''}
-          placeholder={placeholder}
-          list={
-            field === 'name' ? 'beginner-member-name-suggestions'
-            : undefined
-          }
-          autoComplete="off"
-          disabled={!onUpdateSourceContent}
-          onChange={event => {
-            const nextValue = event.currentTarget.value;
-            setNewParameterDrafts(current => ({
-              ...current,
-              [key]: { ...draft, [field]: nextValue }
-            }));
-          }}
-          onBlur={event => commitNewCodeTargetParameter(target, { [field]: event.currentTarget.value })}
-          onKeyDown={event => {
-            if (event.key === 'Enter') event.currentTarget.blur();
-            if (event.key === 'Escape') {
-              setNewParameterDrafts(current => {
-                const next = { ...current };
-                delete next[key];
-                return next;
-              });
-              event.currentTarget.blur();
-            }
-          }}
-          className={`${directInputClasses(tone)} disabled:cursor-not-allowed disabled:opacity-40`}
-        />
+        <div className="relative min-w-0" data-beginner-type-wrap={field === 'type' ? inputKey : undefined}>
+          <input
+            data-beginner-new-parameter-type={field === 'type' ? true : undefined}
+            value={draft[field] || ''}
+            placeholder={placeholder}
+            list={field === 'name' ? 'beginner-member-name-suggestions' : undefined}
+            autoComplete="off"
+            spellCheck={false}
+            disabled={!onUpdateSourceContent}
+            onChange={event => {
+              updateDraftValue(event.currentTarget.value);
+              if (field === 'type') updateBeginnerTypeCompletion(inputKey, event.currentTarget);
+            }}
+            onBlur={event => {
+              if (field === 'type') closeBeginnerTypeCompletionLater(inputKey);
+              const rawValue = event.currentTarget.value;
+              const nextValue = field === 'type' ? resolveBeginnerTypeInput(rawValue) : rawValue;
+              if (event.currentTarget.dataset.beginnerParameterSkipBlur === 'true') {
+                delete event.currentTarget.dataset.beginnerParameterSkipBlur;
+                return;
+              }
+              updateDraftValue(nextValue);
+              if (autoCommit) commitNewCodeTargetParameter(target, { [field]: nextValue });
+            }}
+            onKeyDown={event => {
+              if (field === 'type' && typeCompletion) {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                  event.preventDefault();
+                  moveBeginnerTypeCompletion(inputKey, event.key === 'ArrowDown' ? 1 : -1);
+                  return;
+                }
+                if (event.key === 'Enter' || event.key === 'Tab') {
+                  const item = typeCompletion.items[typeCompletion.selectedIndex];
+                  if (item) {
+                    event.preventDefault();
+                    event.currentTarget.value = item.label;
+                    applyTypeCompletion(item, event.currentTarget);
+                    if (autoCommit || event.key === 'Enter') {
+                      commitNewCodeTargetParameter(target, { [field]: item.label });
+                    }
+                    event.currentTarget.dataset.beginnerParameterSkipBlur = 'true';
+                    event.currentTarget.blur();
+                    return;
+                  }
+                }
+              }
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                const rawValue = event.currentTarget.value;
+                const nextValue = field === 'type' ? resolveBeginnerTypeInput(rawValue) : rawValue;
+                updateDraftValue(nextValue);
+                if (autoCommit) {
+                  event.currentTarget.blur();
+                } else {
+                  event.currentTarget.dataset.beginnerParameterSkipBlur = 'true';
+                  commitNewCodeTargetParameter(target, { [field]: nextValue });
+                  event.currentTarget.blur();
+                }
+              }
+              if (event.key === 'Escape') {
+                setBeginnerTypeCompletionState(null);
+                if (!autoCommit) event.currentTarget.dataset.beginnerParameterSkipBlur = 'true';
+                setNewParameterDrafts(current => {
+                  const next = { ...current };
+                  delete next[key];
+                  return next;
+                });
+                event.currentTarget.blur();
+              }
+            }}
+            className={`${directInputClasses(tone)} disabled:cursor-not-allowed disabled:opacity-40`}
+            title={field === 'type' ? '支持中文、英文和拼音简写，例如 wb、zs、string、int' : undefined}
+          />
+          {field === 'type' && renderBeginnerTypeCompletionPopup(inputKey, applyTypeCompletion)}
+        </div>
+      );
+    };
+
+    const renderNewParameterArraySwitch = (target: BeginnerCodeTarget) => {
+      const key = codeTargetKey(target);
+      const draft: ParameterDraft = { type: '文本型', name: '', defaultValue: '', isArray: false, ...(newParameterDrafts[key] || {}) };
+      const disabled = !onUpdateSourceContent;
+      return (
+        <label
+          className={`inline-flex h-[var(--beginner-input-height)] w-full items-center justify-center ${disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'}`}
+          title={draft.isArray ? '关闭新参数数组' : '将新参数设为数组'}
+        >
+          <input
+            type="checkbox"
+            className="sr-only"
+            checked={draft.isArray}
+            disabled={disabled}
+            aria-label="切换新参数数组状态"
+            onChange={event => {
+              const isArray = event.currentTarget.checked;
+              setNewParameterDrafts(current => ({ ...current, [key]: { ...draft, isArray } }));
+            }}
+          />
+          <span className={`relative h-[var(--beginner-switch-height)] w-[var(--beginner-switch-width)] rounded-full transition-colors ${
+            draft.isArray
+              ? isDarkMode ? 'bg-cyan-500/80' : 'bg-cyan-600'
+              : isDarkMode ? 'bg-[#2b2d34]' : 'bg-slate-300'
+          }`}>
+            <span className={`absolute top-[var(--beginner-switch-knob-offset)] h-[var(--beginner-switch-knob-size)] w-[var(--beginner-switch-knob-size)] rounded-full bg-white transition-transform ${
+              draft.isArray ? 'translate-x-[var(--beginner-switch-knob-translate)]' : 'translate-x-[var(--beginner-switch-knob-offset)]'
+            }`} />
+          </span>
+        </label>
       );
     };
 
@@ -6228,6 +6415,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               <tr>
                 <th className={`${headCellClass} w-[160px]`}>参数名</th>
                 <th className={`${headCellClass} w-[130px]`}>类型</th>
+                <th className={`${headCellClass} w-[64px]`}>数组</th>
                 <th className={`${headCellClass} w-[180px]`}>默认值</th>
                 <th className={`${headCellClass} w-[140px]`}>参考</th>
                 <th className={headCellClass}>操作</th>
@@ -6237,7 +6425,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               {target.method.parameters.map((parameter, index) => (
                 <tr key={`${codeTargetKey(target)}:parameter:${index}`} className={rowChrome(row)}>
                   <td className={cellClass}>{renderParameterInput(target, index, 'name', parameter.name, '参数名', 'parameter')}</td>
-                  <td className={cellClass}>{renderParameterInput(target, index, 'type', parameter.type, '类型', 'type')}</td>
+                  <td className={cellClass}>{renderParameterInput(target, index, 'type', getLingCppParameterElementType(parameter.type), '类型', 'type')}</td>
+                  <td className={cellClass}>{renderParameterArraySwitch(target, index, isLingCppArrayParameterType(parameter.type))}</td>
                   <td className={cellClass}>{renderParameterInput(target, index, 'defaultValue', parameter.defaultValue || '', '默认值', 'value')}</td>
                   <td className={cellClass}>{renderTextCell(parameterExampleText(parameter), 'muted')}</td>
                   <td className={cellClass}>
@@ -6258,170 +6447,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
                 <td className={cellClass}>{renderNewParameterInput(target, 'name', '输入参数名', 'parameter')}</td>
                 <td className={cellClass}>{renderNewParameterInput(target, 'type', '文本型', 'type')}</td>
+                <td className={cellClass}>{renderNewParameterArraySwitch(target)}</td>
                 <td className={cellClass}>{renderNewParameterInput(target, 'defaultValue', '"文本"', 'value')}</td>
                 <td className={cellClass}>{renderTextCell('输入名称后自动添加', 'muted')}</td>
                 <td className={cellClass}>{renderTextCell('新参数', 'muted')}</td>
               </tr>
             </tbody>
           </table>
-        </div>
-      );
-    };
-
-    const renderEventFunctionCallBar = (target: BeginnerCodeTarget) => {
-      if (target.method.kind !== 'event' || functionTargets.length === 0) return null;
-      const selectedTemplateTarget =
-        functionTargets.find(functionTarget => codeTargetKey(functionTarget) === selectedFunctionTemplateKey)
-        || functionTargets[0];
-      const assistantDraftKey = selectedTemplateTarget ? functionCallDraftKey(target, selectedTemplateTarget) : '';
-      const argumentDraft = assistantDraftKey ? functionCallDrafts[assistantDraftKey] || {} : {};
-      const callPreview = selectedTemplateTarget
-        ? formatFunctionCallWithDraft(selectedTemplateTarget.method.name, selectedTemplateTarget.method.parameters, argumentDraft)
-        : '';
-      const insertSelectedFunctionCall = () => {
-        if (!selectedTemplateTarget) return;
-        const currentBody = methodBodyText(target.method);
-        const nextBody = currentBody.trim()
-          ? `${currentBody}\n${callPreview}`
-          : callPreview;
-        commitBeginnerCodeBody(
-          target.className,
-          target.method.name,
-          currentBody,
-          nextBody
-        );
-        if (assistantDraftKey) {
-          setFunctionCallDrafts(current => {
-            const next = { ...current };
-            delete next[assistantDraftKey];
-            return next;
-          });
-        }
-      };
-      return (
-        <div className={`border-b ${
-          isDarkMode ? 'border-[#2b2d34] bg-[#121318]' : 'border-slate-200 bg-slate-50'
-        }`}>
-          <div className="flex min-h-[34px] items-center gap-2 px-2">
-            <span className={`shrink-0 text-[10px] font-semibold ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>调用功能</span>
-            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1">
-              {functionTargets.map(functionTarget => {
-                const functionKey = codeTargetKey(functionTarget);
-                const parameterCount = functionTarget.method.parameters.length;
-                return (
-                  <button
-                    key={`${functionTarget.className}:${functionTarget.method.name}:call`}
-                    type="button"
-                    onMouseEnter={() => setSelectedFunctionTemplateKey(functionKey)}
-                    onFocus={() => setSelectedFunctionTemplateKey(functionKey)}
-                    onClick={() => setSelectedFunctionTemplateKey(functionKey)}
-                    className={`max-w-[240px] shrink-0 rounded border px-2 py-1 text-[10px] font-semibold transition-colors ${
-                      selectedTemplateTarget && codeTargetKey(selectedTemplateTarget) === functionKey
-                        ? isDarkMode
-                          ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-200'
-                          : 'border-emerald-300 bg-emerald-100 text-emerald-800'
-                        : isDarkMode
-                          ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
-                          : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                    }`}
-                    title={`选择后填写参数：${formatFunctionCall(functionTarget.method.name, functionTarget.method.parameters)}`}
-                  >
-                    <span className="truncate">{functionTarget.method.name}</span>
-                    <span className={`ml-1 text-[9px] ${isDarkMode ? 'text-emerald-200/80' : 'text-emerald-800/80'}`}>
-                      {parameterCount > 0 ? `${parameterCount} 参数` : '无参数'}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {selectedTemplateTarget && (
-            <div className={`border-t px-2 py-2 ${isDarkMode ? 'border-[#2b2d34]' : 'border-slate-200'}`}>
-              <div className={`rounded border px-2 py-2 ${
-                isDarkMode ? 'border-[#343442] bg-[#111217]' : 'border-slate-200 bg-white'
-              }`}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className={`truncate text-[10px] font-semibold ${isDarkMode ? 'text-slate-100' : 'text-slate-900'}`}>
-                      {selectedTemplateTarget.method.name}
-                    </div>
-                    <div className={`truncate text-[9px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
-                      {formatFunctionSignature(selectedTemplateTarget.method.name, selectedTemplateTarget.method.parameters)}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={!onUpdateSourceContent}
-                    onClick={insertSelectedFunctionCall}
-                    className={`rounded border px-2 py-1 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-                      isDarkMode
-                        ? 'border-cyan-500/40 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25'
-                        : 'border-cyan-200 bg-cyan-50 text-cyan-700 hover:bg-cyan-100'
-                    }`}
-                  >
-                    插入调用
-                  </button>
-                </div>
-                {selectedTemplateTarget.method.parameters.length > 0 ? (
-                  <div className="mt-2 grid gap-1.5">
-                    {selectedTemplateTarget.method.parameters.map((parameter, index) => {
-                      const argumentKey = parameterCallArgumentKey(parameter, index);
-                      const defaultValue = defaultFunctionArgument(parameter);
-                      return (
-                        <label
-                          key={`${assistantDraftKey}:${argumentKey}`}
-                          className={`grid min-w-0 grid-cols-[minmax(92px,1fr)_minmax(72px,.7fr)_minmax(120px,1.4fr)] items-center gap-2 rounded px-1.5 py-1 text-[10px] ${
-                            isDarkMode ? 'bg-[#181a20] text-slate-300' : 'bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          <span className={`truncate ${textTone('parameter')}`}>{parameter.name}</span>
-                          <span className={`truncate ${textTone('type')}`}>{parameter.type}</span>
-                          <input
-                            value={argumentDraft[argumentKey] || ''}
-                            placeholder={parameter.defaultValue?.trim() ? `默认 ${parameter.defaultValue.trim()}` : defaultValue}
-                            disabled={!onUpdateSourceContent}
-                            onChange={event => {
-                              const nextValue = event.currentTarget.value;
-                              setFunctionCallDrafts(current => ({
-                                ...current,
-                                [assistantDraftKey]: {
-                                  ...(current[assistantDraftKey] || {}),
-                                  [argumentKey]: nextValue
-                                }
-                              }));
-                            }}
-                            onKeyDown={event => {
-                              if (event.key === 'Enter') insertSelectedFunctionCall();
-                              if (event.key === 'Escape') {
-                                setFunctionCallDrafts(current => ({
-                                  ...current,
-                                  [assistantDraftKey]: {
-                                    ...(current[assistantDraftKey] || {}),
-                                    [argumentKey]: ''
-                                  }
-                                }));
-                                event.currentTarget.blur();
-                              }
-                            }}
-                            className={`${directInputClasses('value')} disabled:cursor-not-allowed disabled:opacity-40`}
-                          />
-                        </label>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className={`mt-2 rounded px-1.5 py-1 text-[10px] ${isDarkMode ? 'bg-[#181a20] text-slate-500' : 'bg-slate-50 text-slate-500'}`}>
-                    无参数，点击“插入调用”会直接写入事件代码。
-                  </div>
-                )}
-                <div className={`mt-2 rounded px-1.5 py-1 font-mono text-[10px] ${
-                  isDarkMode ? 'bg-[#0d0f14] text-emerald-300' : 'bg-slate-50 text-emerald-700'
-                }`}>
-                  {callPreview}
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       );
     };
@@ -6853,7 +6885,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                               事件实现
                             </div>
                             {renderProcessPropertyTable(target)}
-                            {renderEventFunctionCallBar(target)}
                             {renderCodeBodyEditor(target, true)}
                           </div>
                         </td>
@@ -6867,9 +6898,40 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   <td className={cellClass}>{renderTextCell('自定义事件', 'type')}</td>
                   <td className={cellClass}>{renderNewEventInput('handlerName', '输入处理器名', 'procedure')}</td>
                   <td className={cellClass}>{renderTextCell('新事件', 'muted')}</td>
-                  <td className={cellClass}>{renderTextCell('生成后逐行添加', 'muted')}</td>
+                  <td className={cellClass}>{renderNewEventInput('parameters', '文本型 内容, 整数型 次数', 'plain')}</td>
                   <td className={`${cellClass} text-right`}>{renderTextCell('新', 'muted')}</td>
-                  <td className={cellClass}>{renderTextCell('输入处理器名后自动生成并展开', 'muted')}</td>
+                  <td className={cellClass}>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => commitNewEventDraft()}
+                        disabled={!onUpdateSourceContent || !primaryLingCppClass || !newEventDraft.handlerName.trim()}
+                        className={`inline-flex h-[var(--beginner-input-height)] flex-1 items-center justify-center gap-1 rounded border px-1.5 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                          isDarkMode
+                            ? 'border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/10'
+                            : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                        }`}
+                        title="按当前处理器名和参数新增事件"
+                      >
+                        <Check className="h-3 w-3" />
+                        新增
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetNewEventDraft}
+                        disabled={!newEventDraft.handlerName && !newEventDraft.parameters}
+                        aria-label="取消新增事件"
+                        className={`inline-flex h-[var(--beginner-input-height)] w-7 items-center justify-center rounded border transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                          isDarkMode
+                            ? 'border-slate-600 text-slate-400 hover:bg-slate-700/50'
+                            : 'border-slate-200 text-slate-500 hover:bg-slate-100'
+                        }`}
+                        title="取消并清空新增事件表单"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -6984,7 +7046,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                     </div>
                   </td>
                   <td className={cellClass}>{renderParameterSummary(row.parameters)}</td>
-                  <td className={cellClass}>{renderFunctionCallTemplatePreview(row.targetName || row.name, row.parameters, true)}</td>
+                  <td className={cellClass}>{renderFunctionCallTemplatePreview(target ? functionCallName(target) : (row.targetName || row.name), row.parameters, true)}</td>
                   <td className={`${cellClass} text-right tabular-nums`}>{renderTextCell(row.line, 'muted')}</td>
                   <td className={cellClass}>{renderTextCell(row.note || '单击编写', 'muted')}</td>
                 </tr>
@@ -7010,10 +7072,41 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             <tr className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
               <td className={cellClass}>{renderNewFunctionInput('returnType', '空', 'type')}</td>
               <td className={cellClass}>{renderNewFunctionInput('name', '输入功能名', 'procedure')}</td>
-              <td className={cellClass}>{renderTextCell('生成后逐行添加', 'muted')}</td>
-              <td className={cellClass}>{renderTextCell('功能名("文本", 0)', 'muted')}</td>
+              <td className={cellClass}>{renderNewFunctionInput('parameters', '文本型 内容, 整数型 次数', 'plain')}</td>
+              <td className={cellClass}>{renderTextCell('填写后可插入调用', 'muted')}</td>
               <td className={`${cellClass} text-right`}>{renderTextCell('新', 'muted')}</td>
-              <td className={cellClass}>{renderTextCell('输入功能名后自动新增并展开', 'muted')}</td>
+              <td className={cellClass}>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => commitNewFunctionDraft()}
+                    disabled={!onUpdateSourceContent || !primaryMethodOwnerName || !newFunctionDraft.name.trim()}
+                    className={`inline-flex h-[var(--beginner-input-height)] flex-1 items-center justify-center gap-1 rounded border px-1.5 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                      isDarkMode
+                        ? 'border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/10'
+                        : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                    }`}
+                    title="按当前返回值、功能名和参数新增功能"
+                  >
+                    <Check className="h-3 w-3" />
+                    新增
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetNewFunctionDraft}
+                    disabled={newFunctionDraft.returnType === '空' && !newFunctionDraft.name && !newFunctionDraft.parameters}
+                    aria-label="取消新增功能"
+                    className={`inline-flex h-[var(--beginner-input-height)] w-7 items-center justify-center rounded border transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                      isDarkMode
+                        ? 'border-slate-600 text-slate-400 hover:bg-slate-700/50'
+                        : 'border-slate-200 text-slate-500 hover:bg-slate-100'
+                    }`}
+                    title="取消并清空新增功能表单"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              </td>
             </tr>
           )}
         </tbody>
@@ -7062,7 +7155,6 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             </div>
             <div className="min-w-0">
               {renderProcessPropertyTable(activeCodeTarget)}
-              {renderEventFunctionCallBar(activeCodeTarget)}
               {renderCodeBodyEditor(activeCodeTarget)}
             </div>
           </div>
@@ -7570,29 +7662,96 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     };
 
     const renderParameterCanvas = (target: BeginnerCodeTarget, visualLine: number) => {
-      if (target.method.parameters.length === 0) return null;
+      const targetKey = codeTargetKey(target);
+      const newParameterDraft = newParameterDrafts[targetKey];
       return renderSourceShell(
         `${target.method.kind}-${target.method.name}-params`,
         visualLine,
         target.method.line,
         'plain',
-        renderInlineTable(
-          [
-            { label: '参数名', className: 'w-[140px]' },
-            { label: '类 型', className: 'w-[96px]' },
-            { label: '默认值', className: 'w-[96px]' },
-            { label: '备 注', className: 'w-[140px]' }
-          ],
-          target.method.parameters.map((parameter, index) => (
-            <tr key={`${codeTargetKey(target)}:param:${index}`} className={isDarkMode ? 'bg-[#18191f]' : 'bg-white'}>
-              <td className={compactCellClass}>{renderParameterInput(target, index, 'name', parameter.name, '参数名', 'parameter')}</td>
-              <td className={compactCellClass}>{renderParameterInput(target, index, 'type', parameter.type, '类型', 'type')}</td>
-              <td className={compactCellClass}>{renderParameterInput(target, index, 'defaultValue', parameter.defaultValue || '', '默认值', 'value')}</td>
-              <td className={compactCellClass}>{renderTextCell(parameterExampleText(parameter), 'muted')}</td>
-            </tr>
-          )),
-          520
-        )
+        <div className="min-w-0">
+          {renderInlineTable(
+            [
+              { label: '参数名', className: 'w-[140px]' },
+              { label: '类 型', className: 'w-[96px]' },
+              { label: '数 组', className: 'w-[56px]' },
+              { label: '默认值', className: 'w-[96px]' },
+              { label: '备 注', className: 'w-[140px]' },
+              { label: '操 作', className: 'w-[104px]' }
+            ],
+            [
+              ...target.method.parameters.map((parameter, index) => (
+                <tr key={`${targetKey}:param:${index}`} className={isDarkMode ? 'bg-[#18191f]' : 'bg-white'}>
+                  <td className={compactCellClass}>{renderParameterInput(target, index, 'name', parameter.name, '参数名', 'parameter')}</td>
+                  <td className={compactCellClass}>{renderParameterInput(target, index, 'type', getLingCppParameterElementType(parameter.type), '类型', 'type')}</td>
+                  <td className={compactCellClass}>{renderParameterArraySwitch(target, index, isLingCppArrayParameterType(parameter.type))}</td>
+                  <td className={compactCellClass}>{renderParameterInput(target, index, 'defaultValue', parameter.defaultValue || '', '默认值', 'value')}</td>
+                  <td className={compactCellClass}>{renderTextCell(parameterExampleText(parameter), 'muted')}</td>
+                  <td className={compactCellClass}>
+                    <button
+                      type="button"
+                      onClick={() => removeCodeTargetParameter(target, index)}
+                      disabled={!onUpdateSourceContent}
+                      className={`inline-flex h-[var(--beginner-input-height)] w-full items-center justify-center gap-1 whitespace-nowrap rounded border px-1.5 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                        isDarkMode
+                          ? 'border-rose-500/25 text-rose-300 hover:bg-rose-500/10'
+                          : 'border-rose-200 text-rose-700 hover:bg-rose-50'
+                      }`}
+                      title={`删除参数 ${parameter.name}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      删除
+                    </button>
+                  </td>
+                </tr>
+              )),
+              <tr key={`${targetKey}:new-parameter`} className={isDarkMode ? 'bg-[#121318]' : 'bg-slate-50'}>
+                <td className={compactCellClass}>{renderNewParameterInput(target, 'name', '输入参数名', 'parameter', false)}</td>
+                <td className={compactCellClass}>{renderNewParameterInput(target, 'type', '文本型', 'type', false)}</td>
+                <td className={compactCellClass}>{renderNewParameterArraySwitch(target)}</td>
+                <td className={compactCellClass}>{renderNewParameterInput(target, 'defaultValue', '可选', 'value', false)}</td>
+                <td className={compactCellClass}>{renderTextCell('填写名称和类型后新增', 'muted')}</td>
+                <td className={compactCellClass}>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => commitNewCodeTargetParameter(target)}
+                      disabled={!onUpdateSourceContent || !newParameterDraft?.name?.trim()}
+                      className={`inline-flex h-[var(--beginner-input-height)] min-w-0 flex-1 items-center justify-center gap-1 whitespace-nowrap rounded border px-1 text-[10px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                        isDarkMode
+                          ? 'border-emerald-500/25 text-emerald-300 hover:bg-emerald-500/10'
+                          : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'
+                      }`}
+                      title="新增参数并写回子程序签名"
+                    >
+                      <Check className="h-3 w-3 shrink-0" />
+                      新增
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewParameterDrafts(current => {
+                        const next = { ...current };
+                        delete next[targetKey];
+                        return next;
+                      })}
+                      disabled={!newParameterDraft}
+                      aria-label="清空新增参数"
+                      className={`inline-flex h-[var(--beginner-input-height)] w-6 shrink-0 items-center justify-center rounded border transition-colors disabled:cursor-not-allowed disabled:opacity-35 ${
+                        isDarkMode
+                          ? 'border-slate-600 text-slate-400 hover:bg-slate-700/50'
+                          : 'border-slate-200 text-slate-500 hover:bg-slate-100'
+                      }`}
+                      title="清空新增参数"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ],
+            704
+          )}
+        </div>
       );
     };
 
@@ -8242,7 +8401,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         const parameterCanvas = renderParameterCanvas(target, nextVisualLine);
         if (parameterCanvas) {
           processCanvases.push(parameterCanvas);
-          nextVisualLine += Math.max(1, target.method.parameters.length);
+          nextVisualLine += Math.max(1, target.method.parameters.length + 1);
         }
 
         const bodySegments = getBeginnerMethodBodySegments(target.method);

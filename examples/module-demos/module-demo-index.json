@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-01T15:40:09.242Z",
+  "generatedAt": "2026-08-03T06:34:46.936Z",
   "modules": [
     {
       "moduleId": "lingbuilder.advanced.assembly",
@@ -96,7 +96,7 @@
       "projectId": "module-demo-lingbuilder.cef3.browser",
       "commandCount": 22,
       "controlCount": 1,
-      "groupCount": 2,
+      "groupCount": 3,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.cef3.browser/src",
       "packageName": "CEF3浏览器模块完整演示.lcpppkg"
@@ -480,12 +480,13 @@
       "moduleId": "lingbuilder.http.server",
       "moduleName": "HTTP 服务端模块",
       "projectId": "module-demo-lingbuilder.http.server",
-      "commandCount": 5,
+      "commandCount": 48,
       "controlCount": 0,
-      "groupCount": 1,
+      "groupCount": 3,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.http.server/src",
-      "packageName": "HTTP服务端模块完整演示.lcpppkg"
+      "packageName": "HTTP服务端模块完整演示.lcpppkg",
+      "packageBytes": 19378
     },
     {
       "moduleId": "lingbuilder.image.bitmap",
@@ -622,11 +623,11 @@
     },
     {
       "moduleId": "lingbuilder.net.http-client",
-      "moduleName": "HTTP客户端模块",
+      "moduleName": "HTTP 客户端模块",
       "projectId": "module-demo-lingbuilder.net.http-client",
-      "commandCount": 7,
+      "commandCount": 74,
       "controlCount": 0,
-      "groupCount": 1,
+      "groupCount": 4,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.net.http-client/src",
       "packageName": "HTTP客户端模块完整演示.lcpppkg"
@@ -692,7 +693,7 @@
       "projectId": "module-demo-lingbuilder.opencv",
       "commandCount": 33,
       "controlCount": 0,
-      "groupCount": 2,
+      "groupCount": 3,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.opencv/src",
       "packageName": "OpenCV图像处理模块完整演示.lcpppkg"
@@ -778,12 +779,13 @@
       "moduleId": "lingbuilder.system.clipboard",
       "moduleName": "剪贴板模块",
       "projectId": "module-demo-lingbuilder.system.clipboard",
-      "commandCount": 4,
+      "commandCount": 10,
       "controlCount": 0,
       "groupCount": 1,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.system.clipboard/src",
-      "packageName": "剪贴板模块完整演示.lcpppkg"
+      "packageName": "剪贴板模块完整演示.lcpppkg",
+      "packageBytes": 10109
     },
     {
       "moduleId": "lingbuilder.system.disk",
@@ -846,23 +848,25 @@
       "moduleId": "lingbuilder.websocket.client",
       "moduleName": "WebSocket 客户端模块",
       "projectId": "module-demo-lingbuilder.websocket.client",
-      "commandCount": 5,
+      "commandCount": 51,
       "controlCount": 0,
-      "groupCount": 1,
+      "groupCount": 3,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.websocket.client/src",
-      "packageName": "WebSocket客户端模块完整演示.lcpppkg"
+      "packageName": "WebSocket客户端模块完整演示.lcpppkg",
+      "packageBytes": 19015
     },
     {
       "moduleId": "lingbuilder.websocket.server",
       "moduleName": "WebSocket 服务端模块",
       "projectId": "module-demo-lingbuilder.websocket.server",
-      "commandCount": 6,
+      "commandCount": 50,
       "controlCount": 0,
-      "groupCount": 1,
+      "groupCount": 3,
       "builtin": true,
       "sourceRoot": "examples/module-demos/lingbuilder.websocket.server/src",
-      "packageName": "WebSocket服务端模块完整演示.lcpppkg"
+      "packageName": "WebSocket服务端模块完整演示.lcpppkg",
+      "packageBytes": 18490
     },
     {
       "moduleId": "lingbuilder.win32.accessibility",

@@ -472,6 +472,21 @@ function validateBindings(bindings: any, commands: any[], types: any[], targets:
         if (parameter?.type === 'lingValue' && parameter?.variadic !== true) {
           diagnostics.push(`命令 ${binding.command} 的 lingValue 参数必须声明 variadic: true。`);
         }
+        if (parameter?.handlerSignature !== undefined) {
+          if (parameter?.type !== 'handler') {
+            diagnostics.push(`命令 ${binding.command} 只有 handler 参数可以声明 handlerSignature。`);
+          } else if (!parameter.handlerSignature || typeof parameter.handlerSignature !== 'object') {
+            diagnostics.push(`命令 ${binding.command} 的 handlerSignature 必须是对象。`);
+          } else {
+            if (!Array.isArray(parameter.handlerSignature.parameterTypes)
+              || parameter.handlerSignature.parameterTypes.some((item: unknown) => typeof item !== 'string' || !item.trim())) {
+              diagnostics.push(`命令 ${binding.command} 的 handlerSignature.parameterTypes 必须是类型文本数组。`);
+            }
+            if (typeof parameter.handlerSignature.returnType !== 'string' || !parameter.handlerSignature.returnType.trim()) {
+              diagnostics.push(`命令 ${binding.command} 的 handlerSignature.returnType 必须是非空类型文本。`);
+            }
+          }
+        }
       });
     }
     const variadicIndexes = (binding.parameters || [])

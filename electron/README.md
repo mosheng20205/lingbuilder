@@ -1,5 +1,19 @@
 # LingBuilder Electron
 
+> 2026-08-03：修复 new_emoji Table 结构化编辑器把对象行直接传给 Ex setter 后在原生窗口显示 JSON 的问题。`dataGridColumns/dataGridRows` 现在统一通过 `EU_SetTableData` 的基础列/行 ABI 生成；明确为字符串列表的旧 `tableColumnsEx/tableRowsEx` 仍保持兼容调用。回归测试位于 `tests/dataGrid.test.ts`。
+
+> 2026-08-03：`lingbuilder.net.http-client@2.0.0` 已完成 74 条受管 API 的原生闭环。WinHTTP runtime 统一提供客户端/请求生命周期、异步 UI 回调、请求头、文本/JSON/字节集/文件上传下载、代理/凭据、TLS 验证与 SHA-256 pin、Cookie、自动解压、重定向、超时、资源上限和响应快照；普通 Win32 使用 `WM_LINGBUILDER_HTTP_CLIENT_EVENT`，new_emoji 使用独立消息窗口，旧 `HTTP客户端_请求/GET/POST` 等入口保持兼容。正式说明见 `docs/modules/http-client/README.md`，生成回归为 `tests/httpClientRuntime.test.ts`，真实原生验证为 `npm run smoke:http-client-native`，模块示例可用 `npm run module:demos -- --module lingbuilder.net.http-client --skip-export` 重新生成。
+
+> 2026-08-03：`lingbuilder.websocket.client@2.0.0` 已从 5 条窗口级同步原型升级为 51 条受管 API 和稳定 `WebSocket连接` 类型，支持多连接、后台握手/接收、`ws://`/`wss://`、文本/二进制、Origin、子协议、自定义请求头、代理、HTTP Basic、系统证书验证、SHA-256 证书固定、资源限制、自动重连、事件快照和统计。普通 Win32 与 New_Emoji 复用同一 WinHTTP 运行时；Win32/x64 和 New_Emoji x64 已通过真实 MSVC 编译及本地断线重连 smoke。正式说明见 `docs/modules/websocket-client/README.md`，验证命令为 `npm run smoke:websocket-client-native`。
+
+> 2026-08-03：`lingbuilder.http.server@2.0.0` 已从 5 条同步单连接原型升级为 48 条受管 API 和 `HTTP服务端`、`HTTP请求` 两个公开类型，支持后台接受线程、1–64 工作线程、有界连接队列、路由、HTTP/1.0/1.1、keep-alive、Content-Length/chunked、完整请求读取、文本/JSON/二进制/文件/Cookie/重定向响应、资源限制和统计。默认监听门禁校验解析后的实际 IPv4/IPv6 回环地址，请求目标拒绝非法百分号编码和非法 UTF-8 解码结果；请求通过窗口消息回到普通 Win32 或 New_Emoji UI 线程；Win32/x64 和 New_Emoji x64 已通过真实 MSVC 编译及协议 smoke。正式说明见 `docs/modules/http-server/README.md`，验证命令为 `npm run smoke:http-server-native`。模块是嵌入式 HTTP/1.1 服务端，公网 TLS/HTTP2 应由反向代理或网关提供。
+
+> 2026-08-03：`lingbuilder.websocket.server@2.0.0` 已从 6 条同步单连接原型升级为 50 条受管 API 和 2 个公开类型，支持后台多客户端 `WSAPoll`、文本/二进制、分片、UTF-8、Ping/Pong、关闭握手、Origin/路径/子协议、资源限制、有界发送队列、客户端状态与统计。事件通过窗口消息回到普通 Win32 或 New_Emoji UI 线程；Win32/x64 和 New_Emoji x64 已通过真实 MSVC 编译及 RFC 6455 协议 smoke。正式说明见 `docs/modules/websocket-server/README.md`，验证命令为 `npm run smoke:websocket-server-native`。模块当前提供 `ws://`，公网 `wss://` 由反向代理或网关终止 TLS。
+
+> 2026-08-02：`lingbuilder.system.clipboard@1.1.0` 已从 4 条文本/状态命令扩展为 10 条剪贴板 API，新增图片字节集、DIB/BMP 读写、图片格式查询和 GIF 原始字节读写。GIF 写入同时登记 `GIF`、标准 MIME `image/gif` 与 `HTML Format`，不解码、不重编码，通用图片写入也会自动保留动画帧；单个图片/GIF 上限为 256 MB。详见 `docs/modules/clipboard/README.md`，回归测试位于 `tests/modules.test.ts`。
+
+> 2026-08-02：修复 New_Emoji 原生 C++ 生成程序跨显示器拖动时只继承系统 DPI 的问题。`wWinMain` 现在在 COM、窗口和控件创建前动态启用 `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2`，仅在旧系统或 API 不可用时回退 `SetProcessDPIAware`；new_emoji DLL 随后可以收到 `WM_DPICHANGED` 并按目标显示器重新布局。生成结果和 `new-emoji-92-tabs-validation` 示例同步更新，避免 100%/150% 屏幕之间出现 1.5 倍窗口和控件错位。
+
 > 2026-08-01：`lingbuilder.input.mouse@2.0.0` 已封装为 29 条三分类 API：全局真实输入（前台）15 条、指定 HWND 窗口消息输入（后台）6 条、UI Automation（后台）8 条。模块详情、文档和演示逐条标注前台/后台及是否移动或占用系统鼠标；窗口消息使用 `PostMessageW` 不移动光标，UIA 使用受管元素句柄按控件语义操作。Win32/new_emoji 生成代码在 `CoUninitialize` 前清理 UIA 引用；`鼠标_相对移动` 按 Windows 输入增量说明，实际位移受速度/加速度设置影响。详见 `docs/modules/mouse/README.md`。
 
 > 2026-08-01：`lingbuilder.input.keyboard@2.0.0` 已从 5 条基础命令扩展为 31 条分类 API，覆盖全局状态、键码/扫描码转换、前台 `SendInput` 虚拟键/扫描码/Unicode 输入、指定 HWND 的后台 `PostMessageW` 按键与文本消息。模块详情按作用域分类，每条命令标明焦点和实体键盘影响；不提供 `BlockInput` 或低级记录钩子。详见 `docs/modules/keyboard/README.md`，Win32/x64 原生验收为 `npm run smoke:keyboard-native`。
@@ -47,8 +61,9 @@
 
 - `.lcpppkg` 是可直接分享的单文件源码包。文件菜单、命令面板和项目右键菜单均提供“一键导出 LCPP 源码包”。
 - 导出前工作台会提交并保存当前草稿；包内包含目标项目的完整依赖闭包、源码、配置、设计器、项目资源、模块引用及已启用第三方模块。无命令、无 target 的 SDK/资产载体模块也会随包携带。
+- 源工作区存在 `.lingbuilder/build-configuration.json` 时会随包保留 Debug/Release 与 Win32/x64 设置；切换到导入工作区后，工作台会重新读取该配置。若旧包缺少配置，CEF3、FBro、OpenCV 等 x64-only 模块会在首次构建前自动选择并持久化 x64。
 - 每个包包含 `lingbuilder-source-package.json` 和独立 `workspace/`，清单记录全部文件大小及 SHA-256。导入拒绝路径越界、符号链接、额外文件、哈希不一致、超过 1GB 的包和超过 2GB 的解压内容。
-- 源码包清单版本 2 还记录最低生成器版本和 `requiredCapabilities`。导出项目使用 ListView 高级 API 时会记录 `win32.listview.advanced-api.v1`，使用类型化行构造器时会记录 `win32.listview.structured-rows.v1`（最低生成器 0.2.8）；导入会在生成 C++ 前检查能力，避免旧版 IDE 先生成源码、最后才在 MSVC 阶段集中报 `C3861`。
+- 源码包清单版本 2 还记录最低生成器版本和 `requiredCapabilities`。导出项目使用 ListView 高级 API 时会记录 `win32.listview.advanced-api.v1`，使用类型化行构造器时会记录 `win32.listview.structured-rows.v1`（最低生成器 0.2.7）；导入会在生成 C++ 前检查能力，避免旧版 IDE 先生成源码、最后才在 MSVC 阶段集中报 `C3861`。
 - 旧版 v1 `.lcpppkg` 仍可由新版 IDE 安全迁移；导入时会重新扫描包内 `.lcpp`，补齐能力清单后再执行生成器能力校验。
 - 双击、拖入或选择 `.lcpppkg` 后，桌面宿主会把它导入“文档/LingBuilder/已导入源码”的唯一新目录并直接打开；不会覆盖已有工作区，第三方模块也只在新工作区内生效。
 - `.env`、PEM/PFX/P12/KEY、常见私钥文件以及 credentials/secrets/tokens JSON 默认排除，并在导出及导入提示中列明。
@@ -134,9 +149,10 @@ npm run package:win
 ```
 
 - `package:dir` 生成 `release/win-unpacked/LingBuilder.exe` 和 `lingbuilder.cmd`；`smoke:packaged:cli` 只验证安装版 CLI 启动器与版本；`smoke:packaged` 先通过安装版自带的 Electron/Node 运行时验证 CLI 版本，再启动桌面程序并验证 renderer、普通 API、模块 API、退出码和服务进程回收；`package:win` 生成 Windows x64 NSIS 安装包。
+- 联网发布必须设置 HTTPS `LINGBUILDER_CLOUD_API_URL`。备案或云端未就绪时，在 PowerShell 中设置 `$env:LINGBUILDER_CLOUD_RELEASE_MODE='offline'` 后执行打包；离线安装版保留本地 IDE 和自定义 API，但不连接系统 AI、账号和收费模块云端。两种模式不得同时设置。
 - 两条打包命令都把 CEF3 SDK 完整性作为硬门禁：打包前校验模块/版本/关键文件/x64 架构并计算全部文件的大小和 CRC32，Electron Builder 的 `beforePack` / `afterPack` 对源目录和 `win-unpacked` 再校验；`package:win` 还会从最终 NSIS 安装包归档中逐文件比对。缺少或损坏 SDK、`extraResources` 漏复制、内核版本混用时命令直接失败。可单独运行 `npm run verify:cef3-release`、`npm run verify:cef3-installer` 和 `npm run test:cef3-release` 排查。
 - NSIS 安装向导默认勾选“将 LingBuilder CLI 添加到当前用户 PATH”，也允许用户取消；重复安装去重，卸载时只移除当前 LingBuilder 安装目录。CLI 由根目录 `lingbuilder.cmd` 调用 `resources/app.asar/dist/cli.cjs`，不要要求最终用户另外安装 Node.js。
-- `package:win` 会先从微软官方地址下载并校验 WebView2 Evergreen Bootstrapper，再冻结到 NSIS 资源；安装阶段仅在注册表未检测到 WebView2 Runtime 时补装，失败不会阻止 LingBuilder 本体安装，可稍后从“工具 → 环境修复中心”重试。
+- `package:win` 会先校验并复用 `build/vendor/MicrosoftEdgeWebview2Setup.exe`中已有的 Microsoft 签名 WebView2 Evergreen Bootstrapper；文件不存在时才从微软官方地址下载并冻结到 NSIS 资源。安装阶段仅在注册表未检测到 WebView2 Runtime 时补装，失败不会阻止 LingBuilder 本体安装，可稍后从“工具 → 环境修复中心”重试。
 - 安装版主进程先启动不可见的独立本地服务，显式传入工作区、renderer 静态目录、规则手册、`127.0.0.1` 随机端口和随机会话 token，收到 ready 信息后才加载窗口。
 - renderer 仍使用相对 `/api/*`，Electron 会自动注入本地会话 token；普通 IDE 服务拒绝 `0.0.0.0`，默认不挂载 `/api/ai-bridge/*`。
 - 首次运行会在“文档/LingBuilder/起始工作区”创建干净的“未命名解决方案 / 新建项目”，只复制安装包内置模块等必要资源，不会携带开发仓库项目；以后从安装版专用的 `userData/workspace-state.packaged.json` 恢复最近工作区，开发版继续使用独立的 `workspace-state.json`。文件菜单、命令面板、解决方案根节点右键菜单和载入失败页均可“关闭当前解决方案”，该操作保留原磁盘文件并切换到新的空白工作区。工具栏“打开”使用原生选择器并由主进程自动切换受管本地服务，开发版与安装版行为一致。
@@ -161,7 +177,7 @@ npm run package:win
 - 普通 Win32 图片框可在 `.lcpp` 中调用 `图片框1.设置图片("assets/示例.png")` 动态换图，等价命令为 `控件_设置图片(图片框1, "assets/示例.png")`；也可传入 `文件对话框_取文件(...)` 返回的完整路径，传入空文本会清空图片。运行时继续使用设计器配置的填充方式。
 - 图片框即使初始没有配置图片源，也会以 Win32 `SS_BITMAP` 静态控件创建；因此可以在文件已选择或文件被拖入事件中直接调用 `.设置图片(...)`，不需要先在设计器中放置一张占位图片。
 - 高级模块未启用时，工具箱显示依赖状态但不能新增高级控件；项目已有高级控件不得被删除或静默替换。
-- 内置 `lingbuilder.edgeview` 当前版本 `1.2.0`、最低生成器 `0.2.8`。窗口、分组框或选项卡内每个控件都有独立 HWND、Environment、Controller、WebView、Profile 和默认 `.edgeview/<controlId>` UDF；属性面板包含稳定运行期属性和 v2 创建期选项，并明确提示修改创建期属性后重建。`designer.edgeview.previewControl` 继续使用独立原生窗口，不向 React 画布嵌入 HWND。
+- 内置 `lingbuilder.edgeview` 当前版本 `1.2.0`、最低生成器 `0.2.7`。窗口、分组框或选项卡内每个控件都有独立 HWND、Environment、Controller、WebView、Profile 和默认 `.edgeview/<controlId>` UDF；属性面板包含稳定运行期属性和 v2 创建期选项，并明确提示修改创建期属性后重建。`designer.edgeview.previewControl` 继续使用独立原生窗口，不向 React 画布嵌入 HWND。
 - EdgeView 共提供 271 条中文命令：36 条兼容命令和 235 条目录化安全 API。v2 新增受管 Frame/Worker/Extension/Notification/Certificate/SharedBuffer/FileSystemHandle、完整 Options、资源响应正文、PDF 流、另存为和证书决策等。新处理器统一写 `&处理器名`；任务使用五态、`shared_ptr + generation` 和迟到回调拒绝，Loader 保持到进程退出。
 - `edgeViewApiCoverage.generated.json` 固定 SDK `1.0.3537.50` / Runtime 141 与 SDK `1.0.4078.44` / Runtime 150。新基线 995 个方法的结果为 public 330、internal 565、excluded 100、pending 0。运行 `npm run module:edgeview-coverage:complete` 检查双 SDK 哈希、目录、符号、测试和漂移；`npm run smoke:edgeview-native` 执行 Win32/x64 MSVC 原生冒烟。CompositionController、PointerInfo、AutomationProvider、实验 API、Host Object、裸 COM/指针继续排除。
 - 内置 `lingbuilder.cef3.browser` 模块按 v2 `contributes.designerControls` 贡献 `CEF3浏览器 (CefBrowser)` 设计器控件：项目启用后工具箱自动新增该控件，可在任意窗口添加多个实例，属性面板可设置打开地址、缓存目录、User-Agent、JavaScript/图片/WebGL 开关与代理；22 条 `CEF3_*` 中文命令和 92 项 CEF 150 浏览器回调同时进入补全、binding、设计器事件面板和确定性 C++ 运行时。事件通过 `WM_LINGBUILDER_CEF_EVENT` 回到所属窗口线程，同步决策支持默认/允许/拒绝/已处理，高频音频和进度回调限流。原生构建从 `CEF3_SDK_ROOT`、工作区 `.lingbuilder/cef3-sdk`、已安装 SDK 载体模块 `.lingbuilder/modules/lingbuilder.cef3.sdk/sdk` 或 `C:\cef3-sdk` 受控发现 CEF3 SDK，支持 CEF 官方二进制发行包布局（`include/` + `Release/` + `Resources/`，已验证 150.0.14 x64）；推荐安装离线 SDK 模块包 `cef3-sdk-x64.lbmod`。CEF3 原生依赖计划固定要求 C++20 与 `/MD`，F5、AI Bridge 和生成的 Visual Studio 四组配置会共同应用，普通项目仍使用 C++17。CEF3 同 exe 全部控件共享缓存，需要会话隔离时使用 `lingbuilder.edgeview`。
@@ -305,6 +321,8 @@ npm run module:new-emoji -- --install
 生成结果必须包含 Win32/x64 targets、`NE_` 中文桥接命令 bindings、桥接源码、文档和示例。验证可运行 exe 时仍需确认 exe 同目录存在 `new_emoji.dll`，并等待至少 3 秒确认进程仍在运行。
 
 项目启用 `lingbuilder.new_emoji.ui` 后，窗口设计器自动使用 new_emoji 原生后端。当前新增设计器入口闭环为 9 类基础控件；旧项目中的上传、拖拽上传仍保留桥接兼容，但不再出现在普通 Win32 工具箱。普通 Win32 文件选择使用高级控件模块的非可视 `FileDialog` 资源，绑定现有按钮及窗口/控件拖放目标。画布保留现有布局/属性编辑体验，F5 与原生导出生成真实 `NE_创建*` 调用。不支持的 Win32 高级控件会禁用并给出中文诊断，不会静默混入 Win32 控件。
+
+New_Emoji Tabs 属性面板中的“显示标签页表头”对应 `headerVisible`，默认值为 `true`，生成器会调用 `EU_SetTabsHeaderVisible`；关闭后设计器预览与原生生成结果都不绘制标签页表头，页面内容区使用整个 Tabs 区域。`contentVisible` 仍固定开启，仅表示页面内容承载，不是表头开关。修改上游目录或 DLL 后重新运行上述模块生成命令，并检查 `tests/windowDesigner.test.ts` 与 `tests/modules.test.ts`。
 # 高级原生调试
 
 底部“局部变量 / 监视 / 调用栈”的高级调试区支持按 PID 附加、打开工作区内 core/minidump、连接 gdb-remote，以及暂停态寄存器、内存和反汇编读取。需要安装 LLVM `lldb-dap`；远程目标需自行启动兼容的 gdb-server/lldb-server。
@@ -472,6 +490,10 @@ npm run smoke:datagrid-demo
 
 # OpenCV 4.14.0 x64 模块
 
+OpenCV 全命令演示使用 `assets/module-demo-lingbuilder.opencv/OpenCV缺口背景.png` 作为真实缺口输入：左侧显示独立拼图块，右侧显示边界明确的缺口。`OpenCV_分析缺口` 按钮只调用一次分析命令并限制在右侧 ROI；`npm run smoke:opencv-native` 会用同一 PNG 做 MSVC x64 原生检测，断言候选接近 `(330,108,100,110)`，再通过 Bridge 生成 `OpenCV缺口验证标注.png`。
+
+资源管理器的图片预览通过受保护的图片 API 读取 Blob，再交给浏览器解码；不再把会话鉴权、资源路径或服务端响应错误统一显示为“文件损坏”。预览关闭或切换图片时会撤销临时 Blob URL。资源和模块缓存同时绑定工作区路径，多个导入副本即使项目 ID 相同，切换后也不会继续显示上一个工作区的条目。
+
 内置用户模块 `lingbuilder.opencv@1.0.0` 提供 33 条中文命令，覆盖图像加载保存、克隆与信息读取、灰度/缩放/裁剪/模糊/二值/边缘/形态学、模板匹配、轮廓和单/双缺口候选分析。`cv::Mat` 不进入 LingCpp；生成代码通过 `opencvRuntime.ts` 调用 `LingBuilderOpenCvBridge` 的 `LB_OCV_*` C ABI，并使用受管 64 位句柄。
 
 只读资产模块 `lingbuilder.opencv.sdk@4.14.0+bridge.1` 默认隐藏。生成并安装：
@@ -482,7 +504,7 @@ npm run module:opencv-sdk -- --install
 
 脚本固定校验 OpenCV 4.14.0 源码 SHA-256，只构建 `core`、`imgproc`、`imgcodecs` 的 Release x64 `/MD` 资产，并输出 Bridge 头/LIB/DLL、三个 OpenCV DLL、Apache-2.0 许可证和逐文件运行时清单。SDK、源码和中间产物位于根目录 `.lingbuilder/`、`.lingbuilder-build/`，不会提交 Git。
 
-启用模块后只允许 `windows-msvc-x64`，Visual Studio 导出只生成 Debug/Release x64。F5、AI Bridge `build.run/native.export`、原生导出与源码包恢复都复用 `nativeDependencyService` 的版本/ABI/架构/CRT/SHA-256 校验。原生验收：
+启用模块后只允许 `windows-msvc-x64`，构建配置服务会在启用模块或首次 F5 时自动选择并持久化 x64，Visual Studio 导出只生成 Debug/Release x64。F5、AI Bridge `build.run/native.export`、原生导出与源码包恢复都复用 `nativeDependencyService` 的版本/ABI/架构/CRT/SHA-256 校验。原生验收：
 
 ```bash
 npm run smoke:opencv-native
@@ -538,3 +560,11 @@ npm run smoke:protobuf-native
 ```
 
 该命令在没有固定 SDK 时只报告可解释的跳过状态；发布验收使用 `npm run smoke:protobuf-native -- --require-sdk`，会执行 import、嵌套/repeated/map/bytes 生成和 build/export 运行时物化检查。
+
+## new_emoji Tabs 页面布局运行时约束
+
+Tabs 页面绑定必须在所有页面子控件创建完成后执行；生成器会延后 `EU_SetTabsPageElements`，避免隐藏页未参加 new_emoji 布局后在切换时产生错位。Container 会显式设置 `EU_SetPanelLayout(..., 0, 0)`，保持设计器的固定宽高。
+
+Tabs 的 `headerVisible=false` 必须在创建 Tabs 后通过 `EU_SetTabsHeaderVisible(hwnd, tabs_id, 0)` 应用；缺省或 `true` 使用 `1`。表头隐藏后，设计器内容偏移和原生页面矩形都从 0 开始，不能继续预留标题栏高度。
+
+修改上述生成链路后，建议运行 `node --import tsx --test tests/windowDesigner.test.ts`，再用 `new-emoji-92-tabs-validation` 的 x64 Release exe 实际切换 17–24 页确认布局。

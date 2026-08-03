@@ -1,21 +1,1932 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.945Z",
+  "generatedAt": "2026-08-03T06:34:46.931Z",
   "module": {
     "id": "lingbuilder.net.http-client",
-    "name": "HTTP客户端模块",
-    "version": "1.0.0",
-    "description": "基于 WinHTTP 提供同步 HTTP/HTTPS 请求，并保留状态码、响应正文和中文错误。"
+    "name": "HTTP 客户端模块",
+    "version": "2.0.0",
+    "description": "提供受管 WinHTTP HTTP/HTTPS 客户端、多请求并发、后台完成事件、代理与身份验证、TLS 证书策略、重定向、Cookie、压缩、文本/二进制/文件上传下载、资源限制和运行统计。"
   },
-  "commandCount": 7,
+  "commandCount": 74,
   "commands": [
     {
       "index": 1,
+      "name": "HTTP客户端_创建客户端",
+      "signature": "HTTP客户端_创建客户端()",
+      "description": "创建独立的受管 WinHTTP 客户端并返回稳定 ID。",
+      "insertText": "HTTP客户端_创建客户端()",
+      "returnType": "HTTP客户端",
+      "category": "客户端",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_创建客户端",
+        "runtimeName": "HTTP客户端_创建客户端",
+        "parameters": [],
+        "returnType": "HTTP客户端",
+        "encoding": "raw",
+        "example": "HTTP客户端_创建客户端()",
+        "description": "创建独立的受管 WinHTTP 客户端并返回稳定 ID。"
+      },
+      "demoInvocation": "HTTP客户端_创建客户端()"
+    },
+    {
+      "index": 2,
+      "name": "HTTP客户端_销毁客户端",
+      "signature": "HTTP客户端_销毁客户端(客户端)",
+      "description": "取消并回收该客户端的全部请求、Cookie 会话和 WinHTTP 资源。",
+      "insertText": "HTTP客户端_销毁客户端($1)",
+      "returnType": "逻辑型",
+      "category": "客户端",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_销毁客户端",
+        "runtimeName": "HTTP客户端_销毁客户端",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_销毁客户端()",
+        "description": "取消并回收该客户端的全部请求、Cookie 会话和 WinHTTP 资源。"
+      },
+      "demoInvocation": "HTTP客户端_销毁客户端(0)"
+    },
+    {
+      "index": 3,
+      "name": "HTTP客户端_设置UserAgent",
+      "signature": "HTTP客户端_设置UserAgent(客户端, UserAgent)",
+      "description": "设置该客户端后续请求使用的 User-Agent；仅在无活动请求时修改。",
+      "insertText": "HTTP客户端_设置UserAgent($1, \"LingBuilderApp/1.0\")",
+      "returnType": "逻辑型",
+      "category": "客户端",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置UserAgent",
+        "runtimeName": "HTTP客户端_设置UserAgent",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "UserAgent",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_设置UserAgent(示例值, \"LingBuilderApp/1.0\")",
+        "description": "设置该客户端后续请求使用的 User-Agent；仅在无活动请求时修改。"
+      },
+      "demoInvocation": "HTTP客户端_设置UserAgent(0, \"演示参数2\")"
+    },
+    {
+      "index": 4,
+      "name": "HTTP客户端_设置超时",
+      "signature": "HTTP客户端_设置超时(客户端, 解析毫秒, 连接毫秒, 发送毫秒, 接收毫秒)",
+      "description": "分别设置 DNS 解析、连接、发送和接收超时，范围 100-3600000 毫秒。",
+      "insertText": "HTTP客户端_设置超时($1, 10000, 15000, 30000, 30000)",
+      "returnType": "逻辑型",
+      "category": "客户端",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置超时",
+        "runtimeName": "HTTP客户端_设置超时",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "解析毫秒",
+            "type": "int"
+          },
+          {
+            "name": "连接毫秒",
+            "type": "int"
+          },
+          {
+            "name": "发送毫秒",
+            "type": "int"
+          },
+          {
+            "name": "接收毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_设置超时(示例值, 10000, 15000, 30000, 30000)",
+        "description": "分别设置 DNS 解析、连接、发送和接收超时，范围 100-3600000 毫秒。"
+      },
+      "demoInvocation": "HTTP客户端_设置超时(0, 1, 1, 1, 1)"
+    },
+    {
+      "index": 5,
+      "name": "HTTP客户端_设置资源限制",
+      "signature": "HTTP客户端_设置资源限制(客户端, 响应头上限KB, 响应体上限MB, 上传上限MB, 最大重定向次数)",
+      "description": "限制响应头、内存或文件响应、上传和自动重定向，阻止不受控资源占用。",
+      "insertText": "HTTP客户端_设置资源限制($1, 64, 64, 64, 10)",
+      "returnType": "逻辑型",
+      "category": "客户端",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置资源限制",
+        "runtimeName": "HTTP客户端_设置资源限制",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "响应头上限KB",
+            "type": "int"
+          },
+          {
+            "name": "响应体上限MB",
+            "type": "int"
+          },
+          {
+            "name": "上传上限MB",
+            "type": "int"
+          },
+          {
+            "name": "最大重定向次数",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_设置资源限制(示例值, 64, 64, 64, 10)",
+        "description": "限制响应头、内存或文件响应、上传和自动重定向，阻止不受控资源占用。"
+      },
+      "demoInvocation": "HTTP客户端_设置资源限制(0, 1, 1, 1, 1)"
+    },
+    {
+      "index": 6,
+      "name": "HTTP客户端_设置重定向策略",
+      "signature": "HTTP客户端_设置重定向策略(客户端, 允许重定向, 允许HTTPS降级HTTP)",
+      "description": "设置自动重定向；默认允许同等或更安全协议，禁止 HTTPS 降级到 HTTP。",
+      "insertText": "HTTP客户端_设置重定向策略($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "安全",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置重定向策略",
+        "runtimeName": "HTTP客户端_设置重定向策略",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "允许重定向",
+            "type": "bool"
+          },
+          {
+            "name": "允许HTTPS降级HTTP",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_设置重定向策略()",
+        "description": "设置自动重定向；默认允许同等或更安全协议，禁止 HTTPS 降级到 HTTP。"
+      },
+      "demoInvocation": "HTTP客户端_设置重定向策略(0, 真, 真)"
+    },
+    {
+      "index": 7,
+      "name": "HTTP客户端_设置代理",
+      "signature": "HTTP客户端_设置代理(客户端, 模式, 代理地址, 绕过列表)",
+      "description": "配置代理模式：0 系统默认、1 直连、2 固定代理；固定代理必须提供地址。",
+      "insertText": "HTTP客户端_设置代理($1, 0, \"\", \"\")",
+      "returnType": "逻辑型",
+      "category": "客户端",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置代理",
+        "runtimeName": "HTTP客户端_设置代理",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "模式",
+            "type": "int"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString"
+          },
+          {
+            "name": "绕过列表",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_设置代理(示例值, 0, \"\", \"\")",
+        "description": "配置代理模式：0 系统默认、1 直连、2 固定代理；固定代理必须提供地址。"
+      },
+      "demoInvocation": "HTTP客户端_设置代理(0, 1, \"https://example.com\", \"演示参数4\")"
+    },
+    {
+      "index": 8,
+      "name": "HTTP客户端_设置服务器凭据",
+      "signature": "HTTP客户端_设置服务器凭据(客户端, 用户名, 密码)",
+      "description": "设置内存中的 HTTP Basic 服务器凭据；不会写入模块日志或持久化配置。",
+      "insertText": "HTTP客户端_设置服务器凭据($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "安全",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置服务器凭据",
+        "runtimeName": "HTTP客户端_设置服务器凭据",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString"
+          },
+          {
+            "name": "密码",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_设置服务器凭据()",
+        "description": "设置内存中的 HTTP Basic 服务器凭据；不会写入模块日志或持久化配置。"
+      },
+      "demoInvocation": "HTTP客户端_设置服务器凭据(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 9,
+      "name": "HTTP客户端_设置代理凭据",
+      "signature": "HTTP客户端_设置代理凭据(客户端, 用户名, 密码)",
+      "description": "设置内存中的 HTTP Basic 代理凭据。",
+      "insertText": "HTTP客户端_设置代理凭据($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "安全",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置代理凭据",
+        "runtimeName": "HTTP客户端_设置代理凭据",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString"
+          },
+          {
+            "name": "密码",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_设置代理凭据()",
+        "description": "设置内存中的 HTTP Basic 代理凭据。"
+      },
+      "demoInvocation": "HTTP客户端_设置代理凭据(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 10,
+      "name": "HTTP客户端_设置TLS策略",
+      "signature": "HTTP客户端_设置TLS策略(客户端, 验证证书, 允许自签名)",
+      "description": "设置 HTTPS 证书策略；默认完整验证系统信任链、主机名、用途和有效期。",
+      "insertText": "HTTP客户端_设置TLS策略($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "安全",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置TLS策略",
+        "runtimeName": "HTTP客户端_设置TLS策略",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "验证证书",
+            "type": "bool"
+          },
+          {
+            "name": "允许自签名",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_设置TLS策略()",
+        "description": "设置 HTTPS 证书策略；默认完整验证系统信任链、主机名、用途和有效期。"
+      },
+      "demoInvocation": "HTTP客户端_设置TLS策略(0, 真, 真)"
+    },
+    {
+      "index": 11,
+      "name": "HTTP客户端_设置证书固定",
+      "signature": "HTTP客户端_设置证书固定(客户端, SHA256指纹)",
+      "description": "设置最终 HTTPS 服务端证书的 SHA-256 指纹；空文本清除固定，可包含冒号或空格。",
+      "insertText": "HTTP客户端_设置证书固定($1, $2)",
+      "returnType": "逻辑型",
+      "category": "安全",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置证书固定",
+        "runtimeName": "HTTP客户端_设置证书固定",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "SHA256指纹",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_设置证书固定()",
+        "description": "设置最终 HTTPS 服务端证书的 SHA-256 指纹；空文本清除固定，可包含冒号或空格。"
+      },
+      "demoInvocation": "HTTP客户端_设置证书固定(0, \"{}\")"
+    },
+    {
+      "index": 12,
+      "name": "HTTP客户端_设置自动解压",
+      "signature": "HTTP客户端_设置自动解压(客户端, 启用)",
+      "description": "启用或关闭 WinHTTP gzip/deflate 自动解压；默认启用。",
+      "insertText": "HTTP客户端_设置自动解压($1, $2)",
+      "returnType": "逻辑型",
+      "category": "客户端",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置自动解压",
+        "runtimeName": "HTTP客户端_设置自动解压",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_设置自动解压()",
+        "description": "启用或关闭 WinHTTP gzip/deflate 自动解压；默认启用。"
+      },
+      "demoInvocation": "HTTP客户端_设置自动解压(0, 真)"
+    },
+    {
+      "index": 13,
+      "name": "HTTP客户端_设置Cookie",
+      "signature": "HTTP客户端_设置Cookie(客户端, 启用)",
+      "description": "启用或关闭该受管客户端会话内的 Cookie 接收和回送；默认启用且不与浏览器共享。",
+      "insertText": "HTTP客户端_设置Cookie($1, $2)",
+      "returnType": "逻辑型",
+      "category": "客户端",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置Cookie",
+        "runtimeName": "HTTP客户端_设置Cookie",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_设置Cookie()",
+        "description": "启用或关闭该受管客户端会话内的 Cookie 接收和回送；默认启用且不与浏览器共享。"
+      },
+      "demoInvocation": "HTTP客户端_设置Cookie(0, 真)"
+    },
+    {
+      "index": 14,
+      "name": "HTTP客户端_设置默认请求头",
+      "signature": "HTTP客户端_设置默认请求头(客户端, 名称, 值)",
+      "description": "设置或替换客户端默认请求头，拒绝非法名称、CR/LF 注入和受运行时管理的头。",
+      "insertText": "HTTP客户端_设置默认请求头($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置默认请求头",
+        "runtimeName": "HTTP客户端_设置默认请求头",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_设置默认请求头()",
+        "description": "设置或替换客户端默认请求头，拒绝非法名称、CR/LF 注入和受运行时管理的头。"
+      },
+      "demoInvocation": "HTTP客户端_设置默认请求头(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 15,
+      "name": "HTTP客户端_添加默认请求头",
+      "signature": "HTTP客户端_添加默认请求头(客户端, 名称, 值)",
+      "description": "追加客户端默认请求头；适合 Accept、Cache-Control 等可重复头。",
+      "insertText": "HTTP客户端_添加默认请求头($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_添加默认请求头",
+        "runtimeName": "HTTP客户端_添加默认请求头",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_添加默认请求头()",
+        "description": "追加客户端默认请求头；适合 Accept、Cache-Control 等可重复头。"
+      },
+      "demoInvocation": "HTTP客户端_添加默认请求头(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 16,
+      "name": "HTTP客户端_删除默认请求头",
+      "signature": "HTTP客户端_删除默认请求头(客户端, 名称)",
+      "description": "删除客户端中全部同名默认请求头。",
+      "insertText": "HTTP客户端_删除默认请求头($1, $2)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_删除默认请求头",
+        "runtimeName": "HTTP客户端_删除默认请求头",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_删除默认请求头()",
+        "description": "删除客户端中全部同名默认请求头。"
+      },
+      "demoInvocation": "HTTP客户端_删除默认请求头(0, \"演示参数2\")"
+    },
+    {
+      "index": 17,
+      "name": "HTTP客户端_清空默认请求头",
+      "signature": "HTTP客户端_清空默认请求头(客户端)",
+      "description": "清空客户端默认请求头。",
+      "insertText": "HTTP客户端_清空默认请求头($1)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_清空默认请求头",
+        "runtimeName": "HTTP客户端_清空默认请求头",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_清空默认请求头()",
+        "description": "清空客户端默认请求头。"
+      },
+      "demoInvocation": "HTTP客户端_清空默认请求头(0)"
+    },
+    {
+      "index": 18,
+      "name": "HTTP客户端_取消全部请求",
+      "signature": "HTTP客户端_取消全部请求(客户端)",
+      "description": "取消客户端全部运行中请求并关闭对应 WinHTTP 请求句柄。",
+      "insertText": "HTTP客户端_取消全部请求($1)",
+      "returnType": "整数型",
+      "category": "客户端",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取消全部请求",
+        "runtimeName": "HTTP客户端_取消全部请求",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "HTTP客户端_取消全部请求()",
+        "description": "取消客户端全部运行中请求并关闭对应 WinHTTP 请求句柄。"
+      },
+      "demoInvocation": "HTTP客户端_取消全部请求(0)"
+    },
+    {
+      "index": 19,
+      "name": "HTTP客户端_取活动请求数",
+      "signature": "HTTP客户端_取活动请求数(客户端)",
+      "description": "返回当前正在发送或接收的请求数量。",
+      "insertText": "HTTP客户端_取活动请求数($1)",
+      "returnType": "整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取活动请求数",
+        "runtimeName": "HTTP客户端_取活动请求数",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "HTTP客户端_取活动请求数()",
+        "description": "返回当前正在发送或接收的请求数量。"
+      },
+      "demoInvocation": "HTTP客户端_取活动请求数(0)"
+    },
+    {
+      "index": 20,
+      "name": "HTTP客户端_取累计请求数",
+      "signature": "HTTP客户端_取累计请求数(客户端)",
+      "description": "返回客户端已开始执行的累计请求数量。",
+      "insertText": "HTTP客户端_取累计请求数($1)",
+      "returnType": "长整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取累计请求数",
+        "runtimeName": "HTTP客户端_取累计请求数",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "HTTP客户端_取累计请求数()",
+        "description": "返回客户端已开始执行的累计请求数量。"
+      },
+      "demoInvocation": "HTTP客户端_取累计请求数(0)"
+    },
+    {
+      "index": 21,
+      "name": "HTTP客户端_取客户端错误",
+      "signature": "HTTP客户端_取客户端错误(客户端)",
+      "description": "返回客户端配置、会话创建或句柄操作的最近中文错误。",
+      "insertText": "HTTP客户端_取客户端错误($1)",
+      "returnType": "文本型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取客户端错误",
+        "runtimeName": "HTTP客户端_取客户端错误",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取客户端错误()",
+        "description": "返回客户端配置、会话创建或句柄操作的最近中文错误。"
+      },
+      "demoInvocation": "HTTP客户端_取客户端错误(0)"
+    },
+    {
+      "index": 22,
+      "name": "HTTP客户端_创建请求",
+      "signature": "HTTP客户端_创建请求(客户端, 方法, 地址)",
+      "description": "创建尚未执行的受管请求；仅接受 http:// 或 https:// 和合法 HTTP 方法。",
+      "insertText": "HTTP客户端_创建请求($1, \"GET\", \"https://example.com/api\")",
+      "returnType": "HTTP客户端请求",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_创建请求",
+        "runtimeName": "HTTP客户端_创建请求",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "方法",
+            "type": "wideString"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "HTTP客户端请求",
+        "encoding": "wide",
+        "example": "HTTP客户端_创建请求(示例值, \"GET\", \"https://example.com/api\")",
+        "description": "创建尚未执行的受管请求；仅接受 http:// 或 https:// 和合法 HTTP 方法。"
+      },
+      "demoInvocation": "HTTP客户端_创建请求(0, \"演示参数2\", \"https://example.com\")"
+    },
+    {
+      "index": 23,
+      "name": "HTTP客户端_设置请求头",
+      "signature": "HTTP客户端_设置请求头(请求, 名称, 值)",
+      "description": "在请求启动前设置或替换请求头。",
+      "insertText": "HTTP客户端_设置请求头($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置请求头",
+        "runtimeName": "HTTP客户端_设置请求头",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_设置请求头()",
+        "description": "在请求启动前设置或替换请求头。"
+      },
+      "demoInvocation": "HTTP客户端_设置请求头(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 24,
+      "name": "HTTP客户端_添加请求头",
+      "signature": "HTTP客户端_添加请求头(请求, 名称, 值)",
+      "description": "在请求启动前追加请求头。",
+      "insertText": "HTTP客户端_添加请求头($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_添加请求头",
+        "runtimeName": "HTTP客户端_添加请求头",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_添加请求头()",
+        "description": "在请求启动前追加请求头。"
+      },
+      "demoInvocation": "HTTP客户端_添加请求头(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 25,
+      "name": "HTTP客户端_删除请求头",
+      "signature": "HTTP客户端_删除请求头(请求, 名称)",
+      "description": "在请求启动前删除全部同名请求头。",
+      "insertText": "HTTP客户端_删除请求头($1, $2)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_删除请求头",
+        "runtimeName": "HTTP客户端_删除请求头",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_删除请求头()",
+        "description": "在请求启动前删除全部同名请求头。"
+      },
+      "demoInvocation": "HTTP客户端_删除请求头(0, \"演示参数2\")"
+    },
+    {
+      "index": 26,
+      "name": "HTTP客户端_清空请求头",
+      "signature": "HTTP客户端_清空请求头(请求)",
+      "description": "在请求启动前清空请求级请求头，不影响客户端默认头。",
+      "insertText": "HTTP客户端_清空请求头($1)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_清空请求头",
+        "runtimeName": "HTTP客户端_清空请求头",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_清空请求头()",
+        "description": "在请求启动前清空请求级请求头，不影响客户端默认头。"
+      },
+      "demoInvocation": "HTTP客户端_清空请求头(0)"
+    },
+    {
+      "index": 27,
+      "name": "HTTP客户端_设置文本正文",
+      "signature": "HTTP客户端_设置文本正文(请求, 正文, 内容类型)",
+      "description": "把文本编码为 UTF-8 请求正文并设置 Content-Type。",
+      "insertText": "HTTP客户端_设置文本正文($1, \"$2\", \"text/plain; charset=utf-8\")",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置文本正文",
+        "runtimeName": "HTTP客户端_设置文本正文",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          },
+          {
+            "name": "正文",
+            "type": "wideString"
+          },
+          {
+            "name": "内容类型",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_设置文本正文(示例值, \"示例值\", \"text/plain; charset=utf-8\")",
+        "description": "把文本编码为 UTF-8 请求正文并设置 Content-Type。"
+      },
+      "demoInvocation": "HTTP客户端_设置文本正文(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 28,
+      "name": "HTTP客户端_设置JSON正文",
+      "signature": "HTTP客户端_设置JSON正文(请求, JSON)",
+      "description": "把 UTF-8 JSON 文本设为请求正文并使用 application/json。",
+      "insertText": "HTTP客户端_设置JSON正文($1, $2)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置JSON正文",
+        "runtimeName": "HTTP客户端_设置JSON正文",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          },
+          {
+            "name": "JSON",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_设置JSON正文()",
+        "description": "把 UTF-8 JSON 文本设为请求正文并使用 application/json。"
+      },
+      "demoInvocation": "HTTP客户端_设置JSON正文(0, \"{}\")"
+    },
+    {
+      "index": 29,
+      "name": "HTTP客户端_设置二进制正文",
+      "signature": "HTTP客户端_设置二进制正文(请求, 数据, 内容类型)",
+      "description": "设置独立复制的字节集请求正文。",
+      "insertText": "HTTP客户端_设置二进制正文($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置二进制正文",
+        "runtimeName": "HTTP客户端_设置二进制正文",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          },
+          {
+            "name": "数据",
+            "type": "bytes"
+          },
+          {
+            "name": "内容类型",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_设置二进制正文()",
+        "description": "设置独立复制的字节集请求正文。"
+      },
+      "demoInvocation": "HTTP客户端_设置二进制正文(0, {}, \"演示参数3\")"
+    },
+    {
+      "index": 30,
+      "name": "HTTP客户端_设置十六进制正文",
+      "signature": "HTTP客户端_设置十六进制正文(请求, 十六进制, 内容类型)",
+      "description": "校验并解码偶数长度十六进制文本作为请求正文。",
+      "insertText": "HTTP客户端_设置十六进制正文($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置十六进制正文",
+        "runtimeName": "HTTP客户端_设置十六进制正文",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          },
+          {
+            "name": "十六进制",
+            "type": "wideString"
+          },
+          {
+            "name": "内容类型",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_设置十六进制正文()",
+        "description": "校验并解码偶数长度十六进制文本作为请求正文。"
+      },
+      "demoInvocation": "HTTP客户端_设置十六进制正文(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 31,
+      "name": "HTTP客户端_设置文件正文",
+      "signature": "HTTP客户端_设置文件正文(请求, 文件路径, 内容类型)",
+      "description": "以 64KB 分块上传本机文件，不把整个文件载入内存。",
+      "insertText": "HTTP客户端_设置文件正文($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置文件正文",
+        "runtimeName": "HTTP客户端_设置文件正文",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString"
+          },
+          {
+            "name": "内容类型",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_设置文件正文()",
+        "description": "以 64KB 分块上传本机文件，不把整个文件载入内存。"
+      },
+      "demoInvocation": "HTTP客户端_设置文件正文(0, \"module-demo-temp.txt\", \"演示参数3\")"
+    },
+    {
+      "index": 32,
+      "name": "HTTP客户端_设置响应文件",
+      "signature": "HTTP客户端_设置响应文件(请求, 文件路径, 允许覆盖)",
+      "description": "把响应流式写入临时文件并原子替换目标文件，避免大响应驻留内存。",
+      "insertText": "HTTP客户端_设置响应文件($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_设置响应文件",
+        "runtimeName": "HTTP客户端_设置响应文件",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString"
+          },
+          {
+            "name": "允许覆盖",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_设置响应文件()",
+        "description": "把响应流式写入临时文件并原子替换目标文件，避免大响应驻留内存。"
+      },
+      "demoInvocation": "HTTP客户端_设置响应文件(0, \"module-demo-temp.txt\", 真)"
+    },
+    {
+      "index": 33,
+      "name": "HTTP客户端_绑定完成处理器",
+      "signature": "HTTP客户端_绑定完成处理器(请求, &处理器)",
+      "description": "绑定请求完成后在创建窗口 UI 线程调用的无参数处理器。",
+      "insertText": "HTTP客户端_绑定完成处理器($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_绑定完成处理器",
+        "runtimeName": "HTTP客户端_绑定完成处理器",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；处理器必须无参数并返回空。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_绑定完成处理器(示例值, &示例值)",
+        "description": "绑定请求完成后在创建窗口 UI 线程调用的无参数处理器。"
+      },
+      "demoInvocation": "HTTP客户端_绑定完成处理器(0, &模块演示回调)"
+    },
+    {
+      "index": 34,
+      "name": "HTTP客户端_开始请求",
+      "signature": "HTTP客户端_开始请求(请求)",
+      "description": "在独立后台线程执行请求，完成后投递 UI 线程处理器。",
+      "insertText": "HTTP客户端_开始请求($1)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_开始请求",
+        "runtimeName": "HTTP客户端_开始请求",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_开始请求()",
+        "description": "在独立后台线程执行请求，完成后投递 UI 线程处理器。"
+      },
+      "demoInvocation": "HTTP客户端_开始请求(0)"
+    },
+    {
+      "index": 35,
+      "name": "HTTP客户端_执行同步",
+      "signature": "HTTP客户端_执行同步(请求)",
+      "description": "在当前线程同步执行请求；主要用于命令行、测试或受控后台任务，UI 代码应使用异步。",
+      "insertText": "HTTP客户端_执行同步($1)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "visibility": "advanced",
+      "binding": {
+        "command": "HTTP客户端_执行同步",
+        "runtimeName": "HTTP客户端_执行同步",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_执行同步()",
+        "description": "在当前线程同步执行请求；主要用于命令行、测试或受控后台任务，UI 代码应使用异步。"
+      },
+      "demoInvocation": "HTTP客户端_执行同步(0)"
+    },
+    {
+      "index": 36,
+      "name": "HTTP客户端_等待请求",
+      "signature": "HTTP客户端_等待请求(请求, 超时毫秒)",
+      "description": "等待异步请求完成；主要用于测试和后台任务，UI 线程不应长时间等待。",
+      "insertText": "HTTP客户端_等待请求($1, $2)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "visibility": "advanced",
+      "binding": {
+        "command": "HTTP客户端_等待请求",
+        "runtimeName": "HTTP客户端_等待请求",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_等待请求()",
+        "description": "等待异步请求完成；主要用于测试和后台任务，UI 线程不应长时间等待。"
+      },
+      "demoInvocation": "HTTP客户端_等待请求(0, 1)"
+    },
+    {
+      "index": 37,
+      "name": "HTTP客户端_取消请求",
+      "signature": "HTTP客户端_取消请求(请求)",
+      "description": "请求取消并关闭活动 WinHTTP 句柄；已完成请求返回假。",
+      "insertText": "HTTP客户端_取消请求($1)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取消请求",
+        "runtimeName": "HTTP客户端_取消请求",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_取消请求()",
+        "description": "请求取消并关闭活动 WinHTTP 句柄；已完成请求返回假。"
+      },
+      "demoInvocation": "HTTP客户端_取消请求(0)"
+    },
+    {
+      "index": 38,
+      "name": "HTTP客户端_销毁请求",
+      "signature": "HTTP客户端_销毁请求(请求)",
+      "description": "取消、等待后台线程结束并永久释放请求 ID。",
+      "insertText": "HTTP客户端_销毁请求($1)",
+      "returnType": "逻辑型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_销毁请求",
+        "runtimeName": "HTTP客户端_销毁请求",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_销毁请求()",
+        "description": "取消、等待后台线程结束并永久释放请求 ID。"
+      },
+      "demoInvocation": "HTTP客户端_销毁请求(0)"
+    },
+    {
+      "index": 39,
+      "name": "HTTP客户端_取请求客户端",
+      "signature": "HTTP客户端_取请求客户端(请求)",
+      "description": "返回请求所属的受管客户端 ID。",
+      "insertText": "HTTP客户端_取请求客户端($1)",
+      "returnType": "HTTP客户端",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取请求客户端",
+        "runtimeName": "HTTP客户端_取请求客户端",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "HTTP客户端",
+        "encoding": "raw",
+        "example": "HTTP客户端_取请求客户端()",
+        "description": "返回请求所属的受管客户端 ID。"
+      },
+      "demoInvocation": "HTTP客户端_取请求客户端(0)"
+    },
+    {
+      "index": 40,
+      "name": "HTTP客户端_取请求方法",
+      "signature": "HTTP客户端_取请求方法(请求)",
+      "description": "返回请求的大写 HTTP 方法。",
+      "insertText": "HTTP客户端_取请求方法($1)",
+      "returnType": "文本型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取请求方法",
+        "runtimeName": "HTTP客户端_取请求方法",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取请求方法()",
+        "description": "返回请求的大写 HTTP 方法。"
+      },
+      "demoInvocation": "HTTP客户端_取请求方法(0)"
+    },
+    {
+      "index": 41,
+      "name": "HTTP客户端_取请求地址",
+      "signature": "HTTP客户端_取请求地址(请求)",
+      "description": "返回请求创建时的原始 URL。",
+      "insertText": "HTTP客户端_取请求地址($1)",
+      "returnType": "文本型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取请求地址",
+        "runtimeName": "HTTP客户端_取请求地址",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取请求地址()",
+        "description": "返回请求创建时的原始 URL。"
+      },
+      "demoInvocation": "HTTP客户端_取请求地址(0)"
+    },
+    {
+      "index": 42,
+      "name": "HTTP客户端_取请求状态",
+      "signature": "HTTP客户端_取请求状态(请求)",
+      "description": "返回未开始、运行中、已完成、已取消或错误。",
+      "insertText": "HTTP客户端_取请求状态($1)",
+      "returnType": "文本型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取请求状态",
+        "runtimeName": "HTTP客户端_取请求状态",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取请求状态()",
+        "description": "返回未开始、运行中、已完成、已取消或错误。"
+      },
+      "demoInvocation": "HTTP客户端_取请求状态(0)"
+    },
+    {
+      "index": 43,
+      "name": "HTTP客户端_请求是否完成",
+      "signature": "HTTP客户端_请求是否完成(请求)",
+      "description": "判断请求是否已结束，包括成功、HTTP 非 2xx、错误或取消。",
+      "insertText": "HTTP客户端_请求是否完成($1)",
+      "returnType": "逻辑型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_请求是否完成",
+        "runtimeName": "HTTP客户端_请求是否完成",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_请求是否完成()",
+        "description": "判断请求是否已结束，包括成功、HTTP 非 2xx、错误或取消。"
+      },
+      "demoInvocation": "HTTP客户端_请求是否完成(0)"
+    },
+    {
+      "index": 44,
+      "name": "HTTP客户端_请求是否成功",
+      "signature": "HTTP客户端_请求是否成功(请求)",
+      "description": "判断传输成功且 HTTP 状态码位于 200-299。",
+      "insertText": "HTTP客户端_请求是否成功($1)",
+      "returnType": "逻辑型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_请求是否成功",
+        "runtimeName": "HTTP客户端_请求是否成功",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP客户端_请求是否成功()",
+        "description": "判断传输成功且 HTTP 状态码位于 200-299。"
+      },
+      "demoInvocation": "HTTP客户端_请求是否成功(0)"
+    },
+    {
+      "index": 45,
+      "name": "HTTP客户端_取请求错误",
+      "signature": "HTTP客户端_取请求错误(请求)",
+      "description": "返回请求最近中文错误，不包含凭据或请求正文。",
+      "insertText": "HTTP客户端_取请求错误($1)",
+      "returnType": "文本型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取请求错误",
+        "runtimeName": "HTTP客户端_取请求错误",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取请求错误()",
+        "description": "返回请求最近中文错误，不包含凭据或请求正文。"
+      },
+      "demoInvocation": "HTTP客户端_取请求错误(0)"
+    },
+    {
+      "index": 46,
+      "name": "HTTP客户端_取系统错误码",
+      "signature": "HTTP客户端_取系统错误码(请求)",
+      "description": "返回最近 WinHTTP 或 Win32 错误码；协议状态失败通常为 0。",
+      "insertText": "HTTP客户端_取系统错误码($1)",
+      "returnType": "整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取系统错误码",
+        "runtimeName": "HTTP客户端_取系统错误码",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "HTTP客户端_取系统错误码()",
+        "description": "返回最近 WinHTTP 或 Win32 错误码；协议状态失败通常为 0。"
+      },
+      "demoInvocation": "HTTP客户端_取系统错误码(0)"
+    },
+    {
+      "index": 47,
+      "name": "HTTP客户端_取请求耗时",
+      "signature": "HTTP客户端_取请求耗时(请求)",
+      "description": "返回请求开始到结束的毫秒数。",
+      "insertText": "HTTP客户端_取请求耗时($1)",
+      "returnType": "长整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取请求耗时",
+        "runtimeName": "HTTP客户端_取请求耗时",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "HTTP客户端_取请求耗时()",
+        "description": "返回请求开始到结束的毫秒数。"
+      },
+      "demoInvocation": "HTTP客户端_取请求耗时(0)"
+    },
+    {
+      "index": 48,
+      "name": "HTTP客户端_取上传字节数",
+      "signature": "HTTP客户端_取上传字节数(请求)",
+      "description": "返回已经成功写入 WinHTTP 的请求正文字节数。",
+      "insertText": "HTTP客户端_取上传字节数($1)",
+      "returnType": "长整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取上传字节数",
+        "runtimeName": "HTTP客户端_取上传字节数",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "HTTP客户端_取上传字节数()",
+        "description": "返回已经成功写入 WinHTTP 的请求正文字节数。"
+      },
+      "demoInvocation": "HTTP客户端_取上传字节数(0)"
+    },
+    {
+      "index": 49,
+      "name": "HTTP客户端_取下载字节数",
+      "signature": "HTTP客户端_取下载字节数(请求)",
+      "description": "返回已经读取并校验的响应正文字节数。",
+      "insertText": "HTTP客户端_取下载字节数($1)",
+      "returnType": "长整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取下载字节数",
+        "runtimeName": "HTTP客户端_取下载字节数",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "HTTP客户端_取下载字节数()",
+        "description": "返回已经读取并校验的响应正文字节数。"
+      },
+      "demoInvocation": "HTTP客户端_取下载字节数(0)"
+    },
+    {
+      "index": 50,
+      "name": "HTTP客户端_取响应状态码",
+      "signature": "HTTP客户端_取响应状态码(请求)",
+      "description": "返回 HTTP 响应状态码；传输失败且无响应时为 0。",
+      "insertText": "HTTP客户端_取响应状态码($1)",
+      "returnType": "整数型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取响应状态码",
+        "runtimeName": "HTTP客户端_取响应状态码",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "HTTP客户端_取响应状态码()",
+        "description": "返回 HTTP 响应状态码；传输失败且无响应时为 0。"
+      },
+      "demoInvocation": "HTTP客户端_取响应状态码(0)"
+    },
+    {
+      "index": 51,
+      "name": "HTTP客户端_取响应状态文本",
+      "signature": "HTTP客户端_取响应状态文本(请求)",
+      "description": "返回服务端状态文本，例如 OK 或 Not Found。",
+      "insertText": "HTTP客户端_取响应状态文本($1)",
+      "returnType": "文本型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取响应状态文本",
+        "runtimeName": "HTTP客户端_取响应状态文本",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取响应状态文本()",
+        "description": "返回服务端状态文本，例如 OK 或 Not Found。"
+      },
+      "demoInvocation": "HTTP客户端_取响应状态文本(0)"
+    },
+    {
+      "index": 52,
+      "name": "HTTP客户端_取响应协议",
+      "signature": "HTTP客户端_取响应协议(请求)",
+      "description": "返回响应协议版本，例如 HTTP/1.1 或 HTTP/2。",
+      "insertText": "HTTP客户端_取响应协议($1)",
+      "returnType": "文本型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取响应协议",
+        "runtimeName": "HTTP客户端_取响应协议",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取响应协议()",
+        "description": "返回响应协议版本，例如 HTTP/1.1 或 HTTP/2。"
+      },
+      "demoInvocation": "HTTP客户端_取响应协议(0)"
+    },
+    {
+      "index": 53,
+      "name": "HTTP客户端_取最终地址",
+      "signature": "HTTP客户端_取最终地址(请求)",
+      "description": "返回自动重定向后的最终 URL。",
+      "insertText": "HTTP客户端_取最终地址($1)",
+      "returnType": "文本型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取最终地址",
+        "runtimeName": "HTTP客户端_取最终地址",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取最终地址()",
+        "description": "返回自动重定向后的最终 URL。"
+      },
+      "demoInvocation": "HTTP客户端_取最终地址(0)"
+    },
+    {
+      "index": 54,
+      "name": "HTTP客户端_取全部响应头",
+      "signature": "HTTP客户端_取全部响应头(请求)",
+      "description": "返回 WinHTTP 提供的完整 CRLF 响应头文本。",
+      "insertText": "HTTP客户端_取全部响应头($1)",
+      "returnType": "文本型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取全部响应头",
+        "runtimeName": "HTTP客户端_取全部响应头",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取全部响应头()",
+        "description": "返回 WinHTTP 提供的完整 CRLF 响应头文本。"
+      },
+      "demoInvocation": "HTTP客户端_取全部响应头(0)"
+    },
+    {
+      "index": 55,
+      "name": "HTTP客户端_取响应头JSON",
+      "signature": "HTTP客户端_取响应头JSON(请求)",
+      "description": "以 UTF-16 JSON 对象返回响应头；重复头合并为逗号分隔文本。",
+      "insertText": "HTTP客户端_取响应头JSON($1)",
+      "returnType": "文本型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取响应头JSON",
+        "runtimeName": "HTTP客户端_取响应头JSON",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取响应头JSON()",
+        "description": "以 UTF-16 JSON 对象返回响应头；重复头合并为逗号分隔文本。"
+      },
+      "demoInvocation": "HTTP客户端_取响应头JSON(0)"
+    },
+    {
+      "index": 56,
+      "name": "HTTP客户端_取响应十六进制",
+      "signature": "HTTP客户端_取响应十六进制(请求)",
+      "description": "以小写十六进制返回内存响应正文。",
+      "insertText": "HTTP客户端_取响应十六进制($1)",
+      "returnType": "文本型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取响应十六进制",
+        "runtimeName": "HTTP客户端_取响应十六进制",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取响应十六进制()",
+        "description": "以小写十六进制返回内存响应正文。"
+      },
+      "demoInvocation": "HTTP客户端_取响应十六进制(0)"
+    },
+    {
+      "index": 57,
+      "name": "HTTP客户端_取响应大小",
+      "signature": "HTTP客户端_取响应大小(请求)",
+      "description": "返回响应正文总字节数，包括流式写入文件的响应。",
+      "insertText": "HTTP客户端_取响应大小($1)",
+      "returnType": "长整数型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取响应大小",
+        "runtimeName": "HTTP客户端_取响应大小",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "HTTP客户端_取响应大小()",
+        "description": "返回响应正文总字节数，包括流式写入文件的响应。"
+      },
+      "demoInvocation": "HTTP客户端_取响应大小(0)"
+    },
+    {
+      "index": 58,
+      "name": "HTTP客户端_取响应文件",
+      "signature": "HTTP客户端_取响应文件(请求)",
+      "description": "返回成功流式保存后的目标文件路径。",
+      "insertText": "HTTP客户端_取响应文件($1)",
+      "returnType": "文本型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取响应文件",
+        "runtimeName": "HTTP客户端_取响应文件",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取响应文件()",
+        "description": "返回成功流式保存后的目标文件路径。"
+      },
+      "demoInvocation": "HTTP客户端_取响应文件(0)"
+    },
+    {
+      "index": 59,
+      "name": "HTTP客户端_取内容类型",
+      "signature": "HTTP客户端_取内容类型(请求)",
+      "description": "返回响应 Content-Type。",
+      "insertText": "HTTP客户端_取内容类型($1)",
+      "returnType": "文本型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取内容类型",
+        "runtimeName": "HTTP客户端_取内容类型",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取内容类型()",
+        "description": "返回响应 Content-Type。"
+      },
+      "demoInvocation": "HTTP客户端_取内容类型(0)"
+    },
+    {
+      "index": 60,
+      "name": "HTTP客户端_取服务器证书SHA256",
+      "signature": "HTTP客户端_取服务器证书SHA256(请求)",
+      "description": "返回最终 HTTPS 服务端证书 SHA-256 指纹；HTTP 请求为空。",
+      "insertText": "HTTP客户端_取服务器证书SHA256($1)",
+      "returnType": "文本型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取服务器证书SHA256",
+        "runtimeName": "HTTP客户端_取服务器证书SHA256",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取服务器证书SHA256()",
+        "description": "返回最终 HTTPS 服务端证书 SHA-256 指纹；HTTP 请求为空。"
+      },
+      "demoInvocation": "HTTP客户端_取服务器证书SHA256(0)"
+    },
+    {
+      "index": 61,
+      "name": "HTTP客户端_取响应头",
+      "signature": "HTTP客户端_取响应头(请求, 名称)",
+      "description": "不区分大小写返回合并后的指定响应头。",
+      "insertText": "HTTP客户端_取响应头($1, $2)",
+      "returnType": "文本型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取响应头",
+        "runtimeName": "HTTP客户端_取响应头",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取响应头()",
+        "description": "不区分大小写返回合并后的指定响应头。"
+      },
+      "demoInvocation": "HTTP客户端_取响应头(0, \"演示参数2\")"
+    },
+    {
+      "index": 62,
+      "name": "HTTP客户端_取响应字节集",
+      "signature": "HTTP客户端_取响应字节集(请求)",
+      "description": "返回内存响应正文的独立字节集副本；流式文件响应返回空字节集。",
+      "insertText": "HTTP客户端_取响应字节集($1)",
+      "returnType": "字节集",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取响应字节集",
+        "runtimeName": "HTTP客户端_取响应字节集",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          }
+        ],
+        "returnType": "bytes",
+        "encoding": "raw",
+        "example": "HTTP客户端_取响应字节集()",
+        "description": "返回内存响应正文的独立字节集副本；流式文件响应返回空字节集。"
+      },
+      "demoInvocation": "HTTP客户端_取响应字节集(0)"
+    },
+    {
+      "index": 63,
+      "name": "HTTP客户端_取响应文本编码",
+      "signature": "HTTP客户端_取响应文本编码(请求, 编码)",
+      "description": "按 auto、UTF-8、UTF-16LE、UTF-16BE、GBK、GB18030 或 ANSI 解码内存响应。",
+      "insertText": "HTTP客户端_取响应文本编码($1, \"auto\")",
+      "returnType": "文本型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取响应文本编码",
+        "runtimeName": "HTTP客户端_取响应文本编码",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          },
+          {
+            "name": "编码",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP客户端_取响应文本编码(示例值, \"auto\")",
+        "description": "按 auto、UTF-8、UTF-16LE、UTF-16BE、GBK、GB18030 或 ANSI 解码内存响应。"
+      },
+      "demoInvocation": "HTTP客户端_取响应文本编码(0, \"演示参数2\")"
+    },
+    {
+      "index": 64,
+      "name": "HTTP客户端_保存响应文件",
+      "signature": "HTTP客户端_保存响应文件(请求, 文件路径, 允许覆盖)",
+      "description": "把已缓冲的响应正文原子保存为文件；流式响应应使用设置响应文件。",
+      "insertText": "HTTP客户端_保存响应文件($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_保存响应文件",
+        "runtimeName": "HTTP客户端_保存响应文件",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP客户端请求"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString"
+          },
+          {
+            "name": "允许覆盖",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP客户端_保存响应文件()",
+        "description": "把已缓冲的响应正文原子保存为文件；流式响应应使用设置响应文件。"
+      },
+      "demoInvocation": "HTTP客户端_保存响应文件(0, \"module-demo-temp.txt\", 真)"
+    },
+    {
+      "index": 65,
+      "name": "HTTP客户端_取当前请求",
+      "signature": "HTTP客户端_取当前请求()",
+      "description": "在完成处理器中返回当前请求 ID；其它上下文返回 0。",
+      "insertText": "HTTP客户端_取当前请求()",
+      "returnType": "HTTP客户端请求",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_取当前请求",
+        "runtimeName": "HTTP客户端_取当前请求",
+        "parameters": [],
+        "returnType": "HTTP客户端请求",
+        "encoding": "raw",
+        "example": "HTTP客户端_取当前请求()",
+        "description": "在完成处理器中返回当前请求 ID；其它上下文返回 0。"
+      },
+      "demoInvocation": "HTTP客户端_取当前请求()"
+    },
+    {
+      "index": 66,
+      "name": "HTTP客户端_GET异步",
+      "signature": "HTTP客户端_GET异步(客户端, 地址, &处理器)",
+      "description": "创建并开始 GET 请求，返回请求 ID；完成后在 UI 线程调用处理器。",
+      "insertText": "HTTP客户端_GET异步($1, \"https://example.com\", &$2)",
+      "returnType": "HTTP客户端请求",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_GET异步",
+        "runtimeName": "HTTP客户端_GET异步",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "HTTP客户端请求",
+        "encoding": "wide",
+        "example": "HTTP客户端_GET异步(示例值, \"https://example.com\", &示例值)",
+        "description": "创建并开始 GET 请求，返回请求 ID；完成后在 UI 线程调用处理器。"
+      },
+      "demoInvocation": "HTTP客户端_GET异步(0, \"https://example.com\", &模块演示回调)"
+    },
+    {
+      "index": 67,
+      "name": "HTTP客户端_POSTJSON异步",
+      "signature": "HTTP客户端_POSTJSON异步(客户端, 地址, JSON, &处理器)",
+      "description": "创建带 UTF-8 JSON 正文的 POST 请求并异步开始。",
+      "insertText": "HTTP客户端_POSTJSON异步($1, \"https://example.com/api\", \"{\\\"ok\\\":true}\", &$2)",
+      "returnType": "HTTP客户端请求",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP客户端_POSTJSON异步",
+        "runtimeName": "HTTP客户端_POSTJSON异步",
+        "parameters": [
+          {
+            "name": "客户端",
+            "type": "HTTP客户端"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "JSON",
+            "type": "wideString"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "HTTP客户端请求",
+        "encoding": "wide",
+        "example": "HTTP客户端_POSTJSON异步(示例值, \"https://example.com/api\", \"{\\\"ok\\\":true}\", &示例值)",
+        "description": "创建带 UTF-8 JSON 正文的 POST 请求并异步开始。"
+      },
+      "demoInvocation": "HTTP客户端_POSTJSON异步(0, \"https://example.com\", \"{}\", &模块演示回调)"
+    },
+    {
+      "index": 68,
       "name": "HTTP客户端_请求",
       "signature": "HTTP客户端_请求(方法, 地址, 正文, 超时毫秒)",
-      "description": "发送一次 UTF-8 HTTP 请求。",
-      "insertText": "HTTP客户端_请求(\"$1\", \"$2\", \"$3\", 0)",
+      "description": "旧版同步兼容入口；使用默认客户端发送 UTF-8 请求，新代码应使用受管客户端和请求。",
+      "insertText": "HTTP客户端_请求($1, $2, $3, $4)",
       "returnType": "逻辑型",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "HTTP客户端_请求",
         "runtimeName": "HTTP客户端_请求",
@@ -38,17 +1949,22 @@
           }
         ],
         "returnType": "bool",
-        "encoding": "wide"
+        "encoding": "wide",
+        "example": "HTTP客户端_请求()",
+        "description": "旧版同步兼容入口；使用默认客户端发送 UTF-8 请求，新代码应使用受管客户端和请求。"
       },
       "demoInvocation": "HTTP客户端_请求(\"演示参数1\", \"https://example.com\", \"演示参数3\", 1)"
     },
     {
-      "index": 2,
+      "index": 69,
       "name": "HTTP客户端_GET",
       "signature": "HTTP客户端_GET(地址)",
-      "description": "发送 GET 请求。",
-      "insertText": "HTTP客户端_GET(\"$1\")",
+      "description": "旧版同步 GET 兼容入口。",
+      "insertText": "HTTP客户端_GET($1)",
       "returnType": "逻辑型",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "HTTP客户端_GET",
         "runtimeName": "HTTP客户端_GET",
@@ -60,17 +1976,21 @@
         ],
         "returnType": "bool",
         "encoding": "wide",
-        "example": "HTTP客户端_GET(\"https://example.com\")"
+        "example": "HTTP客户端_GET()",
+        "description": "旧版同步 GET 兼容入口。"
       },
       "demoInvocation": "HTTP客户端_GET(\"https://example.com\")"
     },
     {
-      "index": 3,
+      "index": 70,
       "name": "HTTP客户端_POST",
       "signature": "HTTP客户端_POST(地址, 正文)",
-      "description": "发送 application/json UTF-8 POST 请求。",
-      "insertText": "HTTP客户端_POST(\"$1\", \"$2\")",
+      "description": "旧版同步 UTF-8 JSON POST 兼容入口。",
+      "insertText": "HTTP客户端_POST($1, $2)",
       "returnType": "逻辑型",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "HTTP客户端_POST",
         "runtimeName": "HTTP客户端_POST",
@@ -85,69 +2005,93 @@
           }
         ],
         "returnType": "bool",
-        "encoding": "wide"
+        "encoding": "wide",
+        "example": "HTTP客户端_POST()",
+        "description": "旧版同步 UTF-8 JSON POST 兼容入口。"
       },
       "demoInvocation": "HTTP客户端_POST(\"https://example.com\", \"演示参数2\")"
     },
     {
-      "index": 4,
+      "index": 71,
       "name": "HTTP客户端_取状态码",
       "signature": "HTTP客户端_取状态码()",
-      "description": "返回最近响应的 HTTP 状态码。",
+      "description": "旧版兼容入口；返回最近默认请求状态码。",
       "insertText": "HTTP客户端_取状态码()",
       "returnType": "整数型",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "HTTP客户端_取状态码",
         "runtimeName": "HTTP客户端_取状态码",
         "parameters": [],
-        "returnType": "int"
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "HTTP客户端_取状态码()",
+        "description": "旧版兼容入口；返回最近默认请求状态码。"
       },
       "demoInvocation": "HTTP客户端_取状态码()"
     },
     {
-      "index": 5,
+      "index": 72,
       "name": "HTTP客户端_取响应文本",
       "signature": "HTTP客户端_取响应文本()",
-      "description": "返回最近响应正文，按 UTF-8 解码。",
+      "description": "旧版兼容入口；按 UTF-8 返回最近默认请求正文。",
       "insertText": "HTTP客户端_取响应文本()",
       "returnType": "文本型",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "HTTP客户端_取响应文本",
         "runtimeName": "HTTP客户端_取响应文本",
         "parameters": [],
         "returnType": "wideString",
-        "encoding": "wide"
+        "encoding": "wide",
+        "example": "HTTP客户端_取响应文本()",
+        "description": "旧版兼容入口；按 UTF-8 返回最近默认请求正文。"
       },
       "demoInvocation": "HTTP客户端_取响应文本()"
     },
     {
-      "index": 6,
+      "index": 73,
       "name": "HTTP客户端_取错误",
       "signature": "HTTP客户端_取错误()",
-      "description": "返回最近请求的中文错误信息。",
+      "description": "旧版兼容入口；返回最近默认请求中文错误。",
       "insertText": "HTTP客户端_取错误()",
       "returnType": "文本型",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "HTTP客户端_取错误",
         "runtimeName": "HTTP客户端_取错误",
         "parameters": [],
         "returnType": "wideString",
-        "encoding": "wide"
+        "encoding": "wide",
+        "example": "HTTP客户端_取错误()",
+        "description": "旧版兼容入口；返回最近默认请求中文错误。"
       },
       "demoInvocation": "HTTP客户端_取错误()"
     },
     {
-      "index": 7,
+      "index": 74,
       "name": "HTTP客户端_清空状态",
       "signature": "HTTP客户端_清空状态()",
-      "description": "清空最近状态码、响应和错误。",
+      "description": "旧版兼容入口；清空最近默认请求状态。",
       "insertText": "HTTP客户端_清空状态()",
       "returnType": "空",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "HTTP客户端_清空状态",
         "runtimeName": "HTTP客户端_清空状态",
         "parameters": [],
-        "returnType": "void"
+        "returnType": "void",
+        "encoding": "raw",
+        "example": "HTTP客户端_清空状态()",
+        "description": "旧版兼容入口；清空最近默认请求状态。"
       },
       "demoInvocation": "HTTP客户端_清空状态()"
     }

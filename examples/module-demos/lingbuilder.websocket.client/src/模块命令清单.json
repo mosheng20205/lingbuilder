@@ -1,21 +1,1262 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:26.023Z",
+  "generatedAt": "2026-08-03T05:21:49.361Z",
   "module": {
     "id": "lingbuilder.websocket.client",
     "name": "WebSocket 客户端模块",
-    "version": "1.0.0",
-    "description": "提供基于 Windows WinHTTP 的 WebSocket 客户端连接、发送、接收和关闭能力。"
+    "version": "2.0.0",
+    "description": "提供受管 WinHTTP WebSocket 客户端、多连接、后台接收、文本与二进制消息、wss://、代理、身份验证、证书固定、自动重连、资源限制和运行统计。"
   },
-  "commandCount": 5,
+  "commandCount": 51,
   "commands": [
     {
       "index": 1,
+      "name": "WS_创建连接",
+      "signature": "WS_创建连接()",
+      "description": "创建尚未启动的受管 WebSocket 客户端并返回稳定连接 ID。",
+      "insertText": "WS_创建连接()",
+      "returnType": "WebSocket连接",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_创建连接",
+        "runtimeName": "WS_创建连接",
+        "parameters": [],
+        "returnType": "WebSocket连接",
+        "encoding": "raw",
+        "example": "WS_创建连接()",
+        "description": "创建尚未启动的受管 WebSocket 客户端并返回稳定连接 ID。"
+      },
+      "demoInvocation": "WS_创建连接()"
+    },
+    {
+      "index": 2,
+      "name": "WS_配置连接",
+      "signature": "WS_配置连接(连接, 地址)",
+      "description": "配置 ws:// 或 wss:// 地址；只能在连接停止时修改。",
+      "insertText": "WS_配置连接($1, \"wss://example.com/ws\")",
+      "returnType": "逻辑型",
+      "category": "配置",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_配置连接",
+        "runtimeName": "WS_配置连接",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_配置连接(示例值, \"wss://example.com/ws\")",
+        "description": "配置 ws:// 或 wss:// 地址；只能在连接停止时修改。"
+      },
+      "demoInvocation": "WS_配置连接(0, \"https://example.com\")"
+    },
+    {
+      "index": 3,
+      "name": "WS_设置资源限制",
+      "signature": "WS_设置资源限制(连接, 连接超时毫秒, 接收超时毫秒, 消息上限MB, 单次发送上限MB)",
+      "description": "设置连接/接收超时和消息硬限制，防止无限阻塞或超大消息耗尽内存。",
+      "insertText": "WS_设置资源限制($1, 15000, 60000, 16, 8)",
+      "returnType": "逻辑型",
+      "category": "安全",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_设置资源限制",
+        "runtimeName": "WS_设置资源限制",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "连接超时毫秒",
+            "type": "int"
+          },
+          {
+            "name": "接收超时毫秒",
+            "type": "int"
+          },
+          {
+            "name": "消息上限MB",
+            "type": "int"
+          },
+          {
+            "name": "单次发送上限MB",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "WS_设置资源限制(示例值, 15000, 60000, 16, 8)",
+        "description": "设置连接/接收超时和消息硬限制，防止无限阻塞或超大消息耗尽内存。"
+      },
+      "demoInvocation": "WS_设置资源限制(0, 1, 1, 1, 1)"
+    },
+    {
+      "index": 4,
+      "name": "WS_设置UserAgent",
+      "signature": "WS_设置UserAgent(连接, UserAgent)",
+      "description": "设置握手使用的 User-Agent；只能在连接停止时修改。",
+      "insertText": "WS_设置UserAgent($1, $2)",
+      "returnType": "逻辑型",
+      "category": "配置",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_设置UserAgent",
+        "runtimeName": "WS_设置UserAgent",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "UserAgent",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_设置UserAgent()",
+        "description": "设置握手使用的 User-Agent；只能在连接停止时修改。"
+      },
+      "demoInvocation": "WS_设置UserAgent(0, \"演示参数2\")"
+    },
+    {
+      "index": 5,
+      "name": "WS_设置请求头",
+      "signature": "WS_设置请求头(连接, 请求头)",
+      "description": "设置 UTF-16 原始请求头，每行一个“名称: 值”；禁止覆盖 WebSocket 升级关键头。",
+      "insertText": "WS_设置请求头($1, \"Authorization: Bearer token\")",
+      "returnType": "逻辑型",
+      "category": "配置",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_设置请求头",
+        "runtimeName": "WS_设置请求头",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "请求头",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_设置请求头(示例值, \"Authorization: Bearer token\")",
+        "description": "设置 UTF-16 原始请求头，每行一个“名称: 值”；禁止覆盖 WebSocket 升级关键头。"
+      },
+      "demoInvocation": "WS_设置请求头(0, \"演示参数2\")"
+    },
+    {
+      "index": 6,
+      "name": "WS_设置Origin",
+      "signature": "WS_设置Origin(连接, 来源)",
+      "description": "设置 WebSocket 握手 Origin；空文本表示不发送。",
+      "insertText": "WS_设置Origin($1, $2)",
+      "returnType": "逻辑型",
+      "category": "配置",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_设置Origin",
+        "runtimeName": "WS_设置Origin",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "来源",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_设置Origin()",
+        "description": "设置 WebSocket 握手 Origin；空文本表示不发送。"
+      },
+      "demoInvocation": "WS_设置Origin(0, \"演示参数2\")"
+    },
+    {
+      "index": 7,
+      "name": "WS_设置子协议",
+      "signature": "WS_设置子协议(连接, 子协议列表)",
+      "description": "设置逗号分隔的客户端子协议优先表，并校验服务端选择结果。",
+      "insertText": "WS_设置子协议($1, \"chat.v2, chat.v1\")",
+      "returnType": "逻辑型",
+      "category": "配置",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_设置子协议",
+        "runtimeName": "WS_设置子协议",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "子协议列表",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_设置子协议(示例值, \"chat.v2, chat.v1\")",
+        "description": "设置逗号分隔的客户端子协议优先表，并校验服务端选择结果。"
+      },
+      "demoInvocation": "WS_设置子协议(0, \"演示参数2\")"
+    },
+    {
+      "index": 8,
+      "name": "WS_设置代理",
+      "signature": "WS_设置代理(连接, 模式, 代理地址, 绕过列表)",
+      "description": "设置代理模式：0=系统自动，1=直连，2=固定代理；固定代理格式遵循 WinHTTP。",
+      "insertText": "WS_设置代理($1, 0, \"\", \"\")",
+      "returnType": "逻辑型",
+      "category": "配置",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_设置代理",
+        "runtimeName": "WS_设置代理",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "模式",
+            "type": "int"
+          },
+          {
+            "name": "代理地址",
+            "type": "wideString"
+          },
+          {
+            "name": "绕过列表",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_设置代理(示例值, 0, \"\", \"\")",
+        "description": "设置代理模式：0=系统自动，1=直连，2=固定代理；固定代理格式遵循 WinHTTP。"
+      },
+      "demoInvocation": "WS_设置代理(0, 1, \"https://example.com\", \"演示参数4\")"
+    },
+    {
+      "index": 9,
+      "name": "WS_设置服务器凭据",
+      "signature": "WS_设置服务器凭据(连接, 用户名, 密码)",
+      "description": "设置握手服务器 HTTP Basic 身份验证凭据；仅保存在连接对象内存中。",
+      "insertText": "WS_设置服务器凭据($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "安全",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_设置服务器凭据",
+        "runtimeName": "WS_设置服务器凭据",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString"
+          },
+          {
+            "name": "密码",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_设置服务器凭据()",
+        "description": "设置握手服务器 HTTP Basic 身份验证凭据；仅保存在连接对象内存中。"
+      },
+      "demoInvocation": "WS_设置服务器凭据(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 10,
+      "name": "WS_设置代理凭据",
+      "signature": "WS_设置代理凭据(连接, 用户名, 密码)",
+      "description": "设置代理 HTTP Basic 身份验证凭据；仅保存在连接对象内存中。",
+      "insertText": "WS_设置代理凭据($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "安全",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_设置代理凭据",
+        "runtimeName": "WS_设置代理凭据",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "用户名",
+            "type": "wideString"
+          },
+          {
+            "name": "密码",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_设置代理凭据()",
+        "description": "设置代理 HTTP Basic 身份验证凭据；仅保存在连接对象内存中。"
+      },
+      "demoInvocation": "WS_设置代理凭据(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 11,
+      "name": "WS_设置TLS验证",
+      "signature": "WS_设置TLS验证(连接, 验证证书, 允许自签名, 证书SHA256)",
+      "description": "配置 wss:// 证书验证和可选 SHA-256 证书固定；关闭验证属于高风险调试能力。",
+      "insertText": "WS_设置TLS验证($1, 真, 假, \"\")",
+      "returnType": "逻辑型",
+      "category": "安全",
+      "capabilityKind": "managed",
+      "visibility": "advanced",
+      "binding": {
+        "command": "WS_设置TLS验证",
+        "runtimeName": "WS_设置TLS验证",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "验证证书",
+            "type": "bool"
+          },
+          {
+            "name": "允许自签名",
+            "type": "bool"
+          },
+          {
+            "name": "证书SHA256",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_设置TLS验证(示例值, 真, 假, \"\")",
+        "description": "配置 wss:// 证书验证和可选 SHA-256 证书固定；关闭验证属于高风险调试能力。"
+      },
+      "demoInvocation": "WS_设置TLS验证(0, 真, 真, \"演示参数4\")"
+    },
+    {
+      "index": 12,
+      "name": "WS_设置自动重连",
+      "signature": "WS_设置自动重连(连接, 启用, 最大次数, 初始延迟毫秒, 最大延迟毫秒)",
+      "description": "设置意外断开后的指数退避重连；主动关闭不会触发重连。",
+      "insertText": "WS_设置自动重连($1, 真, 8, 500, 30000)",
+      "returnType": "逻辑型",
+      "category": "配置",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_设置自动重连",
+        "runtimeName": "WS_设置自动重连",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "启用",
+            "type": "bool"
+          },
+          {
+            "name": "最大次数",
+            "type": "int"
+          },
+          {
+            "name": "初始延迟毫秒",
+            "type": "int"
+          },
+          {
+            "name": "最大延迟毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "WS_设置自动重连(示例值, 真, 8, 500, 30000)",
+        "description": "设置意外断开后的指数退避重连；主动关闭不会触发重连。"
+      },
+      "demoInvocation": "WS_设置自动重连(0, 真, 1, 1, 1)"
+    },
+    {
+      "index": 13,
+      "name": "WS_绑定已连接处理器",
+      "signature": "WS_绑定已连接处理器(连接, &处理器)",
+      "description": "绑定已连接事件处理器；处理器通过窗口消息在创建连接的 UI 线程执行，并使用 WS_取当前事件系列命令读取快照。",
+      "insertText": "WS_绑定已连接处理器($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_绑定已连接处理器",
+        "runtimeName": "WS_绑定已连接处理器",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；处理器必须无参数。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_绑定已连接处理器(示例值, &示例值)",
+        "description": "绑定已连接事件处理器；处理器通过窗口消息在创建连接的 UI 线程执行，并使用 WS_取当前事件系列命令读取快照。"
+      },
+      "demoInvocation": "WS_绑定已连接处理器(0, &模块演示回调)"
+    },
+    {
+      "index": 14,
+      "name": "WS_绑定消息处理器",
+      "signature": "WS_绑定消息处理器(连接, &处理器)",
+      "description": "绑定消息事件处理器；处理器通过窗口消息在创建连接的 UI 线程执行，并使用 WS_取当前事件系列命令读取快照。",
+      "insertText": "WS_绑定消息处理器($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_绑定消息处理器",
+        "runtimeName": "WS_绑定消息处理器",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；处理器必须无参数。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_绑定消息处理器(示例值, &示例值)",
+        "description": "绑定消息事件处理器；处理器通过窗口消息在创建连接的 UI 线程执行，并使用 WS_取当前事件系列命令读取快照。"
+      },
+      "demoInvocation": "WS_绑定消息处理器(0, &模块演示回调)"
+    },
+    {
+      "index": 15,
+      "name": "WS_绑定已断开处理器",
+      "signature": "WS_绑定已断开处理器(连接, &处理器)",
+      "description": "绑定已断开事件处理器；处理器通过窗口消息在创建连接的 UI 线程执行，并使用 WS_取当前事件系列命令读取快照。",
+      "insertText": "WS_绑定已断开处理器($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_绑定已断开处理器",
+        "runtimeName": "WS_绑定已断开处理器",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；处理器必须无参数。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_绑定已断开处理器(示例值, &示例值)",
+        "description": "绑定已断开事件处理器；处理器通过窗口消息在创建连接的 UI 线程执行，并使用 WS_取当前事件系列命令读取快照。"
+      },
+      "demoInvocation": "WS_绑定已断开处理器(0, &模块演示回调)"
+    },
+    {
+      "index": 16,
+      "name": "WS_绑定错误处理器",
+      "signature": "WS_绑定错误处理器(连接, &处理器)",
+      "description": "绑定错误事件处理器；处理器通过窗口消息在创建连接的 UI 线程执行，并使用 WS_取当前事件系列命令读取快照。",
+      "insertText": "WS_绑定错误处理器($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_绑定错误处理器",
+        "runtimeName": "WS_绑定错误处理器",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；处理器必须无参数。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_绑定错误处理器(示例值, &示例值)",
+        "description": "绑定错误事件处理器；处理器通过窗口消息在创建连接的 UI 线程执行，并使用 WS_取当前事件系列命令读取快照。"
+      },
+      "demoInvocation": "WS_绑定错误处理器(0, &模块演示回调)"
+    },
+    {
+      "index": 17,
+      "name": "WS_绑定重连处理器",
+      "signature": "WS_绑定重连处理器(连接, &处理器)",
+      "description": "绑定重连事件处理器；处理器通过窗口消息在创建连接的 UI 线程执行，并使用 WS_取当前事件系列命令读取快照。",
+      "insertText": "WS_绑定重连处理器($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_绑定重连处理器",
+        "runtimeName": "WS_绑定重连处理器",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；处理器必须无参数。"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_绑定重连处理器(示例值, &示例值)",
+        "description": "绑定重连事件处理器；处理器通过窗口消息在创建连接的 UI 线程执行，并使用 WS_取当前事件系列命令读取快照。"
+      },
+      "demoInvocation": "WS_绑定重连处理器(0, &模块演示回调)"
+    },
+    {
+      "index": 18,
+      "name": "WS_开始连接",
+      "signature": "WS_开始连接(连接)",
+      "description": "在后台启动连接、握手和接收循环，不阻塞 UI 线程。",
+      "insertText": "WS_开始连接($1)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_开始连接",
+        "runtimeName": "WS_开始连接",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "WS_开始连接()",
+        "description": "在后台启动连接、握手和接收循环，不阻塞 UI 线程。"
+      },
+      "demoInvocation": "WS_开始连接(0)"
+    },
+    {
+      "index": 19,
+      "name": "WS_等待连接",
+      "signature": "WS_等待连接(连接, 超时毫秒)",
+      "description": "等待连接进入“已连接”或失败状态；主要用于命令行和测试，UI 代码应使用已连接处理器。",
+      "insertText": "WS_等待连接($1, $2)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_等待连接",
+        "runtimeName": "WS_等待连接",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "超时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "WS_等待连接()",
+        "description": "等待连接进入“已连接”或失败状态；主要用于命令行和测试，UI 代码应使用已连接处理器。"
+      },
+      "demoInvocation": "WS_等待连接(0, 1)"
+    },
+    {
+      "index": 20,
+      "name": "WS_关闭连接",
+      "signature": "WS_关闭连接(连接, 状态码, 原因)",
+      "description": "发送关闭帧并停止后台接收；状态码和 UTF-8 原因按 RFC 6455 校验。",
+      "insertText": "WS_关闭连接($1, 1000, \"正常关闭\")",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_关闭连接",
+        "runtimeName": "WS_关闭连接",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "状态码",
+            "type": "int"
+          },
+          {
+            "name": "原因",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_关闭连接(示例值, 1000, \"正常关闭\")",
+        "description": "发送关闭帧并停止后台接收；状态码和 UTF-8 原因按 RFC 6455 校验。"
+      },
+      "demoInvocation": "WS_关闭连接(0, 1, \"演示参数3\")"
+    },
+    {
+      "index": 21,
+      "name": "WS_强制断开",
+      "signature": "WS_强制断开(连接)",
+      "description": "立即关闭底层 WinHTTP 句柄并停止自动重连，仅用于超时或故障恢复。",
+      "insertText": "WS_强制断开($1)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_强制断开",
+        "runtimeName": "WS_强制断开",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "WS_强制断开()",
+        "description": "立即关闭底层 WinHTTP 句柄并停止自动重连，仅用于超时或故障恢复。"
+      },
+      "demoInvocation": "WS_强制断开(0)"
+    },
+    {
+      "index": 22,
+      "name": "WS_销毁连接",
+      "signature": "WS_销毁连接(连接)",
+      "description": "停止并释放受管连接；重复销毁返回假。",
+      "insertText": "WS_销毁连接($1)",
+      "returnType": "逻辑型",
+      "category": "连接",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_销毁连接",
+        "runtimeName": "WS_销毁连接",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "WS_销毁连接()",
+        "description": "停止并释放受管连接；重复销毁返回假。"
+      },
+      "demoInvocation": "WS_销毁连接(0)"
+    },
+    {
+      "index": 23,
+      "name": "WS_是否已连接",
+      "signature": "WS_是否已连接(连接)",
+      "description": "判断连接是否已完成握手且未进入关闭状态。",
+      "insertText": "WS_是否已连接($1)",
+      "returnType": "逻辑型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_是否已连接",
+        "runtimeName": "WS_是否已连接",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "WS_是否已连接()",
+        "description": "判断连接是否已完成握手且未进入关闭状态。"
+      },
+      "demoInvocation": "WS_是否已连接(0)"
+    },
+    {
+      "index": 24,
+      "name": "WS_取连接状态",
+      "signature": "WS_取连接状态(连接)",
+      "description": "返回连接状态：未配置、已停止、连接中、已连接、重连等待、关闭中或错误。",
+      "insertText": "WS_取连接状态($1)",
+      "returnType": "文本型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取连接状态",
+        "runtimeName": "WS_取连接状态",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "WS_取连接状态()",
+        "description": "返回连接状态：未配置、已停止、连接中、已连接、重连等待、关闭中或错误。"
+      },
+      "demoInvocation": "WS_取连接状态(0)"
+    },
+    {
+      "index": 25,
+      "name": "WS_取连接地址",
+      "signature": "WS_取连接地址(连接)",
+      "description": "返回当前配置的 ws:// 或 wss:// 地址。",
+      "insertText": "WS_取连接地址($1)",
+      "returnType": "文本型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取连接地址",
+        "runtimeName": "WS_取连接地址",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "WS_取连接地址()",
+        "description": "返回当前配置的 ws:// 或 wss:// 地址。"
+      },
+      "demoInvocation": "WS_取连接地址(0)"
+    },
+    {
+      "index": 26,
+      "name": "WS_取协商子协议",
+      "signature": "WS_取协商子协议(连接)",
+      "description": "返回服务端握手选择的子协议。",
+      "insertText": "WS_取协商子协议($1)",
+      "returnType": "文本型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取协商子协议",
+        "runtimeName": "WS_取协商子协议",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "WS_取协商子协议()",
+        "description": "返回服务端握手选择的子协议。"
+      },
+      "demoInvocation": "WS_取协商子协议(0)"
+    },
+    {
+      "index": 27,
+      "name": "WS_取握手响应头",
+      "signature": "WS_取握手响应头(连接)",
+      "description": "返回最近一次 WebSocket 握手的完整响应头。",
+      "insertText": "WS_取握手响应头($1)",
+      "returnType": "文本型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取握手响应头",
+        "runtimeName": "WS_取握手响应头",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "WS_取握手响应头()",
+        "description": "返回最近一次 WebSocket 握手的完整响应头。"
+      },
+      "demoInvocation": "WS_取握手响应头(0)"
+    },
+    {
+      "index": 28,
+      "name": "WS_取握手状态码",
+      "signature": "WS_取握手状态码(连接)",
+      "description": "返回最近一次握手 HTTP 状态码。",
+      "insertText": "WS_取握手状态码($1)",
+      "returnType": "整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取握手状态码",
+        "runtimeName": "WS_取握手状态码",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "WS_取握手状态码()",
+        "description": "返回最近一次握手 HTTP 状态码。"
+      },
+      "demoInvocation": "WS_取握手状态码(0)"
+    },
+    {
+      "index": 29,
+      "name": "WS_取连接错误",
+      "signature": "WS_取连接错误(连接)",
+      "description": "返回连接最近一次中文错误信息。",
+      "insertText": "WS_取连接错误($1)",
+      "returnType": "文本型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取连接错误",
+        "runtimeName": "WS_取连接错误",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "WS_取连接错误()",
+        "description": "返回连接最近一次中文错误信息。"
+      },
+      "demoInvocation": "WS_取连接错误(0)"
+    },
+    {
+      "index": 30,
+      "name": "WS_取连接时长",
+      "signature": "WS_取连接时长(连接)",
+      "description": "返回当前连接完成握手后的在线毫秒数。",
+      "insertText": "WS_取连接时长($1)",
+      "returnType": "长整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取连接时长",
+        "runtimeName": "WS_取连接时长",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "WS_取连接时长()",
+        "description": "返回当前连接完成握手后的在线毫秒数。"
+      },
+      "demoInvocation": "WS_取连接时长(0)"
+    },
+    {
+      "index": 31,
+      "name": "WS_取发送字节数",
+      "signature": "WS_取发送字节数(连接)",
+      "description": "返回累计成功发送的应用负载字节数。",
+      "insertText": "WS_取发送字节数($1)",
+      "returnType": "长整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取发送字节数",
+        "runtimeName": "WS_取发送字节数",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "WS_取发送字节数()",
+        "description": "返回累计成功发送的应用负载字节数。"
+      },
+      "demoInvocation": "WS_取发送字节数(0)"
+    },
+    {
+      "index": 32,
+      "name": "WS_取接收字节数",
+      "signature": "WS_取接收字节数(连接)",
+      "description": "返回累计接收的应用负载字节数。",
+      "insertText": "WS_取接收字节数($1)",
+      "returnType": "长整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取接收字节数",
+        "runtimeName": "WS_取接收字节数",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "WS_取接收字节数()",
+        "description": "返回累计接收的应用负载字节数。"
+      },
+      "demoInvocation": "WS_取接收字节数(0)"
+    },
+    {
+      "index": 33,
+      "name": "WS_取发送消息数",
+      "signature": "WS_取发送消息数(连接)",
+      "description": "返回累计成功发送的文本和二进制消息数。",
+      "insertText": "WS_取发送消息数($1)",
+      "returnType": "长整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取发送消息数",
+        "runtimeName": "WS_取发送消息数",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "WS_取发送消息数()",
+        "description": "返回累计成功发送的文本和二进制消息数。"
+      },
+      "demoInvocation": "WS_取发送消息数(0)"
+    },
+    {
+      "index": 34,
+      "name": "WS_取接收消息数",
+      "signature": "WS_取接收消息数(连接)",
+      "description": "返回累计接收的完整文本和二进制消息数。",
+      "insertText": "WS_取接收消息数($1)",
+      "returnType": "长整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取接收消息数",
+        "runtimeName": "WS_取接收消息数",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "WS_取接收消息数()",
+        "description": "返回累计接收的完整文本和二进制消息数。"
+      },
+      "demoInvocation": "WS_取接收消息数(0)"
+    },
+    {
+      "index": 35,
+      "name": "WS_取重连次数",
+      "signature": "WS_取重连次数(连接)",
+      "description": "返回当前启动周期已经执行的自动重连次数。",
+      "insertText": "WS_取重连次数($1)",
+      "returnType": "整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取重连次数",
+        "runtimeName": "WS_取重连次数",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "WS_取重连次数()",
+        "description": "返回当前启动周期已经执行的自动重连次数。"
+      },
+      "demoInvocation": "WS_取重连次数(0)"
+    },
+    {
+      "index": 36,
+      "name": "WS_发送文本到连接",
+      "signature": "WS_发送文本到连接(连接, 内容)",
+      "description": "向指定已连接客户端发送一条完整 UTF-8 文本消息，并执行 UTF-8 与发送大小校验。",
+      "insertText": "WS_发送文本到连接($1, \"$2\")",
+      "returnType": "逻辑型",
+      "category": "消息",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_发送文本到连接",
+        "runtimeName": "WS_发送文本到连接",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "内容",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "WS_发送文本到连接(示例值, \"示例值\")",
+        "description": "向指定已连接客户端发送一条完整 UTF-8 文本消息，并执行 UTF-8 与发送大小校验。"
+      },
+      "demoInvocation": "WS_发送文本到连接(0, \"演示参数2\")"
+    },
+    {
+      "index": 37,
+      "name": "WS_发送二进制到连接",
+      "signature": "WS_发送二进制到连接(连接, 数据)",
+      "description": "向指定已连接客户端发送一条完整二进制消息。",
+      "insertText": "WS_发送二进制到连接($1, $2)",
+      "returnType": "逻辑型",
+      "category": "消息",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_发送二进制到连接",
+        "runtimeName": "WS_发送二进制到连接",
+        "parameters": [
+          {
+            "name": "连接",
+            "type": "WebSocket连接"
+          },
+          {
+            "name": "数据",
+            "type": "bytes"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "WS_发送二进制到连接()",
+        "description": "向指定已连接客户端发送一条完整二进制消息。"
+      },
+      "demoInvocation": "WS_发送二进制到连接(0, {})"
+    },
+    {
+      "index": 38,
+      "name": "WS_取当前事件类型",
+      "signature": "WS_取当前事件类型()",
+      "description": "返回当前回调事件类型：已连接、文本、二进制、已断开、错误或重连。",
+      "insertText": "WS_取当前事件类型()",
+      "returnType": "文本型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取当前事件类型",
+        "runtimeName": "WS_取当前事件类型",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "WS_取当前事件类型()",
+        "description": "返回当前回调事件类型：已连接、文本、二进制、已断开、错误或重连。"
+      },
+      "demoInvocation": "WS_取当前事件类型()"
+    },
+    {
+      "index": 39,
+      "name": "WS_取当前连接",
+      "signature": "WS_取当前连接()",
+      "description": "返回当前事件对应的受管连接 ID。",
+      "insertText": "WS_取当前连接()",
+      "returnType": "WebSocket连接",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取当前连接",
+        "runtimeName": "WS_取当前连接",
+        "parameters": [],
+        "returnType": "WebSocket连接",
+        "encoding": "raw",
+        "example": "WS_取当前连接()",
+        "description": "返回当前事件对应的受管连接 ID。"
+      },
+      "demoInvocation": "WS_取当前连接()"
+    },
+    {
+      "index": 40,
+      "name": "WS_取当前消息类型",
+      "signature": "WS_取当前消息类型()",
+      "description": "返回当前消息类型：文本或二进制；其它事件返回空文本。",
+      "insertText": "WS_取当前消息类型()",
+      "returnType": "文本型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取当前消息类型",
+        "runtimeName": "WS_取当前消息类型",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "WS_取当前消息类型()",
+        "description": "返回当前消息类型：文本或二进制；其它事件返回空文本。"
+      },
+      "demoInvocation": "WS_取当前消息类型()"
+    },
+    {
+      "index": 41,
+      "name": "WS_取当前文本",
+      "signature": "WS_取当前文本()",
+      "description": "返回当前文本消息的不可变快照。",
+      "insertText": "WS_取当前文本()",
+      "returnType": "文本型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取当前文本",
+        "runtimeName": "WS_取当前文本",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "WS_取当前文本()",
+        "description": "返回当前文本消息的不可变快照。"
+      },
+      "demoInvocation": "WS_取当前文本()"
+    },
+    {
+      "index": 42,
+      "name": "WS_取当前二进制",
+      "signature": "WS_取当前二进制()",
+      "description": "返回当前二进制消息的独立字节集副本。",
+      "insertText": "WS_取当前二进制()",
+      "returnType": "字节集",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取当前二进制",
+        "runtimeName": "WS_取当前二进制",
+        "parameters": [],
+        "returnType": "bytes",
+        "encoding": "raw",
+        "example": "WS_取当前二进制()",
+        "description": "返回当前二进制消息的独立字节集副本。"
+      },
+      "demoInvocation": "WS_取当前二进制()"
+    },
+    {
+      "index": 43,
+      "name": "WS_取当前关闭代码",
+      "signature": "WS_取当前关闭代码()",
+      "description": "返回当前断开事件的 WebSocket 关闭状态码。",
+      "insertText": "WS_取当前关闭代码()",
+      "returnType": "整数型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取当前关闭代码",
+        "runtimeName": "WS_取当前关闭代码",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "WS_取当前关闭代码()",
+        "description": "返回当前断开事件的 WebSocket 关闭状态码。"
+      },
+      "demoInvocation": "WS_取当前关闭代码()"
+    },
+    {
+      "index": 44,
+      "name": "WS_取当前关闭原因",
+      "signature": "WS_取当前关闭原因()",
+      "description": "返回当前断开事件的 UTF-8 关闭原因。",
+      "insertText": "WS_取当前关闭原因()",
+      "returnType": "文本型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取当前关闭原因",
+        "runtimeName": "WS_取当前关闭原因",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "WS_取当前关闭原因()",
+        "description": "返回当前断开事件的 UTF-8 关闭原因。"
+      },
+      "demoInvocation": "WS_取当前关闭原因()"
+    },
+    {
+      "index": 45,
+      "name": "WS_取当前错误",
+      "signature": "WS_取当前错误()",
+      "description": "返回当前错误事件的中文说明。",
+      "insertText": "WS_取当前错误()",
+      "returnType": "文本型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取当前错误",
+        "runtimeName": "WS_取当前错误",
+        "parameters": [],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "WS_取当前错误()",
+        "description": "返回当前错误事件的中文说明。"
+      },
+      "demoInvocation": "WS_取当前错误()"
+    },
+    {
+      "index": 46,
+      "name": "WS_取当前重连次数",
+      "signature": "WS_取当前重连次数()",
+      "description": "返回当前重连事件对应的重试序号。",
+      "insertText": "WS_取当前重连次数()",
+      "returnType": "整数型",
+      "category": "事件",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "WS_取当前重连次数",
+        "runtimeName": "WS_取当前重连次数",
+        "parameters": [],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "WS_取当前重连次数()",
+        "description": "返回当前重连事件对应的重试序号。"
+      },
+      "demoInvocation": "WS_取当前重连次数()"
+    },
+    {
+      "index": 47,
       "name": "WS_连接",
       "signature": "WS_连接(地址)",
-      "description": "连接到 ws:// 或 wss:// WebSocket 服务端，成功返回 1，失败返回 0 并输出中文调试信息。",
-      "insertText": "WS_连接(\"wss://echo.websocket.events\")",
+      "description": "旧版单连接兼容入口；同步等待最多 30 秒，新代码应使用受管连接和事件处理器。",
+      "insertText": "WS_连接($1)",
       "returnType": "整数型",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "WS_连接",
         "runtimeName": "WS_连接",
@@ -27,17 +1268,21 @@
         ],
         "returnType": "int",
         "encoding": "wide",
-        "example": "WS_连接(\"wss://echo.websocket.events\")"
+        "example": "WS_连接()",
+        "description": "旧版单连接兼容入口；同步等待最多 30 秒，新代码应使用受管连接和事件处理器。"
       },
       "demoInvocation": "WS_连接(\"https://example.com\")"
     },
     {
-      "index": 2,
+      "index": 48,
       "name": "WS_发送文本",
       "signature": "WS_发送文本(内容)",
-      "description": "向当前 WebSocket 连接发送一条文本消息，成功返回 1。",
-      "insertText": "WS_发送文本(\"$1\")",
+      "description": "旧版兼容入口；向默认受管连接发送文本。",
+      "insertText": "WS_发送文本($1)",
       "returnType": "整数型",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "WS_发送文本",
         "runtimeName": "WS_发送文本",
@@ -49,56 +1294,71 @@
         ],
         "returnType": "int",
         "encoding": "wide",
-        "example": "WS_发送文本(\"你好\")"
+        "example": "WS_发送文本()",
+        "description": "旧版兼容入口；向默认受管连接发送文本。"
       },
       "demoInvocation": "WS_发送文本(\"演示参数1\")"
     },
     {
-      "index": 3,
+      "index": 49,
       "name": "WS_接收到调试输出",
       "signature": "WS_接收到调试输出()",
-      "description": "从当前 WebSocket 连接接收一条文本消息，并写入调试输出。",
+      "description": "旧版阻塞兼容入口；等待一条默认连接文本消息并写入调试输出。",
       "insertText": "WS_接收到调试输出()",
       "returnType": "整数型",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "WS_接收到调试输出",
         "runtimeName": "WS_接收到调试输出",
         "parameters": [],
         "returnType": "int",
-        "example": "WS_接收到调试输出()"
+        "encoding": "raw",
+        "example": "WS_接收到调试输出()",
+        "description": "旧版阻塞兼容入口；等待一条默认连接文本消息并写入调试输出。"
       },
       "demoInvocation": "WS_接收到调试输出()"
     },
     {
-      "index": 4,
+      "index": 50,
       "name": "WS_接收文本",
       "signature": "WS_接收文本()",
-      "description": "接收一条文本消息并返回最近接收内容；可在原生 C++ 语句中读取返回值。",
+      "description": "旧版阻塞兼容入口；等待并返回默认连接的下一条文本消息。",
       "insertText": "WS_接收文本()",
       "returnType": "文本型",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "WS_接收文本",
         "runtimeName": "WS_接收文本",
         "parameters": [],
         "returnType": "wideString",
-        "encoding": "wide",
-        "example": "WS_接收文本()"
+        "encoding": "raw",
+        "example": "WS_接收文本()",
+        "description": "旧版阻塞兼容入口；等待并返回默认连接的下一条文本消息。"
       },
       "demoInvocation": "WS_接收文本()"
     },
     {
-      "index": 5,
+      "index": 51,
       "name": "WS_关闭",
       "signature": "WS_关闭()",
-      "description": "关闭当前 WebSocket 连接并释放网络句柄。",
+      "description": "旧版兼容入口；关闭并销毁默认受管连接。",
       "insertText": "WS_关闭()",
       "returnType": "空",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "WS_关闭",
         "runtimeName": "WS_关闭",
         "parameters": [],
         "returnType": "void",
-        "example": "WS_关闭()"
+        "encoding": "raw",
+        "example": "WS_关闭()",
+        "description": "旧版兼容入口；关闭并销毁默认受管连接。"
       },
       "demoInvocation": "WS_关闭()"
     }

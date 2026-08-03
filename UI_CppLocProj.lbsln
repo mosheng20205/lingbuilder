@@ -24,6 +24,10 @@
     {
       "id": "module-complete-demos",
       "name": "模块完整演示"
+    },
+    {
+      "id": "win32",
+      "name": "Win32合集"
     }
   ],
   "projects": [
@@ -152,6 +156,7 @@
       "name": "Win32 DataGrid 完整接口示例",
       "type": "visual-cpp",
       "sourceRoot": "src/datagrid-api-demo",
+      "solutionFolderId": "win32",
       "references": []
     },
     {
@@ -167,6 +172,7 @@
       "name": "Win32 ScrollBar 完整接口示例",
       "type": "visual-cpp",
       "sourceRoot": "src/scrollbar-api-demo",
+      "solutionFolderId": "win32",
       "references": []
     },
     {
@@ -174,6 +180,7 @@
       "name": "Win32 FlatScrollBar 完整接口示例",
       "type": "visual-cpp",
       "sourceRoot": "src/flatscrollbar-api-demo",
+      "solutionFolderId": "win32",
       "references": []
     },
     {
@@ -181,6 +188,7 @@
       "name": "Win32 组合框 ComboBox 全接口示例",
       "type": "visual-cpp",
       "sourceRoot": "src/combobox-api-demo",
+      "solutionFolderId": "win32",
       "references": []
     },
     {
@@ -188,6 +196,7 @@
       "name": "Win32 图片框 Image 全接口示例",
       "type": "visual-cpp",
       "sourceRoot": "src/image-control-api-demo",
+      "solutionFolderId": "win32",
       "references": []
     },
     {
@@ -195,6 +204,7 @@
       "name": "树形视图 TreeView 完整接口示例",
       "type": "visual-cpp",
       "sourceRoot": "src/treeview-api-demo",
+      "solutionFolderId": "win32",
       "references": []
     },
     {
@@ -210,6 +220,7 @@
       "name": "选项卡 TabControl 完整接口示例",
       "type": "visual-cpp",
       "sourceRoot": "src/tabcontrol-api-demo",
+      "solutionFolderId": "win32",
       "references": []
     },
     {
@@ -217,6 +228,7 @@
       "name": "ContextMenu 上下文菜单完整接口示例",
       "type": "visual-cpp",
       "sourceRoot": "src/contextmenu-api-demo",
+      "solutionFolderId": "win32",
       "references": []
     },
     {
@@ -224,6 +236,7 @@
       "name": "PopupMenu 弹出菜单完整接口示例",
       "type": "visual-cpp",
       "sourceRoot": "src/popupmenu-api-demo",
+      "solutionFolderId": "win32",
       "references": []
     },
     {
@@ -231,6 +244,7 @@
       "name": "动态图像控件完整接口示例",
       "type": "visual-cpp",
       "sourceRoot": "src/animated-image-api-demo",
+      "solutionFolderId": "module-complete-demos",
       "references": []
     },
     {
@@ -238,6 +252,7 @@
       "name": "多线程模块 2.0 完整交互演示",
       "type": "visual-cpp",
       "sourceRoot": "src/threading-api-demo",
+      "solutionFolderId": "module-complete-demos",
       "references": []
     },
     {
@@ -245,6 +260,7 @@
       "name": "Win32 月历完整接口示例",
       "type": "visual-cpp",
       "sourceRoot": "src/monthcalendar-api-demo",
+      "solutionFolderId": "win32",
       "references": []
     },
     {
@@ -252,6 +268,7 @@
       "name": "Win32滑块 TrackBar 完整接口示例",
       "type": "visual-cpp",
       "sourceRoot": "src/trackbar-api-demo",
+      "solutionFolderId": "win32",
       "references": []
     },
     {
@@ -259,6 +276,7 @@
       "name": "Win32 Header（表头）完整接口演示",
       "type": "visual-cpp",
       "sourceRoot": "src/header-api-demo",
+      "solutionFolderId": "win32",
       "references": []
     },
     {
@@ -282,6 +300,7 @@
       "name": "Win32 增强组合框 ComboBoxEx 全接口示例",
       "type": "visual-cpp",
       "sourceRoot": "src/comboboxex-api-demo",
+      "solutionFolderId": "win32",
       "references": []
     },
     {
@@ -289,6 +308,7 @@
       "name": "格式化文本全接口与全能力演示",
       "type": "visual-cpp",
       "sourceRoot": "src/format-text-api-demo",
+      "solutionFolderId": "module-complete-demos",
       "references": []
     },
     {
@@ -613,7 +633,7 @@
     },
     {
       "id": "module-demo-lingbuilder.net.http-client",
-      "name": "HTTP客户端模块完整演示",
+      "name": "HTTP 客户端模块完整演示",
       "type": "visual-cpp",
       "sourceRoot": "examples/module-demos/lingbuilder.net.http-client/src",
       "solutionFolderId": "module-complete-demos",

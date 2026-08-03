@@ -14,7 +14,7 @@ import {
   LingCppProgram,
   LingCppStatement
 } from '../lingCpp/types';
-import { InstalledModule, ModuleCommandBinding } from '../modules/types';
+import { InstalledModule, ModuleCommandBinding, ModuleDesignerRuntimeParameter } from '../modules/types';
 import {
   findModulePublicType,
   getEnabledModuleStructuredTypeDiagnostics,
@@ -35,7 +35,26 @@ import { generateNetworkLibraryRuntime } from './networkLibraryRuntime';
 import { generateDataMediaRuntime } from './dataMediaRuntime';
 import { generatePlatformAdvancedRuntime } from './platformAdvancedRuntime';
 import { generateThreadingRuntime } from './threadingRuntime';
+import {
+  generateHttpClientGlobalMethodDeclarations,
+  generateHttpClientGlobalMethods,
+  generateHttpClientRuntime,
+  generateHttpClientWindowMethods
+} from './httpClientRuntime';
+import { generateHttpServerGlobalMethods, generateHttpServerRuntime, generateHttpServerWindowMethods } from './httpServerRuntime';
 import { generateProtobufRuntime } from './protobufRuntime';
+import {
+  generateWebSocketServerGlobalMethodDeclarations,
+  generateWebSocketServerGlobalMethods,
+  generateWebSocketServerRuntime,
+  generateWebSocketServerWindowMethods
+} from './webSocketServerRuntime';
+import {
+  generateWebSocketClientGlobalMethodDeclarations,
+  generateWebSocketClientGlobalMethods,
+  generateWebSocketClientRuntime,
+  generateWebSocketClientWindowMethods
+} from './webSocketClientRuntime';
 import { getPreferredModuleTarget, getUnsupportedModuleTargetDiagnostic } from '../modules/targetResolver';
 import { getWin32ControlDefinition, WIN32_CONTROL_DEFINITIONS } from './win32ControlRegistry';
 import { getWindowEventHandlerName } from './windowEventRegistry';
@@ -50,7 +69,7 @@ import { getEffectiveControlState } from './controlHierarchy';
 import { getUiBackendCommandDiagnostics, NEW_EMOJI_UI_BACKEND_ID, WIN32_UI_BACKEND_ID } from './uiBackendCommandContract';
 import { normalizeControlFont } from './controlFont';
 import { reconcileRebarBands } from './designerOperations';
-import { normalizeDataGridModel } from './dataGridModel';
+import { normalizeDataGridModel, type DataGridColumn, type DataGridRow } from './dataGridModel';
 import { DATA_GRID_NATIVE_GLOBALS, DATA_GRID_NATIVE_METHODS } from './dataGridNativeRuntime';
 import { EDGEVIEW_SAFE_API_NATIVE_MEMBERS } from './edgeViewRuntime';
 import { generateFbroVipIndividualRuntime } from '../modules/fbroVipApiCatalog';
@@ -387,6 +406,7 @@ function generateNewEmojiMainCpp(
   const mouseModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.input.mouse');
   const uiaCleanupLine = mouseModuleEnabled ? '    LB_UiaClear();' : '';
   const protobufRuntime = generateProtobufRuntime(enabledModules);
+  const httpClientRuntime = generateHttpClientRuntime(enabledModules);
   const builtinLibraryFragments = [
     generateStandardLibraryRuntime(enabledModules),
     generateSystemLibraryRuntime(enabledModules),
@@ -395,8 +415,18 @@ function generateNewEmojiMainCpp(
     generatePlatformAdvancedRuntime(enabledModules),
     protobufRuntime
   ].filter(Boolean);
-  const builtinLibraryCommonRuntime = builtinLibraryFragments.length > 0 ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
+  const httpServerRuntime = generateHttpServerRuntime(enabledModules);
+  const httpClientGlobalMethodDeclarations = generateHttpClientGlobalMethodDeclarations(enabledModules);
+  const httpClientGlobalMethods = generateHttpClientGlobalMethods(enabledModules);
+  const builtinLibraryCommonRuntime = (builtinLibraryFragments.length > 0 || httpServerRuntime || httpClientRuntime) ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
   const builtinLibraryRuntime = builtinLibraryFragments.join('\n');
+  const httpServerGlobalMethods = generateHttpServerGlobalMethods(enabledModules);
+  const webSocketClientRuntime = generateWebSocketClientRuntime(enabledModules);
+  const webSocketClientGlobalMethodDeclarations = generateWebSocketClientGlobalMethodDeclarations(enabledModules);
+  const webSocketClientGlobalMethods = generateWebSocketClientGlobalMethods(enabledModules);
+  const webSocketServerRuntime = generateWebSocketServerRuntime(enabledModules);
+  const webSocketServerGlobalMethodDeclarations = generateWebSocketServerGlobalMethodDeclarations(enabledModules);
+  const webSocketServerGlobalMethods = generateWebSocketServerGlobalMethods(enabledModules);
   const projectDataTypesDefinition = generateProjectDataTypesDefinition(program, enabledModules);
   const projectGlobalsDefinition = generateProjectGlobalsDefinition(program, enabledModules);
   const newEmojiFunctionLibraries = generateNewEmojiFunctionLibraries(program, enabledModules);
@@ -495,7 +525,9 @@ function generateNewEmojiMainCpp(
     }
     uploadCallbacks.set(control.id, callbacks);
   });
+  const deferredTabPageSetupLines: string[] = [];
   const createLines = controls.flatMap(control => {
+    if (isDeferredNewEmojiShowControl(control)) return [];
     const variable = variables.get(control.id)!;
     const parent = control.parentId ? controls.find(item => item.id === control.parentId) : undefined;
     const parentTabSlot = parent && isNewEmojiTabsControl(parent) ? getControlTabSlot(control, parent) : undefined;
@@ -607,10 +639,10 @@ function generateNewEmojiMainCpp(
       if (pages.length > 0) {
         const pageIdsVariable = `${variable}_page_ids`;
         const pageIdsExpression = pages.map(page => `std::to_string(${page.variable})`).join(' + "|" + ');
-        pageLines.push(`    std::string ${pageIdsVariable} = ${pageIdsExpression};`);
-        pageLines.push(`    EU_SetTabsPageElements(g_newEmojiWindow, ${variable}, reinterpret_cast<const unsigned char*>(${pageIdsVariable}.data()), static_cast<int>(${pageIdsVariable}.size()));`);
+        deferredTabPageSetupLines.push(`    std::string ${pageIdsVariable} = ${pageIdsExpression};`);
+        deferredTabPageSetupLines.push(`    EU_SetTabsPageElements(g_newEmojiWindow, ${variable}, reinterpret_cast<const unsigned char*>(${pageIdsVariable}.data()), static_cast<int>(${pageIdsVariable}.size()));`);
         if (control.visibility === 'Collapsed') {
-          pages.forEach(page => pageLines.push(`    EU_SetElementVisible(g_newEmojiWindow, ${page.variable}, 0);`));
+          pages.forEach(page => deferredTabPageSetupLines.push(`    EU_SetElementVisible(g_newEmojiWindow, ${page.variable}, 0);`));
         }
       }
     }
@@ -658,6 +690,225 @@ function generateNewEmojiMainCpp(
   const iconCleanup = iconPath
     ? `    if (windowLargeIcon) DestroyIcon(windowLargeIcon);\n    if (windowSmallIcon && windowSmallIcon != windowLargeIcon) DestroyIcon(windowSmallIcon);`
     : '';
+  const sourceClass = findLingCppClassForWindow(program, window);
+  const webSocketHandlerMethods = (webSocketClientRuntime || webSocketServerRuntime || httpServerRuntime || httpClientRuntime)
+    ? Array.from(new Map((sourceClass?.methods || [])
+      .filter(method => method.parameters.length === 0)
+      .map(method => [method.name, method])).values())
+    : [];
+  const webSocketHandlerDeclarations = webSocketHandlerMethods.map(method => (
+    `static ${toCppType(method.returnType, 'return', enabledModules, program.dataTypes)} ${toCppIdentifier(method.name)}();`
+  )).join('\n');
+  const webSocketHandlerDefinitions = webSocketHandlerMethods.map(method => {
+    const returnType = toCppType(method.returnType, 'return', enabledModules, program.dataTypes);
+    const body = generateNewEmojiMethodBody(method, enabledModules, program.dataTypes);
+    const fallback = defaultReturnStatement(returnType, program.dataTypes);
+    const statements = [body, fallback ? `    ${fallback}` : ''].filter(Boolean).join('\n') || '    // 空事件处理器。';
+    return `static ${returnType} ${toCppIdentifier(method.name)}() {\n${statements}\n}`;
+  }).join('\n\n');
+  const webSocketDispatchCases = webSocketHandlerMethods.map(method => (
+    `    if (callback == L"${escapeWideString(method.name)}") { ${toCppIdentifier(method.name)}(); return; }`
+  )).join('\n');
+  const httpClientIntegration = httpClientRuntime ? `
+static constexpr UINT WM_LINGBUILDER_NE_HTTP_CLIENT_EVENT = WM_APP + 0x55;
+static HWND g_httpClientEventWindow = nullptr;
+static std::wstring g_httpClientReturnText;
+static void LB_NE_DispatchHttpClientEvent(const wchar_t* handler);
+static LingHttpClientRuntime g_httpClientRuntime([](long long eventId) {
+    return g_httpClientEventWindow && PostMessageW(g_httpClientEventWindow, WM_LINGBUILDER_NE_HTTP_CLIENT_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE;
+});
+
+${httpClientGlobalMethods}
+
+static void LB_NE_DispatchHttpClientEvent(const wchar_t* handler) {
+    const std::wstring callback = handler ? handler : L"";
+${webSocketDispatchCases || '    (void)callback;'}
+    调试输出(L"HTTP 客户端完成处理器未绑定到中文处理器：", callback);
+}
+
+static LRESULT CALLBACK LB_NE_HttpClientEventWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_LINGBUILDER_NE_HTTP_CLIENT_EVENT) {
+        g_httpClientRuntime.DispatchEvent(static_cast<long long>(wParam), [](const wchar_t* handler) { LB_NE_DispatchHttpClientEvent(handler); });
+        return 0;
+    }
+    return DefWindowProcW(hwnd, message, wParam, lParam);
+}
+
+static HWND LB_NE_CreateHttpClientEventWindow() {
+    const wchar_t* className = L"LingBuilder.NewEmoji.HttpClientEventWindow";
+    WNDCLASSEXW windowClass = {};
+    windowClass.cbSize = sizeof(windowClass);
+    windowClass.hInstance = GetModuleHandleW(nullptr);
+    windowClass.lpfnWndProc = LB_NE_HttpClientEventWindowProc;
+    windowClass.lpszClassName = className;
+    if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return nullptr;
+    return CreateWindowExW(0, className, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, windowClass.hInstance, nullptr);
+}
+` : '';
+  const httpClientEventWindowSetup = httpClientRuntime ? `    g_httpClientEventWindow = LB_NE_CreateHttpClientEventWindow();
+    if (!g_httpClientEventWindow) {
+        MessageBoxW(g_newEmojiWindow, L"HTTP 客户端事件窗口创建失败。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
+        NE_销毁窗口(g_newEmojiWindow);
+        g_newEmojiWindow = nullptr;
+        LB_NE_ShutdownFbro();
+${uiaCleanupLine}
+        if (SUCCEEDED(comResult)) CoUninitialize();
+        return 7;
+    }` : '';
+  const httpClientCleanup = httpClientRuntime
+    ? '    g_httpClientRuntime.Shutdown();\n    if (g_httpClientEventWindow) { DestroyWindow(g_httpClientEventWindow); g_httpClientEventWindow = nullptr; }'
+    : '';
+  const newEmojiWindowMembers = (sourceClass?.members || [])
+    .map(member => `static ${formatCppVariableDeclaration(member, enabledModules, '', program.dataTypes)}`)
+    .join('\n');
+  const webSocketClientIntegration = webSocketClientRuntime ? `
+static constexpr UINT WM_LINGBUILDER_NE_WS_CLIENT_EVENT = WM_APP + 0x54;
+static HWND g_wsClientEventWindow = nullptr;
+static std::wstring g_wsClientReturnText;
+static void LB_NE_DispatchWebSocketClientEvent(const wchar_t* handler);
+static LingWebSocketClientRuntime g_wsClientRuntime([](long long eventId) {
+    return g_wsClientEventWindow && PostMessageW(g_wsClientEventWindow, WM_LINGBUILDER_NE_WS_CLIENT_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE;
+});
+
+${webSocketClientGlobalMethods}
+
+static void LB_NE_DispatchWebSocketClientEvent(const wchar_t* handler) {
+    const std::wstring callback = handler ? handler : L"";
+${webSocketDispatchCases || '    (void)callback;'}
+    调试输出(L"WebSocket 客户端事件未绑定到中文处理器：", callback);
+}
+
+static LRESULT CALLBACK LB_NE_WebSocketClientEventWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_LINGBUILDER_NE_WS_CLIENT_EVENT) {
+        g_wsClientRuntime.DispatchEvent(static_cast<long long>(wParam), [](const wchar_t* handler) { LB_NE_DispatchWebSocketClientEvent(handler); });
+        return 0;
+    }
+    return DefWindowProcW(hwnd, message, wParam, lParam);
+}
+
+static HWND LB_NE_CreateWebSocketClientEventWindow() {
+    const wchar_t* className = L"LingBuilder.NewEmoji.WebSocketClientEventWindow";
+    WNDCLASSEXW windowClass = {};
+    windowClass.cbSize = sizeof(windowClass);
+    windowClass.hInstance = GetModuleHandleW(nullptr);
+    windowClass.lpfnWndProc = LB_NE_WebSocketClientEventWindowProc;
+    windowClass.lpszClassName = className;
+    if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return nullptr;
+    return CreateWindowExW(0, className, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, windowClass.hInstance, nullptr);
+}
+` : '';
+  const webSocketClientEventWindowSetup = webSocketClientRuntime ? `    g_wsClientEventWindow = LB_NE_CreateWebSocketClientEventWindow();
+    if (!g_wsClientEventWindow) {
+        MessageBoxW(g_newEmojiWindow, L"WebSocket 客户端事件窗口创建失败。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
+        NE_销毁窗口(g_newEmojiWindow);
+        g_newEmojiWindow = nullptr;
+        LB_NE_ShutdownFbro();
+${uiaCleanupLine}
+        if (SUCCEEDED(comResult)) CoUninitialize();
+        return 6;
+    }` : '';
+  const webSocketClientCleanup = webSocketClientRuntime
+    ? '    g_wsClientRuntime.Shutdown();\n    if (g_wsClientEventWindow) { DestroyWindow(g_wsClientEventWindow); g_wsClientEventWindow = nullptr; }'
+    : '';
+  const webSocketServerIntegration = webSocketServerRuntime ? `
+static constexpr UINT WM_LINGBUILDER_NE_WSS_EVENT = WM_APP + 0x52;
+static HWND g_wssEventWindow = nullptr;
+static std::wstring g_wssReturnText;
+static void LB_NE_DispatchWebSocketServerEvent(const wchar_t* handler);
+static LingWebSocketServerRuntime g_wssRuntime([](long long eventId) {
+    return g_wssEventWindow && PostMessageW(g_wssEventWindow, WM_LINGBUILDER_NE_WSS_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE;
+});
+
+${webSocketServerGlobalMethods}
+
+static void LB_NE_DispatchWebSocketServerEvent(const wchar_t* handler) {
+    const std::wstring callback = handler ? handler : L"";
+${webSocketDispatchCases || '    (void)callback;'}
+    调试输出(L"WebSocket 服务端事件未绑定到中文处理器：", callback);
+}
+
+static LRESULT CALLBACK LB_NE_WebSocketEventWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_LINGBUILDER_NE_WSS_EVENT) {
+        g_wssRuntime.DispatchEvent(static_cast<long long>(wParam), [](const wchar_t* handler) {
+            LB_NE_DispatchWebSocketServerEvent(handler);
+        });
+        return 0;
+    }
+    return DefWindowProcW(hwnd, message, wParam, lParam);
+}
+
+static HWND LB_NE_CreateWebSocketEventWindow() {
+    const wchar_t* className = L"LingBuilder.NewEmoji.WebSocketEventWindow";
+    WNDCLASSEXW windowClass = {};
+    windowClass.cbSize = sizeof(windowClass);
+    windowClass.hInstance = GetModuleHandleW(nullptr);
+    windowClass.lpfnWndProc = LB_NE_WebSocketEventWindowProc;
+    windowClass.lpszClassName = className;
+    if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return nullptr;
+    return CreateWindowExW(0, className, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, windowClass.hInstance, nullptr);
+}
+` : '';
+  const webSocketEventWindowSetup = webSocketServerRuntime ? `    g_wssEventWindow = LB_NE_CreateWebSocketEventWindow();
+    if (!g_wssEventWindow) {
+        MessageBoxW(g_newEmojiWindow, L"WebSocket 服务端事件窗口创建失败。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
+        NE_销毁窗口(g_newEmojiWindow);
+        g_newEmojiWindow = nullptr;
+        LB_NE_ShutdownFbro();
+${uiaCleanupLine}
+        if (SUCCEEDED(comResult)) CoUninitialize();
+        return 4;
+    }` : '';
+  const webSocketCleanup = webSocketServerRuntime
+    ? '    g_wssRuntime.Shutdown();\n    if (g_wssEventWindow) { DestroyWindow(g_wssEventWindow); g_wssEventWindow = nullptr; }'
+    : '';
+  const httpServerIntegration = httpServerRuntime ? `
+static constexpr UINT WM_LINGBUILDER_NE_HTTP_SERVER_REQUEST = WM_APP + 0x53;
+static HWND g_httpServerEventWindow = nullptr;
+static std::wstring g_httpServerReturnText;
+static LingHttpServerRuntime g_httpServerRuntime([](long long requestId) {
+    return g_httpServerEventWindow && PostMessageW(g_httpServerEventWindow, WM_LINGBUILDER_NE_HTTP_SERVER_REQUEST, static_cast<WPARAM>(requestId), 0) != FALSE;
+});
+
+${httpServerGlobalMethods}
+
+static void LB_NE_DispatchHttpServerRequest(const wchar_t* handler) {
+    const std::wstring callback = handler ? handler : L"";
+${webSocketDispatchCases || '    (void)callback;'}
+    调试输出(L"HTTP 服务端请求处理器未绑定：", callback);
+}
+
+static LRESULT CALLBACK LB_NE_HttpServerEventWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (message == WM_LINGBUILDER_NE_HTTP_SERVER_REQUEST) {
+        g_httpServerRuntime.DispatchRequest(static_cast<long long>(wParam), [](const wchar_t* handler) { LB_NE_DispatchHttpServerRequest(handler); });
+        return 0;
+    }
+    return DefWindowProcW(hwnd, message, wParam, lParam);
+}
+
+static HWND LB_NE_CreateHttpServerEventWindow() {
+    const wchar_t* className = L"LingBuilder.NewEmoji.HttpServerEventWindow";
+    WNDCLASSEXW windowClass = {};
+    windowClass.cbSize = sizeof(windowClass);
+    windowClass.hInstance = GetModuleHandleW(nullptr);
+    windowClass.lpfnWndProc = LB_NE_HttpServerEventWindowProc;
+    windowClass.lpszClassName = className;
+    if (!RegisterClassExW(&windowClass) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return nullptr;
+    return CreateWindowExW(0, className, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, windowClass.hInstance, nullptr);
+}
+` : '';
+  const httpServerEventWindowSetup = httpServerRuntime ? `    g_httpServerEventWindow = LB_NE_CreateHttpServerEventWindow();
+    if (!g_httpServerEventWindow) {
+        MessageBoxW(g_newEmojiWindow, L"HTTP 服务端事件窗口创建失败。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
+        NE_销毁窗口(g_newEmojiWindow);
+        g_newEmojiWindow = nullptr;
+        LB_NE_ShutdownFbro();
+${uiaCleanupLine}
+        if (SUCCEEDED(comResult)) CoUninitialize();
+        return 5;
+    }` : '';
+  const httpServerCleanup = httpServerRuntime
+    ? '    g_httpServerRuntime.Shutdown();\n    if (g_httpServerEventWindow) { DestroyWindow(g_httpServerEventWindow); g_httpServerEventWindow = nullptr; }'
+    : '';
 
   return `#ifndef UNICODE
 #define UNICODE
@@ -698,6 +949,7 @@ function generateNewEmojiMainCpp(
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <climits>
 #include <cmath>
 #include <cctype>
@@ -731,6 +983,9 @@ function generateNewEmojiMainCpp(
 #include <vector>
 #include "new_emoji_bridge.h"
 #include "exports.h"
+#ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
+#endif
 ${modulePreamble}
 #if defined(LINGBUILDER_FBRO_MODULE) && __has_include(<LingBuilderFbroBridge.h>)
 #include <LingBuilderFbroBridge.h>
@@ -758,7 +1013,31 @@ ${builtinLibraryRuntime}
 
 ${projectGlobalsDefinition}
 
+${httpClientRuntime}
+
+${httpServerRuntime}
+
+${webSocketClientRuntime}
+
+${webSocketServerRuntime}
+
 static HWND g_newEmojiWindow = nullptr;
+
+static void EnableNewEmojiDpiAwareness() {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (!user32) return;
+    using SetProcessDpiAwarenessContextProc = BOOL (WINAPI*)(DPI_AWARENESS_CONTEXT);
+    auto setDpiAwarenessContext = reinterpret_cast<SetProcessDpiAwarenessContextProc>(
+        GetProcAddress(user32, "SetProcessDpiAwarenessContext")
+    );
+    if (setDpiAwarenessContext && setDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)) return;
+    using SetProcessDPIAwareProc = BOOL (WINAPI*)();
+    auto setProcessDpiAware = reinterpret_cast<SetProcessDPIAwareProc>(
+        GetProcAddress(user32, "SetProcessDPIAware")
+    );
+    if (setProcessDpiAware) setProcessDpiAware();
+}
+
 struct LB_NE_ElementRef {
     int id = 0;
     std::wstring type;
@@ -1078,12 +1357,32 @@ ${generateNewEmojiFbroRuntime(fbroModuleEnabled, fbroControls, program, enabledM
 
 ${newEmojiFunctionLibraries}
 
+${httpClientGlobalMethodDeclarations}
+
+${webSocketClientGlobalMethodDeclarations}
+
+${webSocketServerGlobalMethodDeclarations}
+
+${webSocketHandlerDeclarations}
+
+${httpClientIntegration}
+
+${httpServerIntegration}
+
+${webSocketClientIntegration}
+
+${webSocketServerIntegration}
+
+${newEmojiWindowMembers}
+
+${webSocketHandlerDefinitions}
+
 ${catalogEventCallbackBlocks.join('\n\n')}
 
 ${uploadCallbackBlocks.join('\n\n')}
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
-    SetProcessDPIAware();
+    EnableNewEmojiDpiAwareness();
     const HRESULT comResult = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 ${fbroModuleEnabled ? `    if (!LB_NE_InitializeFbro()) {
         MessageBoxW(nullptr, L"FBro 初始化失败：请检查 CEF 135 x64 运行时和 LingBuilderFbroBridge.dll。", L"LingBuilder 构建错误", MB_OK | MB_ICONERROR);
@@ -1100,12 +1399,21 @@ ${uiaCleanupLine}
         if (SUCCEEDED(comResult)) CoUninitialize();
         return 2;
     }
+${webSocketClientEventWindowSetup}
+${httpClientEventWindowSetup}
+${webSocketEventWindowSetup}
+${httpServerEventWindowSetup}
 ${iconSetup}
 ${createLines.join('\n')}
 ${fbroCreateLines.join('\n')}
+${deferredTabPageSetupLines.join('\n')}
 ${initialFocusLine}
 ${createdBody}
     if (!g_newEmojiWindow) {
+${httpClientCleanup}
+${httpServerCleanup}
+${webSocketClientCleanup}
+${webSocketCleanup}
         LB_NE_ShutdownFbro();
 ${uiaCleanupLine}
         if (SUCCEEDED(comResult)) CoUninitialize();
@@ -1113,6 +1421,10 @@ ${uiaCleanupLine}
     }
     NE_显示并激活窗口(g_newEmojiWindow);
     int exitCode = NE_运行消息循环();
+${httpClientCleanup}
+${httpServerCleanup}
+${webSocketClientCleanup}
+${webSocketCleanup}
     LB_NE_ShutdownFbro();
 ${iconCleanup}
 ${uiaCleanupLine}
@@ -2530,18 +2842,21 @@ function orderNewEmojiControls(controls: LingControl[]): LingControl[] {
 }
 
 function getNewEmojiTabsContentBox(control: LingControl): { x: number; y: number; width: number; height: number } {
+  const width = Math.max(1, control.width);
+  const height = Math.max(1, control.height);
+  if (control.properties?.headerVisible === false) return { x: 0, y: 0, width, height };
   const position = Number(control.properties?.position ?? 0);
   const vertical = position === 1 || position === 3;
   if (vertical) {
     const headerWidth = Math.max(120, Math.min(190, control.width * 0.32));
     return position === 1
-      ? { x: 0, y: 0, width: Math.max(1, control.width - headerWidth), height: Math.max(1, control.height) }
-      : { x: headerWidth, y: 0, width: Math.max(1, control.width - headerWidth), height: Math.max(1, control.height) };
+      ? { x: 0, y: 0, width: Math.max(1, width - headerWidth), height }
+      : { x: headerWidth, y: 0, width: Math.max(1, width - headerWidth), height };
   }
   const headerHeight = Math.max(38, Math.min(52, control.height * 0.28));
   return position === 2
-    ? { x: 0, y: 0, width: Math.max(1, control.width), height: Math.max(1, control.height - headerHeight) }
-    : { x: 0, y: headerHeight, width: Math.max(1, control.width), height: Math.max(1, control.height - headerHeight) };
+    ? { x: 0, y: 0, width, height: Math.max(1, height - headerHeight) }
+    : { x: 0, y: headerHeight, width, height: Math.max(1, height - headerHeight) };
 }
 
 function newEmojiTabPageKey(controlId: string, pageId: string): string {
@@ -2596,16 +2911,20 @@ function generateNewEmojiCatalogCreateCall(
 
     const value = readNewEmojiCatalogProperty(control, propertyKey);
     if (typeof value === 'boolean') return value ? '1' : '0';
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return /\b(?:float|double)\b/u.test(parameter.type) ? `${value}` : `${Math.trunc(value)}`;
-    }
-    if (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/u.test(value.trim())) {
-      const numericValue = Number(value);
+    const numericValue = scaleNewEmojiRuntimeValue(value, parameter);
+    if (numericValue !== undefined) {
       return /\b(?:float|double)\b/u.test(parameter.type) ? `${numericValue}` : `${Math.trunc(numericValue)}`;
     }
     return '0';
   });
   return { call: `${runtime.createCommand}(${args.join(', ')})`, beforeLines };
+}
+
+function isDeferredNewEmojiShowControl(control: LingControl): boolean {
+  if (control.visibility !== 'Collapsed') return false;
+  return control.designerType?.endsWith('/Notification') === true
+    || control.designerType?.endsWith('/Message') === true
+    || control.designerType?.endsWith('/MessageBox') === true;
 }
 
 function getNewEmojiCatalogStringValue(control: LingControl, key: string): string {
@@ -2618,6 +2937,20 @@ function getNewEmojiCatalogStringValue(control: LingControl, key: string): strin
   return '';
 }
 
+function scaleNewEmojiRuntimeValue(value: unknown, parameter: ModuleDesignerRuntimeParameter): number | undefined {
+  const numeric = typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : typeof value === 'string' && /^-?\d+(?:\.\d+)?$/u.test(value.trim())
+      ? Number(value)
+      : undefined;
+  if (numeric === undefined) return undefined;
+  const multiplier = typeof parameter.valueScale === 'number' && Number.isFinite(parameter.valueScale)
+    ? parameter.valueScale
+    : 1;
+  const scaled = numeric * multiplier;
+  return Number.isFinite(scaled) ? scaled : undefined;
+}
+
 function readNewEmojiCatalogProperty(control: LingControl, key: string): unknown {
   if (isNewEmojiTabsControl(control)) {
     if (key === 'items') return getTabControlPages(control).map(page => page.title);
@@ -2628,6 +2961,8 @@ function readNewEmojiCatalogProperty(control: LingControl, key: string): unknown
       const selectedPage = getSelectedTabPageIndex(control);
       return selectedPage;
     }
+    // Older New_Emoji projects predate this property and therefore default to visible.
+    if (key === 'headerVisible') return control.properties?.headerVisible !== false;
     if (key === 'contentVisible') return true;
   }
   if (key === 'content') return control.content;
@@ -2635,7 +2970,15 @@ function readNewEmojiCatalogProperty(control: LingControl, key: string): unknown
   if (key === 'background') return control.background;
   if (key === 'visible') return control.visibility !== 'Collapsed';
   if (key === 'enabled') return control.isEnabled;
-  if (Object.prototype.hasOwnProperty.call(control.properties || {}, key)) return control.properties?.[key];
+  if (Object.prototype.hasOwnProperty.call(control.properties || {}, key)) {
+    const value = control.properties?.[key];
+    if (!isEmptyCollection(value) || !isNewEmojiTableDataKey(control, key)) return value;
+    return getNewEmojiTableDataFallback(control, key) ?? value;
+  }
+  if (isNewEmojiTableDataKey(control, key)) {
+    const fallback = getNewEmojiTableDataFallback(control, key);
+    if (fallback !== undefined) return fallback;
+  }
   const aliases: Record<string, string> = {
     selected: 'selectedIndex',
     currentIndex: 'selectedIndex',
@@ -2648,6 +2991,40 @@ function readNewEmojiCatalogProperty(control: LingControl, key: string): unknown
   };
   const alias = aliases[key];
   return alias ? control.properties?.[alias] : undefined;
+}
+
+function isEmptyCollection(value: unknown): boolean {
+  return Array.isArray(value) && value.length === 0;
+}
+
+function isNewEmojiTableDataKey(control: LingControl, key: string): boolean {
+  return control.designerType?.endsWith('/Table') === true
+    && (key === 'columns' || key === 'rows' || key === 'tableColumnsEx' || key === 'tableRowsEx');
+}
+
+function getNewEmojiTableDataFallback(control: LingControl, key: string): unknown {
+  const properties = control.properties || {};
+  const rawColumns = firstNonEmptyCollection(properties.dataGridColumns, properties.tableColumnsEx, properties.columns);
+  const rawRows = firstNonEmptyCollection(properties.dataGridRows, properties.tableRowsEx, properties.rows, properties.items);
+  if (rawColumns === undefined && rawRows === undefined) return undefined;
+  if (![rawColumns, rawRows].some(value => Array.isArray(value) && value.length > 0)) return undefined;
+
+  const model = normalizeDataGridModel({
+    columns: rawColumns as DataGridColumn[] | undefined,
+    rows: rawRows as DataGridRow[] | undefined
+  });
+  if (key === 'columns') return model.columns.map(column => column.title);
+  if (key === 'rows') return model.rows.map(row => model.columns.map(column => row.cells[column.id] === null ? '' : String(row.cells[column.id] ?? '')).join('\t'));
+  if (key === 'tableColumnsEx') return rawColumns === undefined ? model.columns : rawColumns;
+  if (key === 'tableRowsEx') return rawRows === undefined ? model.rows : rawRows;
+  return undefined;
+}
+
+function firstNonEmptyCollection(...values: unknown[]): unknown[] | undefined {
+  for (const value of values) {
+    if (Array.isArray(value) && value.length > 0) return value;
+  }
+  return values.some(value => Array.isArray(value)) ? [] : undefined;
 }
 
 function getSelectedTabPageIndex(control: LingControl): number {
@@ -2664,7 +3041,23 @@ function hasNonEmptyNewEmojiListValue(value: unknown): boolean {
   return value !== undefined && value !== null && String(value).trim().length > 0;
 }
 
+function hasStructuredNewEmojiTableData(control: LingControl, command: string): boolean {
+  if (!control.designerType?.endsWith('/Table')) return false;
+  const propertyKey = command === 'EU_SetTableColumnsEx'
+    ? 'tableColumnsEx'
+    : command === 'EU_SetTableRowsEx'
+      ? 'tableRowsEx'
+      : '';
+  if (!propertyKey) return false;
+  const value = readNewEmojiCatalogProperty(control, propertyKey);
+  return Array.isArray(value) && value.some(item => item !== null && typeof item === 'object');
+}
+
 function shouldGenerateNewEmojiCatalogPropertySetter(control: LingControl, command: string): boolean {
+  // new_emoji Table 的 Ex setter 当前只声明为 UTF-8 字节集/字符串列表，
+  // 没有 JSON ABI。结构化编辑器的数据先由基础 columns/rows 安全渲染，
+  // 避免把内部行对象直接显示成 JSON 文本；旧字符串型 Ex 数据仍可调用。
+  if (hasStructuredNewEmojiTableData(control, command)) return false;
   if (!control.designerType?.endsWith('/ListBox')) return true;
   if (command === 'EU_SetListBoxItemsEx') {
     return hasNonEmptyNewEmojiListValue(readNewEmojiCatalogProperty(control, 'listBoxItemsEx'));
@@ -2723,8 +3116,8 @@ function generateNewEmojiCatalogPropertySetterCalls(
         return toNewEmojiColor(typeof value === 'string' ? value : 'transparent', 0x00000000);
       }
       if (typeof value === 'boolean') return value ? '1' : '0';
-      if (typeof value === 'number' && Number.isFinite(value)) return `${value}`;
-      if (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/u.test(value.trim())) return `${Number(value)}`;
+      const numericValue = scaleNewEmojiRuntimeValue(value, parameter);
+      if (numericValue !== undefined) return `${numericValue}`;
       return '0';
     });
     lines.push(`    ${setter.command}(${args.join(', ')});`);
@@ -2934,6 +3327,7 @@ function generateMainCpp(
   const mouseModuleEnabled = enabledModules.some(module => module.manifest.id === 'lingbuilder.input.mouse');
   const uiaCleanupLine = mouseModuleEnabled ? '    LB_UiaClear();' : '';
   const protobufRuntime = generateProtobufRuntime(enabledModules);
+  const httpClientRuntime = generateHttpClientRuntime(enabledModules);
   const builtinLibraryFragments = [
     generateStandardLibraryRuntime(enabledModules),
     generateSystemLibraryRuntime(enabledModules),
@@ -2942,9 +3336,36 @@ function generateMainCpp(
     generatePlatformAdvancedRuntime(enabledModules),
     protobufRuntime
   ].filter(Boolean);
-  const builtinLibraryCommonRuntime = builtinLibraryFragments.length > 0 ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
-  const builtinLibraryRuntime = builtinLibraryFragments.join('\n');
   const threadingRuntime = generateThreadingRuntime(enabledModules);
+  const httpServerRuntime = generateHttpServerRuntime(enabledModules);
+  const builtinLibraryCommonRuntime = (builtinLibraryFragments.length > 0 || httpServerRuntime || httpClientRuntime) ? BUILTIN_LIBRARY_COMMON_RUNTIME : '';
+  const builtinLibraryRuntime = builtinLibraryFragments.join('\n');
+  const httpClientWindowMethods = generateHttpClientWindowMethods(enabledModules);
+  const httpClientConstructorInitializer = httpClientRuntime
+    ? `,\n          httpClientRuntime_([this](long long eventId) { return hwnd_ && PostMessageW(hwnd_, WM_LINGBUILDER_HTTP_CLIENT_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE; })`
+    : '';
+  const httpClientWindowField = httpClientRuntime ? '    LingHttpClientRuntime httpClientRuntime_;\n    std::wstring httpClientReturnText_;' : '';
+  const httpClientShutdown = httpClientRuntime ? '        httpClientRuntime_.Shutdown();' : '';
+  const httpServerWindowMethods = generateHttpServerWindowMethods(enabledModules);
+  const httpServerConstructorInitializer = httpServerRuntime
+    ? `,\n          httpServerRuntime_([this](long long requestId) { return hwnd_ && PostMessageW(hwnd_, WM_LINGBUILDER_HTTP_SERVER_REQUEST, static_cast<WPARAM>(requestId), 0) != FALSE; })`
+    : '';
+  const httpServerWindowField = httpServerRuntime ? '    LingHttpServerRuntime httpServerRuntime_;\n    std::wstring httpServerReturnText_;' : '';
+  const httpServerShutdown = httpServerRuntime ? '        httpServerRuntime_.Shutdown();' : '';
+  const webSocketClientRuntime = generateWebSocketClientRuntime(enabledModules);
+  const webSocketClientWindowMethods = generateWebSocketClientWindowMethods(enabledModules);
+  const webSocketClientConstructorInitializer = webSocketClientRuntime
+    ? `,\n          wsClientRuntime_([this](long long eventId) { return hwnd_ && PostMessageW(hwnd_, WM_LINGBUILDER_WS_CLIENT_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE; })`
+    : '';
+  const webSocketClientWindowField = webSocketClientRuntime ? '    LingWebSocketClientRuntime wsClientRuntime_;\n    std::wstring wsClientReturnText_;' : '';
+  const webSocketClientShutdown = webSocketClientRuntime ? '        wsClientRuntime_.Shutdown();' : '';
+  const webSocketServerRuntime = generateWebSocketServerRuntime(enabledModules);
+  const webSocketServerWindowMethods = generateWebSocketServerWindowMethods(enabledModules);
+  const webSocketServerConstructorInitializer = webSocketServerRuntime
+    ? `,\n          wssRuntime_([this](long long eventId) { return hwnd_ && PostMessageW(hwnd_, WM_LINGBUILDER_WSS_EVENT, static_cast<WPARAM>(eventId), 0) != FALSE; })`
+    : '';
+  const webSocketServerWindowField = webSocketServerRuntime ? '    LingWebSocketServerRuntime wssRuntime_;' : '';
+  const webSocketServerShutdown = webSocketServerRuntime ? '        wssRuntime_.Shutdown();' : '';
   const moduleFeatureDefines = [
     enabledModules.some(module => module.manifest.id === 'lingbuilder.edgeview')
       ? `#ifndef LINGBUILDER_EDGEVIEW_MODULE\n#define LINGBUILDER_EDGEVIEW_MODULE\n#endif\n#define LINGBUILDER_EDGEVIEW_REQUIRED_RUNTIME_MAJOR ${collectEdgeViewApiUsage(program.source).minimumRuntimeMajor}`
@@ -3381,6 +3802,10 @@ static constexpr UINT WM_LINGBUILDER_THREAD_UI_UPDATE = WM_APP + 0x4D;
 static constexpr UINT WM_LINGBUILDER_CEF_EVENT = WM_APP + 0x4E;
 static constexpr UINT WM_LINGBUILDER_WEB_ASYNC_COMPLETE = WM_APP + 0x4F;
 static constexpr UINT WM_LINGBUILDER_FBRO_EVENT = WM_APP + 0x50;
+static constexpr UINT WM_LINGBUILDER_WSS_EVENT = WM_APP + 0x52;
+static constexpr UINT WM_LINGBUILDER_HTTP_SERVER_REQUEST = WM_APP + 0x53;
+static constexpr UINT WM_LINGBUILDER_WS_CLIENT_EVENT = WM_APP + 0x54;
+static constexpr UINT WM_LINGBUILDER_HTTP_CLIENT_EVENT = WM_APP + 0x55;
 
 struct LingCefEventPacket {
     int controlId = 0;
@@ -4511,6 +4936,14 @@ ${builtinLibraryRuntime}
 
 ${threadingRuntime}
 
+${httpClientRuntime}
+
+${httpServerRuntime}
+
+${webSocketClientRuntime}
+
+${webSocketServerRuntime}
+
 class LingWindowBase {
 public:
     explicit LingWindowBase(const WindowSpec& spec)
@@ -4520,15 +4953,7 @@ public:
           menuBrush_(nullptr),
           menuFont_(nullptr),
           dpi_(96),
-          wsSession_(nullptr),
-          wsConnect_(nullptr),
-          wsRequest_(nullptr),
-          wsSocket_(nullptr),
-          socketsStarted_(false),
-          httpListenSocket_(INVALID_SOCKET),
-          httpClientSocket_(INVALID_SOCKET),
-          wsServerListenSocket_(INVALID_SOCKET),
-          wsServerClientSocket_(INVALID_SOCKET) {}
+          socketsStarted_(false)${httpClientConstructorInitializer}${webSocketClientConstructorInitializer}${webSocketServerConstructorInitializer}${httpServerConstructorInitializer} {}
 
 ${functionLibraryMethods}
 
@@ -4544,9 +4969,10 @@ ${functionLibraryMethods}
             { std::lock_guard<std::mutex> lock(asyncWebThreadsMutex_); tasks.swap(asyncWebThreads_); }
             for (auto& task : tasks) if (task.joinable()) task.join();
         }
-        WS_关闭();
-        HTTP_关闭服务();
-        WSS_关闭服务();
+${httpClientShutdown}
+${httpServerShutdown}
+${webSocketClientShutdown}
+${webSocketServerShutdown}
         EdgeView_关闭();
         FBro_关闭全部();
         if (menuFont_) {
@@ -4691,18 +5117,12 @@ protected:
     std::vector<std::wstring> droppedFiles_;
     std::map<std::wstring, std::vector<std::wstring>> fileDialogFiles_;
     std::map<std::wstring, std::wstring> lastMenuItems_;
-    HINTERNET wsSession_;
-    HINTERNET wsConnect_;
-    HINTERNET wsRequest_;
-    HINTERNET wsSocket_;
-    std::wstring wsLastMessage_;
     bool socketsStarted_;
-    SOCKET httpListenSocket_;
-    SOCKET httpClientSocket_;
-    SOCKET wsServerListenSocket_;
-    SOCKET wsServerClientSocket_;
-    std::wstring httpLastRequest_;
-    std::wstring wssLastMessage_;
+${httpClientWindowField}
+${httpServerWindowField}
+${webSocketClientWindowField}
+${webSocketServerWindowField}
+    std::wstring wssReturnText_;
     FINDREPLACEW findReplace_ = {};
     wchar_t findBuffer_[256] = {};
     wchar_t replaceBuffer_[256] = {};
@@ -4885,6 +5305,24 @@ protected:
 
     virtual void DispatchAsyncWebEvent(const wchar_t* handler) {
         std::wstring message = L"网页异步访问完成处理器未绑定：";
+        message += handler ? handler : L"";
+        调试输出(message.c_str());
+    }
+
+    virtual void DispatchHttpClientEvent(const wchar_t* handler) {
+        std::wstring message = L"HTTP 客户端完成处理器未绑定到中文处理器：";
+        message += handler ? handler : L"";
+        调试输出(message.c_str());
+    }
+
+    virtual void DispatchWebSocketServerEvent(const wchar_t* handler) {
+        std::wstring message = L"WebSocket 服务端事件未绑定到中文处理器：";
+        message += handler ? handler : L"";
+        调试输出(message.c_str());
+    }
+
+    virtual void DispatchWebSocketClientEvent(const wchar_t* handler) {
+        std::wstring message = L"WebSocket 客户端事件未绑定到中文处理器：";
         message += handler ? handler : L"";
         调试输出(message.c_str());
     }
@@ -10249,338 +10687,13 @@ ${generateFbroVipIndividualRuntime(false)}
     }
 #endif
 
-    int WS_连接(const wchar_t* url) {
-        WS_关闭();
-        if (!url || !url[0]) {
-            调试输出(L"WebSocket 连接失败：地址为空。");
-            return 0;
-        }
+${httpClientWindowMethods}
 
-        std::wstring normalizedUrl = url;
-        if (normalizedUrl.rfind(L"ws://", 0) == 0) {
-            normalizedUrl.replace(0, 5, L"http://");
-        } else if (normalizedUrl.rfind(L"wss://", 0) == 0) {
-            normalizedUrl.replace(0, 6, L"https://");
-        }
+${webSocketClientWindowMethods}
 
-        URL_COMPONENTSW parts = {};
-        wchar_t host[256] = {};
-        wchar_t path[2048] = {};
-        parts.dwStructSize = sizeof(parts);
-        parts.lpszHostName = host;
-        parts.dwHostNameLength = static_cast<DWORD>(_countof(host));
-        parts.lpszUrlPath = path;
-        parts.dwUrlPathLength = static_cast<DWORD>(_countof(path));
+${httpServerWindowMethods}
 
-        if (!WinHttpCrackUrl(normalizedUrl.c_str(), 0, 0, &parts)) {
-            调试输出(L"WebSocket 连接失败：无法解析地址。");
-            return 0;
-        }
-
-        bool secure = parts.nScheme == INTERNET_SCHEME_HTTPS;
-        if (!(parts.nScheme == INTERNET_SCHEME_HTTP || parts.nScheme == INTERNET_SCHEME_HTTPS)) {
-            调试输出(L"WebSocket 连接失败：地址必须使用 ws:// 或 wss://。");
-            return 0;
-        }
-
-        wsSession_ = WinHttpOpen(L"LingBuilder WebSocket/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-        if (!wsSession_) return WS_报告网络错误(L"WebSocket 连接失败：无法创建 WinHTTP 会话。");
-
-        wsConnect_ = WinHttpConnect(wsSession_, host, parts.nPort, 0);
-        if (!wsConnect_) return WS_报告网络错误(L"WebSocket 连接失败：无法连接主机。");
-
-        const wchar_t* requestPath = path[0] ? path : L"/";
-        DWORD flags = secure ? WINHTTP_FLAG_SECURE : 0;
-        wsRequest_ = WinHttpOpenRequest(wsConnect_, L"GET", requestPath, nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, flags);
-        if (!wsRequest_) return WS_报告网络错误(L"WebSocket 连接失败：无法创建握手请求。");
-
-        if (!WinHttpSetOption(wsRequest_, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0)) {
-            return WS_报告网络错误(L"WebSocket 连接失败：无法启用升级握手。");
-        }
-        if (!WinHttpSendRequest(wsRequest_, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0)) {
-            return WS_报告网络错误(L"WebSocket 连接失败：发送握手请求失败。");
-        }
-        if (!WinHttpReceiveResponse(wsRequest_, nullptr)) {
-            return WS_报告网络错误(L"WebSocket 连接失败：服务端握手响应失败。");
-        }
-
-        wsSocket_ = WinHttpWebSocketCompleteUpgrade(wsRequest_, 0);
-        WinHttpCloseHandle(wsRequest_);
-        wsRequest_ = nullptr;
-        if (!wsSocket_) return WS_报告网络错误(L"WebSocket 连接失败：协议升级失败。");
-
-        调试输出(L"WebSocket 已连接。");
-        return 1;
-    }
-
-    int WS_发送文本(const wchar_t* text) {
-        if (!wsSocket_) {
-            调试输出(L"WebSocket 发送失败：尚未连接。");
-            return 0;
-        }
-        std::string utf8 = WideToUtf8(text ? text : L"");
-        DWORD result = WinHttpWebSocketSend(wsSocket_, WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE, utf8.empty() ? nullptr : utf8.data(), static_cast<DWORD>(utf8.size()));
-        if (result != ERROR_SUCCESS) {
-            SetLastError(result);
-            return WS_报告网络错误(L"WebSocket 发送失败。");
-        }
-        return 1;
-    }
-
-    const wchar_t* WS_接收文本() {
-        wsLastMessage_.clear();
-        if (!wsSocket_) {
-            调试输出(L"WebSocket 接收失败：尚未连接。");
-            return wsLastMessage_.c_str();
-        }
-
-        std::string bytes;
-        BYTE buffer[4096];
-        WINHTTP_WEB_SOCKET_BUFFER_TYPE bufferType = WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE;
-        DWORD bytesRead = 0;
-
-        while (true) {
-            DWORD result = WinHttpWebSocketReceive(wsSocket_, buffer, static_cast<DWORD>(sizeof(buffer)), &bytesRead, &bufferType);
-            if (result != ERROR_SUCCESS) {
-                SetLastError(result);
-                WS_报告网络错误(L"WebSocket 接收失败。");
-                return wsLastMessage_.c_str();
-            }
-
-            if (bufferType == WINHTTP_WEB_SOCKET_CLOSE_BUFFER_TYPE) {
-                调试输出(L"WebSocket 已收到关闭帧。");
-                WS_关闭();
-                return wsLastMessage_.c_str();
-            }
-
-            if (bytesRead > 0) bytes.append(reinterpret_cast<const char*>(buffer), bytesRead);
-            if (bufferType == WINHTTP_WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE || bufferType == WINHTTP_WEB_SOCKET_BINARY_MESSAGE_BUFFER_TYPE) break;
-        }
-
-        wsLastMessage_ = Utf8ToWide(bytes);
-        return wsLastMessage_.c_str();
-    }
-
-    int WS_接收到调试输出() {
-        const wchar_t* text = WS_接收文本();
-        if (!text || !text[0]) return 0;
-        调试输出(text);
-        return 1;
-    }
-
-    void WS_关闭() {
-        if (wsSocket_) {
-            WinHttpWebSocketClose(wsSocket_, WINHTTP_WEB_SOCKET_SUCCESS_CLOSE_STATUS, nullptr, 0);
-            WinHttpCloseHandle(wsSocket_);
-            wsSocket_ = nullptr;
-        }
-        if (wsRequest_) {
-            WinHttpCloseHandle(wsRequest_);
-            wsRequest_ = nullptr;
-        }
-        if (wsConnect_) {
-            WinHttpCloseHandle(wsConnect_);
-            wsConnect_ = nullptr;
-        }
-        if (wsSession_) {
-            WinHttpCloseHandle(wsSession_);
-            wsSession_ = nullptr;
-        }
-        wsLastMessage_.clear();
-    }
-
-    int HTTP_启动服务(int port) {
-        HTTP_关闭服务();
-        if (!EnsureSocketsStarted()) return 0;
-        httpListenSocket_ = CreateListenSocket(port, L"HTTP 服务端启动失败");
-        if (httpListenSocket_ == INVALID_SOCKET) return 0;
-        std::wstring message = L"HTTP 服务端已启动，端口：";
-        message += std::to_wstring(port);
-        调试输出(message.c_str());
-        return 1;
-    }
-
-    const wchar_t* HTTP_等待请求() {
-        httpLastRequest_.clear();
-        if (httpListenSocket_ == INVALID_SOCKET) {
-            调试输出(L"HTTP 等待请求失败：服务尚未启动。");
-            return httpLastRequest_.c_str();
-        }
-        CloseSocket(httpClientSocket_);
-        httpClientSocket_ = accept(httpListenSocket_, nullptr, nullptr);
-        if (httpClientSocket_ == INVALID_SOCKET) {
-            ReportSocketError(L"HTTP 等待请求失败。");
-            return httpLastRequest_.c_str();
-        }
-        httpLastRequest_ = Utf8ToWide(ReceiveHttpHeaders(httpClientSocket_));
-        return httpLastRequest_.c_str();
-    }
-
-    int HTTP_等待请求到调试输出() {
-        const wchar_t* request = HTTP_等待请求();
-        if (!request || !request[0]) return 0;
-        调试输出(request);
-        return 1;
-    }
-
-    int HTTP_回复文本(const wchar_t* text) {
-        if (httpClientSocket_ == INVALID_SOCKET) {
-            调试输出(L"HTTP 回复失败：当前没有已接入的请求。");
-            return 0;
-        }
-        std::string body = WideToUtf8(text ? text : L"");
-        std::ostringstream response;
-        response << "HTTP/1.1 200 OK\\r\\n"
-                 << "Content-Type: text/plain; charset=utf-8\\r\\n"
-                 << "Content-Length: " << body.size() << "\\r\\n"
-                 << "Connection: close\\r\\n\\r\\n"
-                 << body;
-        const std::string payload = response.str();
-        int ok = SendAll(httpClientSocket_, payload.data(), payload.size());
-        CloseSocket(httpClientSocket_);
-        return ok;
-    }
-
-    void HTTP_关闭服务() {
-        CloseSocket(httpClientSocket_);
-        CloseSocket(httpListenSocket_);
-        httpLastRequest_.clear();
-    }
-
-    int WSS_启动服务(int port) {
-        WSS_关闭服务();
-        if (!EnsureSocketsStarted()) return 0;
-        wsServerListenSocket_ = CreateListenSocket(port, L"WebSocket 服务端启动失败");
-        if (wsServerListenSocket_ == INVALID_SOCKET) return 0;
-        std::wstring message = L"WebSocket 服务端已启动，端口：";
-        message += std::to_wstring(port);
-        调试输出(message.c_str());
-        return 1;
-    }
-
-    int WSS_等待连接() {
-        if (wsServerListenSocket_ == INVALID_SOCKET) {
-            调试输出(L"WebSocket 服务端等待连接失败：服务尚未启动。");
-            return 0;
-        }
-        CloseSocket(wsServerClientSocket_);
-        wsServerClientSocket_ = accept(wsServerListenSocket_, nullptr, nullptr);
-        if (wsServerClientSocket_ == INVALID_SOCKET) {
-            ReportSocketError(L"WebSocket 服务端接入失败。");
-            return 0;
-        }
-
-        std::string request = ReceiveHttpHeaders(wsServerClientSocket_);
-        std::string key = ExtractHttpHeader(request, "sec-websocket-key");
-        if (key.empty()) {
-            调试输出(L"WebSocket 服务端握手失败：缺少 Sec-WebSocket-Key。");
-            CloseSocket(wsServerClientSocket_);
-            return 0;
-        }
-
-        std::string acceptKey = MakeWebSocketAcceptKey(key);
-        if (acceptKey.empty()) {
-            调试输出(L"WebSocket 服务端握手失败：无法生成握手密钥。");
-            CloseSocket(wsServerClientSocket_);
-            return 0;
-        }
-
-        std::string response =
-            "HTTP/1.1 101 Switching Protocols\\r\\n"
-            "Upgrade: websocket\\r\\n"
-            "Connection: Upgrade\\r\\n"
-            "Sec-WebSocket-Accept: " + acceptKey + "\\r\\n\\r\\n";
-        if (!SendAll(wsServerClientSocket_, response.data(), response.size())) {
-            CloseSocket(wsServerClientSocket_);
-            return 0;
-        }
-        调试输出(L"WebSocket 服务端已完成握手。");
-        return 1;
-    }
-
-    const wchar_t* WSS_接收文本() {
-        wssLastMessage_.clear();
-        if (wsServerClientSocket_ == INVALID_SOCKET) {
-            调试输出(L"WebSocket 服务端接收失败：当前没有客户端连接。");
-            return wssLastMessage_.c_str();
-        }
-
-        unsigned char header[2] = {};
-        if (!RecvExact(wsServerClientSocket_, reinterpret_cast<char*>(header), 2)) {
-            ReportSocketError(L"WebSocket 服务端读取帧失败。");
-            return wssLastMessage_.c_str();
-        }
-
-        const bool masked = (header[1] & 0x80) != 0;
-        uint64_t payloadLength = header[1] & 0x7f;
-        if (payloadLength == 126) {
-            unsigned char ext[2] = {};
-            if (!RecvExact(wsServerClientSocket_, reinterpret_cast<char*>(ext), 2)) return wssLastMessage_.c_str();
-            payloadLength = (static_cast<uint64_t>(ext[0]) << 8) | ext[1];
-        } else if (payloadLength == 127) {
-            unsigned char ext[8] = {};
-            if (!RecvExact(wsServerClientSocket_, reinterpret_cast<char*>(ext), 8)) return wssLastMessage_.c_str();
-            payloadLength = 0;
-            for (int i = 0; i < 8; ++i) payloadLength = (payloadLength << 8) | ext[i];
-        }
-        if (payloadLength > 1024 * 1024) {
-            调试输出(L"WebSocket 服务端接收失败：消息超过 1MB 限制。");
-            return wssLastMessage_.c_str();
-        }
-
-        unsigned char mask[4] = {};
-        if (masked && !RecvExact(wsServerClientSocket_, reinterpret_cast<char*>(mask), 4)) return wssLastMessage_.c_str();
-        std::string payload(static_cast<size_t>(payloadLength), '\\0');
-        if (payloadLength > 0 && !RecvExact(wsServerClientSocket_, payload.data(), static_cast<int>(payload.size()))) return wssLastMessage_.c_str();
-        if (masked) {
-            for (size_t i = 0; i < payload.size(); ++i) payload[i] = static_cast<char>(payload[i] ^ mask[i % 4]);
-        }
-
-        const unsigned char opcode = header[0] & 0x0f;
-        if (opcode == 0x8) {
-            调试输出(L"WebSocket 服务端已收到关闭帧。");
-            CloseSocket(wsServerClientSocket_);
-            return wssLastMessage_.c_str();
-        }
-        wssLastMessage_ = Utf8ToWide(payload);
-        return wssLastMessage_.c_str();
-    }
-
-    int WSS_接收到调试输出() {
-        const wchar_t* text = WSS_接收文本();
-        if (!text || !text[0]) return 0;
-        调试输出(text);
-        return 1;
-    }
-
-    int WSS_发送文本(const wchar_t* text) {
-        if (wsServerClientSocket_ == INVALID_SOCKET) {
-            调试输出(L"WebSocket 服务端发送失败：当前没有客户端连接。");
-            return 0;
-        }
-        std::string payload = WideToUtf8(text ? text : L"");
-        std::string frame;
-        frame.push_back(static_cast<char>(0x81));
-        if (payload.size() <= 125) {
-            frame.push_back(static_cast<char>(payload.size()));
-        } else if (payload.size() <= 65535) {
-            frame.push_back(static_cast<char>(126));
-            frame.push_back(static_cast<char>((payload.size() >> 8) & 0xff));
-            frame.push_back(static_cast<char>(payload.size() & 0xff));
-        } else {
-            frame.push_back(static_cast<char>(127));
-            uint64_t length = static_cast<uint64_t>(payload.size());
-            for (int i = 7; i >= 0; --i) frame.push_back(static_cast<char>((length >> (i * 8)) & 0xff));
-        }
-        frame += payload;
-        return SendAll(wsServerClientSocket_, frame.data(), frame.size());
-    }
-
-    void WSS_关闭服务() {
-        CloseSocket(wsServerClientSocket_);
-        CloseSocket(wsServerListenSocket_);
-        wssLastMessage_.clear();
-    }
+${webSocketServerWindowMethods}
 
     HWND 窗口_打开(const wchar_t* windowName, const wchar_t* placement = nullptr, int x = CW_USEDEFAULT, int y = CW_USEDEFAULT, bool hasCustomPosition = false) {
         HWND opened = OpenGeneratedWindowByName(windowName, SW_SHOWNORMAL, placement, x, y, hasCustomPosition);
@@ -11266,183 +11379,6 @@ private:
         }
         socketsStarted_ = true;
         return true;
-    }
-
-    SOCKET CreateListenSocket(int port, const wchar_t* errorPrefix) {
-        if (port <= 0 || port > 65535) {
-            调试输出(L"服务端启动失败：端口必须在 1 到 65535 之间。");
-            return INVALID_SOCKET;
-        }
-
-        SOCKET server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        if (server == INVALID_SOCKET) {
-            ReportSocketError(errorPrefix);
-            return INVALID_SOCKET;
-        }
-
-        u_long reuse = 1;
-        setsockopt(server, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char*>(&reuse), sizeof(reuse));
-
-        sockaddr_in address = {};
-        address.sin_family = AF_INET;
-        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        address.sin_port = htons(static_cast<u_short>(port));
-        if (bind(server, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == SOCKET_ERROR) {
-            ReportSocketError(errorPrefix);
-            closesocket(server);
-            return INVALID_SOCKET;
-        }
-        if (listen(server, SOMAXCONN) == SOCKET_ERROR) {
-            ReportSocketError(errorPrefix);
-            closesocket(server);
-            return INVALID_SOCKET;
-        }
-        return server;
-    }
-
-    void CloseSocket(SOCKET& value) {
-        if (value != INVALID_SOCKET) {
-            shutdown(value, SD_BOTH);
-            closesocket(value);
-            value = INVALID_SOCKET;
-        }
-    }
-
-    int ReportSocketError(const wchar_t* prefix) {
-        int error = WSAGetLastError();
-        std::wstring message = prefix ? prefix : L"网络服务操作失败。";
-        message += L" 错误码：";
-        message += std::to_wstring(error);
-        调试输出(message.c_str());
-        return 0;
-    }
-
-    int SendAll(SOCKET socketValue, const char* data, size_t length) {
-        size_t sentTotal = 0;
-        while (sentTotal < length) {
-            int sent = send(socketValue, data + sentTotal, static_cast<int>(length - sentTotal), 0);
-            if (sent == SOCKET_ERROR || sent == 0) return ReportSocketError(L"网络服务发送失败。");
-            sentTotal += static_cast<size_t>(sent);
-        }
-        return 1;
-    }
-
-    bool RecvExact(SOCKET socketValue, char* data, int length) {
-        int receivedTotal = 0;
-        while (receivedTotal < length) {
-            int received = recv(socketValue, data + receivedTotal, length - receivedTotal, 0);
-            if (received <= 0) {
-                ReportSocketError(L"网络服务接收失败。");
-                return false;
-            }
-            receivedTotal += received;
-        }
-        return true;
-    }
-
-    std::string ReceiveHttpHeaders(SOCKET socketValue) {
-        std::string request;
-        char buffer[1024];
-        while (request.find("\\r\\n\\r\\n") == std::string::npos && request.size() < 64 * 1024) {
-            int received = recv(socketValue, buffer, static_cast<int>(sizeof(buffer)), 0);
-            if (received <= 0) break;
-            request.append(buffer, static_cast<size_t>(received));
-        }
-        return request;
-    }
-
-    static std::string ToLowerAscii(std::string value) {
-        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-            return static_cast<char>(std::tolower(ch));
-        });
-        return value;
-    }
-
-    static void TrimAscii(std::string& value) {
-        const char* whitespace = " \\t\\r\\n";
-        size_t first = value.find_first_not_of(whitespace);
-        size_t last = value.find_last_not_of(whitespace);
-        value = first == std::string::npos ? std::string() : value.substr(first, last - first + 1);
-    }
-
-    std::string ExtractHttpHeader(const std::string& request, const std::string& headerName) {
-        std::istringstream stream(request);
-        std::string line;
-        std::string wanted = ToLowerAscii(headerName);
-        while (std::getline(stream, line)) {
-            size_t colon = line.find(':');
-            if (colon == std::string::npos) continue;
-            std::string name = ToLowerAscii(line.substr(0, colon));
-            TrimAscii(name);
-            if (name != wanted) continue;
-            std::string value = line.substr(colon + 1);
-            TrimAscii(value);
-            return value;
-        }
-        return std::string();
-    }
-
-    std::string MakeWebSocketAcceptKey(const std::string& clientKey) {
-        const std::string seed = clientKey + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-        HCRYPTPROV provider = 0;
-        HCRYPTHASH hash = 0;
-        BYTE digest[20] = {};
-        DWORD digestSize = sizeof(digest);
-        if (!CryptAcquireContextW(&provider, nullptr, nullptr, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) return std::string();
-        if (!CryptCreateHash(provider, CALG_SHA1, 0, 0, &hash)) {
-            CryptReleaseContext(provider, 0);
-            return std::string();
-        }
-        BOOL ok = CryptHashData(hash, reinterpret_cast<const BYTE*>(seed.data()), static_cast<DWORD>(seed.size()), 0)
-            && CryptGetHashParam(hash, HP_HASHVAL, digest, &digestSize, 0);
-        CryptDestroyHash(hash);
-        CryptReleaseContext(provider, 0);
-        return ok ? Base64Encode(digest, digestSize) : std::string();
-    }
-
-    static std::string Base64Encode(const BYTE* data, DWORD length) {
-        static const char table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        std::string out;
-        for (DWORD i = 0; i < length; i += 3) {
-            DWORD remaining = length - i;
-            BYTE a = data[i];
-            BYTE b = remaining > 1 ? data[i + 1] : 0;
-            BYTE c = remaining > 2 ? data[i + 2] : 0;
-            out.push_back(table[(a >> 2) & 0x3f]);
-            out.push_back(table[((a & 0x03) << 4) | ((b >> 4) & 0x0f)]);
-            out.push_back(remaining > 1 ? table[((b & 0x0f) << 2) | ((c >> 6) & 0x03)] : '=');
-            out.push_back(remaining > 2 ? table[c & 0x3f] : '=');
-        }
-        return out;
-    }
-
-    int WS_报告网络错误(const wchar_t* prefix) {
-        DWORD error = GetLastError();
-        std::wstring message = prefix ? prefix : L"WebSocket 操作失败。";
-        message += L" 错误码：";
-        message += std::to_wstring(error);
-        调试输出(message.c_str());
-        WS_关闭();
-        return 0;
-    }
-
-    std::string WideToUtf8(const wchar_t* text) {
-        if (!text || !text[0]) return std::string();
-        int needed = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
-        if (needed <= 1) return std::string();
-        std::string bytes(static_cast<size_t>(needed), '\\0');
-        WideCharToMultiByte(CP_UTF8, 0, text, -1, bytes.data(), needed, nullptr, nullptr);
-        bytes.pop_back();
-        return bytes;
-    }
-
-    std::wstring Utf8ToWide(const std::string& bytes) {
-        if (bytes.empty()) return std::wstring();
-        int needed = MultiByteToWideChar(CP_UTF8, 0, bytes.data(), static_cast<int>(bytes.size()), nullptr, 0);
-        if (needed <= 0) return std::wstring();
-        std::wstring text(static_cast<size_t>(needed), L'\\0');
-        MultiByteToWideChar(CP_UTF8, 0, bytes.data(), static_cast<int>(bytes.size()), text.data(), needed);
-        return text;
     }
 
     HMENU CreateMenuForWindow() {
@@ -14575,6 +14511,46 @@ private:
             return 0;
         }
         switch (message) {
+        case WM_LINGBUILDER_HTTP_CLIENT_EVENT: {
+#ifdef LINGBUILDER_HTTP_CLIENT_MODULE
+            httpClientRuntime_.DispatchEvent(static_cast<long long>(wParam), [this](const wchar_t* handler) {
+                DispatchHttpClientEvent(handler);
+            });
+#else
+            (void)wParam;
+#endif
+            return 0;
+        }
+        case WM_LINGBUILDER_HTTP_SERVER_REQUEST: {
+#ifdef LINGBUILDER_HTTP_SERVER_MODULE
+            httpServerRuntime_.DispatchRequest(static_cast<long long>(wParam), [this](const wchar_t* handler) {
+                DispatchAsyncWebEvent(handler);
+            });
+#else
+            (void)wParam;
+#endif
+            return 0;
+        }
+        case WM_LINGBUILDER_WSS_EVENT: {
+#ifdef LINGBUILDER_WEBSOCKET_SERVER_MODULE
+            wssRuntime_.DispatchEvent(static_cast<long long>(wParam), [this](const wchar_t* handler) {
+                DispatchWebSocketServerEvent(handler);
+            });
+#else
+            (void)wParam;
+#endif
+            return 0;
+        }
+        case WM_LINGBUILDER_WS_CLIENT_EVENT: {
+#ifdef LINGBUILDER_WEBSOCKET_CLIENT_MODULE
+            wsClientRuntime_.DispatchEvent(static_cast<long long>(wParam), [this](const wchar_t* handler) {
+                DispatchWebSocketClientEvent(handler);
+            });
+#else
+            (void)wParam;
+#endif
+            return 0;
+        }
         case WM_LINGBUILDER_WEB_ASYNC_COMPLETE: {
 #ifdef LINGBUILDER_WEB_HTTP_MODULE
             const int requestId = static_cast<int>(wParam);
@@ -16200,11 +16176,27 @@ function generateWindowClass(window: LingWindowModel, windowIndex: number, progr
   const methodHandlers = windowCreatedHandler
     ? [windowCreatedHandler, ...allEventHandlers.filter(handler => handler !== windowCreatedHandler)]
     : allEventHandlers;
+  const windowEventBindings = new Map<string, string>();
+  Object.entries(window.events || {}).forEach(([eventName, handler]) => {
+    if (handler.trim()) windowEventBindings.set(eventName, handler.trim());
+  });
+  if (windowCreatedHandler && !windowEventBindings.has('Loaded')) {
+    windowEventBindings.set('Loaded', windowCreatedHandler);
+  }
   const dispatchCases = handlers
     .map(handler => `        if (handler == L"${escapeWideString(handler)}") { ${toCppIdentifier(handler)}(); return; }`)
     .join('\n') || '        (void)control; (void)eventName;';
-  const windowDispatchCases = allEventHandlers
-    .map(handler => `        if (handler == L"${escapeWideString(handler)}") { ${toCppIdentifier(handler)}(); return; }`)
+  const windowHandlerBindingCounts = new Map<string, number>();
+  [...windowEventBindings.values()].forEach(handler => windowHandlerBindingCounts.set(handler, (windowHandlerBindingCounts.get(handler) || 0) + 1));
+  const windowDispatchCases = [...windowEventBindings.entries()]
+    .map(([eventName, handler]) => {
+      const method = findLingCppMethod(program, handler);
+      const invocation = generateWindowEventInvocation(handler, eventName, method);
+      const eventCondition = (windowHandlerBindingCounts.get(handler) || 0) > 1
+        ? ` && eventName && std::wcscmp(eventName, L"${escapeWideString(eventName)}") == 0`
+        : '';
+      return `        if (handler == L"${escapeWideString(handler)}"${eventCondition}) { ${invocation}; return; }`;
+    })
     .join('\n');
   const resourceDispatchCases = propertySheets.filter(resource => resource.appliedHandler?.trim())
     .map(resource => `        if (TextEquals(resourceId, L"${escapeWideString(resource.id)}") && TextEquals(eventName, L"Applied")) { ${toCppIdentifier(resource.appliedHandler!.trim())}(); return; }`)
@@ -16254,6 +16246,21 @@ ${resourceDispatchCases || '        (void)resourceId; (void)eventName;'}
 ${edgeDispatchCases || '        (void)callback;'}
         LingWindowBase::DispatchAsyncWebEvent(handler);
     }
+    void DispatchHttpClientEvent(const wchar_t* handler) override {
+        std::wstring callback = handler ? handler : L"";
+${edgeDispatchCases || '        (void)callback;'}
+        LingWindowBase::DispatchHttpClientEvent(handler);
+    }
+    void DispatchWebSocketServerEvent(const wchar_t* handler) override {
+        std::wstring callback = handler ? handler : L"";
+${edgeDispatchCases || '        (void)callback;'}
+        LingWindowBase::DispatchWebSocketServerEvent(handler);
+    }
+    void DispatchWebSocketClientEvent(const wchar_t* handler) override {
+        std::wstring callback = handler ? handler : L"";
+${edgeDispatchCases || '        (void)callback;'}
+        LingWindowBase::DispatchWebSocketClientEvent(handler);
+    }
     void DispatchLingEvent(const ControlSpec& control, const wchar_t* eventName) override {
         std::wstring handler = GetEventHandler(control, eventName);
 ${dispatchCases}
@@ -16292,9 +16299,23 @@ function generateHandlerMethod(handler: string, method: LingCppMethod | undefine
   const body = method
     ? [generateLocalDeclarations(method, enabledModules, dataTypes), translateMethodStatements(method, enabledModules, dataTypes)].filter(Boolean).join('\n')
     : `        调试输出(L"未找到 ${escapeWideString(handler)} 的中文 C++ 事件实现。");`;
-  return `    void ${toCppIdentifier(handler)}() {
+  const parameters = method ? formatCppEventParameters(method.parameters, enabledModules, dataTypes) : '';
+  return `    void ${toCppIdentifier(handler)}(${parameters}) {
 ${body || '        // 空事件处理器。'}
     }`;
+}
+
+function generateWindowEventInvocation(handler: string, eventName: string, method: LingCppMethod | undefined): string {
+  if (!method || method.parameters.length === 0) return `${toCppIdentifier(handler)}()`;
+  const eventArguments: Record<string, string[]> = {
+    KeyDown: ['eventKeyCode_', 'eventCtrlDown_', 'eventShiftDown_', 'eventAltDown_'],
+    KeyUp: ['eventKeyCode_', 'eventCtrlDown_', 'eventShiftDown_', 'eventAltDown_'],
+    TextInput: ['eventCharacter_'],
+    DpiChanged: ['static_cast<int>(dpi_)'],
+    FileDropped: ['droppedFiles_']
+  };
+  const argumentsForEvent = (eventArguments[eventName] || []).slice(0, method.parameters.length);
+  return `${toCppIdentifier(handler)}(${argumentsForEvent.join(', ')})`;
 }
 
 function generateUserMethod(method: LingCppMethod, enabledModules: InstalledModule[], dataTypes: LingCppDataType[] = []): string {
@@ -16316,6 +16337,12 @@ ${bodyWithFallback}
 function formatCppParameters(parameters: LingCppParameter[], enabledModules: InstalledModule[], dataTypes: LingCppDataType[] = []): string {
   return parameters
     .map(parameter => `${toCppType(parameter.type, 'parameter', enabledModules, dataTypes)} ${toCppIdentifier(parameter.name)}`)
+    .join(', ');
+}
+
+function formatCppEventParameters(parameters: LingCppParameter[], enabledModules: InstalledModule[], dataTypes: LingCppDataType[] = []): string {
+  return parameters
+    .map(parameter => `${toCppType(parameter.type, 'parameter', enabledModules, dataTypes)} ${toCppIdentifier(parameter.name)} = {}`)
     .join(', ');
 }
 
@@ -17041,7 +17068,16 @@ function translateLingCppExpression(expression: string, enabledModules: Installe
   }
   const binaryExpression = splitEplBinaryExpression(trimmed);
   if (binaryExpression) {
-    return `${translateLingCppExpression(binaryExpression.left, enabledModules)}${binaryExpression.operator}${translateLingCppExpression(binaryExpression.right, enabledModules)}`;
+    const left = translateLingCppExpression(binaryExpression.left, enabledModules);
+    const right = translateLingCppExpression(binaryExpression.right, enabledModules);
+    if (
+      (binaryExpression.operator === '==' || binaryExpression.operator === '!=')
+      && isDefinitelyWideStringExpression(binaryExpression.left, enabledModules)
+      && isDefinitelyWideStringExpression(binaryExpression.right, enabledModules)
+    ) {
+      return `std::wstring(LingCppWideArg(${left}))${binaryExpression.operator}LingCppWideArg(${right})`;
+    }
+    return `${left}${binaryExpression.operator}${right}`;
   }
   const controlTextProperty = parseEplControlMemberRule(trimmed);
   if (controlTextProperty) return `${controlTextProperty.getterRuntimeName}(L"${escapeWideString(controlTextProperty.controlName)}")`;
@@ -17061,6 +17097,16 @@ function translateLingCppExpression(expression: string, enabledModules: Installe
     return trimmed.split(/\s*\.\s*/u).map(toCppIdentifier).join('.');
   }
   return trimmed;
+}
+
+function isDefinitelyWideStringExpression(expression: string, enabledModules: InstalledModule[]): boolean {
+  const trimmed = expression.trim();
+  if (/^(?:L)?["“][\s\S]*["”]$/u.test(trimmed)) return true;
+  const parenthesized = unwrapParenthesizedExpression(trimmed);
+  if (parenthesized !== undefined) return isDefinitelyWideStringExpression(parenthesized, enabledModules);
+  if (parseEplControlMemberRule(trimmed)) return true;
+  const call = parseCallStatement(trimmed);
+  return Boolean(call && findModuleCommandBinding(call.name, enabledModules)?.returnType === 'wideString');
 }
 
 function translateLingCppCallName(name: string): string {

@@ -1,21 +1,1263 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-07-31T18:20:25.904Z",
+  "generatedAt": "2026-08-03T05:01:20.689Z",
   "module": {
     "id": "lingbuilder.http.server",
     "name": "HTTP 服务端模块",
-    "version": "1.0.0",
-    "description": "提供基于 Windows Winsock 的本地 HTTP 服务端启动、等待请求、返回文本和关闭能力。"
+    "version": "2.0.0",
+    "description": "提供受管 HTTP/1.1 服务端、后台多连接处理、路由、完整请求读取、可配置响应、资源限制和运行状态。"
   },
-  "commandCount": 5,
+  "commandCount": 48,
   "commands": [
     {
       "index": 1,
+      "name": "HTTP_创建服务",
+      "signature": "HTTP_创建服务()",
+      "description": "创建尚未启动的受管 HTTP/1.1 服务端并返回稳定句柄。",
+      "insertText": "HTTP_创建服务()",
+      "returnType": "HTTP服务端",
+      "category": "服务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_创建服务",
+        "runtimeName": "HTTP_创建服务",
+        "parameters": [],
+        "returnType": "HTTP服务端",
+        "encoding": "raw",
+        "example": "HTTP_创建服务()",
+        "description": "创建尚未启动的受管 HTTP/1.1 服务端并返回稳定句柄。"
+      },
+      "demoInvocation": "HTTP_创建服务()"
+    },
+    {
+      "index": 2,
+      "name": "HTTP_配置服务",
+      "signature": "HTTP_配置服务(服务端, 监听地址, 端口, 工作线程数, 等待队列上限)",
+      "description": "配置监听地址、端口、有界工作线程和连接等待队列；只能在停止状态修改。",
+      "insertText": "HTTP_配置服务($1, \"127.0.0.1\", 8080, 4, 256)",
+      "returnType": "逻辑型",
+      "category": "服务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_配置服务",
+        "runtimeName": "HTTP_配置服务",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          },
+          {
+            "name": "监听地址",
+            "type": "wideString"
+          },
+          {
+            "name": "端口",
+            "type": "int"
+          },
+          {
+            "name": "工作线程数",
+            "type": "int"
+          },
+          {
+            "name": "等待队列上限",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_配置服务(示例值, \"127.0.0.1\", 8080, 4, 256)",
+        "description": "配置监听地址、端口、有界工作线程和连接等待队列；只能在停止状态修改。"
+      },
+      "demoInvocation": "HTTP_配置服务(0, \"https://example.com\", 1, 1, 1)"
+    },
+    {
+      "index": 3,
+      "name": "HTTP_设置请求限制",
+      "signature": "HTTP_设置请求限制(服务端, 请求头上限KB, 请求体上限MB, 请求超时毫秒)",
+      "description": "在停止状态设置请求头、请求体和单次读写超时，阻止无限请求与慢速连接耗尽资源。",
+      "insertText": "HTTP_设置请求限制($1, 64, 16, 30000)",
+      "returnType": "逻辑型",
+      "category": "服务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_设置请求限制",
+        "runtimeName": "HTTP_设置请求限制",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          },
+          {
+            "name": "请求头上限KB",
+            "type": "int"
+          },
+          {
+            "name": "请求体上限MB",
+            "type": "int"
+          },
+          {
+            "name": "请求超时毫秒",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_设置请求限制(示例值, 64, 16, 30000)",
+        "description": "在停止状态设置请求头、请求体和单次读写超时，阻止无限请求与慢速连接耗尽资源。"
+      },
+      "demoInvocation": "HTTP_设置请求限制(0, 1, 1, 1)"
+    },
+    {
+      "index": 4,
+      "name": "HTTP_允许外部监听",
+      "signature": "HTTP_允许外部监听(服务端, 允许)",
+      "description": "显式允许非回环地址监听；默认关闭，避免无意把开发服务暴露到局域网。",
+      "insertText": "HTTP_允许外部监听($1, $2)",
+      "returnType": "逻辑型",
+      "category": "服务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_允许外部监听",
+        "runtimeName": "HTTP_允许外部监听",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          },
+          {
+            "name": "允许",
+            "type": "bool"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_允许外部监听()",
+        "description": "显式允许非回环地址监听；默认关闭，避免无意把开发服务暴露到局域网。"
+      },
+      "demoInvocation": "HTTP_允许外部监听(0, 真)"
+    },
+    {
+      "index": 5,
+      "name": "HTTP_绑定请求处理器",
+      "signature": "HTTP_绑定请求处理器(服务端, &处理器)",
+      "description": "绑定未命中路由时在窗口 UI 线程执行的无参数处理器；处理器用 HTTP_取当前请求() 取得请求。",
+      "insertText": "HTTP_绑定请求处理器($1, &$2)",
+      "returnType": "逻辑型",
+      "category": "路由",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_绑定请求处理器",
+        "runtimeName": "HTTP_绑定请求处理器",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；处理器必须无参数。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_绑定请求处理器(示例值, &示例值)",
+        "description": "绑定未命中路由时在窗口 UI 线程执行的无参数处理器；处理器用 HTTP_取当前请求() 取得请求。"
+      },
+      "demoInvocation": "HTTP_绑定请求处理器(0, &模块演示回调)"
+    },
+    {
+      "index": 6,
+      "name": "HTTP_添加路由",
+      "signature": "HTTP_添加路由(服务端, 方法, 路径模式, &处理器)",
+      "description": "添加方法和路径路由；支持精确路径、末尾 /* 前缀匹配及方法 *。",
+      "insertText": "HTTP_添加路由($1, \"GET\", \"/api/health\", &$2)",
+      "returnType": "逻辑型",
+      "category": "路由",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_添加路由",
+        "runtimeName": "HTTP_添加路由",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          },
+          {
+            "name": "方法",
+            "type": "wideString"
+          },
+          {
+            "name": "路径模式",
+            "type": "wideString"
+          },
+          {
+            "name": "处理器",
+            "type": "handler",
+            "description": "必须使用 &处理器名；处理器必须无参数。",
+            "handlerSignature": {
+              "parameterTypes": [],
+              "returnType": "空"
+            }
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_添加路由(示例值, \"GET\", \"/api/health\", &示例值)",
+        "description": "添加方法和路径路由；支持精确路径、末尾 /* 前缀匹配及方法 *。"
+      },
+      "demoInvocation": "HTTP_添加路由(0, \"演示参数2\", \"module-demo-temp.txt\", &模块演示回调)"
+    },
+    {
+      "index": 7,
+      "name": "HTTP_清空路由",
+      "signature": "HTTP_清空路由(服务端)",
+      "description": "清空服务端的全部显式路由，不影响默认请求处理器。",
+      "insertText": "HTTP_清空路由($1)",
+      "returnType": "逻辑型",
+      "category": "路由",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_清空路由",
+        "runtimeName": "HTTP_清空路由",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_清空路由()",
+        "description": "清空服务端的全部显式路由，不影响默认请求处理器。"
+      },
+      "demoInvocation": "HTTP_清空路由(0)"
+    },
+    {
+      "index": 8,
+      "name": "HTTP_启动",
+      "signature": "HTTP_启动(服务端)",
+      "description": "启动后台监听、连接队列和工作线程；成功返回真。",
+      "insertText": "HTTP_启动($1)",
+      "returnType": "逻辑型",
+      "category": "服务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_启动",
+        "runtimeName": "HTTP_启动",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_启动()",
+        "description": "启动后台监听、连接队列和工作线程；成功返回真。"
+      },
+      "demoInvocation": "HTTP_启动(0)"
+    },
+    {
+      "index": 9,
+      "name": "HTTP_停止",
+      "signature": "HTTP_停止(服务端)",
+      "description": "停止监听、取消等待请求并回收全部连接和工作线程。",
+      "insertText": "HTTP_停止($1)",
+      "returnType": "逻辑型",
+      "category": "服务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_停止",
+        "runtimeName": "HTTP_停止",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_停止()",
+        "description": "停止监听、取消等待请求并回收全部连接和工作线程。"
+      },
+      "demoInvocation": "HTTP_停止(0)"
+    },
+    {
+      "index": 10,
+      "name": "HTTP_销毁服务",
+      "signature": "HTTP_销毁服务(服务端)",
+      "description": "停止并释放服务端句柄；重复销毁会返回假。",
+      "insertText": "HTTP_销毁服务($1)",
+      "returnType": "逻辑型",
+      "category": "服务",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_销毁服务",
+        "runtimeName": "HTTP_销毁服务",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_销毁服务()",
+        "description": "停止并释放服务端句柄；重复销毁会返回假。"
+      },
+      "demoInvocation": "HTTP_销毁服务(0)"
+    },
+    {
+      "index": 11,
+      "name": "HTTP_是否运行",
+      "signature": "HTTP_是否运行(服务端)",
+      "description": "判断服务端是否正在接受连接。",
+      "insertText": "HTTP_是否运行($1)",
+      "returnType": "逻辑型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_是否运行",
+        "runtimeName": "HTTP_是否运行",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_是否运行()",
+        "description": "判断服务端是否正在接受连接。"
+      },
+      "demoInvocation": "HTTP_是否运行(0)"
+    },
+    {
+      "index": 12,
+      "name": "HTTP_取监听地址",
+      "signature": "HTTP_取监听地址(服务端)",
+      "description": "返回服务端当前配置的监听地址。",
+      "insertText": "HTTP_取监听地址($1)",
+      "returnType": "文本型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取监听地址",
+        "runtimeName": "HTTP_取监听地址",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "HTTP_取监听地址()",
+        "description": "返回服务端当前配置的监听地址。"
+      },
+      "demoInvocation": "HTTP_取监听地址(0)"
+    },
+    {
+      "index": 13,
+      "name": "HTTP_取监听端口",
+      "signature": "HTTP_取监听端口(服务端)",
+      "description": "返回实际监听端口；配置端口为 0 时可取得系统分配的临时端口。",
+      "insertText": "HTTP_取监听端口($1)",
+      "returnType": "整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取监听端口",
+        "runtimeName": "HTTP_取监听端口",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "HTTP_取监听端口()",
+        "description": "返回实际监听端口；配置端口为 0 时可取得系统分配的临时端口。"
+      },
+      "demoInvocation": "HTTP_取监听端口(0)"
+    },
+    {
+      "index": 14,
+      "name": "HTTP_取活动连接数",
+      "signature": "HTTP_取活动连接数(服务端)",
+      "description": "返回当前正在处理的客户端连接数量。",
+      "insertText": "HTTP_取活动连接数($1)",
+      "returnType": "整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取活动连接数",
+        "runtimeName": "HTTP_取活动连接数",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "HTTP_取活动连接数()",
+        "description": "返回当前正在处理的客户端连接数量。"
+      },
+      "demoInvocation": "HTTP_取活动连接数(0)"
+    },
+    {
+      "index": 15,
+      "name": "HTTP_取累计请求数",
+      "signature": "HTTP_取累计请求数(服务端)",
+      "description": "返回服务端成功解析并分发的累计请求数量。",
+      "insertText": "HTTP_取累计请求数($1)",
+      "returnType": "长整数型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取累计请求数",
+        "runtimeName": "HTTP_取累计请求数",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "HTTP_取累计请求数()",
+        "description": "返回服务端成功解析并分发的累计请求数量。"
+      },
+      "demoInvocation": "HTTP_取累计请求数(0)"
+    },
+    {
+      "index": 16,
+      "name": "HTTP_取服务错误",
+      "signature": "HTTP_取服务错误(服务端)",
+      "description": "返回该服务端最近一次中文错误；句柄无效时返回管理器错误。",
+      "insertText": "HTTP_取服务错误($1)",
+      "returnType": "文本型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取服务错误",
+        "runtimeName": "HTTP_取服务错误",
+        "parameters": [
+          {
+            "name": "服务端",
+            "type": "HTTP服务端"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "HTTP_取服务错误()",
+        "description": "返回该服务端最近一次中文错误；句柄无效时返回管理器错误。"
+      },
+      "demoInvocation": "HTTP_取服务错误(0)"
+    },
+    {
+      "index": 17,
+      "name": "HTTP_取当前请求",
+      "signature": "HTTP_取当前请求()",
+      "description": "在请求处理器内取得当前受管请求句柄；其它上下文返回 0。",
+      "insertText": "HTTP_取当前请求()",
+      "returnType": "HTTP请求",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取当前请求",
+        "runtimeName": "HTTP_取当前请求",
+        "parameters": [],
+        "returnType": "HTTP请求",
+        "encoding": "raw",
+        "example": "HTTP_取当前请求()",
+        "description": "在请求处理器内取得当前受管请求句柄；其它上下文返回 0。"
+      },
+      "demoInvocation": "HTTP_取当前请求()"
+    },
+    {
+      "index": 18,
+      "name": "HTTP_取请求服务",
+      "signature": "HTTP_取请求服务(请求)",
+      "description": "返回接收该请求的服务端句柄。",
+      "insertText": "HTTP_取请求服务($1)",
+      "returnType": "HTTP服务端",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取请求服务",
+        "runtimeName": "HTTP_取请求服务",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          }
+        ],
+        "returnType": "HTTP服务端",
+        "encoding": "raw",
+        "example": "HTTP_取请求服务()",
+        "description": "返回接收该请求的服务端句柄。"
+      },
+      "demoInvocation": "HTTP_取请求服务(0)"
+    },
+    {
+      "index": 19,
+      "name": "HTTP_取请求方法",
+      "signature": "HTTP_取请求方法(请求)",
+      "description": "返回大写 HTTP 方法，例如 GET、POST。",
+      "insertText": "HTTP_取请求方法($1)",
+      "returnType": "文本型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取请求方法",
+        "runtimeName": "HTTP_取请求方法",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "HTTP_取请求方法()",
+        "description": "返回大写 HTTP 方法，例如 GET、POST。"
+      },
+      "demoInvocation": "HTTP_取请求方法(0)"
+    },
+    {
+      "index": 20,
+      "name": "HTTP_取请求目标",
+      "signature": "HTTP_取请求目标(请求)",
+      "description": "返回请求行中的原始目标，包含原始查询字符串。",
+      "insertText": "HTTP_取请求目标($1)",
+      "returnType": "文本型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取请求目标",
+        "runtimeName": "HTTP_取请求目标",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "HTTP_取请求目标()",
+        "description": "返回请求行中的原始目标，包含原始查询字符串。"
+      },
+      "demoInvocation": "HTTP_取请求目标(0)"
+    },
+    {
+      "index": 21,
+      "name": "HTTP_取请求路径",
+      "signature": "HTTP_取请求路径(请求)",
+      "description": "返回经过安全百分号解码的 URL 路径。",
+      "insertText": "HTTP_取请求路径($1)",
+      "returnType": "文本型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取请求路径",
+        "runtimeName": "HTTP_取请求路径",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "HTTP_取请求路径()",
+        "description": "返回经过安全百分号解码的 URL 路径。"
+      },
+      "demoInvocation": "HTTP_取请求路径(0)"
+    },
+    {
+      "index": 22,
+      "name": "HTTP_取查询字符串",
+      "signature": "HTTP_取查询字符串(请求)",
+      "description": "返回未解码的查询字符串，不含问号。",
+      "insertText": "HTTP_取查询字符串($1)",
+      "returnType": "文本型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取查询字符串",
+        "runtimeName": "HTTP_取查询字符串",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "HTTP_取查询字符串()",
+        "description": "返回未解码的查询字符串，不含问号。"
+      },
+      "demoInvocation": "HTTP_取查询字符串(0)"
+    },
+    {
+      "index": 23,
+      "name": "HTTP_取查询参数",
+      "signature": "HTTP_取查询参数(请求, 名称)",
+      "description": "按 UTF-8 URL 编码读取首个查询参数值；不存在时返回空文本。",
+      "insertText": "HTTP_取查询参数($1, $2)",
+      "returnType": "文本型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取查询参数",
+        "runtimeName": "HTTP_取查询参数",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP_取查询参数()",
+        "description": "按 UTF-8 URL 编码读取首个查询参数值；不存在时返回空文本。"
+      },
+      "demoInvocation": "HTTP_取查询参数(0, \"演示参数2\")"
+    },
+    {
+      "index": 24,
+      "name": "HTTP_取请求头",
+      "signature": "HTTP_取请求头(请求, 名称)",
+      "description": "不区分大小写读取首个请求头值。",
+      "insertText": "HTTP_取请求头($1, $2)",
+      "returnType": "文本型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取请求头",
+        "runtimeName": "HTTP_取请求头",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "wide",
+        "example": "HTTP_取请求头()",
+        "description": "不区分大小写读取首个请求头值。"
+      },
+      "demoInvocation": "HTTP_取请求头(0, \"演示参数2\")"
+    },
+    {
+      "index": 25,
+      "name": "HTTP_取全部请求头",
+      "signature": "HTTP_取全部请求头(请求)",
+      "description": "以 UTF-16 JSON 对象返回全部请求头；重复头以逗号合并。",
+      "insertText": "HTTP_取全部请求头($1)",
+      "returnType": "文本型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取全部请求头",
+        "runtimeName": "HTTP_取全部请求头",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "HTTP_取全部请求头()",
+        "description": "以 UTF-16 JSON 对象返回全部请求头；重复头以逗号合并。"
+      },
+      "demoInvocation": "HTTP_取全部请求头(0)"
+    },
+    {
+      "index": 26,
+      "name": "HTTP_取请求正文",
+      "signature": "HTTP_取请求正文(请求)",
+      "description": "把 UTF-8 请求正文转换为文本；二进制数据请使用十六进制接口。",
+      "insertText": "HTTP_取请求正文($1)",
+      "returnType": "文本型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取请求正文",
+        "runtimeName": "HTTP_取请求正文",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "HTTP_取请求正文()",
+        "description": "把 UTF-8 请求正文转换为文本；二进制数据请使用十六进制接口。"
+      },
+      "demoInvocation": "HTTP_取请求正文(0)"
+    },
+    {
+      "index": 27,
+      "name": "HTTP_取请求正文十六进制",
+      "signature": "HTTP_取请求正文十六进制(请求)",
+      "description": "以小写十六进制返回原始请求正文字节，适用于二进制上传。",
+      "insertText": "HTTP_取请求正文十六进制($1)",
+      "returnType": "文本型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取请求正文十六进制",
+        "runtimeName": "HTTP_取请求正文十六进制",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "HTTP_取请求正文十六进制()",
+        "description": "以小写十六进制返回原始请求正文字节，适用于二进制上传。"
+      },
+      "demoInvocation": "HTTP_取请求正文十六进制(0)"
+    },
+    {
+      "index": 28,
+      "name": "HTTP_取请求正文大小",
+      "signature": "HTTP_取请求正文大小(请求)",
+      "description": "返回原始请求正文的字节数。",
+      "insertText": "HTTP_取请求正文大小($1)",
+      "returnType": "长整数型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取请求正文大小",
+        "runtimeName": "HTTP_取请求正文大小",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          }
+        ],
+        "returnType": "longLong",
+        "encoding": "raw",
+        "example": "HTTP_取请求正文大小()",
+        "description": "返回原始请求正文的字节数。"
+      },
+      "demoInvocation": "HTTP_取请求正文大小(0)"
+    },
+    {
+      "index": 29,
+      "name": "HTTP_取客户端地址",
+      "signature": "HTTP_取客户端地址(请求)",
+      "description": "返回 TCP 对端的数字 IP 地址。",
+      "insertText": "HTTP_取客户端地址($1)",
+      "returnType": "文本型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取客户端地址",
+        "runtimeName": "HTTP_取客户端地址",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "HTTP_取客户端地址()",
+        "description": "返回 TCP 对端的数字 IP 地址。"
+      },
+      "demoInvocation": "HTTP_取客户端地址(0)"
+    },
+    {
+      "index": 30,
+      "name": "HTTP_取客户端端口",
+      "signature": "HTTP_取客户端端口(请求)",
+      "description": "返回 TCP 对端端口。",
+      "insertText": "HTTP_取客户端端口($1)",
+      "returnType": "整数型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取客户端端口",
+        "runtimeName": "HTTP_取客户端端口",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          }
+        ],
+        "returnType": "int",
+        "encoding": "raw",
+        "example": "HTTP_取客户端端口()",
+        "description": "返回 TCP 对端端口。"
+      },
+      "demoInvocation": "HTTP_取客户端端口(0)"
+    },
+    {
+      "index": 31,
+      "name": "HTTP_取协议版本",
+      "signature": "HTTP_取协议版本(请求)",
+      "description": "返回 HTTP/1.0 或 HTTP/1.1。",
+      "insertText": "HTTP_取协议版本($1)",
+      "returnType": "文本型",
+      "category": "请求",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_取协议版本",
+        "runtimeName": "HTTP_取协议版本",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          }
+        ],
+        "returnType": "wideString",
+        "encoding": "raw",
+        "example": "HTTP_取协议版本()",
+        "description": "返回 HTTP/1.0 或 HTTP/1.1。"
+      },
+      "demoInvocation": "HTTP_取协议版本(0)"
+    },
+    {
+      "index": 32,
+      "name": "HTTP_设置状态码",
+      "signature": "HTTP_设置状态码(请求, 状态码)",
+      "description": "设置响应状态码，范围为 100 到 599。",
+      "insertText": "HTTP_设置状态码($1, $2)",
+      "returnType": "逻辑型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_设置状态码",
+        "runtimeName": "HTTP_设置状态码",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          },
+          {
+            "name": "状态码",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_设置状态码()",
+        "description": "设置响应状态码，范围为 100 到 599。"
+      },
+      "demoInvocation": "HTTP_设置状态码(0, 1)"
+    },
+    {
+      "index": 33,
+      "name": "HTTP_设置响应头",
+      "signature": "HTTP_设置响应头(请求, 名称, 值)",
+      "description": "设置或替换响应头；拒绝非法名称和 CR/LF 注入。",
+      "insertText": "HTTP_设置响应头($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_设置响应头",
+        "runtimeName": "HTTP_设置响应头",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_设置响应头()",
+        "description": "设置或替换响应头；拒绝非法名称和 CR/LF 注入。"
+      },
+      "demoInvocation": "HTTP_设置响应头(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 34,
+      "name": "HTTP_添加响应头",
+      "signature": "HTTP_添加响应头(请求, 名称, 值)",
+      "description": "追加响应头，适用于多个 Set-Cookie；拒绝 CR/LF 注入。",
+      "insertText": "HTTP_添加响应头($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_添加响应头",
+        "runtimeName": "HTTP_添加响应头",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_添加响应头()",
+        "description": "追加响应头，适用于多个 Set-Cookie；拒绝 CR/LF 注入。"
+      },
+      "demoInvocation": "HTTP_添加响应头(0, \"演示参数2\", \"演示参数3\")"
+    },
+    {
+      "index": 35,
+      "name": "HTTP_设置Cookie",
+      "signature": "HTTP_设置Cookie(请求, 名称, 值, 路径, 最大秒数, HttpOnly, Secure, SameSite)",
+      "description": "追加安全编码的 Set-Cookie；SameSite 支持 Lax、Strict、None，None 必须同时启用 Secure。",
+      "insertText": "HTTP_设置Cookie($1, $2, $3, $4, $5, $6, $7, $8)",
+      "returnType": "逻辑型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_设置Cookie",
+        "runtimeName": "HTTP_设置Cookie",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          },
+          {
+            "name": "名称",
+            "type": "wideString"
+          },
+          {
+            "name": "值",
+            "type": "wideString"
+          },
+          {
+            "name": "路径",
+            "type": "wideString"
+          },
+          {
+            "name": "最大秒数",
+            "type": "int"
+          },
+          {
+            "name": "HttpOnly",
+            "type": "bool"
+          },
+          {
+            "name": "Secure",
+            "type": "bool"
+          },
+          {
+            "name": "SameSite",
+            "type": "wideString"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_设置Cookie()",
+        "description": "追加安全编码的 Set-Cookie；SameSite 支持 Lax、Strict、None，None 必须同时启用 Secure。"
+      },
+      "demoInvocation": "HTTP_设置Cookie(0, \"演示参数2\", \"演示参数3\", \"module-demo-temp.txt\", 1, 真, 真, \"演示参数8\")"
+    },
+    {
+      "index": 36,
+      "name": "HTTP_发送文本",
+      "signature": "HTTP_发送文本(请求, 内容, 内容类型, 状态码)",
+      "description": "发送 UTF-8 文本并完成响应；内容类型为空时使用 text/plain。",
+      "insertText": "HTTP_发送文本($1, \"$2\", \"text/plain; charset=utf-8\", 200)",
+      "returnType": "逻辑型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_发送文本",
+        "runtimeName": "HTTP_发送文本",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          },
+          {
+            "name": "内容",
+            "type": "wideString"
+          },
+          {
+            "name": "内容类型",
+            "type": "wideString"
+          },
+          {
+            "name": "状态码",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_发送文本(示例值, \"示例值\", \"text/plain; charset=utf-8\", 200)",
+        "description": "发送 UTF-8 文本并完成响应；内容类型为空时使用 text/plain。"
+      },
+      "demoInvocation": "HTTP_发送文本(0, \"演示参数2\", \"演示参数3\", 1)"
+    },
+    {
+      "index": 37,
+      "name": "HTTP_发送JSON",
+      "signature": "HTTP_发送JSON(请求, JSON, 状态码)",
+      "description": "发送 application/json; charset=utf-8 响应并完成请求。",
+      "insertText": "HTTP_发送JSON($1, \"{\\\"ok\\\":true}\", 200)",
+      "returnType": "逻辑型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_发送JSON",
+        "runtimeName": "HTTP_发送JSON",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          },
+          {
+            "name": "JSON",
+            "type": "wideString"
+          },
+          {
+            "name": "状态码",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_发送JSON(示例值, \"{\\\"ok\\\":true}\", 200)",
+        "description": "发送 application/json; charset=utf-8 响应并完成请求。"
+      },
+      "demoInvocation": "HTTP_发送JSON(0, \"{}\", 1)"
+    },
+    {
+      "index": 38,
+      "name": "HTTP_发送十六进制",
+      "signature": "HTTP_发送十六进制(请求, 十六进制, 内容类型, 状态码)",
+      "description": "校验并解码偶数长度十六进制文本，发送原始二进制响应。",
+      "insertText": "HTTP_发送十六进制($1, $2, $3, $4)",
+      "returnType": "逻辑型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_发送十六进制",
+        "runtimeName": "HTTP_发送十六进制",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          },
+          {
+            "name": "十六进制",
+            "type": "wideString"
+          },
+          {
+            "name": "内容类型",
+            "type": "wideString"
+          },
+          {
+            "name": "状态码",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_发送十六进制()",
+        "description": "校验并解码偶数长度十六进制文本，发送原始二进制响应。"
+      },
+      "demoInvocation": "HTTP_发送十六进制(0, \"演示参数2\", \"演示参数3\", 1)"
+    },
+    {
+      "index": 39,
+      "name": "HTTP_发送文件",
+      "signature": "HTTP_发送文件(请求, 文件路径, 下载名称, 内容类型, 状态码)",
+      "description": "以分块读取方式发送文件，不把整个文件载入内存；自动设置长度和可选下载名称。",
+      "insertText": "HTTP_发送文件($1, $2, $3, $4, $5)",
+      "returnType": "逻辑型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_发送文件",
+        "runtimeName": "HTTP_发送文件",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          },
+          {
+            "name": "文件路径",
+            "type": "wideString"
+          },
+          {
+            "name": "下载名称",
+            "type": "wideString"
+          },
+          {
+            "name": "内容类型",
+            "type": "wideString"
+          },
+          {
+            "name": "状态码",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_发送文件()",
+        "description": "以分块读取方式发送文件，不把整个文件载入内存；自动设置长度和可选下载名称。"
+      },
+      "demoInvocation": "HTTP_发送文件(0, \"module-demo-temp.txt\", \"演示参数3\", \"演示参数4\", 1)"
+    },
+    {
+      "index": 40,
+      "name": "HTTP_重定向",
+      "signature": "HTTP_重定向(请求, 地址, 状态码)",
+      "description": "发送 301、302、303、307 或 308 重定向响应。",
+      "insertText": "HTTP_重定向($1, $2, $3)",
+      "returnType": "逻辑型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_重定向",
+        "runtimeName": "HTTP_重定向",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          },
+          {
+            "name": "地址",
+            "type": "wideString"
+          },
+          {
+            "name": "状态码",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "wide",
+        "example": "HTTP_重定向()",
+        "description": "发送 301、302、303、307 或 308 重定向响应。"
+      },
+      "demoInvocation": "HTTP_重定向(0, \"https://example.com\", 1)"
+    },
+    {
+      "index": 41,
+      "name": "HTTP_发送空响应",
+      "signature": "HTTP_发送空响应(请求, 状态码)",
+      "description": "发送无正文响应并完成请求，适用于 204、304 等状态。",
+      "insertText": "HTTP_发送空响应($1, $2)",
+      "returnType": "逻辑型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_发送空响应",
+        "runtimeName": "HTTP_发送空响应",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          },
+          {
+            "name": "状态码",
+            "type": "int"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_发送空响应()",
+        "description": "发送无正文响应并完成请求，适用于 204、304 等状态。"
+      },
+      "demoInvocation": "HTTP_发送空响应(0, 1)"
+    },
+    {
+      "index": 42,
+      "name": "HTTP_是否已响应",
+      "signature": "HTTP_是否已响应(请求)",
+      "description": "判断请求是否已经提交响应或被中止。",
+      "insertText": "HTTP_是否已响应($1)",
+      "returnType": "逻辑型",
+      "category": "状态",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_是否已响应",
+        "runtimeName": "HTTP_是否已响应",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_是否已响应()",
+        "description": "判断请求是否已经提交响应或被中止。"
+      },
+      "demoInvocation": "HTTP_是否已响应(0)"
+    },
+    {
+      "index": 43,
+      "name": "HTTP_中止请求",
+      "signature": "HTTP_中止请求(请求)",
+      "description": "中止请求并关闭对应连接，不发送应用层响应。",
+      "insertText": "HTTP_中止请求($1)",
+      "returnType": "逻辑型",
+      "category": "响应",
+      "capabilityKind": "managed",
+      "binding": {
+        "command": "HTTP_中止请求",
+        "runtimeName": "HTTP_中止请求",
+        "parameters": [
+          {
+            "name": "请求",
+            "type": "HTTP请求"
+          }
+        ],
+        "returnType": "bool",
+        "encoding": "raw",
+        "example": "HTTP_中止请求()",
+        "description": "中止请求并关闭对应连接，不发送应用层响应。"
+      },
+      "demoInvocation": "HTTP_中止请求(0)"
+    },
+    {
+      "index": 44,
       "name": "HTTP_启动服务",
       "signature": "HTTP_启动服务(端口)",
-      "description": "在 127.0.0.1 指定端口启动单连接 HTTP 服务端，成功返回 1。",
-      "insertText": "HTTP_启动服务(8080)",
+      "description": "旧版单服务兼容入口；在 127.0.0.1 启动后台服务，建议新代码使用受管服务 API。",
+      "insertText": "HTTP_启动服务($1)",
       "returnType": "整数型",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "HTTP_启动服务",
         "runtimeName": "HTTP_启动服务",
@@ -26,50 +1268,64 @@
           }
         ],
         "returnType": "int",
-        "example": "HTTP_启动服务(8080)"
+        "encoding": "raw",
+        "example": "HTTP_启动服务()",
+        "description": "旧版单服务兼容入口；在 127.0.0.1 启动后台服务，建议新代码使用受管服务 API。"
       },
       "demoInvocation": "HTTP_启动服务(1)"
     },
     {
-      "index": 2,
+      "index": 45,
       "name": "HTTP_等待请求",
       "signature": "HTTP_等待请求()",
-      "description": "等待并读取一个 HTTP 请求头，返回最近请求文本。",
+      "description": "旧版阻塞兼容入口；等待一个请求并返回原始请求文本，新代码应使用请求处理器。",
       "insertText": "HTTP_等待请求()",
       "returnType": "文本型",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "HTTP_等待请求",
         "runtimeName": "HTTP_等待请求",
         "parameters": [],
         "returnType": "wideString",
-        "encoding": "wide",
-        "example": "HTTP_等待请求()"
+        "encoding": "raw",
+        "example": "HTTP_等待请求()",
+        "description": "旧版阻塞兼容入口；等待一个请求并返回原始请求文本，新代码应使用请求处理器。"
       },
       "demoInvocation": "HTTP_等待请求()"
     },
     {
-      "index": 3,
+      "index": 46,
       "name": "HTTP_等待请求到调试输出",
       "signature": "HTTP_等待请求到调试输出()",
-      "description": "等待一个 HTTP 请求并把请求头写入调试输出。",
+      "description": "旧版阻塞兼容入口；等待请求并输出原始内容。",
       "insertText": "HTTP_等待请求到调试输出()",
       "returnType": "整数型",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "HTTP_等待请求到调试输出",
         "runtimeName": "HTTP_等待请求到调试输出",
         "parameters": [],
         "returnType": "int",
-        "example": "HTTP_等待请求到调试输出()"
+        "encoding": "raw",
+        "example": "HTTP_等待请求到调试输出()",
+        "description": "旧版阻塞兼容入口；等待请求并输出原始内容。"
       },
       "demoInvocation": "HTTP_等待请求到调试输出()"
     },
     {
-      "index": 4,
+      "index": 47,
       "name": "HTTP_回复文本",
       "signature": "HTTP_回复文本(内容)",
-      "description": "向当前 HTTP 请求返回 UTF-8 文本响应，并关闭该请求连接。",
-      "insertText": "HTTP_回复文本(\"$1\")",
+      "description": "旧版兼容入口；向最近等待或当前回调请求发送 200 文本响应。",
+      "insertText": "HTTP_回复文本($1)",
       "returnType": "整数型",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "HTTP_回复文本",
         "runtimeName": "HTTP_回复文本",
@@ -81,23 +1337,29 @@
         ],
         "returnType": "int",
         "encoding": "wide",
-        "example": "HTTP_回复文本(\"你好\")"
+        "example": "HTTP_回复文本()",
+        "description": "旧版兼容入口；向最近等待或当前回调请求发送 200 文本响应。"
       },
       "demoInvocation": "HTTP_回复文本(\"演示参数1\")"
     },
     {
-      "index": 5,
+      "index": 48,
       "name": "HTTP_关闭服务",
       "signature": "HTTP_关闭服务()",
-      "description": "关闭当前 HTTP 服务端监听和请求连接。",
+      "description": "旧版兼容入口；停止并销毁旧版默认服务。",
       "insertText": "HTTP_关闭服务()",
       "returnType": "空",
+      "category": "兼容",
+      "capabilityKind": "secureReplacement",
+      "visibility": "advanced",
       "binding": {
         "command": "HTTP_关闭服务",
         "runtimeName": "HTTP_关闭服务",
         "parameters": [],
         "returnType": "void",
-        "example": "HTTP_关闭服务()"
+        "encoding": "raw",
+        "example": "HTTP_关闭服务()",
+        "description": "旧版兼容入口；停止并销毁旧版默认服务。"
       },
       "demoInvocation": "HTTP_关闭服务()"
     }

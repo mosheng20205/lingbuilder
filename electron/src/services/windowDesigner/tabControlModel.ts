@@ -104,7 +104,8 @@ export function getSelectedTabPage(control: LingControl): TabControlPage | undef
 }
 
 export function isTabControlHeaderHidden(control: LingControl): boolean {
-  return !isNewEmojiTabsControl(control) && control.type === 'TabControl' && control.properties?.hideHeader === true;
+  if (isNewEmojiTabsControl(control)) return control.properties?.headerVisible === false;
+  return control.type === 'TabControl' && control.properties?.hideHeader === true;
 }
 
 export function getControlTabSlot(control: LingControl, tabControl: LingControl): string | undefined {

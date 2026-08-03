@@ -32,6 +32,8 @@ test('Windows installer detects WebView2 and uses a frozen official bootstrapper
   ]);
   assert.match(installer, /F3017226-FE2A-4295-8BDF-00C3A9A7E4C5/u);
   assert.match(installer, /MicrosoftEdgeWebview2Setup\.exe/u);
+  assert.match(preparation, /已复用本地 WebView2 Bootstrapper/u);
+  assert.match(preparation, /verifyMicrosoftSignature\(filePath\)/u);
   assert.match(installer, /\/silent \/install/u);
   assert.match(packageJson, /prepare:webview2/u);
   assert.match(packageJson, /installer\/installer\.nsh/u);

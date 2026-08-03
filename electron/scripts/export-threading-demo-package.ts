@@ -148,7 +148,7 @@ async function main() {
     : [];
   await fs.mkdir(path.dirname(exportPath), { recursive: true });
   const service = createLcppSourcePackageService(repositoryRoot);
-  const exported = await service.exportProject(projectId, exportPath, '0.2.8');
+  const exported = await service.exportProject(projectId, exportPath, '0.2.7');
   const preview = await service.inspectPackage(exportPath);
   const importParent = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-threading-demo-import-'));
   try {

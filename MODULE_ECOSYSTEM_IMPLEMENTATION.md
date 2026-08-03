@@ -1,5 +1,11 @@
 # LingBuilder 模块生态实现说明
 
+> 2026-08-03 补充：`lingbuilder.new_emoji.ui/Tabs` 的 `headerVisible` 是独立的布尔设计器属性，默认 `true`，由上游 `EU_SetTabsHeaderVisible` Setter 驱动；它不能与固定开启的 `contentVisible` 混用。设计器预览、模块属性面板、F5/原生预览和 Visual Studio 导出必须共同消费该字段，关闭时隐藏表头并让页面内容区占满，旧项目缺少字段时按显示兼容。
+
+> 2026-08-03 补充：`lingbuilder.net.http-client@2.0.0` 已完成 74 条受管命令的原生闭环。共享 `httpClientRuntime.ts` 使用 WinHTTP 管理客户端/请求生命周期、超时、代理、凭据、TLS 证书固定、Cookie、自动解压、重定向、响应/上传资源上限、文本/JSON/二进制/文件传输和响应快照；普通 Win32 通过 `WM_LINGBUILDER_HTTP_CLIENT_EVENT`，new_emoji 通过独立消息窗口投递同一完成处理器协议。所有 `.lcpp` 处理器继续使用 `&处理器名`，旧 `HTTP客户端_请求/GET/POST/取状态码/取响应文本/取错误/清空状态` 入口委托到受管默认客户端，不破坏旧源码。模块演示与 `electron/docs/modules/http-client/README.md` 已同步，生成回归覆盖 Win32、new_emoji、无模块隔离和贡献/binding 一致性；`npm run smoke:http-client-native` 已用本地 HTTP fixture 真实编译 Win32/x64 与 new_emoji x64 并验证 200/UTF-8 响应。
+
+> 2026-08-02 补充：`lingbuilder.system.clipboard@1.1.0` 已从文本读写的 4 条基础命令扩展为 10 条完整剪贴板命令。图片字节集使用生成工程内部的 `std::vector<unsigned char>`，静态图片支持 DIB/DIBV5 与 BMP 文件字节；GIF87a/GIF89a 通过注册的 `GIF`、标准 MIME `image/gif` 和 `HTML Format` 原样写入，`剪贴板_取GIF字节集` 和通用图片读取均优先保留原始动图，避免动画帧被转换为静态 DIB。每个图片/GIF 输入限制 256 MB，Win32/x64 生成测试覆盖 GIF 注册、MIME GIF、CF_HTML 偏移、DIB 和 `CF_BITMAP` 转换。
+
 > 2026-08-01 补充：`lingbuilder.input.mouse@2.0.0` 由 `mouseApiCatalog.ts` 统一维护 29 条命令，固定分为“全局真实输入（前台）”（15 条）、“窗口消息输入（后台）”（6 条）和“UI Automation（后台）”（8 条）。每条 contribution/binding 描述都以范围标签和“是否占用系统鼠标”说明开头：`GetCursorPos` 查询不移动光标，`SetCursorPos`/`SendInput` 会改变真实光标或进入系统鼠标输入流；指定 HWND 的 `PostMessageW` 只投递 `WM_MOUSE*` 消息，不移动光标、不抢前台；UI Automation 通过 `IUIAutomation` 的 Name/AutomationId 查找和 Invoke/Value/Toggle/Focus Pattern 按控件语义操作，不模拟鼠标。UIA 元素以模块内受管整数句柄保存，生成的 Win32/new_emoji 工程在 `CoUninitialize` 前统一清理 COM 引用；Win32/x64 生成测试覆盖 `UIAutomation.h`、`uiautomationcore.lib`、`PostMessageW` 和三类绑定。模块不公开 `BlockInput` 或裸 COM 指针，窗口消息和 UIA 目标仍可忽略、过滤或因权限隔离失败。
 
 > 2026-08-01 补充：`lingbuilder.input.keyboard@2.0.0` 现由 `keyboardApiCatalog.ts` 统一维护 31 条命令，按全局状态、键码转换、前台 `SendInput`、指定 HWND 后台 `PostMessageW` 和 1.x 兼容入口分类。每条 contribution 均明确标注前台/后台、焦点语义和实体键盘影响。前台组合键使用批量输入并在失败时尝试释放修饰键；后台命令只投递消息，不抢焦点、不改变物理键状态且允许目标忽略。模块不公开 `BlockInput`、低级键盘钩子或隐藏按键记录。Win32/x64 原生验收使用 `npm run smoke:keyboard-native`，不会向用户桌面注入按键。
@@ -10,7 +16,7 @@
 
 > 2026-08-01 补充：`lingbuilder.system.disk@1.1.0` 已从 5 条基础命令扩展为 28 条只读命令和 8 个公开记录/数组类型。模块统一覆盖精确容量、逻辑驱动器、全部卷、卷 GUID/挂载点、文件系统标志、物理磁盘描述、总线、SSD/TRIM、逻辑/物理扇区及 MBR/GPT/RAW 分区布局；原 5 条命令继续兼容。结构化命令 binding 可以引用本模块 `contributes.types[]`，生成工程内部映射为 `struct/std::vector`；带原生 DLL runtime 的 target 仍被清单门禁禁止直接传递结构化类型。Win32/x64 均通过真实 MSVC 编译运行。
 
-> 2026-08-01 补充：`lingbuilder.win32.common-controls` 已用公开命名数组承接 ListView 行数据：`列表视图行` 映射 `std::vector<std::wstring>`，`列表视图行集合` 映射嵌套 vector；`列表视图_创建行/创建行集合` 负责从标量构造值，添加、插入、批量添加和虚拟行设置直接消费结构化数组。旧 Tab/TSV 文本重载继续兼容，但新手/Monaco 与 AI 默认生成结构化写法。该能力属于生成工程内部 C++ 值语义，不允许据此跨 DLL 传递 STL；源码包必须声明 `win32.listview.structured-rows.v1` 和最低生成器 0.2.8。
+> 2026-08-01 补充：`lingbuilder.win32.common-controls` 已用公开命名数组承接 ListView 行数据：`列表视图行` 映射 `std::vector<std::wstring>`，`列表视图行集合` 映射嵌套 vector；`列表视图_创建行/创建行集合` 负责从标量构造值，添加、插入、批量添加和虚拟行设置直接消费结构化数组。旧 Tab/TSV 文本重载继续兼容，但新手/Monaco 与 AI 默认生成结构化写法。该能力属于生成工程内部 C++ 值语义，不允许据此跨 DLL 传递 STL；源码包必须声明 `win32.listview.structured-rows.v1` 和最低生成器 0.2.7。
 
 > 2026-08-01 补充：manifest v2 的 `contributes.types[]` 已向后兼容扩展为 `opaque`、`record`、`array` 三类。旧类型省略 `kind` 时继续按不透明类型处理；`record` 使用结构化 `fields[]` 公开 LingCpp 值语义字段，`array` 使用 `elementType` 公开命名数组。启用模块后，语言服务、Monaco/新手补全、模块公开信息、项目数据类型嵌套和普通 Win32/new_emoji C++ 生成消费同一公开类型服务；记录生成真实 `struct`，数组确定性映射为 `std::vector<T>`。结构化类型禁止填写 `cppType` 绕过契约，原生 DLL 仍不得直接跨边界传递 STL 或未固定布局的 C++ 对象，复杂原生数据必须继续使用 POD、缓冲区、任务或受管句柄适配。
 
@@ -44,7 +50,7 @@
 
 > 2026-07-30 补充（2026-08-01 扩展）：ListView 公开面现为 87 条高层命令。16 条数据/虚拟/类型化行命令保留在内置模块；71 条 Win32 高级命令必须统一由 `electron/src/services/modules/listViewApiCatalog.ts` 产生 contribution 与 binding，语言服务和 C++ 生成测试按目录全量枚举，不再手工复制多份命令表。原始指针/回调型 `LVM_*` 能力必须通过原生模块提供类型安全包装，不得在 DSL binding 中暴露任意地址或通用 `SendMessage`。
 
-> 2026-07-30 补充（2026-08-01 扩展）：LCPP 源码包清单版本 2 会按实际 `.lcpp` 调用记录生成器能力。使用 71 条 ListView 高级命令的包写入 `win32.listview.advanced-api.v1`；使用类型化行构造器的包写入 `win32.listview.structured-rows.v1` 并要求最低生成器 0.2.8。导入时若当前 IDE 不具备对应能力，必须在编译前给出明确升级诊断，不得继续生成 C++ 后再暴露 `C3861`。
+> 2026-07-30 补充（2026-08-01 扩展）：LCPP 源码包清单版本 2 会按实际 `.lcpp` 调用记录生成器能力。使用 71 条 ListView 高级命令的包写入 `win32.listview.advanced-api.v1`；使用类型化行构造器的包写入 `win32.listview.structured-rows.v1` 并要求最低生成器 0.2.7。导入时若当前 IDE 不具备对应能力，必须在编译前给出明确升级诊断，不得继续生成 C++ 后再暴露 `C3861`。
 
 > 2026-07-30 DataGrid 对齐补充：结构化列模型的 `alignment` 只允许 `left/center/right` 且默认 `center`；设计器、预览、`表格_设置列对齐` binding 和 Win32 C++ 运行时必须消费同一字段，不能只在 React 预览中模拟。
 
@@ -117,7 +123,8 @@
 - `lingbuilder.win32.common-controls` 为 TabControl 提供 `选项卡_设置隐藏表头/取隐藏表头`，用于运行时切换表头并重排页面承载区；补全、binding 与生成运行时必须保持同源。设计器注册表中的结构/创建期属性不自动等同于运行时命令，只有具备确定性 C++ 实现的属性能力才能进入 `.lcpp` 控件命令补全。
 - `lingbuilder.win32.common-controls` 的独立 Header 列模型支持逐列 `alignment`（`left/center/right`）；设计器列编辑、预览和 C++ `HDF_LEFT/HDF_CENTER/HDF_RIGHT` 必须保持同源，旧列数据默认左对齐。
 - `lingbuilder.win32.basic` 同源贡献窗口事件上下文命令：关闭取消、宽高/位置、激活/可见/窗口状态、按键与修饰键、按键处理、DPI 和拖入文件读取。Monaco 补全与 C++ runtime 不得维护两份命令清单。
-- 窗口事件处理器保持无参数；模块 binding 返回的文本指针指向窗口对象持有的事件快照，只能读取，不能在模块侧长期缓存。
+- 窗口事件处理器签名以 `windowEventRegistry.ts` 为唯一契约：`KeyDown`/`KeyUp` 传入键码及 Ctrl/Shift/Alt 状态，`TextInput` 传入 Unicode 字符文本，`DpiChanged` 传入新 DPI，`FileDropped` 传入完整路径数组；其它事件当前保持无参数。旧无参数处理器继续兼容并可使用窗口事件上下文命令，模块和 AI 不得自行扩展或改写事件 ABI。
+- 事件上下文命令仍是兼容与补充接口；其 binding 返回的文本指针指向窗口对象持有的事件快照，只能读取，不能在模块侧长期缓存。
 - 模块 manifest 校验会拒绝未知属性类型、重复控件、重复属性、重复事件、不含 `{controlName}` 的事件模板和不安全文件默认路径。
 
 - 模块清单已升级为 `schemaVersion: 2`；旧 `.lbmod` v1 不再作为兼容目标，安装预览会提示使用模块迁移工具重新打包。
@@ -314,18 +321,23 @@ lingbuilder.module.json
 
 ## WebSocket 客户端内置网络模块
 
-- `lingbuilder.websocket.client` 是内置 v2 网络模块，项目启用后提供 `WS_连接`、`WS_发送文本`、`WS_接收到调试输出`、`WS_接收文本` 和 `WS_关闭`。
-- 该模块的补全、诊断和生成器 binding 均来自 `electron/src/services/modules/builtinModules.ts`，不要在 Monaco 或 React 组件里另写一份命令清单。
-- Win32 C++ 生成器在 `LingWindowBase` 内置基于 WinHTTP 的单连接 WebSocket 运行时，并链接 `winhttp.lib`；当前稳定目标仍是 Windows/MSVC。
-- AI 或示例代码使用该模块时，应先确认项目已启用模块；地址使用 `ws://` 或 `wss://`，运行时会规范化为 WinHTTP 握手使用的 HTTP/HTTPS URL。
+- `lingbuilder.websocket.client@2.0.0` 是内置 v2 网络模块，从 `electron/src/services/modules/webSocketClientModule.ts` 的单一目录生成 51 条 contribution/binding，并公开 `WebSocket连接` 受管类型；旧 5 条同步命令只保留为 `advanced` 迁移入口。
+- 新代码使用创建/配置/安全限制/处理器绑定/后台启动、指定连接文本与二进制发送、事件快照、握手状态和统计 API。五类处理器参数必须声明为 `handler`，源码必须写 `&处理器名`，不能退回字符串回调。
+- 共享运行时位于 `electron/src/services/windowDesigner/webSocketClientRuntime.ts`。每个连接使用独立 WinHTTP 后台接收循环，支持 `ws://`/`wss://`、多连接、Origin、子协议、自定义请求头、系统/直连/固定代理、HTTP Basic 凭据、默认系统证书验证、可选自签名策略、SHA-256 证书固定、严格 UTF-8、消息限额、接收超时、指数退避重连和统计。
+- 普通 Win32 与 New_Emoji 复用同一运行时，通过各自窗口消息回到所属 UI 线程。Windows/MSVC Win32/x64 target 链接 `winhttp.lib`、`crypt32.lib`；WinHTTP 自动处理 Ping/Pong，但不提供主动 Ping API，模块不得用普通文本伪装 RFC 6455 Ping。
+- 正式文档位于 `electron/docs/modules/websocket-client/README.md`。模块变更必须运行 `npm run smoke:websocket-client-native`，真实编译普通 Win32 的 Win32/x64 与 New_Emoji x64，并验证 Origin、子协议、文本/二进制、Close、自动重连和统计。
 
 ## HTTP / WebSocket 服务端内置网络模块
 
 - `lingbuilder.http.server` 和 `lingbuilder.websocket.server` 是内置 v2 网络服务端模块，项目启用后分别提供本地 HTTP 服务端和 WebSocket 服务端能力。
-- HTTP 服务端命令包括 `HTTP_启动服务`、`HTTP_等待请求`、`HTTP_等待请求到调试输出`、`HTTP_回复文本` 和 `HTTP_关闭服务`。
-- WebSocket 服务端命令包括 `WSS_启动服务`、`WSS_等待连接`、`WSS_接收文本`、`WSS_接收到调试输出`、`WSS_发送文本` 和 `WSS_关闭服务`。
-- 两个服务端模块当前都是 Windows/MSVC 原型闭环，Win32 C++ 生成器在 `LingWindowBase` 内置基于 Winsock 的单连接同步服务端运行时；HTTP 链接 `ws2_32.lib`，WebSocket 服务端链接 `ws2_32.lib` 和 `advapi32.lib`。
-- 服务端监听默认绑定 `127.0.0.1`，适合作为本地调试、AI 示例和模块能力验证入口；后续如开放局域网监听、路由、多客户端或异步事件循环，必须先抽象受控服务层和清晰的权限提示。
+- HTTP 服务端 `2.0.0` 从 `electron/src/services/modules/httpServerModule.ts` 的单一目录生成 48 条 contribution/binding，并公开 `HTTP服务端`、`HTTP请求` 两个受管类型。新代码使用创建/配置/资源限制/路由/处理器/启动停止、完整请求读取、文本/JSON/二进制/文件/Cookie/重定向响应和统计 API；旧 5 条阻塞命令仅作为 `advanced` 迁移入口。
+- HTTP 运行时位于 `electron/src/services/windowDesigner/httpServerRuntime.ts`，使用后台 accept、1–64 工作线程和有界连接队列，支持 IPv4/IPv6、动态端口、HTTP/1.0/1.1、keep-alive、Content-Length/chunked、HEAD、请求限制、响应头注入防护和确定性停止回收。请求通过窗口消息回到所属 UI 线程；普通 Win32 与 New_Emoji 复用同一运行时和 binding。
+- HTTP 的处理器 binding 必须声明 `type: handler` 和 `handlerSignature`；当前请求/路由处理器契约为 `parameterTypes: []`、`returnType: 空`。语言服务必须阻断字符串处理器、缺失处理器和签名不匹配，生成器继续把 `&处理器名` 确定性转换为后端回调名称。
+- HTTP 模块按监听目标解析后的实际 IPv4/IPv6 地址默认禁止非回环绑定，必须显式调用 `HTTP_允许外部监听`；请求目标的百分号编码及其 UTF-8 解码结果必须严格校验。模块定位是商业可用的嵌入式 HTTP/1.1 服务端，不内置 TLS/HTTP2/身份认证；公网 HTTPS 由反向代理或网关提供。正式文档位于 `electron/docs/modules/http-server/README.md`，变更必须运行 `npm run smoke:http-server-native`，真实编译普通 Win32 的 Win32/x64 与 New_Emoji x64 并完成协议检查。
+- WebSocket 服务端 `2.0.0` 从单一目录生成 50 条 contribution/binding，并公开 `WebSocket服务端`、`WebSocket客户端` 两个受管类型。新代码使用创建/配置/安全限制/事件绑定/启动停止、客户端查询、定向发送、广播、心跳、关闭和统计 API；旧 6 条阻塞命令仅作为 `advanced` 迁移入口。
+- WebSocket 运行时是后台非阻塞 `WSAPoll` reactor，支持多客户端、文本/二进制、分片与跨帧 UTF-8、Ping/Pong、Close、掩码/RSV/opcode/长度校验、Origin/路径/子协议、握手/消息/发送队列上限和超时。事件通过窗口消息回到所属 UI 线程；普通 Win32 与 New_Emoji 复用同一运行时和 binding。
+- WebSocket 服务端声明 Windows/MSVC Win32 与 x64 target，链接 `ws2_32.lib` 和 `advapi32.lib`。模块只提供 `ws://`，公网 TLS 应由反向代理或网关终止。默认禁止非回环监听，必须显式调用 `WSS_允许外部监听`。
+- 正式文档位于 `electron/docs/modules/websocket-server/README.md`。模块变更必须运行 `npm run smoke:websocket-server-native`，真实编译普通 Win32 的 Win32/x64 与 New_Emoji x64，并验证握手、Origin、子协议、多客户端、分片、二进制、Ping/Pong、掩码和关闭握手。
 
 ## EdgeView 设计器控件（2026-07）
 
@@ -335,7 +347,7 @@ lingbuilder.module.json
 - WebView2 SDK/Loader 仍由 `nativeDependencyService` 受控发现和复制；设计器只保存模型，不直接读取 NuGet 或启动原生浏览器。
 - EdgeView 事件目录集中维护在 `electron/src/services/modules/edgeViewBrowserEvents.ts`，按 `1.0.3537.50` 与 `1.0.4078.44` 双基线审计。普通 HWND 控件接入 71 项可达事件；`CompositionController` 独占的 2 项事件明确排除。注册表、模块补全、设计器事件面板、中文事件映射和生成器覆盖测试必须消费同一目录，新增 SDK 版本时不得只补 UI 或只补 C++。
 - 事件运行时通过 `QueryInterface` 逐级启用 WebView2 版本接口，并级联保存 Download、Frame、Notification、Find、Profile、DevTools receiver 等事件源。事件数据统一为 UTF-16 JSON；等待事件按事件名计数，避免高频资源/下载事件覆盖最近值后造成漏判。
-- 2026-07-31 起模块升级到 `1.2.0` / 最低 LingBuilder `0.2.8`：`edgeViewApiCatalog.ts` 集中生成 235 条安全 API contribution 与 binding，连同 36 条兼容命令共 271 条。覆盖清单固定审计 SDK `1.0.3537.50`（Runtime 141）和 `1.0.4078.44`（Runtime 150）：新基线 995 个稳定方法已归为 330 个公开实现、565 个内部适配和 100 个批准排除，`pending=0`。`module:edgeview-coverage:complete` 同时验证双头文件哈希、中文名、binding、运行时符号和测试 ID。
+- 2026-07-31 起模块升级到 `1.2.0` / 最低 LingBuilder `0.2.7`：`edgeViewApiCatalog.ts` 集中生成 235 条安全 API contribution 与 binding，连同 36 条兼容命令共 271 条。覆盖清单固定审计 SDK `1.0.3537.50`（Runtime 141）和 `1.0.4078.44`（Runtime 150）：新基线 995 个稳定方法已归为 330 个公开实现、565 个内部适配和 100 个批准排除，`pending=0`。`module:edgeview-coverage:complete` 同时验证双头文件哈希、中文名、binding、运行时符号和测试 ID。
 - v2 创建期选项包括独占 UDF、崩溃报告、环境跟踪保护、扩展开关、通道搜索、发布通道、滚动条样式、脚本区域、背景色和宿主输入处理。属性修改后必须显式重建；运行期以 `QueryInterface` 检测接口，使用 v2 命令时生成物要求 Runtime 150。CompositionController、PointerInfo、AutomationProvider、实验 API、裸 COM/指针、Host Object 注入继续排除。
 - 新增 API 只接受文本、数字、JSON、明确文件路径和受管任务/下载 ID；CompositionController、PointerInfo、AutomationProvider、任意 Host Object 注入、裸 COM/指针和内存地址继续明确排除。异步操作统一返回任务 ID，并通过 `&处理器名` 在所属窗口线程完成；实例关闭或重建会增加 generation、取消任务并拒绝迟到回调。
 - 设计器继续只绘制安全占位。统一命令 `designer.edgeview.previewControl` 会生成只含当前 Edge 控件、不执行项目用户代码的独立 Win32 临时项目，通过 MSVC 和受管进程启动；再次预览、停止或切换项目会回收旧进程。
@@ -343,7 +355,7 @@ lingbuilder.module.json
 ## 分类内置模块库（2026-07）
 
 - 参考精易模块的程序、窗口句柄、键盘鼠标、进程线程、配置、图片、网页、文本字节、文件目录、系统、杂类和组件分类，新增 51 个内置 v2 模块、336 条中文命令。
-- 当前 `BUILTIN_MODULES` 合计 63 个模块、746 条命令；正式清单位于根目录 `MODULE_ENCAPSULATION_CHECKLIST.md`。
+- 当前 `BUILTIN_MODULES` 合计 81 个模块、1782 条命令；正式清单位于根目录 `MODULE_ENCAPSULATION_CHECKLIST.md`。
 - 模块定义按领域拆到 `standardLibraryModules.ts`、`systemLibraryModules.ts`、`networkLibraryModules.ts`、`dataMediaModules.ts` 和 `platformAdvancedModules.ts`，不继续扩张单个 `builtinModules.ts`。
 - 对应 C++ 实现按领域拆到 `standardLibraryRuntime.ts`、`systemLibraryRuntime.ts`、`networkLibraryRuntime.ts`、`dataMediaRuntime.ts` 和 `platformAdvancedRuntime.ts`，生成器只注入当前项目已启用模块的运行时片段。
 - 新增表达式翻译支持嵌套模块调用，例如 `调试输出(文本_转大写("LingBuilder"))` 会把内层文本参数和 binding 一并确定性翻译为宽字符串 C++。
@@ -450,7 +462,7 @@ v2 manifest 可在 `contributes.menus[]` 和 `contributes.submenus[]` 中向稳�
 - `dataGridApiCatalog.ts` 是 contribution、binding、Monaco 补全和真实 C++ 符号的一致性来源。新增命令必须同时实现运行时行为和测试，不能只增加补全。
 - DataGrid 当前共有 92 条目录命令；进度状态和行选择状态均有成对读写接口。`.xlsx` 导入/导出通过标准 SpreadsheetML 与 Windows ZIP Shell 实现，不启动或依赖 Excel；只处理首个工作表、仅允许静态模式，并把图片单元格作为路径文本往返。
 - Win32 支持本地排序筛选及虚拟缓存；虚拟模式只更新状态并异步触发 `VirtualDataRequested`，不得在绘制回调中调用数据提供者。
-- 旧 new_emoji Table 不自动转成 Win32 DataGrid；迁移服务只添加统一结构化编辑字段，保留原模块类型、后端和生成适配器。new_emoji 不声明支持 Win32 `表格_` 命令。
+- 旧 new_emoji Table 不自动转成 Win32 DataGrid；迁移服务只添加统一结构化编辑字段，保留原模块类型、后端和生成适配器。new_emoji 不声明支持 Win32 `表格_` 命令。结构化编辑字段在 new_emoji 原生生成时必须先转换为基础列/行 ABI；在上游没有明确 JSON 契约前，不得把 `tableColumnsEx/tableRowsEx` 对象数组直接传给 Ex setter。
 
 ## 受控构建生成与 Protobuf（2026-08-01）
 
@@ -459,3 +471,10 @@ v2 manifest 可在 `contributes.menus[]` 和 `contributes.submenus[]` 中向稳�
 - `bytes` 是 LingCpp 的正式字节集类型，模块 ABI 使用调用方拥有的 `const unsigned char* + size_t` 输入和“查询长度后写入调用方缓冲区”输出；DLL 边界不得传递或释放 STL。真实字节序列从旧 `raw` 迁移，opaque 原生值仍可保留 `raw`。
 - 内置 `lingbuilder.data.protobuf` 使用固定 `lingbuilder.protobuf.protoc` Provider。`.proto`、import、`.pb.h`、`.pb.cc`、descriptor set、运行时和工具随 F5、AI Bridge、CLI 与 Visual Studio 导出进入同一 Pipeline。SDK 必须离线放置于 `.lingbuilder/toolchains/protobuf`，固定版本为 27.3.0，并由 `runtime-manifest.json` 对所有文件执行大小/SHA-256 校验；缺失、篡改、版本或架构不符直接阻断，禁止联网下载或回退系统 `protoc`。
 - Protobuf Provider 会解析本地 `import` 依赖并把依赖文件纳入增量指纹；构建步骤在临时 staging 目录中执行，声明产物成功后才原子提交到构建/导出目录，失败或取消会清理 staging 并恢复旧产物。
+
+## new_emoji Tabs 页面创建顺序与 Container 尺寸（2026-08-02）
+
+- `lingbuilder.new_emoji.ui/Tabs` 的页面 Panel 必须在所有页面子控件创建后再调用 `EU_SetTabsPageElements`；不要在页面仍隐藏或未完成布局时提前绑定后再只切换 `visible`。
+- 页面切换必须继续使用稳定页面 ID 和同级 Panel，不得用 React 状态或手工坐标修正运行时布局。新增外部 HWND 子宿主时也必须遵守相同的创建顺序。
+- `lingbuilder.new_emoji.ui/Container` 的设计器宽高是显式尺寸，模块 runtime mapping 必须生成 `EU_SetPanelLayout(hwnd, element_id, 0, 0)`，禁止让 ABI 默认 `fill_parent=1` 覆盖设计器模型。
+- 模块清单或生成器修改 Tabs/Container 时，至少验证 `17–24` 页面子控件创建顺序、Container 布局 setter、x64 Release 编译和实际页切换；不能只检查设计器静态预览。

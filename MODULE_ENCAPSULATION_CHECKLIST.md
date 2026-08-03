@@ -1,8 +1,8 @@
 # LingBuilder 模块封装清单
 
-更新时间：2026-08-01
+更新时间：2026-08-02
 
-本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **81 个内置模块、1776 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
+本清单以 `electron/src/services/modules/builtinModules.ts` 的实际注册结果为准。当前共注册 **81 个内置模块、1982 条中文命令**；其中参考精易模块分类新增 **51 个模块、336 条命令**。所有新增模块均满足：
 
 - `schemaVersion: 2`。
 - `contributes.commands` 与 `bindings.commands` 一一对应。
@@ -35,13 +35,17 @@
 | 已封装 | `lingbuilder.config.registry` | 用户注册表模块 | 6 |
 | 已封装 | `lingbuilder.system.info` | 系统信息模块 | 7 |
 | 已完整封装（只读信息） | `lingbuilder.system.disk` | 磁盘信息模块 | 28 |
-| 已封装 | `lingbuilder.system.clipboard` | 剪贴板模块 | 4 |
+| 已完整封装 | `lingbuilder.system.clipboard` | 剪贴板模块 | 10 |
 | 已封装 | `lingbuilder.system.shell` | 系统外壳模块 | 5 |
 | 已封装 | `lingbuilder.process` | 进程管理模块 | 5 |
 | 已封装 | `lingbuilder.ipc` | 进程通信模块 | 8 |
 | 已封装 | `lingbuilder.archive` | ZIP 压缩模块 | 4 |
 
 磁盘信息模块 `1.1.0` 保留原 5 条容量/卷标兼容命令，并扩展为 28 条命令和 8 个公开 `record/array` 类型。覆盖精确字节容量、用户可用/总空闲/已用容量、使用率、逻辑驱动器、全部卷、卷 GUID、挂载点、文件系统能力标志、物理磁盘描述、总线、SSD、TRIM、逻辑/物理扇区及 MBR/GPT/RAW 分区布局。模块只执行只读 Windows 查询，不提供格式化、分区修改或写盘能力。
+
+剪贴板模块 `1.1.0` 在保留 Unicode 文本读写的基础上，新增图片字节集读写、图片格式查询和 GIF 原始字节读写，共 10 条命令。静态图片支持 DIB/DIBV5 与 BMP 文件字节；GIF 以注册的 `GIF`、标准 MIME `image/gif` 和 `HTML Format` 写入，读取时优先返回原始 GIF，确保动画帧、帧延时和循环信息不被转换丢失。单个图片或 GIF 字节集上限为 256 MB，文档位于 `electron/docs/modules/clipboard/README.md`。
+
+WebSocket 服务端模块 `2.0.0` 已从 6 条同步单连接原型升级为 50 条受管命令。运行时使用后台非阻塞 `WSAPoll` reactor，支持多客户端、文本/二进制、分片、UTF-8 校验、Ping/Pong、关闭握手、Origin/路径/子协议、资源限制、有界发送队列、客户端状态和统计；事件通过窗口消息回到普通 Win32 或 New_Emoji UI 线程。Win32/x64 原生工程均可生成，New_Emoji x64 复用同一协议运行时；6 条旧阻塞命令仅作为 advanced 迁移入口。正式文档位于 `electron/docs/modules/websocket-server/README.md`，`smoke:websocket-server-native` 会真实编译并验证两种 UI 后端。
 
 ## 输入、窗口与桌面
 
@@ -59,7 +63,7 @@
 
 | 状态 | 模块 ID | 名称 | 命令数 |
 |---|---|---|---:|
-| 已封装 | `lingbuilder.net.http-client` | HTTP 客户端模块 | 7 |
+| 已完整封装 | `lingbuilder.net.http-client` | HTTP 客户端模块 2.0（受管 WinHTTP、异步回调与双 UI 后端） | 74 |
 | 已封装 | `lingbuilder.net.tcp` | TCP 通信模块 | 6 |
 | 已封装 | `lingbuilder.net.udp` | UDP 通信模块 | 7 |
 | 已封装 | `lingbuilder.net.dns` | DNS 与 IP 模块 | 5 |
@@ -143,9 +147,9 @@ OpenCV 模块保留基础 GDI+ 图像模块并作为新增高级能力。公开�
 | 已封装 | `lingbuilder.fbro.network` | FBro高级网络模块 | 2 |
 | 已封装 | `lingbuilder.fbro.vip` | FBro VIP 指纹模块（188 项官方能力逐项公开，另保留 10 个批量入口） | 198 |
 | 已有 | `lingbuilder.threading` | 多线程模块 | 54 |
-| 已有 | `lingbuilder.websocket.client` | WebSocket 客户端模块 | 5 |
-| 已有 | `lingbuilder.http.server` | HTTP 服务端模块 | 5 |
-| 已有 | `lingbuilder.websocket.server` | WebSocket 服务端模块 | 6 |
+| 已完整封装 | `lingbuilder.websocket.client` | WebSocket 客户端模块 2.0（WinHTTP 受管多连接、wss/TLS 与自动重连） | 51 |
+| 已完整封装 | `lingbuilder.http.server` | HTTP 服务端模块 2.0（受管多连接 HTTP/1.1、路由与完整请求/响应） | 48 |
+| 已完整封装 | `lingbuilder.websocket.server` | WebSocket 服务端模块 2.0（RFC 6455 受管多客户端） | 50 |
 
 除 EdgeView 原本已有 x64 target 外，其余仅声明 Win32 的内置系统模块现在会从同一份内置 manifest 自动生成等价 x64 target。外部 `.lbmod` 不使用此自动补齐规则，仍必须自行提供精确架构产物。
 

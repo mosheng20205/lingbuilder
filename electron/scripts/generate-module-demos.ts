@@ -137,7 +137,7 @@ async function main(): Promise<void> {
     const sourcePackages = createLcppSourcePackageService(workspaceRoot);
     for (const [index, entry] of entries.entries()) {
       const target = path.join(exportsRoot, entry.packageName);
-      const result = await sourcePackages.exportProject(entry.projectId, target, '0.2.8-module-demos');
+      const result = await sourcePackages.exportProject(entry.projectId, target, '0.2.7-module-demos');
       entry.packageBytes = (await fs.stat(result.packagePath)).size;
       console.log(`[${index + 1}/${entries.length}] 已导出 ${entry.moduleId} -> ${entry.packageName}`);
     }
@@ -349,6 +349,7 @@ function defaultArgument(
     return `"演示参数${index + 1}"`;
   }
   if (parameter.type === 'bool') return '真';
+  if (parameter.type === 'bytes') return '{}';
   if (parameter.type === 'double') return '1.0';
   if (parameter.type === 'longLong') return '1';
   if (parameter.type === 'int') return '1';

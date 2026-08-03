@@ -49,7 +49,7 @@ import {
 } from '../services/windowDesigner/windowDesignerService';
 import type { LingWindowModel } from '../services/windowDesigner/types';
 import {
-  getDesignerImagePreviewSource,
+  fetchDesignerImagePreviewBlob,
   listDesignerImageResources,
   type DesignerImageImportResult,
   type DesignerImageResource
@@ -151,6 +151,7 @@ function buildModuleCppRows(
 }
 
 interface SidebarProps {
+  workspaceKey?: string;
   files: CppFile[];
   activeFile: CppFile;
   onSelectFile: (file: CppFile, forceCodeView?: boolean) => void;
@@ -197,6 +198,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({
+  workspaceKey = '',
   files,
   activeFile,
   onSelectFile,
@@ -312,6 +314,8 @@ export default function Sidebar({
   const moduleProjectId = activeSolutionProjectId || designerState.project.id || 'lingbuilder-ui-project';
   const moduleProjectIdRef = useRef(moduleProjectId);
   moduleProjectIdRef.current = moduleProjectId;
+  const workspaceKeyRef = useRef(workspaceKey);
+  workspaceKeyRef.current = workspaceKey;
 
   // Group files by directories
   const normalizedFileSearch = fileSearch.trim().toLowerCase();
@@ -387,21 +391,22 @@ export default function Sidebar({
 
   const refreshProjectModules = useCallback(async () => {
     const projectId = moduleProjectId;
+    const requestedWorkspaceKey = workspaceKey;
     setProjectModules([]);
     setProjectModulesStatus(`正在读取项目 ${projectId} 的模块...`);
     try {
       const result = await fetchJson(`/api/modules/project?projectId=${encodeURIComponent(projectId)}`);
-      if (moduleProjectIdRef.current !== projectId) return;
+      if (moduleProjectIdRef.current !== projectId || workspaceKeyRef.current !== requestedWorkspaceKey) return;
       if (!result.ok) throw new Error(result.error || '项目模块读取失败');
       const modules = Array.isArray(result.modules) ? result.modules as InstalledModule[] : [];
       setProjectModules(modules.length > 0 ? modules : getFallbackProjectModules());
       setProjectModulesStatus(modules.length > 0 ? '项目模块已载入' : '当前项目未启用模块');
     } catch (error) {
-      if (moduleProjectIdRef.current !== projectId) return;
+      if (moduleProjectIdRef.current !== projectId || workspaceKeyRef.current !== requestedWorkspaceKey) return;
       setProjectModules(getFallbackProjectModules());
       setProjectModulesStatus('模块服务等待重启，已显示内置基础模块');
     }
-  }, [moduleProjectId]);
+  }, [moduleProjectId, workspaceKey]);
 
   useEffect(() => {
     const handleDesignerProjectUpdated = (event: Event) => {
@@ -852,17 +857,28 @@ export default function Sidebar({
   };
 
   const refreshProjectImageResources = useCallback(async (projectId: string): Promise<boolean> => {
+    const requestedWorkspaceKey = workspaceKey;
     setProjectResourceStatus(previous => ({ ...previous, [projectId]: 'loading' }));
     try {
       const resources = await listDesignerImageResources(projectId);
+      if (workspaceKeyRef.current !== requestedWorkspaceKey) return false;
       setProjectImageResources(previous => ({ ...previous, [projectId]: resources }));
       setProjectResourceStatus(previous => ({ ...previous, [projectId]: 'ready' }));
       return true;
     } catch {
+      if (workspaceKeyRef.current !== requestedWorkspaceKey) return false;
       setProjectResourceStatus(previous => ({ ...previous, [projectId]: 'error' }));
       return false;
     }
-  }, []);
+  }, [workspaceKey]);
+
+  useEffect(() => {
+    setProjectImageResources({});
+    setProjectResourceStatus({});
+    setExpandedResourceProjectIds({});
+    setResourceContextMenu(null);
+    setResourcePreview(null);
+  }, [workspaceKey]);
 
   useEffect(() => {
     if (!activeSolutionProjectId) return;
@@ -2469,7 +2485,33 @@ function ImageResourcePreviewDialog({
 }) {
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [previewSource, setPreviewSource] = useState('');
+  const [loadError, setLoadError] = useState('');
   const { projectId, resource } = preview;
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl = '';
+    setLoadState('loading');
+    setDimensions(null);
+    setPreviewSource('');
+    setLoadError('');
+    void fetchDesignerImagePreviewBlob(projectId, resource.relativePath, controller.signal)
+      .then(blob => {
+        if (controller.signal.aborted) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPreviewSource(objectUrl);
+      })
+      .catch(error => {
+        if (controller.signal.aborted) return;
+        setLoadError(error instanceof Error ? error.message : '图片资源读取失败。');
+        setLoadState('error');
+      });
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [projectId, resource.relativePath]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -2530,19 +2572,24 @@ function ImageResourcePreviewDialog({
           {loadState === 'error' && (
             <div className="flex flex-col items-center gap-2 text-center text-sm text-rose-400" role="alert">
               <AlertTriangle className="h-6 w-6" />
-              <span>图片无法预览，请确认资源文件没有损坏。</span>
+              <span>图片无法预览：{loadError || '浏览器无法解码图片数据。'}</span>
             </div>
           )}
-          <img
-            src={getDesignerImagePreviewSource(projectId, resource.relativePath)}
-            alt={resource.fileName}
-            className={`max-h-[65vh] max-w-full object-contain ${loadState === 'error' ? 'hidden' : ''}`}
-            onLoad={event => {
-              setDimensions({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight });
-              setLoadState('ready');
-            }}
-            onError={() => setLoadState('error')}
-          />
+          {previewSource && (
+            <img
+              src={previewSource}
+              alt={resource.fileName}
+              className={`max-h-[65vh] max-w-full object-contain ${loadState === 'error' ? 'hidden' : ''}`}
+              onLoad={event => {
+                setDimensions({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight });
+                setLoadState('ready');
+              }}
+              onError={() => {
+                setLoadError('浏览器无法解码图片数据。');
+                setLoadState('error');
+              }}
+            />
+          )}
         </div>
 
         <footer className={`flex flex-wrap items-center gap-x-4 gap-y-2 border-t px-4 py-3 text-[11px] ${isDarkMode ? 'border-slate-700/80 text-slate-400' : 'border-slate-200 text-slate-500'}`}>

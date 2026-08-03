@@ -15,6 +15,7 @@ import StatusBarPartsDialog from '../src/components/StatusBarPartsDialog';
 import TabControlPagesDialog from '../src/components/TabControlPagesDialog';
 import MenuBarItemsDialog from '../src/components/MenuBarItemsDialog';
 import TreeViewCollectionDialog from '../src/components/TreeViewCollectionDialog';
+import NewEmojiDesignerControlPreview, { toNewEmojiCssColor } from '../src/components/NewEmojiDesignerControlPreview';
 import {
   CREATABLE_DESIGNER_CONTROL_TYPES,
   StatusBarDesignerPreview,
@@ -61,6 +62,7 @@ import { LIST_VIEW_ADVANCED_API } from '../src/services/modules/listViewApiCatal
 import { EDGEVIEW_BROWSER_EVENTS } from '../src/services/modules/edgeViewBrowserEvents';
 import type { InstalledModule } from '../src/services/modules/types';
 import { getWindowEventHandlerName, WINDOW_EVENT_CATEGORIES, WINDOW_EVENT_DEFINITIONS } from '../src/services/windowDesigner/windowEventRegistry';
+import { upgradeLegacyWindowEventHandlerSignature } from '../src/services/windowDesigner/windowEventHandlerMigration';
 import {
   getNewEmojiThemePreview,
   getNewEmojiUnsupportedControlDiagnostics,
@@ -76,9 +78,10 @@ import {
   registerNativeUiBackendCommandContract
 } from '../src/services/windowDesigner/uiBackendCommandContract';
 import { parseLingCpp } from '../src/services/lingCpp/parser';
+import { getLingCppSemanticDiagnostics } from '../src/services/lingCpp/languageService';
 import { createListViewPreviewModel } from '../src/services/windowDesigner/listViewPreviewModel';
 import { createDesignerAssetService } from '../src/services/windowDesigner/designerAssetService';
-import { getDesignerImagePreviewSource } from '../src/services/windowDesigner/designerAssetClient';
+import { fetchDesignerImagePreviewBlob, getDesignerImagePreviewSource } from '../src/services/windowDesigner/designerAssetClient';
 import {
   appendListViewColumn,
   applyListViewCellMatrix,
@@ -107,10 +110,12 @@ import {
   appendTabControlPage,
   duplicateTabControlPage,
   getControlTabSlot,
+  getTabContainerContentOffset,
   getSelectedTabPage,
   getTabControlPages,
   isControlOnSelectedTab,
   isNewEmojiTabsControl,
+  isTabControlHeaderHidden,
   isTabContainerControl,
   moveTabControlPage,
   normalizeTabControlPages,
@@ -601,6 +606,33 @@ test('图片选择资源复制到项目 assets 并可同步到构建与导出目
   }
 });
 
+test('图片资源预览先通过受控 fetch 读取 Blob 并保留服务端错误', async t => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  let requestedUrl = '';
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    requestedUrl = String(input);
+    return new Response(Buffer.from([0x89, 0x50, 0x4e, 0x47]), {
+      status: 200,
+      headers: { 'Content-Type': 'image/png; charset=binary' }
+    });
+  }) as typeof fetch;
+  const blob = await fetchDesignerImagePreviewBlob('demo', 'assets/demo/封面.png');
+  assert.equal(blob.type, 'image/png;charset=binary');
+  assert.equal(blob.size, 4);
+  assert.match(requestedUrl, /^\/api\/window-designer\/assets\/content\?/u);
+
+  globalThis.fetch = (async () => new Response(JSON.stringify({ error: 'LingBuilder 本地会话无效或缺失。' }), {
+    status: 401,
+    headers: { 'Content-Type': 'application/json' }
+  })) as typeof fetch;
+  await assert.rejects(
+    () => fetchDesignerImagePreviewBlob('demo', 'assets/demo/封面.png'),
+    /本地会话无效或缺失/u
+  );
+});
+
 test('设计器标题区偏移只在真实菜单存在时增加菜单栏高度', () => {
   const withoutMenu = { menuItems: undefined };
   const withMenu = { menuItems: '文件, 编辑' };
@@ -675,6 +707,90 @@ test('窗口事件注册表完整覆盖常用和高级事件', () => {
   assert.equal(WINDOW_EVENT_DEFINITIONS.filter(item => item.batch === 'common').length, 8);
   assert.equal(WINDOW_EVENT_DEFINITIONS.filter(item => item.batch === 'advanced').length, 10);
   assert.equal(getWindowEventHandlerName('主窗口', 'FileDropped'), '_主窗口_文件被拖入');
+});
+
+test('窗口参数化事件统一生成强类型签名并传递 Win32 运行时参数', () => {
+  const events = {
+    KeyDown: '_主窗口_按键被按下',
+    KeyUp: '_主窗口_按键被放开',
+    TextInput: '_主窗口_字符被输入',
+    DpiChanged: '_主窗口_DPI被改变',
+    FileDropped: '_主窗口_文件被拖入'
+  };
+  const source = [
+    '类 主窗口 : 公开 窗体',
+    '    事件 _主窗口_按键被按下(整数型 键码，逻辑型 Ctrl键按下，逻辑型 Shift键按下，逻辑型 Alt键按下)',
+    '        调试输出(键码)',
+    '    结束',
+    '    事件 _主窗口_按键被放开(整数型 键码，逻辑型 Ctrl键按下，逻辑型 Shift键按下，逻辑型 Alt键按下)',
+    '        调试输出(键码)',
+    '    结束',
+    '    事件 _主窗口_字符被输入(文本型 字符)',
+    '        调试输出(字符)',
+    '    结束',
+    '    事件 _主窗口_DPI被改变(整数型 新DPI)',
+    '        调试输出(新DPI)',
+    '    结束',
+    '    事件 _主窗口_文件被拖入(文本型[] 文件集合)',
+    '        调试输出(窗口_取拖入文件数量())',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'window-event-parameters',
+    name: '窗口事件参数',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '主窗口', width: 640, height: 480,
+      background: '#202028', description: '', controls: [], events
+    }]
+  };
+  const diagnostics = getLingCppSemanticDiagnostics(source, project);
+  assert.equal(diagnostics.filter(item => item.level === 'error').length, 0, diagnostics.map(item => item.message).join('\n'));
+  const cpp = generateLingCppNativeWin32Project(project, { lingCppSourceCode: source }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /void 主窗口_按键被按下\(int 键码 = \{\}, bool Ctrl键按下 = \{\}, bool Shift键按下 = \{\}, bool Alt键按下 = \{\}/u);
+  assert.match(cpp, /void 主窗口_按键被放开\(int 键码 = \{\}, bool Ctrl键按下 = \{\}, bool Shift键按下 = \{\}, bool Alt键按下 = \{\}/u);
+  assert.match(cpp, /void 主窗口_字符被输入\(std::wstring 字符 = \{\}/u);
+  assert.match(cpp, /void 主窗口_DPI被改变\(int 新DPI = \{\}/u);
+  assert.match(cpp, /void 主窗口_文件被拖入\(std::vector<std::wstring> 文件集合 = \{\}/u);
+  assert.match(cpp, /主窗口_按键被按下\(eventKeyCode_, eventCtrlDown_, eventShiftDown_, eventAltDown_\)/u);
+  assert.match(cpp, /主窗口_按键被放开\(eventKeyCode_, eventCtrlDown_, eventShiftDown_, eventAltDown_\)/u);
+  assert.match(cpp, /主窗口_字符被输入\(eventCharacter_\)/u);
+  assert.match(cpp, /主窗口_DPI被改变\(static_cast<int>\(dpi_\)\)/u);
+  assert.match(cpp, /主窗口_文件被拖入\(droppedFiles_\)/u);
+  assert.match(cpp, /调试输出\(键码\);/u);
+  assert.doesNotMatch(cpp, /调试输出\(LingCppWideArg\(键码\)\);/u);
+
+  const mismatch = getLingCppSemanticDiagnostics([
+    '类 主窗口',
+    '    事件 _主窗口_按键被按下(文本型 键码)',
+    '    结束',
+    '结束类'
+  ].join('\n'), project);
+  assert.ok(mismatch.some(item => item.id.includes('lingcpp-window-event-parameters')));
+});
+
+test('从设计器打开旧无参窗口事件时升级为注册表强类型签名', () => {
+  const legacy = [
+    '类 MainWindow',
+    '    事件 _MainWindow_按键被按下()',
+    '        调试输出("按下")',
+    '    结束',
+    '结束类'
+  ].join('\r\n');
+  const upgraded = upgradeLegacyWindowEventHandlerSignature(legacy, '_MainWindow_按键被按下', 'KeyDown');
+  assert.equal(upgraded.changed, true);
+  assert.match(upgraded.content, /事件 _MainWindow_按键被按下\(整数型 键码，逻辑型 Ctrl键按下，逻辑型 Shift键按下，逻辑型 Alt键按下\)/u);
+  assert.ok(upgraded.content.includes('\r\n'), '迁移必须保留原换行格式');
+
+  const alreadyTyped = upgradeLegacyWindowEventHandlerSignature(upgraded.content, '_MainWindow_按键被按下', 'KeyDown');
+  assert.equal(alreadyTyped.changed, false);
+  assert.equal(alreadyTyped.content, upgraded.content);
+
+  const mismatched = legacy.replace('按键被按下()', '按键被按下(文本型 自定义参数)');
+  assert.equal(upgradeLegacyWindowEventHandlerSignature(mismatched, '_MainWindow_按键被按下', 'KeyDown').changed, false);
+  assert.equal(upgradeLegacyWindowEventHandlerSignature(legacy, '_MainWindow_按键被按下', 'Loaded').changed, false);
 });
 
 test('布局组件树按 parentId 构建父子层级并保留原始顺序', () => {
@@ -1238,6 +1354,16 @@ test('启用 new_emoji 后设计器模型生成真实原生窗口和基础控件
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
 
   assert.match(cpp, /#include "new_emoji_bridge\.h"/);
+  assert.match(cpp, /#ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2/u);
+  assert.match(cpp, /static void EnableNewEmojiDpiAwareness\(\)/u);
+  assert.match(cpp, /GetProcAddress\(user32, "SetProcessDpiAwarenessContext"\)/u);
+  assert.match(cpp, /GetProcAddress\(user32, "SetProcessDPIAware"\)/u);
+  assert.doesNotMatch(cpp, /SetProcessDPIAware\(\);/u);
+  assert.ok(
+    cpp.indexOf('EnableNewEmojiDpiAwareness();') >= 0
+      && cpp.indexOf('EnableNewEmojiDpiAwareness();') < cpp.indexOf('CoInitializeEx'),
+    'new_emoji 必须在 COM 和窗口创建前启用每显示器 DPI 感知'
+  );
   assert.match(cpp, /NE_创建深色窗口\(L"new_emoji 主窗口"/);
   assert.match(cpp, /LoadImageW\(nullptr, L"lingbuilder-newemoji-window\.ico", IMAGE_ICON/u);
   assert.match(cpp, /SendMessageW\(g_newEmojiWindow, WM_SETICON, ICON_BIG/u);
@@ -1383,6 +1509,337 @@ test('new_emoji 命名空间列表框保留静态项目并跳过会清空数据�
   assert.doesNotMatch(cpp, /EU_SetListBoxItemsEx\(/u);
   assert.doesNotMatch(cpp, /EU_SetListBoxSelectedKeys\(/u);
   assert.doesNotMatch(cpp, /EU_SetListBoxVirtualItemCount\(/u);
+});
+
+test('new_emoji 图标设计器百分比按 valueScale 转换为原生倍率', () => {
+  const newEmojiModule: InstalledModule = {
+    manifest: {
+      schemaVersion: 2,
+      id: 'lingbuilder.new_emoji.ui',
+      name: 'new_emoji 原生界面库',
+      version: '1.0.0',
+      category: '界面',
+      description: '图标缩放单位测试模块',
+      contributes: {
+        designerControls: [{
+          type: 'Icon',
+          namespacedType: 'lingbuilder.new_emoji.ui/Icon',
+          label: '图标 Icon',
+          defaultProps: { content: '图标', scale: 100, rotation: 0 },
+          runtime: {
+            createCommand: 'EU_CreateIcon',
+            createParameters: [
+              { name: 'hwnd', type: 'HWND' },
+              { name: 'parent_id', type: 'int' },
+              { name: 'text_bytes', type: 'const unsigned char*' },
+              { name: 'text_len', type: 'int' },
+              { name: 'x', type: 'int' },
+              { name: 'y', type: 'int' },
+              { name: 'w', type: 'int' },
+              { name: 'h', type: 'int' }
+            ],
+            propertySetters: [{
+              command: 'EU_SetIconOptions',
+              parameters: [
+                { name: 'hwnd', type: 'HWND' },
+                { name: 'element_id', type: 'int' },
+                { name: 'scale', type: 'float', propertyKey: 'scale', valueScale: 0.01 },
+                { name: 'rotation_degrees', type: 'float', propertyKey: 'rotation' }
+              ],
+              propertyKeys: ['scale', 'rotation']
+            }]
+          }
+        }]
+      },
+      targets: [{ id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc' }]
+    },
+    installPath: 'C:/modules/lingbuilder.new_emoji.ui',
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const icon = {
+    ...createControl('icon', undefined, 'Label'),
+    name: '图标',
+    content: '图标内容',
+    designerType: 'lingbuilder.new_emoji.ui/Icon',
+    properties: { scale: 100, rotation: 0 }
+  } satisfies LingControl;
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'new-emoji-icon-scale-project',
+    name: 'new_emoji 图标缩放',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '图标缩放测试',
+      width: 640, height: 420, background: '#111827', description: '', designerBackend: 'new-emoji', controls: [icon]
+    }]
+  };
+
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 MainWindow\n结束类',
+    enabledModules: [newEmojiModule]
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.match(cpp, /EU_SetIconOptions\(g_newEmojiWindow, ne_element_1, 1, 0\);/u);
+  assert.doesNotMatch(cpp, /EU_SetIconOptions\([^\n]+, 100, 0\);/u);
+});
+
+test('new_emoji 隐藏的 Notification、Message 和 MessageBox 不在窗口初始化阶段创建或显示', () => {
+  const notificationCreateParameters = [
+    { name: 'hwnd', type: 'HWND' },
+    { name: 'parent_id', type: 'int' },
+    { name: 'title_bytes', type: 'const unsigned char*' },
+    { name: 'title_len', type: 'int' },
+    { name: 'body_bytes', type: 'const unsigned char*' },
+    { name: 'body_len', type: 'int' },
+    { name: 'notify_type', type: 'int', propertyKey: 'messageType' },
+    { name: 'closable', type: 'int' },
+    { name: 'x', type: 'int' },
+    { name: 'y', type: 'int' },
+    { name: 'w', type: 'int' },
+    { name: 'h', type: 'int' }
+  ];
+  const messageCreateParameters = [
+    { name: 'hwnd', type: 'HWND' },
+    { name: 'text_bytes', type: 'const unsigned char*' },
+    { name: 'text_len', type: 'int' },
+    { name: 'message_type', type: 'int', propertyKey: 'messageType' },
+    { name: 'closable', type: 'int' },
+    { name: 'center', type: 'int' },
+    { name: 'rich', type: 'int' },
+    { name: 'duration_ms', type: 'int', propertyKey: 'duration' },
+    { name: 'offset', type: 'int' }
+  ];
+  const messageBoxCreateParameters = [
+    { name: 'hwnd', type: 'HWND' },
+    { name: 'title_bytes', type: 'const unsigned char*' },
+    { name: 'title_len', type: 'int' },
+    { name: 'text_bytes', type: 'const unsigned char*', propertyKey: 'body' },
+    { name: 'text_len', type: 'int', propertyKey: 'body' },
+    { name: 'confirm_bytes', type: 'const unsigned char*' },
+    { name: 'confirm_len', type: 'int' },
+    { name: 'cancel_bytes', type: 'const unsigned char*' },
+    { name: 'cancel_len', type: 'int' },
+    { name: 'box_type', type: 'int', propertyKey: 'messageType' },
+    { name: 'show_cancel', type: 'int' },
+    { name: 'center', type: 'int' },
+    { name: 'rich', type: 'int' },
+    { name: 'distinguish_cancel_and_close', type: 'int' },
+    { name: 'cb', type: 'MessageBoxExCallback' }
+  ];
+  const newEmojiModule: InstalledModule = {
+    manifest: {
+      schemaVersion: 2,
+      id: 'lingbuilder.new_emoji.ui',
+      name: 'new_emoji 原生界面库',
+      version: '1.0.0',
+      category: '界面',
+      description: '瞬时弹层生成测试模块',
+      contributes: {
+        designerControls: [{
+          type: 'Notification',
+          namespacedType: 'lingbuilder.new_emoji.ui/Notification',
+          label: '通知 Notification',
+          defaultProps: {},
+          runtime: { createCommand: 'EU_CreateNotification', createParameters: notificationCreateParameters }
+        }, {
+          type: 'Message',
+          namespacedType: 'lingbuilder.new_emoji.ui/Message',
+          label: '消息提示 Message',
+          defaultProps: {},
+          runtime: { createCommand: 'EU_ShowMessage', createParameters: messageCreateParameters }
+        }, {
+          type: 'MessageBox',
+          namespacedType: 'lingbuilder.new_emoji.ui/MessageBox',
+          label: '消息框 MessageBox',
+          defaultProps: {},
+          runtime: { createCommand: 'EU_ShowMessageBoxEx', createParameters: messageBoxCreateParameters }
+        }]
+      },
+      targets: [{ id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc' }]
+    },
+    installPath: 'C:/modules/lingbuilder.new_emoji.ui',
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const startupMessage = {
+    ...createControl('startup-message', undefined, 'Label'),
+    name: '启动消息',
+    content: '启动时显示',
+    designerType: 'lingbuilder.new_emoji.ui/Message',
+    properties: { messageType: 0, closable: false, center: false, rich: false, duration: 3000, offset: 20 }
+  } satisfies LingControl;
+  const deferredMessage = {
+    ...startupMessage,
+    id: 'deferred-message',
+    name: '点击消息',
+    content: '点击后显示',
+    visibility: 'Collapsed' as const
+  } satisfies LingControl;
+  const deferredNotification = {
+    ...createControl('deferred-notification', undefined, 'Label'),
+    name: '点击通知',
+    content: '点击后通知',
+    designerType: 'lingbuilder.new_emoji.ui/Notification',
+    visibility: 'Collapsed' as const,
+    properties: { title: '通知', body: ['操作已完成'], messageType: 0, closable: true, duration: 3000 }
+  } satisfies LingControl;
+  const deferredMessageBox = {
+    ...createControl('deferred-message-box', undefined, 'Label'),
+    name: '点击消息框',
+    content: '点击后确认',
+    designerType: 'lingbuilder.new_emoji.ui/MessageBox',
+    visibility: 'Collapsed' as const,
+    properties: { title: '确认', body: ['是否继续'], confirm: '确定', cancel: '取消', messageType: 0, showCancel: true, center: false, rich: false, distinguishCancelAndClose: false }
+  } satisfies LingControl;
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'new-emoji-deferred-popup-project',
+    name: 'new_emoji 延迟弹层',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '延迟弹层测试',
+      width: 640, height: 420, background: '#111827', description: '', designerBackend: 'new-emoji',
+      controls: [startupMessage, deferredNotification, deferredMessage, deferredMessageBox]
+    }]
+  };
+
+  const cpp = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: '类 MainWindow\n结束类',
+    enabledModules: [newEmojiModule]
+  }).files.find(file => file.relativePath === 'main.cpp')!.content;
+
+  assert.equal((cpp.match(/EU_ShowMessage\(/gu) || []).length, 1);
+  assert.doesNotMatch(cpp, /EU_CreateNotification\(/u);
+  assert.doesNotMatch(cpp, /EU_ShowMessageBoxEx\(/u);
+  assert.match(cpp, /g_newEmojiElementsByName\.emplace\(L"启动消息"/u);
+  assert.doesNotMatch(cpp, /g_newEmojiElementsByName\.emplace\(L"点击通知"/u);
+  assert.doesNotMatch(cpp, /g_newEmojiElementsByName\.emplace\(L"点击消息"/u);
+  assert.doesNotMatch(cpp, /g_newEmojiElementsByName\.emplace\(L"点击消息框"/u);
+});
+
+test('new_emoji 09–16 标签页为六类浮层和消息组件提供同页按钮', async () => {
+  const project = JSON.parse(await fs.readFile(
+    new URL('../../.lingbuilder/projects/new-emoji-92-tabs-validation/window-designer.json', import.meta.url),
+    'utf8'
+  )) as LingWindowProject;
+  const source = await fs.readFile(
+    new URL('../../src/new-emoji-92-tabs-validation/MainWindow.lcpp', import.meta.url),
+    'utf8'
+  );
+  const controls = project.windows[0]?.controls || [];
+  const expectedButtons = new Map([
+    ['演示弹窗按钮', '_按钮03_被点击'],
+    ['演示抽屉按钮', '_图标按钮90_被点击'],
+    ['演示通知按钮', '_演示通知按钮_被点击'],
+    ['演示消息提示按钮', '_演示消息提示按钮_被点击'],
+    ['演示消息框按钮', '_演示消息框按钮_被点击'],
+    ['演示信息框按钮', '_演示信息框按钮_被点击']
+  ]);
+
+  for (const [name, handler] of expectedButtons) {
+    const control = controls.find(item => item.name === name);
+    assert.ok(control, `缺少 09–16 演示按钮：${name}`);
+    assert.equal(control.designerType, 'lingbuilder.new_emoji.ui/Button');
+    assert.equal(control.parentId, 'ne92-tabs-root');
+    assert.equal(control.containerSlot, 'validation-page-02');
+    assert.equal(control.events?.Clicked, handler);
+    assert.match(source, new RegExp(`事件 ${handler.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}\\(\\)`, 'u'));
+  }
+
+  for (const name of ['通知13', '消息提示14', '消息框15']) {
+    assert.equal(controls.find(item => item.name === name)?.visibility, 'Collapsed');
+  }
+});
+
+test('new_emoji tabs defer page binding until page controls are created', async t => {
+  const moduleRoot = path.resolve('..', '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui');
+  let manifest: unknown;
+  try {
+    manifest = JSON.parse(await fs.readFile(path.join(moduleRoot, 'lingbuilder.module.json'), 'utf8'));
+  } catch {
+    t.skip('当前环境未安装 new_emoji 模块，跳过标签页原生生成回归测试。');
+    return;
+  }
+
+  const project = JSON.parse(await fs.readFile(
+    new URL('../../.lingbuilder/projects/new-emoji-92-tabs-validation/window-designer.json', import.meta.url),
+    'utf8'
+  )) as LingWindowProject;
+  const source = await fs.readFile(
+    new URL('../../src/new-emoji-92-tabs-validation/MainWindow.lcpp', import.meta.url),
+    'utf8'
+  );
+  const basicModule: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!,
+    installPath: 'builtin',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const newEmojiModule: InstalledModule = {
+    manifest: manifest as InstalledModule['manifest'],
+    installPath: moduleRoot,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const generated = generateLingCppNativeWin32Project(project, {
+    lingCppSourceCode: source,
+    enabledModules: [basicModule, newEmojiModule]
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  const controls = project.windows[0]?.controls || [];
+  const tabs = controls.find(control => control.designerType === 'lingbuilder.new_emoji.ui/Tabs');
+  assert.ok(tabs, '验证项目必须包含主 Tabs 控件');
+  const tabsMarker = cpp.split('\n').find(line => line.includes(`g_newEmojiElementsByName.emplace(L"${tabs.name}"`));
+  const tabsVariable = tabsMarker?.match(/\{ (ne_element_\d+),/u)?.[1];
+  assert.ok(tabsVariable, '生成代码必须登记主 Tabs 控件变量');
+  assert.match(cpp, new RegExp(`EU_SetTabsHeaderVisible\\(g_newEmojiWindow, ${tabsVariable}, 1\\)`));
+
+  const page3Children = controls.filter(control => control.containerSlot === 'validation-page-03');
+  const lastGeneratedPage3Child = [...page3Children].reverse().find(control =>
+    cpp.includes(`g_newEmojiElementsByName.emplace(L"${control.name}"`)
+  );
+  assert.ok(lastGeneratedPage3Child, '17-24 页面至少应生成一个子控件');
+  const lastChildMarker = `g_newEmojiElementsByName.emplace(L"${lastGeneratedPage3Child.name}"`;
+  const lastChildIndex = cpp.indexOf(lastChildMarker);
+  const pageBindingIndex = cpp.indexOf(`EU_SetTabsPageElements(g_newEmojiWindow, ${tabsVariable},`);
+  assert.ok(lastChildIndex >= 0 && pageBindingIndex > lastChildIndex, '标签页绑定必须晚于 17-24 页子控件创建');
+  assert.doesNotMatch(cpp, new RegExp(`EU_SetTabsActive\\(g_newEmojiWindow, ${tabsVariable}, 2\\)`));
+
+  const container = controls.find(control =>
+    control.containerSlot === 'validation-page-03' && control.designerType === 'lingbuilder.new_emoji.ui/Container'
+  );
+  assert.ok(container, '17-24 页面必须包含 Container 控件');
+  const containerMarkerIndex = cpp.indexOf(`g_newEmojiElementsByName.emplace(L"${container.name}"`);
+  const containerLayoutIndex = cpp.indexOf(`EU_SetPanelLayout(g_newEmojiWindow,`, containerMarkerIndex);
+  assert.ok(containerMarkerIndex >= 0 && containerLayoutIndex > containerMarkerIndex, 'Container 创建后必须显式关闭 fill_parent 布局');
+  assert.match(cpp.slice(containerLayoutIndex, containerLayoutIndex + 90), /EU_SetPanelLayout\(g_newEmojiWindow, ne_element_\d+, 0, 0\);/u);
+
+  const byName = new Map(controls.map(control => [control.name, control]));
+  assert.equal(byName.get('容器20')?.parentId, 'tabs-ne92-23-main');
+  assert.equal(byName.get('链接17')?.parentId, 'tabs-ne92-20-container');
+  assert.equal(byName.get('图标18')?.parentId, 'tabs-ne92-20-container');
+  assert.equal(byName.get('间距19')?.parentId, 'tabs-ne92-20-container');
+  const transparentLayout = byName.get('布局25');
+  assert.equal(transparentLayout?.properties?.backgroundColor, 'transparent');
+  const transparentLayoutMarker = transparentLayout
+    ? cpp.indexOf(`g_newEmojiElementsByName.emplace(L"${transparentLayout.name}"`)
+    : -1;
+  assert.ok(transparentLayoutMarker >= 0, '透明 Layout 必须进入生成的元素注册表');
+  assert.match(cpp.slice(transparentLayoutMarker, transparentLayoutMarker + 700), /EU_SetElementColor\(g_newEmojiWindow, ne_element_\d+, 0x00000000u, 0xFFF8FAFCu\);/u);
+  assert.deepEqual(
+    ['页眉21', '侧边栏22', '主要区域23', '页脚24'].map(name => byName.get(name)?.properties?.backgroundColor),
+    ['#FF151B2A', '#FF172033', '#FF111827', '#FF151B2A']
+  );
+  assert.match(cpp, /EU_CreateMain\(g_newEmojiWindow, ne_tab_page_1_3,[^\n]+259, 96, 897, 350\);/u);
+  assert.match(cpp, /EU_CreateContainer\(g_newEmojiWindow, ne_element_\d+, 381, 32, 480, 250\);/u);
+  assert.match(cpp, /EU_SetContainerLayout\(g_newEmojiWindow, ne_element_\d+, 1, 2, 12\);/u);
+  assert.match(cpp, /EU_CreateLink\(g_newEmojiWindow, ne_element_\d+, [^\n]+, 0, 0, 480, 44\);/u);
+  assert.match(cpp, /EU_CreateIcon\(g_newEmojiWindow, ne_element_\d+, [^\n]+, 0, 56, 480, 146\);/u);
+  assert.match(cpp, /EU_CreateSpace\(g_newEmojiWindow, ne_element_\d+, 0, 214, 480, 16\);/u);
 });
 
 test('UI 后端命令契约可注册扩展并准确扫描源码调用', () => {
@@ -1996,6 +2453,7 @@ test('new_emoji Tabs 兼容旧 Grid 预览并提供稳定的独立页面槽位',
       items: validationPageTitles,
       activeIndex: 1,
       headerAlign: '1',
+      headerVisible: true,
       contentVisible: false
     }
   } satisfies LingControl;
@@ -2019,6 +2477,95 @@ test('new_emoji Tabs 兼容旧 Grid 预览并提供稳定的独立页面槽位',
   assert.match(markup, /justify-content:center/u);
   assert.match(markup, /data-tab-content-container="true"/u);
   assert.match(markup, /background-color:#242941/u);
+
+  const hiddenTabs = { ...tabs, properties: { ...tabs.properties, headerVisible: false } };
+  const hiddenMarkup = renderToStaticMarkup(React.createElement(TabControlDesignerPreview, { control: hiddenTabs }));
+  assert.equal(isTabControlHeaderHidden(hiddenTabs), true);
+  assert.deepEqual(getTabContainerContentOffset(hiddenTabs), { x: 0, y: 0 });
+  assert.match(hiddenMarkup, /data-tab-header-hidden="true"/u);
+  assert.doesNotMatch(hiddenMarkup, /role="tablist"/u);
+  assert.doesNotMatch(hiddenMarkup, />01–08</u);
+});
+
+test('new_emoji 17–24 预览按原生属性渲染而不伪造示意内容', () => {
+  const theme = getNewEmojiThemePreview('#242941');
+  const renderPreview = (kind: string, overrides: Partial<LingControl> = {}) => renderToStaticMarkup(React.createElement(NewEmojiDesignerControlPreview, {
+    control: {
+      ...createControl(`preview-${kind}`, undefined, 'Label'),
+      designerType: `lingbuilder.new_emoji.ui/${kind}`,
+      ...overrides
+    },
+    isEnabled: true,
+    theme
+  }));
+
+  assert.equal(toNewEmojiCssColor('#80FF0000', 'transparent'), 'rgba(255, 0, 0, 0.502)');
+  const linkMarkup = renderPreview('Link', { content: '链接', foreground: '#FFF8FAFC', properties: { suffixIcon: '' } });
+  assert.match(linkMarkup, />链接</u);
+  assert.doesNotMatch(linkMarkup, /↗/u);
+
+  const iconMarkup = renderPreview('Icon', { content: '图标', foreground: '#FFF8FAFC', properties: { rotation: 12 } });
+  assert.match(iconMarkup, />图标</u);
+  assert.doesNotMatch(iconMarkup, /✦/u);
+
+  const spaceMarkup = renderToStaticMarkup(React.createElement(NewEmojiDesignerControlPreview, {
+    control: { ...createControl('preview-space'), designerType: 'lingbuilder.new_emoji.ui/Space', content: '间距' },
+    isEnabled: true,
+    isSelected: false,
+    theme
+  }));
+  assert.match(spaceMarkup, /data-new-emoji-space-helper="hidden"/u);
+  assert.doesNotMatch(spaceMarkup, /16px|运行时不可见/u);
+
+  const selectedSpaceMarkup = renderToStaticMarkup(React.createElement(NewEmojiDesignerControlPreview, {
+    control: { ...createControl('preview-space-selected'), designerType: 'lingbuilder.new_emoji.ui/Space', content: '间距' },
+    isEnabled: true,
+    isSelected: true,
+    theme
+  }));
+  assert.match(selectedSpaceMarkup, /间距 · 运行时不可见/u);
+
+  const containerMarkup = renderPreview('Container', {
+    background: 'transparent',
+    foreground: '#FFF8FAFC',
+    properties: { backgroundColor: '#FFF8FAFC', borderColor: '#FFE2E8F0' }
+  });
+  assert.match(containerMarkup, /background-color:#F8FAFC/u);
+  assert.match(containerMarkup, /border:1px solid #E2E8F0/u);
+  assert.doesNotMatch(containerMarkup, /Container · 内容承载区|bg-violet|bg-cyan/u);
+
+  const transparentLayoutMarkup = renderPreview('Layout', {
+    background: 'transparent',
+    foreground: '#FFF8FAFC',
+    properties: { backgroundColor: 'transparent', orientation: '0', gap: 12, stretch: false, align: '0', wrap: false }
+  });
+  assert.match(transparentLayoutMarkup, /background-color:transparent/u);
+
+  const whiteLayoutMarkup = renderPreview('Layout', {
+    background: 'transparent',
+    foreground: '#FFF8FAFC',
+    properties: { backgroundColor: '#FFFFFFFF', orientation: '0', gap: 12, stretch: false, align: '0', wrap: false }
+  });
+  assert.match(whiteLayoutMarkup, /background-color:#FFFFFF/u);
+
+  const headerMarkup = renderPreview('Header', {
+    content: '页眉',
+    foreground: '#FFF8FAFC',
+    properties: { title: '页眉区域 ⬆️', align: '1', backgroundColor: '#FFB3C0D1' }
+  });
+  assert.match(headerMarkup, />页眉区域 ⬆️</u);
+  assert.match(headerMarkup, /background-color:#B3C0D1/u);
+  assert.doesNotMatch(headerMarkup, /首页|文档|关于/u);
+
+  for (const kind of ['Aside', 'Main', 'Footer']) {
+    const markup = renderPreview(kind, {
+      content: kind,
+      foreground: '#FFF8FAFC',
+      properties: { title: `${kind} 标题`, align: '0', backgroundColor: '#FFE9EEF3' }
+    });
+    assert.match(markup, new RegExp(`>${kind} 标题<`, 'u'));
+    assert.doesNotMatch(markup, /导航一|导航二|导航三|© LingBuilder|帮助 · 隐私 · 关于/u);
+  }
 });
 
 test('选项卡注册隐藏表头属性且默认保持显示', () => {

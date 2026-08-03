@@ -47,6 +47,7 @@ import { LingDesignerResource, LingFileDialogResource, LingMenuResource, LingWin
 import { LingCppModuleContext, ModuleCommandBinding } from '../modules/types';
 import { THREADING_LEGACY_COMMANDS } from '../modules/threadingModule';
 import {
+  formatWindowEventParameters,
   getWindowEventDefinition,
   getWindowEventHandlerName,
   WINDOW_EVENT_DEFINITIONS
@@ -274,7 +275,7 @@ export function getLingCppSemanticDiagnostics(
     'error', 1, '', message, '请禁用其中一个冲突模块，或让模块作者修改公开类型名称。'
   )));
   diagnostics.push(...getModuleUsageDiagnostics(source, moduleContext));
-  diagnostics.push(...getLegacyModuleHandlerDiagnostics(source, moduleContext));
+  diagnostics.push(...getModuleHandlerDiagnostics(source, parsed.program, moduleContext));
   diagnostics.push(...getLingCppControlReferenceDiagnostics(source, designerProject, moduleContext, filePath));
   const effectiveConstants = isProjectGlobalsFilePath(filePath) ? parsed.program.constants : (projectGlobals?.constants || []);
   const effectiveGlobals = isProjectGlobalsFilePath(filePath) ? parsed.program.globals : (projectGlobals?.globals || []);
@@ -301,20 +302,40 @@ export function getLingCppSemanticDiagnostics(
     });
 
     const currentWindows = selectDesignerWindows(designerProject, source, filePath);
-    const windowHandlers = new Set(currentWindows.flatMap(window => [
-      ...Object.values(window.events || {}),
-      getWindowEventHandlerName(window.className, 'Loaded'),
-      `${window.className}_创建完毕`
-    ].map(handler => normalizeIdentifier(handler)).filter(Boolean)));
+    const windowEventByHandler = new Map<string, string>();
+    currentWindows.forEach(window => {
+      Object.entries(window.events || {}).forEach(([eventName, handler]) => {
+        if (handler.trim()) windowEventByHandler.set(normalizeIdentifier(handler), eventName);
+      });
+      windowEventByHandler.set(
+        normalizeIdentifier(getWindowEventHandlerName(window.className, 'Loaded')),
+        'Loaded'
+      );
+      windowEventByHandler.set(normalizeIdentifier(`${window.className}_创建完毕`), 'Loaded');
+    });
+    const windowHandlers = new Set(windowEventByHandler.keys());
     parsed.program.classes.flatMap(cls => cls.methods).forEach(method => {
-      if (method.kind !== 'event' || method.parameters.length === 0 || !windowHandlers.has(normalizeIdentifier(method.name))) return;
+      if (method.kind !== 'event' || !windowHandlers.has(normalizeIdentifier(method.name))) return;
+      const eventName = windowEventByHandler.get(normalizeIdentifier(method.name)) || '';
+      const definition = getWindowEventDefinition(eventName);
+      if (!definition) return;
+      const expectedParameters = definition.parameters || [];
+      const actualParameters = method.parameters;
+      const matchesExpected = actualParameters.length === expectedParameters.length
+        && expectedParameters.every((expected, index) => normalizeWindowEventType(expected.type) === normalizeWindowEventType(actualParameters[index]?.type || ''));
+      // Parameterized events accept an empty legacy handler so existing projects can migrate incrementally.
+      if (actualParameters.length === 0 && expectedParameters.length > 0) return;
+      if (matchesExpected) return;
+      const expectedSignature = expectedParameters.length
+        ? `事件 ${method.name}(${formatWindowEventParameters(eventName)})`
+        : `事件 ${method.name}()`;
       diagnostics.push({
         id: `lingcpp-window-event-parameters-${method.name}-${method.line}`,
         line: method.line,
         level: 'error',
-        message: `窗口事件 ${method.name} 必须使用无参数处理器。`,
+        message: `窗口事件 ${method.name} 的参数与 ${eventNameLabel(eventName)} 事件契约不匹配。`,
         codeSnippet: method.name,
-        suggestion: '删除事件参数，并使用“窗口_取事件…”上下文命令读取宽高、按键、DPI 或拖入文件。'
+        suggestion: `请改为 ${expectedSignature}；旧的无参数处理器仍可继续使用“窗口_取事件…”上下文命令。`
       });
     });
   }
@@ -1746,20 +1767,43 @@ function eventNameLabel(value: string): string {
   return labels[last] || labels[normalized] || normalized || value;
 }
 
+function normalizeWindowEventType(value: string): string {
+  const compact = normalizeIdentifier(value)
+    .replace(/［/gu, '[')
+    .replace(/］/gu, ']');
+  const arraySuffix = compact.endsWith('[]') ? '[]' : '';
+  const base = arraySuffix ? compact.slice(0, -2) : compact;
+  const aliases: Record<string, string> = {
+    文本: '文本型',
+    文本型: '文本型',
+    字符串: '文本型',
+    字符串型: '文本型',
+    整数: '整数型',
+    整数型: '整数型',
+    逻辑: '逻辑型',
+    逻辑型: '逻辑型',
+    布尔: '逻辑型',
+    布尔型: '逻辑型'
+  };
+  return `${aliases[base] || base}${arraySuffix}`;
+}
+
 function getDesignerCompletionItems(source: string, designerProject?: LingWindowProject): LingCppCompletionItem[] {
   if (!designerProject) return [];
   return selectDesignerWindows(designerProject, source).flatMap(win => {
     const windowItems: LingCppCompletionItem[] = WINDOW_EVENT_DEFINITIONS.map(definition => {
       const handlerName = win.events?.[definition.name]?.trim() || getWindowEventHandlerName(win.className, definition.name);
+      const parameterText = formatWindowEventParameters(definition.name);
+      const signature = `事件 ${handlerName}(${parameterText})`;
       return {
         label: `${win.title || win.className} ${definition.label}事件`,
         kind: 'event',
-        insertText: `事件 ${handlerName}()\n    调试输出("窗口${definition.handlerSuffix}")\n    $0`,
+        insertText: `${signature}\n    调试输出("窗口${definition.handlerSuffix}")\n    $0`,
         detail: `设计器窗口事件 · ${definition.category}`,
-        documentation: `窗口：${win.title || win.className}\n事件：${definition.label} (${definition.name})\n${definition.description}`,
+        documentation: `窗口：${win.title || win.className}\n事件：${definition.label} (${definition.name})\n${definition.description}${parameterText ? `\n参数：${parameterText}` : ''}`,
         aliases: [definition.name, definition.label, definition.handlerSuffix, 'WindowEvent'],
         pinyin: ['ckcjsj', 'cksj'],
-        example: `事件 ${handlerName}()`,
+        example: signature,
         category: 'designer',
         audienceText: definition.description,
         isSnippet: true
@@ -2761,9 +2805,14 @@ function isThreadWorkerHandler(source: string, handlerName: string, bindings: Mo
       .some(args => args[binding.invocation!.workerParameterIndex]?.trim() === `&${handlerName}`)));
 }
 
-function getLegacyModuleHandlerDiagnostics(source: string, moduleContext?: LingCppModuleContext): LingCppDiagnostic[] {
+function getModuleHandlerDiagnostics(source: string, program: LingCppProgram, moduleContext?: LingCppModuleContext): LingCppDiagnostic[] {
   const diagnostics: LingCppDiagnostic[] = [];
   const lines = splitLines(source);
+  const handlers = new Map<string, LingCppMethod[]>();
+  [...program.classes.flatMap(cls => cls.methods), ...program.functionLibraries.flatMap(library => library.methods)].forEach(method => {
+    const key = normalizeIdentifier(method.name);
+    handlers.set(key, [...(handlers.get(key) || []), method]);
+  });
   getEnabledLingCppModuleContributions(moduleContext).forEach(module => {
     (module.manifest.bindings?.commands || []).forEach(binding => {
       if (binding.invocation?.kind === 'managedTask') return;
@@ -2771,8 +2820,54 @@ function getLegacyModuleHandlerDiagnostics(source: string, moduleContext?: LingC
       if (handlerIndexes.length === 0) return;
       const aliases = (module.manifest.contributes?.commands || []).find(command => command.name === binding.command)?.aliases || [];
       [binding.command, ...aliases].forEach(commandName => lines.forEach((line, lineIndex) => {
+        if (isLingCppCommentLine(line.trim())) return;
         extractCommandInvocationArguments(line, commandName).forEach(args => handlerIndexes.forEach(index => {
           const value = args[index]?.trim();
+          const parameter = binding.parameters?.[index];
+          const signature = parameter?.handlerSignature;
+          if (signature) {
+            const reference = value?.match(/^&([\p{L}_][\p{L}\p{N}_]*)$/u)?.[1];
+            const legacy = parseStringLiteralArgument(value);
+            if (!reference) {
+              diagnostics.push({
+                id: `lingcpp-handler-reference-${binding.command}-${lineIndex + 1}-${index}`,
+                line: lineIndex + 1,
+                level: 'error',
+                message: `命令 ${binding.command} 的处理器必须使用 &处理器名 引用语法。`,
+                codeSnippet: line,
+                suggestion: legacy ? `请改为 &${legacy}。` : '请引用当前类中签名匹配的事件或方法。'
+              });
+              return;
+            }
+            const candidates = handlers.get(normalizeIdentifier(reference)) || [];
+            if (candidates.length === 0) {
+              diagnostics.push({
+                id: `lingcpp-handler-missing-${binding.command}-${lineIndex + 1}-${index}`,
+                line: lineIndex + 1,
+                level: 'error',
+                message: `命令 ${binding.command} 引用的处理器 ${reference} 不存在。`,
+                codeSnippet: line,
+                suggestion: `请在当前类中声明 ${signature.returnType} ${reference}(${signature.parameterTypes.join(', ')})。`
+              });
+              return;
+            }
+            const matches = candidates.some(handler => {
+              if (handler.parameters.length !== signature.parameterTypes.length) return false;
+              if (!handler.parameters.every((item, parameterIndex) => areLingCppTypesCompatible(signature.parameterTypes[parameterIndex] || '', item.type))) return false;
+              return isVoidType(signature.returnType)
+                ? isVoidType(handler.returnType)
+                : areLingCppTypesCompatible(signature.returnType, handler.returnType || '空');
+            });
+            if (!matches) diagnostics.push({
+              id: `lingcpp-handler-signature-${binding.command}-${lineIndex + 1}-${index}`,
+              line: lineIndex + 1,
+              level: 'error',
+              message: `命令 ${binding.command} 的处理器 ${reference} 签名不匹配。`,
+              codeSnippet: line,
+              suggestion: `处理器必须声明为 ${signature.returnType} ${reference}(${signature.parameterTypes.join(', ')})。`
+            });
+            return;
+          }
           const legacy = parseStringLiteralArgument(value);
           if (!legacy || value?.startsWith('&')) return;
           diagnostics.push({

@@ -2,4 +2,58 @@
     事件 创建完毕()
         调试输出("New_Emoji 92控件标签页验证窗口已创建")
     结束
+
+    事件 _按钮03_被点击()
+        @ const LB_NE_ElementRef* dialog = LB_NE_FindElement(L"弹窗11");
+        @ if (dialog) EU_SetDialogOpen(g_newEmojiWindow, dialog->id, 1);
+    结束
+
+    事件 _图标按钮90_被点击()
+        @ const LB_NE_ElementRef* drawer = LB_NE_FindElement(L"抽屉12");
+        @ if (drawer) EU_SetDrawerOpen(g_newEmojiWindow, drawer->id, 1);
+    结束
+
+    事件 _演示通知按钮_被点击()
+        @ const char notificationTitle[] = "通知";
+        @ const char notificationBody[] = "这里是组件内容";
+        @ EU_ShowNotification(g_newEmojiWindow, reinterpret_cast<const unsigned char*>(notificationTitle), static_cast<int>(sizeof(notificationTitle) - 1), reinterpret_cast<const unsigned char*>(notificationBody), static_cast<int>(sizeof(notificationBody) - 1), 0, 1, 3000, 1, 20, 0, 320, 110);
+    结束
+
+    事件 _演示消息提示按钮_被点击()
+        @ const char messageText[] = "操作已完成 ✅";
+        @ EU_ShowMessage(g_newEmojiWindow, reinterpret_cast<const unsigned char*>(messageText), static_cast<int>(sizeof(messageText) - 1), 1, 0, 0, 0, 3000, 20);
+    结束
+
+    事件 _演示消息框按钮_被点击()
+        @ const char boxTitle[] = "确认操作 🪟";
+        @ const char boxText[] = "请确认是否继续。";
+        @ const char confirmText[] = "确定 ✅";
+        @ const char cancelText[] = "取消";
+        @ EU_ShowMessageBoxEx(g_newEmojiWindow, reinterpret_cast<const unsigned char*>(boxTitle), static_cast<int>(sizeof(boxTitle) - 1), reinterpret_cast<const unsigned char*>(boxText), static_cast<int>(sizeof(boxText) - 1), reinterpret_cast<const unsigned char*>(confirmText), static_cast<int>(sizeof(confirmText) - 1), reinterpret_cast<const unsigned char*>(cancelText), static_cast<int>(sizeof(cancelText) - 1), 0, 1, 0, 0, 0, nullptr);
+    结束
+
+    事件 _演示信息框按钮_被点击()
+        @ const LB_NE_ElementRef* infoBox = LB_NE_FindElement(L"信息框16");
+        @ if (infoBox) EU_SetInfoBoxClosed(g_newEmojiWindow, infoBox->id, 0);
+    结束
+
+    事件 _上传84_上传动作()
+        @ const LB_NE_ElementRef* infoBox = LB_NE_FindElement(L"信息框16");
+        @ if (infoBox) EU_SetInfoBoxClosed(g_newEmojiWindow, infoBox->id, 0);
+        @ const LB_NE_ElementRef* tour = LB_NE_FindElement(L"漫游引导81");
+        @ if (tour) EU_SetTourOpen(g_newEmojiWindow, tour->id, 1);
+        @ const LB_NE_ElementRef* loading = LB_NE_FindElement(L"加载86");
+        @ if (loading) EU_SetLoadingActive(g_newEmojiWindow, loading->id, 1);
+        @ const char messageText[] = "操作已完成 ✅";
+        @ EU_ShowMessage(g_newEmojiWindow, reinterpret_cast<const unsigned char*>(messageText), static_cast<int>(sizeof(messageText) - 1), 1, 0, 0, 0, 3000, 20);
+        @ const char boxTitle[] = "确认操作 🪟";
+        @ const char boxText[] = "请确认是否继续。";
+        @ const char confirmText[] = "确定 ✅";
+        @ const char cancelText[] = "取消";
+        @ EU_ShowMessageBoxEx(g_newEmojiWindow, reinterpret_cast<const unsigned char*>(boxTitle), static_cast<int>(sizeof(boxTitle) - 1), reinterpret_cast<const unsigned char*>(boxText), static_cast<int>(sizeof(boxText) - 1), reinterpret_cast<const unsigned char*>(confirmText), static_cast<int>(sizeof(confirmText) - 1), reinterpret_cast<const unsigned char*>(cancelText), static_cast<int>(sizeof(cancelText) - 1), 0, 1, 0, 0, 0, nullptr);
+    结束
+
+    事件 _表格06_单元格点击()
+        调试输出("表格06CellClicked")
+    结束
 结束类

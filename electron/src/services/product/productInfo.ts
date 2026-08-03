@@ -18,8 +18,8 @@ export interface LingBuilderReleaseNote {
 
 export const LINGBUILDER_RELEASE_NOTES: readonly LingBuilderReleaseNote[] = [
   {
-    version: '0.2.8',
-    date: '2026-07-31',
+    version: '0.2.7',
+    date: '2026-08-02',
     title: 'EdgeView 官方稳定 API 双基线封装',
     sections: [
       {

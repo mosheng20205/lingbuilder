@@ -50,6 +50,7 @@ import UpDownDesignerPreview from './UpDownDesignerPreview';
 import NewEmojiDesignerControlPreview, { getNewEmojiPreviewKind } from './NewEmojiDesignerControlPreview';
 import ListViewCollectionDialog, { type ListViewCollectionEditorKind } from './ListViewCollectionDialog';
 import DataGridEditorDialog from './DataGridEditorDialog';
+import NewEmojiTableEditorDialog, { getNewEmojiTableEditorData, isNewEmojiTableDataProperty } from './NewEmojiTableEditorDialog';
 import ToolbarButtonsDialog from './ToolbarButtonsDialog';
 import StatusBarPartsDialog from './StatusBarPartsDialog';
 import TabControlPagesDialog from './TabControlPagesDialog';
@@ -3604,7 +3605,7 @@ function renderControl(
 
       <div className={`w-full h-full relative select-none ${control.type === 'ReBar' && isSelected ? 'pointer-events-auto' : 'pointer-events-none'}`} style={controlFontStyle}>
         {useNewEmojiControlPreview ? (
-          <NewEmojiDesignerControlPreview control={control} isEnabled={isEffectivelyEnabled} theme={newEmojiThemePreview} />
+          <NewEmojiDesignerControlPreview control={control} isEnabled={isEffectivelyEnabled} isSelected={isSelected} theme={newEmojiThemePreview} />
         ) : (
           <>
         {control.type === 'Button' && (
@@ -4434,6 +4435,17 @@ function PropertyRow({
   );
 }
 
+function openDesignerSelectPicker(event: React.MouseEvent<HTMLSelectElement>): void {
+  if (event.button !== 0 || typeof event.currentTarget.showPicker !== 'function') return;
+  try {
+    event.currentTarget.focus();
+    event.currentTarget.showPicker();
+    event.preventDefault();
+  } catch {
+    // Let Chromium continue with the native select behavior when showPicker is unavailable.
+  }
+}
+
 function WindowProperties({
   projectId,
   window,
@@ -5038,6 +5050,7 @@ function ControlProperties({
 }) {
   const [listViewEditorKind, setListViewEditorKind] = useState<ListViewCollectionEditorKind | null>(null);
   const [dataGridEditorOpen, setDataGridEditorOpen] = useState(false);
+  const [newEmojiTableEditorOpen, setNewEmojiTableEditorOpen] = useState(false);
   const [headerColumnsEditorOpen, setHeaderColumnsEditorOpen] = useState(false);
   const [toolbarButtonsEditorOpen, setToolbarButtonsEditorOpen] = useState(false);
   const [statusBarPartsEditorOpen, setStatusBarPartsEditorOpen] = useState(false);
@@ -5050,6 +5063,7 @@ function ControlProperties({
   useEffect(() => {
     setListViewEditorKind(null);
     setDataGridEditorOpen(false);
+    setNewEmojiTableEditorOpen(false);
     setHeaderColumnsEditorOpen(false);
     setToolbarButtonsEditorOpen(false);
     setStatusBarPartsEditorOpen(false);
@@ -5120,10 +5134,23 @@ function ControlProperties({
   const tabPageCount = isTabContainerControl(control)
     ? getTabControlPages(control).length
     : 0;
+  const moduleHasBackgroundColor = Boolean(moduleControl?.properties?.some(property => property.key === 'backgroundColor'));
+  const handleControlBackgroundChange = (value: string) => {
+    onChange({
+      background: value,
+      ...(moduleHasBackgroundColor
+        ? { properties: { ...(control.properties || {}), backgroundColor: value } }
+        : {})
+    });
+  };
   const updateControlProperty = (key: string, value: Win32ControlPropertyValue) => {
     const properties = { ...(control.properties || {}), [key]: value };
     const content = key === 'value' && control.type === 'ProgressBar' ? String(value) : control.content;
-    onChange({ properties, content });
+    onChange({
+      properties,
+      content,
+      ...(key === 'backgroundColor' && typeof value === 'string' ? { background: value } : {})
+    });
   };
   const updateListViewCollections = (columns: ListViewEditableColumn[], rows: ListViewEditableRow[]) => {
     onChange({
@@ -5134,6 +5161,9 @@ function ControlProperties({
       }
     });
   };
+  const newEmojiTableEditorData = control.designerType?.endsWith('/Table')
+    ? getNewEmojiTableEditorData(control)
+    : { columns: 0, rows: 0 };
 
   return (
     <div className="space-y-2">
@@ -5273,7 +5303,7 @@ function ControlProperties({
           value={control.background}
           isDarkMode={isDarkMode}
           swatches={['transparent', '#1E1E24', '#2D2D30', '#007ACC', '#2e7d32', '#3E3E40', '#4a148c', '#111111']}
-          onChange={value => onChange({ background: value })}
+          onChange={handleControlBackgroundChange}
         />
       </PropertyGroup>
 
@@ -5291,6 +5321,9 @@ function ControlProperties({
           onShowAdvancedChange={setShowAdvancedModuleProperties}
           onPropertyChange={updateControlProperty}
           onEditTabPages={() => setTabPagesEditorOpen(true)}
+          newEmojiTableColumnCount={newEmojiTableEditorData.columns}
+          newEmojiTableRowCount={newEmojiTableEditorData.rows}
+          onEditNewEmojiTable={() => setNewEmojiTableEditorOpen(true)}
         />
       )}
 
@@ -5500,6 +5533,17 @@ function ControlProperties({
             setDataGridEditorOpen(false);
           }}
           onClose={() => setDataGridEditorOpen(false)}
+        />
+      )}
+      {control.designerType?.endsWith('/Table') && newEmojiTableEditorOpen && (
+        <NewEmojiTableEditorDialog
+          control={control}
+          isDarkMode={isDarkMode}
+          onSave={properties => {
+            onChange({ properties: { ...(control.properties || {}), ...properties } });
+            setNewEmojiTableEditorOpen(false);
+          }}
+          onClose={() => setNewEmojiTableEditorOpen(false)}
         />
       )}
       {control.type === 'Header' && headerColumnsEditorOpen && (
@@ -5782,7 +5826,7 @@ function StructuredCollectionEditor({
   );
 }
 
-function ModuleControlProperties({ control, definition, controls, imageLists, projectId, isDarkMode, search, showAdvanced, onSearchChange, onShowAdvancedChange, onPropertyChange, onEditTabPages }: {
+function ModuleControlProperties({ control, definition, controls, imageLists, projectId, isDarkMode, search, showAdvanced, onSearchChange, onShowAdvancedChange, onPropertyChange, onEditTabPages, newEmojiTableColumnCount, newEmojiTableRowCount, onEditNewEmojiTable }: {
   control: LingControl;
   definition: ModuleDesignerControlContribution;
   controls: LingControl[];
@@ -5795,7 +5839,11 @@ function ModuleControlProperties({ control, definition, controls, imageLists, pr
   onShowAdvancedChange: (value: boolean) => void;
   onPropertyChange: (key: string, value: Win32ControlPropertyValue) => void;
   onEditTabPages: () => void;
+  newEmojiTableColumnCount: number;
+  newEmojiTableRowCount: number;
+  onEditNewEmojiTable: () => void;
 }) {
+  const isNewEmojiTable = control.designerType?.endsWith('/Table') === true;
   const normalizedSearch = search.trim().toLocaleLowerCase('zh-CN');
   const matched = (definition.properties || []).filter(property => (showAdvanced || property.level !== 'advanced') && (!normalizedSearch || [property.label, property.key, property.group, property.description].filter(Boolean).join(' ').toLocaleLowerCase('zh-CN').includes(normalizedSearch)));
   const visible = matched.filter(property => Boolean(property.runtimeCommand));
@@ -5809,8 +5857,25 @@ function ModuleControlProperties({ control, definition, controls, imageLists, pr
       <PropertyRow label="高级属性" isDarkMode={isDarkMode}><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={showAdvanced} onChange={event => onShowAdvancedChange(event.target.checked)} className="accent-fuchsia-500"/>显示底层与高成本选项</label></PropertyRow>
     </PropertyGroup>
     {groups.map(group => <PropertyGroup key={group} title={`new_emoji / ${group}`} isDarkMode={isDarkMode}>
-      {visible.filter(property => (property.group || '组件属性') === group).map(property => <div key={property.key} className="group relative">
-        {isNewEmojiTabsControl(control) && property.key === 'items' ? (
+      {visible.filter(property => (property.group || '组件属性') === group).map(property => {
+        if (isNewEmojiTable && isNewEmojiTableDataProperty(property.key) && property.key !== 'columns') return null;
+        return <div key={property.key} className="group relative">
+        {isNewEmojiTable && property.key === 'columns' ? (
+          <PropertyRow label="表格数据" isDarkMode={isDarkMode}>
+            <button
+              type="button"
+              onClick={onEditNewEmojiTable}
+              className={`flex w-full items-center justify-between rounded border px-2.5 py-1.5 text-left text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                isDarkMode
+                  ? 'border-[#3f3f49] bg-[#24242b] text-slate-200 hover:bg-[#303038]'
+                  : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100'
+              }`}
+            >
+              <span>{newEmojiTableColumnCount} 列 · {newEmojiTableRowCount} 行</span>
+              <span className="font-semibold text-cyan-500">编辑列与行</span>
+            </button>
+          </PropertyRow>
+        ) : isNewEmojiTabsControl(control) && property.key === 'items' ? (
           <PropertyRow label={property.label} isDarkMode={isDarkMode}>
             <button
               type="button"
@@ -5827,7 +5892,10 @@ function ModuleControlProperties({ control, definition, controls, imageLists, pr
           </PropertyRow>
         ) : isNewEmojiTabsControl(control) && property.key === 'contentVisible' ? (
           <PropertyRow label={property.label} isDarkMode={isDarkMode}>
-            <span className="text-[10px] text-emerald-500">分页容器模式固定开启</span>
+            <span className="text-[10px] leading-relaxed">
+              <span className="block text-emerald-500">分页容器内容区固定开启</span>
+              <span className="block text-slate-500">标签页表头可由“显示标签页表头”独立控制</span>
+            </span>
           </PropertyRow>
         ) : (
           <ControlPropertyField
@@ -5852,7 +5920,8 @@ function ModuleControlProperties({ control, definition, controls, imageLists, pr
         >
           默认
         </button>
-      </div>)}
+      </div>;
+      })}
     </PropertyGroup>)}
     {unsupported.length > 0 && (
       <div role="status" className={`rounded border px-3 py-2 text-[10px] leading-relaxed ${isDarkMode ? 'border-amber-500/25 bg-amber-500/[0.06] text-amber-300' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
@@ -5930,7 +5999,14 @@ function ControlPropertyField({
   if (definition.type === 'enum') {
     return (
       <PropertyRow label={definition.label} isDarkMode={isDarkMode}>
-        <select value={String(value ?? '')} onChange={event => onChange(event.target.value)} className={`w-full rounded border px-2 py-0.5 text-xs ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`}>
+        <select
+          value={String(value ?? '')}
+          aria-label={definition.label}
+          data-designer-enum-property={definition.key}
+          onMouseDown={openDesignerSelectPicker}
+          onChange={event => onChange(event.target.value)}
+          className={`w-full cursor-pointer rounded border px-2 py-0.5 text-xs outline-none focus:border-fuchsia-500 focus-visible:ring-2 focus-visible:ring-fuchsia-500/40 ${isDarkMode ? 'bg-[#1b1b20] border-[#3c3c44]' : 'bg-white border-slate-300'}`}
+        >
           {(definition.options || []).map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
         </select>
       </PropertyRow>
@@ -5942,7 +6018,7 @@ function ControlPropertyField({
         label={definition.label}
         value={String(value ?? definition.defaultValue)}
         isDarkMode={isDarkMode}
-        swatches={['#0F172A', '#1E293B', '#334155', '#7C3AED', '#6366F1', '#0891B2', '#38BDF8', '#E2E8F0']}
+        swatches={['transparent', '#0F172A', '#1E293B', '#334155', '#7C3AED', '#6366F1', '#0891B2', '#38BDF8', '#E2E8F0']}
         onChange={onChange}
       />
     );
@@ -6272,6 +6348,9 @@ function WindowEvents({
               const handler = eventValue(definition.name);
               const isBound = Boolean(handler.trim());
               const handlerName = handler.trim() || getWindowEventHandlerName(window.className, definition.name);
+              const parameterSummary = definition.parameters?.length
+                ? `参数：${definition.parameters.map(parameter => `${parameter.type} ${parameter.name}`).join('，')}`
+                : '';
               return (
                 <button
                   key={definition.name}
@@ -6290,6 +6369,7 @@ function WindowEvents({
                         {definition.label} <span className="font-mono text-[9px] font-normal text-slate-500">({definition.name})</span>
                       </div>
                       <div className="mt-0.5 text-[9.5px] leading-tight text-slate-500">{definition.description}</div>
+                      {parameterSummary && <div className="mt-1 text-[9.5px] leading-tight text-cyan-500/80">{parameterSummary}</div>}
                     </div>
                     <span className={`shrink-0 rounded border px-1 py-0.5 text-[8px] ${
                       isBound ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' : 'border-slate-500/20 text-slate-500'

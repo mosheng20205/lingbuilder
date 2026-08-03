@@ -111,11 +111,19 @@ const disk = createStandardModule({
 
 const clipboard = createStandardModule({
   id: 'lingbuilder.system.clipboard', name: '剪贴板模块', category: '系统',
-  description: '提供 Unicode 文本剪贴板读写和状态查询。', tags: ['剪贴板'],
+  version: '1.1.0',
+  description: '提供 Unicode 文本、Windows DIB/BMP 图片和保留动画帧的 GIF 字节集剪贴板读写与格式查询。', tags: ['剪贴板', '文本', '图片', 'GIF', '字节集'],
+  docs: [{ title: '剪贴板模块 1.1 使用说明', path: 'docs/modules/clipboard/README.md' }],
   commands: [
     command('剪贴板_置文本', [{ name: '文本', type: 'wideString' }], 'bool', '把 Unicode 文本写入系统剪贴板。', '剪贴板_置文本("来自 LingBuilder")'),
     command('剪贴板_取文本', [], 'wideString', '读取系统剪贴板中的 Unicode 文本。'),
     command('剪贴板_是否有文本', [], 'bool', '判断剪贴板是否包含 Unicode 文本。'),
+    command('剪贴板_置图片字节集', [{ name: '图片数据', type: 'bytes' }], 'bool', '自动识别 GIF87a/GIF89a、Windows DIB/DIBV5 或带 BMP 文件头的图片字节集；GIF 会保留全部动画帧。', '剪贴板_置图片字节集(图片数据)'),
+    command('剪贴板_取图片字节集', [], 'bytes', '优先读取原始 GIF 动图字节集，否则读取 DIB/DIBV5 图片字节集；没有可读图片时返回空字节集。'),
+    command('剪贴板_是否有图片', [], 'bool', '判断系统剪贴板是否包含 GIF、DIB、DIBV5 或位图图片。'),
+    command('剪贴板_取图片格式', [], 'wideString', '返回当前图片格式名：GIF、CF_DIBV5、CF_DIB 或 CF_BITMAP；没有图片时返回空文本。'),
+    command('剪贴板_置GIF字节集', [{ name: 'GIF数据', type: 'bytes' }], 'bool', '把原始 GIF87a/GIF89a 字节集以 GIF、image/gif 和 HTML Format 格式写入剪贴板，保留动图帧。', '剪贴板_置GIF字节集(GIF数据)'),
+    command('剪贴板_取GIF字节集', [], 'bytes', '读取剪贴板 GIF 注册格式中的原始 GIF 字节集；没有 GIF 时返回空字节集。'),
     command('剪贴板_清空', [], 'bool', '清空系统剪贴板。')
   ]
 });

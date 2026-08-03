@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lingbuilder-r2-large-file-uploader",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-08-03",
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/files/*"]
+  },
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "462030"
+    }
+  ],
+  "vars": {
+    "R2_ACCOUNT_ID": "f5ae4747daef58a439015054049ed986",
+    "PUBLIC_DOWNLOAD_BASE_URL": "https://msimgimg.xyz"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

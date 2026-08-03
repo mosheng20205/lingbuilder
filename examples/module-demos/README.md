@@ -14,7 +14,7 @@
 | `lingbuilder.advanced.process-memory` 进程内存模块 | `module-demo-lingbuilder.advanced.process-memory` | 4 | 0 | 1 | `进程内存模块完整演示.lcpppkg` |
 | `lingbuilder.archive` ZIP压缩模块 | `module-demo-lingbuilder.archive` | 4 | 0 | 1 | `ZIP压缩模块完整演示.lcpppkg` |
 | `lingbuilder.cef3.automation` CEF3自动化模块 | `module-demo-lingbuilder.cef3.automation` | 1 | 0 | 1 | `CEF3自动化模块完整演示.lcpppkg` |
-| `lingbuilder.cef3.browser` CEF3浏览器模块 | `module-demo-lingbuilder.cef3.browser` | 22 | 1 | 2 | `CEF3浏览器模块完整演示.lcpppkg` |
+| `lingbuilder.cef3.browser` CEF3浏览器模块 | `module-demo-lingbuilder.cef3.browser` | 22 | 1 | 3 | `CEF3浏览器模块完整演示.lcpppkg` |
 | `lingbuilder.cef3.devtools` CEF3开发者工具模块 | `module-demo-lingbuilder.cef3.devtools` | 3 | 0 | 1 | `CEF3开发者工具模块完整演示.lcpppkg` |
 | `lingbuilder.cef3.events` CEF3事件模块 | `module-demo-lingbuilder.cef3.events` | 6 | 0 | 1 | `CEF3事件模块完整演示.lcpppkg` |
 | `lingbuilder.cef3.network` CEF3网络模块 | `module-demo-lingbuilder.cef3.network` | 1 | 0 | 1 | `CEF3网络模块完整演示.lcpppkg` |
@@ -49,7 +49,7 @@
 | `lingbuilder.fbro.vip` FBro VIP 指纹模块 | `module-demo-lingbuilder.fbro.vip` | 198 | 0 | 10 | `FBroVIP指纹模块完整演示.lcpppkg` |
 | `lingbuilder.fs.core` 文件目录模块 | `module-demo-lingbuilder.fs.core` | 11 | 0 | 1 | `文件目录模块完整演示.lcpppkg` |
 | `lingbuilder.fs.path` 路径处理模块 | `module-demo-lingbuilder.fs.path` | 7 | 0 | 1 | `路径处理模块完整演示.lcpppkg` |
-| `lingbuilder.http.server` HTTP 服务端模块 | `module-demo-lingbuilder.http.server` | 5 | 0 | 1 | `HTTP服务端模块完整演示.lcpppkg` |
+| `lingbuilder.http.server` HTTP 服务端模块 | `module-demo-lingbuilder.http.server` | 48 | 0 | 3 | `HTTP服务端模块完整演示.lcpppkg` |
 | `lingbuilder.image.bitmap` 位图像素模块 | `module-demo-lingbuilder.image.bitmap` | 5 | 0 | 1 | `位图像素模块完整演示.lcpppkg` |
 | `lingbuilder.image.capture` 屏幕截图模块 | `module-demo-lingbuilder.image.capture` | 3 | 0 | 1 | `屏幕截图模块完整演示.lcpppkg` |
 | `lingbuilder.image.core` 图像基础模块 | `module-demo-lingbuilder.image.core` | 7 | 0 | 1 | `图像基础模块完整演示.lcpppkg` |
@@ -62,13 +62,13 @@
 | `lingbuilder.net.cookie` Cookie文本模块 | `module-demo-lingbuilder.net.cookie` | 5 | 0 | 1 | `Cookie文本模块完整演示.lcpppkg` |
 | `lingbuilder.net.dns` DNS与IP模块 | `module-demo-lingbuilder.net.dns` | 5 | 0 | 1 | `DNS与IP模块完整演示.lcpppkg` |
 | `lingbuilder.net.ftp` FTP客户端模块 | `module-demo-lingbuilder.net.ftp` | 7 | 0 | 1 | `FTP客户端模块完整演示.lcpppkg` |
-| `lingbuilder.net.http-client` HTTP客户端模块 | `module-demo-lingbuilder.net.http-client` | 7 | 0 | 1 | `HTTP客户端模块完整演示.lcpppkg` |
+| `lingbuilder.net.http-client` HTTP 客户端模块 | `module-demo-lingbuilder.net.http-client` | 74 | 0 | 4 | `HTTP客户端模块完整演示.lcpppkg` |
 | `lingbuilder.net.mail` SMTP邮件模块 | `module-demo-lingbuilder.net.mail` | 2 | 0 | 1 | `SMTP邮件模块完整演示.lcpppkg` |
 | `lingbuilder.net.tcp` TCP通信模块 | `module-demo-lingbuilder.net.tcp` | 6 | 0 | 1 | `TCP通信模块完整演示.lcpppkg` |
 | `lingbuilder.net.udp` UDP通信模块 | `module-demo-lingbuilder.net.udp` | 7 | 0 | 1 | `UDP通信模块完整演示.lcpppkg` |
 | `lingbuilder.net.url` URL解析模块 | `module-demo-lingbuilder.net.url` | 6 | 0 | 1 | `URL解析模块完整演示.lcpppkg` |
 | `lingbuilder.new_emoji.ui` new_emoji 原生界面库 | `module-demo-lingbuilder.new_emoji.ui` | 1599 | 92 | 12 | `新表情原生界面库完整演示.lcpppkg` |
-| `lingbuilder.opencv` OpenCV 图像处理模块 | `module-demo-lingbuilder.opencv` | 33 | 0 | 2 | `OpenCV图像处理模块完整演示.lcpppkg` |
+| `lingbuilder.opencv` OpenCV 图像处理模块 | `module-demo-lingbuilder.opencv` | 33 | 0 | 3 | `OpenCV图像处理模块完整演示.lcpppkg` |
 | `lingbuilder.process` 进程管理模块 | `module-demo-lingbuilder.process` | 5 | 0 | 1 | `进程管理模块完整演示.lcpppkg` |
 | `lingbuilder.std.bytes` 字节与十六进制模块 | `module-demo-lingbuilder.std.bytes` | 4 | 0 | 1 | `字节与十六进制模块完整演示.lcpppkg` |
 | `lingbuilder.std.datetime` 日期时间模块 | `module-demo-lingbuilder.std.datetime` | 5 | 0 | 1 | `日期时间模块完整演示.lcpppkg` |
@@ -76,14 +76,14 @@
 | `lingbuilder.std.math` 数学与随机模块 | `module-demo-lingbuilder.std.math` | 7 | 0 | 1 | `数学与随机模块完整演示.lcpppkg` |
 | `lingbuilder.std.regex` 正则表达式模块 | `module-demo-lingbuilder.std.regex` | 5 | 0 | 1 | `正则表达式模块完整演示.lcpppkg` |
 | `lingbuilder.std.text` 文本处理模块 | `module-demo-lingbuilder.std.text` | 10 | 0 | 1 | `文本处理模块完整演示.lcpppkg` |
-| `lingbuilder.system.clipboard` 剪贴板模块 | `module-demo-lingbuilder.system.clipboard` | 4 | 0 | 1 | `剪贴板模块完整演示.lcpppkg` |
+| `lingbuilder.system.clipboard` 剪贴板模块 | `module-demo-lingbuilder.system.clipboard` | 10 | 0 | 1 | `剪贴板模块完整演示.lcpppkg` |
 | `lingbuilder.system.disk` 磁盘信息模块 | `module-demo-lingbuilder.system.disk` | 28 | 0 | 2 | `磁盘信息模块完整演示.lcpppkg` |
 | `lingbuilder.system.info` 系统信息模块 | `module-demo-lingbuilder.system.info` | 7 | 0 | 1 | `系统信息模块完整演示.lcpppkg` |
 | `lingbuilder.system.shell` 系统外壳模块 | `module-demo-lingbuilder.system.shell` | 5 | 0 | 1 | `系统外壳模块完整演示.lcpppkg` |
 | `lingbuilder.threading` 多线程模块 | `module-demo-lingbuilder.threading` | 54 | 0 | 3 | `多线程模块完整演示.lcpppkg` |
 | `lingbuilder.web.http` 网页访问模块 | `module-demo-lingbuilder.web.http` | 12 | 0 | 1 | `网页访问模块完整演示.lcpppkg` |
-| `lingbuilder.websocket.client` WebSocket 客户端模块 | `module-demo-lingbuilder.websocket.client` | 5 | 0 | 1 | `WebSocket客户端模块完整演示.lcpppkg` |
-| `lingbuilder.websocket.server` WebSocket 服务端模块 | `module-demo-lingbuilder.websocket.server` | 6 | 0 | 1 | `WebSocket服务端模块完整演示.lcpppkg` |
+| `lingbuilder.websocket.client` WebSocket 客户端模块 | `module-demo-lingbuilder.websocket.client` | 51 | 0 | 3 | `WebSocket客户端模块完整演示.lcpppkg` |
+| `lingbuilder.websocket.server` WebSocket 服务端模块 | `module-demo-lingbuilder.websocket.server` | 50 | 0 | 3 | `WebSocket服务端模块完整演示.lcpppkg` |
 | `lingbuilder.win32.accessibility` 辅助功能模块 | `module-demo-lingbuilder.win32.accessibility` | 4 | 0 | 1 | `辅助功能模块完整演示.lcpppkg` |
 | `lingbuilder.win32.basic` Win32窗口基础模块 | `module-demo-lingbuilder.win32.basic` | 39 | 12 | 2 | `Win32窗口基础模块完整演示.lcpppkg` |
 | `lingbuilder.win32.common-controls` Win32高级控件模块 | `module-demo-lingbuilder.win32.common-controls` | 222 | 26 | 12 | `Win32高级控件模块完整演示.lcpppkg` |

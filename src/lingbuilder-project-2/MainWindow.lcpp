@@ -6,4 +6,64 @@
     事件 _MainWindow_大小被改变()
         调试输出("MainWindow大小被改变")
     结束
+
+    事件 _MainWindow_关闭前()
+        调试输出("MainWindow关闭前")
+    结束
+
+    事件 _MainWindow_已关闭()
+        调试输出("MainWindow已关闭")
+    结束
+
+    事件 _MainWindow_位置被改变()
+        调试输出("MainWindow位置被改变")
+    结束
+
+    事件 _MainWindow_被激活()
+        调试输出("MainWindow被激活")
+    结束
+
+    事件 _MainWindow_失去激活()
+        调试输出("MainWindow失去激活")
+    结束
+
+    事件 _MainWindow_被最小化()
+        调试输出("MainWindow被最小化")
+    结束
+
+    事件 _MainWindow_被最大化()
+        调试输出("MainWindow被最大化")
+    结束
+
+    事件 _MainWindow_被恢复()
+        调试输出("MainWindow被恢复")
+    结束
+
+    事件 _MainWindow_获得焦点()
+        调试输出("MainWindow获得焦点")
+    结束
+
+    事件 _MainWindow_失去焦点()
+        调试输出("MainWindow失去焦点")
+    结束
+
+    事件 _MainWindow_按键被按下(整数型 键码，逻辑型 Ctrl键按下，逻辑型 Shift键按下，逻辑型 Alt键按下)
+        调试输出("MainWindow按键被按下")
+    结束
+
+    事件 _MainWindow_按键被放开(整数型 键码，逻辑型 Ctrl键按下，逻辑型 Shift键按下，逻辑型 Alt键按下)
+        调试输出("MainWindow按键被放开")
+    结束
+
+    事件 _MainWindow_字符被输入(文本型 字符)
+        调试输出("MainWindow字符被输入")
+    结束
+
+    事件 _MainWindow_DPI被改变(整数型 新DPI)
+        调试输出("MainWindowDPI被改变")
+    结束
+
+    事件 _MainWindow_文件被拖入(文本型[] 文件集合)
+        调试输出("MainWindow文件被拖入")
+    结束
 结束类

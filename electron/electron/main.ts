@@ -227,7 +227,9 @@ function cloudApiOrigin(): string {
   if (explicit && app.isPackaged) console.error('安装版拒绝使用非 HTTPS 的 LINGBUILDER_CLOUD_API_URL。');
   if (!app.isPackaged) return 'http://127.0.0.1:17900';
   try {
-    const config = JSON.parse(readFileSync(path.join(process.resourcesPath, 'cloud-release.json'), 'utf8')) as { cloudApiOrigin?: unknown };
+    const config = JSON.parse(readFileSync(path.join(process.resourcesPath, 'cloud-release.json'), 'utf8')) as { cloudMode?: unknown; cloudApiOrigin?: unknown };
+    if (config.cloudMode === 'offline') return 'https://cloud-offline.invalid';
+    if (config.cloudMode !== 'online') throw new Error('云端发布模式无效。');
     const origin = String(config.cloudApiOrigin || '').replace(/\/$/u, '');
     if (!origin.startsWith('https://')) throw new Error('正式云端地址不是 HTTPS。');
     return origin;

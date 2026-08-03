@@ -1,0 +1,6 @@
+node_modules/
+.wrangler/
+screenshots/
+.dev.vars
+r2-uploader.config.json
+dist-client/

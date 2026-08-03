@@ -43,6 +43,20 @@ test('FBro module automatically selects the MSVC x64 target', () => {
   assert.match(resolved.messages[0], /FBro.*x64/u);
 });
 
+test('OpenCV module initializes an imported workspace with its required x64 target', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-opencv-build-config-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const service = new BuildConfigurationService(root);
+
+  assert.deepEqual(await service.read(), { schemaVersion: 1, mode: 'Debug', architecture: 'Win32' });
+  const resolved = await service.ensureCompatibleWithModules(['lingbuilder.win32.basic', 'lingbuilder.opencv']);
+
+  assert.equal(resolved.changed, true);
+  assert.deepEqual(resolved.configuration, { schemaVersion: 1, mode: 'Debug', architecture: 'x64' });
+  assert.match(resolved.messages[0], /OpenCV.*x64/u);
+  assert.deepEqual(await service.read(), { schemaVersion: 1, mode: 'Debug', architecture: 'x64' });
+});
+
 test('build configuration changes compiler flags, output paths, and module target IDs', () => {
   const debug = { schemaVersion: 1, mode: 'Debug', architecture: 'Win32' } as const;
   const release = { schemaVersion: 1, mode: 'Release', architecture: 'x64' } as const;

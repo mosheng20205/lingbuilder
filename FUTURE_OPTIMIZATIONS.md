@@ -1,5 +1,13 @@
 # LingBuilder 后期优化事项
 
+- 已完成（2026-08-03）：`lingbuilder.net.http-client@2.0.0` 从旧的同步 WinHTTP 原型升级为 74 条受管命令。`httpClientRuntime.ts` 统一管理客户端/请求生命周期、异步 UI 完成事件、请求头、UTF-8/JSON/字节集/文件传输、响应快照、代理/凭据、TLS 策略与 SHA-256 证书固定、Cookie、自动解压、重定向、超时和资源边界；普通 Win32 与 new_emoji 生成器共享 runtime，分别使用窗口消息和独立消息窗口回调。旧 HTTP 入口继续由默认受管客户端兼容，模块文档、演示和 Win32/new_emoji/隔离回归测试已同步。`smoke:http-client-native` 使用本地 HTTP fixture 真实编译 Win32/x64 与 new_emoji x64，并验证状态码、UTF-8 响应和资源清理。后续仍应增加代理认证、证书轮换和大文件压力场景，并把最大重定向次数纳入可观测的协议级限制。
+
+- 已完成（2026-08-03）：New_Emoji Tabs 属性面板新增“显示标签页表头”布尔属性，默认显示，关闭时设计器预览移除标签页表头并让页面内容区占满；模块生成器通过 `EU_SetTabsHeaderVisible` 绑定到真实原生 Setter，旧项目缺少该字段时仍按显示处理。`npm run module:new-emoji -- --install`、属性面板/窗口设计器/模块专项测试已覆盖清单、预览和 C++ 生成结果。
+
+- 已完成（2026-08-02）：新手模式子程序参数表新增“数组”开关，已有参数和新增参数统一使用 `类型[] 参数名` 语法；类型输入仍显示并补全基础类型，切换后由 AST 写回 `[]`，普通 Win32/new_emoji C++ 生成继续映射为 `std::vector<T>`。参数数组类型判断与后缀切换已下沉到 LingCpp service，避免 React 表格自行拼接语法。
+
+- 已修复（2026-08-02）：New_Emoji 生成器不再用 `SetProcessDPIAware()` 把整个进程锁定在启动显示器的系统 DPI。生成的 `wWinMain` 会在 COM、`NE_创建窗口` 和所有控件创建前动态调用 `SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)`，旧系统才回退到 `SetProcessDPIAware()`；上游 new_emoji DLL 的 `WM_DPICHANGED`、元素树和标题栏会因此按目标显示器重新布局。`new-emoji-92-tabs-validation` 的可复制 `main.cpp` 已同步，后续需继续在 100%/125%/150% 混合显示器上实机拖动验证窗口初始尺寸、标签页和弹层。
+
 - 已完成（2026-08-01）：`lingbuilder.input.mouse@2.0.0` 从最小鼠标接口扩展为 29 条三分类命令：15 条全局真实输入（前台）、6 条指定 HWND 窗口消息输入（后台）和 8 条 UI Automation 语义操作（后台）。贡献、binding、运行时、文档、演示和专项测试同源；每条命令都注明是否移动/占用真实系统鼠标。窗口消息只用受控 `PostMessageW` 入队，UIA 使用受管整数元素句柄并在 COM 退出前统一清理。相对移动文案改为 Windows 鼠标速度/加速度影响的输入增量。后续如需拖动、双击、XButton 或 Raw Input，应继续按前台/后台边界设计独立命令，不得偷偷扩大为任意消息或全局钩子。
 
 - 已完成（2026-08-01）：键盘输入模块由 5 条最小命令升级为 2.0 的 31 条分类 API。全局状态和键码转换不发送输入；前台命令使用批量 `SendInput` 支持虚拟键、最多三修饰键、Unicode 文本和扫描码；后台命令按指定 HWND 投递 `WM_KEY*` / `WM_SYSKEY*` / `WM_CHAR`，不抢焦点或改变物理键状态。全部命令在模块详情中标注前台/后台和键盘占用语义，旧 5 条命令保留兼容。已用 MSVC 验证 Win32/x64；后续如需全局热键事件，应在受管命令/事件生命周期上单独设计，不得引入隐藏键盘记录或无法回收的低级钩子。
@@ -8,7 +16,7 @@
 
 - 已完成（2026-08-01）：磁盘信息模块从 5 条基础查询扩展到 28 条只读命令和 8 个公开记录/数组类型，覆盖容量、卷/挂载点、文件系统能力、物理磁盘、总线、SSD/TRIM、扇区和分区布局。结构化命令返回值进入清单校验、语言服务和普通 Win32/new_emoji 生成顺序，原生 DLL target 继续禁止直接传递 STL/任意 C++ 结构；`smoke:disk-native` 已验证 Win32/x64 真实编译运行。后续若增加 SMART/NVMe 厂商日志，应单独设计权限、设备支持和版本化数据契约，不能把未授权或不支持误报为磁盘故障。
 
-- 已完成（2026-08-01）：Win32 ListView 行数据接入模块公开命名数组。`lingbuilder.win32.common-controls` 新增 `列表视图行 = 文本型[]`、`列表视图行集合 = 列表视图行[]`、`列表视图_创建行` 和 `列表视图_创建行集合`；添加、插入、批量添加和虚拟行设置直接消费 `std::vector<std::wstring>` 或嵌套 vector，不再要求新源码手工拼接 `\t` / `\n`。构造器沿用 `到文本` 确定性转换标量，Monaco/新手成员补全按设计器实际列数生成结构化参数。旧 TSV 重载继续兼容；结构化值仅在生成工程内部传递，不开放为 DLL STL ABI。源码包新增 `win32.listview.structured-rows.v1` 和最低生成器 0.2.8 门禁，`listview-api-demo` 已迁移为推荐写法。
+- 已完成（2026-08-01）：Win32 ListView 行数据接入模块公开命名数组。`lingbuilder.win32.common-controls` 新增 `列表视图行 = 文本型[]`、`列表视图行集合 = 列表视图行[]`、`列表视图_创建行` 和 `列表视图_创建行集合`；添加、插入、批量添加和虚拟行设置直接消费 `std::vector<std::wstring>` 或嵌套 vector，不再要求新源码手工拼接 `\t` / `\n`。构造器沿用 `到文本` 确定性转换标量，Monaco/新手成员补全按设计器实际列数生成结构化参数。旧 TSV 重载继续兼容；结构化值仅在生成工程内部传递，不开放为 DLL STL ABI。源码包新增 `win32.listview.structured-rows.v1` 和最低生成器 0.2.7 门禁，`listview-api-demo` 已迁移为推荐写法。
 
 - 已完成（2026-08-01）：模块公开类型从扁平 `name/description/cppType` 扩展为 manifest v2 向后兼容的 `opaque/record/array` 契约。公开记录支持字段、说明、标量默认值、嵌套和字段数组；公开数组声明元素类型。清单校验阻止重名、未知/不安全字段类型、循环嵌套及结构化类型借 `cppType` 绕过语义。启用模块后，Monaco/新手补全、字段悬停与赋值诊断、项目数据类型嵌套、模块搜索/公开信息、AI 模块上下文和普通 Win32/new_emoji C++ 生成复用同一服务，记录生成 `struct`，数组映射为 `std::vector<T>`。后续若允许结构化值直接跨预编译 DLL binding，必须先增加独立、可验证的 POD/缓冲区/句柄 ABI 适配描述；不得直接跨 DLL 传递 STL 或任意 C++ 对象。
 
@@ -289,7 +297,8 @@
 - 已完成：项目文件重命名/删除改为真实服务端磁盘操作，统一限制在当前项目 `sourceRoot` / `configRoot` 和工作区真实路径内，拒绝越界、符号链接、目录、目标冲突；工作台会串行提交新手草稿并同步标签页/活动文件状态，不再只改 React 内存。
 - 已完成：F5 和 AI Bridge `build.run` 启动的原生 exe 改由 `ManagedProcessService` 按 `projectId` 持有进程句柄；重新生成会在写入/编译固定 exe 前等待旧进程与日志流收尾，避免 Windows 文件锁导致链接失败。IDE 内嵌 AI Bridge 与 F5 共享项目构建租约，外部 CLI 使用独立租约；同项目并发会被拒绝。Shift+F5 可取消在途生成并停止全部受控进程，服务/CLI/MCP 退出会等待在途租约并最终回收登记进程，不再遗留 detached 预览进程或发生“停止后迟到启动”。
 - 已完成：“环境检查”改为真实只读探测 Node.js、MSVC/vswhere/vcvars、Windows SDK `rc.exe`、CMake、g++、clang++、WebView2 和 Windows 平台，并通过 `/api/environment/check` 返回中文明细与缺失警告，不再输出固定成功日志。Windows 上的 CMake 探测覆盖 PATH、标准独立安装目录及 `vswhere -find` 返回的 Visual Studio 内置 CMake，避免 VS 已安装 CMake 但未加入 PATH 时误报缺失。g++ 与 clang++ 作为可选替代编译器仍显示检测明细，但单独缺失时不再进入警告区；只有所有 C++ 编译器均缺失时才报告编译器警告。
-- 已完成：新增“环境修复中心”服务、受控 API、工具菜单/命令入口和暗亮主题响应式对话框；只允许从固定微软 HTTPS 地址下载并以固定参数安装 `Microsoft.VisualStudio.Workload.VCTools` 或 WebView2，具备显式确认、并发拒绝、下载/安装/成功/失败状态和完成后复检。Windows NSIS 安装包会冻结并校验 WebView2 Evergreen Bootstrapper，缺失时补装；离线开发环境包结构、layout、哈希、签名与验收方案记录在 `LINGBUILDER_OFFLINE_ENVIRONMENT_PACKAGE.md`。
+- 已完成：新增“环境修复中心”服务、受控 API、工具菜单/命令入口和暗亮主题响应式对话框；只允许从固定微软 HTTPS 地址下载并以固定参数安装 `Microsoft.VisualStudio.Workload.VCTools` 或 WebView2，具备显式确认、并发拒绝、下载/安装/成功/失败状态和完成后复检。Windows NSIS 安装包会冻结并校验 WebView2 Evergreen Bootstrapper，缺失时补装；发布准备优先复用本地已下载且通过 Microsoft Authenticode 校验的 Bootstrapper。离线开发环境包结构、layout、哈希、签名与验收方案记录在 `LINGBUILDER_OFFLINE_ENVIRONMENT_PACKAGE.md`。
+- 已完成（2026-08-02）：Electron 安装包增加显式云端发布模式。`online` 继续强制公网 HTTPS `LINGBUILDER_CLOUD_API_URL`；`offline` 在域名、备案或服务器未就绪时生成不连接云端的安装版，保留本地 IDE 与自定义 API，不使用虚假公网地址，也不回退到用户本机服务。
 - 已完成：上述三项新增独立服务测试和 renderer server API 集成测试，并纳入 `npm run test:lingcpp` 全量门禁；完成度与验收证据统一记录在根目录 `IDE_FEATURE_COMPLETION.md`。
 
 - 已完成：建立统一 Win32 控件注册表，窗口设计器项目升级到 schemaVersion 2 并兼容迁移旧 `content` 数据；基础与高级控件模块、工具箱、专属属性、事件和 C++ 原生适配器共享同一份定义。
@@ -321,8 +330,10 @@
 - 已完成：修复 `.lcpp` 解析器把事件/方法块结尾 `结束` 误翻译为运行时 `结束();` 的问题；显式退出命令应写作 `结束()`。
 - 已完成：模块生态升级到 schemaVersion 2，C++ 依赖改为 `targets[]`，中文命令到 C++ 的生成改为 `bindings.commands[]`，并新增模块 SDK/CLI、模块开发者中心 API、根目录 `模块开发手册.md`。
 - 已完成：`new_emoji` 模块生成脚本升级为 v2 manifest，包含 Win32/x64 targets、`NE_` 桥接命令 binding、底层 API 文档和重新打包安装入口。
-- 已完成：新增内置 `WebSocket 客户端模块`（`lingbuilder.websocket.client`），提供 `WS_连接`、`WS_发送文本`、`WS_接收到调试输出`、`WS_接收文本`、`WS_关闭`，Win32 生成器内置 WinHTTP WebSocket 运行时和 `winhttp.lib` 链接。
-- 已完成：新增内置 `HTTP 服务端模块`（`lingbuilder.http.server`）和 `WebSocket 服务端模块`（`lingbuilder.websocket.server`），提供本地 `127.0.0.1` 单连接同步服务端命令；Win32 生成器内置 Winsock HTTP/WebSocket 服务端运行时，并链接 `ws2_32.lib` / `advapi32.lib`。
+- 已完成（2026-08-03）：`lingbuilder.websocket.client@2.0.0` 从 5 条窗口级同步原型升级为 51 条受管命令和稳定 `WebSocket连接` 类型。独立 WinHTTP 运行时支持多连接、后台握手/接收、`ws://`/`wss://`、文本/二进制、Origin/子协议/请求头、代理、HTTP Basic 凭据、系统证书验证、自签名策略、SHA-256 证书固定、资源限制、指数退避重连、事件快照和统计；普通 Win32/New_Emoji 复用运行时并回到 UI 线程。Win32/x64 与 New_Emoji x64 已完成真实 MSVC 编译及本地断线重连协议 smoke。当前边界：WinHTTP 自动处理 Ping/Pong但不公开主动 Ping；生产凭据需接系统凭据存储，正式上线仍需按目标代理、证书轮换和网络故障模型压测。
+- 已完成：新增内置 `HTTP 服务端模块`（`lingbuilder.http.server`）和 `WebSocket 服务端模块`（`lingbuilder.websocket.server`）；Windows/MSVC 生成链路链接所需的 Winsock/系统库。
+- 已完成（2026-08-03）：`lingbuilder.http.server@2.0.0` 从 5 条同步单连接原型升级为 48 条受管命令和 2 个公开类型。后台 accept、1–64 工作线程与有界连接队列支持 IPv4/IPv6、动态端口、HTTP/1.0/1.1、keep-alive、Content-Length/chunked、路由、请求读取、文本/JSON/二进制/文件/Cookie/重定向响应、资源限制和统计；默认监听门禁校验解析后的实际回环地址，请求目标拒绝非法百分号编码和非法 UTF-8 解码结果；请求回到普通 Win32/New_Emoji UI 线程，Win32/x64 与 New_Emoji x64 已完成真实 MSVC 编译和协议 smoke。当前边界：嵌入式 HTTP/1.1，不内置 TLS/HTTP2/认证；公网 HTTPS 由网关提供，正式上线仍需按真实负载压测。
+- 已完成（2026-08-03）：`lingbuilder.websocket.server@2.0.0` 从 6 条同步单连接原型升级为 50 条受管命令和 2 个公开类型。后台 `WSAPoll` reactor 支持多客户端、文本/二进制、分片、UTF-8、Ping/Pong、关闭握手、Origin/路径/子协议、资源限制、有界发送队列和统计；事件回到普通 Win32/New_Emoji UI 线程，Win32/x64 与 New_Emoji x64 已完成真实 MSVC 编译和协议 smoke。当前明确边界：只提供 `ws://`，公网 TLS 由网关终止；单 reactor 面向桌面和中等并发，正式大规模部署仍需按真实负载压测。
 - 已完成：Electron 安装版改为由主进程管理独立本地服务进程，服务只监听 `127.0.0.1` 随机端口，renderer 请求由桌面宿主注入随机会话 token；安装版不再直接 `loadFile`，退出和工作区切换会终止旧服务。
 - 已完成：IDE 内嵌 AI Bridge 默认关闭，外部 AI 继续通过 `lingbuilder ai-server` 显式启动；HTTP 只接受独立 Bearer token，工作区访问统一使用 realpath/符号链接策略并补齐拒绝审计。
 - 已完成：安装版首次运行只补充复制“文档/LingBuilder/示例工作区”的缺失文件，保留用户修改，并在 `userData/workspace-state.json` 恢复最近工作区。
@@ -511,8 +522,8 @@
 - 已完成：窗口选中后事件页不再显示控件空状态；窗口模型持久化 `events.Loaded`，并由 Win32 C++ 生成器按绑定调用创建完毕处理器。
 - 已完成（2026-07-16）：建立独立窗口事件注册表，事件面板按生命周期、布局与状态、焦点与键盘、系统与拖放分组，支持搜索、仅显示已绑定和安全打开事件代码。
 - 已完成（2026-07-16）：确定性支持关闭前/已关闭、尺寸/位置、激活/可见、焦点、全窗口键盘、DPI、最小化/最大化/恢复和 Unicode 多文件拖入；上下文命令由 `lingbuilder.win32.basic` 的贡献与 binding 同源提供。
-- 已完成（2026-07-16）：关闭取消、按键已处理、状态转换去重、旧 `Loaded` 处理器兼容和窗口事件无参数诊断已接入 F5 与导出 C++ 链路。
-- 后续优化：如需强类型事件参数，应先设计 `.lcpp` 事件 ABI、引用/取消语义和旧无参数处理器迁移；当前继续使用稳定的无参数事件加上下文读取命令。
+- 已完成（2026-07-16）：关闭取消、按键已处理、状态转换去重和旧 `Loaded` 处理器兼容已接入 F5 与导出 C++ 链路。
+- 已完成（2026-08-02）：窗口键盘、字符、DPI 和文件拖入事件接入统一强类型参数 ABI：按键事件传入键码与 Ctrl/Shift/Alt 状态，字符事件传入 Unicode 文本，DPI 事件传入新 DPI，拖入事件传入完整 Unicode 路径数组。设计器事件卡片、补全、源码自动生成、语言服务诊断和 Win32 生成器同源；旧无参数处理器继续兼容并可使用上下文命令，从设计器重新打开时会安全升级空签名，使新手参数表直接显示注册表参数，同时保留事件正文和已有非空参数。
 
 ## 系统 AI 云端、账号计费与管理后台（2026-07-12）
 
@@ -665,6 +676,10 @@
 - [x] OpenCV 4.14.0 `core/imgproc/imgcodecs`、Windows MSVC x64 `/MD`、C++17、CPU Bridge、受管句柄、中文路径、基础处理、模板/轮廓和单/双缺口候选已落地。
 - [x] `lingbuilder.opencv` 与隐藏 `lingbuilder.opencv.sdk` 家族、逐文件 SHA-256、F5/AI Bridge/原生导出/VS 导出统一物化、x64-only 工程和 `.lcpppkg` 自动携带 SDK 已落地。
 - [x] 原生 smoke 已覆盖中文路径、主要图像变换、模板和双缺口坐标、空候选、严格配置、并发读、重复释放、256 对象上限、真实 MSVC x64 编译运行及 DLL 同目录。
+- [x] 已新增 OpenCV 全命令演示项目：33 条 binding 全部在 `MainWindow.lcpp` 中有真实调用，设计器使用“基础与图像信息”“预处理与变换”“分析与结果读取”三个 TabControl 页面，并把 33 条命令拆成独立单功能按钮；额外的错误准备按钮也只执行一次失败加载，取错误由另一按钮完成。窗口成员保存图像/结果句柄供后续单命令操作使用，右侧提供结果预览和可见运行日志；源码包输出为 `exports/OpenCV图像处理模块完整演示.lcpppkg`，随包携带项目 PNG 与只读 x64 SDK。
+- [x] 已修复 OpenCV 演示“分析缺口”使用普通图标轮廓造成的假演示：项目改用确定性生成的原创拼图缺口图，右侧缺口预设约为 `(330,108,100,110)`，分析按钮仍只调用一次 `OpenCV_分析缺口` 并通过固定 ROI 排除其它图形。原生 x64 smoke 直接读取同一 PNG，断言唯一候选坐标/尺寸，并由 `OpenCV结果_保存标注图` 生成可检查的绿色框选图。
+- [x] 已修复资源管理器图片预览把鉴权/路径等 HTTP 失败误报为“图片损坏”的问题：弹窗先通过受控 `fetch` 获取图片 Blob、校验状态码和 MIME，再使用临时 `blob:` URL 解码；服务端诊断会原样显示，Blob URL 在关闭或切换资源时撤销。工作区路径现在作为资源/模块缓存代次，同项目 ID 的多个导入副本之间切换时会清空旧条目、重新请求并丢弃迟到响应。
+- [x] 已修复 OpenCV 源码包导入后状态栏显示 x64、F5 却按默认 Win32 校验的问题：OpenCV 现纳入构建配置服务的 x64-only 兼容规则，缺少工作区配置时首次 F5 会自动持久化 x64；工作区切换会重新读取构建配置，`.lcpppkg` 导出也会携带 `.lingbuilder/build-configuration.json`。
 - [ ] 后续可在保持 C ABI 和句柄模型不变的前提下增加基于真实授权样本的鲁棒性基准、性能采样和可视化调参工具；样本不得包含未获授权的第三方验证码数据。
 - [ ] 如需 arm64、macOS/Clang 或 OpenCL，应新增独立 target、资产清单和端到端验收，不能把 x64 DLL 标记为跨平台兼容。
 - [ ] CUDA、DNN、OCR、视频、摄像头和第三方编解码器不在首版范围；未来每项都应作为独立能力/资产评估体积、许可证、部署和安全边界。
@@ -689,3 +704,62 @@
 - [x] Protobuf SDK 固定为 27.3.0。`runtime-manifest.json` 逐文件验证大小/SHA-256，并强制包含 `bin/protoc.exe`、头文件、导入库和 DLL；缺失、篡改、版本/架构不符在所有构建入口前阻断，禁止系统回退或联网下载。
 - [ ] 通用公开 `buildSteps` 仍待第二套独立生成器完成同一安全、缓存、导出和取消验收后再开放。
 - [ ] 补充真实固定版本 Protobuf SDK 的 Win32/x64 原生 smoke、import/嵌套/repeated/map/bytes/未知字段 round-trip 和独立 VS 构建；当前单元测试使用离线 fixture 验证清单、物化和 Provider 阻断。
+
+## 剪贴板图片与 GIF 字节集（2026-08-02）
+
+- [x] `lingbuilder.system.clipboard@1.1.0` 已补齐图片字节集读写、图片格式查询和 GIF 原始字节读写，共 10 条命令；`bytes` 在生成工程内确定性映射为 `std::vector<unsigned char>`。
+- [x] 普通图片输入接受 DIB/DIBV5 和 BMP 文件字节，写入 `CF_DIB`/`CF_DIBV5`；从 `CF_BITMAP` 读取时转换为受上限保护的 32 位 DIB。GIF87a/GIF89a 不进入静态位图转换，而是写入注册的 `GIF`、标准 MIME `image/gif` 和 `HTML Format`，保留全部动画帧。
+- [x] 增加 GIF/DIB 运行时所有权与失败回滚、CF_HTML 偏移、GIF 回退读取、Win32/x64 C++ 生成回归和模块文档；单个图片/GIF 输入限制为 256 MB。
+- [ ] 后续可增加 WIC/PNG/JPEG 注册格式的原始编码读写，以及跨平台宿主的剪贴板图片适配；实现前仍需为每种格式定义可复制的 bytes 契约和动画保留语义。
+
+## new_emoji 启动浮层显式触发（2026-08-02）
+
+- [x] `new-emoji-92-tabs-validation` 的对话框、抽屉、信息框、漫游引导和加载控件改为关闭或未激活状态启动；Notification、Message 与 MessageBox 在模型设为 `Collapsed` 时不再由生成器于窗口初始化阶段创建或调用底层 Show API。
+- [x] 复用现有按钮和上传事件：普通按钮打开对话框，图标按钮打开抽屉，上传动作再打开信息框、漫游引导、加载、消息提示和确认消息框；事件按稳定控件名查找，避免依赖生成序号。
+- [x] 09–16 标签页已为弹窗、抽屉、通知、消息提示、消息框和信息框分别增加同页演示按钮；每个按钮只触发对应组件，瞬时消息仍由底层 Show API 按点击即时创建。
+- [x] 已增加生成器回归测试，并通过完整窗口设计器测试、Electron TypeScript lint 和真实 MSVC x64 原生构建。
+- [ ] 如果 new_emoji 上游后续为 Message 或 MessageBox 提供可创建但不显示、隐藏或关闭 API，应把当前 `Collapsed` 延迟显示约定升级为正式状态契约，并补齐重复打开、关闭及销毁生命周期测试。
+
+## new_emoji Table 结构化编辑器（2026-08-02）
+
+- [x] 属性面板将基础列标题、基础行数据、高级列配置和高级行数据收敛到统一的“编辑列与行”入口，保留 `dataGridColumns/dataGridRows` 与旧 new_emoji 字段的双向兼容。
+- [x] 列编辑支持稳定列 ID、标题、类型、宽度、对齐、移动/删除，以及组合框选项、按钮组、开关文字、进度范围、三态和列行为选项；行编辑支持稳定行键、启用状态、按列类型输入、复制/排序/删除和 Excel/CSV/TSV 粘贴。
+- [x] 生成器在旧字段为空时从统一 DataGrid 数据确定性回退生成 `EU_CreateTable` 和 `EU_SetTableData` 参数，空表不会被注入默认列；旧项目仍保留字符串型 Ex setter 的兼容调用。
+- [x] 已修复结构化 new_emoji 表格行运行时显示 JSON 的问题：`dataGridColumns/dataGridRows` 或对象型 `tableColumnsEx/tableRowsEx` 不再直接序列化到没有 JSON ABI 的 `EU_SetTableColumnsEx` / `EU_SetTableRowsEx`，统一使用安全的基础列/行数据渲染。
+- [ ] 后续可接入 new_emoji 原生表格实时预览、列/单元格样式覆盖和合并单元格布局编辑；在上游 ABI 语义稳定前继续保持当前结构化数据与原始高级字段同步保存。
+
+## new_emoji 单行输入光标高度（2026-08-02）
+
+- [x] 修复上游 `EditBox` 和 `Input` 单行 caret 按控件整体高度绘制的问题，改为按字体行高在文本区域内垂直居中；多行输入仍使用文本布局行 metrics 和滚动偏移。
+- [x] 已重新编译并同步 new_emoji Win32/x64 Release DLL/LIB 到模块目录、module-build 镜像和 `new-emoji-92-tabs-validation` x64 Debug 运行镜像。
+- [ ] 后续若上游提供独立的字体 ascent/descent 或 baseline API，可进一步统一 EditBox、InputTag 和其它可编辑控件的 caret 视觉基线。
+
+## new_emoji Tabs 17–24 原生布局修复（2026-08-02）
+
+- [x] 修复 `new-emoji-92-tabs-validation` 运行时切换到 17–24 页后出现大块白色错位图形的问题。根因是 Tabs 页面绑定发生在页面子控件创建前，new_emoji 布局树只为当时可见页完成布局；切换页只改变可见状态，页面不会自动重新布局。
+- [x] 生成器现在延后 `EU_SetTabsPageElements` 及折叠页隐藏调用，直到所有普通页面子控件和 FBro 子宿主创建完成；每个页面 Panel 仍与 Tabs 同级并覆盖设计器内容矩形。
+- [x] new_emoji `Container` 的创建期属性显式调用 `EU_SetPanelLayout(..., 0, 0)`，关闭默认 `fill_parent` 和内容布局扩张，保证运行时尺寸服从设计器宽高。
+- [x] 新增 92 控件项目生成回归测试；重新生成 v2 模块并完成 x64 Release MSVC 编译，实机切换 17–24 页截图与设计器布局一致。
+- [ ] 后续若上游提供“页面创建后重新布局”或稳定的隐藏页布局 API，可评估将当前延后绑定策略替换为官方生命周期调用，并补齐 DPI/窗口缩放下的多页回流测试。
+
+## new_emoji 17–24 设计器原生样式预览（2026-08-02）
+
+- [x] 设计器的 Link、Icon、Container、Header、Aside、Main、Footer 预览改为消费项目模型中的真实内容、颜色、标题和对齐属性，不再绘制运行时不存在的导航、卡片、进度条和组合占位块。
+- [x] 设计器颜色预览统一把 new_emoji 的 `#AARRGGBB` 转换为 CSS 颜色，保持与生成器传给 `EU_SetElementColor`/`EU_SetPanelStyle` 的值一致；Space 运行时不可见，只有选中时显示带中文说明的设计辅助轮廓。
+- [x] 新增窗口设计器服务端渲染回归，锁定 17–24 控件不得重新引入合成示意内容。
+- [ ] 后续如需要丰富的组合示例，应建模为真实子控件或显式组合模板并由原生后端实现，不能在基础控件预览中隐式伪造。
+
+## new_emoji Layout 透明背景（2026-08-02）
+
+- [x] 通用“背景颜色”和 new_emoji 控件的 `properties.backgroundColor` 现在双向同步；布局、面板等同时声明两种背景字段的控件不再出现界面显示透明但模块运行值仍为白色的分裂状态。
+- [x] 模块专属颜色属性加入 `transparent` 选项，Layout 预览使用实际 `backgroundColor` 渲染，不再被固定的设计器面板背景覆盖。
+- [x] 窗口设计器回归测试覆盖透明与白色 Layout 预览，保留 new_emoji 默认白色布局的兼容语义。
+
+## 新手模式子程序参数入口（2026-08-02）
+
+- [x] 新增功能代码和自定义事件时可以直接填写类型化参数，改为点击“新增”后一次性写入签名，避免名称输入框失焦时提前生成无参数子程序。
+- [x] 普通功能正文也提供“调用功能”入口，按参数签名填写实参；功能库调用自动使用 `功能库名.功能名(...)` 限定形式。
+- [x] 解析器、AST 写回、参数默认值规则和 C++ 生成继续共用既有 `LingCppMethod.parameters` 模型；设计器事件参数仍由事件契约校验。
+- [x] 新手模式画布对零参数子程序也保留“新增参数”行，支持从右键创建的默认子程序继续补充参数，并把新增/删除/调用操作接入同一签名写回链路。
+- [x] 无参数功能调用卡片改为仅保留“插入调用”操作，移除重复的无参数签名、说明和调用预览；有参数调用仍显示签名、实参编辑和预览。
+- [x] 新手模式移除“调用功能”面板，避免在事件或子程序标题下渲染额外的调用卡片；参数签名、源码补全和直接调用语法继续保留。

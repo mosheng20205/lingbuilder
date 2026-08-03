@@ -115,7 +115,7 @@ export const OPENCV_MODULE: LingBuilderModuleManifest = {
   author: 'LingBuilder',
   license: 'Apache-2.0',
   tags: ['OpenCV', '图像处理', '模板匹配', '轮廓', '缺口分析', 'x64'],
-  minLingBuilderVersion: '0.2.8',
+  minLingBuilderVersion: '0.2.7',
   contributes: {
     commands: COMMANDS.map(contribution),
     types: [

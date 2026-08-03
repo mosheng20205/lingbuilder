@@ -62,6 +62,9 @@ import { OPENCV_COMMAND_NAMES, OPENCV_MODULE_ID, OPENCV_SDK_MODULE_ID } from '..
 import { normalizeControlReferenceCallSnippet } from '../src/services/modules/bindingValueType';
 import { getEnabledModuleStructuredTypeDiagnostics } from '../src/services/modules/modulePublicTypeService';
 import { THREADING_COMMAND_SPECS, THREADING_LEGACY_COMMANDS } from '../src/services/modules/threadingModule';
+import { HTTP_SERVER_COMMAND_SPECS } from '../src/services/modules/httpServerModule';
+import { WEBSOCKET_CLIENT_COMMAND_SPECS } from '../src/services/modules/webSocketClientModule';
+import { WEBSOCKET_SERVER_COMMAND_SPECS } from '../src/services/modules/webSocketServerModule';
 import { normalizeControlReferenceSourceLiterals } from '../scripts/lib/control-reference-source-audit';
 
 const sampleProject: LingWindowProject = {
@@ -135,11 +138,11 @@ test('全部内置方法的控件参数统一使用 controlRef、裸补全和明
     },
     {
       modules: 81,
-      commands: 1776,
-      parameters: 3077,
+      commands: 1982,
+      parameters: 3412,
       controlReferences: 769,
-      commandDigest: '3c691065',
-      parameterDigest: '1f3c7f07'
+      commandDigest: 'a17e5044',
+      parameterDigest: '525b8cdf'
     },
     '内置模块的每个方法和每个参数必须进入稳定 controlRef 审计目录'
   );
@@ -199,7 +202,7 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
     const audit = normalizeControlReferenceSourceLiterals(source, filePath, BUILTIN_MODULES);
     audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
   }
-  assert.equal(sourceFiles.length, 36, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  assert.equal(sourceFiles.length, 40, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -415,11 +418,11 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
     parameterDigest: audit.parameterDigest
   }, {
     modules: 87,
-    commands: 3387,
-    parameters: 10650,
+    commands: 3595,
+    parameters: 10990,
     controlReferences: 769,
-    commandDigest: '25f7100d',
-    parameterDigest: '59badb8e'
+    commandDigest: '3c47b44b',
+    parameterDigest: 'f37b6f70'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
 });
 
@@ -582,6 +585,77 @@ test('文件、配置、系统、进程、输入和窗口模块提供完整确�
   assert.match(mainCpp, /bool 鼠标_移动\(int x, int y\)/u);
   assert.match(mainCpp, /bool 窗口_设置标题\(long long handle/u);
   assert.match(mainCpp, /文件_写入文本\(L"验证\.txt", L"中文"\);/u);
+});
+
+test('剪贴板模块支持图片字节集和保留动画帧的 GIF 剪贴板格式', () => {
+  const manifest = SYSTEM_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.system.clipboard')!;
+  assert.equal(manifest.version, '1.1.0');
+  assert.deepEqual(validateModuleManifest(manifest).diagnostics, []);
+  const commandNames = [
+    '剪贴板_置文本', '剪贴板_取文本', '剪贴板_是否有文本',
+    '剪贴板_置图片字节集', '剪贴板_取图片字节集', '剪贴板_是否有图片', '剪贴板_取图片格式',
+    '剪贴板_置GIF字节集', '剪贴板_取GIF字节集', '剪贴板_清空'
+  ];
+  assert.deepEqual(manifest.contributes?.commands?.map(command => command.name), commandNames);
+  assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), commandNames);
+  for (const name of ['剪贴板_置图片字节集', '剪贴板_置GIF字节集']) {
+    assert.deepEqual(manifest.bindings?.commands?.find(binding => binding.command === name)?.parameters?.map(parameter => parameter.type), ['bytes']);
+  }
+  for (const name of ['剪贴板_取图片字节集', '剪贴板_取GIF字节集']) {
+    assert.equal(manifest.bindings?.commands?.find(binding => binding.command === name)?.returnType, 'bytes');
+  }
+  assert.equal(manifest.contributes?.docs?.[0]?.path, 'docs/modules/clipboard/README.md');
+
+  const installed: InstalledModule = {
+    manifest,
+    installPath: 'builtin://lingbuilder.system.clipboard',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const source = [
+    '类 MainWindow',
+    '    事件 _MainWindow_创建完毕()',
+    '        局部 字节集 图片数据',
+    '        剪贴板_置图片字节集(图片数据)',
+    '        图片数据 = 剪贴板_取图片字节集()',
+    '        剪贴板_置GIF字节集(图片数据)',
+    '        剪贴板_取GIF字节集()',
+    '        剪贴板_是否有图片()',
+    '        剪贴板_取图片格式()',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const languageDiagnostics = getLingCppSemanticDiagnostics(
+    source,
+    undefined,
+    'src/MainWindow.lcpp',
+    { availableModules: [installed], enabledModules: [installed] }
+  );
+  assert.equal(languageDiagnostics.filter(item => item.level === 'error').length, 0, languageDiagnostics.map(item => item.message).join('\n'));
+
+  const generated = generateLingCppNativeWin32Project(sampleProject, {
+    lingCppSourceCode: source,
+    enabledModules: [installed]
+  });
+  assert.equal(generated.blockingDiagnostics.length, 0, generated.blockingDiagnostics.join('\n'));
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.match(cpp, /bool 剪贴板_置图片字节集\(const std::vector<unsigned char>& imageBytes\)/u);
+  assert.match(cpp, /std::vector<unsigned char> 剪贴板_取图片字节集\(\)/u);
+  assert.match(cpp, /bool 剪贴板_置GIF字节集\(const std::vector<unsigned char>& imageBytes\)/u);
+  assert.match(cpp, /std::vector<unsigned char> 剪贴板_取GIF字节集\(\)/u);
+  assert.match(cpp, /RegisterClipboardFormatW\(L"GIF"\)/u);
+  assert.match(cpp, /RegisterClipboardFormatW\(L"image\/gif"\)/u);
+  assert.match(cpp, /RegisterClipboardFormatW\(L"HTML Format"\)/u);
+  assert.match(cpp, /StartFragment:/u);
+  assert.match(cpp, /if \(!gifFormat\) return false;/u);
+  assert.match(cpp, /SetClipboardData\(gifFormat, gifMemory\)/u);
+  assert.match(cpp, /SetClipboardData\(gifMimeFormat, gifMimeMemory\)/u);
+  assert.match(cpp, /CF_DIBV5/u);
+  assert.match(cpp, /GetDIBits/u);
+  assert.match(cpp, /std::vector<unsigned char> 图片数据\{\};/u);
+  assert.match(cpp, /剪贴板_置图片字节集\(图片数据\);/u);
 });
 
 test('键盘输入模块分类公开全局、前台与 HWND 后台能力', () => {
@@ -1824,7 +1898,7 @@ test('new_emoji module commands feed completion and disabled-module diagnostics'
   assert.ok(diagnostics.some(item => item.id.includes('lingcpp-module-disabled-lingbuilder.new_emoji.ui')));
 });
 
-test('built-in WebSocket client module contributes commands and deterministic C++ bindings', () => {
+test('built-in WebSocket client 2.0 contributes managed commands and deterministic dual-backend C++ bindings', () => {
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.websocket.client');
   assert.ok(manifest);
   assert.equal(validateModuleManifest(manifest).diagnostics.length, 0);
@@ -1843,34 +1917,135 @@ test('built-in WebSocket client module contributes commands and deterministic C+
     { enabledModules: [module], availableModules: [module] }
   );
 
-  assert.ok(completions.some(item => item.label === 'WS_连接'));
-  assert.ok(completions.some(item => item.label === 'WebSocket 回显测试'));
+  assert.ok(!completions.some(item => item.label === 'WS_连接'));
+  assert.ok(completions.some(item => item.label === 'WS_创建连接'));
+  assert.ok(completions.some(item => item.label === 'WebSocket 受管客户端'));
+
+  const commands = manifest.contributes?.commands || [];
+  const bindings = manifest.bindings?.commands || [];
+  assert.equal(manifest.version, '2.0.0');
+  assert.equal(WEBSOCKET_CLIENT_COMMAND_SPECS.length, 51);
+  assert.equal(commands.length, 51);
+  assert.equal(bindings.length, 51);
+  assert.deepEqual(new Set(commands.map(item => item.name)), new Set(bindings.map(item => item.command)));
+  assert.deepEqual(manifest.contributes?.types?.map(item => item.name), ['WebSocket连接']);
+  assert.equal(manifest.contributes?.types?.[0]?.cppType, 'long long');
+  assert.deepEqual(manifest.targets?.map(item => item.id), ['windows-msvc-win32', 'windows-msvc-x64']);
+  assert.deepEqual(manifest.contributes?.docs, [{ title: 'WebSocket 客户端模块 2.0 使用说明', path: 'docs/modules/websocket-client/README.md' }]);
+  ['WS_绑定已连接处理器', 'WS_绑定消息处理器', 'WS_绑定已断开处理器', 'WS_绑定错误处理器', 'WS_绑定重连处理器']
+    .forEach(command => {
+      const handler = bindings.find(item => item.command === command)?.parameters?.[1];
+      assert.equal(handler?.type, 'handler');
+      assert.deepEqual(handler?.handlerSignature, { parameterTypes: [], returnType: '空' });
+    });
+  ['WS_连接', 'WS_发送文本', 'WS_接收到调试输出', 'WS_接收文本', 'WS_关闭']
+    .forEach(command => assert.equal(commands.find(item => item.name === command)?.visibility, 'advanced'));
+
+  const handlerDiagnostics = getLingCppSemanticDiagnostics([
+    '类 MainWindow',
+    '    事件 _MainWindow_创建完毕()',
+    '        WS_绑定消息处理器(WS_创建连接(), "错误写法")',
+    '        WS_绑定错误处理器(WS_创建连接(), &带参数处理器)',
+    '    结束',
+    '    事件 带参数处理器(整数型 状态)',
+    '    结束',
+    '结束类'
+  ].join('\n'), undefined, 'MainWindow.lcpp', { enabledModules: [module], availableModules: [module] });
+  assert.ok(handlerDiagnostics.some(item => item.level === 'error' && item.message.includes('必须使用 &处理器名')));
+  assert.ok(handlerDiagnostics.some(item => item.level === 'error' && item.message.includes('带参数处理器 签名不匹配')));
 
   const generated = generateLingCppNativeWin32Project(sampleProject, {
     activeWindowId: 'main-window',
     lingCppSourceCode: [
       '类 MainWindow',
       '    事件 _MainWindow_创建完毕()',
-      '        WS_连接("wss://echo.websocket.events")',
-      '        WS_发送文本("你好")',
-      '        WS_接收到调试输出()',
-      '        WS_关闭()',
+      '        局部 WebSocket连接 连接 = WS_创建连接()',
+      '        WS_配置连接(连接, "wss://example.com/ws?token=1")',
+      '        WS_设置资源限制(连接, 15000, 60000, 16, 8)',
+      '        WS_设置Origin(连接, "https://example.com")',
+      '        WS_设置子协议(连接, "chat.v2, chat.v1")',
+      '        WS_设置TLS验证(连接, 真, 假, "")',
+      '        WS_设置自动重连(连接, 真, 8, 500, 30000)',
+      '        WS_绑定已连接处理器(连接, &连接成功)',
+      '        WS_绑定消息处理器(连接, &收到消息)',
+      '        WS_开始连接(连接)',
+      '    结束',
+      '    事件 连接成功()',
+      '        WS_发送文本到连接(WS_取当前连接(), "你好")',
+      '    结束',
+      '    事件 收到消息()',
+      '        如果 (WS_取当前消息类型() == "文本")',
+      '            调试输出(WS_取当前文本())',
+      '        如果结束',
       '结束类'
     ].join('\n'),
     enabledModules: [module]
   });
 
+  assert.deepEqual(generated.blockingDiagnostics, []);
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
   const moduleReport = generated.files.find(file => file.relativePath === 'module-dependencies.txt')?.content || '';
   assert.ok(mainCpp.includes('#include <winhttp.h>'));
   assert.ok(mainCpp.includes('#pragma comment(lib, "winhttp.lib")'));
+  assert.ok(mainCpp.includes('#pragma comment(lib, "crypt32.lib")'));
+  assert.ok(mainCpp.includes('class LingWebSocketClientRuntime'));
+  assert.ok(mainCpp.includes('WinHttpWebSocketReceive('));
+  assert.ok(mainCpp.includes('CryptHashCertificate2(BCRYPT_SHA256_ALGORITHM'));
+  assert.ok(mainCpp.includes('case WM_LINGBUILDER_WS_CLIENT_EVENT:'));
+  assert.ok(mainCpp.includes('long long WS_创建连接()'));
   assert.ok(mainCpp.includes('int WS_连接(const wchar_t* url)'));
-  assert.ok(mainCpp.includes('WinHttpSetOption(wsRequest_, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0)'));
-  assert.ok(mainCpp.includes('WS_连接(L"wss://echo.websocket.events");'));
-  assert.ok(mainCpp.includes('WS_发送文本(L"你好");'));
-  assert.ok(mainCpp.includes('WS_接收到调试输出();'));
+  assert.ok(mainCpp.includes('WinHttpSetOption(request, WINHTTP_OPTION_UPGRADE_TO_WEB_SOCKET, nullptr, 0)'));
+  assert.ok(mainCpp.includes('WS_配置连接(连接, L"wss://example.com/ws?token=1");'));
+  assert.ok(mainCpp.includes('WS_设置TLS验证(连接, true, false, L"");'));
+  assert.ok(mainCpp.includes('WS_绑定消息处理器(连接, L"收到消息");'));
+  assert.ok(mainCpp.includes('WS_发送文本到连接(WS_取当前连接(), L"你好");'));
+  assert.ok(mainCpp.includes('std::wstring(LingCppWideArg(WS_取当前消息类型()))==LingCppWideArg(L"文本")'));
   assert.ok(moduleReport.includes('WebSocket 客户端模块'));
   assert.ok(moduleReport.includes('winhttp.lib'));
+  assert.ok(moduleReport.includes('crypt32.lib'));
+
+  const newEmojiModule: InstalledModule = {
+    manifest: {
+      schemaVersion: 2,
+      id: 'lingbuilder.new_emoji.ui',
+      name: 'new_emoji 原生界面库',
+      version: '1.0.0',
+      category: '界面',
+      description: 'WebSocket 客户端双后端测试',
+      targets: [{ id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc' }]
+    },
+    installPath: 'C:/modules/lingbuilder.new_emoji.ui',
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const newEmojiGenerated = generateLingCppNativeWin32Project({
+    ...sampleProject,
+    id: 'websocket-client-new-emoji-test',
+    windows: sampleProject.windows.map(window => ({ ...window, designerBackend: 'new-emoji' }))
+  }, {
+    activeWindowId: 'main-window',
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    事件 _MainWindow_创建完毕()',
+      '        局部 WebSocket连接 连接 = WS_创建连接()',
+      '        WS_配置连接(连接, "ws://127.0.0.1:18080/ws")',
+      '        WS_绑定消息处理器(连接, &收到消息)',
+      '        WS_开始连接(连接)',
+      '    结束',
+      '    事件 收到消息()',
+      '        WS_发送文本到连接(WS_取当前连接(), WS_取当前文本())',
+      '    结束',
+      '结束类'
+    ].join('\n'),
+    enabledModules: [newEmojiModule, module]
+  });
+  assert.deepEqual(newEmojiGenerated.blockingDiagnostics, []);
+  const newEmojiCpp = newEmojiGenerated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(newEmojiCpp.includes('static LingWebSocketClientRuntime g_wsClientRuntime'));
+  assert.ok(newEmojiCpp.includes('LB_NE_CreateWebSocketClientEventWindow'));
+  assert.ok(newEmojiCpp.includes('static long long WS_创建连接();'));
+  assert.ok(newEmojiCpp.indexOf('static long long WS_创建连接();') < newEmojiCpp.indexOf('static void MainWindow_创建完毕() {'));
 });
 
 test('built-in EdgeView module contributes HWND embedding, browser events and JavaScript results', () => {
@@ -1970,7 +2145,7 @@ test('EdgeView 安全 API 目录、binding、处理器补全和运行时符号�
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
   assert.ok(manifest);
   assert.equal(manifest.version, '1.2.0');
-  assert.equal(manifest.minLingBuilderVersion, '0.2.8');
+  assert.equal(manifest.minLingBuilderVersion, '0.2.7');
   const commandNames = new Set(manifest.contributes?.commands?.map(command => command.name));
   const bindings = new Map(manifest.bindings?.commands?.map(binding => [binding.command, binding]));
   for (const entry of EDGEVIEW_SAFE_API_CATALOG) {
@@ -2211,7 +2386,7 @@ test('threading 2.0 validates typed variadic handlers and all controlRef binding
   assert.ok(!diagnostics.some(item => item.message.includes('零参数工作需要')));
 });
 
-test('built-in HTTP and WebSocket server modules contribute commands and deterministic C++ bindings', () => {
+test('built-in HTTP and WebSocket server modules contribute managed commands and deterministic C++ bindings', async () => {
   const httpManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.http.server');
   const websocketManifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.websocket.server');
   assert.ok(httpManifest);
@@ -2243,28 +2418,82 @@ test('built-in HTTP and WebSocket server modules contribute commands and determi
     { enabledModules: modules, availableModules: modules }
   );
 
-  assert.ok(completions.some(item => item.label === 'HTTP_启动服务'));
-  assert.ok(completions.some(item => item.label === 'HTTP 本地文本服务'));
-  assert.ok(completions.some(item => item.label === 'WSS_启动服务'));
-  assert.ok(completions.some(item => item.label === 'WebSocket 本地回显服务'));
+  assert.ok(!completions.some(item => item.label === 'HTTP_启动服务'));
+  assert.ok(completions.some(item => item.label === 'HTTP_创建服务'));
+  assert.ok(completions.some(item => item.label === 'HTTP 受管 JSON 服务'));
+  assert.ok(completions.some(item => item.label === 'WSS_创建服务'));
+  assert.ok(completions.some(item => item.label === 'WebSocket 受管消息服务'));
+  assert.ok(!completions.some(item => item.label === 'WSS_启动服务'));
+
+  const httpCommands = httpManifest.contributes?.commands || [];
+  const httpBindings = httpManifest.bindings?.commands || [];
+  assert.equal(httpManifest.version, '2.0.0');
+  assert.equal(HTTP_SERVER_COMMAND_SPECS.length, 48);
+  assert.equal(httpCommands.length, 48);
+  assert.equal(httpBindings.length, 48);
+  assert.deepEqual(new Set(httpCommands.map(item => item.name)), new Set(httpBindings.map(item => item.command)));
+  assert.deepEqual(httpManifest.contributes?.types?.map(item => item.name), ['HTTP服务端', 'HTTP请求']);
+  assert.deepEqual(httpManifest.contributes?.docs, [{ title: 'HTTP 服务端模块 2.0 使用说明', path: 'docs/modules/http-server/README.md' }]);
+  assert.ok((await fs.readFile(path.join(process.cwd(), 'docs', 'modules', 'http-server', 'README.md'), 'utf8')).trim().length > 0);
+  ['HTTP_绑定请求处理器', 'HTTP_添加路由'].forEach(command => {
+    const handler = httpBindings.find(item => item.command === command)?.parameters?.find(item => item.type === 'handler');
+    assert.deepEqual(handler?.handlerSignature, { parameterTypes: [], returnType: '空' });
+  });
+  ['HTTP_启动服务', 'HTTP_等待请求', 'HTTP_等待请求到调试输出', 'HTTP_回复文本', 'HTTP_关闭服务']
+    .forEach(command => assert.equal(httpCommands.find(item => item.name === command)?.visibility, 'advanced'));
+
+  const websocketCommands = websocketManifest.contributes?.commands || [];
+  const websocketBindings = websocketManifest.bindings?.commands || [];
+  assert.equal(websocketManifest.version, '2.0.0');
+  assert.equal(WEBSOCKET_SERVER_COMMAND_SPECS.length, 50);
+  assert.equal(websocketCommands.length, 50);
+  assert.equal(websocketBindings.length, 50);
+  assert.deepEqual(new Set(websocketCommands.map(item => item.name)), new Set(websocketBindings.map(item => item.command)));
+  assert.deepEqual(websocketManifest.contributes?.types?.map(item => item.name), ['WebSocket服务端', 'WebSocket客户端']);
+  assert.deepEqual(websocketManifest.targets?.map(item => item.id), ['windows-msvc-win32', 'windows-msvc-x64']);
+  assert.deepEqual(websocketManifest.contributes?.docs, [{ title: 'WebSocket 服务端模块 2.0 使用说明', path: 'docs/modules/websocket-server/README.md' }]);
+  assert.ok((await fs.readFile(path.join(process.cwd(), 'docs', 'modules', 'websocket-server', 'README.md'), 'utf8')).trim().length > 0);
+  const handlerCommands = ['WSS_绑定连接处理器', 'WSS_绑定消息处理器', 'WSS_绑定断开处理器', 'WSS_绑定错误处理器'];
+  handlerCommands.forEach(command => assert.equal(websocketBindings.find(item => item.command === command)?.parameters?.[1]?.type, 'handler'));
+  const legacyCommands = ['WSS_启动服务', 'WSS_等待连接', 'WSS_接收文本', 'WSS_接收到调试输出', 'WSS_发送文本', 'WSS_关闭服务'];
+  legacyCommands.forEach(command => assert.equal(websocketCommands.find(item => item.name === command)?.visibility, 'advanced'));
 
   const generated = generateLingCppNativeWin32Project(sampleProject, {
     activeWindowId: 'main-window',
     lingCppSourceCode: [
       '类 MainWindow',
+      '    HTTP服务端 HTTP服务',
       '    事件 _MainWindow_创建完毕()',
-      '        HTTP_启动服务(8080)',
-      '        HTTP_等待请求到调试输出()',
-      '        HTTP_回复文本("你好 HTTP")',
-      '        HTTP_关闭服务()',
-      '        WSS_启动服务(18080)',
-      '        WSS_等待连接()',
-      '        WSS_发送文本("你好 WebSocket")',
-      '        WSS_关闭服务()',
+      '        HTTP服务 = HTTP_创建服务()',
+      '        HTTP_配置服务(HTTP服务, "127.0.0.1", 8080, 4, 256)',
+      '        HTTP_设置请求限制(HTTP服务, 64, 16, 30000)',
+      '        HTTP_添加路由(HTTP服务, "GET", "/api/health", &处理健康检查)',
+      '        HTTP_绑定请求处理器(HTTP服务, &处理未匹配请求)',
+      '        HTTP_启动(HTTP服务)',
+      '        局部 WebSocket服务端 服务 = WSS_创建服务()',
+      '        WSS_配置服务(服务, "127.0.0.1", 18080, 128)',
+      '        WSS_设置资源限制(服务, 64, 16, 8, 30000)',
+      '        WSS_设置心跳(服务, 30000, 10000)',
+      '        WSS_绑定消息处理器(服务, &收到消息)',
+      '        WSS_启动(服务)',
+      '    结束',
+      '    事件 收到消息()',
+      '        如果 (WSS_取当前消息类型() == "文本")',
+      '            WSS_发送文本给客户端(WSS_取当前客户端(), WSS_取当前文本())',
+      '        如果结束',
+      '    结束',
+      '    事件 处理健康检查()',
+      '        局部 HTTP请求 请求 = HTTP_取当前请求()',
+      '        HTTP_设置响应头(请求, "Cache-Control", "no-store")',
+      '        HTTP_发送JSON(请求, "{\\"ok\\":true}", 200)',
+      '    结束',
+      '    事件 处理未匹配请求()',
+      '        HTTP_发送文本(HTTP_取当前请求(), "没有该接口", "text/plain; charset=utf-8", 404)',
       '结束类'
     ].join('\n'),
     enabledModules: modules
   });
+  assert.deepEqual(generated.blockingDiagnostics, []);
 
   const mainCpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
   const moduleReport = generated.files.find(file => file.relativePath === 'module-dependencies.txt')?.content || '';
@@ -2272,16 +2501,100 @@ test('built-in HTTP and WebSocket server modules contribute commands and determi
   assert.ok(mainCpp.includes('#include <wincrypt.h>'));
   assert.ok(mainCpp.includes('#pragma comment(lib, "ws2_32.lib")'));
   assert.ok(mainCpp.includes('#pragma comment(lib, "advapi32.lib")'));
-  assert.ok(mainCpp.includes('int HTTP_启动服务(int port)'));
-  assert.ok(mainCpp.includes('int WSS_启动服务(int port)'));
-  assert.ok(mainCpp.includes('std::string MakeWebSocketAcceptKey'));
-  assert.ok(mainCpp.includes('HTTP_启动服务(8080);'));
-  assert.ok(mainCpp.includes('HTTP_回复文本(L"你好 HTTP");'));
-  assert.ok(mainCpp.includes('WSS_发送文本(L"你好 WebSocket");'));
+  assert.ok(mainCpp.includes('class LingHttpServerRuntime'));
+  assert.ok(mainCpp.includes('!allowExternal && !IsLoopbackAddress(item->ai_addr)'));
+  assert.ok(mainCpp.includes('!TryUrlDecode(encodedPath, false, request.path)'));
+  assert.ok(!mainCpp.includes('host.rfind(L"127.", 0) == 0'));
+  assert.ok(mainCpp.includes('long long HTTP_创建服务()'));
+  assert.ok(mainCpp.includes('case WM_LINGBUILDER_HTTP_SERVER_REQUEST:'));
+  assert.ok(mainCpp.includes('class LingWebSocketServerRuntime'));
+  assert.ok(mainCpp.includes('WSAPoll('));
+  assert.ok(mainCpp.includes('bool ProcessFrames('));
+  assert.ok(mainCpp.includes('case WM_LINGBUILDER_WSS_EVENT:'));
+  assert.ok(mainCpp.includes('bool WSS_配置服务(long long server'));
+  assert.ok(mainCpp.includes('HTTP_配置服务(HTTP服务, L"127.0.0.1", 8080, 4, 256);'));
+  assert.ok(mainCpp.includes('HTTP_添加路由(HTTP服务, L"GET", L"/api/health", L"处理健康检查");'));
+  assert.ok(mainCpp.includes('HTTP_发送JSON(请求, L"{\\"ok\\":true}", 200);'));
+  assert.ok(mainCpp.includes('WSS_配置服务(服务, L"127.0.0.1", 18080, 128);'));
+  assert.ok(mainCpp.includes('WSS_绑定消息处理器(服务, L"收到消息");'));
+  assert.ok(mainCpp.includes('std::wstring(LingCppWideArg(WSS_取当前消息类型()))==LingCppWideArg(L"文本")'));
+  assert.ok(mainCpp.includes('WSS_发送文本给客户端(WSS_取当前客户端(), WSS_取当前文本());'));
   assert.ok(moduleReport.includes('HTTP 服务端模块'));
   assert.ok(moduleReport.includes('WebSocket 服务端模块'));
   assert.ok(moduleReport.includes('ws2_32.lib'));
   assert.ok(moduleReport.includes('advapi32.lib'));
+
+  const httpHandlerDiagnostics = getLingCppSemanticDiagnostics([
+    '类 MainWindow',
+    '    事件 _MainWindow_创建完毕()',
+    '        HTTP_绑定请求处理器(HTTP_创建服务(), "错误写法")',
+    '        HTTP_添加路由(HTTP_创建服务(), "GET", "/", &带参数处理器)',
+    '    结束',
+    '    事件 带参数处理器(整数型 状态)',
+    '    结束',
+    '结束类'
+  ].join('\n'), undefined, 'MainWindow.lcpp', { enabledModules: [modules[0]!], availableModules: [modules[0]!] });
+  assert.ok(httpHandlerDiagnostics.some(item => item.level === 'error' && item.message.includes('必须使用 &处理器名')));
+  assert.ok(httpHandlerDiagnostics.some(item => item.level === 'error' && item.message.includes('带参数处理器 签名不匹配')));
+
+  const newEmojiModule: InstalledModule = {
+    manifest: {
+      schemaVersion: 2,
+      id: 'lingbuilder.new_emoji.ui',
+      name: 'new_emoji 原生界面库',
+      version: '1.0.0',
+      category: '界面',
+      description: 'WebSocket 双后端生成测试',
+      targets: [{ id: 'windows-msvc-x64', platform: 'windows', arch: 'x64', toolchain: 'msvc' }]
+    },
+    installPath: 'C:/modules/lingbuilder.new_emoji.ui',
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const newEmojiProject: LingWindowProject = {
+    ...sampleProject,
+    id: 'websocket-new-emoji-test',
+    windows: sampleProject.windows.map(window => ({ ...window, designerBackend: 'new-emoji' }))
+  };
+  const newEmojiGenerated = generateLingCppNativeWin32Project(newEmojiProject, {
+    activeWindowId: 'main-window',
+    lingCppSourceCode: [
+      '类 MainWindow',
+      '    HTTP服务端 HTTP服务',
+      '    事件 _MainWindow_创建完毕()',
+      '        HTTP服务 = HTTP_创建服务()',
+      '        HTTP_绑定请求处理器(HTTP服务, &处理HTTP请求)',
+      '        局部 WebSocket服务端 服务 = WSS_创建服务()',
+      '        WSS_绑定消息处理器(服务, &收到消息)',
+      '    结束',
+      '    事件 收到消息()',
+      '        WSS_发送文本给客户端(WSS_取当前客户端(), WSS_取当前文本())',
+      '    结束',
+      '    事件 处理HTTP请求()',
+      '        HTTP_发送JSON(HTTP_取当前请求(), "{\\"backend\\":\\"new_emoji\\"}", 200)',
+      '    结束',
+      '结束类'
+    ].join('\n'),
+    enabledModules: [newEmojiModule, modules[0]!, modules[1]!]
+  });
+  assert.deepEqual(newEmojiGenerated.blockingDiagnostics, []);
+  const newEmojiCpp = newEmojiGenerated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.ok(newEmojiCpp.includes('static LingWebSocketServerRuntime g_wssRuntime'));
+  assert.ok(newEmojiCpp.includes('static LingHttpServerRuntime g_httpServerRuntime'));
+  assert.ok(newEmojiCpp.includes('LB_NE_CreateHttpServerEventWindow'));
+  assert.ok(newEmojiCpp.includes('LB_NE_DispatchHttpServerRequest'));
+  assert.ok(newEmojiCpp.includes('static long long HTTP服务{};'));
+  assert.ok(newEmojiCpp.includes('LB_NE_CreateWebSocketEventWindow'));
+  assert.ok(newEmojiCpp.includes('LB_NE_DispatchWebSocketServerEvent'));
+  assert.ok(newEmojiCpp.includes('static bool WSS_发送文本给客户端'));
+  const webSocketDeclarationIndex = newEmojiCpp.indexOf('static long long WSS_创建服务();');
+  assert.ok(newEmojiCpp.includes('static bool WSS_配置服务(long long server, const wchar_t* address, int port, int maximumClients);'));
+  assert.ok(newEmojiCpp.includes('static void WSS_关闭服务();'));
+  const createdHandlerDefinitionIndex = newEmojiCpp.indexOf('static void MainWindow_创建完毕() {');
+  assert.ok(webSocketDeclarationIndex >= 0);
+  assert.ok(createdHandlerDefinitionIndex >= 0);
+  assert.ok(webSocketDeclarationIndex < createdHandlerDefinitionIndex);
 });
 
 test('materializeModuleNativeDependencies copies module source, libs and runtime files', async () => {
@@ -2967,7 +3280,7 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   const manifestPath = path.join(process.cwd(), '..', '.lingbuilder', 'module-build', 'lingbuilder.new_emoji.ui', 'lingbuilder.module.json');
   const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
   assert.equal(manifest.contributes.designerControls.length, 92);
-  assert.equal(manifest.contributes.commands.filter((command: { visibility?: string }) => command.visibility === 'advanced').length, 1573);
+  assert.equal(manifest.contributes.commands.filter((command: { visibility?: string }) => command.visibility === 'advanced').length, 1575);
   assert.ok(manifest.contributes.designerControls.every((control: any) => (
     control.namespacedType?.startsWith('lingbuilder.new_emoji.ui/')
     && control.backend === 'new-emoji'
@@ -2996,6 +3309,16 @@ test('generated new_emoji bridge completions match binding parameter counts', as
     adapterId: 'new-emoji.tabs.pages'
   });
   assert.deepEqual(tabsContribution.defaultProps.items, ['标签页 1']);
+  assert.equal(tabsContribution.defaultProps.headerVisible, true);
+  const headerVisibleProperty = tabsContribution.properties.find((property: { key: string }) => property.key === 'headerVisible');
+  assert.ok(headerVisibleProperty);
+  assert.equal(headerVisibleProperty.label, '显示标签页表头');
+  assert.equal(headerVisibleProperty.type, 'boolean');
+  assert.equal(headerVisibleProperty.defaultValue, true);
+  assert.equal(headerVisibleProperty.runtimeCommand, 'EU_SetTabsHeaderVisible');
+  const headerVisibleSetter = tabsContribution.runtime.propertySetters.find((setter: { command: string }) => setter.command === 'EU_SetTabsHeaderVisible');
+  assert.ok(headerVisibleSetter);
+  assert.equal(headerVisibleSetter.parameters.find((parameter: { name: string }) => parameter.name === 'visible')?.propertyKey, 'headerVisible');
   assert.equal(tabsContribution.defaultProps.contentVisible, true);
   const generated = generateLingCppNativeWin32Project({
     ...sampleProject,
@@ -3024,7 +3347,7 @@ test('generated new_emoji bridge completions match binding parameter counts', as
           properties: {
             ...tabsContribution.defaultProps,
             tabs: [{ id: 'overview', title: '概览' }, { id: 'settings', title: '设置' }],
-            items: ['概览', '设置'], activeIndex: 0, contentVisible: false
+            items: ['概览', '设置'], activeIndex: 0, headerVisible: false, contentVisible: false
           },
           events: {}
         },
@@ -3057,7 +3380,9 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   assert.match(cpp, /LB_NE_ToUtf8\(L"概览\|设置"\)/u);
   assert.match(cpp, /LB_NE_ToUtf8\(L"概览\\toverview\\t \|设置\\tsettings\\t "\)/u);
   assert.match(cpp, /EU_CreateTabs\(g_newEmojiWindow/u);
+  assert.match(cpp, /EU_SetTabsHeaderVisible\(g_newEmojiWindow, ne_element_3, 0\)/u);
   assert.match(cpp, /EU_SetTabsContentVisible\(g_newEmojiWindow, ne_element_3, 1\)/u);
+  assert.match(cpp, /EU_CreatePanel\(g_newEmojiWindow, 0, 20, 320, 420, 180\)/u);
   assert.match(cpp, /int ne_tab_page_3_1 = EU_CreatePanel\(/u);
   assert.match(cpp, /int ne_tab_page_3_2 = EU_CreatePanel\(/u);
   assert.match(cpp, /EU_SetPanelStyle\(g_newEmojiWindow, ne_tab_page_3_1, 0xff242941u, 0x00000000u, 0\.0f, 0\.0f, 0\)/u);

@@ -15,9 +15,9 @@ export const LCPP_SOURCE_PACKAGE_MANIFEST = 'lingbuilder-source-package.json';
 const PACKAGE_SCHEMA_VERSION = 2;
 const LEGACY_PACKAGE_SCHEMA_VERSION = 1;
 const MINIMUM_GENERATOR_VERSION = '0.2.5';
-const LIST_VIEW_STRUCTURED_ROWS_MINIMUM_GENERATOR_VERSION = '0.2.8';
+const LIST_VIEW_STRUCTURED_ROWS_MINIMUM_GENERATOR_VERSION = '0.2.7';
 const EDGEVIEW_SAFE_API_MINIMUM_GENERATOR_VERSION = '0.2.7';
-const EDGEVIEW_SAFE_API_V2_MINIMUM_GENERATOR_VERSION = '0.2.8';
+const EDGEVIEW_SAFE_API_V2_MINIMUM_GENERATOR_VERSION = '0.2.7';
 const MAX_PACKAGE_BYTES = 1024 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_FILE_BYTES = 512 * 1024 * 1024;
@@ -235,6 +235,7 @@ export class LcppSourcePackageService {
         await this.copyAbsoluteTree(module.installPath, `.lingbuilder/modules/${module.manifest.id}`, stagedWorkspace, budget, false);
       }
 
+      await this.copyRequiredProjectPath('.lingbuilder/build-configuration.json', stagedWorkspace, budget, false);
       await writeJson(path.join(stagedWorkspace, '.lingbuilder', 'solution.json'), portableSolution);
       await writePortableSolutionEntry(stagedWorkspace, portableSolution);
 

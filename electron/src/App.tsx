@@ -140,6 +140,8 @@ import {
   WINDOW_DESIGNER_PROJECT_UPDATED
 } from './services/windowDesigner/windowDesignerService';
 import type { WindowDesignerDirtyStateDetail } from './services/windowDesigner/windowDesignerService';
+import { formatWindowEventParameters } from './services/windowDesigner/windowEventRegistry';
+import { upgradeLegacyWindowEventHandlerSignature } from './services/windowDesigner/windowEventHandlerMigration';
 import {
   selectAndImportDesignerImage,
   type DesignerImageImportResult
@@ -354,7 +356,8 @@ const createLingCppControlEventBlock = (detail: Required<Pick<OpenControlEventCo
   const controlName = sanitizeLingCppText(detail.controlName, '控件');
   const controlContent = sanitizeLingCppText(detail.controlContent, controlName);
   const eventSuffix = getEplEventSuffix(detail.eventName);
-  const lines = [`    事件 ${detail.handlerName}()`];
+  const parameterText = detail.eventName ? formatWindowEventParameters(detail.eventName) : '';
+  const lines = [`    事件 ${detail.handlerName}(${parameterText})`];
 
   if (detail.eventName === 'Click') {
     lines.push(`        信息框("${controlContent}", 64, "事件触发")`);
@@ -371,6 +374,9 @@ const ensureLingCppControlEventHandler = (content: string, detail: OpenControlEv
   const handlerName = detail.handlerName?.trim();
 
   if (!controlName || !eventName || !handlerName) return content;
+
+  const migration = upgradeLegacyWindowEventHandlerSignature(content, handlerName, eventName);
+  if (migration.changed) return migration.content;
 
   const handlerPattern = new RegExp(`(^|\\n)\\s*事件\\s+${escapeRegExp(handlerName)}\\s*[（(]`);
   if (handlerPattern.test(content)) return content;
@@ -1786,7 +1792,7 @@ export default function App() {
     void fetch('/api/build-configuration')
       .then(response => response.json())
       .then(payload => payload.configuration && setBuildConfiguration(payload.configuration));
-  }, [hasEnteredWorkbench]);
+  }, [currentWorkspacePath, hasEnteredWorkbench]);
   const updateBuildConfiguration = useCallback(async (patch: { mode?: BuildMode; architecture?: BuildArchitecture }) => {
     const next = { ...buildConfiguration, ...patch };
     const response = await fetch('/api/build-configuration', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next) });
@@ -2542,27 +2548,39 @@ void DisplayStatus() {
       targetFile = flushState.files.find(file => file.path === targetFile?.path) || targetFile;
 
       const currentContent = getCurrentFileContent(targetFile);
+      const ensuredContent = ensureLingCppControlEventHandler(currentContent, detail);
       if (hasLingCppEventHandler(currentContent, handlerName)) {
+        const signatureUpgraded = ensuredContent !== currentContent;
+        const existingFile: CppFile = signatureUpgraded ? {
+          ...targetFile,
+          translatedContent: ensuredContent,
+          isModified: ensuredContent !== targetFile.originalContent
+        } : targetFile;
+        if (signatureUpgraded) {
+          const nextFiles = flushState.files.map(file => file.path === existingFile.path ? existingFile : file);
+          filesRef.current = nextFiles;
+          setFiles(nextFiles);
+        }
         setPendingDesignerEventEdit(null);
-        const selected = await handleSelectFile(targetFile);
+        const selected = await handleSelectFile(existingFile);
         if (!selected) return;
         const switched = await setEditorExperienceMode('beginner');
         if (!switched) return;
         setBuildLogs(prev => [
           ...prev,
-          `> [${new Date().toLocaleTimeString()}] 【事件代码】${handlerName} 已存在，已直接定位。`
+          `> [${new Date().toLocaleTimeString()}] 【事件代码】${handlerName} ${signatureUpgraded ? '已升级为强类型参数并定位' : '已存在，已直接定位'}。`
         ]);
-        focusLingCppHandler(handlerName, targetFile.path);
+        focusLingCppHandler(handlerName, existingFile.path);
         return;
       }
 
-      const nextContent = ensureLingCppControlEventHandler(currentContent, detail);
+      const nextContent = ensuredContent;
       const updatedFile: CppFile = {
         ...targetFile,
         translatedContent: nextContent,
         isModified: nextContent !== targetFile.originalContent
       };
-      const nextFiles = currentFiles.map(file => (file.path === updatedFile.path ? updatedFile : file));
+      const nextFiles = flushState.files.map(file => (file.path === updatedFile.path ? updatedFile : file));
 
       filesRef.current = nextFiles;
       setFiles(nextFiles);
@@ -6151,6 +6169,7 @@ void DisplayStatus() {
       <div className="flex-1 flex overflow-hidden select-none">
         {/* Left Visual Studio style dockable sidebar */}
         <Sidebar
+          workspaceKey={currentWorkspacePath}
           files={files}
           activeFile={activeFile}
           onSelectFile={handleSelectFile}

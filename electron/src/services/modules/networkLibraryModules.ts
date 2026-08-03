@@ -1,6 +1,7 @@
 import { LingBuilderModuleManifest, ModuleBindingValueType } from './types';
 import { createStandardModule, StandardCommandSpec } from './standardLibraryModules';
 import { createModuleBindingSnippetArgument } from './bindingValueType';
+import { HTTP_CLIENT_MODULE } from './httpClientModule';
 
 type Parameter = { name: string; type: ModuleBindingValueType; description?: string };
 
@@ -10,20 +11,6 @@ function command(name: string, parameters: Parameter[], returnType: ModuleBindin
     : parameter.type === 'wideString' || parameter.type === 'utf8String' ? `"$${index + 1}"` : parameter.type === 'bool' ? '假' : '0');
   return { name, signature: `${name}(${parameters.map(parameter => parameter.name).join(', ')})`, description, insertText: `${name}(${argumentsText.join(', ')})`, parameters, returnType, example };
 }
-
-const httpClient = createStandardModule({
-  id: 'lingbuilder.net.http-client', name: 'HTTP客户端模块', category: '网络',
-  description: '基于 WinHTTP 提供同步 HTTP/HTTPS 请求，并保留状态码、响应正文和中文错误。', tags: ['HTTP', 'HTTPS', '客户端'],
-  commands: [
-    command('HTTP客户端_请求', [{ name: '方法', type: 'wideString' }, { name: '地址', type: 'wideString' }, { name: '正文', type: 'wideString' }, { name: '超时毫秒', type: 'int' }], 'bool', '发送一次 UTF-8 HTTP 请求。'),
-    command('HTTP客户端_GET', [{ name: '地址', type: 'wideString' }], 'bool', '发送 GET 请求。', 'HTTP客户端_GET("https://example.com")'),
-    command('HTTP客户端_POST', [{ name: '地址', type: 'wideString' }, { name: '正文', type: 'wideString' }], 'bool', '发送 application/json UTF-8 POST 请求。'),
-    command('HTTP客户端_取状态码', [], 'int', '返回最近响应的 HTTP 状态码。'),
-    command('HTTP客户端_取响应文本', [], 'wideString', '返回最近响应正文，按 UTF-8 解码。'),
-    command('HTTP客户端_取错误', [], 'wideString', '返回最近请求的中文错误信息。'),
-    command('HTTP客户端_清空状态', [], 'void', '清空最近状态码、响应和错误。')
-  ]
-});
 
 const tcp = createStandardModule({
   id: 'lingbuilder.net.tcp', name: 'TCP通信模块', category: '网络',
@@ -103,4 +90,4 @@ const ftp = createStandardModule({
   ]
 });
 
-export const NETWORK_LIBRARY_MODULES: LingBuilderModuleManifest[] = [httpClient, tcp, udp, dns, url, cookie, ftp];
+export const NETWORK_LIBRARY_MODULES: LingBuilderModuleManifest[] = [HTTP_CLIENT_MODULE, tcp, udp, dns, url, cookie, ftp];

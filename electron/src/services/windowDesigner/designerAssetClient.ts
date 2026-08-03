@@ -28,6 +28,39 @@ export function getDesignerImagePreviewSource(projectId: string, imageSource: st
   return `/api/window-designer/assets/content?${query.toString()}`;
 }
 
+export async function fetchDesignerImagePreviewBlob(
+  projectId: string,
+  imageSource: string,
+  signal?: AbortSignal
+): Promise<Blob> {
+  const source = getDesignerImagePreviewSource(projectId, imageSource);
+  if (!source) throw new Error('图片资源路径为空。');
+  const response = await fetch(source, { signal });
+  if (!response.ok) {
+    const detail = await readPreviewError(response);
+    throw new Error(detail || `图片资源读取失败（HTTP ${response.status}）。`);
+  }
+  const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() || '';
+  if (!contentType.startsWith('image/')) {
+    throw new Error(`图片资源返回了错误的内容类型：${contentType || '未声明'}。`);
+  }
+  const blob = await response.blob();
+  if (blob.size === 0) throw new Error('图片资源内容为空。');
+  return blob;
+}
+
+async function readPreviewError(response: Response): Promise<string> {
+  const text = (await response.text().catch(() => '')).trim();
+  if (!text) return '';
+  try {
+    const value = JSON.parse(text) as { error?: unknown };
+    if (typeof value.error === 'string' && value.error.trim()) return value.error.trim();
+  } catch {
+    // Plain-text API diagnostics are returned as-is below.
+  }
+  return text.slice(0, 300);
+}
+
 export async function selectAndImportDesignerImage(projectId: string): Promise<DesignerImageImportResult> {
   const selection = await window.lingBuilder?.designerAssets?.selectImage();
   if (!selection) return { ok: false, error: '本地图片选择仅在 LingBuilder 桌面版中可用。' };
