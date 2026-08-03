@@ -64,6 +64,10 @@ import type { InstalledModule } from '../src/services/modules/types';
 import { getWindowEventHandlerName, WINDOW_EVENT_CATEGORIES, WINDOW_EVENT_DEFINITIONS } from '../src/services/windowDesigner/windowEventRegistry';
 import { upgradeLegacyWindowEventHandlerSignature } from '../src/services/windowDesigner/windowEventHandlerMigration';
 import {
+  formatModuleDesignerEventParameters,
+  upgradeLegacyModuleDesignerEventHandlerSignature
+} from '../src/services/modules/moduleDesignerEventService';
+import {
   getNewEmojiThemePreview,
   getNewEmojiUnsupportedControlDiagnostics,
   isNewEmojiTextInputControl
@@ -791,6 +795,29 @@ test('从设计器打开旧无参窗口事件时升级为注册表强类型签�
   const mismatched = legacy.replace('按键被按下()', '按键被按下(文本型 自定义参数)');
   assert.equal(upgradeLegacyWindowEventHandlerSignature(mismatched, '_MainWindow_按键被按下', 'KeyDown').changed, false);
   assert.equal(upgradeLegacyWindowEventHandlerSignature(legacy, '_MainWindow_按键被按下', 'Loaded').changed, false);
+});
+
+test('模块设计器事件参数统一格式化并安全升级旧无参处理器', () => {
+  const parameters = [
+    { name: '行号', type: 'int' as const },
+    { name: '列号', type: 'int' as const },
+    { name: '文本', type: 'wideString' as const }
+  ];
+  assert.equal(formatModuleDesignerEventParameters(parameters), '整数型 行号，整数型 列号，文本型 文本');
+
+  const legacy = [
+    '类 MainWindow',
+    '    事件 _表格1_单元格编辑()',
+    '        调试输出("编辑")',
+    '    结束',
+    '结束类'
+  ].join('\n');
+  const upgraded = upgradeLegacyModuleDesignerEventHandlerSignature(legacy, '_表格1_单元格编辑', parameters);
+  assert.equal(upgraded.changed, true);
+  assert.match(upgraded.content, /事件 _表格1_单元格编辑\(整数型 行号，整数型 列号，文本型 文本\)/u);
+
+  const custom = legacy.replace('单元格编辑()', '单元格编辑(整数型 自定义)');
+  assert.equal(upgradeLegacyModuleDesignerEventHandlerSignature(custom, '_表格1_单元格编辑', parameters).changed, false);
 });
 
 test('布局组件树按 parentId 构建父子层级并保留原始顺序', () => {
@@ -1752,6 +1779,209 @@ test('new_emoji 09–16 标签页为六类浮层和消息组件提供同页按�
   }
 });
 
+test('new_emoji Table 示例绑定鼠标进入和参数化单元格动作并输出到 IDE 日志', async t => {
+  const moduleRoot = path.resolve('..', '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui');
+  let manifest: InstalledModule['manifest'];
+  try {
+    manifest = JSON.parse(await fs.readFile(path.join(moduleRoot, 'lingbuilder.module.json'), 'utf8')) as InstalledModule['manifest'];
+  } catch {
+    t.skip('当前环境未安装 new_emoji 模块，跳过 Table 事件生成回归测试。');
+    return;
+  }
+  const basicModule: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!,
+    installPath: 'builtin',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const installed: InstalledModule = {
+    manifest,
+    installPath: moduleRoot,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project = JSON.parse(await fs.readFile(
+    new URL('../../.lingbuilder/projects/new-emoji-92-tabs-validation/window-designer.json', import.meta.url),
+    'utf8'
+  )) as LingWindowProject;
+  const source = await fs.readFile(
+    new URL('../../src/new-emoji-92-tabs-validation/MainWindow.lcpp', import.meta.url),
+    'utf8'
+  );
+  const generated = generateLingCppNativeWin32Project(project, {
+    activeWindowId: project.windows[0]?.id,
+    enabledModules: [basicModule, installed],
+    lingCppSourceCode: source
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  assert.match(cpp, /case 1:[\s\S]*调试输出\(L"表格06鼠标移入"\)/u);
+  assert.match(cpp, /EU_SetElementMouseCallback\(g_newEmojiWindow, ne_element_7, LB_NE_Event_/u);
+  assert.match(cpp, /int 行号 = lb_row;\s+int 列号 = lb_col;\s+int 动作 = lb_action;\s+int 值 = lb_value;/u);
+  assert.match(cpp, /EU_SetTableCellActionCallback\(g_newEmojiWindow, ne_element_7, LB_NE_Event_/u);
+  assert.match(cpp, /std::printf\("\[调试输出\] %s\\n", utf8\.data\(\)\);/u);
+  assert.doesNotMatch(cpp, /^#include "new_emoji_bridge\.h"$/mu);
+  assert.match(cpp, /#include "modules\/lingbuilder\.new_emoji\.ui\/include\/new_emoji_bridge\.h"/u);
+});
+
+test('new_emoji ListBox 所有事件生成真实参数并映射原生回调 ABI', async t => {
+  const moduleRoot = path.resolve('..', '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui');
+  let manifest: InstalledModule['manifest'];
+  try {
+    manifest = JSON.parse(await fs.readFile(path.join(moduleRoot, 'lingbuilder.module.json'), 'utf8')) as InstalledModule['manifest'];
+  } catch {
+    t.skip('当前环境未安装 new_emoji 模块，跳过 ListBox 事件参数生成回归测试。');
+    return;
+  }
+  const listBox = manifest.contributes?.designerControls?.find(control => control.type === 'ListBox');
+  assert.ok(listBox);
+  const basicModule: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!,
+    installPath: 'builtin',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const installed: InstalledModule = {
+    manifest,
+    installPath: moduleRoot,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'new-emoji-listbox-events',
+    name: 'NewEmoji 列表框事件参数',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '列表框事件',
+      width: 640, height: 480, background: '#202028', description: '', designerBackend: 'new-emoji',
+      controls: [{
+        id: 'listbox', type: listBox.previewType as LingControl['type'], designerType: listBox.namespacedType, name: '列表框1', content: '列表框',
+        x: 20, y: 20, width: 360, height: 260, fontSize: 14, background: '#202028', foreground: '#FFFFFF',
+        isEnabled: true, visibility: 'Visible', properties: { ...listBox.defaultProps } as LingControl['properties'],
+        events: {
+          SelectionChanged: '_列表框1_选择变化',
+          ItemClicked: '_列表框1_项目点击',
+          ItemDoubleClicked: '_列表框1_项目双击',
+          Edit: '_列表框1_项目编辑',
+          Reorder: '_列表框1_项目重排',
+          ContextMenu: '_列表框1_项目右键菜单',
+          MouseDown: '_列表框1_鼠标按下',
+          GotFocus: '_列表框1_获得焦点'
+        }
+      }]
+    }]
+  };
+  const source = [
+    '类 MainWindow : 公开 窗体',
+    '  事件 _列表框1_选择变化(文本型 选中键列表)',
+    '  结束',
+    '  事件 _列表框1_项目点击(整数型 项目索引, 整数型 起始位置, 整数型 结束位置)',
+    '  结束',
+    '  事件 _列表框1_项目双击(整数型 项目索引, 整数型 触发方式, 整数型 附加值)',
+    '  结束',
+    '  事件 _列表框1_项目编辑(整数型 项目索引, 整数型 编辑字段, 整数型 动作, 文本型 文本)',
+    '  结束',
+    '  事件 _列表框1_项目重排(整数型 原索引, 整数型 新索引, 整数型 数量)',
+    '  结束',
+    '  事件 _列表框1_项目右键菜单(整数型 项目索引, 整数型 横坐标, 整数型 纵坐标)',
+    '  结束',
+    '  事件 _列表框1_鼠标按下(整数型 横坐标, 整数型 纵坐标, 整数型 鼠标按钮)',
+    '  结束',
+    '  事件 _列表框1_获得焦点()',
+    '  结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(project, {
+    activeWindowId: 'main',
+    enabledModules: [basicModule, installed],
+    lingCppSourceCode: source
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+
+  assert.match(cpp, /std::wstring 选中键列表 = LB_NE_FromUtf8\(lb_utf8, lb_utf8_length\);/u);
+  assert.match(cpp, /int 项目索引 = lb_value;\s+int 起始位置 = lb_range_start;\s+int 结束位置 = lb_range_end;/u);
+  assert.match(cpp, /int 项目索引 = lb_value;\s+int 触发方式 = lb_range_start;\s+int 附加值 = lb_range_end;/u);
+  assert.match(cpp, /int 项目索引 = lb_index;\s+int 编辑字段 = lb_field;\s+int 动作 = lb_action;\s+std::wstring 文本 = LB_NE_FromUtf8\(lb_utf8, lb_utf8_length\);/u);
+  assert.match(cpp, /int 原索引 = lb_from_index;\s+int 新索引 = lb_to_index;\s+int 数量 = lb_count;/u);
+  assert.match(cpp, /int 项目索引 = lb_value;\s+int 横坐标 = lb_range_start;\s+int 纵坐标 = lb_range_end;/u);
+  assert.match(cpp, /EU_SetListBoxChangeCallback\(g_newEmojiWindow, ne_element_1, LB_NE_Event_/u);
+  assert.match(cpp, /EU_SetListBoxItemClickCallback\(g_newEmojiWindow, ne_element_1, LB_NE_Event_/u);
+  assert.match(cpp, /EU_SetListBoxItemDoubleClickCallback\(g_newEmojiWindow, ne_element_1, LB_NE_Event_/u);
+  assert.match(cpp, /EU_SetListBoxEditCallback\(g_newEmojiWindow, ne_element_1, LB_NE_Event_/u);
+  assert.match(cpp, /EU_SetListBoxReorderCallback\(g_newEmojiWindow, ne_element_1, LB_NE_Event_/u);
+  assert.match(cpp, /EU_SetListBoxContextMenuCallback\(g_newEmojiWindow, ne_element_1, LB_NE_Event_/u);
+});
+
+test('new_emoji Tabs 选择变化事件生成真实参数并映射原生回调 ABI', async t => {
+  const moduleRoot = path.resolve('..', '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui');
+  let manifest: InstalledModule['manifest'];
+  try {
+    manifest = JSON.parse(await fs.readFile(path.join(moduleRoot, 'lingbuilder.module.json'), 'utf8')) as InstalledModule['manifest'];
+  } catch {
+    t.skip('当前环境未安装 new_emoji 模块，跳过 Tabs 事件参数生成回归测试。');
+    return;
+  }
+  const tabs = manifest.contributes?.designerControls?.find(control => control.type === 'Tabs');
+  assert.ok(tabs);
+  const selectionChanged = tabs.events?.find(event => event.name === 'SelectionChanged');
+  assert.deepEqual(
+    selectionChanged?.parameters?.map(parameter => [parameter.name, parameter.type]),
+    [['选中索引', 'int'], ['项目数量', 'int'], ['动作', 'int']]
+  );
+  const basicModule: InstalledModule = {
+    manifest: BUILTIN_MODULES.find(module => module.id === 'lingbuilder.win32.basic')!,
+    installPath: 'builtin',
+    isBuiltin: true,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const installed: InstalledModule = {
+    manifest,
+    installPath: moduleRoot,
+    isInstalled: true,
+    isEnabledForProject: true,
+    diagnostics: []
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'new-emoji-tabs-events',
+    name: 'NewEmoji 标签页事件参数',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '标签页事件参数',
+      width: 640, height: 480, background: '#202028', description: '', designerBackend: 'new-emoji',
+      controls: [{
+        id: 'tabs', type: tabs.previewType as LingControl['type'], designerType: tabs.namespacedType, name: '标签页1', content: '标签页',
+        x: 20, y: 20, width: 420, height: 220, fontSize: 14, background: '#202028', foreground: '#FFFFFF',
+        isEnabled: true, visibility: 'Visible', properties: { ...tabs.defaultProps } as LingControl['properties'],
+        events: { SelectionChanged: '_标签页1_选择变化' }
+      }]
+    }]
+  };
+  const source = [
+    '类 MainWindow : 公开 窗体',
+    '  事件 _标签页1_选择变化(整数型 选中索引, 整数型 项目数量, 整数型 动作)',
+    '    调试输出(选中索引)',
+    '  结束',
+    '结束类'
+  ].join('\n');
+  const generated = generateLingCppNativeWin32Project(project, {
+    activeWindowId: 'main',
+    enabledModules: [basicModule, installed],
+    lingCppSourceCode: source
+  });
+  const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
+  assert.equal(generated.blockingDiagnostics.length, 0);
+  assert.match(cpp, /int 选中索引 = lb_value;\s+int 项目数量 = lb_range_start;\s+int 动作 = lb_range_end;/u);
+  assert.match(cpp, /EU_SetTabsChangeCallback\(g_newEmojiWindow, ne_element_1, LB_NE_Event_/u);
+});
+
 test('new_emoji tabs defer page binding until page controls are created', async t => {
   const moduleRoot = path.resolve('..', '.lingbuilder', 'modules', 'lingbuilder.new_emoji.ui');
   let manifest: unknown;
@@ -1807,7 +2037,12 @@ test('new_emoji tabs defer page binding until page controls are created', async 
   const lastChildIndex = cpp.indexOf(lastChildMarker);
   const pageBindingIndex = cpp.indexOf(`EU_SetTabsPageElements(g_newEmojiWindow, ${tabsVariable},`);
   assert.ok(lastChildIndex >= 0 && pageBindingIndex > lastChildIndex, '标签页绑定必须晚于 17-24 页子控件创建');
-  assert.doesNotMatch(cpp, new RegExp(`EU_SetTabsActive\\(g_newEmojiWindow, ${tabsVariable}, 2\\)`));
+  const configuredActiveIndex = Number(tabs.properties?.activeIndex ?? tabs.properties?.selectedIndex ?? 0);
+  if (configuredActiveIndex > 0) {
+    assert.match(cpp, new RegExp(`EU_SetTabsActive\\(g_newEmojiWindow, ${tabsVariable}, ${configuredActiveIndex}\\)`));
+  } else {
+    assert.doesNotMatch(cpp, new RegExp(`EU_SetTabsActive\\(g_newEmojiWindow, ${tabsVariable}, 2\\)`));
+  }
 
   const container = controls.find(control =>
     control.containerSlot === 'validation-page-03' && control.designerType === 'lingbuilder.new_emoji.ui/Container'

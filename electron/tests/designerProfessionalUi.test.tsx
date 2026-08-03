@@ -72,10 +72,13 @@ test('designer event cards open existing handlers or create missing bindings wit
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/WpfDesigner.tsx'), 'utf8');
   const appSource = await fs.readFile(path.resolve(import.meta.dirname, '../src/App.tsx'), 'utf8');
   assert.match(source, /function ControlEvents\(\{[\s\S]*?windowModel/u);
-  assert.match(source, /onClick=\{\(\) => openEventCode\(eventInfo\.name, 'handlerPattern' in eventInfo/u);
+  assert.match(source, /onClick=\{\(\) => void openEventCode\(eventInfo\.name, eventInfo\.handlerPattern\)\}/u);
   assert.match(source, /moduleControl\.events/u);
   assert.match(source, /\[eventName\]: handlerName/u);
-  assert.match(source, /\{isBound \? '打开代码' : '生成并打开'\}/u);
+  assert.match(source, /openingEventName === eventInfo\.name \? '正在打开' : isBound \? '打开代码' : '生成并打开'/u);
+  assert.match(source, /await onChange\(\{[\s\S]*?\[eventName\]: handlerName/u);
+  assert.match(source, /commitControlFieldsImmediately[\s\S]*?saveWindowDesignerState\(nextState\)/u);
+  assert.match(source, /eventParameters: moduleControl \? \[\.\.\.\(eventInfo\?\.parameters \|\| \[\]\)\] : undefined/u);
   assert.match(source, /onClick=\{\(\) => openEventCode\(definition\.name\)\}/u);
   assert.doesNotMatch(source, /placeholder=\{`如: \$\{suggestedHandler\}`\}/u);
   assert.doesNotMatch(appSource, /editorExperienceMode === 'beginner' && nextContent !== currentContent/u);

@@ -1,5 +1,13 @@
 # LingBuilder 模块生态实现说明
 
+> 2026-08-03 补充：NewEmoji 回调中的 `.lcpp` `调试输出`必须同时进入 `OutputDebugStringW` 和 F5 受控进程的 UTF-8 标准输出；后者由 IDE 的 `run.log` 轮询展示。模块事件回调已注册但控制台无文本时，应先验证生成程序的日志桥接，不能把问题误判为原生回调未触发，也不能在每个控件事件里复制日志代码。
+
+> 2026-08-03 补充：模块设计器事件支持 `parameters[]` 与 `starterStatements[]` 契约。设计器绑定在跳转代码前同步提交到权威项目模型；Monaco、新手编辑器、旧签名迁移、语言诊断和 C++ 回调桥接共用 `moduleDesignerEventService`。NewEmoji Table 的 CellClicked、CellAction、CellEdit、ContextMenu、VirtualRow 以及鼠标事件现传递真实原生参数；VirtualRow 通过 `NE_设置表格虚拟行数据` 和回调内 UTF-8 缓存完成上游两阶段 buffer ABI。旧零参数处理器保持兼容，新建处理器直接生成强类型签名。
+
+> 2026-08-03 补充：NewEmoji ListBox 的 SelectionChanged、ItemClicked、ItemDoubleClicked、Edit、Reorder、ContextMenu 已登记真实回调参数，并由生成器把 ElementText/Value、ListBoxEdit、ElementReorder ABI 映射到 `.lcpp` 变量；进入/离开、焦点事件保持无参，鼠标事件保留坐标、按钮和滚轮参数。模块清单、补全、诊断和 C++ 生成不得为这些有参回调退回空签名。
+
+> 2026-08-03 补充：NewEmoji Tabs 的 `SelectionChanged` 使用 `ElementValueCallback(int element_id, int value, int range_start, int range_end)`，模块清单必须声明 `选中索引`、`项目数量`、`动作` 三个整数参数。生成器按 `EU_SetTabsChangeCallback` 精确映射这三个值，并保留动作编号 1/2/3/4/5/6 的代码设置、鼠标、键盘、关闭、新增、滚动语义；同名的其它控件 `SelectionChanged` 不得复用 Tabs 参数表。带 FBro 子控件的 Tabs 也必须在处理器正文前生成同一组参数声明。
+
 > 2026-08-03 补充：`lingbuilder.new_emoji.ui/Tabs` 的 `headerVisible` 是独立的布尔设计器属性，默认 `true`，由上游 `EU_SetTabsHeaderVisible` Setter 驱动；它不能与固定开启的 `contentVisible` 混用。设计器预览、模块属性面板、F5/原生预览和 Visual Studio 导出必须共同消费该字段，关闭时隐藏表头并让页面内容区占满，旧项目缺少字段时按显示兼容。
 
 > 2026-08-03 补充：`lingbuilder.net.http-client@2.0.0` 已完成 74 条受管命令的原生闭环。共享 `httpClientRuntime.ts` 使用 WinHTTP 管理客户端/请求生命周期、超时、代理、凭据、TLS 证书固定、Cookie、自动解压、重定向、响应/上传资源上限、文本/JSON/二进制/文件传输和响应快照；普通 Win32 通过 `WM_LINGBUILDER_HTTP_CLIENT_EVENT`，new_emoji 通过独立消息窗口投递同一完成处理器协议。所有 `.lcpp` 处理器继续使用 `&处理器名`，旧 `HTTP客户端_请求/GET/POST/取状态码/取响应文本/取错误/清空状态` 入口委托到受管默认客户端，不破坏旧源码。模块演示与 `electron/docs/modules/http-client/README.md` 已同步，生成回归覆盖 Win32、new_emoji、无模块隔离和贡献/binding 一致性；`npm run smoke:http-client-native` 已用本地 HTTP fixture 真实编译 Win32/x64 与 new_emoji x64 并验证 200/UTF-8 响应。

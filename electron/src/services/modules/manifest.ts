@@ -116,6 +116,25 @@ export function validateModuleManifest(value: unknown): { manifest?: LingBuilder
             diagnostics.push(`控件 ${control.type} 的事件 ${event?.name || eventIndex} aliases 必须是非空文本数组。`);
           }
           if (typeof event?.handlerPattern !== 'string' || !event.handlerPattern.includes('{controlName}')) diagnostics.push(`控件 ${control.type} 的事件 ${event?.name || eventIndex} 缺少 {controlName} 处理器占位符。`);
+          const parameterNames = new Set<string>();
+          if (event?.parameters !== undefined && !Array.isArray(event.parameters)) {
+            diagnostics.push(`控件 ${control.type} 的事件 ${event?.name || eventIndex} parameters 必须是数组。`);
+          } else (event?.parameters || []).forEach((parameter: any, parameterIndex: number) => {
+            if (typeof parameter?.name !== 'string' || !parameter.name.trim()) {
+              diagnostics.push(`控件 ${control.type} 的事件 ${event?.name || eventIndex} 参数 ${parameterIndex + 1} 缺少 name。`);
+            } else if (parameterNames.has(parameter.name.trim())) {
+              diagnostics.push(`控件 ${control.type} 的事件 ${event?.name || eventIndex} 参数重复：${parameter.name}`);
+            } else {
+              parameterNames.add(parameter.name.trim());
+            }
+            if (!BINDING_VALUE_TYPES.includes(parameter?.type)) {
+              diagnostics.push(`控件 ${control.type} 的事件 ${event?.name || eventIndex} 参数 ${parameter?.name || parameterIndex + 1} type 不受支持。`);
+            }
+          });
+          if (event?.starterStatements !== undefined && (!Array.isArray(event.starterStatements)
+            || event.starterStatements.some((statement: unknown) => typeof statement !== 'string' || !statement.trim() || /[\r\n]/u.test(statement)))) {
+            diagnostics.push(`控件 ${control.type} 的事件 ${event?.name || eventIndex} starterStatements 必须是单行非空文本数组。`);
+          }
         });
         const propertyKeys = new Set<string>();
         if (control?.properties !== undefined && !Array.isArray(control.properties)) diagnostics.push(`designerControls[${controlIndex}].properties 必须是数组。`);

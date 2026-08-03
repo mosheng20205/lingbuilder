@@ -140,8 +140,11 @@ import {
   WINDOW_DESIGNER_PROJECT_UPDATED
 } from './services/windowDesigner/windowDesignerService';
 import type { WindowDesignerDirtyStateDetail } from './services/windowDesigner/windowDesignerService';
-import { formatWindowEventParameters } from './services/windowDesigner/windowEventRegistry';
-import { upgradeLegacyWindowEventHandlerSignature } from './services/windowDesigner/windowEventHandlerMigration';
+import {
+  formatControlEventParameters,
+  type OpenControlEventCodeDetail,
+  upgradeLegacyControlEventHandlerSignature
+} from './services/windowDesigner/controlEventCodeService';
 import {
   selectAndImportDesignerImage,
   type DesignerImageImportResult
@@ -270,18 +273,6 @@ const getNativeWindowControls = () => {
   }).lingBuilder?.windowControls;
 };
 
-type OpenControlEventCodeDetail = {
-  controlId?: string;
-  controlName?: string;
-  controlContent?: string;
-  controlType?: string;
-  eventName?: string;
-  handlerName?: string;
-  windowFileName?: string;
-  windowClassName?: string;
-  windowTitle?: string;
-};
-
 type PendingDesignerEventEdit = {
   proposal: WorkspaceEditProposal;
   appliedFiles: AppliedWorkspaceFile[];
@@ -356,14 +347,18 @@ const createLingCppControlEventBlock = (detail: Required<Pick<OpenControlEventCo
   const controlName = sanitizeLingCppText(detail.controlName, '控件');
   const controlContent = sanitizeLingCppText(detail.controlContent, controlName);
   const eventSuffix = getEplEventSuffix(detail.eventName);
-  const parameterText = detail.eventName ? formatWindowEventParameters(detail.eventName) : '';
+  const parameterText = formatControlEventParameters(detail);
   const lines = [`    事件 ${detail.handlerName}(${parameterText})`];
 
   if (detail.eventName === 'Click') {
     lines.push(`        信息框("${controlContent}", 64, "事件触发")`);
   }
 
-  lines.push(`        调试输出("${controlName}${eventSuffix}")`);
+  if (detail.eventStarterStatements?.length) {
+    detail.eventStarterStatements.forEach(statement => lines.push(`        ${statement.trim()}`));
+  } else {
+    lines.push(`        调试输出("${controlName}${eventSuffix}")`);
+  }
   lines.push('    结束');
   return lines.join('\n');
 };
@@ -375,7 +370,7 @@ const ensureLingCppControlEventHandler = (content: string, detail: OpenControlEv
 
   if (!controlName || !eventName || !handlerName) return content;
 
-  const migration = upgradeLegacyWindowEventHandlerSignature(content, handlerName, eventName);
+  const migration = upgradeLegacyControlEventHandlerSignature(content, { ...detail, handlerName, eventName });
   if (migration.changed) return migration.content;
 
   const handlerPattern = new RegExp(`(^|\\n)\\s*事件\\s+${escapeRegExp(handlerName)}\\s*[（(]`);
@@ -2029,6 +2024,10 @@ void DisplayStatus() {
         setShowBottomPanel(true);
         setActiveTabInBottom('output');
       } else {
+        if (detail.status === 'completed' && detail.ok === true) {
+          setShowBottomPanel(true);
+          setActiveTabInBottom('debug_logs');
+        }
         buildStartedRef.current = false;
         if (editorOperationRef.current === 'build') editorOperationRef.current = null;
         setIsBuilding(false);

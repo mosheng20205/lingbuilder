@@ -64,6 +64,12 @@ import {
   getLingCppControlReferenceCompletion,
   getLingCppControlReferenceDiagnostics
 } from './controlReferenceService';
+import {
+  formatModuleDesignerEventParameters,
+  getModuleDesignerEventParameterType,
+  getModuleDesignerEvents,
+  resolveModuleDesignerEvent
+} from '../modules/moduleDesignerEventService';
 
 const KEYWORD = {
   package: '包',
@@ -302,6 +308,7 @@ export function getLingCppSemanticDiagnostics(
     });
 
     const currentWindows = selectDesignerWindows(designerProject, source, filePath);
+    diagnostics.push(...getModuleDesignerEventDiagnostics(parsed.program, currentWindows, moduleContext));
     const windowEventByHandler = new Map<string, string>();
     currentWindows.forEach(window => {
       Object.entries(window.events || {}).forEach(([eventName, handler]) => {
@@ -427,7 +434,7 @@ export function getLingCppCompletionItems(
   if (windowTargetItems) {
     return dedupeLingCppCompletionItems(windowTargetItems, context.triggerText);
   }
-  const designerItems = getDesignerCompletionItems(context.source, designerProject);
+  const designerItems = getDesignerCompletionItems(context.source, designerProject, languageContext.moduleContext);
   const moduleItems = languageContext.moduleContributions;
   const catalogItems = getCatalogCompletionItems(contextKind);
   return dedupeLingCppCompletionItems(
@@ -1788,7 +1795,60 @@ function normalizeWindowEventType(value: string): string {
   return `${aliases[base] || base}${arraySuffix}`;
 }
 
-function getDesignerCompletionItems(source: string, designerProject?: LingWindowProject): LingCppCompletionItem[] {
+function getModuleDesignerEventDiagnostics(
+  program: LingCppProgram,
+  windows: readonly LingWindowModel[],
+  moduleContext?: LingCppModuleContext
+): LingCppDiagnostic[] {
+  const modules = moduleContext?.enabledModules || [];
+  if (modules.length === 0) return [];
+  const diagnostics: LingCppDiagnostic[] = [];
+
+  windows.forEach(win => {
+    const windowClass = program.classes.find(cls => normalizeIdentifier(cls.name) === normalizeIdentifier(win.className));
+    const methods = windowClass?.methods || program.classes.flatMap(cls => cls.methods);
+    win.controls.forEach(control => {
+      Object.entries(control.events || {}).forEach(([eventName, handlerName]) => {
+        const normalizedHandler = handlerName.trim();
+        if (!normalizedHandler) return;
+        const event = resolveModuleDesignerEvent(modules, control.designerType, eventName);
+        if (!event) return;
+        const method = methods.find(candidate => candidate.kind === 'event'
+          && normalizeIdentifier(candidate.name) === normalizeIdentifier(normalizedHandler));
+        if (!method) return;
+
+        const expectedParameters = event.parameters || [];
+        const actualParameters = method.parameters;
+        const matchesExpected = actualParameters.length === expectedParameters.length
+          && expectedParameters.every((expected, index) => normalizeWindowEventType(
+            getModuleDesignerEventParameterType(expected.type)
+          ) === normalizeWindowEventType(actualParameters[index]?.type || ''));
+        // 已生成的旧项目允许继续使用零参数处理器，重新从设计器打开时会安全升级签名。
+        if (actualParameters.length === 0 && expectedParameters.length > 0) return;
+        if (matchesExpected) return;
+
+        const parameterText = formatModuleDesignerEventParameters(expectedParameters);
+        const expectedSignature = `事件 ${method.name}(${parameterText})`;
+        diagnostics.push({
+          id: `lingcpp-module-designer-event-parameters-${control.id}-${event.name}-${method.line}`,
+          line: method.line,
+          level: 'error',
+          message: `模块控件 ${control.name} 的${event.label}事件参数与 ${event.name} 契约不匹配。`,
+          codeSnippet: method.name,
+          suggestion: `请改为 ${expectedSignature}。`
+        });
+      });
+    });
+  });
+
+  return diagnostics;
+}
+
+function getDesignerCompletionItems(
+  source: string,
+  designerProject?: LingWindowProject,
+  moduleContext?: LingCppModuleContext
+): LingCppCompletionItem[] {
   if (!designerProject) return [];
   return selectDesignerWindows(designerProject, source).flatMap(win => {
     const windowItems: LingCppCompletionItem[] = WINDOW_EVENT_DEFINITIONS.map(definition => {
@@ -1811,34 +1871,44 @@ function getDesignerCompletionItems(source: string, designerProject?: LingWindow
     });
 
     const controlItems = win.controls.flatMap(control => {
-      return getDesignerControlEventEntries(control).map(({ eventName, eventLabel, handlerName }) => ({
-        label: `${control.name} ${eventLabel}事件`,
-        kind: 'event' as const,
-        insertText: `事件 ${handlerName}()\n    $0`,
-        detail: `设计器控件：${control.name}`,
-        documentation: `控件：${control.name}\n事件：${eventLabel}\n处理器：${handlerName}`,
-        aliases: [control.name, handlerName, eventName, eventLabel, '控件事件'],
-        pinyin: ['kjsj'],
-        example: `事件 ${handlerName}()`,
-        category: 'designer' as const,
-        audienceText: `用户操作 ${control.name} 后执行`,
-        isSnippet: true
-      }));
+      return getDesignerControlEventEntries(control, moduleContext).map(({ eventName, eventLabel, handlerName, parameters, starterStatements }) => {
+        const parameterText = formatModuleDesignerEventParameters(parameters);
+        const signature = `事件 ${handlerName}(${parameterText})`;
+        const body = [...starterStatements, '$0'].map(statement => `    ${statement}`).join('\n');
+        return {
+          label: `${control.name} ${eventLabel}事件`,
+          kind: 'event' as const,
+          insertText: `${signature}\n${body}`,
+          detail: `设计器控件：${control.name}`,
+          documentation: `控件：${control.name}\n事件：${eventLabel}\n处理器：${handlerName}${parameterText ? `\n参数：${parameterText}` : ''}`,
+          aliases: [control.name, handlerName, eventName, eventLabel, '控件事件'],
+          pinyin: ['kjsj'],
+          example: signature,
+          category: 'designer' as const,
+          audienceText: `用户操作 ${control.name} 后执行`,
+          isSnippet: true
+        };
+      });
     });
 
-    return [...windowItems, ...getDesignerControlCompletionItemsForWindow(win), ...controlItems];
+    return [...windowItems, ...getDesignerControlCompletionItemsForWindow(win, moduleContext), ...controlItems];
   });
 }
 
 export function getLingCppDesignerControlCompletions(
   source: string,
-  designerProject?: LingWindowProject
+  designerProject?: LingWindowProject,
+  moduleContext?: LingCppModuleContext
 ): LingCppCompletionItem[] {
   if (!designerProject) return [];
-  return selectDesignerWindows(designerProject, source).flatMap(getDesignerControlCompletionItemsForWindow);
+  return selectDesignerWindows(designerProject, source)
+    .flatMap(win => getDesignerControlCompletionItemsForWindow(win, moduleContext));
 }
 
-function getDesignerControlCompletionItemsForWindow(win: LingWindowModel): LingCppCompletionCatalogItem[] {
+function getDesignerControlCompletionItemsForWindow(
+  win: LingWindowModel,
+  moduleContext?: LingCppModuleContext
+): LingCppCompletionCatalogItem[] {
   return win.controls.flatMap(control => {
     const detail = `设计器控件 · ${control.type}`;
     const items: LingCppCompletionCatalogItem[] = [
@@ -1895,17 +1965,19 @@ function getDesignerControlCompletionItemsForWindow(win: LingWindowModel): LingC
         isSnippet: command.insertText.includes('$')
       }));
     });
-    getDesignerControlEventEntries(control).forEach(({ eventName, eventLabel, handlerName }) => {
+    getDesignerControlEventEntries(control, moduleContext).forEach(({ eventName, eventLabel, handlerName, parameters }) => {
+      const parameterPlaceholders = parameters.map((_, index) => `$${index + 1}`).join(', ');
       items.push(createLingCppCatalogItem({
         label: `${control.name}.${eventLabel}事件`,
         kind: 'event',
-        insertText: `${handlerName}()`,
+        insertText: `${handlerName}(${parameterPlaceholders})`,
         detail: `${detail} · ${eventLabel}事件处理器${control.events?.[eventName]?.trim() ? '' : '（尚未绑定）'}`,
         documentation: `控件事件：${eventLabel} (${eventName})\n处理器：${handlerName}\n可在设计器事件面板绑定；候选可用于调用对应处理器。`,
         aliases: [control.name, control.type, eventName, eventLabel, handlerName, '控件事件'],
         category: 'designer',
         source: 'designer',
-        sortRank: 11
+        sortRank: 11,
+        isSnippet: parameters.length > 0
       }));
     });
     return items;
@@ -1919,20 +1991,40 @@ interface DesignerControlCommandCompletion {
   description: string;
 }
 
-function getDesignerControlEventEntries(control: LingWindowModel['controls'][number]) {
+function getDesignerControlEventEntries(
+  control: LingWindowModel['controls'][number],
+  moduleContext?: LingCppModuleContext
+) {
+  const moduleEvents = getModuleDesignerEvents(moduleContext?.enabledModules || [], control.designerType);
   const definition = getWin32ControlDefinition(control.type);
-  const registered = (definition?.events || []).map(event => ({
-    eventName: event.name,
-    eventLabel: event.label,
-    handlerName: control.events?.[event.name]?.trim() || `_${control.name}_${event.handlerSuffix}`
-  }));
-  const registeredNames = new Set(registered.map(event => event.eventName));
+  const registered = moduleEvents.length > 0
+    ? moduleEvents.map(event => ({
+      eventName: event.name,
+      eventLabel: event.label,
+      handlerName: [event.name, ...(event.aliases || [])]
+        .map(name => control.events?.[name]?.trim())
+        .find(Boolean) || event.handlerPattern.replace('{controlName}', control.name),
+      parameters: event.parameters || [],
+      starterStatements: event.starterStatements || []
+    }))
+    : (definition?.events || []).map(event => ({
+      eventName: event.name,
+      eventLabel: event.label,
+      handlerName: control.events?.[event.name]?.trim() || `_${control.name}_${event.handlerSuffix}`,
+      parameters: [],
+      starterStatements: []
+    }));
+  const registeredNames = new Set(moduleEvents.length > 0
+    ? moduleEvents.flatMap(event => [event.name, ...(event.aliases || [])])
+    : registered.map(event => event.eventName));
   const custom = Object.entries(control.events || {})
     .filter(([eventName, handlerName]) => !registeredNames.has(eventName) && handlerName.trim())
     .map(([eventName, handlerName]) => ({
       eventName,
       eventLabel: eventNameLabel(eventName),
-      handlerName: handlerName.trim()
+      handlerName: handlerName.trim(),
+      parameters: [],
+      starterStatements: []
     }));
   return [...registered, ...custom];
 }

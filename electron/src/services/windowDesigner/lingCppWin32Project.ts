@@ -471,7 +471,7 @@ function generateNewEmojiMainCpp(
     const contribution = enabledModules
       .flatMap(module => module.manifest.contributes?.designerControls || [])
       .find(item => item.namespacedType === control.designerType);
-    const groupedBindings = new Map<string, Array<{ callbackType: string; eventCode?: number; method: LingCppMethod }>>();
+    const groupedBindings = new Map<string, NewEmojiCatalogEventBinding[]>();
     for (const binding of contribution?.runtime?.eventBindings || []) {
       const handlerName = [binding.eventName, ...(binding.aliases || [])]
         .map(eventName => control.events?.[eventName]?.trim())
@@ -479,7 +479,7 @@ function generateNewEmojiMainCpp(
       const method = handlerName ? findLingCppMethod(program, handlerName) : undefined;
       if (!method) continue;
       const group = groupedBindings.get(binding.command) || [];
-      group.push({ callbackType: binding.callbackType, eventCode: binding.eventCode, method });
+      group.push({ command: binding.command, eventName: binding.eventName, callbackType: binding.callbackType, eventCode: binding.eventCode, method });
       groupedBindings.set(binding.command, group);
     }
     for (const [command, bindings] of groupedBindings) {
@@ -676,6 +676,16 @@ function generateNewEmojiMainCpp(
     : '';
   const createWindow = darkWindow ? 'NE_创建深色窗口' : 'NE_创建窗口';
   const modulePreamble = generateModuleCppPreamble(enabledModules);
+  // new_emoji 模块的声明已经由模块前导区按稳定模块路径提供；再次通过
+  // 通用头文件名包含会让同一组无 include guard 的 ABI 类型出现两份路径。
+  const newEmojiModuleProvidesHeaders = enabledModules.some(module => {
+    if (module.manifest.id !== NEW_EMOJI_MODULE_ID) return false;
+    const targetHeaders = getPreferredModuleTarget(module)?.headers || [];
+    return targetHeaders.some(header => /(?:^|\/)new_emoji_bridge\.h$/iu.test(header) || /(?:^|\/)exports\.h$/iu.test(header));
+  });
+  const newEmojiHeaderIncludes = newEmojiModuleProvidesHeaders
+    ? ''
+    : '#include "new_emoji_bridge.h"\n#include "exports.h"';
   const iconStyle = window.iconStyle || 'lingbuilder';
   const iconPath = iconStyle === 'lingbuilder'
     ? 'lingbuilder-newemoji-window.ico'
@@ -981,8 +991,7 @@ ${uiaCleanupLine}
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include "new_emoji_bridge.h"
-#include "exports.h"
+${newEmojiHeaderIncludes}
 #ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
 #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
 #endif
@@ -1318,8 +1327,16 @@ static bool 控件_清空项目(const wchar_t* controlName) {
 }
 
 static void 写入调试输出(const wchar_t* message) {
-    OutputDebugStringW(message ? message : L"");
+    const wchar_t* text = message ? message : L"";
+    OutputDebugStringW(text);
     OutputDebugStringW(L"\\r\\n");
+    const int sizeNeeded = WideCharToMultiByte(CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr);
+    if (sizeNeeded > 0) {
+        std::vector<char> utf8(static_cast<size_t>(sizeNeeded));
+        WideCharToMultiByte(CP_UTF8, 0, text, -1, utf8.data(), sizeNeeded, nullptr, nullptr);
+        std::printf("[调试输出] %s\\n", utf8.data());
+        std::fflush(stdout);
+    }
 }
 
 static void 追加调试参数(std::wstring& output, bool value) { output += value ? L"真" : L"假"; }
@@ -1546,14 +1563,14 @@ function generateNewEmojiMethodBody(method: LingCppMethod, enabledModules: Insta
 
 function generateNewEmojiFbroTabsCallback(
   callback: string,
-  bindings: Array<{ callbackType: string; eventCode?: number; method: LingCppMethod }>,
+  bindings: NewEmojiCatalogEventBinding[],
   enabledModules: InstalledModule[],
   dataTypes: LingCppDataType[]
 ): string | undefined {
   const binding = bindings.find(item => item.callbackType === 'ElementValueCallback') || bindings[0];
   if (!binding) return undefined;
-  const body = generateNewEmojiMethodBody(binding.method, enabledModules, dataTypes);
-  return `static void __stdcall ${callback}(int element_id, int value, int, int) {\n    LB_NE_UpdateFbroTabVisibility(element_id, value);\n${body}\n}`;
+  const body = generateNewEmojiCatalogEventBody(binding, enabledModules, dataTypes);
+  return `static void __stdcall ${callback}(int lb_element_id, int lb_value, int lb_range_start, int lb_range_end) {\n    LB_NE_UpdateFbroTabVisibility(lb_element_id, lb_value);\n${body}\n}`;
 }
 
 function generateNewEmojiFbroCreateLines(
@@ -2764,38 +2781,129 @@ ${dispatch}
 `;
 }
 
+interface NewEmojiCatalogEventBinding {
+  command: string;
+  eventName: string;
+  callbackType: string;
+  eventCode?: number;
+  method: LingCppMethod;
+}
+
 const NEW_EMOJI_CALLBACK_SIGNATURES: Record<string, { parameters: string; returnValue?: string }> = {
-  ElementClickCallback: { parameters: 'int' },
-  ElementMouseCallback: { parameters: 'int, int, int, int, int' },
-  ElementFocusCallback: { parameters: 'int, int' },
-  ElementTextCallback: { parameters: 'int, const unsigned char*, int' },
-  ElementValueCallback: { parameters: 'int, int, int, int' },
-  ElementReorderCallback: { parameters: 'int, int, int, int' },
-  ElementBeforeCloseCallback: { parameters: 'int, int', returnValue: '1' },
-  DateDisabledCallback: { parameters: 'int, int', returnValue: '0' },
-  TableCellCallback: { parameters: 'int, int, int, int, int' },
-  TableCellEditCallback: { parameters: 'int, int, int, int, const unsigned char*, int' },
-  TableContextMenuCallback: { parameters: 'int, int, int, int, int, int' },
-  TableVirtualRowCallback: { parameters: 'int, int, unsigned char*, int', returnValue: '0' },
-  ListBoxEditCallback: { parameters: 'int, int, int, int, const unsigned char*, int' },
-  DropdownCommandCallback: { parameters: 'int, int, const unsigned char*, int' },
-  MenuSelectCallback: { parameters: 'int, int, const unsigned char*, int, const unsigned char*, int' },
-  MessageBoxExCallback: { parameters: 'int, int, const unsigned char*, int' },
-  TreeNodeEventCallback: { parameters: 'int, int, int, const unsigned char*, int' },
-  TreeNodeAllowDragCallback: { parameters: 'int, const unsigned char*, int', returnValue: '1' },
-  TreeNodeAllowDropCallback: { parameters: 'int, const unsigned char*, int, const unsigned char*, int, int', returnValue: '1' }
+  ElementClickCallback: { parameters: 'int lb_element_id' },
+  ElementMouseCallback: { parameters: 'int lb_element_id, int lb_event_code, int lb_x, int lb_y, int lb_data' },
+  ElementFocusCallback: { parameters: 'int lb_element_id, int lb_focused' },
+  ElementTextCallback: { parameters: 'int lb_element_id, const unsigned char* lb_utf8, int lb_utf8_length' },
+  ElementValueCallback: { parameters: 'int lb_element_id, int lb_value, int lb_range_start, int lb_range_end' },
+  ElementReorderCallback: { parameters: 'int lb_element_id, int lb_from_index, int lb_to_index, int lb_count' },
+  ElementBeforeCloseCallback: { parameters: 'int lb_element_id, int lb_action', returnValue: '1' },
+  DateDisabledCallback: { parameters: 'int lb_element_id, int lb_yyyymmdd', returnValue: '0' },
+  TableCellCallback: { parameters: 'int lb_table_id, int lb_row, int lb_col, int lb_action, int lb_value' },
+  TableCellEditCallback: { parameters: 'int lb_table_id, int lb_row, int lb_col, int lb_action, const unsigned char* lb_utf8, int lb_utf8_length' },
+  TableContextMenuCallback: { parameters: 'int lb_table_id, int lb_row, int lb_col, int lb_area, int lb_x, int lb_y' },
+  TableVirtualRowCallback: { parameters: 'int lb_table_id, int lb_row, unsigned char* lb_buffer, int lb_buffer_size' },
+  ListBoxEditCallback: { parameters: 'int lb_element_id, int lb_index, int lb_field, int lb_action, const unsigned char* lb_utf8, int lb_utf8_length' },
+  DropdownCommandCallback: { parameters: 'int lb_element_id, int lb_item_index, const unsigned char* lb_utf8, int lb_utf8_length' },
+  MenuSelectCallback: { parameters: 'int lb_element_id, int lb_item_index, const unsigned char* lb_path_utf8, int lb_path_length, const unsigned char* lb_command_utf8, int lb_command_length' },
+  MessageBoxExCallback: { parameters: 'int lb_element_id, int lb_result, const unsigned char* lb_utf8, int lb_utf8_length' },
+  TreeNodeEventCallback: { parameters: 'int lb_element_id, int lb_event_code, int lb_index, const unsigned char* lb_utf8, int lb_utf8_length' },
+  TreeNodeAllowDragCallback: { parameters: 'int lb_element_id, const unsigned char* lb_utf8, int lb_utf8_length', returnValue: '1' },
+  TreeNodeAllowDropCallback: { parameters: 'int lb_element_id, const unsigned char* lb_drag_utf8, int lb_drag_length, const unsigned char* lb_drop_utf8, int lb_drop_length, int lb_drop_type', returnValue: '1' }
 };
+
+function getNewEmojiEventArgumentExpressions(binding: NewEmojiCatalogEventBinding): string[] {
+  const eventKey = `${binding.command}.${binding.eventName}`;
+  const eventArguments: Record<string, string[]> = {
+    'EU_SetTabsChangeCallback.SelectionChanged': ['lb_value', 'lb_range_start', 'lb_range_end'],
+    'TableCellCallback.CellClicked': ['lb_row', 'lb_col'],
+    'TableCellCallback.CellAction': ['lb_row', 'lb_col', 'lb_action', 'lb_value'],
+    'TableCellEditCallback.CellEdit': ['lb_row', 'lb_col', 'lb_action', 'LB_NE_FromUtf8(lb_utf8, lb_utf8_length)'],
+    'TableContextMenuCallback.ContextMenu': ['lb_row', 'lb_col', 'lb_area', 'lb_x', 'lb_y'],
+    'TableVirtualRowCallback.VirtualRow': ['lb_row'],
+    'ElementTextCallback.SelectionChanged': ['LB_NE_FromUtf8(lb_utf8, lb_utf8_length)'],
+    'ElementValueCallback.ItemClicked': ['lb_value', 'lb_range_start', 'lb_range_end'],
+    'ElementValueCallback.ItemDoubleClicked': ['lb_value', 'lb_range_start', 'lb_range_end'],
+    'ListBoxEditCallback.Edit': ['lb_index', 'lb_field', 'lb_action', 'LB_NE_FromUtf8(lb_utf8, lb_utf8_length)'],
+    'ElementReorderCallback.Reorder': ['lb_from_index', 'lb_to_index', 'lb_count'],
+    'ElementValueCallback.ContextMenu': ['lb_value', 'lb_range_start', 'lb_range_end'],
+    'ElementMouseCallback.MouseDown': ['lb_x', 'lb_y', 'lb_data'],
+    'ElementMouseCallback.MouseUp': ['lb_x', 'lb_y', 'lb_data'],
+    'ElementMouseCallback.MouseDoubleClick': ['lb_x', 'lb_y', 'lb_data'],
+    'ElementMouseCallback.MouseMove': ['lb_x', 'lb_y'],
+    'ElementMouseCallback.MouseWheel': ['lb_x', 'lb_y', 'lb_data']
+  };
+  return eventArguments[eventKey]
+    || eventArguments[`${binding.callbackType}.${binding.eventName}`]
+    || [];
+}
+
+function generateNewEmojiEventParameterDeclarations(
+  binding: NewEmojiCatalogEventBinding,
+  enabledModules: InstalledModule[],
+  dataTypes: LingCppDataType[]
+): string {
+  const expressions = getNewEmojiEventArgumentExpressions(binding);
+  return binding.method.parameters.map((parameter, index) => {
+    const type = toCppType(parameter.type, 'parameter', enabledModules, dataTypes);
+    const expression = expressions[index] || '{}';
+    return `    ${type} ${toCppIdentifier(parameter.name)} = ${expression};`;
+  }).join('\n');
+}
+
+function generateNewEmojiCatalogEventBody(
+  binding: NewEmojiCatalogEventBinding,
+  enabledModules: InstalledModule[],
+  dataTypes: LingCppDataType[]
+): string {
+  return [
+    generateNewEmojiEventParameterDeclarations(binding, enabledModules, dataTypes),
+    generateNewEmojiMethodBody(binding.method, enabledModules, dataTypes)
+  ].filter(Boolean).join('\n');
+}
+
+function generateNewEmojiVirtualRowCallback(
+  callback: string,
+  binding: NewEmojiCatalogEventBinding,
+  enabledModules: InstalledModule[],
+  dataTypes: LingCppDataType[]
+): string {
+  const body = generateNewEmojiCatalogEventBody(binding, enabledModules, dataTypes);
+  return `static int __stdcall ${callback}(int lb_table_id, int lb_row, unsigned char* lb_buffer, int lb_buffer_size) {
+    static thread_local int lb_cached_table_id = -1;
+    static thread_local int lb_cached_row = -1;
+    static thread_local bool lb_cache_pending = false;
+    static thread_local std::string lb_cached_utf8;
+    const bool lb_refresh = !lb_cache_pending || lb_cached_table_id != lb_table_id || lb_cached_row != lb_row || lb_buffer == nullptr;
+    if (lb_refresh) {
+        NE_清空表格虚拟行数据();
+${body}
+        lb_cached_utf8 = LB_NE_ToUtf8(NE_取表格虚拟行数据());
+        lb_cached_table_id = lb_table_id;
+        lb_cached_row = lb_row;
+        lb_cache_pending = true;
+    }
+    const int lb_required = static_cast<int>(lb_cached_utf8.size());
+    if (!lb_buffer || lb_buffer_size <= 0) return lb_required;
+    const int lb_written = (std::min)(lb_required, lb_buffer_size);
+    if (lb_written > 0) std::memcpy(lb_buffer, lb_cached_utf8.data(), static_cast<size_t>(lb_written));
+    if (lb_written < lb_buffer_size) lb_buffer[lb_written] = 0;
+    lb_cache_pending = false;
+    return lb_written;
+}`;
+}
 
 function generateNewEmojiCatalogEventCallback(
   callback: string,
-  callbackType: string,
-  method: LingCppMethod,
+  binding: NewEmojiCatalogEventBinding,
   enabledModules: InstalledModule[],
   dataTypes: LingCppDataType[]
 ): string | undefined {
-  const signature = NEW_EMOJI_CALLBACK_SIGNATURES[callbackType];
+  const signature = NEW_EMOJI_CALLBACK_SIGNATURES[binding.callbackType];
   if (!signature) return undefined;
-  const body = generateNewEmojiMethodBody(method, enabledModules, dataTypes);
+  if (binding.callbackType === 'TableVirtualRowCallback') {
+    return generateNewEmojiVirtualRowCallback(callback, binding, enabledModules, dataTypes);
+  }
+  const body = generateNewEmojiCatalogEventBody(binding, enabledModules, dataTypes);
   const returnLine = signature.returnValue === undefined ? '' : `\n    return ${signature.returnValue};`;
   const returnType = signature.returnValue === undefined ? 'void' : 'int';
   return `static ${returnType} __stdcall ${callback}(${signature.parameters}) {\n${body}${returnLine}\n}`;
@@ -2803,7 +2911,7 @@ function generateNewEmojiCatalogEventCallback(
 
 function generateNewEmojiCatalogEventCallbackGroup(
   callback: string,
-  bindings: Array<{ callbackType: string; eventCode?: number; method: LingCppMethod }>,
+  bindings: NewEmojiCatalogEventBinding[],
   enabledModules: InstalledModule[],
   dataTypes: LingCppDataType[]
 ): string | undefined {
@@ -2812,9 +2920,9 @@ function generateNewEmojiCatalogEventCallbackGroup(
   if (first.callbackType === 'ElementMouseCallback') {
     const cases = bindings
       .filter(binding => binding.eventCode !== undefined)
-      .map(binding => `        case ${binding.eventCode}: {\n${generateNewEmojiMethodBody(binding.method, enabledModules, dataTypes)}\n            break;\n        }`)
+      .map(binding => `        case ${binding.eventCode}: {\n${generateNewEmojiCatalogEventBody(binding, enabledModules, dataTypes)}\n            break;\n        }`)
       .join('\n');
-    return `static void __stdcall ${callback}(int, int event_code, int, int, int) {\n    switch (event_code) {\n${cases}\n        default: break;\n    }\n}`;
+    return `static void __stdcall ${callback}(int lb_element_id, int lb_event_code, int lb_x, int lb_y, int lb_data) {\n    switch (lb_event_code) {\n${cases}\n        default: break;\n    }\n}`;
   }
   if (first.callbackType === 'ElementFocusCallback') {
     const focused = bindings.find(binding => binding.eventCode === 1);
@@ -2823,7 +2931,7 @@ function generateNewEmojiCatalogEventCallbackGroup(
     const blurredBody = blurred ? generateNewEmojiMethodBody(blurred.method, enabledModules, dataTypes) : '';
     return `static void __stdcall ${callback}(int, int focused) {\n    if (focused) {\n${focusedBody}\n    } else {\n${blurredBody}\n    }\n}`;
   }
-  return generateNewEmojiCatalogEventCallback(callback, first.callbackType, first.method, enabledModules, dataTypes);
+  return generateNewEmojiCatalogEventCallback(callback, first, enabledModules, dataTypes);
 }
 
 function orderNewEmojiControls(controls: LingControl[]): LingControl[] {

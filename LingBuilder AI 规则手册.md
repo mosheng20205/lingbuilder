@@ -1,5 +1,15 @@
 # LingBuilder AI 规则手册
 
+## 模块设计器事件参数规则
+
+- NewEmoji 原生窗口中的 `调试输出`必须同时保留 Windows `OutputDebugStringW` 和 IDE 受控运行日志的 UTF-8 标准输出；只写调试器通道会导致 F5 已触发事件但“调试控制台”没有任何输出。标准输出固定使用 `[调试输出] `前缀并立即刷新，不能依赖进程退出才落盘。
+- 模块控件事件的 `.lcpp` 参数必须以启用模块 `contributes.designerControls[].events[].parameters` 为唯一契约。设计器“生成并打开”、Monaco、新手编辑器、语言诊断和 C++ 回调桥接必须消费同一份参数名称与类型；AI 不得把有原生参数的事件生成成空参数，也不得自行猜测回调参数。
+- `lingbuilder.new_emoji.ui/Table` 的 `CellClicked` 使用 `(整数型 行号, 整数型 列号)`，`CellAction` 使用 `(整数型 行号, 整数型 列号, 整数型 动作, 整数型 值)`，`CellEdit` 使用 `(整数型 行号, 整数型 列号, 整数型 动作, 文本型 文本)`，`ContextMenu` 使用 `(整数型 行号, 整数型 列号, 整数型 区域, 整数型 横坐标, 整数型 纵坐标)`，`VirtualRow` 使用 `(整数型 行号)`；鼠标按下/抬起/双击传坐标和按钮，移动传坐标，滚轮传坐标和增量。
+- `lingbuilder.new_emoji.ui/ListBox` 的 `SelectionChanged` 使用 `(文本型 选中键列表)`，`ItemClicked` 使用 `(整数型 项目索引, 整数型 起始位置, 整数型 结束位置)`，`ItemDoubleClicked` 使用 `(整数型 项目索引, 整数型 触发方式, 整数型 附加值)`，`Edit` 使用 `(整数型 项目索引, 整数型 编辑字段, 整数型 动作, 文本型 文本)`，`Reorder` 使用 `(整数型 原索引, 整数型 新索引, 整数型 数量)`，`ContextMenu` 使用 `(整数型 项目索引, 整数型 横坐标, 整数型 纵坐标)`；鼠标进入/离开和获得/失去焦点没有额外参数。
+- `lingbuilder.new_emoji.ui/Tabs` 的 `SelectionChanged` 必须生成 `(整数型 选中索引, 整数型 项目数量, 整数型 动作)`。三个值对应 `EU_SetTabsChangeCallback` 的 `value`、`range_start`、`range_end`；动作编号 `1/2/3/4/5/6` 分别表示代码设置、鼠标、键盘、关闭、新增、滚动。AI 不得把该事件生成为零参数，也不得把其它控件同名 `SelectionChanged` 的参数套到 Tabs；带 FBro 页面时仍必须保留同一参数声明。
+- `VirtualRow` 是同步数据提供事件。处理器必须调用 `NE_设置表格虚拟行数据("高级行协议")` 设置本次行数据；生成器负责转为 UTF-8，并按 new_emoji 的长度查询/缓冲区复制两阶段 ABI 返回。不得固定返回 0、重复执行处理器或把返回文本保存在跨事件共享的普通全局字符串中。
+- 已有零参数模块事件处理器继续兼容；从设计器重新打开时只允许把确认为零参数的旧签名安全升级为当前契约，不得覆盖用户已经自定义的非空参数。新建事件和补全必须直接生成当前强类型签名，参数数量或类型错误时提供中文阻断诊断。
+
 ## HTTP 客户端 2.0 生成规则
 
 - `lingbuilder.net.http-client` 的正式入口是受管客户端/请求 ID；AI 生成新代码时应优先使用 `HTTP客户端_创建客户端`、`HTTP客户端_创建请求`、`HTTP客户端_开始请求` 和完成处理器，不得生成裸 `HINTERNET`、WinHTTP 句柄或任意网络线程。

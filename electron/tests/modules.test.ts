@@ -202,7 +202,7 @@ test('模块源目录中的 controlRef 补全、示例和代码片段全部保�
     const audit = normalizeControlReferenceSourceLiterals(source, filePath, BUILTIN_MODULES);
     audit.changes.forEach(change => violations.push(`${path.relative(moduleSourceRoot, filePath)}:${change.line}`));
   }
-  assert.equal(sourceFiles.length, 40, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
+  assert.equal(sourceFiles.length, 41, '模块源文件数量变化时必须重新确认 controlRef 源字面量覆盖范围');
   assert.deepEqual(violations, []);
 
   const unsafe = 'const command = { insertText: \'控件_设置文本("操作结果", "$2")\' };';
@@ -418,11 +418,11 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
     parameterDigest: audit.parameterDigest
   }, {
     modules: 87,
-    commands: 3595,
-    parameters: 10990,
+    commands: 3596,
+    parameters: 10991,
     controlReferences: 769,
-    commandDigest: '3c47b44b',
-    parameterDigest: 'f37b6f70'
+    commandDigest: 'c14c0afc',
+    parameterDigest: 'f5e23af5'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
 });
 
@@ -3300,7 +3300,59 @@ test('generated new_emoji bridge completions match binding parameter counts', as
   };
   const buttonContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Button');
   const tableContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Table');
+  const listBoxContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'ListBox');
   const tabsContribution = manifest.contributes.designerControls.find((control: any) => control.type === 'Tabs');
+  const tableEvent = (name: string) => tableContribution.events.find((event: { name: string }) => event.name === name);
+  const listBoxEvent = (name: string) => listBoxContribution.events.find((event: { name: string }) => event.name === name);
+  assert.deepEqual(tableEvent('CellClicked').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['行号', 'int'], ['列号', 'int']
+  ]);
+  assert.deepEqual(tableEvent('CellAction').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['行号', 'int'], ['列号', 'int'], ['动作', 'int'], ['值', 'int']
+  ]);
+  assert.deepEqual(tableEvent('CellEdit').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['行号', 'int'], ['列号', 'int'], ['动作', 'int'], ['文本', 'wideString']
+  ]);
+  assert.deepEqual(tableEvent('ContextMenu').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['行号', 'int'], ['列号', 'int'], ['区域', 'int'], ['横坐标', 'int'], ['纵坐标', 'int']
+  ]);
+  assert.deepEqual(tableEvent('VirtualRow').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [['行号', 'int']]);
+  assert.deepEqual(tableEvent('VirtualRow').starterStatements, ['NE_设置表格虚拟行数据("")']);
+  assert.deepEqual(listBoxEvent('SelectionChanged').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['选中键列表', 'wideString']
+  ]);
+  assert.deepEqual(listBoxEvent('ItemClicked').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['项目索引', 'int'], ['起始位置', 'int'], ['结束位置', 'int']
+  ]);
+  assert.deepEqual(listBoxEvent('ItemDoubleClicked').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['项目索引', 'int'], ['触发方式', 'int'], ['附加值', 'int']
+  ]);
+  assert.deepEqual(listBoxEvent('Edit').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['项目索引', 'int'], ['编辑字段', 'int'], ['动作', 'int'], ['文本', 'wideString']
+  ]);
+  assert.deepEqual(listBoxEvent('Reorder').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['原索引', 'int'], ['新索引', 'int'], ['数量', 'int']
+  ]);
+  assert.deepEqual(listBoxEvent('ContextMenu').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['项目索引', 'int'], ['横坐标', 'int'], ['纵坐标', 'int']
+  ]);
+  for (const eventName of ['MouseEnter', 'MouseLeave', 'GotFocus', 'LostFocus']) {
+    assert.deepEqual(listBoxEvent(eventName).parameters, [], `ListBox.${eventName} 不应伪造额外参数`);
+  }
+  assert.deepEqual(listBoxEvent('MouseDown').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['横坐标', 'int'], ['纵坐标', 'int'], ['鼠标按钮', 'int']
+  ]);
+  assert.deepEqual(listBoxEvent('MouseMove').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['横坐标', 'int'], ['纵坐标', 'int']
+  ]);
+  assert.deepEqual(listBoxEvent('MouseWheel').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['横坐标', 'int'], ['纵坐标', 'int'], ['滚轮增量', 'int']
+  ]);
+  assert.deepEqual(tableEvent('MouseDown').parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [
+    ['横坐标', 'int'], ['纵坐标', 'int'], ['鼠标按钮', 'int']
+  ]);
+  const virtualRowDataBinding = manifest.bindings.commands.find((binding: { command: string }) => binding.command === 'NE_设置表格虚拟行数据');
+  assert.deepEqual(virtualRowDataBinding.parameters.map((parameter: { name: string; type: string }) => [parameter.name, parameter.type]), [['行数据', 'wideString']]);
   assert.equal(tabsContribution.previewType, 'TabControl');
   assert.equal(tabsContribution.isContainer, true);
   assert.deepEqual(tabsContribution.layout, {
@@ -3338,7 +3390,14 @@ test('generated new_emoji bridge completions match binding parameter counts', as
           name: '表格1', content: '表格', x: 20, y: 80, width: 420, height: 220,
           fontSize: 14, background: '#FF202020', foreground: '#FFFFFFFF', isEnabled: true, visibility: 'Visible',
           properties: { ...tableContribution.defaultProps, tableColumnAligns: 'col=0\theader=center\tcell=right' },
-          events: {}
+          events: {
+            CellClicked: '_表格1_单元格点击',
+            CellAction: '_表格1_单元格动作',
+            CellEdit: '_表格1_单元格编辑',
+            ContextMenu: '_表格1_表格右键菜单',
+            VirtualRow: '_表格1_虚拟行数据源',
+            MouseDown: '_表格1_鼠标按下'
+          }
         },
         {
           id: 'tabs', type: tabsContribution.previewType, designerType: tabsContribution.namespacedType,
@@ -3369,13 +3428,51 @@ test('generated new_emoji bridge completions match binding parameter counts', as
     }]
   }, {
     enabledModules: [installedModule],
-    lingCppSourceCode: '包 测试\n类 MainWindow : 窗口\n公开\n  事件 _按钮1_被单击()\n    信息框("按钮", 64, "事件触发")\n    调试输出("点击")\n  结束\n  事件 按钮1_鼠标进入()\n    调试输出("进入")\n  结束\n结束类'
+    lingCppSourceCode: [
+      '包 测试',
+      '类 MainWindow : 窗口',
+      '公开',
+      '  事件 _按钮1_被单击()',
+      '    信息框("按钮", 64, "事件触发")',
+      '    调试输出("点击")',
+      '  结束',
+      '  事件 按钮1_鼠标进入()',
+      '    调试输出("进入")',
+      '  结束',
+      '  事件 _表格1_单元格点击(整数型 行号, 整数型 列号)',
+      '    调试输出(行号, 列号)',
+      '  结束',
+      '  事件 _表格1_单元格动作(整数型 行号, 整数型 列号, 整数型 动作, 整数型 值)',
+      '    调试输出(动作, 值)',
+      '  结束',
+      '  事件 _表格1_单元格编辑(整数型 行号, 整数型 列号, 整数型 动作, 文本型 文本)',
+      '    调试输出(文本)',
+      '  结束',
+      '  事件 _表格1_表格右键菜单(整数型 行号, 整数型 列号, 整数型 区域, 整数型 横坐标, 整数型 纵坐标)',
+      '    调试输出(区域, 横坐标, 纵坐标)',
+      '  结束',
+      '  事件 _表格1_虚拟行数据源(整数型 行号)',
+      '    NE_设置表格虚拟行数据("key=virtual\\tcells=虚拟行")',
+      '  结束',
+      '  事件 _表格1_鼠标按下(整数型 横坐标, 整数型 纵坐标, 整数型 鼠标按钮)',
+      '    调试输出(横坐标, 纵坐标, 鼠标按钮)',
+      '  结束',
+      '结束类'
+    ].join('\n')
   });
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')?.content || '';
   assert.match(cpp, /EU_SetButtonStateColors\(/u);
-  assert.match(cpp, /static void __stdcall LB_NE_Event_[^(]+\(int\)[\s\S]*信息框\(L"按钮", MB_OK \| MB_ICONINFORMATION, L"事件触发"\)/u);
+  assert.match(cpp, /static void __stdcall LB_NE_Event_[^(]+\(int lb_element_id\)[\s\S]*信息框\(L"按钮", MB_OK \| MB_ICONINFORMATION, L"事件触发"\)/u);
   assert.match(cpp, /EU_SetElementClickCallback\(g_newEmojiWindow, ne_element_1, LB_NE_Event_/u);
   assert.match(cpp, /EU_SetElementMouseCallback\(/u);
+  assert.match(cpp, /std::printf\("\[调试输出\] %s\\n", utf8\.data\(\)\);/u);
+  assert.match(cpp, /std::fflush\(stdout\);/u);
+  assert.match(cpp, /int 行号 = lb_row;\s+int 列号 = lb_col;/u);
+  assert.match(cpp, /std::wstring 文本 = LB_NE_FromUtf8\(lb_utf8, lb_utf8_length\);/u);
+  assert.match(cpp, /int 横坐标 = lb_x;\s+int 纵坐标 = lb_y;\s+int 鼠标按钮 = lb_data;/u);
+  assert.match(cpp, /NE_清空表格虚拟行数据\(\);[\s\S]*NE_设置表格虚拟行数据\(L"key=virtual\\tcells=虚拟行"\);/u);
+  assert.match(cpp, /lb_cache_pending = true;[\s\S]*std::memcpy\(lb_buffer, lb_cached_utf8\.data\(\)/u);
+  assert.match(cpp, /EU_SetTableVirtualRowProvider\(g_newEmojiWindow, ne_element_2, LB_NE_Event_/u);
   assert.match(cpp, /EU_SetTableColumnAlign\(g_newEmojiWindow/u);
   assert.match(cpp, /LB_NE_ToUtf8\(L"概览\|设置"\)/u);
   assert.match(cpp, /LB_NE_ToUtf8\(L"概览\\toverview\\t \|设置\\tsettings\\t "\)/u);

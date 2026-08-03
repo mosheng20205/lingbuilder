@@ -1686,8 +1686,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     [moduleContext]
   );
   const beginnerDesignerControlCompletionCatalog = useMemo(
-    () => getLingCppDesignerControlCompletions(normalizedSourceCode, designerProject),
-    [designerProject, normalizedSourceCode]
+    () => getLingCppDesignerControlCompletions(normalizedSourceCode, designerProject, moduleContext),
+    [designerProject, moduleContext, normalizedSourceCode]
   );
   const beginnerDesignerControlCompletions = useMemo(
     () => beginnerDesignerControlCompletionCatalog.map(item => {

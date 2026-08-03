@@ -1,5 +1,13 @@
 # LingBuilder Electron
 
+> 2026-08-03：修复 NewEmoji 原生事件已经触发、IDE 调试控制台却没有输出的问题。NewEmoji 生成器现在与普通 Win32 一致，把 `调试输出`同时写入 `OutputDebugStringW` 和带 `[调试输出] `前缀的 UTF-8 `stdout` 并立即刷新，`ManagedProcessService` 可实时写入 `run.log`；验证项目同时补回 `表格06.MouseEnter` 绑定。
+
+> 2026-08-03：修复 NewEmoji Table 在 IDE 内生成事件后仍显示未绑定、事件签名缺少原生参数的问题。设计器现在等待模块授权并同步提交绑定后再打开代码；模块事件 `parameters/starterStatements` 同源驱动 Monaco、新手编辑器、语言诊断和旧零参数签名迁移。C++ 回调传入表格与鼠标真实参数，VirtualRow 通过 `NE_设置表格虚拟行数据` 完成 UTF-8 两阶段 buffer 返回。专项覆盖位于 `tests/windowDesigner.test.ts`、`tests/designerProfessionalUi.test.tsx`、`tests/lingcpp.test.ts` 和 `tests/modules.test.ts`。
+
+> 2026-08-03：NewEmoji ListBox 的六个专属事件已补齐参数契约，并在生成器中映射选中键、项目索引、编辑字段/动作、重排索引和右键坐标；列表框的鼠标/焦点通用事件继续按真实 ABI 保留或省略参数。专项回归位于 `tests/windowDesigner.test.ts` 和 `tests/modules.test.ts`。
+
+> 2026-08-03：NewEmoji Tabs 的 `SelectionChanged` 已补齐三项整数参数（选中索引、项目数量、动作），并按 `EU_SetTabsChangeCallback` 的 `ElementValueCallback` ABI 生成 `lb_value/lb_range_start/lb_range_end`；带 FBro 页面时也生成同一组处理器局部变量。模块清单、IDE 补全/诊断、普通 C++ 生成和回归测试已同步，专项覆盖位于 `tests/lingcpp.test.ts` 与 `tests/windowDesigner.test.ts`。
+
 > 2026-08-03：修复 new_emoji Table 结构化编辑器把对象行直接传给 Ex setter 后在原生窗口显示 JSON 的问题。`dataGridColumns/dataGridRows` 现在统一通过 `EU_SetTableData` 的基础列/行 ABI 生成；明确为字符串列表的旧 `tableColumnsEx/tableRowsEx` 仍保持兼容调用。回归测试位于 `tests/dataGrid.test.ts`。
 
 > 2026-08-03：`lingbuilder.net.http-client@2.0.0` 已完成 74 条受管 API 的原生闭环。WinHTTP runtime 统一提供客户端/请求生命周期、异步 UI 回调、请求头、文本/JSON/字节集/文件上传下载、代理/凭据、TLS 验证与 SHA-256 pin、Cookie、自动解压、重定向、超时、资源上限和响应快照；普通 Win32 使用 `WM_LINGBUILDER_HTTP_CLIENT_EVENT`，new_emoji 使用独立消息窗口，旧 `HTTP客户端_请求/GET/POST` 等入口保持兼容。正式说明见 `docs/modules/http-client/README.md`，生成回归为 `tests/httpClientRuntime.test.ts`，真实原生验证为 `npm run smoke:http-client-native`，模块示例可用 `npm run module:demos -- --module lingbuilder.net.http-client --skip-export` 重新生成。

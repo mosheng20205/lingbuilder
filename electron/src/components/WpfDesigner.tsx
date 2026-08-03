@@ -164,6 +164,8 @@ import {
 } from '../services/windowDesigner/controlToolboxModel';
 import { migrateDesignerBackend } from '../services/windowDesigner/designerControlRegistry';
 import type { InstalledModule, ModuleDesignerControlContribution } from '../services/modules/types';
+import { describeModuleDesignerEventParameters } from '../services/modules/moduleDesignerEventService';
+import type { OpenControlEventCodeDetail } from '../services/windowDesigner/controlEventCodeService';
 import {
   getControlTabSlot,
   getSelectedTabPage,
@@ -198,18 +200,6 @@ interface DesignerContextMenuState {
   menuId: string;
   controlId?: string;
   resourceId?: string;
-}
-
-interface OpenControlEventCodeDetail {
-  controlId: string;
-  controlName: string;
-  controlContent: string;
-  controlType: LingControlType;
-  eventName: string;
-  handlerName: string;
-  windowFileName: string;
-  windowClassName: string;
-  windowTitle: string;
 }
 
 type EdgeControlPreviewState = { status: 'idle' | 'preparing' | 'compiling' | 'running' | 'failed' | 'stopping'; message?: string; pid?: number };
@@ -1111,6 +1101,33 @@ export default function WpfDesigner({
     }));
   };
 
+  const commitControlFieldsImmediately = (controlId: string, updatedFields: Partial<LingControl>) => {
+    const targetWindowId = activeWindowIdRef.current;
+    const currentProject = currentProjectRef.current;
+    const nextWindows = currentProject.windows.map(window => window.id === targetWindowId
+      ? {
+          ...window,
+          controls: reconcileRebarBands(updateControlWithDescendants(window.controls, controlId, updatedFields))
+        }
+      : window);
+    const nextProject = { ...currentProject, windows: nextWindows };
+    const nextState: PersistedWindowDesignerState = {
+      project: nextProject,
+      activeWindowId: targetWindowId,
+      selectedControlId: controlId
+    };
+
+    currentProjectRef.current = nextProject;
+    suppressNextProjectPublishRef.current = true;
+    setProject(nextProject);
+    publishingDesignerStateRef.current = true;
+    try {
+      saveWindowDesignerState(nextState);
+    } finally {
+      publishingDesignerStateRef.current = false;
+    }
+  };
+
   const scheduleControlInteractionPreview = useCallback((preview: DesignerControlInteractionPreview) => {
     controlInteractionPreviewRef.current = preview;
     pendingControlInteractionPreviewRef.current = preview;
@@ -1823,7 +1840,7 @@ export default function WpfDesigner({
     });
   };
 
-  const handleControlDoubleClick = (event: React.MouseEvent, control: LingControl) => {
+  const handleControlDoubleClick = async (event: React.MouseEvent, control: LingControl) => {
     event.preventDefault();
     event.stopPropagation();
 
@@ -1833,6 +1850,16 @@ export default function WpfDesigner({
       ? newEmojiDesignerControls.find(item => (item.namespacedType || `${NEW_EMOJI_MODULE_ID}/${item.type}`) === control.designerType)
       : undefined;
     const { eventName, handlerName, menuEventKey } = getPrimaryDesignerEventBinding(control, activeWindow, moduleControl);
+    const moduleEvent = moduleControl?.events?.find(item => item.name === eventName || (item.aliases || []).includes(eventName));
+
+    if (moduleControl) {
+      try {
+        await ensureDesignerModuleAccess();
+      } catch (error) {
+        addLog(`> 【模块授权】${error instanceof Error ? error.message : String(error)}`);
+        return;
+      }
+    }
 
     setSelectedControlId(control.id);
     setActiveInspectorTab('events');
@@ -1848,21 +1875,11 @@ export default function WpfDesigner({
         menuEvents: { ...(window.menuEvents || {}), [menuEventKey]: handlerName }
       }));
     } else {
-      updateActiveWindow(window => {
-        let changed = false;
-        const controls = window.controls.map(item => {
-          if (item.id !== control.id) return item;
-          if (item.events?.[eventName] === handlerName) return item;
-          changed = true;
-          return {
-            ...item,
-            events: {
-              ...(item.events || {}),
-              [eventName]: handlerName
-            }
-          };
-        });
-        return changed ? { ...window, controls } : window;
+      commitControlFieldsImmediately(control.id, {
+        events: {
+          ...(control.events || {}),
+          [eventName]: handlerName
+        }
       });
     }
 
@@ -1873,6 +1890,8 @@ export default function WpfDesigner({
       controlType: control.type,
       eventName,
       handlerName,
+      eventParameters: moduleEvent ? [...(moduleEvent.parameters || [])] : undefined,
+      eventStarterStatements: moduleEvent?.starterStatements ? [...moduleEvent.starterStatements] : undefined,
       windowFileName: activeWindow.fileName,
       windowClassName: activeWindow.className,
       windowTitle: activeWindow.title
@@ -3086,11 +3105,15 @@ export default function WpfDesigner({
                   moduleControl={selectedModuleControl}
                   windowModel={activeWindow}
                   isDarkMode={isDarkMode}
-                  onChange={fields => {
-                    if (!selectedModuleControl) { updateSelectedControl(fields); return; }
-                    void ensureDesignerModuleAccess()
-                      .then(() => updateSelectedControl(fields))
-                      .catch(error => addLog(`> 【模块授权】${error instanceof Error ? error.message : String(error)}`));
+                  onChange={async fields => {
+                    try {
+                      if (selectedModuleControl) await ensureDesignerModuleAccess();
+                      if (!selectedControlId) return;
+                      commitControlFieldsImmediately(selectedControlId, fields);
+                    } catch (error) {
+                      addLog(`> 【模块授权】${error instanceof Error ? error.message : String(error)}`);
+                      throw error;
+                    }
                   }}
                 />
               )
@@ -5622,8 +5645,9 @@ function ControlEvents({
   moduleControl?: ModuleDesignerControlContribution;
   windowModel: LingWindowModel;
   isDarkMode: boolean;
-  onChange: (fields: Partial<LingControl>) => void;
+  onChange: (fields: Partial<LingControl>) => void | Promise<void>;
 }) {
+  const [openingEventName, setOpeningEventName] = useState<string | null>(null);
   if (!control) {
     return (
       <div className={`h-40 flex flex-col items-center justify-center text-center text-xs p-4 border border-dashed rounded ${
@@ -5635,29 +5659,46 @@ function ControlEvents({
     );
   }
 
-  const eventInfos = moduleControl
+  const eventInfos: Array<{
+    name: string;
+    label: string;
+    desc: string;
+    handlerPattern?: string;
+    handlerSuffix?: string;
+    parameters?: NonNullable<ModuleDesignerControlContribution['events']>[number]['parameters'];
+    starterStatements?: string[];
+  }> = moduleControl
     ? (moduleControl.events || []).filter(eventInfo => Boolean(eventInfo.runtimeCommand)).map(eventInfo => ({
         name: eventInfo.name,
         label: `${eventInfo.label} (${eventInfo.name})`,
         desc: eventInfo.parameters?.length
-          ? `事件参数：${eventInfo.parameters.map(parameter => `${parameter.name}:${parameter.type}`).join('、')}`
+          ? `事件参数：${describeModuleDesignerEventParameters(eventInfo.parameters)}`
           : '由 new_emoji 原生运行时触发。',
         handlerPattern: eventInfo.handlerPattern,
-        handlerSuffix: eventInfo.label
+        handlerSuffix: eventInfo.label,
+        parameters: eventInfo.parameters,
+        starterStatements: eventInfo.starterStatements
       }))
     : getEventsForType(control.type);
 
-  const openEventCode = (eventName: string, handlerPattern?: string) => {
+  const openEventCode = async (eventName: string, handlerPattern?: string) => {
     const eventInfo = eventInfos.find(item => item.name === eventName);
     const suggestedName = handlerPattern?.replace('{controlName}', control.name)
       || getEplEventHandlerName(control.name, eventInfo?.handlerSuffix || eventName);
     const handlerName = control.events?.[eventName]?.trim() || suggestedName;
-    onChange({
-      events: {
-        ...(control.events || {}),
-        [eventName]: handlerName
-      }
-    });
+    setOpeningEventName(eventName);
+    try {
+      await onChange({
+        events: {
+          ...(control.events || {}),
+          [eventName]: handlerName
+        }
+      });
+    } catch {
+      setOpeningEventName(null);
+      return;
+    }
+    setOpeningEventName(null);
 
     const detail: OpenControlEventCodeDetail = {
       controlId: control.id,
@@ -5666,6 +5707,8 @@ function ControlEvents({
       controlType: control.type,
       eventName,
       handlerName,
+      eventParameters: moduleControl ? [...(eventInfo?.parameters || [])] : undefined,
+      eventStarterStatements: eventInfo?.starterStatements ? [...eventInfo.starterStatements] : undefined,
       windowFileName: windowModel.fileName,
       windowClassName: windowModel.className,
       windowTitle: windowModel.title
@@ -5693,7 +5736,8 @@ function ControlEvents({
           <button
             key={eventInfo.name}
             type="button"
-            onClick={() => openEventCode(eventInfo.name, 'handlerPattern' in eventInfo ? String(eventInfo.handlerPattern || '') : undefined)}
+            onClick={() => void openEventCode(eventInfo.name, eventInfo.handlerPattern)}
+            disabled={openingEventName !== null}
             aria-label={`${isBound ? '打开' : '创建并打开'}${eventInfo.label}事件处理器 ${handlerName}`}
             className={`group w-full cursor-pointer rounded border p-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/70 ${
               isDarkMode
@@ -5721,7 +5765,7 @@ function ControlEvents({
               }`}>{handlerName}</span>
               <span className={`shrink-0 text-[9px] font-semibold transition-colors ${
                 isDarkMode ? 'text-slate-500 group-hover:text-amber-400' : 'text-slate-500 group-hover:text-amber-700'
-              }`}>{isBound ? '打开代码' : '生成并打开'}</span>
+              }`}>{openingEventName === eventInfo.name ? '正在打开' : isBound ? '打开代码' : '生成并打开'}</span>
             </div>
           </button>
         );

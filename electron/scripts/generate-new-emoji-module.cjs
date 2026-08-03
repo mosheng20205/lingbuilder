@@ -230,6 +230,7 @@ function bridgeCommands() {
     ['NE_取最近上传动作', 'NE_取最近上传动作()', '在上传操作事件中返回动作编号。', '整数型'],
     ['NE_取最近上传文件索引', 'NE_取最近上传文件索引()', '在上传操作事件中返回文件索引。', '整数型'],
     ['NE_取最近上传进度值', 'NE_取最近上传进度值()', '在上传操作事件中返回进度或动作附加值。', '整数型'],
+    ['NE_设置表格虚拟行数据', 'NE_设置表格虚拟行数据(行数据)', '在 Table 的 VirtualRow 同步事件中设置本次返回的 UTF-8 高级行协议文本。', '空'],
     ['NE_设置窗口标题', 'NE_设置窗口标题(窗口句柄, 标题)', '设置 new_emoji 窗口标题。', '空']
   ].map(([name, signature, description, returnType]) => ({
     name,
@@ -411,7 +412,10 @@ function newEmojiDesignerControls(catalog) {
         label: event.label,
         group: event.group,
         handlerPattern: event.handlerPattern || `_{controlName}_${event.label}`,
-        parameters: event.parameters || [],
+        parameters: NEW_EMOJI_EVENT_PARAMETERS[`${component.id}.${event.name}`] || event.parameters || [],
+        ...(NEW_EMOJI_EVENT_STARTERS[`${component.id}.${event.name}`]
+          ? { starterStatements: NEW_EMOJI_EVENT_STARTERS[`${component.id}.${event.name}`] }
+          : {}),
         ...(bindingByEvent.has(event.name) ? { runtimeCommand: bindingByEvent.get(event.name) } : {})
       })),
       runtime: {
@@ -787,17 +791,98 @@ function snakeToCamel(value) {
   return value.replace(/_([a-z])/gu, (_match, letter) => letter.toUpperCase());
 }
 
+const eventParameter = (name, type, description) => ({ name, type, description });
+
 const COMMON_DESIGNER_EVENTS = [
   { name: 'MouseEnter', label: '鼠标进入', group: '鼠标' },
   { name: 'MouseLeave', label: '鼠标离开', group: '鼠标' },
-  { name: 'MouseDown', label: '鼠标按下', group: '鼠标' },
-  { name: 'MouseUp', label: '鼠标抬起', group: '鼠标' },
-  { name: 'MouseDoubleClick', label: '鼠标双击', group: '鼠标' },
-  { name: 'MouseMove', label: '鼠标移动', group: '鼠标' },
-  { name: 'MouseWheel', label: '鼠标滚轮', group: '鼠标' },
+  { name: 'MouseDown', label: '鼠标按下', group: '鼠标', parameters: [
+    eventParameter('横坐标', 'int', '相对控件内容区的 X 坐标。'), eventParameter('纵坐标', 'int', '相对控件内容区的 Y 坐标。'),
+    eventParameter('鼠标按钮', 'int', '1 表示左键，2 表示右键。')
+  ] },
+  { name: 'MouseUp', label: '鼠标抬起', group: '鼠标', parameters: [
+    eventParameter('横坐标', 'int', '相对控件内容区的 X 坐标。'), eventParameter('纵坐标', 'int', '相对控件内容区的 Y 坐标。'),
+    eventParameter('鼠标按钮', 'int', '1 表示左键，2 表示右键。')
+  ] },
+  { name: 'MouseDoubleClick', label: '鼠标双击', group: '鼠标', parameters: [
+    eventParameter('横坐标', 'int', '相对控件内容区的 X 坐标。'), eventParameter('纵坐标', 'int', '相对控件内容区的 Y 坐标。'),
+    eventParameter('鼠标按钮', 'int', '当前为 1，表示左键。')
+  ] },
+  { name: 'MouseMove', label: '鼠标移动', group: '鼠标', parameters: [
+    eventParameter('横坐标', 'int', '相对控件内容区的 X 坐标。'), eventParameter('纵坐标', 'int', '相对控件内容区的 Y 坐标。')
+  ] },
+  { name: 'MouseWheel', label: '鼠标滚轮', group: '鼠标', parameters: [
+    eventParameter('横坐标', 'int', '相对控件内容区的 X 坐标。'), eventParameter('纵坐标', 'int', '相对控件内容区的 Y 坐标。'),
+    eventParameter('滚轮增量', 'int', 'Win32 滚轮增量，正数向上、负数向下。')
+  ] },
   { name: 'GotFocus', label: '获得焦点', group: '焦点' },
   { name: 'LostFocus', label: '失去焦点', group: '焦点' }
 ];
+
+const NEW_EMOJI_EVENT_PARAMETERS = {
+  'Table.CellClicked': [
+    eventParameter('行号', 'int', '从 0 开始的行索引。'),
+    eventParameter('列号', 'int', '从 0 开始的列索引。')
+  ],
+  'Table.CellAction': [
+    eventParameter('行号', 'int', '从 0 开始的行索引。'),
+    eventParameter('列号', 'int', '从 0 开始的列索引。'),
+    eventParameter('动作', 'int', '单元格动作编号。'),
+    eventParameter('值', 'int', '动作附加值。')
+  ],
+  'Table.CellEdit': [
+    eventParameter('行号', 'int', '从 0 开始的行索引。'),
+    eventParameter('列号', 'int', '从 0 开始的列索引。'),
+    eventParameter('动作', 'int', '1 开始、2 提交、3 取消。'),
+    eventParameter('文本', 'wideString', '按 UTF-8 解码后的单元格文本。')
+  ],
+  'Table.ContextMenu': [
+    eventParameter('行号', 'int', '从 0 开始的行索引，非数据区可能为 -1。'),
+    eventParameter('列号', 'int', '从 0 开始的列索引，非数据区可能为 -1。'),
+    eventParameter('区域', 'int', '1 单元格、2 表头、3 空白、4 滚动条或非数据区。'),
+    eventParameter('横坐标', 'int', '右键位置的 X 坐标。'),
+    eventParameter('纵坐标', 'int', '右键位置的 Y 坐标。')
+  ],
+  'Table.VirtualRow': [eventParameter('行号', 'int', '当前请求的虚拟行索引，从 0 开始。')],
+  'Tabs.SelectionChanged': [
+    eventParameter('选中索引', 'int', '当前激活标签页的索引，从 0 开始；没有项目时为 -1。'),
+    eventParameter('项目数量', 'int', '当前标签页项目总数。'),
+    eventParameter('动作', 'int', '动作编号：1 代码设置，2 鼠标，3 键盘，4 关闭，5 新增，6 滚动。')
+  ],
+  'ListBox.SelectionChanged': [
+    eventParameter('选中键列表', 'wideString', '当前选中项目的 key 列表，按 new_emoji 的 UTF-8 文本协议返回。')
+  ],
+  'ListBox.ItemClicked': [
+    eventParameter('项目索引', 'int', '被点击项目的索引，从 0 开始。'),
+    eventParameter('起始位置', 'int', '通用值范围起点；列表框项目点击当前为 0。'),
+    eventParameter('结束位置', 'int', '通用值范围终点；列表框项目点击当前为 0。')
+  ],
+  'ListBox.ItemDoubleClicked': [
+    eventParameter('项目索引', 'int', '被双击或通过键盘确认的项目索引，从 0 开始。'),
+    eventParameter('触发方式', 'int', '0 表示鼠标双击，1 表示键盘 Enter。'),
+    eventParameter('附加值', 'int', '回调保留附加值；当前列表框双击为 0。')
+  ],
+  'ListBox.Edit': [
+    eventParameter('项目索引', 'int', '正在编辑的项目索引，从 0 开始。'),
+    eventParameter('编辑字段', 'int', '0 文本、1 描述、2 标签、3 value。'),
+    eventParameter('动作', 'int', '1 开始、2 提交、3 取消。'),
+    eventParameter('文本', 'wideString', '编辑动作对应的 UTF-8 文本。')
+  ],
+  'ListBox.Reorder': [
+    eventParameter('原索引', 'int', '拖拽前项目索引，从 0 开始。'),
+    eventParameter('新索引', 'int', '拖拽后项目索引，从 0 开始。'),
+    eventParameter('数量', 'int', '本次重排的项目数量。')
+  ],
+  'ListBox.ContextMenu': [
+    eventParameter('项目索引', 'int', '触发右键菜单的项目索引，从 0 开始。'),
+    eventParameter('横坐标', 'int', '右键位置相对控件内容区的 X 坐标。'),
+    eventParameter('纵坐标', 'int', '右键位置相对控件内容区的 Y 坐标。')
+  ]
+};
+
+const NEW_EMOJI_EVENT_STARTERS = {
+  'Table.VirtualRow': ['NE_设置表格虚拟行数据("")']
+};
 
 const COMMON_EVENT_BINDINGS = {
   MouseEnter: ['EU_SetElementMouseCallback', 'ElementMouseCallback', 1],
@@ -939,7 +1024,7 @@ function parseBindingParameters(signature) {
 }
 
 function inferBindingParameterType(name) {
-  if (/标题|文本|表情|内容|图片源|项目|^提示$|初始文件|文件类型/u.test(name)) return 'wideString';
+  if (/标题|文本|表情|内容|图片源|项目|^提示$|初始文件|文件类型|行数据/u.test(name)) return 'wideString';
   if (/句柄|hwnd|HWND/u.test(name)) return 'handle';
   if (/是否|允许|自动|显示|visible/u.test(name)) return 'bool';
   if (/bytes|len|指针|callback/u.test(name)) return 'raw';
@@ -990,6 +1075,9 @@ const wchar_t* NE_取最近上传选择文件();
 int NE_取最近上传动作();
 int NE_取最近上传文件索引();
 int NE_取最近上传进度值();
+void NE_设置表格虚拟行数据(const wchar_t* rowData);
+void NE_清空表格虚拟行数据();
+const wchar_t* NE_取表格虚拟行数据();
 void NE_设置元素状态(HWND hwnd, int elementId, int visible, int enabled, unsigned int background, unsigned int foreground);
 void NE_设置元素焦点(HWND hwnd, int elementId);
 void NE_设置元素字体(HWND hwnd, int elementId, const wchar_t* fontFamily, int fontSize);
@@ -1070,6 +1158,7 @@ static std::wstring g_neLastUploadFiles;
 static int g_neLastUploadAction = 0;
 static int g_neLastUploadIndex = -1;
 static int g_neLastUploadValue = 0;
+static thread_local std::wstring g_neTableVirtualRowData;
 
 static std::wstring NE_FromUtf8(const unsigned char* bytes, int length) {
     if (!bytes || length <= 0) return {};
@@ -1233,6 +1322,9 @@ const wchar_t* NE_取最近上传选择文件() { return g_neLastUploadFiles.c_s
 int NE_取最近上传动作() { return g_neLastUploadAction; }
 int NE_取最近上传文件索引() { return g_neLastUploadIndex; }
 int NE_取最近上传进度值() { return g_neLastUploadValue; }
+void NE_设置表格虚拟行数据(const wchar_t* rowData) { g_neTableVirtualRowData = rowData ? rowData : L""; }
+void NE_清空表格虚拟行数据() { g_neTableVirtualRowData.clear(); }
+const wchar_t* NE_取表格虚拟行数据() { return g_neTableVirtualRowData.c_str(); }
 
 void NE_设置元素状态(HWND hwnd, int elementId, int visible, int enabled, unsigned int background, unsigned int foreground) {
     if (elementId <= 0) return;
@@ -1272,6 +1364,11 @@ function moduleReadme(exportCount) {
 - 当前 .lib 导入库需要 MSVC/Visual Studio Build Tools 链接
 
 推荐在 .lcpp 中优先使用 NE_ 前缀的中文桥接命令；NE_EU_* 命令是底层高级入口，参数仍遵循 new_emoji DLL 的 UTF-8 字节指针和长度规则。Tabs 的“显示标签页表头”属性对应 EU_SetTabsHeaderVisible，关闭后内容区占满标签页区域。
+
+Table 事件会按原生 ABI 自动生成行号、列号、动作、文本、坐标等强类型参数。VirtualRow 处理器接收行号，并通过 NE_设置表格虚拟行数据("高级行协议") 返回本次虚拟行；生成器负责 UTF-8 转换和两阶段缓冲区查询。
+
+ ListBox 的 SelectionChanged、ItemClicked、ItemDoubleClicked、Edit、Reorder、ContextMenu 事件会按 new_emoji 回调 ABI 自动生成选中键、项目索引、编辑字段/动作、重排索引和右键坐标等强类型参数；MouseDown、MouseUp、MouseDoubleClick、MouseMove、MouseWheel 同样保留坐标/按钮/滚轮参数，进入、离开和焦点事件无额外参数。
+ Tabs 的 SelectionChanged 事件会自动生成选中索引、项目数量和动作三个整数参数；动作编号 1/2/3/4/5/6 分别表示代码设置、鼠标、键盘、关闭、新增和滚动，并按 EU_SetTabsChangeCallback 的 ElementValueCallback ABI 映射。
 `;
 }
 

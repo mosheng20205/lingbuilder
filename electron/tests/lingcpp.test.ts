@@ -977,6 +977,272 @@ test('LingCpp 新手控件补全覆盖注册表中的全部控件事件和可用
   assert.ok(labels.has(`${colorPickerName}.取颜色`));
 });
 
+test('模块设计器事件补全和诊断复用强类型参数契约', () => {
+  const tableModule: InstalledModule = {
+    isInstalled: true,
+    isEnabledForProject: true,
+    installPath: 'C:/modules/com.example.table',
+    diagnostics: [],
+    manifest: {
+      schemaVersion: 2,
+      id: 'com.example.table',
+      name: '表格事件测试模块',
+      version: '1.0.0',
+      category: '界面',
+      description: '验证模块设计器事件参数契约。',
+      contributes: {
+        designerControls: [{
+          type: 'Table',
+          namespacedType: 'com.example.table/Table',
+          previewType: 'Grid',
+          label: '表格',
+          defaultProps: {},
+          events: [{
+            name: 'CellEdit',
+            label: '单元格编辑',
+            handlerPattern: '_{controlName}_单元格编辑',
+            parameters: [
+              { name: '行号', type: 'int' },
+              { name: '列号', type: 'int' },
+              { name: '动作', type: 'int' },
+              { name: '文本', type: 'utf8String' }
+            ]
+          }, {
+            name: 'VirtualRow',
+            label: '虚拟行数据源',
+            handlerPattern: '_{controlName}_虚拟行数据源',
+            parameters: [{ name: '行号', type: 'int' }],
+            starterStatements: ['NE_设置表格虚拟行数据("")']
+          }]
+        }]
+      }
+    }
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'module-table-events',
+    name: '模块表格事件',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口', width: 640, height: 480,
+      background: '#ffffff', description: '', controls: [{
+        id: 'table', type: 'Grid', designerType: 'com.example.table/Table', name: '表格1', content: '',
+        width: 480, height: 260, x: 20, y: 20, fontSize: 12, background: '#ffffff', foreground: '#000000',
+        isEnabled: true, visibility: 'Visible',
+        events: { CellEdit: '_表格1_单元格编辑', VirtualRow: '_表格1_虚拟行数据源' }
+      }]
+    }]
+  };
+  const moduleContext = { enabledModules: [tableModule], availableModules: [tableModule] };
+  const source = '类 MainWindow : 公开 窗体\n公开:\n结束类';
+  const completions = getLingCppBilingualCompletions(
+    { source, line: 2, column: 5, triggerText: 'CellEdit' },
+    project,
+    moduleContext
+  );
+  const cellEdit = completions.find(item => item.label === '表格1 单元格编辑事件');
+  assert.equal(
+    cellEdit?.insertText,
+    '事件 _表格1_单元格编辑(整数型 行号，整数型 列号，整数型 动作，文本型 文本)\n    $0'
+  );
+  const virtualRow = getLingCppBilingualCompletions(
+    { source, line: 2, column: 5, triggerText: 'VirtualRow' },
+    project,
+    moduleContext
+  ).find(item => item.label === '表格1 虚拟行数据源事件');
+  assert.equal(
+    virtualRow?.insertText,
+    '事件 _表格1_虚拟行数据源(整数型 行号)\n    NE_设置表格虚拟行数据("")\n    $0'
+  );
+  const beginnerCompletion = getLingCppDesignerControlCompletions(source, project, moduleContext)
+    .find(item => item.label === '表格1.单元格编辑事件');
+  assert.equal(beginnerCompletion?.insertText, '_表格1_单元格编辑($1, $2, $3, $4)');
+
+  const validSource = [
+    '类 MainWindow : 公开 窗体',
+    '  事件 _表格1_单元格编辑(整数型 行号, 整数型 列号, 整数型 动作, 文本型 文本)',
+    '  结束',
+    '结束类'
+  ].join('\n');
+  const legacySource = validSource.replace('(整数型 行号, 整数型 列号, 整数型 动作, 文本型 文本)', '()');
+  const invalidSource = validSource.replace('(整数型 行号, 整数型 列号, 整数型 动作, 文本型 文本)', '(整数型 行号, 文本型 列号)');
+  const moduleEventDiagnostics = (value: string) => getLingCppSemanticDiagnostics(
+    value,
+    project,
+    'src/MainWindow.lcpp',
+    moduleContext
+  ).filter(item => item.id.includes('module-designer-event-parameters'));
+  assert.deepEqual(moduleEventDiagnostics(validSource), []);
+  assert.deepEqual(moduleEventDiagnostics(legacySource), []);
+  assert.equal(moduleEventDiagnostics(invalidSource).length, 1);
+  assert.match(moduleEventDiagnostics(invalidSource)[0]?.message || '', /单元格编辑事件参数/u);
+});
+
+test('ListBox 模块事件补全为所有专属回调生成参数签名', () => {
+  const listBoxEvents = [
+    { name: 'SelectionChanged', label: '选择变化', handlerPattern: '_{controlName}_选择变化', parameters: [{ name: '选中键列表', type: 'wideString' }] },
+    { name: 'ItemClicked', label: '项目点击', handlerPattern: '_{controlName}_项目点击', parameters: [{ name: '项目索引', type: 'int' }, { name: '起始位置', type: 'int' }, { name: '结束位置', type: 'int' }] },
+    { name: 'ItemDoubleClicked', label: '项目双击', handlerPattern: '_{controlName}_项目双击', parameters: [{ name: '项目索引', type: 'int' }, { name: '触发方式', type: 'int' }, { name: '附加值', type: 'int' }] },
+    { name: 'Edit', label: '项目编辑', handlerPattern: '_{controlName}_项目编辑', parameters: [{ name: '项目索引', type: 'int' }, { name: '编辑字段', type: 'int' }, { name: '动作', type: 'int' }, { name: '文本', type: 'wideString' }] },
+    { name: 'Reorder', label: '项目重排', handlerPattern: '_{controlName}_项目重排', parameters: [{ name: '原索引', type: 'int' }, { name: '新索引', type: 'int' }, { name: '数量', type: 'int' }] },
+    { name: 'ContextMenu', label: '项目右键菜单', handlerPattern: '_{controlName}_项目右键菜单', parameters: [{ name: '项目索引', type: 'int' }, { name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }] },
+    { name: 'MouseEnter', label: '鼠标进入', handlerPattern: '_{controlName}_鼠标进入', parameters: [] },
+    { name: 'MouseLeave', label: '鼠标离开', handlerPattern: '_{controlName}_鼠标离开', parameters: [] },
+    { name: 'MouseDown', label: '鼠标按下', handlerPattern: '_{controlName}_鼠标按下', parameters: [{ name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }, { name: '鼠标按钮', type: 'int' }] },
+    { name: 'MouseUp', label: '鼠标抬起', handlerPattern: '_{controlName}_鼠标抬起', parameters: [{ name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }, { name: '鼠标按钮', type: 'int' }] },
+    { name: 'MouseDoubleClick', label: '鼠标双击', handlerPattern: '_{controlName}_鼠标双击', parameters: [{ name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }, { name: '鼠标按钮', type: 'int' }] },
+    { name: 'MouseMove', label: '鼠标移动', handlerPattern: '_{controlName}_鼠标移动', parameters: [{ name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }] },
+    { name: 'MouseWheel', label: '鼠标滚轮', handlerPattern: '_{controlName}_鼠标滚轮', parameters: [{ name: '横坐标', type: 'int' }, { name: '纵坐标', type: 'int' }, { name: '滚轮增量', type: 'int' }] },
+    { name: 'GotFocus', label: '获得焦点', handlerPattern: '_{controlName}_获得焦点', parameters: [] },
+    { name: 'LostFocus', label: '失去焦点', handlerPattern: '_{controlName}_失去焦点', parameters: [] }
+  ] as any[];
+  const listBoxModule: InstalledModule = {
+    isInstalled: true,
+    isEnabledForProject: true,
+    installPath: 'C:/modules/com.example.listbox',
+    diagnostics: [],
+    manifest: {
+      schemaVersion: 2,
+      id: 'com.example.listbox',
+      name: '列表框事件测试模块',
+      version: '1.0.0',
+      category: '界面',
+      description: '验证列表框所有事件参数。',
+      contributes: {
+        designerControls: [{
+          type: 'ListBox',
+          namespacedType: 'com.example.listbox/ListBox',
+          previewType: 'ListBox',
+          label: '列表框',
+          defaultProps: {},
+          events: listBoxEvents
+        }]
+      }
+    }
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'module-listbox-events',
+    name: '模块列表框事件',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口', width: 640, height: 480,
+      background: '#ffffff', description: '', controls: [{
+        id: 'listbox', type: 'ListBox', designerType: 'com.example.listbox/ListBox', name: '列表框1', content: '',
+        width: 320, height: 240, x: 20, y: 20, fontSize: 12, background: '#ffffff', foreground: '#000000',
+        isEnabled: true, visibility: 'Visible', events: Object.fromEntries(listBoxEvents.map(event => [event.name, event.handlerPattern.replace('{controlName}', '列表框1')]))
+      }]
+    }]
+  };
+  const source = '类 MainWindow : 公开 窗体\n公开:\n结束类';
+  const moduleContext = { enabledModules: [listBoxModule], availableModules: [listBoxModule] };
+  for (const event of listBoxEvents) {
+    const handler = event.handlerPattern.replace('{controlName}', '列表框1');
+    const completion = getLingCppBilingualCompletions(
+      { source, line: 2, column: 5, triggerText: event.name },
+      project,
+      moduleContext
+    ).find(item => item.label === `列表框1 ${event.label}事件`);
+    const parameterText = event.parameters.map(parameter => `${parameter.type === 'wideString' ? '文本型' : '整数型'} ${parameter.name}`).join('，');
+    assert.equal(completion?.insertText, `事件 ${handler}(${parameterText})\n    $0`);
+    const beginner = getLingCppDesignerControlCompletions(source, project, moduleContext)
+      .find(item => item.label === `列表框1.${event.label}事件`);
+    assert.equal(beginner?.insertText, `${handler}(${event.parameters.map((_parameter, index) => `$${index + 1}`).join(', ')})`);
+  }
+  const invalidSource = [
+    '类 MainWindow : 公开 窗体',
+    '  事件 _列表框1_选择变化(整数型 选中键列表)',
+    '  结束',
+    '结束类'
+  ].join('\n');
+  const diagnostics = getLingCppSemanticDiagnostics(invalidSource, project, 'src/MainWindow.lcpp', moduleContext)
+    .filter(item => item.id.includes('module-designer-event-parameters'));
+  assert.equal(diagnostics.length, 1);
+  assert.match(diagnostics[0]?.message || '', /选择变化事件参数/u);
+});
+
+test('NewEmoji Tabs 选择变化事件自动补齐索引、数量和动作参数', () => {
+  const tabsEvent = {
+    name: 'SelectionChanged',
+    label: '选择变化',
+    handlerPattern: '_{controlName}_选择变化',
+    parameters: [
+      { name: '选中索引', type: 'int' },
+      { name: '项目数量', type: 'int' },
+      { name: '动作', type: 'int' }
+    ]
+  } as any;
+  const tabsModule: InstalledModule = {
+    isInstalled: true,
+    isEnabledForProject: true,
+    installPath: 'C:/modules/com.example.tabs',
+    diagnostics: [],
+    manifest: {
+      schemaVersion: 2,
+      id: 'com.example.tabs',
+      name: '标签页事件测试模块',
+      version: '1.0.0',
+      category: '界面',
+      description: '验证标签页事件参数。',
+      contributes: {
+        designerControls: [{
+          type: 'Tabs',
+          namespacedType: 'com.example.tabs/Tabs',
+          previewType: 'TabControl',
+          label: '标签页',
+          defaultProps: {},
+          events: [tabsEvent]
+        }]
+      }
+    }
+  };
+  const project: LingWindowProject = {
+    schemaVersion: 2,
+    id: 'module-tabs-events',
+    name: '标签页事件',
+    windows: [{
+      id: 'main', fileName: 'MainWindow.xml', className: 'MainWindow', title: '主窗口', width: 640, height: 480,
+      background: '#ffffff', description: '', controls: [{
+        id: 'tabs', type: 'TabControl', designerType: 'com.example.tabs/Tabs', name: '标签页1', content: '',
+        width: 480, height: 260, x: 20, y: 20, fontSize: 12, background: '#ffffff', foreground: '#000000',
+        isEnabled: true, visibility: 'Visible', events: { SelectionChanged: '_标签页1_选择变化' }
+      }]
+    }]
+  };
+  const source = '类 MainWindow : 公开 窗体\n公开:\n结束类';
+  const moduleContext = { enabledModules: [tabsModule], availableModules: [tabsModule] };
+  const completion = getLingCppBilingualCompletions(
+    { source, line: 2, column: 5, triggerText: 'SelectionChanged' },
+    project,
+    moduleContext
+  ).find(item => item.label === '标签页1 选择变化事件');
+  assert.equal(
+    completion?.insertText,
+    '事件 _标签页1_选择变化(整数型 选中索引，整数型 项目数量，整数型 动作)\n    $0'
+  );
+  const beginner = getLingCppDesignerControlCompletions(source, project, moduleContext)
+    .find(item => item.label === '标签页1.选择变化事件');
+  assert.equal(beginner?.insertText, '_标签页1_选择变化($1, $2, $3)');
+
+  const validSource = [
+    '类 MainWindow : 公开 窗体',
+    '  事件 _标签页1_选择变化(整数型 选中索引, 整数型 项目数量, 整数型 动作)',
+    '  结束',
+    '结束类'
+  ].join('\n');
+  const invalidSource = validSource.replace(
+    '(整数型 选中索引, 整数型 项目数量, 整数型 动作)',
+    '(整数型 选中索引, 整数型 项目数量)'
+  );
+  const eventDiagnostics = (value: string) => getLingCppSemanticDiagnostics(
+    value,
+    project,
+    'src/MainWindow.lcpp',
+    moduleContext
+  ).filter(item => item.id.includes('module-designer-event-parameters'));
+  assert.deepEqual(eventDiagnostics(validSource), []);
+  assert.equal(eventDiagnostics(invalidSource).length, 1);
+  assert.match(eventDiagnostics(invalidSource)[0]?.message || '', /选择变化事件参数/u);
+});
+
 test('LingCpp language context powers unified completions with symbols, designer and modules', () => {
   const context = buildLingCppLanguageContext(
     sampleSource,

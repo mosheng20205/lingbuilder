@@ -11,6 +11,12 @@ test('workbench exposes native debug start, continue, step and stop controls wit
   assert.match(source, /输入条件断点表达式/u); assert.match(source, /new EventSource\('\/api\/debug\/events'\)/u);
 });
 
+test('F5 switches from build output to runtime debug logs only after a successful launch', async () => {
+  const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/App.tsx'), 'utf8');
+  assert.match(source, /detail\.status === 'started'[\s\S]*setActiveTabInBottom\('output'\)/u);
+  assert.match(source, /detail\.status === 'completed' && detail\.ok === true[\s\S]*setShowBottomPanel\(true\)[\s\S]*setActiveTabInBottom\('debug_logs'\)/u);
+});
+
 test('Monaco uses the glyph margin for ordinary and Shift conditional breakpoint gestures', async () => {
   const source = await fs.readFile(path.resolve(import.meta.dirname, '../src/components/MonacoCodeEditor.tsx'), 'utf8');
   assert.match(source, /GUTTER_GLYPH_MARGIN/u); assert.match(source, /conditionRequested/u);

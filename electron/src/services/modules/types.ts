@@ -33,6 +33,20 @@ export interface ModuleDesignerEventParameter {
   description?: string;
 }
 
+export interface ModuleDesignerEventContribution {
+  name: string;
+  /** 兼容设计器旧模型或预览控件使用的历史事件键。 */
+  aliases?: string[];
+  label: string;
+  handlerPattern: string;
+  group?: string;
+  parameters?: ModuleDesignerEventParameter[];
+  /** 创建处理器时替代通用调试输出的初始语句。 */
+  starterStatements?: string[];
+  /** 仅当生成器已实现真实原生回调绑定时设置。 */
+  runtimeCommand?: string;
+}
+
 export interface ModuleDesignerRuntimeMapping {
   createCommand?: string;
   createReturnType?: string;
@@ -134,17 +148,7 @@ export interface ModuleDesignerControlContribution {
   /** 设计器画布使用的兼容预览控件类型。 */
   previewType?: string;
   backend?: string;
-  events?: Array<{
-    name: string;
-    /** 兼容设计器旧模型或预览控件使用的历史事件键。 */
-    aliases?: string[];
-    label: string;
-    handlerPattern: string;
-    group?: string;
-    parameters?: ModuleDesignerEventParameter[];
-    /** 仅当生成器已实现真实原生回调绑定时设置。 */
-    runtimeCommand?: string;
-  }>;
+  events?: ModuleDesignerEventContribution[];
   category?: string;
   icon?: string;
   isContainer?: boolean;

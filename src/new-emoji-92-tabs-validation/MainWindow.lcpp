@@ -1,17 +1,6 @@
 类 MainWindow
-    事件 创建完毕()
-        调试输出("New_Emoji 92控件标签页验证窗口已创建")
-    结束
 
-    事件 _按钮03_被点击()
-        @ const LB_NE_ElementRef* dialog = LB_NE_FindElement(L"弹窗11");
-        @ if (dialog) EU_SetDialogOpen(g_newEmojiWindow, dialog->id, 1);
-    结束
 
-    事件 _图标按钮90_被点击()
-        @ const LB_NE_ElementRef* drawer = LB_NE_FindElement(L"抽屉12");
-        @ if (drawer) EU_SetDrawerOpen(g_newEmojiWindow, drawer->id, 1);
-    结束
 
     事件 _演示通知按钮_被点击()
         @ const char notificationTitle[] = "通知";
@@ -53,7 +42,37 @@
         @ EU_ShowMessageBoxEx(g_newEmojiWindow, reinterpret_cast<const unsigned char*>(boxTitle), static_cast<int>(sizeof(boxTitle) - 1), reinterpret_cast<const unsigned char*>(boxText), static_cast<int>(sizeof(boxText) - 1), reinterpret_cast<const unsigned char*>(confirmText), static_cast<int>(sizeof(confirmText) - 1), reinterpret_cast<const unsigned char*>(cancelText), static_cast<int>(sizeof(cancelText) - 1), 0, 1, 0, 0, 0, nullptr);
     结束
 
-    事件 _表格06_单元格点击()
-        调试输出("表格06CellClicked")
+
+    事件 _表格06_鼠标进入()
+        调试输出("表格06鼠标移入")
     结束
+
+    事件 _MainWindow_位置被改变()
+        调试输出("MainWindow位置被改变")
+    结束
+
+    事件 _表格06_单元格动作(整数型 行号，整数型 列号，整数型 动作，整数型 值)
+        调试输出("表格06CellAction")
+    结束
+
+    事件 _表格06_表格右键菜单(整数型 行号，整数型 列号，整数型 区域，整数型 横坐标，整数型 纵坐标)
+        调试输出("表格06ContextMenu")
+    结束
+
+
+    // 设计器已绑定 _按钮03_被点击，但源码中缺少对应事件。
+    事件 _按钮03_被点击()
+        调试输出("_按钮03_被点击 已触发")
+    // 设计器已绑定 _表格06_单元格点击，但源码中缺少对应事件。
+    事件 _表格06_单元格点击()
+        调试输出("_表格06_单元格点击 已触发")
+    // 设计器已绑定 _列表框07_选择变化，但源码中缺少对应事件。
+    事件 _列表框07_选择变化(文本型 选中键列表)
+        调试输出("_列表框07_选择变化 已触发",选中键列表)
+        // 设计器已绑定 _图标按钮90_被点击，但源码中缺少对应事件。
+    事件 _图标按钮90_被点击()
+        调试输出("_图标按钮90_被点击 已触发")
+    // 设计器已绑定 _验证标签页_选择变化，但源码中缺少对应事件。
+    事件 _验证标签页_选择变化(整数型 选中索引，整数型 项目数量，整数型 动作)
+        调试输出("_验证标签页_选择变化 已触发"，选中索引，项目数量，动作)
 结束类
