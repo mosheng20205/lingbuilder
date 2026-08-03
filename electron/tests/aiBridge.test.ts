@@ -86,8 +86,9 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     });
     await client.connect(transport);
     const tools = await client.listTools();
-    assert.equal(tools.tools.length, 10);
+    assert.equal(tools.tools.length, 13);
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.file.read'));
+    assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.project.create'));
     const result = await client.callTool({ name: 'lingbuilder.file.read', arguments: { filePath: 'README.md' } });
     assert.match(JSON.stringify(result), /LingBuilder MCP shared transport/u);
     const statusResponse = await fetch(`${endpoint}/status`, { headers: { Authorization: 'Bearer shared-mcp-secret-token' } });
@@ -101,6 +102,50 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     await server.close();
     await service.shutdown();
   }
+});
+
+test('AI Bridge project creation previews, enables modules, writes navigation, and supports guarded undo', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const previewService = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const preview = await previewService.createProject({
+    name: 'AI 问候项目',
+    projectId: 'ai-hello',
+    templateId: 'hello-window',
+    enabledModuleIds: ['lingbuilder.win32.common-controls']
+  });
+  assert.equal(preview.applied, false);
+  assert.equal(preview.preview.project.id, 'ai-hello');
+  assert.equal(await exists(path.join(workspaceRoot, 'src', 'ai-hello')), false);
+  await previewService.shutdown();
+
+  const writeService = new AiBridgeService({ ...createOptions(workspaceRoot, 'yolo'), token: 'project-create-test-token' });
+  const created = await writeService.createProject({
+    name: 'AI 问候项目',
+    projectId: 'ai-hello',
+    templateId: 'hello-window',
+    enabledModuleIds: ['lingbuilder.win32.common-controls'],
+    approved: true
+  });
+  assert.equal(created.applied, true);
+  assert.equal(created.result?.project.id, 'ai-hello');
+  assert.ok(await exists(path.join(workspaceRoot, 'src', 'ai-hello', 'MainWindow.lcpp')));
+  assert.ok(await exists(path.join(workspaceRoot, '.lingbuilder', 'projects', 'ai-hello', 'project-modules.json')));
+  assert.ok(await exists(path.join(workspaceRoot, '.lingbuilder', 'ai-bridge', 'workbench-navigation.json')));
+  const receiptId = created.result?.receipt.receiptId;
+  assert.ok(receiptId);
+  const undone = await writeService.undoProjectCreate(receiptId!, true);
+  assert.equal(undone.projectId, 'ai-hello');
+  assert.equal(await exists(path.join(workspaceRoot, 'src', 'ai-hello')), false);
+  await writeService.shutdown();
+});
+
+test('AI Bridge refuses project creation undo after generated files change', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const service = new AiBridgeService({ ...createOptions(workspaceRoot, 'yolo'), token: 'project-create-conflict-token' });
+  const created = await service.createProject({ name: '不可撤销项目', projectId: 'undo-conflict', approved: true });
+  await fs.appendFile(path.join(workspaceRoot, 'src', 'undo-conflict', 'MainWindow.lcpp'), '\n调试输出("用户修改")\n', 'utf8');
+  await assert.rejects(() => service.undoProjectCreate(created.result!.receipt.receiptId, true), /文件已经被修改/u);
+  await service.shutdown();
 });
 
 test('AI Bridge rejects workspace path traversal', async () => {

@@ -1051,6 +1051,71 @@ app.get("/api/solution", async (_req, res) => {
   }
 });
 
+app.get("/api/solution/watch", async (req, res) => {
+  try {
+    await getSolutionService().getSolution();
+    const solutionDirectory = path.join(getRepoWorkspaceRoot(), ".lingbuilder");
+    await fs.mkdir(solutionDirectory, { recursive: true });
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    let disposed = false;
+    let pendingTimer: NodeJS.Timeout | undefined;
+    const sendSolutionChange = () => {
+      if (disposed) return;
+      res.write(`event: solution-change\ndata: ${JSON.stringify({ reason: "solution-file-changed" })}\n\n`);
+    };
+    const sendNavigation = async () => {
+      if (disposed) return;
+      try {
+        const navigationPath = path.join(solutionDirectory, "ai-bridge", "workbench-navigation.json");
+        const navigation = JSON.parse(await fs.readFile(navigationPath, "utf8")) as Record<string, unknown>;
+        if (navigation.action !== "open-project" || typeof navigation.requestId !== "string" || typeof navigation.projectId !== "string" || typeof navigation.filePath !== "string") return;
+        res.write(`event: workbench-navigation\ndata: ${JSON.stringify(navigation)}\n\n`);
+      } catch (error: any) {
+        if (error?.code !== "ENOENT") console.warn("工作台导航请求读取失败：", error?.message || error);
+      }
+    };
+    const handleChange = (_eventType: string, fileName: string | Buffer | null) => {
+      const changedName = fileName ? String(fileName).replace(/\\/g, "/") : "";
+      if (!changedName || changedName === "solution.json") sendSolutionChange();
+      if (changedName === "ai-bridge" || changedName === "ai-bridge/workbench-navigation.json") {
+        if (pendingTimer) clearTimeout(pendingTimer);
+        pendingTimer = setTimeout(() => { pendingTimer = undefined; void sendNavigation(); }, 40);
+      }
+    };
+    const watcher = watchFiles(solutionDirectory, { recursive: true }, handleChange);
+    sendSolutionChange();
+    await sendNavigation();
+    const heartbeat = setInterval(() => res.write(": heartbeat\n\n"), 20_000);
+    req.on("close", () => {
+      disposed = true;
+      if (pendingTimer) clearTimeout(pendingTimer);
+      clearInterval(heartbeat);
+      watcher.close();
+    });
+  } catch (error: any) {
+    if (!res.headersSent) res.status(400).json({ ok: false, error: error?.message || "解决方案监听失败。" });
+    else res.end();
+  }
+});
+
+app.post("/api/solution/navigation/ack", async (req, res) => {
+  const requestId = typeof req.body?.requestId === "string" ? req.body.requestId.trim() : "";
+  if (!requestId) return res.status(400).json({ ok: false, error: "缺少导航请求 ID。" });
+  try {
+    const navigationPath = path.join(getRepoWorkspaceRoot(), ".lingbuilder", "ai-bridge", "workbench-navigation.json");
+    const current = JSON.parse(await fs.readFile(navigationPath, "utf8")) as { requestId?: string };
+    if (current.requestId === requestId) await fs.rm(navigationPath, { force: true });
+    res.json({ ok: true });
+  } catch (error: any) {
+    if (error?.code === "ENOENT") return res.json({ ok: true });
+    res.status(400).json({ ok: false, error: error?.message || "导航请求确认失败。" });
+  }
+});
+
 app.post("/api/workspace/switch", async (req, res) => {
   try {
     const result = await switchWorkspaceRuntime(req.body?.workspacePath);

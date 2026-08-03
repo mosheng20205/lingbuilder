@@ -110,6 +110,23 @@ test('solution service creates project files and designer model', async () => {
   assert.ok(await exists(path.join(root, '.lingbuilder', 'projects', 'demo-app', 'window-designer.json')));
 });
 
+test('solution project templates produce deterministic designer and source files without a preview write', async () => {
+  const root = await createTempWorkspace();
+  const service = createSolutionService(root);
+  const preview = await service.previewCreateProject({ name: '问候项目', projectId: 'hello-app', templateId: 'hello-window', windowTitle: '问候窗口' });
+
+  assert.equal(preview.project.id, 'hello-app');
+  assert.equal(preview.designerProject.windows[0].title, '问候窗口');
+  assert.equal(preview.designerProject.windows[0].controls[1].events?.Click, '_问候按钮_被单击');
+  assert.match(preview.files.find(file => file.relativePath.endsWith('.lcpp'))?.content || '', /你好，LingBuilder/u);
+  assert.equal(await exists(path.join(root, 'src', 'hello-app')), false);
+
+  const created = await service.createProject({ name: '问候项目', projectId: 'hello-app', templateId: 'hello-window', windowTitle: '问候窗口' });
+  const designer = JSON.parse(await fs.readFile(path.join(root, created.project.designerPath), 'utf8'));
+  assert.equal(designer.windows[0].controls.length, 2);
+  assert.match(await fs.readFile(path.join(root, 'src', 'hello-app', 'MainWindow.lcpp'), 'utf8'), /信息框/u);
+});
+
 test('solution folders persist logical project grouping without moving project files', async () => {
   const root = await createTempWorkspace();
   const service = createSolutionService(root);

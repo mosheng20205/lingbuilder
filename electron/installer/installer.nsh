@@ -75,6 +75,9 @@
     ; 重新安装时取消勾选，应移除旧版可能留下的 PATH 项。
     !insertmacro UpdateLingBuilderUserPath "remove"
   ${EndIf}
+
+  ; 完成页直接启动已安装的 EXE，避免 Windows 快捷方式关联异常阻止首次启动。
+  StrCpy $launchLink "$appExe"
 !macroend
 
 !macro customUnInstall

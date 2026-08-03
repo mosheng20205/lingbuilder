@@ -39,6 +39,12 @@ const GROUP_BY_MODULE_ID: Record<string, ControlToolboxGroupId> = {
   'lingbuilder.new_emoji.ui': 'new-emoji'
 };
 
+export function getControlToolboxModuleDisabledMessage(moduleId: string | undefined): string {
+  const groupId = moduleId ? GROUP_BY_MODULE_ID[moduleId] : undefined;
+  const group = CONTROL_TOOLBOX_GROUP_DEFINITIONS.find(item => item.id === groupId);
+  return group ? `需要启用${group.label}模块` : '当前项目未启用此控件所需模块';
+}
+
 export function getControlToolboxGroupId(
   type: LingControlType,
   useNewEmojiDesigner: boolean

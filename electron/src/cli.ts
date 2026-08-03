@@ -152,10 +152,23 @@ async function runWorkspaceInspect(rest: string[]) {
 
 async function runProjectCommand(subcommand: string | undefined, rest: string[]) {
   const args = parseArgs(rest); const workspaceRoot = path.resolve(getStringArg(args.workspace) || process.cwd()); const requestFile = getStringArg(args.request);
-  if (!requestFile) throw new Error('project 命令需要 --request <受控项目请求.json>。');
-  const request = JSON.parse(await fs.readFile(path.resolve(requestFile), 'utf8')); const approved = args.yes === true;
+  const approved = args.yes === true;
   const service = new AiBridgeService({ workspaceRoot, host: '127.0.0.1', port: 0, token: 'local-project-cli', permission: approved ? 'yolo' : 'preview', allowRemote: false, enableMcp: false });
   try {
+    if (subcommand === 'templates') { printValue(await service.listProjectTemplates(), args.json === true); return; }
+    if (!requestFile) throw new Error('project 命令需要 --request <受控项目请求.json>。');
+    const request = JSON.parse(await fs.readFile(path.resolve(requestFile), 'utf8'));
+    if (subcommand === 'create') {
+      printValue(await service.createProject({ ...request, approved }), args.json === true);
+      return;
+    }
+    if (subcommand === 'undo-create') {
+      const receiptId = typeof request.receiptId === 'string' ? request.receiptId : '';
+      if (!receiptId) throw new Error('undo-create 请求需要 receiptId。');
+      if (!approved) throw new Error('撤销项目创建必须显式传入 --yes。');
+      printValue(await service.undoProjectCreate(receiptId, true), args.json === true);
+      return;
+    }
     if (subcommand === 'diagnose') { printValue(await service.getLingCppDiagnostics(request), args.json === true); return; }
     if (subcommand === 'export') { if (!approved) { printValue(await service.nativePreview(request), args.json === true); return; } printValue(await service.nativeExport({ ...request, approved: true }), args.json === true); return; }
     if (subcommand === 'build') {
@@ -419,7 +432,9 @@ function printUsage(): void {
   lingbuilder ai models|balance [--json]
   lingbuilder ai chat --model <alias> --prompt <text> [--json]
   lingbuilder workspace inspect [--workspace <path>] [--json]
-  lingbuilder project diagnose|export|build|run|stop --request <file.json> [--workspace <path>] [--yes] [--json]
+  lingbuilder project templates [--workspace <path>] [--json]
+  lingbuilder project create|diagnose|export|build|run|stop --request <file.json> [--workspace <path>] [--yes] [--json]
+  lingbuilder project undo-create --request <receipt.json> --workspace <path> --yes [--json]
   lingbuilder ai-server --workspace <path> [--host 127.0.0.1] [--port 17860] [--permission preview] [--token <token>] [--mcp] [--no-mcp-http] [--stdio-only]
   lingbuilder module init --template cpp-source --out <dir> [--id <id>] [--name <name>]
   lingbuilder module validate <dir|file.lbmod>

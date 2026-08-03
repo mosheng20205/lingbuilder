@@ -2,7 +2,7 @@
 
 本文档说明如何启动 LingBuilder 内置的 AI Bridge CLI，并让其它 AI 客户端通过 HTTP 或 MCP 连接 LingBuilder 工作区。
 
-AI Bridge 的目标是让外部 AI 客户端安全地使用 LingBuilder 的本地能力：读取项目、搜索文件、获取 `.lcpp` 诊断、生成可预览的代码修改、应用修改、查看模块上下文、生成/导出 C++ 与 Visual Studio 工程，以及执行受控构建运行。
+AI Bridge 的目标是让外部 AI 客户端安全地使用 LingBuilder 的本地能力：读取项目、搜索文件、获取 `.lcpp` 诊断、预览或创建项目、生成可预览的代码修改、应用修改、查看模块上下文、生成/导出 C++ 与 Visual Studio 工程，以及执行受控构建运行。
 
 ## 1. 推荐：从 IDE 一键连接
 
@@ -30,6 +30,27 @@ ai-server --workspace . --permission preview --mcp --stdio-only
 `--stdio-only` 不创建 HTTP 服务器，不开放端口，也不读取或生成 HTTP Bearer Token。它与 HTTP Bridge 复用同一个 `AiBridgeService`、工具清单、工作区路径校验、权限和审计实现。移动或升级 LingBuilder 后，如果安装路径变化，连接中心会提示“需要更新”，再次点击即可修复。
 
 关闭连接中心不会自动停止 Bridge；可在连接中心手动停止。切换工作区或退出 IDE 时，Bridge 会被回收，避免旧工作区继续暴露。
+
+### 1.2 不启动 IDE 的 C++ 一键配置器
+
+`tools/codex-configurator/` 提供独立的 Windows Win32 配置器，面向不熟悉命令行的用户。它不启动 LingBuilder IDE，只为选定工作区写入项目级 `.codex/config.toml`，自动探测开发版 Electron 运行时或安装版 `LingBuilder.exe`，并保留其它 TOML 配置。
+
+在 Visual Studio 开发者 PowerShell 中运行：
+
+```powershell
+cd tools/codex-configurator
+.\build.ps1
+```
+
+双击 `tools/codex-configurator/build/LingBuilderCodexConfigurator.exe` 后，选择工作区和 `readonly`、`preview`（默认）或 `yolo` 权限，点击“一键配置”。遇到已有非 LingBuilder 同名 MCP 配置时，工具会先要求确认；配置完成后可选自动打开 Codex 桌面端。工具不会写入 Token，也不会修改用户全局 Codex 配置。
+
+无界面脚本可使用：
+
+```powershell
+.\LingBuilderCodexConfigurator.exe --headless --workspace "D:\项目\我的工作区" --permission preview
+```
+
+`--force` 才会接管同名非托管服务，`--remove` 只移除 LingBuilder 托管段。该工具与 IDE 连接中心、AI Bridge CLI 和 MCP 使用同一 `--mcp --stdio-only` 配置契约。
 
 ## 2. 手动启动方式
 
@@ -114,6 +135,58 @@ npm run ai-server -- --workspace .. --permission preview
 `yolo` 适合高度信任的本机自动化场景。即使在 `yolo` 模式下，AI Bridge 也不开放任意 shell，只开放 LingBuilder 已封装的受控能力。
 
 ## 5. HTTP API
+
+### 5.0 AI 创建项目
+
+外部 AI 可以先预览，再批准创建一个真实 LingBuilder 项目。创建服务统一落盘解决方案项目、中文 `.lcpp` 源码、项目全局变量、项目数据类型、配置文件、设计器模型和项目模块引用；不会把设计器 JSON 或模块引用藏在 AI 客户端的临时状态中。
+
+列出模板：
+
+```http
+GET /api/ai-bridge/project/templates
+```
+
+预览项目（默认不写入）：
+
+```http
+POST /api/ai-bridge/project/create
+```
+
+```json
+{
+  "name": "库存管理工具",
+  "projectId": "inventory-tool",
+  "templateId": "hello-window",
+  "windowTitle": "库存管理",
+  "enabledModuleIds": ["lingbuilder.win32.common-controls"],
+  "openInWorkbench": true
+}
+```
+
+预览返回完整设计器模型、初始文件内容、模块依赖和工作台导航目标；只有再次传入 `approved: true` 才会写入。`preview` 权限仍要求该字段，`readonly` 始终拒绝写入。
+
+```json
+{
+  "name": "库存管理工具",
+  "templateId": "blank-window",
+  "approved": true
+}
+```
+
+创建成功后，IDE 会通过工作区事件刷新解决方案；若 `openInWorkbench` 为 true，IDE 会先保存当前编辑，再切换到新项目并打开主 `.lcpp` 文件。创建结果包含 `receipt.receiptId`，可在生成文件未被修改时撤销：
+
+```http
+POST /api/ai-bridge/project/create/undo
+```
+
+```json
+{
+  "receiptId": "<创建结果中的 receiptId>",
+  "approved": true
+}
+```
+
+撤销会检查创建时的文件 SHA-256；用户或 AI 已修改、新增文件时会阻断撤销，不覆盖代码。
 
 HTTP 基础地址：
 
@@ -382,6 +455,9 @@ lingbuilder ai-server --workspace . --permission preview --mcp --stdio-only
 | `lingbuilder.lingcpp.diagnostics` | 获取 `.lcpp` 诊断。 |
 | `lingbuilder.edit.propose` | 生成编辑提案。 |
 | `lingbuilder.edit.apply` | 应用编辑提案。 |
+| `lingbuilder.project.templates` | 列出受控项目模板。 |
+| `lingbuilder.project.create` | 预览或创建项目，并初始化设计器模型和模块引用。 |
+| `lingbuilder.project.create.undo` | 撤销未被修改的 AI 创建事务。 |
 | `lingbuilder.build.run` | 执行受控构建/运行。 |
 | `lingbuilder.modules.list` | 查看模块上下文。 |
 | `lingbuilder.native.preview` | 预览 C++ 工程。 |
@@ -510,8 +586,13 @@ lingbuilder auth login|logout|status [--server <url>]
 lingbuilder ai models|balance
 lingbuilder ai chat --model <alias> --prompt <text> [--json]
 lingbuilder workspace inspect [--workspace <path>] [--json]
+lingbuilder project templates [--workspace <path>] [--json]
+lingbuilder project create --request <create-request.json> [--workspace <path>] [--yes] [--json]
+lingbuilder project undo-create --request <undo-request.json> --workspace <path> --yes [--json]
 lingbuilder project diagnose|export|build|run|stop --request <file.json> [--yes] [--json]
 ```
+
+`project create` 不带 `--yes` 时只返回创建预览；带 `--yes` 才写入真实解决方案、设计器模型和项目模块引用。请求文件可以包含 `name`、`projectId`、`templateId`（`blank-window` 或 `hello-window`）、`windowTitle`、`enabledModuleIds` 和 `openInWorkbench`。创建结果的 `receipt.receiptId` 可写入 `undo-request.json`，通过 `project undo-create --yes` 在文件未变更时撤销。
 
 `project diagnose` 会按请求中的 `projectId` 聚合同项目源码上下文，包括固定的 `项目全局变量.lcpp` 与 `项目数据类型.lcpp`。`project build --yes` 在编译结束后返回；`project run --yes` 会一直附着到生成的 exe，待程序自然退出且 `run.log` 写入完成后输出最终结果。需要中止时按 Ctrl+C，CLI 会先回收当前受管运行进程再退出。无控件空窗口也是合法构建输入，不需要额外放置占位控件。
 

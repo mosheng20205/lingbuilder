@@ -15,6 +15,9 @@ const TOOLS = [
   { name: 'lingbuilder.lingcpp.diagnostics', description: '返回 .lcpp 解析与语义诊断。', inputSchema: objectSchema({ filePath: { type: 'string', minLength: 1 }, sourceCode: { type: 'string', maxLength: 2097152 }, projectId: { type: 'string', maxLength: 128 } }, ['filePath']) },
   { name: 'lingbuilder.edit.propose', description: '根据外部 AI 提供的完整文件草稿生成可预览提案。', inputSchema: objectSchema({ filePath: { type: 'string', minLength: 1 }, instruction: { type: 'string', minLength: 1, maxLength: 4000 }, sourceCode: { type: 'string', maxLength: 2097152 }, projectId: { type: 'string', maxLength: 128 }, files: { type: 'array', minItems: 1, maxItems: 5, items: objectSchema({ filePath: { type: 'string', minLength: 1 }, updatedSource: { type: 'string', maxLength: 2097152 } }, ['filePath', 'updatedSource']) } }, ['filePath', 'instruction', 'files']) },
   { name: 'lingbuilder.edit.apply', description: '应用已有 WorkspaceEdit 提案，受权限模式控制。', inputSchema: objectSchema({ proposalId: { type: 'string', minLength: 1 }, approved: { type: 'boolean' } }, ['proposalId']) },
+  { name: 'lingbuilder.project.templates', description: '列出可用于 AI 新建项目的受控中文项目模板。', inputSchema: objectSchema({}) },
+  { name: 'lingbuilder.project.create', description: '预览或创建 LingBuilder 项目；不传 approved=true 时只返回项目文件、设计器模型和模块引用预览。', inputSchema: objectSchema({ name: { type: 'string', maxLength: 100 }, projectId: { type: 'string', maxLength: 80 }, templateId: { type: 'string', enum: ['blank-window', 'hello-window'] }, windowTitle: { type: 'string', maxLength: 120 }, enabledModuleIds: { type: 'array', maxItems: 64, items: { type: 'string', minLength: 2, maxLength: 128 } }, openInWorkbench: { type: 'boolean' }, approved: { type: 'boolean' } }) },
+  { name: 'lingbuilder.project.create.undo', description: '撤销尚未被用户修改的 AI 项目创建事务，受权限模式控制。', inputSchema: objectSchema({ receiptId: { type: 'string', minLength: 16, maxLength: 80 }, approved: { type: 'boolean' } }, ['receiptId']) },
   { name: 'lingbuilder.build.run', description: '执行受控构建/运行请求，受权限模式控制。', inputSchema: objectSchema({ project: { type: 'object' }, activeWindowId: { type: 'string' }, lingCppSourceCode: { type: 'string', maxLength: 2097152 }, lingCppSources: lingCppSourcesSchema, run: { type: 'boolean' }, approved: { type: 'boolean' } }, ['project']) },
   { name: 'lingbuilder.modules.list', description: '列出模块与项目启用模块上下文。', inputSchema: objectSchema({ projectId: { type: 'string', maxLength: 128 } }) },
   { name: 'lingbuilder.native.preview', description: '预览生成 C++ 工程文件，不写入导出目录。', inputSchema: objectSchema({ project: { type: 'object' }, activeWindowId: { type: 'string' }, lingCppSourceCode: { type: 'string', maxLength: 2097152 }, lingCppSources: lingCppSourcesSchema }, ['project']) },
@@ -211,6 +214,9 @@ async function callTool(service: AiBridgeService, name: string, args: any): Prom
     case 'lingbuilder.lingcpp.diagnostics': return await service.getLingCppDiagnostics(args);
     case 'lingbuilder.edit.propose': return await service.proposeEdit(args);
     case 'lingbuilder.edit.apply': return await service.applyEdit(args);
+    case 'lingbuilder.project.templates': return await service.listProjectTemplates();
+    case 'lingbuilder.project.create': return await service.createProject(args);
+    case 'lingbuilder.project.create.undo': return await service.undoProjectCreate(args.receiptId, args.approved);
     case 'lingbuilder.build.run': return await service.buildRun(args);
     case 'lingbuilder.modules.list': return await service.listModules(args.projectId);
     case 'lingbuilder.native.preview': return await service.nativePreview(args);

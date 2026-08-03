@@ -266,6 +266,7 @@
 - 默认项目启用模块：`.lingbuilder/project-modules.json`
 - 非默认项目启用模块：`.lingbuilder/projects/<projectId>/project-modules.json`
 - 跨项目粘贴 `.lcpp` 功能库时，`ModuleService.planEnableModulesForProject` 只生成经过安装与清单校验的模块引用计划，不直接写盘；复制服务把该计划与功能库、项目数据类型、项目常量/全局变量合并到同一个 `ProjectFilePersistenceService.writeAll` 事务，成功后再记录模块历史。禁止在源码事务之前逐个调用 `enableModuleForProject`，否则失败时会留下半完成项目引用。
+- AI 创建项目时同样必须复用 `ModuleService.planEnableModulesForNewProject` 解析请求模块、递归依赖、安装状态和 Permit；创建服务只能把返回的项目级 `project-modules.json` 写入计划交给统一项目文件事务，禁止由 AI Bridge、MCP、CLI 或 React 组件直接拼接/修改模块 JSON。创建预览阶段不得写盘，确认落盘后才记录模块历史；失败时必须回滚源码、设计器模型、配置和模块引用，不能留下半完成项目。
 - 模块市场源：`.lingbuilder/module-sources.json`
 - 模块操作历史：`.lingbuilder/module-history.json`
 - 卸载/升级快照：`.lingbuilder/module-snapshots/`

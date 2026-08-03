@@ -158,6 +158,7 @@ import {
 } from '../services/windowDesigner/newEmojiDesignerAdapter';
 import {
   createControlToolboxGroups,
+  getControlToolboxModuleDisabledMessage,
   readControlToolboxExpansionState,
   saveControlToolboxExpansionState,
   type ControlToolboxGroupId
@@ -2520,7 +2521,7 @@ export default function WpfDesigner({
                           const backendSupported = !useNewEmojiDesigner || isNewEmojiDesignerControlSupported(type);
                           const enabled = moduleEnabled && backendSupported;
                           const disabledReason = !moduleEnabled
-                            ? `需要启用 ${definition?.moduleId}`
+                            ? getControlToolboxModuleDisabledMessage(definition?.moduleId)
                             : `new_emoji 设计后端暂不支持 ${CONTROL_LABELS[type]}`;
                           return (
                             <button

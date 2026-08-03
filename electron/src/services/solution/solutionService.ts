@@ -47,7 +47,43 @@ export interface LingBuilderSolution {
 export interface CreateSolutionProjectRequest {
   name?: string;
   projectId?: string;
+  templateId?: SolutionProjectTemplateId;
+  windowTitle?: string;
 }
+
+export type SolutionProjectTemplateId = 'blank-window' | 'hello-window';
+
+export interface SolutionProjectTemplate {
+  id: SolutionProjectTemplateId;
+  name: string;
+  description: string;
+}
+
+export interface PlannedSolutionProjectFile {
+  relativePath: string;
+  content: string;
+  kind: 'source' | 'config' | 'designer';
+}
+
+export interface CreateSolutionProjectPlan {
+  project: LingBuilderSolutionProject;
+  designerProject: LingWindowProject;
+  template: SolutionProjectTemplate;
+  files: PlannedSolutionProjectFile[];
+}
+
+export const SOLUTION_PROJECT_TEMPLATES: readonly SolutionProjectTemplate[] = [
+  {
+    id: 'blank-window',
+    name: '空白 Win32 窗口',
+    description: '创建一个可直接编写中文代码的空白 Win32 窗口项目。'
+  },
+  {
+    id: 'hello-window',
+    name: '你好 LingBuilder',
+    description: '创建包含标题、按钮和中文单击事件的最小可运行 Win32 示例。'
+  }
+];
 
 export interface DeleteSolutionProjectOptions {
   deleteFiles?: boolean;
@@ -79,27 +115,24 @@ export class SolutionService {
     }
 
     const migrated = this.createDefaultSolution();
-    await this.materializeProject(migrated.projects[0], createDesignerProject(DEFAULT_PROJECT_ID, '新建项目'));
+    const template = getSolutionProjectTemplate('blank-window');
+    const designerProject = createDesignerProject(DEFAULT_PROJECT_ID, '新建项目', template.id);
+    await this.materializeProject(this.createMaterializationPlan(migrated.projects[0], designerProject, template));
     await this.writeSolution(migrated);
     return migrated;
   }
 
   async createProject(request: CreateSolutionProjectRequest = {}): Promise<{ solution: LingBuilderSolution; project: LingBuilderSolutionProject; designerProject: LingWindowProject }> {
     const solution = await this.getSolution();
-    const baseName = (request.name || '新建项目').trim() || '新建项目';
-    const projectId = this.createUniqueProjectId(request.projectId || baseName, solution);
-    const project: LingBuilderSolutionProject = {
-      id: projectId,
-      name: baseName,
-      type: 'visual-cpp',
-      sourceRoot: `src/${projectId}`,
-      configRoot: `config/${projectId}`,
-      designerPath: `.lingbuilder/projects/${projectId}/window-designer.json`
-      , references: []
-    };
-    const designerProject = createDesignerProject(project.id, project.name);
+    const plan = this.createProjectPlan(request, solution);
+    const { project, designerProject } = plan;
 
-    await this.materializeProject(project, designerProject);
+    try {
+      await this.materializeProject(plan);
+    } catch (error) {
+      await this.removeMaterializedProjectFiles(project);
+      throw error;
+    }
     const nextSolution = {
       ...solution,
       startupProjectId: solution.startupProjectId || project.id,
@@ -107,6 +140,10 @@ export class SolutionService {
     };
     await this.writeSolution(nextSolution);
     return { solution: nextSolution, project, designerProject };
+  }
+
+  async previewCreateProject(request: CreateSolutionProjectRequest = {}): Promise<CreateSolutionProjectPlan> {
+    return this.createProjectPlan(request, await this.getSolution());
   }
 
   async importExternalProject(relativePath: string): Promise<{ solution: LingBuilderSolution; project: LingBuilderSolutionProject }> {
@@ -272,25 +309,57 @@ export class SolutionService {
     return topologicalProjectOrder(solution.projects, projectIds).map(id => this.getProject(solution, id));
   }
 
-  private async materializeProject(project: LingBuilderSolutionProject, designerProject: LingWindowProject): Promise<void> {
-    const sourceRoot = this.resolveWorkspacePath(project.sourceRoot);
-    const configRoot = this.resolveWorkspacePath(project.configRoot);
-    const designerPath = this.resolveWorkspacePath(project.designerPath);
+  private async materializeProject(plan: CreateSolutionProjectPlan): Promise<void> {
+    await Promise.all(plan.files.map(async file => {
+      const targetPath = this.resolveWorkspacePath(file.relativePath);
+      await fs.mkdir(path.dirname(targetPath), { recursive: true });
+      await fs.writeFile(targetPath, file.content, 'utf8');
+    }));
+  }
 
+  private async removeMaterializedProjectFiles(project: LingBuilderSolutionProject): Promise<void> {
     await Promise.all([
-      fs.mkdir(sourceRoot, { recursive: true }),
-      fs.mkdir(configRoot, { recursive: true }),
-      fs.mkdir(path.dirname(designerPath), { recursive: true })
+      fs.rm(this.resolveWorkspacePath(project.sourceRoot), { recursive: true, force: true }),
+      fs.rm(this.resolveWorkspacePath(project.configRoot), { recursive: true, force: true }),
+      fs.rm(this.resolveWorkspacePath(path.posix.dirname(project.designerPath)), { recursive: true, force: true })
     ]);
+  }
 
+  private createProjectPlan(request: CreateSolutionProjectRequest, solution: LingBuilderSolution): CreateSolutionProjectPlan {
+    const baseName = validateProjectDisplayName((request.name || '新建项目').trim() || '新建项目', '', solution.projects);
+    const projectId = this.createUniqueProjectId(request.projectId || baseName, solution);
+    const template = getSolutionProjectTemplate(request.templateId);
+    const project: LingBuilderSolutionProject = {
+      id: projectId,
+      name: baseName,
+      type: 'visual-cpp',
+      sourceRoot: `src/${projectId}`,
+      configRoot: `config/${projectId}`,
+      designerPath: `.lingbuilder/projects/${projectId}/window-designer.json`,
+      references: []
+    };
+    const designerProject = createDesignerProject(project.id, project.name, template.id, request.windowTitle);
+    return this.createMaterializationPlan(project, designerProject, template);
+  }
+
+  private createMaterializationPlan(
+    project: LingBuilderSolutionProject,
+    designerProject: LingWindowProject,
+    template: SolutionProjectTemplate
+  ): CreateSolutionProjectPlan {
     const mainWindow = designerProject.windows[0];
-    await Promise.all([
-      fs.writeFile(path.join(sourceRoot, `${mainWindow.className}.lcpp`), createDefaultLingCppSource(mainWindow.className), 'utf8'),
-      fs.writeFile(path.join(sourceRoot, PROJECT_GLOBALS_FILE_NAME), EMPTY_PROJECT_GLOBALS_SOURCE, 'utf8'),
-      fs.writeFile(path.join(sourceRoot, PROJECT_DATA_TYPES_FILE_NAME), EMPTY_PROJECT_DATA_TYPES_SOURCE, 'utf8'),
-      fs.writeFile(path.join(configRoot, 'config.ini'), `[project]\nname=${project.name}\nid=${project.id}\n`, 'utf8'),
-      fs.writeFile(designerPath, JSON.stringify(designerProject, null, 2), 'utf8')
-    ]);
+    const files: PlannedSolutionProjectFile[] = [
+      {
+        relativePath: path.posix.join(project.sourceRoot, `${mainWindow.className}.lcpp`),
+        content: createTemplateLingCppSource(mainWindow.className, template.id),
+        kind: 'source'
+      },
+      { relativePath: path.posix.join(project.sourceRoot, PROJECT_GLOBALS_FILE_NAME), content: EMPTY_PROJECT_GLOBALS_SOURCE, kind: 'source' },
+      { relativePath: path.posix.join(project.sourceRoot, PROJECT_DATA_TYPES_FILE_NAME), content: EMPTY_PROJECT_DATA_TYPES_SOURCE, kind: 'source' },
+      { relativePath: path.posix.join(project.configRoot, 'config.ini'), content: `[project]\nname=${project.name}\nid=${project.id}\n`, kind: 'config' },
+      { relativePath: project.designerPath, content: JSON.stringify(designerProject, null, 2), kind: 'designer' }
+    ];
+    return { project, designerProject, template, files };
   }
 
   private async readSolutionFile(): Promise<LingBuilderSolution | null> {
@@ -398,27 +467,50 @@ export function createSolutionService(workspaceRoot: string): SolutionService {
   return new SolutionService(workspaceRoot);
 }
 
-function createDesignerProject(projectId: string, name: string): LingWindowProject {
+function createDesignerProject(
+  projectId: string,
+  name: string,
+  templateId: SolutionProjectTemplateId = 'blank-window',
+  requestedWindowTitle?: string
+): LingWindowProject {
+  const windowTitle = normalizeWindowTitle(requestedWindowTitle, `${name}主窗口`);
   return {
+    schemaVersion: 2,
     id: projectId,
     name,
+    resources: [],
     windows: [
       {
         id: 'main-window',
         fileName: 'MainWindow.xml',
         className: 'MainWindow',
-        title: `${name}主窗口`,
+        title: windowTitle,
         width: 900,
         height: 560,
         background: '#1f2937',
         description: `${name} 默认主窗口`,
-        controls: []
+        designerBackend: 'win32',
+        controls: templateId === 'hello-window' ? createHelloWindowControls() : []
       }
     ]
   };
 }
 
-function createDefaultLingCppSource(className: string): string {
+function createTemplateLingCppSource(className: string, templateId: SolutionProjectTemplateId): string {
+  if (templateId === 'hello-window') {
+    return [
+      `类 ${className}`,
+      '    事件 创建完毕()',
+      '        调试输出("你好，LingBuilder 项目已启动。")',
+      '    结束',
+      '',
+      '    事件 _问候按钮_被单击()',
+      '        信息框("你好，LingBuilder！")',
+      '    结束',
+      '结束类',
+      ''
+    ].join('\n');
+  }
   return [
     `类 ${className}`,
     '    事件 创建完毕()',
@@ -427,6 +519,36 @@ function createDefaultLingCppSource(className: string): string {
     '结束类',
     ''
   ].join('\n');
+}
+
+function createHelloWindowControls(): LingWindowProject['windows'][number]['controls'] {
+  return [
+    {
+      id: 'hello-title', type: 'Label', name: '欢迎标题', content: '你好，LingBuilder',
+      width: 360, height: 44, x: 48, y: 48, fontSize: 24,
+      background: 'transparent', foreground: '#f8fafc', isEnabled: true, visibility: 'Visible'
+    },
+    {
+      id: 'hello-button', type: 'Button', name: '问候按钮', content: '显示问候',
+      width: 140, height: 38, x: 48, y: 120, fontSize: 13,
+      background: '#2563eb', foreground: '#ffffff', isEnabled: true, visibility: 'Visible',
+      events: { Click: '_问候按钮_被单击' }
+    }
+  ];
+}
+
+function getSolutionProjectTemplate(templateId?: string): SolutionProjectTemplate {
+  const normalized = templateId?.trim() || 'blank-window';
+  const template = SOLUTION_PROJECT_TEMPLATES.find(item => item.id === normalized);
+  if (!template) throw new Error(`不支持的项目模板：${normalized}`);
+  return template;
+}
+
+function normalizeWindowTitle(value: string | undefined, fallback: string): string {
+  const title = value?.trim() || fallback;
+  if (title.length > 120) throw new Error('窗口标题不能超过 120 个字符。');
+  if (/[\r\n\t]/u.test(title)) throw new Error('窗口标题不能包含换行符或制表符。');
+  return title;
 }
 
 async function collectTextFiles(

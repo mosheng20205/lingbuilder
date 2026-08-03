@@ -393,11 +393,17 @@ LingBuilder 可以通过本地 AI Bridge 让外部 AI 客户端连接工作区�
 - ChatGPT/Codex Windows 桌面客户端必须作为独立客户端检测，不得用 Codex CLI 的 PATH 状态代替。桌面端使用当前工作区 `.codex/config.toml` 中由 LingBuilder 标记管理的 `mcp_servers.lingbuilder_desktop`，通过 `--mcp --stdio-only` 直接拉起同一 `AiBridgeService`；该模式不监听网络端口、不需要 Token，且只能暴露当前 Codex 项目工作区。
 - 写入 Codex 项目配置时必须保留用户其他 TOML 设置；非托管同名配置必须先报告冲突并取得明确替换确认。配置写入晚于桌面客户端启动时间时必须提示完全重启桌面端，不能声称已经热加载。移除配置只能删除 LingBuilder 托管段。
 - 默认 MCP 传输为带 Bearer 鉴权的 Streamable HTTP，地址固定为 `/api/ai-bridge/mcp`；`--mcp` 仅用于额外启用传统 stdio。MCP HTTP、MCP stdio 与 REST API 必须复用同一 `AiBridgeService`，不得复制工具实现或绕开审计。
+- 当前 MCP 工具清单必须与 `mcpServer.ts` 同步，共 13 项：`lingbuilder.workspace.list`、`lingbuilder.file.read`、`lingbuilder.file.search`、`lingbuilder.lingcpp.diagnostics`、`lingbuilder.edit.propose`、`lingbuilder.edit.apply`、`lingbuilder.project.templates`、`lingbuilder.project.create`、`lingbuilder.project.create.undo`、`lingbuilder.build.run`、`lingbuilder.modules.list`、`lingbuilder.native.preview`、`lingbuilder.native.export`。新增或删除工具时必须同步更新 CLI、REST、桌面连接中心、使用手册和测试。
 - 默认只连接 `127.0.0.1` 本地端口，并使用 token 鉴权。
 - HTTP Bridge Token 只允许保存在 Bridge 主进程内存并通过 `LINGBUILDER_AI_BRIDGE_TOKEN` 注入 Bridge/受控终端子进程环境；不得把实际值放入子进程命令行。HTTP 客户端托管配置只能保存环境变量占位符，不得把 Token 写入用户全局配置、工作区、日志或命令文本。ChatGPT/Codex 桌面端的纯 STDIO 模式不得生成或要求 HTTP Token。
 - 默认权限模式为 `preview`：读取、搜索、诊断和生成修改提案可以直接执行；写文件、导出工程、构建运行必须显式确认。
 - `readonly` 模式禁止写文件、导出工程和构建运行。
 - `yolo` 模式只允许用户明确开启；开启后仍只能执行 LingBuilder 暴露的受控工具，不能开放任意 shell。
+- 外部 AI 新建项目必须按 `lingbuilder.project.templates` → `lingbuilder.project.create` 预览 → 用户批准 `approved=true` → `lingbuilder.edit.propose/apply` → `lingbuilder.lingcpp.diagnostics` → `lingbuilder.build.run` 的顺序工作。`project.create` 只接受 `blank-window` 和 `hello-window` 受控模板，统一生成解决方案项目、中文源码、设计器模型、固定全局/类型文件、配置和模块引用；不得直接在工作区外拼接项目或把设计器状态留在模型上下文中。
+- `project.create` 的预览不得写入新项目；`preview` 权限写入必须显式 `approved=true`。成功结果中的 `receipt.receiptId` 只允许在创建文件 SHA-256 未变化时通过 `lingbuilder.project.create.undo` 或 `lingbuilder project undo-create --yes` 撤销；检测到用户/AI 修改、新文件、项目引用或路径异常时必须阻断，不能覆盖代码。
+- `project.create` 的 `enabledModuleIds` 必须通过模块服务解析依赖、检查清单和 Permit；普通 Win32 项目默认只有 `lingbuilder.win32.basic`，AI 不得把未明确启用的网络、浏览器或高风险模块写入模板。模块引用必须写入 `.lingbuilder/projects/<projectId>/project-modules.json` 并进入审计。
+- `openInWorkbench=true` 时，创建服务写入受控工作台导航请求。IDE 收到事件后必须先保存当前编辑，再刷新解决方案、切换项目、打开主 `.lcpp` 并确认导航请求；不得用 DOM 查询、隐藏 localStorage 或静默丢弃脏编辑模拟项目切换。导航请求包含稳定项目 ID、主文件路径和窗口 ID，只能在当前工作区内解析。
+- 不启动 IDE 时可使用 `tools/codex-configurator/` 的独立 C++ 配置器选择 `readonly`、`preview` 或 `yolo`，但配置器只能写当前工作区的 `.codex/config.toml` 托管段，必须保留其它 TOML、拒绝未确认的同名 MCP 接管、不写入 Token，并继续使用 `--mcp --stdio-only` 启动同一受控 `AiBridgeService`。YOLO 仍只允许 LingBuilder 已暴露的受控工具，不能被解释为任意 Shell 权限。
 - 外部 AI 修改代码必须优先调用 `edit.propose` 生成 `WorkspaceEditProposal`，再由用户确认或由 `yolo` 模式应用。
 - 文件路径必须限制在当前工作区内，不允许访问 `..`、绝对路径逃逸、系统目录或隐藏凭据。
 - AI Bridge 读取项目文本时会返回规范化内容和真实 `{ encoding, eol }`。对已有文件应用 `edit.apply` 必须保留 UTF-8 BOM、UTF-16 LE/BE 与 LF/CRLF 格式；新文件默认使用 UTF-8/LF。遇到非法 UTF 字节或不支持的编码必须停止并报告中文诊断，不能用替换字符静默覆盖原文件。

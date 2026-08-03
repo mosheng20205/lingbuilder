@@ -54,6 +54,7 @@ import { WIN32_CONTROL_DEFINITIONS, createDefaultControlProperties, getCreatable
 import { captureDesignerHotKey } from '../src/services/windowDesigner/hotKeyProperty';
 import {
   createControlToolboxGroups,
+  getControlToolboxModuleDisabledMessage,
   readControlToolboxExpansionState,
   saveControlToolboxExpansionState
 } from '../src/services/windowDesigner/controlToolboxModel';
@@ -317,6 +318,17 @@ test('控件工具箱按注册模块分为基础、高级、浏览器和 New_Emo
   assert.ok(newEmojiGroups.find(group => group.id === 'new-emoji')?.controlTypes.includes('Button'));
   assert.ok(!newEmojiGroups.find(group => group.id === 'basic')?.controlTypes.includes('Button'));
   assert.ok(newEmojiGroups.find(group => group.id === 'basic')?.controlTypes.includes('ComboBox'));
+});
+
+test('控件工具箱的未启用提示使用中文分组名而非内部模块 ID', () => {
+  assert.equal(
+    getControlToolboxModuleDisabledMessage('lingbuilder.win32.common-controls'),
+    '需要启用高级控件模块'
+  );
+  assert.equal(
+    getControlToolboxModuleDisabledMessage('unknown.module'),
+    '当前项目未启用此控件所需模块'
+  );
 });
 
 test('控件工具箱展开状态按项目保存并安全回退默认值', () => {

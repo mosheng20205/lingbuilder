@@ -40,6 +40,7 @@ import { createDesignerAssetService } from '../windowDesigner/designerAssetServi
 import { LingWindowProject } from '../windowDesigner/types';
 import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactRelativePath } from '../solution/nestedWorkspaceGuard';
 import { createSolutionService, DEFAULT_PROJECT_ID, type LingBuilderSolutionProject } from '../solution/solutionService';
+import { createProjectCreationService, type ProjectCreationRequest, type ProjectCreationService } from '../solution/projectCreationService';
 import { AiBridgePermissionService } from './permissionService';
 import {
   AiBridgeBuildRunRequest,
@@ -143,6 +144,7 @@ export class AiBridgeService {
   private readonly pathPolicy: WorkspacePathPolicy;
   private readonly moduleService;
   private readonly solutionService;
+  private readonly projectCreationService: ProjectCreationService;
   private readonly designerAssetService;
   private readonly managedProcessService: AiBridgeProcessManager;
   private readonly projectBuildCoordinator: ProjectBuildCoordinator;
@@ -165,6 +167,10 @@ export class AiBridgeService {
     this.permissions = new AiBridgePermissionService(this.pathPolicy, options.permission);
     this.moduleService = createModuleService(this.workspaceRoot);
     this.solutionService = createSolutionService(this.workspaceRoot);
+    this.projectCreationService = createProjectCreationService(this.workspaceRoot, {
+      solutionService: this.solutionService,
+      moduleService: this.moduleService
+    });
     this.designerAssetService = createDesignerAssetService(this.workspaceRoot);
     this.managedProcessService = dependencies.managedProcessService ?? createManagedProcessService();
     this.projectBuildCoordinator = dependencies.projectBuildCoordinator ?? createProjectBuildCoordinator();
@@ -363,6 +369,47 @@ export class AiBridgeService {
       history,
       summary: describeLingCppModuleContextForAi({ availableModules, enabledModules })
     };
+  }
+
+  async listProjectTemplates() {
+    return {
+      ok: true as const,
+      templates: this.projectCreationService.listTemplates()
+    };
+  }
+
+  async createProject(request: ProjectCreationRequest = {}) {
+    const preview = await this.projectCreationService.preview(request);
+    const moduleIds = [
+      ...preview.modules.requestedModuleIds,
+      ...preview.modules.dependencyModuleIds
+    ];
+    this.assertModuleAccess(moduleIds);
+    if (request.approved !== true) {
+      return { ok: true as const, applied: false as const, preview };
+    }
+
+    await this.requireWriteWithAudit('project.create', preview.project.id, request.approved);
+    try {
+      const result = await this.projectCreationService.create(request);
+      await this.permissions.audit({ operation: 'write', action: 'project.create', ok: true, target: result.project.id });
+      return { ok: true as const, applied: true as const, preview, result };
+    } catch (error) {
+      await this.auditFailure('write', 'project.create', preview.project.id, error);
+      throw error;
+    }
+  }
+
+  async undoProjectCreate(receiptId: string, approved?: boolean) {
+    await this.requireWriteWithAudit('project.create.undo', receiptId, approved);
+    try {
+      const result = await this.projectCreationService.undo(receiptId);
+      await this.permissions.audit({ operation: 'write', action: 'project.create.undo', ok: true, target: result.projectId });
+      return result;
+    } catch (error) {
+      await this.auditFailure('write', 'project.create.undo', receiptId, error);
+      throw error;
+    }
   }
 
   async nativePreview(request: AiBridgeNativeRequest) {

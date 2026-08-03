@@ -1082,6 +1082,13 @@ export default function App() {
   const [isSubmittingSolutionName, setIsSubmittingSolutionName] = useState(false);
   const [workspaceSearchMode, setWorkspaceSearchMode] = useState<'search' | 'replace' | null>(null);
   const pendingWorkspaceSearchRevealRef = useRef<WorkspaceSearchMatch | null>(null);
+  const pendingAiWorkbenchNavigationRef = useRef<{
+    requestId: string;
+    projectId: string;
+    filePath: string;
+    windowId?: string;
+    dispatched?: boolean;
+  } | null>(null);
   const workspaceReplacePreviewRef = useRef(new Map<string, OwnedWorkspaceReplacePreview>());
   const workspaceReplaceTransactionRef = useRef(new Map<string, OwnedWorkspaceReplacePreview>());
   const [configurationSnapshot, setConfigurationSnapshot] = useState<WorkbenchConfigurationSnapshot | null>(null);
@@ -3671,6 +3678,79 @@ void DisplayStatus() {
     }
     setSolution(result.solution);
   };
+
+  useEffect(() => {
+    if (!hasEnteredWorkbench) return;
+    const navigation = pendingAiWorkbenchNavigationRef.current;
+    if (!navigation || navigation.projectId !== activeProjectId || !projectFilesReady || loadedProjectId !== activeProjectId) return;
+    if (!filesRef.current.some(file => file.path === navigation.filePath)) return;
+    pendingAiWorkbenchNavigationRef.current = null;
+    void fetch('/api/solution/navigation/ack', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId: navigation.requestId })
+    }).catch(() => undefined);
+  }, [activeProjectId, hasEnteredWorkbench, loadedProjectId, projectFilesReady]);
+
+  useEffect(() => {
+    if (!hasEnteredWorkbench) return;
+    const events = new EventSource('/api/solution/watch');
+    let disposed = false;
+    const refreshAuthoritativeSolution = async () => {
+      try {
+        const nextSolution = await fetchSolution();
+        if (!disposed) setSolution(nextSolution);
+      } catch (error) {
+        if (!disposed) appendSolutionLogs('外部 AI 项目变更', { ok: false, error: error instanceof Error ? error.message : String(error) });
+      }
+    };
+    const handleSolutionChange = () => { void refreshAuthoritativeSolution(); };
+    const handleWorkbenchNavigation = (event: MessageEvent<string>) => {
+      try {
+        const value = JSON.parse(event.data) as {
+          requestId?: string;
+          action?: string;
+          projectId?: string;
+          filePath?: string;
+          windowId?: string;
+        };
+        if (value.action !== 'open-project' || !value.requestId || !value.projectId || !value.filePath) return;
+        pendingAiWorkbenchNavigationRef.current = {
+          requestId: value.requestId,
+          projectId: value.projectId,
+          filePath: value.filePath,
+          windowId: value.windowId
+        };
+        void refreshAuthoritativeSolution();
+      } catch {
+        // Ignore malformed external navigation messages; the marker remains for the next connection.
+      }
+    };
+    events.addEventListener('solution-change', handleSolutionChange as EventListener);
+    events.addEventListener('workbench-navigation', handleWorkbenchNavigation as EventListener);
+    void refreshAuthoritativeSolution();
+    return () => {
+      disposed = true;
+      events.close();
+    };
+  }, [hasEnteredWorkbench]);
+
+  useEffect(() => {
+    const navigation = pendingAiWorkbenchNavigationRef.current;
+    if (!navigation || navigation.dispatched || !solution.projects.some(project => project.id === navigation.projectId)) return;
+    navigation.dispatched = true;
+    const match: WorkspaceSearchMatch = {
+      id: `ai-project-create:${navigation.requestId}`,
+      filePath: navigation.filePath,
+      line: 1,
+      column: 1,
+      endLine: 1,
+      endColumn: 1,
+      matchText: '',
+      preview: 'AI 创建项目后打开主文件'
+    };
+    void handleWorkspaceSearchReveal(match);
+  }, [handleWorkspaceSearchReveal, solution]);
 
   const handleOpenWorkspace = async (): Promise<boolean> => {
     if (workspaceSwitchInFlightRef.current) {

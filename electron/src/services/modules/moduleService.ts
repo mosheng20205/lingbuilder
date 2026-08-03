@@ -126,6 +126,17 @@ export class ModuleService {
    */
   async planEnableModulesForProject(projectId: string, moduleIds: readonly string[]): Promise<ProjectModuleEnablePlan> {
     await this.assertProjectExists(projectId);
+    return await this.createProjectModuleEnablePlan(projectId, moduleIds);
+  }
+
+  /** Validates module references for a project creation preview before the project exists on disk. */
+  async planEnableModulesForNewProject(projectId: string, moduleIds: readonly string[]): Promise<ProjectModuleEnablePlan> {
+    const normalizedProjectId = safeProjectId(projectId);
+    if (!projectId || normalizedProjectId !== projectId) throw new Error(`项目 ID 无效：${projectId || '(空)'}`);
+    return await this.createProjectModuleEnablePlan(projectId, moduleIds);
+  }
+
+  private async createProjectModuleEnablePlan(projectId: string, moduleIds: readonly string[]): Promise<ProjectModuleEnablePlan> {
     const modules = await this.scanInstalledModules(projectId);
     const installedById = new Map(modules.map(module => [module.manifest.id, module]));
     const refs = await this.readProjectModules(projectId);

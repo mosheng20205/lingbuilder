@@ -45,6 +45,12 @@ export function createAiBridgeRouter(
     await handle(res, () => service.listModules(projectId));
   });
 
+  router.get('/project/templates', async (_req, res) => handle(res, () => service.listProjectTemplates()));
+
+  router.post('/project/create', async (req, res) => handle(res, () => service.createProject(req.body || {})));
+
+  router.post('/project/create/undo', async (req, res) => handle(res, () => service.undoProjectCreate(req.body?.receiptId, req.body?.approved)));
+
   router.post('/native/preview', async (req, res) => handle(res, () => service.nativePreview(req.body)));
 
   router.post('/native/export', async (req, res) => handle(res, () => service.nativeExport(req.body)));

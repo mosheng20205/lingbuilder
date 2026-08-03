@@ -215,11 +215,14 @@ npm run package:win
 
 工作台“帮助 → CLI 与 AI Bridge 使用指南”和命令面板命令“帮助：打开 CLI 与 AI Bridge 使用指南”会打开内置指南。指南通过 Electron 主进程受控检查安装目录 `lingbuilder.cmd`、当前用户 PATH 和 `LingBuilder CLI x.y.z` 版本输出；可复制常用命令/MCP 配置、打开 IDE 终端或打开随包的 `AI_BRIDGE_CLI_USAGE.md`。检查只运行固定 `--version` 参数，不接受 renderer 传入的任意命令。
 
+`tools/codex-configurator/` 提供独立 C++ Win32 新手配置器，不启动 IDE 即可选择工作区和 `readonly` / `preview` / `yolo` 权限，一键写入项目级 `.codex/config.toml`；它自动发现开发版 Electron/CLI 或安装版 `LingBuilder.exe`，保留其它 TOML，冲突时要求确认，并支持 `--headless` 与移除托管段。
+
 安装版用户重新打开终端后可直接运行：
 
 ```powershell
 lingbuilder --help
 lingbuilder ai-server --workspace "D:\项目\我的工程" --permission preview
+lingbuilder project templates --workspace "D:\项目\我的工程"
 ```
 
 开发期可以从 `electron/` 目录启动本地 AI Bridge：
@@ -244,6 +247,8 @@ npm run ai-server -- --workspace .. --permission yolo --mcp
 npm run ai-server -- --workspace .. --permission preview --mcp --stdio-only
 ```
 
+产品 CLI 现在支持完整的 AI 项目起步闭环：`project create` 先输出项目、设计器模型、初始中文源码和模块引用预览，`--yes` 才会创建真实解决方案项目；创建结果带 `receiptId`，文件未变更时可用 `project undo-create --yes` 撤销。通过 Codex 桌面版、Codex CLI 或 Claude Code 的 MCP 工具也使用同一条链路：`lingbuilder.project.templates` → `lingbuilder.project.create`（预览）→ `approved=true`（落盘）→ `lingbuilder.edit.propose/apply`（编写代码）→ `lingbuilder.lingcpp.diagnostics` → `lingbuilder.build.run`。`openInWorkbench=true` 时，IDE 会刷新解决方案，保存当前编辑，切换到新项目并打开主 `.lcpp` 文件。
+
 产品 CLI 的 `project diagnose` 会读取解决方案中同项目的全部 `.lcpp` 上下文，因此在 `项目全局变量.lcpp` 使用 `项目数据类型.lcpp` 的记录类型不会产生脱离项目上下文的误报。`project build --yes` 编译完成后直接返回；`project run --yes` 保持前台附着直到生成的 exe 自然退出并等待运行日志落盘，按 Ctrl+C 会先停止该受管进程再退出。空设计器窗口同样可以生成并编译，不要求为了绕过占位数组而添加无意义控件；项目没有 `CefBrowser` 时不会初始化 CEF3 或输出缺少 SDK 的运行日志。
 
 HTTP 请求示例：
@@ -261,6 +266,9 @@ MCP 模式使用 stdio JSON-RPC，暴露工具包括：
 - `lingbuilder.lingcpp.diagnostics`
 - `lingbuilder.edit.propose`
 - `lingbuilder.edit.apply`
+- `lingbuilder.project.templates`
+- `lingbuilder.project.create`
+- `lingbuilder.project.create.undo`
 - `lingbuilder.build.run`
 - `lingbuilder.modules.list`
 - `lingbuilder.native.preview`

@@ -333,6 +333,8 @@
 - 已完成：生成器回归测试扩展到复选框、单选框、进度条、下拉框、窗体创建事件、暂不支持语法安全注释和多文件 WorkspaceEdit。
 - 已完成：模块构建链路开始支持外部 C++ 模块依赖复制，`new_emoji` 可通过 `.lbmod` 安装并在 F5 Win32 预览中复制 DLL/lib/header/source。
 - 已完成：新增 AI Bridge CLI 与本地 `/api/ai-bridge/*` 接口，支持 token 鉴权、`readonly` / `preview` / `yolo` 权限模式、受控文件读取搜索、LingCpp 诊断、编辑提案应用、模块上下文、C++ 预览/导出和 MCP stdio 工具映射。
+- 已完成（2026-08-04）：新增独立 C++ Win32 `tools/codex-configurator` 新手配置器。不启动 IDE 即可选择工作区和 `readonly` / `preview` / `yolo` 权限，一键生成项目级无 Token `--mcp --stdio-only` 配置；运行时自动识别开发版 Electron/CLI 与安装版 `resources/app.asar`，保留其它 TOML，冲突需要确认，支持原子写入、移除托管段和 `--headless`。后续可将签名安装包和配置器更新检查接入正式发布流程，但不得把配置器扩展成任意命令执行器。
+- 已完成（2026-08-03）：补齐外部 AI 直接起步项目的受控闭环。`SolutionService` 提供 `blank-window` / `hello-window` 模板和纯预览计划；`ProjectCreationService` 在确认后以统一项目文件事务创建解决方案项目、中文 `.lcpp`、设计器模型、项目全局变量/数据类型、配置和模块引用，并生成带 SHA-256 快照的撤销凭据。AI Bridge REST/MCP 与 CLI 共用同一服务，支持模板查询、预览/批准创建、模块依赖计划、受控工作台导航和未被修改项目的安全撤销；renderer 通过工作区 SSE 刷新解决方案、保存当前草稿并打开新项目主文件。后续应继续补充跨重启导航请求清理、项目创建恢复日志、完整 HTTP/SSE 集成测试和正式 `TaskService` 任务编排，不能把 AI 客户端临时文件状态当作项目持久化。
 - 已完成：原生导出和 F5/AI Bridge 构建运行会同步生成 Visual Studio Win32 工程文件（`.sln`、`.vcxproj`、`.vcxproj.filters`），并把模块 include/lib/source/runtime 依赖写入 VS 工程。
 - 已完成：修复 `new_emoji` 桥接层 UTF-8 转换缓冲区少分配 1 字节，以及临时 UTF-8 指针被 DLL 后续读取的问题，避免 Visual Studio Debug 运行时报 `HEAP CORRUPTION DETECTED` 或读取 `0xDDDDDDDD` 访问冲突。
 - 已完成：修复 `.lcpp` 解析器把事件/方法块结尾 `结束` 误翻译为运行时 `结束();` 的问题；显式退出命令应写作 `结束()`。

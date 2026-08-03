@@ -42,3 +42,11 @@ test('Windows installer detects WebView2 and uses a frozen official bootstrapper
   assert.match(preparation, /Get-AuthenticodeSignature/u);
   assert.match(preparation, /microsoft\.com/u);
 });
+
+test('Windows installer finish page launches the installed executable directly', async () => {
+  const installer = await fs.readFile(
+    path.resolve(import.meta.dirname, '../installer/installer.nsh'),
+    'utf8'
+  );
+  assert.match(installer, /StrCpy \$launchLink "\$appExe"/u);
+});

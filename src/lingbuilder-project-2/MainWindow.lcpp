@@ -66,4 +66,8 @@
     事件 _MainWindow_文件被拖入(文本型[] 文件集合)
         调试输出("MainWindow文件被拖入")
     结束
+
+    事件 _MainWindow_创建完毕()
+        调试输出("MainWindow创建完毕")
+    结束
 结束类

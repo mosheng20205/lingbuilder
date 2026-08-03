@@ -4,9 +4,9 @@
   "id": "lingbuilder-solution",
   "name": "UI_CppLocProj",
   "solutionFile": ".lingbuilder/solution.json",
-  "startupProjectId": "new-emoji-92-tabs-validation",
+  "startupProjectId": "lingbuilder-project-2",
   "startupProjectIds": [
-    "new-emoji-92-tabs-validation"
+    "lingbuilder-project-2"
   ],
   "folders": [
     {
