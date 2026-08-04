@@ -1,5 +1,115 @@
 [
   {
+    "id": "module-history-1785838278863-ce2d28",
+    "time": "2026-08-04T10:11:18.864Z",
+    "action": "export",
+    "moduleId": "lingbuilder.wxhook.manager",
+    "moduleName": "微信 4.1.10.27 多开管理模块",
+    "version": "1.1.1",
+    "status": "success",
+    "summary": "已导出模块包 微信 4.1.10.27 多开管理模块",
+    "details": "导出路径：C:\\Users\\Administrator\\Documents\\LingBuilder\\已导入源码\\微信4.1.10.27多开防撤回\\.lingbuilder\\module-packages\\lingbuilder.wxhook.manager-1.1.1.lbmod\nSHA256：476914de530d86a2df7b942d6555862e0a939a7dd4dbf25f5084cac5fa49b105"
+  },
+  {
+    "id": "module-history-1785837984685-7717f0",
+    "time": "2026-08-04T10:06:24.685Z",
+    "action": "export",
+    "moduleId": "lingbuilder.wxhook.manager",
+    "moduleName": "微信 4.1.10.27 多开管理模块",
+    "version": "1.1.1",
+    "status": "success",
+    "summary": "已导出模块包 微信 4.1.10.27 多开管理模块",
+    "details": "导出路径：C:\\Users\\Administrator\\Documents\\LingBuilder\\已导入源码\\微信4.1.10.27多开防撤回\\.lingbuilder\\module-packages\\lingbuilder.wxhook.manager-1.1.1.lbmod\nSHA256：66030ab21c510f8e5d2258fd054d6a137e51fd3e1593062835e027b45e16131f"
+  },
+  {
+    "id": "module-history-1785833933664-c0277b",
+    "time": "2026-08-04T08:58:53.664Z",
+    "action": "export",
+    "moduleId": "lingbuilder.wxhook.manager",
+    "moduleName": "微信 4.1.10.27 多开管理模块",
+    "version": "1.1.0",
+    "status": "success",
+    "summary": "已导出模块包 微信 4.1.10.27 多开管理模块",
+    "details": "导出路径：C:\\Users\\Administrator\\Documents\\LingBuilder\\已导入源码\\微信4.1.10.27多开防撤回\\.lingbuilder\\module-packages\\lingbuilder.wxhook.manager-1.1.0.lbmod\nSHA256：4116cba960a3f25615cbbf0156097c592dcd120cdc91324589d4422d9680a653"
+  },
+  {
+    "id": "module-history-1785833569932-79b19d",
+    "time": "2026-08-04T08:52:49.932Z",
+    "action": "export",
+    "moduleId": "lingbuilder.wxhook.manager",
+    "moduleName": "微信 4.1.10.27 多开管理模块",
+    "version": "1.1.0",
+    "status": "success",
+    "summary": "已导出模块包 微信 4.1.10.27 多开管理模块",
+    "details": "导出路径：C:\\Users\\Administrator\\Documents\\LingBuilder\\已导入源码\\微信4.1.10.27多开防撤回\\.lingbuilder\\module-packages\\lingbuilder.wxhook.manager-1.1.0.lbmod\nSHA256：3b92629d57caa7360338791b516e67a097a0faad1d768076270843dbaac44681"
+  },
+  {
+    "id": "module-history-1785830102708-e699ba",
+    "time": "2026-08-04T07:55:02.708Z",
+    "action": "export",
+    "moduleId": "lingbuilder.wxhook.manager",
+    "moduleName": "微信 4.1.10.27 多开管理模块",
+    "version": "1.0.1",
+    "status": "success",
+    "summary": "已导出模块包 微信 4.1.10.27 多开管理模块",
+    "details": "导出路径：C:\\Users\\Administrator\\Downloads\\c++-汉化集成开发环境(lingbuilder)\\.lingbuilder\\module-packages\\lingbuilder.wxhook.manager.lbmod\nSHA256：71a8f140fb71aede35ef0b9d28753c99aacbbc75253f2824f00bf4b4c6943e6c"
+  },
+  {
+    "id": "module-history-1785825916490-987ff4",
+    "time": "2026-08-04T06:45:16.490Z",
+    "action": "export",
+    "moduleId": "lingbuilder.wxhook.manager",
+    "moduleName": "微信 4.1.10.27 多开管理模块",
+    "version": "1.0.1",
+    "status": "success",
+    "summary": "已导出模块包 微信 4.1.10.27 多开管理模块",
+    "details": "导出路径：C:\\Users\\Administrator\\Downloads\\c++-汉化集成开发环境(lingbuilder)\\exports\\lingbuilder.wxhook.manager-1.0.1.lbmod\nSHA256：309992f2b1fa9008e34d8b8a2abb342626b1a27ed1b656b62932eb8189799ec3"
+  },
+  {
+    "id": "module-history-1785824898730-e2d613",
+    "time": "2026-08-04T06:28:18.730Z",
+    "action": "export",
+    "moduleId": "lingbuilder.wxhook.manager",
+    "moduleName": "微信 4.1.10.27 多开管理模块",
+    "version": "1.0.1",
+    "status": "success",
+    "summary": "已导出模块包 微信 4.1.10.27 多开管理模块",
+    "details": "导出路径：C:\\Users\\Administrator\\Downloads\\c++-汉化集成开发环境(lingbuilder)\\exports\\lingbuilder.wxhook.manager-1.0.1.lbmod\nSHA256：6cfff46a5c58deccc8ff8d81bb99c86f2134013b1e957d0f3bf22d40c6d4d4e4"
+  },
+  {
+    "id": "module-history-1785823486570-1338e4",
+    "time": "2026-08-04T06:04:46.570Z",
+    "action": "export",
+    "moduleId": "lingbuilder.wxhook.manager",
+    "moduleName": "微信 4.1.10.27 多开管理模块",
+    "version": "1.0.1",
+    "status": "success",
+    "summary": "已导出模块包 微信 4.1.10.27 多开管理模块",
+    "details": "导出路径：C:\\Users\\Administrator\\Downloads\\c++-汉化集成开发环境(lingbuilder)\\.lingbuilder\\module-packages\\lingbuilder.wxhook.manager.lbmod\nSHA256：20cb8921d2ad5ac47adaa0eefb1361631db387f2d39d3f629c86dc02a787e174"
+  },
+  {
+    "id": "module-history-1785822054384-5c03ba",
+    "time": "2026-08-04T05:40:54.384Z",
+    "action": "export",
+    "moduleId": "lingbuilder.wxhook.manager",
+    "moduleName": "微信 4.1.10.27 多开管理模块",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "已导出模块包 微信 4.1.10.27 多开管理模块",
+    "details": "导出路径：C:\\Users\\Administrator\\Downloads\\c++-汉化集成开发环境(lingbuilder)\\.lingbuilder\\module-packages\\lingbuilder.wxhook.manager.lbmod\nSHA256：7f2cb1cbc214539c46199d2e12403bd9fed2d8f4ea34446510b2e33a624f177a"
+  },
+  {
+    "id": "module-history-1785821802453-f3e0cf",
+    "time": "2026-08-04T05:36:42.453Z",
+    "action": "export",
+    "moduleId": "lingbuilder.wxhook.manager",
+    "moduleName": "微信 4.1.10.27 多开管理模块",
+    "version": "1.0.0",
+    "status": "success",
+    "summary": "已导出模块包 微信 4.1.10.27 多开管理模块",
+    "details": "导出路径：C:\\Users\\Administrator\\Downloads\\c++-汉化集成开发环境(lingbuilder)\\.lingbuilder\\module-packages\\lingbuilder.wxhook.manager.lbmod\nSHA256：045856413c2d7aa0aa18362ece756165ff6f0c39c3d419cd1a42598b8d7b411c"
+  },
+  {
     "id": "module-history-1785074372682-399fa4",
     "time": "2026-07-26T13:59:32.683Z",
     "action": "export",

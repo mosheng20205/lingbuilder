@@ -1,7 +1,7 @@
 {
   "name": "lingbuilder-electron",
   "private": true,
-  "version": "0.2.7",
+  "version": "0.2.9",
   "type": "module",
   "main": "dist-electron/main.cjs",
   "scripts": {
@@ -178,6 +178,10 @@
       }
     ],
     "extraResources": [
+      {
+        "from": "../image/lingbuilder-ide-icon-v2.ico",
+        "to": "assets/lingbuilder-window.ico"
+      },
       {
         "from": "installer/update-user-path.ps1",
         "to": "installer/update-user-path.ps1"

@@ -218,7 +218,7 @@ export const WEBSOCKET_CLIENT_MODULE: LingBuilderModuleManifest = {
   id: 'lingbuilder.websocket.client',
   name: 'WebSocket 客户端模块',
   version: '2.0.0',
-  minLingBuilderVersion: '0.2.7',
+  minLingBuilderVersion: '0.2.8',
   category: '网络',
   description: '提供受管 WinHTTP WebSocket 客户端、多连接、后台接收、文本与二进制消息、wss://、代理、身份验证、证书固定、自动重连、资源限制和运行统计。',
   author: 'LingBuilder',

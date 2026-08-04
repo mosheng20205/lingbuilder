@@ -38,6 +38,7 @@ export async function exportVisualStudioProject(
   const projectPath = path.join(options.projectDir, `${projectName}.vcxproj`);
   const filtersPath = path.join(options.projectDir, `${projectName}.vcxproj.filters`);
   const sourceFiles = getSourceFiles(options.generatedFiles, options.enabledModules);
+  const resourceFiles = getResourceFiles(options.generatedFiles);
   const contentFiles = unique((options.contentFiles || []).map(normalizeSlash));
   const noneFiles = unique([...getNoneFiles(options.generatedFiles), ...contentFiles]);
   const includeDirs = getModuleIncludeDirs(options.enabledModules, 'windows-msvc-win32');
@@ -62,6 +63,7 @@ export async function exportVisualStudioProject(
       projectGuid,
       projectName,
       sourceFiles,
+      resourceFiles,
       noneFiles,
       includeDirs,
       includeDirsX64,
@@ -76,7 +78,7 @@ export async function exportVisualStudioProject(
       requiresDynamicCrt: (options.requiresDynamicCrt ?? hasCryptoSdk) || hasOpenCv,
       x64Only
     }), 'utf8'),
-    fs.writeFile(filtersPath, generateFilters(sourceFiles, noneFiles), 'utf8')
+    fs.writeFile(filtersPath, generateFilters(sourceFiles, resourceFiles, noneFiles), 'utf8')
   ]);
 
   return {
@@ -108,7 +110,13 @@ function getSourceFiles(generatedFiles: LingCppNativeProjectFile[], enabledModul
 function getNoneFiles(generatedFiles: LingCppNativeProjectFile[]): string[] {
   return generatedFiles
     .map(file => normalizeSlash(file.relativePath))
-    .filter(file => !/\.(c|cc|cpp|cxx)$/i.test(file));
+    .filter(file => !/\.(c|cc|cpp|cxx|rc)$/i.test(file));
+}
+
+function getResourceFiles(generatedFiles: LingCppNativeProjectFile[]): string[] {
+  return unique(generatedFiles
+    .map(file => normalizeSlash(file.relativePath))
+    .filter(file => /\.rc$/i.test(file)));
 }
 
 function getModuleIncludeDirs(enabledModules: InstalledModule[], targetId = 'windows-msvc-win32'): string[] {
@@ -230,6 +238,7 @@ function generateVcxproj(options: {
   projectGuid: string;
   projectName: string;
   sourceFiles: string[];
+  resourceFiles: string[];
   noneFiles: string[];
   includeDirs: string[];
   includeDirsX64: string[];
@@ -369,7 +378,7 @@ ${options.hasFbro ? `  <Target Name="ValidateFbroArchitecture" BeforeTargets="Pr
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><SDLCheck>true</SDLCheck><PreprocessorDefinitions>${debugPreprocessorDefinitionsX64}</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>Windows</SubSystem><AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'"><ClCompile><WarningLevel>Level3</WarningLevel><FunctionLevelLinking>true</FunctionLevelLinking><IntrinsicFunctions>true</IntrinsicFunctions><SDLCheck>true</SDLCheck><PreprocessorDefinitions>NDEBUG;UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions><ConformanceMode>true</ConformanceMode><LanguageStandard>${languageStandard}</LanguageStandard>${runtimeLibrary}<AdditionalIncludeDirectories>${additionalIncludeDirectoriesX64}</AdditionalIncludeDirectories><AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions></ClCompile><Link><SubSystem>Windows</SubSystem><EnableCOMDATFolding>true</EnableCOMDATFolding><OptimizeReferences>true</OptimizeReferences><AdditionalDependencies>${xmlEscape(additionalDependenciesX64)};%(AdditionalDependencies)</AdditionalDependencies></Link>${postBuildX64}</ItemDefinitionGroup>
-${generateFileItems('ClCompile', options.sourceFiles)}${generateFileItems('None', options.noneFiles)}
+${generateFileItems('ClCompile', options.sourceFiles)}${generateFileItems('ResourceCompile', options.resourceFiles)}${generateFileItems('None', options.noneFiles)}
   <Import Project="$(VCTargetsPath)\\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />
 </Project>
@@ -385,7 +394,7 @@ function stripWin32Configurations(project: string): string {
     .replace(/\s*<ItemDefinitionGroup Condition="'\$\(Configuration\)\|\$\(Platform\)'=='(?:Debug|Release)\|Win32'">[\s\S]*?<\/ItemDefinitionGroup>/gu, '');
 }
 
-function generateFilters(sourceFiles: string[], noneFiles: string[]): string {
+function generateFilters(sourceFiles: string[], resourceFiles: string[], noneFiles: string[]): string {
   return `<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
@@ -396,12 +405,16 @@ function generateFilters(sourceFiles: string[], noneFiles: string[]): string {
     <Filter Include="生成资源">
       <UniqueIdentifier>{${deterministicGuid('filter:none')}}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件">
+      <UniqueIdentifier>{${deterministicGuid('filter:resource')}}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
   </ItemGroup>
-${generateFilterItems('ClCompile', sourceFiles, '源文件')}${generateFilterItems('None', noneFiles, '生成资源')}</Project>
+${generateFilterItems('ClCompile', sourceFiles, '源文件')}${generateFilterItems('ResourceCompile', resourceFiles, '资源文件')}${generateFilterItems('None', noneFiles, '生成资源')}</Project>
 `;
 }
 
-function generateFileItems(kind: 'ClCompile' | 'None', files: string[]): string {
+function generateFileItems(kind: 'ClCompile' | 'ResourceCompile' | 'None', files: string[]): string {
   if (files.length === 0) return '';
   const items = files
     .map(file => `    <${kind} Include="${xmlEscape(toWindowsPath(file))}" />`)
@@ -409,7 +422,7 @@ function generateFileItems(kind: 'ClCompile' | 'None', files: string[]): string 
   return `  <ItemGroup>\n${items}\n  </ItemGroup>\n`;
 }
 
-function generateFilterItems(kind: 'ClCompile' | 'None', files: string[], filter: string): string {
+function generateFilterItems(kind: 'ClCompile' | 'ResourceCompile' | 'None', files: string[], filter: string): string {
   if (files.length === 0) return '';
   const items = files
     .map(file => `    <${kind} Include="${xmlEscape(toWindowsPath(file))}">\n      <Filter>${xmlEscape(filter)}</Filter>\n    </${kind}>`)

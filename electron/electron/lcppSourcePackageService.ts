@@ -15,6 +15,9 @@ export const LCPP_SOURCE_PACKAGE_MANIFEST = 'lingbuilder-source-package.json';
 const PACKAGE_SCHEMA_VERSION = 2;
 const LEGACY_PACKAGE_SCHEMA_VERSION = 1;
 const MINIMUM_GENERATOR_VERSION = '0.2.5';
+// Keep package compatibility checks inside the desktop package boundary. This
+// must match the desktop generator version and cannot import renderer services.
+const CURRENT_GENERATOR_VERSION = '0.2.9';
 const LIST_VIEW_STRUCTURED_ROWS_MINIMUM_GENERATOR_VERSION = '0.2.7';
 const EDGEVIEW_SAFE_API_MINIMUM_GENERATOR_VERSION = '0.2.7';
 const EDGEVIEW_SAFE_API_V2_MINIMUM_GENERATOR_VERSION = '0.2.7';
@@ -84,6 +87,7 @@ interface PortableModuleManifest {
   id: string;
   name: string;
   version: string;
+  minLingBuilderVersion?: string;
   targets?: unknown[];
   bindings?: { commands?: unknown[] };
   contributes?: { commands?: unknown[]; designerControls?: unknown[]; types?: unknown[]; snippets?: unknown[] };
@@ -187,6 +191,7 @@ export class LcppSourcePackageService {
       const installedModules = await readInstalledModules(this.workspaceRoot);
       const moduleRequirements: LcppSourcePackageModuleRequirement[] = [];
       const bundledModules = new Map<string, PortableInstalledModule>();
+      const moduleMinimumGeneratorVersions: string[] = [MINIMUM_GENERATOR_VERSION];
 
       for (const project of projects) {
         const sourceRoot = resolveWithin(this.workspaceRoot, normalizeRelativePath(project.sourceRoot));
@@ -220,6 +225,7 @@ export class LcppSourcePackageService {
             builtin,
             bundled: !builtin
           });
+          if (module?.manifest.minLingBuilderVersion) moduleMinimumGeneratorVersions.push(module.manifest.minLingBuilderVersion);
           if (module) bundledModules.set(module.manifest.id, module);
         }
 
@@ -250,6 +256,12 @@ export class LcppSourcePackageService {
         warnings.push(`已排除 ${budget.excludedSensitiveFiles.length} 个疑似凭据或私钥文件。`);
       }
 
+      const capabilityMinimumGeneratorVersion = requiredCapabilities.includes(LCPP_GENERATOR_CAPABILITIES.edgeViewSafeApiV2)
+        ? EDGEVIEW_SAFE_API_V2_MINIMUM_GENERATOR_VERSION
+        : requiredCapabilities.includes(LCPP_GENERATOR_CAPABILITIES.listViewStructuredRows)
+          ? LIST_VIEW_STRUCTURED_ROWS_MINIMUM_GENERATOR_VERSION
+          : requiredCapabilities.includes(LCPP_GENERATOR_CAPABILITIES.edgeViewSafeApiV1)
+            ? EDGEVIEW_SAFE_API_MINIMUM_GENERATOR_VERSION : MINIMUM_GENERATOR_VERSION;
       const manifest: LcppSourcePackageManifest = {
         schemaVersion: PACKAGE_SCHEMA_VERSION,
         kind: LCPP_SOURCE_PACKAGE_KIND,
@@ -257,12 +269,10 @@ export class LcppSourcePackageService {
         createdBy: { product: 'LingBuilder', version: ideVersion },
         sourceSolution: { id: solution.id, name: solution.name },
         startupProjectId: selectedProject.id,
-        minimumGeneratorVersion: requiredCapabilities.includes(LCPP_GENERATOR_CAPABILITIES.edgeViewSafeApiV2)
-          ? EDGEVIEW_SAFE_API_V2_MINIMUM_GENERATOR_VERSION
-          : requiredCapabilities.includes(LCPP_GENERATOR_CAPABILITIES.listViewStructuredRows)
-            ? LIST_VIEW_STRUCTURED_ROWS_MINIMUM_GENERATOR_VERSION
-            : requiredCapabilities.includes(LCPP_GENERATOR_CAPABILITIES.edgeViewSafeApiV1)
-              ? EDGEVIEW_SAFE_API_MINIMUM_GENERATOR_VERSION : MINIMUM_GENERATOR_VERSION,
+        minimumGeneratorVersion: maxGeneratorVersion([
+          capabilityMinimumGeneratorVersion,
+          ...moduleMinimumGeneratorVersions
+        ]),
         requiredCapabilities,
         projects: projects.map(project => ({
           id: project.id,
@@ -372,6 +382,19 @@ export function createLcppSourcePackageService(workspaceRoot: string): LcppSourc
 
 export function isLcppSourcePackagePath(value: string): boolean {
   return String(value || '').toLowerCase().endsWith(LCPP_SOURCE_PACKAGE_EXTENSION);
+}
+
+/**
+ * Resolve the user-facing export target without allowing the package to leave
+ * the workspace's portable `exports` directory.
+ */
+export function resolveProjectSourcePackagePath(workspaceRoot: string, requestedPath: string, fallbackName: string): string {
+  const exportRoot = path.join(path.resolve(workspaceRoot), 'exports');
+  const requestedName = path.basename(String(requestedPath || '').trim());
+  const fallback = safeFileName(fallbackName);
+  const safeName = safeFileName(requestedName || fallback);
+  const fileName = isLcppSourcePackagePath(safeName) ? safeName : `${safeName}${LCPP_SOURCE_PACKAGE_EXTENSION}`;
+  return path.join(exportRoot, fileName);
 }
 
 function createPortableSolution(solution: PortableSolution, projects: PortableSolutionProject[], startupProjectId: string): PortableSolution {
@@ -622,6 +645,7 @@ async function extractAndValidatePackage(packagePath: string): Promise<Extracted
       }
       : manifest;
     validateRequiredGeneratorCapabilities(compatibilityManifest);
+    validateMinimumGeneratorVersion(compatibilityManifest);
     const moduleWarnings = await validateModuleAvailability(compatibilityManifest, workspaceRoot);
     const warnings = compatibilityManifest.excludedSensitiveFiles.length > 0
       ? [`导出方已排除 ${manifest.excludedSensitiveFiles.length} 个疑似敏感文件。`]
@@ -687,6 +711,32 @@ function validateRequiredGeneratorCapabilities(manifest: LcppSourcePackageManife
   if (unsupported.length === 0) return;
   const details = unsupported.map(capability => GENERATOR_CAPABILITY_LABELS[capability] || capability).join('、');
   throw new Error(`当前 LingBuilder 生成器不支持此源码包所需能力：${details}。请升级到 ${manifest.minimumGeneratorVersion} 或更新版本后再导入。`);
+}
+
+function validateMinimumGeneratorVersion(manifest: LcppSourcePackageManifest): void {
+  if (compareGeneratorVersions(CURRENT_GENERATOR_VERSION, manifest.minimumGeneratorVersion) < 0) {
+    throw new Error(`当前 LingBuilder 版本为 ${CURRENT_GENERATOR_VERSION}，此源码包至少需要 ${manifest.minimumGeneratorVersion}。请升级 IDE 后再导入。`);
+  }
+}
+
+function maxGeneratorVersion(versions: readonly string[]): string {
+  return versions.reduce((maximum, candidate) => (
+    compareGeneratorVersions(candidate, maximum) > 0 ? candidate : maximum
+  ), MINIMUM_GENERATOR_VERSION);
+}
+
+function compareGeneratorVersions(left: string, right: string): number {
+  const parse = (value: string) => value.split('-', 1)[0].split('.').map(part => Number.parseInt(part, 10) || 0);
+  const leftParts = parse(left);
+  const rightParts = parse(right);
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const difference = (leftParts[index] || 0) - (rightParts[index] || 0);
+    if (difference !== 0) return difference < 0 ? -1 : 1;
+  }
+  const leftPrerelease = left.includes('-');
+  const rightPrerelease = right.includes('-');
+  if (leftPrerelease === rightPrerelease) return 0;
+  return leftPrerelease ? -1 : 1;
 }
 
 async function collectRequiredGeneratorCapabilities(

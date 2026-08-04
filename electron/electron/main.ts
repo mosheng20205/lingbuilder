@@ -24,7 +24,11 @@ import { AiBridgeManagerService, type ManagedAiBridgePermission, type ManagedAiB
 import { createExternalAiLaunchPlan, detectExternalAiClients, type ExternalAiClientId } from './aiClientIntegrationService';
 import { CodexDesktopIntegrationService } from './codexDesktopIntegrationService';
 import { openPathWithExplorerFallback, selectShellWorkspaceRoot } from './shellPathService';
-import { createLcppSourcePackageService, LCPP_SOURCE_PACKAGE_EXTENSION } from './lcppSourcePackageService';
+import {
+  createLcppSourcePackageService,
+  LCPP_SOURCE_PACKAGE_EXTENSION,
+  resolveProjectSourcePackagePath
+} from './lcppSourcePackageService';
 
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL || 'http://127.0.0.1:3001/';
 const SERVER_READY_PREFIX = 'LINGBUILDER_SERVER_READY ';
@@ -828,14 +832,17 @@ function registerIpcHandlers(): void {
       if (!workspaceRoot) throw new Error('当前没有已打开的工作区。');
       const owner = getFocusedWindow();
       const defaultName = `${String(suggestedName || 'LingBuilder源码').replace(/[<>:"/\\|?*\u0000-\u001f]+/gu, '-')}${LCPP_SOURCE_PACKAGE_EXTENSION}`;
+      const exportRoot = path.join(path.resolve(workspaceRoot), 'exports');
+      await fs.mkdir(exportRoot, { recursive: true });
       const options: Electron.SaveDialogOptions = {
         title: '一键导出 LCPP 源码包',
-        defaultPath: path.join(app.getPath('downloads'), defaultName),
+        defaultPath: path.join(exportRoot, defaultName),
         filters: [{ name: 'LingBuilder LCPP 源码包', extensions: [LCPP_SOURCE_PACKAGE_EXTENSION.slice(1)] }]
       };
       const selected = owner ? await dialog.showSaveDialog(owner, options) : await dialog.showSaveDialog(options);
       if (selected.canceled || !selected.filePath) return { ok: false, canceled: true };
-      const result = await createLcppSourcePackageService(workspaceRoot).exportProject(String(projectId || ''), selected.filePath, app.getVersion());
+      const targetPath = resolveProjectSourcePackagePath(workspaceRoot, selected.filePath, defaultName);
+      const result = await createLcppSourcePackageService(workspaceRoot).exportProject(String(projectId || ''), targetPath, app.getVersion());
       return { ...result, canceled: false };
     } catch (error) {
       return { ok: false, canceled: false, error: error instanceof Error ? error.message : String(error) };

@@ -1,5 +1,11 @@
 # LingBuilder Electron
 
+> 0.2.9 发布基线：微信多开管理模块、第三方模块随 `.lcpppkg` 离线分发、Windows EXE 图标资源和无 IDE AI Bridge 多文件工作流进入正式安装包。`lingbuilder.wxhook.manager@1.1.1` 最低要求 LingBuilder `0.2.9`。
+
+> 0.2.8 发布基线：HTTP 客户端 2.0、WebSocket 客户端 2.0 和 WebSocket 服务端 2.0 最低要求 LingBuilder `0.2.8`；EdgeView、ListView 和 OpenCV 继续沿用已发布的 `0.2.7` 契约。
+
+> Windows 原生项目的入口窗口使用 LingBuilder 默认图标或自定义 ICO 时，生成目录会包含 `lingbuilder-app.rc` 与 `resources/lingbuilder-app.ico`。F5、CLI、AI Bridge 和导出的 Visual Studio 工程统一编译该资源，最终 EXE 同时包含 `ICON` / `GROUP_ICON`，可在文件资源管理器中直接显示；运行时 `WM_SETICON` 仍负责窗口大、小图标，但不再被当作 EXE 文件图标的替代品。
+
 > 2026-08-03：修复 NewEmoji 原生事件已经触发、IDE 调试控制台却没有输出的问题。NewEmoji 生成器现在与普通 Win32 一致，把 `调试输出`同时写入 `OutputDebugStringW` 和带 `[调试输出] `前缀的 UTF-8 `stdout` 并立即刷新，`ManagedProcessService` 可实时写入 `run.log`；验证项目同时补回 `表格06.MouseEnter` 绑定。
 
 > 2026-08-03：修复 NewEmoji Table 在 IDE 内生成事件后仍显示未绑定、事件签名缺少原生参数的问题。设计器现在等待模块授权并同步提交绑定后再打开代码；模块事件 `parameters/starterStatements` 同源驱动 Monaco、新手编辑器、语言诊断和旧零参数签名迁移。C++ 回调传入表格与鼠标真实参数，VirtualRow 通过 `NE_设置表格虚拟行数据` 完成 UTF-8 两阶段 buffer 返回。专项覆盖位于 `tests/windowDesigner.test.ts`、`tests/designerProfessionalUi.test.tsx`、`tests/lingcpp.test.ts` 和 `tests/modules.test.ts`。
@@ -68,6 +74,7 @@
 ## LCPP 源码包
 
 - `.lcpppkg` 是可直接分享的单文件源码包。文件菜单、命令面板和项目右键菜单均提供“一键导出 LCPP 源码包”。
+- 一键导出始终写入当前工作区根目录的 `exports/` 文件夹；即使保存对话框选了其他目录，也只采用文件名并回收到该目录，保证所有可分享包位置统一。
 - 导出前工作台会提交并保存当前草稿；包内包含目标项目的完整依赖闭包、源码、配置、设计器、项目资源、模块引用及已启用第三方模块。无命令、无 target 的 SDK/资产载体模块也会随包携带。
 - 源工作区存在 `.lingbuilder/build-configuration.json` 时会随包保留 Debug/Release 与 Win32/x64 设置；切换到导入工作区后，工作台会重新读取该配置。若旧包缺少配置，CEF3、FBro、OpenCV 等 x64-only 模块会在首次构建前自动选择并持久化 x64。
 - 每个包包含 `lingbuilder-source-package.json` 和独立 `workspace/`，清单记录全部文件大小及 SHA-256。导入拒绝路径越界、符号链接、额外文件、哈希不一致、超过 1GB 的包和超过 2GB 的解压内容。
@@ -247,7 +254,9 @@ npm run ai-server -- --workspace .. --permission yolo --mcp
 npm run ai-server -- --workspace .. --permission preview --mcp --stdio-only
 ```
 
-产品 CLI 现在支持完整的 AI 项目起步闭环：`project create` 先输出项目、设计器模型、初始中文源码和模块引用预览，`--yes` 才会创建真实解决方案项目；创建结果带 `receiptId`，文件未变更时可用 `project undo-create --yes` 撤销。通过 Codex 桌面版、Codex CLI 或 Claude Code 的 MCP 工具也使用同一条链路：`lingbuilder.project.templates` → `lingbuilder.project.create`（预览）→ `approved=true`（落盘）→ `lingbuilder.edit.propose/apply`（编写代码）→ `lingbuilder.lingcpp.diagnostics` → `lingbuilder.build.run`。`openInWorkbench=true` 时，IDE 会刷新解决方案，保存当前编辑，切换到新项目并打开主 `.lcpp` 文件。
+产品 CLI 现在支持完整的 AI 项目起步闭环：`project create` 先输出项目、设计器模型、初始中文源码和模块引用预览，`--yes` 才会创建真实解决方案项目；创建结果带 `receiptId`，文件未变更时可用 `project undo-create --yes` 撤销。通过 Codex 桌面版、Codex CLI 或 Claude Code 的 MCP 工具也使用同一条链路：先读取规则/模块/示例上下文，再执行 `lingbuilder.project.templates` → `lingbuilder.project.create`（预览）→ 用户一次批准 → `approved=true`（落盘）→ 读取真实源码和设计器 → `lingbuilder.edit.propose/apply`（源码与设计器 JSON 同一提案）→ `lingbuilder.lingcpp.diagnostics` → `lingbuilder.native.preview` → `lingbuilder.build.run`。`openInWorkbench=true` 时，IDE 会刷新解决方案，保存当前编辑，切换到新项目并打开主 `.lcpp` 文件。
+
+项目创建省略 `enabledModuleIds` 时会继承根目录 `.lingbuilder/project-modules.json`，预览的 `modules.selection` 为 `global-default`，并把项目级 `.lingbuilder/projects/<projectId>/project-modules.json` 列入文件预览；显式传空数组才表示仅启用基础模块。批准创建后，应保存 `result.project.id` 作为模块、诊断和编辑的 `projectId`，并保存 `result.designerProject` 作为 MCP 原生预览、导出和构建的 `project` 参数；不能只读取全局模块清单，也不能把解决方案元数据对象当作设计器项目对象。创建服务对已存在但缺少项目级清单的解决方案项目提供一次兼容继承，后续仍以项目级文件为准。
 
 产品 CLI 的 `project diagnose` 会读取解决方案中同项目的全部 `.lcpp` 上下文，因此在 `项目全局变量.lcpp` 使用 `项目数据类型.lcpp` 的记录类型不会产生脱离项目上下文的误报。`project build --yes` 编译完成后直接返回；`project run --yes` 保持前台附着直到生成的 exe 自然退出并等待运行日志落盘，按 Ctrl+C 会先停止该受管进程再退出。空设计器窗口同样可以生成并编译，不要求为了绕过占位数组而添加无意义控件；项目没有 `CefBrowser` 时不会初始化 CEF3 或输出缺少 SDK 的运行日志。
 
@@ -533,6 +542,8 @@ npm run smoke:opencv-native
 模块 binding 中的设计器对象参数统一使用 `controlRef`。`.lcpp` 必须写裸名称，例如 `控件_设置文本(操作结果, "完成")`；生成器解析稳定项目/窗口/控件 ID 后，再按后端契约转换为 `L"操作结果"`、稳定 ID 或原生句柄。
 
 新手编辑器与 Monaco 共用 `controlReferenceService`，提供兼容对象补全、缺失/歧义/类型/种类/作用域/引号诊断、安全移除引号、悬停、引用和重命名。控件引用使用独立语义令牌颜色；Ctrl+单击、右键和命令面板的“跳转到控件”共用 CommandService/MenuService/设计器导航服务，设计器未挂载时请求不会丢失。
+
+普通 Win32 的 `stableId/nativeHandle` 转换由窗口实例完成，并对生成的派生窗口事件保持可访问。源码型模块若声明 `wideString`，必须同时验证字面量和 `控件_取文本` 返回的动态 `std::wstring`。参考外置模块 `lingbuilder.wxhook.manager`：它把四个裸 `controlRef` 转为 ListView、Label、ListBox 和顶部切换 Button 的真实 HWND；Button 的标准 `Click` 事件调用 `微信多开_设置总防撤回`，模块通过本机 Host 后台更新多微信实例资料、防撤回状态和撤回灰条提示。项目示例位于 `src/wxmore-antirevoke-tool/`，模块源码位于 `modules/lingbuilder.wxhook.manager/`。
 
 维护和迁移：
 

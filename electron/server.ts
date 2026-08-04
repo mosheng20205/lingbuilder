@@ -81,6 +81,12 @@ import { ExtensionService } from "./src/services/extensions/extensionService";
 import { DependencyService } from "./src/services/dependencies/dependencyService";
 import { RcResourceService } from "./src/services/windowDesigner/rcResourceService";
 import { createDesignerAssetService } from "./src/services/windowDesigner/designerAssetService";
+import {
+  compileWindowsExecutableResource,
+  createWindowsExecutableIconService,
+  WINDOWS_EXECUTABLE_RESOURCE_FILE,
+  WindowsExecutableResourceCompileError
+} from "./src/services/windowDesigner/windowsExecutableIconService";
 import { PerformanceService } from "./src/services/performance/performanceService";
 import { PublishingService } from "./src/services/publishing/publishingService";
 import { WorkspaceIndexService } from "./src/services/ai/workspaceIndexService";
@@ -208,6 +214,7 @@ let extensionService = new ExtensionService(serverRuntimeConfig.workspaceRoot);
 let dependencyService = new DependencyService(serverRuntimeConfig.workspaceRoot);
 let rcResourceService = new RcResourceService(serverRuntimeConfig.workspaceRoot);
 let designerAssetService = createDesignerAssetService(serverRuntimeConfig.workspaceRoot);
+let windowsExecutableIconService = createWindowsExecutableIconService(serverRuntimeConfig.workspaceRoot, designerAssetService);
 let performanceService = new PerformanceService(serverRuntimeConfig.workspaceRoot);
 let publishingService = new PublishingService(serverRuntimeConfig.workspaceRoot);
 let workspaceIndexService = new WorkspaceIndexService(serverRuntimeConfig.workspaceRoot);
@@ -300,6 +307,7 @@ async function switchWorkspaceRuntime(requestedPath: unknown): Promise<{ workspa
     dependencyService = new DependencyService(candidateWorkspace);
     rcResourceService = new RcResourceService(candidateWorkspace);
     designerAssetService = createDesignerAssetService(candidateWorkspace);
+    windowsExecutableIconService = createWindowsExecutableIconService(candidateWorkspace, designerAssetService);
     performanceService = new PerformanceService(candidateWorkspace);
     publishingService = new PublishingService(candidateWorkspace);
     workspaceIndexService = new WorkspaceIndexService(candidateWorkspace);
@@ -1676,6 +1684,8 @@ app.post("/api/window-designer/edge-control-preview", async (req, res) => {
     const sourceDir = path.join(buildDir, "src"); const binDir = path.join(buildDir, "bin"); const objDir = path.join(buildDir, "obj"); const exportDir = path.join(buildDir, "export");
     await Promise.all([sourceDir, binDir, objDir, exportDir].map(directory => fs.mkdir(directory, { recursive: true })));
     await writeGeneratedProjectFiles(sourceDir, generated.files);
+    const previewProjectRef = getSolutionService().getProject(await getSolutionService().getSolution(), projectId);
+    await windowsExecutableIconService.materialize(previewProjectRef, generated.selectedWindow, [buildDir]);
     const modulePlan = await materializeModuleNativeDependencies(enabledModules, {
       buildDir, sourceDir, binDir, exportDir, preferredTargetId: getModuleTargetId(buildConfiguration)
     });
@@ -1683,7 +1693,10 @@ app.post("/api/window-designer/edge-control-preview", async (req, res) => {
     const compiler = await detectCompiler(buildConfiguration);
     if (!compiler || compiler.kind !== "msvc") return res.status(200).json({ ok: false, stage: "compiler", error: "EdgeView 独立预览需要 Visual Studio Build Tools / MSVC。", logs: compatibility.messages });
     const exePath = path.join(binDir, "EdgeViewControlPreview.exe");
-    const compile = await compileWin32Preview(compiler, path.join(sourceDir, "main.cpp"), exePath, objDir, buildDir, modulePlan, buildConfiguration);
+    const resourcePath = generated.files.some(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE)
+      ? path.join(sourceDir, WINDOWS_EXECUTABLE_RESOURCE_FILE)
+      : undefined;
+    const compile = await compileWin32Preview(compiler, path.join(sourceDir, "main.cpp"), exePath, objDir, buildDir, modulePlan, buildConfiguration, resourcePath);
     const logs = [...compatibility.messages, ...generated.diagnostics, ...modulePlan.diagnostics, ...compile.logs];
     if (!compile.ok) return res.status(200).json({ ok: false, stage: "compile", error: "EdgeView 控件预览编译失败。", logs, buildDir });
     const started = await managedProcessService.start(processKey, exePath, { cwd: binDir, detached: false, windowsHide: false, logFilePath: path.join(buildDir, "run.log") });
@@ -1830,6 +1843,7 @@ app.post("/api/window-designer/native-export", async (req, res) => {
     });
     const generatedCodegenFiles = codeGeneratorResult.textFiles;
     const copiedAssets = await designerAssetService.copyProjectAssets(projectRef, [exportDir]);
+    const executableIcon = await windowsExecutableIconService.materialize(projectRef, generatedProject.selectedWindow, [exportDir]);
     const moduleExportDiagnostics = await exportModuleNativeDependencies(enabledModules, exportDir);
     const visualStudioProject = await exportVisualStudioProject({
       projectDir: exportDir,
@@ -1838,6 +1852,7 @@ app.post("/api/window-designer/native-export", async (req, res) => {
       enabledModules,
       contentFiles: [
         ...copiedAssets.map(file => normalizeFilePath(path.relative(exportDir, file))),
+        ...executableIcon.files.map(file => normalizeFilePath(path.relative(exportDir, file))),
         ...codeGeneratorResult.artifacts.filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime').map(artifact => normalizeFilePath(artifact.relativePath))
       ]
     });
@@ -2269,10 +2284,12 @@ app.post("/api/window-designer/build-run", async (req, res) => {
     }
     const generatedCodegenFiles = codeGeneratorResult.textFiles;
     const copiedAssets = await designerAssetService.copyProjectAssets(assetProjectRef, [buildDir, binDir, exportDir]);
-    const buildContentFiles = copiedAssets
+    const executableIcon = await windowsExecutableIconService.materialize(assetProjectRef, generatedProject.selectedWindow, [buildDir, exportDir]);
+    const copiedBuildContent = [...copiedAssets, ...executableIcon.files];
+    const buildContentFiles = copiedBuildContent
       .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
       .map(file => normalizeFilePath(path.relative(buildDir, file)));
-    const exportContentFiles = copiedAssets
+    const exportContentFiles = copiedBuildContent
       .filter(file => file.startsWith(`${path.resolve(exportDir)}${path.sep}`))
       .map(file => normalizeFilePath(path.relative(exportDir, file)));
     const moduleNativePlan = await materializeModuleNativeDependencies(enabledModules, {
@@ -2359,7 +2376,10 @@ app.post("/api/window-designer/build-run", async (req, res) => {
 
     const sourcePath = path.join(sourceDir, "main.cpp");
     const exePath = path.join(binDir, "LingBuilderPreview.exe");
-    const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, buildConfiguration);
+    const executableResourcePath = generatedProject.files.some(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE)
+      ? path.join(sourceDir, WINDOWS_EXECUTABLE_RESOURCE_FILE)
+      : undefined;
+    const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, buildConfiguration, executableResourcePath);
     const compilerDiagnostics = mapCompilerDiagnostics(
       parseCompilerDiagnostics(compileResult.logs.join("\n"), compiler.kind === "clang++" ? "clang" : compiler.kind === "g++" ? "gcc" : "msvc"),
       generatedProject.sourceMap,
@@ -2712,10 +2732,12 @@ async function runControlledWindowDesignerBuild(options: {
   }
   const generatedCodegenFiles = codeGeneratorResult.textFiles;
   const copiedAssets = await designerAssetService.copyProjectAssets(assetProjectRef, [buildDir, binDir, exportDir]);
-  const buildContentFiles = copiedAssets
+  const executableIcon = await windowsExecutableIconService.materialize(assetProjectRef, generatedProject.selectedWindow, [buildDir, exportDir]);
+  const copiedBuildContent = [...copiedAssets, ...executableIcon.files];
+  const buildContentFiles = copiedBuildContent
     .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
     .map(file => normalizeFilePath(path.relative(buildDir, file)));
-  const exportContentFiles = copiedAssets
+  const exportContentFiles = copiedBuildContent
     .filter(file => file.startsWith(`${path.resolve(exportDir)}${path.sep}`))
     .map(file => normalizeFilePath(path.relative(exportDir, file)));
   const moduleNativePlan = await materializeModuleNativeDependencies(enabledModules, {
@@ -2778,6 +2800,7 @@ async function runControlledWindowDesignerBuild(options: {
       fingerprint: codeGeneratorResult.fingerprint,
       artifacts: codeGeneratorResult.artifacts
     },
+    executableIcon: executableIcon.fingerprint,
     enabledModules,
     buildConfiguration
   });
@@ -2827,7 +2850,10 @@ async function runControlledWindowDesignerBuild(options: {
   }
 
   const sourcePath = path.join(sourceDir, "main.cpp");
-  const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, buildConfiguration, buildLease.signal);
+  const executableResourcePath = generatedProject.files.some(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE)
+    ? path.join(sourceDir, WINDOWS_EXECUTABLE_RESOURCE_FILE)
+    : undefined;
+  const compileResult = await compileWin32Preview(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, buildConfiguration, executableResourcePath, buildLease.signal);
   if (buildLease.isCancelled()) {
     return createCancelledBuildResult(buildLease, [...preBuildLogs, ...compileResult.logs, "编译子进程已终止并完成取消清理。"]);
   }
@@ -3785,6 +3811,7 @@ async function compileWin32Preview(
   cwd: string,
   modulePlan?: ModuleNativeDependencyPlan,
   buildConfiguration: BuildConfiguration = { schemaVersion: 1, mode: "Debug", architecture: "Win32" },
+  resourcePath?: string,
   signal?: AbortSignal
 ): Promise<{ ok: boolean; logs: string[] }> {
   const includeArgs = (modulePlan?.includeDirs || []).flatMap(includeDir => ["/I", includeDir]);
@@ -3800,6 +3827,19 @@ async function compileWin32Preview(
     };
   }
 
+  let resourceOutputPath: string | undefined;
+  let resourceLogs: string[] = [];
+  try {
+    const resourceResult = await compileWindowsExecutableResource({ compiler, resourcePath, objDir, cwd, signal });
+    resourceOutputPath = resourceResult.outputPath;
+    resourceLogs = resourceResult.logs;
+  } catch (error) {
+    if (error instanceof WindowsExecutableResourceCompileError) {
+      return { ok: false, logs: error.logs };
+    }
+    return { ok: false, logs: ["EXE 图标资源编译失败。", error instanceof Error ? error.message : String(error)] };
+  }
+
   const objectPath = path.join(objDir, "main.obj");
   const requiredCppStandard = modulePlan?.requiredCppStandard === 20 ? 20 : 17;
   const useDynamicCrt = modulePlan?.requiresDynamicCrt === true;
@@ -3810,7 +3850,7 @@ async function compileWin32Preview(
     msvcBuildFlags.push("/MD");
   }
   if (compiler.kind === "msvc" && moduleSources.length > 0) {
-    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, buildConfiguration, requiredCppStandard, useDynamicCrt, signal);
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, buildConfiguration, requiredCppStandard, useDynamicCrt, resourceOutputPath, resourceLogs, signal);
   }
 
   const commandArgs = compiler.kind === "msvc"
@@ -3829,6 +3869,7 @@ async function compileWin32Preview(
         "user32.lib",
         "gdi32.lib",
         "comctl32.lib",
+        ...(resourceOutputPath ? [resourceOutputPath] : []),
         ...moduleLibs,
         ...(buildConfiguration.mode === "Debug" ? ["/link", "/DEBUG", "/INCREMENTAL:NO"] : [])
       ]
@@ -3851,6 +3892,7 @@ async function compileWin32Preview(
       "-municode",
       buildConfiguration.architecture === "x64" ? "-m64" : "-m32",
       objectPath,
+      ...(resourceOutputPath ? [resourceOutputPath] : []),
       "-o",
       exePath,
       "-luser32",
@@ -3887,6 +3929,7 @@ async function compileWin32Preview(
       ok: true,
       logs: [
         "编译成功。",
+        ...resourceLogs,
         compileResult.stdout?.trim() ? `stdout:\n${compileResult.stdout.trim()}` : "",
         compileResult.stderr?.trim() ? `stderr:\n${compileResult.stderr.trim()}` : "",
         linkResult?.stdout?.trim() ? `link stdout:\n${linkResult.stdout.trim()}` : "",
@@ -3918,6 +3961,8 @@ async function compileMsvcPreviewWithModules(
   buildConfiguration: BuildConfiguration,
   requiredCppStandard: 17 | 20,
   useDynamicCrt: boolean,
+  resourceOutputPath: string | undefined,
+  resourceLogs: string[],
   signal?: AbortSignal
 ): Promise<{ ok: boolean; logs: string[] }> {
   const sources = [sourcePath, ...moduleSources];
@@ -3949,6 +3994,7 @@ async function compileMsvcPreviewWithModules(
     "gdi32.lib",
     "comctl32.lib",
     "ole32.lib",
+    ...(resourceOutputPath ? [resourceOutputPath] : []),
     ...moduleLibs,
     ...(buildConfiguration.mode === "Debug" ? ["/DEBUG", "/INCREMENTAL:NO"] : [])
   ];
@@ -3963,7 +4009,7 @@ async function compileMsvcPreviewWithModules(
     const linkResult = await runMsvcCommand(compiler, linkArgs, cwd, signal);
     if (linkResult.stdout?.trim()) outputs.push(`link stdout:\n${linkResult.stdout.trim()}`);
     if (linkResult.stderr?.trim()) outputs.push(`link stderr:\n${linkResult.stderr.trim()}`);
-    return { ok: true, logs: ["编译成功。", ...outputs] };
+    return { ok: true, logs: ["编译成功。", ...resourceLogs, ...outputs] };
   } catch (error: any) {
     return {
       ok: false,

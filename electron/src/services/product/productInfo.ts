@@ -18,6 +18,51 @@ export interface LingBuilderReleaseNote {
 
 export const LINGBUILDER_RELEASE_NOTES: readonly LingBuilderReleaseNote[] = [
   {
+    version: '0.2.9',
+    date: '2026-08-04',
+    title: '微信多开工具与无 IDE 构建闭环',
+    sections: [
+      {
+        title: '新增',
+        items: [
+          '新增微信 4.1.10.27 多开工具和受管模块，可启动多个实例并实时显示头像、wxid、昵称、进程与登录状态。',
+          'Windows 原生项目统一生成并编译 EXE 图标资源，F5、AI Bridge、受控 CLI 与 Visual Studio 导出结果保持一致。',
+          'LCPP 源码包可携带项目启用的第三方模块及运行时，接收方无需模块市场即可离线导入和构建。'
+        ]
+      },
+      {
+        title: '改进',
+        items: [
+          '无 IDE AI Bridge 工作流支持完整多文件草稿、设计器模型诊断、原生预览和受控构建，项目创建模块上下文保持一致。',
+          '修复源码型模块的 nativeHandle 控件引用可见性、动态宽字符串参数和高 DPI 窗口尺寸生成。',
+          '移除输出面板中未接入真实构建状态的配置选择器，构建模式与架构继续由统一配置服务管理。'
+        ]
+      }
+    ]
+  },
+  {
+    version: '0.2.8',
+    date: '2026-08-04',
+    title: '受管网络模块与 Codex 项目工作流',
+    sections: [
+      {
+        title: '新增',
+        items: [
+          'HTTP 客户端升级为 74 条受管 API，支持并发请求、代理与凭据、TLS 校验、Cookie、压缩和文件传输。',
+          'WebSocket 客户端和服务端分别提供 51 与 50 条受管 API，支持多连接、后台收发、二进制消息、心跳、重连和资源限制。',
+          '新增 C++ Codex 配置器与 AI Bridge 项目创建工具，可在不启动 IDE 时受控创建、编辑、诊断和构建 LingBuilder 项目。'
+        ]
+      },
+      {
+        title: '改进',
+        items: [
+          'New_Emoji Tabs 事件参数进入模块清单、语言服务与 C++ 生成链路，处理器签名和事件变量保持一致。',
+          'Windows 安装完成页直接启动安装目录中的 LingBuilder.exe，不再依赖开始菜单快捷方式。'
+        ]
+      }
+    ]
+  },
+  {
     version: '0.2.7',
     date: '2026-08-02',
     title: 'EdgeView 官方稳定 API 双基线封装',

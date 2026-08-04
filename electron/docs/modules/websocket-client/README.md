@@ -1,6 +1,8 @@
 # WebSocket 客户端模块 2.0
 
 模块 ID：`lingbuilder.websocket.client`
+当前版本：`2.0.0`
+最低 LingBuilder：`0.2.8`
 
 WebSocket 客户端模块提供 Windows/MSVC 下基于 WinHTTP 的受管 WebSocket 客户端。模块支持多个独立连接、后台握手与接收、`ws://`/`wss://`、文本和二进制消息、代理、HTTP Basic 凭据、证书验证与 SHA-256 固定、自动重连、资源限制、事件快照和运行统计。
 

@@ -216,7 +216,7 @@ export const WEBSOCKET_SERVER_MODULE: LingBuilderModuleManifest = {
   id: 'lingbuilder.websocket.server',
   name: 'WebSocket 服务端模块',
   version: '2.0.0',
-  minLingBuilderVersion: '0.2.7',
+  minLingBuilderVersion: '0.2.8',
   category: '网络',
   description: '提供受管 RFC 6455 WebSocket 服务端、后台多客户端处理、文本与二进制消息、心跳、关闭握手、访问控制、资源限制和运行统计。',
   author: 'LingBuilder',

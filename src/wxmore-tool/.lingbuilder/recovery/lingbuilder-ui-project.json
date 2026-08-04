@@ -1,0 +1,73 @@
+{
+  "projectId": "lingbuilder-ui-project",
+  "files": {
+    "src/MainWindow.lcpp": "类 MainWindow\n    事件 创建完毕()\n        调试输出(\"窗口创建完毕\")\n    结束\n结束类\n",
+    "src/项目全局变量.lcpp": "// 项目级常量与全局变量：可在当前项目的全部 .lcpp 源码中直接使用。\n",
+    "src/项目数据类型.lcpp": "// 项目自定义数据类型：用于组织可复制、可嵌套的结构化数据。\n",
+    "config/config.ini": "[project]\nname=新建项目\nid=lingbuilder-ui-project\n"
+  },
+  "fileFormats": {
+    "src/MainWindow.lcpp": {
+      "encoding": "utf8",
+      "eol": "lf"
+    },
+    "src/项目全局变量.lcpp": {
+      "encoding": "utf8",
+      "eol": "lf"
+    },
+    "src/项目数据类型.lcpp": {
+      "encoding": "utf8",
+      "eol": "lf"
+    },
+    "config/config.ini": {
+      "encoding": "utf8",
+      "eol": "lf"
+    }
+  },
+  "baseVersions": {
+    "src/MainWindow.lcpp": "sha256:10ac9bbc111ffc18dddead44ac9992450ce382640bcfd0100a762df340da304a:105",
+    "src/项目全局变量.lcpp": "sha256:7e415a3c2b678c3714c3e9955643cfa1f77086f26682c1d37a674165c766bd9b:95",
+    "src/项目数据类型.lcpp": "sha256:fabf31cf3b5286f7cf87ffa8dff0d6d946728aee26a54dd302a18627c40ab673:88",
+    "config/config.ini": "sha256:b9b91754a70adc33ad4e041ce9d42a2439980bcce60c68488cee0ebc368c7b64:54",
+    ".lingbuilder/window-designer.json": "sha256:eaa77809b087912e4c846637323b465e0e51d30e04e39c2c04654d67eb860f51:451"
+  },
+  "openTabs": [
+    "src/MainWindow.lcpp"
+  ],
+  "activeFilePath": "src/MainWindow.lcpp",
+  "designerProject": {
+    "schemaVersion": 2,
+    "id": "lingbuilder-ui-project",
+    "name": "新建项目",
+    "resources": [],
+    "windows": [
+      {
+        "id": "main-window",
+        "fileName": "MainWindow.xml",
+        "className": "MainWindow",
+        "title": "新建项目主窗口",
+        "width": 900,
+        "height": 560,
+        "background": "#1f2937",
+        "description": "新建项目 默认主窗口",
+        "designerBackend": "win32",
+        "controls": [],
+        "titleBarBackground": "#2D2D30",
+        "titleBarForeground": "#CBD5E1",
+        "menuBackground": "#ffffff",
+        "menuForeground": "#000000",
+        "menuFontFamily": "Microsoft YaHei UI",
+        "menuFontSize": 11,
+        "menuFontBold": false,
+        "menuFontItalic": false,
+        "menuFontUnderline": false,
+        "cornerStyle": "rounded",
+        "iconStyle": "lingbuilder",
+        "resizable": true,
+        "maximizable": true
+      }
+    ]
+  },
+  "schemaVersion": 1,
+  "savedAt": "2026-08-04T06:19:03.621Z"
+}

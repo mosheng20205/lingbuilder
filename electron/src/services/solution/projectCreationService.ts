@@ -40,6 +40,8 @@ export interface ProjectCreationPreview {
   designerProject: CreateSolutionProjectPlan['designerProject'];
   files: ProjectCreationFilePreview[];
   modules: {
+    selection: 'global-default' | 'explicit';
+    projectModuleFile: string;
     requestedModuleIds: string[];
     dependencyModuleIds: string[];
     addedModuleIds: string[];
@@ -101,12 +103,12 @@ export class ProjectCreationService {
 
   async preview(request: ProjectCreationRequest = {}): Promise<ProjectCreationPreview> {
     const prepared = await this.prepare(request);
-    return this.toPreview(prepared.plan, prepared.modulePlan, prepared.request);
+    return this.toPreview(prepared.plan, prepared.modulePlan, prepared.request, prepared.moduleSelection);
   }
 
   async create(request: ProjectCreationRequest = {}): Promise<ProjectCreationResult> {
     const prepared = await this.prepare(request);
-    const preview = this.toPreview(prepared.plan, prepared.modulePlan, prepared.request);
+    const preview = this.toPreview(prepared.plan, prepared.modulePlan, prepared.request, prepared.moduleSelection);
     const solutionBefore = await this.solutionService.getSolution();
     let createdProject: LingBuilderSolutionProject | undefined;
     let navigationRequestId: string | undefined;
@@ -118,9 +120,10 @@ export class ProjectCreationService {
       }
       createdProject = created.project;
 
-      if (prepared.request.enabledModuleIds?.length) {
-        await this.moduleService.enableModulesForProject(created.project.id, prepared.request.enabledModuleIds);
-      }
+      // Always persist a project-level module manifest. This keeps an explicit
+      // empty selection isolated from the workspace default and makes the
+      // inherited selection visible to later diagnostics/builds.
+      await this.moduleService.applyProjectModuleEnablePlan(prepared.modulePlan);
 
       const files = await captureProjectFiles(this.workspaceRoot, created.project);
       const receipt: ProjectCreationReceipt = {
@@ -192,21 +195,50 @@ export class ProjectCreationService {
     };
   }
 
-  private async prepare(request: ProjectCreationRequest): Promise<{ request: ProjectCreationRequest; plan: CreateSolutionProjectPlan; modulePlan: ProjectModuleEnablePlan }> {
+  private async prepare(request: ProjectCreationRequest): Promise<{
+    request: ProjectCreationRequest;
+    plan: CreateSolutionProjectPlan;
+    modulePlan: ProjectModuleEnablePlan;
+    moduleSelection: 'global-default' | 'explicit';
+  }> {
+    const moduleSelection = request.enabledModuleIds === undefined ? 'global-default' : 'explicit';
+    const enabledModuleIds = moduleSelection === 'global-default'
+      ? normalizeModuleIds(await this.moduleService.getProjectModuleIds())
+      : normalizeModuleIds(request.enabledModuleIds);
     const normalizedRequest: ProjectCreationRequest = {
       ...request,
       name: request.name?.trim() || request.name,
       projectId: request.projectId?.trim() || request.projectId,
       templateId: request.templateId || 'blank-window',
-      enabledModuleIds: normalizeModuleIds(request.enabledModuleIds)
+      enabledModuleIds
     };
     const plan = await this.solutionService.previewCreateProject(normalizedRequest);
     const modulePlan = await this.moduleService.planEnableModulesForNewProject(plan.project.id, normalizedRequest.enabledModuleIds || []);
-    return { request: normalizedRequest, plan, modulePlan };
+    return { request: normalizedRequest, plan, modulePlan, moduleSelection };
   }
 
-  private toPreview(plan: CreateSolutionProjectPlan, modulePlan: ProjectModuleEnablePlan, request: ProjectCreationRequest): ProjectCreationPreview {
+  private toPreview(
+    plan: CreateSolutionProjectPlan,
+    modulePlan: ProjectModuleEnablePlan,
+    request: ProjectCreationRequest,
+    moduleSelection: 'global-default' | 'explicit'
+  ): ProjectCreationPreview {
     const mainSource = plan.files.find(file => file.kind === 'source' && file.relativePath.endsWith('.lcpp'));
+    const projectModuleFile = toWorkspaceRelativePath(this.workspaceRoot, modulePlan.targetPath);
+    const files: ProjectCreationFilePreview[] = [
+      ...plan.files.map(file => ({
+        relativePath: file.relativePath,
+        kind: file.kind,
+        content: file.content,
+        bytes: Buffer.byteLength(file.content, 'utf8')
+      })),
+      {
+        relativePath: projectModuleFile,
+        kind: 'config' as const,
+        content: modulePlan.sourceCode,
+        bytes: Buffer.byteLength(modulePlan.sourceCode, 'utf8')
+      }
+    ];
     return {
       ok: true,
       applied: false,
@@ -214,13 +246,10 @@ export class ProjectCreationService {
       template: plan.template,
       project: plan.project,
       designerProject: plan.designerProject,
-      files: plan.files.map(file => ({
-        relativePath: file.relativePath,
-        kind: file.kind,
-        content: file.content,
-        bytes: Buffer.byteLength(file.content, 'utf8')
-      })),
+      files,
       modules: {
+        selection: moduleSelection,
+        projectModuleFile,
         requestedModuleIds: modulePlan.requestedModuleIds,
         dependencyModuleIds: modulePlan.dependencyModuleIds,
         addedModuleIds: modulePlan.addedModuleIds,
@@ -232,7 +261,7 @@ export class ProjectCreationService {
         filePath: mainSource?.relativePath || plan.files[0].relativePath,
         windowId: plan.designerProject.windows[0]?.id || 'main-window'
       },
-      message: `预览：将创建项目“${plan.project.name}”并写入 ${plan.files.length} 个项目文件。`
+      message: `预览：将创建项目“${plan.project.name}”并写入 ${files.length} 个项目文件。`
     };
   }
 }
@@ -243,6 +272,10 @@ function normalizeModuleIds(value: string[] | undefined): string[] {
   const ids = [...new Set(value.map(item => String(item).trim()).filter(Boolean))];
   if (ids.some(id => !/^[a-z0-9][a-z0-9._-]{1,127}$/iu.test(id))) throw new Error('项目模块 ID 格式无效。');
   return ids;
+}
+
+function toWorkspaceRelativePath(workspaceRoot: string, absolutePath: string): string {
+  return path.relative(workspaceRoot, absolutePath).replace(/\\/gu, '/');
 }
 
 async function captureProjectFiles(workspaceRoot: string, project: LingBuilderSolutionProject): Promise<ProjectCreationReceipt['files']> {

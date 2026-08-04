@@ -1596,6 +1596,7 @@ test('controlRef runtime representations are adapted by the registered UI backen
   const cpp = generated.files.find(file => file.relativePath === 'main.cpp')!.content;
   assert.match(cpp, /调试输出\(LingCppControlStableId\(L"操作结果"\)\);/u);
   assert.match(cpp, /调试输出\(LingCppControlNativeHandle\(L"操作结果"\)\);/u);
+  assert.match(cpp, /protected:\s+int LingCppControlStableId[\s\S]+HWND LingCppControlNativeHandle[\s\S]+private:\s+HTREEITEM FindTreeItemByText/u);
 
   const newEmojiProject = { ...project, windows: [{ ...project.windows[0], designerBackend: 'new-emoji' }] };
   const blocked = generateLingCppNativeWin32Project(newEmojiProject, { lingCppSourceCode: source, enabledModules: [module] });
@@ -2915,6 +2916,11 @@ test('generateLingCppNativeWin32Project emits OOP Win32 class code and event wir
   assert.ok(mainCpp.includes('bool IsButtonControl(const ControlSpec& control) const'));
   assert.ok(mainCpp.includes('IsWindowEnabled(item->hwndItem) != FALSE'));
   assert.ok(mainCpp.includes('bool hovered = enabled && !pressed && runtime->mouseInside'));
+  assert.ok(mainCpp.includes('bool toggle = IsType(*control, L"Button") && (control->flags & CF_BUTTON_TOGGLE)'));
+  assert.ok(mainCpp.includes('bool checked = toggle && SendMessageW(item->hwndItem, BM_GETCHECK, 0, 0) == BST_CHECKED'));
+  assert.ok(mainCpp.includes('ownerDrawSelection = IsType(*control, L"CheckBox") || IsType(*control, L"RadioButton")'));
+  assert.ok(mainCpp.includes('IsType(*control, L"Button") && (control->flags & CF_BUTTON_TOGGLE)'));
+  assert.ok(mainCpp.includes('Button") && (control->flags & CF_BUTTON_TOGGLE) && notification == BN_CLICKED'));
   assert.ok(mainCpp.includes('&& (item->itemState & ODS_FOCUS)'));
   assert.ok(mainCpp.includes('&& !(item->itemState & ODS_NOFOCUSRECT)'));
   assert.ok(mainCpp.includes('COLORREF rowBackground = control->backgroundTransparent ? surrounding : control->background'));
@@ -3301,6 +3307,11 @@ test('generateLingCppNativeWin32Project translates ordinary conditions and round
   assert.ok(mainCpp.includes('} else {'));
   assert.equal(mainCpp.includes('暂不支持的中文 C++ 语句：如果'), false);
   assert.match(mainCpp, /L"太空冒险", 641, 453,/u);
+  assert.match(mainCpp, /static BOOL AdjustWindowRectForDpiValue\(/u);
+  assert.match(mainCpp, /const UINT actualDpi = GetDpiForWindow\(hwnd_\);/u);
+  assert.match(mainCpp, /SetWindowPos\(hwnd_, nullptr, actualX, actualY, actualWidth, actualHeight, resizeFlags\);/u);
+  assert.ok(mainCpp.indexOf('ShowWindow(hwnd_, showCommand);') < mainCpp.indexOf('const UINT actualDpi = GetDpiForWindow(hwnd_);'));
+  assert.match(mainCpp, /case WM_DPICHANGED:[\s\S]+AdjustWindowRectForDpiValue\(&desired[\s\S]+desired\.right - desired\.left/u);
 });
 
 test('generateLingCppNativeWin32Project does not translate block end into exit command', () => {

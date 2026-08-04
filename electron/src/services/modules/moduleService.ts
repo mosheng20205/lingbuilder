@@ -109,15 +109,26 @@ export class ModuleService {
     return (await this.scanInstalledModules(projectId)).filter(module => module.isEnabledForProject);
   }
 
+  /** Returns the normalized project module IDs used for inheritance and diagnostics. */
+  async getProjectModuleIds(projectId = DEFAULT_PROJECT_ID): Promise<string[]> {
+    return [...(await this.readProjectModules(projectId)).enabledModuleIds];
+  }
+
   async enableModuleForProject(projectId: string, moduleId: string): Promise<void> {
     await this.enableModulesForProject(projectId, [moduleId]);
   }
 
   async enableModulesForProject(projectId: string, moduleIds: readonly string[]): Promise<ProjectModuleEnablePlan> {
     const plan = await this.planEnableModulesForProject(projectId, moduleIds);
+    await this.applyProjectModuleEnablePlan(plan);
+    return plan;
+  }
+
+  /** Commits a previously validated module plan after its project exists. */
+  async applyProjectModuleEnablePlan(plan: ProjectModuleEnablePlan): Promise<void> {
+    await this.assertProjectExists(plan.projectId);
     await this.writeTextAtomically(plan.targetPath, plan.sourceCode);
     await this.recordProjectModuleEnablePlan(plan);
-    return plan;
   }
 
   /**
@@ -417,16 +428,41 @@ export class ModuleService {
   }
 
   private async readProjectModules(_projectId: string): Promise<LingBuilderProjectModules> {
-    const refs = await readJsonFile<LingBuilderProjectModules>(this.projectModulesPath(_projectId), {
+    const targetPath = this.projectModulesPath(_projectId);
+    let refs: LingBuilderProjectModules | undefined;
+    let missingFile = false;
+    try {
+      refs = JSON.parse(await fs.readFile(targetPath, 'utf8')) as LingBuilderProjectModules;
+    } catch (error: any) {
+      missingFile = error?.code === 'ENOENT';
+    }
+
+    // Projects created before project-level module manifests were introduced
+    // can safely inherit the workspace default once they are known solution
+    // members. Unknown project IDs retain the basic-module fallback.
+    if (missingFile && _projectId !== DEFAULT_PROJECT_ID && await this.isSolutionProject(_projectId)) {
+      refs = await this.readProjectModules(DEFAULT_PROJECT_ID);
+    }
+    if (!refs) refs = {
       schemaVersion: 1,
       enabledModuleIds: [BASIC_MODULE_ID],
       pinnedVersions: { [BASIC_MODULE_ID]: '1.0.0' }
-    });
+    };
     if (!Array.isArray(refs.enabledModuleIds)) refs.enabledModuleIds = [];
     if (!refs.enabledModuleIds.includes(BASIC_MODULE_ID)) refs.enabledModuleIds.unshift(BASIC_MODULE_ID);
     refs.pinnedVersions ||= {};
     refs.pinnedVersions[BASIC_MODULE_ID] ||= '1.0.0';
     return refs;
+  }
+
+  private async isSolutionProject(projectId: string): Promise<boolean> {
+    try {
+      const raw = await fs.readFile(path.join(this.lingBuilderDir(), 'solution.json'), 'utf8');
+      const solution = JSON.parse(raw) as { projects?: Array<{ id?: string }> };
+      return Array.isArray(solution.projects) && solution.projects.some(project => project?.id === projectId);
+    } catch {
+      return false;
+    }
   }
 
   private async writeProjectModules(_projectId: string, refs: LingBuilderProjectModules): Promise<void> {

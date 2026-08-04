@@ -1,5 +1,13 @@
 # LingBuilder 模块生态实现说明
 
+> 0.2.9 发布基线：`lingbuilder.wxhook.manager@1.1.1` 最低要求 LingBuilder `0.2.9`，因为该模块依赖源码型 `controlRef(nativeHandle)` 在派生窗口事件中的可访问性和第三方模块随 `.lcpppkg` 离线分发能力。0.2.8 网络模块及 0.2.7 EdgeView、ListView、OpenCV 的既有最低版本契约不变。
+
+> 2026-08-04 补充：外置模块 `lingbuilder.wxhook.manager@1.1.1` 在 `1.0.1` 多开监控基础上增加版本专属防撤回桥接。顶部总开关默认提交 `enabled=true, showTip=true`，新登录实例自动继承；总开关 Button 的标准 `Click` 事件读取切换后的勾选状态并调用 `微信多开_设置总防撤回`，模块不抢先消费按钮 `WM_COMMAND`。Win32 ListView 头像地址右侧增加自绘 Switch，可异步按实例调用 Host 的 `/api/v1/instances/{id}/anti-revoke`，账号上下文变化时丢弃旧请求。模块继续通过本机 `WxHook.Manager.Host` 与 `WxHook.Agent.dll` 管理微信 `4.1.10.27` 多实例，以 500ms 后台快照投递头像、PID、登录状态、wxid、昵称、头像 URL 和防撤回状态，并过滤 `stopped` 历史记录。模块包同时携带 x64 Host/Agent/SQLite 运行时，令牌只从当前用户 DPAPI 文件读取。项目源码包导出会把已启用第三方模块及运行时复制到 `.lcpppkg` 内的 `.lingbuilder/modules`，接收方可离线导入，不需要官方模块市场；不得退回 `程序_启动` 加伪造登录文本的占位实现。
+
+> 2026-08-04 补充：普通 Win32 生成器的 `controlRef` `stableId/nativeHandle` 转换辅助函数必须对派生窗口事件保持 `protected` 可访问，不能生成到私有区后等待 MSVC C2248。源码型模块的 `wideString` 参数可能来自 `控件_取文本` 等 `std::wstring` 表达式，模块公开 C++ 签名必须兼容动态宽字符串，不得只对字面量可编译。生成窗口继续在首次显示和 `WM_DPICHANGED` 时按真实窗口 DPI 重算外框与控件布局。
+
+> 0.2.8 发布基线：`lingbuilder.net.http-client@2.0.0`、`lingbuilder.websocket.client@2.0.0` 和 `lingbuilder.websocket.server@2.0.0` 的最低 LingBuilder 版本统一为 `0.2.8`。已随 0.2.7 发布的 EdgeView、ListView 和 OpenCV 契约继续保持最低版本 `0.2.7`。
+
 > 2026-08-03 补充：NewEmoji 回调中的 `.lcpp` `调试输出`必须同时进入 `OutputDebugStringW` 和 F5 受控进程的 UTF-8 标准输出；后者由 IDE 的 `run.log` 轮询展示。模块事件回调已注册但控制台无文本时，应先验证生成程序的日志桥接，不能把问题误判为原生回调未触发，也不能在每个控件事件里复制日志代码。
 
 > 2026-08-03 补充：模块设计器事件支持 `parameters[]` 与 `starterStatements[]` 契约。设计器绑定在跳转代码前同步提交到权威项目模型；Monaco、新手编辑器、旧签名迁移、语言诊断和 C++ 回调桥接共用 `moduleDesignerEventService`。NewEmoji Table 的 CellClicked、CellAction、CellEdit、ContextMenu、VirtualRow 以及鼠标事件现传递真实原生参数；VirtualRow 通过 `NE_设置表格虚拟行数据` 和回调内 UTF-8 缓存完成上游两阶段 buffer ABI。旧零参数处理器保持兼容，新建处理器直接生成强类型签名。
@@ -266,7 +274,7 @@
 - 默认项目启用模块：`.lingbuilder/project-modules.json`
 - 非默认项目启用模块：`.lingbuilder/projects/<projectId>/project-modules.json`
 - 跨项目粘贴 `.lcpp` 功能库时，`ModuleService.planEnableModulesForProject` 只生成经过安装与清单校验的模块引用计划，不直接写盘；复制服务把该计划与功能库、项目数据类型、项目常量/全局变量合并到同一个 `ProjectFilePersistenceService.writeAll` 事务，成功后再记录模块历史。禁止在源码事务之前逐个调用 `enableModuleForProject`，否则失败时会留下半完成项目引用。
-- AI 创建项目时同样必须复用 `ModuleService.planEnableModulesForNewProject` 解析请求模块、递归依赖、安装状态和 Permit；创建服务只能把返回的项目级 `project-modules.json` 写入计划交给统一项目文件事务，禁止由 AI Bridge、MCP、CLI 或 React 组件直接拼接/修改模块 JSON。创建预览阶段不得写盘，确认落盘后才记录模块历史；失败时必须回滚源码、设计器模型、配置和模块引用，不能留下半完成项目。
+- AI 创建项目时同样必须复用 `ModuleService.planEnableModulesForNewProject` 解析请求模块、递归依赖、安装状态和 Permit；省略 `enabledModuleIds` 时先读取默认项目清单作为请求，显式空数组才表示仅基础模块。创建服务只能把返回的项目级 `project-modules.json` 写入计划交给统一项目文件事务，禁止由 AI Bridge、MCP、CLI 或 React 组件直接拼接/修改模块 JSON。创建预览阶段不得写盘，确认落盘后才记录模块历史；失败时必须回滚源码、设计器模型、配置和模块引用，不能留下半完成项目。已加入解决方案但缺少旧项目级清单的项目可暂时继承默认清单，后续以项目级文件为准。
 - 模块市场源：`.lingbuilder/module-sources.json`
 - 模块操作历史：`.lingbuilder/module-history.json`
 - 卸载/升级快照：`.lingbuilder/module-snapshots/`

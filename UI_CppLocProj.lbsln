@@ -990,6 +990,13 @@
       "sourceRoot": "examples/module-demos/lingbuilder.opencv/src",
       "solutionFolderId": "module-complete-demos",
       "references": []
+    },
+    {
+      "id": "wxmore-tool",
+      "name": "微信4.1.10.27多开",
+      "type": "visual-cpp",
+      "sourceRoot": "src/wxmore-tool",
+      "references": []
     }
   ]
 }

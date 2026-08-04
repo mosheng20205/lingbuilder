@@ -1,6 +1,8 @@
 # WebSocket 服务端模块 2.0
 
 模块 ID：`lingbuilder.websocket.server`
+当前版本：`2.0.0`
+最低 LingBuilder：`0.2.8`
 
 本模块提供基于 RFC 6455 的受管 WebSocket 服务端。它使用后台非阻塞 reactor 处理多个客户端，通过窗口消息把连接、消息、断开和错误事件投递到创建服务的 UI 线程。普通 Win32 与 New_Emoji 后端使用同一协议运行时和命令 binding。
 

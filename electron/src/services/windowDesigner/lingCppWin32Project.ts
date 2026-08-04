@@ -80,6 +80,7 @@ import {
   parseEplControlMethodCallRule,
   splitEplBinaryExpression
 } from './eplToCppRules';
+import { generateWindowsExecutableResourceFile, getSafeCustomWindowIconPath } from './windowsExecutableIconService';
 
 export interface LingCppNativeProjectFile {
   relativePath: string;
@@ -198,6 +199,7 @@ export function generateLingCppNativeWin32Project(
   const legacyUploadDiagnostics = project.windows.flatMap(window => window.controls
     .filter(control => control.type === 'Upload' || control.type === 'DragUpload')
     .map(control => `窗口“${window.title}”仍包含已从 Win32 工具箱移除的旧上传控件“${control.name}”；当前继续兼容生成，请改用非可视“文件对话框”绑定现有按钮或拖放目标。`));
+  const executableResourceFile = generateWindowsExecutableResourceFile(selectedWindow);
 
   return {
     selectedWindow,
@@ -217,7 +219,7 @@ export function generateLingCppNativeWin32Project(
       ...legacyUploadDiagnostics,
       ...resourceDiagnostics
     ],
-    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics],
+    blockingDiagnostics: [...aggregate.blockingDiagnostics, ...backendModuleDiagnostics, ...backendCommandDiagnostics, ...backendGeneratorDiagnostics, ...moduleConflictDiagnostics, ...customIconDiagnostics],
     sourceMap,
     files: [
       {
@@ -249,6 +251,7 @@ export function generateLingCppNativeWin32Project(
         relativePath: 'lingbuilder-native-manifest.json',
         content: manifestContent
       },
+      ...(executableResourceFile ? [executableResourceFile] : []),
       ...projectSources.map(source => ({
         relativePath: `lcpp-sources/${source.filePath.replace(/\\/gu, '/').replace(/^\/+|\.\./gu, '_')}`,
         content: source.sourceCode
@@ -3313,15 +3316,6 @@ function toNewEmojiColor(value: string, fallback: number): string {
   return `0xFF${match[1]!.toUpperCase()}u`;
 }
 
-function getSafeCustomWindowIconPath(window: LingWindowModel): string {
-  if (window.iconStyle !== 'custom') return '';
-  const normalized = window.iconPath?.trim().replace(/\\/gu, '/') || '';
-  if (!normalized.toLowerCase().endsWith('.ico')) return '';
-  if (!normalized.startsWith('assets/') || normalized.split('/').includes('..')) return '';
-  if (/^(?:[a-zA-Z]:\/|\/|\\\\)/u.test(normalized)) return '';
-  return normalized;
-}
-
 function resolveNativeWindowForSource(
   project: LingWindowProject,
   options: GenerateLingCppNativeWin32ProjectOptions,
@@ -4701,6 +4695,17 @@ static int ScaleForDpi(int value, UINT dpi) {
     return MulDiv(value, static_cast<int>(dpi ? dpi : 96), 96);
 }
 
+static BOOL AdjustWindowRectForDpiValue(RECT* rect, DWORD style, BOOL hasMenu, DWORD extendedStyle, UINT dpi) {
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    using AdjustWindowRectExForDpiProc = BOOL (WINAPI*)(LPRECT, DWORD, BOOL, DWORD, UINT);
+    auto adjustForDpi = user32 ? reinterpret_cast<AdjustWindowRectExForDpiProc>(
+        GetProcAddress(user32, "AdjustWindowRectExForDpi")
+    ) : nullptr;
+    return adjustForDpi
+        ? adjustForDpi(rect, style, hasMenu, extendedStyle, dpi ? dpi : 96)
+        : AdjustWindowRectEx(rect, style, hasMenu, extendedStyle);
+}
+
 static HFONT CreateControlFont(const wchar_t* family, int cssPx, bool bold, bool italic, bool underline, UINT dpi) {
     return CreateFontW(
         -MulDiv(cssPx, static_cast<int>(dpi ? dpi : 96), 96),
@@ -5100,7 +5105,7 @@ ${webSocketServerShutdown}
         if (!spec_.maximizable) windowStyle &= ~WS_MAXIMIZEBOX;
         RECT rect = { 0, 0, ScaleForDpi(spec_.width, dpi_), ScaleForDpi(spec_.height, dpi_) };
         BOOL hasMenu = spec_.menuItems && spec_.menuItems[0] ? TRUE : FALSE;
-        AdjustWindowRectEx(&rect, windowStyle, hasMenu, 0);
+        AdjustWindowRectForDpiValue(&rect, windowStyle, hasMenu, 0, dpi_);
         int windowWidth = rect.right - rect.left;
         int windowHeight = rect.bottom - rect.top;
         int windowX = CW_USEDEFAULT;
@@ -5125,6 +5130,24 @@ ${webSocketServerShutdown}
         if (!hwnd_) return nullptr;
         ApplyWindowAppearance();
         ShowWindow(hwnd_, showCommand);
+        const UINT actualDpi = GetDpiForWindow(hwnd_);
+        if (actualDpi && actualDpi != dpi_) {
+            dpi_ = actualDpi;
+            EdgeView_关闭设计器控件();
+            DestroyControls();
+            CreateImageLists();
+            RebuildControls();
+        }
+        RECT actualRect = { 0, 0, ScaleForDpi(spec_.width, dpi_), ScaleForDpi(spec_.height, dpi_) };
+        AdjustWindowRectForDpiValue(&actualRect, windowStyle, hasMenu, 0, dpi_);
+        const int actualWidth = actualRect.right - actualRect.left;
+        const int actualHeight = actualRect.bottom - actualRect.top;
+        int actualX = CW_USEDEFAULT;
+        int actualY = CW_USEDEFAULT;
+        ResolveWindowPlacement(spec_, actualWidth, actualHeight, placement, x, y, hasCustomPosition, actualX, actualY);
+        UINT resizeFlags = SWP_NOZORDER | SWP_NOACTIVATE;
+        if (actualX == CW_USEDEFAULT || actualY == CW_USEDEFAULT) resizeFlags |= SWP_NOMOVE;
+        SetWindowPos(hwnd_, nullptr, actualX, actualY, actualWidth, actualHeight, resizeFlags);
         UpdateWindow(hwnd_);
         SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
         SetForegroundWindow(hwnd_);
@@ -11638,6 +11661,7 @@ private:
         const ControlSpec* control = FindControlByName(name); return control ? FindRuntimeControl(control->id) : nullptr;
     }
 
+protected:
     int LingCppControlStableId(const wchar_t* name) {
         const ControlSpec* control = FindControlByName(name); return control ? control->id : 0;
     }
@@ -11646,6 +11670,7 @@ private:
         RuntimeControl* runtime = FindRuntimeControlByName(name); return runtime ? runtime->hwnd : nullptr;
     }
 
+private:
     HTREEITEM FindTreeItemByText(HWND tree, HTREEITEM item, const wchar_t* text) {
         while (item) {
             wchar_t buffer[512] = {}; TVITEMW info = {}; info.mask = TVIF_TEXT; info.hItem = item; info.pszText = buffer; info.cchTextMax = 512;
@@ -11844,7 +11869,7 @@ private:
         if (!IsButtonControl(control)) return false;
         if (IsType(control, L"CheckBox") || IsType(control, L"RadioButton")) return true;
         return IsType(control, L"Button")
-            && !(control.flags & (CF_BUTTON_TOGGLE | CF_BUTTON_SPLIT | CF_BUTTON_COMMAND_LINK));
+            && !(control.flags & (CF_BUTTON_SPLIT | CF_BUTTON_COMMAND_LINK));
     }
 
     COLORREF ResolveControlSurroundingColor(const ControlSpec& control, HWND controlHwnd) const {
@@ -12075,11 +12100,17 @@ private:
         bool focused = enabled
             && (item->itemState & ODS_FOCUS)
             && !(item->itemState & ODS_NOFOCUSRECT);
+        bool toggle = IsType(*control, L"Button") && (control->flags & CF_BUTTON_TOGGLE);
+        bool checked = toggle && SendMessageW(item->hwndItem, BM_GETCHECK, 0, 0) == BST_CHECKED;
         COLORREF surrounding = ResolveControlSurroundingColor(*control, item->hwndItem);
         COLORREF background = control->background;
         COLORREF rowBackground = control->backgroundTransparent ? surrounding : control->background;
         COLORREF foreground = control->foreground;
         COLORREF border = BlendColor(control->background, RGB(255, 255, 255), 18);
+        if (toggle && !checked) {
+            background = BlendColor(control->background, surrounding, 62);
+            border = BlendColor(background, RGB(255, 255, 255), 18);
+        }
         if (!enabled) {
             background = BlendColor(control->background, surrounding, 55);
             if (!control->backgroundTransparent) rowBackground = background;
@@ -13748,7 +13779,8 @@ private:
             }
             bool buttonControl = self->IsButtonControl(*control);
             bool ownerDraw = self->IsOwnerDrawControl(*control);
-            bool ownerDrawSelection = IsType(*control, L"CheckBox") || IsType(*control, L"RadioButton");
+            bool ownerDrawSelection = IsType(*control, L"CheckBox") || IsType(*control, L"RadioButton")
+                || (IsType(*control, L"Button") && (control->flags & CF_BUTTON_TOGGLE));
             if (ownerDrawSelection && message == BM_GETCHECK) {
                 return static_cast<LRESULT>(runtime->checkState);
             }
@@ -13956,7 +13988,7 @@ private:
             className = L"BUTTON";
             style |= WS_TABSTOP;
             if (IsType(control, L"ColorPicker")) style |= BS_OWNERDRAW;
-            else if (!(control.flags & (CF_BUTTON_TOGGLE | CF_BUTTON_SPLIT | CF_BUTTON_COMMAND_LINK))) style |= BS_OWNERDRAW;
+            else if (!(control.flags & (CF_BUTTON_SPLIT | CF_BUTTON_COMMAND_LINK))) style |= BS_OWNERDRAW;
             else if (control.flags & CF_BUTTON_DEFAULT) style |= BS_DEFPUSHBUTTON;
             else if (control.flags & CF_BUTTON_TOGGLE) style |= BS_AUTOCHECKBOX | BS_PUSHLIKE;
             else if (control.flags & CF_BUTTON_SPLIT) style |= BS_SPLITBUTTON;
@@ -14867,11 +14899,14 @@ private:
         case WM_DPICHANGED: {
             dpi_ = HIWORD(wParam);
             RECT* suggested = reinterpret_cast<RECT*>(lParam);
-            if (suggested) {
-                SetWindowPos(hwnd_, nullptr, suggested->left, suggested->top,
-                    suggested->right - suggested->left, suggested->bottom - suggested->top,
-                    SWP_NOZORDER | SWP_NOACTIVATE);
-            }
+            DWORD style = static_cast<DWORD>(GetWindowLongPtrW(hwnd_, GWL_STYLE));
+            DWORD extendedStyle = static_cast<DWORD>(GetWindowLongPtrW(hwnd_, GWL_EXSTYLE));
+            BOOL hasMenu = GetMenu(hwnd_) ? TRUE : FALSE;
+            RECT desired = { 0, 0, ScaleForDpi(spec_.width, dpi_), ScaleForDpi(spec_.height, dpi_) };
+            AdjustWindowRectForDpiValue(&desired, style, hasMenu, extendedStyle, dpi_);
+            SetWindowPos(hwnd_, nullptr, suggested ? suggested->left : 0, suggested ? suggested->top : 0,
+                desired.right - desired.left, desired.bottom - desired.top,
+                SWP_NOZORDER | SWP_NOACTIVATE | (suggested ? 0 : SWP_NOMOVE));
             EdgeView_关闭设计器控件();
             DestroyControls();
             CreateImageLists();
@@ -14957,6 +14992,15 @@ private:
                 SendMessageW(child, BM_SETCHECK, nextState, 0);
                 InvalidateRect(child, nullptr, TRUE);
                 DispatchLingEvent(*control, nextState == BST_CHECKED ? L"Checked" : L"Unchecked");
+            } else if (IsType(*control, L"Button") && (control->flags & CF_BUTTON_TOGGLE) && notification == BN_CLICKED) {
+                HWND child = reinterpret_cast<HWND>(lParam);
+                int currentState = child ? static_cast<int>(SendMessageW(child, BM_GETCHECK, 0, 0)) : BST_UNCHECKED;
+                int nextState = currentState == BST_CHECKED ? BST_UNCHECKED : BST_CHECKED;
+                if (child) {
+                    SendMessageW(child, BM_SETCHECK, nextState, 0);
+                    InvalidateRect(child, nullptr, TRUE);
+                }
+                DispatchLingEvent(*control, L"Click");
             } else if (IsType(*control, L"RadioButton") && notification == BN_CLICKED) {
                 SelectRadioControl(*control, reinterpret_cast<HWND>(lParam));
             } else if (IsType(*control, L"ColorPicker") && notification == BN_CLICKED) {

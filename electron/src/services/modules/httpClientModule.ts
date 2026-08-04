@@ -318,7 +318,7 @@ export const HTTP_CLIENT_MODULE: LingBuilderModuleManifest = {
   id: 'lingbuilder.net.http-client',
   name: 'HTTP 客户端模块',
   version: '2.0.0',
-  minLingBuilderVersion: '0.2.7',
+  minLingBuilderVersion: '0.2.8',
   category: '网络',
   description: '提供受管 WinHTTP HTTP/HTTPS 客户端、多请求并发、后台完成事件、代理与身份验证、TLS 证书策略、重定向、Cookie、压缩、文本/二进制/文件上传下载、资源限制和运行统计。',
   author: 'LingBuilder',

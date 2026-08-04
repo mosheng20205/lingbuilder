@@ -3,9 +3,26 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { createLcppSourcePackageService, LCPP_GENERATOR_CAPABILITIES, LCPP_SOURCE_PACKAGE_KIND } from '../electron/lcppSourcePackageService';
+import {
+  createLcppSourcePackageService,
+  LCPP_GENERATOR_CAPABILITIES,
+  LCPP_SOURCE_PACKAGE_KIND,
+  resolveProjectSourcePackagePath
+} from '../electron/lcppSourcePackageService';
 import { DesktopWorkspaceService } from '../electron/workspaceService';
 import { createSolutionService, DEFAULT_PROJECT_ID } from '../src/services/solution/solutionService';
+
+test('LCPP 源码包导出路径统一落在工作区根目录 exports', () => {
+  const workspace = path.join('C:', 'LingBuilder', '示例工作区');
+  assert.equal(
+    resolveProjectSourcePackagePath(workspace, path.join('Downloads', '分享示例.lcpppkg'), '备用名称'),
+    path.join(workspace, 'exports', '分享示例.lcpppkg')
+  );
+  assert.equal(
+    resolveProjectSourcePackagePath(workspace, path.join('其他目录', '没有扩展名'), '备用名称'),
+    path.join(workspace, 'exports', '没有扩展名.lcpppkg')
+  );
+});
 
 test('LCPP 源码包一键导出后可在独立目录完整导入', async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-lcpp-package-'));
@@ -229,6 +246,7 @@ test('LCPP 源码包隔离携带已启用的第三方模块', async t => {
     id: moduleId,
     name: '分享测试模块',
     version: '1.2.3',
+    minLingBuilderVersion: '0.2.9',
     category: '其他',
     description: '验证源码包可携带第三方模块。'
   }, null, 2), 'utf8');
@@ -251,6 +269,7 @@ test('LCPP 源码包隔离携带已启用的第三方模块', async t => {
   const service = createLcppSourcePackageService(workspace);
   const packagePath = path.join(root, 'module-demo.lcpppkg');
   const exported = await service.exportProject(DEFAULT_PROJECT_ID, packagePath);
+  assert.equal(exported.manifest.minimumGeneratorVersion, '0.2.9');
   assert.ok(exported.manifest.modules.some(module => module.id === moduleId && module.bundled));
   assert.ok(exported.manifest.bundledSupportModuleIds.includes('lingbuilder.fbro.sdk'));
   const imported = await service.importPackage(packagePath, path.join(root, 'imports'));

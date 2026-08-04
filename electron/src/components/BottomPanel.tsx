@@ -11,8 +11,6 @@ import {
   Square,
   RefreshCw,
   Bug,
-  Sliders,
-  Cpu,
   Eye,
   Copy,
   Trash
@@ -383,67 +381,44 @@ export default function BottomPanel({
           </button>
         )}
 
-        {/* Right Side: Visual Studio 2022 Debugging Toolbar Buttons */}
-        <div className="flex shrink-0 items-center gap-3">
-          {/* Debug/Release Selectors (Standard Visual Studio) */}
-          <div 
-            className={`hidden lg:flex items-center gap-1.5 border rounded px-1.5 py-0.5 text-[10px] ${
-              isDarkMode ? 'bg-[#202021] border-slate-700/50 text-slate-300' : 'bg-white border-slate-300 text-slate-800'
-            }`}
-          >
-            <Sliders className="w-3 h-3 text-slate-400" />
-            <select className={`bg-transparent border-none focus:outline-none font-semibold cursor-pointer ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>
-              <option value="Debug" className={isDarkMode ? 'bg-[#252526] text-slate-300' : 'bg-white text-slate-800'}>调试型 (Debug)</option>
-              <option value="Release" className={isDarkMode ? 'bg-[#252526] text-slate-300' : 'bg-white text-slate-800'}>发行型 (Release)</option>
-            </select>
-            <span className="text-slate-400">|</span>
-            <Cpu className="w-3 h-3 text-slate-400" />
-            <select className={`bg-transparent border-none focus:outline-none font-semibold cursor-pointer ${isDarkMode ? 'text-slate-300' : 'text-slate-800'}`}>
-              <option value="x64" className={isDarkMode ? 'bg-[#252526] text-slate-300' : 'bg-white text-slate-800'}>独占 x64 平台</option>
-              <option value="x86" className={isDarkMode ? 'bg-[#252526] text-slate-300' : 'bg-white text-slate-800'}>兼容 x86 平台</option>
-              <option value="Any" className={isDarkMode ? 'bg-[#252526] text-slate-300' : 'bg-white text-slate-800'}>任一 CPU (Any CPU)</option>
-            </select>
-          </div>
-
-          {/* Quick Filter inside Mapping Table */}
-          {showCodeMapping && activeTab === 'extracted' && (
-            <div className={`flex items-center gap-1 text-[10px] border-l pl-3 ${isDarkMode ? 'border-slate-700/60' : 'border-slate-300'}`}>
-              <span className="text-slate-400 font-medium">过滤:</span>
-              <div className={`flex rounded p-0.5 border ${isDarkMode ? 'bg-[#37373D] border-[#181818]' : 'bg-[#E3E3E3] border-slate-300'}`}>
-                <button
-                  onClick={() => setFilterType('all')}
-                  className={`px-1.5 py-0.5 rounded cursor-pointer text-[9px] transition-colors ${
-                    filterType === 'all' 
-                      ? isDarkMode ? 'bg-[#1E1E1E] text-white font-bold' : 'bg-white text-slate-900 shadow-sm font-bold border border-slate-300/40' 
-                      : 'text-slate-500'
-                  }`}
-                >
-                  全部
-                </button>
-                <button
-                  onClick={() => setFilterType('string')}
-                  className={`px-1.5 py-0.5 rounded cursor-pointer text-[9px] transition-colors ${
-                    filterType === 'string' 
-                      ? isDarkMode ? 'bg-[#1E1E1E] text-white font-bold' : 'bg-white text-slate-900 shadow-sm font-bold border border-slate-300/40' 
-                      : 'text-slate-500'
-                  }`}
-                >
-                  字符
-                </button>
-                <button
-                  onClick={() => setFilterType('comment')}
-                  className={`px-1.5 py-0.5 rounded cursor-pointer text-[9px] transition-colors ${
-                    filterType === 'comment' 
-                      ? isDarkMode ? 'bg-[#1E1E1E] text-white font-bold' : 'bg-white text-slate-900 shadow-sm font-bold border border-slate-300/40' 
-                      : 'text-slate-500'
-                  }`}
-                >
-                  注释
-                </button>
-              </div>
+        {/* Quick Filter inside Mapping Table */}
+        {showCodeMapping && activeTab === 'extracted' && (
+          <div className={`flex shrink-0 items-center gap-1 text-[10px] border-l pl-3 ${isDarkMode ? 'border-slate-700/60' : 'border-slate-300'}`}>
+            <span className="text-slate-400 font-medium">过滤:</span>
+            <div className={`flex rounded p-0.5 border ${isDarkMode ? 'bg-[#37373D] border-[#181818]' : 'bg-[#E3E3E3] border-slate-300'}`}>
+              <button
+                onClick={() => setFilterType('all')}
+                className={`px-1.5 py-0.5 rounded cursor-pointer text-[9px] transition-colors ${
+                  filterType === 'all'
+                    ? isDarkMode ? 'bg-[#1E1E1E] text-white font-bold' : 'bg-white text-slate-900 shadow-sm font-bold border border-slate-300/40'
+                    : 'text-slate-500'
+                }`}
+              >
+                全部
+              </button>
+              <button
+                onClick={() => setFilterType('string')}
+                className={`px-1.5 py-0.5 rounded cursor-pointer text-[9px] transition-colors ${
+                  filterType === 'string'
+                    ? isDarkMode ? 'bg-[#1E1E1E] text-white font-bold' : 'bg-white text-slate-900 shadow-sm font-bold border border-slate-300/40'
+                    : 'text-slate-500'
+                }`}
+              >
+                字符
+              </button>
+              <button
+                onClick={() => setFilterType('comment')}
+                className={`px-1.5 py-0.5 rounded cursor-pointer text-[9px] transition-colors ${
+                  filterType === 'comment'
+                    ? isDarkMode ? 'bg-[#1E1E1E] text-white font-bold' : 'bg-white text-slate-900 shadow-sm font-bold border border-slate-300/40'
+                    : 'text-slate-500'
+                }`}
+              >
+                注释
+              </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
       </div>
 

@@ -89,6 +89,14 @@ test('AI Bridge shared MCP HTTP authenticates clients, exposes tools, and report
     assert.equal(tools.tools.length, 13);
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.file.read'));
     assert.ok(tools.tools.some(tool => tool.name === 'lingbuilder.project.create'));
+    const editTool = tools.tools.find(tool => tool.name === 'lingbuilder.edit.propose');
+    const editProperties = (editTool?.inputSchema as any)?.properties || {};
+    assert.ok(editProperties.workspaceFiles, 'MCP edit.propose must accept current multi-file contents');
+    assert.ok(editProperties.files, 'MCP edit.propose must require complete updated file drafts');
+    const diagnosticsTool = tools.tools.find(tool => tool.name === 'lingbuilder.lingcpp.diagnostics');
+    assert.ok((diagnosticsTool?.inputSchema as any)?.properties?.designerProject, 'MCP diagnostics must accept the designer model');
+    const buildTool = tools.tools.find(tool => tool.name === 'lingbuilder.build.run');
+    assert.match(String((buildTool?.description || '')), /designerProject/u);
     const result = await client.callTool({ name: 'lingbuilder.file.read', arguments: { filePath: 'README.md' } });
     assert.match(JSON.stringify(result), /LingBuilder MCP shared transport/u);
     const statusResponse = await fetch(`${endpoint}/status`, { headers: { Authorization: 'Bearer shared-mcp-secret-token' } });
@@ -136,6 +144,62 @@ test('AI Bridge project creation previews, enables modules, writes navigation, a
   const undone = await writeService.undoProjectCreate(receiptId!, true);
   assert.equal(undone.projectId, 'ai-hello');
   assert.equal(await exists(path.join(workspaceRoot, 'src', 'ai-hello')), false);
+  await writeService.shutdown();
+});
+
+test('AI Bridge project creation inherits the workspace module manifest when omitted', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  await fs.mkdir(path.join(workspaceRoot, '.lingbuilder'), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, '.lingbuilder', 'project-modules.json'), JSON.stringify({
+    schemaVersion: 1,
+    enabledModuleIds: ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'],
+    pinnedVersions: {
+      'lingbuilder.win32.basic': '1.0.0',
+      'lingbuilder.win32.common-controls': '1.0.0'
+    }
+  }, null, 2), 'utf8');
+
+  const previewService = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const request = {
+    name: '继承模块项目',
+    projectId: 'inherit-modules',
+    templateId: 'hello-window' as const,
+    openInWorkbench: false
+  };
+  const preview = await previewService.createProject(request);
+  assert.equal(preview.applied, false);
+  assert.equal(preview.preview.modules.selection, 'global-default');
+  assert.ok(preview.preview.modules.requestedModuleIds.includes('lingbuilder.win32.common-controls'));
+  assert.equal(preview.preview.modules.projectModuleFile, '.lingbuilder/projects/inherit-modules/project-modules.json');
+  assert.ok(preview.preview.files.some(file => file.relativePath === preview.preview.modules.projectModuleFile
+    && file.content.includes('lingbuilder.win32.common-controls')));
+  await previewService.shutdown();
+
+  const writeService = new AiBridgeService({ ...createOptions(workspaceRoot, 'yolo'), token: 'inherit-modules-token' });
+  const created = await writeService.createProject({ ...request, approved: true });
+  assert.equal(created.applied, true);
+  const projectModulePath = path.join(workspaceRoot, '.lingbuilder', 'projects', 'inherit-modules', 'project-modules.json');
+  const saved = JSON.parse(await fs.readFile(projectModulePath, 'utf8')) as { enabledModuleIds: string[] };
+  assert.ok(saved.enabledModuleIds.includes('lingbuilder.win32.common-controls'));
+  const modules = await writeService.listModules('inherit-modules');
+  assert.ok(modules.enabledModules.some(module => module.manifest.id === 'lingbuilder.win32.common-controls'));
+
+  const undone = await writeService.undoProjectCreate(created.result!.receipt.receiptId, true);
+  assert.equal(undone.projectId, 'inherit-modules');
+  assert.equal(await exists(projectModulePath), false);
+
+  const explicitBasic = await writeService.createProject({
+    ...request,
+    projectId: 'explicit-basic',
+    enabledModuleIds: [],
+    approved: true
+  });
+  const explicitPath = path.join(workspaceRoot, '.lingbuilder', 'projects', 'explicit-basic', 'project-modules.json');
+  const explicitSaved = JSON.parse(await fs.readFile(explicitPath, 'utf8')) as { enabledModuleIds: string[] };
+  assert.deepEqual(explicitSaved.enabledModuleIds, ['lingbuilder.win32.basic']);
+  assert.equal(explicitBasic.result?.modules.selection, 'explicit');
+  await writeService.undoProjectCreate(explicitBasic.result!.receipt.receiptId, true);
+  assert.equal(await exists(explicitPath), false);
   await writeService.shutdown();
 });
 
@@ -862,6 +926,37 @@ test('standalone AI Bridge refuses fake local edit proposals when no planner or 
   const workspaceRoot = await createTempWorkspace();
   const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
   await assert.rejects(() => service.proposeEdit({ filePath: 'src/main.lcpp', sourceCode: '类 Main\n结束类\n', instruction: '添加功能' }), /未配置系统 AI planner/u);
+});
+
+test('AI Bridge accepts synchronized multi-file drafts for source and designer files', async () => {
+  const workspaceRoot = await createTempWorkspace();
+  const sourcePath = 'src/main.lcpp';
+  const designerPath = '.lingbuilder/projects/demo/window-designer.json';
+  const sourceCode = '类 Main\n结束类\n';
+  const designerCode = '{"id":"demo","windows":[]}\n';
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, sourcePath)), { recursive: true });
+  await fs.mkdir(path.dirname(path.join(workspaceRoot, designerPath)), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, sourcePath), sourceCode, 'utf8');
+  await fs.writeFile(path.join(workspaceRoot, designerPath), designerCode, 'utf8');
+
+  const service = new AiBridgeService(createOptions(workspaceRoot, 'preview'));
+  const proposal = await service.proposeEdit({
+    filePath: sourcePath,
+    projectId: 'demo',
+    instruction: '同步更新中文源码和窗口设计器模型',
+    workspaceFiles: [
+      { filePath: sourcePath, sourceCode },
+      { filePath: designerPath, sourceCode: designerCode }
+    ],
+    files: [
+      { filePath: sourcePath, updatedSource: `${sourceCode}// 已同步\n` },
+      { filePath: designerPath, updatedSource: '{"id":"demo","windows":[{"id":"main-window"}]}\n' }
+    ]
+  });
+  const applied = await service.applyEdit({ proposalId: proposal.proposal.id, approved: true });
+  assert.equal(applied.appliedFiles.length, 2);
+  assert.match(await fs.readFile(path.join(workspaceRoot, sourcePath), 'utf8'), /已同步/u);
+  assert.match(await fs.readFile(path.join(workspaceRoot, designerPath), 'utf8'), /main-window/u);
 });
 
 test('AI Bridge reads and applies edits without corrupting UTF-16 or CRLF files', async () => {

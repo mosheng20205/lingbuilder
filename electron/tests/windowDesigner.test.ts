@@ -4,6 +4,7 @@ import './dataGrid.test';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import ListViewDesignerPreview from '../src/components/ListViewDesignerPreview';
@@ -86,6 +87,11 @@ import { parseLingCpp } from '../src/services/lingCpp/parser';
 import { getLingCppSemanticDiagnostics } from '../src/services/lingCpp/languageService';
 import { createListViewPreviewModel } from '../src/services/windowDesigner/listViewPreviewModel';
 import { createDesignerAssetService } from '../src/services/windowDesigner/designerAssetService';
+import {
+  createWindowsExecutableIconService,
+  WINDOWS_EXECUTABLE_ICON_FILE,
+  WINDOWS_EXECUTABLE_RESOURCE_FILE
+} from '../src/services/windowDesigner/windowsExecutableIconService';
 import { fetchDesignerImagePreviewBlob, getDesignerImagePreviewSource } from '../src/services/windowDesigner/designerAssetClient';
 import {
   appendListViewColumn,
@@ -3199,6 +3205,7 @@ test('自定义 ICO 路径进入设计器结构与 Win32 大小图标加载链�
   const project: LingWindowProject = { schemaVersion: 2, id: 'demo', name: '图标项目', windows: [window] };
   const result = generateLingCppNativeWin32Project(project, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' });
   const cpp = result.files.find(file => file.relativePath === 'main.cpp')!.content;
+  const resource = result.files.find(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE)?.content || '';
 
   assert.equal(result.diagnostics.some(message => message.includes('自定义图标必须')), false);
   assert.match(generateWindowXml(window), /窗口图标="custom" 窗口图标文件="assets\/demo\/应用\.ico"/u);
@@ -3206,13 +3213,62 @@ test('自定义 ICO 路径进入设计器结构与 Win32 大小图标加载链�
   assert.match(cpp, /LoadImageW\(nullptr, spec_\.iconPath, IMAGE_ICON/u);
   assert.match(cpp, /SM_CXICON/u);
   assert.match(cpp, /SM_CXSMICON/u);
+  assert.match(resource, /IDI_LINGBUILDER_APP ICON "resources\/lingbuilder-app\.ico"/u);
 
   const unsafeResult = generateLingCppNativeWin32Project({
     ...project,
     windows: [{ ...window, iconPath: 'C:\\Users\\demo\\应用.ico' }]
   }, { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' });
   assert.ok(unsafeResult.diagnostics.some(message => message.includes('assets 目录内的相对 ICO 路径')));
+  assert.ok(unsafeResult.blockingDiagnostics.some(message => message.includes('assets 目录内的相对 ICO 路径')));
+  assert.equal(unsafeResult.files.some(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE), false);
   assert.doesNotMatch(unsafeResult.files.find(file => file.relativePath === 'main.cpp')!.content, /C:\\\\Users/u);
+});
+
+test('LingBuilder 默认窗口图标生成 EXE 资源并物化为可移植 ICO', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-exe-icon-'));
+  const bundledIcon = fileURLToPath(new URL('../../image/lingbuilder-ide-icon-v2.ico', import.meta.url));
+  const projectRef = {
+    id: 'demo', name: '图标项目', type: 'visual-cpp' as const, sourceRoot: 'src/demo', configRoot: 'config/demo',
+    designerPath: '.lingbuilder/projects/demo/window-designer.json', isDefault: false
+  };
+  const window: LingWindowModel = {
+    id: 'main', fileName: 'MainWindow.xml', className: '主窗口', title: '默认图标窗口', width: 640, height: 480,
+    background: '#1F2937', iconStyle: 'lingbuilder', description: '', controls: []
+  };
+  const generated = generateLingCppNativeWin32Project(
+    { schemaVersion: 2, id: projectRef.id, name: projectRef.name, windows: [window] },
+    { lingCppSourceCode: '类 主窗口 : 公开 窗体\n结束类' }
+  );
+  const resource = generated.files.find(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE);
+  assert.ok(resource);
+
+  const outputRoot = path.join(root, 'generated');
+  const service = createWindowsExecutableIconService(root, createDesignerAssetService(root), bundledIcon);
+  const materialized = await service.materialize(projectRef, generated.selectedWindow, [outputRoot]);
+  const target = path.join(outputRoot, WINDOWS_EXECUTABLE_ICON_FILE);
+  assert.equal(materialized.source, 'lingbuilder');
+  assert.equal(materialized.fingerprint.length, 64);
+  assert.deepEqual(await fs.readFile(target), await fs.readFile(bundledIcon));
+
+  const customIconPath = path.join(root, 'assets', 'demo', '应用.ico');
+  await fs.mkdir(path.dirname(customIconPath), { recursive: true });
+  await fs.copyFile(bundledIcon, customIconPath);
+  const customOutputRoot = path.join(root, 'custom-generated');
+  const customIcon = await service.materialize(projectRef, {
+    ...window,
+    iconStyle: 'custom',
+    iconPath: 'assets/demo/应用.ico'
+  }, [customOutputRoot]);
+  assert.equal(customIcon.source, 'custom');
+  assert.deepEqual(
+    await fs.readFile(path.join(customOutputRoot, WINDOWS_EXECUTABLE_ICON_FILE)),
+    await fs.readFile(customIconPath)
+  );
+
+  const noIcon = await service.materialize(projectRef, { ...window, iconStyle: 'none' }, [outputRoot]);
+  assert.equal(noIcon.source, 'none');
+  await assert.rejects(() => fs.stat(target), /ENOENT/u);
 });
 
 test('标签页中的透明标签在 Win32 运行时继承实际父容器背景', () => {

@@ -1,5 +1,17 @@
 # LingBuilder 后期优化事项
 
+- 已完成（2026-08-04）：建立 Electron `0.2.9` 发布基线。微信多开工具、`lingbuilder.wxhook.manager@1.1.1`、第三方模块随 `.lcpppkg` 离线分发、Windows EXE 图标资源和无 IDE AI Bridge 多文件工作流进入 Windows 安装包；微信模块最低版本设为 `0.2.9`，避免已发布的 0.2.8 客户端绕过生成器能力门禁。安装包继续使用不含正式 API 地址的 `offline` 云端模式。
+
+- 已完成（2026-08-04）：窗口设计器的 `lingbuilder` 默认图标和项目 `assets/` 内自定义 ICO 已接入 Windows EXE 资源闭环。LingCpp 生成器输出 `lingbuilder-app.rc`，资源服务把当前入口窗口图标物化为固定可移植路径并校验 ICO 目录结构；F5、受控 CLI、AI Bridge 和 Visual Studio 导出都会通过 `rc.exe`/`windres` 编译并链接 `ICON`、`GROUP_ICON`。图标字节摘要进入增量构建指纹，原路径覆盖新图标不会复用旧 EXE。后续如新增显式“启动窗口/应用清单”模型，应把 EXE 图标来源从当前生成入口窗口迁移到该模型，但不得退回仅用 `WM_SETICON` 设置运行时窗口图标。
+
+- 已完成（2026-08-04）：`wxmore-tool` 从 `程序_启动("WeChat.exe /multiple")` 占位示例升级为外置 v2 模块 `lingbuilder.wxhook.manager@1.1.1`。模块复用已验证的 WxHook Host/Agent，使用回环 WinHTTP、当前用户 DPAPI 令牌、500ms 后台轮询和 UI 线程消息投递，ListView 同时显示多实例头像、PID、登录状态、wxid、昵称、头像 URL 和自绘防撤回 Switch；顶部总开关默认开启防撤回与撤回灰条提示，通过标准 Button `Click` 事件调用 `微信多开_设置总防撤回`，新登录实例自动应用，单实例请求按账号上下文校验。模块包、源码包导出/导入、LingCpp 诊断、MSVC x64 构建和离线运行时复制已验证。上游 Agent 为避免过早注入仍保留进程稳定、登录确认和资料补全等待；后续只能基于分阶段运行日志和目标微信指纹优化，不能为追求表面速度移除安全门禁。
+
+- 已修复（2026-08-04）：源码模块在派生窗口事件中使用 `controlRef` 的 `stableId/nativeHandle` 时不再因辅助函数位于基类私有区触发 C2248；动态 `wideString` 模块入口也已用真实 `std::wstring` 表达式完成编译验证。Win32 窗口创建后会读取真实 HWND DPI，并在首次显示及 `WM_DPICHANGED` 时用同一设计器逻辑尺寸重算窗口外框和控件。后续应补充 100%/125%/150% 多显示器拖动自动化，截图工具必须声明 Per-Monitor V2，避免由捕获线程 DPI 虚拟化造成假裁剪。
+
+- 已修复（2026-08-04）：AI Bridge/CLI 新建项目省略 `enabledModuleIds` 时不再把模块选择归一化为空数组。创建预览现在继承根目录 `.lingbuilder/project-modules.json`，展示 `modules.selection`、依赖和项目级清单文件；批准后始终写入 `.lingbuilder/projects/<projectId>/project-modules.json`，显式空数组保持仅基础模块。模块服务对已加入解决方案但缺少项目级清单的旧项目提供兼容继承，之后诊断、补全、C++ 生成和构建统一按返回的 `projectId` 读取项目上下文。后续仍应增加跨版本项目模块清单迁移提示和完整 HTTP/MCP 项目上下文集成测试。
+
+- 已完成（2026-08-04）：建立 Electron `0.2.8` 发布基线。HTTP 客户端 2.0、WebSocket 客户端 2.0 和 WebSocket 服务端 2.0 的最低 LingBuilder 版本提升为 `0.2.8`；EdgeView、ListView 和 OpenCV 的既有 `0.2.7` 契约保持不变。Windows 安装包继续支持无正式云端 API 的 `offline` 发布模式。
+
 - 已修复（2026-08-03）：NewEmoji 生成程序的 `调试输出`不再只进入 `OutputDebugStringW`。生成器会把同一条 UTF-8 文本以 `[调试输出] `前缀写入并刷新标准输出，由 `ManagedProcessService` 落到 `run.log`，因此 F5 下 Table `CellAction` 等原生回调可以实时出现在 IDE 调试控制台。`new-emoji-92-tabs-validation` 中遗失的 `表格06.MouseEnter` 绑定也已补回；后续原生后端新增调试通道时必须复用受控进程日志，不能要求用户另开系统调试器。
 
 - 已修复（2026-08-03）：NewEmoji Table 设计器事件不再统一生成空参数。模块清单新增强类型事件参数和可选初始语句；设计器在跳转代码前同步保存绑定，Monaco/新手补全与语言诊断消费同一契约。C++ 回调把单元格行列、动作、值、UTF-8 编辑文本、右键区域/坐标及鼠标参数传入 `.lcpp`；VirtualRow 使用线程局部返回槽和回调内缓存完成长度查询与第二次 buffer 复制，避免固定返回 0 或重复执行事件。旧零参数处理器保持兼容并可在重新打开时安全升级。后续其它原生 UI 后端新增参数化事件时应只扩展模块事件契约与后端回调映射，不得在 React 或语言服务中另建参数表。
@@ -46,7 +58,7 @@
 
 - 已完成（2026-07-30）：补齐四组通用密码学内置模块。哈希覆盖 MD5、SHA-1、SHA-256、SHA3-256、SM3、BLAKE2b-512、BLAKE3；密码哈希覆盖 Argon2id、scrypt、bcrypt、PBKDF2-HMAC-SHA256；对称加密覆盖六种 AEAD 和 AES-CBC、Blowfish、RC2/RC4、DES/3DES 兼容入口；非对称覆盖 RSA、ECDSA P-256、SM2、ECDH P-256、X25519、ElGamal。Botan 3.12.0 与 BLAKE3 1.8.5 作为带 SHA-256 清单的只读 Win32/x64 SDK 由统一依赖服务物化，F5 与 VS 导出行为一致。原生 smoke 已完成双架构 Release 编译、标准摘要向量、密码验证、AEAD 篡改拒绝和全部非对称闭环。后续可增加硬件密钥、证书链和后量子算法，但必须继续走模块 binding、受控密钥边界和真实原生向量测试。
 
-- 已完成（2026-07-30）：重构 `examples/basic-control-flow-demo/src` 的主项目为“全部控制流命令详细演示”，使用四个 `TabControl` 页面分组覆盖条件/选择、无限与判断循环、计次/变量/枚举循环、跳出/继续、异常处理、返回和程序退出。每组命令均提供独立可见日志和详细源码注释；项目通过零诊断确定性 C++ 生成、MSVC x64 Release 编译、3 秒运行存活以及 `.lcpppkg` 独立导入检查，源码包输出为项目内 `exports/全部控制流命令详细演示.lcpppkg`。后续新增控制流语法或别名时，应同步扩展示例源码和生成回归覆盖，避免只增加编辑器补全。
+- 已完成（2026-07-30）：重构 `examples/basic-control-flow-demo/src` 的主项目为“全部控制流命令详细演示”，使用四个 `TabControl` 页面分组覆盖条件/选择、无限与判断循环、计次/变量/枚举循环、跳出/继续、异常处理、返回和程序退出。每组命令均提供独立可见日志和详细源码注释；项目通过零诊断确定性 C++ 生成、MSVC x64 Release 编译、3 秒运行存活以及 `.lcpppkg` 独立导入检查，源码包统一输出到仓库根目录 `exports/全部控制流命令详细演示.lcpppkg`。后续新增控制流语法或别名时，应同步扩展示例源码和生成回归覆盖，避免只增加编辑器补全。
 
 - 已完成（2026-07-30）：新增 `format-text-api-demo` 新手模式项目，使用四个 `TabControl` 页面覆盖 `格式化文本` 的顺序占位符、文本/整数/长整数/小数/双精度/逻辑值、中文与 emoji、`{{` / `}}` 字面量花括号、参数不足、多余参数、零占位符、嵌套调用，以及赋值、控件文本、信息框、调试输出和实际订单摘要场景。项目已通过语义、确定性 C++ 生成与源码包独立导入检查，并导出为 `exports/格式化文本全接口与全能力演示.lcpppkg`。后续扩展格式语法时应同步扩展示例页面和回归测试，保持源码包可在独立工作区完整导入。
 
@@ -335,6 +347,7 @@
 - 已完成：新增 AI Bridge CLI 与本地 `/api/ai-bridge/*` 接口，支持 token 鉴权、`readonly` / `preview` / `yolo` 权限模式、受控文件读取搜索、LingCpp 诊断、编辑提案应用、模块上下文、C++ 预览/导出和 MCP stdio 工具映射。
 - 已完成（2026-08-04）：新增独立 C++ Win32 `tools/codex-configurator` 新手配置器。不启动 IDE 即可选择工作区和 `readonly` / `preview` / `yolo` 权限，一键生成项目级无 Token `--mcp --stdio-only` 配置；运行时自动识别开发版 Electron/CLI 与安装版 `resources/app.asar`，保留其它 TOML，冲突需要确认，支持原子写入、移除托管段和 `--headless`。后续可将签名安装包和配置器更新检查接入正式发布流程，但不得把配置器扩展成任意命令执行器。
 - 已完成（2026-08-03）：补齐外部 AI 直接起步项目的受控闭环。`SolutionService` 提供 `blank-window` / `hello-window` 模板和纯预览计划；`ProjectCreationService` 在确认后以统一项目文件事务创建解决方案项目、中文 `.lcpp`、设计器模型、项目全局变量/数据类型、配置和模块引用，并生成带 SHA-256 快照的撤销凭据。AI Bridge REST/MCP 与 CLI 共用同一服务，支持模板查询、预览/批准创建、模块依赖计划、受控工作台导航和未被修改项目的安全撤销；renderer 通过工作区 SSE 刷新解决方案、保存当前草稿并打开新项目主文件。后续应继续补充跨重启导航请求清理、项目创建恢复日志、完整 HTTP/SSE 集成测试和正式 `TaskService` 任务编排，不能把 AI 客户端临时文件状态当作项目持久化。
+- 已完成（2026-08-04）：无 IDE CLI 编程流程改为上下文优先、一次批准、源码与设计器 JSON 同步、诊断后原生预览再构建；MCP 工具描述明确区分 `result.project` 与 `result.designerProject`，并公开多文件提案的 `workspaceFiles` 与诊断的 `designerProject` 参数。后续继续补充跨客户端的 MCP 集成测试和更细粒度的设计器结构化编辑能力，不能退回只修改聊天中的 `.lcpp` 片段。
 - 已完成：原生导出和 F5/AI Bridge 构建运行会同步生成 Visual Studio Win32 工程文件（`.sln`、`.vcxproj`、`.vcxproj.filters`），并把模块 include/lib/source/runtime 依赖写入 VS 工程。
 - 已完成：修复 `new_emoji` 桥接层 UTF-8 转换缓冲区少分配 1 字节，以及临时 UTF-8 指针被 DLL 后续读取的问题，避免 Visual Studio Debug 运行时报 `HEAP CORRUPTION DETECTED` 或读取 `0xDDDDDDDD` 访问冲突。
 - 已完成：修复 `.lcpp` 解析器把事件/方法块结尾 `结束` 误翻译为运行时 `结束();` 的问题；显式退出命令应写作 `结束()`。
@@ -778,3 +791,4 @@
 
 - [x] F5 开始时继续打开“输出窗口 (Output) - 编译与生成”，仅在窗口设计器报告 exe 已成功启动后自动切换到底部面板“调试日志”。
 - [x] 编译、代码生成、依赖准备或运行启动失败时保持“编译与生成”页，方便用户直接查看失败阶段和原始输出；新增 UI 回归断言锁定该成功/失败边界。
+- 已修复（2026-08-04）：删除输出面板右上角未接入构建状态、配置服务和 F5 链路的 Debug/Release、x86/x64/Any CPU 假选择器。工作区构建模式和架构现在只由状态栏入口写入 `.lingbuilder/build-configuration.json`，避免界面显示与实际构建配置冲突；后续新增构建配置入口必须复用同一 `BuildConfigurationService`，不得维护独立的局部选择状态。

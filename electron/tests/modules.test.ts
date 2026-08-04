@@ -417,12 +417,12 @@ test('工作区已安装模块全部通过 controlRef 清单和示例门禁', as
     commandDigest: audit.commandDigest,
     parameterDigest: audit.parameterDigest
   }, {
-    modules: 87,
-    commands: 3596,
-    parameters: 10991,
-    controlReferences: 769,
-    commandDigest: 'c14c0afc',
-    parameterDigest: 'f5e23af5'
+    modules: 88,
+    commands: 3603,
+    parameters: 10995,
+    controlReferences: 772,
+    commandDigest: 'c03dde32',
+    parameterDigest: '837d7648'
   }, '内置、官方和当前工作区第三方模块的每个方法与参数都必须进入全量审计');
 });
 
@@ -858,6 +858,7 @@ test('网络基础模块提供请求、状态、错误和关闭闭环', () => {
     assert.equal(validateModuleManifest(manifest).diagnostics.length, 0, `${manifest.id} manifest 应通过校验`);
     assert.deepEqual(manifest.bindings?.commands?.map(binding => binding.command), manifest.contributes?.commands?.map(command => command.name));
   }
+  assert.equal(NETWORK_LIBRARY_MODULES.find(module => module.id === 'lingbuilder.net.http-client')?.minLingBuilderVersion, '0.2.8');
   const enabledModules: InstalledModule[] = NETWORK_LIBRARY_MODULES.map(manifest => ({
     manifest, installPath: `builtin://${manifest.id}`, isBuiltin: true, isInstalled: true, isEnabledForProject: true, diagnostics: []
   }));
@@ -1009,6 +1010,27 @@ test('module project references stay isolated and unknown project writes are rej
   assert.ok((await service.getEnabledProjectModules('project-a')).some(module => module.manifest.id === manifest.id));
   assert.ok(!(await service.getEnabledProjectModules('project-b')).some(module => module.manifest.id === manifest.id));
   await assert.rejects(() => service.enableModuleForProject('missing-project', manifest.id), /项目不存在/);
+});
+
+test('existing solution projects without a manifest inherit the workspace module selection', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'lingbuilder-module-inheritance-'));
+  await writeSolutionFixture(root, ['project-a']);
+  await writeFixture(path.join(root, '.lingbuilder', 'project-modules.json'), JSON.stringify({
+    schemaVersion: 1,
+    enabledModuleIds: ['lingbuilder.win32.basic', 'lingbuilder.win32.common-controls'],
+    pinnedVersions: {
+      'lingbuilder.win32.basic': '1.0.0',
+      'lingbuilder.win32.common-controls': '1.0.0'
+    }
+  }, null, 2));
+
+  const service = createModuleService(root);
+  const enabled = await service.getEnabledProjectModules('project-a');
+  assert.ok(enabled.some(module => module.manifest.id === 'lingbuilder.win32.common-controls'));
+  assert.deepEqual(await service.getProjectModuleIds('project-a'), [
+    'lingbuilder.win32.basic',
+    'lingbuilder.win32.common-controls'
+  ]);
 });
 
 test('module enable plan is side-effect free and can join a source copy transaction', async () => {
@@ -1924,6 +1946,7 @@ test('built-in WebSocket client 2.0 contributes managed commands and determinist
   const commands = manifest.contributes?.commands || [];
   const bindings = manifest.bindings?.commands || [];
   assert.equal(manifest.version, '2.0.0');
+  assert.equal(manifest.minLingBuilderVersion, '0.2.8');
   assert.equal(WEBSOCKET_CLIENT_COMMAND_SPECS.length, 51);
   assert.equal(commands.length, 51);
   assert.equal(bindings.length, 51);
@@ -2445,6 +2468,7 @@ test('built-in HTTP and WebSocket server modules contribute managed commands and
   const websocketCommands = websocketManifest.contributes?.commands || [];
   const websocketBindings = websocketManifest.bindings?.commands || [];
   assert.equal(websocketManifest.version, '2.0.0');
+  assert.equal(websocketManifest.minLingBuilderVersion, '0.2.8');
   assert.equal(WEBSOCKET_SERVER_COMMAND_SPECS.length, 50);
   assert.equal(websocketCommands.length, 50);
   assert.equal(websocketBindings.length, 50);
@@ -3629,6 +3653,7 @@ test('exportVisualStudioProject writes sln and vcxproj with module dependencies'
     projectId: 'new-emoji-yolo-demo',
     generatedFiles: [
       { relativePath: 'main.cpp', content: '' },
+      { relativePath: 'lingbuilder-app.rc', content: '#define IDI_LINGBUILDER_APP 101\nIDI_LINGBUILDER_APP ICON "resources/lingbuilder-app.ico"\n' },
       { relativePath: 'layout.json', content: '{}' }
     ],
     enabledModules: [module]
@@ -3643,11 +3668,16 @@ test('exportVisualStudioProject writes sln and vcxproj with module dependencies'
   assert.match(vcxproj, /<Platform>Win32<\/Platform>/);
   assert.match(vcxproj, /<Platform>x64<\/Platform>/);
   assert.match(vcxproj, /<ClCompile Include="main\.cpp" \/>/);
+  assert.match(vcxproj, /<ResourceCompile Include="lingbuilder-app\.rc" \/>/);
+  assert.doesNotMatch(vcxproj, /<None Include="lingbuilder-app\.rc" \/>/);
   assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\src\\new_emoji_bridge\.cpp/);
   assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\include/);
   assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\lib\\Win32\\new_emoji\.lib/);
   assert.match(vcxproj, /modules\\lingbuilder\.new_emoji\.ui\\lib\\x64\\new_emoji\.lib/);
   assert.match(vcxproj, /new_emoji\.dll/);
+  const filters = await fs.readFile(result.filtersPath, 'utf8');
+  assert.match(filters, /<Filter Include="资源文件">/u);
+  assert.match(filters, /<ResourceCompile Include="lingbuilder-app\.rc">/u);
 });
 
 test('exportVisualStudioProject selects the correct FBro runtime source for F5 and portable exports', async () => {

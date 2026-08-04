@@ -2,6 +2,7 @@
 
 模块 ID：`lingbuilder.net.http-client`
 当前版本：`2.0.0`
+最低 LingBuilder：`0.2.8`
 平台：Windows、MSVC、Win32 或 x64
 
 本模块基于 WinHTTP 提供受管 HTTP/HTTPS 客户端。客户端、请求和原生 `HINTERNET` 句柄由运行时管理，`.lcpp` 只使用稳定的整数 ID。普通 Win32 和 `new_emoji` 后端共享同一份请求实现，异步完成处理器都在 UI 消息线程执行。

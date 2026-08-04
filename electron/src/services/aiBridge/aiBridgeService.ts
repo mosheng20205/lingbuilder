@@ -38,6 +38,12 @@ import { generateLingCppNativeWin32Project } from '../windowDesigner/lingCppWin3
 import { exportVisualStudioProject } from '../windowDesigner/visualStudioProjectExporter';
 import { createDesignerAssetService } from '../windowDesigner/designerAssetService';
 import { LingWindowProject } from '../windowDesigner/types';
+import {
+  compileWindowsExecutableResource,
+  createWindowsExecutableIconService,
+  WINDOWS_EXECUTABLE_RESOURCE_FILE,
+  WindowsExecutableResourceCompileError
+} from '../windowDesigner/windowsExecutableIconService';
 import { detectNestedWorkspaceArtifacts, isNestedWorkspaceArtifactRelativePath } from '../solution/nestedWorkspaceGuard';
 import { createSolutionService, DEFAULT_PROJECT_ID, type LingBuilderSolutionProject } from '../solution/solutionService';
 import { createProjectCreationService, type ProjectCreationRequest, type ProjectCreationService } from '../solution/projectCreationService';
@@ -132,6 +138,7 @@ export interface AiBridgeServiceDependencies {
     objDir: string,
     cwd: string,
     modulePlan?: ModuleNativeDependencyPlan,
+    resourcePath?: string,
     signal?: AbortSignal
   ) => Promise<AiBridgeCompileResult>;
   assertModuleAccess?: (moduleIds: readonly string[]) => void;
@@ -146,6 +153,7 @@ export class AiBridgeService {
   private readonly solutionService;
   private readonly projectCreationService: ProjectCreationService;
   private readonly designerAssetService;
+  private readonly windowsExecutableIconService;
   private readonly managedProcessService: AiBridgeProcessManager;
   private readonly projectBuildCoordinator: ProjectBuildCoordinator;
   private readonly projectBuildSessionService: ProjectBuildSessionService;
@@ -172,6 +180,7 @@ export class AiBridgeService {
       moduleService: this.moduleService
     });
     this.designerAssetService = createDesignerAssetService(this.workspaceRoot);
+    this.windowsExecutableIconService = createWindowsExecutableIconService(this.workspaceRoot, this.designerAssetService);
     this.managedProcessService = dependencies.managedProcessService ?? createManagedProcessService();
     this.projectBuildCoordinator = dependencies.projectBuildCoordinator ?? createProjectBuildCoordinator();
     this.projectBuildSessionService = createProjectBuildSessionService(
@@ -498,6 +507,7 @@ export class AiBridgeService {
         await fs.writeFile(targetPath, file.content, 'utf8');
       }));
       const copiedAssets = await this.designerAssetService.copyProjectAssets(projectRef, [exportDir]);
+      const executableIcon = await this.windowsExecutableIconService.materialize(projectRef, preview.selectedWindow, [exportDir]);
       const moduleDiagnostics = await exportModuleNativeDependencies(preview.enabledModules, exportDir);
       const visualStudioProject = await exportVisualStudioProject({
         projectDir: exportDir,
@@ -506,6 +516,7 @@ export class AiBridgeService {
         enabledModules: preview.enabledModules,
         contentFiles: [
           ...copiedAssets.map(file => normalizeFilePath(path.relative(exportDir, file))),
+          ...executableIcon.files.map(file => normalizeFilePath(path.relative(exportDir, file))),
           ...codeGeneratorResult.artifacts
             .filter(artifact => artifact.kind === 'descriptor' || artifact.kind === 'runtime')
             .map(artifact => normalizeFilePath(artifact.relativePath))
@@ -743,10 +754,12 @@ export class AiBridgeService {
     }
     const generatedCodegenFiles = codeGeneratorResult.textFiles;
     const copiedAssets = await this.designerAssetService.copyProjectAssets(projectRef, [buildDir, binDir, exportDir]);
-    const buildContentFiles = copiedAssets
+    const executableIcon = await this.windowsExecutableIconService.materialize(projectRef, generatedProject.selectedWindow, [buildDir, exportDir]);
+    const copiedBuildContent = [...copiedAssets, ...executableIcon.files];
+    const buildContentFiles = copiedBuildContent
       .filter(file => file.startsWith(`${path.resolve(buildDir)}${path.sep}`))
       .map(file => normalizeFilePath(path.relative(buildDir, file)));
-    const exportContentFiles = copiedAssets
+    const exportContentFiles = copiedBuildContent
       .filter(file => file.startsWith(`${path.resolve(exportDir)}${path.sep}`))
       .map(file => normalizeFilePath(path.relative(exportDir, file)));
 
@@ -845,7 +858,10 @@ export class AiBridgeService {
 
     const sourcePath = path.join(sourceDir, 'main.cpp');
     const exePath = path.join(binDir, 'LingBuilderPreview.exe');
-    const compileResult = await this.compilerRunner(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, buildLease.signal);
+    const executableResourcePath = generatedProject.files.some(file => file.relativePath === WINDOWS_EXECUTABLE_RESOURCE_FILE)
+      ? path.join(sourceDir, WINDOWS_EXECUTABLE_RESOURCE_FILE)
+      : undefined;
+    const compileResult = await this.compilerRunner(compiler, sourcePath, exePath, objDir, buildDir, moduleNativePlan, executableResourcePath, buildLease.signal);
     const logs = [
       ...baseLogs,
       `exe 输出目录：${binDir}`,
@@ -1255,6 +1271,7 @@ async function compileWin32Preview(
   objDir: string,
   cwd: string,
   modulePlan?: ModuleNativeDependencyPlan,
+  resourcePath?: string,
   signal?: AbortSignal
 ): Promise<AiBridgeCompileResult> {
   const includeArgs = (modulePlan?.includeDirs || []).flatMap(includeDir => ['/I', includeDir]);
@@ -1270,11 +1287,24 @@ async function compileWin32Preview(
     };
   }
 
+  let resourceOutputPath: string | undefined;
+  let resourceLogs: string[] = [];
+  try {
+    const resourceResult = await compileWindowsExecutableResource({ compiler, resourcePath, objDir, cwd, signal });
+    resourceOutputPath = resourceResult.outputPath;
+    resourceLogs = resourceResult.logs;
+  } catch (error) {
+    if (error instanceof WindowsExecutableResourceCompileError) {
+      return { ok: false, logs: error.logs };
+    }
+    return { ok: false, logs: ['EXE 图标资源编译失败。', error instanceof Error ? error.message : String(error)] };
+  }
+
   const objectPath = path.join(objDir, 'main.obj');
   const useDynamicCrt = modulePlan?.requiresDynamicCrt === true;
   const requiredCppStandard = modulePlan?.requiredCppStandard === 20 ? 20 : 17;
   if (compiler.kind === 'msvc' && moduleSources.length > 0) {
-    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, requiredCppStandard, useDynamicCrt, signal);
+    return await compileMsvcPreviewWithModules(compiler, sourcePath, exePath, objDir, cwd, includeArgs, moduleSources, moduleLibs, requiredCppStandard, useDynamicCrt, resourceOutputPath, resourceLogs, signal);
   }
 
   const commandArgs = compiler.kind === 'msvc'
@@ -1294,6 +1324,7 @@ async function compileWin32Preview(
         'gdi32.lib',
         'comctl32.lib',
         'ole32.lib',
+        ...(resourceOutputPath ? [resourceOutputPath] : []),
         ...moduleLibs
       ]
     : [
@@ -1313,6 +1344,7 @@ async function compileWin32Preview(
     : [
         '-municode',
         objectPath,
+        ...(resourceOutputPath ? [resourceOutputPath] : []),
         '-o',
         exePath,
         '-luser32',
@@ -1348,6 +1380,7 @@ async function compileWin32Preview(
       ok: true,
       logs: [
         '编译成功。',
+        ...resourceLogs,
         compileResult.stdout?.trim() ? `stdout:\n${compileResult.stdout.trim()}` : '',
         compileResult.stderr?.trim() ? `stderr:\n${compileResult.stderr.trim()}` : '',
         linkResult?.stdout?.trim() ? `link stdout:\n${linkResult.stdout.trim()}` : '',
@@ -1378,6 +1411,8 @@ async function compileMsvcPreviewWithModules(
   moduleLibs: string[],
   requiredCppStandard: 17 | 20,
   useDynamicCrt: boolean,
+  resourceOutputPath: string | undefined,
+  resourceLogs: string[],
   signal?: AbortSignal
 ): Promise<{ ok: boolean; logs: string[] }> {
   const sources = [sourcePath, ...moduleSources];
@@ -1403,6 +1438,7 @@ async function compileMsvcPreviewWithModules(
     'gdi32.lib',
     'comctl32.lib',
     'ole32.lib',
+    ...(resourceOutputPath ? [resourceOutputPath] : []),
     ...moduleLibs
   ];
 
@@ -1416,7 +1452,7 @@ async function compileMsvcPreviewWithModules(
     const linkResult = await runMsvcCommand(compiler, linkArgs, cwd, signal);
     if (linkResult.stdout?.trim()) outputs.push(`link stdout:\n${linkResult.stdout.trim()}`);
     if (linkResult.stderr?.trim()) outputs.push(`link stderr:\n${linkResult.stderr.trim()}`);
-    return { ok: true, logs: ['编译成功。', ...outputs] };
+    return { ok: true, logs: ['编译成功。', ...resourceLogs, ...outputs] };
   } catch (error: any) {
     return {
       ok: false,

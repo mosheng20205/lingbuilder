@@ -163,7 +163,7 @@ POST /api/ai-bridge/project/create
 }
 ```
 
-预览返回完整设计器模型、初始文件内容、模块依赖和工作台导航目标；只有再次传入 `approved: true` 才会写入。`preview` 权限仍要求该字段，`readonly` 始终拒绝写入。
+预览返回完整设计器模型、初始文件内容、项目级模块清单、模块依赖和工作台导航目标；只有再次传入 `approved: true` 才会写入。省略 `enabledModuleIds` 时继承根目录 `.lingbuilder/project-modules.json`，预览中的 `modules.selection` 为 `global-default`；显式传空数组表示仅启用基础模块。`preview` 权限仍要求该字段，`readonly` 始终拒绝写入。
 
 ```json
 {
@@ -456,7 +456,7 @@ lingbuilder ai-server --workspace . --permission preview --mcp --stdio-only
 | `lingbuilder.edit.propose` | 生成编辑提案。 |
 | `lingbuilder.edit.apply` | 应用编辑提案。 |
 | `lingbuilder.project.templates` | 列出受控项目模板。 |
-| `lingbuilder.project.create` | 预览或创建项目，并初始化设计器模型和模块引用。 |
+| `lingbuilder.project.create` | 预览或创建项目，并初始化设计器模型和项目级模块引用；省略 `enabledModuleIds` 时继承根目录模块清单。 |
 | `lingbuilder.project.create.undo` | 撤销未被修改的 AI 创建事务。 |
 | `lingbuilder.build.run` | 执行受控构建/运行。 |
 | `lingbuilder.modules.list` | 查看模块上下文。 |
@@ -573,7 +573,7 @@ AI Bridge 只允许本机回环连接，不再支持 `--allow-remote`。远程�
 
 - AI Bridge 现在强制只监听 `127.0.0.1`、`localhost` 或 `::1`；`--allow-remote` 已移除。需要远程 AI 时使用带账号、TLS、点数和限流的 LingBuilder 云端 API。
 - MCP stdio 已切换到官方 `@modelcontextprotocol/sdk`，十个工具均使用严格 JSON Schema，不再接受任意额外字段。
-- 独立 Bridge 不再把普通 instruction 降级成“追加 AI 编辑建议”假提案。外部 AI 必须在 `files[]` 中提供允许路径的完整 `updatedSource`；IDE 内嵌 planner 或系统 AI 才能根据自然语言生成草稿。
+- 独立 Bridge 不再把普通 instruction 降级成“追加 AI 编辑建议”假提案。外部 AI 必须在 `files[]` 中提供允许路径的完整 `updatedSource`；多文件提案还必须在 `workspaceFiles[]` 中提供每个目标文件的当前完整内容。IDE 内嵌 planner 或系统 AI 才能根据自然语言生成草稿。
 - 编辑提案使用 UUID，30 分钟过期，最多保留 100 份；应用时核对原始文本，多文件写入失败会恢复已替换文件。
 - 搜索限制单文件 2 MiB、总扫描 64 MiB、20,000 文件、500 条结果和 10 秒；文件树限制节点数与深度。
 - 构建编译接受项目租约 `AbortSignal`，停止和关闭会中断编译器，而不再只等待固定超时。
@@ -592,7 +592,7 @@ lingbuilder project undo-create --request <undo-request.json> --workspace <path>
 lingbuilder project diagnose|export|build|run|stop --request <file.json> [--yes] [--json]
 ```
 
-`project create` 不带 `--yes` 时只返回创建预览；带 `--yes` 才写入真实解决方案、设计器模型和项目模块引用。请求文件可以包含 `name`、`projectId`、`templateId`（`blank-window` 或 `hello-window`）、`windowTitle`、`enabledModuleIds` 和 `openInWorkbench`。创建结果的 `receipt.receiptId` 可写入 `undo-request.json`，通过 `project undo-create --yes` 在文件未变更时撤销。
+`project create` 不带 `--yes` 时只返回创建预览；带 `--yes` 才写入真实解决方案、设计器模型和项目模块引用。请求文件可以包含 `name`、`projectId`、`templateId`（`blank-window` 或 `hello-window`）、`windowTitle`、`enabledModuleIds` 和 `openInWorkbench`。省略 `enabledModuleIds` 时继承根目录 `.lingbuilder/project-modules.json`，显式空数组表示仅启用基础模块。创建结果中的 `result.project.id` 用于产品 CLI 的项目请求和 MCP 的 `modules.list`、诊断、编辑工具；MCP 的 `native.preview`、`native.export`、`build.run` 必须传完整 `result.designerProject` 作为 `project`，不能传单独的 `projectId` 或 `result.project`。创建结果的 `receipt.receiptId` 可写入 `undo-request.json`，通过 `project undo-create --yes` 在文件未变更时撤销。
 
 `project diagnose` 会按请求中的 `projectId` 聚合同项目源码上下文，包括固定的 `项目全局变量.lcpp` 与 `项目数据类型.lcpp`。`project build --yes` 在编译结束后返回；`project run --yes` 会一直附着到生成的 exe，待程序自然退出且 `run.log` 写入完成后输出最终结果。需要中止时按 Ctrl+C，CLI 会先回收当前受管运行进程再退出。无控件空窗口也是合法构建输入，不需要额外放置占位控件。
 

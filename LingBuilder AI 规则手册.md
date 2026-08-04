@@ -1,5 +1,16 @@
 # LingBuilder AI 规则手册
 
+> 0.2.9 版本约束：生成或修改使用 `lingbuilder.wxhook.manager@1.1.1` 的项目时，最低 LingBuilder 版本必须为 `0.2.9`。该模块的四个界面参数必须保持裸 `controlRef(nativeHandle)`，不得改写为字符串控件名；第四个参数是顶部切换样式 Button，总开关默认开启防撤回和撤回灰条提示，并必须绑定 `Click` 事件，在事件中调用 `微信多开_设置总防撤回(控件_取勾选(防撤回总开关))`；导出源码包时必须携带模块及 Host/Agent/SQLite 运行时。
+
+> 版本约束：生成或修改使用 HTTP 客户端 2.0、WebSocket 客户端 2.0 或 WebSocket 服务端 2.0 的项目时，最低 LingBuilder 版本必须为 `0.2.8`。不要把 EdgeView、ListView 或 OpenCV 既有项目的最低版本从 `0.2.7` 无差别提升。
+
+## Windows EXE 图标资源规则
+
+- 窗口使用 `lingbuilder` 默认图标或项目自定义 ICO 时，原生生成必须同时输出 `lingbuilder-app.rc`，并把当前入口窗口图标物化到可移植的 `resources/lingbuilder-app.ico`；只调用 `WM_SETICON` 不能满足文件资源管理器、快捷方式和安装器读取 EXE 图标的要求。
+- F5、受控 CLI、AI Bridge 和 Visual Studio 导出必须编译并链接同一份 `.rc`，最终 PE 必须包含 `ICON` 与 `GROUP_ICON`。资源编译器缺失、ICO 不存在或 ICO 目录结构损坏时必须用中文阻断构建，禁止静默生成通用空白图标。
+- 自定义图标只能来自当前项目 `assets/` 内的相对 `.ico` 路径。生成资源使用固定 ASCII 路径承载实际字节，避免中文文件名和不同构建目录破坏 `rc.exe`；图标内容摘要必须进入增量构建指纹。
+- `system` 保持 Windows 通用程序图标，`none` 不嵌入项目图标；这两种显式选择不得被默认 LingBuilder 图标覆盖。多窗口项目当前以本次原生生成的入口窗口作为 EXE 图标来源。
+
 ## 模块设计器事件参数规则
 
 - NewEmoji 原生窗口中的 `调试输出`必须同时保留 Windows `OutputDebugStringW` 和 IDE 受控运行日志的 UTF-8 标准输出；只写调试器通道会导致 F5 已触发事件但“调试控制台”没有任何输出。标准输出固定使用 `[调试输出] `前缀并立即刷新，不能依赖进程退出才落盘。
@@ -384,6 +395,8 @@ AI 生成代码修改时必须遵守：
 - `.lcpp` 只能生成裸控件名，例如 `控件_设置文本(操作结果, "完成")`。禁止生成 `控件_设置文本("操作结果", "完成")`，也禁止把 controlRef 当作普通文本变量、路径或 JSON 字段。
 - AI 修改旧源码时，只有语言服务确认参数是 `controlRef`、目标唯一、类型兼容且作用域正确，才可移除引号；未知名称、同名歧义、跨窗口或类型不匹配必须保留源码并解释诊断。
 - C++ 中可以按后端契约转换为 `L"控件名"`、稳定 ID 或原生句柄，但这种 ABI 表示不得反向污染 `.lcpp`。普通 Win32、new_emoji 和未来后端必须复用同一 binding、设计器符号和生成诊断。
+- 普通 Win32 的 `stableId` / `nativeHandle` 只能由窗口实例解析；生成器必须让对应转换辅助函数可被派生窗口事件调用。源码型模块若把 `wideString` 用于用户可编辑文本，其 C++ 入口必须兼容 `控件_取文本` 产生的动态 `std::wstring`，不能只接受恰好能编译宽字符串字面量的签名。
+- 微信 `4.1.10.27` 多开项目必须使用 `微信4.1.10.27多开管理模块`：窗口创建时调用 `微信多开_绑定监控界面(微信实例列表, 状态栏, 运行日志, 防撤回总开关)`，启动按钮调用 `微信多开_启动微信(控件_取文本(微信路径输入))`。总开关必须绑定明确的 `Click` 处理器，并把 `控件_取勾选(防撤回总开关)` 传给 `微信多开_设置总防撤回`；不得仅切换按钮颜色或依赖模块抢先消费 `WM_COMMAND`。总开关默认开启防撤回与撤回灰条提示，列表“防撤回”列允许单独控制已登录实例；不得改回 `程序_启动`、窗口标题扫描或“等待外部消息”的伪资料；wxid、昵称和头像只能显示 Host/Agent 的真实快照。Host 中状态为 `stopped` 的历史实例必须在发布到界面前过滤，不得进入列表、计数或头像下载。
 
 ## 9. AI Bridge 外部客户端规则
 
@@ -399,12 +412,12 @@ LingBuilder 可以通过本地 AI Bridge 让外部 AI 客户端连接工作区�
 - 默认权限模式为 `preview`：读取、搜索、诊断和生成修改提案可以直接执行；写文件、导出工程、构建运行必须显式确认。
 - `readonly` 模式禁止写文件、导出工程和构建运行。
 - `yolo` 模式只允许用户明确开启；开启后仍只能执行 LingBuilder 暴露的受控工具，不能开放任意 shell。
-- 外部 AI 新建项目必须按 `lingbuilder.project.templates` → `lingbuilder.project.create` 预览 → 用户批准 `approved=true` → `lingbuilder.edit.propose/apply` → `lingbuilder.lingcpp.diagnostics` → `lingbuilder.build.run` 的顺序工作。`project.create` 只接受 `blank-window` 和 `hello-window` 受控模板，统一生成解决方案项目、中文源码、设计器模型、固定全局/类型文件、配置和模块引用；不得直接在工作区外拼接项目或把设计器状态留在模型上下文中。
+- 外部 AI 新建项目必须先读取规则、模块和示例上下文，再按 `lingbuilder.project.templates` → `lingbuilder.project.create` 预览 → 用户一次批准 `approved=true` → 使用返回的 `result.project.id` 调用 `lingbuilder.modules.list` → 读取真实源码/设计器 → `lingbuilder.edit.propose/apply` → `lingbuilder.lingcpp.diagnostics` → `lingbuilder.native.preview` → `lingbuilder.build.run` 的顺序工作。同一方案在用户批准后不应重复询问；只有需求、模块或目标发生变化时才重新确认。`project.create` 只接受 `blank-window` 和 `hello-window` 受控模板，统一生成解决方案项目、中文源码、设计器模型、固定全局/类型文件、配置和项目级模块引用；不得直接在工作区外拼接项目或把设计器状态留在模型上下文中。
 - `project.create` 的预览不得写入新项目；`preview` 权限写入必须显式 `approved=true`。成功结果中的 `receipt.receiptId` 只允许在创建文件 SHA-256 未变化时通过 `lingbuilder.project.create.undo` 或 `lingbuilder project undo-create --yes` 撤销；检测到用户/AI 修改、新文件、项目引用或路径异常时必须阻断，不能覆盖代码。
-- `project.create` 的 `enabledModuleIds` 必须通过模块服务解析依赖、检查清单和 Permit；普通 Win32 项目默认只有 `lingbuilder.win32.basic`，AI 不得把未明确启用的网络、浏览器或高风险模块写入模板。模块引用必须写入 `.lingbuilder/projects/<projectId>/project-modules.json` 并进入审计。
+- `project.create` 的 `enabledModuleIds` 必须通过模块服务解析依赖、检查清单和 Permit；省略该字段时继承根目录 `.lingbuilder/project-modules.json` 的已启用模块，预览会标记 `modules.selection=global-default` 并展示 `modules.projectModuleFile`；显式传空数组才表示仅使用 `lingbuilder.win32.basic`。创建后必须把完整清单写入 `.lingbuilder/projects/<projectId>/project-modules.json`。`modules.list`、诊断和编辑请求使用 `projectId`；原生预览、导出和构建请求不接收单独的 `projectId`，必须传 `project.create` 返回的完整 `designerProject`，其中的 `designerProject.id` 才是生成器项目 ID。普通未知项目仍默认只有基础模块，AI 不得把未明确启用的网络、浏览器或高风险模块写入模板。
 - `openInWorkbench=true` 时，创建服务写入受控工作台导航请求。IDE 收到事件后必须先保存当前编辑，再刷新解决方案、切换项目、打开主 `.lcpp` 并确认导航请求；不得用 DOM 查询、隐藏 localStorage 或静默丢弃脏编辑模拟项目切换。导航请求包含稳定项目 ID、主文件路径和窗口 ID，只能在当前工作区内解析。
 - 不启动 IDE 时可使用 `tools/codex-configurator/` 的独立 C++ 配置器选择 `readonly`、`preview` 或 `yolo`，但配置器只能写当前工作区的 `.codex/config.toml` 托管段，必须保留其它 TOML、拒绝未确认的同名 MCP 接管、不写入 Token，并继续使用 `--mcp --stdio-only` 启动同一受控 `AiBridgeService`。YOLO 仍只允许 LingBuilder 已暴露的受控工具，不能被解释为任意 Shell 权限。
-- 外部 AI 修改代码必须优先调用 `edit.propose` 生成 `WorkspaceEditProposal`，再由用户确认或由 `yolo` 模式应用。
+- 外部 AI 修改代码必须优先调用 `edit.propose` 生成 `WorkspaceEditProposal`，在用户对整体方案的一次批准后应用，或由明确开启的 `yolo` 模式应用。独立 MCP 没有内部 AI planner，`files[]` 必须提供每个修改文件的完整新内容；多文件修改还必须在 `workspaceFiles[]` 提供每个目标文件的当前完整内容。源码和设计器 JSON 必须作为同一提案同步更新，不能只改 `.lcpp` 后把控件留在模型上下文中。
 - 文件路径必须限制在当前工作区内，不允许访问 `..`、绝对路径逃逸、系统目录或隐藏凭据。
 - AI Bridge 读取项目文本时会返回规范化内容和真实 `{ encoding, eol }`。对已有文件应用 `edit.apply` 必须保留 UTF-8 BOM、UTF-16 LE/BE 与 LF/CRLF 格式；新文件默认使用 UTF-8/LF。遇到非法 UTF 字节或不支持的编码必须停止并报告中文诊断，不能用替换字符静默覆盖原文件。
 - 生成 C++、模块上下文、`.lcpp` 诊断和窗口设计器能力必须复用 LingBuilder 本地服务，不能绕过规则手册自行拼接隐藏逻辑。
