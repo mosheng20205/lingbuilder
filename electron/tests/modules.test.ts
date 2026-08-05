@@ -2163,6 +2163,32 @@ test('built-in EdgeView module contributes HWND embedding, browser events and Ja
   assert.ok(mainCpp.includes('EdgeView_监听开发者工具事件(1, L"Console.messageAdded");'));
 });
 
+test('EdgeView user documentation is generated from the unified event catalog', async () => {
+  const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');
+  assert.ok(manifest);
+  assert.ok(manifest.contributes?.docs?.some(document => (
+    document.path === 'docs/modules/edgeview/README.md'
+  )));
+
+  const document = await fs.readFile(
+    new URL('../docs/modules/edgeview/README.md', import.meta.url),
+    'utf8'
+  );
+  assert.match(document, new RegExp(`普通 HWND 可达事件。事件名称、稳定 WebView2 标识`));
+  assert.match(document, new RegExp(`目录项数：${EDGEVIEW_BROWSER_EVENTS.length}；`));
+  assert.ok(document.includes('EdgeView_绑定控件事件'));
+  assert.ok(document.includes('EdgeView事件_取字段'));
+  for (const [index, event] of EDGEVIEW_BROWSER_EVENTS.entries()) {
+    assert.ok(
+      document.includes(`| ${index + 1} | ${event.name} | \`${event.id}\``),
+      `用户文档缺少事件：${event.name}`
+    );
+  }
+  for (const event of EDGEVIEW_COMPOSITION_ONLY_EVENTS) {
+    assert.ok(document.includes(`| \`${event.id}\` | ${event.name} |`));
+  }
+});
+
 test('EdgeView 安全 API 目录、binding、处理器补全和运行时符号保持一一对应', () => {
   assert.deepEqual(validateEdgeViewApiCatalog(), []);
   const manifest = BUILTIN_MODULES.find(item => item.id === 'lingbuilder.edgeview');

@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 2,
+  "id": "edgeview-replace-response-demo",
+  "name": "EdgeView 替换响应 Demo",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "MainWindow",
+      "title": "EdgeView资源_设置事件响应文本 - 替换响应 Demo",
+      "width": 1040,
+      "height": 760,
+      "background": "#111827",
+      "iconStyle": "none",
+      "description": "在 Web资源请求 同步事件中拦截固定地址，并用本地 UTF-8 HTML 替换网络响应。",
+      "designerBackend": "win32",
+      "openPlacement": "center",
+      "events": {
+        "Loaded": "_MainWindow_创建完毕"
+      },
+      "controls": [
+        {
+          "id": "title",
+          "type": "Label",
+          "name": "标题",
+          "content": "EdgeView 请求拦截与响应替换",
+          "x": 24,
+          "y": 18,
+          "width": 620,
+          "height": 34,
+          "fontSize": 20,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": true,
+          "background": "transparent",
+          "foreground": "#F9FAFB",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          }
+        },
+        {
+          "id": "subtitle",
+          "type": "Label",
+          "name": "说明",
+          "content": "目标地址不会访问公网；Web资源请求事件会直接返回本地 HTML。",
+          "x": 26,
+          "y": 56,
+          "width": 690,
+          "height": 24,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "background": "transparent",
+          "foreground": "#CBD5E1",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          }
+        },
+        {
+          "id": "run",
+          "type": "Button",
+          "name": "重新演示按钮",
+          "content": "重新发起请求",
+          "x": 790,
+          "y": 24,
+          "width": 210,
+          "height": 42,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "background": "#0F766E",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6
+          },
+          "events": {
+            "Click": "_重新演示按钮_被单击"
+          }
+        },
+        {
+          "id": "status",
+          "type": "Label",
+          "name": "运行状态",
+          "content": "正在初始化 EdgeView...",
+          "x": 24,
+          "y": 94,
+          "width": 976,
+          "height": 38,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "background": "#134E4A",
+          "foreground": "#CCFBF1",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          }
+        },
+        {
+          "id": "edge-browser",
+          "type": "EdgeBrowser",
+          "name": "演示浏览器",
+          "content": "Edge 浏览器",
+          "x": 24,
+          "y": 148,
+          "width": 976,
+          "height": 550,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "background": "#FFFFFF",
+          "foreground": "#111827",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "url": "about:blank",
+            "cacheDir": ".edgeview/replace-response-demo",
+            "proxyMode": "system",
+            "enableScript": true,
+            "enableWebMessage": true,
+            "enableDevTools": true,
+            "enableContextMenu": true,
+            "enableStatusBar": false,
+            "zoomFactor": 100,
+            "language": "zh-CN"
+          }
+        }
+      ]
+    }
+  ]
+}

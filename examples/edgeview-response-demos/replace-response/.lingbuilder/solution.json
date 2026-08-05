@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "id": "edgeview-replace-response-demo-solution",
+  "name": "EdgeView 替换响应 Demo",
+  "startupProjectId": "edgeview-replace-response-demo",
+  "startupProjectIds": [
+    "edgeview-replace-response-demo"
+  ],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "edgeview-replace-response-demo",
+      "name": "EdgeView 替换响应 Demo",
+      "sourceRoot": "src/edgeview-replace-response-demo",
+      "configRoot": "config/edgeview-replace-response-demo",
+      "designerPath": ".lingbuilder/projects/edgeview-replace-response-demo/window-designer.json",
+      "isDefault": true,
+      "references": []
+    }
+  ]
+}

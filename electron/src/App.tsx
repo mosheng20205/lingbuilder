@@ -123,7 +123,7 @@ import {
 } from './services/configuration/legacyWorkbenchConfiguration';
 import { runGuardedConfigurationUpdate } from './services/configuration/configurationUpdateGuard';
 import {
-  requestWindowDesignerBuildRun,
+  requestWindowDesignerLingCppSource,
   WINDOW_DESIGNER_LINGCPP_SOURCE_REQUEST,
   WINDOW_DESIGNER_BUILD_RUN_STATE,
   WindowDesignerLingCppSourceRequestDetail,
@@ -4392,27 +4392,65 @@ void DisplayStatus() {
       buildIntervalRef.current = null;
     }
 
-    window.dispatchEvent(new CustomEvent('show-window-designer'));
     setShowBottomPanel(true);
     setActiveTabInBottom('output');
     setBuildLogs(prev => [
       ...prev,
-      `> [${new Date().toLocaleTimeString()}] 【F5】正在调用窗口设计器“生成并运行”命令...`
+      `> [${new Date().toLocaleTimeString()}] 【F5】正在根据当前中文源码和界面模型生成并运行...`
     ]);
 
-    buildDispatchTimeoutRef.current = window.setTimeout(() => {
-      buildDispatchTimeoutRef.current = null;
-      if (buildRequestId !== buildRequestIdRef.current || editorOperationRef.current !== 'build') return;
-      buildLaunchTimeoutRef.current = window.setTimeout(() => {
-        if (buildStartedRef.current) return;
-        buildLaunchTimeoutRef.current = null;
+    try {
+      // Read the same persisted designer snapshot used by saveWorkspaceCore so
+      // a just-finished designer edit cannot be replaced by a stale React
+      // render when F5 is pressed immediately afterward.
+      const currentDesignerState = readWindowDesignerState();
+      const activeWindow = currentDesignerState.project.windows.find(window => window.id === currentDesignerState.activeWindowId)
+        || currentDesignerState.project.windows[0];
+      const sourceSnapshot = requestWindowDesignerLingCppSource(
+        currentDesignerState.activeWindowId,
+        activeWindow?.fileName,
+        activeWindow?.className
+      );
+      const response = await fetch('/api/window-designer/build-run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project: currentDesignerState.project,
+          activeWindowId: currentDesignerState.activeWindowId,
+          lingCppSourceCode: sourceSnapshot.sourceCode,
+          lingCppSourceFilePath: sourceSnapshot.filePath,
+          lingCppSources: sourceSnapshot.sources,
+          run: true
+        })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (buildRequestId !== buildRequestIdRef.current || editorOperationRef.current !== 'build') return true;
+
+      const logs: string[] = Array.isArray(result.logs) ? result.logs : [];
+      if (logs.length > 0) {
+        setBuildLogs(previous => [
+          ...previous,
+          ...logs.map(message => `> [${new Date().toLocaleTimeString()}] ${message}`)
+        ]);
+      }
+      window.dispatchEvent(new CustomEvent('lingbuilder-compiler-diagnostics', {
+        detail: { diagnostics: Array.isArray(result.compilerDiagnostics) ? result.compilerDiagnostics : [] }
+      }));
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || result.stage || '原生 C++ 编译运行失败。');
+      }
+      setActiveTabInBottom('debug_logs');
+      return true;
+    } catch (error) {
+      if (buildRequestId !== buildRequestIdRef.current) return true;
+      appendEditorTransactionLog(`【F5错误】${error instanceof Error ? error.message : '原生 C++ 编译运行失败。'}`);
+      return false;
+    } finally {
+      if (buildRequestId === buildRequestIdRef.current) {
         if (editorOperationRef.current === 'build') editorOperationRef.current = null;
         setIsBuilding(false);
-        appendEditorTransactionLog('【F5错误】窗口设计器未响应构建请求，互斥锁已安全释放。');
-      }, 15_000);
-      requestWindowDesignerBuildRun();
-    }, 50);
-    return true;
+      }
+    }
   }, [saveWorkspaceCore]);
 
   const handleStartNativeDebug = useCallback(async (): Promise<boolean> => {

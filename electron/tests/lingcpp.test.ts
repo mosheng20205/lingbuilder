@@ -35,6 +35,7 @@ import { applyLingCppAstEdit } from '../src/services/lingCpp/astEditService';
 import { createProjectGlobalContext, getProjectGlobalDiagnostics } from '../src/services/lingCpp/projectGlobalService';
 import { createProjectConstantRenameProposal, findProjectConstantReferences, getProjectConstantNameAtCursor } from '../src/services/lingCpp/projectConstantReferenceService';
 import {
+  getBeginnerLocalInsertShortcutKind,
   getBeginnerLocalInsertStatementIndex,
   getBeginnerMethodBodySegments,
   isBeginnerLocalInsertShortcut
@@ -2653,7 +2654,7 @@ test('multiple local-variable groups remain freely insertable across one method 
   );
 });
 
-test('beginner Ctrl+L resolves the caret row to the statement that must move down', () => {
+test('beginner Ctrl+L and Ctrl+B resolve the caret row and shortcut kind precisely', () => {
   const body = [
     '返回字节 = 网页_访问_对象(网址, 1, 表单数据)',
     '调试输出("POST 状态码：", 网页_取返回状态代码())',
@@ -2674,6 +2675,37 @@ test('beginner Ctrl+L resolves the caret row to the statement that must move dow
   assert.equal(isBeginnerLocalInsertShortcut({
     key: 'l', code: 'KeyL', ctrlKey: false, metaKey: false, altKey: false, shiftKey: false
   }), false);
+  assert.equal(getBeginnerLocalInsertShortcutKind({
+    key: 'Process', code: 'KeyB', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false
+  }), 'constant');
+  assert.equal(getBeginnerLocalInsertShortcutKind({
+    key: 'b', code: 'KeyB', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false
+  }), 'constant');
+  assert.equal(getBeginnerLocalInsertShortcutKind({
+    key: 'b', code: 'KeyB', ctrlKey: true, metaKey: false, altKey: false, shiftKey: true
+  }), null);
+
+  const source = `类 测试窗口 : 公开 窗体
+公开:
+    空 运行()
+        ${body.split('\n').join('\n        ')}
+    结束
+结束类`;
+  const method = findLingCppMethod(parseLingCpp(source).program, '运行');
+  assert.ok(method);
+  const statementIndex = getBeginnerLocalInsertStatementIndex(body, fourthLineStart);
+  const inserted = applyLingCppAstEdit(source, {
+    kind: 'add-local',
+    className: '测试窗口',
+    methodName: '运行',
+    insertBeforeLine: method.statements[statementIndex]?.line,
+    local: { name: '局部常量', type: '文本型', initialValue: '""', isConstant: true }
+  });
+  assert.equal(inserted.success, true);
+  assert.match(
+    inserted.sourceCode,
+    /调试输出\("POST 返回文本：", 网页_取返回文本\(\)\)\n\s+局部常量 文本型 局部常量 = ""\n\s+调试输出\("POST 错误信息：", 网页_取错误信息\(\)\)/u
+  );
 });
 
 test('beginner Enter auto-declaration infers literals and module command return types safely', () => {
@@ -2825,14 +2857,17 @@ test('beginner editor exposes method-scoped local declarations with variable and
   assert.match(source, /<option value="variable">变量<\/option>/u);
   assert.match(source, /<option value="constant">常量<\/option>/u);
   assert.match(source, /ADD_BEGINNER_LOCAL_CONSTANT_COMMAND/u);
-  assert.match(source, /Ctrl\+L 只快速插入普通变量/u);
+  assert.match(source, /Ctrl\+L 变量 · Ctrl\+B 常量/u);
   assert.match(source, /getBeginnerCodeCompletionItems\(target\)/u);
   assert.match(source, /createBeginnerVariableCompletion\(/u);
   assert.match(source, /event\.key === 'Enter' \|\| event\.key === 'Tab'/u);
   assert.match(source, /onMouseDown=\{event =>/u);
   assert.match(source, /const segmentId = segmentContext\?\.segment\.id \|\| 'all'/u);
   assert.match(source, /beginnerCompletionState\.segmentId === segmentId/u);
-  assert.match(source, /isBeginnerLocalInsertShortcut\(event\)/u);
+  assert.match(source, /getBeginnerLocalInsertShortcutKind\(event\)/u);
+  assert.match(source, /localInsertShortcutKind === 'constant'/u);
+  assert.match(source, /focus\(\{ preventScroll: true \}\)/u);
+  assert.match(source, /data-beginner-local-target-key/u);
   assert.match(source, /getBeginnerLocalInsertStatementIndex\(/u);
   assert.match(source, /折叠局部声明组/u);
   assert.match(source, /tryBeginnerAutoLocalOnEnter/u);

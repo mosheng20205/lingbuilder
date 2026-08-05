@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "enabledModuleIds": [
+    "lingbuilder.win32.basic",
+    "lingbuilder.edgeview",
+    "lingbuilder.std.bytes",
+    "lingbuilder.data.json"
+  ],
+  "pinnedVersions": {
+    "lingbuilder.win32.basic": "1.0.0",
+    "lingbuilder.edgeview": "1.2.0",
+    "lingbuilder.std.bytes": "1.0.0",
+    "lingbuilder.data.json": "1.0.0"
+  }
+}

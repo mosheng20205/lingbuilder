@@ -13,8 +13,10 @@ import { acquireDesignerCommands, activeDesignerCommandTargetService } from '../
 import {
   acquireLingCppBeginnerCommands,
   activeLingCppBeginnerCommandTargetService,
+  ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND,
   ADD_BEGINNER_LOCAL_CONSTANT_COMMAND,
-  ADD_BEGINNER_LOCAL_VARIABLE_COMMAND
+  ADD_BEGINNER_LOCAL_VARIABLE_COMMAND,
+  ADD_BEGINNER_SUBPROGRAM_COMMAND
 } from '../src/services/lingCpp/beginnerCommandTargetService';
 import {
   acquireLingCppControlReferenceCommands,
@@ -179,32 +181,61 @@ test('EdgeView preview command is visible only for an EdgeBrowser selection and 
   commandRegistration.dispose();
 });
 
-test('LingCpp beginner local declaration commands resolve through MenuService and unregister cleanly', async () => {
+test('LingCpp beginner creation commands expose shortcuts, execute through MenuService and unregister cleanly', async () => {
   const commands = createCommandService();
   const menus = new MenuService(commands);
   const commandRegistration = acquireLingCppBeginnerCommands(commands, menus);
-  const calls: Array<{ kind: 'variable' | 'constant'; target?: { className: string; methodName: string } }> = [];
+  const calls: Array<{
+    kind: 'subprogram' | 'assembly-variable' | 'variable' | 'constant';
+    target?: { className: string; methodName: string };
+  }> = [];
   const targetRegistration = activeLingCppBeginnerCommandTargetService.register({
     id: 'beginner-local-test',
+    addSubprogram: () => calls.push({ kind: 'subprogram' }),
+    addAssemblyVariable: () => calls.push({ kind: 'assembly-variable' }),
     addLocalVariable: target => calls.push({ kind: 'variable', target }),
     addLocalConstant: target => calls.push({ kind: 'constant', target })
   });
-  const enabledContext = { 'lingcpp.beginner.active': true, 'lingcpp.beginner.hasTarget': true };
-  const disabledContext = { 'lingcpp.beginner.active': true, 'lingcpp.beginner.hasTarget': false };
+  const enabledContext = {
+    'lingcpp.beginner.active': true,
+    'lingcpp.beginner.hasTarget': true,
+    'lingcpp.beginner.canAddSubprogram': true,
+    'lingcpp.beginner.canAddAssemblyVariable': true,
+    'lingcpp.beginner.writable': true
+  };
+  const disabledContext = {
+    'lingcpp.beginner.active': true,
+    'lingcpp.beginner.hasTarget': false,
+    'lingcpp.beginner.canAddSubprogram': false,
+    'lingcpp.beginner.canAddAssemblyVariable': false,
+    'lingcpp.beginner.writable': false
+  };
   const enabledMenu = menus.resolveMenu(LINGCPP_BEGINNER_CONTEXT_MENU, enabledContext, { includeDisabled: true });
   const disabledMenu = menus.resolveMenu(LINGCPP_BEGINNER_CONTEXT_MENU, disabledContext, { includeDisabled: true });
 
   assert.deepEqual(enabledMenu.filter(item => item.kind === 'command').map(item => item.kind === 'command' && item.command.id), [
+    ADD_BEGINNER_SUBPROGRAM_COMMAND,
+    ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND,
     ADD_BEGINNER_LOCAL_VARIABLE_COMMAND,
     ADD_BEGINNER_LOCAL_CONSTANT_COMMAND
+  ]);
+  assert.deepEqual(enabledMenu.filter(item => item.kind === 'command').map(item => item.kind === 'command' && item.command.keybindings[0]), [
+    'Ctrl+N',
+    'Ctrl+D',
+    'Ctrl+L',
+    'Ctrl+B'
   ]);
   assert.ok(enabledMenu.every(item => item.kind !== 'command' || item.command.enabled));
   assert.ok(disabledMenu.every(item => item.kind !== 'command' || !item.command.enabled));
 
   const methodTarget = { className: 'MainWindow', methodName: '创建完毕' };
-  await commands.executeCommand(ADD_BEGINNER_LOCAL_VARIABLE_COMMAND, enabledContext, methodTarget);
-  await commands.executeCommand(ADD_BEGINNER_LOCAL_CONSTANT_COMMAND, enabledContext, methodTarget);
+  await commands.executeKeybinding('Ctrl+N', enabledContext);
+  await commands.executeKeybinding('Ctrl+D', enabledContext);
+  await commands.executeKeybinding('Ctrl+L', enabledContext, methodTarget);
+  await commands.executeKeybinding('Ctrl+B', enabledContext, methodTarget);
   assert.deepEqual(calls, [
+    { kind: 'subprogram' },
+    { kind: 'assembly-variable' },
     { kind: 'variable', target: methodTarget },
     { kind: 'constant', target: methodTarget }
   ]);
@@ -212,6 +243,8 @@ test('LingCpp beginner local declaration commands resolve through MenuService an
   targetRegistration.dispose();
   commandRegistration.dispose();
   assert.deepEqual(menus.resolveMenu(LINGCPP_BEGINNER_CONTEXT_MENU, enabledContext, { includeDisabled: true }), []);
+  assert.equal(commands.hasCommand(ADD_BEGINNER_SUBPROGRAM_COMMAND), false);
+  assert.equal(commands.hasCommand(ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND), false);
   assert.equal(commands.hasCommand(ADD_BEGINNER_LOCAL_VARIABLE_COMMAND), false);
   assert.equal(commands.hasCommand(ADD_BEGINNER_LOCAL_CONSTANT_COMMAND), false);
 });

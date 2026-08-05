@@ -91,7 +91,24 @@ export function getBeginnerLocalInsertStatementIndex(
   return Math.max(0, statementStartIndex) + caretLineIndex;
 }
 
-/** Ctrl/Command+L remains detectable while a Chinese IME reports key=Process. */
+export type BeginnerLocalInsertShortcutKind = 'variable' | 'constant';
+
+/** Ctrl/Command+L or B remains detectable while a Chinese IME reports key=Process. */
+export function getBeginnerLocalInsertShortcutKind(event: {
+  key: string;
+  code: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}): BeginnerLocalInsertShortcutKind | null {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return null;
+  const key = event.key.toLocaleLowerCase();
+  if (key === 'l' || event.code === 'KeyL') return 'variable';
+  if (key === 'b' || event.code === 'KeyB') return 'constant';
+  return null;
+}
+
 export function isBeginnerLocalInsertShortcut(event: {
   key: string;
   code: string;
@@ -100,8 +117,5 @@ export function isBeginnerLocalInsertShortcut(event: {
   altKey: boolean;
   shiftKey: boolean;
 }): boolean {
-  return (event.ctrlKey || event.metaKey)
-    && !event.altKey
-    && !event.shiftKey
-    && (event.key.toLocaleLowerCase() === 'l' || event.code === 'KeyL');
+  return getBeginnerLocalInsertShortcutKind(event) === 'variable';
 }

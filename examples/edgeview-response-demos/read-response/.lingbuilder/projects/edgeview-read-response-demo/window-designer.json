@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 2,
+  "id": "edgeview-read-response-demo",
+  "name": "EdgeView 读取响应 Demo",
+  "resources": [],
+  "windows": [
+    {
+      "id": "main-window",
+      "fileName": "MainWindow.xml",
+      "className": "MainWindow",
+      "title": "Web资源响应收到 - 元数据与正文读取 Demo",
+      "width": 1180,
+      "height": 800,
+      "background": "#111827",
+      "iconStyle": "none",
+      "description": "绑定 Web资源响应收到，读取 requestHandle、responseHandle、URL、状态码、原因及 UTF-8 正文。",
+      "designerBackend": "win32",
+      "openPlacement": "center",
+      "events": {
+        "Loaded": "_MainWindow_创建完毕"
+      },
+      "controls": [
+        {
+          "id": "title",
+          "type": "Label",
+          "name": "标题",
+          "content": "EdgeView 响应元数据与正文读取",
+          "x": 24,
+          "y": 18,
+          "width": 680,
+          "height": 34,
+          "fontSize": 20,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": true,
+          "background": "transparent",
+          "foreground": "#F9FAFB",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          }
+        },
+        {
+          "id": "subtitle",
+          "type": "Label",
+          "name": "说明",
+          "content": "演示响应由本地请求事件提供，响应事件负责采集句柄与 HTTP 信息，再异步读取正文。",
+          "x": 26,
+          "y": 56,
+          "width": 820,
+          "height": 24,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "background": "transparent",
+          "foreground": "#CBD5E1",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          }
+        },
+        {
+          "id": "run",
+          "type": "Button",
+          "name": "重新读取按钮",
+          "content": "重新读取响应",
+          "x": 928,
+          "y": 24,
+          "width": 210,
+          "height": 42,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "background": "#2563EB",
+          "foreground": "#FFFFFF",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "buttonStyle": "push",
+            "cornerRadius": 6
+          },
+          "events": {
+            "Click": "_重新读取按钮_被单击"
+          }
+        },
+        {
+          "id": "status",
+          "type": "Label",
+          "name": "运行状态",
+          "content": "正在初始化 EdgeView...",
+          "x": 24,
+          "y": 94,
+          "width": 1114,
+          "height": 38,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "background": "#1E3A8A",
+          "foreground": "#DBEAFE",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          }
+        },
+        {
+          "id": "edge-browser",
+          "type": "EdgeBrowser",
+          "name": "演示浏览器",
+          "content": "Edge 浏览器",
+          "x": 24,
+          "y": 150,
+          "width": 660,
+          "height": 580,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "background": "#FFFFFF",
+          "foreground": "#111827",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "url": "about:blank",
+            "cacheDir": ".edgeview/read-response-demo",
+            "proxyMode": "system",
+            "enableScript": true,
+            "enableWebMessage": true,
+            "enableDevTools": true,
+            "enableContextMenu": true,
+            "enableStatusBar": false,
+            "zoomFactor": 100,
+            "language": "zh-CN"
+          }
+        },
+        {
+          "id": "metadata-title",
+          "type": "Label",
+          "name": "元数据标题",
+          "content": "Web资源响应收到",
+          "x": 710,
+          "y": 150,
+          "width": 428,
+          "height": 28,
+          "fontSize": 14,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": true,
+          "background": "transparent",
+          "foreground": "#93C5FD",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          }
+        },
+        {
+          "id": "metadata",
+          "type": "Label",
+          "name": "响应元数据",
+          "content": "等待响应事件...",
+          "x": 710,
+          "y": 186,
+          "width": 428,
+          "height": 210,
+          "fontSize": 12,
+          "fontFamily": "Consolas",
+          "background": "#0B1220",
+          "foreground": "#E5E7EB",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          }
+        },
+        {
+          "id": "body-title",
+          "type": "Label",
+          "name": "正文标题",
+          "content": "异步读取并按 UTF-8 解码的正文",
+          "x": 710,
+          "y": 420,
+          "width": 428,
+          "height": 28,
+          "fontSize": 14,
+          "fontFamily": "Microsoft YaHei UI",
+          "fontBold": true,
+          "background": "transparent",
+          "foreground": "#86EFAC",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          }
+        },
+        {
+          "id": "body",
+          "type": "Label",
+          "name": "响应正文",
+          "content": "等待 EdgeView资源_读响应正文异步...",
+          "x": 710,
+          "y": 456,
+          "width": 428,
+          "height": 274,
+          "fontSize": 12,
+          "fontFamily": "Microsoft YaHei UI",
+          "background": "#052E16",
+          "foreground": "#DCFCE7",
+          "isEnabled": true,
+          "visibility": "Visible",
+          "properties": {
+            "staticStyle": "text",
+            "textAlign": "left"
+          }
+        }
+      ]
+    }
+  ]
+}

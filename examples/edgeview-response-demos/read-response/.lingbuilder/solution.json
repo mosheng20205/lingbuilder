@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 2,
+  "id": "edgeview-read-response-demo-solution",
+  "name": "EdgeView 读取响应 Demo",
+  "startupProjectId": "edgeview-read-response-demo",
+  "startupProjectIds": [
+    "edgeview-read-response-demo"
+  ],
+  "projects": [
+    {
+      "type": "visual-cpp",
+      "id": "edgeview-read-response-demo",
+      "name": "EdgeView 读取响应 Demo",
+      "sourceRoot": "src/edgeview-read-response-demo",
+      "configRoot": "config/edgeview-read-response-demo",
+      "designerPath": ".lingbuilder/projects/edgeview-read-response-demo/window-designer.json",
+      "isDefault": true,
+      "references": []
+    }
+  ]
+}

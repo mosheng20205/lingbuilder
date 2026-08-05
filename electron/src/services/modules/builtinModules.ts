@@ -506,7 +506,8 @@ export const BUILTIN_MODULES: LingBuilderModuleManifest[] = [
         ,{ name: 'EdgeView_监听开发者工具事件控件', signature: 'EdgeView_监听开发者工具事件控件(控件名, 协议事件名)', description: '按设计器控件名监听 Chromium DevTools Protocol 事件。', insertText: 'EdgeView_监听开发者工具事件控件($1, "Console.messageAdded")', returnType: '整数型' }
       ],
       types: [{ name: 'EdgeView浏览器', description: '嵌入 Win32 HWND 的 Microsoft Edge WebView2 浏览器。', cppType: 'ICoreWebView2*' }],
-      snippets: [{ label: 'EdgeView 嵌入与 JS 返回值', insertText: 'EdgeView_创建(0, "https://example.com")\n调试输出(EdgeView_执行JS("document.title"))\n调试输出(EdgeView_取最近事件())\n调试输出(EdgeView_取事件数据())', description: '在当前窗口嵌入 EdgeView，并读取网页标题与最近浏览器事件。' }]
+      snippets: [{ label: 'EdgeView 嵌入与 JS 返回值', insertText: 'EdgeView_创建(0, "https://example.com")\n调试输出(EdgeView_执行JS("document.title"))\n调试输出(EdgeView_取最近事件())\n调试输出(EdgeView_取事件数据())', description: '在当前窗口嵌入 EdgeView，并读取网页标题与最近浏览器事件。' }],
+      docs: [{ title: 'EdgeView 事件与接口参考', path: 'docs/modules/edgeview/README.md' }]
     },
     targets: [
       { id: 'windows-msvc-win32', platform: 'windows', arch: 'win32', toolchain: 'msvc', includeDirs: ['include'], headers: ['include/WebView2.h', 'include/WebView2EnvironmentOptions.h'], libs: ['ole32.lib'], runtimeFiles: ['bin/x86/WebView2Loader.dll'], defines: ['LINGBUILDER_EDGEVIEW_MODULE'] },

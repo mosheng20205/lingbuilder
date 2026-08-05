@@ -5,6 +5,8 @@ import { LINGCPP_BEGINNER_CONTEXT_MENU } from '../menus/types';
 
 export const ADD_BEGINNER_LOCAL_VARIABLE_COMMAND = 'lingcpp.beginner.addLocalVariable';
 export const ADD_BEGINNER_LOCAL_CONSTANT_COMMAND = 'lingcpp.beginner.addLocalConstant';
+export const ADD_BEGINNER_SUBPROGRAM_COMMAND = 'lingcpp.beginner.addSubprogram';
+export const ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND = 'lingcpp.beginner.addAssemblyVariable';
 
 export interface LingCppBeginnerMethodTarget {
   className: string;
@@ -13,6 +15,8 @@ export interface LingCppBeginnerMethodTarget {
 
 export interface LingCppBeginnerCommandTarget {
   id: string;
+  addSubprogram(): unknown;
+  addAssemblyVariable(): unknown;
   addLocalVariable(target?: LingCppBeginnerMethodTarget): unknown;
   addLocalConstant(target?: LingCppBeginnerMethodTarget): unknown;
 }
@@ -49,16 +53,39 @@ export function acquireLingCppBeginnerCommands(commands: CommandService, menus: 
     return releaseRegistration(commands, current);
   }
 
-  const enabled = (context: CommandContext) => Boolean(
+  const isWritable = (context: CommandContext) => context['lingcpp.beginner.writable'] !== false;
+  const hasLocalTarget = (context: CommandContext) => Boolean(
     context['lingcpp.beginner.active'] && context['lingcpp.beginner.hasTarget']
-  );
+  ) && isWritable(context);
   const commandRegistration = commands.registerCommands([
+    {
+      id: ADD_BEGINNER_SUBPROGRAM_COMMAND,
+      title: '新建子程序',
+      category: 'LingCpp 新手模式',
+      keybindings: ['Ctrl+N'],
+      keybindingPriority: 100,
+      when: 'lingcpp.beginner.active',
+      enabled: context => Boolean(context['lingcpp.beginner.canAddSubprogram']) && isWritable(context),
+      handler: () => activeLingCppBeginnerCommandTargetService.require().addSubprogram()
+    },
+    {
+      id: ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND,
+      title: '新建程序集变量',
+      category: 'LingCpp 新手模式',
+      keybindings: ['Ctrl+D'],
+      keybindingPriority: 100,
+      when: 'lingcpp.beginner.active',
+      enabled: context => Boolean(context['lingcpp.beginner.canAddAssemblyVariable']) && isWritable(context),
+      handler: () => activeLingCppBeginnerCommandTargetService.require().addAssemblyVariable()
+    },
     {
       id: ADD_BEGINNER_LOCAL_VARIABLE_COMMAND,
       title: '新建局部变量',
       category: 'LingCpp 新手模式',
+      keybindings: ['Ctrl+L'],
+      keybindingPriority: 100,
       when: 'lingcpp.beginner.active',
-      enabled,
+      enabled: hasLocalTarget,
       handler: (_context, target?: LingCppBeginnerMethodTarget) =>
         activeLingCppBeginnerCommandTargetService.require().addLocalVariable(target)
     },
@@ -66,8 +93,10 @@ export function acquireLingCppBeginnerCommands(commands: CommandService, menus: 
       id: ADD_BEGINNER_LOCAL_CONSTANT_COMMAND,
       title: '新建局部常量',
       category: 'LingCpp 新手模式',
+      keybindings: ['Ctrl+B'],
+      keybindingPriority: 100,
       when: 'lingcpp.beginner.active',
-      enabled,
+      enabled: hasLocalTarget,
       handler: (_context, target?: LingCppBeginnerMethodTarget) =>
         activeLingCppBeginnerCommandTargetService.require().addLocalConstant(target)
     }
@@ -75,16 +104,30 @@ export function acquireLingCppBeginnerCommands(commands: CommandService, menus: 
   const menuRegistration = menus.registerMenuItems([
     {
       menu: LINGCPP_BEGINNER_CONTEXT_MENU,
-      command: ADD_BEGINNER_LOCAL_VARIABLE_COMMAND,
+      command: ADD_BEGINNER_SUBPROGRAM_COMMAND,
       group: 'navigation',
       order: 10,
       source: 'builtin'
     },
     {
       menu: LINGCPP_BEGINNER_CONTEXT_MENU,
-      command: ADD_BEGINNER_LOCAL_CONSTANT_COMMAND,
+      command: ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND,
       group: 'navigation',
       order: 20,
+      source: 'builtin'
+    },
+    {
+      menu: LINGCPP_BEGINNER_CONTEXT_MENU,
+      command: ADD_BEGINNER_LOCAL_VARIABLE_COMMAND,
+      group: 'navigation',
+      order: 30,
+      source: 'builtin'
+    },
+    {
+      menu: LINGCPP_BEGINNER_CONTEXT_MENU,
+      command: ADD_BEGINNER_LOCAL_CONSTANT_COMMAND,
+      group: 'navigation',
+      order: 40,
       source: 'builtin'
     }
   ]);

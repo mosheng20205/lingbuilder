@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useState, useCallback, useImperativeHandle } from 'react';
-import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X, ListTree, PanelRightClose, Lightbulb, PlayCircle, Pencil, Save, Trash2, Plus, Minus, ChevronDown, ChevronRight, RefreshCw, FolderOpen, Copy, FileInput, ExternalLink } from 'lucide-react';
+import { Sparkles, Undo2, Check, Code, LayoutGrid, FileCode, FileText, X, ListTree, PanelRightClose, Lightbulb, PlayCircle, Pencil, Save, Trash2, Plus, Minus, ChevronDown, ChevronRight, RefreshCw, FolderOpen, Copy, FileInput, ExternalLink, GripHorizontal } from 'lucide-react';
 
 function FileIcon({ fileName, isDarkMode }: { fileName: string; isDarkMode: boolean }) {
   if (fileName.endsWith('.lcpp')) {
@@ -34,6 +34,7 @@ function getEditorTabClassName(isActive: boolean, isDarkMode: boolean) {
 import { CommandHintContent, DiffLine, DiffResult, ExtractedString, ProblemItem } from '../types';
 import WpfDesigner from './WpfDesigner';
 import type { CommandService } from '../services/commands/commandService';
+import { keyboardEventToKeybinding } from '../services/commands/keybindingService';
 import { describeModuleBindingParameterType } from '../services/modules/bindingValueType';
 import type { CommandContext } from '../services/commands/types';
 import MonacoCodeEditor, {
@@ -66,9 +67,9 @@ import { toggleBeginnerLineComment } from '../services/lingCpp/beginnerLineComme
 import { applyLingCppAstEdit } from '../services/lingCpp/astEditService';
 import {
   BeginnerMethodBodySegment,
+  getBeginnerLocalInsertShortcutKind,
   getBeginnerLocalInsertStatementIndex,
-  getBeginnerMethodBodySegments,
-  isBeginnerLocalInsertShortcut
+  getBeginnerMethodBodySegments
 } from '../services/lingCpp/beginnerLocalVariableLayout';
 import {
   analyzeBeginnerAutoLocalAssignment,
@@ -117,8 +118,10 @@ import {
 import {
   acquireLingCppBeginnerCommands,
   activeLingCppBeginnerCommandTargetService,
+  ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND,
   ADD_BEGINNER_LOCAL_CONSTANT_COMMAND,
   ADD_BEGINNER_LOCAL_VARIABLE_COMMAND,
+  ADD_BEGINNER_SUBPROGRAM_COMMAND,
   type LingCppBeginnerMethodTarget
 } from '../services/lingCpp/beginnerCommandTargetService';
 import { getMenuService } from '../services/menus/menuService';
@@ -138,7 +141,6 @@ import {
   FlushPendingEditsResult
 } from '../services/lingCpp/beginnerEditTransactionService';
 import {
-  TextEditorViewState,
   TextModelIdentity,
   getOrCreateWorkbenchTextHistory,
   getBeginnerBodySourceColumns,
@@ -366,6 +368,12 @@ interface BeginnerTypeCompletionState {
   selectedIndex: number;
   placement: 'above' | 'below';
   maxListHeight: number;
+}
+
+interface BeginnerInitialValueEditorState {
+  target: BeginnerCodeTarget;
+  local: LingCppLocalVariable;
+  onSave: (value: string) => boolean;
 }
 
 type BeginnerCommandHintInfo = CommandHintContent;
@@ -1111,6 +1119,238 @@ function readSerializableObject(value: unknown): Record<string, unknown> {
     : {};
 }
 
+interface BeginnerInitialValueEditorProps {
+  variableName: string;
+  variableType: string;
+  value: string;
+  isConstant: boolean;
+  isDarkMode: boolean;
+  readOnly: boolean;
+  onSave: (value: string) => void;
+  onClose: () => void;
+}
+
+function BeginnerInitialValueEditor({
+  variableName,
+  variableType,
+  value,
+  isConstant,
+  isDarkMode,
+  readOnly,
+  onSave,
+  onClose
+}: BeginnerInitialValueEditorProps) {
+  const [draft, setDraft] = useState(value);
+  const [copied, setCopied] = useState(false);
+  const [position, setPosition] = useState(() => {
+    if (typeof window === 'undefined') return { x: 24, y: 48 };
+    return {
+      x: Math.max(12, Math.round((window.innerWidth - 720) / 2)),
+      y: Math.max(12, Math.round((window.innerHeight - 560) / 2))
+    };
+  });
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    setDraft(value);
+    window.requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [value]);
+
+  useEffect(() => () => {
+    dragCleanupRef.current?.();
+  }, []);
+
+  const clampPosition = useCallback((x: number, y: number) => {
+    const dialog = editorRef.current;
+    const dialogWidth = dialog?.getBoundingClientRect().width
+      || Math.min(720, Math.max(320, window.innerWidth - 24));
+    const dialogHeight = dialog?.getBoundingClientRect().height
+      || Math.min(560, Math.max(300, window.innerHeight - 24));
+    return {
+      x: Math.max(12, Math.min(x, Math.max(12, window.innerWidth - dialogWidth - 12))),
+      y: Math.max(12, Math.min(y, Math.max(12, window.innerHeight - dialogHeight - 12)))
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setPosition(current => clampPosition(current.x, current.y));
+    };
+    window.addEventListener('resize', handleResize);
+    handleResize();
+    return () => window.removeEventListener('resize', handleResize);
+  }, [clampPosition]);
+
+  const beginDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || (event.target instanceof HTMLElement && event.target.closest('button'))) return;
+    event.preventDefault();
+    dragCleanupRef.current?.();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const origin = position;
+    const handleMove = (moveEvent: PointerEvent) => {
+      const next = clampPosition(
+        origin.x + moveEvent.clientX - startX,
+        origin.y + moveEvent.clientY - startY
+      );
+      setPosition(next);
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+      dragCleanupRef.current = null;
+    };
+    dragCleanupRef.current = stop;
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
+  };
+
+  const copyValue = async () => {
+    try {
+      await navigator.clipboard.writeText(draft);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      textareaRef.current?.focus();
+      textareaRef.current?.select();
+      setCopied(false);
+    }
+  };
+
+  const save = () => {
+    if (!readOnly) onSave(draft);
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-labelledby="beginner-initial-value-title"
+      tabIndex={-1}
+      onKeyDown={event => {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          onClose();
+        } else if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !readOnly) {
+          event.preventDefault();
+          save();
+        }
+      }}
+      ref={editorRef}
+      className={`fixed z-[180] flex min-h-0 flex-col resize overflow-hidden rounded-lg border shadow-2xl outline-none ${
+        isDarkMode
+          ? 'border-[#464752] bg-[#1b1c23] text-slate-100 shadow-black/60'
+          : 'border-slate-300 bg-white text-slate-900 shadow-slate-500/30'
+      }`}
+      style={{
+        left: position.x,
+        top: position.y,
+        width: 'min(720px, calc(100vw - 24px))',
+        height: 'min(560px, calc(100vh - 24px))',
+        minWidth: 'min(320px, calc(100vw - 24px))',
+        minHeight: 'min(300px, calc(100vh - 24px))',
+        maxWidth: 'calc(100vw - 24px)',
+        maxHeight: 'calc(100vh - 24px)'
+      }}
+    >
+      <div
+        onPointerDown={beginDrag}
+        className={`flex shrink-0 cursor-move select-none items-center justify-between gap-3 border-b px-3 py-2 ${
+          isDarkMode ? 'border-[#34353f] bg-[#24252e]' : 'border-slate-200 bg-slate-50'
+        }`}
+        style={{ touchAction: 'none' }}
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          <GripHorizontal className={`h-4 w-4 shrink-0 ${isDarkMode ? 'text-slate-500' : 'text-slate-400'}`} aria-hidden="true" />
+          <div className="min-w-0">
+            <div id="beginner-initial-value-title" className="truncate text-[12px] font-semibold">初始值编辑器</div>
+            <div className={`mt-0.5 flex min-w-0 items-center gap-1.5 text-[10px] ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+              <span className="max-w-[260px] truncate">{variableName || '未命名局部声明'}</span>
+              <span aria-hidden="true">·</span>
+              <span className="truncate">{variableType || '未指定类型'}</span>
+              {isConstant && <span className="shrink-0">· 只读常量</span>}
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="关闭初始值编辑器"
+          title="关闭"
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors ${
+            isDarkMode ? 'text-slate-400 hover:bg-[#34353f] hover:text-white' : 'text-slate-500 hover:bg-slate-200 hover:text-slate-900'
+          }`}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
+        <div className={`flex shrink-0 items-center justify-between gap-2 text-[10px] ${isDarkMode ? 'text-slate-500' : 'text-slate-500'}`}>
+          <span>完整初始值 · 支持换行</span>
+          <span className="tabular-nums">{Array.from(draft).length} 个字符</span>
+        </div>
+        <textarea
+          ref={textareaRef}
+          value={draft}
+          onChange={event => setDraft(event.currentTarget.value)}
+          readOnly={readOnly}
+          spellCheck={false}
+          aria-label={`${variableName || '局部声明'}的初始值`}
+          placeholder={isConstant ? '局部常量必须填写初始值' : '可留空'}
+          className={`min-h-0 flex-1 resize-none rounded border p-3 font-mono text-[12px] leading-5 outline-none transition-colors ${
+            isDarkMode
+              ? 'border-[#3c3d48] bg-[#111218] text-emerald-200 placeholder:text-slate-600 focus:border-cyan-500/70'
+              : 'border-slate-300 bg-white text-emerald-800 placeholder:text-slate-400 focus:border-cyan-500'
+          }`}
+        />
+        <div className={`flex shrink-0 flex-wrap items-center justify-between gap-2 border-t pt-2 text-[10px] ${
+          isDarkMode ? 'border-[#34353f] text-slate-500' : 'border-slate-200 text-slate-500'
+        }`}>
+          <span>{readOnly ? '当前文件只读，可复制查看。' : '拖动标题栏移动；可直接编辑并保存。'}</span>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => void copyValue()}
+              className={`inline-flex h-7 items-center gap-1 rounded border px-2 font-semibold transition-colors ${
+                isDarkMode ? 'border-[#454651] text-slate-300 hover:bg-[#2c2d36] hover:text-white' : 'border-slate-300 text-slate-700 hover:bg-slate-100'
+              }`}
+              title="复制完整初始值"
+            >
+              <Copy className="h-3.5 w-3.5" />
+              <span>{copied ? '已复制' : '复制'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className={`inline-flex h-7 items-center gap-1 rounded border px-2 font-semibold transition-colors ${
+                isDarkMode ? 'border-[#454651] text-slate-300 hover:bg-[#2c2d36] hover:text-white' : 'border-slate-300 text-slate-700 hover:bg-slate-100'
+              }`}
+            >
+              <X className="h-3.5 w-3.5" />
+              取消
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={readOnly}
+              className={`inline-flex h-7 items-center gap-1 rounded border px-2 font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                isDarkMode ? 'border-cyan-500/40 bg-cyan-500/15 text-cyan-200 hover:bg-cyan-500/25' : 'border-cyan-200 bg-cyan-50 text-cyan-700 hover:bg-cyan-100'
+              }`}
+            >
+              <Save className="h-3.5 w-3.5" />
+              保存
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function DiffViewer({
   diffResult,
   strings,
@@ -1143,7 +1383,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 }: DiffViewerProps, ref) {
   const [viewType, setViewType] = useState<'code' | 'designer'>('code');
   const [beginnerCommandTargetId] = useState(() => `lingcpp-beginner-editor-${++diffViewerCommandTargetSerial}`);
-  const beginnerLocalCommandHandlerRef = useRef<{
+  const beginnerCommandHandlerRef = useRef<{
+    addSubprogram?: () => unknown;
+    addAssemblyVariable?: () => unknown;
     addVariable?: (target?: LingCppBeginnerMethodTarget) => unknown;
     addConstant?: (target?: LingCppBeginnerMethodTarget) => unknown;
   }>({});
@@ -1248,12 +1490,14 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   const beginnerLocalStatementAnchorsRef = useRef<Record<string, Record<string, number>>>({});
   const [beginnerContextMenu, setBeginnerContextMenu] = useState<BeginnerContextMenuState | null>(null);
   const [beginnerTypeCompletionState, setBeginnerTypeCompletionState] = useState<BeginnerTypeCompletionState | null>(null);
+  const [beginnerInitialValueEditor, setBeginnerInitialValueEditor] = useState<BeginnerInitialValueEditorState | null>(null);
 
   useEffect(() => {
     setCollapsedBeginnerProcessTargetKeys([]);
     setCollapsedBeginnerLocalGroupKeys([]);
     setExpandedBeginnerCommand(null);
     setBeginnerCommandArgumentDrafts({});
+    setBeginnerInitialValueEditor(null);
     beginnerCodeSegmentLineCountsRef.current = {};
     beginnerLocalStatementAnchorsRef.current = {};
   }, [sourceModelOwnerKey]);
@@ -1440,6 +1684,44 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       onEditorStateChange?.(state);
     }
   }, [onEditorStateChange, sourceModelRecord.modelId, textEditHistory]);
+  const saveBeginnerViewState = useCallback(() => {
+    const root = beginnerStructureScrollRef.current;
+    if (!root) return false;
+
+    const activeElement = document.activeElement;
+    const textarea = activeElement instanceof HTMLTextAreaElement && root.contains(activeElement)
+      ? activeElement
+      : null;
+    if (textarea) captureBeginnerTextareaView(textarea);
+
+    const storedTextarea = beginnerTextareaViewRef.current;
+    const fallback = cursorPositionRef.current;
+    const startPosition = storedTextarea?.startPosition || fallback;
+    const endPosition = storedTextarea?.endPosition || fallback;
+    const backwards = storedTextarea?.selectionDirection === 'backward';
+    return workbenchTextModelService.saveViewStateIfCurrent(
+      { modelId: sourceModelRecord.modelId, generation: sourceModelRecord.generation },
+      'beginner',
+      {
+        cursor: backwards ? startPosition : endPosition,
+        selection: {
+          anchor: backwards ? endPosition : startPosition,
+          active: backwards ? startPosition : endPosition
+        },
+        scrollTop: root.scrollTop,
+        scrollLeft: root.scrollLeft,
+        opaque: {
+          selectedHandler: selectedBeginnerHandlerRef.current || '',
+          focusKey: storedTextarea?.focusKey || '',
+          selectionStart: storedTextarea?.selectionStart || 0,
+          selectionEnd: storedTextarea?.selectionEnd || 0,
+          selectionDirection: storedTextarea?.selectionDirection || 'none',
+          textareaScrollTop: storedTextarea?.scrollTop || 0,
+          textareaScrollLeft: storedTextarea?.scrollLeft || 0
+        }
+      }
+    );
+  }, [captureBeginnerTextareaView, sourceModelRecord.generation, sourceModelRecord.modelId]);
   useEffect(() => {
     const historyChanged = reconcileTextEditHistory(textEditHistory, {
       contextKey: activeFile?.language || 'unknown',
@@ -1512,6 +1794,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       kind: reference.symbol.kind,
       name: reference.symbol.name
     };
+    saveBeginnerViewState();
     setViewType('designer');
     if (commandService) {
       void commandService.executeCommand(
@@ -1522,7 +1805,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     } else {
       requestDesignerNavigation(request);
     }
-  }, [commandService, getCommandContext]);
+  }, [commandService, getCommandContext, saveBeginnerViewState]);
   const renameControlReference = useCallback((reference: LingCppControlReference, newName: string) => {
     if (!reference.symbol || !designerProject || !moduleContext || !onUpdateProjectSources) {
       throw new Error('控件重命名需要完整的设计器、模块和项目源码上下文。');
@@ -1552,8 +1835,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const commandRegistration = acquireLingCppBeginnerCommands(commandService, menus);
     const targetRegistration = activeLingCppBeginnerCommandTargetService.register({
       id: beginnerCommandTargetId,
-      addLocalVariable: target => beginnerLocalCommandHandlerRef.current.addVariable?.(target),
-      addLocalConstant: target => beginnerLocalCommandHandlerRef.current.addConstant?.(target)
+      addSubprogram: () => beginnerCommandHandlerRef.current.addSubprogram?.(),
+      addAssemblyVariable: () => beginnerCommandHandlerRef.current.addAssemblyVariable?.(),
+      addLocalVariable: target => beginnerCommandHandlerRef.current.addVariable?.(target),
+      addLocalConstant: target => beginnerCommandHandlerRef.current.addConstant?.(target)
     });
     activeLingCppBeginnerCommandTargetService.activate(beginnerCommandTargetId);
     return () => {
@@ -1563,10 +1848,13 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
   }, [beginnerCommandTargetId, commandService]);
   useEffect(() => {
     const registration = subscribeDesignerNavigation(request => {
-      if (request.projectId === designerProject?.id) setViewType('designer');
+      if (request.projectId === designerProject?.id) {
+        saveBeginnerViewState();
+        setViewType('designer');
+      }
     });
     return () => registration.dispose();
-  }, [designerProject?.id]);
+  }, [designerProject?.id, saveBeginnerViewState]);
   const flushBeginnerDrafts = useCallback((applyToParent: boolean): FlushPendingEditsResult => {
     const currentSourceCode = latestSourceCodeRef.current;
     const result = applyPendingBeginnerCodeDrafts(
@@ -1936,52 +2224,15 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
     return () => {
       if (restoreFrame !== null) window.cancelAnimationFrame(restoreFrame);
-      const root = beginnerStructureScrollRef.current;
-      const activeElement = document.activeElement;
-      const textarea = root && activeElement instanceof HTMLTextAreaElement && root.contains(activeElement)
-        ? activeElement
-        : null;
-      const storedTextarea = textarea ? {
-        focusKey: textarea.dataset.textModelViewKey || '',
-        value: textarea.value,
-        selectionStart: textarea.selectionStart,
-        selectionEnd: textarea.selectionEnd,
-        selectionDirection: textarea.selectionDirection || 'none' as const,
-        scrollTop: textarea.scrollTop,
-        scrollLeft: textarea.scrollLeft,
-        startPosition: beginnerSourcePositionAtOffset(textarea, textarea.selectionStart),
-        endPosition: beginnerSourcePositionAtOffset(textarea, textarea.selectionEnd)
-      } : beginnerTextareaViewRef.current;
-      const fallback = cursorPositionRef.current;
-      const startPosition = storedTextarea?.startPosition || fallback;
-      const endPosition = storedTextarea?.endPosition || fallback;
-      const backwards = storedTextarea?.selectionDirection === 'backward';
-      const state: TextEditorViewState = {
-        cursor: backwards ? startPosition : endPosition,
-        selection: {
-          anchor: backwards ? endPosition : startPosition,
-          active: backwards ? startPosition : endPosition
-        },
-        scrollTop: root?.scrollTop || 0,
-        scrollLeft: root?.scrollLeft || 0,
-        opaque: {
-          selectedHandler: selectedBeginnerHandlerRef.current || '',
-          focusKey: storedTextarea?.focusKey || '',
-          selectionStart: storedTextarea?.selectionStart || 0,
-          selectionEnd: storedTextarea?.selectionEnd || 0,
-          selectionDirection: storedTextarea?.selectionDirection || 'none',
-          textareaScrollTop: storedTextarea?.scrollTop || 0,
-          textareaScrollLeft: storedTextarea?.scrollLeft || 0
-        }
-      };
-      workbenchTextModelService.saveViewStateIfCurrent({
-        modelId: sourceModelRecord.modelId,
-        generation: sourceModelRecord.generation
-      }, 'beginner', state);
+      // The editor DOM ref is cleared before a view-switch cleanup runs. The
+      // live scroll/selection state is saved on scroll and before navigation;
+      // do not overwrite it with a zeroed state after the ref disappears.
+      saveBeginnerViewState();
     };
   }, [
     isLingCppBeginnerStructureMode,
     captureBeginnerTextareaView,
+    saveBeginnerViewState,
     sourceModelIdentity.filePath,
     sourceModelRecord.modelId,
     viewMode,
@@ -2468,6 +2719,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
 
   useEffect(() => {
     const handleShowWindowDesigner = () => {
+      saveBeginnerViewState();
       setViewType('designer');
     };
 
@@ -2475,7 +2727,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     return () => {
       window.removeEventListener('show-window-designer', handleShowWindowDesigner);
     };
-  }, []);
+  }, [saveBeginnerViewState]);
 
   useEffect(() => {
     if (!isLingCppNativeMode) return;
@@ -4767,8 +5019,16 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const insertBeginnerLocalAtCursor = (
       target: BeginnerCodeTarget,
       input: HTMLTextAreaElement,
-      segmentContext?: BeginnerCodeSegmentContext
+      segmentContext?: BeginnerCodeSegmentContext,
+      isConstant = false
     ) => {
+      const localKindLabel = isConstant ? '局部常量' : '局部变量';
+      const structureScroll = beginnerStructureScrollRef.current;
+      const previousStructureScroll = structureScroll
+        ? { top: structureScroll.scrollTop, left: structureScroll.scrollLeft }
+        : null;
+      captureBeginnerTextareaView(input);
+      saveBeginnerViewState();
       if (segmentContext) updateBeginnerCodeSegmentDraft(target, segmentContext, input.value);
       else updateBeginnerCodeDraft(target, input.value);
       const targetKey = codeTargetKey(target);
@@ -4783,7 +5043,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         beginnerLocalStatementAnchorsRef.current
       );
       if (!flushed.success) {
-        setStructureEditError(flushed.diagnostics[0] || '插入局部变量前提交正文失败。');
+        setStructureEditError(flushed.diagnostics[0] || `插入${localKindLabel}前提交正文失败。`);
         return;
       }
 
@@ -4793,11 +5053,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         method.name === target.method.name && method.kind === target.method.kind
       );
       if (!parsedMethod) {
-        setStructureEditError(`无法定位子程序 ${target.method.name}，局部变量未插入。`);
+        setStructureEditError(`无法定位子程序 ${target.method.name}，${localKindLabel}未插入。`);
         return;
       }
 
-      const name = uniqueBeginnerName('局部变量', [
+      const name = uniqueBeginnerName(localKindLabel, [
         ...parsedMethod.parameters.map(parameter => parameter.name),
         ...(parsedMethod.locals || []).map(local => local.name)
       ]);
@@ -4813,11 +5073,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         local: {
           name,
           type: '文本型',
-          initialValue: '""'
+          initialValue: '""',
+          isConstant
         }
       });
       if (!inserted.success) {
-        setStructureEditError(inserted.error || inserted.diagnostics[0]?.message || '局部变量插入失败。');
+        setStructureEditError(inserted.error || inserted.diagnostics[0]?.message || `${localKindLabel}插入失败。`);
         return;
       }
 
@@ -4829,11 +5090,21 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       setStructureEditError(null);
       updateSourceCode(inserted.sourceCode);
       window.requestAnimationFrame(() => {
-        const localNameInput = document.querySelector(`[data-beginner-local-name="${CSS.escape(name)}"]`);
+        const root = beginnerStructureScrollRef.current;
+        if (root && previousStructureScroll) {
+          root.scrollTop = previousStructureScroll.top;
+          root.scrollLeft = previousStructureScroll.left;
+        }
+        const localNameInput = root?.querySelector(
+          `[data-beginner-local-target-key="${CSS.escape(targetKey)}"][data-beginner-local-name="${CSS.escape(name)}"]`
+        );
         if (localNameInput instanceof HTMLInputElement) {
-          localNameInput.focus();
+          localNameInput.focus({ preventScroll: true });
           localNameInput.select();
-          localNameInput.scrollIntoView({ block: 'nearest' });
+        }
+        if (root && previousStructureScroll) {
+          root.scrollTop = previousStructureScroll.top;
+          root.scrollLeft = previousStructureScroll.left;
         }
       });
     };
@@ -5029,10 +5300,11 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         setBeginnerAutoLocalTypeState(null);
       }
 
-      if (isBeginnerLocalInsertShortcut(event)) {
+      const localInsertShortcutKind = getBeginnerLocalInsertShortcutKind(event);
+      if (localInsertShortcutKind) {
         event.preventDefault();
         event.stopPropagation();
-        insertBeginnerLocalAtCursor(target, input, segmentContext);
+        insertBeginnerLocalAtCursor(target, input, segmentContext, localInsertShortcutKind === 'constant');
         return;
       }
 
@@ -5542,7 +5814,9 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
     const resolveBeginnerCommandTarget = (target?: LingCppBeginnerMethodTarget) => target
       ? codeTargets.find(item => item.className === target.className && item.method.name === target.methodName)
       : activeCanvasTarget;
-    beginnerLocalCommandHandlerRef.current = {
+    beginnerCommandHandlerRef.current = {
+      addSubprogram: createBeginnerFunction,
+      addAssemblyVariable: createBeginnerMember,
       addVariable: target => createBeginnerLocal(resolveBeginnerCommandTarget(target), false),
       addConstant: target => createBeginnerLocal(resolveBeginnerCommandTarget(target), true)
     };
@@ -7780,6 +8054,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         <div className="relative min-w-0" data-beginner-type-wrap={field === 'type' ? inputKey : undefined}>
           <input
             key={`${codeTargetKey(target)}:${local.line}:${local.name}:${field}:${value}`}
+            data-beginner-local-target-key={field === 'name' ? codeTargetKey(target) : undefined}
             data-beginner-local-name={field === 'name' ? local.name : undefined}
             data-beginner-local-type={field === 'type' ? local.name : undefined}
             defaultValue={value}
@@ -7835,6 +8110,44 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       );
     };
 
+    const renderLocalInitialValueCell = (
+      target: BeginnerCodeTarget,
+      local: LingCppLocalVariable
+    ) => (
+      <div className="flex min-w-0 items-center gap-1">
+        <div className="min-w-0 flex-1">
+          {renderLocalVariableInput(
+            target,
+            local,
+            'initialValue',
+            local.initialValue || '',
+            local.isConstant ? '常量必填' : '可留空',
+            'value'
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={event => {
+            event.stopPropagation();
+            setBeginnerInitialValueEditor({
+              target,
+              local,
+              onSave: value => updateLocalVariable(target, local, { initialValue: value })
+            });
+          }}
+          aria-label={`打开局部声明 ${local.name || '未命名'} 的初始值编辑器`}
+          title="打开初始值编辑器"
+          className={`flex h-[var(--beginner-input-height)] w-7 shrink-0 items-center justify-center rounded border transition-colors ${
+            isDarkMode
+              ? 'border-[#3b3c46] text-cyan-300 hover:border-cyan-500/60 hover:bg-cyan-500/10'
+              : 'border-slate-200 text-cyan-700 hover:border-cyan-300 hover:bg-cyan-50'
+          }`}
+        >
+          <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+      </div>
+    );
+
     const renderLocalVariableCanvas = (
       target: BeginnerCodeTarget,
       visualLine: number,
@@ -7865,7 +8178,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           >
             {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             <span>局部声明 · {locals.length} 个 · 变量与只读常量仅在当前子程序内有效</span>
-            <span className="ml-auto font-normal opacity-70">Ctrl+L 只快速插入普通变量</span>
+            <span className="ml-auto font-normal opacity-70">Ctrl+L 变量 · Ctrl+B 常量</span>
           </button>
           {!collapsed && renderInlineTable(
             [
@@ -7907,7 +8220,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                       />
                     </label>
                   </td>
-                  <td className={compactCellClass}>{renderLocalVariableInput(target, local, 'initialValue', local.initialValue || '', local.isConstant ? '常量必填' : '可留空', 'value')}</td>
+                  <td className={compactCellClass}>{renderLocalInitialValueCell(target, local)}</td>
                   <td className={compactCellClass}>
                     <button
                       type="button"
@@ -8454,28 +8767,66 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           { includeDisabled: true }
         ).find(item => item.kind === 'command' && item.command.id === REVEAL_LINGCPP_CONTROL_COMMAND)
       : undefined;
-    const beginnerLocalCommandContext: CommandContext = {
+    const getBeginnerCommandContext = (target?: BeginnerCodeTarget): CommandContext => ({
       ...(getCommandContext?.() || {}),
       'workspace.open': true,
+      'designer.active': false,
       'lingcpp.beginner.active': true,
-      'lingcpp.beginner.hasTarget': Boolean(contextTarget)
-    };
-    const beginnerLocalMenuItems = commandService
+      'lingcpp.beginner.hasTarget': Boolean(target),
+      'lingcpp.beginner.canAddSubprogram': Boolean(primaryMethodOwnerName),
+      'lingcpp.beginner.canAddAssemblyVariable': Boolean(primaryLingCppClass),
+      'lingcpp.beginner.writable': Boolean(onUpdateSourceContent)
+    });
+    const beginnerCommandContext = getBeginnerCommandContext(contextTarget);
+    const beginnerCreationMenuItems = commandService
       ? getMenuService(commandService).resolveMenu(
           LINGCPP_BEGINNER_CONTEXT_MENU,
-          beginnerLocalCommandContext,
+          beginnerCommandContext,
           { includeDisabled: true }
         ).filter(item => item.kind === 'command' && (
-          item.command.id === ADD_BEGINNER_LOCAL_VARIABLE_COMMAND
+          item.command.id === ADD_BEGINNER_SUBPROGRAM_COMMAND
+          || item.command.id === ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND
+          || item.command.id === ADD_BEGINNER_LOCAL_VARIABLE_COMMAND
           || item.command.id === ADD_BEGINNER_LOCAL_CONSTANT_COMMAND
         ))
       : [];
+    const executeBeginnerCreationCommand = (commandId: string, target?: BeginnerCodeTarget) => {
+      if (!commandService) return;
+      activeLingCppBeginnerCommandTargetService.activate(beginnerCommandTargetId);
+      const targetArgument = target
+        ? { className: target.className, methodName: target.method.name }
+        : undefined;
+      void commandService.executeCommand(
+        commandId,
+        getBeginnerCommandContext(target),
+        targetArgument
+      ).catch(error => setStructureEditError(
+        error instanceof Error ? error.message : '新手模式快捷插入失败。'
+      ));
+    };
+    const handleBeginnerCreationShortcut = (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (!commandService || event.defaultPrevented) return;
+      const keybinding = keyboardEventToKeybinding(event.nativeEvent);
+      if (!keybinding) return;
+      const context = getBeginnerCommandContext(activeCanvasTarget);
+      const command = commandService.resolveKeybinding(keybinding, context).find(item => (
+        item.id === ADD_BEGINNER_SUBPROGRAM_COMMAND
+        || item.id === ADD_BEGINNER_ASSEMBLY_VARIABLE_COMMAND
+        || item.id === ADD_BEGINNER_LOCAL_VARIABLE_COMMAND
+        || item.id === ADD_BEGINNER_LOCAL_CONSTANT_COMMAND
+      ));
+      if (!command) return;
+      event.preventDefault();
+      event.stopPropagation();
+      executeBeginnerCreationCommand(command.id, activeCanvasTarget);
+    };
     const renderContextMenuButton = (
       label: string,
       onClick: () => void,
       icon: React.ReactNode,
       danger = false,
-      disabled = false
+      disabled = false,
+      shortcut?: string
     ) => (
       <button
         type="button"
@@ -8493,7 +8844,8 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         }`}
       >
         <span className="flex h-4 w-4 shrink-0 items-center justify-center">{icon}</span>
-        <span className="truncate">{label}</span>
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {shortcut && <kbd className="ml-auto shrink-0 font-sans text-[10px] tabular-nums opacity-60">{shortcut}</kbd>}
       </button>
     );
     const renderBeginnerContextMenu = () => {
@@ -8503,13 +8855,15 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
       const verticalInset = menuOnBottomHalf
         ? Math.max(8, window.innerHeight - beginnerContextMenu.y)
         : Math.max(8, beginnerContextMenu.y);
+      const menuWidth = Math.min(220, window.innerWidth - 16);
       return (
         <div
-          className={`fixed z-50 w-[190px] overflow-x-hidden overflow-y-auto rounded border py-1 shadow-2xl ${
+          className={`fixed z-50 overflow-x-hidden overflow-y-auto rounded border py-1 shadow-2xl ${
             isDarkMode ? 'border-[#343746] bg-[#191b22] shadow-black/40' : 'border-slate-200 bg-white shadow-slate-300/60'
           }`}
           style={{
-            left: Math.max(8, Math.min(beginnerContextMenu.x, window.innerWidth - 198)),
+            width: menuWidth,
+            left: Math.max(8, Math.min(beginnerContextMenu.x, window.innerWidth - menuWidth - 8)),
             top: menuOnBottomHalf ? undefined : verticalInset,
             bottom: menuOnBottomHalf ? verticalInset : undefined,
             maxHeight: `calc(100vh - ${verticalInset + 8}px)`
@@ -8540,24 +8894,17 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
             !contextDefinition
           )}
           <div className={`my-1 border-t ${canvasBorder}`} />
-          {renderContextMenuButton('新建子程序', createBeginnerFunction, <Plus className="h-3.5 w-3.5" />)}
-          {renderContextMenuButton('新建程序集变量', createBeginnerMember, <Plus className="h-3.5 w-3.5" />)}
-          {beginnerLocalMenuItems.map(item => item.kind === 'command' && renderContextMenuButton(
-            item.command.title,
-            () => {
-              if (!commandService) return;
-              const targetArgument = contextTarget
-                ? { className: contextTarget.className, methodName: contextTarget.method.name }
-                : undefined;
-              void commandService.executeCommand(
-                item.command.id,
-                beginnerLocalCommandContext,
-                targetArgument
-              ).catch(error => setStructureEditError(error instanceof Error ? error.message : '新增局部声明失败。'));
-            },
-            <Plus className="h-3.5 w-3.5" />,
-            false,
-            !item.command.enabled
+          {beginnerCreationMenuItems.map(item => item.kind === 'command' && (
+            <React.Fragment key={item.id}>
+              {renderContextMenuButton(
+                item.command.title,
+                () => executeBeginnerCreationCommand(item.command.id, contextTarget),
+                <Plus className="h-3.5 w-3.5" />,
+                false,
+                !item.command.enabled,
+                item.command.keybindings[0]
+              )}
+            </React.Fragment>
           ))}
           <div className={`my-1 border-t ${canvasBorder}`} />
           {renderContextMenuButton('展开全部子程序', expandAllBeginnerProcesses, <ChevronDown className="h-3.5 w-3.5" />, false, allProcessTargets.length === 0)}
@@ -8607,6 +8954,10 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
         ref={beginnerStructureScrollRef}
         data-beginner-structure-scroll
         className={`h-full min-h-0 overflow-auto ${editorCanvasBg}`}
+        onFocusCapture={() => activeLingCppBeginnerCommandTargetService.activate(beginnerCommandTargetId)}
+        onPointerDownCapture={() => activeLingCppBeginnerCommandTargetService.activate(beginnerCommandTargetId)}
+        onKeyDown={handleBeginnerCreationShortcut}
+        onScroll={saveBeginnerViewState}
         onContextMenu={event => openBeginnerContextMenu(event, activeCanvasTarget)}
       >
         <datalist id="beginner-member-name-suggestions">
@@ -9250,9 +9601,12 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           <div
             role="button"
             tabIndex={0}
-            onClick={() => setViewType('designer')}
+            onClick={() => { saveBeginnerViewState(); setViewType('designer'); }}
             onKeyDown={event => {
-              if (event.key === 'Enter' || event.key === ' ') setViewType('designer');
+              if (event.key === 'Enter' || event.key === ' ') {
+                saveBeginnerViewState();
+                setViewType('designer');
+              }
             }}
             className={getEditorTabClassName(viewType === 'designer', isDarkMode)}
             title={`打开窗口设计器：${designerTabLabel}`}
@@ -9325,7 +9679,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
               </button>
             ) : (
               <button
-                onClick={() => setViewType('designer')}
+                onClick={() => { saveBeginnerViewState(); setViewType('designer'); }}
                 className={`flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
                   isDarkMode
                     ? 'bg-amber-600/10 hover:bg-amber-600/20 text-amber-400 border border-amber-500/30'
@@ -9532,7 +9886,7 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
                   projectTypes={projectTypes}
                   projectSources={lingCppProjectSources}
                   onProjectSourcesChange={onUpdateProjectSources}
-                  onRevealDesignerBinding={() => setViewType('designer')}
+                  onRevealDesignerBinding={() => { saveBeginnerViewState(); setViewType('designer'); }}
                   commandService={commandService}
                   getCommandContext={getCommandContext}
                   onRevealControlReference={revealControlReference}
@@ -9800,6 +10154,21 @@ const DiffViewer = React.forwardRef<DiffViewerHandle, DiffViewerProps>(function 
           </div>
         )}
       </div>
+      )}
+      {beginnerInitialValueEditor && (
+        <BeginnerInitialValueEditor
+          key={`${beginnerInitialValueEditor.target.className}:${beginnerInitialValueEditor.target.method.name}:${beginnerInitialValueEditor.local.line}:${beginnerInitialValueEditor.local.name}`}
+          variableName={beginnerInitialValueEditor.local.name}
+          variableType={beginnerInitialValueEditor.local.type}
+          value={beginnerInitialValueEditor.local.initialValue || ''}
+          isConstant={Boolean(beginnerInitialValueEditor.local.isConstant)}
+          isDarkMode={isDarkMode}
+          readOnly={!onUpdateSourceContent}
+          onClose={() => setBeginnerInitialValueEditor(null)}
+          onSave={value => {
+            if (beginnerInitialValueEditor.onSave(value)) setBeginnerInitialValueEditor(null);
+          }}
+        />
       )}
     </div>
   );

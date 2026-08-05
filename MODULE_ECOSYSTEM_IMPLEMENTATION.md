@@ -363,6 +363,7 @@ lingbuilder.module.json
 - 控件内部实例编号使用稳定生成 control ID，用户代码优先通过中文控件名调用 EdgeView 控件命令；旧数字实例和区域 API 保持兼容。空缓存目录必须确定性生成独立 `.edgeview/<controlId>`，避免多控件默认共享会话目录。
 - WebView2 SDK/Loader 仍由 `nativeDependencyService` 受控发现和复制；设计器只保存模型，不直接读取 NuGet 或启动原生浏览器。
 - EdgeView 事件目录集中维护在 `electron/src/services/modules/edgeViewBrowserEvents.ts`，按 `1.0.3537.50` 与 `1.0.4078.44` 双基线审计。普通 HWND 控件接入 71 项可达事件；`CompositionController` 独占的 2 项事件明确排除。注册表、模块补全、设计器事件面板、中文事件映射和生成器覆盖测试必须消费同一目录，新增 SDK 版本时不得只补 UI 或只补 C++。
+- EdgeView 面向用户的事件参考文档登记在 manifest 的 `contributes.docs[]`，路径为 `electron/docs/modules/edgeview/README.md`，由 `electron/scripts/generate-edgeview-event-doc.ts` 从上述目录生成。文档必须列出全部中文事件名、WebView2 标识、设计器 ID、来源、说明、关键字段、调用示例和 CompositionController 排除项；修改事件目录后运行 `npm run module:edgeview-docs`，发布/测试前运行 `npm run module:edgeview-docs:check`。
 - 事件运行时通过 `QueryInterface` 逐级启用 WebView2 版本接口，并级联保存 Download、Frame、Notification、Find、Profile、DevTools receiver 等事件源。事件数据统一为 UTF-16 JSON；等待事件按事件名计数，避免高频资源/下载事件覆盖最近值后造成漏判。
 - 2026-07-31 起模块升级到 `1.2.0` / 最低 LingBuilder `0.2.7`：`edgeViewApiCatalog.ts` 集中生成 235 条安全 API contribution 与 binding，连同 36 条兼容命令共 271 条。覆盖清单固定审计 SDK `1.0.3537.50`（Runtime 141）和 `1.0.4078.44`（Runtime 150）：新基线 995 个稳定方法已归为 330 个公开实现、565 个内部适配和 100 个批准排除，`pending=0`。`module:edgeview-coverage:complete` 同时验证双头文件哈希、中文名、binding、运行时符号和测试 ID。
 - v2 创建期选项包括独占 UDF、崩溃报告、环境跟踪保护、扩展开关、通道搜索、发布通道、滚动条样式、脚本区域、背景色和宿主输入处理。属性修改后必须显式重建；运行期以 `QueryInterface` 检测接口，使用 v2 命令时生成物要求 Runtime 150。CompositionController、PointerInfo、AutomationProvider、实验 API、裸 COM/指针、Host Object 注入继续排除。

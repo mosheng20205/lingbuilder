@@ -1,0 +1,50 @@
+包 EdgeView替换响应演示
+使用 Win32窗口基础模块
+使用 EdgeView浏览器模块
+
+// Web资源请求 是同步决策事件。只有在该处理器执行期间，设置事件响应文本才会生效。
+类 MainWindow : 公开 窗口
+    构造()
+    结束
+
+    事件 _MainWindow_创建完毕()
+        局部 整数型 绑定结果 = 0
+        绑定结果 = EdgeView_绑定控件事件(演示浏览器, "Web资源请求", &收到资源请求)
+        如果 (绑定结果 == 1)
+            控件_设置文本(运行状态, "事件已绑定，正在请求 https://demo.lingbuilder.local/replace")
+            开始演示()
+        否则
+            控件_设置文本(运行状态, "绑定 Web资源请求 失败，请确认 WebView2 Runtime 已安装。")
+        如果结束
+    结束
+
+    空 开始演示()
+        局部 整数型 请求结果 = 0
+        请求结果 = EdgeView导航_请求(演示浏览器, "https://demo.lingbuilder.local/replace", "GET", "Cache-Control: no-store", "")
+        如果 (请求结果 == 0)
+            控件_设置文本(运行状态, "发起导航失败，请确认 EdgeView 控件已经创建。")
+        如果结束
+    结束
+
+    事件 _重新演示按钮_被单击()
+        控件_设置文本(运行状态, "正在重新发起演示请求...")
+        开始演示()
+    结束
+
+    事件 收到资源请求()
+        局部 文本型 地址 = ""
+        局部 文本型 页面正文 = ""
+        局部 整数型 替换结果 = 0
+        地址 = EdgeView事件_取字段(演示浏览器, "uri")
+        如果 (地址 == "https://demo.lingbuilder.local/replace")
+            页面正文 = "<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'><title>LingBuilder 已替换响应</title><style>body{margin:0;background:#f8fafc;color:#0f172a;font-family:'Microsoft YaHei UI',sans-serif;display:grid;place-items:center;min-height:100vh}.panel{width:min(760px,86vw);border-left:6px solid #0f766e;padding:24px 30px;background:#fff;box-shadow:0 10px 30px rgba(15,23,42,.12)}h1{font-size:28px;margin:0 0 12px}p{line-height:1.8;margin:8px 0}code{color:#0f766e}</style></head><body><main class='panel'><h1>响应已被 LingBuilder 替换</h1><p>此页面没有访问公网，而是在 <code>Web资源请求</code> 同步事件中生成。</p><p>调用接口：<code>EdgeView资源_设置事件响应文本</code></p><p>状态：HTTP 200 OK，正文编码：UTF-8。</p></main></body></html>"
+            替换结果 = EdgeView资源_设置事件响应文本(演示浏览器, 200, "OK", "Content-Type: text/html; charset=utf-8\r\nCache-Control: no-store", 页面正文)
+            如果 (替换结果 == 1)
+                控件_设置文本(运行状态, 格式化文本("替换成功：{} -> HTTP 200 OK", 地址))
+                调试输出(格式化文本("[EdgeView替换响应] 已替换 {}", 地址))
+            否则
+                控件_设置文本(运行状态, "替换失败：该接口只能在 Web资源请求 同步处理器内调用。")
+            如果结束
+        如果结束
+    结束
+结束类
